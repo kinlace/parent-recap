@@ -12,5 +12,5 @@ Pilot fixes and the issue loop land on `main` fast, so `main` is allowed to be u
 ## Consequences
 
 - A hotfix can't go on `main`, because it would ship with unreleased work. Branch `release/X.Y` from the latest tag, fix and tag there (`vX.Y.Z+1`), then cherry-pick the fix (not the version bump) back to `main`. Delete the branch once the next minor ships.
-- Pushes to `main` are no longer releases. While the repo is private, the macOS test job moves from `main` pushes to tag pushes and PRs and `main` run on Linux, to save the 10x macOS minutes. Once it is public (ADR 0003) the minutes are free and every run is on macOS.
+- Pushes to `main` are no longer releases. While the repo was private, the macOS test job moved from `main` pushes to tag pushes and PRs and `main` ran on Linux, to save the 10x macOS minutes. Now that it is public (ADR 0003) the minutes are free and every test run is on macOS.
 - `stable` is written only by the release workflow, and only when the new tag is the highest version so far. Moving it back to an older line would downgrade every marketplace family, because Claude Code updates on any version change, not only on newer ones. It still force-pushes, because a hotfix tag on `release/X.Y` is not a descendant of the previous tag's commit on `main`.
