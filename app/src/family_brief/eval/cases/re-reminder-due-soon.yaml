@@ -1,0 +1,38 @@
+covers: [re-reminder, empty-night]
+note: >
+  Tuesday night, no new Messages. Sunday's to-do falls due on Thursday, within 3 days, so it is
+  re-reminded with its refs carried over. Eero's to-do is 7 days out and is not.
+now: 2026-10-06T21:00:00+03:00
+earlier_briefs:
+  - date: "2026-10-04"
+    per_kid:
+      - kid: Aino
+        notices: []
+        action_items:
+          - what: 交 retki 签字同意书（lupalappu）
+            by: "2026-10-08"
+            who: 任一
+            refs: [w-retki-1004]
+            ref_sources: { w-retki-1004: [wilma] }
+            source: [wilma]
+            verified: true
+      - kid: Eero
+        notices: []
+        action_items:
+          - what: 网上订购班级照片
+            by: "2026-10-13"
+            who: 任一
+            refs: [gm-kuvat-1004]
+            ref_sources: { gm-kuvat-1004: [gmail] }
+            source: [gmail]
+            verified: true
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what: [lupalappu, lupalap, suostum, 同意书, permission, consent],
+        by: 2026-10-08,
+      }
+  notices:
+    must:
+      - { text: [再提醒, muistutus, (reminder)], where: action_items }

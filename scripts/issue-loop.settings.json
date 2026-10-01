@@ -1,0 +1,72 @@
+{
+  "model": "opus",
+  "env": { "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet" },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Skill",
+      "Agent",
+      "TodoWrite",
+      "Bash(gh issue view *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh api repos/zhao-hanbo/family-brief/*)"
+    ],
+    "deny": [
+      "Bash(gh api * -X *)",
+      "Bash(gh api * --method *)",
+      "Bash(gh api * -f *)",
+      "Bash(gh api * -F *)",
+      "Bash(gh api * --field *)",
+      "Bash(gh api * --raw-field *)",
+      "Bash(gh api * --input *)",
+      "Bash(gh issue create *)",
+      "Bash(gh issue edit *)",
+      "Bash(gh issue comment *)",
+      "Bash(gh issue close *)",
+      "Bash(gh issue reopen *)",
+      "Bash(gh issue delete *)",
+      "Bash(gh issue transfer *)",
+      "Bash(gh issue lock *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr edit *)",
+      "Bash(gh pr comment *)",
+      "Bash(gh pr review *)",
+      "Bash(gh pr close *)",
+      "Bash(gh pr reopen *)",
+      "Bash(gh pr ready *)",
+      "Bash(gh repo *)",
+      "Bash(gh release *)",
+      "Bash(gh secret *)",
+      "Bash(gh variable *)",
+      "Bash(gh workflow *)",
+      "Bash(gh run *)",
+      "Bash(gh label *)",
+      "Bash(gh gist *)",
+      "Bash(gh auth *)",
+      "Bash(gh ssh-key *)",
+      "Bash(gh gpg-key *)",
+      "Bash(gh extension *)",
+      "Bash(gh alias *)",
+      "Bash(gh config *)",
+      "Bash(git push *)",
+      "Bash(git push)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "allowUnsandboxedCommands": false,
+    "excludedCommands": ["gh *"],
+    "network": {
+      "allowedDomains": ["pypi.org", "files.pythonhosted.org"]
+    },
+    "filesystem": {
+      "denyRead": ["~/.ssh"]
+    }
+  }
+}

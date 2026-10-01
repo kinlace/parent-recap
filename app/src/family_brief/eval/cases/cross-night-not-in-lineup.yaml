@@ -1,0 +1,76 @@
+covers: [cross-night]
+note: >
+  Friday night. Yesterday's Brief said Aino is not in Sunday's match lineup. Tonight her choir
+  sings at the same time as the match; with nothing new about the lineup, there is no clash.
+now: 2026-10-09T21:00:00+03:00
+calendar:
+  - {
+      id: gcal-match-1011,
+      summary: FC Kilo T2016 vs HJK,
+      start: "2026-10-11T11:00:00+03:00",
+      end: "2026-10-11T12:30:00+03:00",
+      location: Leppävaaran tekonurmi,
+    }
+earlier_briefs:
+  - date: "2026-10-08"
+    per_kid:
+      - kid: Aino
+        notices:
+          - text: 周日 10/11 11:00 FC Kilo T2016 对 HJK 的出场名单已公布，Aino 不在名单上
+            refs: [wa-fc-1008]
+            ref_sources: { wa-fc-1008: [whatsapp] }
+            source: [whatsapp]
+            verified: true
+        action_items: []
+messages:
+  - id: w-kuoro-1009
+    source: wilma
+    at: 2026-10-09T14:40:00+03:00
+    sender: Musiikinopettaja Salo Kaisa
+    subject: Kuoro sunnuntaina
+    kid_hint: Virtanen Aino
+    body: |
+      4B:n kuoro esiintyy sunnuntaina 11.10. Leppävaaran kirkon perhemessussa. Esitys alkaa
+      klo 11.00. Oppilailla valkoinen paita.
+expect:
+  action_items:
+    - { kid: Aino, what: [valkoi, 白, white], optional: true }
+  calendar_events:
+    - {
+        title:
+          [
+            kuoro,
+            合唱,
+            演出,
+            唱,
+            messu,
+            kirk,
+            esiinty,
+            esity,
+            laul,
+            教堂,
+            choir,
+            sing,
+            church,
+            concert,
+          ],
+        start: 2026-10-11T11:00,
+      }
+  notices:
+    must_not:
+      - {
+          text:
+            [
+              冲突,
+              撞,
+              重叠,
+              二选一,
+              conflict,
+              clash,
+              overlap,
+              päällekkäi,
+              ristiriit,
+              törmä,
+            ],
+          where: both,
+        }

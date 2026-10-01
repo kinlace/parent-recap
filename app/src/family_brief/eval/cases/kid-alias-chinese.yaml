@@ -1,0 +1,56 @@
+covers: [kid-alias, whatsapp-group]
+note: >
+  Thursday night. The Chinese-school chat maps to both Kids, but the homework is for "小艾",
+  Aino's alias, and only Aino takes the class.
+now: 2026-10-08T21:00:00+03:00
+messages:
+  - id: wa-zh-1008
+    source: whatsapp
+    at: 2026-10-08T20:11:00+03:00
+    chat: 华人家长群
+    sender: 王老师
+    body: |
+      各位家长好！本周六中文课改到下午两点开始，地点不变。小艾那组记得带上周的作业本。
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what: [作业, homework, läksy, tehtäv, vihko],
+        by: 2026-10-10,
+      }
+  calendar_events:
+    - { title: [中文, chinese, kiina], start: 2026-10-10T14:00 }
+  notices:
+    must:
+      - {
+          text:
+            [
+              "14:00",
+              "14.00",
+              "klo 14",
+              两点,
+              2点,
+              14点,
+              下午2,
+              "2 pm",
+              "2pm",
+              "2:00 pm",
+            ],
+          where: both,
+        }
+    must_not:
+      - {
+          kid: Eero,
+          text:
+            [
+              作业,
+              中文课,
+              homework,
+              chinese class,
+              chinese lesson,
+              läksy,
+              kotitehtäv,
+              kiinan,
+            ],
+          where: both,
+        }

@@ -1,0 +1,64 @@
+covers: [noise]
+note: >
+  Tuesday night of nothing: a shop newsletter, thanks, a thumbs-up, a birthday greeting and a
+  forwarded video. No Action Items, no events, and none of it in the notices.
+now: 2026-10-06T21:00:00+03:00
+messages:
+  - id: gm-prisma-1006
+    source: gmail
+    at: 2026-10-06T08:00:00+03:00
+    sender: Prisma <uutiskirje@prisma.example.fi>
+    subject: "Syysale: -30 % lasten ulkovaatteista!"
+    body: |
+      Vain tällä viikolla: kaikki lasten ulkovaatteet -30 %. Tule myymälään tai tilaa verkosta.
+  - id: wa-4b-1006a
+    source: whatsapp
+    at: 2026-10-06T17:10:00+03:00
+    chat: 4B vanhemmat
+    sender: Pia
+    body: Kiitos kaikille eilisestä! 😊
+  - id: wa-4b-1006b
+    source: whatsapp
+    at: 2026-10-06T17:12:00+03:00
+    chat: 4B vanhemmat
+    sender: Timo
+    body: 👍
+  - id: wa-1a-1006
+    source: whatsapp
+    at: 2026-10-06T18:40:00+03:00
+    chat: 1A vanhemmat
+    sender: Laura
+    body: Hyvää syntymäpäivää Ella! 🎂🎉
+  - id: wa-sb-1006
+    source: whatsapp
+    at: 2026-10-06T20:05:00+03:00
+    chat: Salibandy Eagles
+    sender: Isä Marko
+    body: Katsokaa tämä hauska video 😂 https://youtu.be/example
+expect:
+  notices:
+    must_not:
+      - {
+          text:
+            [
+              Prisma,
+              alennus,
+              alennu,
+              tarjou,
+              折扣,
+              打折,
+              syysale,
+              促销,
+              "-30",
+              优惠,
+              discount,
+              sale,
+              offer,
+            ],
+          where: both,
+        }
+      - {
+          text: [生日, syntymä, synttär, onnittel, Ella, birthday],
+          where: both,
+        }
+      - { text: [video, 视频], where: both }

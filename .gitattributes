@@ -1,0 +1,12 @@
+# Developer-only files stay out of the zip that families get (built with `git archive`).
+# GitHub installs clone the whole repo, so this only affects the zip.
+/.github export-ignore
+/app/tests export-ignore
+/ops export-ignore
+/CLAUDE.md export-ignore
+/docs/agents export-ignore
+/.agents export-ignore
+/.claude export-ignore
+/skills-lock.json export-ignore
+/CONTRIBUTING.md export-ignore
+/scripts export-ignore

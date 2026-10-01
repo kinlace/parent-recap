@@ -1,0 +1,91 @@
+covers: [kid-attribution]
+note: >
+  Wednesday night. A school-wide email that concerns both Kids; the Brief must say the school
+  is closed on Friday.
+now: 2026-10-07T21:00:00+03:00
+messages:
+  - id: gm-rehtori-1007
+    source: gmail
+    at: 2026-10-07T11:30:00+03:00
+    sender: Rehtori Korhonen Pekka <rehtori@kilo.example.fi>
+    subject: Koulu suljettu perjantaina
+    body: |
+      Hyvät huoltajat,
+      Kilo School on suljettu perjantaina 9.10. opettajien koulutuspäivän vuoksi. Myös
+      iltapäiväkerho on suljettu. Koulu jatkuu normaalisti maanantaina.
+expect:
+  action_items:
+    - {
+        what:
+          [
+            看护,
+            照看,
+            安排,
+            托管,
+            hoito,
+            hoid,
+            hoita,
+            järjest,
+            childcare,
+            care,
+            arrange,
+          ],
+        optional: true,
+      }
+  calendar_events:
+    - {
+        title:
+          [
+            suljettu,
+            kiinni,
+            koulutus,
+            vapaa,
+            停课,
+            放假,
+            不上学,
+            关闭,
+            休息,
+            培训,
+            closed,
+            no school,
+            day off,
+            training,
+          ],
+        optional: true,
+      }
+  notices:
+    must:
+      - {
+          text:
+            [
+              [
+                suljettu,
+                kiinni,
+                ei koulua,
+                vapaa,
+                停课,
+                放假,
+                不上学,
+                关闭,
+                休息,
+                不开,
+                closed,
+                no school,
+                day off,
+              ],
+              [
+                周五,
+                "10/9",
+                "10-09",
+                "9.10",
+                perjantai,
+                10月9,
+                friday,
+                oct 9,
+                9 oct,
+                october 9,
+                9 october,
+              ],
+            ],
+          where: both,
+        }

@@ -1,0 +1,63 @@
+covers: [finnish-dates]
+note: Monday night. Dates in Finnish d.m. form with a weekday abbreviation.
+now: 2026-10-05T21:00:00+03:00
+messages:
+  - id: w-vanh-1005
+    source: wilma
+    at: 2026-10-05T15:20:00+03:00
+    sender: Rehtori Korhonen Pekka
+    subject: 1A vanhempainilta
+    kid_hint: Virtanen Eero
+    body: |
+      Tervetuloa 1A-luokan vanhempainiltaan ke 14.10. klo 18.00 koulun ruokalaan.
+      Ilmoittautuminen Wilman lomakkeella pe 9.10. mennessä.
+expect:
+  action_items:
+    - {
+        kid: Eero,
+        what:
+          [
+            ilmoittau,
+            ilmoit,
+            lomak,
+            报名,
+            登记,
+            回复,
+            sign up,
+            register,
+            enrol,
+            enroll,
+            reply,
+            rsvp,
+          ],
+        by: 2026-10-09,
+      }
+  calendar_events:
+    - {
+        title:
+          [
+            vanhempainilta,
+            vanhempainil,
+            家长会,
+            parents' evening,
+            parent meeting,
+            parents' meeting,
+            parent evening,
+          ],
+        start: 2026-10-14T18:00,
+      }
+    - {
+        title:
+          [
+            ilmoittau,
+            ilmoit,
+            lomak,
+            报名,
+            登记,
+            sign up,
+            register,
+            enrol,
+            enroll,
+          ],
+        optional: true,
+      }

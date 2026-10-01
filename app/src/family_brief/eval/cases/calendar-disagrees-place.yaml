@@ -1,0 +1,57 @@
+covers: [calendar-disagrees]
+note: >
+  Sunday night. MyClub already queued Wednesday's friendly at Leppävaara; the coach moves it to
+  Tapiola. The Brief must name both places and not queue the match again at the same time. An
+  Action Item to fix or confirm the calendar entry is fine, since nothing else will correct it.
+now: 2026-10-11T21:00:00+03:00
+queued:
+  - {
+      external_id: myclub-evt-7781,
+      source: myclub,
+      title: Harjoitusottelu FC Kilo T2016,
+      start: "2026-10-14T18:00:00+03:00",
+      end: "2026-10-14T19:30:00+03:00",
+      location: Leppävaaran tekonurmi,
+      description: MyClub,
+      kid: Aino,
+    }
+messages:
+  - id: wa-fc-1011
+    source: whatsapp
+    at: 2026-10-11T16:02:00+03:00
+    chat: FC Kilo T2016
+    sender: Valmentaja Jussi
+    body: |
+      Keskiviikon harjoitusottelu pelataan poikkeuksellisesti Tapiolan urheilupuistossa, aika sama.
+expect:
+  action_items:
+    - {
+        what:
+          [
+            日历,
+            确认,
+            核实,
+            核对,
+            更新,
+            改,
+            calendar,
+            kalenteri,
+            tarkist,
+            päivit,
+            vahvist,
+            korja,
+            confirm,
+            check,
+            update,
+          ],
+        kid: Aino,
+        optional: true,
+      }
+  calendar_events:
+    - {
+        title: [harjoitusottelu, 比赛, 友谊赛, ottelu, peli, match, game],
+        optional: true,
+      }
+  notices:
+    must:
+      - { kid: Aino, text: [[Tapiola], [Leppävaara]] }

@@ -1,0 +1,55 @@
+covers: [dst, kid-alias]
+note: >
+  Saturday night, the last one on summer time. The calendar gives the piano lesson in UTC
+  (15:00Z, which is 17:00 after the switch). Converting with the summer offset gives 18:00 and a
+  made-up clash with the message. The lesson is already in the calendar, so no new event.
+now: 2026-10-24T21:00:00+03:00
+calendar:
+  - {
+      id: gcal-piano-1027,
+      summary: Eero piano,
+      start: "2026-10-27T15:00:00Z",
+      end: "2026-10-27T15:45:00Z",
+      location: Musiikkikoulu Forte,
+    }
+messages:
+  - id: gm-piano-1024
+    source: gmail
+    at: 2026-10-24T11:02:00+03:00
+    sender: Anna Forte <anna@forte.example.fi>
+    subject: Tiistain tunti
+    body: |
+      Hei! Muistutus: Eetun pianotunti on normaalisti tiistaina 27.10. klo 17.00.
+      Ottakaa nuottikirja mukaan. Terveisin Anna
+expect:
+  action_items:
+    - {
+        kid: Eero,
+        what: [nuotti, nuot, 乐谱, 琴谱, 谱, sheet music, music book, notes],
+        optional: true,
+      }
+  notices:
+    must_not:
+      - {
+          text:
+            [
+              不一致,
+              不符,
+              冲突,
+              矛盾,
+              差异,
+              "18:00",
+              "18.00",
+              "klo 18",
+              disagree,
+              differ,
+              mismatch,
+              conflict,
+              "6 pm",
+              "6pm",
+              ristiriit,
+              poikkea,
+              päällekkäi,
+            ],
+          where: both,
+        }

@@ -1,0 +1,9 @@
+covers: [empty-night]
+note: >
+  Wednesday night with nothing: no Messages, no earlier Briefs, a quiet calendar. The reply must
+  still be valid JSON with nothing to do.
+now: 2026-10-07T21:00:00+03:00
+calendar:
+  - {id: gcal-piano-1013, summary: Eero piano, start: "2026-10-13T17:00:00+03:00",
+     end: "2026-10-13T17:45:00+03:00", location: Musiikkikoulu Forte}
+expect: {}

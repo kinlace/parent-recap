@@ -1,0 +1,75 @@
+covers: [finnish-dates, whatsapp-group]
+note: >
+  Friday night. "Ensi viikolla" and a date range; the autumn break is information, not a to-do.
+now: 2026-10-09T21:00:00+03:00
+messages:
+  - id: wa-fc-1009
+    source: whatsapp
+    at: 2026-10-09T17:05:00+03:00
+    chat: FC Kilo T2016
+    sender: Valmentaja Jussi
+    body: |
+      Moikka! Ensi viikolla on syysloma, joten treenejä ei ole ma 12.10.–pe 16.10.
+      Treenit jatkuvat normaalisti ma 19.10. klo 17.30.
+expect:
+  calendar_events:
+    - {
+        title:
+          [
+            treeni,
+            treen,
+            harjoitu,
+            jalkapallo,
+            训练,
+            足球,
+            training,
+            practice,
+            football,
+          ],
+        start: 2026-10-19T17:30,
+        optional: true,
+      }
+  notices:
+    must:
+      - {
+          kid: Aino,
+          text:
+            [
+              syysloma,
+              ei treen,
+              ei harjoitu,
+              tauko,
+              tauol,
+              peru,
+              秋假,
+              停训,
+              没有训练,
+              暂停,
+              取消,
+              不训练,
+              无训练,
+              autumn break,
+              fall break,
+              no training,
+              no practice,
+              cancel,
+              paus,
+            ],
+        }
+    must_not:
+      - {
+          kid: Eero,
+          text:
+            [
+              treeni,
+              treen,
+              harjoitu,
+              jalkapallo,
+              训练,
+              足球,
+              training,
+              practice,
+              football,
+            ],
+          where: both,
+        }

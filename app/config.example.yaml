@@ -1,0 +1,95 @@
+# FamilyBrief configuration. Lives at ~/.family/config.yaml (permissions 600).
+# No passwords or logins go here: the Gmail App Password and Claude token are in the macOS Keychain,
+# the wilma CLI keeps its own Wilma login, and the Google Calendar authorization is in ~/.family/calendar_token.json.
+
+timezone: Europe/Helsinki
+summary_language: en # The Brief's language code for Recipients who don't pick their own: en (English), zh (Chinese), or another such as sv
+
+kids:
+  - name: "Kid's full name" # As shown in Wilma; used to tell which Kid a message is about
+    aliases: ["Nickname", "Other name"] # Other names that may appear in chats and mail
+    grade: 3
+    class_name: "3A"
+    school: "School name / city"
+    activities: ["Football (club name)", "Piano (music school name)"]
+    wilma_username: you@example.com
+    myclub_ical_url: null # Personal MyClub calendar subscription link (webcal://...), or null
+
+gmail:
+  username: you@gmail.com # Used both to receive (IMAP) and to send (SMTP) the Brief
+  lookback_hours: 26
+  allowlist_domains: # Only mail from these domains is scanned; find them with family-brief discover gmail-senders
+    - espoo.fi
+  allowlist_senders: [] # Add personal addresses of individual teachers/coaches here
+
+myclub:
+  blocklist: [] # Title keywords of the club's public MyClub events that don't concern your Kids
+
+wilma:
+  enabled: false # Change to true after logging in with wilma in Terminal
+
+whatsapp:
+  enabled: false
+  lookback_hours: 26
+  chats: [] # Find group names with family-brief discover whatsapp-chats; they must match exactly
+  # - name: "3A vanhemmat"
+  #   kid: "Kid's full name"     # or both
+  #   label: class               # class / football / piano / playdate ...
+
+google_calendar:
+  mode: ics # ics: new events as an email attachment; google: written to Google Calendar; off: no calendar
+  ics_include_myclub: false # In ics mode, better to subscribe to MyClub in the calendar app than send it again
+  calendar_id: primary
+  lookahead_days_context: 7
+  invite_attendees: [] # google mode: people invited to new events automatically (such as a partner's Gmail)
+  send_updates: all
+
+email:
+  enabled: true
+  from_addr: you@gmail.com
+  to: # Brief recipients; add a partner if you like
+    - you@gmail.com # reads the Brief in summary_language
+    # - address: partner@gmail.com # a Recipient who reads another language
+    #   language: zh
+  weekend_to: [you@gmail.com] # Weekend Picks recipients
+
+weekend_events:
+  enabled: false
+  max_price_eur: 20.0
+  regions: [Espoo, Helsinki, Vantaa]
+  max_candidates: 12
+  kid_preferences: |
+    - Kid A (9 years old): likes sports and the outdoors
+  parent_preferences: |
+    - The parents would like the Kids to try art and music now and then
+
+# Pilot feedback (optional): when on, the emailed Brief has ⭐ / ❌ links next to every Action Item and a ❌ link under the Digest.
+# Clicking one opens a pre-filled Google Form that sends the item's text, Source, AI, date, Household and Kid to the FamilyBrief team.
+# The team generates the whole section with ops/feedback-form and sends it to you; change only household_label. Leave it out if you're not in the pilot.
+# feedback:
+#   enabled: true
+#   prefill_base_url: https://docs.google.com/forms/d/e/.../viewform
+#   household_label: "Virtanen family"  # Tells Households apart in the response sheet
+#   fields:                      # Pre-fill ids of the form's questions
+#     verdict: entry.111
+#     item_text: entry.222
+#     source: entry.333
+#     backend: entry.444
+#     date: entry.555
+#     household: entry.666
+#     kid: entry.777
+
+schedule:
+  daily_hour: 21
+  daily_minute: 0
+  weekend_weekday: 5 # 5 = Friday
+  weekend_hour: 16
+
+llm:
+  backend: claude # claude (Claude Pro/Max subscription) or codex (ChatGPT account)
+  timeout_seconds: 300
+
+archive:
+  dir: ~/FamilyBrief
+
+state_path: ~/.family/state.json

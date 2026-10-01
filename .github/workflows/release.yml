@@ -1,0 +1,60 @@
+name: release
+
+# Pushing a vX.Y.Z tag is a release (ADR 0002): macOS tests, then the zip on a
+# GitHub Release, then `stable` moves to the tag if it is the highest version so far.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+# Two tags pushed together must not race on `stable`.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/tests.yml
+    with:
+      runs-on: macos-latest
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # release.py reads the tag, and --is-highest compares against every tag.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build zip
+        run: python scripts/release.py "$TAG"
+      - name: Check whether the tag is the highest version
+        id: highest
+        run: |
+          value=$(python scripts/release.py --is-highest "$TAG")
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+      - name: Publish GitHub Release
+        # Skip if the release exists, so re-running after a failed `stable` push
+        # goes straight to the push. A hotfix on an older line must not become
+        # the Releases page's "Latest".
+        run: >-
+          gh release view "$TAG" >/dev/null 2>&1 ||
+          gh release create "$TAG" "dist/parent-recap-${TAG#v}.zip"
+          --title "$TAG"
+          --latest=${{ steps.highest.outputs.value }}
+          --notes "What changes for families: see [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/$TAG/CHANGELOG.md)."
+      - name: Move stable to the tag
+        run: |
+          if [ "${{ steps.highest.outputs.value }}" = true ]; then
+            # Force: a hotfix tag on release/X.Y is not a descendant of the previous tag.
+            git push --force origin "$(git rev-parse "$TAG^{commit}"):refs/heads/stable"
+          else
+            echo "$TAG is not the highest version; stable stays where it is."
+          fi

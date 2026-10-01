@@ -1,0 +1,61 @@
+covers: [finnish-dates, dst]
+note: >
+  Sunday night. "Viikon päästä maanantaina" is 26.10., the day after the clocks go back.
+now: 2026-10-18T21:00:00+03:00
+messages:
+  - id: w-koe-1018
+    source: wilma
+    at: 2026-10-18T09:30:00+03:00
+    sender: Laine Maija
+    subject: Matematiikan koe
+    kid_hint: Virtanen Aino
+    body: |
+      Matematiikan koe on viikon päästä maanantaina 26.10. Harjoitustehtävät kirjan sivuilta
+      34–36 kannattaa tehdä ennen koetta.
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what:
+          [
+            harjoitus,
+            harjoitu,
+            kertaa,
+            kertau,
+            tehtäv,
+            练习,
+            复习,
+            34,
+            practice,
+            revise,
+            review,
+            study,
+          ],
+        optional: true,
+      }
+  calendar_events:
+    - {
+        title:
+          [
+            koe,
+            kokee,
+            matematiik,
+            matik,
+            考试,
+            测验,
+            数学,
+            test,
+            exam,
+            quiz,
+            math,
+          ],
+        start: 2026-10-26,
+        optional: true,
+      }
+  notices:
+    must:
+      - {
+          kid: Aino,
+          text: [[koe, kokee, 考试, 测验, test, exam, quiz], ["26"]],
+          where: both,
+        }

@@ -1,0 +1,40 @@
+covers: [dst, finnish-dates]
+note: >
+  Saturday night. "Maanantaihin mennessä" is Monday 26.10. and the concert is on winter time.
+now: 2026-10-24T21:00:00+03:00
+messages:
+  - id: w-kuoro-1024
+    source: wilma
+    at: 2026-10-24T10:15:00+03:00
+    sender: Musiikinopettaja Salo Kaisa
+    subject: Kuoron konsertti
+    kid_hint: Virtanen Aino
+    body: |
+      Kuoron esiintymispaidan maksu 15 € maksetaan MobilePaylla maanantaihin mennessä.
+      Konsertti on to 29.10. klo 18.00 koulun juhlasalissa. Tervetuloa!
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what:
+          [
+            "15 €",
+            "15€",
+            "€15",
+            maksu,
+            maks,
+            付款,
+            支付,
+            交钱,
+            付,
+            MobilePay,
+            pay,
+          ],
+        by: 2026-10-26,
+      }
+  calendar_events:
+    - {
+        title: [kuoro, konsertti, konsert, 合唱, 音乐会, 演出, choir, concert],
+        start: 2026-10-29T18:00,
+      }
+    - { title: [maksu, maks, 付款, 支付, pay], optional: true }

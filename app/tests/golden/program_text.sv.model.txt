@@ -1,0 +1,104 @@
+argv: ["claude", "-p", "--output-format", "json", "--system-prompt", "<system prompt>", "--tools", "", "--strict-mcp-config", "--disallowedTools", "mcp__*", "--setting-sources", "", "--no-session-persistence"]
+
+--- system prompt ---
+You translate the fixed text of a program that emails a Household a daily Brief about their kids' school and hobbies in Finland. Translate every value of the JSON object from English into the language whose code is sv.
+
+1. Reply with one JSON object with exactly the same keys, and the same number of entries in every list
+2. Keep every {placeholder} in braces exactly as written, and keep the emoji, the Markdown (## and **) and the names Gmail, Wilma, WhatsApp, MyClub, Google Calendar, Claude, Codex, .ics and ~/FamilyBrief as they are
+3. language_name: the English name of the language (e.g. Swedish)
+4. quotes: the quotation marks the language uses, shown around a word or two; never straight double quotes
+5. weekdays: short weekday names, Monday first; who: the words for mom, dad and either parent
+6. months: short month names, January first; date and date_time: a date, and a date with its time, the way people write them in a message in this language (order, separators, 24-hour clock), with {day}, the month as {month_name} or as its number {month}, {weekday} if the language usually writes it, and in date_time {hour} and {minute}
+7. messages and events: "one" for a single one and "other" for several, with {n} for the number
+8. The Brief is the daily message. Its Digest, Notices and Action Items, the Household and each Kid are what it is about: use the everyday words a parent reading this language would use
+9. No markdown fences, no explanations
+
+
+--- stdin ---
+{
+  "language_name": "English",
+  "quotes": "‘single quotes’",
+  "weekdays": [
+    "Mon",
+    "Tue",
+    "Wed",
+    "Thu",
+    "Fri",
+    "Sat",
+    "Sun"
+  ],
+  "date_example": "9/13 Sun",
+  "household": "Household",
+  "who": [
+    "Mom",
+    "Dad",
+    "Either"
+  ],
+  "re_reminder": "(Reminder) ",
+  "read_tonight": "📥 Read tonight: {counts}",
+  "messages": {
+    "one": "{n} message",
+    "other": "{n} messages"
+  },
+  "events": {
+    "one": "{n} event",
+    "other": "{n} events"
+  },
+  "not_read": "{source} not read ({reason})",
+  "partly_read": "{source} partly read ({reason})",
+  "may_be_incomplete": "⚠️ {missed}. Tonight's Brief may be incomplete.",
+  "missed_sep": ", ",
+  "permission_denied": "macOS permission denied",
+  "login_failed": "login failed",
+  "message_unreadable": "a message couldn't be read",
+  "nothing_read": "⚠️ No Source could be read tonight, so there is no Digest. Their messages will be in the first Brief after they can be read again.",
+  "source_problem": "• {source}: {reason}. {fix}",
+  "fix_login": "Tell {assistant} “re-authorize {source}” to fix it.",
+  "fix_permission": "Tell {assistant} “FamilyBrief can't read {source}” to fix it.",
+  "fix_other": "If the Mac was offline, this fixes itself. If it happens again, tell {assistant} “check FamilyBrief”.",
+  "fallback_header": "⚠️ Tonight's Digest could not be written, so here are the raw messages (all of them are in the archive in ~/FamilyBrief):",
+  "unsorted": "Unsorted",
+  "fallback_count": " ({count})",
+  "fallback_more": "  …{n} more in the archive",
+  "reply_incomplete": "⚠️ {assistant}'s reply tonight was cut off, so this Brief may be missing some items. All of tonight's messages are in the archive in ~/FamilyBrief.",
+  "message_time": "{month:02}-{day:02} {hour:02}:{minute:02}",
+  "translation_failed": "⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
+  "action_items": "✅ Action Items",
+  "action_items_count": "✅ Action Items: {n} (details in the email)",
+  "due": "by {date}",
+  "months": [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec"
+  ],
+  "date": "{weekday} {day} {month_name}",
+  "date_time": "{weekday} {day} {month_name} {hour:02}:{minute:02}",
+  "new_events": "📅 New calendar events",
+  "new_events_line": "📅 New calendar events:",
+  "written_by": "Written by {assistant}",
+  "untitled": "(untitled)",
+  "ics_hint": "They are in the attached .ics. Open it to add them to your calendar.",
+  "ics_hint_mixed": "Linked events are in Google Calendar; the rest are in the attached .ics. Open it to add them to your calendar.",
+  "reauth": "Tell {assistant} “re-authorize Google Calendar” to fix it. ",
+  "calendar_not_authorized": "⚠️ Google Calendar is not authorized yet, so new events were not added to it. ",
+  "calendar_expired": "⚠️ Google Calendar access has expired, so new events were not added to it. ",
+  "calendar_write_failed": "⚠️ Adding to Google Calendar failed: {error}. ",
+  "ics_fallback": "The new events are in the .ics attached to this email; open it to add them to your calendar.",
+  "archive_digest": "## Digest",
+  "archive_notices": "**Notices:**",
+  "archive_action_items": "**Action Items:**",
+  "archive_new_events": "## New calendar events",
+  "archive_messages": "## Messages",
+  "feedback_saved": "⭐ Glad this was here",
+  "feedback_wrong": "❌ This is wrong",
+  "feedback_digest_wrong": "❌ The Digest has a mistake"
+}

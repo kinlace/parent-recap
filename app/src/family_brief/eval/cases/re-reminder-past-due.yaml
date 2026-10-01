@@ -1,0 +1,81 @@
+covers: [re-reminder]
+note: >
+  Monday night. One earlier to-do was due yesterday (past due) and one is 10 days out; neither
+  is re-reminded. Tonight's new to-do is the only Action Item.
+now: 2026-10-05T21:00:00+03:00
+earlier_briefs:
+  - date: "2026-10-02"
+    per_kid:
+      - kid: Eero
+        notices: []
+        action_items:
+          - what: 在 Wilma 填秋假看护调查（syyslomakysely）
+            by: "2026-10-04"
+            who: 任一
+            refs: [w-kysely-1002]
+            ref_sources: { w-kysely-1002: [wilma] }
+            source: [wilma]
+            verified: true
+  - date: "2026-10-03"
+    per_kid:
+      - kid: Aino
+        notices: []
+        action_items:
+          - what: 报名 FC Kilo 冬季训练（talvikausi）
+            by: "2026-10-15"
+            who: 任一
+            refs: [gm-talvi-1003]
+            ref_sources: { gm-talvi-1003: [gmail] }
+            source: [gmail]
+            verified: true
+messages:
+  - id: wa-1a-1005
+    source: whatsapp
+    at: 2026-10-05T19:50:00+03:00
+    chat: 1A vanhemmat
+    sender: Laura (luokkatoimikunta)
+    body: |
+      Muistutus: huomenna 1A:lla on metsäretki, kumisaappaat mukaan!
+expect:
+  action_items:
+    - {
+        kid: Eero,
+        what:
+          [
+            kumisaappaat,
+            kumisaap,
+            saappa,
+            saapas,
+            雨靴,
+            胶鞋,
+            靴,
+            boots,
+            wellies,
+          ],
+        by: 2026-10-06,
+      }
+  calendar_events:
+    - {
+        title: [metsäretki, metsä, retk, 森林, 远足, 郊游, forest, trip, hike],
+        optional: true,
+      }
+  notices:
+    must_not:
+      - {
+          text:
+            [
+              syysloma,
+              秋假,
+              看护,
+              冬季,
+              talvi,
+              talve,
+              kysely,
+              lastenhoi,
+              autumn break,
+              fall break,
+              childcare,
+              winter,
+            ],
+          where: action_items,
+        }

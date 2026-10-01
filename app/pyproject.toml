@@ -1,0 +1,42 @@
+[project]
+name = "family-brief"
+version = "0.3.1"
+description = "Daily aggregator for kid-related messages across Gmail, Wilma, WhatsApp, MyClub"
+requires-python = ">=3.11"
+dependencies = [
+    "google-api-python-client>=2.130",
+    "google-auth-oauthlib>=1.2",
+    "google-auth-httplib2>=0.2",
+    "beautifulsoup4>=4.12",
+    "icalendar>=5.0",
+    "requests>=2.32",
+    "pydantic>=2.7",
+    "PyYAML>=6.0",
+    "keyring>=25.0",
+    "python-dateutil>=2.9",
+    "tzdata",
+    "json-repair>=0.25",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+    "time-machine>=2.14",
+]
+
+[project.scripts]
+family-brief = "family_brief.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"family_brief.eval" = ["cases/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"

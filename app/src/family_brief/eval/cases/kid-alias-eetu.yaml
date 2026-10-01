@@ -1,0 +1,59 @@
+covers: [kid-alias]
+note: >
+  Tuesday night. The teacher writes the nickname "Eetu" (inflected: Eetun), which is one of
+  Eero's aliases. Nothing belongs to Aino.
+now: 2026-10-06T21:00:00+03:00
+messages:
+  - id: gm-1a-1006
+    source: gmail
+    at: 2026-10-06T14:25:00+03:00
+    sender: Opettaja Niemi Sari <sari.niemi@kilo.example.fi>
+    subject: Liikuntavaatteet ja lukudiplomi
+    body: |
+      Hei!
+      Eetu unohti tänään liikuntavaatteensa kouluun. Hän voi ottaa ne huomenna mukaan kotiin.
+      Lisäksi: Eetun lukudiplomin kirjalista pitää palauttaa pe 9.10. mennessä.
+      Sari
+expect:
+  action_items:
+    - {
+        kid: Eero,
+        what: [lukudiplomi, 阅读, 书单, kirjalista, reading, book list],
+        by: 2026-10-09,
+      }
+    - {
+        kid: Eero,
+        what:
+          [
+            liikuntavaat,
+            vaatte,
+            运动服,
+            体育服,
+            衣服,
+            sports clothes,
+            gym clothes,
+            clothes,
+          ],
+        optional: true,
+      }
+  notices:
+    must_not:
+      - {
+          kid: Aino,
+          text:
+            [
+              lukudiplomi,
+              kirjalista,
+              liikunta,
+              liikun,
+              运动服,
+              体育服,
+              阅读,
+              书单,
+              sports clothes,
+              gym clothes,
+              reading,
+              book list,
+            ],
+          where: both,
+        }

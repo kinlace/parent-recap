@@ -1,0 +1,12 @@
+{
+  "name": "kinlace",
+  "owner": { "name": "Kinlace" },
+  "description": "Kinlace Parent Recap: a nightly Brief of your kids' school and club news, in your language",
+  "plugins": [
+    {
+      "name": "parent-recap",
+      "source": "./",
+      "description": "Every evening, summarizes your kids' school mail, Wilma, WhatsApp parent groups and MyClub into a Brief in your language sent to your inbox, with optional Weekend Picks. macOS only."
+    }
+  ]
+}

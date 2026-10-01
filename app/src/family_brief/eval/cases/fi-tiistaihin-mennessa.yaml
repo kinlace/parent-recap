@@ -1,0 +1,32 @@
+covers: [finnish-dates, kid-alias]
+note: >
+  Thursday night; "tiistaihin mennessä" is next week's Tuesday. The Kid is named only in
+  the genitive ("Eeron").
+now: 2026-10-08T21:00:00+03:00
+messages:
+  - id: gm-kuvat-1008
+    source: gmail
+    at: 2026-10-08T10:42:00+03:00
+    sender: Kilo School kanslia <kanslia@kilo.example.fi>
+    subject: Luokkakuvat 1A
+    body: |
+      Hyvä huoltaja,
+      Eeron luokan valokuvat ovat nyt tilattavissa. Tilatkaa kuvat verkkokaupasta tiistaihin
+      mennessä, niin ne toimitetaan kouluun marraskuun alussa.
+      Ystävällisin terveisin, Kilo Schoolin kanslia
+expect:
+  action_items:
+    - {
+        kid: Eero,
+        what: [kuva, kuvat, kuvi, 照片, 相片, 合影, photo, picture],
+        by: 2026-10-13,
+      }
+  calendar_events:
+    - { title: [kuva, kuvi, 照片, 相片, 合影, photo, picture], optional: true }
+  notices:
+    must_not:
+      - {
+          kid: Aino,
+          text: [kuva, kuvi, 照片, 相片, 合影, photo, picture],
+          where: both,
+        }

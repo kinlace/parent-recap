@@ -1,0 +1,34 @@
+covers: [dst, finnish-dates]
+note: >
+  Thursday night before the clocks go back on Sunday 25.10. Times on and after that day
+  must stay the wall-clock times the message gives.
+now: 2026-10-22T21:00:00+03:00
+messages:
+  - id: gm-turnaus-1022
+    source: gmail
+    at: 2026-10-22T16:48:00+03:00
+    sender: FC Kilo juniorit <juniorit@fckilo.example.fi>
+    subject: T2016 turnaus sunnuntaina
+    body: |
+      Hei T2016-perheet!
+      Sunnuntain 25.10. turnaus Leppävaaran stadionilla alkaa klo 10.00. Huom: kellot siirtyvät
+      yöllä talviaikaan, joten nukkukaa tunti pidempään.
+      Seuraava treeni on ti 27.10. klo 17.30 normaalisti.
+expect:
+  calendar_events:
+    - {
+        title: [turnaus, turnau, ottelu, 锦标赛, 比赛, 赛, tournament, match],
+        start: 2026-10-25T10:00,
+      }
+    - {
+        title: [treeni, treen, harjoitu, 训练, training, practice],
+        start: 2026-10-27T17:30,
+        optional: true,
+      }
+  notices:
+    must_not:
+      - {
+          kid: Eero,
+          text: [turnaus, turnau, 锦标赛, 比赛, tournament],
+          where: both,
+        }

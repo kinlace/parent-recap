@@ -1,0 +1,81 @@
+covers: [whatsapp-group]
+note: >
+  Monday night. Neither message names a Kid; the floorball chat maps to Eero and the class
+  chat to Aino.
+now: 2026-10-05T21:00:00+03:00
+messages:
+  - id: wa-sb-1005
+    source: whatsapp
+    at: 2026-10-05T19:05:00+03:00
+    chat: Salibandy Eagles
+    sender: Valmentaja Mikko
+    body: |
+      Huomisen treenit on peruttu, sali on varattu koulun tapahtumalle. Nähdään torstaina normaalisti klo 17!
+  - id: wa-4b-1005
+    source: whatsapp
+    at: 2026-10-05T20:30:00+03:00
+    chat: 4B vanhemmat
+    sender: Hanna (luokkatoimikunta)
+    body: |
+      Muistakaa, että huomenna on koulukuvaus! 📸
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what: [kuvaus, kuva, 拍照, 照相, 合影, 照片, photo, picture],
+        optional: true,
+      }
+  calendar_events:
+    - {
+        title:
+          [
+            treeni,
+            treen,
+            harjoitu,
+            训练,
+            salibandy,
+            sähly,
+            floorball,
+            旱地,
+            training,
+            practice,
+          ],
+        optional: true,
+      }
+    - {
+        title: [kuvaus, kuva, 拍照, 照相, 合影, 照片, photo, picture],
+        optional: true,
+      }
+  notices:
+    must:
+      - {
+          kid: Eero,
+          text:
+            [
+              peru,
+              ei treen,
+              ei harjoitu,
+              取消,
+              停,
+              cancel,
+              called off,
+              "no training",
+              "no practice",
+            ],
+        }
+      - {
+          kid: Aino,
+          text: [kuvaus, kuva, 拍照, 照相, 合影, 照片, photo, picture],
+          where: both,
+        }
+    must_not:
+      - {
+          kid: Aino,
+          text: [peru, 取消, salibandy, sähly, floorball, 旱地, cancel],
+          where: both,
+        }
+      - {
+          kid: Eero,
+          text: [kuvaus, kuva, 拍照, 照相, 合影, photo, picture],
+          where: both,
+        }

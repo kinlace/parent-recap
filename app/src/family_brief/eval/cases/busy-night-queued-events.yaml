@@ -1,0 +1,100 @@
+covers: [kid-attribution, whatsapp-group, noise]
+note: >
+  Sunday night across Sources. Tuesday's training is already queued from MyClub and must not be
+  queued again; a birthday invitation needs an RSVP; one line is chit-chat.
+now: 2026-10-04T21:00:00+03:00
+queued:
+  - {
+      external_id: myclub-evt-7702,
+      source: myclub,
+      title: FC Kilo T2016 treenit,
+      start: "2026-10-06T17:30:00+03:00",
+      end: "2026-10-06T19:00:00+03:00",
+      location: Leppävaaran tekonurmi,
+      description: MyClub,
+      kid: Aino,
+    }
+messages:
+  - id: wa-fc-1004
+    source: whatsapp
+    at: 2026-10-04T18:00:00+03:00
+    chat: FC Kilo T2016
+    sender: Valmentaja Jussi
+    body: Tiistain treenit normaalisti klo 17.30, muistakaa säärisuojat!
+  - id: wa-1a-1004
+    source: whatsapp
+    at: 2026-10-04T19:15:00+03:00
+    chat: 1A vanhemmat
+    sender: Elin äiti Riikka
+    body: |
+      Elin synttärit la 17.10. klo 14–16 Leikkiluolassa Espoossa, koko luokka on kutsuttu!
+      Vastatkaa minulle ke 14.10. mennessä, tuleeko lapsenne.
+  - id: wa-1a-1004b
+    source: whatsapp
+    at: 2026-10-04T19:20:00+03:00
+    chat: 1A vanhemmat
+    sender: Laura
+    body: Ihanaa, kiitos kutsusta! 😍
+expect:
+  action_items:
+    - {
+        kid: Eero,
+        what:
+          [
+            vasta,
+            ilmoit,
+            vahvist,
+            kerro,
+            回复,
+            答复,
+            确认,
+            RSVP,
+            告知,
+            reply,
+            respond,
+            confirm,
+            tell,
+          ],
+        by: 2026-10-14,
+      }
+    - { kid: Aino, what: [säärisuoja, säärisuoj, 护腿, shin], optional: true }
+    - { kid: Eero, what: [礼物, lahja, lahj, gift, present], optional: true }
+  calendar_events:
+    - {
+        title:
+          [
+            synttäri,
+            synttär,
+            syntymäpäiv,
+            生日,
+            派对,
+            Leikkiluola,
+            birthday,
+            party,
+          ],
+        start: 2026-10-17T14:00,
+      }
+    - {
+        title:
+          [
+            vasta,
+            ilmoit,
+            vahvist,
+            kerro,
+            回复,
+            答复,
+            确认,
+            RSVP,
+            reply,
+            respond,
+            confirm,
+          ],
+        optional: true,
+      }
+  notices:
+    must_not:
+      - {
+          kid: Aino,
+          text: [synttäri, synttär, syntymäpäiv, 生日, 派对, birthday, party],
+          where: both,
+        }

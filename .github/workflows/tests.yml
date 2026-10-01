@@ -1,0 +1,32 @@
+name: tests
+
+on:
+  push:
+    branches: [main, refactor]
+  pull_request:
+    branches: [main, refactor]
+  # The release workflow calls this on macOS before publishing a tag.
+  workflow_call:
+    inputs:
+      runs-on:
+        type: string
+        default: macos-latest
+
+jobs:
+  test:
+    # macOS minutes cost 10x on a private repo, so PRs and main run on Linux (every
+    # macOS-only call is faked in the tests); only release tags run on macOS (ADR 0002).
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: python -m pip install -e '.[test]'
+      # Includes the version-consistency check (tests/test_version.py).
+      - name: Test
+        run: python -m pytest

@@ -1,0 +1,82 @@
+covers: [finnish-dates, whatsapp-group]
+note: >
+  Wednesday night. "Huomenna" is Thursday and "ylihuomenna" Friday; the class chat maps to Aino.
+now: 2026-10-07T21:00:00+03:00
+messages:
+  - id: wa-4b-1007a
+    source: whatsapp
+    at: 2026-10-07T19:32:00+03:00
+    chat: 4B vanhemmat
+    sender: Hanna (luokkatoimikunta)
+    body: |
+      Opettaja pyysi muistuttamaan: huomenna on liikuntapäivä, joten lapsilla pitää olla
+      sisäkengät ja juomapullo mukana. Ylihuomenna koulu päättyy jo klo 12.
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what:
+          [
+            sisäkengät,
+            sisäken,
+            室内鞋,
+            室内运动鞋,
+            indoor shoes,
+            indoor sneakers,
+          ],
+        by: 2026-10-08,
+      }
+    - {
+        kid: Aino,
+        what: [juomapullo, pullo, 水瓶, 水壶, 水杯, water bottle, bottle],
+        optional: true,
+      }
+    - {
+        kid: Aino,
+        what:
+          [
+            接,
+            "klo 12",
+            nouda,
+            "12:00",
+            12点,
+            放学,
+            pick up,
+            pick-up,
+            "12 pm",
+            noon,
+          ],
+        optional: true,
+      }
+  calendar_events:
+    - {
+        title: [liikunta, liikun, urheilu, 运动, 体育, gym, sport],
+        optional: true,
+      }
+    - {
+        title: [放学, 接, koulu, päätty, 提前, "12", school, early, pick],
+        optional: true,
+      }
+  notices:
+    must:
+      - {
+          kid: Aino,
+          text:
+            [
+              ["12", keskipäiv, noon],
+              [
+                "10-09",
+                "10/9",
+                "9.10",
+                perjantai,
+                周五,
+                10月9,
+                friday,
+                oct 9,
+                9 oct,
+                october 9,
+                9 october,
+              ],
+            ],
+          where: both,
+        }

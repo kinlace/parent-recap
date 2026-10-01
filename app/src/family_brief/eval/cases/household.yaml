@@ -1,0 +1,22 @@
+# A made-up Household shared by every case in this folder. No real family data.
+timezone: Europe/Helsinki
+kids:
+  - name: Aino
+    aliases: [小艾, Ainoliina]
+    grade: 4
+    class_name: 4B
+    school: Kilo School
+    activities: [football (FC Kilo T2016), 中文课]
+  - name: Eero
+    aliases: [Eetu, 小E]
+    grade: 1
+    class_name: 1A
+    school: Kilo School
+    activities: [floorball (Salibandy Eagles), piano (Musiikkikoulu Forte)]
+whatsapp:
+  chats:
+    - {name: 4B vanhemmat, kid: Aino, label: class}
+    - {name: FC Kilo T2016, kid: Aino, label: football}
+    - {name: 1A vanhemmat, kid: Eero, label: class}
+    - {name: Salibandy Eagles, kid: Eero, label: floorball}
+    - {name: 华人家长群, kid: both, label: chinese-school}

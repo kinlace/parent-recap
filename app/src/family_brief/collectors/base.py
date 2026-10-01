@@ -1,0 +1,77 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
+from datetime import datetime
+from typing import Any
+from zoneinfo import ZoneInfo
+
+# How a Source's log line starts when it skips one Message it couldn't read, leaving it unseen for
+# a later run. The first error a Source logs is the reason on the Brief's coverage line.
+UNREADABLE_MESSAGE = "a message couldn't be read"
+
+
+def unreadable(source: str, ext_id: str, error: Exception | str) -> str:
+    """The error line for a skipped Message: which one and why, for the log only."""
+    return f"{UNREADABLE_MESSAGE}: {source} {ext_id} ({error})"
+
+
+@dataclass
+class Message:
+    """Normalized message from any source."""
+    source: str                      # gmail | wilma | whatsapp | myclub
+    external_id: str                 # unique within source
+    timestamp: datetime              # UTC
+    sender: str | None = None
+    recipient: str | None = None
+    subject: str | None = None
+    body: str = ""
+    chat_name: str | None = None     # WhatsApp group / email thread / Wilma folder
+    kid_hint: str | None = None      # which kid this likely refers to, if known
+    url: str | None = None           # link back to original
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source": self.source,
+            "external_id": self.external_id,
+            "timestamp": self.timestamp.isoformat(),
+            "sender": self.sender,
+            "recipient": self.recipient,
+            "subject": self.subject,
+            "body": self.body,
+            "chat_name": self.chat_name,
+            "kid_hint": self.kid_hint,
+            "url": self.url,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass
+class CalendarEvent:
+    """Event discovered from a feed (e.g. MyClub iCal) to sync into Google Calendar."""
+    source: str
+    external_id: str
+    title: str
+    start: datetime
+    end: datetime | None = None
+    location: str | None = None
+    description: str = ""
+    kid: str | None = None
+
+    def in_zone(self, tz: str) -> CalendarEvent:
+        """The same event with its times in `tz`, as the Brief shows them and the model reads them."""
+        zone = ZoneInfo(tz)
+        return replace(self, start=self.start.astimezone(zone),
+                       end=self.end.astimezone(zone) if self.end else None)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source": self.source,
+            "external_id": self.external_id,
+            "title": self.title,
+            "start": self.start.isoformat(),
+            "end": self.end.isoformat() if self.end else None,
+            "location": self.location,
+            "description": self.description,
+            "kid": self.kid,
+        }

@@ -1,0 +1,47 @@
+covers: [re-reminder, cross-night]
+note: >
+  Wednesday night. Monday's to-do (trip fee, due Thursday) would be re-reminded, but tonight the
+  class treasurer says everyone has paid, so it must not come back.
+now: 2026-10-07T21:00:00+03:00
+earlier_briefs:
+  - date: "2026-10-05"
+    per_kid:
+      - kid: Aino
+        notices: []
+        action_items:
+          - what: 用 MobilePay 付 retkimaksu 8 € 给班级财务
+            by: "2026-10-08"
+            who: 任一
+            refs: [wa-4b-1005b]
+            ref_sources: { wa-4b-1005b: [whatsapp] }
+            source: [whatsapp]
+            verified: true
+messages:
+  - id: wa-4b-1007b
+    source: whatsapp
+    at: 2026-10-07T18:44:00+03:00
+    chat: 4B vanhemmat
+    sender: Pia (rahastonhoitaja)
+    body: |
+      Kiitos kaikille, retkimaksu on nyt maksettu kaikilta 4B:n oppilailta! 🙏
+expect:
+  notices:
+    must_not:
+      - {
+          text:
+            [
+              retkimaksu,
+              maksa,
+              8 €,
+              8€,
+              €8,
+              付款,
+              付,
+              再提醒,
+              muistutus,
+              MobilePay,
+              pay,
+              (reminder),
+            ],
+          where: action_items,
+        }

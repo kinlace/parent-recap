@@ -1,0 +1,106 @@
+covers: [finnish-dates]
+note: >
+  Friday night. "Maanantaina" and a Wilma schedule headed with the next school day: the
+  gym clothes are for Monday, not "tomorrow".
+now: 2026-10-09T21:00:00+03:00
+messages:
+  - id: w-sched-1009
+    source: wilma
+    at: 2026-10-09T21:00:00+03:00
+    subject: Timetable for the next school day (from 2026-10-12)
+    chat: schedule
+    body: |
+      [2026-10-12 Mon · in 3 days]
+      — Virtanen Aino —
+        08:15–09:45  Liikunta  @ ulkokenttä
+        10:00–11:30  Matematiikka  @ 204
+  - id: w-liikunta-1009
+    source: wilma
+    at: 2026-10-09T13:05:00+03:00
+    sender: Laine Maija
+    subject: Maanantain liikunta
+    kid_hint: Virtanen Aino
+    body: |
+      Maanantaina liikuntatunti on ulkona säällä kuin säällä. Ottakaa lenkkarit ja ulkovaatteet mukaan.
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what:
+          [
+            lenkkarit,
+            lenkkar,
+            lenkkiken,
+            运动鞋,
+            跑鞋,
+            ulkovaatteet,
+            ulkovaatte,
+            ulkoiluvaat,
+            liikuntavaat,
+            urheiluvaat,
+            户外,
+            运动服,
+            sneakers,
+            trainers,
+            running shoes,
+            outdoor,
+            sports clothes,
+            gym clothes,
+          ],
+        by: 2026-10-12,
+      }
+    - {
+        kid: Aino,
+        what:
+          [
+            ulkovaatteet,
+            vaatte,
+            ulko,
+            takki,
+            户外,
+            外套,
+            衣服,
+            outdoor,
+            jacket,
+            clothes,
+          ],
+        optional: true,
+      }
+  calendar_events:
+    - { title: [liikunta, liikun, 体育, 运动, gym, sport], optional: true }
+  notices:
+    must_not:
+      - {
+          text:
+            [
+              [
+                明天,
+                "10-10",
+                "10/10",
+                "10.10",
+                周六,
+                tomorrow,
+                saturday,
+                oct 10,
+                10 oct,
+                october 10,
+                10 october,
+                huomenna,
+                huomise,
+                lauantai,
+              ],
+              [
+                liikunta,
+                liikun,
+                体育,
+                lenkkarit,
+                lenkkar,
+                运动鞋,
+                gym,
+                sneakers,
+                trainers,
+                running shoes,
+              ],
+            ],
+          where: both,
+        }

@@ -1,0 +1,58 @@
+covers: [calendar-disagrees]
+note: >
+  Thursday night. The calendar has Saturday's match at 10:00; the coach says 11:00. The Brief
+  must name both times. An Action Item to fix or confirm the calendar entry is fine, since nothing
+  else will correct it.
+now: 2026-10-08T21:00:00+03:00
+calendar:
+  - {
+      id: gcal-match-1010,
+      summary: Aino ottelu FC Kilo – PK-35,
+      start: "2026-10-10T10:00:00+03:00",
+      end: "2026-10-10T11:15:00+03:00",
+      location: Leppävaaran tekonurmi,
+    }
+messages:
+  - id: wa-fc-1008
+    source: whatsapp
+    at: 2026-10-08T19:20:00+03:00
+    chat: FC Kilo T2016
+    sender: Valmentaja Jussi
+    body: |
+      Lauantain peli PK-35:tä vastaan alkaa klo 11.00 Leppävaaran tekonurmella. Kokoontuminen klo 10.30.
+expect:
+  action_items:
+    - {
+        what:
+          [
+            日历,
+            确认,
+            核实,
+            核对,
+            更新,
+            改,
+            calendar,
+            kalenteri,
+            tarkist,
+            päivit,
+            vahvist,
+            korja,
+            confirm,
+            check,
+            update,
+          ],
+        kid: Aino,
+        optional: true,
+      }
+  calendar_events:
+    - { title: [PK-35, ottelu, 比赛, peli, match, game], optional: true }
+  notices:
+    must:
+      - {
+          kid: Aino,
+          text:
+            [
+              ["10:00", "10.00", 10点, 十点, 10 am, 10am, "klo 10 ", "klo 10,", "klo 10. ", "klo 10)"],
+              ["11:00", "11.00", 11点, 十一点, 11 am, 11am, "klo 11 ", "klo 11,", "klo 11. ", "klo 11)"],
+            ],
+        }

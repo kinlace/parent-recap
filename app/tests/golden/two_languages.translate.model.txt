@@ -1,0 +1,88 @@
+argv: ["claude", "-p", "--output-format", "json", "--system-prompt", "<system prompt>", "--tools", "", "--strict-mcp-config", "--disallowedTools", "mcp__*", "--setting-sources", "", "--no-session-persistence"]
+
+--- system prompt ---
+You translate a Household's daily Brief about their kids' school and hobbies from Simplified Chinese into English. It goes to parents whose kids go to school in Finland.
+
+You receive one JSON object: the Brief's Digest (message_digest), each kid's notices and action items, and the new calendar events.
+
+1. Translate every text value (message_digest, text, what, title, description) into English
+2. Keep the key Finnish words the Brief kept as written (such as reissuvihko, retki, vanhempainilta, eväät, vaatetus), so parents can still search Wilma and talk to the teacher with them
+3. Keep names, dates, times, amounts and the Markdown formatting as they are
+4. Keep every other value exactly as it is (kid, by, refs, start), and keep every list with the same entries in the same order: don't add, drop, merge or reorder anything
+5. Reply with exactly one JSON object of the same shape: no markdown fences, no explanations
+6. **JSON format**: every `"` inside a string value must be escaped as `\"`; don't stand in full-width or curly quotes for it. To quote something inside a text value, use ‘single quotes’ instead of straight double quotes, so the JSON doesn't break
+
+
+--- stdin ---
+{
+  "message_digest": "**Mia**\n- 周四远足，周二前在 Wilma 签同意书\n- 下周一数学考试\n\n**Leo**\n- 周三拍班级照\n- 钢琴课本周改到周三 17:30",
+  "per_kid": [
+    {
+      "kid": "Mia",
+      "notices": [
+        {
+          "text": "周四 10/1 班级去 Nuuksio 远足（retki），带 eväät 和雨衣",
+          "refs": [
+            "g-101"
+          ]
+        },
+        {
+          "text": "周一 10/5 数学考试，范围乘法表 2–5",
+          "refs": [
+            "w-55"
+          ]
+        }
+      ],
+      "action_items": [
+        {
+          "what": "在 Wilma 签远足同意书",
+          "by": "2026-09-29",
+          "refs": [
+            "g-101"
+          ]
+        },
+        {
+          "what": "签 reissuvihko",
+          "by": "2026-09-28",
+          "refs": [
+            "wa-2"
+          ]
+        }
+      ]
+    },
+    {
+      "kid": "Leo",
+      "notices": [
+        {
+          "text": "周三 9/30 上午拍班级照",
+          "refs": [
+            "g-102"
+          ]
+        }
+      ],
+      "action_items": [
+        {
+          "what": "给 Leo 准备拍照穿的衣服 <整洁>",
+          "by": "2026-09-30",
+          "refs": [
+            "g-102"
+          ]
+        }
+      ]
+    }
+  ],
+  "calendar_events": [
+    {
+      "kid": "Mia",
+      "title": "3B 远足 Nuuksio",
+      "start": "2026-10-01T09:00:00",
+      "description": "班级远足，带午餐和雨衣（gmail）"
+    },
+    {
+      "kid": "Leo",
+      "title": "钢琴课（改期）",
+      "start": "2026-09-30T17:30:00+03:00",
+      "description": "本周改到周三"
+    }
+  ]
+}

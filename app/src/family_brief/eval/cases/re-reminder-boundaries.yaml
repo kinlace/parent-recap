@@ -1,0 +1,71 @@
+covers: [re-reminder]
+note: >
+  Tuesday night, no new Messages. The 3-day window includes both ends: a to-do due today and one
+  due in exactly 3 days are re-reminded; one due in 4 days is not.
+now: 2026-10-06T21:00:00+03:00
+earlier_briefs:
+  - date: "2026-10-05"
+    per_kid:
+      - kid: Eero
+        notices: []
+        action_items:
+          - what: 带 kumisaappaat（雨靴）去学校
+            by: "2026-10-06"
+            who: 任一
+            refs: [wa-1a-1005]
+            ref_sources: { wa-1a-1005: [whatsapp] }
+            source: [whatsapp]
+            verified: true
+          - what: 交 lukudiplomi 书单
+            by: "2026-10-09"
+            who: 任一
+            refs: [gm-1a-1005]
+            ref_sources: { gm-1a-1005: [gmail] }
+            source: [gmail]
+            verified: true
+      - kid: Aino
+        notices: []
+        action_items:
+          - what: 在 Wilma 报名 vanhempainvartti（家长面谈）
+            by: "2026-10-10"
+            who: 任一
+            refs: [w-vartti-1005]
+            ref_sources: { w-vartti-1005: [wilma] }
+            source: [wilma]
+            verified: true
+expect:
+  action_items:
+    - {
+        kid: Eero,
+        what:
+          [
+            kumisaappaat,
+            kumisaap,
+            saappa,
+            saapas,
+            雨靴,
+            rubber boots,
+            wellies,
+            rain boots,
+          ],
+        by: 2026-10-06,
+      }
+    - {
+        kid: Eero,
+        what: [lukudiplomi, kirjalista, 书单, book list, reading],
+        by: 2026-10-09,
+      }
+  notices:
+    must_not:
+      - {
+          text:
+            [
+              vanhempainvartti,
+              vanhempainvart,
+              tapaam,
+              面谈,
+              parent-teacher,
+              meeting,
+            ],
+          where: action_items,
+        }

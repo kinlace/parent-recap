@@ -1,0 +1,77 @@
+covers: [cross-night, whatsapp-group]
+note: >
+  Monday night. Saturday's Brief said Tuesday's floorball starts at 17:00; tonight the coach
+  moves it to 18:30, and the Brief must say what changed.
+now: 2026-10-05T21:00:00+03:00
+earlier_briefs:
+  - date: "2026-10-03"
+    per_kid:
+      - kid: Eero
+        notices:
+          - text: 周二 10/6 floorball 训练 17:00–18:00，Kilo 体育馆
+            refs: [wa-sb-1003]
+            ref_sources: { wa-sb-1003: [whatsapp] }
+            source: [whatsapp]
+            verified: true
+        action_items: []
+messages:
+  - id: wa-sb-1005b
+    source: whatsapp
+    at: 2026-10-05T18:12:00+03:00
+    chat: Salibandy Eagles
+    sender: Valmentaja Mikko
+    body: |
+      Muutos huomiseen: treeni alkaakin vasta klo 18.30, sali on alkuillan varattu.
+expect:
+  calendar_events:
+    - {
+        title:
+          [
+            treeni,
+            treen,
+            harjoitu,
+            训练,
+            salibandy,
+            sähly,
+            floorball,
+            旱地,
+            training,
+            practice,
+          ],
+        start: 2026-10-06T18:30,
+      }
+  notices:
+    must:
+      - {
+          kid: Eero,
+          text:
+            [
+              ["18:30", "18.30", 六点半, 6:30 pm, 6.30 pm],
+              [
+                "17:00",
+                "17.00",
+                "klo 17",
+                五点,
+                改,
+                变,
+                推迟,
+                延后,
+                调整,
+                muutos,
+                muuto,
+                muuttu,
+                siirty,
+                siirre,
+                myöhem,
+                vasta,
+                sijaan,
+                5 pm,
+                5pm,
+                moved,
+                changed,
+                later,
+                instead,
+              ],
+            ],
+          where: both,
+        }

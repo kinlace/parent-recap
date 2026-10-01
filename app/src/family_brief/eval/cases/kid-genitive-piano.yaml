@@ -1,0 +1,26 @@
+covers: [kid-alias, finnish-dates]
+note: >
+  Tuesday night. The Kid appears only as "Eeron" (genitive) in an email with no chat mapping.
+now: 2026-10-06T21:00:00+03:00
+messages:
+  - id: gm-forte-1006
+    source: gmail
+    at: 2026-10-06T12:00:00+03:00
+    sender: Anna Forte <anna@forte.example.fi>
+    subject: Tunnin siirto
+    body: |
+      Hei! Eeron pianotunti siirtyy ensi viikolla torstaille 15.10. klo 16.30
+      (tavallisesti ti klo 17.00). Terveisin Anna
+expect:
+  calendar_events:
+    - { title: [piano, 钢琴], start: 2026-10-15T16:30 }
+  notices:
+    must:
+      - {
+          kid: Eero,
+          text:
+            ["16:30", "16.30", 四点半, 4点半, "4:30 pm", "4.30 pm", "4:30pm"],
+          where: both,
+        }
+    must_not:
+      - { kid: Aino, text: [piano, 钢琴], where: both }
