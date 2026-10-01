@@ -45,7 +45,7 @@ Add the release's `What changes for families:` lines to `CHANGELOG.md` and bump 
 git tag v0.4.0 && git push origin v0.4.0
 ```
 
-The tag push runs `.github/workflows/release.yml` (see [ADR 0002](docs/adr/0002-tags-are-releases-main-may-be-unstable.md)): the tests on macOS, then `scripts/release.py` builds `parent-recap-0.4.0.zip` and attaches it to a GitHub Release, then the `stable` branch moves to the tag if it is the highest version so far. Never push `stable` by hand. PRs and `main` run the tests on Linux only.
+The tag push runs `.github/workflows/release.yml` (see [ADR 0002](docs/adr/0002-tags-are-releases-main-may-be-unstable.md)): the tests on macOS, then `scripts/release.py` builds `parent-recap-0.4.0.zip` and attaches it to a GitHub Release, then the `stable` branch moves to the tag if it is the highest version so far. Never push `stable` by hand. PRs and `main` run the same macOS tests, and every push and PR also runs a gitleaks secret scan (`.github/workflows/secret-scan.yml`) that fails on any finding.
 
 The zip is built from the tag with `git archive`, so local edits never get in. `.gitattributes` export-ignore rules keep developer-only files out, and the script refuses to build if the versions disagree or if a venv, cache or `.env` was committed. To build the same zip locally: `python3 scripts/release.py v0.4.0`.
 
