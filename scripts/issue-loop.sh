@@ -62,7 +62,7 @@
 # agent hands over.
 set -euo pipefail
 
-REPO=zhao-hanbo/family-brief
+REPO=kinlace/parent-recap
 MAX_JOBS=5
 MILESTONE=
 AGENT_TIMEOUT=3600 # seconds per claude call
