@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import imaplib
 import json
+import math
 import os
 import shlex
 import shutil
@@ -157,14 +158,17 @@ def cmd_wilma(args: argparse.Namespace) -> int:
                 return _report("no-terminal", "Terminal didn't open. The family runs wilma in "
                                f"Terminal and signs in there, then run: {again} --no-open")
 
-        polls = max(1, -(-args.timeout // WILMA_POLL_SECONDS))
+        polls = max(1, math.ceil(args.timeout / WILMA_POLL_SECONDS))
         check_now = args.no_open  # already signed in, perhaps
         for poll in range(polls + 1):
             exit_status = _exit_status(status)
-            changed = _mtime(config) != seen
-            if check_now or changed or exit_status is not None:
-                check_now, seen = False, _mtime(config)
-                kids = _wilma_kids(wilma)
+            config_mtime = _mtime(config)
+            if check_now or config_mtime != seen or exit_status is not None:
+                check_now, seen = False, config_mtime
+                try:
+                    kids = wilma.list_kids()
+                except wilma.WilmaError:
+                    kids = None
                 if kids is not None:
                     address = _wilma_address(config)
                     return _report("signed-in", city=WILMA_CITIES.get(address or ""),
@@ -217,25 +221,6 @@ def _exit_status(path: Path) -> int | None:
         return int(path.read_text().strip())
     except (OSError, ValueError):
         return None
-
-
-def _wilma_kids(wilma) -> list[dict[str, Any]] | None:
-    """Each student as the Kid's full name, school and class, or None when not signed in.
-    Wilma CLI 1.4 lists only the name; school and class are passed on when the CLI gives them."""
-    try:
-        data = wilma._run(["kids", "list"])
-    except wilma.WilmaError:
-        return None
-    items = data if isinstance(data, list) else (data.get("kids") or data.get("students") or [])
-    kids = []
-    for k in items:
-        if not isinstance(k, dict):
-            continue
-        student = k.get("student") if isinstance(k.get("student"), dict) else k
-        kids.append({"name": student.get("name"),
-                     "school": wilma._first(student, "school", "schoolName"),
-                     "class": wilma._first(student, "className", "class")})
-    return kids
 
 
 def _wilma_address(config: Path) -> str | None:

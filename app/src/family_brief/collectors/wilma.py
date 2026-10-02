@@ -68,6 +68,22 @@ def _first(d: dict, *keys: str, default: Any = None) -> Any:
     return default
 
 
+def list_kids() -> list[dict[str, Any]]:
+    """Each Kid in Wilma as their full name, school and class, from `wilma kids list`. Wilma CLI
+    1.4 gives only the name, so school and class are None unless the CLI gives them. Raises
+    WilmaError when the CLI isn't signed in."""
+    data = _run(["kids", "list"])
+    items = data if isinstance(data, list) else (data.get("kids") or data.get("students") or [])
+    kids = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        kid = item.get("student") if isinstance(item.get("student"), dict) else item
+        kids.append({"name": kid.get("name"), "school": _first(kid, "school", "schoolName"),
+                     "class": _first(kid, "className", "class")})
+    return kids
+
+
 def _walk_students(payload: Any) -> list[tuple[dict, list[dict]]]:
     """Parse `{students: [{student: {...}, items: [...]}]}` shape. Returns [(student_info, items), ...]."""
     if not isinstance(payload, dict):
