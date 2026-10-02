@@ -786,8 +786,9 @@ def main() -> int:
     pwe.add_argument("--dry-run", action="store_true")
     pwe.set_defaults(func=cmd_weekend_events)
 
-    from . import ops
+    from . import ops, uninstall
     ops.register(sub)
+    uninstall.register(sub)
 
     args = p.parse_args()
     private_files.restrict_new_files()  # archives, logs and diagnostics hold the Household's messages

@@ -56,6 +56,8 @@ A MyClub calendar link carries a personal token that lets anyone read the Kid's 
 | Google Calendar OAuth client                           | `~/.family/calendar_credentials.json`                                       | Owner-only, inside owner-only `~/.family`                                                                                                                                                                                                    |
 | Google Calendar access token                           | `~/.family/calendar_token.json`                                             | Owner-only, inside owner-only `~/.family`                                                                                                                                                                                                    |
 
+`family-brief uninstall` deletes every secret in this table that Parent Recap stored, but leaves the ChatGPT login (Codex's) and the Wilma login (the wilma CLI's), and never touches your accounts: delete the Gmail App Password and any Google Calendar access in your Google account. What each setup step writes, and how uninstall removes it, is in [docs/setup-internals.md](docs/setup-internals.md).
+
 Keep `~/.family` and `~/.config/wilmai` out of cloud sync, dotfiles repos and backups you share. How to remove the Wilma file when you stop using FamilyBrief, and what to do if it may have leaked, is in [docs/sources.md](docs/sources.md#where-the-wilma-password-is-stored).
 
 ## Reporting a security problem

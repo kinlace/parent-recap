@@ -75,6 +75,10 @@ Once installed, if something goes wrong or you want to change a setting (a new s
 
 After updating, tell Claude or Codex "upgrade Parent Recap"; it syncs the program and runs a check.
 
+## Uninstalling
+
+Tell Claude or Codex "uninstall Parent Recap". It lists everything setup created on your Mac, asks whether to keep the archive of past Briefs, and removes the rest once you confirm. Your Gmail, Google, Wilma, WhatsApp and MyClub accounts stay as they are. Details are in [Uninstalling](docs/troubleshooting.md#uninstalling).
+
 ## Privacy
 
 - Passwords and tokens are stored in the macOS Keychain; the config file `~/.family/config.yaml` is readable only by you

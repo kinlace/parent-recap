@@ -41,11 +41,14 @@ bash "PLUGIN/install.sh"
 
 ## Uninstalling
 
+Tell Claude or Codex "uninstall Parent Recap", or run this in Terminal:
+
 ```bash
-~/FamilyBrief/app/.venv/bin/family-brief schedule uninstall
-rm -rf ~/FamilyBrief/app
+~/FamilyBrief/app/.venv/bin/family-brief uninstall
 ```
 
-Whether to delete the config and the archive (`~/.family/`, `~/FamilyBrief/`) is up to the user. The Keychain entries (service `family-brief`) can be found by searching `family-brief` in the Keychain Access app and deleted there. The Gmail App Password can be revoked at https://myaccount.google.com/apppasswords.
+It first lists everything setup created on this Mac (the scheduled jobs, the wake schedule, the program and its logs, the config and state, the Keychain items, the Codex skills and the plugin copy), asks whether to keep the archive of past Briefs, and removes only after you confirm. macOS may ask you to allow deleting each Keychain item, and asks for your Mac password to cancel the wake schedule. If it finds something in those places that isn't this install's, such as an older install's scheduled job, it stops and removes nothing. What it does step by step is in [setup-internals.md](setup-internals.md).
 
-If Wilma was set up, its password isn't in the Keychain but in the wilma CLI's own config file. **Always delete it**; see [Where the Wilma password is stored](sources.md#where-the-wilma-password-is-stored).
+It never touches your accounts. Delete the Gmail App Password yourself at https://myaccount.google.com/apppasswords, and if you used Google Calendar mode, remove Parent Recap's access at https://myaccount.google.com/connections. In Claude Code, remove the plugin with `/plugin uninstall parent-recap@kinlace` and `/plugin marketplace remove kinlace`.
+
+If Wilma was set up, its password isn't in the Keychain but in the wilma CLI's own config file, which uninstall leaves because the wilma CLI is its own program. **Always delete it** if you only used it for Parent Recap; see [Where the Wilma password is stored](sources.md#where-the-wilma-password-is-stored).

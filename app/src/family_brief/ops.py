@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import FrameType
 
-from . import languages, private_files
+from . import install_record, languages, private_files
 from .config import Config
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
@@ -528,6 +528,7 @@ def _load(label: str, plist: dict) -> None:
     with path.open("wb") as f:
         plistlib.dump(plist, f)
     subprocess.run(["launchctl", "load", str(path)], check=True)
+    install_record.add("launchd", str(path))
 
 
 def _unload(label: str) -> None:
@@ -556,17 +557,28 @@ def _repeating_wakes(sched: str) -> list[str]:
     return lines
 
 
+def wake_time(hour: int, minute: int) -> tuple[int, int]:
+    """When the Mac should wake for a job at hour:minute: 5 minutes before."""
+    wake_h, wake_m = divmod(hour * 60 + minute - 5, 60)
+    return wake_h % 24, wake_m
+
+
+def is_our_wake(line: str, hour: int, minute: int) -> bool:
+    """Whether a line of `pmset -g sched` is the daily wake setup gives for a job at hour:minute."""
+    wake_h, wake_m = wake_time(hour, minute)
+    wake_12h = f"{wake_h % 12 or 12}:{wake_m:02d}{'am' if wake_h < 12 else 'pm'}"  # as pmset prints it
+    our_wake = re.compile(rf"wake.*(?<!\d)({wake_12h}|{wake_h}:{wake_m:02d}).*everyday")
+    return bool(our_wake.search(line.lower().replace(" ", "")))
+
+
 def _print_wake_advice(hour: int, minute: int) -> None:
     sleeps = re.findall(r"^\s*sleep\s+(\d+)", _pmset("-g", "custom"), re.M)
     if sleeps and all(s == "0" for s in sleeps):
         print("\nThis Mac never sleeps (sleep 0 in pmset), so it needs no wake schedule.")
         return
-    wake_h, wake_m = divmod(hour * 60 + minute - 5, 60)
-    wake_h %= 24
-    wake_12h = f"{wake_h % 12 or 12}:{wake_m:02d}{'am' if wake_h < 12 else 'pm'}"  # as pmset prints it
-    our_wake = re.compile(rf"wake.*(?<!\d)({wake_12h}|{wake_h}:{wake_m:02d}).*everyday")
+    wake_h, wake_m = wake_time(hour, minute)
     existing = _repeating_wakes(_pmset("-g", "sched"))
-    if any(our_wake.search(line.lower().replace(" ", "")) for line in existing):
+    if any(is_our_wake(line, hour, minute) for line in existing):
         print(f"\nThe Mac already wakes at {wake_h:02d}:{wake_m:02d} every day, before the job starts.")
         return
     print("\nScheduled jobs don't run while the Mac is asleep.")
