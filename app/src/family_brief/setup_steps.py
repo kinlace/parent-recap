@@ -6,6 +6,9 @@ setup wilma — open the wilma CLI's sign-in in a Terminal window, wait for the 
               read the Kids and the city
 setup claude — open Claude's sign-in for the nightly token in a Terminal window, ask for the
                token in a macOS dialog, make one test call, store it in the Keychain
+setup whatsapp — read WhatsApp through a `bg` job; when the scheduled job's Python can't yet,
+                 show it in Finder, open App Management and wait for the permission, then list
+                 the chats with a hint on those that look like they're about a Kid
 
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
@@ -52,7 +55,11 @@ CLAUDE_TOKEN_ACCOUNT = "claude-oauth-token"
 CLAUDE_INSTALL = "npm install -g @anthropic-ai/claude-code"
 # Loose on purpose, like scripts/setup_claude_token.py: the test call decides whether it works.
 CLAUDE_TOKEN = re.compile(r"sk-ant-[A-Za-z0-9_-]+")
-_OK = ("saved", "signed-in")
+WHATSAPP_POLL_SECONDS = 5
+# Each read gets at least this long: while macOS shows its one-time Allow prompt, the read waits
+# for the family's answer.
+WHATSAPP_READ_SECONDS = 60
+_OK = ("saved", "signed-in", "readable")
 
 
 def register(sub) -> None:
@@ -81,6 +88,18 @@ def register(sub) -> None:
     pclaude.add_argument("--no-open", action="store_true",
                          help="Don't open Claude's sign-in again, only ask for the token")
     pclaude.set_defaults(func=cmd_claude)
+
+    pwhatsapp = steps.add_parser("whatsapp", help="Read WhatsApp with the scheduled job's Python, "
+                                 "opening App Management and waiting for the permission when "
+                                 "needed, then report the chats")
+    pwhatsapp.add_argument("--timeout", type=int, default=600,
+                           help="Seconds to wait for the permission (default: 600)")
+    pwhatsapp.add_argument("--days", type=int, default=180,
+                           help="List chats with messages in this many days (default: 180)")
+    pwhatsapp.add_argument("--no-open", action="store_true",
+                           help="Don't open Finder and App Management again, only wait and read")
+    pwhatsapp.add_argument("--read", action="store_true", help=argparse.SUPPRESS)  # inside the bg job
+    pwhatsapp.set_defaults(func=cmd_whatsapp)
 
 
 def _report(result: str, next_: str | None = None, **extra: Any) -> int:
@@ -327,6 +346,149 @@ def _setup_token_script(program: str) -> str:
         "clear; printf '\\033[3J'\n"
         "echo 'You can close this window.'\n"
     )
+
+
+# ---------------------------------------------------------------- whatsapp
+
+def cmd_whatsapp(args: argparse.Namespace) -> int:
+    """macOS grants WhatsApp access per responsible process, so every read goes through a `bg`
+    job, which reads with exactly the scheduled job's permission. This process never reads
+    WhatsApp itself, so macOS never asks for Terminal, Claude Code or Codex to get access."""
+    from . import ops
+
+    if args.read:
+        if not os.environ.get(ops.BG_ENV):
+            print(f"Run it through bg: {_program()} setup whatsapp, which does that itself.")
+            return 2
+        return _read_whatsapp(args.days)
+
+    python = os.path.realpath(sys.executable)
+    again = f"{_program()} setup whatsapp --no-open"
+    grant = ("In Finder the Python file is selected. The family drags it into the list in System "
+             "Settings → Privacy & Security → App Management and turns its switch on (if App "
+             "Management isn't there, into Full Disk Access the same way), clicks Allow if macOS "
+             f"asks whether python3.x may access data from other apps, then run: {again}")
+    deadline = time.time() + max(0, args.timeout)
+    opened = args.no_open
+    while True:
+        try:
+            read = _read_through_bg(args.config, args.days,
+                                    max(WHATSAPP_READ_SECONDS, deadline - time.time()))
+        except RuntimeError as e:  # launchctl wouldn't start the job
+            return _report("bg-failed", "The background job that reads WhatsApp didn't start. "
+                           f"Run this again; if it fails again, run: {_program()} bg doctor",
+                           python=python, error=str(e)[:200])
+        if read is None:
+            return _report("waiting", "Reading WhatsApp didn't finish, most likely because macOS "
+                           "is asking whether python3.x may access data from other apps. The "
+                           f"family clicks Allow, then run: {again}", python=python)
+        permission = read.get("permission")
+        if permission == "readable":
+            return _report("readable", python=python,
+                           chats=_with_hints(read.get("chats") or [], _configured_kids(args.config)))
+        if permission == "not-installed":
+            return _report("not-installed", "WhatsApp for Mac isn't on this Mac, or has never been "
+                           "signed in. The family installs it from the App Store (not the older "
+                           "version from WhatsApp's website), links it to their phone and lets "
+                           f"the chats sync, then run: {_program()} setup whatsapp")
+        if permission != "none":
+            return _report("unreadable", "WhatsApp's data is there but couldn't be read. Run this "
+                           "again; if it fails again, check that WhatsApp for Mac opens and shows "
+                           "the chats.", python=python, error=str(read.get("error"))[:200])
+        if not opened:
+            opened = True
+            _, failed = ops.show_python_for_app_management()
+            if failed:
+                return _report("no-permission", "Finder or System Settings didn't open from "
+                               "here. The family runs these in Terminal: "
+                               f"{'; '.join(shlex.join(c) for c in failed)}. {grant}",
+                               python=python)
+        if time.time() + WHATSAPP_POLL_SECONDS > deadline:
+            return _report("no-permission", f"The scheduled job's Python can't read WhatsApp yet. "
+                           f"{grant}", python=python)
+        time.sleep(WHATSAPP_POLL_SECONDS)
+
+
+def _read_through_bg(config: str | None, days: int, timeout: float) -> dict[str, Any] | None:
+    """What the bg job read, or None if it didn't finish in time."""
+    from . import ops
+
+    code, out = ops.run_as_job(["setup", "whatsapp", "--read", "--days", str(days)], config,
+                               timeout=math.ceil(timeout), echo=False)
+    for line in reversed(out.splitlines()):
+        if line.startswith("{"):
+            try:
+                return json.loads(line)
+            except ValueError:
+                break
+    if code == 124:
+        return None
+    return {"permission": "error", "error": f"exit code {code}: {out.strip()[-200:]}"}
+
+
+def _read_whatsapp(days: int) -> int:
+    """Inside the bg job: one JSON line saying whether WhatsApp could be read, and its chats."""
+    from .collectors import whatsapp
+
+    if not whatsapp.DB_FILE.exists():
+        print(json.dumps({"permission": "not-installed"}))
+        return 1
+    error = whatsapp.check_access()
+    if error is None:
+        try:
+            chats = whatsapp.list_groups(days=days)
+        except Exception as e:
+            error = str(e)
+        else:
+            print(json.dumps({"permission": "readable", "chats": chats}, ensure_ascii=False))
+            return 0
+    print(json.dumps({"permission": "none"} if error == whatsapp.NO_ACCESS
+                     else {"permission": "error", "error": error}, ensure_ascii=False))
+    return 1
+
+
+def _configured_kids(config: str | None) -> list:
+    try:
+        return Config.load(config).kids
+    except Exception:  # no config yet: the chats are listed without hints
+        return []
+
+
+def _with_hints(chats: list[dict[str, Any]], kids: list) -> list[dict[str, Any]]:
+    """Adds a hint to each chat whose name mentions a Kid's name, class, school or club, naming
+    the Kids by their name in the config, which is what whatsapp.chats[].kid takes."""
+    out = []
+    for chat in chats:
+        matched_kids: list[str] = []
+        matched: list[str] = []
+        for kid in kids:
+            first = kid.name.split()[0] if " " in kid.name.strip() else None
+            terms = [*kid.match_terms(), *([first] if first else []), kid.class_name, kid.school,
+                     *kid.activities]
+            hits = [t for t in terms if t and _mentions(chat["name"], t)]
+            if hits:
+                matched_kids.append(kid.name)
+                matched += [t for t in hits if t not in matched]
+        out.append({**chat, "hint": {"kids": matched_kids, "matched": matched}} if matched_kids
+                   else chat)
+    return out
+
+
+def _mentions(text: str, term: str) -> bool:
+    """Whether `term` is in `text` as a word of its own: Leo isn't in Leonardo, nor 3B in 13B.
+    Chinese and Japanese aren't written with spaces, so next to their characters any term counts."""
+    text, term = text.casefold(), term.strip().casefold()
+    if len(term) < 2:
+        return False
+
+    def apart(c: str) -> bool:
+        return not c.isalnum() or ord(c) >= 0x2E80
+    for m in re.finditer(re.escape(term), text):
+        before = text[m.start() - 1] if m.start() else " "
+        after = text[m.end()] if m.end() < len(text) else " "
+        if (apart(before) or apart(term[0])) and (apart(after) or apart(term[-1])):
+            return True
+    return False
 
 
 def _program() -> str:

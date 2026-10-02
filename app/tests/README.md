@@ -21,6 +21,10 @@ address and that the Wilma password never reaches the output.
 `test_setup_claude.py` runs `family-brief setup claude` against a fake Terminal, macOS dialog,
 Keychain and `claude` test call, and checks the token never reaches the output, the logs or a
 command line. `test_setup_claude_token.py` keeps the older Terminal script working.
+`test_setup_whatsapp.py` runs `family-brief setup whatsapp` against a fake `launchctl` that runs
+each `bg` job in-process, and a WhatsApp database only those jobs can read once the fake Mac has
+the permission. It checks each permission state, the chats and their Kid hints, and that
+WhatsApp is never read outside a `bg` job.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:
