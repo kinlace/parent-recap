@@ -557,6 +557,11 @@ def _repeating_wakes(sched: str) -> list[str]:
     return lines
 
 
+def repeating_wakes() -> list[str]:
+    """This Mac's repeating power events, as `pmset -g sched` lists them."""
+    return _repeating_wakes(_pmset("-g", "sched"))
+
+
 def wake_time(hour: int, minute: int) -> tuple[int, int]:
     """When the Mac should wake for a job at hour:minute: 5 minutes before."""
     wake_h, wake_m = divmod(hour * 60 + minute - 5, 60)
@@ -577,7 +582,7 @@ def _print_wake_advice(hour: int, minute: int) -> None:
         print("\nThis Mac never sleeps (sleep 0 in pmset), so it needs no wake schedule.")
         return
     wake_h, wake_m = wake_time(hour, minute)
-    existing = _repeating_wakes(_pmset("-g", "sched"))
+    existing = repeating_wakes()
     if any(is_our_wake(line, hour, minute) for line in existing):
         print(f"\nThe Mac already wakes at {wake_h:02d}:{wake_m:02d} every day, before the job starts.")
         return

@@ -22,9 +22,10 @@ from pathlib import Path
 from typing import Callable
 
 import yaml
+from pydantic import ValidationError
 
 from . import install_record, ops, run_lock
-from .collectors.gmail import _keychain_account
+from .collectors.gmail import keychain_account
 from .config import Config
 from .utils import keychain
 
@@ -44,6 +45,7 @@ class Item:
     where: str
     remove: Callable[[], None]
     path: Path | None = None  # the file or folder it is, if it is one
+    account: str | None = None  # the Keychain account it is, if it is one
     asks: str = ""            # what macOS asks the family when it's removed
     archive: bool = False     # removed only when the family chooses not to keep the archive
     last: bool = False        # setup's record: removed only once everything else is gone
@@ -129,10 +131,11 @@ def survey(config: Path) -> Survey:
     _archive(s, defaults)
     _config_and_state(s, config, cfg, defaults)
     logs = [*(Path(p) for p in install_record.entries("logs")), *(p.parent / "logs" for p in programs),
-            archive / "logs", home / "FamilyBrief" / "logs"]
+            home / "FamilyBrief" / "logs"]
     for d in dict.fromkeys(logs):
         if d.is_dir():
             s.items.append(_file("Logs", d))
+    _job_logs(s, archive / "logs")
     for p in programs:
         _program(s, p)  # last of all: this command may be running from it
     if install_record.exists():
@@ -140,9 +143,9 @@ def survey(config: Path) -> Survey:
 
     for folder in dict.fromkeys([*(p.parent for p in programs), archive, config.parent]):
         _left_in(s, folder, archive)
-    s.folders = list(dict.fromkeys([defaults.weekend_events.resolved_dir(), archive,
-                                    *(p.parent for p in programs), config.parent,
-                                    defaults.resolved_state_path().parent]))
+    # Only the folders setup makes: an archive in a folder like ~/Documents stays, even empty.
+    s.folders = list(dict.fromkeys([home / "FamilyBrief" / "weekend_events", home / "FamilyBrief",
+                                    *(p.parent for p in programs), home / ".family"]))
     if cfg and run_lock.is_busy(cfg):
         s.stops.append("A Parent Recap run is going right now. Wait a few minutes for it to "
                        "finish, then run uninstall again.")
@@ -158,7 +161,7 @@ def _config(path: Path, s: Survey) -> Config | None:
         cfg = Config.model_validate(data)
         if isinstance(data, dict) and ("gmail" in data or "email" in data):
             return cfg
-    except Exception:
+    except (OSError, yaml.YAMLError, ValidationError):
         pass
     s.stops.append(f"{_show(path)} isn't a Parent Recap config (it has no Kids, Gmail and email "
                    "settings), so another program may be using that folder. If it's Parent "
@@ -169,15 +172,17 @@ def _config(path: Path, s: Survey) -> Config | None:
 
 def _jobs(s: Survey, programs: list[Path]) -> None:
     usual = [ops.LAUNCH_AGENTS / f"{label}.plist" for label in (ops.JOB_DAILY, ops.JOB_WEEKEND)]
-    venvs = [p / ".venv" for p in programs]
+    # The venv's python is a symlink out of the venv, so only the folder it sits in is resolved.
+    venvs = [(p / ".venv").resolve() for p in programs]
     for plist in dict.fromkeys([*usual, *(Path(p) for p in install_record.entries("launchd"))]):
         if not plist.exists():
             continue
         try:
             prog = [str(a) for a in plistlib.loads(plist.read_bytes()).get("ProgramArguments", [])]
-        except Exception:
+        except (OSError, plistlib.InvalidFileException, AttributeError):
             prog = []
-        if prog[1:3] == ["-m", "family_brief"] and any(Path(prog[0]).is_relative_to(v) for v in venvs):
+        if prog[1:3] == ["-m", "family_brief"] and any(
+                Path(prog[0]).parent.resolve().is_relative_to(v) for v in venvs):
             s.items.append(Item(f"Scheduled job {plist.stem}", _show(plist),
                                 partial(_remove_job, plist), path=plist))
         else:
@@ -195,7 +200,7 @@ def _remove_job(plist: Path) -> None:
 
 def _wake(s: Survey, cfg: Config) -> None:
     hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
-    lines = ops._repeating_wakes(ops._pmset("-g", "sched"))
+    lines = ops.repeating_wakes()
     ours = [line for line in lines if ops.is_our_wake(line, hour, minute)]
     others = [line for line in lines if line not in ours]
     if ours and not others:
@@ -220,7 +225,7 @@ def _cancel_wake() -> None:
 def _keychain(s: Survey, cfg: Config) -> None:
     username = cfg.gmail.username or (cfg.kids[0].wilma_username if cfg.kids else None)
     accounts = [*install_record.entries("keychain"),
-                *([_keychain_account(username)] if username else []),
+                *([keychain_account(username)] if username else []),
                 "claude-oauth-token", "anthropic-api-key"]
     for account in dict.fromkeys(accounts):
         # Without -w, `security` only says whether the item is there; the secret isn't read.
@@ -228,7 +233,7 @@ def _keychain(s: Survey, cfg: Config) -> None:
                                 "-a", account], capture_output=True, text=True)
         if found.returncode == 0:
             s.items.append(Item("Keychain item", f"{keychain.SERVICE} / {account}",
-                                partial(_delete_secret, account),
+                                partial(_delete_secret, account), account=account,
                                 asks="macOS may ask you to allow deleting it"))
 
 
@@ -280,13 +285,26 @@ def _archive(s: Survey, cfg: Config) -> None:
         s.items.append(Item("Archive of past Briefs", f"{days} day{'s' if days != 1 else ''} in "
                             f"{_show(archive)}", partial(_unlink_all, dated), archive=True))
     weekend = cfg.weekend_events.resolved_dir()
-    if weekend.is_dir():
-        s.items.append(_file("Archive of past Weekend Picks", weekend, archive=True))
+    picks = sorted(p for p in weekend.iterdir() if DATED.match(p.name)) \
+        if weekend.is_dir() and weekend != archive else []
+    if picks:
+        s.items.append(Item("Archive of past Weekend Picks", _show(weekend),
+                            partial(_unlink_all, picks), path=weekend, archive=True))
 
 
 def _unlink_all(paths: list[Path]) -> None:
     for p in paths:
         p.unlink(missing_ok=True)
+
+
+def _job_logs(s: Survey, logs: Path) -> None:
+    """The scheduled jobs write their logs to the archive's logs/, which may be a folder of the
+    family's own, such as ~/Documents/logs: then only the jobs' own files go."""
+    if logs in {i.path for i in s.items} or not logs.is_dir():
+        return
+    mine = sorted(p for p in logs.iterdir() if re.match(r"^(run|weekend-events)-std(out|err)\.log$", p.name))
+    if mine:
+        s.items.append(Item("Logs", ", ".join(_show(p) for p in mine), partial(_unlink_all, mine)))
 
 
 def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Config) -> None:
@@ -375,6 +393,11 @@ def _print_notes(s: Survey) -> None:
 
 def _remove(s: Survey, keep_archive: bool) -> int:
     print()
+    # A Keychain deletion macOS refuses must still be found on the next try, after the config
+    # that named its Gmail account is gone.
+    for i in s.items:
+        if i.account:
+            install_record.add("keychain", i.account)
     failed = 0
     for i in s.items:
         if (i.archive and keep_archive) or (i.last and failed):
@@ -385,6 +408,8 @@ def _remove(s: Survey, keep_archive: bool) -> int:
         except Exception as e:
             failed += 1
             print(f"{FAIL} {i.what} not removed ({i.where}): {e}", flush=True)
+    if not failed:  # also when the lines above started the record
+        install_record.path().unlink(missing_ok=True)
     for d in sorted(s.folders, key=lambda p: len(p.parts), reverse=True):
         try:
             d.rmdir()  # only when empty: what's left in it isn't Parent Recap's, or is kept
