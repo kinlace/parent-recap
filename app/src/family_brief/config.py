@@ -35,6 +35,13 @@ class Kid(BaseModel):
     def match_terms(self) -> list[str]:
         return [self.name, *([self.everyday_name] if self.everyday_name else []), *self.aliases]
 
+    def chat_hint_terms(self) -> list[str]:
+        """What a WhatsApp chat about this Kid may be named after: the names, the first name of
+        a full name as Wilma spells it, the class, the school and the clubs."""
+        first = self.name.split()[0] if len(self.name.split()) > 1 else None
+        terms = [*self.match_terms(), first, self.class_name, self.school, *self.activities]
+        return [t for t in terms if t]
+
 
 class GmailConfig(BaseModel):
     """Gmail via IMAP + App Password (stored in Keychain).
