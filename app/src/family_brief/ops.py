@@ -164,28 +164,19 @@ def _check_codex(cfg: Config, add) -> None:
 
 
 def _check_claude(add) -> None:
-    from .summarize import _claude_env
+    from .summarize import _claude_env, claude_test_call
     if not shutil.which("claude"):
         add(FAIL, "Claude", "claude command not found on PATH")
         return
     env, label = _claude_env()
     if label == "inherited":
         add(WARN, "Claude", "no claude-oauth-token in the Keychain, so the scheduled job probably "
-            "can't call Claude (run claude setup-token, then store it with "
-            "scripts/setup_claude_token.py)")
-    try:
-        # Skip user settings like the nightly call does, so the check sees what the nightly run sees.
-        proc = subprocess.run(["claude", "-p", "Reply with just the two letters OK", "--output-format", "json",
-                               "--setting-sources", "", "--no-session-persistence"],
-                              capture_output=True, text=True, timeout=120, env=env,
-                              stdin=subprocess.DEVNULL)
-        data = json.loads(proc.stdout or "{}")
-        if data.get("is_error") or proc.returncode != 0:
-            add(FAIL, "Claude", f"call failed (auth: {label}): {str(data.get('result') or proc.stderr)[:120]}")
-        else:
-            add(OK, "Claude", f"call succeeded (auth: {label})")
-    except Exception as e:
-        add(FAIL, "Claude", f"call failed: {e}")
+            "can't call Claude (store one with family-brief setup claude)")
+    error = claude_test_call("claude", env)
+    if error is not None:
+        add(FAIL, "Claude", f"call failed (auth: {label}): {error[:120]}")
+    else:
+        add(OK, "Claude", f"call succeeded (auth: {label})")
 
 
 def _check_wilma(cfg: Config, add) -> None:
