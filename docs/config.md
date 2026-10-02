@@ -10,9 +10,23 @@ For a full example see `app/config.example.yaml`. The config file lives at `~/.f
 | Helsinki (city schools)              | helsinki.inschool.fi   | `hel.fi`                 | Helsinki, Espoo, Vantaa |
 | Helsinki (private and state schools) | yvkoulut.inschool.fi   | The school's own domain  | Helsinki, Espoo, Vantaa |
 | Vantaa                               | vantaa.inschool.fi     | `vantaa.fi`              | Vantaa, Helsinki, Espoo |
-| Kauniainen                           | kauniainen.inschool.fi | `kauniainen.fi`          | Espoo, Helsinki         |
+| Kauniainen                           | kauniainen.inschool.fi | `kauniainen.fi`          | Not offered             |
 
 The allowlist is only a starting point. Always run `family-brief discover gmail-senders` to add the domains the Kids actually get mail from: music schools (such as `emo.fi` in Espoo), sports clubs, hobby classes. Gmail's `from:espoo.fi` also matches subdomains such as `edu.espoo.fi`.
+
+Weekend Picks come from the event database of Helsinki, Espoo and Vantaa (Linked Events), so setup offers them only to families in those three cities.
+
+### Cities without a preset
+
+Parent Recap works in any city whose schools use Wilma; only the starting values above have to be found by hand:
+
+- **Wilma address**: the address the browser shows when the family signs in to Wilma on the web, usually `<city>.inschool.fi`. Searching for "<city> Wilma" finds the sign-in page. In the `wilma` sign-in screen, choose that city or school.
+- **Starting Gmail allowlist**: the domain after the @ in the addresses the school and the teachers write from, often the city's own domain such as `<city>.fi`. Take it from a school email the family already has. With none at hand, leave the allowlist empty and pick the domains from `family-brief discover gmail-senders` in the Gmail step.
+- **Weekend Picks**: not offered.
+
+### Tested cities
+
+One town outside the presets was set up end to end in a fresh-install test in October 2026: Wilma worked with the town's own Wilma address, and the town's domain served as the starting allowlist. The presets themselves come from each city's Wilma address and mail domain. If you run Parent Recap in a city not listed here, [open an issue](https://github.com/kinlace/parent-recap/issues) to say how it went, so it can be added.
 
 ## Key fields
 

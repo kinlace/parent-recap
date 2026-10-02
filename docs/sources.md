@@ -19,6 +19,13 @@ Notes:
 - **Never put public domains in the allowlist** (gmail.com, outlook.com, icloud.com). For teachers or coaches using a personal address, put the full address in `allowlist_senders`
 - The program already skips mail the user sent to themselves, drafts, Sent, Promotions and Social
 
+### School mail at another address
+
+The program reads and sends with the one Gmail account above, and can't read a second account. If the school, the teachers or the clubs write to another address (a work address, Outlook, iCloud, another Gmail), the Briefs come out empty until that mail reaches the Gmail account. Either:
+
+- **Forward it automatically** from the other address to the Gmail account. Use the mail service's automatic forwarding setting (in Gmail: Settings → See all settings → Forwarding and POP/IMAP → Add a forwarding address; in Outlook.com: Settings → Mail → Forwarding). Forwarding by hand doesn't work: a forwarded message comes from the parent, not the school, so the allowlist doesn't match it. If the service can forward only some mail, a filter on the school's domains is enough
+- **Give the school the Gmail address**: update the contact details in Wilma, if the school lets parents do that there, and tell the teachers and clubs
+
 ## AI login (required, pick one)
 
 `llm.backend` in the config decides which AI writes the Brief each night.
@@ -52,8 +59,8 @@ Notes:
 This uses the community open-source wilma CLI (not affiliated with Visma).
 
 1. `npm install -g @wilm-ai/wilma-cli`
-2. **Terminal**: `wilma` opens an interactive screen: choose the city or school (Espoo / Helsinki / Vantaa / Kauniainen / Helsinki private and state schools) and log in with the **parent account**. If the account has two-step verification, use `--totp-secret` as the CLI prompts
-3. Back in the agent: `$FB discover wilma-students`, and check the names Wilma lists against the Kids
+2. **Terminal**: `wilma` opens an interactive screen: choose the city or school (Espoo / Helsinki / Vantaa / Kauniainen / Helsinki private and state schools, or for another city, its Wilma address as in "Cities without a preset" in `config.md`) and log in with the **parent account**. If the account has two-step verification, use `--totp-secret` as the CLI prompts
+3. Back in the agent: `$FB discover wilma-students` lists the students (it works before the config exists, so setup can prefill the Kids from it)
 4. Each Kid's `name` in the config should match Wilma exactly; put the names the user normally uses in `aliases`
 5. Set `wilma.enabled: true`
 
@@ -131,7 +138,7 @@ At https://console.cloud.google.com, with your own Google account (menu names ma
 5. Under "Clients", create an OAuth client of type **Desktop app** and download the JSON file
 6. Go back to step 1 of [Calendar](#calendar) above, save the file and authorize
 
-## Weekend Picks (optional, Helsinki region)
+## Weekend Picks (optional, Helsinki, Espoo and Vantaa only)
 
 Every Friday, 12 weekend events suitable for kids, at most €20 per person, are picked from the public event database of Helsinki / Espoo / Vantaa (Linked Events) and emailed as recommendations.
 
