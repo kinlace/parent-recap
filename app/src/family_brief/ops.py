@@ -119,7 +119,7 @@ def _check_gmail(cfg: Config, add) -> None:
         return
     if not gmail.get_app_password(username):
         add(FAIL, "Gmail", f"No App Password in the Keychain for {username} "
-            "(store one with scripts/setup_gmail_imap.py)")
+            "(store one with family-brief setup gmail)")
         return
     if not (cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders):
         add(FAIL, "Gmail", "the sender allowlist is empty (allowlist_domains / allowlist_senders)")

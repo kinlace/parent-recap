@@ -786,8 +786,9 @@ def main() -> int:
     pwe.add_argument("--dry-run", action="store_true")
     pwe.set_defaults(func=cmd_weekend_events)
 
-    from . import ops, uninstall
+    from . import ops, setup_steps, uninstall
     ops.register(sub)
+    setup_steps.register(sub)
     uninstall.register(sub)
 
     args = p.parse_args()
