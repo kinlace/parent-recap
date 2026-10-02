@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, "src")
-from family_brief.collectors.myclub import _fetch_ics, _normalize_url, save_link  # noqa
+from family_brief.collectors.myclub import download, save_link  # noqa
 
 
 def main() -> int:
@@ -33,7 +33,7 @@ def main() -> int:
 
     print("Testing the link...")
     try:
-        n = _fetch_ics(_normalize_url(url)).count("BEGIN:VEVENT")
+        n = download(url).count("BEGIN:VEVENT")
     except Exception as e:
         print(f"FAIL: the link doesn't open ({e}). Copy it again from MyClub.", file=sys.stderr)
         return 1

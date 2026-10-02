@@ -544,7 +544,7 @@ def cmd_myclub(args: argparse.Namespace) -> int:
                        f"starting with webcal://, and run this again: {again} --no-open")
 
     try:
-        text = myclub._fetch_ics(myclub._normalize_url(url))
+        text = myclub.download(url)
     except myclub.FetchError as e:  # names only the server and the HTTP status
         return _report("link-failed", "The link didn't open, so it wasn't saved. Copy it again "
                        f"from MyClub and run this again: {again} --no-open", error=str(e))

@@ -251,9 +251,9 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
 
 
 def _check_myclub(kid: str, url: str, add) -> None:
-    from .collectors.myclub import _fetch_ics, _normalize_url
+    from .collectors import myclub
     try:
-        text = _fetch_ics(_normalize_url(url))
+        text = myclub.download(url)
         n = text.count("BEGIN:VEVENT")
         add(OK, f"MyClub ({kid})", f"subscription link works, {n} events in the calendar")
     except Exception as e:
