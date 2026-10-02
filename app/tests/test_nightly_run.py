@@ -348,6 +348,33 @@ def test_digest_in_sections_is_joined_into_one(harness, digest):
     assert "在 Wilma 签远足同意书" in email.html
 
 
+def test_digest_markdown_renders_as_headings_and_lists_in_the_html(harness):
+    normal_night(harness)
+    harness.model_reply["message_digest"] = (
+        "## Mia（3B）\n- 周四远足\n- **周一**数学考试\n\n### **Leo**\n* 周三拍班级照\n\n"
+        "**Eero** (2A)\n• 交班费\n- \n其他\n**注意**：带雨衣")
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert ("<h4>Mia（3B）</h4><ul><li>周四远足</li><li><strong>周一</strong>数学考试</li></ul>"
+            "<h4>Leo</h4><ul><li>周三拍班级照</li></ul>"
+            "<h4>Eero (2A)</h4><ul><li>交班费</li></ul><p>-<br>其他<br><strong>注意</strong>：带雨衣</p>") in email.html
+    assert "## Mia（3B）\n- 周四远足" in email.text  # the plain-text part keeps the Markdown
+
+
+def test_message_text_in_the_digest_cannot_inject_html(harness):
+    normal_night(harness)
+    harness.model_reply["message_digest"] = (
+        "## <img src=x onerror=alert(1)>\n- <script>alert(1)</script>\n**<b>Mia</b>**\n<a href='x'>link</a>")
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert ("<h4>&lt;img src=x onerror=alert(1)&gt;</h4><ul><li>&lt;script&gt;alert(1)&lt;/script&gt;</li></ul>"
+            "<h4>&lt;b&gt;Mia&lt;/b&gt;</h4><p>&lt;a href=&#x27;x&#x27;&gt;link&lt;/a&gt;</p>") in email.html
+
+
 def test_stray_string_in_per_kid_keeps_every_kids_items(harness):
     normal_night(harness)
     harness.model_reply["per_kid"].insert(1, "Leo: nothing today")

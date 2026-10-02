@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import math
+import re
 import sys
 import traceback
 from dataclasses import dataclass, field
@@ -296,6 +297,47 @@ def _start(start: str, t: BriefText, tz: str) -> str:
     return t.at(moment.replace(tzinfo=ZoneInfo(tz)) if moment.tzinfo is None else to_local(moment, tz))
 
 
+_HEADING = re.compile(r"#{2,3}\s+(?P<title>.+)"
+                      r"|\*\*(?P<kid>[^*]+)\*\*(?P<note>\s*[(（][^()（）]*[)）])?")
+_POINT = re.compile(r"\s*[-*•]\s+(\S.*)")
+_BOLD = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _digest_html(digest: str) -> str:
+    """The Digest's small Markdown subset as HTML: `##`/`###` lines and lines that are only a
+    `**Kid**`, perhaps with a note in brackets (the Fallback's count), become headings, `- `
+    lines a list, `**bold**` stays bold. Every piece of text is escaped before any tag goes
+    around it, so nothing in a Message can inject HTML."""
+    import html as _h
+
+    def inline(text: str) -> str:
+        return _BOLD.sub(r"<strong>\1</strong>", _h.escape(text.strip()))
+
+    def title(heading: re.Match[str]) -> str:
+        if heading["title"]:
+            return _BOLD.sub(r"\1", _h.escape(heading["title"].strip()))
+        return _h.escape(heading["kid"].strip() + (heading["note"] or ""))
+    out: list[str] = []
+    block = ""  # the open "p" or "ul", if any
+    for line in digest.splitlines() + [""]:
+        heading, point = _HEADING.fullmatch(line.strip()), _POINT.fullmatch(line)
+        kind = "" if heading or not line.strip() else "ul" if point else "p"
+        if block and block != kind:
+            out.append(f"</{block}>")
+        elif block == "p":
+            out.append("<br>")
+        if kind and block != kind:
+            out.append(f"<{kind}>")
+        block = kind
+        if heading:
+            out.append(f"<h4>{title(heading)}</h4>")
+        elif point:
+            out.append(f"<li>{inline(point[1])}</li>")
+        elif kind:
+            out.append(inline(line))
+    return "".join(out)
+
+
 def _daily_brief_html(summary: dict, calendar_created: list[dict],
                       date_str: str, t: BriefText, tz: str, note: str = "", ics_attached: bool = False,
                       coverage: str = "", footer: str = "",
@@ -318,11 +360,7 @@ def _daily_brief_html(summary: dict, calendar_created: list[dict],
         parts.append(f"<p style='color:#a33'>{warnings}</p>")
     digest = digest_of(summary)
     if digest:
-        # Convert simple Markdown-ish text to HTML paragraphs
-        chunks = digest.split("\n\n")
-        for ch in chunks:
-            ch = _h.escape(ch).replace("\n", "<br>")
-            parts.append(f"<p>{ch}</p>")
+        parts.append(_digest_html(digest))
         if feedback_link:
             parts.append("<p><small>"
                          f"{form_link(feedback.DIGEST_WRONG, t.feedback_digest_wrong, digest_of(original))}"
