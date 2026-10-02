@@ -16,7 +16,7 @@ With Wilma, `family-brief setup wilma` takes the city from the Wilma address the
 
 The allowlist is only a starting point. Always run `family-brief discover gmail-senders` to add the domains the Kids actually get mail from: music schools (such as `emo.fi` in Espoo), sports clubs, hobby classes. Gmail's `from:espoo.fi` also matches subdomains such as `edu.espoo.fi`.
 
-Weekend Picks come from the event database of Helsinki, Espoo and Vantaa (Linked Events), so setup offers them only to families in those three cities and in Kauniainen. Kauniainen sits inside Espoo, and its families go to Espoo and Helsinki events.
+Weekend Picks come from the event database of Helsinki, Espoo and Vantaa (Linked Events), so manage turns them on only for families in those three cities and in Kauniainen. Setup doesn't ask about them. Kauniainen sits inside Espoo, and its families go to Espoo and Helsinki events.
 
 ### Cities without a preset
 

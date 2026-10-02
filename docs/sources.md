@@ -1,6 +1,6 @@
 # Setting up the Sources
 
-Each section is written for the agent (Claude or Codex) guiding the user. Every command marked **Terminal** must be run by the user in their own Terminal app, not by the agent, because these commands either need hidden input or need macOS permissions granted to Terminal itself.
+Each section is written for the agent (Claude or Codex) guiding the user. The agent runs the `$FB setup` commands itself: each asks for a secret in a macOS dialog with hidden input, or opens what the user signs in to, checks the result and prints one line of JSON, so a secret never reaches the chat. Every command marked **Terminal** must be run by the user in their own Terminal app.
 
 `FB=~/FamilyBrief/app/.venv/bin/family-brief`, `PY=~/FamilyBrief/app/.venv/bin/python`
 
@@ -8,10 +8,9 @@ Each section is written for the agent (Claude or Codex) guiding the user. Every 
 
 Gmail is used both to **receive** (scanning mail from schools and clubs) and to **send** (mailing the Brief). It uses an App Password; no Google Cloud project is needed.
 
-1. Check that the account has two-step verification on: https://myaccount.google.com/security → "2-Step Verification"
-2. Open https://myaccount.google.com/apppasswords, enter `Parent Recap` as the app name and click "Create"; you get a 16-character password
-3. **Terminal**: `$PY ~/FamilyBrief/app/scripts/setup_gmail_imap.py you@gmail.com`, then paste the 16 characters (the input is hidden). The script tests the login and, if it works, saves the password in the Keychain
-4. Back in the agent: `$FB discover gmail-senders` lists the sender domains of the past 60 days (senders only, no message bodies); pick the school, class, club and music school domains together with the user
+1. Tell the user they never give Parent Recap their Google password. An App Password is a separate 16-letter password that only Parent Recap uses, and they can delete it in their Google account. Google may ask them to sign in on its own page first
+2. `$FB setup gmail --address you@gmail.com` opens https://myaccount.google.com/apppasswords and a dialog. The user enters `Parent Recap` as the app name (only a label, for finding it later), clicks "Create", and pastes the 16 letters into the dialog. The command tests the sign-in and, if it works, saves the password in the Keychain. If the page isn't available, the user clicks that choice in the dialog, and the command links to 2-Step Verification (https://myaccount.google.com/signinoptions/two-step-verification)
+3. `$FB discover gmail-senders` lists the sender domains of the past 60 days (senders only, no message bodies); pick the school, class, club and music school domains together with the user
 
 Notes:
 
@@ -45,8 +44,8 @@ Notes:
 
 The scheduled job runs in the background and can't use Claude Code's login.
 
-1. **Terminal**: `claude setup-token`, authorize in the browser when prompted; Terminal prints a token starting with `sk-ant-oat01-` (valid for one year)
-2. **Terminal**: `$PY ~/FamilyBrief/app/scripts/setup_claude_token.py`, then paste the token at each of the Keychain's two prompts (input is hidden). The script saves it in the Keychain (service `family-brief`, account `claude-oauth-token`) and makes one test call
+1. `$FB setup claude` opens `claude setup-token` in a Terminal window and Claude's sign-in page. The user clicks Authorize, and the window shows a token starting with `sk-ant-oat01-` (valid for one year)
+2. The user pastes the token into the dialog the command shows, then presses Enter in the Terminal window to clear it. The command makes one test call and saves the token in the Keychain (service `family-brief`, account `claude-oauth-token`)
 
 Notes:
 
@@ -59,8 +58,8 @@ Notes:
 This uses the community open-source wilma CLI (not affiliated with Visma).
 
 1. `npm install -g @wilm-ai/wilma-cli`
-2. **Terminal**: `wilma` opens an interactive screen: choose the city or school (Espoo / Helsinki / Vantaa / Kauniainen / Helsinki private and state schools, or for another city, its Wilma address as in "Cities without a preset" in `config.md`) and log in with the **parent account**. If the account has two-step verification, use `--totp-secret` as the CLI prompts
-3. Back in the agent: `$FB discover wilma-students` lists the students (it works before the config exists, so setup can prefill the Kids from it)
+2. `$FB setup wilma` opens the wilma sign-in screen in a Terminal window: the user chooses the city or school (Espoo / Helsinki / Vantaa / Kauniainen / Helsinki private and state schools, or for another city, its Wilma address as in "Cities without a preset" in `config.md`) and logs in with the **parent account**. If the account has two-step verification, use `--totp-secret` as the CLI prompts
+3. The command waits for the sign-in, then reports the students and the city from the Wilma address (it works before the config exists, so setup can prefill the Kids from it)
 4. Each Kid's `name` in the config should match Wilma exactly; put the name the family calls the Kid by in `everyday_name` (the Brief uses it everywhere) and any other names in `aliases`
 5. Set `wilma.enabled: true`
 
@@ -85,8 +84,8 @@ After login, the wilma CLI stores the Wilma username and password in `~/.config/
 This reads the local database of WhatsApp for Mac; the data never leaves the computer.
 
 1. It needs **WhatsApp** from the App Store (not the old Electron version), linked by scanning the QR code with the phone, with chat history fully synced
-2. **Give the scheduled job permission**: run `$FB app-management`. It selects the scheduled job's Python file in Finder (it sits in a hidden folder) and opens System Settings → Privacy & Security → **App Management**. Drag the file from Finder into the list and turn its switch on. If App Management isn't in the list, use "Full Disk Access" the same way. If the command can't open Finder or System Settings, it prints the two `open` commands to run in Terminal
-3. Run `$FB bg discover whatsapp-chats`; Claude or Codex can run this itself. `bg` reads in the background with the scheduled job's Python, so if step 2 was done right, this works. If "python3.x would like to access data from other apps" pops up, click Allow
+2. **Give the scheduled job permission and list the chats**: run `$FB setup whatsapp`. It reads WhatsApp through `bg`, with the scheduled job's Python. When that Python can't read yet, it selects the Python file in Finder (it sits in a hidden folder), opens System Settings → Privacy & Security → **App Management** and waits: drag the file from Finder into the list and turn its switch on. If App Management isn't in the list, use "Full Disk Access" the same way. If "python3.x would like to access data from other apps" pops up, click Allow. Once it can read, it lists the chats, with a hint on those that look like they're about a Kid. If it can't open Finder or System Settings, it says which `open` commands to run in Terminal
+3. Later, `$FB bg discover whatsapp-chats` lists the chats the same way
 4. Pick the groups about the Kids: class parent groups, teacher groups, team groups, carpool groups, hobby groups, playdate groups. For each group set:
    - `name`: **copied exactly** from the output (the text inside the quotes, keeping trailing spaces, curly quotes ’ and emoji)
    - `kid`: which Kid it belongs to (matching a `name` in kids), or `both` if the two Kids share it
@@ -97,8 +96,8 @@ Note: without `bg`, reading WhatsApp directly from Terminal, Claude Code or Code
 
 ## MyClub (optional)
 
-1. The user logs in to MyClub on the web (https://id.myclub.fi), finds "Tilaa kalenteri / Calendar subscription" on the Kid's calendar page, and copies the link starting with `webcal://` (menu names may change between versions)
-2. **Terminal**: `$PY ~/FamilyBrief/app/scripts/setup_myclub.py "Kid's name"`, then paste the link (the input is hidden). The script tests the link and saves it in that Kid's `myclub_ical_url`. The link contains a personal token, so it's never pasted in the chat and is only kept in the local config; if the link doesn't open, doctor and the logs name only the MyClub server and the HTTP status
+1. The user signs in to MyClub on the web (https://id.myclub.fi), finds "Tilaa kalenteri / Calendar subscription" on the Kid's calendar page, and copies the link starting with `webcal://` (menu names may change between versions)
+2. `$FB setup myclub --kid "Kid's name"` opens MyClub and a dialog; the user pastes the link there (the input is hidden). The command downloads it once and saves it in that Kid's `myclub_ical_url`. The link contains a personal token, so it's never pasted in the chat and is only kept in the local config; if the link doesn't open, doctor and the logs name only the MyClub server and the HTTP status
 3. In ics calendar mode, it's worth also subscribing to this link directly in the phone's calendar, so it stays in sync with the club in real time:
    - Google Calendar on the web: "Other calendars" on the left → "+" → "From URL", replace `webcal://` with `https://` and paste
    - iPhone: Settings → Calendar → Accounts → Add Account → Other → Add Subscribed Calendar
@@ -107,7 +106,7 @@ Note: without `bg`, reading WhatsApp directly from Terminal, Claude Code or Code
 
 Whichever mode you pick, an event the model finds goes into the calendar only if it points to a message read that night, and it keeps a link only if that message has the link. The model is also told that message text is data, not instructions: a message in a parent group or an email that tells it to add an event or a link is reported in the Brief instead of followed.
 
-Pick one of the two modes at step 9 of setup:
+Pick one of the two modes on setup's defaults card:
 
 **ics (default)**: `google_calendar.mode: ics`. New events the model finds in Wilma, mail and group chats (parent evenings, trips, deadlines …) are put in one `.ics` attachment on the Brief email. Tap the attachment on the phone to add them to the calendar (on iPhone choose "Add All"). Each event is sent only once, and its UID in the attachment is fixed, so importing it again doesn't create duplicates.
 
@@ -139,6 +138,8 @@ At https://console.cloud.google.com, with your own Google account (menu names ma
 6. Go back to step 1 of [Calendar](#calendar) above, save the file and authorize
 
 ## Weekend Picks (optional, Helsinki, Espoo, Vantaa and Kauniainen only)
+
+Setup doesn't ask about them; the family turns them on later through manage.
 
 Every Friday, 12 weekend events suitable for kids, at most €20 per person, are picked from the public event database of Helsinki / Espoo / Vantaa (Linked Events) and emailed as recommendations.
 

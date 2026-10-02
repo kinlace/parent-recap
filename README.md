@@ -43,7 +43,7 @@ Both lines fetch [`get.sh`](get.sh) and everything else from the `stable` branch
 
 ### Next
 
-Claude or Codex walks you through setup step by step, which takes about 30–45 minutes. Setup downloads about 175 MB, mostly the Python packages the program uses. A password or token never goes into the chat: setup asks for it in a macOS window or has you type it in Terminal. When setup asks you to run something in Terminal, open a new Terminal window with ⌘N, so the chat keeps running in the first one.
+Claude or Codex walks you through setup: you check a card of defaults, connect your Sources one at a time from a list (WhatsApp and MyClub can be skipped and added later), confirm one page of what was found, and see a preview of your first Brief before it's sent. Expect about 20 to 30 minutes of your time, and 40 to 60 minutes in all, since you can step away while it installs and reads. Setup downloads about 175 MB, mostly the Python packages the program uses. A password or token never goes into the chat: setup asks for it in a macOS window or has you type it in Terminal. When setup asks you to run something in Terminal, open a new Terminal window with ⌘N, so the chat keeps running in the first one.
 
 Once installed, if something goes wrong or you want to change a setting (a new school year, a different group, another recipient), type `/parent-recap:manage` (`$parent-recap-manage` in Codex), or just say what you want.
 
