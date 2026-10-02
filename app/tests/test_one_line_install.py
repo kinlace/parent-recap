@@ -1,0 +1,219 @@
+"""The one line a family pastes into Terminal: `get.sh --claude` or `get.sh --codex`.
+
+Runs the real `get.sh` with a fake `claude` (which logs its calls and answers the two list
+commands from files) and a fake `curl` (which hands over a tarball built here, standing in
+for the `stable` branch's), in a fake home.
+"""
+from __future__ import annotations
+
+import io
+import json
+import subprocess
+import tarfile
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+NO_MARKETPLACES = "[]"
+KINLACE = json.dumps([{"name": "kinlace", "source": "github", "repo": "kinlace/parent-recap"}], indent=2)
+NO_PLUGINS = "[]"
+PARENT_RECAP = json.dumps([{"id": "parent-recap@kinlace", "version": "0.4.1", "scope": "user"}], indent=2)
+
+
+@pytest.fixture
+def mac(tmp_path: Path) -> dict:
+    home = tmp_path / "home"
+    home.mkdir()
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    log = tmp_path / "calls.log"
+    fake(bin_ / "uname", "echo Darwin")
+    fake(bin_ / "claude", f"""
+echo "claude $*" >> "{log}"
+case "$*" in
+  "plugin marketplace list --json") cat "{tmp_path}/marketplaces.json" ;;
+  "plugin list --json") cat "{tmp_path}/plugins.json" ;;
+esac""")
+    fake(bin_ / "curl", f"""
+echo "curl $*" >> "{log}"
+[ -f "{tmp_path}/stable.tar.gz" ] || exit 22
+cat "{tmp_path}/stable.tar.gz\"""")
+    (tmp_path / "marketplaces.json").write_text(NO_MARKETPLACES)
+    (tmp_path / "plugins.json").write_text(NO_PLUGINS)
+    return {"tmp": tmp_path, "home": home, "bin": bin_, "log": log}
+
+
+def fake(path: Path, body: str) -> None:
+    path.write_text("#!/bin/bash\n" + body + "\n")
+    path.chmod(0o755)
+
+
+def get(mac: dict, *args: str, without: tuple[str, ...] = ()) -> subprocess.CompletedProcess:
+    for name in without:
+        (mac["bin"] / name).unlink()
+    env = {"HOME": str(mac["home"]), "PATH": f"{mac['bin']}:/usr/bin:/bin"}
+    return subprocess.run(["/bin/bash", str(ROOT / "get.sh"), *args], capture_output=True, text=True, env=env)
+
+
+def calls(mac: dict) -> list[str]:
+    return mac["log"].read_text().splitlines() if mac["log"].exists() else []
+
+
+def stable_release(mac: dict, version: str, files: dict[str, str] | None = None, name: str = "parent-recap") -> None:
+    """The tarball GitHub serves for the `stable` branch, with an install.sh that logs how it was run."""
+    contents = {
+        ".claude-plugin/plugin.json": json.dumps({"name": name, "version": version}),
+        "install.sh": f'echo "install.sh $* from $(cd "$(dirname "$0")" && pwd)" >> "{mac["log"]}"\n',
+        **(files or {}),
+    }
+    with tarfile.open(mac["tmp"] / "stable.tar.gz", "w:gz") as tar:
+        for rel, text in contents.items():
+            data = text.encode()
+            info = tarfile.TarInfo(f"parent-recap-stable/{rel}")
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+
+
+# --- Claude Code ---------------------------------------------------------------------------
+
+def test_claude_adds_the_stable_marketplace_installs_for_the_user_and_starts_setup(mac):
+    result = get(mac, "--claude")
+
+    assert result.returncode == 0, result.stderr
+    assert [c for c in calls(mac) if "list --json" not in c] == [
+        "claude plugin marketplace add kinlace/parent-recap#stable",
+        "claude plugin install parent-recap@kinlace --scope user",
+        "claude /parent-recap:setup",
+    ]
+
+
+def test_claude_run_again_updates_instead_of_adding_twice(mac):
+    (mac["tmp"] / "marketplaces.json").write_text(KINLACE)
+    (mac["tmp"] / "plugins.json").write_text(PARENT_RECAP)
+
+    result = get(mac, "--claude")
+
+    assert result.returncode == 0, result.stderr
+    assert [c for c in calls(mac) if "list --json" not in c] == [
+        "claude plugin marketplace update kinlace",
+        "claude plugin update parent-recap@kinlace",
+        "claude /parent-recap:setup",
+    ]
+
+
+def test_claude_removes_the_family_brief_plugin_from_before_the_rename(mac):
+    (mac["tmp"] / "marketplaces.json").write_text(json.dumps([{"name": "family-brief"}], indent=2))
+    (mac["tmp"] / "plugins.json").write_text(json.dumps([{"id": "family-brief@family-brief"}], indent=2))
+
+    assert get(mac, "--claude").returncode == 0
+
+    made = [c for c in calls(mac) if "list --json" not in c]
+    assert made[:2] == ["claude plugin uninstall family-brief@family-brief",
+                        "claude plugin marketplace remove family-brief"]
+    assert made[-1] == "claude /parent-recap:setup"
+
+
+def test_claude_without_claude_code_says_to_install_it_first(mac):
+    result = get(mac, "--claude", without=("claude",))
+
+    assert result.returncode != 0
+    assert "Claude Code" in result.stdout + result.stderr
+    assert calls(mac) == []
+
+
+# --- Codex ---------------------------------------------------------------------------------
+
+def test_codex_puts_the_stable_release_in_familybrief_plugin_and_installs_it(mac):
+    stable_release(mac, "0.5.0")
+
+    result = get(mac, "--codex")
+
+    assert result.returncode == 0, result.stderr
+    plugin = mac["home"] / "FamilyBrief" / "plugin"
+    assert json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())["version"] == "0.5.0"
+    curl, install = calls(mac)
+    assert "kinlace/parent-recap/archive/refs/heads/stable.tar.gz" in curl
+    assert install == f"install.sh --codex from {plugin.resolve()}"
+    assert "$parent-recap-setup" in result.stdout
+    assert sorted(p.name for p in (mac["home"] / "FamilyBrief").iterdir()) == ["plugin"]
+
+
+def test_codex_run_again_replaces_the_plugin_with_the_new_release(mac):
+    stable_release(mac, "0.5.0", {"docs/gone-in-0.6.md": "old\n"})
+    assert get(mac, "--codex").returncode == 0
+    (mac["home"] / ".family").mkdir()
+    (mac["home"] / ".family" / "config.yaml").write_text("household: {}\n")
+    stable_release(mac, "0.6.0")
+
+    result = get(mac, "--codex")
+
+    assert result.returncode == 0, result.stderr
+    plugin = mac["home"] / "FamilyBrief" / "plugin"
+    assert json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())["version"] == "0.6.0"
+    assert not (plugin / "docs" / "gone-in-0.6.md").exists()
+    assert calls(mac).count(f"install.sh --codex from {plugin.resolve()}") == 2
+    assert "upgrade Parent Recap" in result.stdout
+
+
+def test_codex_replaces_a_family_brief_plugin_from_before_the_rename(mac):
+    old = mac["home"] / "FamilyBrief" / "plugin" / ".claude-plugin"
+    old.mkdir(parents=True)
+    (old / "plugin.json").write_text(json.dumps({"name": "family-brief", "version": "0.3.0"}))
+    stable_release(mac, "0.5.0")
+
+    assert get(mac, "--codex").returncode == 0
+
+    assert json.loads((old / "plugin.json").read_text()) == {"name": "parent-recap", "version": "0.5.0"}
+
+
+def test_codex_stops_when_familybrief_plugin_holds_something_else(mac):
+    stable_release(mac, "0.5.0")
+    other = mac["home"] / "FamilyBrief" / "plugin"
+    other.mkdir(parents=True)
+    (other / "notes.txt").write_text("mine\n")
+
+    result = get(mac, "--codex")
+
+    assert result.returncode != 0
+    assert str(other) in result.stdout + result.stderr
+    assert sorted(p.name for p in other.iterdir()) == ["notes.txt"]
+    assert not any("install.sh" in c for c in calls(mac))
+
+
+def test_codex_leaves_the_installed_plugin_alone_when_the_download_fails(mac):
+    stable_release(mac, "0.5.0")
+    assert get(mac, "--codex").returncode == 0
+    (mac["tmp"] / "stable.tar.gz").unlink()
+
+    result = get(mac, "--codex")
+
+    assert result.returncode != 0
+    plugin = mac["home"] / "FamilyBrief" / "plugin"
+    assert json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())["version"] == "0.5.0"
+    assert sorted(p.name for p in (mac["home"] / "FamilyBrief").iterdir()) == ["plugin"]
+
+
+def test_codex_refuses_a_download_that_is_not_parent_recap(mac):
+    stable_release(mac, "0.5.0", name="something-else")
+
+    result = get(mac, "--codex")
+
+    assert result.returncode != 0
+    assert not (mac["home"] / "FamilyBrief" / "plugin").exists()
+
+
+def test_without_a_choice_it_shows_both_lines(mac):
+    result = get(mac)
+
+    assert result.returncode != 0
+    assert "--claude" in result.stdout + result.stderr and "--codex" in result.stdout + result.stderr
+
+
+def test_only_runs_on_a_mac(mac):
+    fake(mac["bin"] / "uname", "echo Linux")
+
+    result = get(mac, "--claude")
+
+    assert result.returncode != 0
+    assert calls(mac) == []

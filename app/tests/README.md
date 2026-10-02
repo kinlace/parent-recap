@@ -32,6 +32,9 @@ still works.
 `test_setup_status.py` runs `family-brief setup status` against a fake `launchctl`, `pmset`,
 Keychain, IMAP server and `claude` test call, with a real Brief sent through the harness. It checks
 each of the five outcomes true and false, and that no secret or message text reaches either form.
+`test_one_line_install.py` runs the README's one-line install, `get.sh --claude` and `--codex`,
+against a fake `claude` and a fake `curl` serving a stand-in `stable` tarball. It checks a first
+install, a second run updating, and that nothing it didn't put in `~/FamilyBrief/plugin` is replaced.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:
