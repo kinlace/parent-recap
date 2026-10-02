@@ -13,7 +13,7 @@ from icalendar import Calendar
 
 from ..config import Config
 from ..state import State
-from .base import CalendarEvent, Message
+from .base import CalendarEvent, Message, retry_once_on_timeout
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +33,8 @@ class FetchError(Exception):
 def _fetch_ics(url: str) -> str:
     host = urlsplit(url).hostname or "the MyClub link"
     try:
-        r = requests.get(url, timeout=30)
+        r = retry_once_on_timeout(lambda: requests.get(url, timeout=30),
+                                  (requests.Timeout,), f"MyClub {host}")
     except Exception as e:
         raise FetchError(f"{host}: {type(e).__name__}") from None
     if r.status_code >= 400:

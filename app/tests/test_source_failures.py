@@ -1,6 +1,7 @@
-"""A Source that fails partway through a night. The real Gmail and Wilma Sources run here, with
-fakes one step further out: the IMAP server and the `wilma` CLI. Assertions are on what leaves the
-system: the model payload, the email's coverage line and persisted state."""
+"""A Source that fails partway through a night, or times out. The real Gmail, Wilma and MyClub
+Sources run here, with fakes one step further out: the IMAP server, the `wilma` CLI and the MyClub
+feed. Assertions are on what leaves the system: the model payload, the email's coverage line and
+persisted state."""
 from __future__ import annotations
 
 import imaplib
@@ -11,14 +12,16 @@ from email.message import EmailMessage
 from typing import Any
 
 import pytest
+import requests
 import time_machine
 
 from conftest import NOW, msg
 
-from family_brief.collectors import gmail, wilma
+from family_brief.collectors import gmail, myclub, wilma
 
 REAL_GMAIL_COLLECT = gmail.collect  # captured before the harness fakes it
 REAL_WILMA_COLLECT = wilma.collect
+REAL_MYCLUB_COLLECT_EVENTS = myclub.collect_events
 
 
 def payload_ids(h, source: str) -> list[str]:
@@ -63,7 +66,7 @@ class FakeImap:
     def __init__(self, bodies: dict[int, bytes | Exception]) -> None:
         self.bodies = bodies
 
-    def __call__(self, *_a: Any) -> "FakeImap":
+    def __call__(self, *_a: Any, **_k: Any) -> "FakeImap":
         return self
 
     def __enter__(self) -> "FakeImap":
@@ -216,3 +219,121 @@ def test_wilma_message_that_cannot_be_read_is_not_marked_seen(harness, real_wilm
     assert payload_ids(harness, "wilma") == ["message:2"]
     [m] = [m for m in harness.model_payload()["messages"] if m["source"] == "wilma"]
     assert m["body"] == "Kaksi"
+
+
+# ── A Source that times out once (slow DNS or network on a Mac just woken up)
+
+class ImapConnections:
+    """IMAP4_SSL that opens each connection in turn from `connections`: a FakeImap, or an
+    exception that connecting raises."""
+
+    def __init__(self, connections: list[FakeImap | Exception]) -> None:
+        self.connections = connections
+
+    def __call__(self, *_a: Any, **_k: Any) -> FakeImap:
+        c = self.connections.pop(0)
+        if isinstance(c, Exception):
+            raise c
+        return c
+
+
+@pytest.mark.parametrize("first", [
+    TimeoutError("timed out"),
+    FakeImap({1: email_bytes(1), 2: TimeoutError("The read operation timed out")}),
+], ids=["connecting", "partway"])
+def test_gmail_timing_out_once_is_read_on_the_second_try(harness, real_gmail, monkeypatch, first):
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", ImapConnections(
+        [first, FakeImap({1: email_bytes(1), 2: email_bytes(2)})]))
+
+    assert harness.run() == 0
+
+    assert payload_ids(harness, "gmail") == ["101", "102"]
+    assert seen(harness, "gmail") == ["101", "102"]
+    [email] = harness.sent
+    assert "Gmail 没读到" not in email.text
+
+
+def test_gmail_timing_out_twice_is_reported_as_not_read(harness, real_gmail, monkeypatch):
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", ImapConnections(
+        [TimeoutError("timed out"), TimeoutError("timed out")]))
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "Gmail 没读到" in email.text
+
+
+@pytest.mark.parametrize("command", [["messages", "list"], ["messages", "read"]])
+def test_wilma_command_timing_out_once_is_run_again(harness, real_wilma, monkeypatch, command):
+    real_wilma([1, 2], {1: "Yksi", 2: "Kaksi"})
+    fake_wilma = subprocess.run
+    timed_out: list[list[str]] = []
+
+    def slow_the_first_time(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
+        if cmd[0] == wilma.WILMA and cmd[1:3] == command and not timed_out:
+            timed_out.append(cmd)
+            raise subprocess.TimeoutExpired(cmd, k["timeout"])
+        return fake_wilma(cmd, *a, **k)
+    monkeypatch.setattr(subprocess, "run", slow_the_first_time)
+
+    assert harness.run() == 0
+
+    assert timed_out
+    assert payload_ids(harness, "wilma") == ["message:1", "message:2"]
+    [email] = harness.sent
+    assert "Wilma 没读到" not in email.text and "Wilma 部分没读到" not in email.text
+
+
+def test_wilma_timing_out_twice_is_reported_as_not_read(harness, real_wilma, monkeypatch):
+    real_wilma([1], {1: "Yksi"})
+    fake_wilma = subprocess.run
+    tries: list[list[str]] = []
+
+    def always_slow(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
+        if cmd[0] == wilma.WILMA and cmd[1:3] == ["messages", "list"]:
+            tries.append(cmd)
+            raise subprocess.TimeoutExpired(cmd, k["timeout"])
+        return fake_wilma(cmd, *a, **k)
+    monkeypatch.setattr(subprocess, "run", always_slow)
+
+    assert harness.run() == 0
+
+    assert len(tries) == 2
+    assert payload_ids(harness, "wilma") == []
+    [email] = harness.sent
+    assert "Wilma 没读到" in email.text
+
+
+ICS = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:training-1
+SUMMARY:Football training
+DTSTART:20260929T150000Z
+DTEND:20260929T163000Z
+END:VEVENT
+END:VCALENDAR
+"""
+
+
+class IcsResponse:
+    status_code, text = 200, ICS
+
+
+def test_myclub_feed_timing_out_once_is_fetched_again(harness, monkeypatch):
+    one_whatsapp_message(harness)
+    monkeypatch.setattr(myclub, "collect_events", REAL_MYCLUB_COLLECT_EVENTS)
+    gets: list[str] = []
+
+    def get(url: str, **_k: Any) -> IcsResponse:
+        gets.append(url)
+        if len(gets) == 1:
+            raise requests.ConnectTimeout("connect timed out")
+        return IcsResponse()
+    monkeypatch.setattr(myclub.requests, "get", get)
+
+    assert harness.run() == 0
+
+    assert len(gets) == 2
+    coverage = json.loads((harness.archive_dir / "2026-09-27.raw.json").read_text())["summary"]["_coverage"]
+    assert coverage["myclub"] == {"count": 1, "error": None}
