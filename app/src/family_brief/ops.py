@@ -351,22 +351,23 @@ def cmd_discover(args: argparse.Namespace) -> int:
                   + ("  [archived]" if g["archived"] else ""))
         return 0
 
-    cfg = Config.load(args.config)
-    if args.what == "gmail-senders":
-        from .collectors import gmail
-        days = args.days or 60
-        rows = gmail.sender_domains(cfg, days=days)
-        print(f"Sender domains in the last {days} days (only senders were read, no message bodies), "
-              "most first:")
-        for dom, n, ex in rows[:60]:
-            print(f"  {n:>4}  {dom:<32} e.g. {ex}")
-        return 0
+    if args.what == "wilma-students":
+        # Needs no config: setup runs it before the household step, to prefill the Kids.
+        from .collectors.wilma import _run_or_log
+        data = _run_or_log(["kids", "list"])
+        print(json.dumps(data, ensure_ascii=False, indent=2) if data is not None
+              else f"{FAIL} not signed in to wilma")
+        return 0 if data is not None else 1
 
-    from .collectors.wilma import _run_or_log
-    data = _run_or_log(["kids", "list"])
-    print(json.dumps(data, ensure_ascii=False, indent=2) if data is not None
-          else f"{FAIL} not signed in to wilma")
-    return 0 if data is not None else 1
+    cfg = Config.load(args.config)
+    from .collectors import gmail
+    days = args.days or 60
+    rows = gmail.sender_domains(cfg, days=days)
+    print(f"Sender domains in the last {days} days (only senders were read, no message bodies), "
+          "most first:")
+    for dom, n, ex in rows[:60]:
+        print(f"  {n:>4}  {dom:<32} e.g. {ex}")
+    return 0
 
 
 # ---------------------------------------------------------------- bg

@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import re
+import sys
 
-from family_brief import ops
-from family_brief.collectors import whatsapp
+from family_brief import __main__ as cli, ops
+from family_brief.collectors import whatsapp, wilma
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
 
@@ -55,3 +56,24 @@ def test_discover_without_whatsapp_access_points_to_bg(harness, monkeypatch, cap
     out = capsys.readouterr().out
     assert "family-brief bg discover whatsapp-chats" in out
     assert not HAN.findall(out)
+
+
+def test_discover_wilma_students_runs_before_any_config_exists(tmp_path, monkeypatch, capsys):
+    # Setup signs in to Wilma before the household step, to prefill the Kids from what Wilma lists.
+    monkeypatch.setattr(wilma, "_run_or_log", lambda args: {"kids": [{"name": "Aino Virtanen"}]})
+    monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(tmp_path / "missing.yaml"),
+                                      "discover", "wilma-students"])
+
+    assert cli.main() == 0
+
+    assert "Aino Virtanen" in capsys.readouterr().out
+
+
+def test_discover_wilma_students_says_when_not_signed_in(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(wilma, "_run_or_log", lambda args: None)
+    monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(tmp_path / "missing.yaml"),
+                                      "discover", "wilma-students"])
+
+    assert cli.main() == 1
+
+    assert "not signed in to wilma" in capsys.readouterr().out
