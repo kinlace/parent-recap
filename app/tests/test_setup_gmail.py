@@ -221,12 +221,16 @@ def test_over_ssh_it_asks_in_a_hidden_terminal_prompt(harness, gmail, terminal, 
     assert_never_leaked(harness, printed, caplog)
 
 
-def test_when_the_dialog_cannot_be_shown_it_asks_in_terminal(harness, gmail, terminal, capsys):
+def test_when_the_dialog_cannot_be_shown_it_asks_in_terminal(harness, gmail, terminal, capsys,
+                                                             caplog):
+    caplog.set_level(logging.DEBUG)
     harness.dialog.button = "fails"
 
     assert harness.cli("setup", "gmail") == 0
 
-    assert result(capsys)[0]["result"] == "saved"
+    res, printed = result(capsys)
+    assert res["result"] == "saved"
+    assert_never_leaked(harness, printed, caplog)
     assert len(terminal["prompts"]) == 1
     assert harness.keychain == {ACCOUNT: APP_PASSWORD}
 
