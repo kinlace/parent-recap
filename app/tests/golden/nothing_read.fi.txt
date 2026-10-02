@@ -1,0 +1,7 @@
+👨‍👩‍👧‍👦 Parent Recap su 27.9.
+
+⚠️ Tänä iltana yhtäkään lähdettä ei voitu lukea, joten yhteenvetoa ei ole. Niiden viestit tulevat ensimmäiseen koosteeseen sen jälkeen, kun ne voidaan taas lukea.
+• Gmail: kirjautuminen epäonnistui. Voit korjata tämän kirjoittamalla Claude-avustajalle ”valtuuta Gmail uudelleen”.
+• MyClub: [Errno 8] nodename nor servname provided, or not known. Jos Mac oli offline-tilassa, tämä korjaantuu itsestään. Jos sama toistuu, kirjoita Claude-avustajalle ”tarkista Parent Recap”.
+• Wilma: wilma: request timed out. Jos Mac oli offline-tilassa, tämä korjaantuu itsestään. Jos sama toistuu, kirjoita Claude-avustajalle ”tarkista Parent Recap”.
+• WhatsApp: macOS ei antanut käyttöoikeutta. Voit korjata tämän kirjoittamalla Claude-avustajalle ”Parent Recap ei pysty lukemaan lähdettä WhatsApp”.

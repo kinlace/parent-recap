@@ -142,9 +142,9 @@ EN = BriefText(
                  "in the first Brief after they can be read again.",
     source_problem="• {source}: {reason}. {fix}",
     fix_login="Tell {assistant} “re-authorize {source}” to fix it.",
-    fix_permission="Tell {assistant} “FamilyBrief can't read {source}” to fix it.",
+    fix_permission="Tell {assistant} “Parent Recap can't read {source}” to fix it.",
     fix_other="If the Mac was offline, this fixes itself. If it happens again, tell {assistant} "
-              "“check FamilyBrief”.",
+              "“check Parent Recap”.",
     fallback_header="⚠️ Tonight's Digest could not be written, so here are the raw messages "
                     "(all of them are in the archive in ~/FamilyBrief):",
     unsorted="Unsorted",
@@ -201,8 +201,8 @@ ZH = BriefText(
     nothing_read="⚠️ 今晚所有信息源都没读到，所以没有摘要。等它们恢复后，这些消息会出现在下一份日报里。",
     source_problem="• {source}：{reason}。{fix}",
     fix_login="跟 {assistant} 说「重新授权 {source}」即可修复。",
-    fix_permission="跟 {assistant} 说「FamilyBrief 读不了 {source}」即可修复。",
-    fix_other="如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 {assistant} 说「检查 FamilyBrief」。",
+    fix_permission="跟 {assistant} 说「Parent Recap 读不了 {source}」即可修复。",
+    fix_other="如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 {assistant} 说「检查 Parent Recap」。",
     fallback_header="⚠️ 今日 LLM 总结失败，以下是原始消息清单（详见 ~/FamilyBrief 归档）：",
     unsorted="未分类",
     fallback_count="（{count}）",
@@ -267,9 +267,9 @@ FI = BriefText(
     source_problem="• {source}: {reason}. {fix}",
     fix_login="Voit korjata tämän kirjoittamalla {assistant}-avustajalle ”valtuuta {source} uudelleen”.",
     fix_permission="Voit korjata tämän kirjoittamalla {assistant}-avustajalle "
-                   "”FamilyBrief ei pysty lukemaan lähdettä {source}”.",
+                   "”Parent Recap ei pysty lukemaan lähdettä {source}”.",
     fix_other="Jos Mac oli offline-tilassa, tämä korjaantuu itsestään. Jos sama toistuu, kirjoita "
-              "{assistant}-avustajalle ”tarkista FamilyBrief”.",
+              "{assistant}-avustajalle ”tarkista Parent Recap”.",
     message_time="{day}.{month}. klo {hour}.{minute:02}",
     translation_failed="⚠️ Tämäniltaista koostetta ei saatu käännettyä, joten tässä se on alkuperäisellä kielellä.",
     action_items="✅ Hoidettavat",

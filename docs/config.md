@@ -82,12 +82,12 @@ For pilot families only. When turned on, the emailed Brief (HTML version) shows 
 
 **Before turning it on, the parents must know and agree that:**
 
-- Clicking ⭐ or ❌ opens a pre-filled Google Form. On submit, the item's text, its Source (Gmail / Wilma / WhatsApp / MyClub), the AI that made the Brief (Claude or Codex), the date, the Household label and the Kid's name are sent to the FamilyBrief team and stored in the team's Google Sheet. The Digest's ❌ sends the Digest (shortened if too long), without Source or Kid. The form also has an optional comment field.
+- Clicking ⭐ or ❌ opens a pre-filled Google Form. On submit, the item's text, its Source (Gmail / Wilma / WhatsApp / MyClub), the AI that made the Brief (Claude or Codex), the date, the Household label and the Kid's name are sent to the Parent Recap team and stored in the team's Google Sheet. The Digest's ❌ sends the Digest (shortened if too long), without Source or Kid. The form also has an optional comment field.
 - Just opening the link without submitting still leaves the item's text, the Kid's name and the Household label in the browser history and Google's access logs, because they are part of the link.
 - Only the item clicked is sent; nothing is sent if nothing is clicked. The rest of the Brief, and the original mail and chat messages, are never sent.
 - It can be turned off at any time (`enabled: false`); the links then disappear from the Brief.
 
-**How to configure it:** the FamilyBrief team generates the whole section with the script in `ops/feedback-form` and sends it to pilot families. Paste it into `config.yaml` as is and change only `household_label`. Set `household_label` to a name the team will recognize, such as `"Virtanen family"`; the feedback sheet uses it to tell Households apart. Don't change `prefill_base_url` or any `entry.` number in `fields`, or the form won't be pre-filled. Without this section, or with `enabled: false`, there are no links.
+**How to configure it:** the Parent Recap team generates the whole section with the script in `ops/feedback-form` and sends it to pilot families. Paste it into `config.yaml` as is and change only `household_label`. Set `household_label` to a name the team will recognize, such as `"Virtanen family"`; the feedback sheet uses it to tell Households apart. Don't change `prefill_base_url` or any `entry.` number in `fields`, or the form won't be pre-filled. Without this section, or with `enabled: false`, there are no links.
 
 Afterwards run `family-brief doctor`: a ⚠️ on the pilot feedback line means a field is missing or `household_label` is empty. `run --dry-run` doesn't build the HTML version, so it doesn't show the links; only the next real Brief confirms that ⭐ / ❌ appear.
 

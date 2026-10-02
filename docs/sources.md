@@ -9,7 +9,7 @@ Each section is written for the agent (Claude or Codex) guiding the user. Every 
 Gmail is used both to **receive** (scanning mail from schools and clubs) and to **send** (mailing the Brief). It uses an App Password; no Google Cloud project is needed.
 
 1. Check that the account has two-step verification on: https://myaccount.google.com/security → "2-Step Verification"
-2. Open https://myaccount.google.com/apppasswords, enter `FamilyBrief` as the app name and click "Create"; you get a 16-character password
+2. Open https://myaccount.google.com/apppasswords, enter `Parent Recap` as the app name and click "Create"; you get a 16-character password
 3. **Terminal**: `$PY ~/FamilyBrief/app/scripts/setup_gmail_imap.py you@gmail.com`, then paste the 16 characters (the input is hidden). The script tests the login and, if it works, saves the password in the Keychain
 4. Back in the agent: `$FB discover gmail-senders` lists the sender domains of the past 60 days (senders only, no message bodies); pick the school, class, club and music school domains together with the user
 
@@ -71,7 +71,7 @@ Note: Wilma only publishes the timetable for about two weeks ahead, so later dat
 After login, the wilma CLI stores the Wilma username and password in `~/.config/wilmai/config.json`. If you chose to save the two-step secret, it's stored there too. The password is only Base64-encoded, **not encrypted**: anyone with this file can recover the password, and two-step verification doesn't stop them. The file's permissions let only the current Mac user read it, and that is its only protection. So:
 
 - Don't sync `~/.config/wilmai` to cloud storage, put it in a dotfiles repository, or copy it to another computer
-- When you stop using FamilyBrief (including at the end of the pilot), delete it:
+- When you stop using Parent Recap (including at the end of the pilot), delete it:
 
   ```bash
   rm -rf ~/.config/wilmai
@@ -114,7 +114,7 @@ Pick one of the two modes at step 9 of setup:
 **google**: `mode: google` writes straight into Google Calendar, removes duplicates, and can invite a partner automatically.
 The plugin doesn't include a Google app. Authorizing needs a Google app file (the JSON of a Desktop OAuth client); either:
 
-- **Pilot families**: use the file the FamilyBrief maintainers sent you separately
+- **Pilot families**: use the file the Parent Recap maintainers sent you separately
 - **Everyone else**: create your own by following [Creating your own Google app](#creating-your-own-google-app) below. If that's too much hassle, use ics mode
 
 1. Save the file to `~/.family/calendar_credentials.json`, readable only by you (`umask 077` makes the copy owner-only from the start):

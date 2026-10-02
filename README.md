@@ -82,9 +82,11 @@ After updating, tell Claude or Codex "upgrade Parent Recap"; it syncs the progra
 - WhatsApp only reads the groups you picked; the database is copied first, read, and the copy deleted
 - Every Brief and the raw data it was built from are archived in `~/FamilyBrief/`
 
+The folders `~/FamilyBrief` and `~/.family` and the `family-brief` command keep the product's earlier name, so families who installed before the rename keep their settings, archive and schedule as they are.
+
 ## Disclaimer
 
-This is an open-source tool made by parents for their own use. It is not affiliated with or endorsed by Visma (Wilma), Eepos, myClub, Meta (WhatsApp) or Google. Wilma is read through the unofficial, community-maintained [wilma CLI](https://github.com/aikarjal/wilmai), not an interface provided by Visma. If a Source stops working, contact the maintainers of FamilyBrief or the wilma CLI, not these companies' customer service.
+This is an open-source tool made by parents for their own use. It is not affiliated with or endorsed by Visma (Wilma), Eepos, myClub, Meta (WhatsApp) or Google. Wilma is read through the unofficial, community-maintained [wilma CLI](https://github.com/aikarjal/wilmai), not an interface provided by Visma. If a Source stops working, contact the maintainers of Parent Recap or the wilma CLI, not these companies' customer service.
 
 How data flows, where each password is stored, and how to report a security problem privately: see [SECURITY.md](SECURITY.md). Licensed under MIT, see [LICENSE](LICENSE).
 

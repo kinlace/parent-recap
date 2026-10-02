@@ -152,6 +152,26 @@ def test_a_stored_table_from_an_older_version_is_translated_again(harness):
     assert "sv:✅ Action Items\n• " in harness.sent[1].text
 
 
+def test_brief_text_stored_under_the_old_name_is_translated_again(harness):
+    # Translated before the product was renamed: its fix lines still say FamilyBrief.
+    old = swedish(json.dumps(dataclasses.asdict(EN)))
+    old["fix_permission"] = "sv:Tell {assistant} “FamilyBrief can't read {source}” to fix it."
+    old["fix_other"] = "sv:If it happens again, tell {assistant} “check FamilyBrief”."
+    stored = harness.home / ".family" / "languages" / "sv.json"
+    stored.parent.mkdir(parents=True)
+    stored.write_text(json.dumps(old, ensure_ascii=False))
+    swedish_partner(harness)
+
+    assert harness.run() == 0
+
+    assert len(harness.model_calls) == 3  # the program text again, then the Brief and its translation
+    assert "keep the emoji, the Markdown (## and **) and the names Gmail" in system_prompt_of(harness.model_calls[0])
+    assert "Parent Recap" in system_prompt_of(harness.model_calls[0])
+    again = json.loads(stored.read_text())
+    assert again["fix_permission"] == "sv:Tell {assistant} “Parent Recap can't read {source}” to fix it."
+    assert "FamilyBrief can't" not in stored.read_text() and "check FamilyBrief" not in stored.read_text()
+
+
 def test_the_model_writes_the_brief_in_a_first_recipient_language_without_a_review(harness):
     normal_night(harness)
     harness.config["email"]["to"] = [PARTNER_SV, "parent@example.com"]
