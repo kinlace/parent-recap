@@ -85,7 +85,7 @@ After login, the wilma CLI stores the Wilma username and password in `~/.config/
 This reads the local database of WhatsApp for Mac; the data never leaves the computer.
 
 1. It needs **WhatsApp** from the App Store (not the old Electron version), linked by scanning the QR code with the phone, with chat history fully synced
-2. **Give the scheduled job permission**: System Settings → Privacy & Security → **App Management** → "+" → press `Cmd+Shift+G`, paste the "real Python path" printed at install → turn the switch on. If App Management isn't in the list, use "Full Disk Access" the same way
+2. **Give the scheduled job permission**: run `$FB app-management`. It selects the scheduled job's Python file in Finder (it sits in a hidden folder) and opens System Settings → Privacy & Security → **App Management**. Drag the file from Finder into the list and turn its switch on. If App Management isn't in the list, use "Full Disk Access" the same way. If the command can't open Finder or System Settings, it prints the two `open` commands to run in Terminal
 3. Run `$FB bg discover whatsapp-chats`; Claude or Codex can run this itself. `bg` reads in the background with the scheduled job's Python, so if step 2 was done right, this works. If "python3.x would like to access data from other apps" pops up, click Allow
 4. Pick the groups about the Kids: class parent groups, teacher groups, team groups, carpool groups, hobby groups, playdate groups. For each group set:
    - `name`: **copied exactly** from the output (the text inside the quotes, keeping trailing spaces, curly quotes ’ and emoji)

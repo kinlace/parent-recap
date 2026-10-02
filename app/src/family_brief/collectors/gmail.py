@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from email.header import decode_header, make_header
 from email.message import EmailMessage
 from email.utils import parseaddr, parsedate_to_datetime
+from typing import Callable
 
 from bs4 import BeautifulSoup
 
@@ -242,9 +243,11 @@ def count_matching(cfg: Config) -> int:
         imap.logout()
 
 
-def sender_domains(cfg: Config, days: int = 60, max_messages: int = 1500) -> list[tuple[str, int, str]]:
+def sender_domains(cfg: Config, days: int = 60, max_messages: int = 1500,
+                   progress: Callable[[int, int], None] | None = None) -> list[tuple[str, int, str]]:
     """Top sender domains over the last N days, from From: headers only. Used during onboarding
-    to help pick the allowlist. Returns (domain, count, one example display name)."""
+    to help pick the allowlist. Returns (domain, count, one example display name).
+    `progress(done, total)` is called after each batch of headers is read."""
     imap, username = _login(cfg)
     try:
         raw = f"newer_than:{days}d -from:{username} -category:promotions -category:social -in:sent -in:drafts"
@@ -252,8 +255,9 @@ def sender_domains(cfg: Config, days: int = 60, max_messages: int = 1500) -> lis
         ids = data[0].split()[-max_messages:] if typ == "OK" and data and data[0] else []
         counts: dict[str, int] = {}
         example: dict[str, str] = {}
-        for i in range(0, len(ids), 200):
-            batch = b",".join(ids[i:i + 200])
+        step = 200
+        for i in range(0, len(ids), step):
+            batch = b",".join(ids[i:i + step])
             typ, rows = imap.fetch(batch, "(BODY.PEEK[HEADER.FIELDS (FROM)])")
             for row in rows or []:
                 if not isinstance(row, tuple):
@@ -264,6 +268,8 @@ def sender_domains(cfg: Config, days: int = 60, max_messages: int = 1500) -> lis
                 dom = addr.rsplit("@", 1)[1].lower()
                 counts[dom] = counts.get(dom, 0) + 1
                 example.setdefault(dom, (name or addr)[:40])
+            if progress:
+                progress(min(i + step, len(ids)), len(ids))
         return sorted(((d, n, example[d]) for d, n in counts.items()), key=lambda t: -t[1])
     finally:
         imap.logout()

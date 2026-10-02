@@ -101,7 +101,7 @@ Follow the "Gmail" section of `PLUGIN/docs/sources.md` to walk the user through 
 ~/FamilyBrief/app/.venv/bin/python ~/FamilyBrief/app/scripts/setup_gmail_imap.py user@gmail.com
 ```
 
-Once it succeeds, you run `$FB discover gmail-senders`, and together with the user pick the domains of the school, teachers, clubs and music school from the list for `gmail.allowlist_domains`. **Don't add public domains like gmail.com or outlook.com**, or private mail gets scanned; for a teacher who uses a private address, add that address alone to `allowlist_senders`.
+Once it succeeds, you run `$FB discover gmail-senders`. It usually takes 1 to 2 minutes and prints how many senders it has read so far; tell the user to wait. Then together with the user pick the domains of the school, teachers, clubs and music school from the list for `gmail.allowlist_domains`. **Don't add public domains like gmail.com or outlook.com**, or private mail gets scanned; for a teacher who uses a private address, add that address alone to `allowlist_senders`.
 
 ### 6. AI login (required)
 
@@ -125,7 +125,7 @@ The second has the Keychain ask twice for the token printed by the first (input 
 Follow the "WhatsApp" section of `sources.md`:
 
 1. Confirm the App Store version of WhatsApp from step 0 is installed and signed in
-2. Have the user add the real Python path noted in step 2 under **System Settings → Privacy & Security → App Management**
+2. You run `$FB app-management`: it selects the scheduled job's Python file in Finder and opens **System Settings → Privacy & Security → App Management**. Have the user drag the file from Finder into the list and turn its switch on. If it says it couldn't open them, give the user the two `open` commands it prints to run in Terminal
 3. You run `$FB bg discover whatsapp-chats`. If a popup says "python3.x would like to access data from other apps", have the user click Allow. If it still can't read, the path added in step 2 is wrong, or it also needs adding to Full Disk Access
 4. Together with the user, pick the groups about the kids, and mark each with its Kid (the Kid's full name, or `both`) and type (class / football / piano …). **Copy group names exactly from the output**; trailing spaces, curly quotes and emoji all have to match.
 5. Write them into `whatsapp.chats` and set `whatsapp.enabled: true`
@@ -177,7 +177,7 @@ With pilot feedback on, the preview shows no ⭐ / ❌; that's expected. Ask the
 $FB schedule install
 ```
 
-Give the `sudo pmset ...` command it prints to the user to run in Terminal themselves, so the Mac wakes 5 minutes before the job starts. Remind the user: on the first scheduled run, if a popup says "python3.x would like to access data from other apps", click Allow.
+If it prints a `sudo pmset ...` command, give it to the user to run in Terminal themselves, so the Mac wakes 5 minutes before the job starts. If it warns that the Mac already has a repeating wake schedule, show the user the schedule it lists and ask before they run the command, since it replaces that schedule. It prints no command when the Mac never sleeps or already wakes at that time. Remind the user: on the first scheduled run, if a popup says "python3.x would like to access data from other apps", click Allow.
 
 ### 15. Wrap-up
 
