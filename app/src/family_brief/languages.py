@@ -17,7 +17,7 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import TypeAdapter, ValidationError
 
-from .brief_text import EN, TEXT, WEEKEND_TEXT, BriefText, Language, Plural, WeekendText
+from .brief_text import EN, PRODUCT_NAME, TEXT, WEEKEND_TEXT, BriefText, Language, Plural, WeekendText
 from .config import Config
 
 log = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ class Table(Generic[T]):
     what: str                    # what the text is in, for the log
     reviewed: dict[Language, T]  # English among them
     file: str                    # the stored translation's file name, with {language}
-    prompt: Template             # the one-time translation's instructions, with $code
+    prompt: Template             # the one-time translation's instructions, with $code (and $product)
 
     @property
     def english(self) -> T:
@@ -74,7 +74,7 @@ WEEKEND: Table[WeekendText] = Table("Weekend Picks", WEEKEND_TEXT, "{language}.w
     """You translate the fixed text of a program that emails a Household its Weekend Picks: family events for the coming weekend in Finland, picked for their kids. Translate every value of the JSON object from English into the language whose code is $code.
 
 1. Reply with one JSON object with exactly the same keys
-2. Keep every {placeholder} in braces exactly as written, and keep the emoji, the Markdown (**), the HTML tags (<b>) and the name FamilyBrief as they are
+2. Keep every {placeholder} in braces exactly as written, and keep the emoji, the Markdown (**), the HTML tags (<b>) and the name $product as they are
 3. Weekend Picks is the name of this email: use the everyday words a parent reading this language would use
 4. No markdown fences, no explanations
 """))
@@ -107,6 +107,8 @@ def _checked_text(english: str, got: Any, name: str = "") -> str:
     found = _placeholders(got)
     if not needs <= found <= may or (name in _DATES and not found & {"month", "month_name"}):
         raise ValueError(f"{got!r} doesn't keep the placeholders of {english!r}")
+    if PRODUCT_NAME in english and PRODUCT_NAME not in got:  # also one stored before the rename
+        raise ValueError(f"{got!r} doesn't keep the name {PRODUCT_NAME}")
     try:  # a placeholder the program can't fill, such as {date:d} for a date's text, would fail on the night
         got.format_map({name: 1 if name in _NUMBERS else "text" for name in _placeholders(got)})
     except (ValueError, IndexError, KeyError) as e:
@@ -164,7 +166,7 @@ def prepare(cfg: Config, language: Language, table: Table = BRIEF) -> None:
     from .summarize import call_llm  # summarize reads program text from here
     log.info("Translating the program's %s text into %s, once", table.what, language)
     reply = call_llm(cfg, json.dumps(dataclasses.asdict(table.english), ensure_ascii=False, indent=2),
-                     table.prompt.substitute(code=language))
+                     table.prompt.substitute(code=language, product=PRODUCT_NAME))
     translated = _checked(reply.data, table.english)
     path = _path(cfg, language, table)
     path.parent.mkdir(parents=True, exist_ok=True)

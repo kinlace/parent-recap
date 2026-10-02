@@ -9,8 +9,8 @@ DTSTART:20261001T060000Z
 DTEND:20261001T110000Z
 DTSTAMP:20260927T180000Z
 UID:aff119a10116db19fcc6@family-brief
-DESCRIPTION:Luokan retki\; mukaan eväät ja sadevarusteet (gmail)\n\n[Fam
- ilyBrief · Mia]
+DESCRIPTION:Luokan retki\; mukaan eväät ja sadevarusteet (gmail)\n\n[Par
+ ent Recap · Mia]
 LOCATION:Nuuksio
 END:VEVENT
 BEGIN:VEVENT
@@ -19,7 +19,8 @@ DTSTART:20260930T143000Z
 DTEND:20260930T153000Z
 DTSTAMP:20260927T180000Z
 UID:92978784c3996c8a2f85@family-brief
-DESCRIPTION:Siirtyy tällä viikolla keskiviikkoon\n\n[FamilyBrief · Leo]
+DESCRIPTION:Siirtyy tällä viikolla keskiviikkoon\n\n[Parent Recap · Leo
+ ]
 LOCATION:Musiikkiopisto
 END:VEVENT
 END:VCALENDAR

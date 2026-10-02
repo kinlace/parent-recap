@@ -46,11 +46,11 @@ def run_weekend_picks(harness, monkeypatch, language: str, candidates: list[Cand
 
 @pytest.mark.parametrize("language, subject, heading, when, free, note", [
     ("en", "Weekend Picks · 2026-09-26 ~ 2026-09-27", "🎪 Weekend Picks (2026-09-26 ~ 2026-09-27)",
-     "Sat 10/03 21:00", "Free", "[From FamilyBrief Weekend Picks. Delete it if you don't want it"),
+     "Sat 10/03 21:00", "Free", "[From Parent Recap Weekend Picks. Delete it if you don't want it"),
     ("zh", "周末活动推荐 · 2026-09-26 ~ 2026-09-27", "🎪 周末活动推荐（2026-09-26 ~ 2026-09-27）",
-     "周六 10/03 21:00", "免费", "[本条来自 FamilyBrief 周末活动推荐"),
+     "周六 10/03 21:00", "免费", "[本条来自 Parent Recap 周末活动推荐"),
     ("fi", "Viikonlopun vinkit · 2026-09-26 ~ 2026-09-27", "🎪 Viikonlopun vinkit (2026-09-26 ~ 2026-09-27)",
-     "la 3.10. klo 21.00", "Maksuton", "[FamilyBriefin viikonlopun vinkki"),
+     "la 3.10. klo 21.00", "Maksuton", "[Parent Recapin viikonlopun vinkki"),
 ])
 def test_weekend_picks_follow_summary_language(harness, monkeypatch, language, subject, heading, when, free, note):
     harness.model_reply = {"picks": [{"ext_id": "le-1", "rank": 1, "why": "puppets"}]}
@@ -112,7 +112,7 @@ def test_each_weekend_picks_recipient_gets_them_in_their_language(harness, monke
     # The shared calendar and the archive get the picks once, as written.
     [event] = harness.calendar.inserted
     assert event["description"].startswith("免费的木偶剧，适合小的")
-    assert "[本条来自 FamilyBrief 周末活动推荐" in event["description"]
+    assert "[本条来自 Parent Recap 周末活动推荐" in event["description"]
     assert "免费的木偶剧" in (harness.home / "FamilyBrief" / "weekend_events" / "2026-09-26.md").read_text()
 
 

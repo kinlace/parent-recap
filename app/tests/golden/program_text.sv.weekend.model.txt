@@ -4,7 +4,7 @@ argv: ["claude", "-p", "--output-format", "json", "--system-prompt", "<system pr
 You translate the fixed text of a program that emails a Household its Weekend Picks: family events for the coming weekend in Finland, picked for their kids. Translate every value of the JSON object from English into the language whose code is sv.
 
 1. Reply with one JSON object with exactly the same keys
-2. Keep every {placeholder} in braces exactly as written, and keep the emoji, the Markdown (**), the HTML tags (<b>) and the name FamilyBrief as they are
+2. Keep every {placeholder} in braces exactly as written, and keep the emoji, the Markdown (**), the HTML tags (<b>) and the name Parent Recap as they are
 3. Weekend Picks is the name of this email: use the everyday words a parent reading this language would use
 4. No markdown fences, no explanations
 
@@ -20,7 +20,7 @@ You translate the fixed text of a program that emails a Household its Weekend Pi
   "place_unknown": "Place unknown",
   "locality": " ({locality})",
   "ranking_failed": "(Ranking failed, so these are the first few in order)",
-  "calendar_note": "[From FamilyBrief Weekend Picks. Delete it if you don't want it; next week's picks learn from what you delete.]",
+  "calendar_note": "[From Parent Recap Weekend Picks. Delete it if you don't want it; next week's picks learn from what you delete.]",
   "translation_failed": "⚠️ This week's Weekend Picks couldn't be translated, so here they are as they were written.",
   "when": "{weekday} {month:02}/{day:02} {hour:02}:{minute:02}"
 }

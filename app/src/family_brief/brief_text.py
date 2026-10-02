@@ -342,7 +342,7 @@ WEEKEND_TEXT: dict[Language, WeekendText] = {  # the reviewed languages
         place_unknown="Place unknown",
         locality=" ({locality})",
         ranking_failed="(Ranking failed, so these are the first few in order)",
-        calendar_note="[From FamilyBrief Weekend Picks. Delete it if you don't want it; "
+        calendar_note="[From Parent Recap Weekend Picks. Delete it if you don't want it; "
                       "next week's picks learn from what you delete.]",
         translation_failed="⚠️ This week's Weekend Picks couldn't be translated, so here they are as they were written.",
         when="{weekday} {month:02}/{day:02} {hour:02}:{minute:02}",
@@ -357,7 +357,7 @@ WEEKEND_TEXT: dict[Language, WeekendText] = {  # the reviewed languages
         place_unknown="地点未知",
         locality="（{locality}）",
         ranking_failed="（LLM 排序失败，按顺序展示前几条）",
-        calendar_note="[本条来自 FamilyBrief 周末活动推荐 — 不想要请直接删除，删除信号会用于下周学习偏好]",
+        calendar_note="[本条来自 Parent Recap 周末活动推荐 — 不想要请直接删除，删除信号会用于下周学习偏好]",
         translation_failed="⚠️ 本周的周末活动推荐没能翻译成功，下面是原文。",
         when="{weekday} {month:02}/{day:02} {hour:02}:{minute:02}",
     ),
@@ -373,7 +373,7 @@ WEEKEND_TEXT: dict[Language, WeekendText] = {  # the reviewed languages
         place_unknown="Paikka ei tiedossa",
         locality=" ({locality})",
         ranking_failed="(Vinkkien lajittelu epäonnistui, joten tässä ovat ensimmäiset vinkit alkuperäisessä järjestyksessä)",
-        calendar_note="[FamilyBriefin viikonlopun vinkki. Poista tapahtuma, jos se ei kiinnosta – "
+        calendar_note="[Parent Recapin viikonlopun vinkki. Poista tapahtuma, jos se ei kiinnosta – "
                       "poistosi huomioidaan ensi viikon vinkeissä.]",
         translation_failed="⚠️ Tämän viikon vinkkejä ei saatu käännettyä, joten tässä ne ovat alkuperäisellä kielellä.",
         when="{weekday} {day}.{month}. klo {hour}.{minute:02}",
