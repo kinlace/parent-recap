@@ -51,7 +51,7 @@ Then find out, in this order:
 3. **Where school mail arrives**: which email address the school, the teachers and the clubs write to. Parent Recap reads and sends with one Gmail account, so school mail has to arrive in that account, or the Briefs come out empty. If it arrives at another address (a work address, Outlook, iCloud, another Gmail), tell the user the gist of "School mail at another address" in `PLUGIN/docs/sources.md`: set up automatic forwarding from that address to the Gmail account, or give the school the Gmail address. Parent Recap can't read a second account itself. Either way, ask which Gmail account Parent Recap will use (the one school mail arrives in, or the one it will be forwarded to) and note it for step 4. If they choose forwarding, they can set it up while setup goes on, and step 13's preview shows whether school mail is arriving.
 4. **WhatsApp groups**: whether the Household has WhatsApp groups about the Kids or their school (class parents, teams, hobbies). If they do, say what reading them needs, before they pick their Sources: WhatsApp for Mac from the App Store (not the old version from WhatsApp's website), installed and linked to the phone that's in those groups, with its chat history synced. It can be done any time before step 7.
 5. **The Sources** (AskUserQuestion, multi-select: Wilma / WhatsApp / MyClub): which to connect. Gmail is required, because the Brief is sent through Gmail. Offer WhatsApp only if they have such groups.
-6. **Weekend Picks**: only if the home city is Helsinki, Espoo or Vantaa, ask whether they want Weekend Picks every Friday. Anywhere else, don't offer them: they come from the event database of those three cities, so they'd have nothing near the Household. Say so in one sentence.
+6. **Weekend Picks**: only if the home city is Helsinki, Espoo, Vantaa or Kauniainen, ask whether they want Weekend Picks every Friday. Anywhere else, don't offer them: they come from the event database of Helsinki, Espoo and Vantaa, so they'd have nothing near the Household. Say so in one sentence.
 
 ### 1. Check the environment
 
@@ -143,7 +143,7 @@ Use AskUserQuestion to have the user pick one of two:
 
 ### 10. Weekend Picks (optional)
 
-Only if the user chose it in step 0, which offers it only in Helsinki, Espoo and Vantaa: ask what each Kid likes and what the parents want the kids to try, and write it into `weekend_events.kid_preferences` and `parent_preferences`; set `regions` by city, as in the city presets; set `enabled: true`. Weekend Picks go to the Brief's Recipients, each in their language, unless the user wants different addresses: then write them in `email.weekend_to`, in the same form as `email.to`, asking each new person's language the same way and running `$FB language <code>` for a new language.
+Only if the user chose it in step 0, which offers it only in Helsinki, Espoo, Vantaa and Kauniainen: ask what each Kid likes and what the parents want the kids to try, and write it into `weekend_events.kid_preferences` and `parent_preferences`; set `regions` to the home city's Weekend Picks regions in "City presets" in `PLUGIN/docs/config.md`; set `enabled: true`. Weekend Picks go to the Brief's Recipients, each in their language, unless the user wants different addresses: then write them in `email.weekend_to`, in the same form as `email.to`, asking each new person's language the same way and running `$FB language <code>` for a new language.
 
 ### 11. Pilot feedback (pilot families only)
 

@@ -138,7 +138,7 @@ At https://console.cloud.google.com, with your own Google account (menu names ma
 5. Under "Clients", create an OAuth client of type **Desktop app** and download the JSON file
 6. Go back to step 1 of [Calendar](#calendar) above, save the file and authorize
 
-## Weekend Picks (optional, Helsinki, Espoo and Vantaa only)
+## Weekend Picks (optional, Helsinki, Espoo, Vantaa and Kauniainen only)
 
 Every Friday, 12 weekend events suitable for kids, at most €20 per person, are picked from the public event database of Helsinki / Espoo / Vantaa (Linked Events) and emailed as recommendations.
 

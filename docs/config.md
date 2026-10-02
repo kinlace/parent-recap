@@ -10,11 +10,11 @@ For a full example see `app/config.example.yaml`. The config file lives at `~/.f
 | Helsinki (city schools)              | helsinki.inschool.fi   | `hel.fi`                 | Helsinki, Espoo, Vantaa |
 | Helsinki (private and state schools) | yvkoulut.inschool.fi   | The school's own domain  | Helsinki, Espoo, Vantaa |
 | Vantaa                               | vantaa.inschool.fi     | `vantaa.fi`              | Vantaa, Helsinki, Espoo |
-| Kauniainen                           | kauniainen.inschool.fi | `kauniainen.fi`          | Not offered             |
+| Kauniainen                           | kauniainen.inschool.fi | `kauniainen.fi`          | Espoo, Helsinki         |
 
 The allowlist is only a starting point. Always run `family-brief discover gmail-senders` to add the domains the Kids actually get mail from: music schools (such as `emo.fi` in Espoo), sports clubs, hobby classes. Gmail's `from:espoo.fi` also matches subdomains such as `edu.espoo.fi`.
 
-Weekend Picks come from the event database of Helsinki, Espoo and Vantaa (Linked Events), so setup offers them only to families in those three cities.
+Weekend Picks come from the event database of Helsinki, Espoo and Vantaa (Linked Events), so setup offers them only to families in those three cities and in Kauniainen. Kauniainen sits inside Espoo, and its families go to Espoo and Helsinki events.
 
 ### Cities without a preset
 
