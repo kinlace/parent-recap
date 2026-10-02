@@ -13,6 +13,7 @@ from typing import Callable
 
 from bs4 import BeautifulSoup
 
+from .. import install_record
 from ..config import Config
 from ..state import State
 from ..utils import keychain
@@ -36,6 +37,7 @@ def get_app_password(username: str) -> str | None:
 
 def store_app_password(username: str, password: str) -> None:
     keychain.set_(_keychain_account(username), password)
+    install_record.add("keychain", _keychain_account(username))
 
 
 def _decode(value: str | None) -> str:

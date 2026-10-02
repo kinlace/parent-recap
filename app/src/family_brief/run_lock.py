@@ -8,6 +8,7 @@ from __future__ import annotations
 import fcntl
 import logging
 from contextlib import contextmanager
+from pathlib import Path
 from typing import IO, Callable, Iterator
 
 from .config import Config
@@ -21,9 +22,26 @@ class Busy(Exception):
     pass
 
 
+def lock_path(cfg: Config) -> Path:
+    return cfg.resolved_state_path().with_name("run.lock")
+
+
+def is_busy(cfg: Config) -> bool:
+    """Whether a run holds the lock right now. Never creates the lock file."""
+    path = lock_path(cfg)
+    if not path.exists():
+        return False
+    with path.open("a") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+    return False  # closing the file let go of the lock
+
+
 def _take(cfg: Config) -> IO[str] | None:
     """The open lock file, now locked, or None if another run holds it."""
-    path = cfg.resolved_state_path().with_name("run.lock")
+    path = lock_path(cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
     f = path.open("a")
     try:

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Install or update FamilyBrief into ~/FamilyBrief/app.
-# Safe to re-run: never touches ~/.family (config, tokens) or Keychain.
+# Safe to re-run: never touches the config, tokens or Keychain. It only adds what it creates to
+# setup's record (~/.family/install-record.json), so `family-brief uninstall` can remove it.
 set -euo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,6 +34,10 @@ echo "${VERSION:-unknown}" > "$APP/VERSION"
 [ -x "$APP/.venv/bin/python" ] || "$PY" -m venv "$APP/.venv"
 "$APP/.venv/bin/pip" install -q --upgrade pip >/dev/null 2>&1
 "$APP/.venv/bin/pip" install -q -e "$APP"
+RECORD=("$APP/.venv/bin/python" -m family_brief.install_record)
+"${RECORD[@]}" program "$APP" logs "$TARGET/logs"
+# The copy of the plugin a Codex install runs from; Claude Code manages its own copy.
+if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_ROOT"; fi
 
 # --codex: also install the two skills for Codex, which reads user skills from ~/.agents/skills.
 # They get unique names, Codex's $skill syntax, and a note saying where this plugin folder is.
@@ -55,6 +60,8 @@ for name in ("setup", "manage"):
     out.write_text(head + sep + title + note + rest)
     print(f"✅ Codex skill installed: ${out.parent.name}")
 PY
+  "${RECORD[@]}" codex-skill "$HOME/.agents/skills/parent-recap-setup" \
+    codex-skill "$HOME/.agents/skills/parent-recap-manage"
 fi
 
 REAL_PY=$("$APP/.venv/bin/python" -c 'import os, sys; print(os.path.realpath(sys.executable))')
