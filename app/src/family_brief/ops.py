@@ -3,6 +3,7 @@
 doctor   — check every configured connection; prints status + counts only, never message content
 discover — list candidate Gmail sender domains / WhatsApp group names / Wilma students
 schedule — install, remove or inspect the launchd jobs
+app-management — show the scheduled job's Python in Finder and open App Management, to grant WhatsApp
 bg       — run any of the above (or run/collect) as a one-off launchd job, for WhatsApp access
 """
 from __future__ import annotations
@@ -12,6 +13,7 @@ import json
 import os
 import plistlib
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -29,6 +31,7 @@ LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
 JOB_DAILY = "com.family.brief"
 JOB_WEEKEND = "com.family.weekend-events"
 BG_ENV = "FAMILY_BRIEF_BG"  # set inside `bg` jobs so doctor doesn't recurse
+APP_MANAGEMENT_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles"
 
 
 def register(sub) -> None:
@@ -45,6 +48,10 @@ def register(sub) -> None:
     psch = sub.add_parser("schedule", help="Install / remove / inspect the launchd jobs")
     psch.add_argument("action", choices=["install", "uninstall", "status"])
     psch.set_defaults(func=cmd_schedule)
+
+    pam = sub.add_parser("app-management", help="Show the scheduled job's Python in Finder and open "
+                         "App Management, so you can drag it in for WhatsApp")
+    pam.set_defaults(func=cmd_app_management)
 
     pbg = sub.add_parser("bg", help="Run a family-brief command as a one-off launchd job "
                                     "(same Python and macOS permissions as the scheduled job)")
@@ -226,9 +233,9 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
                 + " (checked with the scheduled job's Python)")
         return
     if err == whatsapp.NO_ACCESS:
-        err = ("the scheduled job's Python can't read WhatsApp yet: add the Python path from the "
-               "last line to System Settings → Privacy & Security → App Management, and if that's "
-               "not enough, to Full Disk Access too")
+        err = ("the scheduled job's Python can't read WhatsApp yet: run family-brief "
+               "app-management and drag the Python file it shows into System Settings → Privacy & "
+               "Security → App Management, and if that's not enough, into Full Disk Access too")
     if err:
         add(FAIL, "WhatsApp", err)
         return
@@ -362,11 +369,34 @@ def cmd_discover(args: argparse.Namespace) -> int:
     cfg = Config.load(args.config)
     from .collectors import gmail
     days = args.days or 60
-    rows = gmail.sender_domains(cfg, days=days)
+    print(f"Reading the senders of the last {days} days of mail. This usually takes 1 to 2 "
+          "minutes; the count below goes up as it reads.", flush=True)
+    rows = gmail.sender_domains(
+        cfg, days=days, progress=lambda done, total: print(f"  read {done} of {total} senders",
+                                                           flush=True))
     print(f"Sender domains in the last {days} days (only senders were read, no message bodies), "
           "most first:")
     for dom, n, ex in rows[:60]:
         print(f"  {n:>4}  {dom:<32} e.g. {ex}")
+    return 0
+
+
+# ---------------------------------------------------------------- app-management
+
+def cmd_app_management(args: argparse.Namespace) -> int:
+    # The real Python sits in a hidden folder, so finding it with ⌘⇧G is hard. Selecting it in
+    # Finder next to the open pane leaves the family one drag.
+    python = os.path.realpath(sys.executable)
+    commands = [["open", "-R", python], ["open", APP_MANAGEMENT_URL]]
+    failed = [c for c in commands if subprocess.run(c, capture_output=True).returncode != 0]
+    print(f"The scheduled job's Python is {python}")
+    if failed:
+        print(f"{WARN}Couldn't open Finder or System Settings from here. Run this in Terminal:")
+        for c in failed:
+            print(f"  {shlex.join(c)}")
+    print("In Finder that Python file is selected. Drag it into the list in System Settings → "
+          "Privacy & Security → App Management, then turn its switch on. If App Management isn't "
+          "in the list, drag it into Full Disk Access the same way.")
     return 0
 
 
@@ -507,6 +537,50 @@ def _unload(label: str) -> None:
         path.unlink()
 
 
+def _pmset(*args: str) -> str:
+    try:
+        return subprocess.run(["pmset", *args], capture_output=True, text=True).stdout
+    except OSError:
+        return ""
+
+
+def _repeating_wakes(sched: str) -> list[str]:
+    """The lines under "Repeating power events:" in `pmset -g sched`, which `pmset repeat` replaces."""
+    lines: list[str] = []
+    inside = False
+    for line in sched.splitlines():
+        if not line.startswith((" ", "\t")):
+            inside = line.strip() == "Repeating power events:"
+        elif inside and line.strip():
+            lines.append(line.strip())
+    return lines
+
+
+def _print_wake_advice(hour: int, minute: int) -> None:
+    sleeps = re.findall(r"^\s*sleep\s+(\d+)", _pmset("-g", "custom"), re.M)
+    if sleeps and all(s == "0" for s in sleeps):
+        print("\nThis Mac never sleeps (sleep 0 in pmset), so it needs no wake schedule.")
+        return
+    wake_h, wake_m = divmod(hour * 60 + minute - 5, 60)
+    wake_h %= 24
+    wake_12h = f"{wake_h % 12 or 12}:{wake_m:02d}{'am' if wake_h < 12 else 'pm'}"  # as pmset prints it
+    our_wake = re.compile(rf"wake.*(?<!\d)({wake_12h}|{wake_h}:{wake_m:02d}).*everyday")
+    existing = _repeating_wakes(_pmset("-g", "sched"))
+    if any(our_wake.search(line.lower().replace(" ", "")) for line in existing):
+        print(f"\nThe Mac already wakes at {wake_h:02d}:{wake_m:02d} every day, before the job starts.")
+        return
+    print("\nScheduled jobs don't run while the Mac is asleep.")
+    if existing:
+        print(f"{WARN}This Mac already has a repeating wake schedule, and the command below "
+              "replaces it:")
+        for line in existing:
+            print(f"  {line}")
+        print("If something else needs that schedule, skip the command; the Brief then only "
+              f"comes on nights the Mac is awake at {hour:02d}:{minute:02d}.")
+    print("Run this once in Terminal (it asks for your Mac password):\n"
+          f"  sudo pmset repeat wakeorpoweron MTWRFSU {wake_h:02d}:{wake_m:02d}:00")
+
+
 def cmd_schedule(args: argparse.Namespace) -> int:
     cfg = Config.load(args.config)
     log_dir = cfg.archive.resolved_dir() / "logs"
@@ -525,10 +599,7 @@ def cmd_schedule(args: argparse.Namespace) -> int:
             print(f"{OK} Weekend Picks: every Friday at {sc.weekend_hour:02d}:00")
         else:
             _unload(JOB_WEEKEND)
-        wake_h, wake_m = divmod(sc.daily_hour * 60 + sc.daily_minute - 5, 60)
-        print(f"\nScheduled jobs don't run while the Mac is asleep. Run this once in Terminal "
-              f"(it asks for your Mac password):\n"
-              f"  sudo pmset repeat wakeorpoweron MTWRFSU {wake_h % 24:02d}:{wake_m:02d}:00")
+        _print_wake_advice(sc.daily_hour, sc.daily_minute)
         return 0
 
     if args.action == "uninstall":
