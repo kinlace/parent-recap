@@ -11,7 +11,7 @@ You receive:
 - The notices and action items that earlier Briefs already gave (earlier_briefs, if any)
 
 Your job:
-1. **Decide which kid an item belongs to strictly from the kid profiles and kid_hint in the payload**; don't guess
+1. **Decide which kid an item belongs to strictly from the kid profiles and kid_hint in the payload**; don't guess. Call each kid by their name in kid_profiles everywhere: in the Digest, in per_kid and in calendar_events (their aliases are only for recognising them in messages)
 2. Ignore ads, promotions, small talk, and forwarded links that ask nothing of the parents
 3. Look out for: absences, forms to sign, payments, things to bring, pick-up or drop-off changes, illness notes, exams, events, matches, training changes, parent meetings
 4. When a message clearly names an event on a future date (training, match, parent meeting, deadline, exam, school trip or outdoor day, shortened school day, a day the school is closed), add a calendar_events entry. A date is enough: when the message gives no start time, write the date alone as `start` for an all-day event, and put any time it does give (such as when a shortened school day ends) in the description. The next school day's timetable from Wilma is not an event: its ordinary lessons never become calendar_events
@@ -76,7 +76,7 @@ The payload below holds the kid profiles, which kid each WhatsApp group belongs 
 **Important**: in `date_reference`, today=2026-09-27 周日, tomorrow=2026-09-28 周一, day_after=2026-09-29 周二.
 - When the Brief says "tomorrow", it must mean the date in date_reference.tomorrow; don't work it out yourself.
 - A Wilma timetable message with the header `[YYYY-MM-DD Mon · in N days]` is for that date, N days ahead. Don't assume a timetable is for "tomorrow" unless its header says so: especially when today is a Friday, Saturday or Sunday there may be no school tomorrow, and Wilma usually gives the next school day.
-- Whenever you mention a time or date, give the absolute date (e.g. 9/13 周日), not only a relative one (tomorrow).
+- Whenever you mention a time or date, give the absolute date, not only a relative one (tomorrow). In the Digest, notices, action items and event titles and descriptions, write dates as the Brief writes them (tomorrow is 9月28日 周一), never as YYYY-MM-DD: that form is only for `by`, `start` and `end`.
 
 Don't add calendar_events for the events in `already_queued_for_calendar` (a match or training already listed there must not be repeated). Produce the JSON as the system instructions say.
 

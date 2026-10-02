@@ -1,7 +1,7 @@
 """The eval's deterministic scoring: a model summary checked against a case's expectations."""
 from __future__ import annotations
 
-from family_brief.eval.score import aggregate, score_case
+from family_brief.eval.score import aggregate, is_clean, score_case
 
 TZ = "Europe/Helsinki"
 
@@ -84,6 +84,17 @@ def test_citations_and_a_missing_summary():
     failed = score_case({"action_items": [{"what": ["x"]}], "calendar_events": [{"title": ["y"]}]}, None, TZ)
     assert failed["actions"]["expected"] == 1 and failed["actions"]["predicted"] == 0
     assert failed["events"]["expected"] == 1
+
+
+def test_a_date_written_as_yyyy_mm_dd_in_the_brief_text_is_counted():
+    got = summary([kid("Aino", notices=["Historian koe ke 7.10.", "考试在 2026-10-07"],
+                       actions=[("Sign by 2026-10-06", "2026-10-06")])])
+    got["message_digest"] = "**Aino**\n- 10月7日 周三 历史考试\n- Exam on 2026-10-07"
+    s = score_case({}, got, TZ)
+    assert s["dates"] == {"texts": 6, "iso": 3}  # the Digest's three lines, two notices and an action
+    s.update(valid_json=True)
+    assert not is_clean(s)
+    assert aggregate([s])["dates_as_written"] == 0.5
 
 
 def test_aggregate_pools_counts_across_cases():

@@ -17,7 +17,8 @@ def _expand(p: str | None) -> str | None:
 
 
 class Kid(BaseModel):
-    name: str
+    name: str                           # ideally as Wilma spells it
+    everyday_name: str | None = None    # what the Brief calls the Kid everywhere, or else the name
     aliases: list[str] = Field(default_factory=list)
     grade: int | None = None
     class_name: str | None = None
@@ -27,8 +28,12 @@ class Kid(BaseModel):
     wilma_username: str | None = None
     myclub_ical_url: str | None = None
 
+    def called(self) -> str:
+        """The name the Brief calls this Kid by everywhere."""
+        return self.everyday_name or self.name
+
     def match_terms(self) -> list[str]:
-        return [self.name, *self.aliases]
+        return [self.name, *([self.everyday_name] if self.everyday_name else []), *self.aliases]
 
 
 class GmailConfig(BaseModel):
@@ -238,6 +243,15 @@ class Config(BaseModel):
     def weekend_recipients_by_language(self) -> dict[Language, list[str]]:
         """Weekend Picks' addresses grouped by the language they read, the first Recipient's first."""
         return self._by_language(self.weekend_recipients())
+
+    def kid_called(self, name: str | None) -> str | None:
+        """What the Brief calls the Kid known by `name`, any of their names in any case. Anything
+        else, such as the Household or no Kid, is left as it is."""
+        wanted = (name or "").strip().casefold()
+        for k in self.kids:
+            if wanted in (term.casefold() for term in k.match_terms()):
+                return k.called()
+        return name
 
     def default_sources(self) -> list[str]:
         sources = ["gmail"]

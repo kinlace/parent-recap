@@ -764,6 +764,64 @@ def test_dates_and_times_are_written_the_way_the_language_writes_them(harness, l
     assert due in email.html and "2026-09-28" not in email.html
 
 
+@pytest.mark.parametrize("language, tomorrow", [("en", "Mon 28 Sep"), ("zh", "9月28日 周一"), ("fi", "ma 28.9.")])
+def test_the_model_is_asked_to_write_dates_the_way_the_brief_does(harness, language, tomorrow):
+    normal_night(harness, language)
+
+    assert harness.run() == 0
+
+    prompt = harness.model_prompt()
+    assert f"as the Brief writes them (tomorrow is {tomorrow})" in prompt
+    assert "never as YYYY-MM-DD" in prompt
+
+
+def test_a_translation_writes_dates_the_way_its_language_does(harness):
+    two_languages(harness)
+
+    assert harness.run() == 0
+
+    instructions = system_prompt_of(harness.model_calls[1])
+    assert "Keep names, times, amounts" in instructions and "Keep names, dates" not in instructions
+    assert "the way English writes them in the text, such as Mon 28 Sep" in instructions
+
+
+@pytest.mark.parametrize("language, items", [
+    ("en", ["• Sign the retki permission slip in Wilma (Mia) · by Tue 29 Sep · Either",
+            "• Get Leo's photo-day clothes ready <neat> (Leo) · by Wed 30 Sep · Dad"]),
+    ("zh", ["• 在 Wilma 签远足同意书 (Mia) · by 9月29日 周二 · 任一"]),
+    ("fi", ["• Allekirjoita reissuvihko (Mia) · viimeistään ma 28.9. · Äiti"]),
+])
+def test_the_plain_text_lists_the_action_items(harness, language, items):
+    normal_night(harness, language)
+
+    assert harness.run() == 0
+
+    text = harness.sent[0].text
+    for item in items:
+        assert item in text
+    assert "邮箱归档" not in text and "details in the email" not in text
+
+
+def test_a_kid_has_one_name_across_the_brief(harness):
+    normal_night(harness, "en")
+    mia = harness.config["kids"][0]
+    mia.update(name="Virtanen Mia Sofia", everyday_name="Mia")  # name as Wilma spells it
+    harness.sources["myclub"][0][0].kid = "Virtanen Mia Sofia"
+    reply = harness.model_reply
+    reply["per_kid"][0]["kid"] = "Virtanen Mia Sofia"
+    reply["calendar_events"][0]["kid"] = "virtanen mia sofia"
+
+    assert harness.run() == 0
+
+    [profile, _] = harness.model_payload()["kid_profiles"]
+    assert profile["name"] == "Mia" and "Virtanen Mia Sofia" in profile["aliases"]
+    assert "each kid by their name in kid_profiles" in system_prompt_of(harness.model_calls[0])
+    [email] = harness.sent
+    for body in (email.text, email.html):
+        assert "virtanen" not in body.casefold()
+        assert "(Mia)" in body
+
+
 def test_a_due_date_the_program_cant_read_is_shown_as_written(harness):
     normal_night(harness, "en")
     harness.model_reply["per_kid"][0]["action_items"][0]["by"] = "end of term"

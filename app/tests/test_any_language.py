@@ -53,14 +53,14 @@ def test_recipient_without_a_reviewed_language_gets_program_text_in_it(harness, 
 
     zh, sv = harness.sent
     assert sv.to == ["partner@example.com"]
-    assert "sv:✅ Action Items: 3 (details in the email)" in sv.text
+    assert "sv:✅ Action Items\n• " in sv.text
     assert "sv:📥 Read tonight: Gmail sv:2 messages · MyClub sv:1 event" in sv.text
     assert "<h3>sv:✅ Action Items</h3>" in sv.html
     # Dates come in the translated format, built from its own weekday and month names.
     assert "Sign the reissuvihko<small style='color:#666'> (Mia) · sv:by sv:sv:Mon 28 sv:Sep · sv:Mom · WhatsApp" \
            "</small>" in sv.html
     assert "Parent Recap sv:sv:Sun 27 sv:Sep" in sv.text and "sv:sv:Thu 1 sv:Oct 09:00" in sv.text
-    assert "✅ 待办 3 项" in zh.text
+    assert "✅ 待办\n• " in zh.text
     program_text, _, translate = harness.model_calls
     golden("program_text.sv.model.txt", model_call_for_golden(program_text.argv, program_text.stdin))
     assert "from Simplified Chinese into Swedish" in system_prompt_of(translate)
@@ -93,7 +93,7 @@ def test_stored_program_text_is_reused_without_another_model_call(harness):
         assert harness.run() == 0
 
     assert len(harness.model_calls) == 3 + 2  # the second night only summarizes and translates
-    assert "sv:✅ Action Items: 3" in harness.sent[-1].text
+    assert "sv:✅ Action Items\n• " in harness.sent[-1].text
 
 
 def unfillable_placeholder(prompt: str) -> dict:
@@ -123,7 +123,7 @@ def test_failed_program_text_translation_is_english_tonight_and_tried_again(harn
     assert harness.run() == 0
 
     zh, sv = harness.sent
-    assert "✅ Action Items: 3 (details in the email)" in sv.text and "sv:" not in sv.text
+    assert "✅ Action Items\n• " in sv.text and "sv:" not in sv.text
     assert "Parent Recap Sun 27 Sep" in sv.text and "by Mon 28 Sep" in sv.html  # English dates too
     assert not (harness.home / ".family" / "languages" / "sv.json").exists()
     # The translation still asks for Swedish, by its code.
@@ -133,7 +133,7 @@ def test_failed_program_text_translation_is_english_tonight_and_tried_again(harn
     with time_machine.travel(NOW + timedelta(days=1), tick=False):
         assert harness.run() == 0
     assert len(harness.model_calls) == 3 + 3
-    assert "sv:✅ Action Items: 3" in harness.sent[-1].text
+    assert "sv:✅ Action Items\n• " in harness.sent[-1].text
 
 
 def test_a_stored_table_from_an_older_version_is_translated_again(harness):
@@ -149,7 +149,7 @@ def test_a_stored_table_from_an_older_version_is_translated_again(harness):
 
     assert len(harness.model_calls) == 3  # the program text again, then the Brief and its translation
     assert json.loads(stored.read_text())["due"] == "sv:by {date}"
-    assert "sv:✅ Action Items: 3" in harness.sent[1].text
+    assert "sv:✅ Action Items\n• " in harness.sent[1].text
 
 
 def test_the_model_writes_the_brief_in_a_first_recipient_language_without_a_review(harness):
@@ -178,7 +178,7 @@ def test_reviewed_finnish_replaces_a_stored_best_effort_table(harness):
     assert harness.run() == 0
 
     [email] = harness.sent
-    assert "✅ Hoidettavaa: 3 (tarkemmin sähköpostissa)" in email.text and "sv:" not in email.text
+    assert "✅ Hoidettavat\n• " in email.text and "sv:" not in email.text
     assert len(harness.model_calls) == 1
 
 
@@ -206,7 +206,7 @@ def test_a_translation_into_finnish_has_no_finnish_words_to_keep(harness):
     assert "keep the key Finnish words as written" in system_prompt_of(summarize)  # the Chinese Brief keeps them
     instructions = system_prompt_of(translate)
     assert "into Finnish" in instructions and "Finnish words" not in instructions
-    assert "\n2. Keep names, dates, times" in instructions
+    assert "\n2. Keep names, times" in instructions
 
 
 def test_language_command_translates_the_program_text_once(harness, capsys):
