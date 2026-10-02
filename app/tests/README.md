@@ -18,6 +18,9 @@ command line.
 `test_setup_wilma.py` runs `family-brief setup wilma` against a fake `wilma` CLI and a Terminal
 that runs the sign-in script at once, and checks the Kids, the city from every preset Wilma
 address and that the Wilma password never reaches the output.
+`test_setup_claude.py` runs `family-brief setup claude` against a fake Terminal, macOS dialog,
+Keychain and `claude` test call, and checks the token never reaches the output, the logs or a
+command line. `test_setup_claude_token.py` keeps the older Terminal script working.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:

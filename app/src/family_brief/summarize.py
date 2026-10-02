@@ -271,6 +271,43 @@ def _kc_get(account: str) -> str | None:
     return None
 
 
+def _sessionless_env() -> dict[str, str]:
+    # Started from inside a Claude Code session (setup preview, doctor), the parent's session
+    # variables would make the child think it is part of that session. Only auth is kept.
+    return {k: v for k, v in os.environ.items()
+            if k == "CLAUDE_CODE_OAUTH_TOKEN"
+            or not (k == "CLAUDECODE" or k.startswith(("CLAUDE_CODE_", "CLAUDE_AGENT_SDK_")))}
+
+
+def claude_token_env(token: str) -> dict[str, str]:
+    """Env for the `claude` CLI that signs in with the subscription token and nothing else."""
+    env = _sessionless_env()
+    env["CLAUDE_CODE_OAUTH_TOKEN"] = token
+    # Make sure no conflicting auth wins
+    env.pop("ANTHROPIC_API_KEY", None)
+    env.pop("ANTHROPIC_AUTH_TOKEN", None)
+    env.pop("ANTHROPIC_BASE_URL", None)
+    return env
+
+
+def claude_test_call(program: str, env: dict[str, str]) -> str | None:
+    """Makes one small call with `claude`, as doctor and setup check it. Returns None when it
+    worked, otherwise what went wrong."""
+    try:
+        # Skip user settings like the nightly call does, so the check sees what the nightly run sees.
+        proc = subprocess.run([program, "-p", "Reply with just the two letters OK",
+                               "--output-format", "json", "--setting-sources", "",
+                               "--no-session-persistence"],
+                              capture_output=True, text=True, timeout=120, env=env,
+                              stdin=subprocess.DEVNULL)
+        data = json.loads(proc.stdout or "{}")
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        return str(e)
+    if data.get("is_error") or proc.returncode != 0:
+        return str(data.get("result") or proc.stderr)
+    return None
+
+
 def _claude_env() -> tuple[dict[str, str], str]:
     """Build env for `claude` CLI. Prefer subscription OAuth over API key.
 
@@ -279,19 +316,10 @@ def _claude_env() -> tuple[dict[str, str], str]:
       - "keychain-api-key" → ANTHROPIC_API_KEY (paid API)
       - "inherited"        → fall through to whatever the parent process set
     """
-    # Started from inside a Claude Code session (setup preview, doctor), the parent's session
-    # variables would make the child think it is part of that session. Only auth is kept.
-    env = {k: v for k, v in os.environ.items()
-           if k == "CLAUDE_CODE_OAUTH_TOKEN"
-           or not (k == "CLAUDECODE" or k.startswith(("CLAUDE_CODE_", "CLAUDE_AGENT_SDK_")))}
     oauth = _kc_get("claude-oauth-token")
     if oauth:
-        env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth
-        # Make sure no conflicting auth wins
-        env.pop("ANTHROPIC_API_KEY", None)
-        env.pop("ANTHROPIC_AUTH_TOKEN", None)
-        env.pop("ANTHROPIC_BASE_URL", None)
-        return env, "keychain-oauth"
+        return claude_token_env(oauth), "keychain-oauth"
+    env = _sessionless_env()
     api_key = _kc_get("anthropic-api-key")
     if api_key:
         env["ANTHROPIC_API_KEY"] = api_key
