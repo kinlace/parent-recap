@@ -54,6 +54,16 @@ class State:
         self._data["source_caught_up_at"] = pinned
         self._data["caught_up_at"] = datetime.now(timezone.utc).isoformat()
 
+    def delivered_at(self, address: str) -> datetime | None:
+        """When a Brief last went out to `address`."""
+        v = self._data.get("brief_delivered_at", {}).get(address.lower())
+        return datetime.fromisoformat(v) if v else None
+
+    def mark_delivered_now(self, addresses: Iterable[str]) -> None:
+        delivered = self._data.setdefault("brief_delivered_at", {})
+        for address in addresses:
+            delivered[address.lower()] = datetime.now(timezone.utc).isoformat()
+
     def forget_new_seen_messages(self, source: str | None = None) -> None:
         """Undo the seen marks made since loading, for one Source or all of them, so the next run
         collects those Messages again."""

@@ -665,12 +665,14 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
                     attachments=attachments,
                 )
                 email_sent = delivered = True
+                state.mark_delivered_now(v.to)
             except Exception as e:
                 log.error("email send failed: %s", e)
     if cfg.imessage.enabled:
         try:
             imessage.send(cfg.imessage.recipients, body)
             delivered = True
+            state.mark_delivered_now(cfg.imessage.recipients)
         except Exception as e:
             log.error("imessage send failed: %s", e)
 

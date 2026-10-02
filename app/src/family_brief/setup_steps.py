@@ -11,6 +11,7 @@ setup whatsapp — read WhatsApp through a `bg` job; when the scheduled job's Py
                  the chats with a hint on those that look like they're about a Kid
 setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, download it once,
                save it in the owner-only config
+setup status — whether setup is done (in setup_status.py)
 
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
@@ -111,6 +112,9 @@ def register(sub) -> None:
     pmyclub.add_argument("--no-open", action="store_true",
                          help="Don't open MyClub's page again, only ask for the link")
     pmyclub.set_defaults(func=cmd_myclub)
+
+    from . import setup_status
+    setup_status.register(steps)
 
 
 def _report(result: str, next_: str | None = None, **extra: Any) -> int:

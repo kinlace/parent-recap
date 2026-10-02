@@ -181,6 +181,12 @@ If it prints a `sudo pmset ...` command, give it to the user to run in Terminal 
 
 ### 15. Wrap-up
 
+```bash
+$FB setup status
+```
+
+It prints one line of JSON: `result` is `done` only when all five outcomes are true (the program installed, doctor all OK, the first Brief sent to every Recipient, the nightly job loaded, the wake schedule set or the Mac never sleeping). For each outcome with `ok: false`, do what its `reason` says and run it again. Setup is done only when it says `done` and the user knows the sixth: after the Mac restarts, such as after a macOS update, they must log in once, or no Brief comes until they do.
+
 Tell the user:
 
 - What time the Brief is sent each day, and what time Weekend Picks are sent each Friday
