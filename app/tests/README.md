@@ -10,8 +10,8 @@ python -m pytest                     # whole suite
 `test_nightly_run.py` runs the real `family-brief run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.
-`test_source_failures.py` runs the real Gmail and Wilma Sources against a fake IMAP server and
-`wilma` CLI, for a Source that fails partway through a night.
+`test_source_failures.py` runs the real Gmail, Wilma and MyClub Sources against a fake IMAP server,
+`wilma` CLI and MyClub feed, for a Source that fails partway through a night or times out.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:

@@ -8,7 +8,7 @@ from typing import Any
 
 from ..config import Config
 from ..state import State
-from .base import Message, unreadable
+from .base import Message, retry_once_on_timeout, unreadable
 
 log = logging.getLogger(__name__)
 
@@ -22,10 +22,9 @@ class WilmaError(Exception):
 
 def _run(args: list[str]) -> Any:
     try:
-        proc = subprocess.run(
-            [WILMA, *args, "--json"],
-            capture_output=True, text=True, timeout=60,
-        )
+        proc = retry_once_on_timeout(
+            lambda: subprocess.run([WILMA, *args, "--json"], capture_output=True, text=True, timeout=60),
+            (subprocess.TimeoutExpired,), f"wilma {' '.join(args)}")
     except FileNotFoundError:
         raise WilmaError("wilma CLI not installed (npm i -g @wilm-ai/wilma-cli)") from None
     except subprocess.TimeoutExpired:

@@ -16,12 +16,13 @@ from bs4 import BeautifulSoup
 from ..config import Config
 from ..state import State
 from ..utils import keychain
-from .base import Message, unreadable
+from .base import Message, retry_once_on_timeout, unreadable
 
 log = logging.getLogger(__name__)
 
 IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = 993
+IMAP_TIMEOUT = 60  # seconds per network step; without one a stalled connection hangs the night's run
 MAX_BODY_CHARS = 8000
 
 
@@ -145,10 +146,17 @@ def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
     query = _gmail_query(cfg, kid_terms)
     log.info("Gmail X-GM-RAW query: %s", query)
 
-    results: list[Message] = []
     cutoff = datetime.now(timezone.utc) - timedelta(hours=cfg.gmail.lookback_hours)
+    # A timeout gets one fresh connection, which reads again what the first one marked seen.
+    return retry_once_on_timeout(
+        lambda: _read_matching(state, username, password, query, cutoff), (TimeoutError,), "Gmail",
+        before_retry=lambda: state.forget_new_seen_messages("gmail"))
 
-    with imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT) as imap:
+
+def _read_matching(state: State, username: str, password: str, query: str,
+                   cutoff: datetime) -> list[Message]:
+    results: list[Message] = []
+    with imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, timeout=IMAP_TIMEOUT) as imap:
         imap.login(username, password)
         # Allow UTF-8 in commands (Finnish chars in query)
         imap._encoding = "utf-8"

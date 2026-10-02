@@ -1,9 +1,29 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Callable, TypeVar
 from zoneinfo import ZoneInfo
+
+log = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def retry_once_on_timeout(call: Callable[[], T], timeouts: tuple[type[BaseException], ...],
+                          what: str, before_retry: Callable[[], None] | None = None) -> T:
+    """`call()`, run once more if it times out: slow DNS or a network still waking up usually
+    clears by then. A second timeout raises, so the Source reports it as not read. `what` names
+    the call in the log line; `before_retry` undoes what the first try left half done."""
+    try:
+        return call()
+    except timeouts as e:
+        log.warning("%s timed out (%s); trying once more", what, type(e).__name__)
+    if before_retry:
+        before_retry()
+    return call()
+
 
 # How a Source's log line starts when it skips one Message it couldn't read, leaving it unseen for
 # a later run. The first error a Source logs is the reason on the Brief's coverage line.
