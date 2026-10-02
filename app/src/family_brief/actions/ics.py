@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from icalendar import Calendar, Event
 
+from ..brief_text import PRODUCT_NAME
 from ..collectors.base import CalendarEvent
 from .calendar import event_hash
 
@@ -48,7 +49,7 @@ def build(events: list[CalendarEvent], tz: str,
             e.add("location", ev.location)
         note = ev.description or ""
         if ev.kid:
-            note = f"{note}\n\n[FamilyBrief · {ev.kid}]".strip()
+            note = f"{note}\n\n[{PRODUCT_NAME} · {ev.kid}]".strip()
         if note:
             e.add("description", note)
         cal.add_component(e)

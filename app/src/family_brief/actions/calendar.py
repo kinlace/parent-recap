@@ -11,6 +11,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
+from ..brief_text import PRODUCT_NAME
 from ..collectors.base import CalendarEvent
 from ..config import Config
 from ..state import State
@@ -181,7 +182,7 @@ def create_events(cfg: Config, state: State, events: list[CalendarEvent],
             end = {"dateTime": (ev.end or ev.start + timedelta(hours=1)).isoformat(), "timeZone": cfg.timezone}
         body = {
             "summary": ev.title,
-            "description": (ev.description or "") + f"\n\n[FamilyBrief • {ev.source}"
+            "description": (ev.description or "") + f"\n\n[{PRODUCT_NAME} • {ev.source}"
                            + (f" • {ev.kid}" if ev.kid else "") + "]",
             "start": start,
             "end": end,

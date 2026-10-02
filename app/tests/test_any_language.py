@@ -16,7 +16,7 @@ from test_nightly_run import ENGLISH_REPLY, FINNISH_REPLY, model_call_for_golden
 from test_weekend_picks import run_weekend_picks
 
 from family_brief import ops
-from family_brief.brief_text import EN
+from family_brief.brief_text import EN, WEEKEND_TEXT
 
 PARTNER_SV = {"address": "partner@example.com", "language": "sv"}
 
@@ -295,3 +295,21 @@ def test_weekend_picks_come_in_a_language_without_a_review(harness, monkeypatch,
     golden("program_text.sv.weekend.model.txt", model_call_for_golden(weekend_text.argv, weekend_text.stdin))
     assert "one-sentence reason, in Swedish" in system_prompt_of(rank)
     assert (harness.home / ".family" / "languages" / "sv.weekend.json").exists()
+
+
+def test_weekend_picks_text_stored_under_the_old_name_is_translated_again(harness, monkeypatch):
+    # Translated before the product was renamed: its calendar note still says FamilyBrief.
+    folder = harness.home / ".family" / "languages"
+    folder.mkdir(parents=True)
+    (folder / "sv.json").write_text(json.dumps(swedish(json.dumps(dataclasses.asdict(EN))), ensure_ascii=False))
+    old = swedish(json.dumps(dataclasses.asdict(WEEKEND_TEXT["en"])))
+    old["calendar_note"] = "sv:[From FamilyBrief Weekend Picks.]"
+    (folder / "sv.weekend.json").write_text(json.dumps(old, ensure_ascii=False))
+    harness.model_reply = [swedish, {"picks": [{"ext_id": "le-1", "rank": 1, "why": "dockteater"}]}]
+
+    run_weekend_picks(harness, monkeypatch, "sv")
+
+    assert len(harness.model_calls) == 2  # the Weekend Picks text again, then the ranking
+    [event] = harness.calendar.inserted
+    assert "sv:[From Parent Recap Weekend Picks." in event["description"]
+    assert "FamilyBrief" not in (folder / "sv.weekend.json").read_text()

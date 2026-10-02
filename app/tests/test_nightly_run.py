@@ -683,7 +683,11 @@ def test_dated_exam_and_shortened_day_go_into_the_ics_as_all_day_events(harness,
     [email] = harness.sent
     name, payload, _ = email.attachment(".ics")
     assert name == "family-brief-2026-09-27.ics"
-    golden("dated_events.zh.ics", ics_for_golden(payload))
+    ics = ics_for_golden(payload)
+    golden("dated_events.zh.ics", ics)
+    assert ics.count("[Parent Recap · Mia]") == 2 and "FamilyBrief ·" not in ics
+    # The UID keeps its old suffix: a calendar app matches a re-sent event by its UID.
+    assert all(uid.endswith("@family-brief") for uid in re.findall(r"UID:.*", ics))
     for body in (email.text, email.html):
         assert "历史考试（koe） — 10月7日 周三" in body and "kota 户外日 — 10月9日 周五" in body
         assert "00:00" not in body
@@ -1379,7 +1383,7 @@ def test_calendar_event_source_comes_from_its_refs(harness):
     [koe, _myclub] = harness.calendar.inserted
     assert koe["extendedProperties"]["private"]["source"] == "wilma"
     assert koe["extendedProperties"]["private"]["external_id"] == "w-55"
-    assert koe["description"].endswith("[FamilyBrief • wilma • Mia]")
+    assert koe["description"].endswith("[Parent Recap • wilma • Mia]")
     [event] = archived_summary(harness)["calendar_events"]
     assert (event["source"], event["ref_sources"]) == ("wilma", {"w-55": ["wilma"]})
 
