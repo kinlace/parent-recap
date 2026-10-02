@@ -1,0 +1,118 @@
+covers: [wilma-events, finnish-dates]
+note: >
+  Friday night, Wilma only (#17). An exam on Wednesday and an outdoor day on Friday that ends at
+  13, both with a date but no start time, must still become calendar events (all-day). Monday's
+  ordinary timetable must not.
+now: 2026-10-02T21:00:00+03:00
+messages:
+  - id: w-sched-1002
+    source: wilma
+    at: 2026-10-02T21:00:00+03:00
+    subject: Timetable for the next school day (from 2026-10-05)
+    chat: schedule
+    body: |
+      [2026-10-05 Mon · in 3 days]
+      — Virtanen Aino —
+        08:15–09:45  Matematiikka  @ 204
+        10:00–11:30  Äidinkieli  @ 204
+        12:15–13:45  Musiikki  @ musiikkiluokka
+  - id: w-historia-1002
+    source: wilma
+    at: 2026-10-02T12:40:00+03:00
+    sender: Laine Maija
+    subject: Historian koe
+    kid_hint: Virtanen Aino
+    body: |
+      Historian koe on keskiviikkona 7.10. Kokeeseen tulevat kirjan luvut 3–5.
+  - id: w-ulkoilu-1002
+    source: wilma
+    at: 2026-10-02T14:15:00+03:00
+    sender: Laine Maija
+    subject: Ulkoilupäivä pe 9.10.
+    kid_hint: Virtanen Aino
+    body: |
+      Perjantaina 9.10. 4B viettää ulkoilupäivää Kilon kodalla. Koulupäivä päättyy klo 13.00.
+      Säänmukaiset ulkovaatteet ja juomapullo mukaan.
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what:
+          [
+            ulkovaat,
+            vaatte,
+            juomapullo,
+            pullo,
+            衣服,
+            外套,
+            水壶,
+            水瓶,
+            clothes,
+            water bottle,
+            bottle,
+          ],
+        optional: true,
+      }
+    - {
+        kid: Aino,
+        what:
+          [
+            luku,
+            luvu,
+            kertaa,
+            kertau,
+            lue,
+            复习,
+            准备,
+            章,
+            chapter,
+            revise,
+            review,
+            study,
+          ],
+        optional: true,
+      }
+  calendar_events:
+    - {
+        title:
+          [historia, histori, koe, kokee, 历史, 考试, 测验, history, exam, test, quiz],
+        start: 2026-10-07,
+      }
+    - {
+        title:
+          [
+            ulkoilu,
+            ulko,
+            kota,
+            koda,
+            户外,
+            野外,
+            郊游,
+            outdoor,
+            outing,
+          ],
+        start: 2026-10-09,
+      }
+  notices:
+    must:
+      - {
+          kid: Aino,
+          text:
+            [
+              [historia, histori, koe, kokee, 历史, 考试, 测验, history, exam, test, quiz],
+              [
+                周三,
+                "10/7",
+                "10-07",
+                "7.10",
+                keskiviikko,
+                10月7,
+                wednesday,
+                oct 7,
+                7 oct,
+                october 7,
+                7 october,
+              ],
+            ],
+          where: both,
+        }

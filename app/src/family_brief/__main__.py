@@ -230,7 +230,7 @@ def _ics_candidates(cfg: Config, state: State, events: list) -> list:
 
 def _as_created(events: list) -> list[dict]:
     """Events the Brief lists without a Google write, shaped like `create_events` results."""
-    return [{"title": e.title, "start": e.start.isoformat(), "kid": e.kid} for e in events]
+    return [{"title": e.title, "start": e.start_iso(), "kid": e.kid} for e in events]
 
 
 def _llm_host(cfg: Config) -> str:
@@ -286,8 +286,10 @@ def _due(by: str, t: BriefText) -> str:
 
 def _start(start: str, t: BriefText, tz: str) -> str:
     """An event's start as the language writes it, in the Household's timezone (which a start
-    without an offset is already in, as on the calendar)."""
+    without an offset is already in, as on the calendar). An all-day event's is the date alone."""
     try:
+        if len(start) == 10:
+            return t.on(date.fromisoformat(start))
         moment = datetime.fromisoformat(start)
     except ValueError:
         return start[:16]
@@ -436,7 +438,7 @@ class _Version:
     translation_note: str = ""  # at the top of the original when the translation failed
 
     def translated_event(self, ev: CalendarEvent) -> CalendarEvent:
-        return self.events.get((ev.title, ev.start.isoformat()), ev)
+        return self.events.get((ev.title, ev.start_iso()), ev)
 
     def translated_list(self, created: list[dict]) -> list[dict]:
         """Tonight's new calendar events as this version lists them, Google links and all."""
@@ -470,7 +472,7 @@ def _versions(cfg: Config, summary: dict, model_events: list[CalendarEvent],
                                          translation_note=t.translation_failed))
                 continue
             in_language = extract_calendar_events(translated, cfg.timezone, t.untitled)
-            versions.append(_Version(t, to, translated, {(ev.title, ev.start.isoformat()): tev
+            versions.append(_Version(t, to, translated, {(ev.title, ev.start_iso()): tev
                                                          for ev, tev in zip(model_events, in_language)}))
     return versions
 

@@ -50,7 +50,6 @@ expect:
             math,
           ],
         start: 2026-10-26,
-        optional: true,
       }
   notices:
     must:

@@ -115,6 +115,14 @@ FINNISH_NIGHTS = {
         [{"kid": "Eero", "title": "Salibandytreeni", "start": "2026-10-06T18:30:00+03:00"}]),
     "whatsapp-two-groups": summary([kid("Eero", notices=["ti 6.10. salibandytreenit on peruttu"]),
                                     kid("Aino", notices=["ti 6.10. koulukuvaus"])]),
+    # All-day events, the date alone; Monday's timetable gives none.
+    "wilma-dated-exam-and-short-day": summary(
+        [kid("Aino", notices=["ke 7.10. historian koe, luvut 3–5"])],
+        [{"kid": "Aino", "title": "Historian koe", "start": "2026-10-07"},
+         {"kid": "Aino", "title": "Ulkoilupäivä kodalla", "start": "2026-10-09",
+          "description": "Koulupäivä päättyy klo 13.00"}]),
+    "fi-koe-viikon-paasta": summary([kid("Aino", notices=["ma 26.10. matematiikan koe"])],
+                                    [{"kid": "Aino", "title": "Matematiikan koe", "start": "2026-10-26"}]),
     "kid-alias-chinese": summary([kid("Aino", notices=["la 10.10. kiinan kurssi alkaa klo 14"],
                                       actions=[("Ota mukaan viime viikon tehtäväkirja", "2026-10-10")])],
                                  [{"kid": "Aino", "title": "Kiinan kurssi", "start": "2026-10-10T14:00:00"}]),

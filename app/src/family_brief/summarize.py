@@ -37,7 +37,7 @@ Your job:
 1. **Decide which kid an item belongs to strictly from the kid profiles and kid_hint in the payload**; don't guess
 2. Ignore ads, promotions, small talk, and forwarded links that ask nothing of the parents
 3. Look out for: absences, forms to sign, payments, things to bring, pick-up or drop-off changes, illness notes, exams, events, matches, training changes, parent meetings
-4. When a message clearly names an event at a future time (training, match, parent meeting, deadline), add a calendar_events entry
+4. When a message clearly names an event on a future date (training, match, parent meeting, deadline, exam, school trip or outdoor day, shortened school day, a day the school is closed), add a calendar_events entry. A date is enough: when the message gives no start time, write the date alone as `start` for an all-day event, and put any time it does give (such as when a shortened school day ends) in the description. The next school day's timetable from Wilma is not an event: its ordinary lessons never become calendar_events
 5. Write every text value in the JSON in $language$keep_finnish
 6. Reply with exactly one JSON object: no markdown fences, no explanations
 7. **JSON format**: every `"` inside a string value must be escaped as `\\"`; don't stand in full-width or curly quotes for it. To quote something inside a text value, use $quotes instead of straight double quotes, so the JSON doesn't break
@@ -59,8 +59,8 @@ Output schema:
     {
       "kid": "<kid's name>" | "$household",
       "title": "short title",
-      "start": "2026-04-21T17:00:00",   // local time as the message gives it, with no timezone suffix (the program handles daylight saving)
-      "end":   "2026-04-21T18:30:00",   // optional, also local time
+      "start": "2026-04-21T17:00:00",   // local time as the message gives it, with no timezone suffix (the program handles daylight saving); with no start time, the date alone ("2026-04-22") for an all-day event
+      "end":   "2026-04-21T18:30:00",   // optional, also local time; for an all-day event over several days, its last date
       "location": "place",
       "description": "short note",
       "refs": ["<external_id>"]
@@ -584,12 +584,30 @@ def _localize(dt: datetime, tz: str) -> datetime:
     return dt.astimezone(zone)
 
 
+_DATE_ONLY = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _all_day_end(end: str | None, start: datetime) -> datetime | None:
+    """An all-day event's last day as its local midnight, or None when it is the start's day.
+    A time on it (a shortened day "ends at 13:00") is dropped: the day is what counts."""
+    if not end:
+        return None
+    last = datetime.fromisoformat(end).date()
+    return datetime.combine(last, start.timetz()) if last > start.date() else None
+
+
 def extract_calendar_events(summary: dict[str, Any], tz: str, untitled: str) -> list[CalendarEvent]:
     out: list[CalendarEvent] = []
     for ev in summary.get("calendar_events") or []:
         try:
-            start = _localize(datetime.fromisoformat(ev["start"]), tz)
-            end = _localize(datetime.fromisoformat(ev["end"]), tz) if ev.get("end") else None
+            # A date alone (an exam, an outdoor day) is an all-day event, not one at midnight.
+            start_text = str(ev["start"]).strip()
+            all_day = bool(_DATE_ONLY.fullmatch(start_text))
+            start = _localize(datetime.fromisoformat(start_text), tz)
+            if all_day:
+                end = _all_day_end(ev.get("end"), start)
+            else:
+                end = _localize(datetime.fromisoformat(ev["end"]), tz) if ev.get("end") else None
         except Exception:
             log.warning("Skip event with bad date: %r", ev)
             continue
@@ -603,5 +621,6 @@ def extract_calendar_events(summary: dict[str, Any], tz: str, untitled: str) -> 
             location=ev.get("location"),
             description=ev.get("description", ""),
             kid=ev.get("kid"),
+            all_day=all_day,
         ))
     return out
