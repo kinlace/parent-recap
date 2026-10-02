@@ -46,6 +46,14 @@ def test_optional_entries_count_neither_as_misses_nor_as_extras():
     assert score_case(expect, summary(), TZ)["actions"]["expected"] == 0
 
 
+def test_an_optional_event_with_a_start_only_covers_an_event_on_that_start():
+    expect = {"calendar_events": [{"title": ["syysloma"], "start": "2026-10-12", "optional": True}]}
+    on_the_day = summary(events=[{"title": "Syysloma", "start": "2026-10-12"}])
+    later = summary(events=[{"title": "Treenit jatkuvat syysloman jälkeen", "start": "2026-10-19T17:30:00"}])
+    assert score_case(expect, on_the_day, TZ)["events"]["predicted"] == 0
+    assert score_case(expect, later, TZ)["events"]["predicted"] == 1
+
+
 def test_all_of_keyword_groups():
     expect = {"notices": {"must": [{"text": [["10:00", "10.00"], ["11:00", "11.00"]]}]}}
     one = summary([kid("Aino", notices=["比赛改到 11:00"])])
@@ -146,6 +154,27 @@ def test_a_plain_finnish_brief_scores_clean_on_the_bundled_cases():
     cases = {c.name: c for c in load_cases(BUNDLED)}
     for name, night in FINNISH_NIGHTS.items():
         assert is_clean(score_case(cases[name].expect, night, TZ)), name
+
+
+def test_a_deadline_or_a_training_that_carries_on_is_not_a_calendar_event():
+    from family_brief.eval.cases import BUNDLED, load_cases
+    cases = {c.name: c for c in load_cases(BUNDLED)}
+    book_list = [kid("Eero", actions=[("Palauta lukudiplomin kirjalista", "2026-10-09")])]
+    deadline = {"kid": "Eero", "title": "Lukudiplomin kirjalista", "start": "2026-10-09"}
+    photos = [kid("Eero", actions=[("Tilaa luokkakuvat verkkokaupasta", "2026-10-13")])]
+    photo_deadline = {"kid": "Eero", "title": "Luokkakuvien tilaus", "start": "2026-10-13"}
+    autumn_break = [kid("Aino", notices=["Syysloma 12.–16.10.: ei jalkapallotreenejä"])]
+    resumes = {"kid": "Aino", "title": "Jalkapallotreenit jatkuvat", "start": "2026-10-19T17:30:00"}
+    school_closed = {"kid": "Aino", "title": "Syysloma", "start": "2026-10-12", "end": "2026-10-16"}
+    nights = [("kid-alias-eetu", summary(book_list), True),
+              ("kid-alias-eetu", summary(book_list, [deadline]), False),
+              ("fi-tiistaihin-mennessa", summary(photos), True),
+              ("fi-tiistaihin-mennessa", summary(photos, [photo_deadline]), False),
+              ("fi-syysloma-ensi-viikolla", summary(autumn_break), True),
+              ("fi-syysloma-ensi-viikolla", summary(autumn_break, [school_closed]), True),
+              ("fi-syysloma-ensi-viikolla", summary(autumn_break, [resumes]), False)]
+    for name, night, clean in nights:
+        assert is_clean(score_case(cases[name].expect, night, TZ)) is clean, (name, night["calendar_events"])
 
 
 def test_a_keyword_ending_in_a_space_matches_at_the_end_of_the_text():

@@ -1,6 +1,7 @@
 covers: [dst, finnish-dates]
 note: >
   Saturday night. "Maanantaihin mennessä" is Monday 26.10. and the concert is on winter time.
+  The payment's due date is the Action Item's, not a calendar event (#39).
 now: 2026-10-24T21:00:00+03:00
 messages:
   - id: w-kuoro-1024
@@ -37,4 +38,3 @@ expect:
         title: [kuoro, konsertti, konsert, 合唱, 音乐会, 演出, choir, concert],
         start: 2026-10-29T18:00,
       }
-    - { title: [maksu, maks, 付款, 支付, pay], optional: true }

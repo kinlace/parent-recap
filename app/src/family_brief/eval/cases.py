@@ -21,7 +21,8 @@ A folder holds `household.yaml` (the Config fields the prompt uses: `timezone`, 
         must_not: [{text: [keywords]}]   # `where` defaults to notices
 
 Keyword lists are explained in `score.py`. An `optional` entry may appear or not without
-affecting the score. A private folder in the same shape can be scored with `--cases DIR`."""
+affecting the score; an optional event with a `start` only covers an event that starts then.
+A private folder in the same shape can be scored with `--cases DIR`."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -1,6 +1,8 @@
 covers: [finnish-dates, whatsapp-group]
 note: >
   Friday night. "Ensi viikolla" and a date range; the autumn break is information, not a to-do.
+  The autumn break may be an event (the school is closed), but training that simply carries on
+  after it is the regular schedule, not a new event (#39).
 now: 2026-10-09T21:00:00+03:00
 messages:
   - id: wa-fc-1009
@@ -14,19 +16,8 @@ messages:
 expect:
   calendar_events:
     - {
-        title:
-          [
-            treeni,
-            treen,
-            harjoitu,
-            jalkapallo,
-            训练,
-            足球,
-            training,
-            practice,
-            football,
-          ],
-        start: 2026-10-19T17:30,
+        title: [syysloma, syyslom, 秋假, autumn break, fall break, half term],
+        start: 2026-10-12,
         optional: true,
       }
   notices:

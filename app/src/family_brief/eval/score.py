@@ -31,15 +31,18 @@ def _kid_ok(expected: str | list[str] | None, kid: object) -> bool:
     return str(kid).casefold() in {str(o).casefold() for o in options}
 
 
-def _pair(expected: list[dict], predicted: list[dict], key: str, text_of) -> tuple[list, int]:
+def _pair(expected: list[dict], predicted: list[dict], key: str, text_of,
+          starts_then=lambda exp, got: True) -> tuple[list, int]:
     """Greedily pair each expected entry with an unused predicted one whose text matches, trying
-    the right Kid first. Returns the (expected, predicted) pairs of required entries, and the count
-    of predicted entries that are neither paired nor an optional entry."""
+    the right Kid first. An optional entry only takes a predicted one that is also `starts_then`.
+    Returns the (expected, predicted) pairs of required entries, and the count of predicted
+    entries that are neither paired nor an optional entry."""
     free = list(range(len(predicted)))
     pairs: list[tuple[dict, dict]] = []
     ordered = [e for e in expected if not e.get("optional")] + [e for e in expected if e.get("optional")]
     for exp in ordered:
-        hits = [i for i in free if matches(exp[key], text_of(predicted[i]))]
+        hits = [i for i in free if matches(exp[key], text_of(predicted[i]))
+                and (not exp.get("optional") or starts_then(exp, predicted[i]))]
         hits.sort(key=lambda i: not _kid_ok(exp.get("kid"), predicted[i].get("_kid")))
         if not hits:
             continue
@@ -91,14 +94,14 @@ def score_case(expect: dict[str, Any], summary: dict[str, Any] | None, tz: str) 
 
     exp_events = expect.get("calendar_events") or []
     events = [ev for ev in summary.get("calendar_events") or [] if isinstance(ev, dict)]
+    starts_then = lambda e, ev: "start" not in e or (_local_start(ev, tz) or "").startswith(str(e["start"]))  # noqa: E731
     ev_pairs, ev_extra = _pair(exp_events, events, "title",
-                               lambda ev: f"{ev.get('title', '')} {ev.get('description', '')}")
+                               lambda ev: f"{ev.get('title', '')} {ev.get('description', '')}", starts_then)
     event_counts = {
         "expected": required(exp_events),
         "predicted": len(ev_pairs) + ev_extra,
         "matched": len(ev_pairs),
-        "start_ok": sum(1 for e, ev in ev_pairs
-                        if "start" not in e or (_local_start(ev, tz) or "").startswith(str(e["start"]))),
+        "start_ok": sum(1 for e, ev in ev_pairs if starts_then(e, ev)),
     }
 
     notices = _entries(summary, "notices")
