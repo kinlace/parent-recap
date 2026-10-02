@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -57,6 +57,9 @@ class CalendarEvent:
     location: str | None = None
     description: str = ""
     kid: str | None = None
+    # A day with no start time, such as an exam: `start` is that day's local midnight and `end`,
+    # if any, the local midnight of its last day.
+    all_day: bool = False
 
     def in_zone(self, tz: str) -> CalendarEvent:
         """The same event with its times in `tz`, as the Brief shows them and the model reads them."""
@@ -64,13 +67,21 @@ class CalendarEvent:
         return replace(self, start=self.start.astimezone(zone),
                        end=self.end.astimezone(zone) if self.end else None)
 
+    def start_iso(self) -> str:
+        """The start as the Brief lists it: the date alone for an all-day event."""
+        return self.start.date().isoformat() if self.all_day else self.start.isoformat()
+
+    def day_after_last(self) -> date:
+        """An all-day event's end as calendars store it: the day after its last day."""
+        return (self.end or self.start).date() + timedelta(days=1)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "source": self.source,
             "external_id": self.external_id,
             "title": self.title,
-            "start": self.start.isoformat(),
-            "end": self.end.isoformat() if self.end else None,
+            "start": self.start_iso(),
+            "end": (self.end.date().isoformat() if self.all_day else self.end.isoformat()) if self.end else None,
             "location": self.location,
             "description": self.description,
             "kid": self.kid,

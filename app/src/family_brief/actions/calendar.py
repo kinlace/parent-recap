@@ -173,13 +173,18 @@ def create_events(cfg: Config, state: State, events: list[CalendarEvent],
             state.mark_event_created(h, existing[0]["id"])
             continue
 
-        end = ev.end or ev.start + timedelta(hours=1)
+        if ev.all_day:
+            start = {"date": ev.start.date().isoformat()}
+            end = {"date": ev.day_after_last().isoformat()}
+        else:
+            start = {"dateTime": ev.start.isoformat(), "timeZone": cfg.timezone}
+            end = {"dateTime": (ev.end or ev.start + timedelta(hours=1)).isoformat(), "timeZone": cfg.timezone}
         body = {
             "summary": ev.title,
             "description": (ev.description or "") + f"\n\n[FamilyBrief • {ev.source}"
                            + (f" • {ev.kid}" if ev.kid else "") + "]",
-            "start": {"dateTime": ev.start.isoformat(), "timeZone": cfg.timezone},
-            "end": {"dateTime": end.isoformat(), "timeZone": cfg.timezone},
+            "start": start,
+            "end": end,
             "location": ev.location,
             "extendedProperties": {
                 "private": {
@@ -202,7 +207,7 @@ def create_events(cfg: Config, state: State, events: list[CalendarEvent],
             sendUpdates=cfg.google_calendar.send_updates,
         ).execute()
         state.mark_event_created(h, resp["id"])
-        created.append({"title": ev.title, "start": ev.start.isoformat(),
+        created.append({"title": ev.title, "start": ev.start_iso(),
                         "kid": ev.kid, "google_event_id": resp["id"],
                         "htmlLink": resp.get("htmlLink")})
-        log.info("Created event: %s @ %s", ev.title, ev.start.isoformat())
+        log.info("Created event: %s @ %s", ev.title, ev.start_iso())

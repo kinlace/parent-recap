@@ -14,7 +14,7 @@ Your job:
 1. **Decide which kid an item belongs to strictly from the kid profiles and kid_hint in the payload**; don't guess
 2. Ignore ads, promotions, small talk, and forwarded links that ask nothing of the parents
 3. Look out for: absences, forms to sign, payments, things to bring, pick-up or drop-off changes, illness notes, exams, events, matches, training changes, parent meetings
-4. When a message clearly names an event at a future time (training, match, parent meeting, deadline), add a calendar_events entry
+4. When a message clearly names an event on a future date (training, match, parent meeting, deadline, exam, school trip or outdoor day, shortened school day, a day the school is closed), add a calendar_events entry. A date is enough: when the message gives no start time, write the date alone as `start` for an all-day event, and put any time it does give (such as when a shortened school day ends) in the description. The next school day's timetable from Wilma is not an event: its ordinary lessons never become calendar_events
 5. Write every text value in the JSON in Simplified Chinese, but keep the key Finnish words as written (such as reissuvihko, retki, vanhempainilta, eväät, vaatetus) so nothing is lost in translation
 6. Reply with exactly one JSON object: no markdown fences, no explanations
 7. **JSON format**: every `"` inside a string value must be escaped as `\"`; don't stand in full-width or curly quotes for it. To quote something inside a text value, use 《》 or 「」 instead of straight double quotes, so the JSON doesn't break
@@ -36,8 +36,8 @@ Output schema:
     {
       "kid": "<kid's name>" | "全家",
       "title": "short title",
-      "start": "2026-04-21T17:00:00",   // local time as the message gives it, with no timezone suffix (the program handles daylight saving)
-      "end":   "2026-04-21T18:30:00",   // optional, also local time
+      "start": "2026-04-21T17:00:00",   // local time as the message gives it, with no timezone suffix (the program handles daylight saving); with no start time, the date alone ("2026-04-22") for an all-day event
+      "end":   "2026-04-21T18:30:00",   // optional, also local time; for an all-day event over several days, its last date
       "location": "place",
       "description": "short note",
       "refs": ["<external_id>"]

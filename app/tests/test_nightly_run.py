@@ -613,6 +613,108 @@ def test_sent_ics_events_are_not_sent_again(harness):
     assert "新日历事件" not in harness.sent[1].html
 
 
+# ── Dated events without a start time
+
+def dated_wilma_night(h) -> None:
+    """A Wilma-only night like the first Brief of #17: an exam on a date and a shortened outdoor
+    day, both without a start time, beside the next school day's timetable."""
+    h.config["summary_language"] = "zh"
+    h.sources = {"wilma": [
+        msg("wilma", "message:701", "2026-09-27T14:10:00+03:00",
+            "Historian koe keskiviikkona 7.10. Kokeeseen tulevat luvut 3–5.",
+            sender="Laine Maija", subject="Historian koe", kid="Mia"),
+        msg("wilma", "message:702", "2026-09-27T15:30:00+03:00",
+            "Perjantaina 9.10. vietämme ulkoilupäivää kodalla. Koulupäivä päättyy klo 13.00. "
+            "Ulkovaatteet ja juomapullo mukaan.",
+            sender="Laine Maija", subject="Ulkoilupäivä pe 9.10.", kid="Mia"),
+        msg("wilma", "schedule:20260927", "2026-09-27T21:00:00+03:00",
+            "[2026-09-28 Mon · tomorrow]\n— Mia —\n  08:15–09:45  Historia  @ 204\n"
+            "  10:00–11:30  Liikunta  @ sali",
+            subject="Timetable for the next school day (from 2026-09-28)", chat="schedule"),
+    ]}
+    h.model_reply = {
+        "per_kid": [{"kid": "Mia",
+                     "notices": [{"text": "10/7 周三历史考试（koe），范围第 3–5 章", "refs": ["message:701"]}],
+                     "action_items": [{"what": "10/9 带 ulkovaatteet 和水壶", "by": "2026-10-09", "who": "任一",
+                                       "refs": ["message:702"]}]}],
+        "calendar_events": [
+            {"kid": "Mia", "title": "历史考试（koe）", "start": "2026-10-07",
+             "description": "范围第 3–5 章", "refs": ["message:701"]},
+            # Only the end of the day is known; the model may still give it as a time.
+            {"kid": "Mia", "title": "kota 户外日", "start": "2026-10-09", "end": "2026-10-09T13:00:00",
+             "location": "kota", "description": "13:00 放学", "refs": ["message:702"]},
+        ],
+        "message_digest": "**Mia**\n- 10/7 周三历史考试\n- 10/9 周五 kota 户外日，13:00 放学",
+    }
+
+
+def test_dated_exam_and_shortened_day_go_into_the_ics_as_all_day_events(harness, golden):
+    dated_wilma_night(harness)
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    name, payload, _ = email.attachment(".ics")
+    assert name == "family-brief-2026-09-27.ics"
+    golden("dated_events.zh.ics", ics_for_golden(payload))
+    for body in (email.text, email.html):
+        assert "历史考试（koe） — 10月7日 周三" in body and "kota 户外日 — 10月9日 周五" in body
+        assert "00:00" not in body
+
+
+def test_all_day_event_over_several_days_ends_after_its_last_day(harness):
+    dated_wilma_night(harness)
+    harness.model_reply["calendar_events"] = [
+        {"kid": "Mia", "title": "Syysloma", "start": "2026-10-19", "end": "2026-10-23", "refs": ["message:701"]}]
+
+    assert harness.run() == 0
+
+    ics = ics_for_golden(harness.sent[0].attachment(".ics")[1])
+    assert "DTSTART;VALUE=DATE:20261019" in ics and "DTEND;VALUE=DATE:20261024" in ics
+
+
+def test_google_mode_writes_all_day_events_as_dates(harness):
+    dated_wilma_night(harness)
+    harness.config["google_calendar"] = {"mode": "google"}
+    harness.authorize_google_calendar()
+
+    assert harness.run() == 0
+
+    exam, kota = harness.calendar.inserted
+    assert (exam["start"], exam["end"]) == ({"date": "2026-10-07"}, {"date": "2026-10-08"})
+    assert (kota["start"], kota["end"]) == ({"date": "2026-10-09"}, {"date": "2026-10-10"})
+    assert "历史考试（koe） — 10月7日 周三" in harness.sent[0].text
+
+
+def test_all_day_events_stay_all_day_in_a_translated_brief(harness):
+    dated_wilma_night(harness)
+    harness.config["email"]["to"] = ["parent@example.com", PARTNER_EN]
+    translated = copy.deepcopy(harness.model_reply)
+    translated["calendar_events"][0]["title"] = "History exam (koe)"
+    translated["calendar_events"][1]["title"] = "Outdoor day at the kota"
+    harness.model_reply = [harness.model_reply, translated]
+
+    assert harness.run() == 0
+
+    zh, en = harness.sent
+    ics = ics_for_golden(en.attachment(".ics")[1])
+    assert "SUMMARY:History exam (koe)\nDTSTART;VALUE=DATE:20261007\nDTEND;VALUE=DATE:20261008" in ics
+    # One UID per event whichever language its .ics is in, so a shared calendar gets one entry.
+    assert re.findall(r"UID:.*", ics) == re.findall(r"UID:.*", ics_for_golden(zh.attachment(".ics")[1]))
+    assert "History exam (koe) — Wed 7 Oct" in en.text and "00:00" not in en.text
+
+
+def test_system_prompt_asks_for_dated_events_without_a_time_as_dates(harness):
+    dated_wilma_night(harness)
+
+    assert harness.run() == 0
+
+    prompt = system_prompt_of(harness.model_calls[0])
+    assert "exam" in prompt and "shortened school day" in prompt
+    assert '"2026-04-22"' in prompt and "all-day event" in prompt  # the date alone
+    assert "timetable" in prompt and "not an event" in prompt
+
+
 @pytest.mark.parametrize("language, header, due, start", [
     ("en", "Sun 27 Sep", "by Mon 28 Sep", "Thu 1 Oct 09:00"),
     ("zh", "9月27日 周日", "by 9月28日 周一", "10月1日 周四 09:00"),

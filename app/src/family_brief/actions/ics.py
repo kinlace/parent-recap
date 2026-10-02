@@ -32,13 +32,17 @@ def build(events: list[CalendarEvent], tz: str,
     for ev in events:
         uid = f"{event_hash(ev)}@family-brief"
         ev = translated(ev) if translated else ev
-        start = _utc(ev.start, tz)
-        end = _utc(ev.end, tz) if ev.end else start + timedelta(hours=1)
         e = Event()
         e.add("uid", uid)
         e.add("dtstamp", stamp)
-        e.add("dtstart", start)
-        e.add("dtend", end)
+        if ev.all_day:
+            # Dates, not times, so the day shows the same in any timezone; DTEND is the day after.
+            e.add("dtstart", ev.start.date())
+            e.add("dtend", ev.day_after_last())
+        else:
+            start = _utc(ev.start, tz)
+            e.add("dtstart", start)
+            e.add("dtend", _utc(ev.end, tz) if ev.end else start + timedelta(hours=1))
         e.add("summary", ev.title)
         if ev.location:
             e.add("location", ev.location)

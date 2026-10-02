@@ -150,7 +150,7 @@ def test_bundled_cases_cover_the_hard_parts():
     assert len(cases) >= 20
     covered = {c for case in cases for c in case.covers}
     assert {"finnish-dates", "dst", "kid-alias", "whatsapp-group", "cross-night", "re-reminder",
-            "calendar-disagrees", "noise", "empty-night", "prompt-injection"} <= covered
+            "calendar-disagrees", "noise", "empty-night", "prompt-injection", "wilma-events"} <= covered
     for case in cases:
         assert all(m.timestamp <= case.now for m in case.messages), case.name
         assert all(day["date"] < case.now.date().isoformat() for day in case.earlier_briefs), case.name
