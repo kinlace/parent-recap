@@ -40,15 +40,18 @@ This wizard works in both Claude Code and Codex:
 
 ### 0. Opening
 
-First confirm the user's language with AskUserQuestion: offer the language you guessed from how they wrote first, then the reviewed languages (English, Chinese, Finnish) it isn't, at most four options in all; the question's own "Other" covers any other language. Tell them it is also the language their own Brief will come in, and that English, Chinese and Finnish are the reviewed languages: any other works too, with the program's own text (headings, hints) translated once by the AI ("Reviewed and best-effort languages" in `PLUGIN/docs/config.md`). Continue in their language from here on. Note its two- or three-letter code, without a region (`en`, `zh`, `sv`, `fi`; not `zh-CN` or `en-GB`), for step 3.
+First confirm the user's language with AskUserQuestion: offer the language you guessed from how they wrote first, then the reviewed languages (English, Chinese, Finnish) it isn't, at most four options in all; the question's own "Other" covers any other language. Tell them it is also the language their own Brief will come in, and that English, Chinese and Finnish are the reviewed languages: any other works too, with the program's own text (headings, hints) translated once by the AI ("Reviewed and best-effort languages" in `PLUGIN/docs/config.md`). Continue in their language from here on. Note its two- or three-letter code, without a region (`en`, `zh`, `sv`, `fi`; not `zh-CN` or `en-GB`), for step 4.
 
 Then explain what Parent Recap does and what's needed: a Mac, a Claude Pro or Max subscription (or ChatGPT Plus or higher; Free and Go can't use the Codex command line), and Gmail with 2-Step Verification on. Optional: a Wilma parent account, WhatsApp for Mac, MyClub.
 
-Use AskUserQuestion to find out:
+Then find out, in this order:
 
-- Which AI writes the nightly summary: Claude (Pro or Max subscription) or ChatGPT (through Codex). Someone running this wizard in Codex usually means ChatGPT.
-- Which Sources to connect (multi-select: Wilma / WhatsApp / MyClub). Gmail is required, because the Brief is sent through Gmail.
-- Whether they want Weekend Picks every Friday (Helsinki region only).
+1. **The city**: which city the Household lives in, and the city of the Kids' school if that's another one. Ask in plain text, since any city works. The home city decides Weekend Picks (item 6). The school's city decides the Wilma address and the starting Gmail allowlist: look it up in "City presets" in `PLUGIN/docs/config.md`. For a city without a preset, tell the user it still works, and that setup will find its Wilma address and school mail domain together with them (step 3 and step 4).
+2. **The AI** (AskUserQuestion): which AI writes the nightly summary, Claude (Pro or Max subscription) or ChatGPT (through Codex). Someone running this wizard in Codex usually means ChatGPT.
+3. **Where school mail arrives**: which email address the school, the teachers and the clubs write to. Parent Recap reads and sends with one Gmail account, so school mail has to arrive in that account, or the Briefs come out empty. If it arrives at another address (a work address, Outlook, iCloud, another Gmail), tell the user the gist of "School mail at another address" in `PLUGIN/docs/sources.md`: set up automatic forwarding from that address to the Gmail account, or give the school the Gmail address. Parent Recap can't read a second account itself. Either way, ask which Gmail account Parent Recap will use (the one school mail arrives in, or the one it will be forwarded to) and note it for step 4. If they choose forwarding, they can set it up while setup goes on, and step 13's preview shows whether school mail is arriving.
+4. **WhatsApp groups**: whether the Household has WhatsApp groups about the Kids or their school (class parents, teams, hobbies). If they do, say what reading them needs, before they pick their Sources: WhatsApp for Mac from the App Store (not the old version from WhatsApp's website), installed and linked to the phone that's in those groups, with its chat history synced. It can be done any time before step 7.
+5. **The Sources** (AskUserQuestion, multi-select: Wilma / WhatsApp / MyClub): which to connect. Gmail is required, because the Brief is sent through Gmail. Offer WhatsApp only if they have such groups.
+6. **Weekend Picks**: only if the home city is Helsinki, Espoo or Vantaa, ask whether they want Weekend Picks every Friday. Anywhere else, don't offer them: they come from the event database of those three cities, so they'd have nothing near the Household. Say so in one sentence.
 
 ### 1. Check the environment
 
@@ -70,16 +73,27 @@ bash "PLUGIN/install.sh"
 
 Note the **real Python path** in the output; step 7 needs it.
 
-### 3. Household details
+### 3. Wilma (optional)
 
-Ask about each item, then write a **minimal config** to `~/.family/config.yaml` (`chmod 600`) in the format of `PLUGIN/app/config.example.yaml`. At this point fill in only `summary_language`, kids, gmail, email and `llm.backend` (`claude` or `codex`); leave everything else off:
+Only if the user chose Wilma in step 0. Signing in before the household step lets step 4 read the Kids from Wilma, so the user doesn't type what Wilma already knows.
+
+Follow the "Wilma" section of `sources.md`: install the CLI and have the user run `wilma` in **Terminal** to sign in. For a city without a preset, help them find its Wilma address first, as "Cities without a preset" in `PLUGIN/docs/config.md` says. Then you run `$FB discover wilma-students` (it needs no config yet) and keep its output for step 4: it lists each student with the full name as Wilma spells it, and may also give the school and class. If it says "not signed in to wilma", have the user sign in again. If it still fails, or lists no students, step 4 asks for the Kids as it does without Wilma, and `wilma.enabled` stays off until `discover wilma-students` works.
+
+After sign-in, tell the user in a sentence or two the gist of "Where the Wilma password is stored" in `sources.md`: the password is stored unencrypted in `~/.config/wilmai/config.json`; don't sync or back up that folder; delete it when they stop using FamilyBrief.
+
+### 4. Household details
+
+Ask about each item, then write a **minimal config** to `~/.family/config.yaml` (`chmod 600`) in the format of `PLUGIN/app/config.example.yaml`. At this point fill in only `summary_language`, kids, gmail, email, `llm.backend` (`claude` or `codex`) and, if `discover wilma-students` worked in step 3, `wilma.enabled: true`; leave everything else off:
 
 - `summary_language`: the user's language from step 0, as its code. The whole Brief comes in it, headings and hints included
-- Each Kid: full name (matching how Wilma shows it), everyday name, grade, class, school, activities
-- Which city they live in: fill the initial Gmail allowlist from the city presets in `PLUGIN/docs/config.md`
+- Each Kid:
+  - **With Wilma**: prefill one Kid per student in the `discover wilma-students` output from step 3: `name` exactly as Wilma spells it, and `school` and `class_name` when the output has them (the grade usually follows from the class, such as 3 for 3B). Show the user what you prefilled and have them confirm it, rather than asking for it again. Then ask only what Wilma doesn't know: each Kid's everyday name and any other names used in chats and mail (for `aliases`), the grade if it doesn't follow from the class, and activities. Leave out a student who shouldn't be in the Brief
+  - **Without Wilma**: ask for each Kid's full name, everyday name, grade, class, school and activities
+- `gmail.username`: the Gmail account from step 0 that school mail arrives in (directly or forwarded)
+- The starting Gmail allowlist, for the city from step 0: take it from the city presets in `PLUGIN/docs/config.md`; for a city without a preset, follow "Cities without a preset" there
 - Who gets the Brief (`email.to`): usually their own and their partner's email, with the user's own address first. The Brief is written in the first Recipient's language, and what the Household shares (Google Calendar events, the archive) stays in it; mention this, in case they'd rather put the partner first. When you add each further address, ask that person's language with AskUserQuestion (the user's language first, then the reviewed languages it isn't, at most four options; "Other" covers the rest). If it differs from `summary_language`, write that entry as `{address: ..., language: <code>}`, as in "Recipients in their own language" in `PLUGIN/docs/config.md`; each gets the same Brief in their own language, at one extra AI call per night for each extra language. Leave `email.weekend_to` out, unlike the example config: Weekend Picks then go to the same Recipients, each in their language
 
-### 4. Gmail (required)
+### 5. Gmail (required)
 
 Follow the "Gmail" section of `PLUGIN/docs/sources.md` to walk the user through creating an App Password, then have the user run in **Terminal**:
 
@@ -89,7 +103,7 @@ Follow the "Gmail" section of `PLUGIN/docs/sources.md` to walk the user through 
 
 Once it succeeds, you run `$FB discover gmail-senders`, and together with the user pick the domains of the school, teachers, clubs and music school from the list for `gmail.allowlist_domains`. **Don't add public domains like gmail.com or outlook.com**, or private mail gets scanned; for a teacher who uses a private address, add that address alone to `allowlist_senders`.
 
-### 5. AI login (required)
+### 6. AI login (required)
 
 Do one of these, according to the choice in step 0; details are in the "AI login" section of `sources.md`.
 
@@ -106,17 +120,11 @@ The second has the Keychain ask twice for the token printed by the first (input 
 
 **Once the AI login works**, run `$FB language <code>` for every language in the config (`summary_language` and any Recipient's `language`). For a reviewed language it only says so; for any other, the AI translates the program's own text into it once and it is kept. If that fails, run it again: the nightly run would retry on its own, but the preview in step 13 would show English headings.
 
-### 6. Wilma (optional)
-
-Follow the "Wilma" section of `sources.md`: install the CLI and have the user run `wilma` in **Terminal** to sign in. Then you run `$FB discover wilma-students` and check the student names match the Kids' names in the config (if not, change the config to Wilma's spelling and put everyday names in aliases). Finally set `wilma.enabled: true`.
-
-After sign-in, tell the user in a sentence or two the gist of "Where the Wilma password is stored" in `sources.md`: the password is stored unencrypted in `~/.config/wilmai/config.json`; don't sync or back up that folder; delete it when they stop using FamilyBrief.
-
 ### 7. WhatsApp (optional)
 
 Follow the "WhatsApp" section of `sources.md`:
 
-1. Confirm the App Store version of WhatsApp is installed and signed in
+1. Confirm the App Store version of WhatsApp from step 0 is installed and signed in
 2. Have the user add the real Python path noted in step 2 under **System Settings → Privacy & Security → App Management**
 3. You run `$FB bg discover whatsapp-chats`. If a popup says "python3.x would like to access data from other apps", have the user click Allow. If it still can't read, the path added in step 2 is wrong, or it also needs adding to Full Disk Access
 4. Together with the user, pick the groups about the kids, and mark each with its Kid (the Kid's full name, or `both`) and type (class / football / piano …). **Copy group names exactly from the output**; trailing spaces, curly quotes and emoji all have to match.
@@ -135,7 +143,7 @@ Use AskUserQuestion to have the user pick one of two:
 
 ### 10. Weekend Picks (optional)
 
-Only if the user chose it in step 0: ask what each Kid likes and what the parents want the kids to try, and write it into `weekend_events.kid_preferences` and `parent_preferences`; set `regions` by city; set `enabled: true`. Weekend Picks go to the Brief's Recipients, each in their language, unless the user wants different addresses: then write them in `email.weekend_to`, in the same form as `email.to`, asking each new person's language the same way and running `$FB language <code>` for a new language.
+Only if the user chose it in step 0, which offers it only in Helsinki, Espoo and Vantaa: ask what each Kid likes and what the parents want the kids to try, and write it into `weekend_events.kid_preferences` and `parent_preferences`; set `regions` by city, as in the city presets; set `enabled: true`. Weekend Picks go to the Brief's Recipients, each in their language, unless the user wants different addresses: then write them in `email.weekend_to`, in the same form as `email.to`, asking each new person's language the same way and running `$FB language <code>` for a new language.
 
 ### 11. Pilot feedback (pilot families only)
 
