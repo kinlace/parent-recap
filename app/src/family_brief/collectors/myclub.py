@@ -30,7 +30,9 @@ class FetchError(Exception):
     the link's path and query carry the Kid's personal token (requests puts them in its errors)."""
 
 
-def _fetch_ics(url: str) -> str:
+def download(url: str) -> str:
+    """The calendar at a MyClub link (webcal:// or https://), as iCal text."""
+    url = _normalize_url(url)
     host = urlsplit(url).hostname or "the MyClub link"
     try:
         r = retry_once_on_timeout(lambda: requests.get(url, timeout=30),
@@ -99,9 +101,8 @@ def collect_events(cfg: Config, state: State) -> tuple[list[CalendarEvent], list
     for kid in cfg.kids:
         if not kid.myclub_ical_url:
             continue
-        url = _normalize_url(kid.myclub_ical_url)
         try:
-            ics_text = _fetch_ics(url)
+            ics_text = download(kid.myclub_ical_url)
         except Exception as e:
             log.error("MyClub fetch failed for %s: %s", kid.name, e)
             continue
