@@ -35,7 +35,7 @@ from urllib.parse import urlparse
 import keyring.errors
 
 from . import install_record, secret_dialog
-from .config import Config
+from .config import Config, Kid
 
 APP_PASSWORDS_URL = "https://myaccount.google.com/apppasswords"
 TWO_STEP_URL = "https://myaccount.google.com/signinoptions/two-step-verification"
@@ -392,9 +392,10 @@ def cmd_whatsapp(args: argparse.Namespace) -> int:
                            "version from WhatsApp's website), links it to their phone and lets "
                            f"the chats sync, then run: {_program()} setup whatsapp")
         if permission != "none":
-            return _report("unreadable", "WhatsApp's data is there but couldn't be read. Run this "
-                           "again; if it fails again, check that WhatsApp for Mac opens and shows "
-                           "the chats.", python=python, error=str(read.get("error"))[:200])
+            return _report("unreadable", "Reading WhatsApp failed (see error). Run this again; if "
+                           "it fails again, check that WhatsApp for Mac opens and shows the chats, "
+                           f"and run: {_program()} bg doctor", python=python,
+                           error=str(read.get("error"))[:200])
         if not opened:
             opened = True
             _, failed = ops.show_python_for_app_management()
@@ -421,7 +422,7 @@ def _read_through_bg(config: str | None, days: int, timeout: float) -> dict[str,
                 return json.loads(line)
             except ValueError:
                 break
-    if code == 124:
+    if code == ops.TIMED_OUT:
         return None
     return {"permission": "error", "error": f"exit code {code}: {out.strip()[-200:]}"}
 
@@ -447,14 +448,14 @@ def _read_whatsapp(days: int) -> int:
     return 1
 
 
-def _configured_kids(config: str | None) -> list:
+def _configured_kids(config: str | None) -> list[Kid]:
     try:
         return Config.load(config).kids
     except Exception:  # no config yet: the chats are listed without hints
         return []
 
 
-def _with_hints(chats: list[dict[str, Any]], kids: list) -> list[dict[str, Any]]:
+def _with_hints(chats: list[dict[str, Any]], kids: list[Kid]) -> list[dict[str, Any]]:
     """Adds a hint to each chat whose name mentions a Kid's name, class, school or club, naming
     the Kids by their name in the config, which is what whatsapp.chats[].kid takes."""
     out = []
@@ -462,10 +463,7 @@ def _with_hints(chats: list[dict[str, Any]], kids: list) -> list[dict[str, Any]]
         matched_kids: list[str] = []
         matched: list[str] = []
         for kid in kids:
-            first = kid.name.split()[0] if " " in kid.name.strip() else None
-            terms = [*kid.match_terms(), *([first] if first else []), kid.class_name, kid.school,
-                     *kid.activities]
-            hits = [t for t in terms if t and _mentions(chat["name"], t)]
+            hits = [t for t in kid.chat_hint_terms() if _mentions(chat["name"], t)]
             if hits:
                 matched_kids.append(kid.name)
                 matched += [t for t in hits if t not in matched]

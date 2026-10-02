@@ -32,6 +32,7 @@ LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
 JOB_DAILY = "com.family.brief"
 JOB_WEEKEND = "com.family.weekend-events"
 BG_ENV = "FAMILY_BRIEF_BG"  # set inside `bg` jobs so doctor doesn't recurse
+TIMED_OUT = 124  # run_as_job's exit code for a job it stopped, as timeout(1) gives
 APP_MANAGEMENT_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles"
 
 
@@ -215,7 +216,7 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
                 f"didn't start ({e}). Run family-brief bg doctor to confirm")
             return
         lines = [l for l in out.splitlines() if "WhatsApp: " in l]
-        if not lines and code == 124:
+        if not lines and code == TIMED_OUT:
             add(FAIL, "WhatsApp", "the background check didn't finish within 180 seconds and was "
                 "stopped (if macOS asked whether python3.x may access data from other apps, click "
                 "Allow and run doctor again)")
@@ -482,7 +483,7 @@ def run_as_job(cmd_args: list[str], config: str | None, timeout: int = 900,
         if echo:
             print(f"{FAIL} the background job didn't finish within {timeout} seconds and was "
                   "stopped", flush=True)
-        return 124, text
+        return TIMED_OUT, text
     return code, text
 
 
