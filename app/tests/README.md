@@ -15,6 +15,9 @@ The fake Sources honor seen-state like the real ones, so multi-night tests see o
 `test_setup_gmail.py` runs `family-brief setup gmail` against a fake macOS dialog, `open`,
 Keychain and IMAP server, and checks the App Password never reaches the output, the logs or a
 command line.
+`test_setup_wilma.py` runs `family-brief setup wilma` against a fake `wilma` CLI and a Terminal
+that runs the sign-in script at once, and checks the Kids, the city from every preset Wilma
+address and that the Wilma password never reaches the output.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:
