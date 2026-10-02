@@ -15,18 +15,43 @@ The whole program runs on your own Mac. Data only moves between this Mac, the AI
 
 - A Mac that is on or asleep around 9 pm (the program wakes it up on schedule)
 - Either a Claude Pro or Max subscription with Claude Code installed, or ChatGPT Plus or higher with the ChatGPT desktop app installed
+- [Homebrew](https://brew.sh), which setup uses to install Python 3.11 or later and Node. A Mac comes with only Python 3.9, which is too old, and no Node, so without Homebrew setup stops at its first step
 - A Gmail account with two-step verification turned on
 - Optional: a Wilma parent account, WhatsApp from the App Store, a MyClub account
 
 ## Install
 
-With Claude Code, use method 1 or 2; with ChatGPT, use method 3. None of them needs a GitHub account. Once installed, all three work the same.
+Open Terminal (press ⌘Space, type Terminal and press Enter), paste one line and press Enter. Neither line needs a GitHub account.
 
-Installed a version before 0.4.0 in Claude Code (from the maintainers' private repository or a zip they sent)? It was called Family Brief. First type `/plugin uninstall family-brief@family-brief` and `/plugin marketplace remove family-brief` to remove it, then install with method 1 or 2. Your settings and Briefs in `~/.family` and `~/FamilyBrief` stay as they are.
+**Claude Code** (with a Claude subscription):
 
-### Method 1: Claude Code (later updates take one command)
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kinlace/parent-recap/stable/get.sh)" - --claude
+```
 
-In Claude Code, type these one at a time:
+It adds the Parent Recap marketplace (`kinlace/parent-recap#stable`) to Claude Code, installs the plugin for your Mac user, and starts Claude Code with `/parent-recap:setup`. If an earlier Family Brief plugin is installed, it removes that first; your settings and Briefs in `~/.family` and `~/FamilyBrief` stay as they are.
+
+**Codex** (with a ChatGPT account):
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kinlace/parent-recap/stable/get.sh)" - --codex
+```
+
+It downloads the latest stable release into `~/FamilyBrief/plugin` and runs `install.sh --codex` from it, which installs the program and the two Codex skills. Then open Codex, start a new chat and type `$parent-recap-setup`. The Codex install hasn't been fully tested end to end yet; if you get stuck, [open an issue](https://github.com/kinlace/parent-recap/issues).
+
+Both lines fetch [`get.sh`](get.sh) and everything else from the `stable` branch, which only ever holds a tested release. Running a line again is safe: it updates what it installed.
+
+### Next
+
+Claude or Codex walks you through setup step by step, which takes about 30–45 minutes. Setup downloads about 175 MB, mostly the Python packages the program uses. A password or token never goes into the chat: setup asks for it in a macOS window or has you type it in Terminal. When setup asks you to run something in Terminal, open a new Terminal window with ⌘N, so the chat keeps running in the first one.
+
+Once installed, if something goes wrong or you want to change a setting (a new school year, a different group, another recipient), type `/parent-recap:manage` (`$parent-recap-manage` in Codex), or just say what you want.
+
+### Other ways to install
+
+If you'd rather not paste a line from the internet into Terminal, install by hand. Installed a version before 0.4.0 in Claude Code? It was called Family Brief: first type `/plugin uninstall family-brief@family-brief` and `/plugin marketplace remove family-brief` to remove it. Your settings and Briefs in `~/.family` and `~/FamilyBrief` stay as they are.
+
+In Claude Code, type these one at a time, and choose **user** when `/plugin install` asks for a scope ("project" ties the plugin to the folder Claude Code started in):
 
 ```
 /plugin marketplace add kinlace/parent-recap#stable
@@ -34,44 +59,17 @@ In Claude Code, type these one at a time:
 /parent-recap:setup
 ```
 
-`#stable` means you only ever get tested releases.
+Or from the package file, for Claude Code or Codex:
 
-### Method 2: Claude Code from the package file
-
-1. Download `parent-recap-<version>.zip` from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) (under **Assets**)
-2. Unzip it and move the resulting `parent-recap` folder to `~/FamilyBrief/plugin` (create the FamilyBrief folder if it doesn't exist)
-3. In Claude Code, type these one at a time:
-
-```
-/plugin marketplace add ~/FamilyBrief/plugin
-/plugin install parent-recap@kinlace
-/parent-recap:setup
-```
-
-### Method 3: Codex (with a ChatGPT account)
-
-1. As in method 2, download the zip from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) and unzip it to `~/FamilyBrief/plugin`
-2. Open Terminal and run:
-
-```bash
-bash ~/FamilyBrief/plugin/install.sh --codex
-```
-
-3. Open Codex, start a new chat and type `$parent-recap-setup`
-
-The Codex install hasn't been fully tested end to end yet; if you get stuck, [open an issue](https://github.com/kinlace/parent-recap/issues).
-
-### Next
-
-After you type `/parent-recap:setup` (`$parent-recap-setup` in Codex), Claude or Codex walks you through setup step by step, which takes about 30–45 minutes. Whenever a password is needed, it asks you to type it in your own Terminal, so it never passes through the chat.
-
-Once installed, if something goes wrong or you want to change a setting (a new school year, a different group, another recipient), type `/parent-recap:manage` (`$parent-recap-manage` in Codex), or just say what you want.
+1. Download `parent-recap-<version>.zip` from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) (under **Assets**). Safari unzips it by itself into a `parent-recap` folder in Downloads; in another browser, double-click the zip in Finder
+2. Move the `parent-recap` folder to `~/FamilyBrief/plugin` (create the FamilyBrief folder in your home folder if it doesn't exist)
+3. In Claude Code, type `/plugin marketplace add ~/FamilyBrief/plugin`, `/plugin install parent-recap@kinlace` (choose **user**) and `/parent-recap:setup`. For Codex, run `bash ~/FamilyBrief/plugin/install.sh --codex` in Terminal, then type `$parent-recap-setup` in a new Codex chat
 
 ## Updating
 
-- **Method 1**: type `/plugin update parent-recap@kinlace`
-- **Method 2**: unzip the zip from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) over `~/FamilyBrief/plugin`, then in Claude Code type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`
-- **Codex**: unzip the zip from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) over `~/FamilyBrief/plugin`, then in Terminal run `bash ~/FamilyBrief/plugin/install.sh --codex` again
+- **Installed with a line**: paste the same line into Terminal again. With Claude Code you can also type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`
+- **Installed by hand in Claude Code**: type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`
+- **From the package file**: unzip the zip from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) over `~/FamilyBrief/plugin`, then in Claude Code type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`, or for Codex run `bash ~/FamilyBrief/plugin/install.sh --codex` in Terminal again
 
 After updating, tell Claude or Codex "upgrade Parent Recap"; it syncs the program and runs a check.
 
