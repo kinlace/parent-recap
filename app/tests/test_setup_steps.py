@@ -1,7 +1,7 @@
 """Setup steps a family runs by hand: none of them may look stuck or leave the family guessing.
 
-The outside edges are faked: Gmail's IMAP server, and the `launchctl`, `pmset` and `open`
-commands. Assertions are on what the family reads and on which commands ran."""
+The outside edges are faked: Gmail's IMAP server, macOS's administrator dialog, and the
+`launchctl`, `pmset` and `open` commands. Assertions are on what the family reads and on which commands ran."""
 from __future__ import annotations
 
 import imaplib
@@ -125,66 +125,139 @@ OURS = """Repeating power events:
 """
 
 
-@pytest.fixture
-def mac(harness, monkeypatch):
-    """`launchctl` succeeds; `pmset -g custom` and `pmset -g sched` print what the test sets."""
-    pmset = {"custom": SLEEPS, "sched": NO_SCHEDULE}
+class FakeMac:
+    """`launchctl` succeeds; `pmset -g custom` and `pmset -g sched` print what the test sets; the
+    administrator dialog (`osascript ... with administrator privileges`) runs `pmset repeat` when
+    the family enters their Mac password."""
 
-    def run(cmd: list[str], *_a: Any, **_k: Any) -> subprocess.CompletedProcess:
+    def __init__(self) -> None:
+        self.custom = SLEEPS
+        self.sched = NO_SCHEDULE
+        self.admin_dialog = "allow"  # or "cancel", or "unavailable" (no desktop session)
+        self.admin_scripts: list[str] = []
+
+    def run(self, cmd: list[str], *_a: Any, **_k: Any) -> subprocess.CompletedProcess:
         if cmd[0] == "launchctl":
             return subprocess.CompletedProcess(cmd, 0, "", "")
         if cmd[:2] == ["pmset", "-g"]:
-            return subprocess.CompletedProcess(cmd, 0, pmset[cmd[2]], "")
+            return subprocess.CompletedProcess(cmd, 0, self.custom if cmd[2] == "custom"
+                                               else self.sched, "")
+        if cmd[0] == "osascript" and "administrator privileges" in cmd[-1]:
+            self.admin_scripts.append(cmd[-1])
+            if self.admin_dialog == "cancel":
+                return subprocess.CompletedProcess(cmd, 1, "", "execution error: User canceled. (-128)")
+            if self.admin_dialog == "unavailable":
+                return subprocess.CompletedProcess(
+                    cmd, 1, "", "execution error: No user interaction allowed. (-1713)")
+            hh, mm = cmd[-1].split("MTWRFSU ", 1)[1][:5].split(":")
+            h = int(hh)
+            self.sched = (f"Repeating power events:\n  wakepoweron at {h % 12 or 12}:{mm}"
+                          f"{'AM' if h < 12 else 'PM'} every day\n")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
         raise AssertionError(f"unexpected subprocess in test: {cmd[:3]}")
-    monkeypatch.setattr(subprocess, "run", run)
+
+
+@pytest.fixture
+def mac(harness, monkeypatch):
+    fake = FakeMac()
+    monkeypatch.setattr(subprocess, "run", fake.run)
     monkeypatch.setattr(ops, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
-    return pmset
+    return fake
 
 
-def test_schedule_install_gives_the_wake_command_when_there_is_no_wake_schedule(harness, mac,
-                                                                               capsys):
+def test_schedule_install_sets_the_wake_schedule_through_the_administrator_dialog(harness, mac,
+                                                                                  capsys):
     assert harness.cli("schedule", "install") == 0
 
     out = capsys.readouterr().out
-    assert "sudo pmset repeat wakeorpoweron MTWRFSU 20:55:00" in out
+    assert len(mac.admin_scripts) == 1
+    assert "pmset repeat wakeorpoweron MTWRFSU 20:55:00" in mac.admin_scripts[0]
+    assert "Parent Recap" in mac.admin_scripts[0]  # the dialog says who is asking, and why
+    assert "20:55" in out and "sudo" not in out
     assert "replace" not in out
 
 
-def test_schedule_install_skips_the_wake_command_when_the_mac_never_sleeps(harness, mac, capsys):
-    mac["custom"] = NEVER_SLEEPS
+def test_schedule_install_skips_the_wake_schedule_when_the_mac_never_sleeps(harness, mac, capsys):
+    mac.custom = NEVER_SLEEPS
 
     assert harness.cli("schedule", "install") == 0
 
     out = capsys.readouterr().out
+    assert mac.admin_scripts == []
     assert "pmset repeat" not in out
     assert "never sleeps" in out
 
 
 def test_schedule_install_still_wakes_a_laptop_that_sleeps_on_battery(harness, mac, capsys):
-    mac["custom"] = ALWAYS_AWAKE
+    mac.custom = ALWAYS_AWAKE
 
     assert harness.cli("schedule", "install") == 0
 
-    assert "sudo pmset repeat wakeorpoweron" in capsys.readouterr().out
+    assert len(mac.admin_scripts) == 1
 
 
 def test_schedule_install_warns_before_replacing_another_wake_schedule(harness, mac, capsys):
-    mac["sched"] = OTHER_SCHEDULE
+    mac.sched = OTHER_SCHEDULE
 
     assert harness.cli("schedule", "install") == 0
 
     out = capsys.readouterr().out
+    assert mac.admin_scripts == []  # the family decides before any dialog opens
     assert "wakepoweron at 7:00AM weekdays only" in out
     assert "replaces" in out
-    assert out.index("replaces") < out.index("sudo pmset repeat")
+    assert "schedule install --replace-wake" in out
     assert "com.apple.alarm" not in out  # one-off events aren't touched by pmset repeat
 
 
+def test_schedule_install_replaces_another_wake_schedule_once_the_family_agrees(harness, mac,
+                                                                               capsys):
+    mac.sched = OTHER_SCHEDULE
+
+    assert harness.cli("schedule", "install", "--replace-wake") == 0
+
+    out = capsys.readouterr().out
+    assert len(mac.admin_scripts) == 1
+    assert "wakepoweron at 7:00AM weekdays only" in out  # what was replaced
+    assert "20:55" in out and "sudo" not in out
+
+
 def test_schedule_install_says_when_the_wake_schedule_is_already_set(harness, mac, capsys):
-    mac["sched"] = OURS
+    mac.sched = OURS
 
     assert harness.cli("schedule", "install") == 0
 
     out = capsys.readouterr().out
+    assert mac.admin_scripts == []
     assert "pmset repeat" not in out
     assert "already" in out
+
+
+def test_schedule_install_gives_the_sudo_command_without_a_desktop_session(harness, mac, capsys):
+    mac.admin_dialog = "unavailable"
+
+    assert harness.cli("schedule", "install") == 0
+
+    assert "sudo pmset repeat wakeorpoweron MTWRFSU 20:55:00" in capsys.readouterr().out
+
+
+def test_schedule_install_gives_the_sudo_command_over_ssh(harness, mac, monkeypatch, capsys):
+    monkeypatch.setenv("SSH_CONNECTION", "10.0.0.2 52000 10.0.0.1 22")
+    mac.sched = OTHER_SCHEDULE
+
+    assert harness.cli("schedule", "install") == 0
+
+    out = capsys.readouterr().out
+    assert mac.admin_scripts == []
+    assert "wakepoweron at 7:00AM weekdays only" in out
+    assert out.index("replaces") < out.index("sudo pmset repeat wakeorpoweron MTWRFSU 20:55:00")
+
+
+def test_schedule_install_says_the_wake_schedule_wasnt_set_when_the_dialog_is_cancelled(
+        harness, mac, capsys):
+    mac.admin_dialog = "cancel"
+
+    assert harness.cli("schedule", "install") == 0
+
+    out = capsys.readouterr().out
+    assert "wasn't set" in out
+    assert "sudo pmset repeat wakeorpoweron MTWRFSU 20:55:00" in out

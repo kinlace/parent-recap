@@ -66,10 +66,14 @@ class FakeMac:
             assert "-w" not in cmd, "uninstall must not read the secret itself"
             return done(cmd, f'keychain: "login.keychain-db"\n    "acct"<blob>="{account}"\n')
         if prog == "osascript":
-            assert "pmset repeat cancel" in cmd[-1] and "administrator privileges" in cmd[-1]
+            assert "administrator privileges" in cmd[-1]
             if self.admin_dialog == "cancel":
                 return done(cmd, code=1, err="execution error: User canceled. (-128)")
-            self.repeating = []
+            if "pmset repeat wakeorpoweron MTWRFSU 20:55:00" in cmd[-1]:  # schedule install
+                self.repeating = [OUR_WAKE]
+            else:
+                assert "pmset repeat cancel" in cmd[-1]
+                self.repeating = []
             return done(cmd)
         raise AssertionError(f"unexpected subprocess in test: {cmd[:3]}")
 
@@ -117,7 +121,7 @@ def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
     gmail.store_app_password("parent@example.com", APP_PASSWORD)
     harness.keychain["claude-oauth-token"] = CLAUDE_TOKEN
     assert harness.cli("schedule", "install") == 0
-    mac.repeating = [OUR_WAKE]
+    assert mac.repeating == [OUR_WAKE]
     harness.state_path.write_text("{}")
     (home / ".family" / "languages").mkdir()
     (home / ".family" / "languages" / "sv.json").write_text("{}")
@@ -260,6 +264,7 @@ def test_a_cancelled_administrator_dialog_leaves_the_wake_schedule_and_says_how(
 def test_leaves_a_wake_schedule_setup_did_not_set(harness, mac, monkeypatch, capsys):
     set_up(harness, mac, monkeypatch)
     mac.repeating = ["wakepoweron at 7:00AM weekdays only"]
+    mac.ran.clear()
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
@@ -423,7 +428,7 @@ def test_a_fresh_setup_works_after_uninstall(harness, mac, monkeypatch, capsys):
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
-    assert mac.keychain == {} and mac.loaded == set()
+    assert mac.keychain == {} and mac.loaded == set() and mac.repeating == []
     assert not (harness.home / ".family").exists() and not app.exists()
 
 

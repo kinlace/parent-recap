@@ -24,14 +24,13 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import install_record, ops, run_lock
+from . import install_record, ops, run_lock, secret_dialog
 from .collectors.gmail import keychain_account
 from .config import Config
 from .utils import keychain
 
 OK, FAIL = ops.OK, ops.FAIL
 DATED = re.compile(r"^\d{4}-\d{2}-\d{2}\.(md|raw\.json)$")  # an archived Brief and its messages
-CANCEL_WAKE = 'do shell script "/usr/bin/pmset repeat cancel" with administrator privileges'
 MARKETPLACE = "kinlace"
 
 
@@ -216,8 +215,11 @@ def _wake(s: Survey, cfg: Config) -> None:
 
 
 def _cancel_wake() -> None:
-    r = subprocess.run(["osascript", "-e", CANCEL_WAKE], capture_output=True, text=True)
-    if r.returncode != 0:
+    try:
+        secret_dialog.as_administrator("/usr/bin/pmset repeat cancel", "Parent Recap wants to "
+                                       "remove the wake schedule it set. Enter your Mac password "
+                                       "to allow this.")
+    except (secret_dialog.Cancelled, secret_dialog.NoWayToAsk):
         raise NotRemoved("the administrator dialog was cancelled or couldn't open. Run this in "
                          "Terminal instead (it asks for your Mac password): sudo pmset repeat cancel")
 

@@ -119,10 +119,16 @@ def _wake(hour: int, minute: int) -> Outcome:
     if ops.never_sleeps():
         return Outcome("wake", True, "this Mac never sleeps, so it needs no wake schedule")
     wake_h, wake_m = ops.wake_time(hour, minute)
-    if any(ops.is_our_wake(line, hour, minute) for line in ops.repeating_wakes()):
+    repeating = ops.repeating_wakes()
+    if any(ops.is_our_wake(line, hour, minute) for line in repeating):
         return Outcome("wake", True, f"the Mac wakes at {wake_h:02d}:{wake_m:02d} every day")
+    install = "family-brief schedule install"
+    if repeating:  # replaced only once the family agrees
+        install = (f"{install} --replace-wake once the family agrees to replace this Mac's other "
+                   f"repeating wake schedule ({', '.join(repeating)})")
     return Outcome("wake", False, f"the Mac sleeps and doesn't wake at {wake_h:02d}:{wake_m:02d} "
-                   "every day, so the Brief only comes on nights it's awake. The family runs this "
+                   f"every day, so the Brief only comes on nights it's awake. Run {install}, "
+                   "which sets it through macOS's administrator dialog, or the family runs this "
                    f"in Terminal: {ops.wake_command(hour, minute)}")
 
 

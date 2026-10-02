@@ -177,7 +177,7 @@ With pilot feedback on, the preview shows no ⭐ / ❌; that's expected. Ask the
 $FB schedule install
 ```
 
-If it prints a `sudo pmset ...` command, give it to the user to run in Terminal themselves, so the Mac wakes 5 minutes before the job starts. If it warns that the Mac already has a repeating wake schedule, show the user the schedule it lists and ask before they run the command, since it replaces that schedule. It prints no command when the Mac never sleeps or already wakes at that time. Remind the user: on the first scheduled run, if a popup says "python3.x would like to access data from other apps", click Allow.
+It sets the Mac to wake 5 minutes before the job starts. Before running it, tell the user that macOS will ask for their Mac password in its own dialog, for the wake-up. Nothing is set when the Mac never sleeps or already wakes at that time. If it warns that the Mac already has a repeating wake schedule, show the user the schedule it lists and ask whether to replace it; only if they say yes, run `$FB schedule install --replace-wake`. If it prints a `sudo pmset ...` command (no dialog could open here, or the user closed it), give it to the user to run in Terminal themselves. Remind the user: on the first scheduled run, if a popup says "python3.x would like to access data from other apps", click Allow.
 
 ### 15. Wrap-up
 

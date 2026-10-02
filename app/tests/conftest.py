@@ -240,8 +240,9 @@ class Harness:
     # Fakes
     def _install(self, mp: pytest.MonkeyPatch) -> None:
         mp.setenv("HOME", str(self.home))
+        # Over SSH, macOS's dialogs aren't tried: a test that wants that sets these itself.
         for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
-                    "CLAUDE_CODE_OAUTH_TOKEN"):
+                    "CLAUDE_CODE_OAUTH_TOKEN", "SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"):
             mp.delenv(var, raising=False)
 
         def source(name: str) -> Callable[..., Any]:
