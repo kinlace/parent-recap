@@ -153,7 +153,7 @@ def test_normal_night_matches_golden(harness, golden, language):
     golden(f"normal_night.{language}.html", html_for_golden(email.html))
 
     [(name, payload, mime)] = email.attachments
-    assert (name, mime) == ("family-brief-2026-09-27.ics", "text/calendar")
+    assert (name, mime) == ("parent-recap-2026-09-27.ics", "text/calendar")
     golden(f"normal_night.{language}.ics", ics_for_golden(payload))
 
     [call] = harness.model_calls
@@ -682,7 +682,7 @@ def test_dated_exam_and_shortened_day_go_into_the_ics_as_all_day_events(harness,
 
     [email] = harness.sent
     name, payload, _ = email.attachment(".ics")
-    assert name == "family-brief-2026-09-27.ics"
+    assert name == "parent-recap-2026-09-27.ics"
     ics = ics_for_golden(payload)
     golden("dated_events.zh.ics", ics)
     assert ics.count("[Parent Recap · Mia]") == 2 and "FamilyBrief ·" not in ics
@@ -932,7 +932,7 @@ def assert_ics_fallback(email, note: str) -> None:
     assert email.text.endswith("\n\n" + note + ICS_FALLBACK)
     assert note + ICS_FALLBACK in email.html
     [(name, payload, mime)] = email.attachments
-    assert (name, mime) == ("family-brief-2026-09-27.ics", "text/calendar")
+    assert (name, mime) == ("parent-recap-2026-09-27.ics", "text/calendar")
     ics = payload.decode()
     # The two model events; MyClub stays out unless ics_include_myclub is set.
     assert ics.count("BEGIN:VEVENT") == 2
@@ -1079,7 +1079,7 @@ def every_source_fails(h) -> None:
     h.sources["whatsapp"] = whatsapp_without_permission
 
 
-@pytest.mark.parametrize("language", ["en", "zh"])
+@pytest.mark.parametrize("language", ["en", "zh", "fi"])
 def test_night_when_no_source_could_be_read_tells_the_parents(harness, golden, language):
     harness.config["summary_language"] = language
     every_source_fails(harness)
@@ -1730,7 +1730,7 @@ def test_second_recipient_gets_the_brief_translated_into_their_language(harness,
     golden("two_languages.en.txt", en.text)
     golden("two_languages.en.html", html_for_golden(en.html))
     name, payload, _ = en.attachment(".ics")
-    assert name == "family-brief-2026-09-27.ics"
+    assert name == "parent-recap-2026-09-27.ics"
     golden("two_languages.en.ics", ics_for_golden(payload))
 
     summarize, translate = harness.model_calls

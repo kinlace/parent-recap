@@ -4,7 +4,7 @@
 Prerequisites:
   1. Gmail account must have 2-Step Verification enabled
   2. Create a 16-character App Password at https://myaccount.google.com/apppasswords
-     (App name: "FamilyBrief"; Device: "Mac")
+     (App name: "Parent Recap"; Device: "Mac")
 
 Usage:
   python scripts/setup_gmail_imap.py <gmail_address>

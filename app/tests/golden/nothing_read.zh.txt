@@ -2,6 +2,6 @@
 
 ⚠️ 今晚所有信息源都没读到，所以没有摘要。等它们恢复后，这些消息会出现在下一份日报里。
 • Gmail：登录失败。跟 Claude 说「重新授权 Gmail」即可修复。
-• MyClub：[Errno 8] nodename nor servname provided, or not known。如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 Claude 说「检查 FamilyBrief」。
-• Wilma：wilma: request timed out。如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 Claude 说「检查 FamilyBrief」。
-• WhatsApp：macOS 权限被拒绝。跟 Claude 说「FamilyBrief 读不了 WhatsApp」即可修复。
+• MyClub：[Errno 8] nodename nor servname provided, or not known。如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 Claude 说「检查 Parent Recap」。
+• Wilma：wilma: request timed out。如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 Claude 说「检查 Parent Recap」。
+• WhatsApp：macOS 权限被拒绝。跟 Claude 说「Parent Recap 读不了 WhatsApp」即可修复。

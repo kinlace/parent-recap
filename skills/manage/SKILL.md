@@ -1,6 +1,6 @@
 ---
 name: manage
-description: Manage an installed Parent Recap: check how it's running, troubleshoot "no Brief arrived / summary failed / calendar not written / WhatsApp group missing", change Kid details, move up a grade, switch groups, add recipients, change someone's language, turn Weekend Picks on or off, turn pilot feedback (⭐ / ❌ links) on or off, re-authorize Gmail / Claude / Codex / Google Calendar / Wilma, switch between Claude and ChatGPT, upgrade to a new version or uninstall. Use when the user mentions Parent Recap, FamilyBrief, Family Brief or 家庭日报 having a problem or needing a settings change.
+description: Manage an installed Parent Recap: check how it's running, troubleshoot "no Brief arrived / summary failed / calendar not written / WhatsApp group missing", change Kid details, move up a grade, switch groups, add recipients, change someone's language, turn Weekend Picks on or off, turn pilot feedback (⭐ / ❌ links) on or off, re-authorize Gmail / Claude / Codex / Google Calendar / Wilma, switch between Claude and ChatGPT, upgrade to a new version or uninstall. Use when the user mentions Parent Recap, FamilyBrief, Family Brief or 家庭日报 having a problem or needing a settings change, or repeats a line from their Brief such as "Parent Recap can't read WhatsApp", "FamilyBrief can't read WhatsApp", "check Parent Recap", "check FamilyBrief", 「Parent Recap 读不了 WhatsApp」, 「检查 FamilyBrief」 or "tarkista Parent Recap".
 ---
 
 # Parent Recap management
@@ -18,6 +18,16 @@ If `~/.family/config.yaml` doesn't exist, Parent Recap hasn't been set up yet: u
 - Don't print mail or chat text: diagnose with `$FB doctor` and the last few lines of the logs; don't run `$FB collect`
 - Back up before changing the config: `cp ~/.family/config.yaml ~/.family/config.yaml.bak-$(date +%Y%m%d%H%M)`
 - Commands that need `sudo`: only show them, and let the user run them
+
+## When the user repeats a line from the Brief
+
+When a Source can't be read, the Brief tells the user what to say to you. Briefs sent before the rename say FamilyBrief, newer ones Parent Recap: treat both names the same way, in every language.
+
+| The user says (any of these forms)                                                                                                                                                                                       | What it means and what to do                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Parent Recap can't read <Source>", "FamilyBrief can't read <Source>", 「Parent Recap 读不了 <Source>」, 「FamilyBrief 读不了 <Source>」, "Parent Recap ei pysty lukemaan lähdettä <Source>", "FamilyBrief ei pysty lukemaan lähdettä <Source>" | macOS denied the scheduled job permission to read that Source (usually WhatsApp). Run `$FB doctor`, then follow the WhatsApp permission rows in `PLUGIN/docs/troubleshooting.md`                  |
+| "check Parent Recap", "check FamilyBrief", 「检查 Parent Recap」, 「检查 FamilyBrief」, "tarkista Parent Recap", "tarkista FamilyBrief"                                                                                     | A Source failed for some other reason, such as no network or a timeout. Go through "Check the status first" below and the last lines of `~/FamilyBrief/logs/run-stderr.log`                       |
+| "re-authorize <Source>", 「重新授权 <Source>」, "valtuuta <Source> uudelleen"                                                                                                                                             | That Source's sign-in stopped working: re-authorize it as in "Common tasks" below (Gmail sign-in, Google Calendar authorization or Wilma)                                                      |
 
 ## Check the status first
 

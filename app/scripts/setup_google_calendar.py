@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Authorize FamilyBrief to write events into your Google Calendar (one time).
+"""Authorize Parent Recap to write events into your Google Calendar (one time).
 
 Needs a Desktop OAuth client file at ~/.family/calendar_credentials.json: the one
-FamilyBrief's maintainers hand to pilot households, or your own (docs/sources.md, Calendar).
+Parent Recap's maintainers hand to pilot households, or your own (docs/sources.md, Calendar).
 
 The browser will say the app is unverified: click Advanced -> Go to <app name> -> Allow.
 """
@@ -23,7 +23,7 @@ def main() -> int:
     token_path = FAMILY / "calendar_token.json"
     if not creds_path.exists():
         print("No Google app file at ~/.family/calendar_credentials.json. Pick one of three ways:\n"
-              "  1. Pilot household: save the Google app file FamilyBrief's maintainers sent you there\n"
+              "  1. Pilot household: save the Google app file Parent Recap's maintainers sent you there\n"
               "  2. Create your own Google app: follow the Calendar section of docs/sources.md, "
               "then save the file there\n"
               "  3. Skip Google Calendar: set google_calendar.mode to ics in the config, and new events "

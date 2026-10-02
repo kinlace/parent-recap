@@ -648,7 +648,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
                 coverage_note = _coverage_note(coverage, v.t)
                 calendar_note = _calendar_note(calendar_problem, bool(ics_events), v.t, assistant)
                 top_note = _top_note(v.summary, v.t, assistant, v.translation_note)
-                attachments = [(f"family-brief-{date_str}.ics",
+                attachments = [(f"parent-recap-{date_str}.ics",
                                 ics_action.build(ics_events, cfg.timezone, v.translated_event), "text/calendar")] \
                     if ics_events else []
                 html = _daily_brief_html(v.summary, listed, date_str, v.t, cfg.timezone, calendar_note,

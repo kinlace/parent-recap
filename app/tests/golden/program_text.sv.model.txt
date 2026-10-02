@@ -4,7 +4,7 @@ argv: ["claude", "-p", "--output-format", "json", "--system-prompt", "<system pr
 You translate the fixed text of a program that emails a Household a daily Brief about their kids' school and hobbies in Finland. Translate every value of the JSON object from English into the language whose code is sv.
 
 1. Reply with one JSON object with exactly the same keys, and the same number of entries in every list
-2. Keep every {placeholder} in braces exactly as written, and keep the emoji, the Markdown (## and **) and the names Gmail, Wilma, WhatsApp, MyClub, Google Calendar, Claude, Codex, .ics and ~/FamilyBrief as they are
+2. Keep every {placeholder} in braces exactly as written, and keep the emoji, the Markdown (## and **) and the names Gmail, Wilma, WhatsApp, MyClub, Google Calendar, Claude, Codex, .ics, Parent Recap and ~/FamilyBrief as they are
 3. language_name: the English name of the language (e.g. Swedish)
 4. quotes: the quotation marks the language uses, shown around a word or two; never straight double quotes
 5. weekdays: short weekday names, Monday first; who: the words for mom, dad and either parent
@@ -53,8 +53,8 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "nothing_read": "⚠️ No Source could be read tonight, so there is no Digest. Their messages will be in the first Brief after they can be read again.",
   "source_problem": "• {source}: {reason}. {fix}",
   "fix_login": "Tell {assistant} “re-authorize {source}” to fix it.",
-  "fix_permission": "Tell {assistant} “FamilyBrief can't read {source}” to fix it.",
-  "fix_other": "If the Mac was offline, this fixes itself. If it happens again, tell {assistant} “check FamilyBrief”.",
+  "fix_permission": "Tell {assistant} “Parent Recap can't read {source}” to fix it.",
+  "fix_other": "If the Mac was offline, this fixes itself. If it happens again, tell {assistant} “check Parent Recap”.",
   "fallback_header": "⚠️ Tonight's Digest could not be written, so here are the raw messages (all of them are in the archive in ~/FamilyBrief):",
   "unsorted": "Unsorted",
   "fallback_count": " ({count})",
