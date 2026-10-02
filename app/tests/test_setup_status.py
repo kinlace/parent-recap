@@ -279,6 +279,8 @@ def test_the_wake_schedule_isnt_set_when_the_mac_sleeps_through_the_nightly_job(
     wake = outcome(report, "wake")
     assert wake["ok"] is False
     assert "20:55" in wake["reason"]
+    # Without the flag, schedule install only warns about the other schedule again.
+    assert ("--replace-wake" in wake["reason"]) == bool(repeating)
 
 
 # ── The whole checklist

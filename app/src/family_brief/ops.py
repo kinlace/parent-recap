@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import FrameType
 
-from . import install_record, languages, private_files
+from . import install_record, languages, private_files, secret_dialog
 from .config import Config
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
@@ -49,6 +49,8 @@ def register(sub) -> None:
 
     psch = sub.add_parser("schedule", help="Install / remove / inspect the launchd jobs")
     psch.add_argument("action", choices=["install", "uninstall", "status"])
+    psch.add_argument("--replace-wake", action="store_true",
+                      help="With install: replace the Mac's other repeating wake schedule")
     psch.set_defaults(func=cmd_schedule)
 
     pam = sub.add_parser("app-management", help="Show the scheduled job's Python in Finder and open "
@@ -597,13 +599,20 @@ def never_sleeps() -> bool:
     return bool(sleeps) and all(s == "0" for s in sleeps)
 
 
-def wake_command(hour: int, minute: int) -> str:
-    """The command that sets the daily wake setup gives for a job at hour:minute."""
+def _pmset_wake(hour: int, minute: int) -> str:
     wake_h, wake_m = wake_time(hour, minute)
-    return f"sudo pmset repeat wakeorpoweron MTWRFSU {wake_h:02d}:{wake_m:02d}:00"
+    return f"pmset repeat wakeorpoweron MTWRFSU {wake_h:02d}:{wake_m:02d}:00"
 
 
-def _print_wake_advice(hour: int, minute: int) -> None:
+def wake_command(hour: int, minute: int) -> str:
+    """The Terminal command that sets the daily wake setup gives for a job at hour:minute."""
+    return f"sudo {_pmset_wake(hour, minute)}"
+
+
+def _set_wake(hour: int, minute: int, replace: bool) -> None:
+    """Sets the daily wake through macOS's administrator dialog. Another repeating wake schedule
+    is replaced only with `replace`, so the family can decline before any dialog opens. Without a
+    desktop session it gives the `sudo` command for Terminal instead."""
     if never_sleeps():
         print("\nThis Mac never sleeps (sleep 0 in pmset), so it needs no wake schedule.")
         return
@@ -613,15 +622,45 @@ def _print_wake_advice(hour: int, minute: int) -> None:
         print(f"\nThe Mac already wakes at {wake_h:02d}:{wake_m:02d} every day, before the job starts.")
         return
     print("\nScheduled jobs don't run while the Mac is asleep.")
-    if existing:
-        print(f"{WARN}This Mac already has a repeating wake schedule, and the command below "
-              "replaces it:")
+    in_terminal = (f"Run this once in Terminal (it asks for your Mac password):\n"
+                   f"  {wake_command(hour, minute)}")
+    if existing and not replace:
+        print(f"{WARN}This Mac already has a repeating wake schedule, and Parent Recap's wake "
+              "schedule replaces it:")
         for line in existing:
             print(f"  {line}")
-        print("If something else needs that schedule, skip the command; the Brief then only "
-              f"comes on nights the Mac is awake at {hour:02d}:{minute:02d}.")
-    print("Run this once in Terminal (it asks for your Mac password):\n"
-          f"  {wake_command(hour, minute)}")
+        if secret_dialog.over_ssh():
+            print("If something else needs that schedule, skip the command below. The Brief then "
+                  f"only comes on nights the Mac is awake at {hour:02d}:{minute:02d}.")
+            print(in_terminal)
+        else:
+            print("If something else needs that schedule, leave it. The Brief then only comes on "
+                  f"nights the Mac is awake at {hour:02d}:{minute:02d}. To replace it, run "
+                  "family-brief schedule install --replace-wake, which asks for your Mac "
+                  "password in a macOS dialog.")
+        return
+    if existing:
+        print("Replacing this Mac's repeating wake schedule:")
+        for line in existing:
+            print(f"  {line}")
+    try:
+        secret_dialog.as_administrator(
+            f"/usr/bin/{_pmset_wake(hour, minute)}",
+            f"Parent Recap wants to wake your Mac at {wake_h:02d}:{wake_m:02d} every day, 5 "
+            "minutes before the Brief. Enter your Mac password to allow this.")
+    except secret_dialog.Cancelled:
+        print("The wake schedule wasn't set: the Mac password dialog was closed. Run "
+              "family-brief schedule install again, or set it in Terminal instead.")
+        print(in_terminal)
+        return
+    except secret_dialog.NoWayToAsk:
+        print(in_terminal)
+        return
+    if any(is_our_wake(line, hour, minute) for line in repeating_wakes()):
+        print(f"{OK} Wake: the Mac wakes at {wake_h:02d}:{wake_m:02d} every day")
+    else:
+        print(f"{FAIL} The wake schedule wasn't set: macOS doesn't list it after the dialog.")
+        print(in_terminal)
 
 
 def cmd_schedule(args: argparse.Namespace) -> int:
@@ -642,7 +681,7 @@ def cmd_schedule(args: argparse.Namespace) -> int:
             print(f"{OK} Weekend Picks: every Friday at {sc.weekend_hour:02d}:00")
         else:
             _unload(JOB_WEEKEND)
-        _print_wake_advice(sc.daily_hour, sc.daily_minute)
+        _set_wake(sc.daily_hour, sc.daily_minute, args.replace_wake)
         return 0
 
     if args.action == "uninstall":

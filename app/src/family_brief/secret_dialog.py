@@ -8,6 +8,10 @@ input and the typed text comes back on its standard output, which is captured.
 
 Without a desktop session (over SSH, or when macOS won't show the dialog) it asks at a hidden
 prompt in Terminal instead.
+
+A command that needs the Mac password, such as setting the wake schedule, runs through
+`as_administrator`: macOS's own administrator dialog asks for the password, so it never reaches
+the program either.
 """
 from __future__ import annotations
 
@@ -34,7 +38,7 @@ class NoWayToAsk(Exception):
 def ask(message: str, *, other: str | None = None) -> str:
     """The secret the family entered, stripped of surrounding whitespace. `other` names a second
     button, for when the family can't get the secret; pressing it raises OtherChosen."""
-    if not _over_ssh():
+    if not over_ssh():
         try:
             return _dialog(message, other)
         except NoWayToAsk:
@@ -42,7 +46,26 @@ def ask(message: str, *, other: str | None = None) -> str:
     return _terminal(message, other)
 
 
-def _over_ssh() -> bool:
+def as_administrator(command: str, prompt: str) -> None:
+    """Runs a shell command as root once the family enters their Mac password in macOS's
+    administrator dialog, which shows `prompt`. Raises Cancelled when they cancel it, and
+    NoWayToAsk without a desktop session or when the dialog or the command fails; there is no
+    Terminal fallback here, since `sudo` asks for the password itself."""
+    if over_ssh():
+        raise NoWayToAsk()
+    script = (f"do shell script {_quote(command)} with prompt {_quote(prompt)} "
+              "with administrator privileges")
+    try:
+        proc = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    except OSError as e:  # no osascript: not a Mac
+        raise NoWayToAsk() from e
+    if proc.returncode != 0:
+        if "(-128)" in proc.stderr:
+            raise Cancelled()
+        raise NoWayToAsk()
+
+
+def over_ssh() -> bool:
     return any(os.environ.get(v) for v in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"))
 
 
