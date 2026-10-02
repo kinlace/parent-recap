@@ -10,6 +10,7 @@ Fakes sit at exactly three boundaries, so internals can be refactored without to
      and a function makes the reply from the prompt it is given).
   3. Delivery: email sending, iMessage (`osascript`) and the Google Calendar API record what
      they are given, or fail.
+Setup commands also meet macOS's secret dialog (`osascript`) and `open`, faked the same way.
 
 Everything else (config, state, archive) is real and lives in a temporary HOME.
 "Now" and the local timezone are pinned. Regenerate golden files with:
@@ -129,6 +130,16 @@ class FailedCall:
 
 
 @dataclass
+class Dialog:
+    """The macOS secret dialog: what the family types and which button they press.
+    `button` is "save", "other" (the dialog's second choice), "cancel", or "fails" (no desktop
+    session to show it on)."""
+    typed: str = ""
+    button: str = "save"
+    shown: list[str] = field(default_factory=list)  # each dialog's AppleScript
+
+
+@dataclass
 class FakeCalendarService:
     """Stands in for googleapiclient's Calendar v3 service: events().list/insert(...).execute()."""
     existing: list[dict] = field(default_factory=list)
@@ -184,6 +195,9 @@ class Harness:
         self.sent: list[SentEmail] = []
         self.model_calls: list[ModelCall] = []
         self.keychain: dict[str, str] = {}          # account -> secret under service family-brief
+        self.dialog = Dialog()
+        self.opened: list[str] = []                 # what `open` was asked to open
+        self.commands: list[list[str]] = []         # every process started, model calls included
         self._install(monkeypatch)
 
     # Paths
@@ -282,6 +296,12 @@ class Harness:
                              cwd: str | None = None, env: dict[str, str] | None = None,
                              stdin: Any = None, **_k: Any) -> subprocess.CompletedProcess:
         prog = Path(cmd[0]).name
+        self.commands.append(list(cmd))
+        if prog == "osascript" and input and "display dialog" in input:  # the secret dialog
+            return self._show_dialog(cmd, input)
+        if prog == "open":
+            self.opened.append(cmd[-1])
+            return subprocess.CompletedProcess(cmd, 0, "", "")
         if prog == "osascript":  # iMessage via Messages.app
             if self.imessage_error is not None:
                 return subprocess.CompletedProcess(cmd, 1, "", self.imessage_error)
@@ -315,6 +335,19 @@ class Harness:
             return subprocess.CompletedProcess(cmd, 0, "", "")
         envelope = {"type": "result", "subtype": "success", "is_error": False, "result": reply}
         return subprocess.CompletedProcess(cmd, 0, json.dumps(envelope, ensure_ascii=False), "")
+
+    def _show_dialog(self, cmd: list[str], script: str) -> subprocess.CompletedProcess:
+        # Replies the way osascript does for the dialog's AppleScript, which returns "1" and the
+        # typed text for Save and "2" for the second choice.
+        self.dialog.shown.append(script)
+        button = self.dialog.button
+        if button == "cancel":
+            return subprocess.CompletedProcess(cmd, 1, "", "execution error: User canceled. (-128)")
+        if button == "fails":
+            return subprocess.CompletedProcess(
+                cmd, 1, "", "execution error: No user interaction allowed. (-1713)")
+        out = "2\n" if button == "other" else f"1{self.dialog.typed}\n"
+        return subprocess.CompletedProcess(cmd, 0, out, "")
 
 
 class _FakeSocket:

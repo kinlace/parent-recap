@@ -143,7 +143,7 @@ def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
     if not password:
         raise RuntimeError(
             f"No Gmail App Password in Keychain for {username}. "
-            "Run: python scripts/setup_gmail_imap.py"
+            "Run: family-brief setup gmail"
         )
 
     query = _gmail_query(cfg, kid_terms)
