@@ -27,7 +27,6 @@ You translate the fixed text of a program that emails a Household a daily Brief 
     "Sat",
     "Sun"
   ],
-  "date_example": "9/13 Sun",
   "household": "Household",
   "who": [
     "Mom",
@@ -64,7 +63,6 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "message_time": "{month:02}-{day:02} {hour:02}:{minute:02}",
   "translation_failed": "⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
   "action_items": "✅ Action Items",
-  "action_items_count": "✅ Action Items: {n} (details in the email)",
   "due": "by {date}",
   "months": [
     "Jan",

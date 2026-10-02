@@ -40,7 +40,6 @@ class BriefText:
     language_name: str
     quotes: str                         # what to quote with inside JSON strings instead of "
     weekdays: tuple[str, ...]           # Monday first, for the prompt's date_reference
-    date_example: str                   # how the prompt shows an absolute date, Sunday 13 September
     household: str                      # `kid` of an entry about the whole Household
     who: tuple[str, str, str]           # mom, dad, either
     re_reminder: str                    # prefix of a re-reminded Action Item
@@ -78,7 +77,6 @@ class BriefText:
 
     # ── Sections and footer
     action_items: str
-    action_items_count: str             # {n}, the iMessage line
     due: str                            # {date}, after an Action Item
     # How the Brief writes a date (the header, a due date) and a date with a time (an event's start)
     months: tuple[str, ...]             # short month names, January first, for {month_name}
@@ -127,7 +125,6 @@ EN = BriefText(
     language_name="English",
     quotes="‘single quotes’",
     weekdays=("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"),
-    date_example="9/13 Sun",
     household="Household",
     who=("Mom", "Dad", "Either"),
     re_reminder="(Reminder) ",
@@ -158,7 +155,6 @@ EN = BriefText(
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
     action_items="✅ Action Items",
-    action_items_count="✅ Action Items: {n} (details in the email)",
     due="by {date}",
     months=("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"),
     date="{weekday} {day} {month_name}",
@@ -189,7 +185,6 @@ ZH = BriefText(
     language_name="Simplified Chinese",
     quotes="《》 or 「」",
     weekdays=("周一", "周二", "周三", "周四", "周五", "周六", "周日"),
-    date_example="9/13 周日",
     household="全家",
     who=("妈妈", "爸爸", "任一"),
     re_reminder="（再提醒）",
@@ -216,7 +211,6 @@ ZH = BriefText(
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ 今晚的日报没能翻译成功，下面是原文。",
     action_items="✅ 待办",
-    action_items_count="✅ 待办 {n} 项（详情见邮箱归档）",
     due="by {date}",
     months=("1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"),
     date="{month_name}{day}日 {weekday}",
@@ -246,7 +240,6 @@ FI = BriefText(
     language_name="Finnish",
     quotes="”näin”",
     weekdays=("ma", "ti", "ke", "to", "pe", "la", "su"),
-    date_example="su 13.9.",
     household="Koko perhe",
     who=("Äiti", "Isä", "Kumpi tahansa"),
     re_reminder="(Muistutus) ",
@@ -280,7 +273,6 @@ FI = BriefText(
     message_time="{day}.{month}. klo {hour}.{minute:02}",
     translation_failed="⚠️ Tämäniltaista koostetta ei saatu käännettyä, joten tässä se on alkuperäisellä kielellä.",
     action_items="✅ Hoidettavat",
-    action_items_count="✅ Hoidettavaa: {n} (tarkemmin sähköpostissa)",
     due="viimeistään {date}",
     months=("tammi", "helmi", "maalis", "huhti", "touko", "kesä", "heinä", "elo", "syys", "loka", "marras",
             "joulu"),

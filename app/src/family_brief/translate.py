@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+from datetime import date, timedelta
 from string import Template
 from typing import Any, Callable
 
@@ -18,6 +19,7 @@ from .brief_text import BriefText, Language
 from .languages import FINNISH_WORDS, is_finnish
 from .config import Config
 from .summarize import call_llm, digest_of
+from .utils.dates import today_str
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +31,8 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
 
 _TRANSLATE = Template("Translate every text value (message_digest, text, what, title, description) into $target")
 _KEEP = [
-    Template("Keep names, dates, times, amounts and the Markdown formatting as they are"),
+    Template("Keep names, times, amounts and the Markdown formatting as they are, and write each date the way "
+             "$target writes them in the text, such as $date"),
     Template("Keep every other value exactly as it is (kid, by, refs, start), and keep every list with the same "
              "entries in the same order: don't add, drop, merge or reorder anything"),
 ]
@@ -44,18 +47,19 @@ _REPLY = [
 
 
 def instructions(intro: Template, translate: Template, keep_finnish: Template, keep: list[Template],
-                 src: BriefText, dst: BriefText, target: Language) -> str:
+                 src: BriefText, dst: BriefText, target: Language, day: date | None = None) -> str:
     """Numbered translation instructions: what to translate, the Finnish words to keep (none for a
-    Finnish translation), what else to keep, and how to reply. Weekend Picks use them too."""
+    Finnish translation), what else to keep, and how to reply. Weekend Picks use them too. `day`
+    shows how the target writes a date."""
     rules = [translate, *([] if is_finnish(target) else [keep_finnish]), *keep, *_REPLY]
     values = {"original": src.language_name, "target": dst.language_name, "quotes": dst.quotes,
-              "finnish_words": FINNISH_WORDS}
+              "finnish_words": FINNISH_WORDS, "date": dst.on(day) if day else ""}
     return (intro.substitute(values) + "\n"
             + "".join(f"{n}. {r.substitute(values)}\n" for n, r in enumerate(rules, 1)))
 
 
-def system_prompt(src: BriefText, dst: BriefText, target: Language) -> str:
-    return instructions(_INTRO, _TRANSLATE, _KEEP_FINNISH, _KEEP, src, dst, target)
+def system_prompt(src: BriefText, dst: BriefText, target: Language, tomorrow: date) -> str:
+    return instructions(_INTRO, _TRANSLATE, _KEEP_FINNISH, _KEEP, src, dst, target, tomorrow)
 
 
 def _unprefixed(what: str, t: BriefText) -> str:
@@ -157,6 +161,8 @@ def translate(cfg: Config, summary: dict[str, Any], original: Language, target: 
     src, dst = languages.text(cfg, original), languages.text(cfg, target)
     log.info("Translating the Brief from %s into %s", original, target)
     payload = _payload(summary, src)
-    reply = call_llm(cfg, json.dumps(payload, ensure_ascii=False, indent=2), system_prompt(src, dst, target)).data
+    tomorrow = date.fromisoformat(today_str(cfg.timezone)) + timedelta(days=1)
+    reply = call_llm(cfg, json.dumps(payload, ensure_ascii=False, indent=2),
+                     system_prompt(src, dst, target, tomorrow)).data
     _check(payload, reply, src, dst)
     return _merge(summary, reply, src, dst)

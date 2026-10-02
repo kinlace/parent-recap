@@ -7,11 +7,12 @@ keyword spec is a list of alternatives (any one must appear, case-insensitively)
 items are themselves lists is a set of groups that must all appear. Everything is counted, not averaged, so `aggregate` can pool cases of different sizes."""
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from statistics import mean
 from typing import Any
 
-from ..summarize import _localize
+from ..summarize import _localize, digest_of
 from .cases import Spec
 
 
@@ -52,6 +53,17 @@ def _entries(summary: dict, key: str) -> list[dict]:
     """A summary's Notices or Action Items across Kids, each tagged with the Kid it sits under."""
     return [{**e, "_kid": k.get("kid")} for k in summary.get("per_kid") or []
             for e in k.get(key) or [] if isinstance(e, dict)]
+
+
+_ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+
+
+def _date_counts(summary: dict, notices: list[dict], actions: list[dict]) -> dict[str, int]:
+    """How many of the Brief's texts (each Digest line, Notice and Action Item) there are, and how
+    many write a date as YYYY-MM-DD rather than the way the Brief's language writes one."""
+    texts = [line for line in digest_of(summary).splitlines() if line.strip()]
+    texts += [str(n.get("text", "")) for n in notices] + [str(a.get("what", "")) for a in actions]
+    return {"texts": len(texts), "iso": sum(1 for text in texts if _ISO_DATE.search(text))}
 
 
 def _local_start(ev: dict, tz: str) -> str | None:
@@ -113,17 +125,20 @@ def score_case(expect: dict[str, Any], summary: dict[str, Any] | None, tz: str) 
         "actions": action_counts,
         "events": event_counts,
         "notices": notice_counts,
+        "dates": _date_counts(summary, notices, actions),
         "citations": {"entries": cites.get("entries", 0),
                       "verified": cites.get("entries", 0) - cites.get("unverified", 0) - cites.get("legacy", 0)},
     }
 
 
 def is_clean(s: dict[str, Any]) -> bool:
-    """Nothing missed, nothing extra, every date, Kid and start time right, no forbidden text."""
+    """Nothing missed, nothing extra, every date, Kid and start time right, no forbidden text, and
+    no date in the text written as YYYY-MM-DD."""
     a, e, n = s["actions"], s["events"], s["notices"]
     return (a["matched"] == a["expected"] == a["predicted"] == a["due_ok"] == a["kid_ok"]
             and e["matched"] == e["expected"] == e["predicted"] == e["start_ok"]
-            and n["found"] == n["required"] and n["hits"] == 0 and s.get("valid_json", True))
+            and n["found"] == n["required"] and n["hits"] == 0 and s["dates"]["iso"] == 0
+            and s.get("valid_json", True))
 
 
 def _ratio(num: int, den: int) -> float | None:
@@ -145,6 +160,7 @@ def aggregate(cases: list[dict[str, Any]]) -> dict[str, Any]:
         "event_start_ok": _ratio(total("events", "start_ok"), total("events", "matched")),
         "notice_recall": _ratio(total("notices", "found"), total("notices", "required")),
         "forbidden_hits": total("notices", "hits"),
+        "dates_as_written": _ratio(total("dates", "texts") - total("dates", "iso"), total("dates", "texts")),
         "citations_verified": _ratio(total("citations", "verified"), total("citations", "entries")),
         "valid_json": _ratio(sum(1 for c in cases if c.get("valid_json")), len(cases)),
         "cases_clean": _ratio(sum(1 for c in cases if is_clean(c)), len(cases)),

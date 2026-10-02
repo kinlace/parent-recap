@@ -238,12 +238,12 @@ def _llm_host(cfg: Config) -> str:
     return "chatgpt.com" if cfg.llm.backend == "codex" else "api.anthropic.com"
 
 
-def _fallback_summary(messages: list[Message], err: str, t: BriefText) -> dict:
+def _fallback_summary(messages: list[Message], err: str, t: BriefText, cfg: Config) -> dict:
     """Rule-based digest when the LLM call fails. Never leaks the raw error to iMessage."""
     # Group by (kid_hint or 'unknown', source)
     buckets: dict[tuple[str, str], list[Message]] = {}
     for m in messages:
-        key = (m.kid_hint or t.unsorted, m.source)
+        key = (cfg.kid_called(m.kid_hint) or t.unsorted, m.source)
         buckets.setdefault(key, []).append(m)
 
     lines = [t.fallback_header, ""]
@@ -270,6 +270,15 @@ def _action_items(summary: dict) -> list[dict]:
     """Every Action Item in the Brief, each with its Kid."""
     return [{**a, "kid": k.get("kid", "")}
             for k in summary.get("per_kid", []) or [] for a in k.get("action_items") or []]
+
+
+def _action_meta(a: dict, t: BriefText) -> str:
+    """What the Brief says after an Action Item: its Kid, due date, assignee and Sources."""
+    by = _due(str(a.get("by", "")), t)
+    kid = str(a.get("kid", ""))
+    source = " · ".join(_SOURCE_NAMES.get(s, s) for s in a.get("source") or [])
+    return " · ".join(x for x in [f"({kid})" if kid else "", t.due.format(date=by) if by else "",
+                                  str(a.get("who", "")), source] if x)
 
 
 def _header_date(date_str: str, t: BriefText) -> str:
@@ -370,13 +379,7 @@ def _daily_brief_html(summary: dict, calendar_created: list[dict],
         parts.append(f"<h3>{t.action_items}</h3><ul>")
         for a, as_written in zip(all_actions, _action_items(original)):
             what = _h.escape(str(a.get("what", "")))
-            by = _h.escape(_due(str(a.get("by", "")), t))
-            who = _h.escape(str(a.get("who", "")))
-            kid = _h.escape(str(a.get("kid", "")))
-            source = _h.escape(" · ".join(_SOURCE_NAMES.get(s, s) for s in a.get("source") or []))
-            meta = " · ".join(x for x in [f"({kid})" if kid else "",
-                                          t.due.format(date=by) if by else "",
-                                          who, source] if x)
+            meta = _h.escape(_action_meta(a, t))
             links = ""
             if feedback_link:
                 kw = {"kid": str(as_written.get("kid", "")), "source": as_written.get("source") or []}
@@ -418,9 +421,10 @@ def _format_imessage_body(summary: dict, calendar_created: list[dict], date_str:
     digest = digest_of(summary)
     if digest:
         parts += ["", digest]
-    total_actions = sum(len(k.get("action_items") or []) for k in summary.get("per_kid", []))
-    if total_actions:
-        parts += ["", t.action_items_count.format(n=total_actions)]
+    actions = _action_items(summary)
+    if actions:
+        parts += ["", t.action_items]
+        parts += [f"• {a.get('what', '')} {_action_meta(a, t)}".rstrip() for a in actions]
     if calendar_created:
         parts += ["", t.new_events_line]
         for ev in calendar_created[:10]:
@@ -500,7 +504,7 @@ def _versions(cfg: Config, summary: dict, model_events: list[CalendarEvent],
             versions.append(_Version(t, to, summary))
         elif "_llm_error" in summary:
             # The model is down, so there is nothing to translate; the raw list comes in their words.
-            versions.append(_Version(t, to, _fallback_summary(messages, summary["_llm_error"], t)))
+            versions.append(_Version(t, to, _fallback_summary(messages, summary["_llm_error"], t, cfg)))
         else:
             try:
                 translated = translate(cfg, summary, original, language)
@@ -581,7 +585,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
             summary = summarize(cfg, messages, upcoming, already_captured, earlier)
         except Exception as e:
             log.error("Summarizer failed: %s (falling back to rule-based digest)", e)
-            summary = _fallback_summary(messages, str(e), t)
+            summary = _fallback_summary(messages, str(e), t, cfg)
     else:
         summary = {"per_kid": [], "calendar_events": [], "message_digest": ""}
 
@@ -618,6 +622,8 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
         ics_events = _ics_candidates(cfg, state, events)
         created = _as_created(ics_events)
 
+    # A Source's events carry the Kid's configured name, which their calendar identity keeps.
+    created = [{**c, "kid": cfg.kid_called(c.get("kid"))} for c in created]
     date_str = today_str(cfg.timezone)
     body = _brief_text(summary, created, date_str, t, cfg.timezone, _coverage_note(coverage, t),
                        _calendar_note(calendar_problem, bool(ics_events), t, assistant),

@@ -1,13 +1,15 @@
 # A made-up Household shared by every case in this folder. No real family data.
 timezone: Europe/Helsinki
 kids:
-  - name: Aino
+  - name: Virtanen Aino   # as Wilma spells it; the Brief says Aino
+    everyday_name: Aino
     aliases: [小艾, Ainoliina]
     grade: 4
     class_name: 4B
     school: Kilo School
     activities: [football (FC Kilo T2016), 中文课]
-  - name: Eero
+  - name: Virtanen Eero
+    everyday_name: Eero
     aliases: [Eetu, 小E]
     grade: 1
     class_name: 1A

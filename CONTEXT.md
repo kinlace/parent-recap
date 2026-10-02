@@ -43,5 +43,5 @@ A person who receives the Brief or Weekend Picks for a Household. Each Recipient
 _Avoid_: reader, subscriber, user, 用户
 
 **Kid** (zh 孩子, fi lapsi):
-A child in the Household whom messages are attributed to.
+A child in the Household whom messages are attributed to. A Brief calls each Kid by one everyday name everywhere, even where a Source uses their full name.
 _Avoid_: child, student

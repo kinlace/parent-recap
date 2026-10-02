@@ -7,7 +7,7 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
 
 1. Translate every text value (message_digest, text, what, title, description) into English
 2. Keep the key Finnish words the Brief kept as written (such as reissuvihko, retki, vanhempainilta, eväät, vaatetus), so parents can still search Wilma and talk to the teacher with them
-3. Keep names, dates, times, amounts and the Markdown formatting as they are
+3. Keep names, times, amounts and the Markdown formatting as they are, and write each date the way English writes them in the text, such as Mon 28 Sep
 4. Keep every other value exactly as it is (kid, by, refs, start), and keep every list with the same entries in the same order: don't add, drop, merge or reorder anything
 5. Reply with exactly one JSON object of the same shape: no markdown fences, no explanations
 6. **JSON format**: every `"` inside a string value must be escaped as `\"`; don't stand in full-width or curly quotes for it. To quote something inside a text value, use ‘single quotes’ instead of straight double quotes, so the JSON doesn't break

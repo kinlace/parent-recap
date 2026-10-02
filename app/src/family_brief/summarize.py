@@ -34,7 +34,7 @@ You receive:
 - The notices and action items that earlier Briefs already gave (earlier_briefs, if any)
 
 Your job:
-1. **Decide which kid an item belongs to strictly from the kid profiles and kid_hint in the payload**; don't guess
+1. **Decide which kid an item belongs to strictly from the kid profiles and kid_hint in the payload**; don't guess. Call each kid by their name in kid_profiles everywhere: in the Digest, in per_kid and in calendar_events (their aliases are only for recognising them in messages)
 2. Ignore ads, promotions, small talk, and forwarded links that ask nothing of the parents
 3. Look out for: absences, forms to sign, payments, things to bring, pick-up or drop-off changes, illness notes, exams, events, matches, training changes, parent meetings
 4. When a message clearly names an event on a future date (training, match, parent meeting, deadline, exam, school trip or outdoor day, shortened school day, a day the school is closed), add a calendar_events entry. A date is enough: when the message gives no start time, write the date alone as `start` for an all-day event, and put any time it does give (such as when a shortened school day ends) in the description. The next school day's timetable from Wilma is not an event: its ordinary lessons never become calendar_events
@@ -215,8 +215,8 @@ def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[di
 
     kid_profiles = [
         {
-            "name": k.name,
-            "aliases": k.aliases,
+            "name": k.called(),
+            "aliases": [term for term in k.match_terms() if term != k.called()],
             "grade": k.grade,
             "class": k.class_name,
             "school": k.school,
@@ -246,8 +246,10 @@ def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[di
         "N days ahead. Don't assume a timetable is for \"tomorrow\" unless its header says so: "
         "especially when today is a Friday, Saturday or Sunday there may be no school tomorrow, and "
         "Wilma usually gives the next school day.\n"
-        f"- Whenever you mention a time or date, give the absolute date (e.g. {t.date_example}), "
-        "not only a relative one (tomorrow).\n\n"
+        "- Whenever you mention a time or date, give the absolute date, not only a relative one (tomorrow). "
+        "In the Digest, notices, action items and event titles and descriptions, write dates as the Brief "
+        f"writes them (tomorrow is {t.on(today + _td(days=1))}), never as YYYY-MM-DD: that form is only for "
+        "`by`, `start` and `end`.\n\n"
         "Don't add calendar_events for the events in `already_queued_for_calendar` (a match or training "
         "already listed there must not be repeated). "
         "Produce the JSON as the system instructions say.\n\n"
@@ -460,6 +462,7 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
     language = cfg.brief_language()
     reply = call_llm(cfg, prompt, system_prompt(language, languages.text(cfg, language)))
     summary = normalise(reply.data, reply.repaired)
+    _call_kids(summary, cfg)
     citations.resolve(summary, messages, upcoming_events, already_captured, earlier_briefs or [])
     return summary, reply
 
@@ -487,6 +490,13 @@ def normalise(summary: dict[str, Any], repaired: bool) -> dict[str, Any]:
     summary["calendar_events"] = [_scalars(ev, ("kid", "title", "start", "end", "location", "description"))
                                   for ev in _objects(summary.get("calendar_events"), "calendar event")]
     return summary
+
+
+def _call_kids(summary: dict[str, Any], cfg: Config) -> None:
+    """Each Kid under the one name the Brief calls them by, whichever of their names the model wrote."""
+    for entry in [*summary["per_kid"], *summary["calendar_events"]]:
+        if "kid" in entry:
+            entry["kid"] = cfg.kid_called(entry["kid"])
 
 
 def _as_list(value: Any) -> list[Any]:

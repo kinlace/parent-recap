@@ -7,6 +7,7 @@ summary_language: en # The Brief's language code for Recipients who don't pick t
 
 kids:
   - name: "Kid's full name" # As shown in Wilma; used to tell which Kid a message is about
+    everyday_name: "Kid" # What the Brief calls the Kid everywhere (the full name if left out)
     aliases: ["Nickname", "Other name"] # Other names that may appear in chats and mail
     grade: 3
     class_name: "3A"

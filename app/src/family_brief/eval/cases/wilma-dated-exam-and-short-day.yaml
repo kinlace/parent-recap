@@ -1,8 +1,9 @@
-covers: [wilma-events, finnish-dates]
+covers: [wilma-events, finnish-dates, digest-dates]
 note: >
   Friday night, Wilma only (#17). An exam on Wednesday and an outdoor day on Friday that ends at
   13, both with a date but no start time, must still become calendar events (all-day). Monday's
-  ordinary timetable must not.
+  ordinary timetable must not. The Digest and Notices write both dates the way the Brief's language
+  does, never as 2026-10-07 (#25).
 now: 2026-10-02T21:00:00+03:00
 messages:
   - id: w-sched-1002

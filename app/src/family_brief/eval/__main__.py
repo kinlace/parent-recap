@@ -125,7 +125,8 @@ def _problems(night: dict[str, Any]) -> list[str]:
                          (e["predicted"] - e["matched"], "extra event"),
                          (e["matched"] - e["start_ok"], "wrong start"),
                          (n["required"] - n["found"], "notice missed"),
-                         (n["hits"], "forbidden text")):
+                         (n["hits"], "forbidden text"),
+                         (night["dates"]["iso"], "text with a YYYY-MM-DD date")):
         if count:
             problems.append(f"{count} {label}")
     if night["error"]:

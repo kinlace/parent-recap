@@ -61,7 +61,7 @@ This uses the community open-source wilma CLI (not affiliated with Visma).
 1. `npm install -g @wilm-ai/wilma-cli`
 2. **Terminal**: `wilma` opens an interactive screen: choose the city or school (Espoo / Helsinki / Vantaa / Kauniainen / Helsinki private and state schools, or for another city, its Wilma address as in "Cities without a preset" in `config.md`) and log in with the **parent account**. If the account has two-step verification, use `--totp-secret` as the CLI prompts
 3. Back in the agent: `$FB discover wilma-students` lists the students (it works before the config exists, so setup can prefill the Kids from it)
-4. Each Kid's `name` in the config should match Wilma exactly; put the names the user normally uses in `aliases`
+4. Each Kid's `name` in the config should match Wilma exactly; put the name the family calls the Kid by in `everyday_name` (the Brief uses it everywhere) and any other names in `aliases`
 5. Set `wilma.enabled: true`
 
 Note: Wilma only publishes the timetable for about two weeks ahead, so later dates being empty is normal.
