@@ -4,6 +4,23 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.4.2 · 2026-10-02
+
+A new setup: fewer questions, one list of things to connect, and no Terminal windows for passwords (#43).
+
+### Install and setup
+- Install by pasting one line into Terminal, one for Claude Code and one for Codex. Pasting it again later updates Parent Recap.
+- Setup asks fewer questions. You check a card of defaults, connect each Source from one list (WhatsApp and MyClub can be skipped and added later), confirm one page of what was found, and see a preview of your first Brief before it's sent.
+- Passwords and links go into macOS dialogs with a lock icon, never the chat: the Gmail App Password, the Claude token and each Kid's MyClub calendar link. Setup checks each one before saving it.
+- Claude's sign-in opens in Terminal for you, so you only copy the token into the dialog, without typing commands.
+- Setup signs you in to Wilma, reads your Kids from it and takes your city from the Wilma address.
+- Setup sets the Mac's nightly wake-up itself, with your Mac password entered in macOS's own dialog.
+- Setup ends with one check that the program is installed, the health check is all OK, the first Brief reached everyone, the nightly job is on and the Mac wakes for it.
+- Weekend Picks are no longer asked in setup. Turn them on any time by asking.
+
+### Uninstall
+- Remove Parent Recap by telling Claude or Codex "uninstall Parent Recap". It lists everything first, asks whether to keep your past Briefs, and leaves your accounts as they are.
+
 ## 0.4.1 · 2026-10-02
 
 Fixes from the first fresh-install rehearsal (#2).
