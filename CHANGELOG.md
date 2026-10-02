@@ -4,6 +4,30 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.4.1 · 2026-10-02
+
+Fixes from the first fresh-install rehearsal (#2).
+
+### The Brief
+- The emailed Brief shows each Kid's name as a heading with their points as a bulleted list, instead of raw `##`, `**` and `-` marks.
+- Dates in the Digest, Notices and Action Items are written the way your language writes them, never as 2026-10-07.
+- Each Kid is called by the same everyday name throughout the Brief. A household set up before 0.4.1 can ask the assistant to add each Kid's everyday name.
+- The mail preview lists the Action Items instead of only counting them.
+- The problem lines in the Brief, the notes on calendar events and Weekend Picks, and the calendar attachment's name say Parent Recap instead of FamilyBrief.
+
+### Calendar
+- An exam, outdoor day, shortened school day or other school event that a message gives a date for but no start time now arrives in the calendar as an all-day event.
+- The calendar no longer gets an entry for an Action Item's due date, or for a regular training that just carries on, such as after a holiday.
+
+### Setup
+- Setup asks your city, where school mail arrives and about WhatsApp groups first, and fills in your Kids from Wilma instead of asking.
+- Weekend Picks are offered only where they have events nearby: Helsinki, Espoo, Vantaa and Kauniainen.
+- The Gmail sender scan shows its progress, the WhatsApp permission step is a single drag from Finder, and the wake-up command warns before it replaces a wake schedule the Mac already has.
+- The setup guides say Parent Recap instead of FamilyBrief.
+
+### Reliability
+- When Gmail, Wilma or MyClub is slow to answer, Parent Recap tries once more instead of sending the Brief without it.
+
 ## 0.4.0 · 2026-10-01
 
 The first public release, now called **Kinlace Parent Recap**.
