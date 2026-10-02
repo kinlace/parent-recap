@@ -20,6 +20,8 @@ import os
 import subprocess
 
 TITLE = "Parent Recap"
+# macOS's own lock icon, so the password dialog doesn't show osascript's generic folder icon.
+LOCK_ICON = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/LockedIcon.icns"
 _SAVE, _CANCEL = "Save", "Cancel"
 
 
@@ -75,10 +77,11 @@ def _quote(s: str) -> str:
 
 def _dialog(message: str, other: str | None) -> str:
     buttons = [b for b in (other, _CANCEL, _SAVE) if b]
+    icon = f"((POSIX file {_quote(LOCK_ICON)}) as alias)" if os.path.isfile(LOCK_ICON) else "note"
     # Returns "1" and the typed text for Save, "2" for the other button; Cancel exits with -128.
     script = (
         f"set r to display dialog {_quote(message)} default answer \"\" with hidden answer "
-        f"with title {_quote(TITLE)} with icon note "
+        f"with title {_quote(TITLE)} with icon {icon} "
         f"buttons {{{', '.join(_quote(b) for b in buttons)}}} "
         f"default button {_quote(_SAVE)} cancel button {_quote(_CANCEL)}\n"
         f"if button returned of r is {_quote(_SAVE)} then return \"1\" & text returned of r\n"
