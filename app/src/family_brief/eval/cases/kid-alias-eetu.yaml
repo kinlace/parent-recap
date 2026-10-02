@@ -1,7 +1,8 @@
 covers: [kid-alias]
 note: >
   Tuesday night. The teacher writes the nickname "Eetu" (inflected: Eetun), which is one of
-  Eero's aliases. Nothing belongs to Aino.
+  Eero's aliases. Nothing belongs to Aino. The book list's due date is the Action Item's, not a
+  calendar event (#39).
 now: 2026-10-06T21:00:00+03:00
 messages:
   - id: gm-1a-1006
