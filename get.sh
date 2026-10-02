@@ -7,7 +7,8 @@
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/kinlace/parent-recap/stable/get.sh)" - --codex
 #
 # --claude: adds the `kinlace/parent-recap#stable` marketplace and installs the plugin for this
-#   Mac user (or updates both), then starts Claude Code with setup.
+#   Mac user (or updates both), then starts Claude Code with setup. A `kinlace` marketplace from
+#   somewhere else (the folder a release zip was unzipped into) is switched to that one.
 # --codex: downloads the `stable` branch into ~/FamilyBrief/plugin, replacing the copy there,
 #   and runs its `install.sh --codex`.
 # Safe to run again: that is how a Codex install updates.
@@ -32,6 +33,20 @@ listed() {
   grep -q "\"$key\": *\"$value\"" <<<"$list"
 }
 
+# The `kinlace` entry of `claude plugin marketplace list --json` on one line, or nothing.
+kinlace_marketplace() {
+  local list
+  list=$(claude plugin marketplace list --json)
+  tr -d '\n' <<<"$list" | tr '}' '\n' | grep -E '"name": *"kinlace"' || true
+}
+
+# The folder a marketplace entry from kinlace_marketplace comes from, for saying what was switched.
+marketplace_folder() {
+  local path
+  path=$(sed -nE 's/.*"path": *"([^"]*)".*/\1/p' <<<"$1")
+  echo "${path:-its old source}"
+}
+
 install_claude() {
   command -v claude >/dev/null || {
     echo "❌ Claude Code isn't installed (there is no \`claude\` command)."
@@ -45,17 +60,29 @@ install_claude() {
   if listed name family-brief plugin marketplace list --json; then
     claude plugin marketplace remove family-brief
   fi
-  if listed name kinlace plugin marketplace list --json; then
+  local marketplace switched="" installed=no
+  marketplace=$(kinlace_marketplace)
+  if listed id parent-recap@kinlace plugin list --json; then installed=yes; fi
+  # Installed from the release zip, `kinlace` comes from the unzipped folder, so updating it
+  # would only reread that folder. ~/FamilyBrief/plugin stays: the Codex path uses it.
+  if [ -n "$marketplace" ] && ! grep -qE "\"repo\": *\"$REPO(#[^\"]*)?\"" <<<"$marketplace"; then
+    switched=$(marketplace_folder "$marketplace")
+    if [ "$installed" = yes ]; then claude plugin uninstall parent-recap@kinlace; fi
+    claude plugin marketplace remove kinlace
+    marketplace="" installed=no
+  fi
+  if [ -n "$marketplace" ]; then
     claude plugin marketplace update kinlace
   else
     claude plugin marketplace add "$REPO#stable"
   fi
-  if listed id parent-recap@kinlace plugin list --json; then
+  if [ "$installed" = yes ]; then
     claude plugin update parent-recap@kinlace
   else
     # User scope, so the plugin isn't tied to the folder this Terminal is in.
     claude plugin install parent-recap@kinlace --scope user
   fi
+  [ -z "$switched" ] || echo "Switched Parent Recap from $switched to $REPO#stable on GitHub."
   echo "✅ Parent Recap is installed in Claude Code. Starting setup…"
   exec claude "/parent-recap:setup"
 }

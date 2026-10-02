@@ -17,6 +17,11 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 NO_MARKETPLACES = "[]"
 KINLACE = json.dumps([{"name": "kinlace", "source": "github", "repo": "kinlace/parent-recap"}], indent=2)
+# What a family who installed from the release zip has: the same name, from the unzipped folder.
+KINLACE_FROM_FOLDER = json.dumps([
+    {"name": "claude-plugins-official", "source": "github", "repo": "anthropics/claude-plugins-official"},
+    {"name": "kinlace", "source": "directory", "path": "/Users/mum/FamilyBrief/plugin"},
+], indent=2)
 NO_PLUGINS = "[]"
 PARENT_RECAP = json.dumps([{"id": "parent-recap@kinlace", "version": "0.4.1", "scope": "user"}], indent=2)
 
@@ -98,6 +103,37 @@ def test_claude_run_again_updates_instead_of_adding_twice(mac):
     assert [c for c in calls(mac) if "list --json" not in c] == [
         "claude plugin marketplace update kinlace",
         "claude plugin update parent-recap@kinlace",
+        "claude /parent-recap:setup",
+    ]
+
+
+def test_claude_switches_a_kinlace_marketplace_from_a_local_folder_to_the_stable_release(mac):
+    (mac["tmp"] / "marketplaces.json").write_text(KINLACE_FROM_FOLDER)
+    (mac["tmp"] / "plugins.json").write_text(PARENT_RECAP)
+
+    result = get(mac, "--claude")
+
+    assert result.returncode == 0, result.stderr
+    assert [c for c in calls(mac) if "list --json" not in c] == [
+        "claude plugin uninstall parent-recap@kinlace",
+        "claude plugin marketplace remove kinlace",
+        "claude plugin marketplace add kinlace/parent-recap#stable",
+        "claude plugin install parent-recap@kinlace --scope user",
+        "claude /parent-recap:setup",
+    ]
+    assert any("/Users/mum/FamilyBrief/plugin" in line and "kinlace/parent-recap#stable" in line
+               for line in result.stdout.splitlines())
+
+
+def test_claude_switches_a_local_kinlace_marketplace_even_without_the_plugin_installed(mac):
+    (mac["tmp"] / "marketplaces.json").write_text(KINLACE_FROM_FOLDER)
+
+    assert get(mac, "--claude").returncode == 0
+
+    assert [c for c in calls(mac) if "list --json" not in c] == [
+        "claude plugin marketplace remove kinlace",
+        "claude plugin marketplace add kinlace/parent-recap#stable",
+        "claude plugin install parent-recap@kinlace --scope user",
         "claude /parent-recap:setup",
     ]
 
