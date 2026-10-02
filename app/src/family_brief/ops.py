@@ -4,6 +4,7 @@ doctor   — check every configured connection; prints status + counts only, nev
 discover — list candidate Gmail sender domains / WhatsApp group names / Wilma students
 schedule — install, remove or inspect the launchd jobs
 app-management — show the scheduled job's Python in Finder and open App Management, to grant WhatsApp
+                 (setup whatsapp does this and waits for the permission)
 bg       — run any of the above (or run/collect) as a one-off launchd job, for WhatsApp access
 """
 from __future__ import annotations
@@ -214,6 +215,11 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
                 f"didn't start ({e}). Run family-brief bg doctor to confirm")
             return
         lines = [l for l in out.splitlines() if "WhatsApp: " in l]
+        if not lines and code == 124:
+            add(FAIL, "WhatsApp", "the background check didn't finish within 180 seconds and was "
+                "stopped (if macOS asked whether python3.x may access data from other apps, click "
+                "Allow and run doctor again)")
+            return
         if not lines:
             add(FAIL, "WhatsApp", f"the background check gave no result (exit code {code}): "
                 f"{out.strip()[-200:]}")
@@ -375,11 +381,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------- app-management
 
 def cmd_app_management(args: argparse.Namespace) -> int:
-    # The real Python sits in a hidden folder, so finding it with ⌘⇧G is hard. Selecting it in
-    # Finder next to the open pane leaves the family one drag.
-    python = os.path.realpath(sys.executable)
-    commands = [["open", "-R", python], ["open", APP_MANAGEMENT_URL]]
-    failed = [c for c in commands if subprocess.run(c, capture_output=True).returncode != 0]
+    python, failed = show_python_for_app_management()
     print(f"The scheduled job's Python is {python}")
     if failed:
         print(f"{WARN}Couldn't open Finder or System Settings from here. Run this in Terminal:")
@@ -389,6 +391,16 @@ def cmd_app_management(args: argparse.Namespace) -> int:
           "Privacy & Security → App Management, then turn its switch on. If App Management isn't "
           "in the list, drag it into Full Disk Access the same way.")
     return 0
+
+
+def show_python_for_app_management() -> tuple[str, list[list[str]]]:
+    """Selects the scheduled job's Python in Finder and opens App Management. Returns that Python
+    and the commands that didn't work, for the family to run in Terminal."""
+    # The real Python sits in a hidden folder, so finding it with ⌘⇧G is hard. Selecting it in
+    # Finder next to the open pane leaves the family one drag.
+    python = os.path.realpath(sys.executable)
+    commands = [["open", "-R", python], ["open", APP_MANAGEMENT_URL]]
+    return python, [c for c in commands if subprocess.run(c, capture_output=True).returncode != 0]
 
 
 # ---------------------------------------------------------------- bg
@@ -467,8 +479,9 @@ def run_as_job(cmd_args: list[str], config: str | None, timeout: int = 900,
     if echo:
         print(text[shown:], end="", flush=True)
     if code is None:
-        print(f"{FAIL} the background job didn't finish within {timeout} seconds and was stopped",
-              flush=True)
+        if echo:
+            print(f"{FAIL} the background job didn't finish within {timeout} seconds and was "
+                  "stopped", flush=True)
         return 124, text
     return code, text
 
