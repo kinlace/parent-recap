@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from family_brief import install_record
+from family_brief import install_record, secret_dialog
 
 APP_PASSWORD = "abcdefghijklmnop"
 TYPED = "abcd efgh ijkl mnop"  # how Google shows it, and how it's copied
@@ -110,6 +110,30 @@ def test_an_app_password_typed_in_the_dialog_is_tested_and_stored(harness, gmail
     assert harness.keychain == {ACCOUNT: APP_PASSWORD}
     assert install_record.entries("keychain") == [ACCOUNT]
     assert_never_leaked(harness, printed, caplog)
+
+
+def test_the_dialog_shows_macos_lock_icon(harness, gmail, monkeypatch, tmp_path):
+    icon = tmp_path / "Lock \"icon\".icns"
+    icon.write_bytes(b"icns")
+    monkeypatch.setattr(secret_dialog, "LOCK_ICON", str(icon))
+    harness.dialog.typed = TYPED
+
+    assert harness.cli("setup", "gmail") == 0
+
+    script = harness.dialog.shown[0]
+    assert 'with icon ((POSIX file "' + str(icon).replace('"', '\\"') + '") as alias)' in script
+    assert "with icon note" not in script
+
+
+def test_without_the_lock_icon_the_dialog_shows_the_note_icon(harness, gmail, monkeypatch,
+                                                              tmp_path):
+    monkeypatch.setattr(secret_dialog, "LOCK_ICON", str(tmp_path / "missing.icns"))
+    harness.dialog.typed = TYPED
+
+    assert harness.cli("setup", "gmail") == 0
+
+    script = harness.dialog.shown[0]
+    assert "with icon note" in script and "POSIX file" not in script
 
 
 def test_the_address_can_be_given_when_the_config_has_none_yet(harness, gmail, capsys):
