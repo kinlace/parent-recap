@@ -9,6 +9,8 @@ setup claude — open Claude's sign-in for the nightly token in a Terminal windo
 setup whatsapp — read WhatsApp through a `bg` job; when the scheduled job's Python can't yet,
                  show it in Finder, open App Management and wait for the permission, then list
                  the chats with a hint on those that look like they're about a Kid
+setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, download it once,
+               save it in the owner-only config
 
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
@@ -59,6 +61,7 @@ WHATSAPP_POLL_SECONDS = 5
 # Each read gets at least this long: while macOS shows its one-time Allow prompt, the read waits
 # for the family's answer.
 WHATSAPP_READ_SECONDS = 60
+MYCLUB_URL = "https://id.myclub.fi"
 _OK = ("saved", "signed-in", "readable")
 
 
@@ -100,6 +103,14 @@ def register(sub) -> None:
                            help="Don't open Finder and App Management again, only wait and read")
     pwhatsapp.add_argument("--read", action="store_true", help=argparse.SUPPRESS)  # inside the bg job
     pwhatsapp.set_defaults(func=cmd_whatsapp)
+
+    pmyclub = steps.add_parser("myclub", help="Ask for a Kid's MyClub calendar link in a dialog, "
+                               "download it once and save it in the config")
+    pmyclub.add_argument("--kid", default=None, help="The Kid's name, exactly as under kids: in "
+                         "the config")
+    pmyclub.add_argument("--no-open", action="store_true",
+                         help="Don't open MyClub's page again, only ask for the link")
+    pmyclub.set_defaults(func=cmd_myclub)
 
 
 def _report(result: str, next_: str | None = None, **extra: Any) -> int:
@@ -487,6 +498,74 @@ def _mentions(text: str, term: str) -> bool:
         if (apart(before) or apart(term[0])) and (apart(after) or apart(term[-1])):
             return True
     return False
+
+
+# ---------------------------------------------------------------- myclub
+
+def cmd_myclub(args: argparse.Namespace) -> int:
+    """The link carries the Kid's personal token, so it's handled like the other secrets: the
+    result and any error name only MyClub's server and the HTTP status, never the link."""
+    from .collectors import myclub
+
+    path = Path(os.path.expanduser(os.path.expandvars(args.config or "~/.family/config.yaml")))
+    try:
+        kids = [k.name for k in Config.load(path).kids]
+    except FileNotFoundError:
+        return _report("no-config", "The config isn't written yet. Write it with the Kids first, "
+                       "then run this again.")
+    except Exception:  # not its error: a config check quotes values, which can be other links
+        return _report("bad-config", f"The config at {path} can't be read. Run {_program()} "
+                       "doctor, fix what it names, then run this again.")
+    if args.kid not in kids:
+        return _report("no-kid" if args.kid is None else "no-such-kid", "Run it again with --kid "
+                       f"and one of the Kids' names: {_program()} setup myclub --kid NAME",
+                       kids=kids)
+    again = f"{_program()} setup myclub --kid {shlex.quote(args.kid)}"
+    if not args.no_open:
+        subprocess.run(["open", MYCLUB_URL], capture_output=True)
+
+    try:
+        url = secret_dialog.ask(
+            f"Paste {args.kid}'s MyClub calendar link.\n\nSign in to MyClub in your browser "
+            f"({MYCLUB_URL}), open {args.kid}'s calendar, choose Calendar subscription (Tilaa "
+            "kalenteri) and copy the link starting with webcal://.")
+    except secret_dialog.Cancelled:
+        return _report("cancelled", "The family closed the dialog. Run this again when they're "
+                       f"ready: {again}")
+    except secret_dialog.NoWayToAsk:
+        return _report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
+                       f"runs this in Terminal: {again} --no-open")
+
+    url = "".join(url.split())
+    if not _is_myclub_link(url):
+        # Not downloaded: it's most likely the family's MyClub password, or another page's address.
+        return _report("not-a-myclub-link", "That wasn't a MyClub calendar link. Copy the link "
+                       "from Calendar subscription (Tilaa kalenteri) on the Kid's MyClub calendar, "
+                       f"starting with webcal://, and run this again: {again} --no-open")
+
+    try:
+        text = myclub._fetch_ics(myclub._normalize_url(url))
+    except myclub.FetchError as e:  # names only the server and the HTTP status
+        return _report("link-failed", "The link didn't open, so it wasn't saved. Copy it again "
+                       f"from MyClub and run this again: {again} --no-open", error=str(e))
+    if "BEGIN:VCALENDAR" not in text:
+        return _report("not-a-calendar", "The link opened a page, not a calendar, so it wasn't "
+                       "saved. Copy the link from Calendar subscription (Tilaa kalenteri) on the "
+                       f"Kid's MyClub calendar, not the browser's address bar: {again} --no-open")
+
+    try:
+        myclub.save_link(path, args.kid, url)
+    except (OSError, ValueError) as e:  # names the Kid and the config, never the link
+        return _report("save-failed", "The link works, but it couldn't be saved in the config "
+                       "(see error).", error=str(e)[:300])
+    return _report("saved", kid=args.kid, events=text.count("BEGIN:VEVENT"))
+
+
+def _is_myclub_link(url: str) -> bool:
+    parts = urlparse(url)
+    host = parts.hostname or ""
+    return (parts.scheme in ("webcal", "https") and (host == "myclub.fi" or host.endswith(".myclub.fi"))
+            and bool(parts.path.strip("/")))
 
 
 def _program() -> str:

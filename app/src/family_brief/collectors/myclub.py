@@ -44,7 +44,8 @@ def _fetch_ics(url: str) -> str:
 
 def save_link(config_path: Path, kid: str, url: str) -> None:
     """Set `kid`'s myclub_ical_url in the config file, leaving every other line and comment as
-    it is. Used from the parent's own Terminal, so the link never goes through the agent chat."""
+    it is. Used by `setup myclub` and the parent's own Terminal, so the link never goes through
+    the agent chat."""
     text = config_path.read_text()
     root = yaml.compose(text)
     kids = next((v for k, v in getattr(root, "value", []) if k.value == "kids"), None)
