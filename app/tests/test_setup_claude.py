@@ -227,7 +227,7 @@ def test_doctor_points_to_the_setup_step_when_no_token_is_stored(harness, termin
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(ops, "_launchctl_loaded", lambda: set())
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
 
     harness.cli("doctor")
 

@@ -14,7 +14,7 @@ def test_doctor_reports_every_check_in_english(harness, monkeypatch, capsys):
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(ops, "_launchctl_loaded", lambda: set())
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
 
     code = harness.cli("doctor", "--skip-llm")
 

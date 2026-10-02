@@ -70,7 +70,7 @@ def test_doctor_names_only_the_myclub_host_and_status(harness, monkeypatch, caps
     _real_myclub(harness, monkeypatch, kind)
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(ops, "_launchctl_loaded", lambda: set())
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
 
     harness.cli("doctor", "--skip-llm")
 

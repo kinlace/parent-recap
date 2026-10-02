@@ -29,6 +29,9 @@ WhatsApp is never read outside a `bg` job.
 MyClub server, and checks the link never reaches the output, the logs or a command line, that a
 failed download names only the server and the HTTP status, and that the older Terminal script
 still works.
+`test_setup_status.py` runs `family-brief setup status` against a fake `launchctl`, `pmset`,
+Keychain, IMAP server and `claude` test call, with a real Brief sent through the harness. It checks
+each of the five outcomes true and false, and that no secret or message text reaches either form.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:

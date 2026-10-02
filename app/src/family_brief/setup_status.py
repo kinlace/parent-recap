@@ -1,0 +1,138 @@
+"""setup status — whether setup is done: the outcomes that decide it, each true or false with a
+one-line reason.
+
+1. installed — the program is installed
+2. doctor    — the health check is all OK
+3. brief     — the first Brief reached every Recipient
+4. nightly   — the nightly job is loaded
+5. wake      — the wake schedule is set, or the Mac never sleeps
+
+The sixth, knowing to log in after a restart, is the setup skill's to confirm with the family.
+It prints one line of JSON for the setup skill, or with --text a short line per outcome. Neither
+has a secret or message text in it: doctor's own details stay out, only the names of its checks
+that aren't OK are given.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+from . import install_record, ops
+from .config import Config
+from .state import State
+
+
+TITLES = {
+    "installed": "Program installed",
+    "doctor": "Health check all OK",
+    "brief": "First Brief reached every Recipient",
+    "nightly": "Nightly job loaded",
+    "wake": "Wake schedule set, or the Mac never sleeps",
+}
+
+
+@dataclass
+class Outcome:
+    outcome: str
+    ok: bool
+    reason: str
+
+
+def register(steps) -> None:
+    p = steps.add_parser("status", help="Report whether setup is done: each outcome that decides "
+                         "it, true or false, with a reason")
+    p.add_argument("--text", action="store_true", help="A short line per outcome instead of JSON")
+    p.set_defaults(func=cmd_status)
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    try:
+        cfg: Config | None = Config.load(args.config)
+    except Exception:  # doctor names what's wrong with it
+        cfg = None
+    schedule = (cfg or Config(kids=[])).schedule
+    hour, minute = schedule.daily_hour, schedule.daily_minute
+    outcomes = [_installed(), _doctor(args.config), _brief(cfg), _nightly(hour, minute),
+                _wake(hour, minute)]
+    done = all(o.ok for o in outcomes)
+    if args.text:
+        for o in outcomes:
+            print(f"{ops.OK if o.ok else ops.FAIL} {TITLES[o.outcome]}: {o.reason}")
+    else:
+        print(json.dumps({"result": "done" if done else "not-done",
+                          "outcomes": [vars(o) for o in outcomes]}, ensure_ascii=False))
+    return 0 if done else 1
+
+
+def _installed() -> Outcome:
+    programs = [Path(p) for p in install_record.entries("program")] or \
+        [Path.home() / "FamilyBrief" / "app"]
+    for program in programs:
+        try:
+            ours = re.search(r'^name\s*=\s*"family-brief"', (program / "pyproject.toml").read_text(),
+                             re.M)
+        except OSError:
+            continue
+        if ours and (program / ".venv" / "bin" / "family-brief").exists():
+            version = _read(program / "VERSION") or "unknown version"
+            return Outcome("installed", True, f"{version} in {_show(program)}")
+    return Outcome("installed", False, f"Parent Recap isn't installed in "
+                   f"{', '.join(_show(p) for p in programs)}: run the plugin's install.sh")
+
+
+def _doctor(config: str | None) -> Outcome:
+    # Only the checks' names and statuses go into the reason: their details can quote an error.
+    results = ops.health_checks(config)
+    not_ok = [f"{item} {status.strip()}" for status, item, _ in results if status != ops.OK]
+    if not not_ok:
+        return Outcome("doctor", True, f"all {len(results)} checks OK")
+    return Outcome("doctor", False, f"{len(not_ok)} of {len(results)} checks aren't OK: "
+                   f"{', '.join(dict.fromkeys(not_ok))} (run family-brief doctor to see why)")
+
+
+def _brief(cfg: Config | None) -> Outcome:
+    if cfg is None:
+        return Outcome("brief", False, "the config can't be read, so its Recipients aren't known")
+    to = [*(r.address for r in cfg.email.to if cfg.email.enabled),
+          *(cfg.imessage.recipients if cfg.imessage.enabled else [])]
+    if not to:
+        return Outcome("brief", False, "the Brief goes to nobody: email.to is empty or email is off")
+    state = State(cfg.resolved_state_path())
+    missing = [a for a in to if state.delivered_at(a) is None]
+    if missing:
+        return Outcome("brief", False, f"no Brief has gone out to {', '.join(missing)} yet "
+                       "(send the first one with family-brief bg run --lookback-hours 72)")
+    return Outcome("brief", True, f"sent to {', '.join(to)}")
+
+
+def _nightly(hour: int, minute: int) -> Outcome:
+    if ops.JOB_DAILY in ops.launchctl_loaded():
+        return Outcome("nightly", True, f"{ops.JOB_DAILY} runs every day at {hour:02d}:{minute:02d}")
+    return Outcome("nightly", False, f"{ops.JOB_DAILY} isn't loaded: run family-brief schedule "
+                   "install")
+
+
+def _wake(hour: int, minute: int) -> Outcome:
+    if ops.never_sleeps():
+        return Outcome("wake", True, "this Mac never sleeps, so it needs no wake schedule")
+    wake_h, wake_m = ops.wake_time(hour, minute)
+    if any(ops.is_our_wake(line, hour, minute) for line in ops.repeating_wakes()):
+        return Outcome("wake", True, f"the Mac wakes at {wake_h:02d}:{wake_m:02d} every day")
+    return Outcome("wake", False, f"the Mac sleeps and doesn't wake at {wake_h:02d}:{wake_m:02d} "
+                   "every day, so the Brief only comes on nights it's awake. The family runs this "
+                   f"in Terminal: {ops.wake_command(hour, minute)}")
+
+
+def _read(path: Path) -> str:
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return ""
+
+
+def _show(p: Path) -> str:
+    home = Path.home()
+    return f"~/{p.relative_to(home)}" if p.is_relative_to(home) else str(p)

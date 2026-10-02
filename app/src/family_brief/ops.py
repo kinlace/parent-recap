@@ -65,21 +65,35 @@ def register(sub) -> None:
 # ---------------------------------------------------------------- doctor
 
 def cmd_doctor(args: argparse.Namespace) -> int:
+    results = health_checks(args.config, skip_llm=args.skip_llm, whatsapp_only=args.whatsapp_only,
+                            show=True)
+    fails = sum(1 for s, _, _ in results if s == FAIL)
+    if not args.whatsapp_only:
+        warns = sum(1 for s, _, _ in results if s == WARN)
+        print(f"\n{len(results)} checks: {len(results) - fails - warns} OK, {warns} warnings, "
+              f"{fails} to fix")
+    return 1 if fails else 0
+
+
+def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: bool = False,
+                  show: bool = False) -> list[tuple[str, str, str]]:
+    """Doctor's checks, each (status, item, detail). With `show`, each is printed as it's done."""
     results: list[tuple[str, str, str]] = []
 
     def add(status: str, item: str, detail: str) -> None:
         results.append((status, item, detail))
-        print(f"{status} {item}: {detail}", flush=True)
+        if show:
+            print(f"{status} {item}: {detail}", flush=True)
 
-    cfg_path = Path(args.config).expanduser() if args.config else DEFAULT_CONFIG
+    cfg_path = Path(config).expanduser() if config else DEFAULT_CONFIG
     try:
-        cfg = Config.load(args.config)
+        cfg = Config.load(config)
     except Exception as e:
         add(FAIL, "Config file", f"couldn't read {cfg_path}: {e}")
-        return 1
-    if args.whatsapp_only:
-        _check_whatsapp(cfg, add, args.config)
-        return 0 if all(r[0] != FAIL for r in results) else 1
+        return results
+    if whatsapp_only:
+        _check_whatsapp(cfg, add, config)
+        return results
     add(OK, "Config file", f"{cfg_path}, {len(cfg.kids)} kids, "
         f"Brief goes to {', '.join(r.address for r in cfg.email.to) or '(no recipients set)'}")
     if not cfg.email.to:
@@ -90,12 +104,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         add(OK if ready else WARN, f"Language {language}", detail)
 
     _check_gmail(cfg, add)
-    if not args.skip_llm:
+    if not skip_llm:
         _check_llm(cfg, add)
     if cfg.wilma.enabled:
         _check_wilma(cfg, add)
     if cfg.whatsapp.enabled:
-        _check_whatsapp(cfg, add, args.config)
+        _check_whatsapp(cfg, add, config)
     for kid in cfg.kids:
         if kid.myclub_ical_url:
             _check_myclub(kid.name, kid.myclub_ical_url, add)
@@ -105,12 +119,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if cfg.weekend_events.enabled:
         _check_weekend(add)
     _check_schedule(cfg, add)
-
-    fails = sum(1 for s, _, _ in results if s == FAIL)
-    warns = sum(1 for s, _, _ in results if s == WARN)
-    print(f"\n{len(results)} checks: {len(results) - fails - warns} OK, {warns} warnings, "
-          f"{fails} to fix")
-    return 1 if fails else 0
+    return results
 
 
 def _check_gmail(cfg: Config, add) -> None:
@@ -313,7 +322,7 @@ def _check_weekend(add) -> None:
 
 def _check_schedule(cfg: Config, add) -> None:
     from .state import State
-    loaded = _launchctl_loaded()
+    loaded = launchctl_loaded()
     jobs = [JOB_DAILY] + ([JOB_WEEKEND] if cfg.weekend_events.enabled else [])
     missing = [j for j in jobs if j not in loaded]
     if missing:
@@ -332,7 +341,7 @@ def _check_schedule(cfg: Config, add) -> None:
         "(this is the path WhatsApp needs under App Management)")
 
 
-def _launchctl_loaded() -> set[str]:
+def launchctl_loaded() -> set[str]:
     out = subprocess.run(["launchctl", "list"], capture_output=True, text=True).stdout
     return {line.split()[-1] for line in out.splitlines() if "com.family." in line}
 
@@ -582,9 +591,20 @@ def is_our_wake(line: str, hour: int, minute: int) -> bool:
     return bool(our_wake.search(line.lower().replace(" ", "")))
 
 
-def _print_wake_advice(hour: int, minute: int) -> None:
+def never_sleeps() -> bool:
+    """Whether this Mac is set never to sleep (sleep 0 in pmset), on every power source."""
     sleeps = re.findall(r"^\s*sleep\s+(\d+)", _pmset("-g", "custom"), re.M)
-    if sleeps and all(s == "0" for s in sleeps):
+    return bool(sleeps) and all(s == "0" for s in sleeps)
+
+
+def wake_command(hour: int, minute: int) -> str:
+    """The command that sets the daily wake setup gives for a job at hour:minute."""
+    wake_h, wake_m = wake_time(hour, minute)
+    return f"sudo pmset repeat wakeorpoweron MTWRFSU {wake_h:02d}:{wake_m:02d}:00"
+
+
+def _print_wake_advice(hour: int, minute: int) -> None:
+    if never_sleeps():
         print("\nThis Mac never sleeps (sleep 0 in pmset), so it needs no wake schedule.")
         return
     wake_h, wake_m = wake_time(hour, minute)
@@ -601,7 +621,7 @@ def _print_wake_advice(hour: int, minute: int) -> None:
         print("If something else needs that schedule, skip the command; the Brief then only "
               f"comes on nights the Mac is awake at {hour:02d}:{minute:02d}.")
     print("Run this once in Terminal (it asks for your Mac password):\n"
-          f"  sudo pmset repeat wakeorpoweron MTWRFSU {wake_h:02d}:{wake_m:02d}:00")
+          f"  {wake_command(hour, minute)}")
 
 
 def cmd_schedule(args: argparse.Namespace) -> int:
@@ -631,7 +651,7 @@ def cmd_schedule(args: argparse.Namespace) -> int:
         print(f"{OK} Scheduled jobs removed (config and archive are kept)")
         return 0
 
-    loaded = _launchctl_loaded()
+    loaded = launchctl_loaded()
     for label in (JOB_DAILY, JOB_WEEKEND):
         print(f"{OK if label in loaded else '—'} {label}{'' if label in loaded else ' (not installed)'}")
     for name in ("run-stderr.log", "weekend-events-stderr.log"):

@@ -275,7 +275,7 @@ def test_doctor_says_which_languages_have_their_own_program_text(harness, monkey
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = harness.config["whatsapp"]["enabled"] = False
     harness.config["email"]["to"] = ["parent@example.com", PARTNER_SV]
-    monkeypatch.setattr(ops, "_launchctl_loaded", lambda: set())
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
 
     harness.cli("doctor", "--skip-llm")
     harness.model_reply = [swedish, swedish]
@@ -294,7 +294,7 @@ def test_doctor_counts_weekend_picks_text_once_they_are_on(harness, monkeypatch,
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = harness.config["whatsapp"]["enabled"] = False
     harness.config["weekend_events"] = {"enabled": True}
-    monkeypatch.setattr(ops, "_launchctl_loaded", lambda: set())
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
 
     harness.cli("doctor", "--skip-llm")
 
