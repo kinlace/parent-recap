@@ -279,6 +279,39 @@ def test_removes_a_gmail_app_password_stored_for_an_earlier_address(harness, mac
     assert "gmail-imap-old@example.com" in capsys.readouterr().out
 
 
+def test_a_keychain_item_macos_refused_to_delete_is_found_again_on_the_next_try(harness, mac,
+                                                                              monkeypatch, capsys):
+    # Without a record, the Gmail account comes from the config, which the first try removes.
+    set_up(harness, mac, monkeypatch, record=False)
+    mac.keychain_prompt = "deny"
+    assert uninstall(harness, "--confirm", "--keep-archive") == 1
+    capsys.readouterr()
+    mac.keychain_prompt = "allow"
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    assert "gmail-imap-parent@example.com" in capsys.readouterr().out
+    assert mac.keychain == {}
+    assert not (harness.home / ".family").exists()
+
+
+def test_an_archive_in_a_shared_folder_takes_only_parent_recaps_files(harness, mac, monkeypatch,
+                                                                     capsys):
+    harness.config["archive"] = {"dir": "~/Documents"}
+    harness.config["weekend_events"] = {"dir": "~/Documents"}
+    set_up(harness, mac, monkeypatch)
+    for p in harness.archive_dir.glob("2026-*"):  # set_up's archive goes to the usual folder
+        p.unlink()
+    docs = harness.home / "Documents"
+    (docs / "logs").mkdir(exist_ok=True)
+    (docs / "logs" / "my-diary.txt").write_text("mine\n")
+    (docs / "2026-09-26.md").write_text("# Brief\n")
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert leftovers(harness.home) == ["Documents", "Documents/logs", "Documents/logs/my-diary.txt"]
+
+
 # ── installs from before the record
 
 
@@ -427,6 +460,7 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     set_up(harness, mac, monkeypatch)
     weekend = harness.archive_dir / "weekend_events"
     weekend.mkdir()
+    (weekend / "2026-09-26.md").write_text("picks\n")
     for name in ("calendar_credentials.json", "calendar_token.json"):
         (harness.home / ".family" / name).write_text("{}")
     harness.keychain["anthropic-api-key"] = "sk-ant-api-secret"

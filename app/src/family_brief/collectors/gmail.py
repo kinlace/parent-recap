@@ -27,17 +27,18 @@ IMAP_TIMEOUT = 60  # seconds per network step; without one a stalled connection 
 MAX_BODY_CHARS = 8000
 
 
-def _keychain_account(username: str) -> str:
+def keychain_account(username: str) -> str:
     return f"gmail-imap-{username}"
 
 
 def get_app_password(username: str) -> str | None:
-    return keychain.get(_keychain_account(username))
+    return keychain.get(keychain_account(username))
 
 
 def store_app_password(username: str, password: str) -> None:
-    keychain.set_(_keychain_account(username), password)
-    install_record.add("keychain", _keychain_account(username))
+    account = keychain_account(username)
+    keychain.set_(account, password)
+    install_record.add("keychain", account)
 
 
 def _decode(value: str | None) -> str:
