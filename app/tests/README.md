@@ -25,6 +25,10 @@ command line. `test_setup_claude_token.py` keeps the older Terminal script worki
 each `bg` job in-process, and a WhatsApp database only those jobs can read once the fake Mac has
 the permission. It checks each permission state, the chats and their Kid hints, and that
 WhatsApp is never read outside a `bg` job.
+`test_setup_myclub.py` runs `family-brief setup myclub` against a fake macOS dialog, `open` and
+MyClub server, and checks the link never reaches the output, the logs or a command line, that a
+failed download names only the server and the HTTP status, and that the older Terminal script
+still works.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:

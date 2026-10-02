@@ -257,7 +257,8 @@ def _check_myclub(kid: str, url: str, add) -> None:
         n = text.count("BEGIN:VEVENT")
         add(OK, f"MyClub ({kid})", f"subscription link works, {n} events in the calendar")
     except Exception as e:
-        add(FAIL, f"MyClub ({kid})", f"subscription link doesn't open: {e}")
+        add(FAIL, f"MyClub ({kid})", f"subscription link doesn't open: {e} (save a new one with "
+            f"family-brief setup myclub --kid {shlex.quote(kid)})")
 
 
 def _check_calendar(cfg: Config, add) -> None:

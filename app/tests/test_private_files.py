@@ -76,6 +76,7 @@ def test_doctor_names_only_the_myclub_host_and_status(harness, monkeypatch, caps
 
     line = next(l for l in capsys.readouterr().out.splitlines() if "MyClub (Mia)" in l)
     assert "example.myclub.fi" in line
+    assert "family-brief setup myclub --kid Mia" in line
     if kind == "404":
         assert "404" in line
     assert TOKEN not in line and "/ical/" not in line
