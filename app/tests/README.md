@@ -12,6 +12,9 @@ python -m pytest                     # whole suite
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.
 `test_source_failures.py` runs the real Gmail, Wilma and MyClub Sources against a fake IMAP server,
 `wilma` CLI and MyClub feed, for a Source that fails partway through a night or times out.
+`test_setup_gmail.py` runs `family-brief setup gmail` against a fake macOS dialog, `open`,
+Keychain and IMAP server, and checks the App Password never reaches the output, the logs or a
+command line.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:

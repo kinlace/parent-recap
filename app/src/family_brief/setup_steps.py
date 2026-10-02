@@ -16,6 +16,8 @@ import shlex
 import subprocess
 import sys
 
+import keyring.errors
+
 from . import secret_dialog
 from .config import Config
 
@@ -92,7 +94,7 @@ def cmd_gmail(args: argparse.Namespace) -> int:
 
     try:
         gmail.store_app_password(address, password)
-    except Exception:
+    except keyring.errors.KeyringError:
         return _report("keychain-failed", "Gmail accepted it, but macOS didn't let Parent Recap "
                        "save it in the Keychain. Run this again and click Allow if macOS asks.")
     return _report("saved", address=address)
