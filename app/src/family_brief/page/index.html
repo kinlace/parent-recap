@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Parent Recap</title>
+<link rel="stylesheet" href="page.css">
+<script src="page.js" defer></script>
+</head>
+<body>
+<header>
+  <span class="product">Parent Recap</span>
+  <label class="switch">
+    <span class="hidden-label" data-text="language.label"></span>
+    <select id="language-switch"></select>
+  </label>
+</header>
+<main>
+  <section id="language" hidden>
+    <h1 data-text="language.question"></h1>
+    <p class="note" data-text="language.note"></p>
+    <form id="language-form">
+      <fieldset id="language-choices"></fieldset>
+      <button type="submit" data-text="continue"></button>
+    </form>
+  </section>
+  <section id="phase" hidden>
+    <ol id="phases" class="phases"></ol>
+    <h1 id="phase-title"></h1>
+    <p class="note" data-text="phase.not-here"></p>
+  </section>
+  <p id="error" class="error" role="alert" hidden></p>
+</main>
+</body>
+</html>

@@ -124,23 +124,32 @@ def progress_path(config: Path) -> Path:
 
 def cmd_save(args: argparse.Namespace) -> int:
     config = Path(os.path.expanduser(os.path.expandvars(args.config or "~/.family/config.yaml")))
-    progress = progress_path(config)
     if args.read:
-        return _report("read", progress=_read_progress(progress))
-
+        return _print(read(config))
     if sys.stdin.isatty():
-        return _report("no-answers", "Give the answers as JSON on stdin, such as: family-brief "
-                       "setup save <<< '{\"evening\": \"21:00\"}'")
+        return _print(outcome("no-answers", "Give the answers as JSON on stdin, such as: family-brief "
+                           "setup save <<< '{\"evening\": \"21:00\"}'"))
     try:
         raw = json.loads(sys.stdin.read())
     except ValueError as e:
-        return _report("invalid-answers", "The answers aren't JSON. Fix them and save again.",
-                       errors=[f"not JSON: {e.msg} at line {e.lineno} column {e.colno}"])
+        return _print(outcome("invalid-answers", "The answers aren't JSON. Fix them and save again.",
+                           errors=[f"not JSON: {e.msg} at line {e.lineno} column {e.colno}"]))
+    return _print(save(config, raw))
+
+
+def read(config: Path) -> dict[str, Any]:
+    """What `setup save --read` prints: the progress of the setup whose config is at `config`."""
+    return outcome("read", progress=_read_progress(progress_path(config)))
+
+
+def save(config: Path, raw: Any) -> dict[str, Any]:
+    """Saves the answers `raw`, as parsed from JSON, into the config at `config` and setup's
+    progress, and returns what `setup save` prints. The setup page saves through this too."""
     if isinstance(raw, dict) and any(isinstance(k, dict) and "myclub_ical_url" in k
                                      for k in raw.get("kids") or []):
-        return _report("invalid-answers", "A Kid's MyClub link is a secret and isn't an answer: "
-                       "family-brief setup myclub --kid NAME asks for it and saves it. Save the "
-                       "answers again without it.", errors=["kids: myclub_ical_url isn't an answer"])
+        return outcome("invalid-answers", "A Kid's MyClub link is a secret and isn't an answer: "
+                    "family-brief setup myclub --kid NAME asks for it and saves it. Save the "
+                    "answers again without it.", errors=["kids: myclub_ical_url isn't an answer"])
     try:
         answers = Answers.model_validate(raw)
     except ValidationError as e:
@@ -151,8 +160,8 @@ def cmd_save(args: argparse.Namespace) -> int:
         try:
             data = _read_config(config)
         except (OSError, ValueError, yaml.YAMLError, ValidationError):
-            return _report("bad-config", f"The config at {config} can't be read, so nothing was "
-                           "saved. Run family-brief doctor, fix what it names, then save again.")
+            return outcome("bad-config", f"The config at {config} can't be read, so nothing was "
+                        "saved. Run family-brief doctor, fix what it names, then save again.")
         _merge(data, answers)
         try:
             Config.model_validate(data)
@@ -161,11 +170,12 @@ def cmd_save(args: argparse.Namespace) -> int:
 
     if data is not None:
         _write_private(config, yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+    progress = progress_path(config)
     current = _read_progress(progress)
     if answers.progress is not None:
         current = _merged_progress(current, answers.progress)
         _write_private(progress, json.dumps(current, ensure_ascii=False, indent=2))
-    return _report("saved", progress=current)
+    return outcome("saved", progress=current)
 
 
 def _config_answers(answers: Answers) -> bool:
@@ -253,14 +263,20 @@ def _write_private(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
-def _invalid(e: ValidationError) -> int:
+def _invalid(e: ValidationError) -> dict[str, Any]:
     # Only where each problem is and what's wrong: pydantic's own message can quote the value.
     errors = [f"{'.'.join(str(p) for p in err['loc']) or 'answers'}: {err['msg']}"
               for err in e.errors(include_input=False, include_url=False)]
-    return _report("invalid-answers", "Nothing was saved. Fix the answers named in errors and "
-                   "save again.", errors=errors)
+    return outcome("invalid-answers", "Nothing was saved. Fix the answers named in errors and "
+                "save again.", errors=errors)
 
 
-def _report(result: str, next_: str | None = None, **extra: Any) -> int:
-    from .setup_steps import _report as report
-    return report(result, next_, **extra)
+def outcome(result: str, next_: str | None = None, **extra: Any) -> dict[str, Any]:
+    """A step's outcome as `setup save` prints it, for the setup page to return too."""
+    return {"result": result, **extra, **({"next": next_} if next_ else {})}
+
+
+def _print(out: dict[str, Any]) -> int:
+    from .setup_steps import _report
+    extra = dict(out)
+    return _report(extra.pop("result"), extra.pop("next", None), **extra)
