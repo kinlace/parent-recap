@@ -24,6 +24,7 @@ import re
 import secrets
 import socketserver
 import subprocess
+import tempfile
 import threading
 import time
 from http import HTTPStatus
@@ -35,7 +36,7 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import setup_save, setup_steps, setup_wilma, summarize
+from . import setup_ai, setup_save, setup_steps, setup_wilma, summarize
 
 IDLE_SECONDS = 30 * 60
 AI_CHECK_SECONDS = 20
@@ -60,6 +61,17 @@ WILMA_READY_RESULTS = ("installing", "no-npm", "install-failed")
 WILMA_WINDOW_RESULTS = ("waiting", "not-signed-in", "sign-in-failed", "timeout", "no-terminal",
                         "not-installed")
 WILMA_WINDOW_SECONDS = 600
+# Claude's token for the evening Brief: while the family authorizes in the browser, and how the
+# sign-in, or the token pasted after the Terminal window, ended. `sign-in-failed` and `timeout`
+# offer the Terminal window, whose token the page takes in a field.
+CLAUDE_RESULTS = ("waiting", "saved", "not-installed", "sign-in-failed", "timeout", "not-a-token",
+                  "test-call-failed", "keychain-failed")
+CLAUDE_WINDOW_RESULTS = ("opened", "no-terminal", "not-installed")
+CLAUDE_SIGN_IN_SECONDS = 600
+# Codex's ChatGPT sign-in: signed in, signed out, `waiting` while its sign-in is open in the
+# browser, and `login-failed` when that ended without signing in or didn't start.
+CODEX_RESULTS = ("signed-in", "signed-out", "waiting", "login-failed", "not-installed",
+                 "check-failed")
 # The sites the page's buttons open, by name: the page itself names none.
 SITES = {"app-passwords": setup_steps.APP_PASSWORDS_URL, "two-step": setup_steps.TWO_STEP_URL}
 # The apps they open, each tried in turn: the Passwords app, or before macOS 15, where the
@@ -134,6 +146,10 @@ class SetupServer:
         self._saving = threading.Lock()  # one save at a time
         self._wilma = threading.Lock()  # one Wilma sign-in at a time, since each writes its profile
         self._window: dict[str, Any] | None = None  # the Terminal sign-in window's, once opened
+        self._ai = threading.Lock()  # one AI sign-in at a time
+        self._claude: dict[str, Any] | None = None  # Claude's sign-in's, once started
+        self._claude_script: tempfile.TemporaryDirectory | None = None  # its Terminal script's
+        self._codex: subprocess.Popen | None = None  # Codex's sign-in, once started
 
     def serve_until_idle(self) -> None:
         """Serves until `stop`, or until IDLE_SECONDS pass without a request."""
@@ -155,9 +171,15 @@ class SetupServer:
 
     def stop(self) -> None:
         with self._state:
-            self._stopped.set()
+            self._stopped.set()  # also ends Claude's sign-in
             if not self._serving:
                 self._httpd.server_close()
+        with self._ai:
+            if self._codex is not None and self._codex.poll() is None:
+                self._codex.kill()
+                self._codex.wait()
+            if self._claude_script is not None:
+                self._claude_script.cleanup()
 
     # ── the API
 
@@ -191,23 +213,143 @@ class SetupServer:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Pick Claude or ChatGPT.", errors=["ai: should be claude or codex"])
         name = raw["ai"]
-        codex_path = _section(self._config_data(), "llm").get("codex_path")
-        program, status, install = {
-            "claude": (summarize.find_claude, ["auth", "status"], summarize.CLAUDE_INSTALL),
-            "codex": (lambda: summarize.find_codex_at(codex_path if isinstance(codex_path, str)
-                                                      else None), ["login", "status"], None),
-        }[name]
-        program = program()
+        program = self._ai_program(name)
         if program is None:
+            install = summarize.CLAUDE_INSTALL if name == "claude" else None
             return HTTPStatus.OK, {"result": "not-installed", "ai": name,
                                    **({"install": install} if install else {})}
+        return HTTPStatus.OK, {"result": _ai_status(program, name), "ai": name}
+
+    def _ai_program(self, name: str) -> str | None:
+        if name == "claude":
+            return summarize.find_claude()
+        codex_path = _section(self._config_data(), "llm").get("codex_path")
+        return summarize.find_codex_at(codex_path if isinstance(codex_path, str) else None)
+
+    # ── the AI sign-in for the evening Brief
+
+    def sign_in_claude(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Starts `claude setup-token` in a pseudo-terminal, which opens Anthropic's Authorize
+        page in the browser, and waits for its token in the background: the page asks how it
+        went with `check_claude`. The family copies nothing."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        program = summarize.find_claude()
+        if program is None:
+            return HTTPStatus.OK, {"result": "not-installed", "install": summarize.CLAUDE_INSTALL}
+        with self._ai:
+            if self._claude is not None and self._claude["result"] is None:
+                return HTTPStatus.OK, {"result": "waiting"}  # already signing in
+            sign_in: dict[str, Any] = {"result": None}
+            self._claude = sign_in
+        threading.Thread(target=self._wait_for_claude, args=(sign_in, program),
+                         daemon=True).start()
+        return HTTPStatus.OK, {"result": "waiting"}
+
+    def check_claude(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """How Claude's sign-in went: `waiting` while the family is still authorizing."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        sign_in = self._claude
+        if sign_in is None:
+            return HTTPStatus.OK, {"result": "no-sign-in"}
+        return HTTPStatus.OK, sign_in["result"] or {"result": "waiting"}
+
+    def _wait_for_claude(self, sign_in: dict[str, Any], program: str) -> None:
         try:
-            # Only its exit code is read: the output can name the account.
-            proc = subprocess.run([program, *status], capture_output=True, text=True,
-                                  timeout=AI_CHECK_SECONDS, stdin=subprocess.DEVNULL)
-        except (OSError, subprocess.SubprocessError):
-            return HTTPStatus.OK, {"result": "check-failed", "ai": name}
-        return HTTPStatus.OK, {"result": "ready" if proc.returncode == 0 else "signed-out", "ai": name}
+            result, token = setup_ai.read_setup_token(program, CLAUDE_SIGN_IN_SECONDS, self._stopped)
+            if token is not None:
+                result, _ = setup_steps.claude_token_sign_in(program, token)
+            sign_in["result"] = self._ai_signed_in() if result == "saved" else {"result": result}
+        except Exception:  # never leave the page waiting
+            sign_in["result"] = {"result": "sign-in-failed"}
+
+    def open_claude_window(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Opens `claude setup-token` in a Terminal window, as the chat setup does, for when the
+        page's own sign-in fails: the family copies the token it shows into the page's field."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        program = summarize.find_claude()
+        if program is None:
+            return HTTPStatus.OK, {"result": "not-installed", "install": summarize.CLAUDE_INSTALL}
+        with self._ai:
+            if self._claude_script is not None:
+                self._claude_script.cleanup()
+            # Kept until the next window or the page stops, since Terminal runs the script from it.
+            self._claude_script = tempfile.TemporaryDirectory(prefix="parent-recap-claude-")
+            script = Path(self._claude_script.name) / "Claude sign-in.command"
+            script.write_text(setup_steps.setup_token_script(program, "the field on the setup page"))
+            script.chmod(0o700)
+        opened = _open(["-a", "Terminal", str(script)])
+        return HTTPStatus.OK, {"result": "opened" if opened else "no-terminal"}
+
+    def save_claude_token(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Tests the token pasted into the page's own field and stores it, as the chat's Claude
+        step does with the dialog's. The token is never returned, logged or put on a command line."""
+        if not (isinstance(raw, dict) and set(raw) == {"token"} and isinstance(raw["token"], str)):
+            # Names the field only: the answers carry the token.
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Paste the token.", errors=["token: should be text"])
+        program = summarize.find_claude()
+        if program is None:
+            return HTTPStatus.OK, {"result": "not-installed", "install": summarize.CLAUDE_INSTALL}
+        result, _ = setup_steps.claude_token_sign_in(program, raw["token"])
+        if result != "saved":
+            return HTTPStatus.OK, {"result": result}
+        with self._ai:
+            if self._claude_script is not None:  # the window's script has done its work
+                self._claude_script.cleanup()
+                self._claude_script = None
+        out = self._ai_signed_in()
+        return (HTTPStatus.OK if out["result"] == "saved" else HTTPStatus.CONFLICT), out
+
+    def check_codex(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Whether Codex is signed in, with its own status check. Once it is, the AI sign-in is
+        done. While its sign-in is open in the browser, signed out is `waiting`."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        program = self._ai_program("codex")
+        if program is None:
+            return HTTPStatus.OK, {"result": "not-installed"}
+        with self._ai:  # before the status, so a sign-in that ends meanwhile isn't called failed
+            login = self._codex
+            ended = login is not None and login.poll() is not None
+        status = _ai_status(program, "codex")
+        if status == "ready":
+            out = self._ai_signed_in()
+            return (HTTPStatus.OK, {**out, "result": "signed-in"}) if out["result"] == "saved" \
+                else (HTTPStatus.CONFLICT, out)
+        if status != "signed-out":
+            return HTTPStatus.OK, {"result": status}
+        if login is None:
+            return HTTPStatus.OK, {"result": "signed-out"}
+        if ended:
+            with self._ai:
+                if self._codex is login:
+                    self._codex = None  # said once, and the family can start it again
+            return HTTPStatus.OK, {"result": "login-failed"}
+        return HTTPStatus.OK, {"result": "waiting"}
+
+    def sign_in_codex(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Starts `codex login`, which opens the ChatGPT sign-in in the browser. The page then
+        checks with `check_codex` until it's signed in."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        program = self._ai_program("codex")
+        if program is None:
+            return HTTPStatus.OK, {"result": "not-installed"}
+        with self._ai:
+            if self._codex is None or self._codex.poll() is not None:
+                self._codex = setup_ai.start_codex_login(program)
+            started = self._codex is not None
+        return HTTPStatus.OK, {"result": "waiting" if started else "login-failed"}
+
+    def _ai_signed_in(self) -> dict[str, Any]:
+        """Saves the AI sign-in as done, moving setup on to the next Source."""
+        with self._saving:
+            statuses = {**setup_save.read(self.config)["progress"]["sources"], "ai": "done"}
+            return setup_save.save(self.config, {"progress": {
+                "sources": {"ai": "done"}, "source": _next_source(statuses)}})
 
     def save_welcome(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Saves Welcome's choices: the AI, the partner or only me, and pilot feedback, and moves
@@ -507,6 +649,22 @@ def _open(args: list[str]) -> bool:
         return False
 
 
+def _ai_status(program: str, name: str) -> str:
+    """`ready`, `signed-out` or `check-failed`, from the AI's own status check."""
+    status = ["auth", "status"] if name == "claude" else ["login", "status"]
+    try:
+        # Only its exit code is read: the output can name the account.
+        proc = subprocess.run([program, *status], capture_output=True, text=True,
+                              timeout=AI_CHECK_SECONDS, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return "check-failed"
+    return "ready" if proc.returncode == 0 else "signed-out"
+
+
+def _nothing_to_give() -> dict[str, Any]:
+    return setup_save.outcome("invalid-answers", "Nothing to give.", errors=["answers: should be {}"])
+
+
 def _wilma_invalid() -> dict[str, Any]:
     # Names the fields only: the answers carry the password.
     return setup_save.outcome(
@@ -583,7 +741,11 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/wilma/install": setup.wilma_ready, "api/towns": setup.find_towns,
                    "api/wilma": setup.sign_in_wilma, "api/town": setup.save_town,
                    "api/wilma/terminal": setup.open_wilma_window,
-                   "api/wilma/check": setup.check_wilma_window}
+                   "api/wilma/check": setup.check_wilma_window,
+                   "api/claude": setup.sign_in_claude, "api/claude/check": setup.check_claude,
+                   "api/claude/terminal": setup.open_claude_window,
+                   "api/claude/token": setup.save_claude_token,
+                   "api/codex": setup.check_codex, "api/codex/login": setup.sign_in_codex}
         if method == "POST" and path in actions:
             raw = self._body()
             if raw is _NOT_JSON:

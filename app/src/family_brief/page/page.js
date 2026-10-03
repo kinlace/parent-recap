@@ -249,6 +249,7 @@ async function saveWelcome(event) {
     if (!r.ok) throw new Error(out.result);
     clearTimeout(ai.timer);
     page.progress = out.progress;
+    page.welcome.ai = answers.ai;
     show();
   } catch (e) {
     failed(e);
@@ -278,6 +279,7 @@ function renderConnect() {
     navigator.clipboard.writeText(document.getElementById("source-install-line").textContent);
   });
   renderWilma();
+  renderAI();
   document.getElementById("gmail-open").addEventListener("click", () => openSite("app-passwords"));
   document.getElementById("gmail-two-step").addEventListener("click", () => openSite("two-step"));
   document.getElementById("gmail-unavailable").addEventListener("click", () => {
@@ -323,11 +325,22 @@ function renderSources() {
     !skippable || statuses[current] !== "to-do" || current === "wilma";
   document.getElementById("source-wilma").hidden = current !== "wilma";
   document.getElementById("source-gmail").hidden = current !== "gmail";
+  document.getElementById("source-ai").hidden = current !== "ai";
+  document.getElementById("ai-claude").hidden = page.welcome.ai !== "claude";
+  document.getElementById("ai-codex").hidden = page.welcome.ai !== "codex";
   document.getElementById("source-later").hidden =
-    !current || current === "gmail" || current === "wilma";
+    !current || ["gmail", "wilma", "ai"].includes(current);
   document.getElementById("source-later-title").textContent = current ? t("source." + current) : "";
   document.getElementById("connect-done").hidden = Boolean(current);
   if (current === "wilma" && !wilmaStep.ready && !wilmaStep.preparing) getWilmaReady();
+  if (current === "ai" && !aiStep.shown) {
+    aiStep.shown = true;
+    if (page.welcome.ai === "codex" && statuses.ai === "to-do") {
+      showSource("codex.checking");
+      checkCodex();
+    }
+    if (page.welcome.ai === "claude") resumeClaude();
+  }
 }
 
 // Skips the Source, or opens it from the list, which brings a skipped one back.
@@ -339,7 +352,10 @@ async function chooseSource(name, action) {
     // Not kept once the parent moves on.
     document.getElementById("gmail-password").value = "";
     document.getElementById("wilma-password").value = "";
+    document.getElementById("claude-token").value = "";
     clearTimeout(wilmaStep.timer);
+    clearTimeout(aiStep.timer);
+    aiStep.shown = false;
     showSource(null);
     renderSources();
   } catch (e) {
@@ -387,6 +403,8 @@ function showSource(key, { url, kids, install } = {}) {
     !["gmail.app-passwords-unavailable", "gmail.rejected"].includes(key);
   document.getElementById("wilma-terminal").hidden = !OFFER_TERMINAL.includes(key);
   document.getElementById("wilma-again").hidden = !TRY_AGAIN.includes(key);
+  document.getElementById("claude-terminal").hidden = !CLAUDE_TERMINAL.includes(key);
+  document.getElementById("claude-again").hidden = !CLAUDE_AGAIN.includes(key);
 }
 
 // The server opens the site, so the page itself names none.
@@ -632,6 +650,129 @@ function windowResult(out) {
     return;
   }
   wilmaResult(out, "wilma.window.");
+}
+
+// ── Connect: the AI sign-in for the evening Brief: Claude's own token, read from its sign-in
+// without anything copied, or Codex's ChatGPT login. Each ticks itself once it's done.
+
+const AI_MS = 3000;
+const aiStep = { shown: false, timer: null };
+// After these the page offers Claude's Terminal window, or to sign in again.
+const CLAUDE_TERMINAL = ["claude.sign-in-failed", "claude.timeout", "claude.window.no-terminal"];
+const CLAUDE_AGAIN = [
+  "claude.not-installed", "claude.test-call-failed", "claude.keychain-failed",
+  "claude.window.not-installed",
+];
+// Codex's results after which the page checks again by itself.
+const CODEX_AGAIN = ["codex.waiting", "codex.not-installed", "codex.check-failed"];
+
+function renderAI() {
+  document.getElementById("claude-start").addEventListener("click", signInClaude);
+  document.getElementById("claude-again").addEventListener("click", signInClaude);
+  document.getElementById("claude-terminal").addEventListener("click", openClaudeWindow);
+  document.getElementById("claude-form").addEventListener("submit", saveClaudeToken);
+  document.getElementById("codex-login").addEventListener("click", signInCodex);
+}
+
+// Once the AI sign-in is done, setup moves on to the next Source.
+function aiDone(out, key) {
+  page.progress = out.progress;
+  document.getElementById("claude-form").hidden = true;
+  renderSources();
+  showSource(key);
+}
+
+async function signInClaude() {
+  clearError();
+  clearTimeout(aiStep.timer);
+  try {
+    claudeResult(await post("api/claude", {}));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+async function checkClaude() {
+  try {
+    claudeResult(await post("api/claude/check", {}));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+// Picks up a sign-in still running from before the page was reloaded or left, and only that:
+// how an earlier one ended is old news.
+async function resumeClaude() {
+  try {
+    const out = await post("api/claude/check", {});
+    if (out.result === "waiting") claudeResult(out);
+  } catch (e) {
+    failed(e);
+  }
+}
+
+function claudeResult(out) {
+  clearTimeout(aiStep.timer);
+  if (out.result === "waiting") aiStep.timer = setTimeout(checkClaude, AI_MS);
+  if (out.result === "saved") return aiDone(out, "claude.saved");
+  showSource("claude." + out.result, { install: out.install });
+}
+
+async function openClaudeWindow() {
+  clearError();
+  try {
+    const out = await post("api/claude/terminal", {});
+    if (out.result === "opened") document.getElementById("claude-form").hidden = false;
+    showSource("claude.window." + out.result, { install: out.install });
+  } catch (e) {
+    failed(e);
+  }
+}
+
+async function saveClaudeToken(event) {
+  event.preventDefault();
+  clearError();
+  const button = event.submitter;
+  button.disabled = true;
+  const token = document.getElementById("claude-token");
+  try {
+    const out = await post("api/claude/token", { token: token.value });
+    if (out.result !== "keychain-failed") token.value = "";
+    if (out.result === "saved") return aiDone(out, "claude.saved");
+    showSource("claude." + out.result, { install: out.install });
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function checkCodex() {
+  clearTimeout(aiStep.timer);
+  try {
+    codexResult(await post("api/codex", {}));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+async function signInCodex() {
+  clearError();
+  clearTimeout(aiStep.timer);
+  try {
+    codexResult(await post("api/codex/login", {}));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+function codexResult(out) {
+  const key = "codex." + out.result;
+  document.getElementById("codex-login").hidden =
+    !["codex.signed-out", "codex.login-failed"].includes(key);
+  if (out.result === "signed-in") return aiDone(out, key);
+  showSource(key);
+  if (CODEX_AGAIN.includes(key)) aiStep.timer = setTimeout(checkCodex, AI_MS);
 }
 
 function show() {
