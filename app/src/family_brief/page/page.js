@@ -4,7 +4,7 @@
 const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish"];
 const page = {
   text: null, language: "en", chosen: null, languages: [], progress: null, welcome: null,
-  welcomeShown: false,
+  connect: null, gmail: null, welcomeShown: false, connectShown: false,
 };
 
 function t(key) {
@@ -55,6 +55,7 @@ function applyText() {
   document.getElementById("language-switch").value = page.language;
   document.getElementById("phases").setAttribute("aria-label", t("phases.label"));
   if (page.progress) renderPhase();
+  if (page.connectShown) renderSources();
 }
 
 function renderSwitch() {
@@ -256,15 +257,155 @@ async function saveWelcome(event) {
   }
 }
 
+// ── Connect: the Source list, worked through in order, and Gmail's own step.
+
+async function post(path, body) {
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const out = await r.json();
+  if (!r.ok) throw new Error(out.result);
+  return out;
+}
+
+function renderConnect() {
+  document.getElementById("source-skip").addEventListener("click", () => {
+    chooseSource(currentSource(), "skip");
+  });
+  document.getElementById("gmail-open").addEventListener("click", () => openSite("app-passwords"));
+  document.getElementById("gmail-two-step").addEventListener("click", () => openSite("two-step"));
+  document.getElementById("gmail-unavailable").addEventListener("click", () => {
+    showSource("gmail.app-passwords-unavailable");
+  });
+  document.getElementById("gmail-form").addEventListener("submit", connectGmail);
+  document.getElementById("gmail-address").value = page.gmail.address || "";
+}
+
+// The Source the parent is on: the one saved, else the first still to do (null once none is).
+function currentSource() {
+  const statuses = page.progress.sources;
+  return page.progress.source ??
+    page.connect.sources.map((s) => s.name).find((name) => statuses[name] === "to-do") ?? null;
+}
+
+function renderSources() {
+  const current = currentSource();
+  const statuses = page.progress.sources;
+  const list = document.getElementById("sources");
+  list.replaceChildren();
+  for (const { name } of page.connect.sources) {
+    const item = document.createElement("li");
+    item.dataset.status = statuses[name];
+    if (name === current) item.setAttribute("aria-current", "step");
+    const button = document.createElement("button");
+    button.type = "button";
+    const label = document.createElement("span");
+    label.textContent = t("source." + name);
+    const state = document.createElement("span");
+    state.className = "state";
+    state.textContent = t("status." + statuses[name]);
+    button.append(label, state);
+    button.addEventListener("click", () => {
+      if (name !== current || statuses[name] === "skipped") chooseSource(name, "open");
+    });
+    item.append(button);
+    list.append(item);
+  }
+  const skippable = page.connect.sources.find((s) => s.name === current)?.skippable;
+  document.getElementById("source-skip").hidden = !skippable || statuses[current] !== "to-do";
+  document.getElementById("source-gmail").hidden = current !== "gmail";
+  document.getElementById("source-later").hidden = !current || current === "gmail";
+  document.getElementById("source-later-title").textContent = current ? t("source." + current) : "";
+  document.getElementById("connect-done").hidden = Boolean(current);
+}
+
+// Skips the Source, or opens it from the list, which brings a skipped one back.
+async function chooseSource(name, action) {
+  clearError();
+  try {
+    const out = await post("api/source", { source: name, action });
+    page.progress = out.progress;
+    document.getElementById("gmail-password").value = ""; // not kept once the parent moves on
+    showSource(null);
+    renderSources();
+  } catch (e) {
+    failed(e);
+  }
+}
+
+// What the last step said, under the Source: a text key, or null for nothing.
+function showSource(key, url) {
+  const status = document.getElementById("source-status");
+  const message = document.getElementById("source-message");
+  status.hidden = !key;
+  status.dataset.result = key || "";
+  if (key) {
+    message.dataset.text = key;
+    message.textContent = t(key);
+  } else {
+    delete message.dataset.text;
+  }
+  const where = document.getElementById("source-url");
+  where.hidden = !url;
+  where.textContent = url || "";
+  document.getElementById("gmail-two-step").hidden =
+    !["gmail.app-passwords-unavailable", "gmail.rejected"].includes(key);
+}
+
+// The server opens the site, so the page itself names none.
+async function openSite(site) {
+  clearError();
+  try {
+    const out = await post("api/open", { site });
+    if (out.result !== "opened") showSource("open.not-opened", out.url);
+  } catch (e) {
+    failed(e);
+  }
+}
+
+async function connectGmail(event) {
+  event.preventDefault();
+  clearError();
+  showSource(null);
+  const button = event.submitter;
+  button.disabled = true;
+  const password = document.getElementById("gmail-password");
+  try {
+    const out = await post("api/gmail", {
+      address: document.getElementById("gmail-address").value,
+      password: password.value,
+    });
+    if (out.result !== "no-connection" && out.result !== "keychain-failed") password.value = "";
+    if (out.result === "saved") {
+      page.progress = out.progress;
+      page.gmail.address = out.address;
+      document.getElementById("gmail-address").value = out.address;
+      renderSources();
+    }
+    showSource("gmail." + out.result);
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function show() {
-  const welcome = Boolean(page.chosen) && page.progress.phase === "welcome";
+  const phase = page.chosen ? page.progress.phase : null;
   document.getElementById("language").hidden = Boolean(page.chosen);
   document.getElementById("phases").hidden = !page.chosen;
-  document.getElementById("welcome").hidden = !welcome;
-  document.getElementById("phase").hidden = !page.chosen || welcome;
-  if (welcome && !page.welcomeShown) {
+  document.getElementById("welcome").hidden = phase !== "welcome";
+  document.getElementById("connect").hidden = phase !== "connect";
+  document.getElementById("phase").hidden = !phase || phase === "welcome" || phase === "connect";
+  if (phase === "welcome" && !page.welcomeShown) {
     page.welcomeShown = true;
     renderWelcome();
+  }
+  if (phase === "connect" && !page.connectShown) {
+    page.connectShown = true;
+    renderConnect();
   }
   applyText();
 }
@@ -277,6 +418,8 @@ async function start() {
   page.language = state.language || state.preselected;
   page.progress = state.progress;
   page.welcome = state.welcome;
+  page.connect = state.connect;
+  page.gmail = state.gmail;
   renderSwitch();
   renderChoices();
   show();

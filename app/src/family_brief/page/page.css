@@ -194,3 +194,56 @@ fieldset .field label {
 .phases li[aria-current="step"] { background: var(--accent); color: #fff; }
 
 .error { color: var(--error); margin: 16px 0 0; }
+
+.sources {
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0 0 24px;
+}
+
+.sources button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font-weight: 400;
+  text-align: left;
+}
+
+.sources li[aria-current="step"] button { border-color: var(--accent); background: var(--accent-soft); }
+
+.sources .state { color: var(--muted); font-size: 15px; }
+
+.sources li[data-status="done"] .state { color: var(--accent); font-weight: 600; }
+
+.source { margin: 0 0 16px; }
+
+.source[hidden] { display: none; }
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+button.link {
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 400;
+  font-size: 15px;
+  text-decoration: underline;
+}
+
+.status[data-result="gmail.saved"] { background: var(--accent-soft); color: var(--accent); }
+
+.status code {
+  display: block;
+  margin-top: 8px;
+  font: 14px/1.4 ui-monospace, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.status code[hidden] { display: none; }

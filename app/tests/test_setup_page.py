@@ -7,8 +7,10 @@ see: the responses, the config and progress written, and what was opened."""
 from __future__ import annotations
 
 import http.client
+import imaplib
 import itertools
 import json
+import logging
 import queue
 import re
 import socket
@@ -19,11 +21,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import keyring.errors
 import pytest
 import yaml
 
-from family_brief import __main__ as cli, setup_server, summarize
+from family_brief import __main__ as cli, setup_save, setup_server, summarize
 from family_brief.config import Config
+from family_brief.utils import keychain
 
 PAGE_DIR = Path(setup_server.__file__).parent / "page"
 
@@ -558,3 +562,253 @@ def test_running_it_again_resumes_at_the_saved_phase(harness, clock):
     assert state["progress"]["phase"] == "connect"
     assert state["progress"]["source"] == "gmail"
     assert state["progress"]["sources"]["wilma"] == "done"
+
+
+# ── Connect: the Source list
+
+
+def source(url: str, name: str, action: str) -> Response:
+    return call(url, "api/source", method="POST", body={"source": name, "action": action})
+
+
+def statuses(url: str) -> dict[str, str]:
+    return call(url, "api/state").json()["progress"]["sources"]
+
+
+def save_progress(harness, progress: dict[str, Any]) -> None:
+    progress_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    progress_file(harness).write_text(json.dumps(progress))
+
+
+def test_the_source_list_shows_each_entry_with_its_status(harness, page):
+    save_progress(harness, {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"}})
+
+    state = call(page.url, "api/state").json()
+
+    assert [(s["name"], s["skippable"]) for s in state["connect"]["sources"]] == [
+        ("wilma", True), ("gmail", False), ("ai", False), ("whatsapp", True), ("myclub", True)]
+    assert state["progress"]["source"] == "gmail"
+    assert state["progress"]["sources"] == {"wilma": "done", "gmail": "to-do", "ai": "to-do",
+                                            "whatsapp": "to-do", "myclub": "to-do"}
+
+
+def test_a_skipped_source_moves_setup_on_and_can_be_come_back_to(harness, page):
+    save_progress(harness, {"phase": "connect", "source": "whatsapp",
+                            "sources": {"wilma": "done", "gmail": "done", "ai": "done"}})
+
+    r = source(page.url, "whatsapp", "skip")
+
+    assert r.status == 200 and r.json()["result"] == "saved"
+    assert r.json()["progress"]["source"] == "myclub"
+    assert statuses(page.url)["whatsapp"] == "skipped"
+
+    r = source(page.url, "whatsapp", "open")
+
+    assert r.json()["progress"]["source"] == "whatsapp"
+    assert statuses(page.url)["whatsapp"] == "to-do"
+
+
+def test_skipping_the_last_source_leaves_none_to_do(harness, page):
+    save_progress(harness, {"phase": "connect", "source": "myclub",
+                            "sources": {"wilma": "done", "gmail": "done", "ai": "done",
+                                        "whatsapp": "skipped"}})
+
+    assert source(page.url, "myclub", "skip").json()["progress"]["source"] is None
+
+
+def test_skipping_wilma_turns_it_off_for_a_household_that_does_not_use_it(harness, page):
+    r = source(page.url, "wilma", "skip")
+
+    assert r.json()["progress"]["source"] == "gmail"
+    assert statuses(page.url)["wilma"] == "skipped"
+    assert Config.load(config_file(harness)).wilma.enabled is False
+
+
+def test_gmail_and_the_ai_sign_in_cannot_be_skipped(harness, page):
+    for name in ("gmail", "ai"):
+        r = source(page.url, name, "skip")
+        assert r.status == 400 and r.json()["result"] == "invalid-answers", name
+    for body in [{"source": "telegram", "action": "open"}, {"source": "gmail", "action": "done"},
+                 {"source": "gmail"}, {"source": "gmail", "action": "open", "x": 1}, ["gmail"]]:
+        assert call(page.url, "api/source", method="POST", body=body).status == 400, body
+    assert set(statuses(page.url).values()) == {"to-do"}
+
+
+def test_any_source_can_be_opened_from_the_list(harness, page):
+    r = source(page.url, "gmail", "open")
+
+    assert r.json()["progress"]["source"] == "gmail"
+    assert statuses(page.url)["gmail"] == "to-do"
+
+
+def test_a_source_already_done_stays_done_when_opened_again(harness, page):
+    save_progress(harness, {"phase": "connect", "source": "ai", "sources": {"gmail": "done"}})
+
+    assert source(page.url, "gmail", "open").json()["progress"]["sources"]["gmail"] == "done"
+
+
+# ── Connect: Gmail
+
+APP_PASSWORD = "abcdefghijklmnop"
+TYPED = "abcd efgh ijkl mnop"  # how Google shows it, and how it's copied
+
+
+class GmailServer:
+    """Gmail's IMAP server for the test sign-in: accepts only APP_PASSWORD, or can't be reached."""
+
+    def __init__(self) -> None:
+        self.logins: list[tuple[str, str]] = []
+        self.reachable = True
+
+    def __call__(self, *_a: Any, **_k: Any) -> "GmailServer":
+        if not self.reachable:
+            raise OSError("nodename nor servname provided")
+        return self
+
+    def __enter__(self) -> "GmailServer":
+        return self
+
+    def __exit__(self, *_a: Any) -> None:
+        pass
+
+    def login(self, user: str, password: str) -> None:
+        self.logins.append((user, password))
+        if password != APP_PASSWORD:
+            raise imaplib.IMAP4.error(b"[AUTHENTICATIONFAILED] Invalid credentials (Failure)")
+
+    def logout(self) -> None:
+        pass
+
+
+@pytest.fixture
+def gmail(monkeypatch) -> GmailServer:
+    server = GmailServer()
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", server)
+    return server
+
+
+def connect_gmail(url: str, address: str = "Parent@Example.com", password: str = TYPED) -> Response:
+    return call(url, "api/gmail", method="POST", body={"address": address, "password": password})
+
+
+def assert_never_leaked(harness, responses: list[Response], caplog, capsys, secret: str) -> None:
+    printed = "".join(capsys.readouterr())
+    for value in {secret, secret.replace(" ", "")}:
+        for r in responses:
+            assert value.encode() not in r.body
+        assert value not in printed
+        assert value not in caplog.text
+        assert not any(value in arg for cmd in harness.commands for arg in cmd)
+        for f in (harness.home / ".family").glob("*"):
+            assert value not in f.read_text(), f.name
+
+
+def test_the_button_opens_google_s_app_passwords_page(harness, page):
+    r = call(page.url, "api/open", method="POST", body={"site": "app-passwords"})
+
+    assert r.status == 200 and r.json()["result"] == "opened"
+    assert harness.opened == ["https://myaccount.google.com/apppasswords"]
+
+    call(page.url, "api/open", method="POST", body={"site": "two-step"})
+    assert harness.opened[-1] == "https://myaccount.google.com/signinoptions/two-step-verification"
+    for body in [{"site": "https://evil.example"}, {}, {"site": "two-step", "x": 1}]:
+        assert call(page.url, "api/open", method="POST", body=body).status == 400, body
+    assert len(harness.opened) == 2
+
+
+def test_a_valid_app_password_is_tested_stored_and_gmail_turns_done(harness, page, gmail, caplog,
+                                                                    capsys):
+    caplog.set_level(logging.DEBUG)
+    welcome(page.url, partner={"address": "partner@example.com", "language": "fi"})
+    source(page.url, "wilma", "skip")
+
+    r = connect_gmail(page.url)
+
+    assert r.status == 200
+    out = r.json()
+    assert out["result"] == "saved" and out["address"] == "parent@example.com"
+    assert gmail.logins == [("parent@example.com", APP_PASSWORD)]
+    assert harness.keychain == {"gmail-imap-parent@example.com": APP_PASSWORD}
+    assert out["progress"]["sources"]["gmail"] == "done"
+    assert out["progress"]["source"] == "ai"
+    cfg = Config.load(config_file(harness))
+    assert cfg.gmail.username == "parent@example.com"
+    # Now the parent's address is known, the Recipients are saved with the parent first.
+    assert [(t.address, t.language) for t in cfg.email.to] == \
+        [("parent@example.com", None), ("partner@example.com", "fi")]
+    assert call(page.url, "api/state").json()["gmail"] == {"address": "parent@example.com"}
+    assert_never_leaked(harness, [r], caplog, capsys, TYPED)
+
+
+def test_without_a_welcome_partner_the_parent_becomes_the_recipient(harness, page, gmail):
+    assert connect_gmail(page.url).json()["result"] == "saved"
+
+    assert [t.address for t in Config.load(config_file(harness)).email.to] == ["parent@example.com"]
+
+
+@pytest.mark.parametrize("typed, result", [
+    ("MyGooglePassword1", "not-an-app-password"),
+    ("zyxwvutsrqponmlk", "rejected"),
+])
+def test_a_password_gmail_would_not_take_is_explained_and_not_stored(harness, page, gmail, caplog,
+                                                                     capsys, typed, result):
+    caplog.set_level(logging.DEBUG)
+
+    r = connect_gmail(page.url, password=typed)
+
+    assert r.status == 200 and r.json()["result"] == result
+    assert harness.keychain == {}
+    assert statuses(page.url)["gmail"] == "to-do"
+    if result == "not-an-app-password":  # most likely the Google password: never sent to Google
+        assert gmail.logins == []
+    assert_never_leaked(harness, [r], caplog, capsys, typed)
+
+
+def test_no_connection_to_gmail_says_so(harness, page, gmail):
+    gmail.reachable = False
+
+    assert connect_gmail(page.url).json()["result"] == "no-connection"
+    assert harness.keychain == {}
+
+
+def test_a_keychain_that_refuses_says_so(harness, page, gmail, monkeypatch):
+    def refuses(*_a: Any) -> None:
+        raise keyring.errors.KeyringError("denied")
+    monkeypatch.setattr(keychain, "set_", refuses)
+
+    assert connect_gmail(page.url).json()["result"] == "keychain-failed"
+    assert statuses(page.url)["gmail"] == "to-do"
+
+
+def test_an_address_that_is_not_one_is_explained(harness, page, gmail):
+    for address in ["", "parent", "parent@", "a b@example.com"]:
+        assert connect_gmail(page.url, address=address).json()["result"] == "no-address", address
+    assert gmail.logins == []
+    for body in [{"address": "parent@example.com"}, {"password": TYPED},
+                 {"address": "parent@example.com", "password": 1},
+                 {"address": "parent@example.com", "password": TYPED, "x": 1}]:
+        r = call(page.url, "api/gmail", method="POST", body=body)
+        assert r.status == 400 and r.json()["result"] == "invalid-answers", body
+        assert TYPED.encode() not in r.body
+
+
+def test_every_gmail_result_is_explained_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for result in setup_server.GMAIL_RESULTS:
+            assert table.get(f"gmail.{result}", "").strip(), (language, result)
+        assert "Parent Recap" in table["gmail.explain"], language
+        for name in setup_save.SOURCES:
+            assert table.get(f"source.{name}", "").strip(), (language, name)
+        for status in ("to-do", "done", "skipped"):
+            assert table.get(f"status.{status}", "").strip(), (language, status)
+
+
+def test_the_gmail_fields_are_the_page_s_own(page):
+    html = call(page.url).body.decode()
+
+    password = re.search(r'<input[^>]*id="gmail-password"[^>]*>', html).group(0)
+    assert 'type="password"' in password
+    address = re.search(r'<input[^>]*id="gmail-address"[^>]*>', html).group(0)
+    assert 'type="email"' in address
