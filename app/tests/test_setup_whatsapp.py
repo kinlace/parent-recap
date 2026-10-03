@@ -227,6 +227,20 @@ def test_chats_that_look_like_they_are_about_a_kid_carry_a_hint(harness, mac, ca
     }
 
 
+def test_kids_without_a_school_or_class_still_get_hints_from_their_names(harness, mac, capsys):
+    harness.config["kids"] = [{"name": "Mia Virtanen"}, {"name": "Leo"}]  # setup didn't ask for either
+    mac.install_whatsapp([("Mia's birthday 🎈", 1, False), ("Leo piano", 1, False), ("3B parents", 1, False)])
+
+    assert harness.cli("setup", "whatsapp") == 0
+
+    hints = {c["name"]: c.get("hint") for c in result(capsys)["chats"]}
+    assert hints == {
+        "Mia's birthday 🎈": {"kids": ["Mia Virtanen"], "matched": ["Mia"]},
+        "Leo piano": {"kids": ["Leo"], "matched": ["Leo"]},
+        "3B parents": None,
+    }
+
+
 def test_without_kids_in_the_config_yet_chats_have_no_hints(harness, mac, capsys):
     harness.config["kids"] = []
     mac.install_whatsapp(CHATS)

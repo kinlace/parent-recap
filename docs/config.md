@@ -38,7 +38,7 @@ One town outside the presets was set up end to end in a fresh-install test in Oc
 | `kids[].name`                          | The Kid's full name, ideally spelled as in Wilma; the model uses it to tell which Kid a message is about                        |
 | `kids[].everyday_name`                 | What the family calls the Kid; the Brief uses it everywhere (Digest, Action Items, calendar events). Leave it out to use `name`  |
 | `kids[].aliases`                       | Other names used in chats and mail: nicknames, English name, Chinese name                                                       |
-| `kids[].grade` / `class_name`          | Grade and class; update them every August when the school year changes                                                          |
+| `kids[].grade` / `class_name`          | Optional; setup fills them in only from Wilma. Update them every August when the school year changes                           |
 | `kids[].activities`                    | Hobby classes and clubs, to help the model understand the group chats                                                           |
 | `kids[].myclub_ical_url`               | MyClub calendar subscription link                                                                                               |
 | `gmail.allowlist_domains`              | **Only these domains are scanned**; without an allowlist the program refuses to run                                             |
@@ -95,7 +95,7 @@ Afterwards run `family-brief doctor`: a ⚠️ on the pilot feedback line means 
 
 ## New school year (every August)
 
-1. Update each Kid's `grade` and `class_name`
+1. Update each Kid's `grade` and `class_name`, if the config has them
 2. Class groups are often replaced or renamed: run `family-brief bg discover whatsapp-chats` and replace the old group names in `whatsapp.chats` with the new ones
 3. Music school groups named after the school year (such as `EMO-PIANO 2025-2026`) also get the new year's name
 4. Run `family-brief doctor` once to confirm every group is found
