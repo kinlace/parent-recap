@@ -36,7 +36,7 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import setup_ai, setup_save, setup_steps, setup_wilma, summarize
+from . import ops, setup_ai, setup_save, setup_steps, setup_wilma, summarize
 
 IDLE_SECONDS = 30 * 60
 AI_CHECK_SECONDS = 20
@@ -72,6 +72,12 @@ CLAUDE_SIGN_IN_SECONDS = 600
 # browser, and `login-failed` when that ended without signing in or didn't start.
 CODEX_RESULTS = ("signed-in", "signed-out", "waiting", "login-failed", "not-installed",
                  "check-failed")
+# What one read of WhatsApp can say, as `setup whatsapp` does, and whether the button opened
+# Finder, with the Python to allow, and App Management.
+WHATSAPP_RESULTS = ("readable", "no-permission", "waiting", "not-installed", "unreadable",
+                    "bg-failed")
+WHATSAPP_OPEN_RESULTS = ("opened", "not-opened")
+WHATSAPP_READ_SECONDS = setup_steps.WHATSAPP_READ_SECONDS
 # The sites the page's buttons open, by name: the page itself names none.
 SITES = {"app-passwords": setup_steps.APP_PASSWORDS_URL, "two-step": setup_steps.TWO_STEP_URL}
 # The apps they open, each tried in turn: the Passwords app, or before macOS 15, where the
@@ -150,6 +156,7 @@ class SetupServer:
         self._claude: dict[str, Any] | None = None  # Claude's sign-in's, once started
         self._claude_script: tempfile.TemporaryDirectory | None = None  # its Terminal script's
         self._codex: subprocess.Popen | None = None  # Codex's sign-in, once started
+        self._whatsapp = threading.Lock()  # one read at a time, since each is a launchd job
 
     def serve_until_idle(self) -> None:
         """Serves until `stop`, or until IDLE_SECONDS pass without a request."""
@@ -343,6 +350,45 @@ class SetupServer:
                 self._codex = setup_ai.start_codex_login(program)
             started = self._codex is not None
         return HTTPStatus.OK, {"result": "waiting" if started else "login-failed"}
+
+    # ── WhatsApp
+
+    def check_whatsapp(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Reads WhatsApp once through a `bg` job, with the scheduled job's permission, as `setup
+        whatsapp` does. The page checks again every few seconds, so once the family has given
+        the permission, WhatsApp is done by itself, and the groups found are kept in setup's
+        progress for the check page. Errors aren't returned: they can name the Mac's files."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        with self._whatsapp:
+            read = setup_steps.read_whatsapp_through_bg(
+                str(self.config), setup_steps.WHATSAPP_DAYS, WHATSAPP_READ_SECONDS)
+        if read["result"] != "readable":
+            return HTTPStatus.OK, {"result": read["result"]}
+        with self._saving:
+            # A read takes a while, and the family may have skipped WhatsApp or opened another
+            # Source meanwhile: their choice stands.
+            progress = setup_save.read(self.config)["progress"]
+            if progress["sources"]["whatsapp"] == "skipped":
+                return HTTPStatus.OK, {"result": "readable", "chats": read["chats"],
+                                       "progress": progress}
+            statuses = {**progress["sources"], "whatsapp": "done"}
+            here = progress["source"] == "whatsapp"
+            out = setup_save.save(self.config, {"progress": {
+                "sources": {"whatsapp": "done"},
+                "source": _next_source(statuses) if here else progress["source"],
+                "whatsapp_chats": read["chats"]}})
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        return HTTPStatus.OK, {**out, "result": "readable", "chats": read["chats"]}
+
+    def open_app_management(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Selects the scheduled job's Python in Finder and opens App Management next to it, as
+        `setup whatsapp` does, for the family to drag it in and turn its switch on."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        _, failed = ops.show_python_for_app_management()
+        return HTTPStatus.OK, {"result": "not-opened" if failed else "opened"}
 
     def _ai_signed_in(self) -> dict[str, Any]:
         """Saves the AI sign-in as done, moving setup on to the next Source."""
@@ -745,7 +791,9 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/claude": setup.sign_in_claude, "api/claude/check": setup.check_claude,
                    "api/claude/terminal": setup.open_claude_window,
                    "api/claude/token": setup.save_claude_token,
-                   "api/codex": setup.check_codex, "api/codex/login": setup.sign_in_codex}
+                   "api/codex": setup.check_codex, "api/codex/login": setup.sign_in_codex,
+                   "api/whatsapp/check": setup.check_whatsapp,
+                   "api/whatsapp/open": setup.open_app_management}
         if method == "POST" and path in actions:
             raw = self._body()
             if raw is _NOT_JSON:

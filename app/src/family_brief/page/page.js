@@ -280,6 +280,7 @@ function renderConnect() {
   });
   renderWilma();
   renderAI();
+  document.getElementById("whatsapp-open").addEventListener("click", openAppManagement);
   document.getElementById("gmail-open").addEventListener("click", () => openSite("app-passwords"));
   document.getElementById("gmail-two-step").addEventListener("click", () => openSite("two-step"));
   document.getElementById("gmail-unavailable").addEventListener("click", () => {
@@ -328,8 +329,9 @@ function renderSources() {
   document.getElementById("source-ai").hidden = current !== "ai";
   document.getElementById("ai-claude").hidden = page.welcome.ai !== "claude";
   document.getElementById("ai-codex").hidden = page.welcome.ai !== "codex";
+  document.getElementById("source-whatsapp").hidden = current !== "whatsapp";
   document.getElementById("source-later").hidden =
-    !current || ["gmail", "wilma", "ai"].includes(current);
+    !current || ["gmail", "wilma", "ai", "whatsapp"].includes(current);
   document.getElementById("source-later-title").textContent = current ? t("source." + current) : "";
   document.getElementById("connect-done").hidden = Boolean(current);
   if (current === "wilma" && !wilmaStep.ready && !wilmaStep.preparing) getWilmaReady();
@@ -340,6 +342,11 @@ function renderSources() {
       checkCodex();
     }
     if (page.welcome.ai === "claude") resumeClaude();
+  }
+  if (current === "whatsapp" && !whatsappStep.shown) {
+    whatsappStep.shown = true;
+    showSource("whatsapp.checking");
+    checkWhatsApp();
   }
 }
 
@@ -356,6 +363,7 @@ async function chooseSource(name, action) {
     clearTimeout(wilmaStep.timer);
     clearTimeout(aiStep.timer);
     aiStep.shown = false;
+    leaveWhatsApp();
     showSource(null);
     renderSources();
   } catch (e) {
@@ -773,6 +781,53 @@ function codexResult(out) {
   if (out.result === "signed-in") return aiDone(out, key);
   showSource(key);
   if (CODEX_AGAIN.includes(key)) aiStep.timer = setTimeout(checkCodex, AI_MS);
+}
+
+// ── Connect: WhatsApp, read with the evening job's own permission. The page reads again every
+// few seconds, so the entry ticks itself once the parent has given the permission.
+
+const WHATSAPP_MS = 5000;
+const whatsappStep = { shown: false, opened: false, checking: 0, timer: null };
+
+function leaveWhatsApp() {
+  clearTimeout(whatsappStep.timer);
+  whatsappStep.checking++; // a read still on its way is old news
+  whatsappStep.shown = false;
+  whatsappStep.opened = false;
+}
+
+// Finder shows the Python to allow, and System Settings opens at App Management next to it.
+async function openAppManagement() {
+  clearError();
+  try {
+    const out = await post("api/whatsapp/open", {});
+    whatsappStep.opened = out.result === "opened";
+    showSource("whatsapp.open." + out.result);
+  } catch (e) {
+    failed(e);
+  }
+}
+
+async function checkWhatsApp() {
+  clearTimeout(whatsappStep.timer);
+  const check = ++whatsappStep.checking;
+  let out;
+  try {
+    out = await post("api/whatsapp/check", {});
+  } catch (e) {
+    if (check === whatsappStep.checking) failed(e);
+    return;
+  }
+  if (check !== whatsappStep.checking) return; // the parent moved on meanwhile
+  if (out.result === "readable") {
+    page.progress = out.progress;
+    renderSources();
+    showSource("whatsapp.readable");
+    return;
+  }
+  // Once System Settings is open, the page keeps saying what to do there.
+  if (out.result !== "no-permission" || !whatsappStep.opened) showSource("whatsapp." + out.result);
+  whatsappStep.timer = setTimeout(checkWhatsApp, WHATSAPP_MS);
 }
 
 function show() {

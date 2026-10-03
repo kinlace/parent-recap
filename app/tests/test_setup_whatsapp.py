@@ -113,13 +113,19 @@ class Mac:
 
 @pytest.fixture
 def mac(harness, monkeypatch) -> Mac:
-    m = Mac(harness.home)
-    monkeypatch.setattr(whatsapp, "DB_DIR", m.db_dir)
-    monkeypatch.setattr(whatsapp, "DB_FILE", m.db_dir / "ChatStorage.sqlite")
+    m = fake_mac(harness, monkeypatch)
     clock = [time.time()]
     monkeypatch.setattr(time, "time", lambda: clock[0])
     monkeypatch.setattr(time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s))
     m.clock = clock
+    return m
+
+
+def fake_mac(harness, monkeypatch) -> Mac:
+    """The family's Mac, with launchctl and WhatsApp's database faked, and the real clock."""
+    m = Mac(harness.home)
+    monkeypatch.setattr(whatsapp, "DB_DIR", m.db_dir)
+    monkeypatch.setattr(whatsapp, "DB_FILE", m.db_dir / "ChatStorage.sqlite")
 
     real_copy = shutil.copy2
 

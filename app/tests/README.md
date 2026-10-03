@@ -68,6 +68,11 @@ the harness's test call and stored with nothing copied, that a sign-in without a
 that times out, offers the Terminal window and the page takes the pasted token in its field, that
 the token never reaches a response, the output, the logs, a command line or `~/.family`, and that
 the Codex entry ticks itself once Codex is signed in.
+Its WhatsApp step runs against `test_setup_whatsapp.py`'s fake Mac, with each `bg` job run
+in-process. It checks that the button shows the Python in Finder and opens App Management, that
+the entry ticks itself on the read after the permission is given, with the groups found and
+their Kid hints kept in setup's progress for the check page, that every other read result is
+said without its error, and that each result is explained in all three languages.
 Where no port can be listened on (a sandbox), the server takes each connection through a socket
 pair instead, and where no pseudo-terminal can be opened, `claude setup-token` gets a socket pair.
 `test_one_line_install.py` runs the README's one-line install, `get.sh --claude` and `--codex`,

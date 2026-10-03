@@ -105,6 +105,7 @@ WHATSAPP_POLL_SECONDS = 5
 # Each read gets at least this long: while macOS shows its one-time Allow prompt, the read waits
 # for the family's answer.
 WHATSAPP_READ_SECONDS = 60
+WHATSAPP_DAYS = 180  # the groups listed are those with messages in this many days
 MYCLUB_URL = "https://id.myclub.fi"
 _OK = ("saved", "signed-in", "readable", "read")
 
@@ -144,8 +145,9 @@ def register(sub) -> None:
                                  "needed, then report the chats")
     pwhatsapp.add_argument("--timeout", type=int, default=600,
                            help="Seconds to wait for the permission (default: 600)")
-    pwhatsapp.add_argument("--days", type=int, default=180,
-                           help="List chats with messages in this many days (default: 180)")
+    pwhatsapp.add_argument("--days", type=int, default=WHATSAPP_DAYS,
+                           help="List chats with messages in this many days "
+                           f"(default: {WHATSAPP_DAYS})")
     pwhatsapp.add_argument("--no-open", action="store_true",
                            help="Don't open Finder and App Management again, only wait and read")
     pwhatsapp.add_argument("--read", action="store_true", help=argparse.SUPPRESS)  # inside the bg job
@@ -543,31 +545,27 @@ def cmd_whatsapp(args: argparse.Namespace) -> int:
     deadline = time.time() + max(0, args.timeout)
     opened = args.no_open
     while True:
-        try:
-            read = _read_through_bg(args.config, args.days,
-                                    max(WHATSAPP_READ_SECONDS, deadline - time.time()))
-        except RuntimeError as e:  # launchctl wouldn't start the job
+        read = read_whatsapp_through_bg(args.config, args.days,
+                             max(WHATSAPP_READ_SECONDS, deadline - time.time()))
+        if read["result"] == "bg-failed":
             return _report("bg-failed", "The background job that reads WhatsApp didn't start. "
                            f"Run this again; if it fails again, run: {_program()} bg doctor",
-                           python=python, error=str(e)[:200])
-        if read is None:
+                           python=python, error=read["error"])
+        if read["result"] == "waiting":
             return _report("waiting", "Reading WhatsApp didn't finish, most likely because macOS "
                            "is asking whether python3.x may access data from other apps. The "
                            f"family clicks Allow, then run: {again}", python=python)
-        permission = read.get("permission")
-        if permission == "readable":
-            return _report("readable", python=python,
-                           chats=_with_hints(read.get("chats") or [], _configured_kids(args.config)))
-        if permission == "not-installed":
+        if read["result"] == "readable":
+            return _report("readable", python=python, chats=read["chats"])
+        if read["result"] == "not-installed":
             return _report("not-installed", "WhatsApp for Mac isn't on this Mac, or has never been "
                            "signed in. The family installs it from the App Store (not the older "
                            "version from WhatsApp's website), links it to their phone and lets "
                            f"the chats sync, then run: {_program()} setup whatsapp")
-        if permission != "none":
+        if read["result"] == "unreadable":
             return _report("unreadable", "Reading WhatsApp failed (see error). Run this again; if "
                            "it fails again, check that WhatsApp for Mac opens and shows the chats, "
-                           f"and run: {_program()} bg doctor", python=python,
-                           error=str(read.get("error"))[:200])
+                           f"and run: {_program()} bg doctor", python=python, error=read["error"])
         if not opened:
             opened = True
             _, failed = ops.show_python_for_app_management()
@@ -580,6 +578,28 @@ def cmd_whatsapp(args: argparse.Namespace) -> int:
             return _report("no-permission", f"The scheduled job's Python can't read WhatsApp yet. "
                            f"{grant}", python=python)
         time.sleep(WHATSAPP_POLL_SECONDS)
+
+
+def read_whatsapp_through_bg(config: str | None, days: int, timeout: float) -> dict[str, Any]:
+    """Reads WhatsApp once through a `bg` job, with the scheduled job's permission. `result` is
+    `readable`, with the chats, each with its Kid hint; `no-permission`; `waiting`, when the read
+    didn't finish, most likely on macOS's Allow prompt; `not-installed`; or `unreadable` or
+    `bg-failed`, with the error. The setup page reads through this too."""
+    try:
+        read = _read_through_bg(config, days, timeout)
+    except RuntimeError as e:  # launchctl wouldn't start the job
+        return {"result": "bg-failed", "error": str(e)[:200]}
+    if read is None:
+        return {"result": "waiting"}
+    permission = read.get("permission")
+    if permission == "readable":
+        return {"result": "readable",
+                "chats": _with_hints(read.get("chats") or [], _configured_kids(config))}
+    if permission == "not-installed":
+        return {"result": "not-installed"}
+    if permission != "none":
+        return {"result": "unreadable", "error": str(read.get("error"))[:200]}
+    return {"result": "no-permission"}
 
 
 def _read_through_bg(config: str | None, days: int, timeout: float) -> dict[str, Any] | None:

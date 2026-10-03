@@ -15,10 +15,13 @@ answers as JSON on stdin, every key optional:
                "whatsapp": {"enabled": true, "chats": [{"name": "3B", "kid": "Mia Virtanen", "label": "class"}]}},
    "feedback": {the pilot feedback section as the Parent Recap team sent it},
    "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"},
-                "partner": {"address": "partner@gmail.com", "language": "fi"}}}
+                "partner": {"address": "partner@gmail.com", "language": "fi"},
+                "whatsapp_chats": [{"name": "3B", "last": "2026-09-25", "archived": false,
+                                    "hint": {"kids": ["Mia Virtanen"], "matched": ["3B"]}}]}}
 
 The progress's `partner` is Welcome's choice, or null for only me, kept until the setup parent's
-own address is known and the Recipients can be saved with the parent first.
+own address is known and the Recipients can be saved with the parent first. Its `whatsapp_chats`
+are the groups `setup whatsapp` found, as it reports them, kept for the check page.
 
 What the answers don't mention stays as it was. The Kids given are the Household's Kids: a Kid
 left out is removed, and each one given keeps what the answers don't say about them, such as a
@@ -88,6 +91,19 @@ class SourcesAnswer(_Strict):
     whatsapp: WhatsAppAnswer | None = None
 
 
+class ChatHint(_Strict):
+    kids: list[str]
+    matched: list[str]
+
+
+class FoundChat(_Strict):
+    """A WhatsApp group `setup whatsapp` found, as it reports it."""
+    name: str
+    last: str | None = None
+    archived: bool = False
+    hint: ChatHint | None = None
+
+
 class ProgressAnswer(_Strict):
     phase: Phase | None = None
     source: SourceName | None = None
@@ -95,6 +111,8 @@ class ProgressAnswer(_Strict):
     # Welcome's partner choice: null for only me. It waits here until the setup parent's own
     # address is known, since the partner mustn't be the first Recipient.
     partner: RecipientAnswer | None = None
+    # The WhatsApp groups found once WhatsApp could be read, for the check page to pick from.
+    whatsapp_chats: list[FoundChat] | None = None
 
 
 class Answers(_Strict):
@@ -262,6 +280,8 @@ def _merged_progress(current: dict[str, Any], p: ProgressAnswer) -> dict[str, An
         out["source"] = p.source
     if "partner" in p.model_fields_set:
         out["partner"] = p.partner and _given(p.partner)
+    if "whatsapp_chats" in p.model_fields_set:
+        out["whatsapp_chats"] = p.whatsapp_chats and [_given(c) for c in p.whatsapp_chats]
     return out
 
 

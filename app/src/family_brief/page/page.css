@@ -262,3 +262,24 @@ button.link {
 .towns .town { color: var(--muted); font-size: 14px; margin-left: auto; }
 
 #wilma-towns + .hint, #source-wilma .field { margin-bottom: 16px; }
+
+.pictures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 16px;
+  margin: 16px 0 0;
+}
+
+.pictures figure { margin: 0; }
+
+.pictures svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.pictures figcaption { margin-top: 6px; font-size: 15px; }
+
+.status[data-result="whatsapp.readable"] { background: var(--accent-soft); color: var(--accent); }
