@@ -830,10 +830,43 @@ async function checkWhatsApp() {
   whatsappStep.timer = setTimeout(checkWhatsApp, WHATSAPP_MS);
 }
 
+// ── Continue in the chat: Claude Code opens at the setup skill in Terminal, or the page says
+// what to type in Codex. The skill carries on from the step saved here.
+
+function renderChat() {
+  document.getElementById("chat-continue").addEventListener("click", continueInChat);
+  document.getElementById("chat-copy").addEventListener("click", () => {
+    navigator.clipboard.writeText(document.getElementById("chat-line-text").textContent);
+  });
+}
+
+async function continueInChat(event) {
+  clearError();
+  const button = event.currentTarget;
+  button.disabled = true;
+  // On Welcome, the AI picked there, even before it's saved.
+  const name = page.progress.phase === "welcome" ? picked("ai") : page.welcome.ai;
+  try {
+    const out = await post("api/chat", { ai: name });
+    const message = document.getElementById("chat-message");
+    message.dataset.text = `chat.${name}.${out.result}`;
+    message.textContent = t(message.dataset.text);
+    const line = out.type || out.install;
+    document.getElementById("chat-line").hidden = !line;
+    document.getElementById("chat-line-text").textContent = line || "";
+    document.getElementById("chat-status").hidden = false;
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function show() {
   const phase = page.chosen ? page.progress.phase : null;
   document.getElementById("language").hidden = Boolean(page.chosen);
   document.getElementById("phases").hidden = !page.chosen;
+  document.getElementById("chat").hidden = !page.chosen;
   document.getElementById("welcome").hidden = phase !== "welcome";
   document.getElementById("connect").hidden = phase !== "connect";
   document.getElementById("phase").hidden = !phase || phase === "welcome" || phase === "connect";
@@ -860,6 +893,7 @@ async function start() {
   page.gmail = state.gmail;
   renderSwitch();
   renderChoices();
+  renderChat();
   show();
 }
 

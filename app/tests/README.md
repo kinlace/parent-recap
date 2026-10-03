@@ -73,6 +73,11 @@ in-process. It checks that the button shows the Python in Finder and opens App M
 the entry ticks itself on the read after the permission is given, with the groups found and
 their Kid hints kept in setup's progress for the check page, that every other read result is
 said without its error, and that each result is explained in all three languages.
+Its "Continue in the chat" runs the Terminal script the page opens against a fake `claude`, and
+checks that it starts Claude Code in the home folder at the setup skill, that a Codex family is
+told to type `$parent-recap-setup`, that `setup save --read` gives the chat the same progress the
+page shows, that the setup skill says how to carry on from it, and that each result is explained
+in all three languages.
 Where no port can be listened on (a sandbox), the server takes each connection through a socket
 pair instead, and where no pseudo-terminal can be opened, `claude setup-token` gets a socket pair.
 `test_one_line_install.py` runs the README's one-line install, `get.sh --claude` and `--codex`,
