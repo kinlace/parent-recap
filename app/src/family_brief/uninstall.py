@@ -24,7 +24,7 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import install_record, ops, run_lock, secret_dialog
+from . import install_record, ops, run_lock, secret_dialog, setup_save
 from .collectors.gmail import keychain_account
 from .config import Config
 from .utils import keychain
@@ -316,7 +316,8 @@ def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Con
     if cfg is not None:
         found.append(("Config", config))
     found += [("Config backup", p) for p in sorted(family.glob(config.name + ".bak*"))]
-    found += [("State", state), ("Run lock", run_lock.lock_path(defaults)),
+    found += [("Setup's progress", setup_save.progress_path(config)),
+              ("State", state), ("Run lock", run_lock.lock_path(defaults)),
               ("The program's text in other languages", state.parent / "languages"),
               ("Google Calendar app file", family / "calendar_credentials.json"),
               ("Google Calendar authorization", family / "calendar_token.json")]

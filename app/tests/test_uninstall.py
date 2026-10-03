@@ -5,6 +5,7 @@ administrator dialog (`osascript`). Everything setup writes is real files in a t
 Assertions are on what the family reads and on what is left on the Mac afterwards."""
 from __future__ import annotations
 
+import io
 import plistlib
 import subprocess
 import sys
@@ -126,6 +127,9 @@ def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
     (home / ".family" / "languages").mkdir()
     (home / ".family" / "languages" / "sv.json").write_text("{}")
     (home / ".family" / "config.yaml.bak-202609011200").write_text("old: config\n")
+    with monkeypatch.context() as mp:  # the progress the setup page and the chat share
+        mp.setattr(sys, "stdin", io.StringIO('{"progress": {"phase": "finish"}}'))
+        assert harness.cli("setup", "save") == 0
     harness.write_archive("2026-09-26", {"messages": []})
     (harness.archive_dir / "2026-09-26.md").write_text("# Brief\n")
     if not record:
@@ -161,7 +165,7 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
     for item in ("com.family.brief", "Library/LaunchAgents/com.family.brief.plist", OUR_WAKE,
                  "FamilyBrief/app", "FamilyBrief/logs", ".family/config.yaml",
                  ".family/config.yaml.bak-202609011200", ".family/state.json", ".family/languages",
-                 ".family/install-record.json", "gmail-imap-parent@example.com",
+                 ".family/install-record.json", ".family/setup-progress.json", "gmail-imap-parent@example.com",
                  "claude-oauth-token", ".agents/skills/parent-recap-setup",
                  ".agents/skills/parent-recap-manage", "/plugin uninstall parent-recap@kinlace"):
         assert item in out, item
@@ -477,7 +481,7 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     items = out.split("\n\nLeft as it is:")[0].split("\n\nNothing has been removed yet")[0]
     listed = [line.split(": ", 1)[1].split(" (", 1)[0] for line in items.splitlines()
               if line.startswith("  • ")]
-    assert len(listed) == 18
+    assert len(listed) == 19
     for where in listed:
         name = where.rsplit("/", 1)[-1].strip().replace("parent@example.com", "<address>")
         name = name.replace("202609011200", "<date>").replace("1 day in ~", "~")
