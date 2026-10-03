@@ -2,7 +2,10 @@
 
 // The setup page. Every address here is relative, so it keeps the page's one-time code.
 const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish"];
-const page = { text: null, language: "en", chosen: null, languages: [], progress: null };
+const page = {
+  text: null, language: "en", chosen: null, languages: [], progress: null, welcome: null,
+  welcomeShown: false,
+};
 
 function t(key) {
   return page.text[page.language][key];
@@ -129,9 +132,140 @@ function renderPhase() {
   document.getElementById("phase-title").textContent = t("phase." + current);
 }
 
+// ── Welcome: the AI, the partner and pilot feedback, each with its default.
+
+const RECHECK_MS = 5000;
+const ai = { result: null, checking: 0, timer: null };
+
+function picked(name) {
+  return document.querySelector(`input[name="${name}"]:checked`).value;
+}
+
+function pick(name, value) {
+  document.querySelector(`input[name="${name}"][value="${value}"]`).checked = true;
+}
+
+function renderWelcome() {
+  const { ai: chosen, partner, feedback } = page.welcome;
+  pick("ai", chosen);
+  pick("partner", partner.add ? "add" : "only-me");
+  pick("feedback", feedback ? "yes" : "no");
+  document.getElementById("partner-address").value = partner.address;
+  const select = document.getElementById("partner-language");
+  for (const { code, name } of page.languages) {
+    const option = document.createElement("option");
+    option.value = code;
+    option.lang = code;
+    option.textContent = name;
+    select.append(option);
+  }
+  select.value = partner.address ? partner.language : page.language;
+
+  for (const input of document.querySelectorAll('input[name="ai"]')) {
+    input.addEventListener("change", checkAI);
+  }
+  for (const input of document.querySelectorAll('input[name="partner"]')) {
+    input.addEventListener("change", showPartner);
+  }
+  document.getElementById("ai-again").addEventListener("click", checkAI);
+  document.getElementById("ai-copy").addEventListener("click", () => {
+    navigator.clipboard.writeText(document.getElementById("ai-install-line").textContent);
+  });
+  document.getElementById("welcome-form").addEventListener("submit", saveWelcome);
+  showPartner();
+  checkAI();
+}
+
+function showPartner() {
+  const add = picked("partner") === "add";
+  document.getElementById("partner-details").hidden = !add;
+  document.getElementById("partner-address").required = add;
+}
+
+// Checks the AI picked, and again every few seconds until it's ready, so the page ticks
+// itself once the parent has installed it or signed in.
+async function checkAI() {
+  clearTimeout(ai.timer);
+  const name = picked("ai");
+  const check = ++ai.checking;
+  showAI(name, "checking");
+  let out;
+  try {
+    const r = await fetch("api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ai: name }),
+    });
+    out = await r.json();
+    if (!r.ok) throw new Error(out.result);
+  } catch (e) {
+    if (check === ai.checking) failed(e);
+    return;
+  }
+  if (check !== ai.checking) return; // the parent picked the other one meanwhile
+  showAI(name, out.result, out.install);
+  if (out.result !== "ready" && !document.getElementById("welcome").hidden) {
+    ai.timer = setTimeout(checkAI, RECHECK_MS);
+  }
+}
+
+function showAI(name, result, install) {
+  ai.result = result;
+  const status = document.getElementById("ai-status");
+  status.dataset.result = result;
+  const message = document.getElementById("ai-message");
+  message.dataset.text = result === "checking" ? "welcome.ai.checking" : `ai.${name}.${result}`;
+  message.textContent = t(message.dataset.text);
+  document.getElementById("ai-install").hidden = !install;
+  document.getElementById("ai-install-line").textContent = install || "";
+  document.getElementById("ai-again").hidden = result === "ready" || result === "checking";
+  document.getElementById("welcome-continue").disabled = result !== "ready";
+}
+
+async function saveWelcome(event) {
+  event.preventDefault();
+  clearError();
+  if (ai.result !== "ready") return;
+  const button = event.submitter;
+  button.disabled = true;
+  const add = picked("partner") === "add";
+  const answers = {
+    ai: picked("ai"),
+    partner: add ? {
+      address: document.getElementById("partner-address").value.trim(),
+      language: document.getElementById("partner-language").value,
+    } : null,
+    feedback: picked("feedback") === "yes",
+  };
+  try {
+    const r = await fetch("api/welcome", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(answers),
+    });
+    const out = await r.json();
+    if (r.status === 400) return showError("welcome.partner.check");
+    if (!r.ok) throw new Error(out.result);
+    clearTimeout(ai.timer);
+    page.progress = out.progress;
+    show();
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function show() {
+  const welcome = Boolean(page.chosen) && page.progress.phase === "welcome";
   document.getElementById("language").hidden = Boolean(page.chosen);
-  document.getElementById("phase").hidden = !page.chosen;
+  document.getElementById("phases").hidden = !page.chosen;
+  document.getElementById("welcome").hidden = !welcome;
+  document.getElementById("phase").hidden = !page.chosen || welcome;
+  if (welcome && !page.welcomeShown) {
+    page.welcomeShown = true;
+    renderWelcome();
+  }
   applyText();
 }
 
@@ -142,6 +276,7 @@ async function start() {
   page.chosen = state.language;
   page.language = state.language || state.preselected;
   page.progress = state.progress;
+  page.welcome = state.welcome;
   renderSwitch();
   renderChoices();
   show();

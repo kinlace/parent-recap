@@ -13,7 +13,11 @@ answers as JSON on stdin, every key optional:
                "wilma": {"enabled": true},
                "whatsapp": {"enabled": true, "chats": [{"name": "3B", "kid": "Mia Virtanen", "label": "class"}]}},
    "feedback": {the pilot feedback section as the Parent Recap team sent it},
-   "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"}}}
+   "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"},
+                "partner": {"address": "partner@gmail.com", "language": "fi"}}}
+
+The progress's `partner` is Welcome's choice, or null for only me, kept until the setup parent's
+own address is known and the Recipients can be saved with the parent first.
 
 What the answers don't mention stays as it was. The Kids given are the Household's Kids: a Kid
 left out is removed, and each one given keeps what the answers don't say about them, such as a
@@ -87,6 +91,9 @@ class ProgressAnswer(_Strict):
     phase: Phase | None = None
     source: SourceName | None = None
     sources: dict[SourceName, Status] = Field(default_factory=dict)
+    # Welcome's partner choice: null for only me. It waits here until the setup parent's own
+    # address is known, since the partner mustn't be the first Recipient.
+    partner: RecipientAnswer | None = None
 
 
 class Answers(_Strict):
@@ -153,7 +160,7 @@ def save(config: Path, raw: Any) -> dict[str, Any]:
     try:
         answers = Answers.model_validate(raw)
     except ValidationError as e:
-        return _invalid(e)
+        return invalid(e)
 
     data: dict[str, Any] | None = None
     if _config_answers(answers):
@@ -166,7 +173,7 @@ def save(config: Path, raw: Any) -> dict[str, Any]:
         try:
             Config.model_validate(data)
         except ValidationError as e:
-            return _invalid(e)
+            return invalid(e)
 
     if data is not None:
         _write_private(config, yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
@@ -249,6 +256,8 @@ def _merged_progress(current: dict[str, Any], p: ProgressAnswer) -> dict[str, An
         out["phase"] = p.phase
     if "source" in p.model_fields_set:
         out["source"] = p.source
+    if "partner" in p.model_fields_set:
+        out["partner"] = p.partner and _given(p.partner)
     return out
 
 
@@ -263,7 +272,7 @@ def _write_private(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
-def _invalid(e: ValidationError) -> dict[str, Any]:
+def invalid(e: ValidationError) -> dict[str, Any]:
     # Only where each problem is and what's wrong: pydantic's own message can quote the value.
     errors = [f"{'.'.join(str(p) for p in err['loc']) or 'answers'}: {err['msg']}"
               for err in e.errors(include_input=False, include_url=False)]

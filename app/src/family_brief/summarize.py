@@ -445,7 +445,12 @@ CODEX_BUNDLED = (
 def find_codex(cfg: Config) -> str | None:
     """The codex binary to run. The Codex and ChatGPT desktop apps each ship one that updates
     with the app, so prefer those over whatever npm or brew put on PATH."""
-    candidates = [os.path.expanduser(cfg.llm.codex_path)] if cfg.llm.codex_path else []
+    return find_codex_at(cfg.llm.codex_path)
+
+
+def find_codex_at(codex_path: str | None) -> str | None:
+    """find_codex, with the config's llm.codex_path given on its own."""
+    candidates = [os.path.expanduser(codex_path)] if codex_path else []
     candidates += [*CODEX_BUNDLED, shutil.which("codex")]
     for c in candidates:
         if c and os.path.isfile(c) and os.access(c, os.X_OK):

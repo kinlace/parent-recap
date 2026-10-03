@@ -263,6 +263,20 @@ def test_progress_not_given_stays_as_it_was(harness, capsys):
     assert res["progress"]["sources"]["whatsapp"] == "skipped"
 
 
+def test_the_partner_waits_in_the_progress_until_it_is_cleared(harness, capsys):
+    partner = {"address": "partner@example.com", "language": "fi"}
+    assert save(harness, {"progress": {"partner": partner}}) == 0
+    capsys.readouterr()
+    assert save(harness, {"progress": {"phase": "connect"}}) == 0
+    assert result(capsys)[0]["progress"]["partner"] == partner
+
+    assert save(harness, {"progress": {"partner": None}}) == 0  # only me
+
+    assert result(capsys)[0]["progress"]["partner"] is None
+    assert save(harness, None, "--read") == 0
+    assert result(capsys)[0]["progress"]["partner"] is None
+
+
 def test_answers_and_progress_are_saved_together(harness, capsys):
     existing_config(harness)
 

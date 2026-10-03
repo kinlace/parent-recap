@@ -37,12 +37,17 @@ each of the five outcomes true and false, and that no secret or message text rea
 `test_setup_save.py` runs `family-brief setup save` with answers on stdin against real config and
 progress files in the temporary HOME. It checks the config it writes loads, that answers not given
 leave the config as it was, that invalid answers are refused with the reason and nothing saved,
-that a MyClub link is never repeated, and that progress is saved and read back.
+that a MyClub link is never repeated, and that progress is saved and read back, with the partner
+Welcome chose kept in it.
 `test_setup_page.py` starts the setup page's server in-process and drives it with HTTP calls, as
 the page makes them. It checks that a request without the code, or for another Host or from
 another Origin, is refused, that the page loads nothing from the internet, that the server stops
 after 30 idle minutes, the Mac's language preselected, that the language picked is saved, that
-every page text is in all three languages, and that a second run resumes at the saved phase.
+every page text is in all three languages, and that a second run resumes at the saved phase. On
+Welcome, it checks each choice's default and that the answers are saved, that the partner's email
+and language are asked only with a partner, and that a missing or signed-out Claude Code or Codex
+is caught and checked again: the harness answers `claude auth status` and `codex login status`
+from `harness.signed_in`, and the test puts a fake `claude` or `codex` on PATH to install one.
 Where no port can be listened on (a sandbox), the server takes each connection through a socket
 pair instead.
 `test_one_line_install.py` runs the README's one-line install, `get.sh --claude` and `--codex`,

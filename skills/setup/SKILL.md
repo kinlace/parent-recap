@@ -88,6 +88,7 @@ EOF
 - `recipients`, `allowlist_domains`, `allowlist_senders` and `chats` are whole lists too: give every ticked item, not only the new ones.
 - `language` is the Household's language code (`summary_language`); a Recipient's `language` is given only when it differs.
 - `progress`: `phase` is one of `welcome`, `connect`, `working`, `check`, `first-brief`, `finish`; `source` is the Source the parent is on (`wilma`, `gmail`, `ai`, `whatsapp`, `myclub`); `sources` gives each Source's status, `to-do`, `done` or `skipped`. Save it whenever the phase or a Source's status changes, in the same call as that step's answers when there are any.
+- A progress read back after the setup page's Welcome can also have `partner`: the partner's `address` and `language`, or `null` for "Only me". The page saves the Recipients only once it knows the parent's Gmail address, so if `recipients` aren't in the config yet, use this as the Welcome answer instead of asking again, and save `recipients` with the parent's address first once you have it.
 - On `invalid-answers`, nothing was saved: `errors` names each answer that's wrong. Fix them and save again. On `bad-config`, the existing config can't be read: run `$FB doctor` and fix what it names.
 
 ## 1. Welcome

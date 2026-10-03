@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 import pytest
 import yaml
 
-from family_brief import __main__ as cli, setup_server
+from family_brief import __main__ as cli, setup_server, summarize
 from family_brief.config import Config
 
 PAGE_DIR = Path(setup_server.__file__).parent / "page"
@@ -91,7 +91,7 @@ class _PairedServer(setup_server.ThreadingHTTPServer):
 @pytest.fixture(autouse=True)
 def _listening(monkeypatch: pytest.MonkeyPatch) -> None:
     if not CAN_LISTEN:
-        monkeypatch.setattr(setup_server, "ThreadingHTTPServer", _PairedServer)
+        monkeypatch.setattr(setup_server, "_HTTPServer", _PairedServer)
 
 
 class _Connection(http.client.HTTPConnection):
@@ -354,6 +354,179 @@ def test_every_page_text_exists_in_all_three_languages():
     assert used and used <= keys, used - keys
     for phase in ("welcome", "connect", "working", "check", "first-brief", "finish"):
         assert f"phase.{phase}" in keys
+
+
+# ── Welcome
+
+
+@pytest.fixture
+def ai(harness, monkeypatch):
+    """The Mac's Claude Code and Codex: neither installed until the test installs one."""
+    bin_dir = harness.home / "bin"
+    bin_dir.mkdir()
+    monkeypatch.setenv("PATH", str(bin_dir))
+    monkeypatch.setattr(summarize, "CODEX_BUNDLED", ())  # not this Mac's own apps
+
+    def install(name: str, where: Path = bin_dir) -> None:
+        where.mkdir(parents=True, exist_ok=True)
+        (where / name).write_text("#!/bin/sh\n")
+        (where / name).chmod(0o755)
+    return install
+
+
+def welcome(url: str, **answers: Any) -> Response:
+    return call(url, "api/welcome", method="POST",
+                body={"ai": "claude", "partner": None, "feedback": True, **answers})
+
+
+def check_ai(url: str, name: str) -> Response:
+    return call(url, "api/ai", method="POST", body={"ai": name})
+
+
+def test_each_welcome_choice_has_a_default(harness, page):
+    call(page.url, "api/language", method="POST", body={"language": "zh"})
+
+    assert call(page.url, "api/state").json()["welcome"] == {
+        "ai": "claude",
+        "partner": {"add": True, "address": "", "language": "zh"},
+        "feedback": True,
+    }
+
+
+def test_the_welcome_answers_are_saved(harness, page):
+    call(page.url, "api/language", method="POST", body={"language": "fi"})
+
+    r = welcome(page.url, ai="codex", partner={"address": "partner@example.com", "language": "zh"},
+                feedback=False)
+
+    assert r.status == 200 and r.json()["result"] == "saved"
+    cfg = Config.load(config_file(harness))
+    assert cfg.llm.backend == "codex"
+    assert cfg.feedback.enabled is False
+    progress = call(page.url, "api/state").json()["progress"]
+    assert progress["phase"] == "connect" and progress["source"] == "wilma"
+    assert call(page.url, "api/state").json()["welcome"] == {
+        "ai": "codex",
+        "partner": {"add": True, "address": "partner@example.com", "language": "zh"},
+        "feedback": False,
+    }
+
+
+def test_the_partner_comes_after_the_parent_once_the_parent_s_gmail_is_known(harness, page):
+    config_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+
+    welcome(page.url, partner={"address": "partner@example.com", "language": "fi"})
+
+    to = Config.load(config_file(harness)).email.to
+    assert [(r.address, r.language) for r in to] == \
+        [("parent@example.com", None), ("partner@example.com", "fi")]
+
+
+def test_only_me_leaves_the_parent_as_the_only_recipient(harness, page):
+    config_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+
+    assert welcome(page.url, partner=None).status == 200
+
+    assert [r.address for r in Config.load(config_file(harness)).email.to] == ["parent@example.com"]
+    assert call(page.url, "api/state").json()["welcome"]["partner"]["add"] is False
+
+
+def test_before_the_parent_s_gmail_is_known_no_recipient_is_written(harness, page):
+    welcome(page.url, partner={"address": "partner@example.com", "language": "fi"})
+
+    assert Config.load(config_file(harness)).email.to == []  # the partner isn't the first one
+
+
+def test_the_partner_s_email_and_language_are_asked_only_when_a_partner_is_added(harness, page):
+    for partner in [{"address": "", "language": "fi"}, {"address": "not an address", "language": "fi"},
+                    {"address": "partner@example.com"}, {"address": "partner@example.com",
+                                                         "language": "sv"}]:
+        r = welcome(page.url, partner=partner)
+        assert r.status == 400 and r.json()["result"] == "invalid-answers", partner
+    for body in [{"ai": "gemini", "partner": None, "feedback": True},
+                 {"ai": "claude", "partner": None, "feedback": "yes"},
+                 {"ai": "claude", "feedback": True}]:
+        r = call(page.url, "api/welcome", method="POST", body=body)
+        assert r.status == 400, body
+    assert not config_file(harness).exists()
+
+    assert welcome(page.url, partner=None).status == 200  # only me: nothing more to ask
+
+
+def test_a_missing_claude_code_gets_its_native_installer_and_is_checked_again(harness, page, ai):
+    r = check_ai(page.url, "claude")
+
+    assert r.status == 200
+    assert r.json() == {"result": "not-installed", "ai": "claude",
+                        "install": "curl -fsSL https://claude.ai/install.sh | bash"}
+
+    ai("claude", harness.home / ".local" / "bin")  # the native installer's folder, not on PATH
+
+    assert check_ai(page.url, "claude").json() == {"result": "ready", "ai": "claude"}
+    assert ["auth", "status"] == harness.commands[-1][1:3]
+
+
+def test_a_signed_out_claude_code_is_caught_and_checked_again(harness, page, ai):
+    ai("claude")
+    harness.signed_in["claude"] = False
+
+    assert check_ai(page.url, "claude").json() == {"result": "signed-out", "ai": "claude"}
+
+    harness.signed_in["claude"] = True
+    assert check_ai(page.url, "claude").json() == {"result": "ready", "ai": "claude"}
+    assert not harness.model_calls  # checked with its own status, not a call to the model
+
+
+def test_a_missing_or_signed_out_codex_is_caught_and_checked_again(harness, page, ai):
+    assert check_ai(page.url, "codex").json() == {"result": "not-installed", "ai": "codex"}
+
+    ai("codex")
+    harness.signed_in["codex"] = False
+    assert check_ai(page.url, "codex").json() == {"result": "signed-out", "ai": "codex"}
+    assert ["login", "status"] == harness.commands[-1][1:3]
+
+    harness.signed_in["codex"] = True
+    assert check_ai(page.url, "codex").json() == {"result": "ready", "ai": "codex"}
+
+
+def test_an_ai_check_that_cannot_run_says_so(harness, page, ai, monkeypatch):
+    ai("claude")
+    run = setup_server.subprocess.run
+
+    def fails(cmd, *a, **k):
+        if cmd[1:3] == ["auth", "status"]:
+            raise setup_server.subprocess.TimeoutExpired(cmd, 20)
+        return run(cmd, *a, **k)
+    monkeypatch.setattr(setup_server.subprocess, "run", fails)
+
+    assert check_ai(page.url, "claude").json() == {"result": "check-failed", "ai": "claude"}
+
+
+def test_only_claude_or_chatgpt_is_checked(page):
+    for body in [{"ai": "gemini"}, {}, {"ai": "claude", "x": 1}]:
+        assert call(page.url, "api/ai", method="POST", body=body).status == 400, body
+
+
+def test_every_ai_result_says_what_to_do_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for name in setup_server.AIS:
+            for result in setup_server.AI_RESULTS:
+                assert table.get(f"ai.{name}.{result}", "").strip(), (language, name, result)
+
+
+def test_welcome_says_which_sources_come_next_and_to_have_the_wilma_login_ready():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+    used = (PAGE_DIR / "index.html").read_text()
+
+    for language, table in text.items():
+        assert "Wilma" in table["welcome.wilma"], language
+        for source in ("Wilma", "Gmail", "WhatsApp", "MyClub"):
+            assert source in table["welcome.sources"], (language, source)
+    assert 'data-text="welcome.wilma"' in used and 'data-text="welcome.sources"' in used
 
 
 # ── resuming
