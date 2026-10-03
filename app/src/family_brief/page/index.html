@@ -71,6 +71,41 @@
       <button type="submit" id="welcome-continue" data-text="continue"></button>
     </form>
   </section>
+  <section id="connect" hidden>
+    <h1 data-text="connect.title"></h1>
+    <p class="note" data-text="connect.intro"></p>
+    <ol id="sources" class="sources"></ol>
+    <div id="source-gmail" class="source" hidden>
+      <h2 data-text="source.gmail"></h2>
+      <p data-text="gmail.explain"></p>
+      <p><button type="button" id="gmail-open" class="secondary" data-text="gmail.open"></button></p>
+      <form id="gmail-form" class="details">
+        <div class="field">
+          <label for="gmail-address" data-text="gmail.address"></label>
+          <input type="email" id="gmail-address" autocomplete="email" spellcheck="false" required>
+        </div>
+        <div class="field">
+          <label for="gmail-password" data-text="gmail.password"></label>
+          <input type="password" id="gmail-password" autocomplete="off" spellcheck="false" required>
+        </div>
+        <div class="actions">
+          <button type="submit" id="gmail-save" data-text="gmail.save"></button>
+          <button type="button" id="gmail-unavailable" class="link" data-text="gmail.unavailable"></button>
+        </div>
+      </form>
+    </div>
+    <div id="source-later" class="source" hidden>
+      <h2 id="source-later-title"></h2>
+      <p class="note" data-text="source.not-here"></p>
+    </div>
+    <p id="connect-done" class="note" data-text="connect.done" hidden></p>
+    <div id="source-status" class="status" role="status" hidden>
+      <p id="source-message"></p>
+      <code id="source-url" hidden></code>
+      <button type="button" id="gmail-two-step" class="secondary" data-text="gmail.two-step" hidden></button>
+    </div>
+    <p><button type="button" id="source-skip" class="secondary" data-text="source.skip" hidden></button></p>
+  </section>
   <section id="phase" hidden>
     <h1 id="phase-title"></h1>
     <p class="note" data-text="phase.not-here"></p>

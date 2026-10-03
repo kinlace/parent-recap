@@ -34,13 +34,22 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import setup_save, summarize
+from . import setup_save, setup_steps, summarize
 
 IDLE_SECONDS = 30 * 60
 AI_CHECK_SECONDS = 20
 # The AIs Welcome offers, Claude in Claude Code and ChatGPT in Codex, and what checking one says.
 AIS = ("claude", "codex")
 AI_RESULTS = ("ready", "not-installed", "signed-out", "check-failed")
+# The Sources a family can skip and add later through manage. Wilma too, for a school without it.
+SKIPPABLE = ("wilma", "whatsapp", "myclub")
+# What connecting Gmail on the page can say: the chat's `setup gmail` results, `no-address` for
+# an address that isn't one, and `app-passwords-unavailable`, which the page's own button gives.
+GMAIL_RESULTS = ("saved", "no-address", "not-an-app-password", "rejected", "no-connection",
+                 "keychain-failed", "app-passwords-unavailable")
+# The sites the page's buttons open, by name: the page itself names none.
+SITES = {"app-passwords": setup_steps.APP_PASSWORDS_URL, "two-step": setup_steps.TWO_STEP_URL}
+ADDRESS = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 POLL_SECONDS = 1.0
 clock = time.monotonic  # the idle clock
 # The page's languages, in the order it offers them, each named in itself.
@@ -139,7 +148,10 @@ class SetupServer:
                 "language": self._chosen_language(),
                 "preselected": mac_language(),
                 "progress": progress,
-                "welcome": self._welcome(progress)}
+                "welcome": self._welcome(progress),
+                "connect": {"sources": [{"name": s, "skippable": s in SKIPPABLE}
+                                        for s in setup_save.SOURCES]},
+                "gmail": {"address": self._gmail_address()}}
 
     def choose_language(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Saves the language picked as the setup parent's: the Household's summary_language,
@@ -191,21 +203,100 @@ class SetupServer:
             "feedback": {"enabled": answer.feedback},
             "progress": {"phase": "connect", "source": "wilma", "partner": partner},
         }
-        data = self._config_data()
-        parent = _section(data, "gmail").get("username")
-        if isinstance(parent, str) and parent:
-            to = _section(data, "email").get("to")
-            first = to[0] if isinstance(to, list) and to else None
-            first = {"address": first} if isinstance(first, str) else first
-            same = isinstance(first, dict) and first.get("address") == parent
-            also = partner and partner["address"].lower() != parent.lower()  # not the parent twice
-            answers["recipients"] = [first if same else {"address": parent},  # keeps a language
-                                     *([partner] if also else [])]
+        parent = self._gmail_address()
+        if parent:
+            answers["recipients"] = self._recipients(parent, partner)
         with self._saving:
             out = setup_save.save(self.config, answers)
         if out["result"] != "saved":
             return HTTPStatus.CONFLICT, out
         return HTTPStatus.OK, out
+
+    def choose_source(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Skips a Source, moving setup on to the next one to do, or opens one from the list,
+        which brings a skipped one back."""
+        if not (isinstance(raw, dict) and set(raw) == {"source", "action"}
+                and raw["source"] in setup_save.SOURCES
+                and (raw["action"] == "open" or raw["action"] == "skip" and raw["source"] in SKIPPABLE)):
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Open a Source, or skip one that can be skipped.",
+                errors=[f"source: open one of {', '.join(setup_save.SOURCES)}, or skip one of "
+                        f"{', '.join(SKIPPABLE)}"])
+        name, skip = raw["source"], raw["action"] == "skip"
+        with self._saving:
+            statuses = setup_save.read(self.config)["progress"]["sources"]
+            if skip:
+                statuses[name] = "skipped"
+            elif statuses[name] == "skipped":
+                statuses[name] = "to-do"
+            answers: dict[str, Any] = {"progress": {
+                "sources": {name: statuses[name]},
+                "source": _next_source(statuses) if skip else name}}
+            if skip and name == "wilma":  # the Household's school doesn't use it
+                answers["sources"] = {"wilma": {"enabled": False}}
+            out = setup_save.save(self.config, answers)
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        return HTTPStatus.OK, out
+
+    def open_site(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Opens one of the sites the page sends the family to, in the default browser."""
+        if not (isinstance(raw, dict) and set(raw) == {"site"} and raw["site"] in SITES):
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Open one of the page's own sites.",
+                errors=[f"site: should be one of {', '.join(SITES)}"])
+        url = SITES[raw["site"]]
+        try:
+            opened = subprocess.run(["open", url], capture_output=True).returncode == 0
+        except OSError:
+            opened = False
+        return HTTPStatus.OK, {"result": "opened" if opened else "not-opened", "url": url}
+
+    def connect_gmail(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Tests the App Password pasted into the page's own field with Gmail and stores it in
+        the Keychain, through the chat's Gmail step (ADR 0007). Once it's saved, Gmail is done,
+        the address is the Household's Gmail and the setup parent's, first among the Recipients.
+        The App Password is never returned, logged, saved anywhere else or put on a command line."""
+        if not (isinstance(raw, dict) and set(raw) == {"address", "password"}
+                and isinstance(raw["address"], str) and isinstance(raw["password"], str)):
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Give the Gmail address and the App Password.",
+                errors=["answers: should be the address and the password, as text"])
+        address = raw["address"].strip().lower()
+        if not ADDRESS.match(address):
+            return HTTPStatus.OK, {"result": "no-address"}
+        result, _ = setup_steps.gmail_sign_in(address, raw["password"])
+        if result != "saved":
+            return HTTPStatus.OK, {"result": result}
+        with self._saving:
+            progress = setup_save.read(self.config)["progress"]
+            statuses = {**progress["sources"], "gmail": "done"}
+            answers: dict[str, Any] = {
+                "sources": {"gmail": {"address": address}},
+                "progress": {"sources": {"gmail": "done"}, "source": _next_source(statuses)},
+            }
+            if "partner" in progress:  # Welcome's choice, waiting for the parent's address
+                answers["recipients"] = self._recipients(address, progress["partner"])
+            elif not _section(self._config_data(), "email").get("to"):
+                answers["recipients"] = [{"address": address}]
+            out = setup_save.save(self.config, answers)
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        return HTTPStatus.OK, {**out, "address": address}
+
+    def _recipients(self, parent: str, partner: dict[str, Any] | None) -> list[dict[str, Any]]:
+        """The setup parent first, keeping the language saved for them, then the partner."""
+        to = _section(self._config_data(), "email").get("to")
+        first = to[0] if isinstance(to, list) and to else None
+        first = {"address": first} if isinstance(first, str) else first
+        same = isinstance(first, dict) and first.get("address") == parent
+        also = partner and partner["address"].lower() != parent.lower()  # not the parent twice
+        return [first if same else {"address": parent}, *([partner] if also else [])]
+
+    def _gmail_address(self) -> str | None:
+        """The Household's Gmail address, the setup parent's, once it's known."""
+        address = _section(self._config_data(), "gmail").get("username")
+        return address if isinstance(address, str) and address else None
 
     def _welcome(self, progress: dict[str, Any]) -> dict[str, Any]:
         """Welcome's choices as saved, each with its default until it is."""
@@ -250,6 +341,11 @@ class WelcomeAnswer(BaseModel):
     ai: Literal["claude", "codex"]
     partner: PartnerAnswer | None  # None for only me
     feedback: StrictBool
+
+
+def _next_source(statuses: dict[str, str]) -> str | None:
+    """The first Source in the list still to do, or None once each is done or skipped."""
+    return next((s for s in setup_save.SOURCES if statuses.get(s) == "to-do"), None)
 
 
 def _section(data: dict[str, Any], key: str) -> dict[str, Any]:
@@ -310,7 +406,8 @@ class _Handler(BaseHTTPRequestHandler):
         if method == "GET" and path == "api/state":
             return self._json(HTTPStatus.OK, setup.state())
         actions = {"api/language": setup.choose_language, "api/ai": setup.check_ai,
-                   "api/welcome": setup.save_welcome}
+                   "api/welcome": setup.save_welcome, "api/source": setup.choose_source,
+                   "api/open": setup.open_site, "api/gmail": setup.connect_gmail}
         if method == "POST" and path in actions:
             raw = self._body()
             if raw is _NOT_JSON:
