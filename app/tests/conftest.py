@@ -200,6 +200,7 @@ class Harness:
         self.opened: list[str] = []                 # what `open` was asked to open
         self.commands: list[list[str]] = []         # every process started, model calls included
         self.mac_languages: list[str] = ["en-FI"]   # the Mac's preferred languages, first first
+        self.signed_in: dict[str, bool] = {"claude": True, "codex": True}  # what their status says
         self._install(monkeypatch)
 
     # Paths
@@ -322,6 +323,15 @@ class Harness:
             return subprocess.CompletedProcess(cmd, 0, secret + "\n", "")
         if prog not in ("claude", "codex"):
             raise AssertionError(f"unexpected subprocess in test: {cmd[:3]}")
+        # Their own sign-in checks, answered the way each one does.
+        if prog == "claude" and cmd[1:3] == ["auth", "status"]:
+            signed_in = self.signed_in["claude"]
+            out = {"loggedIn": signed_in, **({"authMethod": "claude.ai"} if signed_in else {})}
+            return subprocess.CompletedProcess(cmd, 0 if signed_in else 1, json.dumps(out), "")
+        if prog == "codex" and cmd[1:3] == ["login", "status"]:
+            if self.signed_in["codex"]:
+                return subprocess.CompletedProcess(cmd, 0, "", "Logged in using ChatGPT\n")
+            return subprocess.CompletedProcess(cmd, 1, "", "Not logged in\n")
         contents = sorted(p.name for p in Path(cwd).iterdir()) if cwd else None
         self.model_calls.append(ModelCall(list(cmd), input, cwd, contents,
                                           dict(env) if env is not None else None, stdin))

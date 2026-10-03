@@ -29,13 +29,18 @@ import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import setup_save
+from . import setup_save, summarize
 
 IDLE_SECONDS = 30 * 60
+AI_CHECK_SECONDS = 20
+# The AIs Welcome offers, Claude in Claude Code and ChatGPT in Codex, and what checking one says.
+AIS = ("claude", "codex")
+AI_RESULTS = ("ready", "not-installed", "signed-out", "check-failed")
 POLL_SECONDS = 1.0
 clock = time.monotonic  # the idle clock
 # The page's languages, in the order it offers them, each named in itself.
@@ -129,10 +134,12 @@ class SetupServer:
     # ── the API
 
     def state(self) -> dict[str, Any]:
+        progress = setup_save.read(self.config)["progress"]
         return {"languages": [{"code": c, "name": n} for c, n in LANGUAGES.items()],
                 "language": self._chosen_language(),
                 "preselected": mac_language(),
-                "progress": setup_save.read(self.config)["progress"]}
+                "progress": progress,
+                "welcome": self._welcome(progress)}
 
     def choose_language(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Saves the language picked as the setup parent's: the Household's summary_language,
@@ -147,14 +154,107 @@ class SetupServer:
             return HTTPStatus.CONFLICT, out
         return HTTPStatus.OK, {**out, "language": raw["language"]}
 
-    def _chosen_language(self) -> str | None:
-        """The language already picked, from the config: None until there's one the page offers."""
+    def check_ai(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Checks that the AI picked is installed and signed in, with its own status check."""
+        if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in AIS):
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Pick Claude or ChatGPT.", errors=["ai: should be claude or codex"])
+        name = raw["ai"]
+        codex_path = _section(self._config_data(), "llm").get("codex_path")
+        program, status, install = {
+            "claude": (summarize.find_claude, ["auth", "status"], summarize.CLAUDE_INSTALL),
+            "codex": (lambda: summarize.find_codex_at(codex_path if isinstance(codex_path, str)
+                                                      else None), ["login", "status"], None),
+        }[name]
+        program = program()
+        if program is None:
+            return HTTPStatus.OK, {"result": "not-installed", "ai": name,
+                                   **({"install": install} if install else {})}
+        try:
+            # Only its exit code is read: the output can name the account.
+            proc = subprocess.run([program, *status], capture_output=True, text=True,
+                                  timeout=AI_CHECK_SECONDS, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError):
+            return HTTPStatus.OK, {"result": "check-failed", "ai": name}
+        return HTTPStatus.OK, {"result": "ready" if proc.returncode == 0 else "signed-out", "ai": name}
+
+    def save_welcome(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Saves Welcome's choices: the AI, the partner or only me, and pilot feedback, and moves
+        setup on to Connect. The Recipients are saved once the setup parent's address is known."""
+        try:
+            answer = WelcomeAnswer.model_validate(raw)
+        except ValidationError as e:
+            return HTTPStatus.BAD_REQUEST, setup_save.invalid(e)
+        partner = answer.partner and answer.partner.model_dump()
+        answers: dict[str, Any] = {
+            "ai": answer.ai,
+            "feedback": {"enabled": answer.feedback},
+            "progress": {"phase": "connect", "source": "wilma", "partner": partner},
+        }
+        data = self._config_data()
+        parent = _section(data, "gmail").get("username")
+        if isinstance(parent, str) and parent:
+            to = _section(data, "email").get("to")
+            first = to[0] if isinstance(to, list) and to else None
+            first = {"address": first} if isinstance(first, str) else first
+            same = isinstance(first, dict) and first.get("address") == parent
+            also = partner and partner["address"].lower() != parent.lower()  # not the parent twice
+            answers["recipients"] = [first if same else {"address": parent},  # keeps a language
+                                     *([partner] if also else [])]
+        with self._saving:
+            out = setup_save.save(self.config, answers)
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        return HTTPStatus.OK, out
+
+    def _welcome(self, progress: dict[str, Any]) -> dict[str, Any]:
+        """Welcome's choices as saved, each with its default until it is."""
+        data = self._config_data()
+        language = self._chosen_language() or mac_language()
+        if "partner" in progress:
+            saved = progress["partner"]
+        else:  # a config the chat setup wrote: its second Recipient is the partner
+            to = _section(data, "email").get("to")
+            saved = to[1] if isinstance(to, list) and len(to) > 1 else {}
+            saved = {"address": saved} if isinstance(saved, str) else saved
+        partner = {"add": saved is not None, "address": "", "language": language}
+        if isinstance(saved, dict):
+            partner |= {k: v for k, v in saved.items() if k in ("address", "language")}
+        backend = _section(data, "llm").get("backend")
+        enabled = _section(data, "feedback").get("enabled")
+        return {"ai": backend if backend in AIS else "claude", "partner": partner,
+                "feedback": enabled if isinstance(enabled, bool) else True}
+
+    def _config_data(self) -> dict[str, Any]:
+        """The config as saved so far, or empty when there's none yet."""
         try:
             data = yaml.safe_load(self.config.read_text())
         except (OSError, yaml.YAMLError):
-            return None
-        language = data.get("summary_language") if isinstance(data, dict) else None
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _chosen_language(self) -> str | None:
+        """The language already picked, from the config: None until there's one the page offers."""
+        language = self._config_data().get("summary_language")
         return language if language in LANGUAGES else None
+
+
+class PartnerAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    address: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    language: Literal["fi", "en", "zh"]
+
+
+class WelcomeAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ai: Literal["claude", "codex"]
+    partner: PartnerAnswer | None  # None for only me
+    feedback: StrictBool
+
+
+def _section(data: dict[str, Any], key: str) -> dict[str, Any]:
+    section = data.get(key)
+    return section if isinstance(section, dict) else {}
 
 
 def mac_language() -> str:
@@ -209,12 +309,14 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(HTTPStatus.OK, (PAGE_DIR / name).read_bytes(), kind)
         if method == "GET" and path == "api/state":
             return self._json(HTTPStatus.OK, setup.state())
-        if method == "POST" and path == "api/language":
+        actions = {"api/language": setup.choose_language, "api/ai": setup.check_ai,
+                   "api/welcome": setup.save_welcome}
+        if method == "POST" and path in actions:
             raw = self._body()
             if raw is _NOT_JSON:
                 return self._json(HTTPStatus.BAD_REQUEST, setup_save.outcome(
                     "invalid-answers", "The answers aren't JSON.", errors=["not JSON"]))
-            return self._json(*setup.choose_language(raw))
+            return self._json(*actions[path](raw))
         return self._send(HTTPStatus.NOT_FOUND, b"Not found\n", "text/plain; charset=utf-8")
 
     def _own_path(self, setup: SetupServer, method: str) -> str | None:

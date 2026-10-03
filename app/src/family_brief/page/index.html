@@ -25,8 +25,53 @@
       <button type="submit" data-text="continue"></button>
     </form>
   </section>
+  <ol id="phases" class="phases" hidden></ol>
+  <section id="welcome" hidden>
+    <h1 data-text="welcome.title"></h1>
+    <p class="note" data-text="welcome.intro"></p>
+    <form id="welcome-form">
+      <fieldset>
+        <legend data-text="welcome.ai"></legend>
+        <label><input type="radio" name="ai" value="claude"><span data-text="welcome.ai.claude"></span></label>
+        <label><input type="radio" name="ai" value="codex"><span data-text="welcome.ai.codex"></span></label>
+        <p class="hint" data-text="welcome.ai.plan"></p>
+        <div id="ai-status" class="status" role="status">
+          <p id="ai-message"></p>
+          <div id="ai-install" class="install" hidden>
+            <code id="ai-install-line"></code>
+            <button type="button" id="ai-copy" class="secondary" data-text="copy"></button>
+          </div>
+          <button type="button" id="ai-again" class="secondary" data-text="welcome.ai.again" hidden></button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend data-text="welcome.partner"></legend>
+        <label><input type="radio" name="partner" value="add"><span data-text="welcome.partner.add"></span></label>
+        <label><input type="radio" name="partner" value="only-me"><span data-text="welcome.partner.only-me"></span></label>
+        <div id="partner-details" class="details">
+          <div class="field">
+            <label for="partner-address" data-text="welcome.partner.address"></label>
+            <input type="email" id="partner-address" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="partner-language" data-text="welcome.partner.language"></label>
+            <select id="partner-language"></select>
+          </div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend data-text="welcome.feedback"></legend>
+        <label><input type="radio" name="feedback" value="yes"><span data-text="welcome.feedback.yes"></span></label>
+        <label><input type="radio" name="feedback" value="no"><span data-text="welcome.feedback.no"></span></label>
+        <p class="hint" data-text="welcome.feedback.note"></p>
+      </fieldset>
+      <h2 data-text="welcome.next"></h2>
+      <p data-text="welcome.sources"></p>
+      <p class="ready" data-text="welcome.wilma"></p>
+      <button type="submit" id="welcome-continue" data-text="continue"></button>
+    </form>
+  </section>
   <section id="phase" hidden>
-    <ol id="phases" class="phases"></ol>
     <h1 id="phase-title"></h1>
     <p class="note" data-text="phase.not-here"></p>
   </section>
