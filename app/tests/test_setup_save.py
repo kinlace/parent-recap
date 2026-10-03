@@ -277,6 +277,22 @@ def test_the_partner_waits_in_the_progress_until_it_is_cleared(harness, capsys):
     assert result(capsys)[0]["progress"]["partner"] is None
 
 
+def test_the_whatsapp_groups_found_are_kept_in_the_progress_for_the_check_page(harness, capsys):
+    found = [{"name": "3B parents", "last": "2026-09-25", "archived": False,
+              "hint": {"kids": ["Mia"], "matched": ["3B"]}},
+             {"name": "Neighbours ", "last": "2026-09-23", "archived": True}]
+
+    assert save(harness, {"progress": {"whatsapp_chats": found}}) == 0
+    capsys.readouterr()
+    assert save(harness, {"progress": {"phase": "check"}}) == 0
+    assert result(capsys)[0]["progress"]["whatsapp_chats"] == found
+
+    assert save(harness, {"progress": {"whatsapp_chats": [{"name": "3B", "secret": 1}]}}) == 1
+    assert any(e.startswith("progress.whatsapp_chats.0") for e in result(capsys)[0]["errors"])
+    assert save(harness, None, "--read") == 0
+    assert result(capsys)[0]["progress"]["whatsapp_chats"] == found
+
+
 def test_answers_and_progress_are_saved_together(harness, capsys):
     existing_config(harness)
 

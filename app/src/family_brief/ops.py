@@ -19,6 +19,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from types import FrameType
@@ -468,7 +469,9 @@ def run_as_job(cmd_args: list[str], config: str | None, timeout: int = 900,
     code: int | None = None
     # Python skips `finally` on SIGTERM, and the job belongs to launchd, so an agent's command
     # timeout would leave it running. Turning the signal into an exit lets the cleanup run.
-    stops = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+    # Only the main thread can, so the setup page's reads, from its own threads, leave them be.
+    main = threading.current_thread() is threading.main_thread()
+    stops = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP) if main else ()
     before = {s: signal.signal(s, _exit_on_signal) for s in stops}
     try:
         r = subprocess.run(["launchctl", "bootstrap", domain, str(plist_path)], capture_output=True,

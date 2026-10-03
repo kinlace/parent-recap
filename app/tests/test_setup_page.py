@@ -28,10 +28,13 @@ import keyring.errors
 import pytest
 import yaml
 
-from family_brief import (__main__ as cli, setup_ai, setup_save, setup_server, setup_steps,
+from family_brief import (__main__ as cli, ops, setup_ai, setup_save, setup_server, setup_steps,
                           setup_wilma, summarize)
+from family_brief.collectors import whatsapp
 from family_brief.config import Config
 from family_brief.utils import keychain
+from test_setup_whatsapp import (CHATS as WHATSAPP_CHATS, PYTHON as WHATSAPP_PYTHON, Mac,
+                                 assert_read_only_through_bg, fake_mac)
 
 PAGE_DIR = Path(setup_server.__file__).parent / "page"
 
@@ -1643,3 +1646,175 @@ def test_the_claude_token_field_is_the_page_s_own(page):
 
     field = re.search(r'<input[^>]*id="claude-token"[^>]*>', html).group(0)
     assert 'type="password"' in field and 'autocomplete="off"' in field
+
+
+# ── Connect: WhatsApp
+
+
+@pytest.fixture
+def mac(harness, monkeypatch) -> Mac:
+    """The family's Mac as test_setup_whatsapp.py fakes it: launchctl runs each `bg` job
+    in-process, against a WhatsApp database only those jobs can read, once the Mac has given
+    the job's Python the permission. The harness stops the clock, so waiting moves it on."""
+    m = fake_mac(harness, monkeypatch)
+    clock = [time.time()]
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    monkeypatch.setattr(time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+    return m
+
+
+def at_the_whatsapp_step(harness) -> None:
+    config_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+    save_progress(harness, {"phase": "connect", "source": "whatsapp",
+                            "sources": {"wilma": "done", "gmail": "done", "ai": "done"}})
+
+
+def check_whatsapp(url: str) -> Response:
+    return call(url, "api/whatsapp/check", method="POST", body={})
+
+
+def test_a_whatsapp_the_job_can_read_ticks_the_entry_and_keeps_the_groups(harness, page, mac):
+    harness.config["kids"][0]["name"] = "Mia Virtanen"
+    at_the_whatsapp_step(harness)
+    mac.install_whatsapp(WHATSAPP_CHATS)
+
+    r = check_whatsapp(page.url)
+
+    assert r.status == 200
+    out = r.json()
+    assert out["result"] == "readable"
+    assert out["progress"]["sources"]["whatsapp"] == "done"
+    assert out["progress"]["source"] == "myclub"
+    found = [{"name": "3B parents", "last": "2026-09-25", "archived": False,
+              "hint": {"kids": ["Mia Virtanen"], "matched": ["3B"]}},
+             {"name": "Kilo School families 🏫", "last": "2026-09-24", "archived": True,
+              "hint": {"kids": ["Mia Virtanen", "Leo"], "matched": ["Kilo School"]}},
+             {"name": "Neighbours ", "last": "2026-09-23", "archived": False}]
+    assert out["chats"] == found
+    # Kept for the check page, which reads them from setup's progress, as the chat setup can.
+    assert call(page.url, "api/state").json()["progress"]["whatsapp_chats"] == found
+    assert setup_save.read(config_file(harness))["progress"]["whatsapp_chats"] == found
+    assert harness.opened == []  # nothing for the family to do
+    assert_read_only_through_bg(harness, mac)
+
+
+def test_the_button_shows_the_python_and_opens_app_management(harness, page, mac):
+    at_the_whatsapp_step(harness)
+
+    r = call(page.url, "api/whatsapp/open", method="POST", body={})
+
+    assert r.status == 200 and r.json() == {"result": "opened"}
+    assert harness.opened == [WHATSAPP_PYTHON, ops.APP_MANAGEMENT_URL]
+    assert ["open", "-R", WHATSAPP_PYTHON] in harness.commands
+
+
+def test_without_the_permission_the_entry_ticks_itself_once_it_is_given(harness, page, mac):
+    at_the_whatsapp_step(harness)
+    mac.install_whatsapp(WHATSAPP_CHATS)
+    mac.grants_after = 2  # the family turns the switch on while the page checks
+
+    assert check_whatsapp(page.url).json() == {"result": "no-permission"}
+    assert check_whatsapp(page.url).json() == {"result": "no-permission"}
+    assert statuses(page.url)["whatsapp"] == "to-do"
+    out = check_whatsapp(page.url).json()
+
+    assert out["result"] == "readable" and len(out["chats"]) == 3
+    assert statuses(page.url)["whatsapp"] == "done"
+    assert mac.prompts == 1
+    assert_read_only_through_bg(harness, mac)
+
+
+def test_a_read_that_ends_after_the_parent_moved_on_keeps_their_choice(harness, page, mac,
+                                                                      monkeypatch):
+    at_the_whatsapp_step(harness)
+    mac.install_whatsapp(WHATSAPP_CHATS)
+    read = setup_steps.read_whatsapp_through_bg
+
+    def slow(*a: Any) -> dict[str, Any]:  # the parent skips WhatsApp while it reads
+        out = read(*a)
+        save_progress(harness, {**json.loads(progress_file(harness).read_text()),
+                                "source": "myclub", "sources": {"wilma": "done", "gmail": "done",
+                                                                "ai": "done", "whatsapp": "skipped"}})
+        return out
+    monkeypatch.setattr(setup_steps, "read_whatsapp_through_bg", slow)
+
+    assert check_whatsapp(page.url).json()["result"] == "readable"
+
+    progress = call(page.url, "api/state").json()["progress"]
+    assert progress["sources"]["whatsapp"] == "skipped" and progress["source"] == "myclub"
+
+    monkeypatch.setattr(setup_steps, "read_whatsapp_through_bg", read)
+    save_progress(harness, {**progress, "source": "gmail",  # the parent went back to Gmail
+                            "sources": {**progress["sources"], "whatsapp": "to-do"}})
+    assert check_whatsapp(page.url).json()["progress"]["source"] == "gmail"  # not moved on
+    assert statuses(page.url)["whatsapp"] == "done"
+
+
+def test_an_unanswered_allow_prompt_is_waiting(harness, page, mac):
+    at_the_whatsapp_step(harness)
+    mac.install_whatsapp(WHATSAPP_CHATS)
+    mac.allow = None
+
+    assert check_whatsapp(page.url).json() == {"result": "waiting"}
+    assert not any(mac.reads)
+    assert statuses(page.url)["whatsapp"] == "to-do"
+
+
+def test_without_whatsapp_for_mac_it_says_so(harness, page, mac):
+    at_the_whatsapp_step(harness)
+
+    assert check_whatsapp(page.url).json() == {"result": "not-installed"}
+
+
+def test_a_read_that_fails_says_so_without_the_error(harness, page, mac, monkeypatch):
+    at_the_whatsapp_step(harness)
+    mac.install_whatsapp(WHATSAPP_CHATS)
+    monkeypatch.setattr(whatsapp, "check_access", lambda: "disk I/O error at /Users/x")
+
+    assert check_whatsapp(page.url).json() == {"result": "unreadable"}
+
+    mac.bootstrap_fails = True
+    assert check_whatsapp(page.url).json() == {"result": "bg-failed"}
+    assert statuses(page.url)["whatsapp"] == "to-do"
+
+
+def test_system_settings_that_does_not_open_says_so(harness, page, mac, monkeypatch):
+    at_the_whatsapp_step(harness)
+    others = subprocess.run
+
+    def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
+        if Path(cmd[0]).name == "open":
+            return subprocess.CompletedProcess(cmd, 1, "", "")
+        return others(cmd, *a, **k)
+    monkeypatch.setattr(subprocess, "run", run)
+
+    assert call(page.url, "api/whatsapp/open", method="POST", body={}).json() == \
+        {"result": "not-opened"}
+
+
+def test_the_whatsapp_calls_take_nothing(page):
+    for path in ("api/whatsapp/check", "api/whatsapp/open"):
+        assert call(page.url, path, method="POST", body={"x": 1}).status == 400, path
+
+
+def test_the_whatsapp_step_shows_two_or_three_pictures_of_what_to_switch_on(page):
+    html = call(page.url).body.decode()
+
+    step = re.search(r'<div id="source-whatsapp".*?\n    </div>\n', html, re.S).group(0)
+    figures = re.findall(r"<figure>.*?</figure>", step, re.S)
+    assert 2 <= len(figures) <= 3
+    for figure in figures:
+        assert "<svg" in figure and re.search(r'<figcaption data-text="[\w.-]+">', figure)
+    assert 'id="whatsapp-open"' in step
+    assert "done" not in step.lower()  # it ticks itself: there's no Done to press
+
+
+def test_every_whatsapp_result_is_explained_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for result in setup_server.WHATSAPP_RESULTS:
+            assert table.get(f"whatsapp.{result}", "").strip(), (language, result)
+        for result in setup_server.WHATSAPP_OPEN_RESULTS:
+            assert table.get(f"whatsapp.open.{result}", "").strip(), (language, result)
