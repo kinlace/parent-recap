@@ -17,6 +17,7 @@ You are helping a parent install Parent Recap on their own Mac. The user is ofte
 4. **Don't overwrite an existing config.** If `~/.family/config.yaml` already exists, run `$FB setup status`. If it says `done`, this Mac has been set up before: stop and use `/parent-recap:manage` instead. If not, an earlier setup stopped part-way: tell the user, work out from the config and the outcomes which Sources are done, and carry on from there, without asking again what the config already has. If the user insists on setting up again, back it up first as `config.yaml.bak-<date>`. To start again from nothing, they can uninstall first ("uninstall Parent Recap" with `/parent-recap:manage`), then run setup.
 5. **Commands that need `sudo`:** only show them, and let the user run them. The wake schedule normally needs none: `$FB schedule install` asks for the Mac password in macOS's administrator dialog.
 6. **Always put `bg` in commands that read WhatsApp yourself**, for example `$FB bg run --dry-run`. Without it they can't read WhatsApp from Terminal, Claude Code or Codex, because macOS grants the permission per process. `$FB setup whatsapp` does this itself. Don't have the user give Terminal the permission.
+7. **Never search the family's folders or read their files to find something** (a file they were sent, a password, a link). Not with `find`, `ls` or `grep`, not by opening a file to see what's inside, not even after saying you'd only look at file names. Ask the parent where it is, or offer the alternative that needs nothing (such as staying with the `.ics` attachment). Parent Recap's own files and the checks in this skill (the plugin folder, installed apps, `~/.family`) are fine.
 
 ## Paths
 
@@ -68,10 +69,11 @@ A `result` of `no-prompt` means no dialog could open here (for example from insi
 | Language           | The one they write in. It's setup's language and their Brief's                                                                                          |
 | AI                 | Claude in Claude Code; **ChatGPT** ("runs through Codex") in Codex. Say a paid plan is needed                                                            |
 | Recipients         | The parent, and their partner, whose language is the parent's unless they say otherwise                                                                |
-| Calendar           | New events as an `.ics` attachment on the Brief, which one tap adds to any calendar. The other choice writes to Google Calendar and needs Google's authorization |
 | Pilot family       | Yes                                                                                                                                                     |
 
-- **In Claude Code**, make one AskUserQuestion call with four questions, the default first in each: language (the one you guessed first, then whichever of English, Chinese and Finnish are left, at most four options; "Other" covers any other language), AI (Claude / ChatGPT, runs through Codex), calendar (`.ics` attachment / Google Calendar) and pilot family (yes / no). Then ask in plain text for the parent's Gmail address and their partner's email, and say the partner gets the Brief in the parent's language unless they name another.
+The card has no calendar question: new events always come as an `.ics` attachment on the Brief, which one tap adds to any calendar. If the parent asks about Google Calendar, say it can be turned on later through `/parent-recap:manage`, once the Parent Recap team has given them the Google app file it needs.
+
+- **In Claude Code**, make one AskUserQuestion call with three questions, the default first in each: language (the one you guessed first, then whichever of English, Chinese and Finnish are left, at most four options; "Other" covers any other language), AI (Claude / ChatGPT, runs through Codex) and pilot family (yes / no). Then ask in plain text for the parent's Gmail address and their partner's email, and say the partner gets the Brief in the parent's language unless they name another.
 - **In Codex**, list the defaults as text and ask for the two addresses in the same message. The parent replies "ok" with the addresses, or names what to change.
 
 Note from the answers:
@@ -104,8 +106,6 @@ Then install the program with `bash "PLUGIN/install.sh"`. It takes a few minutes
 4. **WhatsApp** (can be skipped): the class and club parent groups
 5. **MyClub** (can be skipped): the club calendars
 
-With Google Calendar on the card, add a sixth line, **Google Calendar**, after MyClub.
-
 Each sub-flow: say in a sentence or two why it's needed, before asking for anything; run its command; act on the result; mark it done and show the list again. When a command fails, say clearly what went wrong and what to do, help with it and run it again. If the parent wants to skip WhatsApp or MyClub, mark it skipped. Gmail and the AI login can't be skipped; neither can Wilma when the school uses it.
 
 ### Wilma
@@ -128,7 +128,7 @@ Otherwise:
 - `gmail.username`: the Gmail address from the card, and `gmail.allowlist_domains`: the starting allowlist for the city from "City presets" in `PLUGIN/docs/config.md`
 - `email.to`: the Recipients from the card, a partner with another language as `{address: ..., language: <code>}` ("Recipients in their own language" in `PLUGIN/docs/config.md`). Leave out `email.weekend_to`
 - `llm.backend`: `claude` or `codex`
-- `google_calendar.mode`: `ics`, or `google` if chosen
+- `google_calendar.mode: ics`
 - `wilma.enabled: true` with Wilma
 
 Leave everything else off, including Weekend Picks: they aren't part of setup, and the parent can turn them on later through `/parent-recap:manage`.
@@ -174,11 +174,7 @@ Why: club practices, matches and their changes are in MyClub. Each Kid's calenda
 
 For each Kid with a MyClub calendar, tell the parent MyClub's page will open: they sign in, open that Kid's calendar, choose Calendar subscription (Tilaa kalenteri), copy the link starting with `webcal://` and paste it into the dialog. Run `$FB setup myclub --kid "<Kid's name>"`, with the name exactly as under `kids:` in the config. On `saved`, say how many events it found. Otherwise (most often `not-a-myclub-link`: they copied the browser's address, or their password), tell them what `next` says and run it again with `--no-open`.
 
-With ics calendar mode, mention that they can also subscribe to that link in their phone's calendar, so club changes show up straight away ("MyClub" in `PLUGIN/docs/sources.md`).
-
-### Google Calendar (only if chosen)
-
-It needs a Google app file (the JSON of a Desktop OAuth client), which the plugin doesn't include. If `~/.family/calendar_credentials.json` exists, go straight to authorizing. Otherwise: pilot families use the file the Parent Recap maintainers sent separately; everyone else creates their own by following "Creating your own Google app" in `PLUGIN/docs/sources.md`, or switches back to the `.ics` attachment. The file contains a secret: ask only where it is (for example `~/Downloads/xxx.json`), never for its contents, and save it with the command in step 1 of google mode under "Calendar" in `sources.md`. Then have the user run `~/FamilyBrief/app/.venv/bin/python ~/FamilyBrief/app/scripts/setup_google_calendar.py` in Terminal; when the browser says "Google hasn't verified this app", they click Advanced → Go to (app name) → Allow. The partner's Gmail can go in `google_calendar.invite_attendees`.
+Mention that they can also subscribe to that link in their phone's calendar, so club changes show up straight away ("MyClub" in `PLUGIN/docs/sources.md`).
 
 ## 3. Working
 
