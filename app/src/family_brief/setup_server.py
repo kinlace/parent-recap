@@ -30,11 +30,12 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import setup_save, setup_steps, summarize
+from . import setup_save, setup_steps, setup_wilma, summarize
 
 IDLE_SECONDS = 30 * 60
 AI_CHECK_SECONDS = 20
@@ -47,8 +48,24 @@ SKIPPABLE = ("wilma", "whatsapp", "myclub")
 # an address that isn't one, and `app-passwords-unavailable`, which the page's own button gives.
 GMAIL_RESULTS = ("saved", "no-address", "not-an-app-password", "rejected", "no-connection",
                  "keychain-failed", "app-passwords-unavailable")
+# What signing in to Wilma on the page can say (ADR 0008). Only `sign-in-failed` offers the
+# Terminal sign-in window: a wrong password is said to be just that.
+WILMA_RESULTS = ("signed-in", "wrong-password", "sign-in-failed", "no-kids", "not-installed")
+# What the town search can say when it finds nothing to show: no CLI, or a CLI without the list.
+TOWN_RESULTS = ("not-installed", "no-list")
+# Getting the pinned wilma CLI ready, which the town list comes with: while it installs, and why
+# it couldn't be.
+WILMA_READY_RESULTS = ("installing", "no-npm", "install-failed")
+# The Terminal sign-in window: while the family signs in there, and how it ended if not signed in.
+WILMA_WINDOW_RESULTS = ("waiting", "not-signed-in", "sign-in-failed", "timeout", "no-terminal",
+                        "not-installed")
+WILMA_WINDOW_SECONDS = 600
 # The sites the page's buttons open, by name: the page itself names none.
 SITES = {"app-passwords": setup_steps.APP_PASSWORDS_URL, "two-step": setup_steps.TWO_STEP_URL}
+# The apps they open, each tried in turn: the Passwords app, or before macOS 15, where the
+# passwords were in System Settings.
+APPS = {"passwords": (["-a", "Passwords"],
+                      ["x-apple.systempreferences:com.apple.Passwords-Settings.extension"])}
 ADDRESS = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 POLL_SECONDS = 1.0
 clock = time.monotonic  # the idle clock
@@ -115,6 +132,8 @@ class SetupServer:
         self._serving = False
         self._state = threading.Lock()
         self._saving = threading.Lock()  # one save at a time
+        self._wilma = threading.Lock()  # one Wilma sign-in at a time, since each writes its profile
+        self._window: dict[str, Any] | None = None  # the Terminal sign-in window's, once opened
 
     def serve_until_idle(self) -> None:
         """Serves until `stop`, or until IDLE_SECONDS pass without a request."""
@@ -240,17 +259,155 @@ class SetupServer:
         return HTTPStatus.OK, out
 
     def open_site(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
-        """Opens one of the sites the page sends the family to, in the default browser."""
-        if not (isinstance(raw, dict) and set(raw) == {"site"} and raw["site"] in SITES):
+        """Opens one of the sites the page sends the family to, in the default browser, or one of
+        the Mac's apps."""
+        if not (isinstance(raw, dict) and set(raw) == {"site"} and raw["site"] in {*SITES, *APPS}):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Open one of the page's own sites.",
-                errors=[f"site: should be one of {', '.join(SITES)}"])
+                errors=[f"site: should be one of {', '.join([*SITES, *APPS])}"])
+        if raw["site"] in APPS:
+            opened = any(_open(args) for args in APPS[raw["site"]])
+            return HTTPStatus.OK, {"result": "opened" if opened else "not-opened"}
         url = SITES[raw["site"]]
+        return HTTPStatus.OK, {"result": "opened" if _open([url]) else "not-opened", "url": url}
+
+    # ── Wilma (ADR 0008)
+
+    def wilma_ready(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Installs the pinned wilma CLI unless it's there, since the town list comes with it."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Nothing to give.", errors=["answers: should be {}"])
+        result = setup_wilma.install()
+        return HTTPStatus.OK, {"result": result,
+                               **({"install": setup_wilma.NODE_INSTALL} if result == "no-npm" else {})}
+
+    def find_towns(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """The entries of Wilma's list that the town or name typed finds, each with its town."""
+        if not (isinstance(raw, dict) and set(raw) == {"query"} and isinstance(raw["query"], str)):
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Type a town.", errors=["query: should be text"])
+        if not setup_wilma.installed():
+            return HTTPStatus.OK, {"result": "not-installed"}
+        listed = setup_wilma.tenants()
+        if listed is None:
+            return HTTPStatus.OK, {"result": "no-list"}
+        return HTTPStatus.OK, {"result": "found", "towns": setup_wilma.search(listed, raw["query"])}
+
+    def sign_in_wilma(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Signs in to the Wilma picked from the list with the username and the password typed
+        into the page's own fields, by writing the CLI's profile and reading the Kids with it.
+        Once signed in, Wilma is done, and the Kids, as Wilma spells them, and the town are the
+        Household's. The password is never returned, logged or put on a command line."""
+        fields = {"url", "town", "username", "password"}
+        if not (isinstance(raw, dict) and set(raw) == fields
+                and all(isinstance(raw[k], str) for k in ("url", "username", "password"))
+                and (raw["town"] is None or isinstance(raw["town"], str))
+                and raw["username"].strip() and raw["password"]):
+            return HTTPStatus.BAD_REQUEST, _wilma_invalid()
+        if not setup_wilma.installed():
+            return HTTPStatus.OK, {"result": "not-installed"}
+        listed = setup_wilma.tenants()
+        if listed is None:
+            return HTTPStatus.OK, {"result": "no-list"}
+        tenant = setup_wilma.entry(listed, raw["url"])
+        towns = setup_wilma.towns_of(tenant) if tenant else []
+        if tenant is None or (raw["town"] not in towns if towns else raw["town"] is not None):
+            return HTTPStatus.BAD_REQUEST, _wilma_invalid()
+        with self._wilma:
+            result, kids = setup_wilma.sign_in(tenant, raw["username"].strip(), raw["password"])
+        if result != "signed-in":
+            return HTTPStatus.OK, {"result": result}
+        return self._signed_in(kids, raw["town"])
+
+    def save_town(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """For a Household whose school doesn't use Wilma: saves the town picked from Wilma's list
+        as its city, and moves setup on with Wilma skipped."""
+        listed = setup_wilma.tenants() or []
+        if not (isinstance(raw, dict) and set(raw) == {"town"} and isinstance(raw["town"], str)
+                and any(raw["town"] in setup_wilma.towns_of(t) for t in listed)):
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Pick your town from the list.",
+                errors=["town: should be a town in Wilma's list"])
+        with self._saving:
+            statuses = {**setup_save.read(self.config)["progress"]["sources"], "wilma": "skipped"}
+            out = setup_save.save(self.config, {
+                "city": raw["town"], "sources": {"wilma": {"enabled": False}},
+                "progress": {"sources": {"wilma": "skipped"}, "source": _next_source(statuses)}})
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        return HTTPStatus.OK, out
+
+    def open_wilma_window(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Opens the Terminal sign-in window (#74), for when the page's own sign-in fails for any
+        reason but a wrong password, and waits for it in the background: the page asks how it
+        went with `check_wilma_window`. `town` is the one picked on the page, if any."""
+        if not (isinstance(raw, dict) and set(raw) == {"town"}
+                and (raw["town"] is None or isinstance(raw["town"], str))):
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Give the town picked, or null.",
+                errors=["town: should be text or null"])
+        with self._wilma:
+            if self._window is not None and self._window["result"] is None:
+                return HTTPStatus.OK, {"result": "waiting"}  # the window is already open
+            window: dict[str, Any] = {"result": None}
+            self._window = window
+        threading.Thread(target=self._wait_for_window, daemon=True,
+                         args=(window, self._chosen_language() or "en", raw["town"])).start()
+        return HTTPStatus.OK, {"result": "waiting"}
+
+    def check_wilma_window(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """How the Terminal sign-in window went: `waiting` while the family is still in it."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Nothing to give.", errors=["answers: should be {}"])
+        window = self._window
+        if window is None:
+            return HTTPStatus.OK, {"result": "no-window"}
+        return HTTPStatus.OK, window["result"] or {"result": "waiting"}
+
+    def _wait_for_window(self, window: dict[str, Any], language: str, town: str | None) -> None:
         try:
-            opened = subprocess.run(["open", url], capture_output=True).returncode == 0
-        except OSError:
-            opened = False
-        return HTTPStatus.OK, {"result": "opened" if opened else "not-opened", "url": url}
+            out = setup_steps.sign_in_in_terminal(language, WILMA_WINDOW_SECONDS)
+            if out["result"] == "signed-in":
+                kids = [k for k in out["kids"] if isinstance(k.get("name"), str) and k["name"]]
+                _, done = self._signed_in(kids, self._city(out.get("wilma_address"), town))
+            else:
+                done = {"result": out["result"]}
+        except Exception:  # never leave the page waiting
+            done = {"result": "sign-in-failed"}
+        window["result"] = done
+
+    def _signed_in(self, kids: list[dict[str, Any]],
+                   city: str | None) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Saves the Kids Wilma lists and the town, with Wilma on and done."""
+        with self._saving:
+            statuses = {**setup_save.read(self.config)["progress"]["sources"], "wilma": "done"}
+            answers: dict[str, Any] = {
+                "kids": [{"name": k["name"],
+                          **({"school": k["school"]} if k.get("school") else {}),
+                          **({"class_name": k["class"]} if k.get("class") else {})} for k in kids],
+                "sources": {"wilma": {"enabled": True}},
+                "progress": {"sources": {"wilma": "done"}, "source": _next_source(statuses)},
+            }
+            if city:
+                answers["city"] = city
+            out = setup_save.save(self.config, answers)
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        return HTTPStatus.OK, {"result": "signed-in", "kids": [k["name"] for k in kids],
+                               "city": city, "progress": out["progress"]}
+
+    @staticmethod
+    def _city(address: str | None, town: str | None) -> str | None:
+        """The town of the Wilma signed in to in the Terminal window: the one picked on the page
+        if it's one of that Wilma's, else its first."""
+        listed = setup_wilma.tenants() or []
+        tenant = next((t for t in listed if urlparse(t["url"]).hostname == address), None)
+        towns = setup_wilma.towns_of(tenant) if tenant else []
+        if towns:
+            return town if town in towns else towns[0]
+        return setup_steps.WILMA_CITIES.get(address or "")
 
     def connect_gmail(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Tests the App Password pasted into the page's own field with Gmail and stores it in
@@ -343,6 +500,21 @@ class WelcomeAnswer(BaseModel):
     feedback: StrictBool
 
 
+def _open(args: list[str]) -> bool:
+    try:
+        return subprocess.run(["open", *args], capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
+def _wilma_invalid() -> dict[str, Any]:
+    # Names the fields only: the answers carry the password.
+    return setup_save.outcome(
+        "invalid-answers", "Pick your town's Wilma from the list and give the username and the "
+        "password.", errors=["answers: should be the url and town picked from the list, and the "
+                             "username and the password, as text"])
+
+
 def _next_source(statuses: dict[str, str]) -> str | None:
     """The first Source in the list still to do, or None once each is done or skipped."""
     return next((s for s in setup_save.SOURCES if statuses.get(s) == "to-do"), None)
@@ -407,7 +579,11 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(HTTPStatus.OK, setup.state())
         actions = {"api/language": setup.choose_language, "api/ai": setup.check_ai,
                    "api/welcome": setup.save_welcome, "api/source": setup.choose_source,
-                   "api/open": setup.open_site, "api/gmail": setup.connect_gmail}
+                   "api/open": setup.open_site, "api/gmail": setup.connect_gmail,
+                   "api/wilma/install": setup.wilma_ready, "api/towns": setup.find_towns,
+                   "api/wilma": setup.sign_in_wilma, "api/town": setup.save_town,
+                   "api/wilma/terminal": setup.open_wilma_window,
+                   "api/wilma/check": setup.check_wilma_window}
         if method == "POST" and path in actions:
             raw = self._body()
             if raw is _NOT_JSON:

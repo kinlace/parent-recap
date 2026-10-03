@@ -57,7 +57,7 @@ Notes:
 
 This uses the community open-source wilma CLI (not affiliated with Visma).
 
-1. `npm install -g @wilm-ai/wilma-cli`
+1. `npm install -g @wilm-ai/wilma-cli@1.6.2`, the version setup is tested with. The setup page installs it itself, then signs in without a Terminal window: the family picks their town from Wilma's list and types the Wilma username and password into the page, which writes the CLI's saved sign-in the way the CLI does and checks it by listing the Kids (ADR 0008). A wrong password is said to be just that; any other failure offers the Terminal window below
 2. `$FB setup wilma --language <code>` opens the wilma sign-in screen in a Terminal window, under a short guide in that language (English, Chinese or Finnish; English for any other): the user types the town in Finnish and picks the city or school (Espoo / Helsinki / Vantaa / Kauniainen / Helsinki private and state schools, or for another city, its Wilma address as in "Cities without a preset" in `config.md`), then logs in with the **parent account**, the same username and password as on the Wilma website or app. If the account has two-step verification, use `--totp-secret` as the CLI prompts. Once the CLI has saved the sign-in, the window ends it, so the user doesn't see its student picker or menu: setup reads every Kid anyway
 3. The command waits for the sign-in, then reports the students and the city from the Wilma address (it works before the config exists, so setup can prefill the Kids from it)
 4. Each Kid's `name` in the config should match Wilma exactly; put the name the family calls the Kid by in `everyday_name` (the Brief uses it everywhere) and any other names in `aliases`

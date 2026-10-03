@@ -5,6 +5,7 @@ in the same way and can hand over to each other at the step reached (ADR 0006). 
 answers as JSON on stdin, every key optional:
 
   {"language": "zh",
+   "city": "Espoo",
    "kids": [{"name": "Mia Virtanen", "everyday_name": "Mia", "aliases": ["米娅"]}],
    "recipients": [{"address": "parent@gmail.com"}, {"address": "partner@gmail.com", "language": "fi"}],
    "ai": "claude",
@@ -98,6 +99,7 @@ class ProgressAnswer(_Strict):
 
 class Answers(_Strict):
     language: Language | None = None
+    city: str | None = None         # the Household's town, in Finnish, as in Wilma's list
     kids: list[KidAnswer] | None = None
     recipients: list[RecipientAnswer] | None = None
     ai: Literal["claude", "codex"] | None = None
@@ -203,6 +205,8 @@ def _read_config(config: Path) -> dict[str, Any]:
 def _merge(data: dict[str, Any], a: Answers) -> None:
     if a.language is not None:
         data["summary_language"] = a.language
+    if a.city is not None:
+        data["city"] = a.city
     if a.kids is not None:
         before = {k.get("name"): k for k in data.get("kids") or [] if isinstance(k, dict)}
         data["kids"] = [{**before.get(k.name, {}), **_given(k)} for k in a.kids]

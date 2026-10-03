@@ -6,6 +6,7 @@ The server runs in-process on a free port, inside the harness, so the config, th
 see: the responses, the config and progress written, and what was opened."""
 from __future__ import annotations
 
+import base64
 import http.client
 import imaplib
 import itertools
@@ -14,6 +15,7 @@ import logging
 import queue
 import re
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -25,7 +27,8 @@ import keyring.errors
 import pytest
 import yaml
 
-from family_brief import __main__ as cli, setup_save, setup_server, summarize
+from family_brief import (__main__ as cli, setup_save, setup_server, setup_steps, setup_wilma,
+                          summarize)
 from family_brief.config import Config
 from family_brief.utils import keychain
 
@@ -812,3 +815,485 @@ def test_the_gmail_fields_are_the_page_s_own(page):
     assert 'type="password"' in password
     address = re.search(r'<input[^>]*id="gmail-address"[^>]*>', html).group(0)
     assert 'type="email"' in address
+
+
+# ── Connect: Wilma (ADR 0008)
+
+WILMA_PASSWORD = "Wilma-salasana-42"
+ESPOO = "https://espoo.inschool.fi"
+TENANTS = {"wilmat": [  # as the Wilma CLI ships them: Wilma's public tenant list
+    {"url": "https://aland.inschool.fi", "name": "Ålands skolor",
+     "municipalities": [{"name_fi": "Maarianhamina", "name_sv": "Mariehamn"},
+                        {"name_fi": "Sund", "name_sv": "Sund"}]},
+    {"url": "https://esbosv.inschool.fi", "name": "Esbo stad / Svenska bildningstjänster",
+     "municipalities": [{"name_fi": "Espoo", "name_sv": "Esbo"}]},
+    {"url": ESPOO, "name": "Espoon kaupunki / Suomenkielisen opetuksen tulosyksikkö",
+     "formerUrl": "https://wilma.espoo.fi",
+     "municipalities": [{"name_fi": "Espoo", "name_sv": "Esbo"}]},
+    {"url": "https://espoonsteiner.inschool.fi", "name": "Espoon Steinerkoulu",
+     "municipalities": [{"name_fi": "Espoo", "name_sv": "Esbo"}]},
+    {"url": "https://helsinki.inschool.fi", "name": "Helsingin kaupunki",
+     "municipalities": [{"name_fi": "Helsinki", "name_sv": "Helsingfors"}]},
+    {"url": "https://jarvenpaa.inschool.fi", "name": "Järvenpään kaupunki",
+     "municipalities": [{"name_fi": "Järvenpää", "name_sv": "Träskända"}]},
+    {"url": "https://omnia.inschool.fi", "name": "Omnia",
+     "municipalities": [{"name_fi": "Kirkkonummi", "name_sv": "Kyrkslätt"},
+                        {"name_fi": "Espoo", "name_sv": "Esbo"}]},
+]}
+WILMA_STUDENTS = [{"studentNumber": "1001", "name": "Mia Virtanen", "href": "/!1001/"},
+                  {"studentNumber": "1002", "name": "Leo Virtanen", "href": "/!1002/"}]
+
+# The pinned wilma CLI as setup uses it, reading its saved profile the way its dist/config.js
+# (loadConfig, revealSecret) and dist/index.js (getProfileForCommandNonInteractive, then
+# getStudentsForCommand, which saves the students back) do, and signing in to a fake Wilma
+# that knows one account. What it says when Wilma turns a login down is the CLI's own.
+FAKE_WILMA_CLI = """#!{python}
+import base64, json, os, pathlib, sys
+ctl = json.loads((pathlib.Path(os.path.realpath(__file__)).parent / "wilma.json").read_text())
+if os.environ.get("WILMAI_CONFIG_PATH"):
+    path = pathlib.Path(os.environ["WILMAI_CONFIG_PATH"])
+else:
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.environ["HOME"], ".config")
+    path = pathlib.Path(base) / "wilmai" / "config.json"
+if sys.argv[1:] != ["kids", "list", "--json"]:
+    sys.exit(2)
+try:
+    config = json.loads(path.read_text())
+except Exception:
+    config = {{"profiles": []}}
+if not config.get("profiles"):
+    config = {{"profiles": []}}
+if not config.get("lastProfileId"):
+    print("No saved profile found. Run the interactive CLI first.", file=sys.stderr)
+    sys.exit(0)
+stored = next((p for p in config["profiles"] if p["id"] == config["lastProfileId"]), None)
+if stored is None:
+    print("Saved profile not found. Run the interactive CLI first.", file=sys.stderr)
+    sys.exit(0)
+try:
+    decoded = base64.b64decode(stored["passwordObfuscated"]).decode()
+except Exception:
+    decoded = ""
+if not decoded.startswith("wilmai::"):
+    print("Stored password could not be decoded. Re-login interactively.", file=sys.stderr)
+    sys.exit(0)
+if ctl["fails"]:
+    print("CLI error: " + ctl["fails"], file=sys.stderr)
+    sys.exit(1)
+if ctl["accounts"].get(stored["tenantUrl"] + "|" + stored["username"]) != decoded[8:]:
+    print("CLI error: Wilma login failed", file=sys.stderr)
+    sys.exit(1)
+stored["students"] = [{{"studentNumber": s["studentNumber"], "name": s["name"]}}
+                      for s in ctl["students"]]
+path.write_text(json.dumps(config, indent=2) + "\\n")
+print(json.dumps(ctl["students"], indent=2))
+"""
+
+
+class WilmaCLI:
+    """The Mac's npm and the wilma CLI it installs globally, laid out as npm lays it out, with
+    Wilma's tenant list inside it. Not installed until `npm install -g` or `install()`."""
+
+    def __init__(self, home: Path) -> None:
+        self.home = home
+        self.prefix = home / "homebrew"
+        self.bin_dir = self.prefix / "bin"
+        self.bin_dir.mkdir(parents=True)
+        self.accounts = {f"{ESPOO}|mia.parent": WILMA_PASSWORD}  # tenant|username → password
+        self.students: list[dict[str, Any]] = WILMA_STUDENTS
+        self.fails: str | None = None    # any other failure, in the CLI's words
+        self.npm = True                  # whether Node's npm is on this Mac
+        self.npm_works = True
+        self.installs: list[list[str]] = []
+        self.ships_tenants = True
+        self.terminal: list[str] = []    # each script opened in Terminal
+        self.signs_in_terminal = True    # the family signs in in the window
+
+    @property
+    def package(self) -> Path:
+        return self.prefix / "lib" / "node_modules" / "@wilm-ai" / "wilma-cli"
+
+    @property
+    def profile_path(self) -> Path:
+        return self.home / ".config" / "wilmai" / "config.json"
+
+    def profile(self) -> dict[str, Any]:
+        return json.loads(self.profile_path.read_text())
+
+    def install(self) -> None:
+        dist = self.package / "dist"
+        dist.mkdir(parents=True, exist_ok=True)
+        (self.package / "package.json").write_text(json.dumps(
+            {"name": "@wilm-ai/wilma-cli", "version": "1.6.2"}))
+        (dist / "index.js").write_text(FAKE_WILMA_CLI.format(python=sys.executable))
+        (dist / "index.js").chmod(0o755)
+        if self.ships_tenants:
+            client = self.package / "node_modules" / "@wilm-ai" / "wilma-client"
+            client.mkdir(parents=True, exist_ok=True)
+            (client / "tenant_list.json").write_text(json.dumps(TENANTS, ensure_ascii=False))
+        (self.bin_dir / "wilma").unlink(missing_ok=True)
+        (self.bin_dir / "wilma").symlink_to(dist / "index.js")
+        (dist / "wilma.json").write_text(json.dumps(
+            {"accounts": self.accounts, "students": self.students, "fails": self.fails}))
+
+    def signed_in_before(self, tenant: str, username: str = "old.parent",
+                         password: str = "old") -> str:
+        profile_id = f"{tenant}|{username}"
+        self.profile_path.parent.mkdir(parents=True, exist_ok=True)
+        self.profile_path.write_text(json.dumps({"profiles": [{
+            "id": profile_id, "tenantUrl": tenant, "tenantName": "Wilma", "username": username,
+            "passwordObfuscated": setup_wilma.obfuscate(password), "students": [],
+        }], "lastProfileId": profile_id}, indent=2) + "\n")
+        return self.profile_path.read_text()
+
+
+REAL_RUN = subprocess.run  # before the harness fakes it
+
+
+@pytest.fixture
+def wilma_cli(harness, monkeypatch) -> WilmaCLI:
+    w = WilmaCLI(harness.home)
+    for var in ("WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("PATH", f"{w.bin_dir}:/usr/bin:/bin")
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    others = subprocess.run  # the harness's fakes
+
+    def run(cmd: list[str], *a: Any, **k: Any) -> Any:
+        name = Path(cmd[0]).name
+        if name == "wilma":
+            harness.commands.append(list(cmd))
+            return REAL_RUN(cmd, *a, **k)
+        if name == "npm":
+            harness.commands.append(list(cmd))
+            if not w.npm:
+                raise FileNotFoundError(cmd[0])
+            w.installs.append(cmd[1:])
+            if not w.npm_works:
+                return subprocess.CompletedProcess(cmd, 1, "", "npm error code E404")
+            w.install()
+            return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
+        if cmd[:3] == ["open", "-a", "Terminal"]:
+            harness.commands.append(list(cmd))
+            w.terminal.append(Path(cmd[3]).read_text())
+            if w.signs_in_terminal:  # the family signs in in the window: the CLI saves its profile
+                w.signed_in_before(ESPOO, "mia.parent", WILMA_PASSWORD)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return others(cmd, *a, **k)
+    monkeypatch.setattr(subprocess, "run", run)
+    (w.bin_dir / "npm").write_text("#!/bin/sh\n")
+    (w.bin_dir / "npm").chmod(0o755)
+    monkeypatch.setattr(setup_wilma, "NPM_PLACES", ())  # only the PATH's
+    return w
+
+
+def towns(url: str, query: str) -> Response:
+    return call(url, "api/towns", method="POST", body={"query": query})
+
+
+def sign_in_wilma(url: str, *, tenant: str = ESPOO, town: str | None = "Espoo",
+                  username: str = "mia.parent", password: str = WILMA_PASSWORD) -> Response:
+    return call(url, "api/wilma", method="POST",
+                body={"url": tenant, "town": town, "username": username, "password": password})
+
+
+def wilma_ready(url: str) -> Response:
+    return call(url, "api/wilma/install", method="POST", body={})
+
+
+def wilma_window_result(url: str) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+
+    def done() -> bool:
+        out.update(call(url, "api/wilma/check", method="POST", body={}).json())
+        return out["result"] != "waiting"
+    wait_for(done)
+    return out
+
+
+@pytest.mark.parametrize("query", ["Espoo", "Esbo", "espoo", "ESBO", " Esbo "])
+def test_searching_espoo_or_esbo_finds_the_espoo_entries(harness, page, wilma_cli, query):
+    wilma_cli.install()
+
+    r = towns(page.url, query)
+
+    assert r.status == 200 and r.json()["result"] == "found"
+    found = r.json()["towns"]
+    assert {t["url"] for t in found} == {ESPOO, "https://esbosv.inschool.fi",
+                                         "https://espoonsteiner.inschool.fi",
+                                         "https://omnia.inschool.fi"}
+    assert all(t["town"] == "Espoo" for t in found)
+    assert next(t for t in found if t["url"] == ESPOO)["name"] == TENANTS["wilmat"][2]["name"]
+
+
+def test_the_town_search_finds_entries_by_name_and_without_accents(harness, page, wilma_cli):
+    wilma_cli.install()
+
+    assert [(t["url"], t["town"]) for t in towns(page.url, "steiner").json()["towns"]] == \
+        [("https://espoonsteiner.inschool.fi", "Espoo")]
+    assert [t["town"] for t in towns(page.url, "jarvenpaa").json()["towns"]] == ["Järvenpää"]
+    assert [t["town"] for t in towns(page.url, "Mariehamn").json()["towns"]] == ["Maarianhamina"]
+    assert towns(page.url, "E").json()["towns"] == []  # too short to search
+    assert towns(page.url, "Tukholma").json()["towns"] == []
+    for body in [{}, {"query": 1}, {"query": "Espoo", "x": 1}]:
+        assert call(page.url, "api/towns", method="POST", body=body).status == 400, body
+
+
+def test_setup_installs_the_pinned_wilma_cli_when_it_is_missing(harness, page, wilma_cli):
+    assert towns(page.url, "Espoo").json()["result"] == "not-installed"
+
+    r = wilma_ready(page.url)
+
+    assert r.status == 200 and r.json()["result"] == "installed"
+    assert wilma_cli.installs == [["install", "-g", "@wilm-ai/wilma-cli@1.6.2"]]
+    assert setup_steps.WILMA_INSTALL == "npm install -g @wilm-ai/wilma-cli@1.6.2"
+    assert towns(page.url, "Espoo").json()["result"] == "found"
+
+    assert wilma_ready(page.url).json()["result"] == "installed"
+    assert len(wilma_cli.installs) == 1  # already there: not installed again
+
+
+def test_without_node_it_says_how_to_install_it(harness, page, wilma_cli):
+    (wilma_cli.bin_dir / "npm").unlink()
+
+    assert wilma_ready(page.url).json() == {"result": "no-npm", "install": "brew install node"}
+
+    (wilma_cli.bin_dir / "npm").write_text("#!/bin/sh\n")
+    (wilma_cli.bin_dir / "npm").chmod(0o755)
+    wilma_cli.npm_works = False
+    assert wilma_ready(page.url).json()["result"] == "install-failed"
+
+
+def test_a_cli_without_the_tenant_list_says_so(harness, page, wilma_cli):
+    wilma_cli.ships_tenants = False
+    wilma_cli.install()
+
+    assert towns(page.url, "Espoo").json()["result"] == "no-list"
+
+
+def test_a_good_login_writes_the_cli_profile_and_lists_the_kids(harness, page, wilma_cli,
+                                                                 caplog, capsys):
+    caplog.set_level(logging.DEBUG)
+    wilma_cli.install()
+    welcome(page.url)
+
+    r = sign_in_wilma(page.url)
+
+    assert r.status == 200
+    out = r.json()
+    assert out["result"] == "signed-in"
+    assert out["kids"] == ["Mia Virtanen", "Leo Virtanen"] and out["city"] == "Espoo"
+    assert out["progress"]["sources"]["wilma"] == "done" and out["progress"]["source"] == "gmail"
+    # The profile, as the pinned CLI writes it after its own sign-in, which its Kid list read.
+    profile = wilma_cli.profile()
+    stored = profile["profiles"][0]
+    assert profile["lastProfileId"] == stored["id"] == f"{ESPOO}|mia.parent"
+    assert set(stored) == {"id", "tenantUrl", "tenantName", "username", "passwordObfuscated",
+                           "students", "lastStudentNumber", "lastStudentName", "lastUsedAt"}
+    assert (stored["tenantUrl"], stored["tenantName"], stored["username"]) == \
+        (ESPOO, TENANTS["wilmat"][2]["name"], "mia.parent")
+    assert stored["passwordObfuscated"] == \
+        base64.b64encode(f"wilmai::{WILMA_PASSWORD}".encode()).decode()
+    assert [s["name"] for s in stored["students"]] == ["Mia Virtanen", "Leo Virtanen"]
+    assert wilma_cli.profile_path.stat().st_mode & 0o777 == 0o600
+    assert wilma_cli.profile_path.parent.stat().st_mode & 0o777 == 0o700
+    # The Household's answers: the Kids as Wilma spells them, its city, and Wilma on.
+    cfg = Config.load(config_file(harness))
+    assert [k.name for k in cfg.kids] == ["Mia Virtanen", "Leo Virtanen"]
+    assert cfg.city == "Espoo" and cfg.wilma.enabled is True
+    assert_never_leaked(harness, [r], caplog, capsys, WILMA_PASSWORD)
+
+
+def test_signing_in_keeps_the_cli_s_other_profiles(harness, page, wilma_cli):
+    wilma_cli.install()
+    wilma_cli.signed_in_before("https://helsinki.inschool.fi")
+
+    assert sign_in_wilma(page.url).json()["result"] == "signed-in"
+
+    profiles = wilma_cli.profile()["profiles"]
+    assert [p["id"] for p in profiles] == ["https://helsinki.inschool.fi|old.parent",
+                                           f"{ESPOO}|mia.parent"]
+
+
+def test_school_and_class_are_saved_only_when_wilma_gives_them(harness, page, wilma_cli):
+    wilma_cli.students = [{"studentNumber": "1001", "name": "Mia Virtanen", "school": "Kilo School",
+                           "className": "3B"},
+                          {"studentNumber": "1002", "name": "Leo Virtanen"}]
+    wilma_cli.install()
+
+    assert sign_in_wilma(page.url).json()["kids"] == ["Mia Virtanen", "Leo Virtanen"]
+
+    mia, leo = Config.load(config_file(harness)).kids
+    assert (mia.school, mia.class_name) == ("Kilo School", "3B")
+    assert (leo.school, leo.class_name) == (None, None)
+
+
+@pytest.mark.parametrize("before", [False, True], ids=["first sign-in", "signed in before"])
+def test_a_wrong_password_is_reported_as_such_and_not_kept(harness, page, wilma_cli, caplog,
+                                                          capsys, before):
+    caplog.set_level(logging.DEBUG)
+    wilma_cli.install()
+    earlier = wilma_cli.signed_in_before("https://helsinki.inschool.fi") if before else None
+
+    r = sign_in_wilma(page.url, password="wrong-salasana")
+
+    assert r.status == 200 and r.json() == {"result": "wrong-password"}
+    # The CLI's profile is as it was: the wrong password isn't kept, an earlier sign-in works.
+    if before:
+        assert wilma_cli.profile_path.read_text() == earlier
+    else:
+        assert not wilma_cli.profile_path.exists()
+    assert statuses(page.url)["wilma"] == "to-do"
+    assert not config_file(harness).exists()
+    assert_never_leaked(harness, [r], caplog, capsys, "wrong-salasana")
+
+
+@pytest.mark.parametrize("fails", ["Wilma HTTP 503 at /login", "MFA verification required"])
+def test_any_other_failure_offers_the_terminal_window(harness, page, wilma_cli, fails):
+    wilma_cli.fails = fails
+    wilma_cli.install()
+
+    r = sign_in_wilma(page.url)
+
+    assert r.status == 200 and r.json() == {"result": "sign-in-failed"}
+    assert not wilma_cli.profile_path.exists()
+    assert statuses(page.url)["wilma"] == "to-do"
+
+
+def test_an_account_without_kids_is_reported_and_not_kept(harness, page, wilma_cli):
+    wilma_cli.students = []
+    wilma_cli.install()
+
+    assert sign_in_wilma(page.url).json() == {"result": "no-kids"}
+    assert not wilma_cli.profile_path.exists()
+
+
+def test_a_login_needs_an_entry_from_the_list_and_its_town(harness, page, wilma_cli):
+    wilma_cli.install()
+
+    for tenant, town in [("https://evil.example", "Espoo"), (ESPOO, "Helsinki"), (ESPOO, None)]:
+        r = sign_in_wilma(page.url, tenant=tenant, town=town)
+        assert r.status == 400 and r.json()["result"] == "invalid-answers", (tenant, town)
+        assert WILMA_PASSWORD.encode() not in r.body
+    for body in [{"url": ESPOO, "town": "Espoo", "username": "mia.parent"},
+                 {"url": ESPOO, "town": "Espoo", "username": " ", "password": WILMA_PASSWORD},
+                 {"url": ESPOO, "town": "Espoo", "username": "mia.parent", "password": ""},
+                 {"url": ESPOO, "town": "Espoo", "username": "mia.parent", "password": 1},
+                 {"url": ESPOO, "town": "Espoo", "username": "mia.parent",
+                  "password": WILMA_PASSWORD, "x": 1}]:
+        r = call(page.url, "api/wilma", method="POST", body=body)
+        assert r.status == 400 and r.json()["result"] == "invalid-answers", body
+        assert WILMA_PASSWORD.encode() not in r.body
+    assert not wilma_cli.profile_path.exists()
+    assert not any(Path(c[0]).name == "wilma" for c in harness.commands)
+
+
+def test_signing_in_without_the_cli_says_so(harness, page, wilma_cli):
+    assert sign_in_wilma(page.url).json() == {"result": "not-installed"}
+    assert not wilma_cli.profile_path.exists()
+
+
+def test_an_entry_in_several_towns_is_saved_with_the_town_picked(harness, page, wilma_cli):
+    wilma_cli.accounts = {"https://omnia.inschool.fi|mia.parent": WILMA_PASSWORD}
+    wilma_cli.install()
+
+    r = sign_in_wilma(page.url, tenant="https://omnia.inschool.fi", town="Kirkkonummi")
+
+    assert r.json()["city"] == "Kirkkonummi"
+    assert Config.load(config_file(harness)).city == "Kirkkonummi"
+
+
+def test_the_terminal_window_signs_in_and_the_page_lists_the_kids(harness, page, wilma_cli,
+                                                                  caplog, capsys):
+    caplog.set_level(logging.DEBUG)
+    wilma_cli.install()
+    call(page.url, "api/language", method="POST", body={"language": "fi"})
+
+    r = call(page.url, "api/wilma/terminal", method="POST", body={"town": "Espoo"})
+
+    assert r.status == 200 and r.json()["result"] == "waiting"
+    out = wilma_window_result(page.url)
+    [script] = wilma_cli.terminal
+    assert "--language fi" in script
+    assert out["result"] == "signed-in"
+    assert out["kids"] == ["Mia Virtanen", "Leo Virtanen"] and out["city"] == "Espoo"
+    assert out["progress"]["sources"]["wilma"] == "done"
+    cfg = Config.load(config_file(harness))
+    assert [k.name for k in cfg.kids] == ["Mia Virtanen", "Leo Virtanen"]
+    assert cfg.city == "Espoo" and cfg.wilma.enabled is True
+    assert_never_leaked(harness, [r], caplog, capsys, WILMA_PASSWORD)
+
+
+def test_without_a_town_picked_the_terminal_sign_in_takes_its_entry_s_town(harness, page,
+                                                                          wilma_cli):
+    wilma_cli.install()
+
+    call(page.url, "api/wilma/terminal", method="POST", body={"town": "Helsinki"})
+
+    assert wilma_window_result(page.url)["city"] == "Espoo"  # signed in to Espoo's Wilma
+
+
+def test_a_terminal_window_without_a_sign_in_says_so(harness, page, wilma_cli, monkeypatch):
+    monkeypatch.setattr(setup_server, "WILMA_WINDOW_SECONDS", 4)
+    wilma_cli.signs_in_terminal = False
+    wilma_cli.install()
+
+    call(page.url, "api/wilma/terminal", method="POST", body={"town": None})
+
+    assert wilma_window_result(page.url)["result"] == "timeout"
+    assert statuses(page.url)["wilma"] == "to-do"
+
+
+def test_checking_without_a_terminal_window_says_none_is_open(page):
+    assert call(page.url, "api/wilma/check", method="POST", body={}).json() == \
+        {"result": "no-window"}
+
+
+def test_a_household_without_wilma_picks_its_town_and_moves_on(harness, page, wilma_cli):
+    wilma_cli.install()
+
+    r = call(page.url, "api/town", method="POST", body={"town": "Espoo"})
+
+    assert r.status == 200 and r.json()["result"] == "saved"
+    assert r.json()["progress"]["sources"]["wilma"] == "skipped"
+    assert r.json()["progress"]["source"] == "gmail"
+    cfg = Config.load(config_file(harness))
+    assert cfg.city == "Espoo" and cfg.wilma.enabled is False
+    for body in [{"town": "Tukholma"}, {"town": None}, {}, {"town": "Espoo", "x": 1}]:
+        assert call(page.url, "api/town", method="POST", body=body).status == 400, body
+
+
+def test_the_button_opens_the_passwords_app(harness, page):
+    r = call(page.url, "api/open", method="POST", body={"site": "passwords"})
+
+    assert r.status == 200 and r.json()["result"] == "opened"
+    assert ["open", "-a", "Passwords"] in harness.commands
+
+
+def test_the_wilma_fields_are_standard_login_fields(page):
+    html = call(page.url).body.decode()
+
+    form = re.search(r'<form id="wilma-form".*?</form>', html, re.S).group(0)
+    username = re.search(r'<input[^>]*id="wilma-username"[^>]*>', form).group(0)
+    assert 'autocomplete="username"' in username
+    password = re.search(r'<input[^>]*id="wilma-password"[^>]*>', form).group(0)
+    assert 'type="password"' in password and 'autocomplete="current-password"' in password
+    assert 'id="wilma-passwords"' in form
+
+
+def test_every_wilma_result_is_explained_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for result in (*setup_server.WILMA_RESULTS, *setup_server.TOWN_RESULTS):
+            assert table.get(f"wilma.{result}", "").strip(), (language, result)
+        for result in setup_server.WILMA_READY_RESULTS:
+            assert table.get(f"wilma.ready.{result}", "").strip(), (language, result)
+        for result in setup_server.WILMA_WINDOW_RESULTS:
+            assert table.get(f"wilma.window.{result}", "").strip(), (language, result)
+
+
+def test_the_chat_setup_installs_the_same_pinned_cli():
+    skill = (Path(__file__).resolve().parents[2] / "skills" / "setup" / "SKILL.md").read_text()
+
+    assert setup_steps.WILMA_INSTALL in skill

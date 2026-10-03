@@ -45,7 +45,7 @@ from urllib.parse import urlparse
 
 import keyring.errors
 
-from . import install_record, secret_dialog
+from . import install_record, secret_dialog, setup_wilma
 from .config import Config, Kid
 
 APP_PASSWORDS_URL = "https://myaccount.google.com/apppasswords"
@@ -60,7 +60,7 @@ WILMA_CITIES = {
     "vantaa.inschool.fi": "Vantaa",
     "kauniainen.inschool.fi": "Kauniainen",
 }
-WILMA_INSTALL = "npm install -g @wilm-ai/wilma-cli"
+WILMA_INSTALL = shlex.join(["npm", *setup_wilma.INSTALL_ARGS])  # the pinned version (ADR 0008)
 WILMA_POLL_SECONDS = 2
 # The Wilma window's own text, in the reviewed languages; any other language gets the English.
 # Wilma comes before the AI login in setup, so there's no AI yet to translate it.
@@ -240,35 +240,44 @@ def gmail_sign_in(address: str, password: str) -> tuple[str, str | None]:
 # ---------------------------------------------------------------- wilma
 
 def cmd_wilma(args: argparse.Namespace) -> int:
-    """The wilma CLI signs in only on its own interactive screen, so this runs that screen in a
-    Terminal window and watches for its result: the CLI saves its config once the sign-in has
-    worked, and the window's script records the screen's exit status when it closes. The
-    password stays between the family and the CLI; this reads only the Wilma address from the
-    CLI's config."""
-    from .collectors import wilma
-
     if args.screen:
         return _sign_in_screen(args.screen, args.language)
+    out = sign_in_in_terminal(args.language, args.timeout, no_open=args.no_open)
+    return _report(out.pop("result"), out.pop("next", None), **out)
+
+
+def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -> dict[str, Any]:
+    """The wilma CLI signs in only on its own interactive screen, so this runs that screen in a
+    Terminal window and waits for its result: the CLI saves its config once the sign-in has
+    worked, and the window's script records the screen's exit status when it closes. The
+    password stays between the family and the CLI; this reads only the Wilma address from the
+    CLI's config. Returns the step's outcome as `setup wilma` prints it; the setup page offers
+    this window when its own sign-in fails for any reason but a wrong password (ADR 0008)."""
+    from .collectors import wilma
+
+    def outcome(result: str, next_: str | None = None, **extra: Any) -> dict[str, Any]:
+        return {"result": result, **extra, **({"next": next_} if next_ else {})}
+
     program = shutil.which(wilma.WILMA)
     if not program:
-        return _report("not-installed", f"Install the wilma CLI in Terminal with {WILMA_INSTALL} "
+        return outcome("not-installed", f"Install the wilma CLI in Terminal with {WILMA_INSTALL} "
                        "(it needs Node: brew install node), then run this again.")
     again = f"{_program()} setup wilma"
-    config = _wilma_config_path()
+    config = setup_wilma.config_path()
     with tempfile.TemporaryDirectory(prefix="parent-recap-wilma-") as tmp:
         status = Path(tmp) / "exit-status"
         seen = _mtime(config)
-        if not args.no_open:
+        if not no_open:
             script = Path(tmp) / "Wilma sign-in.command"
-            script.write_text(_sign_in_script(program, args.language, status))
+            script.write_text(_sign_in_script(program, language, status))
             script.chmod(0o700)
             if subprocess.run(["open", "-a", "Terminal", str(script)],
                               capture_output=True).returncode != 0:
-                return _report("no-terminal", "Terminal didn't open. The family runs wilma in "
+                return outcome("no-terminal", "Terminal didn't open. The family runs wilma in "
                                f"Terminal and signs in there, then run: {again} --no-open")
 
-        polls = max(1, math.ceil(args.timeout / WILMA_POLL_SECONDS))
-        check_now = args.no_open  # already signed in, perhaps
+        polls = max(1, math.ceil(timeout / WILMA_POLL_SECONDS))
+        check_now = no_open  # already signed in, perhaps
         for poll in range(polls + 1):
             exit_status = _exit_status(status)
             config_mtime = _mtime(config)
@@ -280,18 +289,18 @@ def cmd_wilma(args: argparse.Namespace) -> int:
                     kids = None
                 if kids is not None:
                     address = _wilma_address(config)
-                    return _report("signed-in", city=WILMA_CITIES.get(address or ""),
+                    return outcome("signed-in", city=WILMA_CITIES.get(address or ""),
                                    wilma_address=address, kids=kids)
                 if exit_status == 0:
-                    return _report("not-signed-in", "The Wilma screen was closed before signing "
+                    return outcome("not-signed-in", "The Wilma screen was closed before signing "
                                    f"in. Run this again when the family is ready: {again}")
                 if exit_status is not None:
-                    return _report("sign-in-failed", "Wilma didn't sign in. The family checks "
+                    return outcome("sign-in-failed", "Wilma didn't sign in. The family checks "
                                    "the city and the parent account's username and password, "
                                    f"then signs in again: {again}")
             if poll < polls:
                 time.sleep(WILMA_POLL_SECONDS)
-    return _report("timeout", f"The family didn't sign in to Wilma within {args.timeout} "
+    return outcome("timeout", f"The family didn't sign in to Wilma within {timeout} "
                    "seconds. If the Wilma window is still open, they finish there, then run: "
                    f"{again} --no-open. Otherwise run: {again}")
 
@@ -319,7 +328,7 @@ def _sign_in_screen(program: str, language: str) -> int:
     out = sys.stdout.buffer
     out.write(guide)
     out.flush()
-    config = _wilma_config_path()
+    config = setup_wilma.config_path()
     seen = _mtime(config)
     pid, fd = pty.fork()
     if pid == 0:
@@ -384,14 +393,6 @@ def _show_sign_in(fd: int, guide: bytes, saved) -> bool:
         if terminal:
             termios.tcsetattr(stdin, termios.TCSAFLUSH, before)
             signal.signal(signal.SIGWINCH, signal.SIG_DFL)
-
-
-def _wilma_config_path() -> Path:
-    """Where the wilma CLI keeps its config, found the way the CLI finds it."""
-    if os.environ.get("WILMAI_CONFIG_PATH"):
-        return Path(os.environ["WILMAI_CONFIG_PATH"])
-    base = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
-    return Path(base) / "wilmai" / "config.json"
 
 
 def _mtime(path: Path) -> int | None:

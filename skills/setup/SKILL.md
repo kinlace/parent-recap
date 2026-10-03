@@ -161,7 +161,7 @@ If the Kids' school doesn't use Wilma, mark Wilma skipped. Ask, one message each
 
 Otherwise:
 
-1. If `wilma` isn't installed, run `npm install -g @wilm-ai/wilma-cli`.
+1. If `wilma` isn't installed, run `npm install -g @wilm-ai/wilma-cli@1.6.2`, the version setup is tested with.
 2. Tell the parent a Terminal window will open with a short guide on top: they type their town in Finnish (Espoo, Helsinki, Vantaa …), pick it from the list, and sign in with their Wilma username and password. The window ends Wilma by itself once they're signed in and says it can be closed. Then run `$FB setup wilma --timeout 540 --language <code>`, with the language code from the card. The guide is in English, Chinese or Finnish; in any other language it's in English, so tell the parent the steps in their language before running it.
 3. On `signed-in`, show the Kids it found, by name. Don't ask for the city: `city` comes from the Wilma address. If `city` is null, it's a city without a preset: follow "Cities without a preset" in `PLUGIN/docs/config.md` for the starting Gmail allowlist. Don't ask about the Kids yet; the parent confirms them in Check.
 4. In the same message, as a short note before the choice to go on to Gmail, give the gist of "Where the Wilma password is stored" in `PLUGIN/docs/sources.md`: the wilma CLI keeps the password unencrypted in `~/.config/wilmai/config.json`, so they shouldn't sync or back up that folder.
@@ -169,6 +169,7 @@ Otherwise:
 **Save the Kids** now with `$FB setup save`, in one call:
 
 - `kids`: one per Kid, `name` exactly as Wilma spells it (or as the parent typed it without Wilma), `school` and `class_name` only when Wilma has them, and `grade` when it follows from the class (3 for 3B). Their everyday names come in Check
+- `city`: the Household's town in Finnish, such as `Espoo`: the `city` from `setup wilma`, or the city the parent gave without Wilma. Leave it out when `setup wilma` gave none
 - `sources.gmail.allowlist_domains`: the starting allowlist for the city from "City presets" in `PLUGIN/docs/config.md`
 - `sources.wilma`: `{"enabled": true}` with Wilma
 - `progress`: Wilma `done` (or `skipped`), and `source` `gmail`
