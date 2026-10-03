@@ -106,14 +106,14 @@ Note: without `bg`, reading WhatsApp directly from Terminal, Claude Code or Code
 
 Whichever mode you pick, an event the model finds goes into the calendar only if it points to a message read that night, and it keeps a link only if that message has the link. The model is also told that message text is data, not instructions: a message in a parent group or an email that tells it to add an event or a link is reported in the Brief instead of followed.
 
-Pick one of the two modes on setup's defaults card:
+There are two modes. Setup always starts with ics; a family who wants Google Calendar turns it on later with `/parent-recap:manage`, once they have the Google app file:
 
 **ics (default)**: `google_calendar.mode: ics`. New events the model finds in Wilma, mail and group chats (parent evenings, trips, deadlines …) are put in one `.ics` attachment on the Brief email. Tap the attachment on the phone to add them to the calendar (on iPhone choose "Add All"). Each event is sent only once, and its UID in the attachment is fixed, so importing it again doesn't create duplicates.
 
 **google**: `mode: google` writes straight into Google Calendar, removes duplicates, and can invite a partner automatically.
 The plugin doesn't include a Google app. Authorizing needs a Google app file (the JSON of a Desktop OAuth client); either:
 
-- **Pilot families**: use the file the Parent Recap maintainers sent you separately
+- **Pilot families**: use the file the Parent Recap team gives you separately. Until you have it, stay with ics mode
 - **Everyone else**: create your own by following [Creating your own Google app](#creating-your-own-google-app) below. If that's too much hassle, use ics mode
 
 1. Save the file to `~/.family/calendar_credentials.json`, readable only by you (`umask 077` makes the copy owner-only from the start):

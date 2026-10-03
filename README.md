@@ -105,6 +105,6 @@ The tests compare the Brief's text, HTML, `.ics` attachment and the full prompt 
 
 To work through issues labelled `ready-for-agent` unattended, one PR at a time, use `scripts/issue-loop.sh` (macOS, Claude Code). What it needs and how to run it are at the top of that file; try `scripts/issue-loop.sh --dry-run` first.
 
-The Google app file shared with pilot families is not in the repository or the package: the maintainers send it separately to pilot families who use Google Calendar mode, and setup saves it to `~/.family/calendar_credentials.json`.
+The Google app file shared with pilot families is not in the repository or the package: the Parent Recap team sends it separately to pilot families who want Google Calendar mode, and `/parent-recap:manage` saves it to `~/.family/calendar_credentials.json`.
 
 To contribute a fix or an idea, see [CONTRIBUTING.md](CONTRIBUTING.md).
