@@ -1,5 +1,7 @@
 # Setup asks for secrets in a macOS dialog, not in the chat or a Terminal window
 
+Superseded for the setup page by ADR 0007. The chat setup still follows this ADR.
+
 Setup needs a few secrets: the Gmail App Password, the Claude token and each Kid's MyClub calendar link. They must never pass through the chat, where the AI would see them and the transcript would keep them. Up to 0.4.1 the family typed each one into a script in their own Terminal window. That kept secrets out of the chat, but every secret meant opening a new window and copy-pasting a command, which testers found the slowest and most confusing part of setup. From the one-click setup on, the setup command asks for the secret itself in a native macOS dialog with hidden input, checks it where it can (a Gmail sign-in, a test call), stores it, and prints only that it was saved. The assistant runs the command and never sees the value.
 
 Two steps stay as they are. Wilma's sign-in stays in Terminal, because the Wilma CLI only signs in on its own interactive screen. The wake schedule's `sudo pmset` moves to macOS's administrator password dialog, which is the same idea for the Mac password.
