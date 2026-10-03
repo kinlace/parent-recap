@@ -50,7 +50,8 @@ marketplace_folder() {
 install_claude() {
   command -v claude >/dev/null || {
     echo "❌ Claude Code isn't installed (there is no \`claude\` command)."
-    echo "   Install it (https://claude.com/claude-code), open a new Terminal window (⌘N) and paste the line again."
+    echo "   Install it with: curl -fsSL https://claude.ai/install.sh | bash"
+    echo "   Then open a new Terminal window (⌘N) and paste the line again."
     exit 1
   }
   # The plugin's name before 0.4.0. Settings and Briefs in ~/.family and ~/FamilyBrief stay.

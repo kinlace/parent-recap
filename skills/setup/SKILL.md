@@ -89,11 +89,12 @@ Note from the answers:
 **Get the Mac ready first**, since the `setup` commands come with the program:
 
 ```bash
-sw_vers -productVersion; for c in python3 node npm claude brew; do printf "%-8s" $c; command -v $c || echo "(missing)"; done; python3 -c 'import sys; print(sys.version.split()[0])'; ls -d /Applications/Codex.app /Applications/ChatGPT.app 2>/dev/null
+sw_vers -productVersion; for c in python3 node npm claude brew; do printf "%-8s" $c; command -v $c || echo "(missing)"; done; ls ~/.local/bin/claude 2>/dev/null; python3 -c 'import sys; print(sys.version.split()[0])'; ls -d /Applications/Codex.app /Applications/ChatGPT.app 2>/dev/null
 ```
 
 - Python must be 3.11 or newer (the 3.9 that ships with macOS won't do): `brew install python`. Wilma needs Node: `brew install node`. Without Homebrew, give the user the install command from https://brew.sh to run in Terminal themselves.
-- Claude: the `claude` command must be on the PATH, since the nightly job uses it. If missing: `npm install -g @anthropic-ai/claude-code`.
+- Claude: the nightly job uses the `claude` command. If `claude` is missing and there's no `~/.local/bin/claude` either, give the user Claude Code's native installer to run in Terminal: `curl -fsSL https://claude.ai/install.sh | bash`. It installs into their own folder (`~/.local/bin`) and keeps Claude Code up to date by itself. A `~/.local/bin/claude` counts as installed even when `command -v` says missing: the program finds it there. Don't suggest `npm install -g @anthropic-ai/claude-code`: a global npm install can leave Claude Code unable to update itself.
+- If the parent sees Claude Code's red notice "Auto-update failed" (often "no write permission to npm prefix"), or `claude` isn't in `~/.local/bin` and `npm ls -g @anthropic-ai/claude-code` lists it (an npm install), tell them the notice comes from Claude Code itself and doesn't affect Parent Recap. Setup carries on. If they want the notice gone, they can install Claude Code again with the native installer above, after setup.
 - ChatGPT: Codex or the ChatGPT desktop app must be installed and signed in to Codex with their ChatGPT account. The program uses the codex bundled in the app.
 
 Then install the program with `bash "PLUGIN/install.sh"`. It takes a few minutes.
