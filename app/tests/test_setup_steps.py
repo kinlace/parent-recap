@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import imaplib
 import os
+import plistlib
 import shlex
 import subprocess
 import sys
@@ -175,6 +176,22 @@ def test_schedule_install_sets_the_wake_schedule_through_the_administrator_dialo
     assert "Parent Recap" in mac.admin_scripts[0]  # the dialog says who is asking, and why
     assert "20:55" in out and "sudo" not in out
     assert "replace" not in out
+
+
+def test_schedule_install_puts_the_native_installers_folder_on_the_jobs_path(harness, mac,
+                                                                            monkeypatch):
+    # Claude Code's native installer puts claude in ~/.local/bin. The shell that runs schedule
+    # install may not have it on PATH yet, but the nightly job must find claude there.
+    bin_dir = harness.home / ".local" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "claude").write_text("#!/bin/sh\nexit 0\n")
+    (bin_dir / "claude").chmod(0o755)
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+
+    assert harness.cli("schedule", "install") == 0
+
+    plist = plistlib.loads((ops.LAUNCH_AGENTS / f"{ops.JOB_DAILY}.plist").read_bytes())
+    assert str(bin_dir) in plist["EnvironmentVariables"]["PATH"].split(":")
 
 
 def test_schedule_install_skips_the_wake_schedule_when_the_mac_never_sleeps(harness, mac, capsys):

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import msg
 
 from family_brief import install_record
 
@@ -179,6 +180,8 @@ def test_without_the_claude_cli_it_says_how_to_install_it(harness, terminal, mon
 
     res, _ = result(capsys)
     assert res["result"] == "not-installed" and "claude" in res["next"]
+    assert "curl -fsSL https://claude.ai/install.sh | bash" in res["next"]
+    assert "npm" not in res["next"]
     assert terminal.scripts == [] and harness.dialog.shown == []
 
 
@@ -233,3 +236,59 @@ def test_doctor_points_to_the_setup_step_when_no_token_is_stored(harness, termin
 
     out = capsys.readouterr().out
     assert "family-brief setup claude" in out and "setup_claude_token" not in out
+
+
+# ── Claude Code from its native installer, in ~/.local/bin
+#
+# The native installer puts `claude` in ~/.local/bin and adds that folder to the shell's PATH,
+# which a shell started earlier, the agent's own process or the nightly job may not have.
+
+
+@pytest.fixture
+def native_claude(harness, monkeypatch) -> Path:
+    """A fake `claude` where the native installer puts it, on no PATH this process sees."""
+    bin_dir = harness.home / ".local" / "bin"
+    bin_dir.mkdir(parents=True)
+    claude = bin_dir / "claude"
+    claude.write_text("#!/bin/sh\nexit 0\n")
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    return claude
+
+
+def test_setup_claude_finds_claude_from_the_native_installer(harness, terminal, native_claude,
+                                                             capsys):
+    harness.dialog.typed = TOKEN
+
+    assert harness.cli("setup", "claude") == 0
+
+    res, _ = result(capsys)
+    assert res["result"] == "saved"
+    assert str(native_claude) in terminal.scripts[0]
+    assert harness.model_calls[0].argv[0] == str(native_claude)
+
+
+def test_doctor_finds_claude_from_the_native_installer(harness, native_claude, monkeypatch, capsys):
+    from family_brief import ops
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    harness.config["wilma"]["enabled"] = False
+    harness.config["whatsapp"]["enabled"] = False
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    harness.keychain[ACCOUNT] = TOKEN
+    harness.model_reply = "OK"
+
+    harness.cli("doctor")
+
+    out = capsys.readouterr().out
+    assert "Claude: call succeeded" in out and "not found" not in out
+    assert harness.model_calls[0].argv[0] == str(native_claude)
+
+
+def test_the_nightly_run_finds_claude_from_the_native_installer(harness, native_claude):
+    harness.keychain[ACCOUNT] = TOKEN
+    harness.sources["gmail"] = [msg("gmail", "g-1", "2026-09-27T08:15:00+03:00",
+                                    "Parents' evening is on 8.10.", sender="teacher@kilo.example.fi")]
+
+    assert harness.run() == 0
+
+    assert harness.model_calls and harness.model_calls[0].argv[0] == str(native_claude)
