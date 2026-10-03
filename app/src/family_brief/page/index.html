@@ -75,6 +75,42 @@
     <h1 data-text="connect.title"></h1>
     <p class="note" data-text="connect.intro"></p>
     <ol id="sources" class="sources"></ol>
+    <div id="source-wilma" class="source" hidden>
+      <h2 data-text="source.wilma"></h2>
+      <fieldset>
+        <legend data-text="wilma.uses"></legend>
+        <label><input type="radio" name="wilma-uses" value="yes" checked><span data-text="wilma.uses.yes"></span></label>
+        <label><input type="radio" name="wilma-uses" value="no"><span data-text="wilma.uses.no"></span></label>
+      </fieldset>
+      <div class="field">
+        <label for="wilma-search" data-text="wilma.search"></label>
+        <input type="search" id="wilma-search" autocomplete="off" spellcheck="false" disabled>
+        <p class="hint" data-text="wilma.search.hint"></p>
+      </div>
+      <fieldset id="wilma-towns" class="towns"></fieldset>
+      <p id="wilma-none" class="hint" data-text="wilma.none-found" hidden></p>
+      <form id="wilma-form" class="details">
+        <div class="field">
+          <label for="wilma-username" data-text="wilma.username"></label>
+          <input type="text" id="wilma-username" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+        </div>
+        <div class="field">
+          <label for="wilma-password" data-text="wilma.password"></label>
+          <input type="password" id="wilma-password" name="password" autocomplete="current-password" required>
+        </div>
+        <p class="hint" data-text="wilma.fill"></p>
+        <div class="actions">
+          <button type="submit" id="wilma-sign-in" data-text="wilma.sign-in"></button>
+          <button type="button" id="wilma-passwords" class="secondary" data-text="wilma.passwords"></button>
+        </div>
+      </form>
+      <form id="town-form" class="details" hidden>
+        <p class="hint" data-text="wilma.town.note"></p>
+        <div class="actions">
+          <button type="submit" id="town-save" data-text="wilma.town.save"></button>
+        </div>
+      </form>
+    </div>
     <div id="source-gmail" class="source" hidden>
       <h2 data-text="source.gmail"></h2>
       <p data-text="gmail.explain"></p>
@@ -102,7 +138,14 @@
     <div id="source-status" class="status" role="status" hidden>
       <p id="source-message"></p>
       <code id="source-url" hidden></code>
+      <ul id="source-kids" class="kids" hidden></ul>
+      <div id="source-install" class="install" hidden>
+        <code id="source-install-line"></code>
+        <button type="button" id="source-copy" class="secondary" data-text="copy"></button>
+      </div>
       <button type="button" id="gmail-two-step" class="secondary" data-text="gmail.two-step" hidden></button>
+      <button type="button" id="wilma-again" class="secondary" data-text="wilma.again" hidden></button>
+      <button type="button" id="wilma-terminal" class="secondary" data-text="wilma.terminal" hidden></button>
     </div>
     <p><button type="button" id="source-skip" class="secondary" data-text="source.skip" hidden></button></p>
   </section>

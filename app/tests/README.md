@@ -51,7 +51,16 @@ from `harness.signed_in`, and the test puts a fake `claude` or `codex` on PATH t
 On Connect, it checks the Source list's statuses, skipping and coming back, and the page's Gmail
 step against a fake IMAP server and Keychain: a valid App Password is stored and Gmail turns done,
 each known result has its explanation in all three languages, and the App Password never reaches
-a response, the output, the logs, a command line or a file in `~/.family`.
+a response, the output, the logs, a command line or a file in `~/.family`. Its Wilma step runs
+against a fake `npm` and a fake wilma CLI, laid out as `npm install -g` lays out the pinned
+version with Wilma's tenant list inside, which reads the profile the page writes the way the
+pinned CLI's own code does and signs in to a fake Wilma that knows one account. It checks that
+"Espoo" and "Esbo" find the Espoo entries, that the pinned CLI is installed when missing, that a
+good login writes the profile in the CLI's format and the page lists the Kids from it, that a
+wrong password is reported as such and any other failure offers the Terminal window (whose `open
+-a Terminal` the test answers by saving the CLI's profile), that the CLI's earlier profile is put
+back when a sign-in fails, that a Household without Wilma saves only its town, and that the Wilma
+password never reaches a response, the output, the logs, a command line or `~/.family`.
 Where no port can be listened on (a sandbox), the server takes each connection through a socket
 pair instead.
 `test_one_line_install.py` runs the README's one-line install, `get.sh --claude` and `--codex`,

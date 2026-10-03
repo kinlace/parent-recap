@@ -35,6 +35,7 @@ One town outside the presets was set up end to end in a fresh-install test in Oc
 | Field                                  | Meaning                                                                                                                         |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `summary_language`                     | Language code of Recipients who don't pick their own: `en` (the default), `zh`, `sv` or others                                  |
+| `city`                                 | The Household's town in Finnish, such as `Espoo`, picked from Wilma's town list in setup, with or without Wilma                 |
 | `kids[].name`                          | The Kid's full name, ideally spelled as in Wilma; the model uses it to tell which Kid a message is about                        |
 | `kids[].everyday_name`                 | What the family calls the Kid; the Brief uses it everywhere (Digest, Action Items, calendar events). Leave it out to use `name`  |
 | `kids[].aliases`                       | Other names used in chats and mail: nicknames, English name, Chinese name                                                       |
