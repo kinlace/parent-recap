@@ -209,6 +209,14 @@ def test_each_run_has_its_own_code_and_port(harness, clock):
         second.stop()
 
 
+def test_the_page_starts_without_looking_up_the_host_name(harness, monkeypatch):
+    # http.server's own bind looks up the host name, which took over 5 seconds on CI's Mac.
+    def look_up(*_):
+        raise AssertionError("looked up the host name")
+    monkeypatch.setattr(socket, "getfqdn", look_up)
+    setup_server.SetupServer(config_file(harness)).stop()
+
+
 # ── the safeguards
 
 

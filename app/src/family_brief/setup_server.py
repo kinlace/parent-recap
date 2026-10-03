@@ -22,6 +22,7 @@ import json
 import os
 import re
 import secrets
+import socketserver
 import subprocess
 import threading
 import time
@@ -88,7 +89,7 @@ class SetupServer:
     def __init__(self, config: Path) -> None:
         self.config = config
         self.code = secrets.token_urlsafe(32)
-        self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        self._httpd = _HTTPServer(("127.0.0.1", 0), _Handler)
         self._httpd.setup = self  # type: ignore[attr-defined]
         host, port = self._httpd.server_address[:2]
         self.address = (str(host), int(port))
@@ -168,6 +169,16 @@ def mac_language() -> str:
         if language in LANGUAGES:
             return language
     return "en"
+
+
+class _HTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer without its look-up of this Mac's host name when it binds, which
+    can take several seconds on some Macs and networks while the family waits for the page."""
+
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name, self.server_port = str(host), int(port)
 
 
 class _Handler(BaseHTTPRequestHandler):
