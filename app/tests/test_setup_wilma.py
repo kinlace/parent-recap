@@ -3,14 +3,17 @@ Terminal window, waits for the family, then reports the Kids and the city as one
 
 The outside edges are faked: `open` runs the Terminal script it's given right away, as if the
 family had just finished in that window, and `wilma` is a fake CLI on the PATH whose sign-in
-screen writes the config the real one writes. Waiting takes no time: `time.sleep` returns at
-once. Assertions are on the JSON result, on what was opened, and on every place the Wilma
-password must never reach."""
+screen behaves like the real one's: it clears the screen before each question, asks which
+student when there are several, writes its config only after that, then asks what to view and
+fails with a 403 if anything is picked. Waiting takes no time: `time.sleep` returns at once.
+Assertions are on the JSON result, on what the window showed, on what was opened, and on every
+place the Wilma password must never reach."""
 from __future__ import annotations
 
 import base64
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -22,18 +25,33 @@ import pytest
 REAL_RUN = subprocess.run  # before the harness fakes it
 PASSWORD = "Wilma-salasana-42"
 CONFIG_MD = Path(__file__).resolve().parents[2] / "docs" / "config.md"
+NO_PTY = Path(__file__).with_name("no_pty")
 STUDENTS = [{"studentNumber": "1001", "name": "Mia Virtanen", "href": "/!1001/"},
             {"studentNumber": "1002", "name": "Leo Virtanen", "href": "/!1002/"}]
 
+CLEAR = "\x1b[1;1H\x1b[0J"  # Node's console.clear(), which the CLI calls before each question
 FAKE_WILMA = """#!{python}
-import json, os, pathlib, sys
+import json, os, pathlib, select, sys, time
 ctl = json.loads(pathlib.Path(__file__).with_name("wilma.json").read_text())
 cfg = pathlib.Path(os.environ["HOME"]) / ".config" / "wilmai" / "config.json"
 args = sys.argv[1:]
+
+def ask(question):  # the answer's first key, or None when none comes
+    print(question, flush=True)
+    if select.select([0], [], [], 5)[0]:
+        return os.read(0, 1) or None
+
 if not args:  # the interactive sign-in screen
+    print({clear!r} + "? Search tenant by city/name (blank to list all, or type URL)", flush=True)
+    time.sleep(0.3)  # the family types the town, the username and the password
     if ctl["signs_in_to"]:
+        if len(ctl["students"]) > 1:
+            ask({clear!r} + "? Select student")
         cfg.parent.mkdir(parents=True, exist_ok=True)
         cfg.write_text(json.dumps(ctl["config"]))
+        if ask({clear!r} + "? What do you want to view?") is not None:
+            print("CLI error: Wilma HTTP 403 at /!1001/overview", file=sys.stderr, flush=True)
+            sys.exit(1)
     sys.exit(ctl["exit"])
 if args[:2] == ["kids", "list"]:
     if not cfg.exists():
@@ -67,6 +85,7 @@ class Wilma:
         self.terminal_runs = True     # False: the family never finishes in the window
         self.terminal_opens = True    # False: macOS won't open Terminal
         self.terminal: list[str] = []  # each script opened in Terminal, as it read then
+        self.window = ""              # everything the Terminal window showed
 
     @property
     def config_path(self) -> Path:
@@ -78,12 +97,21 @@ class Wilma:
 
     def install(self) -> None:
         exe = self.bin_dir / "wilma"
-        exe.write_text(FAKE_WILMA.format(python=sys.executable))
+        exe.write_text(FAKE_WILMA.format(python=sys.executable, clear=CLEAR))
         exe.chmod(0o755)
         config = wilma_config(self.signs_in_to) if self.signs_in_to else None
         (self.bin_dir / "wilma.json").write_text(json.dumps(
             {"signs_in_to": self.signs_in_to, "config": config, "exit": self.exit,
              "students": self.students}))
+
+
+def can_open_a_pty() -> bool:
+    try:
+        for fd in os.openpty():
+            os.close(fd)
+    except OSError:
+        return False
+    return True
 
 
 @pytest.fixture
@@ -93,6 +121,8 @@ def wilma(harness, tmp_path, monkeypatch) -> Wilma:
     for var in ("WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    if not can_open_a_pty():
+        monkeypatch.setenv("PYTHONPATH", str(NO_PTY))
     monkeypatch.setattr(time, "sleep", lambda _s: None)
     w = Wilma(harness.home, bin_dir)
     others = subprocess.run  # the harness's fakes
@@ -107,7 +137,9 @@ def wilma(harness, tmp_path, monkeypatch) -> Wilma:
                 return subprocess.CompletedProcess(cmd, 1, "", "Unable to find application")
             w.terminal.append(Path(cmd[3]).read_text())
             if w.terminal_runs:
-                REAL_RUN(["/bin/sh", cmd[3]], capture_output=True)
+                shown = REAL_RUN(["/bin/sh", cmd[3]], stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                w.window += shown.stdout.decode()
             return subprocess.CompletedProcess(cmd, 0, "", "")
         return others(cmd, *a, **k)
     monkeypatch.setattr(subprocess, "run", run)
@@ -211,6 +243,65 @@ def test_no_open_reads_at_once_when_already_signed_in(harness, wilma, capsys):
 
     assert result(capsys)[0]["result"] == "signed-in"
     assert wilma.terminal == []
+
+
+# ── the window
+
+
+def screen_at(window: str, prompt: str) -> str:
+    """What the window shows while the CLI asks `prompt`: everything since the screen was last
+    cleared before it."""
+    return window[:window.index(prompt)].rsplit(CLEAR, 1)[-1]
+
+
+@pytest.mark.parametrize("language, words", [
+    ("en", ["Espoo, Helsinki or Vantaa", "Wilma website or app", "saved passwords"]),
+    ("zh", ["Espoo、Helsinki 或 Vantaa", "Wilma 网站或 App", "浏览器保存的密码"]),
+    ("fi", ["Espoo, Helsinki tai Vantaa", "Wilman verkkosivulla tai sovelluksessa",
+            "tallennetuista salasanoista"]),
+    ("sv", ["Espoo, Helsinki or Vantaa", "Wilma website or app", "saved passwords"]),
+])
+def test_the_window_guides_the_family_in_their_language_while_wilma_asks_for_the_town(
+        harness, wilma, capsys, language, words):
+    wilma.install()
+
+    assert harness.cli("setup", "wilma", "--language", language) == 0
+
+    shown = screen_at(wilma.window, "Search tenant by city/name")
+    assert all(w in shown for w in words), shown
+
+
+def test_the_guide_is_in_english_without_a_language(harness, wilma, capsys):
+    wilma.install()
+
+    assert harness.cli("setup", "wilma") == 0
+
+    assert "saved passwords" in screen_at(wilma.window, "Search tenant by city/name")
+
+
+@pytest.mark.parametrize("students", [STUDENTS, STUDENTS[:1]], ids=["two Kids", "one Kid"])
+def test_once_signed_in_the_window_ends_wilma_before_its_student_picker_and_menu(
+        harness, wilma, capsys, students):
+    wilma.students = students
+    wilma.install()
+
+    assert harness.cli("setup", "wilma") == 0
+
+    assert result(capsys)[0]["result"] == "signed-in"
+    for hidden in ("Select student", "What do you want to view?", "403", "CLI error"):
+        assert hidden not in wilma.window
+    assert wilma.window.rsplit(CLEAR, 1)[-1].strip().endswith("You can close this window.")
+    assert "signed in to Wilma" in wilma.window.rsplit(CLEAR, 1)[-1]
+
+
+def test_the_window_says_it_can_be_closed_when_wilma_ends_without_a_sign_in(harness, wilma,
+                                                                         capsys):
+    wilma.signs_in_to, wilma.exit = None, 0
+    wilma.install()
+
+    assert harness.cli("setup", "wilma", "--language", "zh") == 1
+
+    assert wilma.window.strip().endswith("可以关闭这个窗口了。")
 
 
 # ── when it doesn't work

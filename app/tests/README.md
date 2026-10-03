@@ -17,7 +17,9 @@ Keychain and IMAP server, and checks the App Password never reaches the output, 
 command line.
 `test_setup_wilma.py` runs `family-brief setup wilma` against a fake `wilma` CLI and a Terminal
 that runs the sign-in script at once, and checks the Kids, the city from every preset Wilma
-address and that the Wilma password never reaches the output.
+address, the window's guide in each language, that the window ends the CLI before its student
+picker and menu, and that the Wilma password never reaches the output. Where no pseudo-terminal
+can be opened (a sandbox), the window talks to the fake CLI through `no_pty/sitecustomize.py`.
 `test_setup_claude.py` runs `family-brief setup claude` against a fake Terminal, macOS dialog,
 Keychain and `claude` test call, and checks the token never reaches the output, the logs or a
 command line. `test_setup_claude_token.py` keeps the older Terminal script working.

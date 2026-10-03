@@ -43,7 +43,7 @@ Each prints one line of JSON. `result` says what happened; when it isn't a succe
 
 | Command                                    | Success                                        | Also gives                                                           |
 | ------------------------------------------ | ---------------------------------------------- | -------------------------------------------------------------------- |
-| `$FB setup wilma --timeout 540`            | `signed-in`                                    | `kids` (name, school, class), `wilma_address`, `city` (or null)      |
+| `$FB setup wilma --timeout 540 --language <code>` | `signed-in` | `kids` (name, school, class), `wilma_address`, `city` (or null) |
 | `$FB setup gmail --address <address>`      | `saved`                                        | `address`                                                            |
 | `$FB setup claude`                         | `saved`                                        | `test_call: ok`                                                      |
 | `$FB setup whatsapp --timeout 540`         | `readable`                                     | `chats` (name, last message, archived, `hint` naming the Kids it seems to be about) |
@@ -80,7 +80,7 @@ Note from the answers:
 - The parent's Gmail address. Parent Recap reads school mail in it and sends the Brief from it, so it's the account school mail arrives in. If the parent gives an address that isn't Gmail, ask for the Gmail address school mail arrives in, or is forwarded to ("School mail at another address" in `PLUGIN/docs/sources.md`).
 - The Recipients: the parent's address first, then the partner's, with the partner's language if it differs. The Brief is written in the first Recipient's language, and the archive and calendar events follow it.
 
-**What they'll connect.** Show the Source list below, with one line each on why it's needed, and that WhatsApp and MyClub can be skipped and added later through `/parent-recap:manage`. Then start.
+**What they'll connect.** Show the Source list below, with one line each on why it's needed, and that WhatsApp and MyClub can be skipped and added later through `/parent-recap:manage`. Ask them to have their Wilma username and password ready, the same ones as on the Wilma website or app; if they don't remember them, they may find them in their browser's saved passwords. Then start.
 
 ## 2. Connect
 
@@ -117,7 +117,7 @@ If the Kids' school doesn't use Wilma, mark Wilma skipped, ask for each Kid's fu
 Otherwise:
 
 1. If `wilma` isn't installed, run `npm install -g @wilm-ai/wilma-cli`.
-2. Tell the parent a Terminal window will open: they type their city, pick it, sign in with the Wilma parent account, and choose Exit when Wilma asks what to view. Then run `$FB setup wilma --timeout 540`.
+2. Tell the parent a Terminal window will open with a short guide on top: they type their town in Finnish (Espoo, Helsinki, Vantaa …), pick it from the list, and sign in with their Wilma username and password. The window ends Wilma by itself once they're signed in and says it can be closed. Then run `$FB setup wilma --timeout 540 --language <code>`, with the language code from the card. The guide is in English, Chinese or Finnish; in any other language it's in English, so tell the parent the steps in their language before running it.
 3. On `signed-in`, show the Kids it found. Don't ask for the city: `city` comes from the Wilma address. If `city` is null, it's a city without a preset: follow "Cities without a preset" in `PLUGIN/docs/config.md` for the starting Gmail allowlist.
 4. Tell the parent in a sentence or two the gist of "Where the Wilma password is stored" in `PLUGIN/docs/sources.md`: the wilma CLI keeps the password unencrypted in `~/.config/wilmai/config.json`, so they shouldn't sync or back up that folder.
 
