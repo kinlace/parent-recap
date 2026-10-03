@@ -4,6 +4,17 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.4.3 · 2026-10-03
+
+Fixes from the first setup rehearsal on a fresh Mac (#56).
+
+### Install and setup
+- Setup asks one thing at a time, mostly as choices you tap, and no longer asks for your Kids' school or class.
+- The Wilma sign-in window explains in your language what to type, and closes Wilma by itself once you're signed in, so you no longer see the student picker or an error.
+- Setup no longer asks about Google Calendar, so new events always come as an attachment on the Brief. The assistant never searches your folders or opens your files.
+- If Claude Code isn't installed, setup gives Claude Code's own installer, which keeps it up to date by itself, and explains the "Auto-update failed" notice if you see it.
+- If you installed from the zip, pasting the Claude Code line now moves you to the latest release instead of keeping the old version.
+
 ## 0.4.2 · 2026-10-02
 
 A new setup: fewer questions, one list of things to connect, and no Terminal windows for passwords (#43).
