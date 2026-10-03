@@ -130,6 +130,27 @@
         </div>
       </form>
     </div>
+    <div id="source-ai" class="source" hidden>
+      <h2 data-text="source.ai"></h2>
+      <div id="ai-claude" hidden>
+        <p data-text="claude.explain"></p>
+        <p><button type="button" id="claude-start" data-text="claude.start"></button></p>
+        <form id="claude-form" class="details" hidden>
+          <p class="hint" data-text="claude.paste"></p>
+          <div class="field">
+            <label for="claude-token" data-text="claude.token"></label>
+            <input type="password" id="claude-token" autocomplete="off" spellcheck="false" required>
+          </div>
+          <div class="actions">
+            <button type="submit" id="claude-save" data-text="claude.save"></button>
+          </div>
+        </form>
+      </div>
+      <div id="ai-codex" hidden>
+        <p data-text="codex.explain"></p>
+        <p><button type="button" id="codex-login" data-text="codex.login" hidden></button></p>
+      </div>
+    </div>
     <div id="source-later" class="source" hidden>
       <h2 id="source-later-title"></h2>
       <p class="note" data-text="source.not-here"></p>
@@ -146,6 +167,8 @@
       <button type="button" id="gmail-two-step" class="secondary" data-text="gmail.two-step" hidden></button>
       <button type="button" id="wilma-again" class="secondary" data-text="wilma.again" hidden></button>
       <button type="button" id="wilma-terminal" class="secondary" data-text="wilma.terminal" hidden></button>
+      <button type="button" id="claude-again" class="secondary" data-text="claude.again" hidden></button>
+      <button type="button" id="claude-terminal" class="secondary" data-text="claude.terminal" hidden></button>
     </div>
     <p><button type="button" id="source-skip" class="secondary" data-text="source.skip" hidden></button></p>
   </section>

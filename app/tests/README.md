@@ -61,8 +61,15 @@ wrong password is reported as such and any other failure offers the Terminal win
 -a Terminal` the test answers by saving the CLI's profile), that the CLI's earlier profile is put
 back when a sign-in fails, that a Household without Wilma saves only its town, and that the Wilma
 password never reaches a response, the output, the logs, a command line or `~/.family`.
+Its AI sign-in runs a fake `claude` whose `setup-token` draws the token on the pseudo-terminal
+the page gives it, with Ink's escape sequences, and a fake `codex` whose `login` the harness's
+`codex login status` then reports signed in. It checks that Claude's token is read, tested with
+the harness's test call and stored with nothing copied, that a sign-in without a token, or one
+that times out, offers the Terminal window and the page takes the pasted token in its field, that
+the token never reaches a response, the output, the logs, a command line or `~/.family`, and that
+the Codex entry ticks itself once Codex is signed in.
 Where no port can be listened on (a sandbox), the server takes each connection through a socket
-pair instead.
+pair instead, and where no pseudo-terminal can be opened, `claude setup-token` gets a socket pair.
 `test_one_line_install.py` runs the README's one-line install, `get.sh --claude` and `--codex`,
 against a fake `claude` and a fake `curl` serving a stand-in `stable` tarball. It checks a first
 install, a second run updating, and that nothing it didn't put in `~/FamilyBrief/plugin` is replaced.

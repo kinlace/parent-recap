@@ -427,8 +427,7 @@ def cmd_claude(args: argparse.Namespace) -> int:
     (without one it stops with "Raw mode is not supported"), and it shows the token only on that
     screen, wrapped to the window. So this opens it in a Terminal window and asks for the token in
     the secret dialog, while the window's script is still there for Terminal to run."""
-    from .summarize import CLAUDE_INSTALL, claude_test_call, claude_token_env, find_claude
-    from .utils import keychain
+    from .summarize import CLAUDE_INSTALL, find_claude
 
     program = find_claude()
     if not program:
@@ -438,7 +437,7 @@ def cmd_claude(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory(prefix="parent-recap-claude-") as tmp:
         if not args.no_open:
             script = Path(tmp) / "Claude sign-in.command"
-            script.write_text(_setup_token_script(program))
+            script.write_text(setup_token_script(program))
             script.chmod(0o700)
             if subprocess.run(["open", "-a", "Terminal", str(script)],
                               capture_output=True).returncode != 0:
@@ -458,41 +457,61 @@ def cmd_claude(args: argparse.Namespace) -> int:
                            "family runs claude setup-token in Terminal, then this in Terminal: "
                            f"{again} --no-open")
 
+    result, error = claude_token_sign_in(program, typed)
+    if result == "not-a-token":
+        return _report("not-a-token", "That wasn't a Claude token. Copy the whole token Terminal "
+                       f"showed, starting with sk-ant-oat01-, and run this again: {again} --no-open")
+    if result == "test-call-failed":
+        return _report("test-call-failed", "Claude didn't accept the token, so it wasn't kept. "
+                       "Check the plan is Claude Pro or Max, then run this again to make a new "
+                       f"token: {again}", error=error)
+    if result == "keychain-failed":
+        return _report("keychain-failed", "The test call worked, but macOS didn't let Parent "
+                       "Recap save the token in the Keychain. Run this again and click Allow if "
+                       f"macOS asks: {again} --no-open")
+    return _report("saved", test_call="ok")
+
+
+def claude_token_sign_in(program: str, typed: str) -> tuple[str, str | None]:
+    """Makes one test call with the Claude token `typed` and stores it in the Keychain. Returns
+    the step's result, `saved`, `not-a-token`, `test-call-failed` or `keychain-failed`, and for a
+    failed test call what Claude said, with the token taken out. The setup page's sign-in and its
+    own field call this too, so all three give the same results."""
+    from .summarize import claude_test_call, claude_token_env
+    from .utils import keychain
+
     # The token has no spaces, so any are from copying it across the lines Terminal wrapped it on.
     token = "".join(typed.split())
     if not CLAUDE_TOKEN.fullmatch(token):
         # Not sent to Claude: it's most likely the family's own password, or only part of the token.
-        return _report("not-a-token", "That wasn't a Claude token. Copy the whole token Terminal "
-                       f"showed, starting with sk-ant-oat01-, and run this again: {again} --no-open")
+        return "not-a-token", None
 
     error = claude_test_call(program, claude_token_env(token))
     if error is not None:
-        return _report("test-call-failed", "Claude didn't accept the token, so it wasn't kept. "
-                       "Check the plan is Claude Pro or Max, then run this again to make a new "
-                       f"token: {again}", error=error.replace(token, "<token>").strip()[:200])
+        return "test-call-failed", error.replace(token, "<token>").strip()[:200]
 
     try:
         keychain.set_(CLAUDE_TOKEN_ACCOUNT, token)
     except keyring.errors.KeyringError:
-        return _report("keychain-failed", "The test call worked, but macOS didn't let Parent "
-                       "Recap save the token in the Keychain. Run this again and click Allow if "
-                       f"macOS asks: {again} --no-open")
+        return "keychain-failed", None
     install_record.add("keychain", CLAUDE_TOKEN_ACCOUNT)
-    return _report("saved", test_call="ok")
+    return "saved", None
 
 
-def _setup_token_script(program: str) -> str:
+def setup_token_script(program: str, paste_into: str = "the Parent Recap dialog") -> str:
+    """The Terminal window's script for `claude setup-token`, whose token the family copies into
+    `paste_into`."""
     return (
         "#!/bin/sh\n"
         "clear\n"
         "echo 'Parent Recap: sign in to Claude for the nightly Brief.'\n"
         "echo 'Click Authorize on the page that opens in your browser. If no page opens, open the'\n"
         "echo 'link shown below.'\n"
-        "echo 'Copy the token this window then shows and paste it in the Parent Recap dialog.'\n"
+        f"echo {shlex.quote(f'Copy the token this window then shows and paste it in {paste_into}.')}\n"
         "echo\n"
         f"{shlex.quote(program)} setup-token\n"
         "echo\n"
-        "echo 'When the token is in the Parent Recap dialog, press Enter here to clear it from'\n"
+        f"echo {shlex.quote(f'When the token is in {paste_into}, press Enter here to clear it from')}\n"
         "echo 'this window.'\n"
         "read _\n"
         # Clears the screen and the scrollback, so the token isn't left behind in the window.
