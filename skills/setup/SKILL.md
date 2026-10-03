@@ -14,10 +14,11 @@ You are helping a parent install Parent Recap on their own Mac. The user is ofte
 1. **A password, App Password, token or MyClub link never goes in the chat.** The `setup` commands ask for each one in a macOS dialog with hidden input (a hidden Terminal prompt without a desktop session), check it and store it themselves, and never print it. Wilma's password is typed only on the Wilma sign-in screen in Terminal, and the Mac password only in macOS's own dialogs. If the user pastes a secret into the chat anyway, tell them to delete it and make a new one afterwards. Once a Kid has a MyClub link, don't open or print the whole config; view it with `grep -v myclub_ical_url ~/.family/config.yaml`, and make changes with commands that don't print the file.
 2. **Don't ask "done?" about what a command can check.** Each Source command waits for the parent and checks the result itself (a Gmail sign-in, a test call, a WhatsApp read, Wilma's student list). Tell the parent what to do, run the command, and act on its `result`. Ask the parent only about what the program can't see.
 3. **Don't print mail or chat text into the chat.** Check connections with the `setup` commands and `$FB doctor`, which give only status, names and counts. Don't run `$FB collect`; it prints message text.
-4. **Don't overwrite an existing config.** If `~/.family/config.yaml` already exists, run `$FB setup status`. If it says `done`, this Mac has been set up before: stop and use `/parent-recap:manage` instead. If not, an earlier setup stopped part-way: tell the user, work out from the config and the outcomes which Sources are done, and carry on from there, without asking again what the config already has. If the user insists on setting up again, back it up first as `config.yaml.bak-<date>`. To start again from nothing, they can uninstall first ("uninstall Parent Recap" with `/parent-recap:manage`), then run setup.
+4. **Don't overwrite an existing config.** If `~/.family/config.yaml` or `~/.family/setup-progress.json` already exists, run `$FB setup status`. If it says `done`, this Mac has been set up before: stop and use `/parent-recap:manage` instead. If not, an earlier setup stopped part-way, in the chat or on the setup page: tell the user, read where it got to with `$FB setup save --read` (the phase, the Source and each Source's status), and carry on from there, without asking again what the config already has. If the user insists on setting up again, back it up first as `config.yaml.bak-<date>`. To start again from nothing, they can uninstall first ("uninstall Parent Recap" with `/parent-recap:manage`), then run setup.
 5. **Commands that need `sudo`:** only show them, and let the user run them. The wake schedule normally needs none: `$FB schedule install` asks for the Mac password in macOS's administrator dialog.
 6. **Always put `bg` in commands that read WhatsApp yourself**, for example `$FB bg run --dry-run`. Without it they can't read WhatsApp from Terminal, Claude Code or Codex, because macOS grants the permission per process. `$FB setup whatsapp` does this itself. Don't have the user give Terminal the permission.
 7. **Never search the family's folders or read their files to find something** (a file they were sent, a password, a link). Not with `find`, `ls` or `grep`, not by opening a file to see what's inside, not even after saying you'd only look at file names. Ask the parent where it is, or offer the alternative that needs nothing (such as staying with the `.ics` attachment). Parent Recap's own files and the checks in this skill (the plugin folder, installed apps, `~/.family`) are fine.
+8. **Never write the config by hand.** Every answer goes into it through `$FB setup save` (see "Saving answers and progress"), the same command the setup page uses, which checks the answers before writing them.
 
 ## Each message
 
@@ -59,8 +60,35 @@ Each prints one line of JSON. `result` says what happened; when it isn't a succe
 | `$FB setup whatsapp --timeout 540`         | `readable`                                     | `chats` (name, last message, archived, `hint` naming the Kids it seems to be about) |
 | `$FB setup myclub --kid "<Kid's name>"`    | `saved`                                        | `events`, the number of events in the calendar                       |
 | `$FB setup status`                         | `done`                                         | `outcomes`, each with `ok` and a `reason`                            |
+| `$FB setup save` (answers as JSON on stdin) | `saved`                                       | `progress`                                                           |
+| `$FB setup save --read`                    | `read`                                         | `progress`                                                           |
 
 A `result` of `no-prompt` means no dialog could open here (for example from inside Codex's sandbox): run the command again outside the sandbox, and only if that fails too, give the parent the command in `next` to run in Terminal.
+
+## Saving answers and progress
+
+`$FB setup save` writes the parent's answers into `~/.family/config.yaml` (owner-only), and records how far setup has got, so the setup page and this chat can each pick up where the other stopped. It comes with the program, so the first save is right after `install.sh` in Connect, with the card's answers and `"progress": {"phase": "connect"}`. Give it the answers as JSON on stdin, with only the keys you're saving; whatever you leave out stays as it was:
+
+```bash
+$FB setup save <<'EOF'
+{"language": "zh",
+ "kids": [{"name": "Mia Virtanen", "everyday_name": "Mia", "aliases": ["米娅"], "school": "Kilo School", "class_name": "3B", "grade": 3}],
+ "recipients": [{"address": "parent@gmail.com"}, {"address": "partner@gmail.com", "language": "fi"}],
+ "ai": "claude",
+ "evening": "21:00",
+ "sources": {"gmail": {"address": "parent@gmail.com", "allowlist_domains": ["espoo.fi"], "allowlist_senders": []},
+             "wilma": {"enabled": true},
+             "whatsapp": {"enabled": true, "chats": [{"name": "3B vanhemmat", "kid": "Mia Virtanen", "label": "class"}]}},
+ "feedback": {"enabled": true, "household_label": "Virtanen family", "prefill_base_url": "...", "fields": {...}},
+ "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"}}}
+EOF
+```
+
+- `kids` is the whole list of Kids: a Kid left out is removed. Each Kid keeps what you don't give for them, such as their MyClub link, which only `setup myclub` saves. Never put a MyClub link in the answers.
+- `recipients`, `allowlist_domains`, `allowlist_senders` and `chats` are whole lists too: give every ticked item, not only the new ones.
+- `language` is the Household's language code (`summary_language`); a Recipient's `language` is given only when it differs.
+- `progress`: `phase` is one of `welcome`, `connect`, `working`, `check`, `first-brief`, `finish`; `source` is the Source the parent is on (`wilma`, `gmail`, `ai`, `whatsapp`, `myclub`); `sources` gives each Source's status, `to-do`, `done` or `skipped`. Save it whenever the phase or a Source's status changes, in the same call as that step's answers when there are any.
+- On `invalid-answers`, nothing was saved: `errors` names each answer that's wrong. Fix them and save again. On `bad-config`, the existing config can't be read: run `$FB doctor` and fix what it names.
 
 ## 1. Welcome
 
@@ -112,9 +140,9 @@ sw_vers -productVersion; for c in python3 node npm claude brew; do printf "%-8s"
 - If the parent sees Claude Code's red notice "Auto-update failed" (often "no write permission to npm prefix"), or `claude` isn't in `~/.local/bin` and `npm ls -g @anthropic-ai/claude-code` lists it (an npm install), tell them the notice comes from Claude Code itself and doesn't affect Parent Recap. Setup carries on. If they want the notice gone, they can install Claude Code again with the native installer above, after setup.
 - ChatGPT: Codex or the ChatGPT desktop app must be installed and signed in to Codex with their ChatGPT account. The program uses the codex bundled in the app.
 
-Then install the program with `bash "PLUGIN/install.sh"`. It takes a few minutes.
+Then install the program with `bash "PLUGIN/install.sh"`. It takes a few minutes. Once it's done, save the card's answers with `$FB setup save`: `language`, `ai`, `recipients`, `sources.gmail.address`, and `"progress": {"phase": "connect", "source": "wilma"}`.
 
-**The Source list.** Keep a status for each Source (to do, done, skipped) and show the list, with the statuses, when a sub-flow changes one. Go down it in order, from the least to the most sensitive:
+**The Source list.** Keep a status for each Source (to do, done, skipped), save it in `progress` with `$FB setup save` each time it changes (with `source` set to the Source the parent goes on to), and show the list, with the statuses, when a sub-flow changes one. Go down it in order, from the least to the most sensitive:
 
 1. **Wilma**: the Kids' names, and the school's messages and timetable
 2. **Gmail** (required): school and club mail, and the Brief is sent from it
@@ -137,17 +165,14 @@ Otherwise:
 3. On `signed-in`, show the Kids it found, by name. Don't ask for the city: `city` comes from the Wilma address. If `city` is null, it's a city without a preset: follow "Cities without a preset" in `PLUGIN/docs/config.md` for the starting Gmail allowlist. Don't ask about the Kids yet; the parent confirms them in Check.
 4. In the same message, as a short note before the choice to go on to Gmail, give the gist of "Where the Wilma password is stored" in `PLUGIN/docs/sources.md`: the wilma CLI keeps the password unencrypted in `~/.config/wilmai/config.json`, so they shouldn't sync or back up that folder.
 
-**Write the config** now, as `~/.family/config.yaml` (`chmod 600`) in the format of `PLUGIN/app/config.example.yaml`, with only:
+**Save the Kids** now with `$FB setup save`, in one call:
 
-- `summary_language`: the language code from the card
 - `kids`: one per Kid, `name` exactly as Wilma spells it (or as the parent typed it without Wilma), `school` and `class_name` only when Wilma has them, and `grade` when it follows from the class (3 for 3B). Their everyday names come in Check
-- `gmail.username`: the Gmail address from the card, and `gmail.allowlist_domains`: the starting allowlist for the city from "City presets" in `PLUGIN/docs/config.md`
-- `email.to`: the Recipients from the card, a partner with another language as `{address: ..., language: <code>}` ("Recipients in their own language" in `PLUGIN/docs/config.md`). Leave out `email.weekend_to`
-- `llm.backend`: `claude` or `codex`
-- `google_calendar.mode: ics`
-- `wilma.enabled: true` with Wilma
+- `sources.gmail.allowlist_domains`: the starting allowlist for the city from "City presets" in `PLUGIN/docs/config.md`
+- `sources.wilma`: `{"enabled": true}` with Wilma
+- `progress`: Wilma `done` (or `skipped`), and `source` `gmail`
 
-Leave everything else off, including Weekend Picks: they aren't part of setup, and the parent can turn them on later through `/parent-recap:manage`.
+Nothing else goes in the config in setup, including Weekend Picks: they aren't part of setup, and the parent can turn them on later through `/parent-recap:manage`. New events come as an `.ics` attachment, which is the default.
 
 ### Gmail
 
@@ -194,7 +219,7 @@ Mention that they can also subscribe to that link in their phone's calendar, so 
 
 ## 3. Working
 
-Tell the parent they can step away for a few minutes. Then:
+Tell the parent they can step away for a few minutes. Save `"progress": {"phase": "working"}`. Then:
 
 1. Run `$FB language <code>` for each language in the config (`summary_language` and any Recipient's `language`). For a reviewed language it only says so; for any other, the AI translates the program's own text once. If it fails, run it again, or the preview shows English headings.
 2. Run `$FB discover gmail-senders`. It reads only the senders of the last 60 days, and takes 1 to 2 minutes.
@@ -212,21 +237,25 @@ Show **one page**, with everything already ticked as you think it should be, and
 
 Give each list an "all" line the parent can tick instead of going through it. The lists are too long for AskUserQuestion's few options, so in both Claude Code and Codex write the page as text with ☑ and ☐, and end it with the one thing to do: reply "ok" to keep it as ticked, "all" with a list's name (such as "all groups") to tick that whole list, or name what to change. Ask nothing else on the page; an everyday name or alias they want changed goes in the same reply.
 
-Then write it to the config: `everyday_name` and `aliases` on each Kid, the ticked domains in `gmail.allowlist_domains`, and each ticked group in `whatsapp.chats` with `name` **copied exactly** from `chats` (trailing spaces, curly quotes and emoji all have to match), `kid` (a Kid's `name`, or `both`) and `label`, with `whatsapp.enabled: true`.
+Then save it with `$FB setup save`: `kids` with every ticked Kid's `name`, `everyday_name` and `aliases`; `sources.gmail` with the ticked domains in `allowlist_domains` and the ticked addresses in `allowlist_senders`; `sources.whatsapp` with `"enabled": true` and each ticked group in `chats`, with `name` **copied exactly** from `chats` (trailing spaces, curly quotes and emoji all have to match), `kid` (a Kid's `name`, or `both`) and `label`; and `"progress": {"phase": "check"}`.
 
-**Pilot feedback**, if the card says pilot family. Read the "Pilot feedback" section of `PLUGIN/docs/config.md` and tell the parent every point the parents must know before turning it on, in your own words, leaving none out, especially that "just opening the link without submitting still leaves a record". End with one choice: turn it on, or not now. If not, write no `feedback` section, and say they can turn it on later with `/parent-recap:manage`. If they agree, have them paste the whole section the Parent Recap team sent; it isn't a secret. If the team assigned a `household_label`, use that; otherwise, in the next message, offer one as a choice (such as the family name from the Kids' names, "Virtanen family"), with their own typed as the other option. Write the section into the config as is, changing only `household_label`.
+**Pilot feedback**, if the card says pilot family. Read the "Pilot feedback" section of `PLUGIN/docs/config.md` and tell the parent every point the parents must know before turning it on, in your own words, leaving none out, especially that "just opening the link without submitting still leaves a record". End with one choice: turn it on, or not now. If not, save no `feedback`, and say they can turn it on later with `/parent-recap:manage`. If they agree, have them paste the whole section the Parent Recap team sent; it isn't a secret. If the team assigned a `household_label`, use that; otherwise, in the next message, offer one as a choice (such as the family name from the Kids' names, "Virtanen family"), with their own typed as the other option. Save the section as `feedback` with `$FB setup save`, as is, changing only `household_label`.
 
 Then run `$FB doctor` once more. Fix every ❌, and with pilot feedback on, any ⚠️ on its line.
 
 ## 5. First Brief
 
-1. **Preview**, with no email sent and nothing recorded: `$FB bg run --dry-run --lookback-hours 72` (72 hours, since a single day often has nothing new). Show the parent the preview and end with one choice: it looks right, or something is off (a wrong Kid, a group or sender that shouldn't be there, something missing). If something is off, they say what in their own words; fix the config, and show a new preview. Repeat until they're happy.
+Save `"progress": {"phase": "first-brief"}` first.
+
+1. **Preview**, with no email sent and nothing recorded: `$FB bg run --dry-run --lookback-hours 72` (72 hours, since a single day often has nothing new). Show the parent the preview and end with one choice: it looks right, or something is off (a wrong Kid, a group or sender that shouldn't be there, something missing). If something is off, they say what in their own words; save the fix with `$FB setup save`, and show a new preview. Repeat until they're happy.
 2. **The real Brief**: `$FB bg run --lookback-hours 72`. It goes to both Recipients.
 3. Each run can take several minutes. Never start one while another is going. If your tool cut the real run off, don't run it again: it may still be going and will send the Brief. Wait a few minutes, then check with `$FB setup status` whether it reached every Recipient. A run started while another is going stops at once with "Another FamilyBrief run is still going"; then wait, don't retry.
 4. With the partner in another language, the preview shows only the parent's. Ask the parent to have their partner check that their copy came in their language, without a line at the top saying it couldn't be translated.
 5. With pilot feedback on, the preview has no ⭐ / ❌. Ask the parent to check the real Brief has a ⭐ and a ❌ next to each Action Item, and one ❌ under the Digest.
 
 ## 6. Finish
+
+Save `"progress": {"phase": "finish"}` first.
 
 1. Tell the parent macOS will ask for their Mac password in its own dialog, to wake the Mac 5 minutes before the Brief. Run `$FB schedule install`. If it warns the Mac already has a repeating wake schedule, show the parent what it lists and ask, as a choice, whether to replace it (keep it first); only if they choose to replace it, run `$FB schedule install --replace-wake`. If it prints a `sudo pmset ...` command, give it to the parent to run in Terminal.
 2. Run `$FB setup status`. It reports five outcomes: the program installed, the health check all OK, the first Brief delivered to every Recipient, the nightly job loaded, and the wake schedule set or the Mac never sleeping. Show them as a checklist. For each with `ok: false`, do what its `reason` says, and run it again, until `result` is `done`.
