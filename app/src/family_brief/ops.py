@@ -177,15 +177,17 @@ def _check_codex(cfg: Config, add) -> None:
 
 
 def _check_claude(add) -> None:
-    from .summarize import _claude_env, claude_test_call
-    if not shutil.which("claude"):
-        add(FAIL, "Claude", "claude command not found on PATH")
+    from .summarize import CLAUDE_INSTALL, _claude_env, claude_test_call, find_claude
+    claude = find_claude()
+    if not claude:
+        add(FAIL, "Claude", "claude command not found on PATH or in ~/.local/bin "
+            f"(install Claude Code with: {CLAUDE_INSTALL})")
         return
     env, label = _claude_env()
     if label == "inherited":
         add(WARN, "Claude", "no claude-oauth-token in the Keychain, so the scheduled job probably "
             "can't call Claude (store one with family-brief setup claude)")
-    error = claude_test_call("claude", env)
+    error = claude_test_call(claude, env)
     if error is not None:
         add(FAIL, "Claude", f"call failed (auth: {label}): {error[:120]}")
     else:
@@ -511,13 +513,15 @@ def _job_exit_code(domain: str, label: str) -> int | None:
 # ---------------------------------------------------------------- schedule
 
 def _path_env() -> str:
+    from .summarize import native_claude_dir
     dirs: list[str] = []
     for tool in ("claude", "wilma", "node"):
         found = shutil.which(tool)
         if found:
             dirs.append(str(Path(found).resolve().parent))
             dirs.append(str(Path(found).parent))
-    dirs += ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
+    # Claude Code's native installer puts claude there, and the shell running this may not have it.
+    dirs += [str(native_claude_dir()), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
     seen: list[str] = []
     for d in dirs:
         if d not in seen:

@@ -290,6 +290,26 @@ def claude_token_env(token: str) -> dict[str, str]:
     return env
 
 
+# Claude Code's native installer: it installs into ~/.local/bin and updates itself, where a
+# global npm install can leave it unable to.
+CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
+
+
+def native_claude_dir() -> Path:
+    """Where Claude Code's native installer (https://claude.ai/install.sh) puts `claude`."""
+    return Path.home() / ".local" / "bin"
+
+
+def find_claude() -> str | None:
+    """The claude binary to run. The native installer adds its folder to the shell's PATH, which
+    a shell started before it, or the nightly job, may not have, so look there too."""
+    found = shutil.which("claude")
+    if found:
+        return found
+    native = native_claude_dir() / "claude"
+    return str(native) if native.is_file() and os.access(native, os.X_OK) else None
+
+
 def claude_test_call(program: str, env: dict[str, str]) -> str | None:
     """Makes one small call with `claude`, as doctor and setup check it. Returns None when it
     worked, otherwise what went wrong."""
@@ -391,7 +411,9 @@ def _run_claude(cfg: Config, prompt: str, system_prompt: str, timeout: int) -> L
     # and can pull the model toward coding behaviour.
     # --no-session-persistence: otherwise every night leaves the prompt and reply in ~/.claude/projects.
     # The prompt goes on stdin: a catch-up night can pass macOS's 1 MiB argv cap, and argv shows in `ps`.
-    cmd = ["claude", "-p", "--output-format", "json",
+    # By name when PATH has it, as before; the full path only for a native install PATH lacks.
+    program = "claude" if shutil.which("claude") else find_claude() or "claude"
+    cmd = [program, "-p", "--output-format", "json",
            "--system-prompt", system_prompt, "--tools", "", "--strict-mcp-config",
            "--disallowedTools", "mcp__*", "--setting-sources", "", "--no-session-persistence"]
     if cfg.llm.model:

@@ -97,7 +97,6 @@ NODE_CLEAR = b"\x1b[1;1H\x1b[0J"
 WILMA_STUDENT_PICKER = b"Select student"
 WILMA_MENU = b"What do you want to view?"
 CLAUDE_TOKEN_ACCOUNT = "claude-oauth-token"
-CLAUDE_INSTALL = "npm install -g @anthropic-ai/claude-code"
 # Loose on purpose, like scripts/setup_claude_token.py: the test call decides whether it works.
 CLAUDE_TOKEN = re.compile(r"sk-ant-[A-Za-z0-9_-]+")
 WHATSAPP_POLL_SECONDS = 5
@@ -412,10 +411,10 @@ def cmd_claude(args: argparse.Namespace) -> int:
     (without one it stops with "Raw mode is not supported"), and it shows the token only on that
     screen, wrapped to the window. So this opens it in a Terminal window and asks for the token in
     the secret dialog, while the window's script is still there for Terminal to run."""
-    from .summarize import claude_test_call, claude_token_env
+    from .summarize import CLAUDE_INSTALL, claude_test_call, claude_token_env, find_claude
     from .utils import keychain
 
-    program = shutil.which("claude")
+    program = find_claude()
     if not program:
         return _report("not-installed", f"Install Claude Code's claude command in Terminal with "
                        f"{CLAUDE_INSTALL}, then run this again.")
