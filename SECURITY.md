@@ -39,6 +39,10 @@ How long Anthropic or OpenAI keep that data, and whether they train on it, is se
 
 Everything FamilyBrief writes is owner-only: files `600`, folders `700`, so other accounts on the same Mac, such as a Kid's own account, can't read them. The installer makes `~/FamilyBrief` owner-only, the program and its scheduled jobs create files with umask `077`, and each run takes group and other access off the archive, log, Weekend Picks and `~/.family` folders and the files in them (such as config backups), which also fixes installs from before 0.4.0.
 
+### The setup page
+
+`family-brief setup page` serves the setup page from the Mac itself, only while setup needs it. It listens on 127.0.0.1, so no other computer can reach it, on a free port. Its address carries a one-time random code that every request must have, and it refuses a request whose Host or Origin isn't its own address, so a website open in the browser can't use it. It serves only the program's own page files, which load nothing from the internet, and it logs nothing about requests. It stops after 30 minutes without a request.
+
 ### Where MyClub links can appear
 
 A MyClub calendar link carries a personal token that lets anyone read the Kid's club calendar. The parent pastes it into a macOS dialog with hidden input (`family-brief setup myclub`), or into their own Terminal with the older `scripts/setup_myclub.py`, never into the Claude or Codex chat, and it's kept only in `~/.family/config.yaml` and the config backups next to it in `~/.family`. Each night it's sent to MyClub to download the calendar. When the download fails, `doctor`, the logs, the archive and the Brief name only the MyClub server and the HTTP status, never the link's path or token.

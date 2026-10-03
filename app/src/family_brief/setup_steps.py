@@ -13,6 +13,7 @@ setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, d
                save it in the owner-only config
 setup save — save the Household's answers into the config, and setup's progress (in setup_save.py)
 setup status — whether setup is done (in setup_status.py)
+setup page — serve the setup page on this Mac and open it in the browser (in setup_server.py)
 
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
@@ -158,9 +159,10 @@ def register(sub) -> None:
                          help="Don't open MyClub's page again, only ask for the link")
     pmyclub.set_defaults(func=cmd_myclub)
 
-    from . import setup_save, setup_status
+    from . import setup_save, setup_server, setup_status
     setup_save.register(steps)
     setup_status.register(steps)
+    setup_server.register(steps)
 
 
 def _report(result: str, next_: str | None = None, **extra: Any) -> int:

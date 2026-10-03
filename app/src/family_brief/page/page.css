@@ -1,0 +1,124 @@
+:root {
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --line: #d2d2d7;
+  --paper: #f5f5f7;
+  --card: #ffffff;
+  --accent: #0b6e4f;
+  --accent-soft: #e3f1ec;
+  --error: #b3261e;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 17px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 20px 24px;
+}
+
+.product { font-weight: 600; }
+
+.switch select {
+  font: inherit;
+  font-size: 15px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.hidden-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto 48px;
+  padding: 32px;
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+h1 { font-size: 26px; line-height: 1.25; margin: 0 0 8px; }
+
+.note { color: var(--muted); margin: 0 0 24px; }
+
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 24px;
+  display: grid;
+  gap: 10px;
+}
+
+fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 19px;
+}
+
+fieldset label:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+fieldset input { accent-color: var(--accent); width: 18px; height: 18px; margin: 0; }
+
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 12px 28px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.5; cursor: default; }
+
+.phases {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin: 0 0 24px;
+  font-size: 14px;
+}
+
+.phases li {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+}
+
+.phases li.done { color: var(--accent); }
+
+.phases li[aria-current="step"] { background: var(--accent); color: #fff; }
+
+.error { color: var(--error); margin: 16px 0 0; }

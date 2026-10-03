@@ -1,0 +1,53 @@
+{
+  "fi": {
+    "title": "Parent Recapin käyttöönotto",
+    "language.label": "Kieli",
+    "language.question": "Millä kielellä jatketaan?",
+    "language.note": "Saat myös oman koosteesi tällä kielellä. Voit vaihtaa sen myöhemmin.",
+    "continue": "Jatka",
+    "phases.label": "Käyttöönoton vaiheet",
+    "phase.welcome": "Tervetuloa",
+    "phase.connect": "Yhdistä",
+    "phase.working": "Luetaan",
+    "phase.check": "Tarkista",
+    "phase.first-brief": "Ensimmäinen kooste",
+    "phase.finish": "Valmis",
+    "phase.not-here": "Tämä vaihe ei ole vielä tällä sivulla. Jatka pyytämällä Claudea tai ChatGPT:tä ottamaan Parent Recap käyttöön.",
+    "error.save": "Valintaa ei tallennettu. Yritä uudelleen.",
+    "error.closed": "Käyttöönottosivu on suljettu. Käynnistä se uudelleen Terminalissa, niin jatkat siitä mihin jäit."
+  },
+  "en": {
+    "title": "Set up Parent Recap",
+    "language.label": "Language",
+    "language.question": "Which language would you like?",
+    "language.note": "Your own Brief comes in this language too. You can change it later.",
+    "continue": "Continue",
+    "phases.label": "Setup steps",
+    "phase.welcome": "Welcome",
+    "phase.connect": "Connect",
+    "phase.working": "Reading",
+    "phase.check": "Check",
+    "phase.first-brief": "First Brief",
+    "phase.finish": "Finish",
+    "phase.not-here": "This step isn't on the page yet. To carry on, ask Claude or ChatGPT to set up Parent Recap.",
+    "error.save": "Your choice wasn't saved. Try again.",
+    "error.closed": "The setup page has closed. Start it again in Terminal and you'll carry on where you left off."
+  },
+  "zh": {
+    "title": "设置 Parent Recap",
+    "language.label": "语言",
+    "language.question": "你想用哪种语言？",
+    "language.note": "你自己的日报也会用这种语言。之后可以再改。",
+    "continue": "继续",
+    "phases.label": "设置步骤",
+    "phase.welcome": "欢迎",
+    "phase.connect": "连接",
+    "phase.working": "读取",
+    "phase.check": "确认",
+    "phase.first-brief": "第一份日报",
+    "phase.finish": "完成",
+    "phase.not-here": "这一步还不在页面上。请让 Claude 或 ChatGPT 帮你设置 Parent Recap，从这里接着做。",
+    "error.save": "没有保存你的选择，请再试一次。",
+    "error.closed": "设置页面已经关闭。在终端里重新启动它，就能从上次的地方接着做。"
+  }
+}

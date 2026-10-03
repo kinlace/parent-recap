@@ -35,6 +35,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"family_brief" = ["page/*"]
 "family_brief.eval" = ["cases/*.yaml"]
 
 [tool.pytest.ini_options]

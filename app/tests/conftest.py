@@ -10,7 +10,8 @@ Fakes sit at exactly three boundaries, so internals can be refactored without to
      and a function makes the reply from the prompt it is given).
   3. Delivery: email sending, iMessage (`osascript`) and the Google Calendar API record what
      they are given, or fail.
-Setup commands also meet macOS's secret dialog (`osascript`) and `open`, faked the same way.
+Setup commands also meet macOS's secret dialog (`osascript`), `open` and the Mac's preferred
+languages (`defaults`), faked the same way.
 
 Everything else (config, state, archive) is real and lives in a temporary HOME.
 "Now" and the local timezone are pinned. Regenerate golden files with:
@@ -198,6 +199,7 @@ class Harness:
         self.dialog = Dialog()
         self.opened: list[str] = []                 # what `open` was asked to open
         self.commands: list[list[str]] = []         # every process started, model calls included
+        self.mac_languages: list[str] = ["en-FI"]   # the Mac's preferred languages, first first
         self._install(monkeypatch)
 
     # Paths
@@ -310,6 +312,9 @@ class Harness:
             to = script.split('to buddy "', 1)[1].split('"', 1)[0]
             self.imessages.append((to, script.split('send "', 1)[1].rsplit('" to buddy', 1)[0]))
             return subprocess.CompletedProcess(cmd, 0, "", "")
+        if prog == "defaults" and cmd[1:] == ["read", "-g", "AppleLanguages"]:
+            listed = ",\n".join(f'    "{lang}"' for lang in self.mac_languages)
+            return subprocess.CompletedProcess(cmd, 0, f"(\n{listed}\n)\n", "")
         if prog == "security":  # Keychain lookup
             secret = self.keychain.get(cmd[cmd.index("-a") + 1])
             if secret is None:
