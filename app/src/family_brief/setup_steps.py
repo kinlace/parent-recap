@@ -2,8 +2,8 @@
 
 setup gmail — open Google's App passwords page, ask for the App Password in a macOS dialog,
               test the Gmail sign-in, store it in the Keychain
-setup wilma — open the wilma CLI's sign-in in a Terminal window, wait for the family, then
-              read the Kids and the city
+setup wilma — open the wilma CLI's sign-in in a Terminal window with a guide in the family's
+              language, end it once signed in, then read the Kids and the city
 setup claude — open Claude's sign-in for the nightly token in a Terminal window, ask for the
                token in a macOS dialog, make one test call, store it in the Keychain
 setup whatsapp — read WhatsApp through a `bg` job; when the scheduled job's Python can't yet,
@@ -20,17 +20,23 @@ it (ADR 0005).
 from __future__ import annotations
 
 import argparse
+import fcntl
 import imaplib
 import json
 import math
 import os
+import pty
 import re
+import select
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import termios
 import time
+import tty
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -54,6 +60,42 @@ WILMA_CITIES = {
 }
 WILMA_INSTALL = "npm install -g @wilm-ai/wilma-cli"
 WILMA_POLL_SECONDS = 2
+# The Wilma window's own text, in the reviewed languages; any other language gets the English.
+# Wilma comes before the AI login in setup, so there's no AI yet to translate it.
+WILMA_WINDOW = {
+    "en": {
+        "guide": ["Parent Recap: sign in to Wilma",
+                  "1. Type your town in Finnish, for example Espoo, Helsinki or Vantaa, and pick "
+                  "it from the list.",
+                  "2. Sign in with the same username and password as on the Wilma website or "
+                  "app. If you don't remember them, look in your browser's saved passwords."],
+        "signed_in": "You're signed in to Wilma.",
+        "close": "You can close this window.",
+    },
+    "zh": {
+        "guide": ["Parent Recap：登录 Wilma",
+                  "1. 用芬兰语输入你所在的城市，例如 Espoo、Helsinki 或 Vantaa，然后在列表里选中它。",
+                  "2. 用你在 Wilma 网站或 App 上的用户名和密码登录。如果记不清，可以在浏览器保存的密码里找到。"],
+        "signed_in": "已登录 Wilma。",
+        "close": "可以关闭这个窗口了。",
+    },
+    "fi": {
+        "guide": ["Parent Recap: kirjaudu Wilmaan",
+                  "1. Kirjoita kuntasi nimi suomeksi, esimerkiksi Espoo, Helsinki tai Vantaa, ja "
+                  "valitse se listasta.",
+                  "2. Kirjaudu samalla käyttäjätunnuksella ja salasanalla kuin Wilman "
+                  "verkkosivulla tai sovelluksessa. Jos et muista niitä, katso ne selaimesi "
+                  "tallennetuista salasanoista."],
+        "signed_in": "Olet kirjautunut Wilmaan.",
+        "close": "Voit sulkea tämän ikkunan.",
+    },
+}
+# Node's console.clear(), which the wilma CLI calls before each of its questions.
+NODE_CLEAR = b"\x1b[1;1H\x1b[0J"
+# What the wilma CLI asks once the sign-in has worked. Setup reads every Kid, so the family never
+# sees either: the window answers the first itself and ends the CLI before the second.
+WILMA_STUDENT_PICKER = b"Select student"
+WILMA_MENU = b"What do you want to view?"
 CLAUDE_TOKEN_ACCOUNT = "claude-oauth-token"
 CLAUDE_INSTALL = "npm install -g @anthropic-ai/claude-code"
 # Loose on purpose, like scripts/setup_claude_token.py: the test call decides whether it works.
@@ -84,6 +126,9 @@ def register(sub) -> None:
                         help="Seconds to wait for the family to sign in (default: 600)")
     pwilma.add_argument("--no-open", action="store_true",
                         help="Don't open the sign-in again, only wait for it and read the Kids")
+    pwilma.add_argument("--language", default="en",
+                        help="The family's language code, for the window's guide (default: en)")
+    pwilma.add_argument("--screen", default=None, help=argparse.SUPPRESS)  # in the window
     pwilma.set_defaults(func=cmd_wilma)
 
     pclaude = steps.add_parser("claude", help="Open Claude's sign-in for the nightly token in "
@@ -188,6 +233,8 @@ def cmd_wilma(args: argparse.Namespace) -> int:
     CLI's config."""
     from .collectors import wilma
 
+    if args.screen:
+        return _sign_in_screen(args.screen, args.language)
     program = shutil.which(wilma.WILMA)
     if not program:
         return _report("not-installed", f"Install the wilma CLI in Terminal with {WILMA_INSTALL} "
@@ -199,7 +246,7 @@ def cmd_wilma(args: argparse.Namespace) -> int:
         seen = _mtime(config)
         if not args.no_open:
             script = Path(tmp) / "Wilma sign-in.command"
-            script.write_text(_sign_in_script(program, status))
+            script.write_text(_sign_in_script(program, args.language, status))
             script.chmod(0o700)
             if subprocess.run(["open", "-a", "Terminal", str(script)],
                               capture_output=True).returncode != 0:
@@ -235,18 +282,94 @@ def cmd_wilma(args: argparse.Namespace) -> int:
                    f"{again} --no-open. Otherwise run: {again}")
 
 
-def _sign_in_script(program: str, status: Path) -> str:
+def _sign_in_script(program: str, language: str, status: Path) -> str:
+    # This Python, since the window's PATH may not lead to this program.
+    screen = (f"{shlex.quote(sys.executable)} -m family_brief setup wilma "
+              f"--screen {shlex.quote(program)} --language {shlex.quote(language)}")
     return (
         "#!/bin/sh\n"
         "clear\n"
-        "echo 'Parent Recap: sign in to Wilma with your parent account.'\n"
-        "echo 'Type your city to find it, pick it, then enter your Wilma username and password.'\n"
-        "echo 'When Wilma asks what you want to view, you are done: choose Exit.'\n"
-        "echo\n"
-        f"{shlex.quote(program)}\n"
+        f"{screen}\n"
         f"{{ echo $? > {shlex.quote(str(status))}; }} 2>/dev/null\n"
-        "echo 'You can close this window.'\n"
     )
+
+
+def _sign_in_screen(program: str, language: str) -> int:
+    """Runs the wilma CLI's sign-in in this window, through a pseudo-terminal so this sees what
+    it shows: the guide stays on top of each question the CLI clears the screen for, the student
+    picker is answered (setup reads every Kid, so which one doesn't matter) and hidden, and once
+    the CLI has saved its profile it's ended, before its menu, whose default choice fails with a
+    403 for some accounts. Returns 0 once signed in, otherwise the CLI's exit status."""
+    text = WILMA_WINDOW.get(language.lower(), WILMA_WINDOW["en"])
+    guide = "\r\n".join(text["guide"]).encode() + b"\r\n\r\n"
+    out = sys.stdout.buffer
+    out.write(guide)
+    out.flush()
+    config = _wilma_config_path()
+    seen = _mtime(config)
+    pid, fd = pty.fork()
+    if pid == 0:
+        try:
+            os.execv(program, [program])
+        finally:
+            os._exit(127)
+    # The CLI truncates its config before writing it, so a new one counts once it reads whole.
+    signed_in = _show_sign_in(
+        fd, guide, lambda: _mtime(config) != seen and _wilma_address(config) is not None)
+    if signed_in:
+        os.kill(pid, signal.SIGTERM)
+    status = os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1])
+    os.close(fd)
+    if signed_in:
+        out.write(b"\x1b[H\x1b[2J\x1b[3J")  # the screen and the scrollback
+        out.write(f"{text['signed_in']} {text['close']}\n".encode())
+    else:
+        out.write(f"\n{text['close']}\n".encode())
+    out.flush()
+    return 0 if signed_in else status
+
+
+def _show_sign_in(fd: int, guide: bytes, saved) -> bool:
+    """Passes the family's typing to the CLI on `fd` and what it shows to the window, until the
+    CLI has saved its profile (True) or has ended without (False)."""
+    stdin, out = sys.stdin.fileno(), sys.stdout.buffer
+    terminal = os.isatty(stdin)
+    if terminal:
+        def same_size(*_a: Any) -> None:
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, fcntl.ioctl(stdin, termios.TIOCGWINSZ, b"\0" * 8))
+        same_size()
+        signal.signal(signal.SIGWINCH, same_size)
+        before = termios.tcgetattr(stdin)
+        tty.setraw(stdin)
+    reading, hidden, last = [fd, stdin], False, b""
+    try:
+        while not saved():
+            ready = select.select(reading, [], [], 0.1)[0]
+            if stdin in ready:
+                typed = os.read(stdin, 1024)
+                if typed:
+                    os.write(fd, typed)
+                else:
+                    reading.remove(stdin)
+            if fd in ready:
+                try:
+                    shown = os.read(fd, 65536)
+                except OSError:  # the CLI has ended
+                    shown = b""
+                if not shown:
+                    return saved()
+                recent, last = last[-len(WILMA_MENU):] + shown, shown  # a question split in two
+                if not hidden and WILMA_STUDENT_PICKER in recent:
+                    os.write(fd, b"\r")  # once: the CLI shows the question again with the answer
+                hidden = hidden or WILMA_STUDENT_PICKER in recent or WILMA_MENU in recent
+                if not hidden:
+                    out.write(shown.replace(NODE_CLEAR, NODE_CLEAR + guide))
+                    out.flush()
+        return True
+    finally:
+        if terminal:
+            termios.tcsetattr(stdin, termios.TCSAFLUSH, before)
+            signal.signal(signal.SIGWINCH, signal.SIG_DFL)
 
 
 def _wilma_config_path() -> Path:
