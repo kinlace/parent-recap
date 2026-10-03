@@ -1818,3 +1818,121 @@ def test_every_whatsapp_result_is_explained_in_all_three_languages():
             assert table.get(f"whatsapp.{result}", "").strip(), (language, result)
         for result in setup_server.WHATSAPP_OPEN_RESULTS:
             assert table.get(f"whatsapp.open.{result}", "").strip(), (language, result)
+
+
+# ── Continue in the chat
+
+
+FAKE_CHAT_CLAUDE = """#!/bin/sh
+printf '%s\\n' "$PWD" "$@" > "${0%/*}/claude-chat.ran"
+"""
+
+
+def continue_in_chat(url: str, ai_name: str) -> Response:
+    return call(url, "api/chat", method="POST", body={"ai": ai_name})
+
+
+def test_continue_in_the_chat_opens_claude_code_with_the_setup_skill_in_terminal(harness, page,
+                                                                                 ai):
+    bin_dir = harness.home / "bin"
+    ai("claude")
+    (bin_dir / "claude").write_text(FAKE_CHAT_CLAUDE)
+
+    r = continue_in_chat(page.url, "claude")
+
+    assert r.status == 200 and r.json() == {"result": "opened"}
+    [opened] = [c for c in harness.commands if c[:3] == ["open", "-a", "Terminal"]]
+    script = Path(opened[3])
+    assert script.suffix == ".command" and os.access(script, os.X_OK)
+    # Terminal runs the script: Claude Code starts in the family's home folder, at the setup skill.
+    subprocess.Popen(["/bin/sh", str(script)], env={**os.environ, "HOME": str(harness.home)},
+                     stdout=subprocess.DEVNULL).wait(10)
+    assert (bin_dir / "claude-chat.ran").read_text().splitlines() == \
+        [str(harness.home), "/parent-recap:setup"]
+    page.stop()
+    assert not script.exists()  # the script's folder goes once the page stops
+
+
+def test_continue_in_the_chat_tells_a_codex_family_what_to_type(harness, page, ai):
+    ai("codex")
+
+    r = continue_in_chat(page.url, "codex")
+
+    assert r.status == 200 and r.json() == {"result": "open-codex", "type": "$parent-recap-setup"}
+    assert not harness.opened
+
+
+def test_continue_in_the_chat_without_claude_code_says_how_to_install_it(harness, page, ai):
+    assert continue_in_chat(page.url, "claude").json() == {
+        "result": "not-installed", "install": "curl -fsSL https://claude.ai/install.sh | bash"}
+    assert not harness.opened
+
+
+def test_continue_in_the_chat_without_terminal_says_what_to_type_there(harness, page, ai,
+                                                                       monkeypatch):
+    ai("claude")
+    run = setup_server.subprocess.run
+
+    def no_terminal(cmd, *a, **k):
+        if cmd[:3] == ["open", "-a", "Terminal"]:
+            return subprocess.CompletedProcess(cmd, 1, "", "")
+        return run(cmd, *a, **k)
+    monkeypatch.setattr(setup_server.subprocess, "run", no_terminal)
+
+    assert continue_in_chat(page.url, "claude").json() == {
+        "result": "no-terminal", "type": f"{harness.home / 'bin' / 'claude'} /parent-recap:setup"}
+
+
+def test_continue_in_the_chat_takes_only_the_ai(page):
+    for body in [{}, {"ai": "gemini"}, {"ai": "claude", "x": 1}, ["claude"]]:
+        r = call(page.url, "api/chat", method="POST", body=body)
+        assert r.status == 400 and r.json()["result"] == "invalid-answers", body
+
+
+def test_the_chat_reads_the_progress_and_answers_the_page_saved(harness, page, capsys,
+                                                                monkeypatch):
+    call(page.url, "api/language", method="POST", body={"language": "fi"})
+    welcome(page.url, ai="codex", partner={"address": "partner@example.com", "language": "zh"})
+    source(page.url, "wilma", "skip")
+    shown = call(page.url, "api/state").json()["progress"]
+    capsys.readouterr()
+
+    monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(config_file(harness)), "setup",
+                                      "save", "--read"])
+    cli.main()
+
+    read = json.loads(capsys.readouterr().out)
+    assert read["progress"] == shown
+    assert (read["progress"]["phase"], read["progress"]["source"]) == ("connect", "gmail")
+    assert read["progress"]["partner"] == {"address": "partner@example.com", "language": "zh"}
+    cfg = Config.load(config_file(harness))
+    assert (cfg.summary_language, cfg.llm.backend, cfg.wilma.enabled) == ("fi", "codex", False)
+
+
+def test_the_setup_skill_carries_on_from_the_page_s_step():
+    skill = (Path(__file__).resolve().parents[2] / "skills" / "setup" / "SKILL.md").read_text()
+    [section] = re.findall(r"\n## Coming from the setup page\n(.*?)\n## ", skill, re.S)
+
+    for needed in ("Continue in the chat", "setup save --read", "`phase`", "`source`",
+                   "summary_language", "partner", "whatsapp_chats"):
+        assert needed in section, needed
+    assert "Coming from the setup page" in skill.split("## Rules", 1)[1].split("\n## ", 1)[0]
+
+
+def test_every_step_of_the_page_has_continue_in_the_chat():
+    html = (PAGE_DIR / "index.html").read_text()
+    script = (PAGE_DIR / "page.js").read_text()
+
+    # Outside every step's own section, so it's under each of them, and shown once a language is.
+    after = html.rsplit("</section>", 1)[1]
+    assert 'id="chat-continue"' in after and 'data-text="chat.continue"' in after
+    assert 'getElementById("chat").hidden = !page.chosen' in script
+
+
+def test_every_chat_result_is_explained_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for name, results in setup_server.CHAT_RESULTS.items():
+            for result in results:
+                assert table.get(f"chat.{name}.{result}", "").strip(), (language, name, result)

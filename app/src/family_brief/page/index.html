@@ -229,6 +229,17 @@
     <h1 id="phase-title"></h1>
     <p class="note" data-text="phase.not-here"></p>
   </section>
+  <div id="chat" class="chat" hidden>
+    <p class="hint" data-text="chat.note"></p>
+    <button type="button" id="chat-continue" class="secondary" data-text="chat.continue"></button>
+    <div id="chat-status" class="status" role="status" hidden>
+      <p id="chat-message"></p>
+      <div id="chat-line" class="install" hidden>
+        <code id="chat-line-text"></code>
+        <button type="button" id="chat-copy" class="secondary" data-text="copy"></button>
+      </div>
+    </div>
+  </div>
   <p id="error" class="error" role="alert" hidden></p>
 </main>
 </body>

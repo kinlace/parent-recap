@@ -283,3 +283,16 @@ button.link {
 .pictures figcaption { margin-top: 6px; font-size: 15px; }
 
 .status[data-result="whatsapp.readable"] { background: var(--accent-soft); color: var(--accent); }
+
+.chat {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.chat[hidden], .chat .status[hidden], .chat .install[hidden] { display: none; }
+
+.chat .status { justify-self: stretch; }

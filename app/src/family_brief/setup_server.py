@@ -22,6 +22,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import socketserver
 import subprocess
 import tempfile
@@ -78,6 +79,10 @@ WHATSAPP_RESULTS = ("readable", "no-permission", "waiting", "not-installed", "un
                     "bg-failed")
 WHATSAPP_OPEN_RESULTS = ("opened", "not-opened")
 WHATSAPP_READ_SECONDS = setup_steps.WHATSAPP_READ_SECONDS
+# "Continue in the chat": the setup skill as each AI's chat starts it, and what handing over
+# can say. Claude Code opens in a Terminal window; a Codex family is told what to type in Codex.
+CHAT_SKILLS = {"claude": "/parent-recap:setup", "codex": "$parent-recap-setup"}
+CHAT_RESULTS = {"claude": ("opened", "no-terminal", "not-installed"), "codex": ("open-codex",)}
 # The sites the page's buttons open, by name: the page itself names none.
 SITES = {"app-passwords": setup_steps.APP_PASSWORDS_URL, "two-step": setup_steps.TWO_STEP_URL}
 # The apps they open, each tried in turn: the Passwords app, or before macOS 15, where the
@@ -157,6 +162,7 @@ class SetupServer:
         self._claude_script: tempfile.TemporaryDirectory | None = None  # its Terminal script's
         self._codex: subprocess.Popen | None = None  # Codex's sign-in, once started
         self._whatsapp = threading.Lock()  # one read at a time, since each is a launchd job
+        self._chat_script: tempfile.TemporaryDirectory | None = None  # the chat's Terminal script's
 
     def serve_until_idle(self) -> None:
         """Serves until `stop`, or until IDLE_SECONDS pass without a request."""
@@ -187,6 +193,8 @@ class SetupServer:
                 self._codex.wait()
             if self._claude_script is not None:
                 self._claude_script.cleanup()
+            if self._chat_script is not None:
+                self._chat_script.cleanup()
 
     # ── the API
 
@@ -389,6 +397,33 @@ class SetupServer:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
         _, failed = ops.show_python_for_app_management()
         return HTTPStatus.OK, {"result": "not-opened" if failed else "opened"}
+
+    # ── Continue in the chat
+
+    def continue_in_chat(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Hands setup over to the chat with the AI picked: opens Claude Code at the setup skill
+        in a Terminal window, or says what to type in Codex. The skill reads the progress and the
+        answers saved so far, and carries on from the same phase and Source."""
+        if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in AIS):
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Pick Claude or ChatGPT.", errors=["ai: should be claude or codex"])
+        skill = CHAT_SKILLS[raw["ai"]]
+        if raw["ai"] == "codex":
+            return HTTPStatus.OK, {"result": "open-codex", "type": skill}
+        program = summarize.find_claude()
+        if program is None:
+            return HTTPStatus.OK, {"result": "not-installed", "install": summarize.CLAUDE_INSTALL}
+        with self._ai:
+            if self._chat_script is not None:
+                self._chat_script.cleanup()
+            # Kept until the next window or the page stops, since Terminal runs the script from it.
+            self._chat_script = tempfile.TemporaryDirectory(prefix="parent-recap-chat-")
+            script = Path(self._chat_script.name) / "Parent Recap setup.command"
+            script.write_text(chat_script(program))
+            script.chmod(0o700)
+        if _open(["-a", "Terminal", str(script)]):
+            return HTTPStatus.OK, {"result": "opened"}
+        return HTTPStatus.OK, {"result": "no-terminal", "type": shlex.join([program, skill])}
 
     def _ai_signed_in(self) -> dict[str, Any]:
         """Saves the AI sign-in as done, moving setup on to the next Source."""
@@ -688,6 +723,12 @@ class WelcomeAnswer(BaseModel):
     feedback: StrictBool
 
 
+def chat_script(program: str) -> str:
+    """The Terminal window's script for "Continue in the chat": Claude Code in the family's home
+    folder, at the setup skill."""
+    return f"#!/bin/sh\ncd ~ || exit 1\nexec {shlex.join([program, CHAT_SKILLS['claude']])}\n"
+
+
 def _open(args: list[str]) -> bool:
     try:
         return subprocess.run(["open", *args], capture_output=True).returncode == 0
@@ -793,7 +834,8 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/claude/token": setup.save_claude_token,
                    "api/codex": setup.check_codex, "api/codex/login": setup.sign_in_codex,
                    "api/whatsapp/check": setup.check_whatsapp,
-                   "api/whatsapp/open": setup.open_app_management}
+                   "api/whatsapp/open": setup.open_app_management,
+                   "api/chat": setup.continue_in_chat}
         if method == "POST" and path in actions:
             raw = self._body()
             if raw is _NOT_JSON:
