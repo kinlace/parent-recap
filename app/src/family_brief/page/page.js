@@ -4,7 +4,7 @@
 const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish"];
 const page = {
   text: null, language: "en", chosen: null, languages: [], progress: null, welcome: null,
-  connect: null, gmail: null, welcomeShown: false, connectShown: false,
+  connect: null, gmail: null, myclub: null, welcomeShown: false, connectShown: false,
 };
 
 function t(key) {
@@ -284,6 +284,10 @@ function renderConnect() {
   renderWilma();
   renderAI();
   document.getElementById("whatsapp-open").addEventListener("click", openAppManagement);
+  document.getElementById("myclub-open").addEventListener("click", () => openSite("myclub"));
+  document.getElementById("myclub-form").addEventListener("submit", saveMyClubLink);
+  document.getElementById("myclub-kid-form").addEventListener("submit", addKid);
+  document.getElementById("myclub-continue").addEventListener("click", leaveMyClub);
   document.getElementById("gmail-open").addEventListener("click", () => openSite("app-passwords"));
   document.getElementById("gmail-two-step").addEventListener("click", () => openSite("two-step"));
   document.getElementById("gmail-unavailable").addEventListener("click", () => {
@@ -335,9 +339,7 @@ function renderSources() {
   document.getElementById("ai-claude").hidden = page.welcome.ai !== "claude";
   document.getElementById("ai-codex").hidden = page.welcome.ai !== "codex";
   document.getElementById("source-whatsapp").hidden = current !== "whatsapp";
-  document.getElementById("source-later").hidden =
-    !current || ["gmail", "wilma", "ai", "whatsapp"].includes(current);
-  document.getElementById("source-later-title").textContent = current ? t("source." + current) : "";
+  document.getElementById("source-myclub").hidden = current !== "myclub";
   document.getElementById("connect-done").hidden = Boolean(current);
   if (current === "wilma" && !wilmaStep.ready && !wilmaStep.preparing) getWilmaReady();
   if (current === "ai" && !aiStep.shown) {
@@ -353,6 +355,12 @@ function renderSources() {
     showSource("whatsapp.checking");
     checkWhatsApp();
   }
+  if (current === "myclub" && !myclubStep.shown) {
+    myclubStep.shown = true;
+    refreshMyClub();
+  } else if (current === "myclub") {
+    renderMyClub();
+  }
 }
 
 // Skips the Source, or opens it from the list, which brings a skipped one back.
@@ -365,9 +373,11 @@ async function chooseSource(name, action) {
     document.getElementById("gmail-password").value = "";
     document.getElementById("wilma-password").value = "";
     document.getElementById("claude-token").value = "";
+    document.getElementById("myclub-link").value = "";
     clearTimeout(wilmaStep.timer);
     clearTimeout(aiStep.timer);
     aiStep.shown = false;
+    myclubStep.shown = false;
     leaveWhatsApp();
     showSource(null);
     renderSources();
@@ -836,6 +846,113 @@ async function checkWhatsApp() {
   whatsappStep.timer = setTimeout(checkWhatsApp, WHATSAPP_MS);
 }
 
+// ── Connect: MyClub. Each Kid's calendar link, pasted into the page's own field. A Household
+// without Wilma adds its Kids here first, by the names it calls them.
+
+const myclubStep = { shown: false, kid: null };
+
+// The Kids as they are now: Wilma may have listed them since the page opened.
+async function refreshMyClub() {
+  try {
+    page.myclub = (await getJSON("api/state")).myclub;
+    renderMyClub();
+  } catch (e) {
+    failed(e);
+  }
+}
+
+function renderMyClub() {
+  const { kids, add } = page.myclub;
+  if (!kids.some((k) => k.name === myclubStep.kid)) {
+    myclubStep.kid = (kids.find((k) => !k.linked) ?? kids[0])?.name ?? null;
+  }
+  const list = document.getElementById("myclub-kids");
+  list.setAttribute("aria-label", t("myclub.kid"));
+  list.replaceChildren(...kids.map(({ name, linked }) => {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "myclub-kid";
+    input.value = name;
+    input.checked = name === myclubStep.kid;
+    input.addEventListener("change", () => { myclubStep.kid = name; });
+    const shown = document.createElement("span");
+    shown.className = "name";
+    shown.textContent = name;
+    const state = document.createElement("span");
+    state.className = "town";
+    state.textContent = t(linked ? "myclub.kid.linked" : "myclub.kid.to-do");
+    label.append(input, shown, state);
+    return label;
+  }));
+  document.getElementById("myclub-kid-form").hidden = !add;
+  document.getElementById("myclub-form").hidden = !kids.length;
+  document.getElementById("myclub-more").hidden = page.progress.sources.myclub !== "done";
+}
+
+async function saveMyClubLink(event) {
+  event.preventDefault();
+  clearError();
+  if (!myclubStep.kid) return showSource("myclub.pick-kid");
+  const button = event.submitter;
+  button.disabled = true;
+  showSource("myclub.checking");
+  const link = document.getElementById("myclub-link");
+  try {
+    const out = await post("api/myclub", { kid: myclubStep.kid, link: link.value });
+    // Kept only when trying again may work as it is.
+    if (out.result !== "link-failed" && out.result !== "save-failed") link.value = "";
+    if (out.result === "saved") {
+      page.progress = out.progress;
+      page.myclub.kids = out.kids;
+      myclubStep.kid = null; // the next Kid without a link
+      renderSources();
+    }
+    showSource("myclub." + out.result);
+  } catch (e) {
+    showSource(null);
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function addKid(event) {
+  event.preventDefault();
+  clearError();
+  const button = event.submitter;
+  button.disabled = true;
+  const name = document.getElementById("myclub-kid-name");
+  try {
+    const out = await post("api/myclub/kid", { name: name.value });
+    if (out.result === "added") {
+      page.myclub.kids = out.kids;
+      myclubStep.kid = name.value.trim();
+      name.value = "";
+      renderMyClub();
+    }
+    showSource("myclub." + out.result);
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// Moves on once a link is saved, leaving the Kids without a club as they are.
+async function leaveMyClub() {
+  clearError();
+  try {
+    const out = await post("api/myclub/done", {});
+    page.progress = out.progress;
+    document.getElementById("myclub-link").value = "";
+    showSource(null);
+    renderSources();
+  } catch (e) {
+    failed(e);
+  }
+}
+
 // ── Continue in the chat: Claude Code opens at the setup skill in Terminal, or the page says
 // what to type in Codex. The skill carries on from the step saved here.
 
@@ -897,6 +1014,7 @@ async function start() {
   page.welcome = state.welcome;
   page.connect = state.connect;
   page.gmail = state.gmail;
+  page.myclub = state.myclub;
   renderSwitch();
   renderChoices();
   renderChat();

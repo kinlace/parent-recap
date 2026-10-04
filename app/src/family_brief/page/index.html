@@ -204,9 +204,84 @@
         </figure>
       </div>
     </div>
-    <div id="source-later" class="source" hidden>
-      <h2 id="source-later-title"></h2>
-      <p class="note" data-text="source.not-here"></p>
+    <div id="source-myclub" class="source" hidden>
+      <h2 data-text="source.myclub"></h2>
+      <p data-text="myclub.explain"></p>
+      <p><button type="button" id="myclub-open" class="secondary" data-text="myclub.open"></button></p>
+      <div class="pictures">
+        <figure>
+          <svg viewBox="0 0 240 150" role="img" aria-hidden="true">
+            <rect x="4" y="18" width="232" height="112" rx="6" fill="#fff" stroke="#D8DDE4"/>
+            <rect x="4" y="18" width="232" height="16" rx="6" fill="#E3E7EC"/>
+            <rect x="16" y="44" width="56" height="76" rx="4" fill="#F5F7F9"/>
+            <rect x="22" y="52" width="44" height="7" rx="3" fill="#D8DDE4"/>
+            <rect x="22" y="66" width="44" height="12" rx="3" fill="#2f6fde"/>
+            <rect x="22" y="86" width="44" height="7" rx="3" fill="#D8DDE4"/>
+            <rect x="84" y="44" width="140" height="76" rx="4" fill="#F5F7F9"/>
+            <rect x="92" y="54" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
+            <rect x="120" y="54" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
+            <rect x="148" y="54" width="22" height="16" rx="2" fill="#2f6fde"/>
+            <rect x="176" y="54" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
+            <rect x="92" y="76" width="22" height="16" rx="2" fill="#2f6fde"/>
+            <rect x="120" y="76" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
+            <rect x="148" y="76" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
+            <rect x="176" y="76" width="22" height="16" rx="2" fill="#2f6fde"/>
+            <circle cx="44" cy="72" r="26" fill="none" stroke="#C8731A" stroke-width="2.5"/>
+          </svg>
+          <figcaption data-text="myclub.picture.calendar"></figcaption>
+        </figure>
+        <figure>
+          <svg viewBox="0 0 240 150" role="img" aria-hidden="true">
+            <rect x="4" y="18" width="232" height="112" rx="6" fill="#fff" stroke="#D8DDE4"/>
+            <rect x="4" y="18" width="232" height="16" rx="6" fill="#E3E7EC"/>
+            <rect x="20" y="48" width="120" height="8" rx="3" fill="#D8DDE4"/>
+            <rect x="20" y="64" width="90" height="8" rx="3" fill="#D8DDE4"/>
+            <rect x="20" y="92" width="120" height="24" rx="5" fill="#2f6fde"/>
+            <text x="80" y="108" font-size="10" fill="#fff" text-anchor="middle" data-text="myclub.picture.subscribe-button"></text>
+            <rect x="14" y="86" width="132" height="36" rx="8" fill="none" stroke="#C8731A" stroke-width="2.5"/>
+          </svg>
+          <figcaption data-text="myclub.picture.subscribe"></figcaption>
+        </figure>
+        <figure>
+          <svg viewBox="0 0 240 150" role="img" aria-hidden="true">
+            <rect x="24" y="22" width="192" height="106" rx="10" fill="#fff" stroke="#D8DDE4"/>
+            <rect x="40" y="38" width="100" height="8" rx="3" fill="#D8DDE4"/>
+            <rect x="40" y="58" width="160" height="22" rx="4" fill="#F5F7F9" stroke="#D8DDE4"/>
+            <text x="48" y="73" font-size="10" fill="#12161B">webcal://…</text>
+            <rect x="136" y="94" width="64" height="22" rx="5" fill="#2f6fde"/>
+            <rect x="152" y="102" width="32" height="7" rx="3" fill="#fff"/>
+            <rect x="34" y="52" width="172" height="34" rx="8" fill="none" stroke="#C8731A" stroke-width="2.5"/>
+          </svg>
+          <figcaption data-text="myclub.picture.copy"></figcaption>
+        </figure>
+      </div>
+      <form id="myclub-kid-form" class="details" hidden>
+        <p class="hint" data-text="myclub.add.note"></p>
+        <div class="field">
+          <label for="myclub-kid-name" data-text="myclub.add.name"></label>
+          <input type="text" id="myclub-kid-name" autocomplete="off" required>
+        </div>
+        <div class="actions">
+          <button type="submit" id="myclub-kid-add" class="secondary" data-text="myclub.add"></button>
+        </div>
+      </form>
+      <form id="myclub-form" class="details">
+        <p data-text="myclub.kid"></p>
+        <fieldset id="myclub-kids" class="towns"></fieldset>
+        <div class="field">
+          <label for="myclub-link" data-text="myclub.link"></label>
+          <input type="password" id="myclub-link" autocomplete="off" spellcheck="false" required>
+        </div>
+        <div class="actions">
+          <button type="submit" id="myclub-save" data-text="myclub.save"></button>
+        </div>
+      </form>
+      <div id="myclub-more" class="details" hidden>
+        <p class="hint" data-text="myclub.more"></p>
+        <div class="actions">
+          <button type="button" id="myclub-continue" data-text="continue"></button>
+        </div>
+      </div>
     </div>
     <p id="connect-done" class="note" data-text="connect.done" hidden></p>
     <div id="source-status" class="status" role="status" hidden>

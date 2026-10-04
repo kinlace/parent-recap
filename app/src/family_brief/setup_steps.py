@@ -39,6 +39,7 @@ import tempfile
 import termios
 import time
 import tty
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -686,8 +687,6 @@ def _mentions(text: str, term: str) -> bool:
 def cmd_myclub(args: argparse.Namespace) -> int:
     """The link carries the Kid's personal token, so it's handled like the other secrets: the
     result and any error name only MyClub's server and the HTTP status, never the link."""
-    from .collectors import myclub
-
     path = Path(os.path.expanduser(os.path.expandvars(args.config or "~/.family/config.yaml")))
     try:
         kids = [k.name for k in Config.load(path).kids]
@@ -717,29 +716,46 @@ def cmd_myclub(args: argparse.Namespace) -> int:
         return _report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
                        f"runs this in Terminal: {again} --no-open")
 
+    result, extra = myclub_link(path, args.kid, url)
+    next_ = {
+        "not-a-myclub-link": "That wasn't a MyClub calendar link. Copy the link from Calendar "
+                             "subscription (Tilaa kalenteri) on the Kid's MyClub calendar, starting "
+                             f"with webcal://, and run this again: {again} --no-open",
+        "link-failed": "The link didn't open, so it wasn't saved. Copy it again from MyClub and "
+                       f"run this again: {again} --no-open",
+        "not-a-calendar": "The link opened a page, not a calendar, so it wasn't saved. Copy the "
+                          "link from Calendar subscription (Tilaa kalenteri) on the Kid's MyClub "
+                          f"calendar, not the browser's address bar: {again} --no-open",
+        "save-failed": "The link works, but it couldn't be saved in the config (see error).",
+    }.get(result)
+    return _report(result, next_, **({"kid": args.kid} if result == "saved" else {}), **extra)
+
+
+def myclub_link(path: Path, kid: str, url: str,
+                saving: AbstractContextManager[Any] = nullcontext()) -> tuple[str, dict[str, Any]]:
+    """Checks the MyClub calendar link `url` by downloading it once and saves it as `kid`'s in
+    the config at `path`, holding `saving` only while it writes, and returns the step's result
+    with what else it reports: the events found, or an error that names only MyClub's server,
+    the HTTP status or the config, never the link. The setup page's own field calls this too
+    (ADR 0007), so both give the same results."""
+    from .collectors import myclub
+
     url = "".join(url.split())
     if not _is_myclub_link(url):
         # Not downloaded: it's most likely the family's MyClub password, or another page's address.
-        return _report("not-a-myclub-link", "That wasn't a MyClub calendar link. Copy the link "
-                       "from Calendar subscription (Tilaa kalenteri) on the Kid's MyClub calendar, "
-                       f"starting with webcal://, and run this again: {again} --no-open")
-
+        return "not-a-myclub-link", {}
     try:
         text = myclub.download(url)
     except myclub.FetchError as e:  # names only the server and the HTTP status
-        return _report("link-failed", "The link didn't open, so it wasn't saved. Copy it again "
-                       f"from MyClub and run this again: {again} --no-open", error=str(e))
+        return "link-failed", {"error": str(e)}
     if "BEGIN:VCALENDAR" not in text:
-        return _report("not-a-calendar", "The link opened a page, not a calendar, so it wasn't "
-                       "saved. Copy the link from Calendar subscription (Tilaa kalenteri) on the "
-                       f"Kid's MyClub calendar, not the browser's address bar: {again} --no-open")
-
+        return "not-a-calendar", {}
     try:
-        myclub.save_link(path, args.kid, url)
+        with saving:
+            myclub.save_link(path, kid, url)
     except (OSError, ValueError) as e:  # names the Kid and the config, never the link
-        return _report("save-failed", "The link works, but it couldn't be saved in the config "
-                       "(see error).", error=str(e)[:300])
-    return _report("saved", kid=args.kid, events=text.count("BEGIN:VEVENT"))
+        return "save-failed", {"error": str(e)[:300]}
+    return "saved", {"events": text.count("BEGIN:VEVENT")}
 
 
 def _is_myclub_link(url: str) -> bool:
