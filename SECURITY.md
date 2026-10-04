@@ -43,6 +43,8 @@ Everything FamilyBrief writes is owner-only: files `600`, folders `700`, so othe
 
 `family-brief setup page` serves the setup page from the Mac itself, only while setup needs it. It listens on 127.0.0.1, so no other computer can reach it, on a free port. Its address carries a one-time random code that every request must have, and it refuses a request whose Host or Origin isn't its own address, so a website open in the browser can't use it. It serves only the program's own page files, which load nothing from the internet, and it logs nothing about requests. It stops after 30 minutes without a request.
 
+To build the check page, it reads only the senders of the last 60 days of Gmail (their domains and one sender name each), never the mail, and keeps them in setup's progress, `~/.family/setup-progress.json`, which is owner-only. It never offers a public mail service such as gmail.com for the allowlist, so private mail isn't read. The health check it runs returns only each check's name and status to the page, never the details, which can quote an address or an error.
+
 ### Where MyClub links can appear
 
 A MyClub calendar link carries a personal token that lets anyone read the Kid's club calendar. The parent pastes it into a macOS dialog with hidden input (`family-brief setup myclub`), into the setup page's own password field (ADR 0007), or into their own Terminal with the older `scripts/setup_myclub.py`, never into the Claude or Codex chat, and it's kept only in `~/.family/config.yaml` and the config backups next to it in `~/.family`. Each night it's sent to MyClub to download the calendar. When the download fails, `doctor`, the logs, the archive and the Brief name only the MyClub server and the HTTP status, never the link's path or token.

@@ -4,11 +4,25 @@
 const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish"];
 const page = {
   text: null, language: "en", chosen: null, languages: [], progress: null, welcome: null,
-  connect: null, gmail: null, myclub: null, welcomeShown: false, connectShown: false,
+  connect: null, gmail: null, myclub: null, check: null, welcomeShown: false,
+  connectShown: false, workingShown: false, checkShown: false,
 };
 
 function t(key) {
   return page.text[page.language][key];
+}
+
+// A text with its {placeholders} filled from `values`.
+function fill(text, values) {
+  return text.replace(/\{(\w+)\}/g, (all, name) => values && name in values ? String(values[name]) : all);
+}
+
+// Shows `key`'s text in `el`, filled from `values`, and keeps it for when the language changes.
+function setText(el, key, values) {
+  el.dataset.text = key;
+  if (values) el.dataset.values = JSON.stringify(values);
+  else delete el.dataset.values;
+  el.textContent = fill(t(key), values);
 }
 
 async function getJSON(path) {
@@ -50,7 +64,11 @@ function applyText() {
   document.documentElement.lang = page.language;
   document.title = t("title");
   for (const el of document.querySelectorAll("[data-text]")) {
-    el.textContent = t(el.dataset.text);
+    el.textContent = fill(t(el.dataset.text), el.dataset.values && JSON.parse(el.dataset.values));
+  }
+  for (const el of document.querySelectorAll("[data-label]")) {
+    el.setAttribute("aria-label",
+      fill(t(el.dataset.label), el.dataset.values && JSON.parse(el.dataset.values)));
   }
   document.getElementById("language-switch").value = page.language;
   document.getElementById("phases").setAttribute("aria-label", t("phases.label"));
@@ -295,6 +313,7 @@ function renderConnect() {
   });
   document.getElementById("gmail-form").addEventListener("submit", connectGmail);
   document.getElementById("gmail-address").value = page.gmail.address || "";
+  document.getElementById("connect-continue").addEventListener("click", startReading);
 }
 
 // The Source the parent is on: the one saved, else the first still to do (null once none is).
@@ -953,6 +972,330 @@ async function leaveMyClub() {
   }
 }
 
+// ── Working: Parent Recap reads the Gmail senders for the check page, and the page shows how
+// far it is. Wilma's Kids and WhatsApp's groups were read in Connect.
+
+const READING_MS = 1000;
+const workingStep = { timer: null, reading: null };
+
+// The Kids and the lists as they are now, for the progress shown and the check page.
+async function refreshState() {
+  const state = await getJSON("api/state");
+  page.check = state.check;
+  page.myclub = state.myclub;
+}
+
+async function startReading() {
+  clearError();
+  clearTimeout(workingStep.timer);
+  try {
+    const out = await post("api/working", {});
+    page.progress = out.progress;
+    workingStep.reading = null;
+    await refreshState();
+    const first = !page.workingShown;
+    show(); // the first time, this checks how far it is
+    if (!first) checkReading();
+  } catch (e) {
+    failed(e);
+  }
+}
+
+function enterWorking() {
+  document.getElementById("working-again").addEventListener("click", startReading);
+  renderWorking();
+  checkReading();
+}
+
+async function checkReading() {
+  clearTimeout(workingStep.timer);
+  let out;
+  try {
+    out = await post("api/working/check", {});
+  } catch (e) {
+    failed(e);
+    return;
+  }
+  if (out.result === "no-read") return startReading(); // the page was restarted meanwhile
+  workingStep.reading = out;
+  if (out.result === "read") {
+    page.progress = out.progress;
+    try {
+      await refreshState();
+    } catch (e) {
+      failed(e);
+    }
+    show();
+    return;
+  }
+  renderWorking();
+  if (out.result === "reading") workingStep.timer = setTimeout(checkReading, READING_MS);
+}
+
+// What's been read: the Sources Connect read, then Gmail's senders, as far as they've got.
+function renderWorking() {
+  const statuses = page.progress.sources;
+  const reading = workingStep.reading || { result: "reading", read: 0, total: null };
+  const items = [];
+  if (statuses.wilma === "done") {
+    items.push(["working.wilma", { kids: page.check.kids.map((k) => k.everyday_name).join(", ") }]);
+  }
+  if (statuses.whatsapp === "done") {
+    items.push(["working.whatsapp", { count: (page.progress.whatsapp_chats || []).length }]);
+  }
+  if (statuses.myclub === "done") items.push(["working.myclub", null]);
+  items.push(reading.total ? ["working.gmail", { read: reading.read, total: reading.total }, true]
+    : ["working.gmail.start", null, true]);
+  document.getElementById("working-list").replaceChildren(...items.map(([key, values, now]) => {
+    const item = document.createElement("li");
+    item.dataset.status = now ? "to-do" : "done";
+    if (now && reading.result === "reading") item.setAttribute("aria-current", "step");
+    const line = document.createElement("span");
+    setText(line, key, values);
+    item.append(line);
+    return item;
+  }));
+  const bar = document.getElementById("working-bar");
+  bar.value = reading.total ? reading.read / reading.total : 0;
+  bar.hidden = reading.result !== "reading";
+  const failedRead = reading.result === "read-failed";
+  document.getElementById("working-status").hidden = !failedRead;
+  document.getElementById("working-again").hidden = !failedRead;
+  if (failedRead) setText(document.getElementById("working-message"), "working.read-failed");
+}
+
+// ── Check: one page of everything found, each list ticked by best guess, confirmed at once.
+// Confirming saves it all and runs the health check.
+
+const HEALTH_MS = 2000;
+const checkStep = { timer: null, checking: false };
+
+function enterCheck() {
+  document.getElementById("check-form").addEventListener("submit", confirmCheck);
+  document.getElementById("check-kid-add").addEventListener("click", addCheckKid);
+  document.getElementById("check-kid-name").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    addCheckKid();
+  });
+  allOption("check-whatsapp-all", "check-groups");
+  allOption("check-senders-all", "check-senders");
+  renderCheck();
+  resumeHealth();
+}
+
+function renderCheck() {
+  const { kids, whatsapp, senders, recipients, evening } = page.check;
+  document.getElementById("check-kids").replaceChildren(...kids.map(kidRow));
+  document.getElementById("check-whatsapp").hidden = whatsapp === null;
+  document.getElementById("check-groups").replaceChildren(...(whatsapp || []).map((group) =>
+    tickRow(group.name, group.ticked, group.kids.length ? { text: group.kids.join(", ") } : null)));
+  document.getElementById("check-senders").replaceChildren(...senders.map((sender) =>
+    tickRow(sender.domain, sender.ticked, sender.count
+      ? { key: "check.sender.mails", values: { count: sender.count, example: sender.example } }
+      : { key: "check.sender.no-mail" })));
+  // Without school mail among what came in, the Briefs come out empty.
+  document.getElementById("check-senders-none").hidden =
+    senders.some((s) => s.ticked && s.count > 0);
+  document.getElementById("check-recipients").replaceChildren(...recipients.map(recipientRow));
+  document.getElementById("check-evening").value = evening;
+  syncAll("check-whatsapp-all", "check-groups");
+  syncAll("check-senders-all", "check-senders");
+}
+
+// A Kid, ticked, with the name the Brief calls them in a field of its own.
+// A Kid added on the page is named by the name they're called.
+function kidRow({ name, everyday_name: called }) {
+  const row = document.createElement("div");
+  row.className = "kid";
+  const label = document.createElement("label");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.value = name;
+  input.checked = true;
+  const shown = document.createElement("span");
+  shown.className = "name";
+  shown.textContent = name;
+  label.append(input, shown);
+  const everyday = document.createElement("input");
+  everyday.type = "text";
+  everyday.className = "everyday";
+  everyday.value = called;
+  everyday.autocomplete = "off";
+  everyday.dataset.label = "check.kid.everyday";
+  everyday.dataset.values = JSON.stringify({ name });
+  everyday.setAttribute("aria-label", fill(t("check.kid.everyday"), { name }));
+  row.append(label, everyday);
+  return row;
+}
+
+// One item of a list to tick, with what it is beside it: a text, or a text to show.
+function tickRow(value, ticked, detail) {
+  const label = document.createElement("label");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.value = value;
+  input.checked = ticked;
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = value;
+  label.append(input, name);
+  if (detail) {
+    const about = document.createElement("span");
+    about.className = "town";
+    if (detail.key) setText(about, detail.key, detail.values);
+    else about.textContent = detail.text;
+    label.append(about);
+  }
+  return label;
+}
+
+function recipientRow({ address, language }, i) {
+  const field = document.createElement("div");
+  field.className = "field";
+  const label = document.createElement("label");
+  label.htmlFor = `check-recipient-${i}`;
+  label.textContent = address;
+  const select = document.createElement("select");
+  select.id = label.htmlFor;
+  select.dataset.address = address;
+  const offered = [...page.languages];
+  if (!offered.some((l) => l.code === language)) offered.push({ code: language, name: language });
+  for (const { code, name } of offered) {
+    const option = document.createElement("option");
+    option.value = code;
+    option.lang = code;
+    option.textContent = name;
+    select.append(option);
+  }
+  select.value = language;
+  field.append(label, select);
+  return field;
+}
+
+// "All" ticks or unticks the whole list, and is ticked itself while every item is.
+function allOption(allId, listId) {
+  const all = document.getElementById(allId);
+  const list = document.getElementById(listId);
+  all.addEventListener("change", () => {
+    for (const box of list.querySelectorAll('input[type="checkbox"]')) box.checked = all.checked;
+  });
+  list.addEventListener("change", () => syncAll(allId, listId));
+}
+
+function syncAll(allId, listId) {
+  const boxes = [...document.getElementById(listId).querySelectorAll('input[type="checkbox"]')];
+  document.getElementById(allId).checked = boxes.length > 0 && boxes.every((b) => b.checked);
+}
+
+// A Kid Wilma didn't list, by the name the family calls them.
+function addCheckKid() {
+  clearError();
+  const input = document.getElementById("check-kid-name");
+  const name = input.value.trim();
+  if (!name) return;
+  const rows = [...document.querySelectorAll("#check-kids .kid")];
+  const taken = rows.some((row) => [row.querySelector('input[type="checkbox"]').value,
+    row.querySelector("input.everyday").value].some((n) => n.trim().toLowerCase() === name.toLowerCase()));
+  if (taken) return showError("check.kid-exists");
+  document.getElementById("check-kids").append(kidRow({ name, everyday_name: name }));
+  input.value = "";
+}
+
+function ticked(listId) {
+  return [...document.querySelectorAll(`#${listId} input[type="checkbox"]:checked`)]
+    .map((box) => box.value);
+}
+
+async function confirmCheck(event) {
+  event.preventDefault();
+  clearError();
+  const kids = [...document.querySelectorAll("#check-kids .kid")]
+    .map((row) => [row.querySelector('input[type="checkbox"]'), row.querySelector("input.everyday")])
+    .filter(([box]) => box.checked)
+    .map(([box, everyday]) => ({ name: box.value, everyday_name: everyday.value.trim() }));
+  const answers = {
+    kids,
+    whatsapp: page.check.whatsapp === null ? null : ticked("check-groups"),
+    senders: ticked("check-senders"),
+    recipients: [...document.querySelectorAll("#check-recipients select")]
+      .map((select) => ({ address: select.dataset.address, language: select.value })),
+    evening: document.getElementById("check-evening").value,
+  };
+  const button = event.submitter;
+  button.disabled = true;
+  try {
+    const r = await fetch("api/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(answers),
+    });
+    const out = await r.json();
+    if (r.status === 400) return showError("check.invalid");
+    if (!r.ok && out.result !== "checking") throw new Error(out.result);
+    healthResult(out);
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = checkStep.checking;
+  }
+}
+
+async function checkHealth() {
+  try {
+    healthResult(await post("api/check/health", {}));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+// Picks up a health check still running, or how the last one failed, after a reload.
+async function resumeHealth() {
+  try {
+    const out = await post("api/check/health", {});
+    if (out.result === "checking" || out.result === "not-ok") healthResult(out);
+  } catch (e) {
+    failed(e);
+  }
+}
+
+// How the health check went: each check by name, and for each that failed, what to do.
+// Once it's all OK, setup moves on.
+function healthResult(out) {
+  clearTimeout(checkStep.timer);
+  checkStep.checking = out.result === "checking";
+  document.getElementById("check-confirm").disabled = checkStep.checking;
+  if (out.result === "ok") {
+    page.progress = out.progress;
+    show();
+    return;
+  }
+  const box = document.getElementById("health");
+  box.hidden = out.result === "no-check";
+  box.dataset.result = "health." + out.result;
+  setText(document.getElementById("health-message"), "health." + out.result);
+  document.getElementById("health-checks").replaceChildren(...(out.checks || []).map((check) => {
+    const item = document.createElement("li");
+    item.dataset.status = check.status;
+    const language = page.languages.find((l) => l.code === check.language);
+    const values = { kid: check.kid, language: language ? language.name : check.language };
+    const name = document.createElement("span");
+    setText(name, "health.check." + check.check, values);
+    const status = document.createElement("span");
+    status.className = "state";
+    setText(status, "health.status." + check.status);
+    item.append(name, " ", status);
+    if (check.status !== "ok") {
+      const next = document.createElement("p");
+      next.className = "hint";
+      setText(next, "health.fail." + check.check, values);
+      item.append(next);
+    }
+    return item;
+  }));
+  if (checkStep.checking) checkStep.timer = setTimeout(checkHealth, HEALTH_MS);
+}
+
 // ── Continue in the chat: Claude Code opens at the setup skill in Terminal, or the page says
 // what to type in Codex. The skill carries on from the step saved here.
 
@@ -992,7 +1335,10 @@ function show() {
   document.getElementById("chat").hidden = !page.chosen;
   document.getElementById("welcome").hidden = phase !== "welcome";
   document.getElementById("connect").hidden = phase !== "connect";
-  document.getElementById("phase").hidden = !phase || phase === "welcome" || phase === "connect";
+  document.getElementById("working").hidden = phase !== "working";
+  document.getElementById("check").hidden = phase !== "check";
+  document.getElementById("phase").hidden =
+    !phase || ["welcome", "connect", "working", "check"].includes(phase);
   if (phase === "welcome" && !page.welcomeShown) {
     page.welcomeShown = true;
     renderWelcome();
@@ -1000,6 +1346,14 @@ function show() {
   if (phase === "connect" && !page.connectShown) {
     page.connectShown = true;
     renderConnect();
+  }
+  if (phase === "working" && !page.workingShown) {
+    page.workingShown = true;
+    enterWorking();
+  }
+  if (phase === "check" && !page.checkShown) {
+    page.checkShown = true;
+    enterCheck();
   }
   applyText();
 }
@@ -1015,6 +1369,7 @@ async function start() {
   page.connect = state.connect;
   page.gmail = state.gmail;
   page.myclub = state.myclub;
+  page.check = state.check;
   renderSwitch();
   renderChoices();
   renderChat();

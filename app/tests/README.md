@@ -83,6 +83,18 @@ has one, that a link that isn't one, doesn't open or isn't a calendar is explain
 that a Household without Wilma adds its Kids by name there and one with Wilma can't, that
 skipping saves nothing, and that the link never reaches a response, the output, the logs, a
 command line or setup's progress.
+Working reads the Gmail senders against `test_setup_steps.py`'s fake IMAP server, held after the
+first batch so the page can be seen reading. It checks that reading starts only once every Source
+is done or skipped, that the page shows how many senders of how many are read, that the senders
+are kept in setup's progress and setup moves on to Check by itself, and that a Gmail that can't be
+read says so without the error and can be tried again.
+Check checks that the Kids come all ticked with their first name as the everyday name, that
+WhatsApp groups and Gmail senders come ticked by best guess and a public mail service is never
+offered, that each Recipient comes with their language and the evening at 21:00, and that
+confirming saves it all through `setup save` and runs the health check, faked so it can be seen
+running, except in one test that runs doctor's real checks against the harness's fakes. It checks
+that a failing check keeps the page and names only the check, that warnings alone move setup on,
+and that answers the page didn't offer are refused with nothing saved.
 Its "Continue in the chat" runs the Terminal script the page opens against a fake `claude`, and
 checks that it starts Claude Code in the home folder at the setup skill, that a Codex family is
 told to type `$parent-recap-setup`, that `setup save --read` gives the chat the same progress the

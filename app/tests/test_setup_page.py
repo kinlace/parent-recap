@@ -34,6 +34,7 @@ from family_brief import (__main__ as cli, install_record, ops, setup_ai, setup_
 from family_brief.collectors import myclub, whatsapp
 from family_brief.config import Config
 from family_brief.utils import keychain
+from test_setup_steps import HeaderImap
 from test_setup_myclub import LINK as MYCLUB_LINK, TOKEN as MYCLUB_TOKEN, MyClubServer
 from test_setup_whatsapp import (CHATS as WHATSAPP_CHATS, PYTHON as WHATSAPP_PYTHON, Mac,
                                  assert_read_only_through_bg, fake_mac)
@@ -2237,6 +2238,415 @@ def test_every_myclub_result_is_explained_in_all_three_languages():
     for language, table in text.items():
         for result in (*setup_server.MYCLUB_RESULTS, *setup_server.MYCLUB_KID_RESULTS):
             assert table.get(f"myclub.{result}", "").strip(), (language, result)
+
+
+# ── Working: Parent Recap reads the Sources, with progress shown
+
+
+class GatedHeaderImap(HeaderImap):
+    """Gmail's IMAP server for the sender scan, which holds each batch of headers after the
+    first until the test lets it go, so the page can be seen while it reads."""
+
+    def __init__(self, senders: list[str]) -> None:
+        super().__init__(senders)
+        self.go = threading.Event()
+        self.batches = 0
+
+    def fetch(self, ids: bytes, what: str) -> tuple[str, list[Any]]:
+        self.batches += 1
+        if self.batches > 1:
+            assert self.go.wait(5)
+        return super().fetch(ids, what)
+
+
+SENDERS = (["Opettaja <opettaja@edu.espoo.fi>"] * 300 + ["Coach <coach@tapiolan-seura.fi>"] * 100
+           + ["Friend <friend@gmail.com>"] * 40 + ["Shop <news@shop.example.com>"] * 10)
+
+
+@pytest.fixture
+def senders(harness, monkeypatch) -> GatedHeaderImap:
+    imap = GatedHeaderImap(SENDERS)
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", imap)
+    harness.keychain["gmail-imap-parent@example.com"] = APP_PASSWORD
+    return imap
+
+
+def connect_done(harness, **config: Any) -> None:
+    """Every Source done or skipped, with the config as Connect left it."""
+    harness.config.update(city="Espoo", **config)
+    for kid in harness.config["kids"]:
+        kid.pop("myclub_ical_url", None)
+    config_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+    save_progress(harness, {"phase": "connect", "source": None, "sources": {
+        "wilma": "done", "gmail": "done", "ai": "done", "whatsapp": "done", "myclub": "skipped"}})
+
+
+def more_progress(harness, **progress: Any) -> None:
+    """Changes only what's given in setup's progress, as setup save does."""
+    assert setup_save.save(config_file(harness), {"progress": progress})["result"] == "saved"
+
+
+def start_reading(url: str) -> Response:
+    return call(url, "api/working", method="POST", body={})
+
+
+def reading(url: str) -> dict[str, Any]:
+    return call(url, "api/working/check", method="POST", body={}).json()
+
+
+def read_to_the_end(url: str) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    wait_for(lambda: out.update(reading(url)) or out["result"] != "reading")
+    return out
+
+
+def test_once_every_source_is_done_the_page_reads_them_and_shows_how_far_it_is(harness, page,
+                                                                             senders):
+    connect_done(harness)
+
+    r = start_reading(page.url)
+
+    assert r.status == 200
+    assert r.json()["result"] == "reading" and r.json()["progress"]["phase"] == "working"
+    wait_for(lambda: reading(page.url).get("read") == 200)
+    assert reading(page.url) == {"result": "reading", "read": 200, "total": 450}
+    assert start_reading(page.url).json()["result"] == "reading"  # not started twice
+    senders.go.set()
+    out = read_to_the_end(page.url)
+    assert out["result"] == "read"
+    assert out["progress"]["phase"] == "check"
+    # Kept for the check page, as `discover gmail-senders --json` gives them.
+    assert [(s["domain"], s["count"], s["likely"]) for s in out["progress"]["gmail_senders"]] == [
+        ("edu.espoo.fi", 300, True), ("tapiolan-seura.fi", 100, True), ("gmail.com", 40, False),
+        ("shop.example.com", 10, False)]
+    assert senders.batches == 3
+    assert setup_save.read(config_file(harness))["progress"]["phase"] == "check"
+
+
+def test_reading_waits_until_every_source_is_done_or_skipped(harness, page, senders):
+    connect_done(harness)
+    save_progress(harness, {"phase": "connect", "source": "ai", "sources": {"ai": "to-do"}})
+
+    r = start_reading(page.url)
+
+    assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    assert setup_save.read(config_file(harness))["progress"]["phase"] == "connect"
+    assert senders.batches == 0
+    for body in [{"x": 1}, []]:
+        assert call(page.url, "api/working", method="POST", body=body).status == 400
+
+
+def test_reading_picks_up_again_after_the_page_was_restarted(harness, page, senders):
+    connect_done(harness)
+    more_progress(harness, phase="working")
+    senders.go.set()
+
+    assert reading(page.url)["result"] == "no-read"  # nothing reading in this server yet
+    assert start_reading(page.url).json()["result"] == "reading"
+    assert read_to_the_end(page.url)["result"] == "read"
+
+
+def test_a_gmail_that_cannot_be_read_says_so_and_can_be_tried_again(harness, page, senders):
+    connect_done(harness)
+    senders.go.set()
+    del harness.keychain["gmail-imap-parent@example.com"]
+
+    start_reading(page.url)
+    out = read_to_the_end(page.url)
+
+    assert out == {"result": "read-failed"}  # without the error, which names the address
+    assert setup_save.read(config_file(harness))["progress"]["phase"] == "working"
+    harness.keychain["gmail-imap-parent@example.com"] = APP_PASSWORD
+    start_reading(page.url)
+    assert read_to_the_end(page.url)["result"] == "read"
+
+
+def test_every_working_result_is_explained_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for result in setup_server.WORKING_RESULTS:
+            assert table.get(f"working.{result}", "").strip(), (language, result)
+
+
+# ── Check: one page with everything found, to confirm
+
+
+def at_the_check_step(harness, gmail_senders: list[dict[str, Any]] | None = None,
+                      whatsapp_chats: list[dict[str, Any]] | None = None) -> None:
+    connect_done(harness)
+    more_progress(harness, **{"phase": "check", "gmail_senders": gmail_senders or [
+        {"domain": "edu.espoo.fi", "count": 300, "example": "Opettaja", "likely": True},
+        {"domain": "gmail.com", "count": 40, "example": "Friend", "likely": False, "public": True},
+        {"domain": "shop.example.com", "count": 10, "example": "Shop", "likely": False}],
+        "whatsapp_chats": whatsapp_chats if whatsapp_chats is not None else [
+            {"name": "3B parents", "last": "2026-09-25", "archived": False,
+             "hint": {"kids": ["Mia Virtanen"], "matched": ["3B"]}},
+            {"name": "Kilo School families 🏫", "last": "2026-09-24", "archived": True,
+             "hint": {"kids": ["Mia Virtanen", "Leo"], "matched": ["Kilo School"]}},
+            {"name": "Neighbours ", "last": "2026-09-23", "archived": False}]})
+
+
+def check_page(url: str) -> dict[str, Any]:
+    return call(url, "api/state").json()["check"]
+
+
+class Health:
+    """Doctor's checks, as the server runs them: each (status, item, detail), held until the test
+    lets them go, so the page can be seen while they run."""
+
+    def __init__(self) -> None:
+        self.results = [(ops.OK, "Config file", "~/.family/config.yaml, 2 kids"),
+                        (ops.OK, "Gmail", "parent@example.com signed in, 3 allowlisted emails"),
+                        (ops.OK, "Claude", "call succeeded (auth: keychain-oauth)")]
+        self.runs: list[tuple[str | None, bool]] = []
+        self.go = threading.Event()
+        self.go.set()
+
+    def __call__(self, config: str | None, skip_llm: bool = False, whatsapp_only: bool = False,
+                 show: bool = False, schedule: bool = True) -> list[tuple[str, str, str]]:
+        self.runs.append((config, schedule))
+        assert self.go.wait(5)
+        return list(self.results)
+
+
+@pytest.fixture
+def health(monkeypatch) -> Health:
+    h = Health()
+    monkeypatch.setattr(ops, "health_checks", h)
+    return h
+
+
+def confirm(url: str, **answers: Any) -> Response:
+    body = {"kids": [{"name": "Mia Virtanen", "everyday_name": "Mia"},
+                     {"name": "Leo", "everyday_name": "Leo"}],
+            "whatsapp": ["3B parents"], "senders": ["edu.espoo.fi", "espoo.fi"],
+            "recipients": [{"address": "parent@example.com", "language": "zh"},
+                           {"address": "partner@example.com", "language": "zh"}],
+            "evening": "21:00", **answers}
+    return call(url, "api/check", method="POST", body=body)
+
+
+def health_result(url: str) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    wait_for(lambda: out.update(
+        call(url, "api/check/health", method="POST", body={}).json()) or out["result"] != "checking")
+    return out
+
+
+def test_the_kids_come_all_ticked_with_their_first_name_as_everyday_name(harness, page):
+    harness.config["kids"][0]["name"] = "Mia Virtanen"
+    harness.config["kids"][1].update(name="Leo Matti Virtanen", everyday_name="Leksa")
+    at_the_check_step(harness)
+
+    out = check_page(page.url)
+
+    assert out["kids"] == [{"name": "Mia Virtanen", "everyday_name": "Mia"},
+                           {"name": "Leo Matti Virtanen", "everyday_name": "Leksa"}]
+    # Nothing about schools or classes is asked.
+    assert not {"school", "class_name", "grade"} & {k for kid in out["kids"] for k in kid}
+
+
+def test_the_whatsapp_groups_linked_to_a_kid_come_ticked_the_others_unticked(harness, page):
+    harness.config["kids"][0]["name"] = "Mia Virtanen"
+    harness.config["whatsapp"]["chats"] = [{"name": "Leo piano", "kid": "Leo", "label": "piano"}]
+    at_the_check_step(harness)
+
+    groups = check_page(page.url)["whatsapp"]
+
+    assert [(g["name"], g["ticked"], g["kids"]) for g in groups] == [
+        ("3B parents", True, ["Mia"]),
+        ("Kilo School families 🏫", True, ["Mia", "Leo"]),
+        ("Neighbours ", False, []),
+        ("Leo piano", True, ["Leo"]),  # picked before, though not found this time
+    ]
+
+
+def test_without_whatsapp_there_are_no_groups_to_tick(harness, page):
+    at_the_check_step(harness, whatsapp_chats=[])
+    more_progress(harness, sources={"whatsapp": "skipped"}, whatsapp_chats=None)
+
+    assert check_page(page.url)["whatsapp"] is None
+
+
+def test_school_city_and_club_senders_come_ticked_and_public_mail_is_left_out(harness, page):
+    at_the_check_step(harness)
+
+    senders = check_page(page.url)["senders"]
+
+    assert [(s["domain"], s["ticked"]) for s in senders] == [
+        ("edu.espoo.fi", True), ("shop.example.com", False),
+        ("espoo.fi", True),  # the city's starting allowlist, though no mail came from it yet
+        ("kilo.example.fi", True)]  # already on the allowlist
+    assert senders[0] == {"domain": "edu.espoo.fi", "count": 300, "example": "Opettaja",
+                          "ticked": True}
+
+
+def test_each_recipient_comes_with_their_language_and_the_evening_at_21(harness, page):
+    harness.config["email"]["to"] = ["parent@example.com",
+                                     {"address": "partner@example.com", "language": "fi"}]
+    at_the_check_step(harness)
+
+    out = check_page(page.url)
+
+    assert out["recipients"] == [{"address": "parent@example.com", "language": "zh"},
+                                 {"address": "partner@example.com", "language": "fi"}]
+    assert out["evening"] == "21:00"
+
+
+def test_confirming_saves_everything_through_setup_save_and_runs_the_health_check(harness, page,
+                                                                                health):
+    harness.config["kids"][0]["name"] = "Mia Virtanen"
+    harness.config["kids"][0]["aliases"] = ["米娅"]
+    at_the_check_step(harness)
+    health.go.clear()
+
+    r = confirm(page.url, kids=[{"name": "Mia Virtanen", "everyday_name": "Mimi"},
+                                {"name": "Aino", "everyday_name": "Aino"}],
+                whatsapp=["3B parents", "Kilo School families 🏫"],
+                recipients=[{"address": "parent@example.com", "language": "fi"},
+                            {"address": "partner@example.com", "language": "zh"}],
+                evening="20:30")
+
+    assert r.status == 200 and r.json()["result"] == "checking"
+    cfg = Config.load(config_file(harness))
+    assert [(k.name, k.everyday_name, k.aliases) for k in cfg.kids] == [
+        ("Mia Virtanen", "Mimi", ["米娅"]),  # what the page doesn't show stays as it was
+        ("Aino", "Aino", [])]  # Leo unticked, Aino added by her everyday name
+    assert [(c.name, c.kid, c.label) for c in cfg.whatsapp.chats] == [
+        ("3B parents", "Mia Virtanen", "class"),
+        ("Kilo School families 🏫", "Mia Virtanen", "school")]  # Leo is no longer a Kid
+    assert cfg.whatsapp.enabled
+    assert cfg.gmail.allowlist_domains == ["edu.espoo.fi", "espoo.fi"]
+    # The parent's language now differs from the page's, so it's their own; the partner reads
+    # the Household's.
+    assert [(t.address, t.language) for t in cfg.email.to] == \
+        [("parent@example.com", "fi"), ("partner@example.com", None)]
+    assert cfg.summary_language == "zh"
+    assert (cfg.schedule.daily_hour, cfg.schedule.daily_minute) == (20, 30)
+
+    assert call(page.url, "api/check/health", method="POST", body={}).json() == \
+        {"result": "checking"}
+    assert confirm(page.url).status == 409  # not again while it runs
+    health.go.set()
+    out = health_result(page.url)
+    assert out["result"] == "ok"
+    assert out["checks"] == [{"check": "config", "status": "ok"}, {"check": "gmail", "status": "ok"},
+                             {"check": "ai", "status": "ok"}]
+    assert out["progress"]["phase"] == "first-brief"
+    # The schedule is Finish's: it isn't checked before it's installed.
+    assert health.runs == [(str(config_file(harness)), False)]
+
+
+def test_a_health_check_that_fails_keeps_the_page_and_says_which_check(harness, page, health):
+    at_the_check_step(harness)
+    health.results = [
+        (ops.OK, "Config file", "~/.family/config.yaml, 2 kids"),
+        (ops.FAIL, "Gmail", "IMAP login failed: parent@example.com rejected"),
+        (ops.WARN, "Pilot feedback", "feedback is on but prefill_base_url or fields is missing"),
+        (ops.FAIL, "MyClub (Mia)", "subscription link doesn't open: https://x.myclub.fi/secret")]
+
+    assert confirm(page.url).json()["result"] == "checking"
+    out = health_result(page.url)
+
+    assert out == {"result": "not-ok", "checks": [
+        {"check": "config", "status": "ok"}, {"check": "gmail", "status": "fail"},
+        {"check": "feedback", "status": "warn"},
+        {"check": "myclub", "status": "fail", "kid": "Mia"}]}
+    assert "parent@example.com" not in json.dumps(out) and "secret" not in json.dumps(out)
+    assert setup_save.read(config_file(harness))["progress"]["phase"] == "check"
+    # Fixed, it's run again by confirming again.
+    health.results = health.results[:1]
+    confirm(page.url)
+    assert health_result(page.url)["result"] == "ok"
+
+
+def test_warnings_alone_let_setup_move_on(harness, page, health):
+    at_the_check_step(harness)
+    health.results.append((ops.WARN, "Pilot feedback", "feedback.household_label is empty"))
+
+    confirm(page.url)
+
+    assert health_result(page.url)["result"] == "ok"
+
+
+def test_the_health_check_runs_for_real_with_the_sources_confirmed(harness, page, ai, monkeypatch):
+    ai("claude")
+    harness.keychain["claude-oauth-token"] = "sk-ant-oat01-token"
+    harness.keychain["gmail-imap-parent@example.com"] = APP_PASSWORD
+    harness.config["wilma"]["enabled"] = False
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", HeaderImap(SENDERS))
+    at_the_check_step(harness)
+
+    confirm(page.url, whatsapp=[])
+
+    out = health_result(page.url)
+    assert out["result"] == "ok", out
+    assert {c["check"] for c in out["checks"]} >= {"config", "gmail", "ai", "calendar"}
+    assert not Config.load(config_file(harness)).whatsapp.enabled  # no group ticked
+
+
+@pytest.mark.parametrize("answers", [
+    {"senders": ["gmail.com"]},  # public mail is never offered
+    {"senders": ["anything.example"]},
+    {"whatsapp": ["Another group"]},
+    {"kids": []},
+    {"kids": [{"name": "Mia", "everyday_name": " "}]},
+    {"kids": [{"name": "Mia", "everyday_name": "A"}, {"name": "mia", "everyday_name": "B"}]},
+    {"recipients": [{"address": "stranger@example.com", "language": "fi"}]},
+    {"recipients": [{"address": "parent@example.com", "language": "klingon!"},
+                    {"address": "partner@example.com", "language": "zh"}]},
+    {"evening": "25:00"},
+    {"x": 1},
+])
+def test_answers_the_check_page_did_not_offer_are_refused(harness, page, health, answers):
+    at_the_check_step(harness)
+    before = config_file(harness).read_text()
+
+    r = confirm(page.url, **answers)
+
+    assert r.status == 400 and r.json()["result"] == "invalid-answers", answers
+    assert config_file(harness).read_text() == before
+    assert health.runs == []
+
+
+def test_without_whatsapp_confirming_leaves_it_as_it_was(harness, page, health):
+    at_the_check_step(harness, whatsapp_chats=[])
+    more_progress(harness, sources={"whatsapp": "skipped"}, whatsapp_chats=None)
+    harness_chats = yaml.safe_load(config_file(harness).read_text())["whatsapp"]
+
+    assert confirm(page.url, whatsapp=["3B parents"]).status == 400
+    assert confirm(page.url, whatsapp=None).json()["result"] == "checking"
+    assert yaml.safe_load(config_file(harness).read_text())["whatsapp"] == harness_chats
+
+
+def test_the_check_page_has_all_options_and_lets_kids_be_added(page):
+    html = (PAGE_DIR / "index.html").read_text()
+
+    for element in ('id="check-whatsapp-all"', 'id="check-senders-all"', 'id="check-kid-form"',
+                    'id="check-evening"', 'type="time"'):
+        assert element in html, element
+
+
+def test_every_check_and_health_result_is_explained_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for result in setup_server.HEALTH_RESULTS:
+            assert table.get(f"health.{result}", "").strip(), (language, result)
+        for check in {*setup_server.HEALTH_CHECKS.values(), "other"}:
+            assert table.get(f"health.check.{check}", "").strip(), (language, check)
+            assert table.get(f"health.fail.{check}", "").strip(), (language, check)
+
+
+def test_every_health_check_doctor_runs_has_a_name_on_the_page():
+    source = Path(ops.__file__).read_text()
+    items = {re.split(r" ?[{(]", item)[0]
+             for item in re.findall(r'\badd\([^,]+, f?"([^"]+)"', source)}
+    items -= setup_server.HEALTH_LEFT_OUT
+
+    assert items and items <= set(setup_server.HEALTH_CHECKS), items - set(setup_server.HEALTH_CHECKS)
 
 
 # ── Continue in the chat
