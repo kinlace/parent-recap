@@ -272,7 +272,8 @@ fieldset .field label {
 .status[data-result="wilma.town-saved"],
 .status[data-result="claude.saved"],
 .status[data-result="codex.signed-in"],
-.status[data-result="whatsapp.readable"] {
+.status[data-result="whatsapp.readable"],
+.status[data-result="finish.done"] {
   border-color: transparent;
   background: var(--good-soft);
   color: var(--good);
@@ -471,6 +472,17 @@ iframe.brief {
 #brief-feedback .hint { margin: 4px 0 0; }
 
 #brief-sent { margin-top: 14px; }
+
+/* ── Finish: the outcome checklist, each ticked once it's true */
+
+#finish-install { display: grid; gap: 10px; justify-items: start; margin-bottom: 14px; }
+
+#finish-status p + p { margin-top: 6px; }
+
+.status[data-result="finish.installing"],
+.status[data-result="finish.checking"] { border-color: var(--accent-line); }
+
+#finish-checklist { margin-bottom: 14px; }
 
 /* ── Continue in the chat */
 

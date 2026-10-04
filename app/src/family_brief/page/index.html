@@ -382,9 +382,23 @@
       <button type="button" id="brief-done" data-text="brief.done"></button>
     </div>
   </section>
-  <section id="phase" hidden>
-    <h1 id="phase-title"></h1>
-    <p class="note" data-text="phase.not-here"></p>
+  <section id="finish" hidden>
+    <h1 data-text="finish.title"></h1>
+    <div id="finish-install" hidden>
+      <p class="note" data-text="finish.intro"></p>
+      <button type="button" id="finish-start" data-text="finish.start"></button>
+    </div>
+    <div id="finish-status" class="status" role="status" hidden>
+      <p id="finish-message"></p>
+      <p id="finish-wake"></p>
+      <ul id="finish-other" class="kids" hidden></ul>
+      <button type="button" id="finish-replace" class="secondary" data-text="finish.replace" hidden></button>
+    </div>
+    <h2 data-text="finish.checklist"></h2>
+    <ul id="finish-checklist" class="checks"></ul>
+    <p class="ready" data-text="finish.restart"></p>
+    <p id="finish-changes" class="note"></p>
+    <p id="finish-closed" class="hint" data-text="finish.closed" hidden></p>
   </section>
   <div id="chat" class="chat" hidden>
     <p class="hint" data-text="chat.note"></p>

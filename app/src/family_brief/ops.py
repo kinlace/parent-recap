@@ -698,22 +698,56 @@ def wake_command(hour: int, minute: int) -> str:
     return f"sudo {_pmset_wake(hour, minute)}"
 
 
-def _set_wake(hour: int, minute: int, replace: bool) -> None:
-    """Sets the daily wake through macOS's administrator dialog. Another repeating wake schedule
-    is replaced only with `replace`, so the family can decline before any dialog opens. Without a
-    desktop session it gives the `sudo` command for Terminal instead."""
+# What setting the daily wake can say: no wake needed (`never-sleeps`, `already-set`), another
+# repeating wake schedule kept until the family agrees to replace it (`other-schedule`), set, or
+# not: the dialog was closed (`cancelled`), there was no dialog to ask in (`no-dialog`), or macOS
+# doesn't list it after the dialog (`not-set`).
+WAKE_RESULTS = ("set", "already-set", "never-sleeps", "other-schedule", "cancelled", "no-dialog",
+                "not-set")
+
+
+def set_wake(hour: int, minute: int, replace: bool) -> tuple[str, list[str]]:
+    """Sets the daily wake for a job at hour:minute through macOS's administrator dialog, where
+    the family types their Mac password. Another repeating wake schedule is replaced only with
+    `replace`, so the family can decline before any dialog opens. Returns one of WAKE_RESULTS and
+    the Mac's other repeating wake schedule, as `pmset -g sched` lists it."""
     if never_sleeps():
-        print("\nThis Mac never sleeps (sleep 0 in pmset), so it needs no wake schedule.")
-        return
-    wake_h, wake_m = wake_time(hour, minute)
+        return "never-sleeps", []
     existing = repeating_wakes()
     if any(is_our_wake(line, hour, minute) for line in existing):
+        return "already-set", []
+    if existing and not replace:
+        return "other-schedule", existing
+    wake_h, wake_m = wake_time(hour, minute)
+    try:
+        secret_dialog.as_administrator(
+            f"/usr/bin/{_pmset_wake(hour, minute)}",
+            f"Parent Recap wants to wake your Mac at {wake_h:02d}:{wake_m:02d} every day, 5 "
+            "minutes before the Brief. Enter your Mac password to allow this.")
+    except secret_dialog.Cancelled:
+        return "cancelled", existing
+    except secret_dialog.NoWayToAsk:
+        return "no-dialog", existing
+    if any(is_our_wake(line, hour, minute) for line in repeating_wakes()):
+        return "set", existing
+    return "not-set", existing
+
+
+def _set_wake(hour: int, minute: int, replace: bool) -> None:
+    """`set_wake`, saying how it went. Without a desktop session it gives the `sudo` command for
+    Terminal instead."""
+    wake_h, wake_m = wake_time(hour, minute)
+    result, existing = set_wake(hour, minute, replace)
+    if result == "never-sleeps":
+        print("\nThis Mac never sleeps (sleep 0 in pmset), so it needs no wake schedule.")
+        return
+    if result == "already-set":
         print(f"\nThe Mac already wakes at {wake_h:02d}:{wake_m:02d} every day, before the job starts.")
         return
     print("\nScheduled jobs don't run while the Mac is asleep.")
     in_terminal = (f"Run this once in Terminal (it asks for your Mac password):\n"
                    f"  {wake_command(hour, minute)}")
-    if existing and not replace:
+    if result == "other-schedule":
         print(f"{WARN}This Mac already has a repeating wake schedule, and Parent Recap's wake "
               "schedule replaces it:")
         for line in existing:
@@ -732,24 +766,33 @@ def _set_wake(hour: int, minute: int, replace: bool) -> None:
         print("Replacing this Mac's repeating wake schedule:")
         for line in existing:
             print(f"  {line}")
-    try:
-        secret_dialog.as_administrator(
-            f"/usr/bin/{_pmset_wake(hour, minute)}",
-            f"Parent Recap wants to wake your Mac at {wake_h:02d}:{wake_m:02d} every day, 5 "
-            "minutes before the Brief. Enter your Mac password to allow this.")
-    except secret_dialog.Cancelled:
+    if result == "cancelled":
         print("The wake schedule wasn't set: the Mac password dialog was closed. Run "
               "family-brief schedule install again, or set it in Terminal instead.")
         print(in_terminal)
-        return
-    except secret_dialog.NoWayToAsk:
+    elif result == "no-dialog":
         print(in_terminal)
-        return
-    if any(is_our_wake(line, hour, minute) for line in repeating_wakes()):
+    elif result == "set":
         print(f"{OK} Wake: the Mac wakes at {wake_h:02d}:{wake_m:02d} every day")
     else:
         print(f"{FAIL} The wake schedule wasn't set: macOS doesn't list it after the dialog.")
         print(in_terminal)
+
+
+def install_jobs(cfg: Config) -> None:
+    """Loads the evening job at the config's time, and Weekend Picks' job when they're on."""
+    log_dir = cfg.archive.resolved_dir() / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    private_files.tighten(cfg)
+    sc = cfg.schedule
+    _load(JOB_DAILY, _plist(JOB_DAILY, "run",
+                            {"Hour": sc.daily_hour, "Minute": sc.daily_minute}, log_dir))
+    if cfg.weekend_events.enabled:
+        _load(JOB_WEEKEND, _plist(JOB_WEEKEND, "weekend-events",
+                                  {"Weekday": sc.weekend_weekday, "Hour": sc.weekend_hour, "Minute": 0},
+                                  log_dir))
+    else:
+        _unload(JOB_WEEKEND)
 
 
 def cmd_schedule(args: argparse.Namespace) -> int:
@@ -760,16 +803,10 @@ def cmd_schedule(args: argparse.Namespace) -> int:
     sc = cfg.schedule
 
     if args.action == "install":
-        _load(JOB_DAILY, _plist(JOB_DAILY, "run",
-                                {"Hour": sc.daily_hour, "Minute": sc.daily_minute}, log_dir))
+        install_jobs(cfg)
         print(f"{OK} Brief: every day at {sc.daily_hour:02d}:{sc.daily_minute:02d}")
         if cfg.weekend_events.enabled:
-            _load(JOB_WEEKEND, _plist(JOB_WEEKEND, "weekend-events",
-                                      {"Weekday": sc.weekend_weekday, "Hour": sc.weekend_hour, "Minute": 0},
-                                      log_dir))
             print(f"{OK} Weekend Picks: every Friday at {sc.weekend_hour:02d}:00")
-        else:
-            _unload(JOB_WEEKEND)
         _set_wake(sc.daily_hour, sc.daily_minute, args.replace_wake)
         return 0
 

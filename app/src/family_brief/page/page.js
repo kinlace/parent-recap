@@ -6,6 +6,7 @@ const page = {
   text: null, language: "en", chosen: null, languages: [], progress: null, welcome: null,
   connect: null, gmail: null, myclub: null, check: null, brief: null, welcomeShown: false,
   connectShown: false, workingShown: false, checkShown: false, briefShown: false,
+  finishShown: false, finished: false,
 };
 
 function t(key) {
@@ -89,7 +90,8 @@ function renderSwitch() {
     clearError();
     const before = page.language;
     choose(select.value);
-    if (!page.chosen) return; // on the first page, Continue saves it
+    // On the first page, Continue saves it; once setup is done, the server has stopped.
+    if (!page.chosen || page.finished) return;
     try {
       await saveLanguage(page.language);
     } catch (e) {
@@ -151,7 +153,6 @@ function renderPhase() {
     else if (i < PHASES.indexOf(current)) item.className = "done";
     list.append(item);
   });
-  document.getElementById("phase-title").textContent = t("phase." + current);
 }
 
 // ── Welcome: the AI, the partner and pilot feedback, each with its default.
@@ -1415,6 +1416,86 @@ async function briefDone(event) {
   }
 }
 
+// ── Finish: the evening job and the Mac's wake-up, with the Mac password typed into macOS's own
+// dialog, then the outcome checklist. Once every outcome is true, the server stops, and the page
+// shows only the checklist.
+
+const FINISH_MS = 2000;
+const finishStep = { timer: null };
+
+function enterFinish() {
+  document.getElementById("finish-start").addEventListener("click", () => startFinish(false));
+  document.getElementById("finish-replace").addEventListener("click", () => startFinish(true));
+  setText(document.getElementById("finish-changes"), "finish.changes." + page.welcome.ai);
+  checkFinish();
+}
+
+async function startFinish(replaceWake) {
+  clearError();
+  try {
+    finishResult(await post("api/finish", { replace_wake: replaceWake }));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+// How Finish is going. The first time, or after a restart, it checks what's set up already,
+// without installing anything: a Household that has finished sees only the checklist.
+async function checkFinish() {
+  clearTimeout(finishStep.timer);
+  try {
+    let out = await post("api/finish/check", {});
+    if (out.result === "no-finish") out = await post("api/finish/outcomes", {});
+    finishResult(out);
+  } catch (e) {
+    failed(e);
+  }
+}
+
+function finishResult(out) {
+  clearTimeout(finishStep.timer);
+  const running = out.result === "installing" || out.result === "checking";
+  const done = out.result === "done";
+  const status = document.getElementById("finish-status");
+  // Checked before anything is installed: the intro says what to do, not what isn't set up.
+  status.hidden = out.result === "not-done" && !out.wake;
+  status.dataset.result = "finish." + out.result;
+  setText(document.getElementById("finish-message"), "finish." + out.result,
+    { evening: page.check.evening });
+  const wake = document.getElementById("finish-wake");
+  wake.hidden = !out.wake;
+  if (out.wake) setText(wake, "finish.wake." + out.wake);
+  const other = document.getElementById("finish-other");
+  other.replaceChildren(...(out.other || []).map((line) => {
+    const item = document.createElement("li");
+    item.textContent = line;
+    return item;
+  }));
+  other.hidden = !out.other;
+  document.getElementById("finish-replace").hidden = out.wake !== "other-schedule" || running;
+  document.getElementById("finish-install").hidden = running || done;
+  if (out.outcomes) renderChecklist(out.outcomes);
+  if (done) {
+    // The server has stopped: nothing more to do on this page.
+    page.finished = true;
+    document.getElementById("phases").hidden = true;
+    document.getElementById("chat").hidden = true;
+    document.getElementById("finish-closed").hidden = false;
+  }
+  if (running) finishStep.timer = setTimeout(checkFinish, FINISH_MS);
+}
+
+function renderChecklist(outcomes) {
+  document.getElementById("finish-checklist").replaceChildren(...outcomes.map(({ outcome, ok }) => {
+    const item = document.createElement("li");
+    item.dataset.status = ok ? "ok" : "fail";
+    const line = document.createElement("span");
+    setText(line, "finish.outcome." + outcome);
+    item.append(line);
+    return item;
+  }));
+}
+
 // ── Continue in the chat: Claude Code opens at the setup skill in Terminal, or the page says
 // what to type in Codex. The skill carries on from the step saved here.
 
@@ -1450,15 +1531,14 @@ async function continueInChat(event) {
 function show() {
   const phase = page.chosen ? page.progress.phase : null;
   document.getElementById("language").hidden = Boolean(page.chosen);
-  document.getElementById("phases").hidden = !page.chosen;
-  document.getElementById("chat").hidden = !page.chosen;
+  document.getElementById("phases").hidden = !page.chosen || page.finished;
+  document.getElementById("chat").hidden = !page.chosen || page.finished;
   document.getElementById("welcome").hidden = phase !== "welcome";
   document.getElementById("connect").hidden = phase !== "connect";
   document.getElementById("working").hidden = phase !== "working";
   document.getElementById("check").hidden = phase !== "check";
   document.getElementById("first-brief").hidden = phase !== "first-brief";
-  document.getElementById("phase").hidden =
-    !phase || ["welcome", "connect", "working", "check", "first-brief"].includes(phase);
+  document.getElementById("finish").hidden = phase !== "finish";
   if (phase === "welcome" && !page.welcomeShown) {
     page.welcomeShown = true;
     renderWelcome();
@@ -1478,6 +1558,10 @@ function show() {
   if (phase === "first-brief" && !page.briefShown) {
     page.briefShown = true;
     enterBrief();
+  }
+  if (phase === "finish" && !page.finishShown) {
+    page.finishShown = true;
+    enterFinish();
   }
   applyText();
 }
