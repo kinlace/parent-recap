@@ -314,6 +314,8 @@ function renderSources() {
     state.className = "state";
     state.textContent = t("status." + statuses[name]);
     button.append(label, state);
+    button.setAttribute("aria-label", t("sources.button")
+      .replace("{source}", label.textContent).replace("{status}", state.textContent));
     button.addEventListener("click", () => {
       if (name !== current || statuses[name] === "skipped") chooseSource(name, "open");
     });

@@ -12,6 +12,9 @@
 
 * { box-sizing: border-box; }
 
+/* Hidden stays hidden, whatever display a class gives the element. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--paper);
@@ -148,8 +151,6 @@ h2 { font-size: 19px; margin: 8px 0 8px; }
 
 .details { display: grid; gap: 12px; }
 
-.details[hidden] { display: none; }
-
 .field { display: grid; gap: 4px; }
 
 fieldset .field label {
@@ -224,8 +225,6 @@ fieldset .field label {
 
 .source { margin: 0 0 16px; }
 
-.source[hidden] { display: none; }
-
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 
 button.link {
@@ -246,12 +245,8 @@ button.link {
   overflow-wrap: anywhere;
 }
 
-.status code[hidden] { display: none; }
-
 .status[data-result="wilma.signed-in"],
 .status[data-result="wilma.town-saved"] { background: var(--accent-soft); color: var(--accent); }
-
-.status .install[hidden], .status ul[hidden] { display: none; }
 
 .kids { margin: 8px 0 0; padding-left: 20px; }
 
@@ -292,7 +287,5 @@ button.link {
   padding-top: 20px;
   border-top: 1px solid var(--line);
 }
-
-.chat[hidden], .chat .status[hidden], .chat .install[hidden] { display: none; }
 
 .chat .status { justify-self: stretch; }
