@@ -1,8 +1,10 @@
-"""The one line a family pastes into Terminal: `get.sh --claude` or `get.sh --codex`.
+"""The one line a family pastes into Terminal: `get.sh`, which opens the setup page, or the chat
+setup's `get.sh --claude` and `get.sh --codex`.
 
 Runs the real `get.sh` with a fake `claude` (which logs its calls and answers the two list
 commands from files) and a fake `curl` (which hands over a tarball built here, standing in
-for the `stable` branch's), in a fake home.
+for the `stable` branch's, whose install.sh puts a fake `family-brief` where the real one
+goes), in a fake home.
 """
 from __future__ import annotations
 
@@ -69,7 +71,11 @@ def stable_release(mac: dict, version: str, files: dict[str, str] | None = None,
     """The tarball GitHub serves for the `stable` branch, with an install.sh that logs how it was run."""
     contents = {
         ".claude-plugin/plugin.json": json.dumps({"name": name, "version": version}),
-        "install.sh": f'echo "install.sh $* from $(cd "$(dirname "$0")" && pwd)" >> "{mac["log"]}"\n',
+        "install.sh": f'''echo "install.sh $* from $(cd "$(dirname "$0")" && pwd)" >> "{mac["log"]}"
+mkdir -p "$HOME/FamilyBrief/app/.venv/bin"
+echo 'echo "family-brief $*" >> "{mac["log"]}"' > "$HOME/FamilyBrief/app/.venv/bin/family-brief"
+chmod +x "$HOME/FamilyBrief/app/.venv/bin/family-brief"
+''',
         **(files or {}),
     }
     with tarfile.open(mac["tmp"] / "stable.tar.gz", "w:gz") as tar:
@@ -78,6 +84,52 @@ def stable_release(mac: dict, version: str, files: dict[str, str] | None = None,
             info = tarfile.TarInfo(f"parent-recap-stable/{rel}")
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
+
+
+# --- The line without a flag: the setup page ---------------------------------------------
+
+def test_the_line_installs_the_stable_release_and_opens_the_setup_page(mac):
+    stable_release(mac, "0.5.0")
+
+    result = get(mac)
+
+    assert result.returncode == 0, result.stderr
+    plugin = mac["home"] / "FamilyBrief" / "plugin"
+    assert json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())["version"] == "0.5.0"
+    curl, install, page = calls(mac)
+    assert "kinlace/parent-recap/archive/refs/heads/stable.tar.gz" in curl
+    assert install == f"install.sh  from {plugin.resolve()}"  # neither Claude Code's nor Codex's
+    assert page == "family-brief setup page"
+    assert not any(c.startswith("claude") for c in calls(mac))  # the page installs the plugin
+
+
+def test_the_line_run_again_updates_and_opens_the_page_again(mac):
+    stable_release(mac, "0.5.0", {"docs/gone-in-0.6.md": "old\n"})
+    assert get(mac).returncode == 0
+    stable_release(mac, "0.6.0")
+
+    result = get(mac)
+
+    assert result.returncode == 0, result.stderr
+    plugin = mac["home"] / "FamilyBrief" / "plugin"
+    assert json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())["version"] == "0.6.0"
+    assert not (plugin / "docs" / "gone-in-0.6.md").exists()
+    assert calls(mac).count("family-brief setup page") == 2
+
+
+def test_the_line_without_a_download_opens_nothing(mac):
+    result = get(mac)
+
+    assert result.returncode != 0
+    assert not any(c.startswith(("install.sh", "family-brief")) for c in calls(mac))
+
+
+def test_an_unknown_flag_shows_the_line(mac):
+    result = get(mac, "--chatgpt")
+
+    assert result.returncode != 0
+    assert 'stable/get.sh)"' in result.stdout + result.stderr
+    assert calls(mac) == []
 
 
 # --- Claude Code ---------------------------------------------------------------------------
@@ -172,7 +224,7 @@ def test_codex_puts_the_stable_release_in_familybrief_plugin_and_installs_it(mac
     assert "kinlace/parent-recap/archive/refs/heads/stable.tar.gz" in curl
     assert install == f"install.sh --codex from {plugin.resolve()}"
     assert "$parent-recap-setup" in result.stdout
-    assert sorted(p.name for p in (mac["home"] / "FamilyBrief").iterdir()) == ["plugin"]
+    assert sorted(p.name for p in (mac["home"] / "FamilyBrief").iterdir()) == ["app", "plugin"]
 
 
 def test_codex_run_again_replaces_the_plugin_with_the_new_release(mac):
@@ -227,7 +279,7 @@ def test_codex_leaves_the_installed_plugin_alone_when_the_download_fails(mac):
     assert result.returncode != 0
     plugin = mac["home"] / "FamilyBrief" / "plugin"
     assert json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())["version"] == "0.5.0"
-    assert sorted(p.name for p in (mac["home"] / "FamilyBrief").iterdir()) == ["plugin"]
+    assert sorted(p.name for p in (mac["home"] / "FamilyBrief").iterdir()) == ["app", "plugin"]
 
 
 def test_codex_refuses_a_download_that_is_not_parent_recap(mac):
@@ -237,13 +289,6 @@ def test_codex_refuses_a_download_that_is_not_parent_recap(mac):
 
     assert result.returncode != 0
     assert not (mac["home"] / "FamilyBrief" / "plugin").exists()
-
-
-def test_without_a_choice_it_shows_both_lines(mac):
-    result = get(mac)
-
-    assert result.returncode != 0
-    assert "--claude" in result.stdout + result.stderr and "--codex" in result.stdout + result.stderr
 
 
 def test_only_runs_on_a_mac(mac):

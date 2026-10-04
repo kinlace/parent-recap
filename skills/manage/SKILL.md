@@ -7,7 +7,7 @@ description: Manage an installed Parent Recap: check how it's running, troublesh
 
 **Reply in the language the user writes in**, not the language of this skill: English if they write English, Chinese if they write Chinese, and switch if they switch. That never changes the language their Brief comes in; only an explicit request does (see "Change someone's language" below). In Chinese, call the Brief 日报 and Weekend Picks 周末活动推荐; in Finnish, kooste and viikonlopun vinkit; in English or any other language, say Brief and Weekend Picks. Commands, config keys and file paths stay as written.
 
-`FB=~/FamilyBrief/app/.venv/bin/family-brief`, `PY=~/FamilyBrief/app/.venv/bin/python`. **PLUGIN** is the plugin root folder, two levels above this skill's folder (it contains `install.sh`); if unsure, run `ls -d ~/.claude/plugins/cache/*/parent-recap/*/ | sort -V | tail -1`; for an install from the release zip or with `get.sh --codex`, `~/FamilyBrief/plugin` is also the plugin root.
+`FB=~/FamilyBrief/app/.venv/bin/family-brief`, `PY=~/FamilyBrief/app/.venv/bin/python`. **PLUGIN** is the plugin root folder, two levels above this skill's folder (it contains `install.sh`); if unsure, run `ls -d ~/.claude/plugins/cache/*/parent-recap/*/ | sort -V | tail -1`; for an install from the release zip, with the install line (`get.sh`) or with `get.sh --codex`, `~/FamilyBrief/plugin` is also the plugin root.
 
 If `~/.family/config.yaml` doesn't exist, Parent Recap hasn't been set up yet: use `/parent-recap:setup` instead, unless the user wants to uninstall (see "Uninstall" below), which also cleans up a setup that never got that far.
 

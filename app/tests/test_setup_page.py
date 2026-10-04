@@ -28,8 +28,8 @@ import keyring.errors
 import pytest
 import yaml
 
-from family_brief import (__main__ as cli, ops, setup_ai, setup_save, setup_server, setup_steps,
-                          setup_wilma, summarize)
+from family_brief import (__main__ as cli, install_record, ops, setup_ai, setup_save, setup_server,
+                          setup_steps, setup_wilma, summarize)
 from family_brief.collectors import whatsapp
 from family_brief.config import Config
 from family_brief.utils import keychain
@@ -538,6 +538,110 @@ def test_welcome_says_which_sources_come_next_and_to_have_the_wilma_login_ready(
         for source in ("Wilma", "Gmail", "WhatsApp", "MyClub"):
             assert source in table["welcome.sources"], (language, source)
     assert 'data-text="welcome.wilma"' in used and 'data-text="welcome.sources"' in used
+
+
+# ── Welcome: what lets the family ask for changes in the chat later (#98)
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def chat_installed(url: str, name: str) -> str:
+    """How installing the plugin or skills for the AI `name` ended, once it has."""
+    out: dict[str, str] = {}
+
+    def done() -> bool:
+        out["result"] = call(url, "api/state").json()["chat"].get(name, "installing")
+        return out["result"] != "installing"
+    wait_for(done)
+    return out["result"]
+
+
+def test_picking_claude_installs_the_claude_code_plugin_from_the_stable_marketplace(harness, page,
+                                                                                    ai):
+    ai("claude")
+    assert call(page.url, "api/state").json()["chat"] == {}
+
+    assert welcome(page.url, ai="claude").status == 200
+
+    assert chat_installed(page.url, "claude") == "installed"
+    assert harness.plugin_calls == [
+        ["plugin", "list", "--json"], ["plugin", "marketplace", "list", "--json"],
+        ["plugin", "marketplace", "add", "kinlace/parent-recap#stable"],
+        ["plugin", "install", "parent-recap@kinlace", "--scope", "user"],
+    ]
+    assert not (harness.home / ".agents").exists() and not harness.model_calls
+
+
+def test_a_claude_code_plugin_already_there_is_updated(harness, page, ai):
+    ai("claude")
+    harness.claude_marketplaces = [{"name": "kinlace", "source": "github",
+                                    "repo": "kinlace/parent-recap"}]
+    harness.claude_plugins = [{"id": "parent-recap@kinlace", "scope": "user"}]
+
+    welcome(page.url, ai="claude")
+
+    assert chat_installed(page.url, "claude") == "installed"
+    assert harness.plugin_calls[2:] == [["plugin", "marketplace", "update", "kinlace"],
+                                        ["plugin", "update", "parent-recap@kinlace"]]
+
+
+def test_a_plugin_from_an_unzipped_release_or_its_old_name_is_switched_to_stable(harness, page, ai):
+    ai("claude")
+    harness.claude_marketplaces = [{"name": "family-brief"},
+                                   {"name": "kinlace", "source": "directory",
+                                    "path": "/Users/mum/FamilyBrief/plugin"}]
+    harness.claude_plugins = [{"id": "family-brief@family-brief"}, {"id": "parent-recap@kinlace"}]
+
+    welcome(page.url, ai="claude")
+
+    assert chat_installed(page.url, "claude") == "installed"
+    assert harness.plugin_calls[2:] == [
+        ["plugin", "uninstall", "family-brief@family-brief"],
+        ["plugin", "marketplace", "remove", "family-brief"],
+        ["plugin", "uninstall", "parent-recap@kinlace"],
+        ["plugin", "marketplace", "remove", "kinlace"],
+        ["plugin", "marketplace", "add", "kinlace/parent-recap#stable"],
+        ["plugin", "install", "parent-recap@kinlace", "--scope", "user"],
+    ]
+
+
+def test_a_plugin_install_that_fails_says_so(harness, page, ai):
+    ai("claude")
+    harness.claude_plugins = {"error": "not signed in"}  # type: ignore[assignment]
+
+    welcome(page.url, ai="claude")
+
+    assert chat_installed(page.url, "claude") == "install-failed"
+
+
+def test_without_claude_code_the_plugin_is_not_installed(harness, page, ai):
+    welcome(page.url, ai="claude")
+
+    assert chat_installed(page.url, "claude") == "not-installed"
+    assert harness.plugin_calls == []
+
+
+def test_picking_chatgpt_installs_the_codex_skills_from_the_install_line_s_copy(harness, page):
+    install_record.add("plugin", str(ROOT))  # what install.sh recorded, run from the line's copy
+
+    welcome(page.url, ai="codex")
+
+    assert chat_installed(page.url, "codex") == "installed"
+    skills = harness.home / ".agents" / "skills"
+    assert sorted(p.name for p in skills.iterdir()) == ["parent-recap-manage", "parent-recap-setup"]
+    setup = (skills / "parent-recap-setup" / "SKILL.md").read_text()
+    assert "\nname: parent-recap-setup\n" in setup and "$parent-recap-manage" in setup
+    assert f"PLUGIN (the plugin root folder) is `{ROOT}`" in setup
+    assert install_record.entries("codex-skill") == [str(skills / "parent-recap-setup"),
+                                                     str(skills / "parent-recap-manage")]
+    assert harness.plugin_calls == []
+
+
+def test_without_the_install_line_s_copy_the_codex_skills_are_not_installed(harness, page):
+    welcome(page.url, ai="codex")
+
+    assert chat_installed(page.url, "codex") == "no-plugin-copy"
+    assert not (harness.home / ".agents").exists()
 
 
 # ── resuming
@@ -1853,13 +1957,24 @@ def test_continue_in_the_chat_opens_claude_code_with_the_setup_skill_in_terminal
     assert not script.exists()  # the script's folder goes once the page stops
 
 
+def test_continue_in_the_chat_before_welcome_installs_the_plugin_first(harness, page, ai):
+    ai("claude")
+
+    assert continue_in_chat(page.url, "claude").json() == {"result": "opened"}
+
+    assert ["plugin", "install", "parent-recap@kinlace", "--scope", "user"] in harness.plugin_calls
+    assert call(page.url, "api/state").json()["chat"] == {"claude": "installed"}
+
+
 def test_continue_in_the_chat_tells_a_codex_family_what_to_type(harness, page, ai):
     ai("codex")
+    install_record.add("plugin", str(ROOT))
 
     r = continue_in_chat(page.url, "codex")
 
     assert r.status == 200 and r.json() == {"result": "open-codex", "type": "$parent-recap-setup"}
     assert not harness.opened
+    assert (harness.home / ".agents" / "skills" / "parent-recap-setup" / "SKILL.md").is_file()
 
 
 def test_continue_in_the_chat_without_claude_code_says_how_to_install_it(harness, page, ai):

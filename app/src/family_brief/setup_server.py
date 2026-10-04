@@ -37,7 +37,7 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import ops, setup_ai, setup_save, setup_steps, setup_wilma, summarize
+from . import chat_install, ops, setup_ai, setup_save, setup_steps, setup_wilma, summarize
 
 IDLE_SECONDS = 30 * 60
 AI_CHECK_SECONDS = 20
@@ -163,6 +163,11 @@ class SetupServer:
         self._codex: subprocess.Popen | None = None  # Codex's sign-in, once started
         self._whatsapp = threading.Lock()  # one read at a time, since each is a launchd job
         self._chat_script: tempfile.TemporaryDirectory | None = None  # the chat's Terminal script's
+        # What lets the family ask for changes in the chat later, by AI, once Welcome has saved
+        # it: `installing`, `installed`, `install-failed`, `not-installed` (no Claude Code) or
+        # `no-plugin-copy` (the program wasn't installed by the install line).
+        self._chat_installs: dict[str, str] = {}
+        self._chat_threads: dict[str, threading.Thread] = {}  # each AI's latest install
 
     def serve_until_idle(self) -> None:
         """Serves until `stop`, or until IDLE_SECONDS pass without a request."""
@@ -195,6 +200,9 @@ class SetupServer:
                 self._claude_script.cleanup()
             if self._chat_script is not None:
                 self._chat_script.cleanup()
+            threads = list(self._chat_threads.values())
+        for thread in threads:  # an install isn't cut off halfway
+            thread.join()
 
     # ── the API
 
@@ -207,7 +215,8 @@ class SetupServer:
                 "welcome": self._welcome(progress),
                 "connect": {"sources": [{"name": s, "skippable": s in SKIPPABLE}
                                         for s in setup_save.SOURCES]},
-                "gmail": {"address": self._gmail_address()}}
+                "gmail": {"address": self._gmail_address()},
+                "chat": dict(self._chat_installs)}
 
     def choose_language(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Saves the language picked as the setup parent's: the Household's summary_language,
@@ -403,11 +412,14 @@ class SetupServer:
     def continue_in_chat(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Hands setup over to the chat with the AI picked: opens Claude Code at the setup skill
         in a Terminal window, or says what to type in Codex. The skill reads the progress and the
-        answers saved so far, and carries on from the same phase and Source."""
+        answers saved so far, and carries on from the same phase and Source. The plugin or the
+        Codex skills are installed first if they aren't yet, since the skill comes with them."""
         if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in AIS):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Pick Claude or ChatGPT.", errors=["ai: should be claude or codex"])
         skill = CHAT_SKILLS[raw["ai"]]
+        if self._chat_installs.get(raw["ai"]) != "installed":  # the skill must be there to start
+            self._install_chat(raw["ai"]).join()
         if raw["ai"] == "codex":
             return HTTPStatus.OK, {"result": "open-codex", "type": skill}
         program = summarize.find_claude()
@@ -452,7 +464,38 @@ class SetupServer:
             out = setup_save.save(self.config, answers)
         if out["result"] != "saved":
             return HTTPStatus.CONFLICT, out
+        self._install_chat(answer.ai)
         return HTTPStatus.OK, out
+
+    def _install_chat(self, name: str) -> threading.Thread:
+        """Installs Claude Code's plugin or the Codex skills in the background, so that changes
+        after setup work in the chat with the AI picked, unless they're being installed already.
+        `api/state` says how it went."""
+        with self._ai:
+            if self._chat_installs.get(name) == "installing":
+                return self._chat_threads[name]
+            self._chat_installs[name] = "installing"
+            thread = threading.Thread(target=self._installing_chat, args=(name,), daemon=True)
+            self._chat_threads[name] = thread
+        thread.start()
+        return thread
+
+    def _installing_chat(self, name: str) -> None:
+        try:
+            if name == "claude":
+                program = summarize.find_claude()
+                result = "not-installed" if program is None \
+                    else chat_install.install_claude_plugin(program)
+            else:
+                root = chat_install.plugin_copy()
+                if root is None:
+                    result = "no-plugin-copy"
+                else:
+                    chat_install.install_codex_skills(root)
+                    result = "installed"
+        except Exception:  # never leave it installing
+            result = "install-failed"
+        self._chat_installs[name] = result
 
     def choose_source(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Skips a Source, moving setup on to the next one to do, or opens one from the list,

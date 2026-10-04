@@ -201,6 +201,11 @@ class Harness:
         self.commands: list[list[str]] = []         # every process started, model calls included
         self.mac_languages: list[str] = ["en-FI"]   # the Mac's preferred languages, first first
         self.signed_in: dict[str, bool] = {"claude": True, "codex": True}  # what their status says
+        # Claude Code's plugins and marketplaces, as `claude plugin ... list --json` gives them,
+        # and each `claude plugin` command run, without the program.
+        self.claude_plugins: list[dict[str, Any]] = []
+        self.claude_marketplaces: list[dict[str, Any]] = []
+        self.plugin_calls: list[list[str]] = []
         self._install(monkeypatch)
 
     # Paths
@@ -328,6 +333,11 @@ class Harness:
             signed_in = self.signed_in["claude"]
             out = {"loggedIn": signed_in, **({"authMethod": "claude.ai"} if signed_in else {})}
             return subprocess.CompletedProcess(cmd, 0 if signed_in else 1, json.dumps(out), "")
+        if prog == "claude" and cmd[1:2] == ["plugin"]:  # Claude Code's plugins, as JSON lists
+            self.plugin_calls.append(cmd[1:])
+            listed = {("list", "--json"): self.claude_plugins,
+                      ("marketplace", "list", "--json"): self.claude_marketplaces}.get(tuple(cmd[2:]))
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(listed or []), "")
         if prog == "codex" and cmd[1:3] == ["login", "status"]:
             if self.signed_in["codex"]:
                 return subprocess.CompletedProcess(cmd, 0, "", "Logged in using ChatGPT\n")
