@@ -4,6 +4,27 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.5.0 · 2026-10-04
+
+Setup moves into a page in your browser (#84).
+
+### Install and setup
+- Every family installs with the same line in Terminal. It opens a setup page in your browser, in Suomi, English or 中文, and you click through it instead of chatting. Setup in Claude Code or Codex is still there if you prefer it.
+- Welcome asks a few choices with defaults: Claude or ChatGPT, whether your partner gets the Brief too, and pilot feedback. It checks that Claude Code or Codex is installed and signed in.
+- You connect your Sources from one list and can skip the ones you don't need:
+  - Wilma: find your town in a search box and sign in on the page, where your password manager can fill in the login. A Terminal window is offered only if that doesn't work.
+  - Gmail: paste the App Password into the page.
+  - Claude: click Authorize in your browser, with nothing to copy. ChatGPT: sign in to Codex from a button.
+  - WhatsApp: pictures show what to switch on in System Settings, and the step ticks itself once it works.
+  - MyClub: paste each Kid's calendar link.
+- One page to confirm what was found: your Kids and the name the Brief calls each of them, the WhatsApp groups and Gmail senders to read (public mail services are never offered), each Recipient's language and the evening time.
+- You see your first Brief in the page as it will look in your email, and send it to yourself only. Pilot families can tell us right there when something's wrong.
+- One button turns on the evening Brief and the Mac's wake-up, with your Mac password typed only into macOS's own window. A checklist then shows what's set up, and the page closes itself.
+- If you get stuck on a step, "Continue in the chat" opens Claude, or tells you what to type in Codex, and setup carries on from the same step.
+- Setup in the chat checks your answers before saving them and remembers how far you got.
+
+Passwords typed into the page go only to Parent Recap on your Mac. The page can be opened only from your own Mac, and it stops when setup is done or after 30 minutes without use.
+
 ## 0.4.3 · 2026-10-03
 
 Fixes from the first setup rehearsal on a fresh Mac (#56).
