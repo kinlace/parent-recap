@@ -98,6 +98,7 @@ function renderChoices() {
     input.type = "radio";
     input.name = "language";
     input.value = code;
+    input.setAttribute("aria-label", name);
     input.checked = code === page.language;
     input.addEventListener("change", () => choose(code));
     label.append(input, name);
@@ -563,6 +564,7 @@ function renderTowns() {
     input.checked = shown.length === 1 || Boolean(before) &&
       (uses ? before.url === entry.url : before.town === entry.town);
     const name = document.createElement("span");
+    name.className = "name";
     name.textContent = uses ? entry.name : entry.town;
     label.append(input, name);
     if (uses && entry.town) {

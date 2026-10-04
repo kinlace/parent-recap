@@ -306,6 +306,35 @@ def test_the_page_has_the_setup_proposal_look_in_the_system_font():
         assert mark in css, mark
 
 
+def test_only_radio_buttons_and_checkboxes_are_sized_as_one():
+    css = (PAGE_DIR / "page.css").read_text()
+
+    rules = re.findall(r"([^{}]+)\{([^}]*)\}", css)
+    sized = [sel for sel, body in rules if re.search(r"(?<!-)width:\s*16px", body)]
+    assert sized
+    for selectors in sized:
+        for selector in selectors.split(","):
+            selector = selector.strip()
+            assert re.search(r'input\[type="(radio|checkbox)"\]', selector), selector
+    # So a field inside a fieldset, like the partner's email, keeps its own look and width.
+    for selectors, _ in rules:
+        for selector in selectors.split(","):
+            assert not re.fullmatch(r"\s*fieldset input(:[\w-]+)?\s*", selector), selector
+
+
+def test_a_long_wilma_entry_wraps_beside_its_radio_button():
+    css = (PAGE_DIR / "page.css").read_text()
+
+    towns = re.search(r"^\.towns label\s*\{([^}]*)\}", css, re.M).group(1)
+    assert "flex-wrap: wrap" not in towns
+    assert "align-items: flex-start" in towns
+    name = re.search(r"^\.towns \.name\s*\{([^}]*)\}", css, re.M).group(1)
+    assert "flex: 1" in name and "min-width: 0" in name
+    script = (PAGE_DIR / "page.js").read_text()
+    rows = script.split("function renderTowns()", 1)[1].split("\n}\n", 1)[0]
+    assert 'name.className = "name"' in rows
+
+
 # ── the language
 
 
@@ -314,6 +343,13 @@ def test_it_offers_suomi_english_and_chinese_in_that_order(harness, page):
 
     assert [(lang["code"], lang["name"]) for lang in state["languages"]] == \
         [("fi", "Suomi"), ("en", "English"), ("zh", "中文")]
+
+
+def test_each_language_choice_is_named_as_shown_not_by_its_code():
+    script = (PAGE_DIR / "page.js").read_text()
+
+    rows = script.split("function renderChoices()", 1)[1].split("\n}\n", 1)[0]
+    assert 'input.setAttribute("aria-label", name)' in rows
 
 
 @pytest.mark.parametrize("mac, preselected", [
