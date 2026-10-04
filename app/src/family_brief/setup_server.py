@@ -99,7 +99,7 @@ HEALTH_CHECKS = {"Config file": "config", "Recipients": "recipients", "Language"
                  "WhatsApp": "whatsapp", "MyClub": "myclub", "Calendar": "calendar",
                  "Pilot feedback": "feedback", "Weekend Picks": "weekend"}
 # The scheduled job's checks, which aren't run before Finish installs it.
-HEALTH_LEFT_OUT = frozenset({"Schedule", "Last run", "Python path"})
+SCHEDULE_CHECKS = frozenset({"Schedule", "Last run", "Python path"})
 HEALTH_STATUSES = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
 # "Continue in the chat": the setup skill as each AI's chat starts it, and what handing over
 # can say. Claude Code opens in a Terminal window; a Codex family is told what to type in Codex.
@@ -595,6 +595,7 @@ class SetupServer:
         senders = [{"domain": s["domain"], "count": s["count"], "example": s["example"],
                     "ticked": s["likely"] or s["domain"] in allowed}
                    for s in progress.get("gmail_senders") or [] if not s.get("public")]
+        # Only a preset's: a town's guessed domain is ticked only once mail came from it.
         city = setup_steps.CITY_DOMAINS.get(cfg.city or "")
         for domain in [*([city] if city else []), *allowed]:
             if domain not in (s["domain"] for s in senders):
@@ -639,7 +640,7 @@ class SetupServer:
         try:
             results = ops.health_checks(str(self.config), schedule=False)
             checks = [_health_check(status, item) for status, item, _ in results
-                      if item not in HEALTH_LEFT_OUT]
+                      if item not in SCHEDULE_CHECKS]
             if any(c["status"] == "fail" for c in checks):
                 done = {"result": "not-ok", "checks": checks}
             else:
