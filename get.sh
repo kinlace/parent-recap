@@ -1,17 +1,22 @@
 #!/bin/bash
 # Install or update Parent Recap from its latest stable release: the one line a family pastes
-# into Terminal (README, "Install"). It is fetched from the `stable` branch, as is everything
-# it downloads, so a family only ever gets a tested release (ADR 0002):
+# into Terminal (README, "Install"), the same for every Household. It is fetched from the
+# `stable` branch, as is everything it downloads, so a family only ever gets a tested release
+# (ADR 0002):
 #
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/kinlace/parent-recap/stable/get.sh)" - --claude
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/kinlace/parent-recap/stable/get.sh)" - --codex
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/kinlace/parent-recap/stable/get.sh)"
 #
+# Without a flag: downloads the `stable` branch into ~/FamilyBrief/plugin, replacing the copy
+#   there, runs its `install.sh`, and opens the setup page (ADR 0006), which stays served from
+#   this Terminal window. Once the family picks Claude or ChatGPT there, the page installs the
+#   Claude Code plugin or the Codex skills, so changes later work in the chat.
+# The chat setup's two flags, for a family that asks for it:
 # --claude: adds the `kinlace/parent-recap#stable` marketplace and installs the plugin for this
 #   Mac user (or updates both), then starts Claude Code with setup. A `kinlace` marketplace from
 #   somewhere else (the folder a release zip was unzipped into) is switched to that one.
-# --codex: downloads the `stable` branch into ~/FamilyBrief/plugin, replacing the copy there,
-#   and runs its `install.sh --codex`.
-# Safe to run again: that is how a Codex install updates.
+# --codex: downloads the `stable` branch into ~/FamilyBrief/plugin, as without a flag, and runs
+#   its `install.sh --codex`.
+# Safe to run again: that is how an install updates, and the page resumes where setup got to.
 set -euo pipefail
 
 REPO="kinlace/parent-recap"
@@ -19,9 +24,8 @@ TARGET="${FAMILY_BRIEF_HOME:-$HOME/FamilyBrief}"
 PLUGIN="$TARGET/plugin"
 
 usage() {
-  echo "Paste one of these into Terminal:"
-  echo "  Claude Code: bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/$REPO/stable/get.sh)\" - --claude"
-  echo "  Codex:       bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/$REPO/stable/get.sh)\" - --codex"
+  echo "Paste this into Terminal:"
+  echo "  bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/$REPO/stable/get.sh)\""
   exit 1
 }
 
@@ -47,6 +51,8 @@ marketplace_folder() {
   echo "${path:-its old source}"
 }
 
+# The setup page installs the plugin the same way, in app/src/family_brief/chat_install.py:
+# change both together.
 install_claude() {
   command -v claude >/dev/null || {
     echo "❌ Claude Code isn't installed (there is no \`claude\` command)."
@@ -92,7 +98,8 @@ is_parent_recap() {
   grep -qE '"name": *"(parent-recap|family-brief)"' "$1/.claude-plugin/plugin.json" 2>/dev/null
 }
 
-install_codex() {
+# Puts the `stable` branch in ~/FamilyBrief/plugin, replacing what's there only if it's Parent Recap.
+download_stable() {
   if [ -e "$PLUGIN" ] && ! is_parent_recap "$PLUGIN"; then
     echo "❌ $PLUGIN holds something that isn't Parent Recap, so it was left as it is."
     echo "   Move it somewhere else and paste the line again."
@@ -110,7 +117,19 @@ install_codex() {
   # Swap the new copy in whole, so a file the new release dropped doesn't stay behind.
   [ ! -e "$PLUGIN" ] || mv "$PLUGIN" "$download/old"
   mv "$download/plugin" "$PLUGIN" || { [ ! -e "$download/old" ] || mv "$download/old" "$PLUGIN"; exit 1; }
+  rm -rf "$download"  # now, since opening the page with `exec` skips the EXIT trap
+}
 
+install_page() {
+  download_stable
+  bash "$PLUGIN/install.sh"
+  echo "✅ Parent Recap is installed. The setup page opens in your browser now."
+  echo "   Keep this Terminal window open until setup is done: the page runs from it."
+  exec "$TARGET/app/.venv/bin/family-brief" setup page
+}
+
+install_codex() {
+  download_stable
   bash "$PLUGIN/install.sh" --codex
   if [ -f "$HOME/.family/config.yaml" ]; then
     echo "✅ Parent Recap is updated. Open Codex, start a new chat and say \"upgrade Parent Recap\"."
@@ -123,5 +142,6 @@ install_codex() {
 case "${1:-}" in
   --claude) install_claude ;;
   --codex) install_codex ;;
+  "") install_page ;;
   *) usage ;;
 esac

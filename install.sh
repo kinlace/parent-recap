@@ -36,32 +36,15 @@ echo "${VERSION:-unknown}" > "$APP/VERSION"
 "$APP/.venv/bin/pip" install -q -e "$APP"
 RECORD=("$APP/.venv/bin/python" -m family_brief.install_record)
 "${RECORD[@]}" program "$APP" logs "$TARGET/logs"
-# The copy of the plugin a Codex install runs from; Claude Code manages its own copy.
+# The copy of the plugin the install line downloads, which the Codex skills run from; Claude
+# Code manages its own copy.
 if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_ROOT"; fi
 
 # --codex: also install the two skills for Codex, which reads user skills from ~/.agents/skills.
 # They get unique names, Codex's $skill syntax, and a note saying where this plugin folder is.
+# Without it, the setup page installs them once the family picks ChatGPT.
 if [ "${1:-}" = "--codex" ]; then
-  "$APP/.venv/bin/python" - "$PLUGIN_ROOT" <<'PY'
-import re, shutil, sys
-from pathlib import Path
-root = Path(sys.argv[1])
-skills = Path.home() / ".agents" / "skills"
-for name in ("setup", "manage"):
-    shutil.rmtree(skills / f"family-brief-{name}", ignore_errors=True)  # their names before 0.4.0
-    text = (root / "skills" / name / "SKILL.md").read_text()
-    text = text.replace(f"\nname: {name}\n", f"\nname: parent-recap-{name}\n", 1)
-    text = re.sub(r"/parent-recap:(setup|manage)", r"$parent-recap-\1", text)
-    head, sep, body = text.partition("\n# ")
-    title, _, rest = body.partition("\n")
-    note = f"\n\n> This skill is installed in Codex; PLUGIN (the plugin root folder) is `{root}`.\n"
-    out = skills / f"parent-recap-{name}" / "SKILL.md"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(head + sep + title + note + rest)
-    print(f"✅ Codex skill installed: ${out.parent.name}")
-PY
-  "${RECORD[@]}" codex-skill "$HOME/.agents/skills/parent-recap-setup" \
-    codex-skill "$HOME/.agents/skills/parent-recap-manage"
+  "$APP/.venv/bin/python" -m family_brief.chat_install codex-skills "$PLUGIN_ROOT"
 fi
 
 REAL_PY=$("$APP/.venv/bin/python" -c 'import os, sys; print(os.path.realpath(sys.executable))')

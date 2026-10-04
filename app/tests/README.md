@@ -80,9 +80,13 @@ page shows, that the setup skill says how to carry on from it, and that each res
 in all three languages.
 Where no port can be listened on (a sandbox), the server takes each connection through a socket
 pair instead, and where no pseudo-terminal can be opened, `claude setup-token` gets a socket pair.
-`test_one_line_install.py` runs the README's one-line install, `get.sh --claude` and `--codex`,
-against a fake `claude` and a fake `curl` serving a stand-in `stable` tarball. It checks a first
-install, a second run updating, and that nothing it didn't put in `~/FamilyBrief/plugin` is replaced.
+`test_one_line_install.py` runs the README's one-line install, `get.sh`, and the chat setup's
+`get.sh --claude` and `--codex`, against a fake `claude` and a fake `curl` serving a stand-in
+`stable` tarball, whose `install.sh` leaves a fake `family-brief` for the line to open the setup
+page with. It checks a first install, a second run updating, and that nothing it didn't put in
+`~/FamilyBrief/plugin` is replaced. The setup page's install of the Claude Code plugin or the
+Codex skills, once Welcome is saved, is in `test_setup_page.py`, with the harness answering
+`claude plugin`.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:

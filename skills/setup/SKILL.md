@@ -31,7 +31,7 @@ The parent should always know what to do next, without asking.
 
 ## Paths
 
-- **PLUGIN**: the plugin root folder, two levels above this skill's folder (two levels above `skills/setup/`; it contains `install.sh`). If unsure, run `ls -d ~/.claude/plugins/cache/*/parent-recap/*/ | sort -V | tail -1`; for an install from the release zip or with `get.sh --codex`, `~/FamilyBrief/plugin` is also the plugin root. When running in Codex, a line at the top of this file gives the plugin root.
+- **PLUGIN**: the plugin root folder, two levels above this skill's folder (two levels above `skills/setup/`; it contains `install.sh`). If unsure, run `ls -d ~/.claude/plugins/cache/*/parent-recap/*/ | sort -V | tail -1`; for an install from the release zip, with the install line (`get.sh`) or with `get.sh --codex`, `~/FamilyBrief/plugin` is also the plugin root. When running in Codex, a line at the top of this file gives the plugin root.
 - The program is installed in `~/FamilyBrief/app`; the command is `FB=~/FamilyBrief/app/.venv/bin/family-brief`.
 - Config is `~/.family/config.yaml` (mode 600), logs are in `~/FamilyBrief/logs/`, and daily archives in `~/FamilyBrief/`.
 - Read the detailed docs only when needed, not all at once:
