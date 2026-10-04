@@ -37,7 +37,8 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import chat_install, ops, run_lock, setup_ai, setup_save, setup_steps, setup_wilma, summarize
+from . import (chat_install, ops, run_lock, setup_ai, setup_save, setup_status, setup_steps,
+               setup_wilma, summarize)
 from .actions import email as email_action
 from .config import Config, Kid
 from .state import State
@@ -111,6 +112,11 @@ BRIEF_LOOKBACK_HOURS = 72  # a single day often has nothing new
 BRIEF_SECONDS = 900
 # Sending it to the setup parent: `busy` while an evening run is going, which could send it too.
 SEND_RESULTS = ("sent", "send-failed", "busy")
+# Finish: `installing` while the evening job and the wake-up are installed, which waits for the
+# Mac password in macOS's own dialog, `checking` while the outcomes are checked, then `done` once
+# every outcome is true, when the server stops, or `not-done`; `install-failed` when the jobs
+# couldn't be loaded, and `no-finish` when this server hasn't started one.
+FINISH_RESULTS = ("installing", "checking", "done", "not-done", "install-failed", "no-finish")
 # "Continue in the chat": the setup skill as each AI's chat starts it, and what handing over
 # can say. Claude Code opens in a Terminal window; a Codex family is told what to type in Codex.
 CHAT_SKILLS = {"claude": "/parent-recap:setup", "codex": "$parent-recap-setup"}
@@ -209,6 +215,8 @@ class SetupServer:
         self._reading: dict[str, Any] | None = None  # Working's read of the senders, once started
         self._health: dict[str, Any] | None = None  # the check page's health check, once started
         self._brief: dict[str, Any] | None = None  # the first Brief, once it's being made
+        self._finish: dict[str, Any] | None = None  # Finish's install and check, once started
+        self.closing = False  # every outcome is true: the server stops once that's been said
 
     def serve_until_idle(self) -> None:
         """Serves until `stop`, or until IDLE_SECONDS pass without a request."""
@@ -827,6 +835,76 @@ class SetupServer:
         except ValidationError:
             return Config(kids=[])
 
+    # ── Finish
+
+    def start_finish(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Installs the evening job and the Mac's wake-up through the schedule step, in the
+        background, then checks the outcomes: the page asks how it went with `check_finish`. The
+        Mac password goes into macOS's own administrator dialog, never the page (ADR 0007). The
+        Mac's other repeating wake schedule is replaced only with `replace_wake`, once the family
+        agrees."""
+        if not (isinstance(raw, dict) and set(raw) == {"replace_wake"}
+                and isinstance(raw["replace_wake"], bool)):
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Say whether to replace the Mac's other wake schedule.",
+                errors=["replace_wake: should be true or false"])
+        return self._start_finish(raw["replace_wake"])
+
+    def check_outcomes(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Checks the outcomes without installing anything, for a Household that may have
+        finished already: once every outcome is true, the page shows only the checklist."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        return self._start_finish(None)
+
+    def check_finish(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """How Finish went: each outcome and whether it's true, without its reason, which can name
+        an address, and how setting the wake-up went. Once every outcome is true, the server stops
+        after saying so."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        finish = self._finish
+        if finish is None:
+            return HTTPStatus.OK, {"result": "no-finish"}
+        if finish["result"] == "done":
+            self.closing = True
+        return HTTPStatus.OK, finish
+
+    def _start_finish(self, replace: bool | None) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Installs with `replace` true or false, then checks; with None, only checks."""
+        if setup_save.read(self.config)["progress"]["phase"] != "finish":
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Send the first Brief to yourself first.",
+                errors=["answers: should be given once setup is at Finish"])
+        with self._working:
+            if self._finish is not None and self._finish["result"] in ("installing", "checking"):
+                return HTTPStatus.OK, {"result": self._finish["result"]}  # never asked twice
+            started = {"result": "checking" if replace is None else "installing"}
+            self._finish = started
+            threading.Thread(target=self._finishing, args=(replace,), daemon=True).start()
+        return HTTPStatus.OK, dict(started)
+
+    def _finishing(self, replace: bool | None) -> None:
+        wake: dict[str, Any] = {}
+        if replace is not None:
+            try:
+                cfg = Config.load(self.config)
+                ops.install_jobs(cfg)
+                result, other = ops.set_wake(cfg.schedule.daily_hour, cfg.schedule.daily_minute,
+                                             replace)
+            except Exception:  # its error can name the Mac's files: never leave the page installing
+                self._finish = {"result": "install-failed"}
+                return
+            wake = {"wake": result, **({"other": other} if result == "other-schedule" else {})}
+            self._finish = {"result": "checking"}
+        try:
+            outcomes = setup_status.check(str(self.config))
+        except Exception:  # never leave the page checking
+            outcomes = []
+        done = bool(outcomes) and all(o.ok for o in outcomes)
+        self._finish = {"result": "done" if done else "not-done", **wake,
+                        "outcomes": [{"outcome": o.outcome, "ok": o.ok} for o in outcomes]}
+
     # ── Continue in the chat
 
     def continue_in_chat(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
@@ -1384,13 +1462,18 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/brief": setup.make_brief, "api/brief/check": setup.check_brief,
                    "api/brief/send": setup.send_brief, "api/brief/done": setup.brief_done,
                    "api/brief/feedback": setup.open_feedback,
+                   "api/finish": setup.start_finish, "api/finish/outcomes": setup.check_outcomes,
+                   "api/finish/check": setup.check_finish,
                    "api/chat": setup.continue_in_chat}
         if method == "POST" and path in actions:
             raw = _json_body(body)
             if raw is _NOT_JSON:
                 return self._json(HTTPStatus.BAD_REQUEST, setup_save.outcome(
                     "invalid-answers", "The answers aren't JSON.", errors=["not JSON"]))
-            return self._json(*actions[path](raw))
+            self._json(*actions[path](raw))
+            if setup.closing:  # setup is done, and the page has been told
+                setup.stop()
+            return None
         return self._send(HTTPStatus.NOT_FOUND, b"Not found\n", "text/plain; charset=utf-8")
 
     def _own_path(self, setup: SetupServer, method: str) -> str | None:

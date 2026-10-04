@@ -35,9 +35,11 @@ from family_brief import (__main__ as cli, feedback, install_record, ops, run_lo
                           summarize)
 from family_brief.collectors import myclub, whatsapp
 from family_brief.config import Config
+from family_brief.state import State
 from family_brief.utils import keychain
 from conftest import msg
 from test_nightly_run import FEEDBACK, FORM, feedback_links
+from test_setup_status import install_program
 from test_setup_steps import HeaderImap
 from test_setup_myclub import LINK as MYCLUB_LINK, TOKEN as MYCLUB_TOKEN, MyClubServer
 from test_setup_whatsapp import (CHATS as WHATSAPP_CHATS, PYTHON as WHATSAPP_PYTHON, Mac,
@@ -119,6 +121,8 @@ class _Connection(http.client.HTTPConnection):
             if self.port not in _PairedServer.servers:
                 raise ConnectionRefusedError(self.port)
             self.sock = _PairedServer.servers[self.port].connect()
+            # One rung in as the server stops is never answered, as a closed port refuses it.
+            self.sock.settimeout(5)
             return
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.settimeout(5)
@@ -2901,6 +2905,297 @@ def test_every_first_brief_result_is_explained_in_all_three_languages():
             assert table.get(f"brief.{result}", "").strip(), (language, result)
         for result in setup_server.SEND_RESULTS:
             assert table.get(f"brief.send.{result}", "").strip(), (language, result)
+
+
+# ── Finish: the evening job and the wake-up, then the outcome checklist
+
+
+OTHER_WAKE = "wakepoweron at 7:00AM weekdays only"
+
+
+class Schedule:
+    """The Mac as Finish meets it: launchctl loads, unloads and lists the jobs; pmset says
+    whether the Mac sleeps and lists its repeating wake schedule; and macOS's administrator dialog
+    runs `pmset repeat` once the family types their Mac password there, held until the test lets
+    it go. Every other process is the harness's."""
+
+    def __init__(self, run) -> None:
+        self._run = run
+        self.loaded: set[str] = set()
+        self.loads: list[str] = []
+        self.load_fails = False
+        self.sleep = "AC Power:\n sleep                1\n"
+        self.repeating: list[str] = []
+        self.dialog = "allow"  # or "cancel", or "unavailable"
+        self.dialogs: list[str] = []
+        self.go = threading.Event()
+        self.go.set()
+
+    def __call__(self, cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
+        prog = Path(cmd[0]).name
+        if prog == "launchctl" and cmd[1] == "list":
+            listed = "".join(f"-\t0\t{label}\n" for label in sorted(self.loaded))
+            return subprocess.CompletedProcess(cmd, 0, listed, "")
+        if prog == "launchctl":
+            label = Path(cmd[2]).stem
+            if cmd[1] == "load":
+                if self.load_fails:
+                    raise subprocess.CalledProcessError(5, cmd)
+                self.loads.append(label)
+                self.loaded.add(label)
+            else:
+                self.loaded.discard(label)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if prog == "pmset":
+            if cmd[1:] == ["-g", "custom"]:
+                return subprocess.CompletedProcess(cmd, 0, self.sleep, "")
+            listed = "".join(f"  {line}\n" for line in self.repeating)
+            return subprocess.CompletedProcess(
+                cmd, 0, f"Repeating power events:\n{listed}" if listed else "", "")
+        if prog == "osascript" and "administrator privileges" in cmd[-1]:
+            self.dialogs.append(cmd[-1])
+            assert self.go.wait(5)
+            if self.dialog == "cancel":
+                return subprocess.CompletedProcess(cmd, 1, "", "execution error: User canceled. (-128)")
+            if self.dialog == "unavailable":
+                return subprocess.CompletedProcess(
+                    cmd, 1, "", "execution error: No user interaction allowed. (-1713)")
+            hh, mm = cmd[-1].split("MTWRFSU ", 1)[1][:5].split(":")
+            h = int(hh)
+            self.repeating = [f"wakepoweron at {h % 12 or 12}:{mm}{'AM' if h < 12 else 'PM'} every day"]
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return self._run(cmd, *a, **k)
+
+
+@pytest.fixture
+def schedule(harness, health, monkeypatch) -> Schedule:
+    s = Schedule(subprocess.run)
+    monkeypatch.setattr(subprocess, "run", s)
+    monkeypatch.setattr(ops, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
+    return s
+
+
+def at_finish(harness, *, delivered: bool = True) -> None:
+    """The first Brief sent to the setup parent, with the program installed."""
+    connect_done(harness)
+    more_progress(harness, phase="finish")
+    install_program(harness)
+    if delivered:
+        state = State(Config.load(config_file(harness)).resolved_state_path())
+        state.mark_delivered_now(["parent@example.com"])
+        state.save()
+
+
+def finish(url: str, replace_wake: bool = False) -> Response:
+    return call(url, "api/finish", method="POST", body={"replace_wake": replace_wake})
+
+
+def finished(url: str) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+
+    def ended() -> bool:
+        out.clear()
+        out.update(call(url, "api/finish/check", method="POST", body={}).json())
+        return out["result"] not in ("installing", "checking")
+    wait_for(ended)
+    return out
+
+
+def checklist(out: dict[str, Any]) -> dict[str, bool]:
+    return {o["outcome"]: o["ok"] for o in out["outcomes"]}
+
+
+def test_finish_installs_the_evening_job_and_the_wake_up_through_macos_s_dialog(harness, page,
+                                                                               schedule, health):
+    at_finish(harness)
+
+    r = finish(page.url)
+
+    assert r.status == 200 and r.json() == {"result": "installing"}
+    out = finished(page.url)
+    assert out["result"] == "done" and out["wake"] == "set"
+    assert checklist(out) == {"installed": True, "doctor": True, "brief": True, "nightly": True,
+                              "wake": True}
+    assert ops.JOB_DAILY in schedule.loaded
+    assert (ops.LAUNCH_AGENTS / f"{ops.JOB_DAILY}.plist").exists()
+    # The Mac password goes into macOS's own dialog, which says who is asking and why.
+    [dialog] = schedule.dialogs
+    assert "pmset repeat wakeorpoweron MTWRFSU 20:55:00" in dialog and "Parent Recap" in dialog
+    assert "with administrator privileges" in dialog
+    # Doctor's checks run with the evening job's own, now that it's installed.
+    assert health.runs[-1][1] is True
+
+
+def test_finish_takes_no_password(page):
+    for body in [{}, {"replace_wake": "yes"}, {"replace_wake": False, "password": "hunter2"},
+                 ["replace_wake"]]:
+        r = call(page.url, "api/finish", method="POST", body=body)
+        assert r.status == 400 and r.json()["result"] == "invalid-answers", body
+    html_text = (PAGE_DIR / "index.html").read_text()
+    finish_section = html_text.split('<section id="finish"', 1)[1].split("</section>", 1)[0]
+    assert "<input" not in finish_section
+
+
+def test_the_server_stops_once_every_outcome_is_true(harness, page, schedule):
+    at_finish(harness)
+
+    finish(page.url)
+    assert finished(page.url)["result"] == "done"
+
+    wait_for(lambda: refused(page.url))
+
+
+def test_an_outcome_still_false_keeps_the_page_and_says_which(harness, page, schedule):
+    at_finish(harness, delivered=False)
+
+    finish(page.url)
+    out = finished(page.url)
+
+    assert out["result"] == "not-done"
+    assert checklist(out) == {"installed": True, "doctor": True, "brief": False, "nightly": True,
+                              "wake": True}
+    # Only each outcome and whether it's true: their reasons name addresses, in English.
+    assert "parent@example.com" not in json.dumps(out)
+    assert call(page.url, "api/state").status == 200  # still serving
+
+
+def test_another_wake_schedule_is_replaced_only_once_the_family_agrees(harness, page, schedule):
+    at_finish(harness)
+    schedule.repeating = [OTHER_WAKE]
+
+    finish(page.url)
+    out = finished(page.url)
+
+    assert out["result"] == "not-done" and out["wake"] == "other-schedule"
+    assert out["other"] == [OTHER_WAKE]
+    assert schedule.dialogs == []  # the family decides before any dialog opens
+    assert checklist(out)["wake"] is False and checklist(out)["nightly"] is True
+
+    finish(page.url, replace_wake=True)
+    out = finished(page.url)
+    assert out["result"] == "done" and out["wake"] == "set"
+    assert len(schedule.dialogs) == 1
+
+
+@pytest.mark.parametrize("dialog, result", [("cancel", "cancelled"), ("unavailable", "no-dialog")])
+def test_a_wake_up_that_isn_t_set_says_why_and_can_be_tried_again(harness, page, schedule, dialog,
+                                                                  result):
+    at_finish(harness)
+    schedule.dialog = dialog
+
+    finish(page.url)
+    out = finished(page.url)
+
+    assert out["result"] == "not-done" and out["wake"] == result
+    assert checklist(out)["wake"] is False
+    assert "sudo" not in json.dumps(out)  # the password goes into macOS's dialog only
+    schedule.dialog = "allow"
+    finish(page.url)
+    assert finished(page.url)["result"] == "done"
+
+
+def test_a_mac_that_never_sleeps_needs_no_wake_up(harness, page, schedule):
+    at_finish(harness)
+    schedule.sleep = "AC Power:\n sleep                0\n"
+
+    finish(page.url)
+    out = finished(page.url)
+
+    assert out["result"] == "done" and out["wake"] == "never-sleeps"
+    assert schedule.dialogs == []
+
+
+def test_while_macos_asks_for_the_password_the_page_waits(harness, page, schedule):
+    at_finish(harness)
+    schedule.go.clear()
+
+    finish(page.url)
+
+    wait_for(lambda: schedule.dialogs)
+    assert call(page.url, "api/finish/check", method="POST", body={}).json() == {
+        "result": "installing"}
+    assert finish(page.url).json() == {"result": "installing"}  # not asked twice
+    schedule.go.set()
+    assert finished(page.url)["result"] == "done"
+    assert len(schedule.dialogs) == 1
+
+
+def test_jobs_that_cannot_be_loaded_say_so(harness, page, schedule):
+    at_finish(harness)
+    schedule.load_fails = True
+
+    finish(page.url)
+
+    assert finished(page.url) == {"result": "install-failed"}
+    assert schedule.dialogs == []
+    schedule.load_fails = False
+    finish(page.url)
+    assert finished(page.url)["result"] == "done"
+
+
+def test_finish_waits_for_the_first_brief(harness, page, schedule):
+    at_finish(harness)
+    more_progress(harness, phase="first-brief")
+
+    for path in ["api/finish", "api/finish/outcomes"]:
+        body = {"replace_wake": False} if path == "api/finish" else {}
+        r = call(page.url, path, method="POST", body=body)
+        assert r.status == 400 and r.json()["result"] == "invalid-answers", path
+    assert call(page.url, "api/finish/check", method="POST", body={}).json() == {
+        "result": "no-finish"}
+    assert schedule.loads == [] and schedule.dialogs == []
+
+
+def test_a_finished_household_sees_only_the_checklist(harness, page, schedule):
+    at_finish(harness)
+    schedule.loaded.add(ops.JOB_DAILY)
+    schedule.repeating = ["wakepoweron at 8:55PM every day"]
+
+    r = call(page.url, "api/finish/outcomes", method="POST", body={})
+
+    assert r.status == 200 and r.json() == {"result": "checking"}
+    out = finished(page.url)
+    assert out["result"] == "done" and "wake" not in out
+    assert all(checklist(out).values())
+    # Checked only: nothing installed again, and no dialog.
+    assert schedule.loads == [] and schedule.dialogs == []
+    wait_for(lambda: refused(page.url))
+
+
+def test_a_household_not_finished_yet_is_checked_without_installing(harness, page, schedule):
+    at_finish(harness)
+
+    call(page.url, "api/finish/outcomes", method="POST", body={})
+    out = finished(page.url)
+
+    assert out["result"] == "not-done"
+    assert checklist(out)["nightly"] is False and checklist(out)["wake"] is False
+    assert schedule.loads == [] and schedule.dialogs == []
+    for body in [{"x": 1}, []]:
+        assert call(page.url, "api/finish/outcomes", method="POST", body=body).status == 400
+
+
+def test_the_finish_page_shows_the_checklist_the_restart_reminder_and_where_changes_go(page):
+    html_text = (PAGE_DIR / "index.html").read_text()
+    finish_section = html_text.split('<section id="finish"', 1)[1].split("</section>", 1)[0]
+
+    for needed in ['id="finish-checklist"', 'data-text="finish.restart"', 'id="finish-changes"',
+                   'id="finish-start"', 'id="finish-replace"']:
+        assert needed in finish_section, needed
+
+
+def test_every_finish_text_is_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        keys = [*(f"finish.{r}" for r in setup_server.FINISH_RESULTS),
+                *(f"finish.wake.{r}" for r in ops.WAKE_RESULTS),
+                *(f"finish.outcome.{o}" for o in setup_status.TITLES),
+                *(f"finish.changes.{a}" for a in setup_server.AIS),
+                "finish.title", "finish.intro", "finish.start", "finish.replace", "finish.restart",
+                "finish.checklist", "finish.closed"]
+        for key in keys:
+            assert table.get(key, "").strip(), (language, key)
 
 
 # ── Continue in the chat

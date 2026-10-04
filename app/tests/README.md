@@ -103,6 +103,14 @@ it's shown in is sandboxed, that a quiet three days still make one, that "Send i
 Brief to the setup parent only and the outcome check counts it, that a send that fails, or one
 during an evening run, says so, and that only a pilot Household gets the feedback button, which
 opens the Digest's pre-filled Form link.
+Finish runs against a fake `launchctl`, `pmset` and administrator dialog, which sets the wake-up
+once the test lets it go, with doctor's checks faked as on the check page. It checks that the
+evening job is loaded and the wake-up set through macOS's dialog only, that the API takes no
+password, that each outcome comes back true or false without its reason, that another wake schedule
+is replaced only once the family agrees, that a closed dialog or jobs that can't be loaded say so
+and can be tried again, that a finished Household is only checked, with nothing installed again,
+and that the server stops once every outcome is true. Where no port can be listened on, a request
+rung in as the server stops times out, as a closed port refuses it.
 Its "Continue in the chat" runs the Terminal script the page opens against a fake `claude`, and
 checks that it starts Claude Code in the home folder at the setup skill, that a Codex family is
 told to type `$parent-recap-setup`, that `setup save --read` gives the chat the same progress the

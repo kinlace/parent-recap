@@ -8,7 +8,8 @@ one-line reason.
 4. nightly   — the nightly job is loaded
 5. wake      — the wake schedule is set, or the Mac never sleeps
 
-The sixth, knowing to log in after a restart, is the setup skill's to confirm with the family.
+The sixth, knowing to log in after a restart, is the setup skill's to confirm with the family, and
+the setup page shows it under its checklist of these five.
 It prints one line of JSON for the setup skill, or with --text a short line per outcome. Neither
 has a secret or message text in it: doctor's own details stay out, only the names of its checks
 that aren't OK are given.
@@ -50,14 +51,7 @@ def register(steps) -> None:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    try:
-        cfg: Config | None = Config.load(args.config)
-    except Exception:  # doctor names what's wrong with it
-        cfg = None
-    schedule = (cfg or Config(kids=[])).schedule
-    hour, minute = schedule.daily_hour, schedule.daily_minute
-    outcomes = [_installed(), _doctor(args.config), _brief(cfg), _nightly(hour, minute),
-                _wake(hour, minute)]
+    outcomes = check(args.config)
     done = all(o.ok for o in outcomes)
     if args.text:
         for o in outcomes:
@@ -66,6 +60,17 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(json.dumps({"result": "done" if done else "not-done",
                           "outcomes": [vars(o) for o in outcomes]}, ensure_ascii=False))
     return 0 if done else 1
+
+
+def check(config: str | None) -> list[Outcome]:
+    """Each outcome, in order, for the config at `config`. The setup page's Finish checks these too."""
+    try:
+        cfg: Config | None = Config.load(config)
+    except Exception:  # doctor names what's wrong with it
+        cfg = None
+    schedule = (cfg or Config(kids=[])).schedule
+    hour, minute = schedule.daily_hour, schedule.daily_minute
+    return [_installed(), _doctor(config), _brief(cfg), _nightly(hour, minute), _wake(hour, minute)]
 
 
 def _installed() -> Outcome:
