@@ -46,6 +46,8 @@ def register(sub) -> None:
     pdis = sub.add_parser("discover", help="List candidates to put in config during onboarding")
     pdis.add_argument("what", choices=["gmail-senders", "whatsapp-chats", "wilma-students"])
     pdis.add_argument("--days", type=int, default=None)
+    pdis.add_argument("--json", action="store_true", help="gmail-senders only: one line of JSON, "
+                      "each sender domain with whether it looks like school, city or club mail")
     pdis.set_defaults(func=cmd_discover)
 
     psch = sub.add_parser("schedule", help="Install / remove / inspect the launchd jobs")
@@ -379,9 +381,11 @@ def cmd_discover(args: argparse.Namespace) -> int:
               else f"{FAIL} not signed in to wilma")
         return 0 if data is not None else 1
 
+    days = args.days or 60
+    if args.json:
+        return _discover_senders_json(args.config, days)
     cfg = Config.load(args.config)
     from .collectors import gmail
-    days = args.days or 60
     print(f"Reading the senders of the last {days} days of mail. This usually takes 1 to 2 "
           "minutes; the count below goes up as it reads.", flush=True)
     rows = gmail.sender_domains(
@@ -392,6 +396,68 @@ def cmd_discover(args: argparse.Namespace) -> int:
     for dom, n, ex in rows[:60]:
         print(f"  {n:>4}  {dom:<32} e.g. {ex}")
     return 0
+
+
+# Mail services anyone has an address at. Allowlisting one as a domain would read the family's
+# private mail, so they're never ticked: a teacher writing from one goes in allowlist_senders.
+PUBLIC_DOMAINS = frozenset({
+    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "hotmail.fi", "live.com",
+    "live.fi", "msn.com", "icloud.com", "me.com", "mac.com", "yahoo.com", "yahoo.fi", "aol.com",
+    "proton.me", "protonmail.com", "gmx.com", "gmx.net", "luukku.com", "suomi24.fi", "elisanet.fi",
+    "kolumbus.fi", "saunalahti.fi", "welho.com", "qq.com", "163.com", "126.com", "foxmail.com",
+})
+# Senders families get school and club mail from wherever they live: MyClub's own mail, Wilma's,
+# and Espoo's music institute, which docs/config.md names.
+KNOWN_SENDERS = ("myclub.fi", "inschool.fi", "emo.fi")
+# Words in a domain that make it a school's or a club's: koulu and skola are school, lukio upper
+# secondary, opisto an institute such as a music school, kerho a club and seura a sports club.
+SCHOOL_AND_CLUB_WORDS = ("koulu", "school", "skola", "lukio", "opisto", "kerho", "seura", "club")
+
+
+def gmail_senders(cfg: Config, days: int, progress=None) -> list[dict]:
+    """The sender domains of the last `days` days of mail, most first, from From: headers only,
+    each with whether it looks like school, city or club mail (`likely`) and, for a public one,
+    `public`. `discover gmail-senders --json` and the setup page's check page both use this."""
+    from .collectors import gmail
+    out = []
+    for domain, count, example in gmail.sender_domains(cfg, days=days, progress=progress):
+        public = domain in PUBLIC_DOMAINS
+        out.append({"domain": domain, "count": count, "example": example,
+                    "likely": not public and likely_sender(domain, cfg.city),
+                    **({"public": True} if public else {})})
+    return out
+
+
+def likely_sender(domain: str, city: str | None) -> bool:
+    """Whether mail from `domain` looks like the Kids' school's, the city's or a club's."""
+    from .setup_steps import CITY_DOMAINS
+    if domain in PUBLIC_DOMAINS:
+        return False
+    city_domain = CITY_DOMAINS.get(city or "") or (f"{_slug(city)}.fi" if city else None)
+    ours = [*KNOWN_SENDERS, *([city_domain] if city_domain else [])]
+    if any(domain == d or domain.endswith("." + d) for d in ours):
+        return True
+    return any(word in domain.rsplit(".", 1)[0] for word in SCHOOL_AND_CLUB_WORDS)
+
+
+def _slug(city: str) -> str:
+    """A town's name as its domain usually spells it: Järvenpää as jarvenpaa."""
+    import unicodedata
+    plain = unicodedata.normalize("NFKD", city).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-")
+
+
+def _discover_senders_json(config: str | None, days: int) -> int:
+    """`discover gmail-senders --json`: one line of JSON on stdout, the count as it reads on
+    stderr, so the line stays the only output a caller reads."""
+    from .setup_steps import _report
+    try:
+        senders = gmail_senders(Config.load(config), days, progress=lambda done, total: print(
+            f"  read {done} of {total} senders", file=sys.stderr, flush=True))
+    except Exception:  # its error can name the address or the config: doctor says what's wrong
+        return _report("read-failed", "Gmail's senders couldn't be read. Run family-brief doctor, "
+                       "fix what it names for Gmail, then run this again.")
+    return _report("read", days=days, senders=senders)
 
 
 # ---------------------------------------------------------------- app-management

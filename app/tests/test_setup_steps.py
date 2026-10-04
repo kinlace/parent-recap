@@ -5,6 +5,7 @@ The outside edges are faked: Gmail's IMAP server, macOS's administrator dialog, 
 from __future__ import annotations
 
 import imaplib
+import json
 import os
 import plistlib
 import shlex
@@ -61,6 +62,56 @@ def test_discover_gmail_senders_says_how_long_it_takes_and_shows_progress(harnes
     assert "200 of 450" in out and "400 of 450" in out and "450 of 450" in out
     assert out.index("450 of 450") < out.index("kilo.example.fi")
     assert "300  kilo.example.fi" in out and "150  club.example.fi" in out
+
+
+def test_discover_gmail_senders_as_json_ticks_school_city_and_club_senders(harness, monkeypatch,
+                                                                          capsys):
+    harness.keychain["gmail-imap-parent@example.com"] = "app-password"
+    harness.config["city"] = "Espoo"
+    senders = (["Opettaja <opettaja@edu.espoo.fi>"] * 5 + ["MyClub <noreply@myclub.fi>"] * 4
+               + ["Coach <coach@tapiolan-seura.fi>"] * 3 + ["Kilo <office@kilokoulu.fi>"] * 2
+               + ["Friend <friend@gmail.com>"] * 6 + ["Shop <news@shop.example.com>"] * 7
+               + ["Helsinki <info@hel.fi>"])
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", HeaderImap(senders))
+
+    assert harness.cli("discover", "gmail-senders", "--json") == 0
+
+    captured = capsys.readouterr()
+    out = json.loads(captured.out)  # one line of JSON, and nothing else
+    assert out["result"] == "read" and out["days"] == 60
+    assert out["senders"] == [
+        {"domain": "shop.example.com", "count": 7, "example": "Shop", "likely": False},
+        {"domain": "gmail.com", "count": 6, "example": "Friend", "likely": False, "public": True},
+        {"domain": "edu.espoo.fi", "count": 5, "example": "Opettaja", "likely": True},
+        {"domain": "myclub.fi", "count": 4, "example": "MyClub", "likely": True},
+        {"domain": "tapiolan-seura.fi", "count": 3, "example": "Coach", "likely": True},
+        {"domain": "kilokoulu.fi", "count": 2, "example": "Kilo", "likely": True},
+        # Another city's: Espoo's family gets it now and then, but it isn't their school's.
+        {"domain": "hel.fi", "count": 1, "example": "Helsinki", "likely": False},
+    ]
+    assert "28 of 28" in captured.err  # the count still goes up as it reads
+
+
+def test_the_city_presets_match_docs_config():
+    from pathlib import Path
+
+    from family_brief import setup_steps
+    docs = (Path(__file__).parents[2] / "docs" / "config.md").read_text()
+    table = docs.split("## City presets", 1)[1].split("\n\n", 2)[1]
+    rows = [[c.strip() for c in line.strip("|").split("|")] for line in table.splitlines()[2:]]
+    addresses = {address: city.split(" (")[0] for city, address, *_ in rows}
+    domains = {city.split(" (")[0]: allowlist.strip("`") for city, _, allowlist, _ in rows
+               if allowlist.startswith("`")}
+
+    assert addresses == setup_steps.WILMA_CITIES
+    assert domains == setup_steps.CITY_DOMAINS
+
+
+def test_discover_gmail_senders_as_json_says_when_gmail_cannot_be_read(harness, capsys):
+    assert harness.cli("discover", "gmail-senders", "--json") == 1  # no App Password stored
+
+    out = json.loads(capsys.readouterr().out)
+    assert out["result"] == "read-failed" and "family-brief doctor" in out["next"]
 
 
 # ── App Management
