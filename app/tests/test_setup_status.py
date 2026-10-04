@@ -146,7 +146,7 @@ def test_the_health_check_names_the_checks_that_arent_ok(harness, healthy, capsy
     assert "Claude" not in doctor["reason"]
 
 
-# ── 3. The first Brief reached every Recipient
+# ── 3. The first Brief reached the setup parent
 
 
 MESSAGE_TEXT = "Bring the signed trip form to school on Tuesday"
@@ -159,7 +159,7 @@ def send_a_brief(harness) -> None:
     assert harness.run() == 0
 
 
-def test_the_first_brief_reached_every_recipient_once_it_was_sent_to_them(harness, mac, capsys):
+def test_the_first_brief_reached_the_setup_parent_once_it_was_sent_to_them(harness, mac, capsys):
     send_a_brief(harness)
     capsys.readouterr()
 
@@ -167,15 +167,15 @@ def test_the_first_brief_reached_every_recipient_once_it_was_sent_to_them(harnes
 
     brief = outcome(report, "brief")
     assert brief["ok"] is True
-    assert "parent@example.com" in brief["reason"] and "partner@example.com" in brief["reason"]
+    assert "parent@example.com" in brief["reason"]
 
 
-def test_no_brief_has_reached_the_recipients_before_the_first_one(harness, mac, capsys):
+def test_no_brief_has_reached_the_setup_parent_before_the_first_one(harness, mac, capsys):
     _, report = status(harness, capsys)
 
     brief = outcome(report, "brief")
     assert brief["ok"] is False
-    assert "parent@example.com" in brief["reason"] and "partner@example.com" in brief["reason"]
+    assert "parent@example.com" in brief["reason"] and "partner@example.com" not in brief["reason"]
 
 
 def test_a_brief_that_couldnt_be_sent_hasnt_reached_anyone(harness, mac, capsys):
@@ -188,7 +188,8 @@ def test_a_brief_that_couldnt_be_sent_hasnt_reached_anyone(harness, mac, capsys)
     assert outcome(report, "brief")["ok"] is False
 
 
-def test_a_recipient_added_after_the_first_brief_hasnt_had_one_yet(harness, mac, capsys):
+def test_the_partner_s_first_brief_is_the_first_evening_one(harness, mac, capsys):
+    # The setup page sends the first Brief to the setup parent only.
     harness.config["email"]["to"] = ["parent@example.com"]
     send_a_brief(harness)
     capsys.readouterr()
@@ -198,9 +199,20 @@ def test_a_recipient_added_after_the_first_brief_hasnt_had_one_yet(harness, mac,
     _, report = status(harness, capsys)
 
     brief = outcome(report, "brief")
-    assert brief["ok"] is False
-    assert "partner@example.com" in brief["reason"]
-    assert "parent@example.com" not in brief["reason"]
+    assert brief["ok"] is True
+    assert "parent@example.com" in brief["reason"] and "partner@example.com" in brief["reason"]
+
+
+def test_a_new_setup_parent_hasnt_had_one_yet(harness, mac, capsys):
+    harness.config["email"]["to"] = ["parent@example.com"]
+    send_a_brief(harness)
+    capsys.readouterr()
+    harness.config["email"]["to"] = ["other@example.com", "parent@example.com"]
+
+    _, report = status(harness, capsys)
+
+    brief = outcome(report, "brief")
+    assert brief["ok"] is False and "other@example.com" in brief["reason"]
 
 
 def test_a_brief_sent_only_by_imessage_reaches_its_recipients(harness, mac, capsys):

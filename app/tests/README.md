@@ -33,7 +33,8 @@ failed download names only the server and the HTTP status, and that the older Te
 still works.
 `test_setup_status.py` runs `family-brief setup status` against a fake `launchctl`, `pmset`,
 Keychain, IMAP server and `claude` test call, with a real Brief sent through the harness. It checks
-each of the five outcomes true and false, and that no secret or message text reaches either form.
+each of the five outcomes true and false, that the first Brief counts once it has reached the setup
+parent, and that no secret or message text reaches either form.
 `test_setup_save.py` runs `family-brief setup save` with answers on stdin against real config and
 progress files in the temporary HOME. It checks the config it writes loads, that answers not given
 leave the config as it was, that invalid answers are refused with the reason and nothing saved,
@@ -95,6 +96,13 @@ confirming saves it all through `setup save` and runs the health check, faked so
 running, except in one test that runs doctor's real checks against the harness's fakes. It checks
 that a failing check keeps the page and names only the check, that warnings alone move setup on,
 and that answers the page didn't offer are refused with nothing saved.
+First Brief makes the real Brief through `run --preview` in a `bg` job on `test_setup_whatsapp.py`'s
+fake Mac, with the harness's Sources and model, and one test fakes the job to see its progress.
+It checks that the preview returns the email's HTML and sends or records nothing, that the frame
+it's shown in is sandboxed, that a quiet three days still make one, that "Send it to me" sends that
+Brief to the setup parent only and the outcome check counts it, that a send that fails, or one
+during an evening run, says so, and that only a pilot Household gets the feedback button, which
+opens the Digest's pre-filled Form link.
 Its "Continue in the chat" runs the Terminal script the page opens against a fake `claude`, and
 checks that it starts Claude Code in the home folder at the setup skill, that a Codex family is
 told to type `$parent-recap-setup`, that `setup save --read` gives the chat the same progress the

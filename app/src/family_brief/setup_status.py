@@ -3,7 +3,8 @@ one-line reason.
 
 1. installed — the program is installed
 2. doctor    — the health check is all OK
-3. brief     — the first Brief reached every Recipient
+3. brief     — the first Brief reached the setup parent, the first Recipient; the
+               others' first Brief is the first evening one
 4. nightly   — the nightly job is loaded
 5. wake      — the wake schedule is set, or the Mac never sleeps
 
@@ -28,7 +29,7 @@ from .state import State
 TITLES = {
     "installed": "Program installed",
     "doctor": "Health check all OK",
-    "brief": "First Brief reached every Recipient",
+    "brief": "First Brief reached the setup parent",
     "nightly": "Nightly job loaded",
     "wake": "Wake schedule set, or the Mac never sleeps",
 }
@@ -100,12 +101,12 @@ def _brief(cfg: Config | None) -> Outcome:
           *(cfg.imessage.recipients if cfg.imessage.enabled else [])]
     if not to:
         return Outcome("brief", False, "the Brief goes to nobody: email.to is empty or email is off")
-    state = State(cfg.resolved_state_path())
-    missing = [a for a in to if state.delivered_at(a) is None]
-    if missing:
-        return Outcome("brief", False, f"no Brief has gone out to {', '.join(missing)} yet "
-                       "(send the first one with family-brief bg run --lookback-hours 72)")
-    return Outcome("brief", True, f"sent to {', '.join(to)}")
+    parent, others = to[0], to[1:]
+    if State(cfg.resolved_state_path()).delivered_at(parent) is None:
+        return Outcome("brief", False, f"no Brief has gone out to {parent} yet (send the first one "
+                       "from the setup page, or with family-brief bg run --lookback-hours 72)")
+    later = f", and {', '.join(others)} get theirs with the evening Brief" if others else ""
+    return Outcome("brief", True, f"sent to {parent}{later}")
 
 
 def _nightly(hour: int, minute: int) -> Outcome:

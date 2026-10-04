@@ -4,8 +4,8 @@
 const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish"];
 const page = {
   text: null, language: "en", chosen: null, languages: [], progress: null, welcome: null,
-  connect: null, gmail: null, myclub: null, check: null, welcomeShown: false,
-  connectShown: false, workingShown: false, checkShown: false,
+  connect: null, gmail: null, myclub: null, check: null, brief: null, welcomeShown: false,
+  connectShown: false, workingShown: false, checkShown: false, briefShown: false,
 };
 
 function t(key) {
@@ -1296,6 +1296,125 @@ function healthResult(out) {
   if (checkStep.checking) checkStep.timer = setTimeout(checkHealth, HEALTH_MS);
 }
 
+// ── First Brief: the real Brief, made from the Sources without sending it and shown as it
+// will look in the inbox, then sent to the setup parent only.
+
+const BRIEF_MS = 2000;
+const briefStep = { timer: null };
+const SOURCE_NAMES = { gmail: "Gmail", myclub: "MyClub", wilma: "Wilma", whatsapp: "WhatsApp" };
+
+function enterBrief() {
+  document.getElementById("brief-again").addEventListener("click", makeBrief);
+  document.getElementById("brief-send").addEventListener("click", sendBrief);
+  document.getElementById("brief-feedback-open").addEventListener("click", openFeedback);
+  document.getElementById("brief-done").addEventListener("click", briefDone);
+  if (page.brief.sent) showSent("brief.sent"); // after a reload, once it has reached them
+  checkBrief();
+}
+
+async function makeBrief() {
+  clearError();
+  try {
+    briefResult(await post("api/brief", {}));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+async function checkBrief() {
+  clearTimeout(briefStep.timer);
+  let out;
+  try {
+    out = await post("api/brief/check", {});
+  } catch (e) {
+    failed(e);
+    return;
+  }
+  if (out.result === "no-brief") return makeBrief(); // the first time, or after a restart
+  briefResult(out);
+}
+
+// How far making the Brief is, and once it's made, the Brief in its frame.
+function briefResult(out) {
+  clearTimeout(briefStep.timer);
+  const making = out.result === "making";
+  const made = out.result === "made";
+  renderBriefList(making ? out : null);
+  document.getElementById("brief-status").hidden = false;
+  setText(document.getElementById("brief-message"), "brief." + out.result);
+  document.getElementById("brief-again").hidden = out.result !== "make-failed";
+  const frame = document.getElementById("brief-frame");
+  if (made) frame.src = "brief.html?" + Date.now(); // the one just made, not one kept from before
+  frame.hidden = !made;
+  document.getElementById("brief-actions").hidden = !made;
+  document.getElementById("brief-feedback").hidden = !(made && out.feedback);
+  if (making) briefStep.timer = setTimeout(checkBrief, BRIEF_MS);
+}
+
+// Each Source as it's read, then the writing.
+function renderBriefList(making) {
+  const list = document.getElementById("brief-list");
+  list.hidden = !making;
+  if (!making) return;
+  const steps = [...(making.sources || []), "writing"];
+  const at = steps.indexOf(making.step);
+  list.replaceChildren(...steps.map((step, i) => {
+    const item = document.createElement("li");
+    item.dataset.status = i < at ? "done" : "to-do";
+    if (i === at) item.setAttribute("aria-current", "step");
+    const line = document.createElement("span");
+    if (step === "writing") setText(line, "brief.writing");
+    else setText(line, "brief.reading", { source: SOURCE_NAMES[step] || step });
+    item.append(line);
+    return item;
+  }));
+}
+
+async function sendBrief(event) {
+  clearError();
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const out = await post("api/brief/send", {});
+    if (out.result === "sent") showSent("brief.send.sent", { to: out.to });
+    else showError("brief.send." + out.result);
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function showSent(key, values) {
+  setText(document.getElementById("brief-sent-message"), key, values);
+  document.getElementById("brief-sent").hidden = false;
+}
+
+async function openFeedback() {
+  clearError();
+  try {
+    const out = await post("api/brief/feedback", {});
+    if (out.result !== "opened") showError("brief.feedback.not-opened");
+  } catch (e) {
+    failed(e);
+  }
+}
+
+async function briefDone(event) {
+  clearError();
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const out = await post("api/brief/done", {});
+    page.progress = out.progress;
+    show();
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 // ── Continue in the chat: Claude Code opens at the setup skill in Terminal, or the page says
 // what to type in Codex. The skill carries on from the step saved here.
 
@@ -1337,8 +1456,9 @@ function show() {
   document.getElementById("connect").hidden = phase !== "connect";
   document.getElementById("working").hidden = phase !== "working";
   document.getElementById("check").hidden = phase !== "check";
+  document.getElementById("first-brief").hidden = phase !== "first-brief";
   document.getElementById("phase").hidden =
-    !phase || ["welcome", "connect", "working", "check"].includes(phase);
+    !phase || ["welcome", "connect", "working", "check", "first-brief"].includes(phase);
   if (phase === "welcome" && !page.welcomeShown) {
     page.welcomeShown = true;
     renderWelcome();
@@ -1355,6 +1475,10 @@ function show() {
     page.checkShown = true;
     enterCheck();
   }
+  if (phase === "first-brief" && !page.briefShown) {
+    page.briefShown = true;
+    enterBrief();
+  }
   applyText();
 }
 
@@ -1370,6 +1494,7 @@ async function start() {
   page.gmail = state.gmail;
   page.myclub = state.myclub;
   page.check = state.check;
+  page.brief = state.brief;
   renderSwitch();
   renderChoices();
   renderChat();
