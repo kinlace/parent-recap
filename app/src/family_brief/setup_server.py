@@ -852,6 +852,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _handle(self, method: str) -> None:
         setup: SetupServer = self.server.setup  # type: ignore[attr-defined]
+        # Read all of what was sent before any answer: answering and closing while the body is
+        # still coming in resets the connection, and the sender never sees the answer.
+        body = self._read_body()
         path = self._own_path(setup, method)
         if path is None:
             return self._send(HTTPStatus.FORBIDDEN, b"Forbidden\n", "text/plain; charset=utf-8")
@@ -880,7 +883,7 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/whatsapp/open": setup.open_app_management,
                    "api/chat": setup.continue_in_chat}
         if method == "POST" and path in actions:
-            raw = self._body()
+            raw = _json_body(body)
             if raw is _NOT_JSON:
                 return self._json(HTTPStatus.BAD_REQUEST, setup_save.outcome(
                     "invalid-answers", "The answers aren't JSON.", errors=["not JSON"]))
@@ -903,17 +906,23 @@ class _Handler(BaseHTTPRequestHandler):
             return None
         return slash + path
 
-    def _body(self) -> Any:
+    def _read_body(self) -> bytes | None:
+        """The request's body, read to its end; None if it has no length that can be read, or is
+        longer than MAX_BODY, whose rest is read and dropped."""
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
-            return _NOT_JSON
-        if not 0 < length <= MAX_BODY:
-            return _NOT_JSON
-        try:
-            return json.loads(self.rfile.read(length))
-        except ValueError:
-            return _NOT_JSON
+            return None
+        if length < 0:
+            return None
+        body = self.rfile.read(min(length, MAX_BODY))
+        remaining = length - len(body)
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, MAX_BODY))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+        return body if length <= MAX_BODY else None
 
     def _json(self, status: HTTPStatus, out: dict[str, Any]) -> None:
         self._send(status, json.dumps(out, ensure_ascii=False).encode(),
@@ -929,3 +938,12 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 _NOT_JSON = object()
+
+
+def _json_body(body: bytes | None) -> Any:
+    if not body:
+        return _NOT_JSON
+    try:
+        return json.loads(body)
+    except ValueError:
+        return _NOT_JSON

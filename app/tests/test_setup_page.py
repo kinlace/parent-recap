@@ -254,6 +254,19 @@ def test_requests_for_another_host_or_from_another_origin_are_refused(harness, p
     assert not config_file(harness).exists()
 
 
+def test_a_refused_request_s_body_is_read_before_its_answer(harness, page):
+    # Answering and closing with the body still coming resets the connection, a broken pipe at
+    # the sender's end. A body larger than the sockets' buffers makes that happen every time.
+    big = {"language": "fi", "padding": "x" * (8 * 1024 * 1024)}
+    other_code = f"http://{urlparse(page.url).netloc}/{'x' * 43}/"
+    for url, headers in [(page.url, {"Origin": "https://evil.example"}),
+                         (page.url, {"Host": "evil.example"}),
+                         (page.url, {"Content-Type": "text/plain"}), (other_code, {})]:
+        assert call(url, "api/language", method="POST", body=big, headers=headers).status == 403
+    assert call(page.url, "api/language", method="POST", body=big).status == 400  # too long
+    assert not config_file(harness).exists()
+
+
 def test_answers_must_come_from_the_page_itself(harness, page):
     parts = urlparse(page.url)
     for headers in [{"Content-Type": "text/plain"}, {"Origin": ""}]:
