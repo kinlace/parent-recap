@@ -17,11 +17,14 @@ answers as JSON on stdin, every key optional:
    "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"},
                 "partner": {"address": "partner@gmail.com", "language": "fi"},
                 "whatsapp_chats": [{"name": "3B", "last": "2026-09-25", "archived": false,
-                                    "hint": {"kids": ["Mia Virtanen"], "matched": ["3B"]}}]}}
+                                    "hint": {"kids": ["Mia Virtanen"], "matched": ["3B"]}}],
+                "gmail_senders": [{"domain": "edu.espoo.fi", "count": 5, "example": "Opettaja",
+                                   "likely": true}]}}
 
 The progress's `partner` is Welcome's choice, or null for only me, kept until the setup parent's
 own address is known and the Recipients can be saved with the parent first. Its `whatsapp_chats`
-are the groups `setup whatsapp` found, as it reports them, kept for the check page.
+are the groups `setup whatsapp` found, and its `gmail_senders` the senders `discover
+gmail-senders --json` found, each as it reports them, kept for the check page.
 
 What the answers don't mention stays as it was. The Kids given are the Household's Kids: a Kid
 left out is removed, and each one given keeps what the answers don't say about them, such as a
@@ -104,6 +107,15 @@ class FoundChat(_Strict):
     hint: ChatHint | None = None
 
 
+class FoundSender(_Strict):
+    """A Gmail sender domain `discover gmail-senders --json` found, as it reports it."""
+    domain: str
+    count: int
+    example: str
+    likely: bool
+    public: bool | None = None
+
+
 class ProgressAnswer(_Strict):
     phase: Phase | None = None
     source: SourceName | None = None
@@ -113,6 +125,8 @@ class ProgressAnswer(_Strict):
     partner: RecipientAnswer | None = None
     # The WhatsApp groups found once WhatsApp could be read, for the check page to pick from.
     whatsapp_chats: list[FoundChat] | None = None
+    # The Gmail senders found in Working, for the check page to pick from.
+    gmail_senders: list[FoundSender] | None = None
 
 
 class Answers(_Strict):
@@ -282,6 +296,8 @@ def _merged_progress(current: dict[str, Any], p: ProgressAnswer) -> dict[str, An
         out["partner"] = p.partner and _given(p.partner)
     if "whatsapp_chats" in p.model_fields_set:
         out["whatsapp_chats"] = p.whatsapp_chats and [_given(c) for c in p.whatsapp_chats]
+    if "gmail_senders" in p.model_fields_set:
+        out["gmail_senders"] = p.gmail_senders and [_given(s) for s in p.gmail_senders]
     return out
 
 

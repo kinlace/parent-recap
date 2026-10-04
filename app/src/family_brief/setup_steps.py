@@ -61,6 +61,14 @@ WILMA_CITIES = {
     "vantaa.inschool.fi": "Vantaa",
     "kauniainen.inschool.fi": "Kauniainen",
 }
+# The starting Gmail allowlist of each city in "City presets" in docs/config.md: the domain the
+# city's schools and teachers write from, which also covers its subdomains, such as edu.espoo.fi.
+CITY_DOMAINS = {
+    "Espoo": "espoo.fi",
+    "Helsinki": "hel.fi",
+    "Vantaa": "vantaa.fi",
+    "Kauniainen": "kauniainen.fi",
+}
 WILMA_INSTALL = shlex.join(["npm", *setup_wilma.INSTALL_ARGS])  # the pinned version (ADR 0008)
 WILMA_POLL_SECONDS = 2
 # The Wilma window's own text, in the reviewed languages; any other language gets the English.

@@ -293,6 +293,22 @@ def test_the_whatsapp_groups_found_are_kept_in_the_progress_for_the_check_page(h
     assert result(capsys)[0]["progress"]["whatsapp_chats"] == found
 
 
+def test_the_gmail_senders_found_are_kept_in_the_progress_for_the_check_page(harness, capsys):
+    found = [{"domain": "edu.espoo.fi", "count": 5, "example": "Opettaja", "likely": True},
+             {"domain": "gmail.com", "count": 6, "example": "Friend", "likely": False,
+              "public": True}]
+
+    assert save(harness, {"progress": {"gmail_senders": found}}) == 0
+    capsys.readouterr()
+    assert save(harness, {"progress": {"phase": "check"}}) == 0
+    assert result(capsys)[0]["progress"]["gmail_senders"] == found
+
+    assert save(harness, {"progress": {"gmail_senders": [{"domain": "x.fi"}]}}) == 1
+    assert any(e.startswith("progress.gmail_senders.0") for e in result(capsys)[0]["errors"])
+    assert save(harness, None, "--read") == 0
+    assert result(capsys)[0]["progress"]["gmail_senders"] == found
+
+
 def test_answers_and_progress_are_saved_together(harness, capsys):
     existing_config(harness)
 
