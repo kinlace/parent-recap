@@ -261,7 +261,7 @@ Save `"progress": {"phase": "first-brief"}` first.
 
 1. **Preview**, with no email sent and nothing recorded: `$FB bg run --dry-run --lookback-hours 72` (72 hours, since a single day often has nothing new). Show the parent the preview and end with one choice: it looks right, or something is off (a wrong Kid, a group or sender that shouldn't be there, something missing). If something is off, they say what in their own words; save the fix with `$FB setup save`, and show a new preview. Repeat until they're happy.
 2. **The real Brief**: `$FB bg run --lookback-hours 72`. It goes to both Recipients.
-3. Each run can take several minutes. Never start one while another is going. If your tool cut the real run off, don't run it again: it may still be going and will send the Brief. Wait a few minutes, then check with `$FB setup status` whether it reached every Recipient. A run started while another is going stops at once with "Another FamilyBrief run is still going"; then wait, don't retry.
+3. Each run can take several minutes. Never start one while another is going. If your tool cut the real run off, don't run it again: it may still be going and will send the Brief. Wait a few minutes, then check with `$FB setup status` whether it went out. A run started while another is going stops at once with "Another FamilyBrief run is still going"; then wait, don't retry.
 4. With the partner in another language, the preview shows only the parent's. Ask the parent to have their partner check that their copy came in their language, without a line at the top saying it couldn't be translated.
 5. With pilot feedback on, the preview has no ⭐ / ❌. Ask the parent to check the real Brief has a ⭐ and a ❌ next to each Action Item, and one ❌ under the Digest.
 
@@ -270,7 +270,7 @@ Save `"progress": {"phase": "first-brief"}` first.
 Save `"progress": {"phase": "finish"}` first.
 
 1. Tell the parent macOS will ask for their Mac password in its own dialog, to wake the Mac 5 minutes before the Brief. Run `$FB schedule install`. If it warns the Mac already has a repeating wake schedule, show the parent what it lists and ask, as a choice, whether to replace it (keep it first); only if they choose to replace it, run `$FB schedule install --replace-wake`. If it prints a `sudo pmset ...` command, give it to the parent to run in Terminal.
-2. Run `$FB setup status`. It reports five outcomes: the program installed, the health check all OK, the first Brief delivered to every Recipient, the nightly job loaded, and the wake schedule set or the Mac never sleeping. Show them as a checklist. For each with `ok: false`, do what its `reason` says, and run it again, until `result` is `done`.
+2. Run `$FB setup status`. It reports five outcomes: the program installed, the health check all OK, the first Brief delivered to the setup parent (the first Recipient; the others' first is the first evening one), the nightly job loaded, and the wake schedule set or the Mac never sleeping. Show them as a checklist. For each with `ok: false`, do what its `reason` says, and run it again, until `result` is `done`.
 3. The sixth outcome is yours to confirm: after the Mac restarts, such as after a macOS update, someone must log in to this Mac user once, or no Brief comes until they do. Tell the parent, and end with one choice for them to confirm they've got it.
 
 Setup ends only when `setup status` says `done` and the parent has confirmed the restart reminder. Then tell them:

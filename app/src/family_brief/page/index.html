@@ -361,6 +361,27 @@
       <ul id="health-checks" class="checks"></ul>
     </div>
   </section>
+  <section id="first-brief" hidden>
+    <h1 data-text="brief.title"></h1>
+    <p class="note" data-text="brief.intro"></p>
+    <ul id="brief-list" class="sources working" hidden></ul>
+    <div id="brief-status" class="status" role="status" hidden>
+      <p id="brief-message"></p>
+      <button type="button" id="brief-again" class="secondary" data-text="brief.again" hidden></button>
+    </div>
+    <iframe id="brief-frame" class="brief" data-label="brief.frame" sandbox hidden></iframe>
+    <div id="brief-actions" hidden>
+      <button type="button" id="brief-send" data-text="brief.send"></button>
+      <div id="brief-feedback" hidden>
+        <button type="button" id="brief-feedback-open" class="secondary" data-text="brief.feedback"></button>
+        <p class="hint" data-text="brief.feedback.note"></p>
+      </div>
+    </div>
+    <div id="brief-sent" class="status" role="status" hidden>
+      <p id="brief-sent-message"></p>
+      <button type="button" id="brief-done" data-text="brief.done"></button>
+    </div>
+  </section>
   <section id="phase" hidden>
     <h1 id="phase-title"></h1>
     <p class="note" data-text="phase.not-here"></p>

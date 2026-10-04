@@ -58,10 +58,15 @@ class _CollectorErrors(logging.Handler):
         self.first.setdefault(record.name.rsplit(".", 1)[-1], record.getMessage())
 
 
+_COLLECTED = ("gmail", "myclub", "wilma", "whatsapp")  # the order the collectors run in
+
+
 def _run_collectors(cfg: Config, state: State, sources: list[str],
-                    coverage: dict[str, dict] | None = None) -> tuple[list[Message], list[CalendarEvent]]:
+                    coverage: dict[str, dict] | None = None,
+                    reading: Callable[[str], None] | None = None) -> tuple[list[Message], list[CalendarEvent]]:
     """Run each collector, isolating failures. If `coverage` is given, it is filled with
-    {source: {"count": n, "error": first error or None}} for the brief's coverage line."""
+    {source: {"count": n, "error": first error or None}} for the brief's coverage line.
+    `reading` is told each Source as its collector starts."""
     kid_terms = _all_kid_terms(cfg)
     messages: list[Message] = []
     direct_events: list[CalendarEvent] = []
@@ -69,9 +74,11 @@ def _run_collectors(cfg: Config, state: State, sources: list[str],
     collectors_log = logging.getLogger("family_brief.collectors")
     collectors_log.addHandler(errors)
     try:
-        for source in ("gmail", "myclub", "wilma", "whatsapp"):
+        for source in _COLLECTED:
             if source not in sources:
                 continue
+            if reading:
+                reading(source)
             count, error = 0, None
             try:
                 if source == "myclub":
@@ -521,9 +528,32 @@ def _versions(cfg: Config, summary: dict, model_events: list[CalendarEvent],
 
 def cmd_run(args: argparse.Namespace) -> int:
     cfg = Config.load(args.config)
+    args.dry_run = args.dry_run or args.preview
     if args.dry_run:  # writes nothing, so it can't clash with a run that is going
         return _run(cfg, args)
     return run_lock.run_alone(cfg, "Brief", lambda: _run(cfg, args))
+
+
+def _preview_step(step: str, **more: object) -> None:
+    """How far `run --preview` has got, as one line of JSON for the setup page."""
+    print(json.dumps({"preview": step, **more}, ensure_ascii=False), flush=True)
+
+
+def _print_preview(cfg: Config, summary: dict, created: list[dict], coverage: dict[str, dict],
+                   body: str, date_str: str, t: BriefText, assistant: str) -> None:
+    """The first Recipient's email as tonight's Brief would send it, as one line of JSON: its
+    subject, text and HTML, and for a pilot Household the Digest's feedback link."""
+    model_wrote = "_llm_error" not in summary
+    links = partial(feedback.link, cfg, date=date_str) \
+        if cfg.feedback.active() and model_wrote else None
+    html = _daily_brief_html(summary, created, date_str, t, cfg.timezone,
+                             coverage=_coverage_note(coverage, t),
+                             footer=t.written_by.format(assistant=assistant) if model_wrote else "",
+                             feedback_link=links, top_note=_top_note(summary, t, assistant))
+    wrong = feedback.link(cfg, feedback.DIGEST_WRONG, digest_of(summary) if model_wrote else "",
+                          date=date_str) if cfg.feedback.active() else None
+    _preview_step("made", subject=f"{PRODUCT_NAME} · {date_str}", text=body, html=html,
+                  feedback=wrong)
 
 
 def _run(cfg: Config, args: argparse.Namespace) -> int:
@@ -542,11 +572,16 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
     _wait_for_network(probe_host=_llm_host(cfg))
 
     coverage: dict[str, dict] = {}
-    messages, direct_events = _run_collectors(cfg, state, sources, coverage)
+    if args.preview:
+        _preview_step("reading", sources=[s for s in _COLLECTED if s in sources])
+    messages, direct_events = _run_collectors(
+        cfg, state, sources, coverage,
+        reading=(lambda source: _preview_step("reading", source=source)) if args.preview else None)
     earlier = archive.recent_points(cfg, today_str(cfg.timezone))
     due_soon = archive.has_due_soon(earlier, today_str(cfg.timezone))
     assistant = "Codex" if cfg.llm.backend == "codex" else "Claude"
-    if not messages and not direct_events and not due_soon:
+    # A preview shows a quiet night's Brief too, so the family sees what one looks like.
+    if not messages and not direct_events and not due_soon and not args.preview:
         if set(cfg.default_sources()) <= set(coverage) and all(c["error"] for c in coverage.values()):
             # Silence would look like a quiet night, so the parents hear that nothing could be read.
             log.warning("No Source could be read; sending a short Brief that says so")
@@ -579,6 +614,8 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
             log.warning("Failed to fetch upcoming events (continuing): %s", e)
 
     if messages or due_soon:
+        if args.preview:
+            _preview_step("writing")
         try:
             # Pass direct_events so the LLM doesn't duplicate them into calendar_events.
             already_captured = [e.to_dict() for e in direct_events]
@@ -628,6 +665,8 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
     body = _brief_text(summary, created, date_str, t, cfg.timezone, _coverage_note(coverage, t),
                        _calendar_note(calendar_problem, bool(ics_events), t, assistant),
                        _top_note(summary, t, assistant))
+    if args.preview:
+        _print_preview(cfg, summary, created, coverage, body, date_str, t, assistant)
     if args.dry_run:
         # Dry runs leave no trace: no archive, no state, no email.
         log.info("DRY-RUN: body (%d chars):\n%s", len(body), body)
@@ -760,6 +799,9 @@ def main() -> int:
 
     prun = sub.add_parser("run", help="Full pipeline")
     prun.add_argument("--dry-run", action="store_true")
+    prun.add_argument("--preview", action="store_true",
+                      help="A dry run that prints, as JSON lines, how far it is and then the "
+                           "first Recipient's email, even on a quiet night (the setup page's)")
     prun.add_argument("--sources", default=None,
                       help="Comma-separated: gmail,wilma,whatsapp,myclub (default: all)")
     prun.add_argument("--lookback-hours", type=int, default=None,

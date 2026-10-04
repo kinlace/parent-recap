@@ -37,8 +37,10 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import chat_install, ops, setup_ai, setup_save, setup_steps, setup_wilma, summarize
+from . import chat_install, ops, run_lock, setup_ai, setup_save, setup_steps, setup_wilma, summarize
+from .actions import email as email_action
 from .config import Config, Kid
+from .state import State
 
 IDLE_SECONDS = 30 * 60
 AI_CHECK_SECONDS = 20
@@ -101,6 +103,14 @@ HEALTH_CHECKS = {"Config file": "config", "Recipients": "recipients", "Language"
 # The scheduled job's checks, which aren't run before Finish installs it.
 SCHEDULE_CHECKS = frozenset({"Schedule", "Last run", "Python path"})
 HEALTH_STATUSES = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
+# First Brief: the real Brief made through a bg job, which reads WhatsApp with the scheduled job's
+# permission, without sending it: `making` while it's made, with the Source it's reading or
+# `writing`, then `made` or `make-failed`, and `no-brief` when this server hasn't made one.
+BRIEF_RESULTS = ("making", "made", "make-failed", "no-brief")
+BRIEF_LOOKBACK_HOURS = 72  # a single day often has nothing new
+BRIEF_SECONDS = 900
+# Sending it to the setup parent: `busy` while an evening run is going, which could send it too.
+SEND_RESULTS = ("sent", "send-failed", "busy")
 # "Continue in the chat": the setup skill as each AI's chat starts it, and what handing over
 # can say. Claude Code opens in a Terminal window; a Codex family is told what to type in Codex.
 CHAT_SKILLS = {"claude": "/parent-recap:setup", "codex": "$parent-recap-setup"}
@@ -127,12 +137,16 @@ FILES = {  # what the page is made of, by the path under its address
 MAX_BODY = 64 * 1024
 HEADERS = {
     "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; "
-                               "img-src 'self'; connect-src 'self'; base-uri 'none'; "
-                               "form-action 'none'; frame-ancestors 'none'",
+                               "img-src 'self'; connect-src 'self'; frame-src 'self'; "
+                               "base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     "Referrer-Policy": "no-referrer",  # the address carries the code
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "no-store",
 }
+# The Brief in the page's frame: its own inline styles and nothing else, sandboxed without
+# scripts, and its links open nothing (a sandbox without popups drops a new window).
+BRIEF_CSP = ("default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; "
+             "frame-ancestors 'self'; sandbox")
 
 
 def register(steps) -> None:
@@ -194,6 +208,7 @@ class SetupServer:
         self._working = threading.Lock()  # one read of the senders and one health check at a time
         self._reading: dict[str, Any] | None = None  # Working's read of the senders, once started
         self._health: dict[str, Any] | None = None  # the check page's health check, once started
+        self._brief: dict[str, Any] | None = None  # the first Brief, once it's being made
 
     def serve_until_idle(self) -> None:
         """Serves until `stop`, or until IDLE_SECONDS pass without a request."""
@@ -244,6 +259,7 @@ class SetupServer:
                 "gmail": {"address": self._gmail_address()},
                 "myclub": self._myclub(),
                 "check": self._check(progress),
+                "brief": {"sent": self._brief_sent()},
                 "chat": dict(self._chat_installs)}
 
     def choose_language(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
@@ -687,6 +703,123 @@ class SetupServer:
             answers["sources"]["whatsapp"] = {"enabled": bool(chats), "chats": chats}
         return answers
 
+    # ── First Brief
+
+    def make_brief(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Makes the real Brief from the Household's Sources over the last three days, as `run
+        --preview` does, without sending it, in the background: the page asks how far it is with
+        `check_brief`. Making it again replaces the one made before."""
+        phase = setup_save.read(self.config)["progress"]["phase"]
+        if raw != {} or phase != "first-brief":
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Confirm the check page first.",
+                errors=["answers: should be {}, once setup is at First Brief"])
+        with self._working:
+            if self._brief is None or self._brief["result"] != "making":
+                self._brief = {"result": "making", "sources": [], "step": None}
+                threading.Thread(target=self._make_brief, daemon=True).start()
+        return HTTPStatus.OK, {"result": "making"}
+
+    def check_brief(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """How far making the Brief is: `making`, with the Sources and the one it's on, or
+        `writing`; once `made`, its email HTML and whether the Household is a pilot one, with
+        the feedback button. The feedback link stays here: the page opens it through the server."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        brief = self._brief
+        if brief is None:
+            return HTTPStatus.OK, {"result": "no-brief"}
+        if brief["result"] == "made":
+            return HTTPStatus.OK, {"result": "made", "html": brief["html"],
+                                   "feedback": brief["feedback"] is not None}
+        return HTTPStatus.OK, brief
+
+    def brief_page(self) -> bytes | None:
+        """The Brief made, for the page's frame, with its links kept from opening in it."""
+        brief = self._brief
+        if brief is None or brief["result"] != "made":
+            return None
+        return brief["html"].replace("<html>", '<html><head><base target="_blank"></head>', 1).encode()
+
+    def _make_brief(self) -> None:
+        try:
+            code, out = ops.run_as_job(
+                ["run", "--preview", "--lookback-hours", str(BRIEF_LOOKBACK_HOURS)],
+                str(self.config), timeout=BRIEF_SECONDS, echo=False, output=self._brief_progress)
+            made = next((line for line in reversed(_preview_lines(out))
+                         if line["preview"] == "made"), None)
+            done = {"result": "made", **{k: made[k] for k in ("subject", "text", "html", "feedback")}} \
+                if code == 0 and made else {"result": "make-failed"}
+        except Exception:  # its error can name an address: never leave the page making it
+            done = {"result": "make-failed"}
+        self._brief = done
+
+    def _brief_progress(self, out: str) -> None:
+        sources, step = [], None
+        for line in _preview_lines(out):
+            sources = line.get("sources", sources)
+            step = line.get("source") or ("writing" if line["preview"] == "writing" else step)
+        self._brief = {"result": "making", "sources": sources, "step": step}
+
+    def send_brief(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """"Send it to me": sends the Brief made to the setup parent, the first Recipient, and
+        never to anyone else: the others' first Brief is the first evening one. It's recorded as
+        delivered to them, which the outcome check counts as the first Brief, and nothing else:
+        the evening Brief still reads the same Messages."""
+        brief = self._brief
+        cfg = self._config()
+        parent = cfg.email.to[0].address if cfg.email.enabled and cfg.email.to else None
+        if raw != {} or brief is None or brief["result"] != "made" or parent is None:
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Make the Brief first.",
+                errors=["answers: should be {}, once the Brief is made"])
+        try:
+            with run_lock.exclusive(cfg):
+                try:
+                    email_action.send(subject=brief["subject"], body_text=brief["text"],
+                                      body_html=brief["html"],
+                                      from_addr=cfg.email.from_addr or cfg.gmail.username or "",
+                                      to_addrs=[parent])
+                except Exception:  # its error can name the address
+                    return HTTPStatus.OK, {"result": "send-failed"}
+                state = State(cfg.resolved_state_path())
+                state.mark_delivered_now([parent])
+                state.save()
+        except run_lock.Busy:
+            return HTTPStatus.OK, {"result": "busy"}
+        return HTTPStatus.OK, {"result": "sent", "to": parent}
+
+    def brief_done(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Moves setup on to Finish once the first Brief has reached the setup parent."""
+        with self._saving:
+            phase = setup_save.read(self.config)["progress"]["phase"]
+            if raw != {} or phase != "first-brief" or not self._brief_sent():
+                return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                    "invalid-answers", "Send the first Brief to yourself first.",
+                    errors=["answers: should be {}, once the first Brief is sent"])
+            out = setup_save.save(self.config, {"progress": {"phase": "finish"}})
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        return HTTPStatus.OK, out
+
+    def open_feedback(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """"Something's wrong, tell us", for a pilot Household: opens the Brief's own Digest
+        feedback link, pre-filled with the Brief made, in the default browser."""
+        brief = self._brief
+        link = brief.get("feedback") if brief and brief["result"] == "made" else None
+        if raw != {} or not link:
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Only a pilot Household's Brief has the feedback link.",
+                errors=["answers: should be {}, once a pilot Household's Brief is made"])
+        return HTTPStatus.OK, {"result": "opened" if _open([link]) else "not-opened"}
+
+    def _brief_sent(self) -> bool:
+        """Whether a Brief has reached the setup parent, the first Recipient."""
+        cfg = self._config()
+        if not cfg.email.to:
+            return False
+        return State(cfg.resolved_state_path()).delivered_at(cfg.email.to[0].address) is not None
+
     def _config(self) -> Config:
         """The config as saved so far, read as the config model, or an empty one."""
         try:
@@ -1105,6 +1238,18 @@ def _health_check(status: str, item: str) -> dict[str, Any]:
     return {"check": HEALTH_CHECKS.get(item, "other"), **out}
 
 
+def _preview_lines(out: str) -> list[dict[str, Any]]:
+    """The JSON lines `run --preview` printed, in order, without its log lines."""
+    lines = []
+    for line in out.splitlines():
+        if line.startswith('{"preview"'):
+            try:
+                lines.append(json.loads(line))
+            except ValueError:
+                continue  # cut off while it was being written
+    return lines
+
+
 def _label(term: str, kid: Kid) -> str | None:
     """What a WhatsApp group whose name matched `term` is about, for `kid`."""
     if term == kid.class_name:
@@ -1216,6 +1361,9 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(HTTPStatus.OK, (PAGE_DIR / name).read_bytes(), kind)
         if method == "GET" and path == "api/state":
             return self._json(HTTPStatus.OK, setup.state())
+        if method == "GET" and path == "brief.html" and (brief := setup.brief_page()) is not None:
+            return self._send(HTTPStatus.OK, brief, "text/html; charset=utf-8",
+                              **{"Content-Security-Policy": BRIEF_CSP})
         actions = {"api/language": setup.choose_language, "api/ai": setup.check_ai,
                    "api/welcome": setup.save_welcome, "api/source": setup.choose_source,
                    "api/open": setup.open_site, "api/gmail": setup.connect_gmail,
@@ -1233,6 +1381,9 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/myclub/done": setup.myclub_done,
                    "api/working": setup.start_reading, "api/working/check": setup.check_reading,
                    "api/check": setup.confirm_check, "api/check/health": setup.check_health,
+                   "api/brief": setup.make_brief, "api/brief/check": setup.check_brief,
+                   "api/brief/send": setup.send_brief, "api/brief/done": setup.brief_done,
+                   "api/brief/feedback": setup.open_feedback,
                    "api/chat": setup.continue_in_chat}
         if method == "POST" and path in actions:
             raw = _json_body(body)

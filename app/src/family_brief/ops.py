@@ -23,6 +23,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from types import FrameType
+from typing import Callable
 
 from . import install_record, languages, private_files, secret_dialog
 from .config import Config
@@ -514,8 +515,10 @@ def _exit_on_signal(signum: int, _frame: FrameType | None) -> None:
 
 
 def run_as_job(cmd_args: list[str], config: str | None, timeout: int = 900,
-               echo: bool = True) -> tuple[int, str]:
+               echo: bool = True,
+               output: Callable[[str], None] | None = None) -> tuple[int, str]:
     """Run `family-brief <cmd_args>` as a one-off launchd job, wait for it, return (exit code, output).
+    `output`, if given, is handed all of the output so far each time the job is checked on.
 
     macOS grants WhatsApp access per responsible process. Started from Terminal, Claude Code or
     Codex, that is the parent app, which usually has no access. A launchd job is its own
@@ -558,10 +561,13 @@ def run_as_job(cmd_args: list[str], config: str | None, timeout: int = 900,
         while code is None and time.time() < deadline:
             time.sleep(1)
             code = _job_exit_code(domain, label)
-            if echo and out.exists():
+            if (echo or output) and out.exists():
                 text = out.read_text(errors="replace")
-                print(text[shown:], end="", flush=True)
-                shown = len(text)
+                if output:
+                    output(text)
+                if echo:
+                    print(text[shown:], end="", flush=True)
+                    shown = len(text)
     finally:
         for s in stops:  # a second signal mustn't cut the cleanup short
             signal.signal(s, signal.SIG_IGN)

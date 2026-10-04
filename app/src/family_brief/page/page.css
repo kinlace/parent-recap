@@ -450,6 +450,28 @@ fieldset label.all { background: var(--panel); }
 
 .status[data-result="health.checking"] { border-color: var(--accent-line); }
 
+/* ── First Brief: the email as it will look in the inbox, on white */
+
+iframe.brief {
+  display: block;
+  width: 100%;
+  height: 32rem;
+  margin: 14px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #FFFFFF;
+}
+
+#brief-actions {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+#brief-feedback .hint { margin: 4px 0 0; }
+
+#brief-sent { margin-top: 14px; }
+
 /* ── Continue in the chat */
 
 .chat {
