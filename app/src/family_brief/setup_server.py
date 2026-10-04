@@ -79,12 +79,17 @@ WHATSAPP_RESULTS = ("readable", "no-permission", "waiting", "not-installed", "un
                     "bg-failed")
 WHATSAPP_OPEN_RESULTS = ("opened", "not-opened")
 WHATSAPP_READ_SECONDS = setup_steps.WHATSAPP_READ_SECONDS
+# What saving a Kid's MyClub calendar link can say, as `setup myclub` does, and adding a Kid by
+# the name the family calls them, for a Household without Wilma.
+MYCLUB_RESULTS = ("saved", "not-a-myclub-link", "link-failed", "not-a-calendar", "save-failed")
+MYCLUB_KID_RESULTS = ("added", "kid-exists")
 # "Continue in the chat": the setup skill as each AI's chat starts it, and what handing over
 # can say. Claude Code opens in a Terminal window; a Codex family is told what to type in Codex.
 CHAT_SKILLS = {"claude": "/parent-recap:setup", "codex": "$parent-recap-setup"}
 CHAT_RESULTS = {"claude": ("opened", "no-terminal", "not-installed"), "codex": ("open-codex",)}
 # The sites the page's buttons open, by name: the page itself names none.
-SITES = {"app-passwords": setup_steps.APP_PASSWORDS_URL, "two-step": setup_steps.TWO_STEP_URL}
+SITES = {"app-passwords": setup_steps.APP_PASSWORDS_URL, "two-step": setup_steps.TWO_STEP_URL,
+         "myclub": setup_steps.MYCLUB_URL}
 # The apps they open, each tried in turn: the Passwords app, or before macOS 15, where the
 # passwords were in System Settings.
 APPS = {"passwords": (["-a", "Passwords"],
@@ -216,6 +221,7 @@ class SetupServer:
                 "connect": {"sources": [{"name": s, "skippable": s in SKIPPABLE}
                                         for s in setup_save.SOURCES]},
                 "gmail": {"address": self._gmail_address()},
+                "myclub": self._myclub(),
                 "chat": dict(self._chat_installs)}
 
     def choose_language(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
@@ -406,6 +412,81 @@ class SetupServer:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
         _, failed = ops.show_python_for_app_management()
         return HTTPStatus.OK, {"result": "not-opened" if failed else "opened"}
+
+    # ── MyClub
+
+    def save_myclub_link(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Checks the calendar link pasted into the page's own field for one of the Household's
+        Kids and saves it, through the chat's MyClub step. Once a link is saved, MyClub is done,
+        and setup moves on once every Kid has one; until then the parent can add the next Kid's.
+        The link is a secret (ADR 0007): it's never returned, logged or put on a command line."""
+        if not (isinstance(raw, dict) and set(raw) == {"kid", "link"}
+                and isinstance(raw["link"], str) and raw["kid"] in self._kid_names()):
+            # Names the fields only: the answers carry the link.
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Pick one of the Kids and paste their calendar link.",
+                errors=["answers: should be one of the Kids' names and the link, as text"])
+        # Downloaded before the lock, so a slow MyClub holds up no other save.
+        result, extra = setup_steps.myclub_link(self.config, raw["kid"], raw["link"], self._saving)
+        if result != "saved":
+            return HTTPStatus.OK, {"result": result}  # without the error, which can name files
+        with self._saving:
+            progress = setup_save.read(self.config)["progress"]
+            statuses = {**progress["sources"], "myclub": "done"}
+            here = progress["source"] == "myclub"
+            linked = all(k["linked"] for k in self._myclub()["kids"])
+            out = setup_save.save(self.config, {"progress": {
+                "sources": {"myclub": "done"},
+                "source": _next_source(statuses) if here and linked else progress["source"]}})
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        return HTTPStatus.OK, {**out, "kid": raw["kid"], "events": extra["events"],
+                               "kids": self._myclub()["kids"]}
+
+    def add_kid(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """For a Household without Wilma: adds a Kid by the name the family calls them, so their
+        MyClub link can be saved. With Wilma, the Kids are the ones Wilma lists."""
+        name = raw.get("name") if isinstance(raw, dict) and set(raw) == {"name"} else None
+        if not (isinstance(name, str) and name.strip() and self._myclub()["add"]):
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Type the Kid's name. A Household with Wilma has its Kids from "
+                "there.", errors=["name: should be text, for a Household without Wilma"])
+        name = name.strip()
+        with self._saving:
+            names = self._kid_names()
+            if name.casefold() in (n.casefold() for n in names):
+                return HTTPStatus.OK, {"result": "kid-exists"}
+            # Only the names: each Kid already there keeps the rest, such as their link.
+            out = setup_save.save(self.config, {"kids": [{"name": n} for n in [*names, name]]})
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        return HTTPStatus.OK, {**out, "result": "added", "kids": self._myclub()["kids"]}
+
+    def myclub_done(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Moves setup on from MyClub once a link is saved, leaving the other Kids without one."""
+        with self._saving:
+            statuses = setup_save.read(self.config)["progress"]["sources"]
+            if raw != {} or statuses["myclub"] != "done":
+                return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                    "invalid-answers", "Save a Kid's link first, or skip MyClub.",
+                    errors=["answers: should be {}, once a link is saved"])
+            out = setup_save.save(self.config, {"progress": {"source": _next_source(statuses)}})
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        return HTTPStatus.OK, out
+
+    def _myclub(self) -> dict[str, Any]:
+        """The Kids known so far, each with whether their link is saved but never the link, and
+        whether the family adds them here: only without Wilma."""
+        data = self._config_data()
+        kids = [k for k in data.get("kids") or []
+                if isinstance(k, dict) and isinstance(k.get("name"), str)]
+        return {"kids": [{"name": k["name"], "linked": bool(k.get("myclub_ical_url"))}
+                         for k in kids],
+                "add": _section(data, "wilma").get("enabled") is not True}
+
+    def _kid_names(self) -> list[str]:
+        return [k["name"] for k in self._myclub()["kids"]]
 
     # ── Continue in the chat
 
@@ -881,6 +962,8 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/codex": setup.check_codex, "api/codex/login": setup.sign_in_codex,
                    "api/whatsapp/check": setup.check_whatsapp,
                    "api/whatsapp/open": setup.open_app_management,
+                   "api/myclub": setup.save_myclub_link, "api/myclub/kid": setup.add_kid,
+                   "api/myclub/done": setup.myclub_done,
                    "api/chat": setup.continue_in_chat}
         if method == "POST" and path in actions:
             raw = _json_body(body)

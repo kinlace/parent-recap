@@ -25,8 +25,8 @@ are the groups `setup whatsapp` found, as it reports them, kept for the check pa
 
 What the answers don't mention stays as it was. The Kids given are the Household's Kids: a Kid
 left out is removed, and each one given keeps what the answers don't say about them, such as a
-MyClub link, which only `setup myclub` saves. The merged config is checked against the config
-model before it's written. `--read` saves nothing and only reads the progress back.
+MyClub link, which only `setup myclub` and the setup page's MyClub field save. The merged config
+is checked against the config model before it's written. `--read` saves nothing and only reads the progress back.
 
 It prints one line of JSON, with the progress in it. Invalid answers are refused with the path
 of each problem; the values aren't repeated, since a config can hold links that are secrets.

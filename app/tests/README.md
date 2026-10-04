@@ -76,6 +76,13 @@ in-process. It checks that the button shows the Python in Finder and opens App M
 the entry ticks itself on the read after the permission is given, with the groups found and
 their Kid hints kept in setup's progress for the check page, that every other read result is
 said without its error, and that each result is explained in all three languages.
+Its MyClub step runs against `test_setup_myclub.py`'s fake MyClub server. It checks that the
+button opens MyClub's site, that the Kids are listed without their links, that a good link is
+downloaded once and saved for the Kid picked, with MyClub done and setup moving on once every Kid
+has one, that a link that isn't one, doesn't open or isn't a calendar is explained and not saved,
+that a Household without Wilma adds its Kids by name there and one with Wilma can't, that
+skipping saves nothing, and that the link never reaches a response, the output, the logs, a
+command line or setup's progress.
 Its "Continue in the chat" runs the Terminal script the page opens against a fake `claude`, and
 checks that it starts Claude Code in the home folder at the setup skill, that a Codex family is
 told to type `$parent-recap-setup`, that `setup save --read` gives the chat the same progress the
