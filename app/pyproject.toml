@@ -1,6 +1,6 @@
 [project]
 name = "family-brief"
-version = "0.4.3"
+version = "0.5.0"
 description = "Daily aggregator for kid-related messages across Gmail, Wilma, WhatsApp, MyClub"
 requires-python = ">=3.11"
 dependencies = [
