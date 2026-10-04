@@ -12,7 +12,7 @@ For a full example see `app/config.example.yaml`. The config file lives at `~/.f
 | Vantaa                               | vantaa.inschool.fi     | `vantaa.fi`              | Vantaa, Helsinki, Espoo |
 | Kauniainen                           | kauniainen.inschool.fi | `kauniainen.fi`          | Espoo, Helsinki         |
 
-With Wilma, `family-brief setup wilma` takes the city from the Wilma address the family signs in to, using this table, and gives no city for an address that isn't in it. When you add a city here, add its Wilma address to `WILMA_CITIES` in `app/src/family_brief/setup_steps.py` too; a test checks the two match.
+With Wilma, `family-brief setup wilma` takes the city from the Wilma address the family signs in to, using this table, and gives no city for an address that isn't in it. When you add a city here, add its Wilma address to `WILMA_CITIES` and its starting allowlist to `CITY_DOMAINS` in `app/src/family_brief/setup_steps.py` too; a test checks they match.
 
 The allowlist is only a starting point. Always run `family-brief discover gmail-senders` to add the domains the Kids actually get mail from: music schools (such as `emo.fi` in Espoo), sports clubs, hobby classes. Gmail's `from:espoo.fi` also matches subdomains such as `edu.espoo.fi`.
 

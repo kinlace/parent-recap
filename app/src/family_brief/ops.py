@@ -432,14 +432,22 @@ def gmail_senders(cfg: Config, days: int, progress=None) -> list[dict]:
 
 def likely_sender(domain: str, city: str | None) -> bool:
     """Whether mail from `domain` looks like the Kids' school's, the city's or a club's."""
-    from .setup_steps import CITY_DOMAINS
     if domain in PUBLIC_DOMAINS:
         return False
-    city_domain = CITY_DOMAINS.get(city or "") or (f"{_slug(city)}.fi" if city else None)
-    ours = [*KNOWN_SENDERS, *([city_domain] if city_domain else [])]
+    town = city_domain(city)
+    ours = [*KNOWN_SENDERS, *([town] if town else [])]
     if any(domain == d or domain.endswith("." + d) for d in ours):
         return True
     return any(word in domain.rsplit(".", 1)[0] for word in SCHOOL_AND_CLUB_WORDS)
+
+
+def city_domain(city: str | None) -> str | None:
+    """The domain the Household's town's schools likely write from: its preset's, else the town's
+    own .fi domain, such as jarvenpaa.fi for Järvenpää."""
+    from .setup_steps import CITY_DOMAINS
+    if not city:
+        return None
+    return CITY_DOMAINS.get(city) or f"{_slug(city)}.fi"
 
 
 def _slug(city: str) -> str:

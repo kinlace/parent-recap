@@ -2644,7 +2644,7 @@ def test_every_health_check_doctor_runs_has_a_name_on_the_page():
     source = Path(ops.__file__).read_text()
     items = {re.split(r" ?[{(]", item)[0]
              for item in re.findall(r'\badd\([^,]+, f?"([^"]+)"', source)}
-    items -= setup_server.HEALTH_LEFT_OUT
+    items -= setup_server.SCHEDULE_CHECKS
 
     assert items and items <= set(setup_server.HEALTH_CHECKS), items - set(setup_server.HEALTH_CHECKS)
 
