@@ -288,6 +288,24 @@ def test_the_page_loads_nothing_from_the_internet(page):
         assert not re.search(r"(?:https?:)?//[A-Za-z0-9]", f.read_text()), f.name
 
 
+def test_the_page_has_the_setup_proposal_look_in_the_system_font():
+    css = (PAGE_DIR / "page.css").read_text()
+
+    for token in ["--bg: #EDF0F3", "--panel: #FFFFFF", "--ink: #12161B", "--muted: #6A7380",
+                  "--accent: #C8731A", "--accent-soft: #FBEAD5", "--good: #2C7A57",
+                  "--chip-on: #12161B"]:
+        assert token in css, token
+    assert "@font-face" not in css and "@import" not in css and "url(" not in css
+    assert "var(--sys)" in re.search(r"^body\s*\{[^}]*\}", css, re.M).group(0)
+    # Six phases in a row, and two rows of three at phone width.
+    assert re.search(r"\.phases\s*\{[^}]*grid-template-columns:\s*repeat\(6,", css)
+    phone = re.search(r"@media \(max-width: \d+px\)\s*\{(.*?)\n\}", css, re.S).group(1)
+    assert re.search(r"\.phases\s*\{[^}]*grid-template-columns:\s*repeat\(3,", phone)
+    # The Source list's marks: to do, the one being worked on, done.
+    for mark in ['"○"', '"◐"', '"✓"']:
+        assert mark in css, mark
+
+
 # ── the language
 
 
