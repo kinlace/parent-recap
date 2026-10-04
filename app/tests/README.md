@@ -48,7 +48,10 @@ Welcome, it checks each choice's default and that the answers are saved, that th
 and language are asked only with a partner, and that a missing or signed-out Claude Code or Codex
 is caught and checked again: the harness answers `claude auth status` and `codex login status`
 from `harness.signed_in`, and the test puts a fake `claude` or `codex` on PATH to install one.
-On Connect, it checks the Source list's statuses, skipping and coming back, and the page's Gmail
+It also checks that the install box and its Copy button start hidden, that `hidden` wins over the
+box's own layout in the CSS, and that a ready AI gets no install line.
+On Connect, it checks the Source list's statuses, each row's name with its status in every
+language, skipping and coming back, and the page's Gmail
 step against a fake IMAP server and Keychain: a valid App Password is stored and Gmail turns done,
 each known result has its explanation in all three languages, and the App Password never reaches
 a response, the output, the logs, a command line or a file in `~/.family`. Its Wilma step runs

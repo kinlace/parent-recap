@@ -479,6 +479,19 @@ def test_a_missing_claude_code_gets_its_native_installer_and_is_checked_again(ha
     assert ["auth", "status"] == harness.commands[-1][1:3]
 
 
+def test_the_install_box_shows_only_with_an_install_line_in_it(harness, page, ai):
+    html = (PAGE_DIR / "index.html").read_text()
+    css = (PAGE_DIR / "page.css").read_text()
+
+    box = re.search(r'<div id="ai-install"[^>]*>.*?</div>', html, re.S).group(0)
+    assert " hidden" in box.split(">", 1)[0] and 'id="ai-copy"' in box and 'id="ai-install-line"' in box
+    # `hidden` wins over the box's own `display: flex`, here and in every other step.
+    assert re.search(r"^\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}", css, re.M)
+
+    ai("claude")
+    assert "install" not in check_ai(page.url, "claude").json()  # ready: nothing to install
+
+
 def test_a_signed_out_claude_code_is_caught_and_checked_again(harness, page, ai):
     ai("claude")
     harness.signed_in["claude"] = False
@@ -701,6 +714,19 @@ def test_the_source_list_shows_each_entry_with_its_status(harness, page):
     assert state["progress"]["source"] == "gmail"
     assert state["progress"]["sources"] == {"wilma": "done", "gmail": "to-do", "ai": "to-do",
                                             "whatsapp": "to-do", "myclub": "to-do"}
+
+
+def test_every_source_list_button_is_named_after_its_source_and_status_in_each_language():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+    script = (PAGE_DIR / "page.js").read_text()
+
+    for language, table in text.items():
+        name = table["sources.button"]
+        assert "{source}" in name and "{status}" in name, language
+        assert name.replace("{source}", "").replace("{status}", "").strip(), language
+    # Rebuilt with the rest of the list whenever the language or a status changes.
+    rows = script.split("function renderSources()", 1)[1].split("\n}\n", 1)[0]
+    assert 'button.setAttribute("aria-label"' in rows and 't("sources.button")' in rows
 
 
 def test_a_skipped_source_moves_setup_on_and_can_be_come_back_to(harness, page):
