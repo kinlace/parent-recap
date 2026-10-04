@@ -125,7 +125,9 @@ function renderPhase() {
   list.replaceChildren();
   PHASES.forEach((phase, i) => {
     const item = document.createElement("li");
-    item.textContent = t("phase." + phase);
+    const name = document.createElement("b");
+    name.textContent = t("phase." + phase);
+    item.append(name);
     if (phase === current) item.setAttribute("aria-current", "step");
     else if (i < PHASES.indexOf(current)) item.className = "done";
     list.append(item);

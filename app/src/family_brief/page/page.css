@@ -1,12 +1,27 @@
+/* The "Setup proposal" prototype's look, in the system font: the page loads nothing else. */
 :root {
-  --ink: #1d1d1f;
-  --muted: #6e6e73;
-  --line: #d2d2d7;
-  --paper: #f5f5f7;
-  --card: #ffffff;
-  --accent: #0b6e4f;
-  --accent-soft: #e3f1ec;
-  --error: #b3261e;
+  --bg: #EDF0F3;
+  --panel: #FFFFFF;
+  --panel-2: #F5F7F9;
+  --ink: #12161B;
+  --ink-2: #39414B;
+  --muted: #6A7380;
+  --line: #D8DDE4;
+  --accent: #C8731A;
+  --accent-soft: #FBEAD5;
+  --accent-line: #E2A65B;
+  --bad: #B8392B;
+  --bad-soft: #F8E1DD;
+  --good: #2C7A57;
+  --good-soft: #E3F1EA;
+  --tick: #2E9A5A;
+  --chip: #E3E7EC;
+  --chip-on: #12161B;
+  --chip-on-ink: #FFFFFF;
+  --shadow: 0 1px 0 rgba(18, 22, 27, .04), 0 12px 32px -18px rgba(18, 22, 27, .35);
+  --sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue",
+    Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
 }
 
@@ -17,29 +32,29 @@
 
 body {
   margin: 0;
-  background: var(--paper);
+  background: var(--bg);
   color: var(--ink);
-  font: 17px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  font: 14px/1.5 var(--sys);
+  -webkit-font-smoothing: antialiased;
 }
 
 header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 640px;
+  max-width: 760px;
   margin: 0 auto;
-  padding: 20px 24px;
+  padding: 20px 24px 12px;
 }
 
-.product { font-weight: 600; }
+.product { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
 
 .switch select {
   font: inherit;
-  font-size: 15px;
-  padding: 4px 8px;
+  padding: 5px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
+  border-radius: 999px;
+  background: var(--panel);
   color: var(--ink);
 }
 
@@ -52,83 +67,221 @@ header {
 }
 
 main {
-  max-width: 640px;
-  margin: 0 auto 48px;
-  padding: 32px;
-  background: var(--card);
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  display: grid;
+  gap: 16px;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 24px 48px;
 }
 
-h1 { font-size: 26px; line-height: 1.25; margin: 0 0 8px; }
+/* Each screen, and Continue in the chat under it, is a white card on the page. */
+main > section, .chat {
+  padding: 28px 32px;
+  background: var(--panel);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+h1 {
+  font-size: 26px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+}
+
+h2 {
+  font-size: 18px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 8px 0;
+}
+
+p { margin: 0 0 12px; }
 
 .note { color: var(--muted); margin: 0 0 24px; }
+
+.hint { color: var(--muted); font-size: 13px; margin: 0; }
+
+.ready { font-weight: 600; }
+
+/* ── The phase strip: six boxes in a row, the current one dark, done ones with a green tick. */
+
+.phases {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+}
+
+.phases li {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 7px 9px;
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.phases b { font-weight: 600; }
+
+.phases li[aria-current="step"] {
+  border-color: var(--chip-on);
+  background: var(--chip-on);
+  color: var(--chip-on-ink);
+}
+
+.phases li.done { color: var(--ink-2); }
+
+.phases li.done b::after { content: " ✓"; color: var(--good); }
+
+/* ── Choices: each option a box; a chosen one is warm, not green. */
 
 fieldset {
   border: 0;
   padding: 0;
   margin: 0 0 24px;
+  min-width: 0;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
+
+legend { font-weight: 600; font-size: 15px; margin-bottom: 8px; padding: 0; }
 
 fieldset label {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px solid #D9DDE3;
+  border-radius: 10px;
+  background: #F6F7F9;
   cursor: pointer;
-  font-size: 19px;
+  font-size: 15px;
 }
 
 fieldset label:has(input:checked) {
-  border-color: var(--accent);
   background: var(--accent-soft);
+  border-color: var(--accent-line);
 }
 
-fieldset input { accent-color: var(--accent); width: 18px; height: 18px; margin: 0; }
+fieldset input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; flex: none; }
+
+/* ── Buttons are pills; the main action is dark. */
 
 button {
   font: inherit;
+  font-size: 14px;
   font-weight: 600;
-  padding: 12px 28px;
-  border: 0;
-  border-radius: 12px;
-  background: var(--accent);
-  color: #fff;
+  min-height: 38px;
+  padding: 8px 18px;
+  border: 1px solid var(--chip-on);
+  border-radius: 999px;
+  background: var(--chip-on);
+  color: var(--chip-on-ink);
   cursor: pointer;
 }
 
-button:disabled { opacity: 0.5; cursor: default; }
-
 button.secondary {
-  padding: 6px 14px;
-  font-size: 15px;
-  background: var(--card);
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
 }
 
-legend { font-weight: 600; margin-bottom: 10px; padding: 0; }
+button.secondary:hover { background: var(--panel-2); }
 
-h2 { font-size: 19px; margin: 8px 0 8px; }
+button:focus-visible,
+.field input:focus-visible,
+.field select:focus-visible,
+.switch select:focus-visible,
+fieldset input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
-.hint { color: var(--muted); font-size: 15px; margin: 0; }
+button:disabled { opacity: 0.45; cursor: default; }
+
+button.link {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-weight: 400;
+  font-size: 13px;
+  text-decoration: underline;
+}
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+/* ── Fields */
+
+.details { display: grid; gap: 12px; }
+
+.field { display: grid; gap: 4px; }
+
+.field label,
+fieldset .field label {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: default;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.field input, .field select {
+  font: inherit;
+  font-size: 15px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.field input:disabled { background: var(--panel-2); }
+
+/* The partner's address and language side by side. */
+#partner-details { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+
+/* ── What a step said: a quiet box, green once it's done. */
 
 .status {
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: var(--paper);
-  font-size: 15px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--ink-2);
 }
 
 .status p { margin: 0; }
 
-.status[data-result="ready"] { background: var(--accent-soft); color: var(--accent); }
+.status button { margin-top: 10px; margin-right: 6px; }
 
-.status button { margin-top: 10px; }
+.status[data-result="ready"],
+.status[data-result="gmail.saved"],
+.status[data-result="wilma.signed-in"],
+.status[data-result="wilma.town-saved"],
+.status[data-result="claude.saved"],
+.status[data-result="codex.signed-in"],
+.status[data-result="whatsapp.readable"] {
+  border-color: transparent;
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.status code {
+  display: block;
+  margin-top: 8px;
+  font: 13px/1.4 var(--mono);
+  overflow-wrap: anywhere;
+}
 
 .install {
   display: flex;
@@ -139,122 +292,71 @@ h2 { font-size: 19px; margin: 8px 0 8px; }
 
 .install code {
   flex: 1;
+  min-width: 0;
+  margin: 0;
   padding: 8px 10px;
   border-radius: 8px;
-  background: var(--card);
+  background: var(--panel);
   border: 1px solid var(--line);
-  font: 14px/1.4 ui-monospace, Menlo, monospace;
-  overflow-wrap: anywhere;
-}
-
-.install button { margin-top: 0; }
-
-.details { display: grid; gap: 12px; }
-
-.field { display: grid; gap: 4px; }
-
-fieldset .field label {
-  display: block;
-  padding: 0;
-  border: 0;
-  cursor: default;
-  font-size: 15px;
-  color: var(--muted);
-}
-
-.field input, .field select {
-  font: inherit;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--card);
   color: var(--ink);
 }
 
-.ready { font-weight: 600; }
+.install button { margin-top: 0; flex: none; }
 
-.phases {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0;
-  margin: 0 0 24px;
-  font-size: 14px;
+.error {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bad-soft);
+  color: var(--bad);
 }
 
-.phases li {
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--paper);
-  color: var(--muted);
-}
-
-.phases li.done { color: var(--accent); }
-
-.phases li[aria-current="step"] { background: var(--accent); color: #fff; }
-
-.error { color: var(--error); margin: 16px 0 0; }
+/* ── The Source list: ○ to do, ◐ the one being worked on, ✓ done. */
 
 .sources {
   list-style: none;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   padding: 0;
   margin: 0 0 24px;
 }
 
 .sources button {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
   width: 100%;
-  padding: 12px 16px;
+  padding: 10px 14px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--card);
+  border-radius: 10px;
+  background: var(--panel);
   color: var(--ink);
-  font-weight: 400;
+  font-weight: 500;
   text-align: left;
 }
 
-.sources li[aria-current="step"] button { border-color: var(--accent); background: var(--accent-soft); }
+.sources button::before { content: "○"; color: #CFD3D9; width: 1em; text-align: center; }
 
-.sources .state { color: var(--muted); font-size: 15px; }
+.sources li[aria-current="step"] button { border-color: var(--accent-line); background: var(--accent-soft); }
 
-.sources li[data-status="done"] .state { color: var(--accent); font-weight: 600; }
+.sources li[aria-current="step"] button::before { content: "◐"; color: var(--accent); }
+
+.sources li[data-status="done"] button::before { content: "✓"; color: var(--tick); font-weight: 700; }
+
+.sources .state { color: var(--muted); font-size: 13px; font-weight: 400; }
+
+.sources li[data-status="done"] .state { color: var(--good); font-weight: 600; }
 
 .source { margin: 0 0 16px; }
-
-.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-
-button.link {
-  padding: 0;
-  background: none;
-  color: var(--accent);
-  font-weight: 400;
-  font-size: 15px;
-  text-decoration: underline;
-}
-
-.status[data-result="gmail.saved"] { background: var(--accent-soft); color: var(--accent); }
-
-.status code {
-  display: block;
-  margin-top: 8px;
-  font: 14px/1.4 ui-monospace, Menlo, monospace;
-  overflow-wrap: anywhere;
-}
-
-.status[data-result="wilma.signed-in"],
-.status[data-result="wilma.town-saved"] { background: var(--accent-soft); color: var(--accent); }
 
 .kids { margin: 8px 0 0; padding-left: 20px; }
 
 .towns:empty { display: none; }
 
-.towns label { font-size: 16px; flex-wrap: wrap; }
+.towns label { flex-wrap: wrap; }
 
-.towns .town { color: var(--muted); font-size: 14px; margin-left: auto; }
+.towns .town { color: var(--muted); font-size: 13px; margin-left: auto; }
 
 #wilma-towns + .hint, #source-wilma .field { margin-bottom: 16px; }
 
@@ -271,21 +373,32 @@ button.link {
   display: block;
   width: 100%;
   height: auto;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--paper);
+  background: var(--panel-2);
 }
 
-.pictures figcaption { margin-top: 6px; font-size: 15px; }
+.pictures figcaption { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
 
-.status[data-result="whatsapp.readable"] { background: var(--accent-soft); color: var(--accent); }
+/* ── Continue in the chat */
 
 .chat {
   display: grid;
   gap: 10px;
   justify-items: start;
-  margin-top: 32px;
-  padding-top: 20px;
-  border-top: 1px solid var(--line);
 }
 
 .chat .status { justify-self: stretch; }
+
+/* ── Phone width: one column, the phase strip in two rows of three. */
+@media (max-width: 600px) {
+  header { padding: 14px 16px 10px; }
+  main { padding: 0 12px 32px; gap: 12px; }
+  main > section, .chat { padding: 20px 18px; }
+  h1 { font-size: 24px; }
+  .phases { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #partner-details { grid-template-columns: minmax(0, 1fr); }
+  .install { flex-direction: column; align-items: stretch; }
+  .install button { align-self: flex-start; }
+  .pictures { grid-template-columns: minmax(0, 1fr); }
+}
