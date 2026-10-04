@@ -387,6 +387,69 @@ fieldset .field label {
 
 .pictures figcaption { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
 
+/* ── Working: what's been read, ✓ once read, ◐ while it reads. */
+
+.working li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.working li::before { content: "✓"; color: var(--tick); font-weight: 700; width: 1em; text-align: center; }
+
+.working li[data-status="to-do"]::before { content: "○"; color: #CFD3D9; }
+
+.working li[aria-current="step"] { border-color: var(--accent-line); background: var(--accent-soft); }
+
+.working li[aria-current="step"]::before { content: "◐"; color: var(--accent); }
+
+#working-bar { display: block; width: 100%; margin: 0 0 16px; accent-color: var(--accent); }
+
+/* ── Check: lists to tick, each Kid with the name the Brief calls them beside. */
+
+.ticks { display: grid; gap: 8px; }
+
+.ticks:empty { display: none; }
+
+fieldset label.all { background: var(--panel); }
+
+.kid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center; }
+
+.kid .name { overflow-wrap: anywhere; }
+
+.kid input.everyday, .add .field input {
+  font: inherit;
+  font-size: 15px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.add { display: flex; align-items: flex-end; gap: 10px; }
+
+.add .field { flex: 1; }
+
+.checks { list-style: none; display: grid; gap: 8px; padding: 0; margin: 10px 0 0; }
+
+.checks li::before { content: "✓ "; color: var(--good); font-weight: 700; }
+
+.checks li[data-status="warn"]::before { content: "! "; color: var(--accent); }
+
+.checks li[data-status="fail"]::before { content: "✗ "; color: #B3261E; }
+
+.checks .state { color: var(--muted); font-size: 13px; }
+
+.checks .hint { margin: 2px 0 0; }
+
+.status[data-result="health.checking"] { border-color: var(--accent-line); }
+
 /* ── Continue in the chat */
 
 .chat {
@@ -408,4 +471,5 @@ fieldset .field label {
   .install { flex-direction: column; align-items: stretch; }
   .install button { align-self: flex-start; }
   .pictures { grid-template-columns: minmax(0, 1fr); }
+  .kid { grid-template-columns: minmax(0, 1fr); }
 }

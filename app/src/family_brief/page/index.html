@@ -283,7 +283,10 @@
         </div>
       </div>
     </div>
-    <p id="connect-done" class="note" data-text="connect.done" hidden></p>
+    <div id="connect-done" hidden>
+      <p class="note" data-text="connect.done"></p>
+      <p><button type="button" id="connect-continue" data-text="continue"></button></p>
+    </div>
     <div id="source-status" class="status" role="status" hidden>
       <p id="source-message"></p>
       <code id="source-url" hidden></code>
@@ -299,6 +302,64 @@
       <button type="button" id="claude-terminal" class="secondary" data-text="claude.terminal" hidden></button>
     </div>
     <p><button type="button" id="source-skip" class="secondary" data-text="source.skip" hidden></button></p>
+  </section>
+  <section id="working" hidden>
+    <h1 data-text="working.title"></h1>
+    <p class="note" data-text="working.intro"></p>
+    <ul id="working-list" class="sources working"></ul>
+    <progress id="working-bar" max="1" value="0"></progress>
+    <div id="working-status" class="status" role="status" hidden>
+      <p id="working-message"></p>
+      <button type="button" id="working-again" class="secondary" data-text="working.again" hidden></button>
+    </div>
+  </section>
+  <section id="check" hidden>
+    <h1 data-text="check.title"></h1>
+    <p class="note" data-text="check.intro"></p>
+    <form id="check-form">
+      <fieldset>
+        <legend data-text="check.kids"></legend>
+        <p class="hint" data-text="check.kids.note"></p>
+        <div id="check-kids" class="ticks"></div>
+        <div id="check-kid-form" class="add">
+          <div class="field">
+            <label for="check-kid-name" data-text="check.kid.add.name"></label>
+            <input type="text" id="check-kid-name" autocomplete="off">
+          </div>
+          <button type="button" id="check-kid-add" class="secondary" data-text="check.kid.add"></button>
+        </div>
+      </fieldset>
+      <fieldset id="check-whatsapp">
+        <legend data-text="check.whatsapp"></legend>
+        <p class="hint" data-text="check.whatsapp.note"></p>
+        <label class="all"><input type="checkbox" id="check-whatsapp-all"><span data-text="check.all"></span></label>
+        <div id="check-groups" class="ticks towns"></div>
+      </fieldset>
+      <fieldset>
+        <legend data-text="check.senders"></legend>
+        <p class="hint" data-text="check.senders.note"></p>
+        <p id="check-senders-none" class="ready" data-text="check.senders.none" hidden></p>
+        <label class="all"><input type="checkbox" id="check-senders-all"><span data-text="check.all"></span></label>
+        <div id="check-senders" class="ticks towns"></div>
+      </fieldset>
+      <fieldset>
+        <legend data-text="check.recipients"></legend>
+        <div id="check-recipients" class="details"></div>
+      </fieldset>
+      <fieldset>
+        <legend data-text="check.evening"></legend>
+        <div class="field">
+          <label for="check-evening" data-text="check.evening.label"></label>
+          <input type="time" id="check-evening" step="60" required>
+        </div>
+        <p class="hint" data-text="check.evening.note"></p>
+      </fieldset>
+      <button type="submit" id="check-confirm" data-text="check.confirm"></button>
+    </form>
+    <div id="health" class="status" role="status" hidden>
+      <p id="health-message"></p>
+      <ul id="health-checks" class="checks"></ul>
+    </div>
   </section>
   <section id="phase" hidden>
     <h1 id="phase-title"></h1>

@@ -38,6 +38,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
 from . import chat_install, ops, setup_ai, setup_save, setup_steps, setup_wilma, summarize
+from .config import Config, Kid
 
 IDLE_SECONDS = 30 * 60
 AI_CHECK_SECONDS = 20
@@ -83,6 +84,23 @@ WHATSAPP_READ_SECONDS = setup_steps.WHATSAPP_READ_SECONDS
 # the name the family calls them, for a Household without Wilma.
 MYCLUB_RESULTS = ("saved", "not-a-myclub-link", "link-failed", "not-a-calendar", "save-failed")
 MYCLUB_KID_RESULTS = ("added", "kid-exists")
+# Working: reading the Gmail senders for the check page, how far it is and how it ended, and
+# `no-read` when this server hasn't started one. Wilma's Kids and WhatsApp's groups were read in
+# Connect already.
+WORKING_RESULTS = ("reading", "read", "read-failed", "no-read")
+SENDER_DAYS = 60
+# Check: the health check run once the check page is confirmed, and how it ended. Warnings alone
+# don't hold setup up.
+HEALTH_RESULTS = ("checking", "ok", "not-ok", "no-check")
+# Doctor's checks as the check page names them, by the name doctor gives each. A language's and
+# a Kid's MyClub check carry the language or the Kid too. Any other is `other`.
+HEALTH_CHECKS = {"Config file": "config", "Recipients": "recipients", "Language": "language",
+                 "Gmail": "gmail", "Claude": "ai", "Codex": "ai", "Wilma": "wilma",
+                 "WhatsApp": "whatsapp", "MyClub": "myclub", "Calendar": "calendar",
+                 "Pilot feedback": "feedback", "Weekend Picks": "weekend"}
+# The scheduled job's checks, which aren't run before Finish installs it.
+HEALTH_LEFT_OUT = frozenset({"Schedule", "Last run", "Python path"})
+HEALTH_STATUSES = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
 # "Continue in the chat": the setup skill as each AI's chat starts it, and what handing over
 # can say. Claude Code opens in a Terminal window; a Codex family is told what to type in Codex.
 CHAT_SKILLS = {"claude": "/parent-recap:setup", "codex": "$parent-recap-setup"}
@@ -173,6 +191,9 @@ class SetupServer:
         # `no-plugin-copy` (the program wasn't installed by the install line).
         self._chat_installs: dict[str, str] = {}
         self._chat_threads: dict[str, threading.Thread] = {}  # each AI's latest install
+        self._working = threading.Lock()  # one read of the senders and one health check at a time
+        self._reading: dict[str, Any] | None = None  # Working's read of the senders, once started
+        self._health: dict[str, Any] | None = None  # the check page's health check, once started
 
     def serve_until_idle(self) -> None:
         """Serves until `stop`, or until IDLE_SECONDS pass without a request."""
@@ -222,6 +243,7 @@ class SetupServer:
                                         for s in setup_save.SOURCES]},
                 "gmail": {"address": self._gmail_address()},
                 "myclub": self._myclub(),
+                "check": self._check(progress),
                 "chat": dict(self._chat_installs)}
 
     def choose_language(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
@@ -487,6 +509,189 @@ class SetupServer:
 
     def _kid_names(self) -> list[str]:
         return [k["name"] for k in self._myclub()["kids"]]
+
+    # ── Working
+
+    def start_reading(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Once every Source is done or skipped, moves setup on to Working and reads the Gmail
+        senders in the background, as `discover gmail-senders --json` does: the page asks how far
+        it is with `check_reading`, and once they're read setup moves on to Check by itself."""
+        with self._saving:
+            progress = setup_save.read(self.config)["progress"]
+            if raw != {} or progress["phase"] not in ("connect", "working") \
+                    or _next_source(progress["sources"]) is not None:
+                return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                    "invalid-answers", "Connect each Source, or skip it, first.",
+                    errors=["answers: should be {}, once every Source is done or skipped"])
+            out = setup_save.save(self.config, {"progress": {"phase": "working"}})
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        with self._working:
+            if self._reading is None or self._reading["result"] != "reading":
+                self._reading = {"result": "reading", "read": 0, "total": None}
+                threading.Thread(target=self._read_senders, daemon=True).start()
+        return HTTPStatus.OK, {**out, "result": "reading"}
+
+    def check_reading(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """How far reading the senders is: `reading`, with how many of how many are read."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        return HTTPStatus.OK, self._reading or {"result": "no-read"}
+
+    def _read_senders(self) -> None:
+        def read(done: int, total: int) -> None:
+            self._reading = {"result": "reading", "read": done, "total": total}
+        try:
+            senders = ops.gmail_senders(Config.load(self.config), SENDER_DAYS, progress=read)
+            with self._saving:
+                out = setup_save.save(self.config, {"progress": {
+                    "phase": "check", "gmail_senders": senders}})
+        except Exception:  # its error can name the address: never leave the page reading
+            out = {"result": "failed"}
+        self._reading = {"result": "read", "progress": out["progress"]} \
+            if out["result"] == "saved" else {"result": "read-failed"}
+
+    # ── Check
+
+    def _check(self, progress: dict[str, Any]) -> dict[str, Any]:
+        """What the check page shows, each list ticked by best guess: the Kids, all ticked with
+        their everyday names; the WhatsApp groups, those linked to a Kid ticked (none without
+        WhatsApp); the Gmail senders that look like school, city or club mail ticked, and never
+        a public one; each Recipient with their language; and the evening time."""
+        cfg = self._config()
+        hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
+        return {"kids": [{"name": k.name, "everyday_name": everyday_name(k)} for k in cfg.kids],
+                "whatsapp": self._groups(cfg, progress)
+                if progress["sources"]["whatsapp"] == "done" else None,
+                "senders": self._senders(cfg, progress),
+                "recipients": [{"address": r.address, "language": cfg.language_of(r)}
+                               for r in cfg.email.to],
+                "evening": f"{hour:02d}:{minute:02d}"}
+
+    @staticmethod
+    def _groups(cfg: Config, progress: dict[str, Any]) -> list[dict[str, Any]]:
+        """The groups WhatsApp's step found, then those picked before but not found this time."""
+        called = {k.name: everyday_name(k) for k in cfg.kids}
+        picked = {c.name: c for c in cfg.whatsapp.chats}
+        groups = []
+        for chat in progress.get("whatsapp_chats") or []:
+            kids = [k for k in (chat.get("hint") or {}).get("kids", []) if k in called]
+            groups.append({"name": chat["name"], "last": chat.get("last"),
+                           "archived": bool(chat.get("archived")), "kids": [called[k] for k in kids],
+                           "ticked": bool(kids) or chat["name"] in picked})
+        found = {g["name"] for g in groups}
+        for chat in cfg.whatsapp.chats:
+            if chat.name not in found:
+                kids = list(called) if chat.kid == "both" else [k for k in called if k == chat.kid]
+                groups.append({"name": chat.name, "last": None, "archived": False,
+                               "kids": [called[k] for k in kids], "ticked": True})
+        return groups
+
+    @staticmethod
+    def _senders(cfg: Config, progress: dict[str, Any]) -> list[dict[str, Any]]:
+        """The senders Working found, but no public mail service, then the city's starting
+        allowlist and the domains already on the allowlist, ticked."""
+        allowed = cfg.gmail.allowlist_domains
+        senders = [{"domain": s["domain"], "count": s["count"], "example": s["example"],
+                    "ticked": s["likely"] or s["domain"] in allowed}
+                   for s in progress.get("gmail_senders") or [] if not s.get("public")]
+        city = setup_steps.CITY_DOMAINS.get(cfg.city or "")
+        for domain in [*([city] if city else []), *allowed]:
+            if domain not in (s["domain"] for s in senders):
+                senders.append({"domain": domain, "count": 0, "example": "", "ticked": True})
+        return senders
+
+    def confirm_check(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Saves what the check page confirms through `setup save`, then runs the health check in
+        the background: the page asks how it went with `check_health`. Only what the page offered
+        can be picked."""
+        try:
+            answer = CheckAnswer.model_validate(raw)
+        except ValidationError as e:
+            return HTTPStatus.BAD_REQUEST, setup_save.invalid(e)
+        with self._working:
+            if self._health is not None and self._health["result"] == "checking":
+                return HTTPStatus.CONFLICT, {"result": "checking"}
+            with self._saving:
+                progress = setup_save.read(self.config)["progress"]
+                cfg = self._config()
+                offered = self._check(progress)
+                errors = _check_errors(answer, offered, progress["phase"])
+                if errors:
+                    return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                        "invalid-answers", "Pick from what the check page offers.", errors=errors)
+                out = setup_save.save(self.config, self._check_answers(answer, cfg, progress))
+            if out["result"] != "saved":
+                return (HTTPStatus.BAD_REQUEST if out["result"] == "invalid-answers"
+                        else HTTPStatus.CONFLICT), out
+            self._health = {"result": "checking"}
+            threading.Thread(target=self._run_health_check, daemon=True).start()
+        return HTTPStatus.OK, {**out, "result": "checking"}
+
+    def check_health(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """How the health check went: `checking` while it runs. Only each check's name and status
+        are given, since their details can quote an address or an error."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        return HTTPStatus.OK, self._health or {"result": "no-check"}
+
+    def _run_health_check(self) -> None:
+        try:
+            results = ops.health_checks(str(self.config), schedule=False)
+            checks = [_health_check(status, item) for status, item, _ in results
+                      if item not in HEALTH_LEFT_OUT]
+            if any(c["status"] == "fail" for c in checks):
+                done = {"result": "not-ok", "checks": checks}
+            else:
+                with self._saving:
+                    out = setup_save.save(self.config, {"progress": {"phase": "first-brief"}})
+                done = {"result": "ok", "checks": checks, "progress": out["progress"]} \
+                    if out["result"] == "saved" else {"result": "not-ok", "checks": checks}
+        except Exception:  # never leave the page checking
+            done = {"result": "not-ok", "checks": [{"check": "other", "status": "fail"}]}
+        self._health = done
+
+    @staticmethod
+    def _check_answers(answer: "CheckAnswer", cfg: Config,
+                       progress: dict[str, Any]) -> dict[str, Any]:
+        """The check page's answers as `setup save` takes them. A WhatsApp group is linked to the
+        Kids its name matched who are still ticked, or to `both`, and labelled after what matched:
+        the class, the school or an activity."""
+        kept = {k.name.strip() for k in answer.kids}
+        answers: dict[str, Any] = {
+            "kids": [{"name": k.name.strip(), "everyday_name": k.everyday_name.strip()}
+                     for k in answer.kids],
+            "recipients": [{"address": r.address,
+                            **({"language": r.language} if r.language != cfg.summary_language
+                               else {})} for r in answer.recipients],
+            "evening": answer.evening,
+            "sources": {"gmail": {"allowlist_domains": answer.senders}},
+        }
+        if answer.whatsapp is not None:
+            found = {c["name"]: c for c in progress.get("whatsapp_chats") or []}
+            before = {c.name: c for c in cfg.whatsapp.chats}
+            chats = []
+            for name in answer.whatsapp:
+                if name in found:
+                    hint = found[name].get("hint") or {}
+                    kids = [k for k in hint.get("kids", []) if k in kept]
+                    label = next((_label(term, k) for term in hint.get("matched", [])
+                                  for k in cfg.kids if k.name in kept and _label(term, k)), None)
+                else:
+                    chat = before[name]
+                    kids = [chat.kid] if chat.kid in kept or chat.kid == "both" else []
+                    label = chat.label
+                chats.append({"name": name, "label": label,
+                              "kid": kids[0] if len(kids) == 1 else ("both" if kids else None)})
+            answers["sources"]["whatsapp"] = {"enabled": bool(chats), "chats": chats}
+        return answers
+
+    def _config(self) -> Config:
+        """The config as saved so far, read as the config model, or an empty one."""
+        try:
+            return Config.model_validate({"kids": [], **self._config_data()})
+        except ValidationError:
+            return Config(kids=[])
 
     # ── Continue in the chat
 
@@ -847,6 +1052,67 @@ class WelcomeAnswer(BaseModel):
     feedback: StrictBool
 
 
+class KidCheck(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str            # as Wilma spells it, or the everyday name for a Kid added on the page
+    everyday_name: str
+
+
+class CheckAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kids: list[KidCheck]                  # the Kids ticked
+    whatsapp: list[str] | None            # the groups ticked; None without WhatsApp
+    senders: list[str]                    # the sender domains ticked
+    recipients: list[setup_save.RecipientAnswer]
+    evening: str                          # HH:MM
+
+
+def everyday_name(kid: Kid) -> str:
+    """What the family calls the Kid: the name saved for it, else the first word of their name."""
+    return kid.everyday_name or (kid.name.split() or [kid.name])[0]
+
+
+def _check_errors(answer: CheckAnswer, offered: dict[str, Any], phase: str) -> list[str]:
+    """Where the check page's answers pick something it didn't offer."""
+    errors = []
+    if phase != "check":
+        errors.append("answers: setup isn't at Check")
+    names = [k.name.strip().casefold() for k in answer.kids]
+    if not names or not all(names) or len(set(names)) < len(names) \
+            or not all(k.everyday_name.strip() for k in answer.kids):
+        errors.append("kids: should be one or more Kids, each with a name of their own and an "
+                      "everyday name")
+    groups = offered["whatsapp"]
+    if (answer.whatsapp is None) != (groups is None) or \
+            not set(answer.whatsapp or []) <= {g["name"] for g in groups or []}:
+        errors.append("whatsapp: should be groups the check page lists, or null without WhatsApp")
+    if not set(answer.senders) <= {s["domain"] for s in offered["senders"]}:
+        errors.append("senders: should be sender domains the check page lists")
+    if [r.address for r in answer.recipients] != [r["address"] for r in offered["recipients"]]:
+        errors.append("recipients: should be the Recipients the check page lists, in order")
+    return errors
+
+
+def _health_check(status: str, item: str) -> dict[str, Any]:
+    """One of doctor's checks as the check page shows it, without its details."""
+    out: dict[str, Any] = {"status": HEALTH_STATUSES.get(status, "warn")}
+    name, _, rest = item.partition(" ")
+    if name == "Language" and rest:
+        return {"check": "language", **out, "language": rest}
+    if name == "MyClub" and rest.startswith("(") and rest.endswith(")"):
+        return {"check": "myclub", **out, "kid": rest[1:-1]}
+    return {"check": HEALTH_CHECKS.get(item, "other"), **out}
+
+
+def _label(term: str, kid: Kid) -> str | None:
+    """What a WhatsApp group whose name matched `term` is about, for `kid`."""
+    if term == kid.class_name:
+        return "class"
+    if term == kid.school:
+        return "school"
+    return term if term in kid.activities else None
+
+
 def chat_script(program: str) -> str:
     """The Terminal window's script for "Continue in the chat": Claude Code in the family's home
     folder, at the setup skill."""
@@ -964,6 +1230,8 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/whatsapp/open": setup.open_app_management,
                    "api/myclub": setup.save_myclub_link, "api/myclub/kid": setup.add_kid,
                    "api/myclub/done": setup.myclub_done,
+                   "api/working": setup.start_reading, "api/working/check": setup.check_reading,
+                   "api/check": setup.confirm_check, "api/check/health": setup.check_health,
                    "api/chat": setup.continue_in_chat}
         if method == "POST" and path in actions:
             raw = _json_body(body)

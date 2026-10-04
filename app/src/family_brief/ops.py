@@ -81,8 +81,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: bool = False,
-                  show: bool = False) -> list[tuple[str, str, str]]:
-    """Doctor's checks, each (status, item, detail). With `show`, each is printed as it's done."""
+                  show: bool = False, schedule: bool = True) -> list[tuple[str, str, str]]:
+    """Doctor's checks, each (status, item, detail). With `show`, each is printed as it's done.
+    Without `schedule`, the scheduled job's checks are left out, for before it's installed."""
     results: list[tuple[str, str, str]] = []
 
     def add(status: str, item: str, detail: str) -> None:
@@ -123,7 +124,8 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
         _check_feedback(cfg, add)
     if cfg.weekend_events.enabled:
         _check_weekend(add)
-    _check_schedule(cfg, add)
+    if schedule:
+        _check_schedule(cfg, add)
     return results
 
 
