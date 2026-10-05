@@ -349,6 +349,15 @@ fieldset .field label {
 
 .sources .state { color: var(--muted); font-size: 13px; font-weight: 400; }
 
+/* The hand-off once a Source is connected: which one is next. */
+.handoff {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--good-soft);
+  color: var(--good);
+  font-weight: 500;
+}
+
 .sources li[data-status="done"] .state { color: var(--good); font-weight: 600; }
 
 .source { margin: 0 0 16px; }
@@ -483,6 +492,11 @@ iframe.brief {
 .status[data-result="finish.checking"] { border-color: var(--accent-line); }
 
 #finish-checklist { margin-bottom: 14px; }
+
+/* A health check that isn't OK: its checks, each with what to do, under it. */
+#finish-checklist .checks { margin: 8px 0 0 1.2em; }
+
+#finish-stopped { margin-bottom: 14px; }
 
 /* ── Continue in the chat */
 

@@ -217,7 +217,26 @@ def test_the_command_opens_the_page_and_stops_after_30_idle_minutes(harness, clo
 
     assert not thread.is_alive() and codes == [0]
     assert refused(url)
-    assert json.loads(capsys.readouterr().out) == {"result": "opened", "url": url}
+    opened, closed = capsys.readouterr().out.splitlines()
+    assert json.loads(opened) == {"result": "opened", "url": url}
+    # Terminal says the page has closed, so the family knows its window can be closed too.
+    assert closed == setup_server.CLOSED_LINES["en"]
+
+
+def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock, capsys,
+                                                                  monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(config_file(harness)), "setup", "page"])
+    thread = threading.Thread(target=cli.main, daemon=True)
+    thread.start()
+    wait_for(lambda: harness.opened)
+    url = harness.opened[0]
+    assert call(url, "api/language", method="POST", body={"language": "fi"}).status == 200
+
+    clock.now += 31 * 60
+    thread.join(5)
+
+    assert capsys.readouterr().out.splitlines()[-1] == setup_server.CLOSED_LINES["fi"]
+    assert set(setup_server.CLOSED_LINES) == set(setup_server.LANGUAGES)
 
 
 def test_each_run_has_its_own_code_and_port(harness, clock):
@@ -3100,6 +3119,64 @@ def test_an_outcome_still_false_keeps_the_page_and_says_which(harness, page, sch
     assert call(page.url, "api/state").status == 200  # still serving
 
 
+def test_a_failed_health_check_names_the_checks_that_aren_t_ok(harness, page, schedule, health):
+    at_finish(harness)
+    health.results += [(ops.FAIL, "Gmail", "IMAP login failed for parent@example.com"),
+                       (ops.WARN, "Last run", "40 hours ago"),
+                       (ops.FAIL, "MyClub (Mia)", "subscription link doesn't open: secret"),
+                       (ops.WARN, "Something new", "a check the page doesn't know")]
+
+    finish(page.url)
+    out = finished(page.url)
+
+    assert out["result"] == "not-done"
+    doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
+    assert doctor == {"outcome": "doctor", "ok": False, "checks": [
+        {"check": "gmail", "status": "fail"}, {"check": "last-run", "status": "warn"},
+        {"check": "myclub", "status": "fail", "kid": "Mia"}, {"check": "other", "status": "warn"}]}
+    # Only their names: doctor's details can name an address or quote an error.
+    assert "parent@example.com" not in json.dumps(out) and "secret" not in json.dumps(out)
+    # The outcomes that are true carry nothing more.
+    assert all(set(o) == {"outcome", "ok"} for o in out["outcomes"] if o["ok"])
+
+
+def test_finish_for_now_stops_the_page_once_a_try_has_ended(harness, page, schedule):
+    at_finish(harness, delivered=False)
+    finish(page.url)
+    assert finished(page.url)["result"] == "not-done"
+
+    for body in [{"x": 1}, []]:
+        assert call(page.url, "api/finish/stop", method="POST", body=body).status == 400
+    r = call(page.url, "api/finish/stop", method="POST", body={})
+
+    assert r.status == 200 and r.json() == {"result": "stopped"}
+    wait_for(lambda: refused(page.url))
+
+
+def test_finish_for_now_waits_while_finish_is_installing(harness, page, schedule):
+    at_finish(harness)
+    schedule.go.clear()
+    finish(page.url)
+    wait_for(lambda: schedule.dialogs)
+
+    r = call(page.url, "api/finish/stop", method="POST", body={})
+
+    assert r.status == 200 and r.json() == {"result": "installing"}
+    assert call(page.url, "api/state").status == 200  # still serving: the install isn't cut off
+    schedule.go.set()
+    finished(page.url)
+
+
+def test_finish_for_now_is_only_for_finish(harness, page, schedule):
+    at_finish(harness)
+    more_progress(harness, phase="first-brief")
+
+    r = call(page.url, "api/finish/stop", method="POST", body={})
+
+    assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    assert call(page.url, "api/state").status == 200
+
+
 def test_another_wake_schedule_is_replaced_only_once_the_family_agrees(harness, page, schedule):
     at_finish(harness)
     schedule.repeating = [OTHER_WAKE]
@@ -3221,7 +3298,8 @@ def test_the_finish_page_shows_the_checklist_the_restart_reminder_and_where_chan
     finish_section = html_text.split('<section id="finish"', 1)[1].split("</section>", 1)[0]
 
     for needed in ['id="finish-checklist"', 'data-text="finish.restart"', 'id="finish-changes"',
-                   'id="finish-start"', 'id="finish-replace"']:
+                   'id="finish-start"', 'id="finish-replace"', 'id="finish-stop"',
+                   'id="finish-stopped"']:
         assert needed in finish_section, needed
 
 
@@ -3232,11 +3310,23 @@ def test_every_finish_text_is_in_all_three_languages():
         keys = [*(f"finish.{r}" for r in setup_server.FINISH_RESULTS),
                 *(f"finish.wake.{r}" for r in ops.WAKE_RESULTS),
                 *(f"finish.outcome.{o}" for o in setup_status.TITLES),
+                *(f"finish.missing.{o}" for o in setup_status.TITLES),
                 *(f"finish.changes.{a}" for a in setup_server.AIS),
+                *(f"finish.stopped.{a}" for a in setup_server.AIS),
+                *(f"health.check.{c}" for c in {*setup_server.FINISH_CHECKS.values(), "other"}),
+                *(f"finish.fail.{c}" for c in {*setup_server.FINISH_CHECKS.values(), "other"}),
                 "finish.title", "finish.intro", "finish.start", "finish.replace", "finish.restart",
-                "finish.checklist", "finish.closed"]
+                "finish.checklist", "finish.closed", "finish.stop"]
         for key in keys:
             assert table.get(key, "").strip(), (language, key)
+
+
+def test_finish_says_a_mac_that_s_shut_down_makes_no_brief():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    assert "shut down" in text["en"]["finish.restart"]
+    assert "sammutettu" in text["fi"]["finish.restart"]
+    assert "关机" in text["zh"]["finish.restart"]
 
 
 # ── Continue in the chat
