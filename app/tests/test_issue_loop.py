@@ -30,7 +30,14 @@ def gh(tmp_path: Path) -> dict:
     fake.write_text(f"""#!/bin/bash
 echo "gh $*" >> "{log}"
 case "$*" in
-  "pr checks"*--json*) cat "{tmp_path}/checks.json" ;;
+  "pr checks"*--json*)
+    late=$(cat "{tmp_path}/test_late_by" 2>/dev/null || echo 0)
+    if [ "$late" -gt 0 ]; then
+      echo $((late - 1)) > "{tmp_path}/test_late_by"
+      echo '[{{"name": "gitleaks", "bucket": "pass"}}]'
+    else
+      cat "{tmp_path}/checks.json"
+    fi ;;
   "pr checks"*--watch*) exit "$(cat "{tmp_path}/watch_exit")" ;;
   "pr merge"*) [ -f "{tmp_path}/merge_refusal" ] || exit 0; cat "{tmp_path}/merge_refusal" >&2; exit 1 ;;
 esac
@@ -91,6 +98,14 @@ def test_a_pr_with_test_passing_is_merged(gh):
     result = merge_pr(gh)
     assert result.returncode == 0, result.stderr
     assert f"gh pr merge {PR} -R kinlace/parent-recap --rebase --delete-branch" in calls(gh)
+
+
+def test_a_test_check_that_shows_up_after_gitleaks_is_waited_for(gh):
+    report(gh, gitleaks="pass", test="pass")
+    (gh["tmp"] / "test_late_by").write_text("3")
+    result = merge_pr(gh)
+    assert result.returncode == 0, result.stderr
+    assert merged(gh)
 
 
 def test_a_failing_test_check_stops_the_loop_without_merging(gh):
