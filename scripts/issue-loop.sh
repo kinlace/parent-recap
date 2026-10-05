@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Works through the backlog unattended: runs /implement on each ready issue, opens its PR and
-# rebases and merges it once CI is green. No reviewer is added; quality is checked at
+# rebases and merges it once CI is green, its `test` check included. No reviewer is added; quality is checked at
 # milestones. It only ever touches the PRs it opens itself, and works the same whoever runs it.
 #
 # ── When to use it
@@ -74,7 +74,8 @@ SETTINGS=$ROOT/scripts/issue-loop.settings.json
 
 # Pulling main after a merge can swap this file and the settings under the running bash (bash
 # reads a script as it goes). Run from copies in .loop/ so the whole run uses this version.
-if [ "${ISSUE_LOOP_COPY:-}" != 1 ]; then
+# Sourced (as app/tests/test_issue_loop.py does), it only defines the functions.
+if [ "${BASH_SOURCE[0]}" = "$0" ] && [ "${ISSUE_LOOP_COPY:-}" != 1 ]; then
   mkdir -p "$LOOP_DIR"
   cp "${BASH_SOURCE[0]}" "$LOOP_DIR/issue-loop.sh"
   cp "$SETTINGS" "$LOOP_DIR/issue-loop.settings.json"
@@ -198,14 +199,45 @@ run_tests() {
     fail "tests red, see .loop/pytest.log"
 }
 
-# Checks take a few seconds to show up on a new PR.
+# The check from .github/workflows/tests.yml. A PR is green only once it has passed: when that
+# workflow didn't parse, `test` was never reported and PRs merged on gitleaks alone (#128).
+TEST_CHECK=test
+CI_POLL=${ISSUE_LOOP_CI_POLL:-15} # seconds between looks while checks show up
+
+# The PR's checks as "<name> (<bucket>)", comma-separated; bucket is pass, fail, pending...
+pr_checks() {
+  gh pr checks "$1" -R "$REPO" --json name,bucket 2>/dev/null |
+    jq -r '[.[] | "\(.name) (\(.bucket))"] | join(", ")' 2>/dev/null || true
+}
+
+# Checks take a few seconds to show up on a new PR; stops the loop unless `test` passes.
 wait_ci() {
-  local pr=$1 i
+  local pr=$1 i checks=
   log "waiting for CI on PR #${pr##*/}"  # called with a number or a PR URL
   for i in $(seq 20); do
-    case $(gh pr checks "$pr" -R "$REPO" 2>&1 || true) in *'no checks reported'*) sleep 15 ;; *) break ;; esac
+    checks=$(pr_checks "$pr")
+    case ", $checks" in *", $TEST_CHECK ("*) break ;; esac
+    [ "$i" = 20 ] || sleep "$CI_POLL"
   done
-  gh pr checks "$pr" -R "$REPO" --watch --fail-fast --interval 30 >/dev/null
+  case ", $checks" in
+    *", $TEST_CHECK ("*) ;;
+    *) fail "the $TEST_CHECK check is missing after 5 minutes (reported: ${checks:-no checks})" ;;
+  esac
+  gh pr checks "$pr" -R "$REPO" --watch --fail-fast --interval 30 >/dev/null || fail "CI red"
+  # --watch also ends well for a skipped or cancelled check.
+  checks=$(pr_checks "$pr")
+  case ", $checks" in
+    *", $TEST_CHECK (pass)"*) ;;
+    *) fail "the $TEST_CHECK check didn't pass (reported: ${checks:-no checks})" ;;
+  esac
+}
+
+merge_pr() {
+  local pr=$1 out
+  wait_ci "$pr"
+  # The ruleset on main refuses a PR without its required checks; say why rather than carry on.
+  out=$(gh pr merge "$pr" -R "$REPO" --rebase --delete-branch 2>&1) ||
+    fail "merge refused: $(printf '%s' "$out" | tr '\n' ' ' | head -c 300)"
 }
 
 sync_main() {
@@ -301,13 +333,13 @@ do_issue() {
   local pr_url
   pr_url=$(gh pr create -R "$REPO" --base main --title "$pr_title" --body-file "$LOOP_DIR/pr-body.md")
   CURRENT="#$ISSUE ($pr_url)"
-  wait_ci "$pr_url" || fail "CI red"
-  gh pr merge "$pr_url" -R "$REPO" --rebase --delete-branch >/dev/null
+  merge_pr "$pr_url"
   ok "#$ISSUE → $pr_url merged"
   sync_main
 }
 
 # ── Main loop
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 mkdir -p "$LOOP_DIR"
 
 # Checked before --dry-run too, so trying the dry run first also checks the setup.
