@@ -41,8 +41,9 @@ def program(mac: dict, requires: tuple[str, ...], constraints: str = "") -> None
     (app / "constraints.txt").write_text(constraints)
 
 
-def install(mac: dict) -> subprocess.CompletedProcess:
-    env = {**os.environ, "HOME": str(mac["home"]), "FAMILY_BRIEF_HOME": str(mac["home"] / "FamilyBrief"),
+def install(mac: dict, path_first: Path | None = None) -> subprocess.CompletedProcess:
+    path = f"{path_first}:{os.environ['PATH']}" if path_first else os.environ["PATH"]
+    env = {**os.environ, "PATH": path, "HOME": str(mac["home"]), "FAMILY_BRIEF_HOME": str(mac["home"] / "FamilyBrief"),
            "PIP_NO_INDEX": "1", "PIP_FIND_LINKS": str(mac["packages"]),
            "PIP_DISABLE_PIP_VERSION_CHECK": "1", "PIP_NO_CACHE_DIR": "1"}
     env.pop("PIP_CONSTRAINT", None)
@@ -76,9 +77,73 @@ def test_a_package_with_no_prebuilt_version_stops_the_install_without_compiling(
 
     assert result.returncode != 0
     assert not built.exists()
-    assert "needs-compiling" in result.stderr
-    assert "ready-made" in result.stdout
+    assert "needs-compiling" in install_log(mac).read_text()
     assert "installed to" not in result.stdout
+
+
+# --- The install log -------------------------------------------------------------------------
+
+def install_log(mac: dict) -> Path:
+    logs = sorted((mac["home"] / "FamilyBrief" / "logs").glob("install-*.log"))
+    assert len(logs) == 1, logs
+    assert re.fullmatch(r"install-\d{4}-\d{2}-\d{2}-\d{6}\.log", logs[0].name)
+    return logs[0]
+
+
+def test_a_failing_pip_step_shows_a_plain_message_and_the_log_instead_of_pips_output(mac):
+    sdist(mac["packages"], "needs-compiling", "1.0", build_marker=mac["tmp"] / "compiled")
+    program(mac, ("needs-compiling",))
+
+    result = install(mac)
+
+    shown = result.stdout + result.stderr
+    log = install_log(mac)
+    assert result.returncode != 0
+    assert "couldn't install its Python packages" in shown
+    assert str(log) in shown
+    assert "send" in shown and "Parent Recap team" in shown
+    assert "needs-compiling" not in shown
+    first, *rest = log.read_text().splitlines()
+    assert first.startswith("Mac: ")
+    assert any("No matching distribution found for needs-compiling" in line for line in rest)
+
+
+def test_every_install_keeps_a_dated_log_that_starts_with_the_mac_it_ran_on(mac):
+    wheel(mac["packages"], "pure-dep", "1.0")
+    program(mac, ("pure-dep",))
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    first, *rest = install_log(mac).read_text().splitlines()
+    venv = mac["home"] / "FamilyBrief" / "app" / ".venv" / "bin"
+    pip_version = subprocess.run([venv / "pip", "--version"], capture_output=True, text=True).stdout.split()[1]
+    machine = subprocess.run(["uname", "-m"], capture_output=True, text=True).stdout.strip()
+    macos = subprocess.run(["sw_vers", "-productVersion"], capture_output=True, text=True).stdout.strip()
+    python = subprocess.run([venv / "python", "-c", "import platform; print(platform.python_version())"],
+                            capture_output=True, text=True).stdout.strip()
+    cc = shutil.which("cc") or "none"
+    env = re.fullmatch(r"Mac: (\S+), macOS (\S+), Python (\S+) \((\S+)\), pip (\S+), cc (\S+)", first)
+    assert env, first
+    assert env.groups() == (machine, macos, env[3], python, pip_version, cc)
+    assert os.path.realpath(env[3]) == os.path.realpath(venv / "python")
+    assert any("pure-dep" in line for line in rest)
+
+
+def test_the_log_writes_the_home_folder_as_a_tilde_so_it_names_no_account(mac):
+    tools = mac["home"] / "bin"
+    tools.mkdir(parents=True)
+    (tools / "cc").write_text("#!/bin/sh\n")
+    (tools / "cc").chmod(0o755)
+    wheel(mac["packages"], "pure-dep", "1.0")
+    program(mac, ("pure-dep",))
+
+    result = install(mac, path_first=tools)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    first = install_log(mac).read_text().splitlines()[0]
+    assert first.endswith(", cc ~/bin/cc")
+    assert str(mac["home"]) not in first
 
 
 def test_an_older_prebuilt_version_is_picked_over_a_newer_one_that_would_compile(mac):
