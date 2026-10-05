@@ -3,9 +3,10 @@
 It first looks in every place setup writes to (docs/setup-internals.md lists them) and lists what
 it found. Something there that isn't this install's, such as a launchd job with Parent Recap's
 name that runs another program, or a config Parent Recap didn't write, stops it before it removes
-anything. The archive of past Briefs is kept or removed as the family chooses. The family's
-accounts (Gmail, Google, Wilma, WhatsApp, MyClub) are never touched: it says where they can
-take back what they gave Parent Recap.
+anything. The archive of past Briefs is kept or removed as the family chooses. The wilma CLI,
+its Wilma sign-in, and Claude Code's plugin and marketplace go only when setup's record has that
+setup installed them. The family's accounts (Gmail, Google, Wilma, WhatsApp, MyClub) are never
+touched: it says where they can take back what they gave Parent Recap.
 """
 from __future__ import annotations
 
@@ -24,7 +25,8 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import install_record, ops, run_lock, secret_dialog, setup_save
+from . import (chat_install, install_record, ops, run_lock, secret_dialog, setup_save,
+               setup_wilma, summarize)
 from .collectors.gmail import keychain_account
 from .config import Config
 from .utils import keychain
@@ -125,6 +127,8 @@ def survey(config: Path) -> Survey:
     _jobs(s, programs)
     _wake(s, defaults)
     _keychain(s, defaults)
+    _wilma(s)
+    _claude_code(s)
     _codex_skills(s, home)
     _plugin_copies(s, home)
     _archive(s, defaults)
@@ -148,7 +152,7 @@ def survey(config: Path) -> Survey:
     if cfg and run_lock.is_busy(cfg):
         s.stops.append("A Parent Recap run is going right now. Wait a few minutes for it to "
                        "finish, then run uninstall again.")
-    _notes(s, home, defaults)
+    _notes(s, defaults)
     return s
 
 
@@ -245,6 +249,59 @@ def _delete_secret(account: str) -> None:
     if r.returncode != 0:
         raise NotRemoved("macOS didn't allow it. Delete it in the Keychain Access app instead: "
                          f"search for {keychain.SERVICE}")
+
+
+def _wilma(s: Survey) -> None:
+    """The wilma CLI and the profile, with the Wilma password, that setup's record has: a CLI or
+    a profile that was there before setup isn't Parent Recap's to remove."""
+    config = setup_wilma.config_path()
+    for profile_id in install_record.entries("wilma-profile"):
+        profile = setup_wilma.profile(config, profile_id)
+        if profile is not None:
+            s.items.append(Item("Wilma sign-in", f"{profile.get('username')} at "
+                                f"{profile.get('tenantUrl')}, in {_show(config)}",
+                                partial(setup_wilma.remove_profile, config, profile_id)))
+    if install_record.entries("wilma-cli") and setup_wilma.installed():
+        s.items.append(Item("The wilma CLI", f"{setup_wilma.PACKAGE}, installed with npm",
+                            _uninstall_wilma))
+
+
+def _uninstall_wilma() -> None:
+    if not setup_wilma.uninstall():
+        raise NotRemoved(f"npm didn't remove it. Run this in Terminal instead: npm uninstall -g "
+                         f"{setup_wilma.PACKAGE}")
+
+
+def _claude_code(s: Survey) -> None:
+    """Claude Code's plugin and its marketplace, when setup's record has that setup installed
+    them. Claude Code is asked only then, since it may not be on this Mac."""
+    plugins = install_record.entries("claude-plugin")
+    marketplaces = install_record.entries("claude-marketplace")
+    program = summarize.find_claude() if plugins or marketplaces else None
+    if program is None:
+        return
+    try:
+        installed, listed = chat_install.claude_installed(program)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return  # the note says how to remove them in Claude Code
+    for plugin in plugins:
+        if plugin in installed:
+            s.items.append(Item("Claude Code plugin", plugin,
+                                partial(_in_claude, chat_install.uninstall_claude_plugin, program,
+                                        plugin, f"/plugin uninstall {plugin}")))
+    for marketplace in marketplaces:  # after its plugin
+        if marketplace in listed:
+            s.items.append(Item("Claude Code marketplace", marketplace,
+                                partial(_in_claude, chat_install.remove_claude_marketplace,
+                                        program, marketplace,
+                                        f"/plugin marketplace remove {marketplace}")))
+
+
+def _in_claude(remove: Callable[[str, str], None], program: str, name: str, typed: str) -> None:
+    try:
+        remove(program, name)
+    except (OSError, subprocess.SubprocessError):
+        raise NotRemoved(f"Claude Code didn't remove it. In Claude Code, type {typed}")
 
 
 def _codex_skills(s: Survey, home: Path) -> None:
@@ -349,7 +406,7 @@ def _left_in(s: Survey, folder: Path, archive: Path) -> None:
             s.left.append(f"{_show(p)}: not Parent Recap's")
 
 
-def _notes(s: Survey, home: Path, cfg: Config) -> None:
+def _notes(s: Survey, cfg: Config) -> None:
     s.notes.append("Your accounts aren't touched: Gmail, Google, Wilma, WhatsApp and MyClub stay "
                    "as they are.")
     s.notes.append("The Gmail App Password keeps working until you delete it in your Google "
@@ -358,15 +415,21 @@ def _notes(s: Survey, home: Path, cfg: Config) -> None:
                                                    for i in s.items):
         s.notes.append("Parent Recap's access to Google Calendar stays until you remove it in your "
                        "Google account: https://myaccount.google.com/connections")
-    if (home / ".config" / "wilmai").exists():
-        s.notes.append("The wilma CLI keeps your Wilma password, not encrypted, in ~/.config/wilmai. "
-                       "It's its own program, so uninstall leaves it. If you only used it for "
-                       "Parent Recap, remove it in Terminal: rm -rf ~/.config/wilmai && npm "
-                       "uninstall -g @wilm-ai/wilma-cli")
+    wilma_config = setup_wilma.config_path()
+    profiles = setup_wilma.profile_ids(wilma_config)
+    # Each recorded profile still there is listed for removal above.
+    ours = set(install_record.entries("wilma-profile"))
+    if wilma_config.exists() and not (profiles and set(profiles) <= ours):
+        folder = _show(wilma_config.parent)
+        s.notes.append(f"The wilma CLI keeps a Wilma password, not encrypted, in {folder}, from "
+                       "a sign-in setup didn't make, so uninstall leaves it. If you only used it "
+                       f"for Parent Recap, remove it in Terminal: rm -rf {folder} && npm "
+                       f"uninstall -g {setup_wilma.PACKAGE}")
     s.notes.append("If you gave the program's Python access to WhatsApp, remove it from System "
                    "Settings → Privacy & Security → App Management (and Full Disk Access).")
-    s.notes.append("In Claude Code, remove the plugin itself with /plugin uninstall "
-                   f"parent-recap@{MARKETPLACE}, then /plugin marketplace remove {MARKETPLACE}.")
+    if not any(i.what == "Claude Code plugin" for i in s.items):
+        s.notes.append("In Claude Code, remove the plugin itself with /plugin uninstall "
+                       f"parent-recap@{MARKETPLACE}, then /plugin marketplace remove {MARKETPLACE}.")
 
 
 # ---------------------------------------------------------------- listing and removing

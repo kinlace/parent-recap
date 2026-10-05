@@ -51,6 +51,20 @@ marketplace_folder() {
   echo "${path:-its old source}"
 }
 
+# Adds `<kind>: [<value>]` to setup's record, ~/.family/install-record.json, so uninstall
+# removes what this installed. The program isn't installed yet to do it, so this writes the
+# file the way family_brief.install_record does: owner-only, `{` on a line of its own.
+record() {
+  local file="$HOME/.family/install-record.json" entry="\"$1\": [\"$2\"]"
+  mkdir -p -m 700 "$HOME/.family"
+  if [ ! -s "$file" ] || [ "$(cat "$file")" = "{}" ]; then
+    (umask 077; printf '{\n  %s\n}\n' "$entry" > "$file")
+  elif ! grep -q "\"$1\":" "$file"; then
+    sed -i '' "1s/^{\$/{\\
+  $entry,/" "$file"
+  fi
+}
+
 # The setup page installs the plugin the same way, in app/src/family_brief/chat_install.py:
 # change both together.
 install_claude() {
@@ -67,9 +81,12 @@ install_claude() {
   if listed name family-brief plugin marketplace list --json; then
     claude plugin marketplace remove family-brief
   fi
-  local marketplace switched="" installed=no
+  local marketplace switched="" installed=no new=()
   marketplace=$(kinlace_marketplace)
   if listed id parent-recap@kinlace plugin list --json; then installed=yes; fi
+  # Only what wasn't there in any form before goes in the record: uninstall leaves the rest.
+  [ "$installed" = yes ] || new+=(claude-plugin parent-recap@kinlace)
+  [ -n "$marketplace" ] || new+=(claude-marketplace kinlace)
   # Installed from the release zip, `kinlace` comes from the unzipped folder, so updating it
   # would only reread that folder. ~/FamilyBrief/plugin stays: the Codex path uses it.
   if [ -n "$marketplace" ] && ! grep -qE "\"repo\": *\"$REPO(#[^\"]*)?\"" <<<"$marketplace"; then
@@ -89,6 +106,8 @@ install_claude() {
     # User scope, so the plugin isn't tied to the folder this Terminal is in.
     claude plugin install parent-recap@kinlace --scope user
   fi
+  set -- "${new[@]+"${new[@]}"}"
+  while [ $# -gt 0 ]; do record "$1" "$2"; shift 2; done
   [ -z "$switched" ] || echo "Switched Parent Recap from $switched to $REPO#stable on GitHub."
   echo "✅ Parent Recap is installed in Claude Code. Starting setup…"
   exec claude "/parent-recap:setup"

@@ -70,7 +70,7 @@ Note: Wilma only publishes the timetable for about two weeks ahead, so later dat
 After login, the wilma CLI stores the Wilma username and password in `~/.config/wilmai/config.json`. If you chose to save the two-step secret, it's stored there too. The password is only Base64-encoded, **not encrypted**: anyone with this file can recover the password, and two-step verification doesn't stop them. The file's permissions let only the current Mac user read it, and that is its only protection. So:
 
 - Don't sync `~/.config/wilmai` to cloud storage, put it in a dotfiles repository, or copy it to another computer
-- When you stop using Parent Recap (including at the end of the pilot), delete it:
+- When you stop using Parent Recap (including at the end of the pilot), `family-brief uninstall` deletes the sign-in setup made, and the wilma CLI if setup installed it. If you had signed in with the wilma CLI before setup, uninstall leaves that, and you delete it yourself:
 
   ```bash
   rm -rf ~/.config/wilmai

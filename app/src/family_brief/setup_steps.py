@@ -263,18 +263,22 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
     worked, and the window's script records the screen's exit status when it closes. The
     password stays between the family and the CLI; this reads only the Wilma address from the
     CLI's config. Returns the step's outcome as `setup wilma` prints it; the setup page offers
-    this window when its own sign-in fails for any reason but a wrong password (ADR 0008)."""
+    this window when its own sign-in fails for any reason but a wrong password (ADR 0008).
+    Without the CLI it installs the pinned one first, as the page does. The CLI it installed
+    and a profile new to the CLI go in setup's record."""
     from .collectors import wilma
 
     def outcome(result: str, next_: str | None = None, **extra: Any) -> dict[str, Any]:
         return {"result": result, **extra, **({"next": next_} if next_ else {})}
 
+    setup_wilma.install()
     program = shutil.which(wilma.WILMA)
     if not program:
         return outcome("not-installed", f"Install the wilma CLI in Terminal with {WILMA_INSTALL} "
                        "(it needs Node: brew install node), then run this again.")
     again = f"{_program()} setup wilma"
     config = setup_wilma.config_path()
+    profiles_before = setup_wilma.profile_ids(config)
     with tempfile.TemporaryDirectory(prefix="parent-recap-wilma-") as tmp:
         status = Path(tmp) / "exit-status"
         seen = _mtime(config)
@@ -299,6 +303,7 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
                 except wilma.WilmaError:
                     kids = None
                 if kids is not None:
+                    setup_wilma.record_profile(setup_wilma.last_profile_id(config), profiles_before)
                     address = _wilma_address(config)
                     return outcome("signed-in", city=WILMA_CITIES.get(address or ""),
                                    wilma_address=address, kids=kids)

@@ -33,7 +33,8 @@ SKILLS = ("setup", "manage")
 
 
 def install_claude_plugin(program: str) -> str:
-    """Installs or updates the plugin in Claude Code: `installed`, or `install-failed`."""
+    """Installs or updates the plugin in Claude Code: `installed`, or `install-failed`. The
+    plugin and the marketplace go in setup's record when they weren't there in any form before."""
     try:
         plugins = _listed(program, "plugin", "list", "--json")
         marketplaces = _listed(program, "plugin", "marketplace", "list", "--json")
@@ -43,6 +44,8 @@ def install_claude_plugin(program: str) -> str:
             _claude(program, "plugin", "marketplace", "remove", OLD_MARKETPLACE)
         installed = any(p.get("id") == PLUGIN for p in plugins)
         ours = next((m for m in marketplaces if m.get("name") == MARKETPLACE), None)
+        new = [*([] if installed else [("claude-plugin", PLUGIN)]),
+               *([] if ours else [("claude-marketplace", MARKETPLACE)])]
         # From an unzipped release, updating `kinlace` would only reread that folder.
         if ours is not None and not re.fullmatch(rf"{REPO}(#.*)?", str(ours.get("repo", ""))):
             if installed:
@@ -60,7 +63,25 @@ def install_claude_plugin(program: str) -> str:
             _claude(program, "plugin", "install", PLUGIN, "--scope", "user")
     except (OSError, subprocess.SubprocessError, ValueError):
         return "install-failed"
+    for kind, value in new:
+        install_record.add(kind, value)
     return "installed"
+
+
+def claude_installed(program: str) -> tuple[list[str], list[str]]:
+    """The plugins (by id) and the marketplaces (by name) installed in Claude Code. Raises if
+    Claude Code can't say."""
+    plugins = _listed(program, "plugin", "list", "--json")
+    marketplaces = _listed(program, "plugin", "marketplace", "list", "--json")
+    return [str(p.get("id")) for p in plugins], [str(m.get("name")) for m in marketplaces]
+
+
+def uninstall_claude_plugin(program: str, plugin: str) -> None:
+    _claude(program, "plugin", "uninstall", plugin)
+
+
+def remove_claude_marketplace(program: str, marketplace: str) -> None:
+    _claude(program, "plugin", "marketplace", "remove", marketplace)
 
 
 def _claude(program: str, *args: str) -> str:
