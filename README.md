@@ -13,7 +13,7 @@ The whole program runs on your own Mac. Data only moves between this Mac, the AI
 
 ## What you need
 
-- A Mac that is on or asleep around 9 pm (the program wakes it up on schedule)
+- A Mac that is on or asleep around 9 pm (the program wakes it up on schedule). A Mac with Apple Silicon (M1 or later) is recommended. An Intel Mac works for now, on a best-effort basis
 - Either a Claude Pro or Max subscription with Claude Code installed, or ChatGPT Plus or higher with the ChatGPT desktop app installed. Install Claude Code with its [native installer](https://code.claude.com/docs/en/setup), which keeps it up to date by itself: paste `curl -fsSL https://claude.ai/install.sh | bash` into Terminal
 - [Homebrew](https://brew.sh), which setup uses to install Python 3.11 or later and Node. A Mac comes with only Python 3.9, which is too old, and no Node, so without Homebrew setup stops at its first step
 - A Gmail account with two-step verification turned on
@@ -87,7 +87,7 @@ How data flows, where each password is stored, and how to report a security prob
 Run the tests before and after changing code (in the `app/` folder):
 
 ```bash
-python -m pip install -e '.[test]'
+python -m pip install --only-binary :all: -c constraints.txt -e '.[test]'
 python -m pytest
 ```
 
