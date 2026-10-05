@@ -87,7 +87,7 @@ For a family that stops using Parent Recap, or a maintainer who wants to run set
 2. If it ends with ❌ Stopped, it found something in Parent Recap's places that isn't this install's, such as an older install's scheduled job. Tell the user what it says, in their language, and stop there. Don't remove anything by hand.
 3. Otherwise show the user the list in their language. Ask with AskUserQuestion whether to keep the archive of past Briefs (keep first), then whether to remove everything listed. Say first that macOS may ask them to allow deleting each Keychain item, and asks for their Mac password to cancel the wake schedule.
 4. Only once they confirm, run `$FB uninstall --confirm --keep-archive`, or `--remove-archive` if they chose to remove it. For any ❌ line, help them do what it says, then run `$FB uninstall` again.
-5. Tell them every point under "What uninstall leaves to you" in its output, in their language. In Claude Code, the last step is theirs: they type `/plugin uninstall parent-recap@kinlace` and `/plugin marketplace remove kinlace`.
+5. Tell them every point under "What uninstall leaves to you" in its output, in their language. When it says to remove the plugin in Claude Code (setup didn't install it), that last step is theirs: they type `/plugin uninstall parent-recap@kinlace` and `/plugin marketplace remove kinlace`.
 
 ## Check the version
 

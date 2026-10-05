@@ -661,6 +661,9 @@ def test_picking_claude_installs_the_claude_code_plugin_from_the_stable_marketpl
         ["plugin", "install", "parent-recap@kinlace", "--scope", "user"],
     ]
     assert not (harness.home / ".agents").exists() and not harness.model_calls
+    # So uninstall removes them.
+    assert install_record.entries("claude-plugin") == ["parent-recap@kinlace"]
+    assert install_record.entries("claude-marketplace") == ["kinlace"]
 
 
 def test_a_claude_code_plugin_already_there_is_updated(harness, page, ai):
@@ -674,6 +677,9 @@ def test_a_claude_code_plugin_already_there_is_updated(harness, page, ai):
     assert chat_installed(page.url, "claude") == "installed"
     assert harness.plugin_calls[2:] == [["plugin", "marketplace", "update", "kinlace"],
                                         ["plugin", "update", "parent-recap@kinlace"]]
+    # Installed before setup: uninstall leaves them.
+    assert install_record.entries("claude-plugin") == []
+    assert install_record.entries("claude-marketplace") == []
 
 
 def test_a_plugin_from_an_unzipped_release_or_its_old_name_is_switched_to_stable(harness, page, ai):
@@ -694,6 +700,8 @@ def test_a_plugin_from_an_unzipped_release_or_its_old_name_is_switched_to_stable
         ["plugin", "marketplace", "add", "kinlace/parent-recap#stable"],
         ["plugin", "install", "parent-recap@kinlace", "--scope", "user"],
     ]
+    assert install_record.entries("claude-plugin") == []  # the family's own, from the release zip
+    assert install_record.entries("claude-marketplace") == []
 
 
 def test_a_plugin_install_that_fails_says_so(harness, page, ai):
@@ -703,6 +711,7 @@ def test_a_plugin_install_that_fails_says_so(harness, page, ai):
     welcome(page.url, ai="claude")
 
     assert chat_installed(page.url, "claude") == "install-failed"
+    assert install_record.entries("claude-plugin") == []
 
 
 def test_without_claude_code_the_plugin_is_not_installed(harness, page, ai):
@@ -1263,6 +1272,15 @@ def test_setup_installs_the_pinned_wilma_cli_when_it_is_missing(harness, page, w
 
     assert wilma_ready(page.url).json()["result"] == "installed"
     assert len(wilma_cli.installs) == 1  # already there: not installed again
+    assert install_record.entries("wilma-cli") == ["@wilm-ai/wilma-cli"]  # so uninstall removes it
+
+
+def test_a_wilma_cli_from_before_setup_is_not_recorded(harness, page, wilma_cli):
+    wilma_cli.install()
+
+    assert wilma_ready(page.url).json()["result"] == "installed"
+
+    assert wilma_cli.installs == [] and install_record.entries("wilma-cli") == []
 
 
 def test_without_node_it_says_how_to_install_it(harness, page, wilma_cli):
@@ -1274,6 +1292,7 @@ def test_without_node_it_says_how_to_install_it(harness, page, wilma_cli):
     (wilma_cli.bin_dir / "npm").chmod(0o755)
     wilma_cli.npm_works = False
     assert wilma_ready(page.url).json()["result"] == "install-failed"
+    assert install_record.entries("wilma-cli") == []
 
 
 def test_a_cli_without_the_tenant_list_says_so(harness, page, wilma_cli):
@@ -1314,6 +1333,9 @@ def test_a_good_login_writes_the_cli_profile_and_lists_the_kids(harness, page, w
     assert [k.name for k in cfg.kids] == ["Mia Virtanen", "Leo Virtanen"]
     assert cfg.city == "Espoo" and cfg.wilma.enabled is True
     assert_never_leaked(harness, [r], caplog, capsys, WILMA_PASSWORD)
+    # So uninstall removes the profile, and nothing of the password goes in the record.
+    assert install_record.entries("wilma-profile") == [f"{ESPOO}|mia.parent"]
+    assert WILMA_PASSWORD not in install_record.path().read_text()
 
 
 def test_signing_in_keeps_the_cli_s_other_profiles(harness, page, wilma_cli):
@@ -1325,6 +1347,24 @@ def test_signing_in_keeps_the_cli_s_other_profiles(harness, page, wilma_cli):
     profiles = wilma_cli.profile()["profiles"]
     assert [p["id"] for p in profiles] == ["https://helsinki.inschool.fi|old.parent",
                                            f"{ESPOO}|mia.parent"]
+    assert install_record.entries("wilma-profile") == [f"{ESPOO}|mia.parent"]
+
+
+def test_a_profile_from_before_setup_is_not_recorded(harness, page, wilma_cli):
+    wilma_cli.install()
+    wilma_cli.signed_in_before(ESPOO, "mia.parent", "older-password")
+
+    assert sign_in_wilma(page.url).json()["result"] == "signed-in"
+
+    assert install_record.entries("wilma-profile") == []
+
+
+def test_a_failed_sign_in_records_no_profile(harness, page, wilma_cli):
+    wilma_cli.install()
+
+    assert sign_in_wilma(page.url, password="wrong").json()["result"] == "wrong-password"
+
+    assert install_record.entries("wilma-profile") == []
 
 
 def test_school_and_class_are_saved_only_when_wilma_gives_them(harness, page, wilma_cli):
@@ -1508,7 +1548,8 @@ def test_every_wilma_result_is_explained_in_all_three_languages():
 def test_the_chat_setup_installs_the_same_pinned_cli():
     skill = (Path(__file__).resolve().parents[2] / "skills" / "setup" / "SKILL.md").read_text()
 
-    assert setup_steps.WILMA_INSTALL in skill
+    # `setup wilma` installs it, as the page does, so it's in setup's record for uninstall.
+    assert "wilma-cli" not in skill and "`setup wilma` installs" in skill
 
 
 # ── Connect: the AI sign-in for the evening Brief

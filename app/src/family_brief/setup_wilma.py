@@ -22,10 +22,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import install_record
 from .collectors import wilma
 
 WILMA_CLI_VERSION = "1.6.2"
-INSTALL_ARGS = ["install", "-g", f"@wilm-ai/wilma-cli@{WILMA_CLI_VERSION}"]
+PACKAGE = "@wilm-ai/wilma-cli"
+INSTALL_ARGS = ["install", "-g", f"{PACKAGE}@{WILMA_CLI_VERSION}"]
 NODE_INSTALL = "brew install node"
 INSTALL_SECONDS = 300
 # Where Homebrew puts npm, for a server started without Homebrew on its PATH.
@@ -42,21 +44,41 @@ def installed() -> bool:
 
 
 def install() -> str:
-    """Installs the pinned wilma CLI with npm unless one is installed. Returns `installed`,
-    `no-npm` (Node isn't on this Mac) or `install-failed`."""
+    """Installs the pinned wilma CLI with npm unless one is installed, and adds it to setup's
+    record. Returns `installed`, `no-npm` (Node isn't on this Mac) or `install-failed`."""
     if installed():
         return "installed"
-    npm = shutil.which("npm") or next((p for p in NPM_PLACES if os.access(p, os.X_OK)), None)
-    if npm is None:
+    program = npm()
+    if program is None:
         return "no-npm"
     try:
-        proc = subprocess.run([npm, *INSTALL_ARGS], capture_output=True, text=True,
+        proc = subprocess.run([program, *INSTALL_ARGS], capture_output=True, text=True,
                               timeout=INSTALL_SECONDS, stdin=subprocess.DEVNULL)
     except FileNotFoundError:
         return "no-npm"
     except (OSError, subprocess.SubprocessError):
         return "install-failed"
-    return "installed" if proc.returncode == 0 and installed() else "install-failed"
+    if proc.returncode != 0 or not installed():
+        return "install-failed"
+    install_record.add("wilma-cli", PACKAGE)
+    return "installed"
+
+
+def npm() -> str | None:
+    return shutil.which("npm") or next((p for p in NPM_PLACES if os.access(p, os.X_OK)), None)
+
+
+def uninstall() -> bool:
+    """Removes the wilma CLI setup installed, with npm. Returns whether npm did."""
+    program = npm()
+    if program is None:
+        return False
+    try:
+        proc = subprocess.run([program, "uninstall", "-g", PACKAGE], capture_output=True,
+                              text=True, timeout=INSTALL_SECONDS, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0
 
 
 def tenants() -> list[dict[str, Any]] | None:
@@ -133,7 +155,7 @@ def sign_in(tenant: dict[str, Any], username: str, password: str) -> tuple[str, 
     """Writes the CLI's profile for `username` at the Wilma `tenant` and checks it with the CLI's
     Kid list. Returns `signed-in` with the Kids, or `wrong-password`, `sign-in-failed`, `no-kids`
     or `not-installed`. Unless signed in, the CLI's config is put back as it was, so a wrong
-    password isn't kept and an earlier sign-in still works."""
+    password isn't kept and an earlier sign-in still works. A new profile goes in setup's record."""
     if not installed():
         return "not-installed", []
     path = config_path()
@@ -141,7 +163,8 @@ def sign_in(tenant: dict[str, Any], username: str, password: str) -> tuple[str, 
         before: bytes | None = path.read_bytes()
     except OSError:
         before = None
-    write_profile(path, tenant, username, password)
+    profiles_before = profile_ids(path)
+    profile_id = write_profile(path, tenant, username, password)
     result, kids = "sign-in-failed", []
     try:
         kids = [k for k in wilma.list_kids() if isinstance(k.get("name"), str) and k["name"]]
@@ -151,18 +174,22 @@ def sign_in(tenant: dict[str, Any], username: str, password: str) -> tuple[str, 
     finally:  # also when the CLI fails in a way it doesn't report
         if result != "signed-in":
             _put_back(path, before)
-    return result, kids if result == "signed-in" else []
+    if result != "signed-in":
+        return result, []
+    record_profile(profile_id, profiles_before)
+    return result, kids
 
 
-def write_profile(path: Path, tenant: dict[str, Any], username: str, password: str) -> None:
+def record_profile(profile_id: str | None, before: list[str]) -> None:
+    """Adds the profile signed in with to setup's record, unless it was there before setup."""
+    if profile_id is not None and profile_id not in before:
+        install_record.add("wilma-profile", profile_id)
+
+
+def write_profile(path: Path, tenant: dict[str, Any], username: str, password: str) -> str:
     """Saves the profile as the CLI saves one after its own sign-in: added after the others, in
-    place of one for the same Wilma and username, and the one its commands use."""
-    try:
-        config = json.loads(path.read_text())
-    except (OSError, ValueError):
-        config = {}
-    if not (isinstance(config, dict) and isinstance(config.get("profiles"), list)):
-        config = {"profiles": []}
+    place of one for the same Wilma and username, and the one its commands use. Returns its id."""
+    config = _read(path)
     stored = {
         "id": f"{tenant['url']}|{username}",
         "tenantUrl": tenant["url"],
@@ -178,6 +205,57 @@ def write_profile(path: Path, tenant: dict[str, Any], username: str, password: s
     config["profiles"] = [p for p in config["profiles"]
                           if not (isinstance(p, dict) and p.get("id") == stored["id"])] + [stored]
     config["lastProfileId"] = stored["id"]
+    _write_config(path, config)
+    return stored["id"]
+
+
+def profile_ids(path: Path) -> list[str]:
+    return [p["id"] for p in _read(path)["profiles"]
+            if isinstance(p, dict) and isinstance(p.get("id"), str)]
+
+
+def last_profile_id(path: Path) -> str | None:
+    """The profile the CLI's commands use: the one signed in with last."""
+    last = _read(path).get("lastProfileId")
+    return last if isinstance(last, str) else None
+
+
+def profile(path: Path, profile_id: str) -> dict[str, Any] | None:
+    """The CLI's saved profile with that id, password included, or None."""
+    return next((p for p in _read(path)["profiles"]
+                 if isinstance(p, dict) and p.get("id") == profile_id), None)
+
+
+def remove_profile(path: Path, profile_id: str) -> None:
+    """Removes one profile, with its password, keeping the CLI's others; the CLI's commands then
+    use the last of them. Without others, the file goes, and its folder when that is empty."""
+    config = _read(path)
+    config["profiles"] = [p for p in config["profiles"]
+                          if not (isinstance(p, dict) and p.get("id") == profile_id)]
+    if not config["profiles"]:
+        path.unlink(missing_ok=True)
+        try:
+            path.parent.rmdir()
+        except OSError:
+            pass
+        return
+    if config.get("lastProfileId") == profile_id:
+        others = profile_ids(path)
+        config["lastProfileId"] = next((p for p in reversed(others) if p != profile_id), None)
+    _write_config(path, config)
+
+
+def _read(path: Path) -> dict[str, Any]:
+    try:
+        config = json.loads(path.read_text())
+    except (OSError, ValueError):
+        config = {}
+    if not (isinstance(config, dict) and isinstance(config.get("profiles"), list)):
+        config = {"profiles": []}
+    return config
+
+
+def _write_config(path: Path, config: dict[str, Any]) -> None:
     _write(path, (json.dumps(config, indent=2, ensure_ascii=False) + "\n").encode())
 
 

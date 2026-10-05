@@ -4,6 +4,8 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+- Uninstall also removes the wilma CLI, the Wilma sign-in with its password, and the Claude Code plugin when setup installed them, and leaves the ones you had before setup (#135).
+
 ## 0.5.0 · 2026-10-04
 
 Setup moves into a page in your browser (#84).

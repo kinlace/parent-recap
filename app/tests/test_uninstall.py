@@ -6,6 +6,7 @@ Assertions are on what the family reads and on what is left on the Mac afterward
 from __future__ import annotations
 
 import io
+import json
 import plistlib
 import subprocess
 import sys
@@ -15,7 +16,7 @@ from typing import Any
 import pytest
 from test_codex_install import install_codex_skills
 
-from family_brief import install_record, ops, run_lock
+from family_brief import install_record, ops, run_lock, setup_wilma
 from family_brief.collectors import gmail
 from family_brief.config import Config
 
@@ -27,7 +28,8 @@ REAL_RUN = subprocess.run
 
 
 class FakeMac:
-    """launchctl, pmset, the Keychain and the administrator dialog, as uninstall sees them."""
+    """launchctl, pmset, the Keychain, the administrator dialog, npm's global packages and Claude
+    Code's plugins, as uninstall sees them."""
 
     def __init__(self, keychain: dict[str, str]) -> None:
         self.keychain = keychain
@@ -35,12 +37,22 @@ class FakeMac:
         self.repeating: list[str] = []      # the lines under "Repeating power events:"
         self.admin_dialog = "allow"         # or "cancel"
         self.keychain_prompt = "allow"      # or "deny"
+        self.npm_packages: set[str] = set()  # installed with npm install -g
+        self.claude_plugins: list[str] = []  # by id
+        self.claude_marketplaces: list[str] = []  # by name
+        self.claude_removes = True          # False: `claude plugin uninstall` fails
         self.ran: list[list[str]] = []
 
     def run(self, cmd: list[str], *_a: Any, **_k: Any) -> subprocess.CompletedProcess:
         cmd = list(cmd)
         self.ran.append(cmd)
         prog = Path(cmd[0]).name
+        if prog == "npm":
+            assert cmd[1:3] == ["uninstall", "-g"], cmd
+            self.npm_packages.discard(cmd[3])
+            return done(cmd, "removed 40 packages")
+        if prog == "claude":
+            return self._claude(cmd)
         if prog == "launchctl":
             if cmd[1] == "load":
                 self.loaded.add(Path(cmd[2]).stem)
@@ -78,10 +90,30 @@ class FakeMac:
             return done(cmd)
         raise AssertionError(f"unexpected subprocess in test: {cmd[:3]}")
 
+    def _claude(self, cmd: list[str]) -> subprocess.CompletedProcess:
+        args = cmd[1:]
+        if args == ["plugin", "list", "--json"]:
+            return done(cmd, json.dumps([{"id": p, "scope": "user"} for p in self.claude_plugins]))
+        if args == ["plugin", "marketplace", "list", "--json"]:
+            return done(cmd, json.dumps([{"name": m, "source": "github"}
+                                         for m in self.claude_marketplaces]))
+        if not self.claude_removes:
+            return done(cmd, code=1, err="Failed to uninstall")
+        if args[:2] == ["plugin", "uninstall"]:
+            self.claude_plugins.remove(args[2])
+            return done(cmd)
+        if args[:3] == ["plugin", "marketplace", "remove"]:
+            assert not any(p.endswith("@" + args[3]) for p in self.claude_plugins), \
+                "the plugin goes before its marketplace"
+            self.claude_marketplaces.remove(args[3])
+            return done(cmd)
+        raise AssertionError(f"unexpected claude command in test: {args}")
+
     def removals(self) -> list[list[str]]:
         return [c for c in self.ran if c[:2] in (["launchctl", "unload"],
                                                   ["security", "delete-generic-password"])
-                or c[0] == "osascript"]
+                or c[0] == "osascript" or Path(c[0]).name == "npm"
+                or (Path(c[0]).name == "claude" and "--json" not in c)]
 
 
 def done(cmd: list[str], out: str = "", code: int = 0, err: str = "") -> subprocess.CompletedProcess:
@@ -319,6 +351,119 @@ def test_an_archive_in_a_shared_folder_takes_only_parent_recaps_files(harness, m
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
     assert leftovers(harness.home) == ["Documents", "Documents/logs", "Documents/logs/my-diary.txt"]
+
+
+# ── the wilma CLI and Claude Code's plugin
+
+ESPOO = {"url": "https://espoo.inschool.fi", "name": "Espoo"}
+OUR_PROFILE = "https://espoo.inschool.fi|mia.parent"
+WILMA_PASSWORD = "fake-wilma-password"  # no real Wilma password, ever
+
+
+def wilma_and_claude(harness, mac: FakeMac, monkeypatch, tmp_path: Path, *, by_setup: bool) -> Path:
+    """The wilma CLI with a profile, and Claude Code with Parent Recap's plugin and marketplace,
+    installed by setup (and in its record) or there before it. Returns the CLI's config."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name in ("wilma", "npm", "claude"):
+        (bin_dir / name).write_text("#!/bin/sh\n")
+        (bin_dir / name).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    for var in ("WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(setup_wilma, "NPM_PLACES", ())
+    mac.npm_packages.add("@wilm-ai/wilma-cli")
+    config = setup_wilma.config_path()
+    setup_wilma.write_profile(config, ESPOO, "mia.parent", WILMA_PASSWORD)
+    mac.claude_plugins = ["parent-recap@kinlace"]
+    mac.claude_marketplaces = ["claude-plugins-official", "kinlace"]
+    if by_setup:
+        install_record.main(["wilma-cli", "@wilm-ai/wilma-cli", "wilma-profile", OUR_PROFILE,
+                             "claude-plugin", "parent-recap@kinlace",
+                             "claude-marketplace", "kinlace"])
+    return config
+
+
+def test_lists_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness, mac, monkeypatch,
+                                                                         tmp_path, capsys):
+    set_up(harness, mac, monkeypatch)
+    config = wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
+    mac.ran.clear()
+
+    assert uninstall(harness) == 0
+
+    removes = capsys.readouterr().out.split("Uninstall removes:", 1)[1].split("\n\n", 1)[0]
+    for item in ("@wilm-ai/wilma-cli", "mia.parent at https://espoo.inschool.fi",
+                 ".config/wilmai/config.json", "Claude Code plugin: parent-recap@kinlace",
+                 "Claude Code marketplace: kinlace"):
+        assert item in removes, item
+    assert "claude-plugins-official" not in removes
+    assert mac.removals() == [] and config.exists()
+    assert WILMA_PASSWORD not in removes
+
+
+def test_removes_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness, mac, monkeypatch,
+                                                                          tmp_path, capsys):
+    set_up(harness, mac, monkeypatch)
+    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert mac.npm_packages == set()
+    assert mac.claude_plugins == [] and mac.claude_marketplaces == ["claude-plugins-official"]
+    assert leftovers(harness.home) == [".config"]  # the folder other programs share
+    out = capsys.readouterr().out
+    assert "/plugin uninstall" not in out and "rm -rf ~/.config/wilmai" not in out
+
+
+def test_leaves_a_wilma_cli_profile_and_plugin_that_were_there_before_setup(harness, mac,
+                                                                            monkeypatch, tmp_path,
+                                                                            capsys):
+    set_up(harness, mac, monkeypatch)
+    config = wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=False)
+    before = config.read_text()
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert config.read_text() == before
+    assert mac.npm_packages == {"@wilm-ai/wilma-cli"}
+    assert mac.claude_plugins == ["parent-recap@kinlace"]
+    assert mac.claude_marketplaces == ["claude-plugins-official", "kinlace"]
+    assert not any(Path(c[0]).name in ("npm", "claude") for c in mac.ran)
+    out = capsys.readouterr().out  # what the family can do themselves
+    assert "/plugin uninstall parent-recap@kinlace" in out and "~/.config/wilmai" in out
+
+
+def test_removes_only_setup_s_profile_from_the_wilma_cli_s_config(harness, mac, monkeypatch,
+                                                                  tmp_path, capsys):
+    set_up(harness, mac, monkeypatch)
+    config = wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
+    helsinki = {"url": "https://helsinki.inschool.fi", "name": "Helsinki"}
+    setup_wilma.write_profile(config, helsinki, "dad", "another-fake-password")
+    setup_wilma.write_profile(config, ESPOO, "mia.parent", WILMA_PASSWORD)  # the last used
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    left = json.loads(config.read_text())
+    assert [p["id"] for p in left["profiles"]] == ["https://helsinki.inschool.fi|dad"]
+    assert left["lastProfileId"] == "https://helsinki.inschool.fi|dad"
+    assert config.stat().st_mode & 0o777 == 0o600
+    assert WILMA_PASSWORD not in config.read_text()
+    assert "~/.config/wilmai" in capsys.readouterr().out  # the other sign-in stays there
+
+
+def test_a_plugin_claude_code_did_not_remove_says_how_and_keeps_the_record(harness, mac,
+                                                                           monkeypatch, tmp_path,
+                                                                           capsys):
+    set_up(harness, mac, monkeypatch)
+    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
+    mac.claude_removes = False
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 1
+
+    failed = capsys.readouterr().out.split("❌", 1)[1]
+    assert "/plugin uninstall parent-recap@kinlace" in failed
+    assert install_record.entries("claude-plugin") == ["parent-recap@kinlace"]  # found next time
 
 
 # ── installs from before the record

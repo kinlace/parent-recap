@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from family_brief import install_record
+
 ROOT = Path(__file__).resolve().parents[2]
 NO_MARKETPLACES = "[]"
 KINLACE = json.dumps([{"name": "kinlace", "source": "github", "repo": "kinlace/parent-recap"}], indent=2)
@@ -145,7 +147,38 @@ def test_claude_adds_the_stable_marketplace_installs_for_the_user_and_starts_set
     ]
 
 
-def test_claude_run_again_updates_instead_of_adding_twice(mac):
+def recorded(mac: dict, monkeypatch, kind: str) -> list[str]:
+    """What setup's record, as the program reads it, has of `kind`."""
+    monkeypatch.setenv("HOME", str(mac["home"]))
+    return install_record.entries(kind)
+
+
+def test_claude_records_the_plugin_and_marketplace_it_installed_for_uninstall(mac, monkeypatch):
+    assert get(mac, "--claude").returncode == 0
+
+    assert recorded(mac, monkeypatch, "claude-plugin") == ["parent-recap@kinlace"]
+    assert recorded(mac, monkeypatch, "claude-marketplace") == ["kinlace"]
+    record = mac["home"] / ".family" / "install-record.json"
+    assert record.stat().st_mode & 0o077 == 0 and record.parent.stat().st_mode & 0o077 == 0
+
+
+def test_claude_adds_to_a_record_setup_started_and_only_once(mac, monkeypatch):
+    monkeypatch.setenv("HOME", str(mac["home"]))
+    install_record.add("program", "/Users/mum/FamilyBrief/app")
+    install_record.add("keychain", "claude-oauth-token")
+
+    assert get(mac, "--claude").returncode == 0
+    assert get(mac, "--claude").returncode == 0
+
+    assert install_record.entries("program") == ["/Users/mum/FamilyBrief/app"]
+    assert install_record.entries("keychain") == ["claude-oauth-token"]
+    assert install_record.entries("claude-plugin") == ["parent-recap@kinlace"]
+    assert install_record.entries("claude-marketplace") == ["kinlace"]
+    install_record.add("launchd", "/Users/mum/Library/LaunchAgents/com.family.brief.plist")
+    assert install_record.entries("claude-plugin") == ["parent-recap@kinlace"]
+
+
+def test_claude_run_again_updates_instead_of_adding_twice(mac, monkeypatch):
     (mac["tmp"] / "marketplaces.json").write_text(KINLACE)
     (mac["tmp"] / "plugins.json").write_text(PARENT_RECAP)
 
@@ -157,6 +190,18 @@ def test_claude_run_again_updates_instead_of_adding_twice(mac):
         "claude plugin update parent-recap@kinlace",
         "claude /parent-recap:setup",
     ]
+    # Installed before setup: uninstall leaves them.
+    assert recorded(mac, monkeypatch, "claude-plugin") == []
+    assert recorded(mac, monkeypatch, "claude-marketplace") == []
+
+
+def test_claude_records_only_the_plugin_when_the_marketplace_was_there(mac, monkeypatch):
+    (mac["tmp"] / "marketplaces.json").write_text(KINLACE)
+
+    assert get(mac, "--claude").returncode == 0
+
+    assert recorded(mac, monkeypatch, "claude-plugin") == ["parent-recap@kinlace"]
+    assert recorded(mac, monkeypatch, "claude-marketplace") == []
 
 
 def test_claude_switches_a_kinlace_marketplace_from_a_local_folder_to_the_stable_release(mac):
@@ -175,6 +220,7 @@ def test_claude_switches_a_kinlace_marketplace_from_a_local_folder_to_the_stable
     ]
     assert any("/Users/mum/FamilyBrief/plugin" in line and "kinlace/parent-recap#stable" in line
                for line in result.stdout.splitlines())
+    assert not (mac["home"] / ".family").exists()  # the family's own, from the release zip
 
 
 def test_claude_switches_a_local_kinlace_marketplace_even_without_the_plugin_installed(mac):

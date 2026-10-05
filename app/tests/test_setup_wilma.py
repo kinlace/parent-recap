@@ -22,6 +22,8 @@ from typing import Any
 
 import pytest
 
+from family_brief import install_record, setup_wilma
+
 REAL_RUN = subprocess.run  # before the harness fakes it
 PASSWORD = "Wilma-salasana-42"
 CONFIG_MD = Path(__file__).resolve().parents[2] / "docs" / "config.md"
@@ -126,11 +128,16 @@ def wilma(harness, tmp_path, monkeypatch) -> Wilma:
     monkeypatch.setattr(time, "sleep", lambda _s: None)
     w = Wilma(harness.home, bin_dir)
     others = subprocess.run  # the harness's fakes
+    monkeypatch.setattr(setup_wilma, "NPM_PLACES", ())  # only the PATH's, when a test adds npm
 
     def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
         if Path(cmd[0]).name == "wilma":
             harness.commands.append(list(cmd))
             return REAL_RUN(cmd, *a, **k)
+        if Path(cmd[0]).name == "npm":
+            harness.commands.append(list(cmd))
+            w.install()
+            return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
         if cmd[:3] == ["open", "-a", "Terminal"]:
             harness.commands.append(list(cmd))
             if not w.terminal_opens:
@@ -188,6 +195,32 @@ def test_signing_in_reports_each_kid_and_the_city(harness, wilma, capsys, caplog
     [script] = wilma.terminal
     assert str(wilma.bin_dir / "wilma") in script
     assert_password_never_leaked(harness, wilma, printed, caplog)
+    # So uninstall removes the profile the CLI saved, and only that.
+    assert install_record.entries("wilma-profile") == ["https://espoo.inschool.fi|parent@example.com"]
+    assert install_record.entries("wilma-cli") == []  # there before setup
+    assert PASSWORD not in install_record.path().read_text()
+
+
+def test_a_profile_from_before_setup_is_not_recorded(harness, wilma, capsys):
+    wilma.install()
+    wilma.signed_in_before("https://espoo.inschool.fi")
+
+    assert harness.cli("setup", "wilma") == 0
+
+    assert result(capsys)[0]["result"] == "signed-in"
+    assert install_record.entries("wilma-profile") == []
+
+
+def test_without_the_wilma_cli_it_installs_the_pinned_one_and_records_it(harness, wilma, capsys):
+    (wilma.bin_dir / "npm").write_text("#!/bin/sh\n")
+    (wilma.bin_dir / "npm").chmod(0o755)
+
+    assert harness.cli("setup", "wilma") == 0
+
+    assert result(capsys)[0]["result"] == "signed-in"
+    npm = [c for c in harness.commands if Path(c[0]).name == "npm"]
+    assert [c[1:] for c in npm] == [["install", "-g", "@wilm-ai/wilma-cli@1.6.2"]]
+    assert install_record.entries("wilma-cli") == ["@wilm-ai/wilma-cli"]
 
 
 def test_school_and_class_are_reported_when_wilma_gives_them(harness, wilma, capsys):
