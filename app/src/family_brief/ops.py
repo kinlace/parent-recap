@@ -136,7 +136,18 @@ def _check_gmail(cfg: Config, add) -> None:
     if not username:
         add(FAIL, "Gmail", "no gmail.username in the config")
         return
-    if not gmail.get_app_password(username):
+    from .utils import keychain
+    try:
+        password = gmail.get_app_password(username)
+    except keychain.NeedsPrompt:
+        add(FAIL, "Gmail", f"the App Password for {username} is in the Keychain, but macOS asks "
+            f"for the Keychain password before reading it, which the evening Brief can't answer "
+            "(store it again with family-brief setup gmail, or the setup page's Gmail step)")
+        return
+    except keychain.KeychainError as e:
+        add(FAIL, "Gmail", f"couldn't read the App Password for {username} from the Keychain: {e}")
+        return
+    if not password:
         add(FAIL, "Gmail", f"No App Password in the Keychain for {username} "
             "(store one with family-brief setup gmail)")
         return
@@ -192,11 +203,17 @@ def _check_claude(add) -> None:
     from .setup_steps import PLAIN_TERMINAL
     from .utils import keychain
     env, label = _claude_env()
+    where = f", {PLAIN_TERMINAL}" if keychain.unreachable_here() else ""
     if label == "inherited":
         # This shell's own sign-in can work while the evening job, which has none, can't.
-        where = f", {PLAIN_TERMINAL}" if keychain.unreachable_here() else ""
         add(FAIL, "Claude", "no claude-oauth-token in the Keychain, so the evening Brief can't "
             f"call Claude (store one with family-brief setup claude{where})")
+        return
+    if label == "keychain-needs-prompt":
+        # Stored by an earlier version, so it trusts that version's Python and not security.
+        add(FAIL, "Claude", "the Claude token is in the Keychain, but macOS asks for the Keychain "
+            "password before reading it, which the evening Brief can't answer (store it again "
+            f"with family-brief setup claude{where})")
         return
     error = claude_test_call(claude, env)
     if error is not None:

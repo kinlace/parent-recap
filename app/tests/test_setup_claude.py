@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import json
 import logging
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import keychain_refusing, msg, program
+from conftest import msg, program
 
 from family_brief import install_record
 
@@ -175,13 +176,8 @@ def test_closing_the_dialog_stores_nothing(harness, terminal, capsys):
     assert harness.model_calls == [] and harness.keychain == {}
 
 
-def test_a_keychain_that_refuses_says_so(harness, terminal, monkeypatch, capsys):
-    import keyring.errors
-    from family_brief.utils import keychain
-
-    def refuse(_key: str, _value: str) -> None:
-        raise keyring.errors.PasswordSetError("User interaction is not allowed.")
-    monkeypatch.setattr(keychain, "set_", refuse)
+def test_a_keychain_that_refuses_says_so(harness, terminal, capsys):
+    harness.keychain_refuses = -128  # errSecUserCanceled
     harness.dialog.typed = TOKEN
 
     assert harness.cli("setup", "claude") == 1
@@ -189,9 +185,8 @@ def test_a_keychain_that_refuses_says_so(harness, terminal, monkeypatch, capsys)
     assert result(capsys)[0]["result"] == "keychain-failed"
 
 
-def test_another_keychain_error_says_so_with_its_code(harness, terminal, monkeypatch, capsys):
-    from family_brief.utils import keychain
-    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25293))
+def test_another_keychain_error_says_so_with_its_code(harness, terminal, capsys):
+    harness.keychain_refuses = -25293
     harness.dialog.typed = TOKEN
 
     assert harness.cli("setup", "claude") == 1
@@ -201,10 +196,8 @@ def test_another_keychain_error_says_so_with_its_code(harness, terminal, monkeyp
     assert "click Allow" in res["next"]
 
 
-def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(harness, terminal,
-                                                                   monkeypatch, capsys):
-    from family_brief.utils import keychain
-    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25308))  # errSecInteractionNotAllowed
+def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(harness, terminal, capsys):
+    harness.keychain_refuses = -25308  # errSecInteractionNotAllowed
     harness.dialog.typed = TOKEN
 
     assert harness.cli("setup", "claude") == 1
@@ -295,6 +288,34 @@ def test_with_neither_a_dialog_nor_a_terminal_it_says_where_to_run_it(harness, t
     assert harness.keychain == {}
 
 
+def test_the_token_goes_to_the_keychain_on_securitys_stdin_for_it_to_read(harness, terminal,
+                                                                           capsys):
+    harness.dialog.typed = TOKEN
+
+    assert harness.cli("setup", "claude") == 0
+
+    # Stored so /usr/bin/security, which the evening job reads it with, may read it without a
+    # prompt nobody answers, and typed into security -i so no command line ever holds it (ADR 0005).
+    assert ["/usr/bin/security", "-i"] in harness.commands
+    [stdin] = harness.keychain_input
+    assert shlex.split(stdin) == ["add-generic-password", "-U", "-s", "family-brief", "-a", ACCOUNT,
+                                  "-w", TOKEN, "-T", "/usr/bin/security"]
+    assert not any(TOKEN in arg for cmd in harness.commands for arg in cmd)
+    assert harness.keychain == {ACCOUNT: TOKEN}
+
+
+def test_storing_the_token_again_replaces_one_the_keychain_asks_about(harness, terminal, capsys):
+    # An earlier version stored it with keyring, so only that Python may read it without a prompt.
+    harness.keychain[ACCOUNT] = "sk-ant-oat01-old"
+    harness.keychain_asks.add(ACCOUNT)
+    harness.dialog.typed = TOKEN
+
+    assert harness.cli("setup", "claude") == 0
+
+    assert result(capsys)[0]["result"] == "saved"
+    assert harness.keychain == {ACCOUNT: TOKEN} and not harness.keychain_asks
+
+
 # ── doctor
 
 
@@ -366,3 +387,52 @@ def test_the_nightly_run_finds_claude_from_the_native_installer(harness, native_
     assert harness.run() == 0
 
     assert harness.model_calls and harness.model_calls[0].argv[0] == str(native_claude)
+
+
+def doctor_claude_line(harness, monkeypatch, capsys) -> str:
+    from family_brief import ops
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    harness.config["wilma"]["enabled"] = False
+    harness.config["whatsapp"]["enabled"] = False
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    harness.model_reply = "OK"
+    harness.cli("doctor")
+    return next(l for l in capsys.readouterr().out.splitlines() if "Claude:" in l)
+
+
+def test_doctor_tells_a_token_the_keychain_asks_about_from_a_missing_one(harness, terminal,
+                                                                         monkeypatch, capsys):
+    from family_brief import ops
+    harness.keychain[ACCOUNT] = TOKEN
+    harness.keychain_asks.add(ACCOUNT)
+
+    line = doctor_claude_line(harness, monkeypatch, capsys)
+
+    assert line.startswith(ops.FAIL)
+    assert "no claude-oauth-token" not in line
+    assert "asks for the Keychain password" in line and "evening" in line
+    assert "family-brief setup claude" in line
+
+
+def test_doctor_reads_a_token_stored_for_security(harness, terminal, monkeypatch, capsys):
+    from family_brief import ops
+    harness.keychain[ACCOUNT] = TOKEN
+
+    line = doctor_claude_line(harness, monkeypatch, capsys)
+
+    assert line.startswith(ops.OK) and "auth: keychain-oauth" in line
+
+
+def test_the_nightly_run_says_the_keychain_asked_rather_than_that_no_token_is_stored(
+        harness, caplog):
+    caplog.set_level(logging.INFO)
+    harness.keychain[ACCOUNT] = TOKEN
+    harness.keychain_asks.add(ACCOUNT)
+    harness.sources["gmail"] = [msg("gmail", "g-1", "2026-09-27T08:15:00+03:00",
+                                    "Parents' evening is on 8.10.", sender="teacher@kilo.example.fi")]
+
+    harness.run()
+
+    assert harness.model_calls
+    assert "CLAUDE_CODE_OAUTH_TOKEN" not in (harness.model_calls[0].env or {})
+    assert "auth: keychain-needs-prompt" in caplog.text

@@ -17,9 +17,13 @@ ITEM = ["-s", "family-brief", "-a", "claude-oauth-token"]
 
 def main() -> int:
     print("Paste the token from claude setup-token at each prompt (input is hidden).")
+    # A token an earlier version stored trusts only that version's Python. Deleted first, the new
+    # item gets this access list, which lets /usr/bin/security read it without a prompt at night.
+    subprocess.run(["security", "delete-generic-password", *ITEM], capture_output=True)
     # With nothing after -w, security asks for the token on the terminal itself. Passed as an
     # argument, it would show in `ps` to every account on the Mac.
-    stored = subprocess.run(["security", "add-generic-password", "-U", *ITEM, "-w"])
+    stored = subprocess.run(["security", "add-generic-password", "-U", *ITEM,
+                             "-T", "/usr/bin/security", "-w"])
     if stored.returncode != 0:
         print("The token wasn't stored.", file=sys.stderr)
         return 1

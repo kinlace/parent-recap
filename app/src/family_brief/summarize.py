@@ -19,6 +19,7 @@ from .brief_text import TEXT, BriefText
 from .languages import FINNISH_WORDS, is_finnish
 from .collectors.base import CalendarEvent, Message
 from .config import Config
+from .utils import keychain
 
 _ = CalendarEvent  # re-export-friendly
 
@@ -258,20 +259,6 @@ def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[di
     )
 
 
-def _kc_get(account: str) -> str | None:
-    """Read a secret from macOS Keychain (service=family-brief)."""
-    try:
-        r = subprocess.run(
-            ["security", "find-generic-password", "-s", "family-brief", "-a", account, "-w"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if r.returncode == 0:
-            return r.stdout.strip() or None
-    except Exception:
-        pass
-    return None
-
-
 def _sessionless_env() -> dict[str, str]:
     # Started from inside a Claude Code session (setup preview, doctor), the parent's session
     # variables would make the child think it is part of that session. Only auth is kept.
@@ -331,19 +318,31 @@ def _claude_env() -> tuple[dict[str, str], str]:
     Returns (env_dict, auth_label) where label is one of:
       - "keychain-oauth"   → CLAUDE_CODE_OAUTH_TOKEN (subscription, free)
       - "keychain-api-key" → ANTHROPIC_API_KEY (paid API)
+      - "keychain-needs-prompt" → one is stored, but macOS asks for the Keychain password
+                             before it can be read, so whatever the parent process set is used
       - "inherited"        → fall through to whatever the parent process set
     """
-    oauth = _kc_get("claude-oauth-token")
+    needs_prompt = False
+
+    def read(account: str) -> str | None:
+        nonlocal needs_prompt
+        try:
+            return (keychain.get(account) or "").strip() or None
+        except keychain.KeychainError:  # there, or maybe there, but not read: never "missing"
+            needs_prompt = True
+        return None
+
+    oauth = read("claude-oauth-token")
     if oauth:
         return claude_token_env(oauth), "keychain-oauth"
     env = _sessionless_env()
-    api_key = _kc_get("anthropic-api-key")
+    api_key = read("anthropic-api-key")
     if api_key:
         env["ANTHROPIC_API_KEY"] = api_key
         env.pop("ANTHROPIC_BASE_URL", None)
         env.pop("ANTHROPIC_AUTH_TOKEN", None)
         return env, "keychain-api-key"
-    return env, "inherited"
+    return env, "keychain-needs-prompt" if needs_prompt else "inherited"
 
 
 # The pauses before each new try while the model is busy: at capacity, rate-limited, overloaded.

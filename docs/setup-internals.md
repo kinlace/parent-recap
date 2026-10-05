@@ -62,6 +62,8 @@ The steps are in the order the setup skill's six phases (Welcome, Connect, Worki
 | Google Calendar app file       | `~/.family/calendar_credentials.json`                  | Deleted                                         |
 | Google Calendar token          | `~/.family/calendar_token.json`                        | Deleted. The family removes the access at Google |
 
+Every Keychain item is written and read with `/usr/bin/security` (ADR 0009). Setup writes it with `add-generic-password -U … -T /usr/bin/security`, typed into `security -i` on stdin so the secret is on no command line, after deleting an item already there so the new one gets this access list. It then reads it back, and the step succeeds only if that works. The evening job and `doctor` read it with `find-generic-password -w`, giving up after 5 seconds: an item an earlier version stored with Python's `keyring` makes macOS ask for the Keychain password first, which nobody answers at night. `doctor` tells such an item apart from a missing one and says to store it again.
+
 Uninstall checks a Keychain item is there with `security find-generic-password` without `-w`, so it never reads a secret, and prints only the service and account.
 
 ## How uninstall works

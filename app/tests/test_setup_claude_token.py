@@ -29,6 +29,7 @@ def setup(monkeypatch: pytest.MonkeyPatch):
         account = cmd[cmd.index("-a") + 1] if "-a" in cmd else None
         if cmd[:2] == ["security", "add-generic-password"]:
             assert cmd[-1] == "-w"  # no value after -w: security prompts for it on the terminal
+            assert cmd[cmd.index("-T") + 1] == "/usr/bin/security"
             keychain[account] = typed["value"]
             return subprocess.CompletedProcess(cmd, 0, "", "")
         if cmd[:2] == ["security", "find-generic-password"]:
@@ -66,3 +67,14 @@ def test_something_that_is_not_a_claude_token_is_not_kept(setup, capsys):
     assert "claude-oauth-token" not in keychain
     assert "Run this again" in capsys.readouterr().err
     assert not any(cmd[0] == "claude" for cmd, _ in calls)
+
+
+def test_a_token_stored_before_is_deleted_first_so_the_new_one_gets_this_access_list(setup):
+    script, keychain, calls, _ = setup
+    keychain["claude-oauth-token"] = "sk-ant-oat01-stored-with-keyring"
+
+    assert script.main() == 0
+
+    verbs = [cmd[1] for cmd, _ in calls if cmd[0] == "security"]
+    assert verbs[:2] == ["delete-generic-password", "add-generic-password"]
+    assert keychain == {"claude-oauth-token": TOKEN}
