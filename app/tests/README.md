@@ -3,7 +3,7 @@
 From `app/`:
 
 ```bash
-python -m pip install -e '.[test]'   # once, inside whatever isolated env you use (venv, conda, uv…)
+python -m pip install --only-binary :all: -c constraints.txt -e '.[test]'   # once, in an isolated env
 python -m pytest                     # whole suite
 ```
 
@@ -125,6 +125,12 @@ page with. It checks a first install, a second run updating, and that nothing it
 `~/FamilyBrief/plugin` is replaced. The setup page's install of the Claude Code plugin or the
 Codex skills, once Welcome is saved, is in `test_setup_page.py`, with the harness answering
 `claude plugin`.
+`test_install.py` runs the real `install.sh` and pip offline, against packages `fake_packages.py`
+makes in a folder, for a stand-in program. It checks that the versions in the constraints file are
+installed rather than the newest, that a package published only as source stops the install
+without being compiled, and that an older prebuilt version is taken over a newer one that would
+compile. It checks that `app/constraints.txt` pins every dependency `pyproject.toml` names and keeps `cryptography` below
+49, and that `scripts/check_wheels.py` fails when a pin has no Intel wheel.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:

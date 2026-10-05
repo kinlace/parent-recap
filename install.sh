@@ -32,8 +32,16 @@ VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$PLUGIN_ROOT/.claude-plug
 echo "${VERSION:-unknown}" > "$APP/VERSION"
 
 [ -x "$APP/.venv/bin/python" ] || "$PY" -m venv "$APP/.venv"
-"$APP/.venv/bin/pip" install -q --upgrade pip >/dev/null 2>&1
-"$APP/.venv/bin/pip" install -q -e "$APP"
+# Prebuilt packages only: building one from source can download a compiler and still fail, and
+# then pip picks the newest version with a ready-made package for this Mac. Pinned to what was
+# tested (app/constraints.txt, see CONTRIBUTING.md), not to what was published this morning.
+PIP=("$APP/.venv/bin/pip" install -q --only-binary :all:)
+"${PIP[@]}" --upgrade pip >/dev/null 2>&1
+if ! "${PIP[@]}" -c "$APP/constraints.txt" -e "$APP"; then
+  echo "❌ Installing the packages FamilyBrief needs failed (pip's message is above)."
+  echo "   It installs only ready-made packages, so it stops when a package has none for this Mac."
+  exit 1
+fi
 RECORD=("$APP/.venv/bin/python" -m family_brief.install_record)
 "${RECORD[@]}" program "$APP" logs "$TARGET/logs"
 # The copy of the plugin the install line downloads, which the Codex skills run from; Claude
