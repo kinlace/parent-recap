@@ -4,6 +4,15 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.5.2 · 2026-10-05
+
+Setup page fixes from the first web setup on an Intel Mac.
+
+### Setup
+- The setup page's last step says which check failed and what to do, and always ends: with "All done", or with "Finish for now" and how to come back later. The Terminal window then says it can be closed.
+- After each Source is connected, the page says which Source comes next and moves to it.
+- The page explains that a sleeping Mac wakes for the evening Brief, but a Mac that's shut down makes no Brief, so leave it asleep or locked in the evening.
+
 ## 0.5.1 · 2026-10-05
 
 Install and uninstall fixes from the first tries on an Intel Mac and a Mac mini, and retries when the AI is busy.
