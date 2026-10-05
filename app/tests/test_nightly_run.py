@@ -1798,7 +1798,7 @@ def edited_translation(edit) -> dict:
 
 
 @pytest.mark.parametrize("translation", [
-    FailedCall("Error: 529 overloaded_error"),
+    FailedCall("Error: stream disconnected before completion"),
     "Sorry, I can't translate this.",
     edited_translation(lambda r: r["per_kid"][0]["action_items"].pop(1)),
     edited_translation(lambda r: r["per_kid"][1]["action_items"][0].update(by="2026-10-01")),
@@ -1847,7 +1847,7 @@ def test_failed_translation_leaves_the_shared_calendar_and_feedback_text_alone(h
 def test_failed_translation_note_is_in_the_recipients_language(harness):
     normal_night(harness)
     harness.config["email"]["to"] = [PARTNER_EN, "parent@example.com"]
-    harness.model_reply = [copy.deepcopy(ENGLISH_REPLY), FailedCall("Error: 529 overloaded_error")]
+    harness.model_reply = [copy.deepcopy(ENGLISH_REPLY), FailedCall("Error: stream disconnected before completion")]
 
     assert harness.run() == 0
 

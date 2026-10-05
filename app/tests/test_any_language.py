@@ -112,7 +112,7 @@ def dropped_time(prompt: str) -> dict:
     return {**swedish(prompt), "date_time": "{day}/{month}"}  # an event's start without its time
 
 
-@pytest.mark.parametrize("program_text", [FailedCall("Error: 529 overloaded_error"), dropped_placeholder,
+@pytest.mark.parametrize("program_text", [FailedCall("Error: stream disconnected before completion"), dropped_placeholder,
                                           unfillable_placeholder, dropped_time],
                          ids=["model fails", "loses a placeholder", "can't be filled in", "loses the time"])
 def test_failed_program_text_translation_is_english_tonight_and_tried_again(harness, program_text):
@@ -244,7 +244,7 @@ def test_language_command_translates_the_program_text_once(harness, capsys):
 
 
 def test_language_command_fails_when_the_translation_does(harness):
-    harness.model_reply = [FailedCall("Error: 529 overloaded_error")]
+    harness.model_reply = [FailedCall("Error: stream disconnected before completion")]
 
     assert harness.cli("language", "sv") == 1
     assert not (harness.home / ".family" / "languages" / "sv.json").exists()

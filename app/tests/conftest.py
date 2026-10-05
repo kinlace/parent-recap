@@ -1,15 +1,16 @@
 """End-to-end harness: runs the real `family-brief run` in-process with fakes at the outside edges.
 
-Fakes sit at exactly three boundaries, so internals can be refactored without touching tests:
+Fakes sit at exactly four boundaries, so internals can be refactored without touching tests:
   1. Sources: each Source's collect entry point returns fixtures or raises. Like the real
      collectors, it skips Messages already marked seen in state and marks the rest seen.
      (test_source_failures.py puts the real Gmail and Wilma Sources back, and fakes their IMAP
      server and `wilma` CLI instead.)
   2. Model process: `subprocess.run` for `claude` / `codex` records argv + stdin, returns a canned reply
      (the same for every call, or one per call from a list, where FailedCall makes that call fail
-     and a function makes the reply from the prompt it is given).
+     and a function makes the reply, or the FailedCall, from the prompt it is given).
   3. Delivery: email sending, iMessage (`osascript`) and the Google Calendar API record what
      they are given, or fail.
+  4. The pauses between model calls are recorded and move a fake clock on, instead of being slept.
 Setup commands also meet macOS's secret dialog (`osascript`), `open` and the Mac's preferred
 languages (`defaults`), faked the same way.
 
@@ -34,7 +35,7 @@ import pytest
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli
+from family_brief import __main__ as cli, summarize
 from family_brief.actions import calendar as calendar_action, email as email_action
 from family_brief.collectors import gmail, myclub, whatsapp, wilma
 from family_brief.collectors.base import CalendarEvent, Message
@@ -206,6 +207,8 @@ class Harness:
         self.claude_plugins: list[dict[str, Any]] = []
         self.claude_marketplaces: list[dict[str, Any]] = []
         self.plugin_calls: list[list[str]] = []
+        self.pauses: list[float] = []               # seconds each pause between model calls lasted
+        self.clock = 0.0                            # what the run's monotonic clock reads
         self._install(monkeypatch)
 
     # Paths
@@ -282,6 +285,13 @@ class Harness:
         mp.setattr(subprocess, "run", self._fake_subprocess_run)
         mp.setattr(socket, "create_connection", lambda *_a, **_k: _FakeSocket())
 
+        def pause(seconds: float) -> None:
+            self.pauses.append(seconds)
+            self.clock += seconds
+
+        mp.setattr(summarize, "_sleep", pause)
+        mp.setattr(summarize, "_clock", lambda: self.clock)
+
         def send(subject: str, body_text: str, from_addr: str, to_addrs: list[str],
                  body_html: str | None = None,
                  attachments: list[tuple[str, bytes, str]] | None = None) -> None:
@@ -351,10 +361,10 @@ class Harness:
         if isinstance(reply, list):
             assert reply, "more model calls than replies"
             reply = reply.pop(0)
-        if isinstance(reply, FailedCall):
-            return subprocess.CompletedProcess(cmd, 1, "", reply.stderr)
         if callable(reply):
             reply = reply(input)
+        if isinstance(reply, FailedCall):
+            return subprocess.CompletedProcess(cmd, 1, "", reply.stderr)
         reply = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
         if prog == "codex":
             Path(cmd[cmd.index("-o") + 1]).write_text(reply)

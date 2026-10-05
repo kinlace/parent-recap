@@ -66,7 +66,8 @@ def run_case(case: Case, judge: bool) -> dict[str, Any]:
         error = str(e)
     result = score_case(case.expect, summary, case.household.timezone)
     result.update(
-        seconds=round(time.monotonic() - started, 1),
+        # Pausing for a busy model is the provider's time, not the night's.
+        seconds=round(time.monotonic() - started - (reply.waited if reply else 0), 1),
         tokens=reply.tokens if reply else None,
         valid_json=bool(reply) and _strictly_valid(reply.text),
         error=error,

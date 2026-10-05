@@ -10,6 +10,14 @@ python -m pytest                     # whole suite
 `test_nightly_run.py` runs the real `family-brief run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.
+`test_busy_model.py` runs the evening Brief against a `codex` or `claude` that is busy (at capacity,
+rate-limited, overloaded) for a few calls. The harness records the pauses between model calls on a
+fake clock instead of sleeping. It checks that the Brief comes once the model is free, after pauses
+of 1 and then 3 minutes that the log names, that a model that is signed out, has an expired token or
+has used up its plan fails at once with the usual Brief without its Digest, that "at capacity" in
+a Household's own message echoed back by `codex` isn't taken for a busy model, that the pauses stop
+inside the call's time budget, and that doctor and the setup page's preview wait less or not at
+all. `test_eval_runner.py` checks the eval runner tries a busy model again the same way.
 `test_source_failures.py` runs the real Gmail, Wilma and MyClub Sources against a fake IMAP server,
 `wilma` CLI and MyClub feed, for a Source that fails partway through a night or times out.
 `test_setup_gmail.py` runs `family-brief setup gmail` against a fake macOS dialog, `open`,

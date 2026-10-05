@@ -170,7 +170,7 @@ def _check_codex(cfg: Config, add) -> None:
         return
     try:
         data = call_llm_json(cfg, 'Reply with only this JSON: {"ok": true}',
-                             "This is a connectivity test.", timeout=120)
+                             "This is a connectivity test.", timeout=120, budget=0)
     except Exception as e:
         add(FAIL, "Codex", f"call failed: {str(e)[:200]} (if you're signed out, open the Codex app "
             "and sign in again with your ChatGPT account. ChatGPT Free and Go can't use the Codex "

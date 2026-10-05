@@ -26,7 +26,7 @@ from .brief_text import PRODUCT_NAME, BriefText
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, Message
 from .config import Config
 from .state import State
-from .summarize import digest_of, extract_calendar_events, summarize
+from .summarize import CALL_BUDGET, digest_of, extract_calendar_events, summarize
 from .translate import translate
 from .utils.dates import to_local, today_str
 
@@ -239,6 +239,11 @@ def _ics_candidates(cfg: Config, state: State, events: list) -> list:
 def _as_created(events: list) -> list[dict]:
     """Events the Brief lists without a Google write, shaped like `create_events` results."""
     return [{"title": e.title, "start": e.start_iso(), "kid": e.kid} for e in events]
+
+
+# How long `run --preview` tries a busy model for: the setup page gives up on the whole preview
+# after 15 minutes (setup_server.BRIEF_SECONDS), reading the Sources included.
+PREVIEW_BUDGET = 10 * 60
 
 
 def _llm_host(cfg: Config) -> str:
@@ -619,7 +624,8 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
         try:
             # Pass direct_events so the LLM doesn't duplicate them into calendar_events.
             already_captured = [e.to_dict() for e in direct_events]
-            summary = summarize(cfg, messages, upcoming, already_captured, earlier)
+            summary = summarize(cfg, messages, upcoming, already_captured, earlier,
+                                budget=PREVIEW_BUDGET if args.preview else CALL_BUDGET)
         except Exception as e:
             log.error("Summarizer failed: %s (falling back to rule-based digest)", e)
             summary = _fallback_summary(messages, str(e), t, cfg)
