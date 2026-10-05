@@ -1665,6 +1665,8 @@ async function start() {
   page.myclub = state.myclub;
   page.check = state.check;
   page.brief = state.brief;
+  // Said before the family types a password: in tmux or SSH, none can be saved.
+  document.getElementById("keychain-unreachable").hidden = state.keychain.reachable;
   renderSwitch();
   renderChoices();
   renderChat();

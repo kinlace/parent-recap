@@ -65,6 +65,8 @@ Each prints one line of JSON. `result` says what happened; when it isn't a succe
 
 A `result` of `no-prompt` means no dialog could open here (for example from inside Codex's sandbox): run the command again outside the sandbox, and only if that fails too, give the parent the command in `next` to run in Terminal.
 
+A `result` of `keychain-not-reachable` (from `setup gmail` or `setup claude`, with macOS's `code`) means macOS won't let the command save in the Keychain here, because it runs inside tmux or over SSH, and no prompt will come. Running it again from here fails the same way: give the parent the command in `next` to run in a plain Terminal window outside tmux or SSH (Shell → New Command… in Terminal works). `keychain-failed` carries macOS's `code` too, when there is one.
+
 ## Saving answers and progress
 
 `$FB setup save` writes the parent's answers into `~/.family/config.yaml` (owner-only), and records how far setup has got, so the setup page and this chat can each pick up where the other stopped. It comes with the program, so the first save is right after `install.sh` in Connect, with the card's answers and `"progress": {"phase": "connect"}`. Give it the answers as JSON on stdin, with only the keys you're saving; whatever you leave out stays as it was:

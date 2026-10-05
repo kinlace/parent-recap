@@ -48,6 +48,7 @@ import keyring.errors
 
 from . import install_record, secret_dialog, setup_wilma
 from .config import Config, Kid
+from .utils import keychain
 
 APP_PASSWORDS_URL = "https://myaccount.google.com/apppasswords"
 TWO_STEP_URL = "https://myaccount.google.com/signinoptions/two-step-verification"
@@ -117,6 +118,13 @@ WHATSAPP_READ_SECONDS = 60
 WHATSAPP_DAYS = 180  # the groups listed are those with messages in this many days
 MYCLUB_URL = "https://id.myclub.fi"
 _OK = ("saved", "signed-in", "readable", "read")
+# Where macOS lets setup save a password in the Keychain: a Terminal window in the family's own
+# desktop session. Shell → New Command… starts a command outside tmux, even when each new window
+# starts tmux.
+PLAIN_TERMINAL = ("in a plain Terminal window outside tmux or SSH (in Terminal, Shell → New "
+                  "Command… works)")
+KEYCHAIN_WARNING = ("This is running inside tmux or SSH, where macOS doesn't let Parent Recap "
+                    f"save passwords in the Keychain and shows no prompt. Run it {PLAIN_TERMINAL}.")
 
 
 def register(sub) -> None:
@@ -176,6 +184,25 @@ def register(sub) -> None:
     setup_server.register(steps)
 
 
+def _keychain_failure(e: keyring.errors.KeyringError) -> tuple[str, dict[str, Any]]:
+    """A step's result when macOS refused to save a secret in the Keychain, with macOS's code
+    when there is one: `keychain-not-reachable` when it can't even ask here, as in tmux or over
+    SSH, otherwise `keychain-failed`."""
+    code = keychain.error_code(e)
+    result = ("keychain-not-reachable" if code == keychain.INTERACTION_NOT_ALLOWED
+              else "keychain-failed")
+    return result, ({"code": code} if code is not None else {})
+
+
+def _warn_if_unreachable() -> str:
+    """At a Keychain step's start, says once that saving the secret in the Keychain will fail
+    here, and returns the same warning to put on top of the dialog, or "" where it won't fail."""
+    if not keychain.unreachable_here():
+        return ""
+    print(KEYCHAIN_WARNING, file=sys.stderr, flush=True)
+    return f"{KEYCHAIN_WARNING}\n\n"
+
+
 def _report(result: str, next_: str | None = None, **extra: Any) -> int:
     out = {"result": result, **extra}
     if next_:
@@ -196,14 +223,15 @@ def cmd_gmail(args: argparse.Namespace) -> int:
     if "@" not in address:
         return _report("no-address", "Run it again with --address and the family's Gmail "
                        "address: family-brief setup gmail --address name@gmail.com")
+    warning = _warn_if_unreachable()
     if not args.no_open:
         subprocess.run(["open", APP_PASSWORDS_URL], capture_output=True)
 
     try:
         password = secret_dialog.ask(
-            f"Paste the App Password for {address}.\n\nCreate it on Google's App passwords page, "
-            f"which is open in your browser ({APP_PASSWORDS_URL}), with the name Parent Recap, "
-            "then copy the 16 letters Google shows.", other=PAGE_UNAVAILABLE)
+            f"{warning}Paste the App Password for {address}.\n\nCreate it on Google's App "
+            f"passwords page, which is open in your browser ({APP_PASSWORDS_URL}), with the name "
+            "Parent Recap, then copy the 16 letters Google shows.", other=PAGE_UNAVAILABLE)
     except secret_dialog.Cancelled:
         return _report("cancelled", "The family closed the dialog. Run this again when they're ready.")
     except secret_dialog.OtherChosen:
@@ -212,14 +240,15 @@ def cmd_gmail(args: argparse.Namespace) -> int:
         return _report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
                        f"runs this in Terminal: {_program()} setup gmail --address {address}")
 
-    result, next_ = gmail_sign_in(address, password)
-    return _report(result, next_, **({"address": address} if result == "saved" else {}))
+    result, next_, extra = gmail_sign_in(address, password)
+    return _report(result, next_, **({"address": address} if result == "saved" else extra))
 
 
-def gmail_sign_in(address: str, password: str) -> tuple[str, str | None]:
+def gmail_sign_in(address: str, password: str) -> tuple[str, str | None, dict[str, Any]]:
     """Tests the App Password `password` for `address` with Gmail and stores it in the Keychain,
-    and returns the step's result and, when it went wrong, what to do next. The setup page's own
-    field calls this too (ADR 0007), so both give the same results."""
+    and returns the step's result, what to do next when it went wrong, and what else it reports:
+    macOS's `code` when the Keychain refused it. The setup page's own field calls this too (ADR
+    0007), so both give the same results."""
     from .collectors import gmail
 
     password = password.replace(" ", "")
@@ -227,7 +256,7 @@ def gmail_sign_in(address: str, password: str) -> tuple[str, str | None]:
         # Not sent to Google: it's most likely the family's own Google password.
         return "not-an-app-password", ("That wasn't a 16-letter App Password. Copy the App "
                                        "Password Google showed (not the Google password) and run "
-                                       "this again.")
+                                       "this again."), {}
 
     try:
         with imaplib.IMAP4_SSL(gmail.IMAP_HOST, gmail.IMAP_PORT, timeout=gmail.IMAP_TIMEOUT) as imap:
@@ -236,16 +265,23 @@ def gmail_sign_in(address: str, password: str) -> tuple[str, str | None]:
     except imaplib.IMAP4.error:
         return "rejected", (f"Gmail didn't accept that App Password for {address}. Check the "
                             "address, create a new App Password and run this again. If it still "
-                            f"fails: {TURN_ON_TWO_STEP}")
+                            f"fails: {TURN_ON_TWO_STEP}"), {}
     except OSError:
-        return "no-connection", "Couldn't reach Gmail. Check the Mac is online and run this again."
+        return "no-connection", ("Couldn't reach Gmail. Check the Mac is online and run this "
+                                 "again."), {}
 
     try:
         gmail.store_app_password(address, password)
-    except keyring.errors.KeyringError:
-        return "keychain-failed", ("Gmail accepted it, but macOS didn't let Parent Recap save it "
-                                   "in the Keychain. Run this again and click Allow if macOS asks.")
-    return "saved", None
+    except keyring.errors.KeyringError as e:
+        result, extra = _keychain_failure(e)
+        if result == "keychain-not-reachable":
+            return result, ("Gmail accepted it, but macOS doesn't let Parent Recap save it in the "
+                            "Keychain from inside tmux or SSH, and shows no prompt there. Run "
+                            f"this again {PLAIN_TERMINAL}: {_program()} setup gmail --address "
+                            f"{shlex.quote(address)}"), extra
+        return result, ("Gmail accepted it, but macOS didn't let Parent Recap save it in the "
+                        "Keychain. Run this again and click Allow if macOS asks."), extra
+    return "saved", None, {}
 
 
 # ---------------------------------------------------------------- wilma
@@ -450,6 +486,7 @@ def cmd_claude(args: argparse.Namespace) -> int:
         return _report("not-installed", f"Install Claude Code's claude command in Terminal with "
                        f"{CLAUDE_INSTALL}, then run this again.")
     again = f"{_program()} setup claude"
+    warning = _warn_if_unreachable()
     with tempfile.TemporaryDirectory(prefix="parent-recap-claude-") as tmp:
         if not args.no_open:
             script = Path(tmp) / "Claude sign-in.command"
@@ -462,9 +499,9 @@ def cmd_claude(args: argparse.Namespace) -> int:
                                "--no-open")
         try:
             typed = secret_dialog.ask(
-                "Paste the Claude token for the nightly Brief.\n\nClick Authorize on Claude's page "
-                "in your browser. The Terminal window that opened then shows a token starting "
-                "with sk-ant-oat01-. Copy all of it and paste it here.")
+                f"{warning}Paste the Claude token for the nightly Brief.\n\nClick Authorize on "
+                "Claude's page in your browser. The Terminal window that opened then shows a "
+                "token starting with sk-ant-oat01-. Copy all of it and paste it here.")
         except secret_dialog.Cancelled:
             return _report("cancelled", "The family closed the dialog. Run this again when "
                            f"they're ready: {again}")
@@ -473,45 +510,49 @@ def cmd_claude(args: argparse.Namespace) -> int:
                            "family runs claude setup-token in Terminal, then this in Terminal: "
                            f"{again} --no-open")
 
-    result, error = claude_token_sign_in(program, typed)
+    result, extra = claude_token_sign_in(program, typed)
     if result == "not-a-token":
         return _report("not-a-token", "That wasn't a Claude token. Copy the whole token Terminal "
                        f"showed, starting with sk-ant-oat01-, and run this again: {again} --no-open")
     if result == "test-call-failed":
         return _report("test-call-failed", "Claude didn't accept the token, so it wasn't kept. "
                        "Check the plan is Claude Pro or Max, then run this again to make a new "
-                       f"token: {again}", error=error)
+                       f"token: {again}", **extra)
+    if result == "keychain-not-reachable":
+        return _report(result, "The test call worked, but macOS doesn't let Parent Recap save "
+                       "the token in the Keychain from inside tmux or SSH, and shows no prompt "
+                       f"there. Run this again {PLAIN_TERMINAL}: {again} --no-open", **extra)
     if result == "keychain-failed":
-        return _report("keychain-failed", "The test call worked, but macOS didn't let Parent "
-                       "Recap save the token in the Keychain. Run this again and click Allow if "
-                       f"macOS asks: {again} --no-open")
+        return _report(result, "The test call worked, but macOS didn't let Parent Recap save the "
+                       "token in the Keychain. Run this again and click Allow if macOS asks: "
+                       f"{again} --no-open", **extra)
     return _report("saved", test_call="ok")
 
 
-def claude_token_sign_in(program: str, typed: str) -> tuple[str, str | None]:
+def claude_token_sign_in(program: str, typed: str) -> tuple[str, dict[str, Any]]:
     """Makes one test call with the Claude token `typed` and stores it in the Keychain. Returns
-    the step's result, `saved`, `not-a-token`, `test-call-failed` or `keychain-failed`, and for a
-    failed test call what Claude said, with the token taken out. The setup page's sign-in and its
-    own field call this too, so all three give the same results."""
+    the step's result, `saved`, `not-a-token`, `test-call-failed`, `keychain-not-reachable` or
+    `keychain-failed`, and what else it reports: for a failed test call what Claude said as
+    `error`, with the token taken out, and when the Keychain refused it macOS's `code`. The setup
+    page's sign-in and its own field call this too, so all three give the same results."""
     from .summarize import claude_test_call, claude_token_env
-    from .utils import keychain
 
     # The token has no spaces, so any are from copying it across the lines Terminal wrapped it on.
     token = "".join(typed.split())
     if not CLAUDE_TOKEN.fullmatch(token):
         # Not sent to Claude: it's most likely the family's own password, or only part of the token.
-        return "not-a-token", None
+        return "not-a-token", {}
 
     error = claude_test_call(program, claude_token_env(token))
     if error is not None:
-        return "test-call-failed", error.replace(token, "<token>").strip()[:200]
+        return "test-call-failed", {"error": error.replace(token, "<token>").strip()[:200]}
 
     try:
         keychain.set_(CLAUDE_TOKEN_ACCOUNT, token)
-    except keyring.errors.KeyringError:
-        return "keychain-failed", None
+    except keyring.errors.KeyringError as e:
+        return _keychain_failure(e)
     install_record.add("keychain", CLAUDE_TOKEN_ACCOUNT)
-    return "saved", None
+    return "saved", {}
 
 
 def setup_token_script(program: str, paste_into: str = "the Parent Recap dialog") -> str:

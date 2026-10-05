@@ -16,8 +16,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import keychain_refusing
 
 from family_brief import install_record, secret_dialog
+from family_brief.utils import keychain
 
 APP_PASSWORD = "abcdefghijklmnop"
 TYPED = "abcd efgh ijkl mnop"  # how Google shows it, and how it's copied
@@ -269,6 +271,56 @@ def test_with_neither_a_dialog_nor_a_terminal_it_says_where_to_run_it(harness, g
     res, _ = result(capsys)
     assert res["result"] == "no-prompt" and "family-brief setup gmail" in res["next"]
     assert harness.keychain == {}
+
+
+def test_a_keychain_that_refuses_says_so_with_its_code(harness, gmail, monkeypatch, capsys):
+    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25293))
+    harness.dialog.typed = TYPED
+
+    assert harness.cli("setup", "gmail") == 1
+
+    res, _ = result(capsys)
+    assert res["result"] == "keychain-failed" and res["code"] == -25293
+    assert "click Allow" in res["next"]
+
+
+def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(harness, gmail, monkeypatch,
+                                                                   capsys):
+    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25308))  # errSecInteractionNotAllowed
+    harness.dialog.typed = TYPED
+
+    assert harness.cli("setup", "gmail") == 1
+
+    res, _ = result(capsys)
+    assert res["result"] == "keychain-not-reachable" and res["code"] == -25308
+    assert "outside tmux or SSH" in res["next"] and "Shell → New Command…" in res["next"]
+    assert "setup gmail --address parent@example.com" in res["next"]
+    assert "Allow" not in res["next"]  # macOS shows no prompt there
+
+
+@pytest.mark.parametrize("var", ["TMUX", "SSH_CONNECTION"])
+def test_in_tmux_or_ssh_it_warns_before_the_app_password_is_asked_for(harness, gmail, terminal,
+                                                                     monkeypatch, capsys, var):
+    monkeypatch.setenv(var, "/private/tmp/tmux-501/default,1234,0" if var == "TMUX"
+                       else "10.0.0.2 52000 10.0.0.1 22")
+    harness.dialog.typed = TYPED
+
+    harness.cli("setup", "gmail")
+
+    out, err = capsys.readouterr()
+    assert len(out.strip().splitlines()) == 1  # still one JSON line on stdout
+    assert err.count("outside tmux or SSH") == 1
+    [asked] = harness.dialog.shown + terminal["prompts"]  # over SSH, the Terminal prompt
+    assert "outside tmux or SSH" in asked
+
+
+def test_outside_tmux_and_ssh_there_is_no_warning(harness, gmail, capsys):
+    harness.dialog.typed = TYPED
+
+    assert harness.cli("setup", "gmail") == 0
+
+    assert "tmux" not in capsys.readouterr().err
+    assert "tmux" not in harness.dialog.shown[0]
 
 
 def test_an_empty_terminal_answer_means_the_page_is_not_available(harness, gmail, terminal,

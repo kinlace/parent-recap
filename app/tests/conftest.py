@@ -251,9 +251,10 @@ class Harness:
     # Fakes
     def _install(self, mp: pytest.MonkeyPatch) -> None:
         mp.setenv("HOME", str(self.home))
-        # Over SSH, macOS's dialogs aren't tried: a test that wants that sets these itself.
+        # Over SSH, macOS's dialogs aren't tried, and in tmux or SSH setup warns that the Keychain
+        # can't be written: a test that wants that sets these itself.
         for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
-                    "CLAUDE_CODE_OAUTH_TOKEN", "SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"):
+                    "CLAUDE_CODE_OAUTH_TOKEN", "SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY", "TMUX"):
             mp.delenv(var, raising=False)
 
         def source(name: str) -> Callable[..., Any]:
@@ -429,6 +430,17 @@ def harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 # ── Fixture builders
+
+def keychain_refusing(code: int) -> Callable[[str, str], None]:
+    """keychain.set_ as macOS's Keychain refuses a write: keyring raises PasswordSetError from the
+    Security API's error, which carries macOS's OSStatus code, as keyring's macOS backend does."""
+    import keyring.errors
+
+    def refuse(_key: str, _value: str) -> None:
+        cause = Exception(code, "Unknown Error")
+        raise keyring.errors.PasswordSetError(f"Can't store password on keychain: {cause}") from cause
+    return refuse
+
 
 def msg(source: str, ext_id: str, when: str, body: str, *, sender: str | None = None,
         subject: str | None = None, chat: str | None = None, kid: str | None = None) -> Message:

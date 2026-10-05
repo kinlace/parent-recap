@@ -37,7 +37,7 @@ from family_brief.collectors import myclub, whatsapp
 from family_brief.config import Config
 from family_brief.state import State
 from family_brief.utils import keychain
-from conftest import msg
+from conftest import keychain_refusing, msg
 from test_nightly_run import FEEDBACK, FORM, feedback_links
 from test_setup_status import install_program
 from test_setup_steps import HeaderImap
@@ -237,6 +237,32 @@ def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock
 
     assert capsys.readouterr().out.splitlines()[-1] == setup_server.CLOSED_LINES["fi"]
     assert set(setup_server.CLOSED_LINES) == set(setup_server.LANGUAGES)
+
+
+@pytest.mark.parametrize("var", ["TMUX", "SSH_CONNECTION"])
+def test_in_tmux_or_ssh_the_command_warns_the_keychain_cannot_be_reached(harness, clock, capsys,
+                                                                       monkeypatch, var):
+    monkeypatch.setenv(var, "/private/tmp/tmux-501/default,1234,0" if var == "TMUX"
+                       else "10.0.0.2 52000 10.0.0.1 22")
+    monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(config_file(harness)), "setup", "page"])
+    thread = threading.Thread(target=cli.main, daemon=True)
+    thread.start()
+    wait_for(lambda: harness.opened)
+    url = harness.opened[0]
+
+    # Said once, on the page too, before the family types anything.
+    assert call(url, "api/state").json()["keychain"] == {"reachable": False}
+    clock.now += 31 * 60
+    thread.join(5)
+
+    out, err = capsys.readouterr()
+    opened = json.loads(out.splitlines()[0])
+    assert opened["result"] == "opened" and "outside tmux or SSH" in opened["warning"]
+    assert (out + err).count("outside tmux or SSH") == 1
+
+
+def test_outside_tmux_and_ssh_the_keychain_is_reachable(page):
+    assert call(page.url, "api/state").json()["keychain"] == {"reachable": True}
 
 
 def test_each_run_has_its_own_code_and_port(harness, clock):
@@ -1023,6 +1049,15 @@ def test_a_keychain_that_refuses_says_so(harness, page, gmail, monkeypatch):
     assert statuses(page.url)["gmail"] == "to-do"
 
 
+def test_a_keychain_out_of_reach_says_so_with_its_code(harness, page, gmail, monkeypatch):
+    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25308))  # errSecInteractionNotAllowed
+
+    assert connect_gmail(page.url).json() == {"result": "keychain-not-reachable", "code": -25308}
+    assert statuses(page.url)["gmail"] == "to-do"
+    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25293))
+    assert connect_gmail(page.url).json() == {"result": "keychain-failed", "code": -25293}
+
+
 def test_an_address_that_is_not_one_is_explained(harness, page, gmail):
     for address in ["", "parent", "parent@", "a b@example.com"]:
         assert connect_gmail(page.url, address=address).json()["result"] == "no-address", address
@@ -1804,6 +1839,17 @@ def test_a_keychain_that_refuses_the_claude_token_says_so(harness, page, claude,
     r = call(page.url, "api/claude/token", method="POST", body={"token": CLAUDE_TOKEN})
 
     assert r.json() == {"result": "keychain-failed"}
+    assert statuses(page.url)["ai"] == "to-do"
+
+
+def test_a_keychain_out_of_reach_of_the_claude_token_says_so_with_its_code(harness, page, claude,
+                                                                          monkeypatch):
+    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25308))  # errSecInteractionNotAllowed
+    claude.install()
+
+    r = call(page.url, "api/claude/token", method="POST", body={"token": CLAUDE_TOKEN})
+
+    assert r.json() == {"result": "keychain-not-reachable", "code": -25308}
     assert statuses(page.url)["ai"] == "to-do"
 
 
