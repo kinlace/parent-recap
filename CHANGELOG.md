@@ -4,6 +4,20 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.5.3 · 2026-10-05
+
+Fixes from setting up on Xiao xi's Mac mini.
+
+### The evening Brief
+- The evening Brief reads the Claude token and the Gmail App Password without a hidden Keychain popup. If doctor says macOS asks for the Keychain password, storing the token or App Password again once fixes it.
+- Setup and the evening Brief find Claude Code, Codex, Node and the Wilma CLI even when macOS's own Terminal doesn't have them on its PATH, as with fish, nix or a custom npm folder.
+
+### Setup
+- The setup page finishes with "All done" when only warnings are left, and stops you if the evening Brief can't sign in to Claude.
+- A "Check again" button on the last step runs the checks again after you fix something, without turning anything on again.
+- Run inside tmux or over SSH, setup warns at the start that passwords can't be saved there, and if saving fails it says to run it again in a plain Terminal window, instead of asking you to click Allow on a prompt that never comes.
+- Saying yes to pilot feedback will set it up fully, with nothing to paste, once the pilot Form ships with the program. Until then setup doesn't ask.
+
 ## 0.5.2 · 2026-10-05
 
 Setup page fixes from the first web setup on an Intel Mac.
