@@ -15,13 +15,17 @@ from pathlib import Path
 
 
 def wheel(folder: Path, name: str, version: str, files: dict[str, str] | None = None,
-          requires: tuple[str, ...] = (), tag: str = "py3-none-any") -> Path:
+          requires: tuple[str, ...] = (), tag: str = "py3-none-any",
+          extras: dict[str, list[str]] | None = None) -> Path:
     dist = name.replace("-", "_")
     info = f"{dist}-{version}.dist-info"
     contents = {
         **(files or {}),
         f"{info}/METADATA": f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n"
-                            + "".join(f"Requires-Dist: {r}\n" for r in requires),
+                            + "".join(f"Requires-Dist: {r}\n" for r in requires)
+                            + "".join(f"Provides-Extra: {extra}\n" + "".join(
+                                f'Requires-Dist: {r}; extra == "{extra}"\n' for r in rs)
+                                for extra, rs in (extras or {}).items()),
         f"{info}/WHEEL": f"Wheel-Version: 1.0\nGenerator: tests\nRoot-Is-Purelib: true\nTag: {tag}\n",
     }
     path = folder / f"{dist}-{version}-{tag}.whl"
@@ -33,14 +37,14 @@ def wheel(folder: Path, name: str, version: str, files: dict[str, str] | None = 
 
 
 def project(folder: Path, name: str, version: str, requires: tuple[str, ...] = (),
-            build_marker: Path | None = None) -> Path:
-    """A source tree pip builds with this module."""
+            build_marker: Path | None = None, extras: dict[str, list[str]] | None = None) -> Path:
+    """A source tree pip builds with this module, with `extras` such as {"google": [...]}."""
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "pyproject.toml").write_text(
         '[build-system]\nrequires = []\nbuild-backend = "fake_packages"\nbackend-path = ["."]\n')
     shutil.copy(__file__, folder / "fake_packages.py")
     (folder / "fake-package.json").write_text(json.dumps({
-        "name": name, "version": version, "requires": list(requires),
+        "name": name, "version": version, "requires": list(requires), "extras": extras or {},
         "build_marker": str(build_marker) if build_marker else None}))
     return folder
 
@@ -66,7 +70,8 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None) 
         raise SystemExit("this package only builds from source")
     # Editable: the tree itself goes on the path.
     pth = {f"_{spec['name'].replace('-', '_')}.pth": f"{Path.cwd()}\n"}
-    return wheel(Path(wheel_directory), spec["name"], spec["version"], pth, tuple(spec["requires"])).name
+    return wheel(Path(wheel_directory), spec["name"], spec["version"], pth, tuple(spec["requires"]),
+                 extras=spec["extras"]).name
 
 
 build_editable = build_wheel

@@ -12,8 +12,6 @@ import os
 import sys
 from pathlib import Path
 
-from google_auth_oauthlib.flow import InstalledAppFlow
-
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 FAMILY = Path.home() / ".family"
 
@@ -29,6 +27,14 @@ def main() -> int:
               "  3. Skip Google Calendar: set google_calendar.mode to ics in the config, and new events "
               "come as an .ics attachment on the Brief\n"
               "Run this script again once the file is saved.", file=sys.stderr)
+        return 1
+    try:
+        # Only installed for google mode, as the `google` extra (family_brief/google_packages.py).
+        from google_auth_oauthlib.flow import InstalledAppFlow
+    except ImportError:
+        print("Google's packages for Google Calendar aren't installed. Set google_calendar.mode to "
+              "google in the config, run the plugin's install.sh again, which installs them, then "
+              "run this script again.", file=sys.stderr)
         return 1
     print('The browser opens Google\'s sign-in page. If it says "Google hasn\'t verified this app", '
           'click Advanced → Go to (app name) → Allow.')

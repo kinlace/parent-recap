@@ -21,11 +21,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      # As install.sh installs: prebuilt packages only, at the pinned versions.
+      # As install.sh installs: prebuilt packages only, at the pinned versions, with the google
+      # extra a Google Calendar Household gets.
       - name: Install
         # Quoted as a block: in plain YAML, the colon and space after `:all:` would start a mapping.
         run: |
-          python -m pip install --only-binary :all: -c constraints.txt -e '.[test]'
+          python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
       # This runner is an Apple Silicon Mac. The check covers Intel Macs too.
       - name: Check every pinned package has a wheel for both kinds of Mac
         run: python ../scripts/check_wheels.py

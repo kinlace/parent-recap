@@ -61,6 +61,11 @@ MAC+=" pip $("$APP/.venv/bin/python" -c 'from importlib.metadata import version;
 printf '%s\n%s\n' "$MAC" "$UPGRADE" > "$LOG"
 [ "$UPGRADED" = yes ] || pip_failed
 "${PIP[@]}" -c "$APP/constraints.txt" -e "$APP" >> "$LOG" 2>&1 || pip_failed
+# Google's packages only for a Household whose config uses Google Calendar: turning it on in
+# manage runs this script again, and an update keeps them.
+if "$APP/.venv/bin/python" -m family_brief.google_packages wanted; then
+  "${PIP[@]}" -c "$APP/constraints.txt" -e "$APP[google]" >> "$LOG" 2>&1 || pip_failed
+fi
 RECORD=("$APP/.venv/bin/python" -m family_brief.install_record)
 "${RECORD[@]}" program "$APP" logs "$TARGET/logs"
 # The copy of the plugin the install line downloads, which the Codex skills run from; Claude

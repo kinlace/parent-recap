@@ -5,16 +5,16 @@ import logging
 import os
 from datetime import timedelta, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-
+from .. import google_packages
 from ..brief_text import PRODUCT_NAME
 from ..collectors.base import CalendarEvent
 from ..config import Config
 from ..state import State
+
+if TYPE_CHECKING:
+    from google.oauth2.credentials import Credentials
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +52,9 @@ class CalendarNotConfigured(RuntimeError):
 
 
 def load_credentials() -> Credentials:
+    # Google's packages are the `google` extra, imported only once google mode is in use.
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
     if Path(TOKEN_PATH).exists():
         creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
         if creds.valid:
@@ -68,10 +71,12 @@ def load_credentials() -> Credentials:
 
 
 def is_configured() -> bool:
-    return Path(TOKEN_PATH).exists()
+    """Authorized, with Google's packages installed to use the authorization."""
+    return Path(TOKEN_PATH).exists() and google_packages.installed()
 
 
 def _build_service():
+    from googleapiclient.discovery import build
     return build("calendar", "v3", credentials=load_credentials(), cache_discovery=False)
 
 
