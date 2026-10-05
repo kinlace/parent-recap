@@ -1,5 +1,5 @@
 // Creates the single pilot feedback Form and its response Sheet, then logs the
-// `feedback` config section. Run once in the operator's own Google account;
+// `feedback` block the program ships. Run once in the operator's own Google account;
 // see README.md next to this file.
 
 const FORM_TITLE = 'FamilyBrief pilot feedback';
@@ -64,12 +64,11 @@ function createFeedbackForm() {
       'Edit the form: ' + form.getEditUrl(),
       'Response sheet: ' + sheet.getUrl(),
       '',
-      'Paste this into config.yaml (each Household fills in its own household_label):',
+      'Save this as app/src/family_brief/pilot_feedback.yaml and release it (setup adds each',
+      "Household's household_label when it opts in):",
       '',
       'feedback:',
-      '  enabled: true',
       '  prefill_base_url: ' + baseUrl,
-      '  household_label: ""',
       '  fields:',
       ...fieldLines,
     ].join('\n'),

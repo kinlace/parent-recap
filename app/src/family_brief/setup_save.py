@@ -13,7 +13,7 @@ answers as JSON on stdin, every key optional:
    "sources": {"gmail": {"address": "parent@gmail.com", "allowlist_domains": ["espoo.fi"]},
                "wilma": {"enabled": true},
                "whatsapp": {"enabled": true, "chats": [{"name": "3B", "kid": "Mia Virtanen", "label": "class"}]}},
-   "feedback": {the pilot feedback section as the Parent Recap team sent it},
+   "feedback": {"enabled": true, "household_label": "Virtanen family"},
    "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"},
                 "partner": {"address": "partner@gmail.com", "language": "fi"},
                 "whatsapp_chats": [{"name": "3B", "last": "2026-09-25", "archived": false,
@@ -28,8 +28,10 @@ gmail-senders --json` found, each as it reports them, kept for the check page.
 
 What the answers don't mention stays as it was. The Kids given are the Household's Kids: a Kid
 left out is removed, and each one given keeps what the answers don't say about them, such as a
-MyClub link, which only `setup myclub` and the setup page's MyClub field save. The merged config
-is checked against the config model before it's written. `--read` saves nothing and only reads the progress back.
+MyClub link, which only `setup myclub` and the setup page's MyClub field save. Turning pilot
+feedback on writes the pilot Form shipped with the program (feedback.pilot_form), and is refused
+in a version that ships none; until the answers give a `household_label`, it's the setup parent's
+email user. The merged config is checked against the config model before it's written. `--read` saves nothing and only reads the progress back.
 
 It prints one line of JSON, with the progress in it. Invalid answers are refused with the path
 of each problem; the values aren't repeated, since a config can hold links that are secrets.
@@ -46,8 +48,9 @@ from typing import Any, Literal, get_args
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from . import feedback
 from .brief_text import Language
-from .config import Config, FeedbackConfig, WhatsAppChat
+from .config import Config, WhatsAppChat
 
 Phase = Literal["welcome", "connect", "working", "check", "first-brief", "finish"]
 SourceName = Literal["wilma", "gmail", "ai", "whatsapp", "myclub"]  # in the Source list's order
@@ -94,6 +97,13 @@ class SourcesAnswer(_Strict):
     whatsapp: WhatsAppAnswer | None = None
 
 
+class FeedbackAnswer(_Strict):
+    """Pilot feedback: whether the Household opts in, and the label that tells its rows apart in
+    the team's Sheet. The Form itself is the one shipped with the program."""
+    enabled: bool | None = None
+    household_label: str | None = None
+
+
 class ChatHint(_Strict):
     kids: list[str]
     matched: list[str]
@@ -137,7 +147,7 @@ class Answers(_Strict):
     ai: Literal["claude", "codex"] | None = None
     evening: str | None = None      # HH:MM, when the Brief comes
     sources: SourcesAnswer | None = None
-    feedback: FeedbackConfig | None = None
+    feedback: FeedbackAnswer | None = None
     progress: ProgressAnswer | None = None
 
     @field_validator("evening")
@@ -195,6 +205,11 @@ def save(config: Path, raw: Any) -> dict[str, Any]:
         answers = Answers.model_validate(raw)
     except ValidationError as e:
         return invalid(e)
+    form = feedback.pilot_form()
+    if answers.feedback is not None and answers.feedback.enabled and form is None:
+        return outcome("invalid-answers", "This version of Parent Recap has no pilot feedback "
+                       "form, so pilot feedback can't be turned on. Save the answers again "
+                       "without it.", errors=["feedback.enabled: this version has no pilot form"])
 
     data: dict[str, Any] | None = None
     if _config_answers(answers):
@@ -203,7 +218,7 @@ def save(config: Path, raw: Any) -> dict[str, Any]:
         except (OSError, ValueError, yaml.YAMLError, ValidationError):
             return outcome("bad-config", f"The config at {config} can't be read, so nothing was "
                         "saved. Run family-brief doctor, fix what it names, then save again.")
-        _merge(data, answers)
+        _merge(data, answers, form)
         try:
             Config.model_validate(data)
         except ValidationError as e:
@@ -234,7 +249,7 @@ def _read_config(config: Path) -> dict[str, Any]:
     return data
 
 
-def _merge(data: dict[str, Any], a: Answers) -> None:
+def _merge(data: dict[str, Any], a: Answers, form: dict[str, Any] | None) -> None:
     if a.language is not None:
         data["summary_language"] = a.language
     if a.city is not None:
@@ -262,7 +277,15 @@ def _merge(data: dict[str, Any], a: Answers) -> None:
     if sources.whatsapp is not None:
         _section(data, "whatsapp").update(_given(sources.whatsapp))
     if a.feedback is not None:
+        if a.feedback.enabled and form is not None:
+            _section(data, "feedback").update(form)
         _section(data, "feedback").update(_given(a.feedback))
+    fb, gmail = data.get("feedback"), data.get("gmail")
+    username = gmail.get("username") if isinstance(gmail, dict) else None
+    if isinstance(fb, dict) and fb.get("enabled") and not fb.get("household_label") \
+            and isinstance(username, str) and username:
+        # Until the family changes it on the check page: the setup parent's email user.
+        fb["household_label"] = username.split("@")[0]
 
 
 def _given(answer: BaseModel) -> dict[str, Any]:

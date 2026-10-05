@@ -37,8 +37,8 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import (chat_install, ops, run_lock, setup_ai, setup_save, setup_status, setup_steps,
-               setup_wilma, summarize)
+from . import (chat_install, feedback, ops, run_lock, setup_ai, setup_save, setup_status,
+               setup_steps, setup_wilma, summarize)
 from .actions import email as email_action
 from .config import Config, Kid
 from .state import State
@@ -599,7 +599,8 @@ class SetupServer:
         """What the check page shows, each list ticked by best guess: the Kids, all ticked with
         their everyday names; the WhatsApp groups, those linked to a Kid ticked (none without
         WhatsApp); the Gmail senders that look like school, city or club mail ticked, and never
-        a public one; each Recipient with their language; and the evening time."""
+        a public one; each Recipient with their language; the evening time; and for a pilot
+        Household, the label its feedback goes under (None for any other)."""
         cfg = self._config()
         hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
         return {"kids": [{"name": k.name, "everyday_name": everyday_name(k)} for k in cfg.kids],
@@ -608,7 +609,9 @@ class SetupServer:
                 "senders": self._senders(cfg, progress),
                 "recipients": [{"address": r.address, "language": cfg.language_of(r)}
                                for r in cfg.email.to],
-                "evening": f"{hour:02d}:{minute:02d}"}
+                "evening": f"{hour:02d}:{minute:02d}",
+                "feedback": {"household_label": cfg.feedback.household_label}
+                if cfg.feedback.enabled else None}
 
     @staticmethod
     def _groups(cfg: Config, progress: dict[str, Any]) -> list[dict[str, Any]]:
@@ -710,6 +713,8 @@ class SetupServer:
             "evening": answer.evening,
             "sources": {"gmail": {"allowlist_domains": answer.senders}},
         }
+        if answer.household_label is not None:
+            answers["feedback"] = {"household_label": answer.household_label.strip()}
         if answer.whatsapp is not None:
             found = {c["name"]: c for c in progress.get("whatsapp_chats") or []}
             before = {c.name: c for c in cfg.whatsapp.chats}
@@ -986,16 +991,18 @@ class SetupServer:
         partner = answer.partner and answer.partner.model_dump()
         answers: dict[str, Any] = {
             "ai": answer.ai,
-            "feedback": {"enabled": answer.feedback},
             "progress": {"phase": "connect", "source": "wilma", "partner": partner},
         }
+        if answer.feedback or feedback.pilot_form():  # without a pilot Form, setup save refuses yes
+            answers["feedback"] = {"enabled": answer.feedback}
         parent = self._gmail_address()
         if parent:
             answers["recipients"] = self._recipients(parent, partner)
         with self._saving:
             out = setup_save.save(self.config, answers)
         if out["result"] != "saved":
-            return HTTPStatus.CONFLICT, out
+            return (HTTPStatus.BAD_REQUEST if out["result"] == "invalid-answers"
+                    else HTTPStatus.CONFLICT), out
         self._install_chat(answer.ai)
         return HTTPStatus.OK, out
 
@@ -1268,8 +1275,11 @@ class SetupServer:
             partner |= {k: v for k, v in saved.items() if k in ("address", "language")}
         backend = _section(data, "llm").get("backend")
         enabled = _section(data, "feedback").get("enabled")
+        # None when this version ships no pilot Form: the page doesn't ask, so nothing half-set
+        # is ever written.
+        pilot = (enabled if isinstance(enabled, bool) else True) if feedback.pilot_form() else None
         return {"ai": backend if backend in AIS else "claude", "partner": partner,
-                "feedback": enabled if isinstance(enabled, bool) else True}
+                "feedback": pilot}
 
     def _config_data(self) -> dict[str, Any]:
         """The config as saved so far, or empty when there's none yet."""
@@ -1311,6 +1321,7 @@ class CheckAnswer(BaseModel):
     senders: list[str]                    # the sender domains ticked
     recipients: list[setup_save.RecipientAnswer]
     evening: str                          # HH:MM
+    household_label: str | None = None    # a pilot Household's; None for any other
 
 
 def everyday_name(kid: Kid) -> str:
@@ -1336,6 +1347,9 @@ def _check_errors(answer: CheckAnswer, offered: dict[str, Any], phase: str) -> l
         errors.append("senders: should be sender domains the check page lists")
     if [r.address for r in answer.recipients] != [r["address"] for r in offered["recipients"]]:
         errors.append("recipients: should be the Recipients the check page lists, in order")
+    label = answer.household_label
+    if label is not None and (offered["feedback"] is None or not label.strip()):
+        errors.append("household_label: should be a name, and only for a pilot Household")
     return errors
 
 

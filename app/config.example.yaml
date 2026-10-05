@@ -66,7 +66,7 @@ weekend_events:
 
 # Pilot feedback (optional): when on, the emailed Brief has ⭐ / ❌ links next to every Action Item and a ❌ link under the Digest.
 # Clicking one opens a pre-filled Google Form that sends the item's text, Source, AI, date, Household and Kid to the FamilyBrief team.
-# The team generates the whole section with ops/feedback-form and sends it to you; change only household_label. Leave it out if you're not in the pilot.
+# Setup writes the whole section when a pilot family opts in, from the form the program ships; change only household_label. Leave it out if you're not in the pilot.
 # feedback:
 #   enabled: true
 #   prefill_base_url: https://docs.google.com/forms/d/e/.../viewform

@@ -172,6 +172,8 @@ function renderWelcome() {
   const { ai: chosen, partner, feedback } = page.welcome;
   pick("ai", chosen);
   pick("partner", partner.add ? "add" : "only-me");
+  // Asked only when this version ships the pilot Form.
+  document.getElementById("welcome-feedback").hidden = feedback === null;
   pick("feedback", feedback ? "yes" : "no");
   document.getElementById("partner-address").value = partner.address;
   const select = document.getElementById("partner-language");
@@ -258,7 +260,7 @@ async function saveWelcome(event) {
       address: document.getElementById("partner-address").value.trim(),
       language: document.getElementById("partner-language").value,
     } : null,
-    feedback: picked("feedback") === "yes",
+    feedback: page.welcome.feedback !== null && picked("feedback") === "yes",
   };
   try {
     const r = await fetch("api/welcome", {
@@ -1115,7 +1117,7 @@ function enterCheck() {
 }
 
 function renderCheck() {
-  const { kids, whatsapp, senders, recipients, evening } = page.check;
+  const { kids, whatsapp, senders, recipients, evening, feedback } = page.check;
   document.getElementById("check-kids").replaceChildren(...kids.map(kidRow));
   document.getElementById("check-whatsapp").hidden = whatsapp === null;
   document.getElementById("check-groups").replaceChildren(...(whatsapp || []).map((group) =>
@@ -1129,6 +1131,11 @@ function renderCheck() {
     senders.some((s) => s.ticked && s.count > 0);
   document.getElementById("check-recipients").replaceChildren(...recipients.map(recipientRow));
   document.getElementById("check-evening").value = evening;
+  // A pilot Household's feedback goes under this name in the team's sheet.
+  document.getElementById("check-feedback").hidden = feedback === null;
+  const label = document.getElementById("check-household-label");
+  label.required = feedback !== null;
+  label.value = feedback ? feedback.household_label : "";
   syncAll("check-whatsapp-all", "check-groups");
   syncAll("check-senders-all", "check-senders");
 }
@@ -1252,6 +1259,9 @@ async function confirmCheck(event) {
       .map((select) => ({ address: select.dataset.address, language: select.value })),
     evening: document.getElementById("check-evening").value,
   };
+  if (page.check.feedback !== null) {
+    answers.household_label = document.getElementById("check-household-label").value.trim();
+  }
   const button = event.submitter;
   button.disabled = true;
   try {
@@ -1513,7 +1523,8 @@ function finishResult(out) {
 }
 
 // Each outcome, ticked once it's true. After a try, each that isn't says what's missing and
-// what to do, and a health check that isn't OK names its checks, as the check page does.
+// what to do, and a health check that isn't OK names its checks, as the check page does. A
+// health check with only warnings is true, and always lists them with what to do.
 function renderChecklist(outcomes, explain) {
   document.getElementById("finish-checklist").replaceChildren(...outcomes.map((o) => {
     const item = document.createElement("li");
@@ -1521,6 +1532,12 @@ function renderChecklist(outcomes, explain) {
     const line = document.createElement("span");
     setText(line, "finish.outcome." + o.outcome);
     item.append(line);
+    if (o.ok && o.checks) {
+      const warnings = document.createElement("p");
+      warnings.className = "hint";
+      setText(warnings, "finish.warnings");
+      item.append(warnings, failedChecks(o.checks));
+    }
     if (o.ok || !explain) return item;
     const missing = document.createElement("p");
     missing.className = "hint";

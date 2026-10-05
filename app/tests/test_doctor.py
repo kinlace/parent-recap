@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import re
+import shutil
 import sys
 
-from family_brief import __main__ as cli, ops
+import pytest
+
+from family_brief import __main__ as cli, ops, setup_steps
 from family_brief.collectors import whatsapp, wilma
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
@@ -24,6 +27,40 @@ def test_doctor_reports_every_check_in_english(harness, monkeypatch, capsys):
     assert "No App Password in the Keychain for parent@example.com" in out
     assert "family-brief schedule install" in out
     assert not HAN.findall(out)
+
+
+@pytest.fixture
+def claude_without_token(harness, monkeypatch):
+    """Claude Code installed and answering, with no claude-oauth-token in the Keychain."""
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    harness.config["wilma"]["enabled"] = False
+    harness.config["whatsapp"]["enabled"] = False
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    which = shutil.which
+    monkeypatch.setattr(shutil, "which", lambda cmd, *a, **k: f"/usr/local/bin/{cmd}"
+                        if cmd == "claude" else which(cmd, *a, **k))
+    harness.model_reply = "OK"
+
+
+def test_doctor_fails_claude_without_a_token_for_the_evening_brief(harness, claude_without_token,
+                                                                  capsys):
+    assert harness.cli("doctor") == 1
+
+    out = capsys.readouterr().out
+    line = next(l for l in out.splitlines() if "Claude:" in l)
+    assert line.startswith(ops.FAIL)
+    assert "no claude-oauth-token" in line and "family-brief setup claude" in line
+    assert "tmux" not in line
+
+
+def test_doctor_in_tmux_says_to_store_the_token_outside_it(harness, claude_without_token,
+                                                          monkeypatch, capsys):
+    monkeypatch.setenv("TMUX", "/private/tmp/tmux-501/default,1,0")
+
+    harness.cli("doctor")
+
+    line = next(l for l in capsys.readouterr().out.splitlines() if "Claude:" in l)
+    assert line.startswith(ops.FAIL) and setup_steps.PLAIN_TERMINAL in line
 
 
 def test_doctor_names_an_unreadable_config_in_english(harness, capsys):

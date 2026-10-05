@@ -60,7 +60,7 @@
           </div>
         </div>
       </fieldset>
-      <fieldset>
+      <fieldset id="welcome-feedback">
         <legend data-text="welcome.feedback"></legend>
         <label><input type="radio" name="feedback" value="yes"><span data-text="welcome.feedback.yes"></span></label>
         <label><input type="radio" name="feedback" value="no"><span data-text="welcome.feedback.no"></span></label>
@@ -355,6 +355,14 @@
           <input type="time" id="check-evening" step="60" required>
         </div>
         <p class="hint" data-text="check.evening.note"></p>
+      </fieldset>
+      <fieldset id="check-feedback" hidden>
+        <legend data-text="check.feedback"></legend>
+        <div class="field">
+          <label for="check-household-label" data-text="check.feedback.label"></label>
+          <input type="text" id="check-household-label" autocomplete="off" spellcheck="false">
+        </div>
+        <p class="hint" data-text="check.feedback.note"></p>
       </fieldset>
       <button type="submit" id="check-confirm" data-text="check.confirm"></button>
     </form>

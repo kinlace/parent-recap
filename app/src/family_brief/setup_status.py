@@ -2,7 +2,7 @@
 one-line reason.
 
 1. installed — the program is installed
-2. doctor    — the health check is all OK
+2. doctor    — the health check has no ❌ (its ⚠️ warnings are named, but don't hold setup up)
 3. brief     — the first Brief reached the setup parent, the first Recipient; the
                others' first Brief is the first evening one
 4. nightly   — the nightly job is loaded
@@ -29,7 +29,7 @@ from .state import State
 
 TITLES = {
     "installed": "Program installed",
-    "doctor": "Health check all OK",
+    "doctor": "Health check has nothing to fix",
     "brief": "First Brief reached the setup parent",
     "nightly": "Nightly job loaded",
     "wake": "Wake schedule set, or the Mac never sleeps",
@@ -41,7 +41,8 @@ class Outcome:
     outcome: str
     ok: bool
     reason: str
-    # Doctor's checks that aren't OK, each (status, name), for the setup page to name.
+    # Doctor's checks that aren't OK, each (status, name), for the setup page to name: on a true
+    # outcome, its warnings.
     checks: list[tuple[str, str]] = field(default_factory=list)
 
 
@@ -99,6 +100,10 @@ def _doctor(config: str | None) -> Outcome:
     if not checks:
         return Outcome("doctor", True, f"all {len(results)} checks OK")
     not_ok = [f"{item} {status.strip()}" for status, item in checks]
+    # Only a ❌ holds setup up; a ⚠️ is named, with what to do, but the Brief works without it.
+    if all(status == ops.WARN for status, _ in checks):
+        return Outcome("doctor", True, f"no check failed, {len(not_ok)} of {len(results)} have a "
+                       f"warning: {', '.join(not_ok)} (run family-brief doctor to see why)", checks)
     return Outcome("doctor", False, f"{len(not_ok)} of {len(results)} checks aren't OK: "
                    f"{', '.join(not_ok)} (run family-brief doctor to see why)", checks)
 

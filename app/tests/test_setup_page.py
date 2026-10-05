@@ -37,7 +37,7 @@ from family_brief.collectors import myclub, whatsapp
 from family_brief.config import Config
 from family_brief.state import State
 from family_brief.utils import keychain
-from conftest import keychain_refusing, msg
+from conftest import PILOT_FORM_FIELDS, PILOT_FORM_URL, keychain_refusing, msg
 from test_nightly_run import FEEDBACK, FORM, feedback_links
 from test_setup_status import install_program
 from test_setup_steps import HeaderImap
@@ -510,7 +510,7 @@ def ai(harness, monkeypatch):
 
 def welcome(url: str, **answers: Any) -> Response:
     return call(url, "api/welcome", method="POST",
-                body={"ai": "claude", "partner": None, "feedback": True, **answers})
+                body={"ai": "claude", "partner": None, "feedback": False, **answers})
 
 
 def check_ai(url: str, name: str) -> Response:
@@ -518,6 +518,7 @@ def check_ai(url: str, name: str) -> Response:
 
 
 def test_each_welcome_choice_has_a_default(harness, page):
+    harness.ship_pilot_form()
     call(page.url, "api/language", method="POST", body={"language": "zh"})
 
     assert call(page.url, "api/state").json()["welcome"] == {
@@ -528,6 +529,7 @@ def test_each_welcome_choice_has_a_default(harness, page):
 
 
 def test_the_welcome_answers_are_saved(harness, page):
+    harness.ship_pilot_form()
     call(page.url, "api/language", method="POST", body={"language": "fi"})
 
     r = welcome(page.url, ai="codex", partner={"address": "partner@example.com", "language": "zh"},
@@ -544,6 +546,29 @@ def test_the_welcome_answers_are_saved(harness, page):
         "partner": {"add": True, "address": "partner@example.com", "language": "zh"},
         "feedback": False,
     }
+
+
+def test_a_pilot_household_s_opt_in_writes_the_whole_feedback_section(harness, page):
+    harness.ship_pilot_form()
+    config_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+
+    assert welcome(page.url, feedback=True).status == 200
+
+    cfg = Config.load(config_file(harness))
+    assert cfg.feedback.active()
+    assert cfg.feedback.prefill_base_url == PILOT_FORM_URL
+    assert cfg.feedback.fields.model_dump() == PILOT_FORM_FIELDS
+    assert cfg.feedback.household_label == "parent"  # the setup parent's, until changed on Check
+
+
+def test_without_a_shipped_pilot_form_welcome_doesnt_ask_about_feedback(harness, page):
+    assert call(page.url, "api/state").json()["welcome"]["feedback"] is None
+    assert welcome(page.url, feedback=True).status == 400  # nothing to opt in to
+    assert not config_file(harness).exists()
+    assert welcome(page.url, feedback=False).status == 200
+
+    assert "feedback" not in yaml.safe_load(config_file(harness).read_text())
 
 
 def test_the_partner_comes_after_the_parent_once_the_parent_s_gmail_is_known(harness, page):
@@ -2685,6 +2710,25 @@ def test_warnings_alone_let_setup_move_on(harness, page, health):
     assert health_result(page.url)["result"] == "ok"
 
 
+def test_a_pilot_household_sees_its_feedback_label_and_can_change_it(harness, page, health):
+    harness.config["feedback"] = {**FEEDBACK, "household_label": "parent"}
+    at_the_check_step(harness)
+
+    assert check_page(page.url)["feedback"] == {"household_label": "parent"}
+    assert confirm(page.url, household_label=" ").status == 400
+
+    assert confirm(page.url, household_label=" Virtanen family ").json()["result"] == "checking"
+    assert Config.load(config_file(harness)).feedback.household_label == "Virtanen family"
+
+
+def test_a_household_not_in_the_pilot_has_no_feedback_label_to_give(harness, page, health):
+    at_the_check_step(harness)
+
+    assert check_page(page.url)["feedback"] is None
+    assert confirm(page.url, household_label="Virtanen family").status == 400
+    assert confirm(page.url).json()["result"] == "checking"
+
+
 def test_the_health_check_runs_for_real_with_the_sources_confirmed(harness, page, ai, monkeypatch):
     ai("claude")
     harness.keychain["claude-oauth-token"] = "sk-ant-oat01-token"
@@ -3182,8 +3226,23 @@ def test_a_failed_health_check_names_the_checks_that_aren_t_ok(harness, page, sc
         {"check": "myclub", "status": "fail", "kid": "Mia"}, {"check": "other", "status": "warn"}]}
     # Only their names: doctor's details can name an address or quote an error.
     assert "parent@example.com" not in json.dumps(out) and "secret" not in json.dumps(out)
-    # The outcomes that are true carry nothing more.
+    # The outcomes that are true and have no warnings carry nothing more.
     assert all(set(o) == {"outcome", "ok"} for o in out["outcomes"] if o["ok"])
+
+
+def test_warnings_alone_dont_hold_finish_up_and_are_listed(harness, page, schedule, health):
+    at_finish(harness)
+    health.results += [(ops.WARN, "Pilot feedback", "feedback.household_label is empty"),
+                       (ops.WARN, "Language sv", "the Brief's own text in sv isn't ready yet")]
+
+    finish(page.url)
+    out = finished(page.url)
+
+    assert out["result"] == "done"
+    doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
+    assert doctor == {"outcome": "doctor", "ok": True, "checks": [
+        {"check": "feedback", "status": "warn"},
+        {"check": "language", "status": "warn", "language": "sv"}]}
 
 
 def test_finish_for_now_stops_the_page_once_a_try_has_ended(harness, page, schedule):
@@ -3362,7 +3421,7 @@ def test_every_finish_text_is_in_all_three_languages():
                 *(f"health.check.{c}" for c in {*setup_server.FINISH_CHECKS.values(), "other"}),
                 *(f"finish.fail.{c}" for c in {*setup_server.FINISH_CHECKS.values(), "other"}),
                 "finish.title", "finish.intro", "finish.start", "finish.replace", "finish.restart",
-                "finish.checklist", "finish.closed", "finish.stop"]
+                "finish.checklist", "finish.closed", "finish.stop", "finish.warnings"]
         for key in keys:
             assert table.get(key, "").strip(), (language, key)
 

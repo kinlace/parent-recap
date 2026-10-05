@@ -189,10 +189,15 @@ def _check_claude(add) -> None:
         add(FAIL, "Claude", "claude command not found on PATH or in ~/.local/bin "
             f"(install Claude Code with: {CLAUDE_INSTALL})")
         return
+    from .setup_steps import PLAIN_TERMINAL
+    from .utils import keychain
     env, label = _claude_env()
     if label == "inherited":
-        add(WARN, "Claude", "no claude-oauth-token in the Keychain, so the scheduled job probably "
-            "can't call Claude (store one with family-brief setup claude)")
+        # This shell's own sign-in can work while the evening job, which has none, can't.
+        where = f", {PLAIN_TERMINAL}" if keychain.unreachable_here() else ""
+        add(FAIL, "Claude", "no claude-oauth-token in the Keychain, so the evening Brief can't "
+            f"call Claude (store one with family-brief setup claude{where})")
+        return
     error = claude_test_call(claude, env)
     if error is not None:
         add(FAIL, "Claude", f"call failed (auth: {label}): {error[:120]}")
@@ -315,11 +320,12 @@ def _check_feedback(cfg: Config, add) -> None:
     fb = cfg.feedback
     if not fb.active():
         add(WARN, "Pilot feedback", "feedback is on but prefill_base_url or fields is missing, so the "
-            "Brief has no ⭐/❌ links (paste the whole block from ops/feedback-form again)")
+            "Brief has no ⭐/❌ links (turn it on again with family-brief setup save <<< "
+            "'{\"feedback\": {\"enabled\": true}}', which writes the pilot form this version ships)")
     elif not fb.household_label:
         # One Form serves every pilot Household; without a label their rows can't be told apart.
         add(WARN, "Pilot feedback", "feedback.household_label is empty, so the feedback sheet "
-            "can't tell which Household a row came from")
+            "can't tell which Household a row came from (set one with family-brief setup save)")
     else:
         add(OK, "Pilot feedback", f"the Brief has ⭐/❌ links, Household label {fb.household_label}")
 

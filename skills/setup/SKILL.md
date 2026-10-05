@@ -81,7 +81,7 @@ $FB setup save <<'EOF'
  "sources": {"gmail": {"address": "parent@gmail.com", "allowlist_domains": ["espoo.fi"], "allowlist_senders": []},
              "wilma": {"enabled": true},
              "whatsapp": {"enabled": true, "chats": [{"name": "3B vanhemmat", "kid": "Mia Virtanen", "label": "class"}]}},
- "feedback": {"enabled": true, "household_label": "Virtanen family", "prefill_base_url": "...", "fields": {...}},
+ "feedback": {"enabled": true, "household_label": "Virtanen family"},
  "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"}}}
 EOF
 ```
@@ -119,11 +119,11 @@ Every step of the setup page has a **Continue in the chat** button, for a family
 | Language           | The one they write in. It's setup's language and their Brief's                                                                                          |
 | AI                 | Claude in Claude Code; **ChatGPT** ("runs through Codex") in Codex. Say a paid plan is needed                                                            |
 | Recipients         | The parent and their partner ("Add my partner"), or "Only me"                                                                                           |
-| Pilot family       | Yes                                                                                                                                                     |
+| Pilot family       | Yes. Only when `PLUGIN/app/src/family_brief/pilot_feedback.yaml` exists; without it, leave this line and every pilot question out                       |
 
 The card has no calendar question: new events always come as an `.ics` attachment on the Brief, which one tap adds to any calendar. If the parent asks about Google Calendar, say it can be turned on later through `/parent-recap:manage`, once the Parent Recap team has given them the Google app file it needs.
 
-- **In Claude Code**, make one AskUserQuestion call with four questions, the default first in each: language (the one you guessed first, then whichever of English, Chinese and Finnish are left, at most four options; "Other" covers any other language), AI (Claude / ChatGPT, runs through Codex), Recipients (Add my partner / Only me) and pilot family (yes / no).
+- **In Claude Code**, make one AskUserQuestion call with four questions, the default first in each: language (the one you guessed first, then whichever of English, Chinese and Finnish are left, at most four options; "Other" covers any other language), AI (Claude / ChatGPT, runs through Codex), Recipients (Add my partner / Only me) and pilot family (yes / no), when the card has it.
 - **In Codex**, list language, AI and pilot family as numbered lines and ask the parent to reply "ok", or the number of a line to change; then ask that line's question as a numbered list. Once the card is settled, ask Recipients as its own numbered choice (1. Add my partner, 2. Only me).
 
 Then, one message each:
@@ -253,9 +253,9 @@ Give each list an "all" line the parent can tick instead of going through it. Th
 
 Then save it with `$FB setup save`: `kids` with every ticked Kid's `name`, `everyday_name` and `aliases`; `sources.gmail` with the ticked domains in `allowlist_domains` and the ticked addresses in `allowlist_senders`; `sources.whatsapp` with `"enabled": true` and each ticked group in `chats`, with `name` **copied exactly** from `chats` (trailing spaces, curly quotes and emoji all have to match), `kid` (a Kid's `name`, or `both`) and `label`; and `"progress": {"phase": "check"}`.
 
-**Pilot feedback**, if the card says pilot family. Read the "Pilot feedback" section of `PLUGIN/docs/config.md` and tell the parent every point the parents must know before turning it on, in your own words, leaving none out, especially that "just opening the link without submitting still leaves a record". End with one choice: turn it on, or not now. If not, save no `feedback`, and say they can turn it on later with `/parent-recap:manage`. If they agree, have them paste the whole section the Parent Recap team sent; it isn't a secret. If the team assigned a `household_label`, use that; otherwise, in the next message, offer one as a choice (such as the family name from the Kids' names, "Virtanen family"), with their own typed as the other option. Save the section as `feedback` with `$FB setup save`, as is, changing only `household_label`.
+**Pilot feedback**, if the card says pilot family. Read the "Pilot feedback" section of `PLUGIN/docs/config.md` and tell the parent every point the parents must know before turning it on, in your own words, leaving none out, especially that "just opening the link without submitting still leaves a record". End with one choice: turn it on, or not now. If not, save no `feedback`, and say they can turn it on later with `/parent-recap:manage`. If they agree, in the next message offer a `household_label` as a choice: the family name from the Kids' names (such as "Virtanen family"), with their own typed as the other option. Save `"feedback": {"enabled": true, "household_label": "..."}` with `$FB setup save`: it writes the rest of the section from the pilot form the program ships. Nothing is pasted.
 
-Then run `$FB doctor` once more. Fix every ❌, and with pilot feedback on, any ⚠️ on its line.
+Then run `$FB doctor` once more. Fix every ❌, and with pilot feedback on, any ⚠️ on its line. Other ⚠️ don't stop setup: tell the parent what each one means and what to do, as doctor says.
 
 ## 5. First Brief
 
@@ -272,7 +272,7 @@ Save `"progress": {"phase": "first-brief"}` first.
 Save `"progress": {"phase": "finish"}` first.
 
 1. Tell the parent macOS will ask for their Mac password in its own dialog, to wake the Mac 5 minutes before the Brief. Run `$FB schedule install`. If it warns the Mac already has a repeating wake schedule, show the parent what it lists and ask, as a choice, whether to replace it (keep it first); only if they choose to replace it, run `$FB schedule install --replace-wake`. If it prints a `sudo pmset ...` command, give it to the parent to run in Terminal.
-2. Run `$FB setup status`. It reports five outcomes: the program installed, the health check all OK, the first Brief delivered to the setup parent (the first Recipient; the others' first is the first evening one), the nightly job loaded, and the wake schedule set or the Mac never sleeping. Show them as a checklist. For each with `ok: false`, do what its `reason` says, and run it again, until `result` is `done`.
+2. Run `$FB setup status`. It reports five outcomes: the program installed, the health check with nothing to fix (no ❌; its `reason` names any ⚠️, which you tell the parent about with what to do, but which don't stop setup), the first Brief delivered to the setup parent (the first Recipient; the others' first is the first evening one), the nightly job loaded, and the wake schedule set or the Mac never sleeping. Show them as a checklist. For each with `ok: false`, do what its `reason` says, and run it again, until `result` is `done`.
 3. The sixth outcome is yours to confirm: after the Mac restarts, such as after a macOS update, someone must log in to this Mac user once, or no Brief comes until they do. The wake-up wakes a sleeping Mac only: a Mac that's shut down makes no Brief, so in the evening it should be left asleep or locked, not shut down. Tell the parent both, and end with one choice for them to confirm they've got it.
 
 Setup ends only when `setup status` says `done` and the parent has confirmed the restart reminder. Then tell them:

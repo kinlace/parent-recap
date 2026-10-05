@@ -1,6 +1,6 @@
 # Pilot feedback form
 
-`create_feedback_form.gs` creates, in your own Google account, the one feedback form (Google Form) shared by the whole pilot and the sheet that collects the responses (Google Sheet), and prints the `feedback` section for `config.yaml`. Run it once for the whole pilot: every Household uses the same form and is told apart by the Household field.
+`create_feedback_form.gs` creates, in your own Google account, the one feedback form (Google Form) shared by the whole pilot and the sheet that collects the responses (Google Sheet), and prints the `feedback` block the program ships. Run it once for the whole pilot: every Household uses the same form and is told apart by the Household field.
 
 ## Running it
 
@@ -10,13 +10,13 @@
 4. The first time, an authorization prompt appears: choose your account → "Advanced" → "Go to … (unsafe)" → "Allow". The script only creates one form and one sheet
 5. When it finishes, the "Execution log" below contains:
    - The form's edit link and the response sheet's link; keep these for yourself
-   - A section starting with `feedback:`; copy it exactly
+   - A block starting with `feedback:`; copy it exactly
 
 Running it again creates another new form and leaves the old one alone; delete what you don't need in Google Drive.
 
-## Sending it to pilot families
+## Shipping it to pilot families
 
-Every Household's `config.yaml` gets the same `feedback` section, with only `household_label` changed to that Household's name (such as `"Virtanen family"`), so the response sheet shows who reported what.
+Save the `feedback:` block as `app/src/family_brief/pilot_feedback.yaml` and release it. Until a release has this file, setup doesn't ask about pilot feedback at all. With it, the setup page's Welcome and the chat setup ask whether the family is a pilot family; when they agree, `setup save` writes the block into their `config.yaml` with a `household_label` of their own (the setup parent's email user by default, which they can change on the setup page's check step), so the response sheet shows who reported what. Nothing needs to be sent to families by hand.
 
 ## Checking
 
