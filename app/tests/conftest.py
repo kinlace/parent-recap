@@ -35,7 +35,7 @@ import pytest
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli, summarize
+from family_brief import __main__ as cli, feedback, summarize
 from family_brief.actions import calendar as calendar_action, email as email_action
 from family_brief.collectors import gmail, myclub, whatsapp, wilma
 from family_brief.collectors.base import CalendarEvent, Message
@@ -45,6 +45,11 @@ TZ = "Europe/Helsinki"
 # A Sunday evening in autumn, after the nightly launchd slot.
 NOW = datetime(2026, 9, 27, 21, 0, tzinfo=ZoneInfo(TZ))
 GOLDEN_DIR = Path(__file__).parent / "golden"
+# A stand-in for the pilot Form the team ships: no real Form is needed.
+PILOT_FORM_URL = "https://docs.google.com/forms/d/e/PILOT_FORM/viewform"
+PILOT_FORM_FIELDS = {"verdict": "entry.11", "item_text": "entry.12", "source": "entry.13",
+                     "backend": "entry.14", "date": "entry.15", "household": "entry.16",
+                     "kid": "entry.17"}
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -303,9 +308,17 @@ class Harness:
 
         mp.setattr(email_action, "send", send)
 
+        # Whether this version ships the pilot Form is each test's to say, with ship_pilot_form.
+        mp.setattr(feedback, "PILOT_FORM", self.home / "pilot_feedback.yaml")
+
         token = self.home / ".family" / "calendar_token.json"
         mp.setattr(calendar_action, "TOKEN_PATH", str(token))
         mp.setattr(calendar_action, "_build_service", lambda: self.calendar)
+
+    def ship_pilot_form(self) -> None:
+        """This version ships the pilot Form's block, as ops/feedback-form's log prints it."""
+        feedback.PILOT_FORM.write_text(yaml.safe_dump({"feedback": {
+            "prefill_base_url": PILOT_FORM_URL, "fields": PILOT_FORM_FIELDS}}))
 
     def authorize_google_calendar(self) -> None:
         token = Path(calendar_action.TOKEN_PATH)

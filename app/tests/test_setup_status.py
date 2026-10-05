@@ -146,6 +146,26 @@ def test_the_health_check_names_the_checks_that_arent_ok(harness, healthy, capsy
     assert "Claude" not in doctor["reason"]
 
 
+def test_warnings_alone_dont_hold_the_health_check_up_but_are_named(harness, healthy, capsys):
+    harness.config["feedback"] = {"enabled": True}  # no pilot form in this config: a warning
+
+    _, report = status(harness, capsys)
+
+    doctor = outcome(report, "doctor")
+    assert doctor["ok"] is True, doctor
+    assert "Pilot feedback" in doctor["reason"] and "family-brief doctor" in doctor["reason"]
+
+
+def test_without_a_claude_token_the_health_check_isnt_ok(harness, healthy, capsys):
+    del harness.keychain["claude-oauth-token"]
+
+    _, report = status(harness, capsys)
+
+    doctor = outcome(report, "doctor")
+    assert doctor["ok"] is False
+    assert "Claude" in doctor["reason"]
+
+
 # ── 3. The first Brief reached the setup parent
 
 

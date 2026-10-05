@@ -16,7 +16,8 @@ from typing import Any
 import pytest
 import yaml
 
-from family_brief import __main__ as cli
+from conftest import PILOT_FORM_FIELDS, PILOT_FORM_URL
+from family_brief import __main__ as cli, feedback, ops
 from family_brief.config import Config
 
 LINK = "https://example.myclub.fi/ical/mia.ics"  # Mia's, in the harness's config
@@ -37,11 +38,7 @@ ANSWERS = {
         "whatsapp": {"enabled": True, "chats": [{"name": "3B vanhemmat 🎒 ", "kid": "Mia Virtanen",
                                                   "label": "class"}]},
     },
-    "feedback": {"enabled": True, "prefill_base_url": "https://docs.google.com/forms/d/e/x/viewform",
-                 "household_label": "Virtanen family",
-                 "fields": {"verdict": "entry.1", "item_text": "entry.2", "source": "entry.3",
-                            "backend": "entry.4", "date": "entry.5", "household": "entry.6",
-                            "kid": "entry.7"}},
+    "feedback": {"enabled": True, "household_label": "Virtanen family"},
 }
 
 
@@ -87,6 +84,8 @@ def result(capsys) -> tuple[dict[str, Any], str]:
 
 
 def test_answers_on_a_new_mac_write_a_valid_owner_only_config(harness, capsys):
+    harness.ship_pilot_form()
+
     assert save(harness, ANSWERS) == 0
 
     res, _ = result(capsys)
@@ -176,6 +175,8 @@ def test_answers_in_the_wrong_shape_are_refused_with_the_reason(harness, capsys)
                             "recipients.0.language"),
                            ({"sources": {"whatsapp": {"chats": [{"kid": "Mia"}]}}},
                             "sources.whatsapp.chats.0.name"),
+                           ({"feedback": {"prefill_base_url": "https://example.com/form"}},
+                            "feedback.prefill_base_url"),  # the program's own, never pasted
                            ({"colour": "blue"}, "colour")]:
         assert save(harness, answers) == 1, answers
         res, _ = result(capsys)
@@ -183,6 +184,62 @@ def test_answers_in_the_wrong_shape_are_refused_with_the_reason(harness, capsys)
         assert any(e.startswith(field) for e in res["errors"]), (answers, res["errors"])
         assert res["next"]
         assert saved(harness) == before
+
+
+def test_opting_in_to_pilot_feedback_writes_the_shipped_form_with_the_household_s_label(
+        harness, capsys, monkeypatch):
+    harness.ship_pilot_form()
+    harness.config.update(wilma={"enabled": False}, whatsapp={"enabled": False})
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    existing_config(harness)
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+
+    assert save(harness, {"feedback": {"enabled": True}}) == 0
+
+    feedback = saved(harness)["feedback"]
+    assert feedback == {"enabled": True, "prefill_base_url": PILOT_FORM_URL,
+                        "fields": PILOT_FORM_FIELDS,
+                        "household_label": "parent"}  # the setup parent's email user, until changed
+    capsys.readouterr()
+    harness.config = saved(harness)
+    harness.cli("doctor", "--skip-llm")
+    out = capsys.readouterr().out
+    assert "✅ Pilot feedback: the Brief has ⭐/❌ links, Household label parent" in out
+    assert "⚠️  Pilot feedback" not in out
+
+    assert save(harness, {"feedback": {"household_label": "Virtanen family"}}) == 0
+    assert saved(harness)["feedback"]["household_label"] == "Virtanen family"
+
+
+def test_the_household_label_follows_once_the_setup_parent_s_gmail_is_known(harness, capsys):
+    harness.ship_pilot_form()
+
+    assert save(harness, {"ai": "claude", "feedback": {"enabled": True}}) == 0
+    assert "household_label" not in saved(harness)["feedback"]
+    assert save(harness, {"sources": {"gmail": {"address": "virtanen.home@gmail.com"}}}) == 0
+
+    assert saved(harness)["feedback"]["household_label"] == "virtanen.home"
+
+
+def test_without_a_shipped_pilot_form_pilot_feedback_cant_be_turned_on(harness, capsys):
+    before = existing_config(harness)
+
+    assert save(harness, {"feedback": {"enabled": True}}) == 1
+
+    res, _ = result(capsys)
+    assert res["result"] == "invalid-answers"
+    assert any(e.startswith("feedback.enabled") for e in res["errors"]), res["errors"]
+    assert saved(harness) == before
+    # Turning it off always works.
+    assert save(harness, {"feedback": {"enabled": False}}) == 0
+    assert saved(harness)["feedback"]["enabled"] is False
+
+
+def test_the_pilot_form_this_version_ships_makes_links_and_goes_into_the_package():
+    if feedback.PILOT_FORM.exists():  # until the team ships one, setup doesn't offer it
+        assert feedback.pilot_form() is not None, "pilot_feedback.yaml is missing a field"
+    pyproject = (Path(cli.__file__).parents[2] / "pyproject.toml").read_text()
+    assert f'"{feedback.PILOT_FORM.name}"' in pyproject
 
 
 def test_text_that_is_not_json_is_refused(harness, capsys):

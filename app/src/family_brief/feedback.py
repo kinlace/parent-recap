@@ -6,9 +6,19 @@ has to press submit."""
 from __future__ import annotations
 
 from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
 from urllib.parse import quote, urlencode
 
-from .config import Config
+import yaml
+from pydantic import ValidationError
+
+from .config import Config, FeedbackConfig
+
+# The pilot Form's `feedback` block, as ops/feedback-form's log prints it, shipped with the
+# program: every pilot Household gets the same one, with its own household_label added on opt-in.
+# Until the team ships it, setup doesn't offer pilot feedback.
+PILOT_FORM = Path(__file__).parent / "pilot_feedback.yaml"
 
 
 # Must match the Form's choices in ops/feedback-form/create_feedback_form.gs exactly. One Form
@@ -21,6 +31,20 @@ DIGEST_WRONG = "❌ The Digest has a mistake"
 # Mail clients and link scanners get unreliable past ~2000 characters, and Chinese text grows
 # ninefold when percent-encoded, so a whole Digest would not fit.
 MAX_URL_LENGTH = 2000
+
+
+def pilot_form() -> dict[str, Any] | None:
+    """The shipped pilot Form's `prefill_base_url` and `fields`, or None when this version ships
+    none, or one that wouldn't make links."""
+    try:
+        data = yaml.safe_load(PILOT_FORM.read_text())
+        block = data["feedback"]
+        form = {"prefill_base_url": block["prefill_base_url"], "fields": block["fields"]}
+        if FeedbackConfig.model_validate({"enabled": True, **form}).active():
+            return form
+    except (OSError, yaml.YAMLError, TypeError, KeyError, ValidationError):
+        pass
+    return None
 
 
 def _quote(text: str) -> str:
