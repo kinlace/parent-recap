@@ -75,6 +75,7 @@
     <h1 data-text="connect.title"></h1>
     <p class="note" data-text="connect.intro"></p>
     <ol id="sources" class="sources"></ol>
+    <p id="source-handoff" class="handoff" role="status" hidden></p>
     <div id="source-wilma" class="source" hidden>
       <h2 data-text="source.wilma"></h2>
       <fieldset>
@@ -386,13 +387,19 @@
     <h1 data-text="finish.title"></h1>
     <div id="finish-install" hidden>
       <p class="note" data-text="finish.intro"></p>
-      <button type="button" id="finish-start" data-text="finish.start"></button>
+      <div class="actions">
+        <button type="button" id="finish-start" data-text="finish.start"></button>
+        <button type="button" id="finish-stop" class="secondary" data-text="finish.stop" hidden></button>
+      </div>
     </div>
     <div id="finish-status" class="status" role="status" hidden>
       <p id="finish-message"></p>
       <p id="finish-wake"></p>
       <ul id="finish-other" class="kids" hidden></ul>
       <button type="button" id="finish-replace" class="secondary" data-text="finish.replace" hidden></button>
+    </div>
+    <div id="finish-stopped" class="status" role="status" hidden>
+      <p id="finish-stopped-message"></p>
     </div>
     <h2 data-text="finish.checklist"></h2>
     <ul id="finish-checklist" class="checks"></ul>

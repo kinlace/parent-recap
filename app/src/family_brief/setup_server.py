@@ -103,6 +103,8 @@ HEALTH_CHECKS = {"Config file": "config", "Recipients": "recipients", "Language"
                  "Pilot feedback": "feedback", "Weekend Picks": "weekend"}
 # The scheduled job's checks, which aren't run before Finish installs it.
 SCHEDULE_CHECKS = frozenset({"Schedule", "Last run", "Python path"})
+# Doctor's checks as Finish names them, with the scheduled job's. Python path is always OK.
+FINISH_CHECKS = {**HEALTH_CHECKS, "Schedule": "schedule", "Last run": "last-run"}
 HEALTH_STATUSES = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
 # First Brief: the real Brief made through a bg job, which reads WhatsApp with the scheduled job's
 # permission, without sending it: `making` while it's made, with the Source it's reading or
@@ -117,6 +119,12 @@ SEND_RESULTS = ("sent", "send-failed", "busy")
 # every outcome is true, when the server stops, or `not-done`; `install-failed` when the jobs
 # couldn't be loaded, and `no-finish` when this server hasn't started one.
 FINISH_RESULTS = ("installing", "checking", "done", "not-done", "install-failed", "no-finish")
+# What Terminal says once the page stops, however it stopped, in the language picked on it.
+CLOSED_LINES = {
+    "fi": "Parent Recapin käyttöönottosivu on suljettu. Voit sulkea tämän Terminal-ikkunan.",
+    "en": "Parent Recap's setup page has closed. You can close this Terminal window.",
+    "zh": "Parent Recap 的设置页面已经关闭。你可以关掉这个终端窗口了。",
+}
 # "Continue in the chat": the setup skill as each AI's chat starts it, and what handing over
 # can say. Claude Code opens in a Terminal window; a Codex family is told what to type in Codex.
 CHAT_SKILLS = {"claude": "/parent-recap:setup", "codex": "$parent-recap-setup"}
@@ -177,6 +185,7 @@ def cmd_page(args: argparse.Namespace) -> int:
         server.serve_until_idle()
     except KeyboardInterrupt:
         server.stop()
+    print(CLOSED_LINES[server._chosen_language() or "en"], flush=True)
     return 0
 
 
@@ -903,7 +912,23 @@ class SetupServer:
             outcomes = []
         done = bool(outcomes) and all(o.ok for o in outcomes)
         self._finish = {"result": "done" if done else "not-done", **wake,
-                        "outcomes": [{"outcome": o.outcome, "ok": o.ok} for o in outcomes]}
+                        "outcomes": [_finish_outcome(o) for o in outcomes]}
+
+    def stop_for_now(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """"Finish for now": stops the page with setup not done yet, once Finish isn't installing
+        or checking, which would be cut off. The family comes back with the install line or in
+        the chat."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        if setup_save.read(self.config)["progress"]["phase"] != "finish":
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Setup isn't at Finish yet.",
+                errors=["answers: should be given once setup is at Finish"])
+        with self._working:
+            if self._finish is not None and self._finish["result"] in ("installing", "checking"):
+                return HTTPStatus.OK, {"result": self._finish["result"]}
+            self.closing = True
+        return HTTPStatus.OK, {"result": "stopped"}
 
     # ── Continue in the chat
 
@@ -1305,15 +1330,25 @@ def _check_errors(answer: CheckAnswer, offered: dict[str, Any], phase: str) -> l
     return errors
 
 
-def _health_check(status: str, item: str) -> dict[str, Any]:
-    """One of doctor's checks as the check page shows it, without its details."""
+def _health_check(status: str, item: str, names: dict[str, str] = HEALTH_CHECKS) -> dict[str, Any]:
+    """One of doctor's checks as the check page shows it, or Finish with its own `names`,
+    without its details."""
     out: dict[str, Any] = {"status": HEALTH_STATUSES.get(status, "warn")}
     name, _, rest = item.partition(" ")
     if name == "Language" and rest:
         return {"check": "language", **out, "language": rest}
     if name == "MyClub" and rest.startswith("(") and rest.endswith(")"):
         return {"check": "myclub", **out, "kid": rest[1:-1]}
-    return {"check": HEALTH_CHECKS.get(item, "other"), **out}
+    return {"check": names.get(item, "other"), **out}
+
+
+def _finish_outcome(o: setup_status.Outcome) -> dict[str, Any]:
+    """An outcome as Finish shows it, without its reason, which can name an address: whether
+    it's true, and for a health check that isn't, the checks that aren't OK."""
+    out: dict[str, Any] = {"outcome": o.outcome, "ok": o.ok}
+    if o.checks:
+        out["checks"] = [_health_check(status, item, FINISH_CHECKS) for status, item in o.checks]
+    return out
 
 
 def _preview_lines(out: str) -> list[dict[str, Any]]:
@@ -1463,7 +1498,7 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/brief/send": setup.send_brief, "api/brief/done": setup.brief_done,
                    "api/brief/feedback": setup.open_feedback,
                    "api/finish": setup.start_finish, "api/finish/outcomes": setup.check_outcomes,
-                   "api/finish/check": setup.check_finish,
+                   "api/finish/check": setup.check_finish, "api/finish/stop": setup.stop_for_now,
                    "api/chat": setup.continue_in_chat}
         if method == "POST" and path in actions:
             raw = _json_body(body)

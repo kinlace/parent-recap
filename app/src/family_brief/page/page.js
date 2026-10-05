@@ -324,9 +324,19 @@ function currentSource() {
     page.connect.sources.map((s) => s.name).find((name) => statuses[name] === "to-do") ?? null;
 }
 
+// The Source the list last showed as current, and the hand-off once one was connected: the
+// Source just done and the next one (null after the last).
+const connectStep = { current: undefined, handoff: null };
+
 function renderSources() {
   const current = currentSource();
   const statuses = page.progress.sources;
+  const moved = connectStep.current !== undefined && current !== connectStep.current;
+  if (moved) {
+    const left = connectStep.current;
+    connectStep.handoff = left && statuses[left] === "done" ? { done: left, next: current } : null;
+  }
+  connectStep.current = current;
   const list = document.getElementById("sources");
   list.replaceChildren();
   for (const { name } of page.connect.sources) {
@@ -361,6 +371,7 @@ function renderSources() {
   document.getElementById("source-whatsapp").hidden = current !== "whatsapp";
   document.getElementById("source-myclub").hidden = current !== "myclub";
   document.getElementById("connect-done").hidden = Boolean(current);
+  renderHandoff(moved);
   if (current === "wilma" && !wilmaStep.ready && !wilmaStep.preparing) getWilmaReady();
   if (current === "ai" && !aiStep.shown) {
     aiStep.shown = true;
@@ -381,6 +392,24 @@ function renderSources() {
   } else if (current === "myclub") {
     renderMyClub();
   }
+}
+
+// Once a Source is connected, says so and which Source is next, and scrolls to it in the list,
+// since the step below changes by itself.
+function renderHandoff(moved) {
+  const note = document.getElementById("source-handoff");
+  const handoff = connectStep.handoff;
+  note.hidden = !handoff;
+  if (!handoff) return;
+  const done = t("source." + handoff.done);
+  note.textContent = handoff.next
+    ? fill(t("connect.handoff"), { done, next: t("source." + handoff.next) })
+    : fill(t("connect.handoff.last"), { done });
+  if (!moved) return;
+  const target = document.querySelector('#sources li[aria-current="step"]') ||
+    document.getElementById("connect-done");
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  target.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
 }
 
 // Skips the Source, or opens it from the list, which brings a skipped one back.
@@ -1417,8 +1446,9 @@ async function briefDone(event) {
 }
 
 // ── Finish: the evening job and the Mac's wake-up, with the Mac password typed into macOS's own
-// dialog, then the outcome checklist. Once every outcome is true, the server stops, and the page
-// shows only the checklist.
+// dialog, then the outcome checklist, with what's missing under each outcome that isn't true.
+// Once every outcome is true, the server stops, and the page shows only the checklist; after a
+// try that wasn't, "Finish for now" stops it too.
 
 const FINISH_MS = 2000;
 const finishStep = { timer: null };
@@ -1426,6 +1456,7 @@ const finishStep = { timer: null };
 function enterFinish() {
   document.getElementById("finish-start").addEventListener("click", () => startFinish(false));
   document.getElementById("finish-replace").addEventListener("click", () => startFinish(true));
+  document.getElementById("finish-stop").addEventListener("click", stopForNow);
   setText(document.getElementById("finish-changes"), "finish.changes." + page.welcome.ai);
   checkFinish();
 }
@@ -1456,9 +1487,10 @@ function finishResult(out) {
   clearTimeout(finishStep.timer);
   const running = out.result === "installing" || out.result === "checking";
   const done = out.result === "done";
-  const status = document.getElementById("finish-status");
   // Checked before anything is installed: the intro says what to do, not what isn't set up.
-  status.hidden = out.result === "not-done" && !out.wake;
+  const tried = out.result === "install-failed" || (out.result === "not-done" && Boolean(out.wake));
+  const status = document.getElementById("finish-status");
+  status.hidden = out.result === "not-done" && !tried;
   status.dataset.result = "finish." + out.result;
   setText(document.getElementById("finish-message"), "finish." + out.result,
     { evening: page.check.evening });
@@ -1474,26 +1506,79 @@ function finishResult(out) {
   other.hidden = !out.other;
   document.getElementById("finish-replace").hidden = out.wake !== "other-schedule" || running;
   document.getElementById("finish-install").hidden = running || done;
-  if (out.outcomes) renderChecklist(out.outcomes);
-  if (done) {
-    // The server has stopped: nothing more to do on this page.
-    page.finished = true;
-    document.getElementById("phases").hidden = true;
-    document.getElementById("chat").hidden = true;
-    document.getElementById("finish-closed").hidden = false;
-  }
+  document.getElementById("finish-stop").hidden = !tried;
+  if (out.outcomes) renderChecklist(out.outcomes, tried);
+  if (done) closed();
   if (running) finishStep.timer = setTimeout(checkFinish, FINISH_MS);
 }
 
-function renderChecklist(outcomes) {
-  document.getElementById("finish-checklist").replaceChildren(...outcomes.map(({ outcome, ok }) => {
+// Each outcome, ticked once it's true. After a try, each that isn't says what's missing and
+// what to do, and a health check that isn't OK names its checks, as the check page does.
+function renderChecklist(outcomes, explain) {
+  document.getElementById("finish-checklist").replaceChildren(...outcomes.map((o) => {
     const item = document.createElement("li");
-    item.dataset.status = ok ? "ok" : "fail";
+    item.dataset.status = o.ok ? "ok" : "fail";
     const line = document.createElement("span");
-    setText(line, "finish.outcome." + outcome);
+    setText(line, "finish.outcome." + o.outcome);
     item.append(line);
+    if (o.ok || !explain) return item;
+    const missing = document.createElement("p");
+    missing.className = "hint";
+    setText(missing, "finish.missing." + o.outcome);
+    item.append(missing);
+    if (o.checks) item.append(failedChecks(o.checks));
     return item;
   }));
+}
+
+function failedChecks(checks) {
+  const list = document.createElement("ul");
+  list.className = "checks";
+  list.replaceChildren(...checks.map((check) => {
+    const item = document.createElement("li");
+    item.dataset.status = check.status;
+    const language = page.languages.find((l) => l.code === check.language);
+    const values = { kid: check.kid, language: language ? language.name : check.language };
+    const name = document.createElement("span");
+    setText(name, "health.check." + check.check, values);
+    const status = document.createElement("span");
+    status.className = "state";
+    setText(status, "health.status." + check.status);
+    const next = document.createElement("p");
+    next.className = "hint";
+    setText(next, "finish.fail." + check.check, values);
+    item.append(name, " ", status, next);
+    return item;
+  }));
+  return list;
+}
+
+// "Finish for now": the server stops with setup not done, and the page says how to come back.
+async function stopForNow(event) {
+  clearError();
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const out = await post("api/finish/stop", {});
+    if (out.result !== "stopped") return checkFinish(); // still installing or checking
+    document.getElementById("finish-install").hidden = true;
+    document.getElementById("finish-replace").hidden = true;
+    setText(document.getElementById("finish-stopped-message"), "finish.stopped." + page.welcome.ai);
+    document.getElementById("finish-stopped").hidden = false;
+    closed();
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// The server has stopped: nothing more to do on this page.
+function closed() {
+  page.finished = true;
+  document.getElementById("phases").hidden = true;
+  document.getElementById("chat").hidden = true;
+  document.getElementById("finish-closed").hidden = false;
 }
 
 // ── Continue in the chat: Claude Code opens at the setup skill in Terminal, or the page says

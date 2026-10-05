@@ -271,7 +271,7 @@ Save `"progress": {"phase": "finish"}` first.
 
 1. Tell the parent macOS will ask for their Mac password in its own dialog, to wake the Mac 5 minutes before the Brief. Run `$FB schedule install`. If it warns the Mac already has a repeating wake schedule, show the parent what it lists and ask, as a choice, whether to replace it (keep it first); only if they choose to replace it, run `$FB schedule install --replace-wake`. If it prints a `sudo pmset ...` command, give it to the parent to run in Terminal.
 2. Run `$FB setup status`. It reports five outcomes: the program installed, the health check all OK, the first Brief delivered to the setup parent (the first Recipient; the others' first is the first evening one), the nightly job loaded, and the wake schedule set or the Mac never sleeping. Show them as a checklist. For each with `ok: false`, do what its `reason` says, and run it again, until `result` is `done`.
-3. The sixth outcome is yours to confirm: after the Mac restarts, such as after a macOS update, someone must log in to this Mac user once, or no Brief comes until they do. Tell the parent, and end with one choice for them to confirm they've got it.
+3. The sixth outcome is yours to confirm: after the Mac restarts, such as after a macOS update, someone must log in to this Mac user once, or no Brief comes until they do. The wake-up wakes a sleeping Mac only: a Mac that's shut down makes no Brief, so in the evening it should be left asleep or locked, not shut down. Tell the parent both, and end with one choice for them to confirm they've got it.
 
 Setup ends only when `setup status` says `done` and the parent has confirmed the restart reminder. Then tell them:
 

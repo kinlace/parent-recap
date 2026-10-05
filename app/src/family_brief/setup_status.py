@@ -19,7 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import install_record, ops
@@ -41,6 +41,8 @@ class Outcome:
     outcome: str
     ok: bool
     reason: str
+    # Doctor's checks that aren't OK, each (status, name), for the setup page to name.
+    checks: list[tuple[str, str]] = field(default_factory=list)
 
 
 def register(steps) -> None:
@@ -58,7 +60,8 @@ def cmd_status(args: argparse.Namespace) -> int:
             print(f"{ops.OK if o.ok else ops.FAIL} {TITLES[o.outcome]}: {o.reason}")
     else:
         print(json.dumps({"result": "done" if done else "not-done",
-                          "outcomes": [vars(o) for o in outcomes]}, ensure_ascii=False))
+                          "outcomes": [{"outcome": o.outcome, "ok": o.ok, "reason": o.reason}
+                                       for o in outcomes]}, ensure_ascii=False))
     return 0 if done else 1
 
 
@@ -92,11 +95,12 @@ def _installed() -> Outcome:
 def _doctor(config: str | None) -> Outcome:
     # Only the checks' names and statuses go into the reason: their details can quote an error.
     results = ops.health_checks(config)
-    not_ok = [f"{item} {status.strip()}" for status, item, _ in results if status != ops.OK]
-    if not not_ok:
+    checks = list(dict.fromkeys((status, item) for status, item, _ in results if status != ops.OK))
+    if not checks:
         return Outcome("doctor", True, f"all {len(results)} checks OK")
+    not_ok = [f"{item} {status.strip()}" for status, item in checks]
     return Outcome("doctor", False, f"{len(not_ok)} of {len(results)} checks aren't OK: "
-                   f"{', '.join(dict.fromkeys(not_ok))} (run family-brief doctor to see why)")
+                   f"{', '.join(not_ok)} (run family-brief doctor to see why)", checks)
 
 
 def _brief(cfg: Config | None) -> Outcome:
