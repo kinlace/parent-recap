@@ -1466,6 +1466,7 @@ const finishStep = { timer: null };
 function enterFinish() {
   document.getElementById("finish-start").addEventListener("click", () => startFinish(false));
   document.getElementById("finish-replace").addEventListener("click", () => startFinish(true));
+  document.getElementById("finish-again").addEventListener("click", checkAgain);
   document.getElementById("finish-stop").addEventListener("click", stopForNow);
   setText(document.getElementById("finish-changes"), "finish.changes." + page.welcome.ai);
   checkFinish();
@@ -1475,6 +1476,17 @@ async function startFinish(replaceWake) {
   clearError();
   try {
     finishResult(await post("api/finish", { replace_wake: replaceWake }));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+// "Check again": the outcomes, the health check among them, checked once more without
+// installing anything or setting the wake-up, and the checklist updated in place.
+async function checkAgain() {
+  clearError();
+  try {
+    finishResult(await post("api/finish/outcomes", { again: true }));
   } catch (e) {
     failed(e);
   }
@@ -1498,7 +1510,8 @@ function finishResult(out) {
   const running = out.result === "installing" || out.result === "checking";
   const done = out.result === "done";
   // Checked before anything is installed: the intro says what to do, not what isn't set up.
-  const tried = out.result === "install-failed" || (out.result === "not-done" && Boolean(out.wake));
+  const tried = out.result === "install-failed"
+    || (out.result === "not-done" && Boolean(out.wake || out.tried));
   const status = document.getElementById("finish-status");
   status.hidden = out.result === "not-done" && !tried;
   status.dataset.result = "finish." + out.result;
@@ -1516,6 +1529,7 @@ function finishResult(out) {
   other.hidden = !out.other;
   document.getElementById("finish-replace").hidden = out.wake !== "other-schedule" || running;
   document.getElementById("finish-install").hidden = running || done;
+  document.getElementById("finish-again").hidden = out.result !== "not-done";
   document.getElementById("finish-stop").hidden = !tried;
   if (out.outcomes) renderChecklist(out.outcomes, tried);
   if (done) closed();

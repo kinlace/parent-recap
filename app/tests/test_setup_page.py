@@ -3398,6 +3398,89 @@ def test_a_household_not_finished_yet_is_checked_without_installing(harness, pag
         assert call(page.url, "api/finish/outcomes", method="POST", body=body).status == 400
 
 
+def check_again(url: str) -> Response:
+    return call(url, "api/finish/outcomes", method="POST", body={"again": True})
+
+
+def test_check_again_rechecks_without_installing_or_touching_the_wake_up(harness, page, schedule,
+                                                                         health):
+    at_finish(harness)
+    health.results += [(ops.FAIL, "Claude", "call failed")]
+    finish(page.url)
+    assert finished(page.url)["result"] == "not-done"
+    loads, dialogs = list(schedule.loads), list(schedule.dialogs)
+    runs = len(health.runs)
+    health.results.pop()
+
+    r = check_again(page.url)
+
+    assert r.status == 200 and r.json() == {"result": "checking"}
+    out = finished(page.url)
+    assert out["result"] == "done" and all(checklist(out).values())
+    assert len(health.runs) == runs + 1  # the health check ran again
+    # Checked only: the evening job isn't loaded again, and no dialog sets the wake-up.
+    assert schedule.loads == loads and schedule.dialogs == dialogs
+    wait_for(lambda: refused(page.url))  # every outcome true: All done, and the page stops
+
+
+def test_check_again_keeps_saying_what_s_still_missing(harness, page, schedule, health):
+    at_finish(harness)
+    health.results += [(ops.FAIL, "Claude", "call failed")]
+    finish(page.url)
+    finished(page.url)
+
+    check_again(page.url)
+    out = finished(page.url)
+
+    assert out["result"] == "not-done" and out["tried"] is True and out["wake"] == "set"
+    doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
+    assert doctor["ok"] is False and {"check": "ai", "status": "fail"} in doctor["checks"]
+    assert call(page.url, "api/state").status == 200  # still serving
+    for body in [{"again": False}, {"again": "yes"}, {"again": 1}, {"again": True, "x": 1}]:
+        assert call(page.url, "api/finish/outcomes", method="POST", body=body).status == 400
+
+
+def test_check_again_still_offers_to_replace_another_wake_schedule(harness, page, schedule):
+    at_finish(harness)
+    schedule.repeating = [OTHER_WAKE]
+    finish(page.url)
+    finished(page.url)
+
+    check_again(page.url)
+    out = finished(page.url)
+
+    assert out["result"] == "not-done" and out["wake"] == "other-schedule"
+    assert out["other"] == [OTHER_WAKE] and schedule.dialogs == []
+
+
+def test_check_again_before_turning_it_on_says_what_s_missing_without_installing(
+        harness, page, schedule):
+    at_finish(harness)
+
+    check_again(page.url)
+    out = finished(page.url)
+
+    assert out["result"] == "not-done" and out["tried"] is True
+    assert checklist(out)["nightly"] is False
+    assert schedule.loads == [] and schedule.dialogs == []
+
+
+def test_finish_offers_check_again_in_every_language():
+    html_text = (PAGE_DIR / "index.html").read_text()
+    finish_section = html_text.split('<section id="finish"', 1)[1].split("</section>", 1)[0]
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    assert 'id="finish-again"' in finish_section and 'data-text="finish.again"' in finish_section
+    assert text["en"]["finish.again"] == "Check again"
+    for table in text.values():
+        assert table["finish.again"] in table["finish.not-done"]
+        # Turn it on is for installing, not for checking.
+        for key in ["finish.fail.ai", "finish.fail.whatsapp", "finish.fail.weekend",
+                    "finish.fail.other"]:
+            assert table["finish.again"] in table[key], key
+            assert table["finish.start"] not in table[key], key
+
+
 def test_the_finish_page_shows_the_checklist_the_restart_reminder_and_where_changes_go(page):
     html_text = (PAGE_DIR / "index.html").read_text()
     finish_section = html_text.split('<section id="finish"', 1)[1].split("</section>", 1)[0]
@@ -3421,7 +3504,8 @@ def test_every_finish_text_is_in_all_three_languages():
                 *(f"health.check.{c}" for c in {*setup_server.FINISH_CHECKS.values(), "other"}),
                 *(f"finish.fail.{c}" for c in {*setup_server.FINISH_CHECKS.values(), "other"}),
                 "finish.title", "finish.intro", "finish.start", "finish.replace", "finish.restart",
-                "finish.checklist", "finish.closed", "finish.stop", "finish.warnings"]
+                "finish.checklist", "finish.closed", "finish.stop", "finish.warnings",
+                "finish.again"]
         for key in keys:
             assert table.get(key, "").strip(), (language, key)
 
