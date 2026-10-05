@@ -3,7 +3,7 @@
 From `app/`:
 
 ```bash
-python -m pip install --only-binary :all: -c constraints.txt -e '.[test]'   # once, in an isolated env
+python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'   # once, in an isolated env
 python -m pytest                     # whole suite
 ```
 
@@ -131,8 +131,14 @@ installed rather than the newest, that a package published only as source stops 
 without being compiled, and that an older prebuilt version is taken over a newer one that would
 compile. It checks that every install writes a dated log of pip's output under `logs/` that starts
 with one line about the Mac, with the home folder written as `~`, and that a failing pip step
-shows a short message and the log's path instead of pip's output. It checks that `app/constraints.txt` pins every dependency `pyproject.toml` names and keeps `cryptography` below
-49, and that `scripts/check_wheels.py` fails when a pin has no Intel wheel.
+shows a short message and the log's path instead of pip's output. It checks that the `google`
+extra is installed, pinned and prebuilt, only when the config's calendar mode is google. It checks
+that `app/constraints.txt` pins every dependency `pyproject.toml` names, the `google` extra's
+included, and keeps `cryptography` below 49, that the default dependencies bring in no Google
+package and no `cryptography`, and that `scripts/check_wheels.py` fails when a pin has no Intel wheel.
+`test_without_google_packages.py` blocks Google's packages from import and checks that every
+module imports, that the evening Brief with `.ics`, Weekend Picks, setup and doctor run, that google
+mode without them sends the events as `.ics`, and that doctor says how to install them.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:

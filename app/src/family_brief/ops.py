@@ -25,7 +25,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Callable
 
-from . import install_record, languages, private_files, secret_dialog
+from . import google_packages, install_record, languages, private_files, secret_dialog
 from .config import Config
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
@@ -289,6 +289,10 @@ def _check_calendar(cfg: Config, add) -> None:
         add(OK, "Calendar", "ics mode: new events come as an .ics attachment on the Brief email, "
             "one tap adds them to your calendar")
     else:
+        if not google_packages.installed():
+            add(FAIL, "Calendar", "google mode, but Google's packages for it aren't installed "
+                "(run the plugin's install.sh again, which installs them for google mode)")
+            return
         if not cal.is_configured():
             add(FAIL, "Calendar", "google mode, but not authorized yet "
                 "(run scripts/setup_google_calendar.py)")

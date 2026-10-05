@@ -121,10 +121,11 @@ The plugin doesn't include a Google app. Authorizing needs a Google app file (th
    (umask 077 && mkdir -p ~/.family && cp downloaded-file.json ~/.family/calendar_credentials.json && chmod 600 ~/.family/calendar_credentials.json)
    ```
    The file contains a secret; don't paste it into a chat or send it to a group.
-2. **Terminal**: `$PY ~/FamilyBrief/app/scripts/setup_google_calendar.py`
-3. When the browser says "Google hasn't verified this app": click "Advanced" → "Go to (app name) (unsafe)" → "Allow". The app only asks for one permission, managing calendar events
-4. To invite a partner automatically, put their address in `invite_attendees`
-5. Check: in `$FB doctor` the calendar line shows the authorization is valid
+2. Set `google_calendar.mode: google` in the config, then run `bash PLUGIN/install.sh` again. In google mode it installs Google's packages, which a default install leaves out because only Google Calendar uses them. Every later update keeps them while the mode is google
+3. **Terminal**: `$PY ~/FamilyBrief/app/scripts/setup_google_calendar.py`
+4. When the browser says "Google hasn't verified this app": click "Advanced" → "Go to (app name) (unsafe)" → "Allow". The app only asks for one permission, managing calendar events
+5. To invite a partner automatically, put their address in `invite_attendees`
+6. Check: in `$FB doctor` the calendar line shows the authorization is valid
 
 ### Creating your own Google app
 

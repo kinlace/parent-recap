@@ -76,7 +76,8 @@ Setup always starts with the `.ics` attachment; this is how a family turns Googl
 1. If `~/.family/calendar_credentials.json` is missing, ask the user where the file is, for example `~/Downloads/xxx.json` (dragging the file onto a Terminal window types its path there, to copy). Ask only for the path: the file contains a secret, so the user doesn't paste its contents and you don't open it. If they don't have it, they stay with ics until they do.
 2. Copy it with the command in step 1 of google mode under "Calendar" in `sources.md`, with their path, in quotes, in place of `downloaded-file.json`.
 3. Set `google_calendar.mode: google`. The partner's Gmail can go in `google_calendar.invite_attendees`.
-4. Have the user run `$PY ~/FamilyBrief/app/scripts/setup_google_calendar.py` in Terminal. When the browser says "Google hasn't verified this app", they click Advanced → Go to (app name) → Allow. Then run `$FB doctor` to check the authorization.
+4. Run `bash "PLUGIN/install.sh"` (in Codex, outside the sandbox). With the config in google mode, it installs Google's packages, which only Google Calendar needs and a default install leaves out. If it stops with "couldn't install its Python packages", do what it says and don't go on to step 5.
+5. Have the user run `$PY ~/FamilyBrief/app/scripts/setup_google_calendar.py` in Terminal. When the browser says "Google hasn't verified this app", they click Advanced → Go to (app name) → Allow. Then run `$FB doctor` to check the authorization.
 
 ## Uninstall
 

@@ -32,13 +32,25 @@ def mac(tmp_path: Path) -> dict:
     return {"tmp": tmp_path, "packages": packages, "plugin": plugin, "home": tmp_path / "home"}
 
 
-def program(mac: dict, requires: tuple[str, ...], constraints: str = "") -> None:
-    """A stand-in for app/: a `family-brief` that needs `requires`, with its constraints file."""
-    app = project(mac["plugin"] / "app", "family-brief", "9.9.9", requires)
+def program(mac: dict, requires: tuple[str, ...], constraints: str = "",
+            google: tuple[str, ...] = ()) -> None:
+    """A stand-in for app/: a `family-brief` that needs `requires`, and `google` in its google
+    extra, with its constraints file."""
+    app = project(mac["plugin"] / "app", "family-brief", "9.9.9", requires, extras={"google": list(google)})
     (app / "family_brief").mkdir()
     (app / "family_brief" / "__init__.py").write_text("")
     (app / "family_brief" / "install_record.py").write_text("")
+    # The real one reads the config with PyYAML; its answer is tested in test_without_google_packages.py.
+    (app / "family_brief" / "google_packages.py").write_text(
+        "import pathlib, sys\n"
+        "config = pathlib.Path.home() / '.family' / 'config.yaml'\n"
+        "sys.exit(0 if config.exists() and 'mode: google' in config.read_text() else 1)\n")
     (app / "constraints.txt").write_text(constraints)
+
+
+def google_mode(mac: dict) -> None:
+    (mac["home"] / ".family").mkdir(parents=True, exist_ok=True)
+    (mac["home"] / ".family" / "config.yaml").write_text("google_calendar:\n  mode: google\n")
 
 
 def install(mac: dict, path_first: Path | None = None) -> subprocess.CompletedProcess:
@@ -79,6 +91,47 @@ def test_a_package_with_no_prebuilt_version_stops_the_install_without_compiling(
     assert not built.exists()
     assert "needs-compiling" in install_log(mac).read_text()
     assert "installed to" not in result.stdout
+
+
+# --- Google's packages, only for Google Calendar ------------------------------------------
+
+def test_a_default_install_leaves_out_googles_packages(mac):
+    wheel(mac["packages"], "pure-dep", "1.0")
+    wheel(mac["packages"], "google-dep", "1.0")
+    program(mac, ("pure-dep",), "pure-dep==1.0\ngoogle-dep==1.0\n", google=("google-dep",))
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "pure-dep" in installed(mac) and "google-dep" not in installed(mac)
+
+
+def test_a_google_calendar_household_gets_them_at_the_pinned_version(mac):
+    # An update for a Household already on Google Calendar, or manage turning it on: either way
+    # the config says google before install.sh runs.
+    for version in ("1.0", "2.0"):
+        wheel(mac["packages"], "google-dep", version)
+    program(mac, (), "google-dep==1.0\n", google=("google-dep",))
+    google_mode(mac)
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert installed(mac)["google-dep"] == "1.0"
+
+
+def test_googles_packages_are_never_compiled_either(mac):
+    built = mac["tmp"] / "compiled"
+    sdist(mac["packages"], "google-dep", "1.0", build_marker=built)
+    program(mac, (), google=("google-dep",))
+    google_mode(mac)
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    assert not built.exists()
+    assert "couldn't install its Python packages" in result.stdout
+    assert "google-dep" in install_log(mac).read_text()
 
 
 # --- The install log -------------------------------------------------------------------------
@@ -173,11 +226,29 @@ def canonical(name: str) -> str:
 
 def test_the_constraints_pin_every_dependency_to_one_version():
     project_ = tomllib.loads((ROOT / "app" / "pyproject.toml").read_text())["project"]
-    wanted = [*project_["dependencies"], *project_["optional-dependencies"]["test"]]
+    extras = project_["optional-dependencies"]
+    wanted = [*project_["dependencies"], *extras["test"], *extras["google"]]
     names = {canonical(re.match(r"[\w.-]+", d).group()) for d in wanted}
 
     assert names <= pins().keys()
     assert all(re.fullmatch(r"[\w.+!]+", v) for v in pins().values())
+
+
+def test_a_default_install_brings_in_no_google_package_and_no_cryptography():
+    # Everything the default dependencies need, from the metadata of what's installed here.
+    from importlib.metadata import requires
+    from packaging.requirements import Requirement
+    todo = [Requirement(d) for d in tomllib.loads((ROOT / "app" / "pyproject.toml").read_text())["project"]["dependencies"]]
+    needed: set[str] = set()
+    while todo:
+        req = todo.pop()
+        name = canonical(req.name)
+        if name in needed or (req.marker and not req.marker.evaluate({"extra": ""})):
+            continue
+        needed.add(name)
+        todo += [Requirement(r) for r in requires(req.name) or []]
+
+    assert needed and not {n for n in needed if n.startswith("google") or n == "cryptography"}
 
 
 def test_cryptography_stays_below_49_while_intel_macs_are_supported():

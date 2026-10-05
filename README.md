@@ -87,7 +87,7 @@ How data flows, where each password is stored, and how to report a security prob
 Run the tests before and after changing code (in the `app/` folder):
 
 ```bash
-python -m pip install --only-binary :all: -c constraints.txt -e '.[test]'
+python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
 python -m pytest
 ```
 

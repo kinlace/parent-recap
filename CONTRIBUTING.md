@@ -51,13 +51,13 @@ The zip is built from the tag with `git archive`, so local edits never get in. `
 
 ## Pinned packages
 
-`install.sh` and CI install only prebuilt packages (wheels), at the versions in `app/constraints.txt`, so every family gets what CI tested and no install compiles anything. CI's `scripts/check_wheels.py` fails if a pinned package has no wheel for Apple Silicon or Intel Macs on Python 3.11 to 3.14.
+`install.sh` and CI install only prebuilt packages (wheels), at the versions in `app/constraints.txt`, so every family gets what CI tested and no install compiles anything. The file also pins the `google` extra (Google's packages, and `cryptography` with them), which `install.sh` adds only when the config's calendar mode is google. CI's `scripts/check_wheels.py` fails if a pinned package has no wheel for Apple Silicon or Intel Macs on Python 3.11 to 3.14.
 
 To move the pins (a new dependency, or newer versions), regenerate the file from a fresh environment that passes the tests, from `app/`:
 
 ```bash
 python3 -m venv "$TMPDIR/pins"
-"$TMPDIR/pins/bin/pip" install --only-binary :all: -e '.[test]' 'cryptography<49'
+"$TMPDIR/pins/bin/pip" install --only-binary :all: -e '.[test,google]' 'cryptography<49'
 "$TMPDIR/pins/bin/python" -m pytest
 "$TMPDIR/pins/bin/pip" freeze --exclude-editable   # replaces every line below the comments in constraints.txt
 python3 ../scripts/check_wheels.py

@@ -4,9 +4,6 @@ version = "0.5.0"
 description = "Daily aggregator for kid-related messages across Gmail, Wilma, WhatsApp, MyClub"
 requires-python = ">=3.11"
 dependencies = [
-    "google-api-python-client>=2.130",
-    "google-auth-oauthlib>=1.2",
-    "google-auth-httplib2>=0.2",
     "beautifulsoup4>=4.12",
     "icalendar>=5.0",
     "requests>=2.32",
@@ -19,6 +16,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Only the Google Calendar mode uses these. install.sh adds them when the config's calendar mode
+# is google (family_brief/google_packages.py).
+google = [
+    "google-api-python-client>=2.130",
+    "google-auth-oauthlib>=1.2",
+    "google-auth-httplib2>=0.2",
+]
 test = [
     "pytest>=8",
     "time-machine>=2.14",
