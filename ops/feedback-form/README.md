@@ -14,6 +14,30 @@
 
 Running it again creates another new form and leaves the old one alone; delete what you don't need in Google Drive.
 
+## Building it by hand
+
+Some Google accounts refuse the script's authorization with "This app is blocked". Then build the form at <https://forms.google.com> with the same content as the script:
+
+1. Title "Parent Recap pilot feedback", description "The ⭐ and ❌ links in the Brief open this form already filled in. Just press Submit."
+2. Questions, in this order:
+
+   | Question | Type | Notes |
+   |---|---|---|
+   | Feedback | Multiple choice | Required. Options, copied exactly: `⭐ Glad this was here`, `❌ This is wrong`, `❌ The Digest has a mistake` |
+   | Item | Paragraph | |
+   | Source | Short answer | |
+   | AI (backend) | Short answer | |
+   | Brief date | Short answer | |
+   | Household | Short answer | |
+   | Kid | Short answer | |
+   | Anything to add? (optional) | Paragraph | Description "What was wrong, and what it should have said" |
+
+   Google Forms sometimes changes a question's type as you type its title, so check every type at the end.
+3. Settings → Responses: "Collect email addresses" is "Do not collect", and "Limit to 1 response" is off.
+4. Responses → "Link to Sheets" → create a new spreadsheet.
+5. Publish, with responders set to anyone with the link.
+6. ⋮ → "Pre-fill form", type something in the first seven questions, click "Get link" and copy it. The part before `?` is `prefill_base_url`, and each `entry.<number>` belongs to the question you filled in, in order. Write them out as a `feedback:` block in the same shape the script prints (see `app/src/family_brief/pilot_feedback.yaml`).
+
 ## Shipping it to pilot families
 
 Save the `feedback:` block as `app/src/family_brief/pilot_feedback.yaml` and release it. Until a release has this file, setup doesn't ask about pilot feedback at all. With it, the setup page's Welcome and the chat setup ask whether the family is a pilot family; when they agree, `setup save` writes the block into their `config.yaml` with a `household_label` of their own (the setup parent's email user by default, which they can change on the setup page's check step), so the response sheet shows who reported what. Nothing needs to be sent to families by hand.

@@ -2,7 +2,7 @@
 // `feedback` block the program ships. Run once in the operator's own Google account;
 // see README.md next to this file.
 
-const FORM_TITLE = 'FamilyBrief pilot feedback';
+const FORM_TITLE = 'Parent Recap pilot feedback';
 
 // The Brief pre-fills the verdict, so these strings must match feedback.py exactly.
 // They are English for every Household; the links' labels follow the Brief's language.
