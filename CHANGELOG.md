@@ -4,7 +4,18 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
-- Uninstall also removes the wilma CLI, the Wilma sign-in with its password, and the Claude Code plugin when setup installed them, and leaves the ones you had before setup (#135).
+## 0.5.1 · 2026-10-05
+
+Install and uninstall fixes from the first tries on an Intel Mac and a Mac mini, and retries when the AI is busy.
+
+### Install and uninstall
+- The install line installs only ready-made packages, at the versions we tested, so it works on Intel Macs again and never tries to compile anything on your Mac. Apple Silicon Macs are recommended, and Intel Macs work for now on a best-effort basis.
+- If the install can't set up its Python packages, you see a short message saying where its log is and what to do next, instead of pages of build output. Every install keeps a dated log in `~/FamilyBrief/logs`.
+- The install leaves out Google's packages, which only Google Calendar uses. They're installed when you turn Google Calendar on, and on every update while you use it.
+- Uninstall also removes the wilma CLI, the Wilma sign-in with its password, and the Claude Code plugin when setup installed them, and leaves the ones you had before setup.
+
+### The Brief
+- When Claude or ChatGPT is too busy in the evening, Parent Recap tries again a few minutes later instead of sending a Brief without its Digest.
 
 ## 0.5.0 · 2026-10-04
 

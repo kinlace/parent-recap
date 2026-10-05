@@ -1,7 +1,7 @@
 {
   "name": "parent-recap",
   "displayName": "Kinlace Parent Recap",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Every evening, summarizes your kids' school mail, Wilma, WhatsApp parent groups and MyClub into a Brief in your language sent to your inbox, with optional Weekend Picks. macOS only.",
   "author": { "name": "Kinlace" }
 }
