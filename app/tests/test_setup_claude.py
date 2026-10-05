@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import msg
+from conftest import keychain_refusing, msg
 
 from family_brief import install_record
 
@@ -168,6 +168,61 @@ def test_a_keychain_that_refuses_says_so(harness, terminal, monkeypatch, capsys)
     assert harness.cli("setup", "claude") == 1
 
     assert result(capsys)[0]["result"] == "keychain-failed"
+
+
+def test_another_keychain_error_says_so_with_its_code(harness, terminal, monkeypatch, capsys):
+    from family_brief.utils import keychain
+    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25293))
+    harness.dialog.typed = TOKEN
+
+    assert harness.cli("setup", "claude") == 1
+
+    res = result(capsys)[0]
+    assert res["result"] == "keychain-failed" and res["code"] == -25293
+    assert "click Allow" in res["next"]
+
+
+def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(harness, terminal,
+                                                                   monkeypatch, capsys):
+    from family_brief.utils import keychain
+    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25308))  # errSecInteractionNotAllowed
+    harness.dialog.typed = TOKEN
+
+    assert harness.cli("setup", "claude") == 1
+
+    res = result(capsys)[0]
+    assert res["result"] == "keychain-not-reachable" and res["code"] == -25308
+    assert "outside tmux or SSH" in res["next"] and "Shell → New Command…" in res["next"]
+    assert "setup claude --no-open" in res["next"]
+    assert "Allow" not in res["next"]  # macOS shows no prompt there
+
+
+@pytest.mark.parametrize("var", ["TMUX", "SSH_CONNECTION"])
+def test_in_tmux_or_ssh_it_warns_before_the_token_is_asked_for(harness, terminal, monkeypatch,
+                                                              capsys, var):
+    import getpass
+    monkeypatch.setenv(var, "/private/tmp/tmux-501/default,1234,0" if var == "TMUX"
+                       else "10.0.0.2 52000 10.0.0.1 22")
+    prompts: list[str] = []
+    monkeypatch.setattr(getpass, "getpass", lambda p="": prompts.append(p) or TOKEN)  # over SSH
+    harness.dialog.typed = TOKEN
+
+    harness.cli("setup", "claude")
+
+    out, err = capsys.readouterr()
+    assert len(out.strip().splitlines()) == 1  # still one JSON line on stdout
+    assert err.count("outside tmux or SSH") == 1
+    [asked] = harness.dialog.shown + prompts
+    assert "outside tmux or SSH" in asked
+
+
+def test_outside_tmux_and_ssh_there_is_no_warning(harness, terminal, capsys):
+    harness.dialog.typed = TOKEN
+
+    assert harness.cli("setup", "claude") == 0
+
+    assert "tmux" not in capsys.readouterr().err
+    assert "tmux" not in harness.dialog.shown[0]
 
 
 # ── Claude's sign-in in Terminal

@@ -42,6 +42,7 @@ from . import (chat_install, ops, run_lock, setup_ai, setup_save, setup_status, 
 from .actions import email as email_action
 from .config import Config, Kid
 from .state import State
+from .utils import keychain
 
 IDLE_SECONDS = 30 * 60
 AI_CHECK_SECONDS = 20
@@ -53,7 +54,7 @@ SKIPPABLE = ("wilma", "whatsapp", "myclub")
 # What connecting Gmail on the page can say: the chat's `setup gmail` results, `no-address` for
 # an address that isn't one, and `app-passwords-unavailable`, which the page's own button gives.
 GMAIL_RESULTS = ("saved", "no-address", "not-an-app-password", "rejected", "no-connection",
-                 "keychain-failed", "app-passwords-unavailable")
+                 "keychain-not-reachable", "keychain-failed", "app-passwords-unavailable")
 # What signing in to Wilma on the page can say (ADR 0008). Only `sign-in-failed` offers the
 # Terminal sign-in window: a wrong password is said to be just that.
 WILMA_RESULTS = ("signed-in", "wrong-password", "sign-in-failed", "no-kids", "not-installed")
@@ -70,7 +71,7 @@ WILMA_WINDOW_SECONDS = 600
 # sign-in, or the token pasted after the Terminal window, ended. `sign-in-failed` and `timeout`
 # offer the Terminal window, whose token the page takes in a field.
 CLAUDE_RESULTS = ("waiting", "saved", "not-installed", "sign-in-failed", "timeout", "not-a-token",
-                  "test-call-failed", "keychain-failed")
+                  "test-call-failed", "keychain-not-reachable", "keychain-failed")
 CLAUDE_WINDOW_RESULTS = ("opened", "no-terminal", "not-installed")
 CLAUDE_SIGN_IN_SECONDS = 600
 # Codex's ChatGPT sign-in: signed in, signed out, `waiting` while its sign-in is open in the
@@ -180,6 +181,8 @@ def cmd_page(args: argparse.Namespace) -> int:
     if not opened:
         out = {"result": "not-opened", "url": server.url,
                "next": f"The browser didn't open. Open this address in it: {server.url}"}
+    if keychain.unreachable_here():  # the page says so too
+        out["warning"] = setup_steps.KEYCHAIN_WARNING
     print(json.dumps(out, ensure_ascii=False), flush=True)
     try:
         server.serve_until_idle()
@@ -271,6 +274,8 @@ class SetupServer:
         return {"languages": [{"code": c, "name": n} for c, n in LANGUAGES.items()],
                 "language": self.chosen_language(),
                 "preselected": mac_language(),
+                # In tmux or SSH, macOS won't let this server save the passwords in the Keychain.
+                "keychain": {"reachable": not keychain.unreachable_here()},
                 "progress": progress,
                 "welcome": self._welcome(progress),
                 "connect": {"sources": [{"name": s, "skippable": s in SKIPPABLE}
@@ -345,9 +350,11 @@ class SetupServer:
     def _wait_for_claude(self, sign_in: dict[str, Any], program: str) -> None:
         try:
             result, token = setup_ai.read_setup_token(program, CLAUDE_SIGN_IN_SECONDS, self._stopped)
+            extra: dict[str, Any] = {}
             if token is not None:
-                result, _ = setup_steps.claude_token_sign_in(program, token)
-            sign_in["result"] = self._ai_signed_in() if result == "saved" else {"result": result}
+                result, extra = setup_steps.claude_token_sign_in(program, token)
+            sign_in["result"] = self._ai_signed_in() if result == "saved" \
+                else {"result": result, **_keychain_code(extra)}
         except Exception:  # never leave the page waiting
             sign_in["result"] = {"result": "sign-in-failed"}
 
@@ -380,9 +387,9 @@ class SetupServer:
         program = summarize.find_claude()
         if program is None:
             return HTTPStatus.OK, {"result": "not-installed", "install": summarize.CLAUDE_INSTALL}
-        result, _ = setup_steps.claude_token_sign_in(program, raw["token"])
+        result, extra = setup_steps.claude_token_sign_in(program, raw["token"])
         if result != "saved":
-            return HTTPStatus.OK, {"result": result}
+            return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
         with self._ai:
             if self._claude_script is not None:  # the window's script has done its work
                 self._claude_script.cleanup()
@@ -1213,9 +1220,9 @@ class SetupServer:
         address = raw["address"].strip().lower()
         if not ADDRESS.match(address):
             return HTTPStatus.OK, {"result": "no-address"}
-        result, _ = setup_steps.gmail_sign_in(address, raw["password"])
+        result, _, extra = setup_steps.gmail_sign_in(address, raw["password"])
         if result != "saved":
-            return HTTPStatus.OK, {"result": result}
+            return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
         with self._saving:
             progress = setup_save.read(self.config)["progress"]
             statuses = {**progress["sources"], "gmail": "done"}
@@ -1401,6 +1408,12 @@ def _ai_status(program: str, name: str) -> str:
 
 def _nothing_to_give() -> dict[str, Any]:
     return setup_save.outcome("invalid-answers", "Nothing to give.", errors=["answers: should be {}"])
+
+
+def _keychain_code(extra: dict[str, Any]) -> dict[str, Any]:
+    """Only macOS's code from what a Keychain step reports: a failed test call's error isn't
+    returned, since it can name the Mac's files."""
+    return {"code": extra["code"]} if "code" in extra else {}
 
 
 def _wilma_invalid() -> dict[str, Any]:
