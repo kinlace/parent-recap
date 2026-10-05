@@ -32,16 +32,35 @@ VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$PLUGIN_ROOT/.claude-plug
 echo "${VERSION:-unknown}" > "$APP/VERSION"
 
 [ -x "$APP/.venv/bin/python" ] || "$PY" -m venv "$APP/.venv"
+
+# pip's full output goes to a dated log, not the Terminal: a failed build is pages of compiler
+# output a family can't act on. The log starts with the one line triage needs about this Mac,
+# which writes the home folder as ~ so it names no account.
+LOG="$TARGET/logs/install-$(date +%Y-%m-%d-%H%M%S).log"
+pip_failed() {
+  echo "❌ Parent Recap couldn't install its Python packages. The full log is at $LOG"
+  echo "   Run the install again. If it fails again, send that log to the Parent Recap team."
+  exit 1
+}
 # Prebuilt packages only: building one from source can download a compiler and still fail, and
 # then pip picks the newest version with a ready-made package for this Mac. Pinned to what was
 # tested (app/constraints.txt, see CONTRIBUTING.md), not to what was published this morning.
-PIP=("$APP/.venv/bin/pip" install -q --only-binary :all:)
-"${PIP[@]}" --upgrade pip >/dev/null 2>&1
-if ! "${PIP[@]}" -c "$APP/constraints.txt" -e "$APP"; then
-  echo "❌ Installing the packages FamilyBrief needs failed (pip's message is above)."
-  echo "   It installs only ready-made packages, so it stops when a package has none for this Mac."
-  exit 1
-fi
+PIP=("$APP/.venv/bin/pip" install --only-binary :all:)
+# pip upgrades itself first, so the line names the pip that installs the packages.
+UPGRADE=$("${PIP[@]}" --upgrade pip 2>&1) && UPGRADED=yes || UPGRADED=no
+tilde() {
+  case "$1" in
+    "$HOME"/*) [ "${HOME:-/}" != / ] && echo "~/${1:${#HOME}+1}" || echo "$1" ;;
+    *) echo "$1" ;;
+  esac
+}
+CC=$(command -v cc 2>/dev/null) || CC=none
+MAC="Mac: $(uname -m), macOS $(sw_vers -productVersion 2>/dev/null || echo unknown),"
+MAC+=" Python $(tilde "$PY") ($("$PY" -c 'import platform; print(platform.python_version())' 2>/dev/null || echo unknown)),"
+MAC+=" pip $("$APP/.venv/bin/python" -c 'from importlib.metadata import version; print(version("pip"))' 2>/dev/null || echo unknown), cc $(tilde "$CC")"
+printf '%s\n%s\n' "$MAC" "$UPGRADE" > "$LOG"
+[ "$UPGRADED" = yes ] || pip_failed
+"${PIP[@]}" -c "$APP/constraints.txt" -e "$APP" >> "$LOG" 2>&1 || pip_failed
 RECORD=("$APP/.venv/bin/python" -m family_brief.install_record)
 "${RECORD[@]}" program "$APP" logs "$TARGET/logs"
 # The copy of the plugin the install line downloads, which the Codex skills run from; Claude
