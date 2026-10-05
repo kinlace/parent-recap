@@ -228,6 +228,12 @@ class SetupServer:
         self._health: dict[str, Any] | None = None  # the check page's health check, once started
         self._brief: dict[str, Any] | None = None  # the first Brief, once it's being made
         self._finish: dict[str, Any] | None = None  # Finish's install and check, once started
+        # Finish was tried, with Turn it on or Check again: from then on, its checklist says
+        # what's missing under each outcome that isn't true.
+        self._finish_tried = False
+        # How setting the wake-up went at the last Turn it on, which Check again still shows, with
+        # Replace it for another wake schedule.
+        self._finish_wake: dict[str, Any] = {}
         # Every outcome is true, or the family finished for now: the server stops once that's
         # been said.
         self.closing = False
@@ -875,10 +881,16 @@ class SetupServer:
 
     def check_outcomes(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Checks the outcomes without installing anything, for a Household that may have
-        finished already: once every outcome is true, the page shows only the checklist."""
-        if raw != {}:
-            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
-        return self._start_finish(None)
+        finished already: once every outcome is true, the page shows only the checklist. With
+        `again`, it's Check again: the outcomes, the health check among them, are checked once
+        more without loading the evening job or setting the wake-up again, and the checklist says
+        what's still missing."""
+        again = isinstance(raw, dict) and set(raw) == {"again"} and raw["again"] is True
+        if raw != {} and not again:
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Give nothing, or say it's Check again.",
+                errors=["again: should be true, or left out"])
+        return self._start_finish(None, again=again)
 
     def check_finish(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """How Finish went: each outcome and whether it's true, without its reason, which can name
@@ -893,7 +905,8 @@ class SetupServer:
             self.closing = True
         return HTTPStatus.OK, finish
 
-    def _start_finish(self, replace: bool | None) -> tuple[HTTPStatus, dict[str, Any]]:
+    def _start_finish(self, replace: bool | None,
+                      again: bool = False) -> tuple[HTTPStatus, dict[str, Any]]:
         """Installs with `replace` true or false, then checks; with None, only checks."""
         if setup_save.read(self.config)["progress"]["phase"] != "finish":
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
@@ -904,11 +917,11 @@ class SetupServer:
                 return HTTPStatus.OK, {"result": self._finish["result"]}  # never asked twice
             started = {"result": "checking" if replace is None else "installing"}
             self._finish = started
+            self._finish_tried = self._finish_tried or again or replace is not None
             threading.Thread(target=self._finishing, args=(replace,), daemon=True).start()
         return HTTPStatus.OK, dict(started)
 
     def _finishing(self, replace: bool | None) -> None:
-        wake: dict[str, Any] = {}
         if replace is not None:
             try:
                 cfg = Config.load(self.config)
@@ -916,16 +929,20 @@ class SetupServer:
                 result, other = ops.set_wake(cfg.schedule.daily_hour, cfg.schedule.daily_minute,
                                              replace)
             except Exception:  # its error can name the Mac's files: never leave the page installing
+                self._finish_wake = {}
                 self._finish = {"result": "install-failed"}
                 return
-            wake = {"wake": result, **({"other": other} if result == "other-schedule" else {})}
+            self._finish_wake = {"wake": result,
+                                 **({"other": other} if result == "other-schedule" else {})}
             self._finish = {"result": "checking"}
         try:
             outcomes = setup_status.check(str(self.config))
         except Exception:  # never leave the page checking
             outcomes = []
         done = bool(outcomes) and all(o.ok for o in outcomes)
-        self._finish = {"result": "done" if done else "not-done", **wake,
+        # Only checked, after a try: the checklist still says what's missing.
+        tried = {"tried": True} if replace is None and self._finish_tried else {}
+        self._finish = {"result": "done" if done else "not-done", **self._finish_wake, **tried,
                         "outcomes": [_finish_outcome(o) for o in outcomes]}
 
     def stop_for_now(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
