@@ -15,14 +15,13 @@ from __future__ import annotations
 import base64
 import json
 import os
-import shutil
 import subprocess
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import install_record
+from . import install_record, tools
 from .collectors import wilma
 
 WILMA_CLI_VERSION = "1.6.2"
@@ -30,8 +29,6 @@ PACKAGE = "@wilm-ai/wilma-cli"
 INSTALL_ARGS = ["install", "-g", f"{PACKAGE}@{WILMA_CLI_VERSION}"]
 NODE_INSTALL = "brew install node"
 INSTALL_SECONDS = 300
-# Where Homebrew puts npm, for a server started without Homebrew on its PATH.
-NPM_PLACES = ("/opt/homebrew/bin/npm", "/usr/local/bin/npm")
 # What the CLI says when Wilma turns the username and password down, and nothing else does.
 WRONG_PASSWORD = "Wilma login failed"
 SALT = "wilmai::"  # the CLI's own, in front of the password before it's Base64-encoded
@@ -40,7 +37,7 @@ MAX_TOWNS = 20
 
 
 def installed() -> bool:
-    return shutil.which(wilma.WILMA) is not None
+    return tools.find(wilma.WILMA) is not None
 
 
 def install() -> str:
@@ -65,7 +62,8 @@ def install() -> str:
 
 
 def npm() -> str | None:
-    return shutil.which("npm") or next((p for p in NPM_PLACES if os.access(p, os.X_OK)), None)
+    """Node's npm, also where Homebrew puts it for a server started without it on its PATH."""
+    return tools.find("npm")
 
 
 def uninstall() -> bool:
@@ -84,7 +82,7 @@ def uninstall() -> bool:
 def tenants() -> list[dict[str, Any]] | None:
     """Each Wilma in the tenant list the installed CLI ships, as its address, its name and its
     towns (Finnish, Swedish), or None without the CLI or the list."""
-    program = shutil.which(wilma.WILMA)
+    program = tools.find(wilma.WILMA)
     if program is None:
         return None
     package = Path(os.path.realpath(program)).parent.parent  # past dist/index.js

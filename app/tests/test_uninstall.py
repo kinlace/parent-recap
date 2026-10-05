@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 from test_codex_install import install_codex_skills
 
-from family_brief import install_record, ops, run_lock, setup_wilma
+from family_brief import install_record, ops, run_lock, setup_wilma, tools
 from family_brief.collectors import gmail
 from family_brief.config import Config
 
@@ -159,6 +159,7 @@ def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
     (home / ".family" / "languages").mkdir()
     (home / ".family" / "languages" / "sv.json").write_text("{}")
     (home / ".family" / "config.yaml.bak-202609011200").write_text("old: config\n")
+    tools.remembered_path().write_text('{"node": "/nix/store/node/bin/node"}\n')  # found off PATH
     with monkeypatch.context() as mp:  # the progress the setup page and the chat share
         mp.setattr(sys, "stdin", io.StringIO('{"progress": {"phase": "finish"}}'))
         assert harness.cli("setup", "save") == 0
@@ -197,7 +198,8 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
     for item in ("com.family.brief", "Library/LaunchAgents/com.family.brief.plist", OUR_WAKE,
                  "FamilyBrief/app", "FamilyBrief/logs", ".family/config.yaml",
                  ".family/config.yaml.bak-202609011200", ".family/state.json", ".family/languages",
-                 ".family/install-record.json", ".family/setup-progress.json", "gmail-imap-parent@example.com",
+                 ".family/install-record.json", ".family/setup-progress.json",
+                 ".family/programs.json", "gmail-imap-parent@example.com",
                  "claude-oauth-token", ".agents/skills/parent-recap-setup",
                  ".agents/skills/parent-recap-manage", "/plugin uninstall parent-recap@kinlace"):
         assert item in out, item
@@ -371,7 +373,6 @@ def wilma_and_claude(harness, mac: FakeMac, monkeypatch, tmp_path: Path, *, by_s
     monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
     for var in ("WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
         monkeypatch.delenv(var, raising=False)
-    monkeypatch.setattr(setup_wilma, "NPM_PLACES", ())
     mac.npm_packages.add("@wilm-ai/wilma-cli")
     config = setup_wilma.config_path()
     setup_wilma.write_profile(config, ESPOO, "mia.parent", WILMA_PASSWORD)
@@ -626,7 +627,7 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     items = out.split("\n\nLeft as it is:")[0].split("\n\nNothing has been removed yet")[0]
     listed = [line.split(": ", 1)[1].split(" (", 1)[0] for line in items.splitlines()
               if line.startswith("  • ")]
-    assert len(listed) == 19
+    assert len(listed) == 20
     for where in listed:
         name = where.rsplit("/", 1)[-1].strip().replace("parent@example.com", "<address>")
         name = name.replace("202609011200", "<date>").replace("1 day in ~", "~")

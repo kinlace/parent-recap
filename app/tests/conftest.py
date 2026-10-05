@@ -22,6 +22,7 @@ Everything else (config, state, archive) is real and lives in a temporary HOME.
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -35,7 +36,7 @@ import pytest
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli, feedback, summarize
+from family_brief import __main__ as cli, feedback, summarize, tools
 from family_brief.actions import calendar as calendar_action, email as email_action
 from family_brief.collectors import gmail, myclub, whatsapp, wilma
 from family_brief.collectors.base import CalendarEvent, Message
@@ -50,6 +51,46 @@ PILOT_FORM_URL = "https://docs.google.com/forms/d/e/PILOT_FORM/viewform"
 PILOT_FORM_FIELDS = {"verdict": "entry.11", "item_text": "entry.12", "source": "entry.13",
                      "backend": "entry.14", "date": "entry.15", "household": "entry.16",
                      "kid": "entry.17"}
+
+
+REAL_RUN = subprocess.run  # before the harness fakes it
+
+
+@pytest.fixture(autouse=True)
+def _programs_only_where_the_test_puts_them(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not in this Mac's Homebrew or nix folders, and not where its login shell finds them.
+    tools.find adds to PATH, which is put back after each test."""
+    monkeypatch.setattr(tools, "SYSTEM_DIRS", ())
+    monkeypatch.delenv("SHELL", raising=False)
+    monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
+
+
+@pytest.fixture
+def login_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[[Path], None]:
+    """The family's login shell, whose own setup (fish, nix, a custom npm prefix) puts the folder
+    given on its PATH, which this process's PATH doesn't have. It runs for real, past the
+    harness's fakes, the way tools.find asks it: `$SHELL -l -c 'command -v NAME'`."""
+    shell = tmp_path / "login-shell"
+
+    def put_on_path(folder: Path) -> None:
+        shell.write_text('#!/bin/sh\n[ "$1" = -l ] && [ "$2" = -c ] || exit 64\n'
+                         f'PATH="{folder}:$PATH" exec /bin/sh -c "$3"\n')
+        shell.chmod(0o755)
+        monkeypatch.setenv("SHELL", str(shell))
+        others = subprocess.run
+
+        def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
+            return (REAL_RUN if cmd[0] == str(shell) else others)(cmd, *a, **k)
+        monkeypatch.setattr(subprocess, "run", run)
+    return put_on_path
+
+
+def program(folder: Path, name: str, text: str = "#!/bin/sh\n") -> Path:
+    """An executable `name` in `folder`."""
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_text(text)
+    (folder / name).chmod(0o755)
+    return folder / name
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

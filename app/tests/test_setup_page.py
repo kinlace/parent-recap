@@ -663,6 +663,16 @@ def test_a_missing_or_signed_out_codex_is_caught_and_checked_again(harness, page
     assert check_ai(page.url, "codex").json() == {"result": "ready", "ai": "codex"}
 
 
+@pytest.mark.parametrize("name", ["claude", "codex"])
+def test_an_ai_only_the_login_shell_finds_is_ready(harness, page, ai, login_shell, name):
+    folder = harness.home / "tools" / "bin"  # on the family's shell's PATH, not the page's
+    ai(name, folder)
+    login_shell(folder)
+
+    assert check_ai(page.url, name).json() == {"result": "ready", "ai": name}
+    assert harness.commands[-1][0] == str(folder / name)
+
+
 def test_an_ai_check_that_cannot_run_says_so(harness, page, ai, monkeypatch):
     ai("claude")
     run = setup_server.subprocess.run
@@ -1283,7 +1293,6 @@ def wilma_cli(harness, monkeypatch) -> WilmaCLI:
     monkeypatch.setattr(subprocess, "run", run)
     (w.bin_dir / "npm").write_text("#!/bin/sh\n")
     (w.bin_dir / "npm").chmod(0o755)
-    monkeypatch.setattr(setup_wilma, "NPM_PLACES", ())  # only the PATH's
     return w
 
 
@@ -1352,6 +1361,19 @@ def test_setup_installs_the_pinned_wilma_cli_when_it_is_missing(harness, page, w
     assert wilma_ready(page.url).json()["result"] == "installed"
     assert len(wilma_cli.installs) == 1  # already there: not installed again
     assert install_record.entries("wilma-cli") == ["@wilm-ai/wilma-cli"]  # so uninstall removes it
+
+
+def test_npm_and_a_wilma_cli_only_the_login_shell_finds_are_used(harness, page, wilma_cli,
+                                                                  login_shell, monkeypatch):
+    # npm's folder, where it installs the CLI too, is on the family's shell's PATH only.
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    login_shell(wilma_cli.bin_dir)
+
+    assert wilma_ready(page.url).json()["result"] == "installed"
+
+    assert harness.commands[-1][0] == str(wilma_cli.bin_dir / "npm")
+    assert towns(page.url, "Espoo").json()["result"] == "found"
+    assert sign_in_wilma(page.url).json()["result"] == "signed-in"
 
 
 def test_a_wilma_cli_from_before_setup_is_not_recorded(harness, page, wilma_cli):

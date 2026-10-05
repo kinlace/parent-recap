@@ -9,6 +9,7 @@ import json
 import subprocess
 from datetime import timedelta
 from email.message import EmailMessage
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -167,7 +168,7 @@ def real_wilma(harness, monkeypatch):
 
     def serve(message_ids: list[int], reads: dict[int, str | int | Exception]) -> None:
         def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-            if cmd[0] != wilma.WILMA:
+            if Path(cmd[0]).name != wilma.WILMA:  # by its full path where this Mac has one
                 return model_or_osascript(cmd, *a, **k)
             args = cmd[1:-1]  # without "--json"
             if args[:2] == ["messages", "list"]:
@@ -270,7 +271,7 @@ def test_wilma_command_timing_out_once_is_run_again(harness, real_wilma, monkeyp
     timed_out: list[list[str]] = []
 
     def slow_the_first_time(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if cmd[0] == wilma.WILMA and cmd[1:3] == command and not timed_out:
+        if Path(cmd[0]).name == wilma.WILMA and cmd[1:3] == command and not timed_out:
             timed_out.append(cmd)
             raise subprocess.TimeoutExpired(cmd, k["timeout"])
         return fake_wilma(cmd, *a, **k)
@@ -290,7 +291,7 @@ def test_wilma_timing_out_twice_is_reported_as_not_read(harness, real_wilma, mon
     tries: list[list[str]] = []
 
     def always_slow(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if cmd[0] == wilma.WILMA and cmd[1:3] == ["messages", "list"]:
+        if Path(cmd[0]).name == wilma.WILMA and cmd[1:3] == ["messages", "list"]:
             tries.append(cmd)
             raise subprocess.TimeoutExpired(cmd, k["timeout"])
         return fake_wilma(cmd, *a, **k)

@@ -14,6 +14,7 @@ import sys
 from typing import Any
 
 import pytest
+from conftest import program
 
 from family_brief import ops
 
@@ -243,6 +244,25 @@ def test_schedule_install_puts_the_native_installers_folder_on_the_jobs_path(har
 
     plist = plistlib.loads((ops.LAUNCH_AGENTS / f"{ops.JOB_DAILY}.plist").read_bytes())
     assert str(bin_dir) in plist["EnvironmentVariables"]["PATH"].split(":")
+
+
+def test_schedule_install_puts_what_the_login_shell_finds_on_the_jobs_path(harness, mac,
+                                                                          login_shell, monkeypatch):
+    # The family's own shell setup has claude and Node where the evening job's PATH wouldn't
+    # lead; the wilma CLI is a Node script in a custom npm prefix.
+    folder = harness.home / "tools" / "bin"
+    program(folder, "claude")
+    program(folder, "node")
+    npm_global = harness.home / ".npm-global" / "bin"
+    program(npm_global, "wilma", "#!/usr/bin/env node\n")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    login_shell(folder)
+
+    assert harness.cli("schedule", "install") == 0
+
+    plist = plistlib.loads((ops.LAUNCH_AGENTS / f"{ops.JOB_DAILY}.plist").read_bytes())
+    path = plist["EnvironmentVariables"]["PATH"].split(":")
+    assert str(folder) in path and str(npm_global) in path
 
 
 def test_schedule_install_skips_the_wake_schedule_when_the_mac_never_sleeps(harness, mac, capsys):

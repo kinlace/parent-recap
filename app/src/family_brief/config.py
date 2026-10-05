@@ -131,7 +131,7 @@ class LLMConfig(BaseModel):
     backend: Literal["claude", "codex"] = "claude"
     model: str | None = None
     timeout_seconds: int = 300
-    codex_path: str | None = None  # default: the codex bundled in Codex.app / ChatGPT.app, then PATH
+    codex_path: str | None = None  # default: the codex bundled in Codex.app / ChatGPT.app, then tools.find
 
     @field_validator("backend", mode="before")
     @classmethod

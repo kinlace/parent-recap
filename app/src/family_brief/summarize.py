@@ -14,7 +14,7 @@ from string import Template
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from . import citations, languages
+from . import citations, languages, tools
 from .brief_text import TEXT, BriefText
 from .languages import FINNISH_WORDS, is_finnish
 from .collectors.base import CalendarEvent, Message
@@ -303,12 +303,8 @@ def native_claude_dir() -> Path:
 
 def find_claude() -> str | None:
     """The claude binary to run. The native installer adds its folder to the shell's PATH, which
-    a shell started before it, or the nightly job, may not have, so look there too."""
-    found = shutil.which("claude")
-    if found:
-        return found
-    native = native_claude_dir() / "claude"
-    return str(native) if native.is_file() and os.access(native, os.X_OK) else None
+    a shell started before it, or the nightly job, may not have, so tools.find looks there too."""
+    return tools.find("claude")
 
 
 def claude_test_call(program: str, env: dict[str, str]) -> str | None:
@@ -483,7 +479,7 @@ def _run_claude(cfg: Config, prompt: str, system_prompt: str, timeout: int, budg
     # and can pull the model toward coding behaviour.
     # --no-session-persistence: otherwise every night leaves the prompt and reply in ~/.claude/projects.
     # The prompt goes on stdin: a catch-up night can pass macOS's 1 MiB argv cap, and argv shows in `ps`.
-    # By name when PATH has it, as before; the full path only for a native install PATH lacks.
+    # By name when PATH has it, as before; the full path only for one PATH doesn't lead to.
     program = "claude" if shutil.which("claude") else find_claude() or "claude"
     cmd = [program, "-p", "--output-format", "json",
            "--system-prompt", system_prompt, "--tools", "", "--strict-mcp-config",
@@ -524,11 +520,11 @@ def find_codex(cfg: Config) -> str | None:
 def find_codex_at(codex_path: str | None) -> str | None:
     """find_codex, with the config's llm.codex_path given on its own."""
     candidates = [os.path.expanduser(codex_path)] if codex_path else []
-    candidates += [*CODEX_BUNDLED, shutil.which("codex")]
+    candidates += CODEX_BUNDLED
     for c in candidates:
-        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+        if os.path.isfile(c) and os.access(c, os.X_OK):
             return c
-    return None
+    return tools.find("codex")
 
 
 def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int, budget: int) -> LLMReply:
