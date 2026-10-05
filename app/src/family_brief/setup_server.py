@@ -185,7 +185,7 @@ def cmd_page(args: argparse.Namespace) -> int:
         server.serve_until_idle()
     except KeyboardInterrupt:
         server.stop()
-    print(CLOSED_LINES[server._chosen_language() or "en"], flush=True)
+    print(CLOSED_LINES[server.chosen_language() or "en"], flush=True)
     return 0
 
 
@@ -225,7 +225,9 @@ class SetupServer:
         self._health: dict[str, Any] | None = None  # the check page's health check, once started
         self._brief: dict[str, Any] | None = None  # the first Brief, once it's being made
         self._finish: dict[str, Any] | None = None  # Finish's install and check, once started
-        self.closing = False  # every outcome is true: the server stops once that's been said
+        # Every outcome is true, or the family finished for now: the server stops once that's
+        # been said.
+        self.closing = False
 
     def serve_until_idle(self) -> None:
         """Serves until `stop`, or until IDLE_SECONDS pass without a request."""
@@ -267,7 +269,7 @@ class SetupServer:
     def state(self) -> dict[str, Any]:
         progress = setup_save.read(self.config)["progress"]
         return {"languages": [{"code": c, "name": n} for c, n in LANGUAGES.items()],
-                "language": self._chosen_language(),
+                "language": self.chosen_language(),
                 "preselected": mac_language(),
                 "progress": progress,
                 "welcome": self._welcome(progress),
@@ -1142,7 +1144,7 @@ class SetupServer:
             window: dict[str, Any] = {"result": None}
             self._window = window
         threading.Thread(target=self._wait_for_window, daemon=True,
-                         args=(window, self._chosen_language() or "en", raw["town"])).start()
+                         args=(window, self.chosen_language() or "en", raw["town"])).start()
         return HTTPStatus.OK, {"result": "waiting"}
 
     def check_wilma_window(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
@@ -1247,7 +1249,7 @@ class SetupServer:
     def _welcome(self, progress: dict[str, Any]) -> dict[str, Any]:
         """Welcome's choices as saved, each with its default until it is."""
         data = self._config_data()
-        language = self._chosen_language() or mac_language()
+        language = self.chosen_language() or mac_language()
         if "partner" in progress:
             saved = progress["partner"]
         else:  # a config the chat setup wrote: its second Recipient is the partner
@@ -1270,7 +1272,7 @@ class SetupServer:
             return {}
         return data if isinstance(data, dict) else {}
 
-    def _chosen_language(self) -> str | None:
+    def chosen_language(self) -> str | None:
         """The language already picked, from the config: None until there's one the page offers."""
         language = self._config_data().get("summary_language")
         return language if language in LANGUAGES else None

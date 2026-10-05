@@ -51,7 +51,8 @@ Welcome chose kept in it.
 `test_setup_page.py` starts the setup page's server in-process and drives it with HTTP calls, as
 the page makes them. It checks that a request without the code, or for another Host or from
 another Origin, is refused, that the page loads nothing from the internet, that the server stops
-after 30 idle minutes, the Mac's language preselected, that the language picked is saved, that
+after 30 idle minutes and Terminal then says, in the language picked, that its window can be
+closed, the Mac's language preselected, that the language picked is saved, that
 every page text is in all three languages, and that a second run resumes at the saved phase. On
 Welcome, it checks each choice's default and that the answers are saved, that the partner's email
 and language are asked only with a partner, and that a missing or signed-out Claude Code or Codex
@@ -114,10 +115,13 @@ opens the Digest's pre-filled Form link.
 Finish runs against a fake `launchctl`, `pmset` and administrator dialog, which sets the wake-up
 once the test lets it go, with doctor's checks faked as on the check page. It checks that the
 evening job is loaded and the wake-up set through macOS's dialog only, that the API takes no
-password, that each outcome comes back true or false without its reason, that another wake schedule
+password, that each outcome comes back true or false without its reason, that a health check that
+isn't OK names only its checks, that another wake schedule
 is replaced only once the family agrees, that a closed dialog or jobs that can't be loaded say so
 and can be tried again, that a finished Household is only checked, with nothing installed again,
-and that the server stops once every outcome is true. Where no port can be listened on, a request
+that the server stops once every outcome is true, and that "Finish for now" stops it only at
+Finish and never while it's installing. It also checks that every Finish text, with each check's
+next step, is in all three languages, and that Finish says a Mac that's shut down makes no Brief. Where no port can be listened on, a request
 rung in as the server stops times out, as a closed port refuses it.
 Its "Continue in the chat" runs the Terminal script the page opens against a fake `claude`, and
 checks that it starts Claude Code in the home folder at the setup skill, that a Codex family is

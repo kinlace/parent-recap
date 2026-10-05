@@ -1561,8 +1561,9 @@ async function stopForNow(event) {
   try {
     const out = await post("api/finish/stop", {});
     if (out.result !== "stopped") return checkFinish(); // still installing or checking
+    // What the last try said offers buttons the page no longer has.
     document.getElementById("finish-install").hidden = true;
-    document.getElementById("finish-replace").hidden = true;
+    document.getElementById("finish-status").hidden = true;
     setText(document.getElementById("finish-stopped-message"), "finish.stopped." + page.welcome.ai);
     document.getElementById("finish-stopped").hidden = false;
     closed();
