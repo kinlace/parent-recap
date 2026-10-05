@@ -1,0 +1,12 @@
+# The pilot feedback Form (see ops/feedback-form). Setup copies this block into a pilot family's
+# config.yaml and adds their household_label.
+feedback:
+  prefill_base_url: https://docs.google.com/forms/d/e/1FAIpQLScjJTlf9rxDnCQICaIfLLPeaWnME422P-0Rll7zL4lB-bQc9Q/viewform
+  fields:
+    verdict: entry.1875679283
+    item_text: entry.287860846
+    source: entry.198115259
+    backend: entry.126705097
+    date: entry.1563576098
+    household: entry.1806806904
+    kid: entry.342809562
