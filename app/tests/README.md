@@ -139,6 +139,10 @@ package and no `cryptography`, and that `scripts/check_wheels.py` fails when a p
 `test_without_google_packages.py` blocks Google's packages from import and checks that every
 module imports, that the evening Brief with `.ics`, Weekend Picks, setup and doctor run, that google
 mode without them sends the events as `.ics`, and that doctor says how to install them.
+`test_issue_loop.py` sources `scripts/issue-loop.sh` and runs its merge step against a fake `gh`.
+It checks that a PR is merged only once the `test` check has passed, that a missing, failing or
+skipped `test` stops the loop with the reason and no merge, and that a merge GitHub refuses stops
+the loop with GitHub's message.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:
