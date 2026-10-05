@@ -51,7 +51,7 @@ Notes:
 
 - `setup-token` needs a Claude Pro or Max subscription
 - If the user's `~/.zshrc` exports `ANTHROPIC_API_KEY`, it clashes with subscription login. The program prefers the Keychain token, but it's best to have the user remove that line
-- Without a subscription, an API key works too: in **Terminal** run `security add-generic-password -U -s family-brief -a anthropic-api-key -w`, press Enter and paste the key. It's billed per use, a few cents a day
+- Without a subscription, an API key works too: in **Terminal** run `security add-generic-password -U -s family-brief -a anthropic-api-key -T /usr/bin/security -w`, press Enter and paste the key (`-T /usr/bin/security` lets the evening job read it without a Keychain prompt). It's billed per use, a few cents a day
 
 ## Wilma (optional)
 

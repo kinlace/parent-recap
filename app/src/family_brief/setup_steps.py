@@ -43,8 +43,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-import keyring.errors
-
 from . import install_record, secret_dialog, setup_wilma, tools
 from .config import Config, Kid
 from .utils import keychain
@@ -183,14 +181,13 @@ def register(sub) -> None:
     setup_server.register(steps)
 
 
-def _keychain_failure(e: keyring.errors.KeyringError) -> tuple[str, dict[str, Any]]:
+def _keychain_failure(e: keychain.KeychainError) -> tuple[str, dict[str, Any]]:
     """A step's result when macOS refused to save a secret in the Keychain, with macOS's code
     when there is one: `keychain-not-reachable` when it can't even ask here, as in tmux or over
     SSH, otherwise `keychain-failed`."""
-    code = keychain.error_code(e)
-    result = ("keychain-not-reachable" if code == keychain.INTERACTION_NOT_ALLOWED
+    result = ("keychain-not-reachable" if e.code == keychain.INTERACTION_NOT_ALLOWED
               else "keychain-failed")
-    return result, ({"code": code} if code is not None else {})
+    return result, ({"code": e.code} if e.code is not None else {})
 
 
 def _warn_if_unreachable() -> str:
@@ -271,7 +268,7 @@ def gmail_sign_in(address: str, password: str) -> tuple[str, str | None, dict[st
 
     try:
         gmail.store_app_password(address, password)
-    except keyring.errors.KeyringError as e:
+    except keychain.KeychainError as e:
         result, extra = _keychain_failure(e)
         if result == "keychain-not-reachable":
             return result, ("Gmail accepted it, but macOS doesn't let Parent Recap save it in the "
@@ -548,7 +545,7 @@ def claude_token_sign_in(program: str, typed: str) -> tuple[str, dict[str, Any]]
 
     try:
         keychain.set_(CLAUDE_TOKEN_ACCOUNT, token)
-    except keyring.errors.KeyringError as e:
+    except keychain.KeychainError as e:
         return _keychain_failure(e)
     install_record.add("keychain", CLAUDE_TOKEN_ACCOUNT)
     return "saved", {}

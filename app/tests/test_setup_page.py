@@ -25,7 +25,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-import keyring.errors
 import pytest
 import requests
 import yaml
@@ -36,8 +35,7 @@ from family_brief import (__main__ as cli, feedback, install_record, ops, run_lo
 from family_brief.collectors import myclub, whatsapp
 from family_brief.config import Config
 from family_brief.state import State
-from family_brief.utils import keychain
-from conftest import PILOT_FORM_FIELDS, PILOT_FORM_URL, keychain_refusing, msg
+from conftest import PILOT_FORM_FIELDS, PILOT_FORM_URL, msg
 from test_nightly_run import FEEDBACK, FORM, feedback_links
 from test_setup_status import install_program
 from test_setup_steps import HeaderImap
@@ -1075,21 +1073,19 @@ def test_no_connection_to_gmail_says_so(harness, page, gmail):
     assert harness.keychain == {}
 
 
-def test_a_keychain_that_refuses_says_so(harness, page, gmail, monkeypatch):
-    def refuses(*_a: Any) -> None:
-        raise keyring.errors.KeyringError("denied")
-    monkeypatch.setattr(keychain, "set_", refuses)
+def test_a_keychain_that_refuses_says_so(harness, page, gmail):
+    harness.keychain_refuses = -128  # errSecUserCanceled
 
     assert connect_gmail(page.url).json()["result"] == "keychain-failed"
     assert statuses(page.url)["gmail"] == "to-do"
 
 
-def test_a_keychain_out_of_reach_says_so_with_its_code(harness, page, gmail, monkeypatch):
-    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25308))  # errSecInteractionNotAllowed
+def test_a_keychain_out_of_reach_says_so_with_its_code(harness, page, gmail):
+    harness.keychain_refuses = -25308  # errSecInteractionNotAllowed
 
     assert connect_gmail(page.url).json() == {"result": "keychain-not-reachable", "code": -25308}
     assert statuses(page.url)["gmail"] == "to-do"
-    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25293))
+    harness.keychain_refuses = -25293
     assert connect_gmail(page.url).json() == {"result": "keychain-failed", "code": -25293}
 
 
@@ -1877,21 +1873,18 @@ def test_a_pasted_token_that_does_not_work_is_explained_and_not_kept(harness, pa
     assert_never_leaked(harness, [r], caplog, capsys, pasted)
 
 
-def test_a_keychain_that_refuses_the_claude_token_says_so(harness, page, claude, monkeypatch):
-    def refuses(*_a: Any) -> None:
-        raise keyring.errors.KeyringError("denied")
-    monkeypatch.setattr(keychain, "set_", refuses)
+def test_a_keychain_that_refuses_the_claude_token_says_so(harness, page, claude):
+    harness.keychain_refuses = -128  # errSecUserCanceled
     claude.install()
 
     r = call(page.url, "api/claude/token", method="POST", body={"token": CLAUDE_TOKEN})
 
-    assert r.json() == {"result": "keychain-failed"}
+    assert r.json() == {"result": "keychain-failed", "code": -128}
     assert statuses(page.url)["ai"] == "to-do"
 
 
-def test_a_keychain_out_of_reach_of_the_claude_token_says_so_with_its_code(harness, page, claude,
-                                                                          monkeypatch):
-    monkeypatch.setattr(keychain, "set_", keychain_refusing(-25308))  # errSecInteractionNotAllowed
+def test_a_keychain_out_of_reach_of_the_claude_token_says_so_with_its_code(harness, page, claude):
+    harness.keychain_refuses = -25308  # errSecInteractionNotAllowed
     claude.install()
 
     r = call(page.url, "api/claude/token", method="POST", body={"token": CLAUDE_TOKEN})

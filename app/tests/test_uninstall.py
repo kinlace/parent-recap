@@ -128,6 +128,12 @@ def mac(harness, monkeypatch) -> FakeMac:
     return fake
 
 
+def store_app_password(harness, address: str, password: str) -> None:
+    """What setup's Gmail step leaves: the Keychain item and its entry in the record."""
+    harness.keychain[gmail.keychain_account(address)] = password
+    install_record.add("keychain", gmail.keychain_account(address))
+
+
 def make_program(home: Path, monkeypatch) -> Path:
     """What install.sh leaves in ~/FamilyBrief/app, running as the program's own Python."""
     app = home / "FamilyBrief" / "app"
@@ -151,7 +157,7 @@ def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
         install_record.main(["program", str(app), "logs", str(home / "FamilyBrief" / "logs"),
                              "codex-skill", str(home / ".agents/skills/parent-recap-setup"),
                              "codex-skill", str(home / ".agents/skills/parent-recap-manage")])
-    gmail.store_app_password("parent@example.com", APP_PASSWORD)
+    store_app_password(harness, "parent@example.com", APP_PASSWORD)
     harness.keychain["claude-oauth-token"] = CLAUDE_TOKEN
     assert harness.cli("schedule", "install") == 0
     assert mac.repeating == [OUR_WAKE]
@@ -314,7 +320,7 @@ def test_leaves_a_wake_schedule_setup_did_not_set(harness, mac, monkeypatch, cap
 def test_removes_a_gmail_app_password_stored_for_an_earlier_address(harness, mac, monkeypatch,
                                                                     capsys):
     set_up(harness, mac, monkeypatch)
-    gmail.store_app_password("old@example.com", "oldoldoldoldoldo")
+    store_app_password(harness, "old@example.com", "oldoldoldoldoldo")
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
@@ -572,7 +578,7 @@ def test_a_fresh_setup_works_after_uninstall(harness, mac, monkeypatch, capsys):
     assert not (harness.home / ".family").exists()
     app = make_program(harness.home, monkeypatch)
     install_record.main(["program", str(app)])
-    gmail.store_app_password("parent@example.com", APP_PASSWORD)
+    store_app_password(harness, "parent@example.com", APP_PASSWORD)
     assert harness.cli("schedule", "install") == 0
     capsys.readouterr()
 
