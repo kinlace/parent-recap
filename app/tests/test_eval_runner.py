@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from family_brief import summarize
 from family_brief.eval import __main__ as runner
 from family_brief.eval.cases import BUNDLED, load_cases
 
@@ -44,14 +45,18 @@ def case_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    """Replies to every `claude` call with `replies[0]` (a dict, or raw text), recording prompts."""
+    """Replies to every `claude` call with `replies[0]` (a dict, or raw text), recording prompts.
+    Each stderr in `busy` first makes one call fail with it."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    state = {"replies": [GOOD], "prompts": []}
+    state = {"replies": [GOOD], "prompts": [], "busy": []}
 
     def run(cmd, *_a, **k):
         prog = Path(cmd[0]).name
         if prog == "security":
             return subprocess.CompletedProcess(cmd, 44, "", "item not found")
+        if state["busy"]:
+            state["prompts"].append(k["input"])
+            return subprocess.CompletedProcess(cmd, 1, "", state["busy"].pop(0))
         reply = state["replies"][0]
         text = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
         if prog == "codex":
@@ -134,6 +139,30 @@ def test_one_command_scores_both_backends(case_dir, model, tmp_path, capsys):
     codex_card = card[card.index("eval · codex"):]
     row = next(line for line in codex_card.splitlines() if line.startswith("tokens_per_night"))
     assert "—" in row  # no Codex count, rather than a wrong one
+
+
+def test_a_busy_model_is_tried_again_and_its_pauses_are_not_counted_as_its_time(
+        case_dir, model, tmp_path, monkeypatch):
+    model["busy"] = ["ERROR: Selected model is at capacity. Please try a different model.\n"] * 2
+    clock, paused = [1000.0], []
+
+    def pause(seconds):
+        paused.append(seconds)
+        clock[0] += seconds
+
+    monkeypatch.setattr(summarize, "_sleep", pause)
+    monkeypatch.setattr(runner.time, "monotonic", lambda: clock[0])
+    codex = tmp_path / "codex"
+    codex.write_text("")
+    codex.chmod(0o755)
+
+    runner.main(["--cases", str(case_dir), "--out", str(tmp_path / "r"), "--backend", "codex",
+                 "--codex-path", str(codex), "--language", "en"])
+
+    night = json.loads(next((tmp_path / "r").glob("*.json")).read_text())["runs"][0]["cases"]["floorball-fee"]
+    assert len(model["prompts"]) == 3 and paused == [60, 180]
+    assert night["error"] is None and night["clean"]
+    assert night["seconds"] == 0
 
 
 def test_a_reply_that_is_not_json_scores_as_invalid(case_dir, model, tmp_path):

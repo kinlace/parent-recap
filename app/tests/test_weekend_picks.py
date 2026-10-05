@@ -146,7 +146,7 @@ def two_language_weekend(h, monkeypatch, translation) -> None:
 
 
 @pytest.mark.parametrize("translation", [
-    FailedCall("Error: 529 overloaded_error"),
+    FailedCall("Error: stream disconnected before completion"),
     {"picks": [{"ext_id": "le-1", "rank": 1, "why": "A free puppet show"}]},  # drops a pick
     {"picks": [{"ext_id": "le-2", "rank": 1, "why": "Try floorball"},
                {"ext_id": "le-1", "rank": 2, "why": "A free puppet show"}]},  # reorders them

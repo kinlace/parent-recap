@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -349,19 +350,89 @@ def _claude_env() -> tuple[dict[str, str], str]:
     return env, "inherited"
 
 
-def _run_with_retry(cmd: list[str], timeout: int, what: str, **kwargs) -> subprocess.CompletedProcess:
-    """Run an LLM CLI once, retrying once on timeout (both CLIs occasionally hang on start)."""
-    import time
-    for attempt in (1, 2):
+# The pauses before each new try while the model is busy: at capacity, rate-limited, overloaded.
+BUSY_PAUSES = (60, 180, 600)
+# How long one model call may take, its tries and pauses together, before the night gives up on
+# it and sends the Brief without a Digest. The budget is per call: the evening run makes one for
+# the Brief and one per Recipient's translation, though a busy model rarely stays busy that long.
+CALL_BUDGET = 30 * 60
+
+# The errors waiting won't fix win over those it will: signed out, an expired token or key, or a
+# plan's usage limit, which lasts hours.
+# A status number counts only as a status ("status: 429", "API Error: 529", "HTTP 503"), so
+# that a token count or a time in the output isn't taken for one.
+_STATUS = r"(?:status|error|http)\W{0,3}"
+_WONT_PASS = re.compile(r"not logged in|log ?in again|sign in again|/login|unauthori[sz]ed|forbidden|"
+                        rf"{_STATUS}40[13]\b|authentication|invalid (?:api key|credentials)|expired|"
+                        r"usage limit|limit reached|quota", re.I)
+_BUSY = re.compile(r"at capacity|overloaded|rate.?limit|too many requests|"
+                   rf"{_STATUS}(?:429|5(?:00|02|03|04|29))\b|"
+                   r"service unavailable|bad gateway|temporarily unavailable", re.I)
+
+# Seams for the tests, which record the pauses on a fake clock.
+_sleep = time.sleep
+_clock = time.monotonic
+
+
+def _busy_reason(proc: subprocess.CompletedProcess, prompt: str | None) -> str | None:
+    """What says the model is busy in a failed call's output, or None when it isn't busy or
+    waiting won't help. codex echoes the prompt on stderr, and the Household's messages in it are
+    left out: they can say "at capacity" too."""
+    if proc.returncode == 0:
+        return None
+    said = f"{proc.stdout}\n{proc.stderr}"
+    if prompt:
+        said = said.replace(prompt, "")
+    if _WONT_PASS.search(said):
+        return None
+    busy = _BUSY.search(said)
+    return busy.group(0) if busy else None
+
+
+def _minutes(seconds: float) -> str:
+    return f"{seconds / 60:g} min"
+
+
+@dataclass
+class _Ran:
+    """A finished CLI call and how long it paused for a busy model before it."""
+    proc: subprocess.CompletedProcess
+    waited: float
+
+
+def _run_with_retry(cmd: list[str], timeout: int, what: str, budget: int = CALL_BUDGET,
+                    **kwargs) -> _Ran:
+    """Run an LLM CLI, retrying once on timeout (both CLIs occasionally hang on start), and after
+    each of BUSY_PAUSES while the model is busy, as long as the next try could still end within
+    `budget` seconds of the first. Errors waiting won't fix, such as being signed out, come back
+    at once."""
+    started = _clock()
+    pauses = iter(BUSY_PAUSES)
+    waited = 0.0
+    timed_out = False
+    attempt = 0
+    while True:
+        attempt += 1
         log.info("Calling %s (attempt %d)", what, attempt)
         try:
-            return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kwargs)
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kwargs)
         except subprocess.TimeoutExpired as e:
             log.warning("%s timeout on attempt %d (%ds)", what, attempt, timeout)
-            if attempt == 2:
+            if timed_out:
                 raise RuntimeError(f"{what} timed out twice after {timeout}s each") from e
-            time.sleep(5)
-    raise AssertionError("unreachable")
+            timed_out = True
+            _sleep(5)
+            continue
+        busy = _busy_reason(proc, kwargs.get("input"))
+        if not busy:
+            return _Ran(proc, waited)
+        pause = next(pauses, None)
+        if pause is None or _clock() - started + pause + timeout > budget:
+            log.error("%s still busy after %d attempts (%s); giving up on it tonight", what, attempt, busy)
+            return _Ran(proc, waited)
+        log.warning("%s busy on attempt %d (%s); trying again in %s", what, attempt, busy, _minutes(pause))
+        _sleep(pause)
+        waited += pause
 
 
 def _save_diagnostics(name: str, proc: subprocess.CompletedProcess, cmd_desc: str) -> None:
@@ -382,12 +453,13 @@ def _save_diagnostics(name: str, proc: subprocess.CompletedProcess, cmd_desc: st
 @dataclass
 class LLMReply:
     """One backend call: the parsed object, the model's reply text as given, the tokens it
-    used in and out together (None where the backend does not report them), and whether the
-    object needed json-repair."""
+    used in and out together (None where the backend does not report them), whether the
+    object needed json-repair, and the seconds it paused for a busy model."""
     data: dict[str, Any]
     text: str
     tokens: int | None = None
     repaired: bool = False
+    waited: float = 0.0
 
 
 def _claude_reply_text(stdout: str) -> tuple[str, int | None]:
@@ -400,7 +472,7 @@ def _claude_reply_text(stdout: str) -> tuple[str, int | None]:
     return text, (tokens if usage else None)
 
 
-def _run_claude(cfg: Config, prompt: str, system_prompt: str, timeout: int) -> LLMReply:
+def _run_claude(cfg: Config, prompt: str, system_prompt: str, timeout: int, budget: int) -> LLMReply:
     import tempfile
     # Isolated run, like codex: no built-in tools, none of the user's MCP servers, and an empty
     # working dir so no project CLAUDE.md or settings get picked up. The model only reads the prompt.
@@ -421,7 +493,8 @@ def _run_claude(cfg: Config, prompt: str, system_prompt: str, timeout: int) -> L
     env, auth_label = _claude_env()
     what = f"claude CLI (prompt: {len(prompt.encode('utf-8'))} B, auth: {auth_label})"
     with tempfile.TemporaryDirectory(prefix="family-brief-claude-") as work:
-        proc = _run_with_retry(cmd, timeout, what, env=env, cwd=work, input=prompt)
+        ran = _run_with_retry(cmd, timeout, what, budget, env=env, cwd=work, input=prompt)
+    proc = ran.proc
     if proc.returncode != 0:
         _save_diagnostics("claude_cli_failed.txt", proc,
                           f"claude -p --output-format json --system-prompt <{len(system_prompt)} chars> "
@@ -433,7 +506,7 @@ def _run_claude(cfg: Config, prompt: str, system_prompt: str, timeout: int) -> L
         )
     text, tokens = _claude_reply_text(proc.stdout)
     data, repaired = _parse_cli_response(proc.stdout)
-    return LLMReply(data, text, tokens, repaired)
+    return LLMReply(data, text, tokens, repaired, ran.waited)
 
 
 CODEX_BUNDLED = (
@@ -458,7 +531,7 @@ def find_codex_at(codex_path: str | None) -> str | None:
     return None
 
 
-def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int) -> LLMReply:
+def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int, budget: int) -> LLMReply:
     import tempfile
     codex = find_codex(cfg)
     if not codex:
@@ -482,7 +555,8 @@ def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int) -> LL
             cmd += ["-m", cfg.llm.model]
         cmd.append("-")  # prompt on stdin: it is far too long for argv on busy days
         what = f"codex exec (prompt: {len(text.encode('utf-8'))} B)"
-        proc = _run_with_retry(cmd, timeout, what, input=text)
+        ran = _run_with_retry(cmd, timeout, what, budget, input=text)
+        proc = ran.proc
         result = out.read_text() if out.exists() else ""
     if proc.returncode != 0 or not result.strip():
         _save_diagnostics("codex_cli_failed.txt", proc, f"{codex} exec ... - <{len(text)} chars on stdin>")
@@ -490,32 +564,36 @@ def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int) -> LL
     # No token count: -o holds only the last message, and the "tokens used" line in stderr gave
     # 3–16 per night on Codex 0.145. The --json event stream carries real usage if we need it.
     data, repaired = _parse_model_json(result)
-    return LLMReply(data, result, None, repaired)
+    return LLMReply(data, result, None, repaired, ran.waited)
 
 
-def call_llm(cfg: Config, prompt: str, system_prompt: str, timeout: int | None = None) -> LLMReply:
-    """Send one prompt to the configured backend and parse the JSON object it returns."""
+def call_llm(cfg: Config, prompt: str, system_prompt: str, timeout: int | None = None,
+             budget: int = CALL_BUDGET) -> LLMReply:
+    """Send one prompt to the configured backend and parse the JSON object it returns. While the
+    model is busy it is tried again for up to `budget` seconds (0 for none)."""
     run = _run_codex if cfg.llm.backend == "codex" else _run_claude
-    return run(cfg, prompt, system_prompt, timeout or cfg.llm.timeout_seconds)
+    return run(cfg, prompt, system_prompt, timeout or cfg.llm.timeout_seconds, budget)
 
 
 def call_llm_json(cfg: Config, prompt: str, system_prompt: str,
-                  timeout: int | None = None) -> dict[str, Any]:
-    return call_llm(cfg, prompt, system_prompt, timeout).data
+                  timeout: int | None = None, budget: int = CALL_BUDGET) -> dict[str, Any]:
+    return call_llm(cfg, prompt, system_prompt, timeout, budget).data
 
 
 def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[dict],
                     already_captured: list[dict] | None = None,
                     earlier_briefs: list[dict] | None = None,
-                    now: datetime | None = None) -> tuple[dict[str, Any], LLMReply]:
+                    now: datetime | None = None,
+                    budget: int = CALL_BUDGET) -> tuple[dict[str, Any], LLMReply]:
     """The night's summary with its citations resolved, plus the backend call it came from.
-    `now` pins the night the prompt is written for; the eval replays past nights with it."""
+    `now` pins the night the prompt is written for; the eval replays past nights with it.
+    `budget` is how long a busy model is tried for, as call_llm takes it."""
     already_captured = already_captured or []
     now = now or datetime.now().astimezone()
     prompt = _build_prompt(cfg, messages, upcoming_events, already_captured, now, earlier_briefs)
     log.info("Summarizing %d messages via %s", len(messages), cfg.llm.backend)
     language = cfg.brief_language()
-    reply = call_llm(cfg, prompt, system_prompt(language, languages.text(cfg, language)))
+    reply = call_llm(cfg, prompt, system_prompt(language, languages.text(cfg, language)), budget=budget)
     summary = normalise(reply.data, reply.repaired)
     _call_kids(summary, cfg)
     citations.resolve(summary, messages, upcoming_events, already_captured, earlier_briefs or [])
@@ -629,8 +707,10 @@ def _items(value: Any, text_key: str, keys: tuple[str, ...]) -> list[dict[str, A
 def summarize(cfg: Config, messages: list[Message],
               upcoming_events: list[dict],
               already_captured: list[dict] | None = None,
-              earlier_briefs: list[dict] | None = None) -> dict[str, Any]:
-    return summarize_reply(cfg, messages, upcoming_events, already_captured, earlier_briefs)[0]
+              earlier_briefs: list[dict] | None = None,
+              budget: int = CALL_BUDGET) -> dict[str, Any]:
+    return summarize_reply(cfg, messages, upcoming_events, already_captured, earlier_briefs,
+                           budget=budget)[0]
 
 
 def _localize(dt: datetime, tz: str) -> datetime:
