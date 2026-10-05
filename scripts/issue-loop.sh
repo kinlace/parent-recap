@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Works through the backlog unattended: runs /implement on each ready issue, opens its PR and
-# rebases and merges it once CI is green, its `test` check included. No reviewer is added; quality is checked at
-# milestones. It only ever touches the PRs it opens itself, and works the same whoever runs it.
+# rebases and merges it once CI is green, its `test` check included. No reviewer is added;
+# quality is checked at milestones. It only ever touches the PRs it opens itself, and works the
+# same whoever runs it.
 #
 # ── When to use it
 # Use the loop to clear several ready-for-agent tickets while you're away, e.g. the rest of a
@@ -210,26 +211,26 @@ pr_checks() {
     jq -r '[.[] | "\(.name) (\(.bucket))"] | join(", ")' 2>/dev/null || true
 }
 
+# Whether pr_checks' list $1 has the test check, in bucket $2 when given.
+has_test_check() {
+  case ", $1" in *", $TEST_CHECK (${2:-}"*) return 0 ;; *) return 1 ;; esac
+}
+
 # Checks take a few seconds to show up on a new PR; stops the loop unless `test` passes.
 wait_ci() {
   local pr=$1 i checks=
   log "waiting for CI on PR #${pr##*/}"  # called with a number or a PR URL
   for i in $(seq 20); do
     checks=$(pr_checks "$pr")
-    case ", $checks" in *", $TEST_CHECK ("*) break ;; esac
+    has_test_check "$checks" && break
     [ "$i" = 20 ] || sleep "$CI_POLL"
   done
-  case ", $checks" in
-    *", $TEST_CHECK ("*) ;;
-    *) fail "the $TEST_CHECK check is missing after 5 minutes (reported: ${checks:-no checks})" ;;
-  esac
+  has_test_check "$checks" ||
+    fail "the $TEST_CHECK check is missing after $((19 * CI_POLL))s (reported: ${checks:-no checks})"
   gh pr checks "$pr" -R "$REPO" --watch --fail-fast --interval 30 >/dev/null || fail "CI red"
-  # --watch also ends well for a skipped or cancelled check.
+  # Don't rely on --watch's exit code for a skipped or cancelled check.
   checks=$(pr_checks "$pr")
-  case ", $checks" in
-    *", $TEST_CHECK (pass)"*) ;;
-    *) fail "the $TEST_CHECK check didn't pass (reported: ${checks:-no checks})" ;;
-  esac
+  has_test_check "$checks" pass || fail "the $TEST_CHECK check didn't pass (reported: ${checks:-no checks})"
 }
 
 merge_pr() {

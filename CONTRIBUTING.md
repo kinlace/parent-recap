@@ -33,7 +33,7 @@ Unsure what comes next? Ask `/ask-matt`; it knows the whole flow and stays curre
 
 ## Reviews
 
-Maintainers' own PRs don't wait for a review. Once CI is green, the author **rebases and merges** it, so `main` keeps moving fast. CI and the tests are the safety net; quality gets a proper check at each milestone. If something needs the other person's eyes, ask them directly (add them as Reviewer or bring it up in a call). `main` has no branch protection.
+Maintainers' own PRs don't wait for a review. Once CI is green, the author **rebases and merges** it, so `main` keeps moving fast. CI and the tests are the safety net; quality gets a proper check at each milestone. If something needs the other person's eyes, ask them directly (add them as Reviewer or bring it up in a call). `main`'s ruleset asks for no review, only that the `test` and `gitleaks` checks pass before a merge.
 
 **Keeping each other informed:** the first line of every PR description is `What changes for families:` plus one plain sentence, or `nothing` (the PR template prompts for it). Before a release, whoever releases collects these sentences into [`CHANGELOG.md`](CHANGELOG.md), so all changes can be read in one go, and runs the [Brief quality eval](app/tests/README.md#brief-quality-eval) on the commit to tag. A metric worse than the previous release's run by more than its spread holds the release until it's understood.
 
