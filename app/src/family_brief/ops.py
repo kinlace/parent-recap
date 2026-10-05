@@ -25,7 +25,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Callable
 
-from . import google_packages, install_record, languages, private_files, secret_dialog
+from . import google_packages, install_record, languages, private_files, secret_dialog, tools
 from .config import Config
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
@@ -186,8 +186,8 @@ def _check_claude(add) -> None:
     from .summarize import CLAUDE_INSTALL, _claude_env, claude_test_call, find_claude
     claude = find_claude()
     if not claude:
-        add(FAIL, "Claude", "claude command not found on PATH or in ~/.local/bin "
-            f"(install Claude Code with: {CLAUDE_INSTALL})")
+        add(FAIL, "Claude", "claude command not found on PATH, in ~/.local/bin or the other usual "
+            f"folders, or by your login shell (install Claude Code with: {CLAUDE_INSTALL})")
         return
     from .setup_steps import PLAIN_TERMINAL
     from .utils import keychain
@@ -206,8 +206,8 @@ def _check_claude(add) -> None:
 
 
 def _check_wilma(cfg: Config, add) -> None:
-    from .collectors.wilma import _run_or_log
-    if not shutil.which("wilma"):
+    from .collectors.wilma import WILMA, _run_or_log
+    if not tools.find(WILMA):
         add(FAIL, "Wilma", "wilma command not found (npm i -g @wilm-ai/wilma-cli)")
         return
     data = _run_or_log(["kids", "list"])
@@ -611,7 +611,7 @@ def _path_env() -> str:
     from .summarize import native_claude_dir
     dirs: list[str] = []
     for tool in ("claude", "wilma", "node"):
-        found = shutil.which(tool)
+        found = tools.find(tool)
         if found:
             dirs.append(str(Path(found).resolve().parent))
             dirs.append(str(Path(found).parent))

@@ -128,7 +128,6 @@ def wilma(harness, tmp_path, monkeypatch) -> Wilma:
     monkeypatch.setattr(time, "sleep", lambda _s: None)
     w = Wilma(harness.home, bin_dir)
     others = subprocess.run  # the harness's fakes
-    monkeypatch.setattr(setup_wilma, "NPM_PLACES", ())  # only the PATH's, when a test adds npm
 
     def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
         if Path(cmd[0]).name == "wilma":

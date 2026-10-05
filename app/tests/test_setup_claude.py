@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import keychain_refusing, msg
+from conftest import keychain_refusing, msg, program
 
 from family_brief import install_record
 
@@ -97,6 +97,25 @@ def test_a_token_pasted_in_the_dialog_is_tested_and_stored(harness, terminal, ca
     assert harness.keychain == {ACCOUNT: TOKEN}
     assert install_record.entries("keychain") == [ACCOUNT]
     assert_never_leaked(harness, terminal, printed, caplog)
+
+
+def test_a_claude_only_the_login_shell_finds_signs_in(harness, terminal, login_shell, monkeypatch,
+                                                      capsys):
+    # macOS's own Terminal: the family's shell setup puts claude's folder on their login
+    # shell's PATH, not on this one's.
+    folder = harness.home / "tools" / "bin"
+    claude = program(folder, "claude")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    login_shell(folder)
+    harness.dialog.typed = TOKEN
+
+    assert harness.cli("setup", "claude") == 0
+
+    assert result(capsys)[0] == {"result": "saved", "test_call": "ok"}
+    [script] = terminal.scripts
+    assert str(claude) in script
+    [call] = harness.model_calls
+    assert call.argv[0] == str(claude)
 
 
 def test_a_token_copied_across_wrapped_lines_is_put_back_together(harness, terminal, capsys):

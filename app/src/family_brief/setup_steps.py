@@ -31,7 +31,6 @@ import pty
 import re
 import select
 import shlex
-import shutil
 import signal
 import subprocess
 import sys
@@ -46,7 +45,7 @@ from urllib.parse import urlparse
 
 import keyring.errors
 
-from . import install_record, secret_dialog, setup_wilma
+from . import install_record, secret_dialog, setup_wilma, tools
 from .config import Config, Kid
 from .utils import keychain
 
@@ -308,7 +307,7 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
         return {"result": result, **extra, **({"next": next_} if next_ else {})}
 
     setup_wilma.install()
-    program = shutil.which(wilma.WILMA)
+    program = tools.find(wilma.WILMA)
     if not program:
         return outcome("not-installed", f"Install the wilma CLI in Terminal with {WILMA_INSTALL} "
                        "(it needs Node: brew install node), then run this again.")
