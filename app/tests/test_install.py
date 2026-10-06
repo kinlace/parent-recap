@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import sysconfig
 import tarfile
 import tomllib
 from pathlib import Path
@@ -35,6 +36,14 @@ def python_build(tmp_path_factory) -> Path:
     """python-build-standalone's install_only layout under `python/`, standing in for the pinned
     Python: a copy of the base Python running the tests (a copy, so its real path is in the
     folder it's unpacked to), `python3` linking to it, and `lib` its standard library."""
+    # A copied framework binary still finds its home through the framework, so a venv made with
+    # it lands on that Python instead of the copy.
+    if sysconfig.get_config_var("PYTHONFRAMEWORK"):
+        reason = ("the stand-in pinned Python can't be copied from a framework build "
+                  "(python.org's); run on a python-build-standalone Python, e.g. uv's")
+        if os.environ.get("CI"):
+            pytest.fail(reason)
+        pytest.skip(reason)
     root = tmp_path_factory.mktemp("python-build")
     bin_ = root / "python" / "bin"
     bin_.mkdir(parents=True)

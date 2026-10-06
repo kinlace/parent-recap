@@ -18,9 +18,14 @@ jobs:
         working-directory: app
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
+      # A python-build-standalone Python, the kind install.sh gives families. test_install.py's
+      # stand-in pinned Python is a copy of it, which a python.org framework build can't stand in for.
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Python
+        run: |
+          uv python install 3.13
+          uv venv --seed --python 3.13
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       # As install.sh installs: prebuilt packages only, at the pinned versions, with the google
       # extra a Google Calendar Household gets.
       - name: Install
