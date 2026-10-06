@@ -12,9 +12,9 @@ For a full example see `app/config.example.yaml`. The config file lives at `~/.f
 | Vantaa                               | vantaa.inschool.fi     | `vantaa.fi`              | Vantaa, Helsinki, Espoo |
 | Kauniainen                           | kauniainen.inschool.fi | `kauniainen.fi`          | Espoo, Helsinki         |
 
-With Wilma, `family-brief setup wilma` takes the city from the Wilma address the family signs in to, using this table, and gives no city for an address that isn't in it. When you add a city here, add its Wilma address to `WILMA_CITIES` and its starting allowlist to `CITY_DOMAINS` in `app/src/family_brief/setup_steps.py` too; a test checks they match.
+With Wilma, `parent-recap setup wilma` takes the city from the Wilma address the family signs in to, using this table, and gives no city for an address that isn't in it. When you add a city here, add its Wilma address to `WILMA_CITIES` and its starting allowlist to `CITY_DOMAINS` in `app/src/family_brief/setup_steps.py` too; a test checks they match.
 
-The allowlist is only a starting point. Always run `family-brief discover gmail-senders` to add the domains the Kids actually get mail from: music schools (such as `emo.fi` in Espoo), sports clubs, hobby classes. Gmail's `from:espoo.fi` also matches subdomains such as `edu.espoo.fi`.
+The allowlist is only a starting point. Always run `parent-recap discover gmail-senders` to add the domains the Kids actually get mail from: music schools (such as `emo.fi` in Espoo), sports clubs, hobby classes. Gmail's `from:espoo.fi` also matches subdomains such as `edu.espoo.fi`.
 
 Weekend Picks come from the event database of Helsinki, Espoo and Vantaa (Linked Events), so manage turns them on only for families in those three cities and in Kauniainen. Setup doesn't ask about them. Kauniainen sits inside Espoo, and its families go to Espoo and Helsinki events.
 
@@ -23,7 +23,7 @@ Weekend Picks come from the event database of Helsinki, Espoo and Vantaa (Linked
 Parent Recap works in any city whose schools use Wilma; only the starting values above have to be found by hand:
 
 - **Wilma address**: the address the browser shows when the family signs in to Wilma on the web, usually `<city>.inschool.fi`. Searching for "<city> Wilma" finds the sign-in page. In the `wilma` sign-in screen, choose that city or school.
-- **Starting Gmail allowlist**: the domain after the @ in the addresses the school and the teachers write from, often the city's own domain such as `<city>.fi`. Take it from a school email the family already has. With none at hand, leave the allowlist empty and pick the domains from `family-brief discover gmail-senders` in the Gmail step.
+- **Starting Gmail allowlist**: the domain after the @ in the addresses the school and the teachers write from, often the city's own domain such as `<city>.fi`. Take it from a school email the family already has. With none at hand, leave the allowlist empty and pick the domains from `parent-recap discover gmail-senders` in the Gmail step.
 - **Weekend Picks**: not offered.
 
 ### Tested cities
@@ -55,7 +55,7 @@ One town outside the presets was set up end to end in a fresh-install test in Oc
 | `email.weekend_to`                     | Weekend Picks recipients (`email.to` when empty); each can have its own `language` too                                          |
 | `weekend_events.kid_preferences`       | Free text describing each Kid's interests                                                                                       |
 | `feedback`                             | Optional, pilot families only; see [Pilot feedback](#pilot-feedback) below                                                      |
-| `schedule.daily_hour` / `daily_minute` | When the Brief runs; after changing it, run `family-brief schedule install` again                                               |
+| `schedule.daily_hour` / `daily_minute` | When the Brief runs; after changing it, run `parent-recap schedule install` again                                               |
 
 ## Recipients in their own language
 
@@ -71,13 +71,13 @@ email:
 
 The model writes the Brief once, in the first Recipient's language, and one more model call translates it for each other language among the Recipients; Recipients who share a language share that translation and its email. So a Household with two languages makes one extra model call per night, and one with a single language makes none. Each language gets its own email, with the calendar attachment in that language too.
 
-What the Household shares stays in the first Recipient's language: the events written to Google Calendar, the archive in `~/FamilyBrief`, and the text the pilot feedback links send. On a night the translation fails, that Recipient gets the Brief in the first Recipient's language instead, with a line at the top saying so. A translation that leaves out a Notice, an Action Item or a calendar event, or changes a due date, an event's time, which Kid an item is about or the message it points to, counts as failed, so both parents always get the same items with the same dates. iMessage also sends the Brief in the first Recipient's language.
+What the Household shares stays in the first Recipient's language: the events written to Google Calendar, the archive in `~/ParentRecap`, and the text the pilot feedback links send. On a night the translation fails, that Recipient gets the Brief in the first Recipient's language instead, with a line at the top saying so. A translation that leaves out a Notice, an Action Item or a calendar event, or changes a due date, an event's time, which Kid an item is about or the message it points to, counts as failed, so both parents always get the same items with the same dates. iMessage also sends the Brief in the first Recipient's language.
 
 Weekend Picks work the same way: they are written once, in the language of the first Recipient in `email.weekend_to` (or `email.to` when that is empty), and translated for each other language among their Recipients, with the same fallback to the original and a note when a translation fails or leaves out or reorders a pick. The calendar events, the archive and Weekend Picks sent by iMessage keep the original.
 
 ### Reviewed and best-effort languages
 
-`en` (English), `zh` (Chinese) and `fi` (Finnish) are reviewed: we check the program's own text in the Brief (headings, the coverage line, calendar hints, the footer), and they have golden Briefs and eval cases. Any other language is best effort. The first time it's needed, the model translates the program's own text into it once; the result is kept in the `languages` folder next to the state file (for example `~/.family/languages/sv.json`) and used every night after that. `family-brief language sv` does this ahead of time. If that translation fails, the Brief's own text is in English that night and it's tried again the next time; `family-brief doctor` shows which languages have their own text yet. Weekend Picks' own text is translated the same way, once, by the same command or on the first Friday that needs it.
+`en` (English), `zh` (Chinese) and `fi` (Finnish) are reviewed: we check the program's own text in the Brief (headings, the coverage line, calendar hints, the footer), and they have golden Briefs and eval cases. Any other language is best effort. The first time it's needed, the model translates the program's own text into it once; the result is kept in the `languages` folder next to the state file (for example `~/.family/languages/sv.json`) and used every night after that. `parent-recap language sv` does this ahead of time. If that translation fails, the Brief's own text is in English that night and it's tried again the next time; `parent-recap doctor` shows which languages have their own text yet. Weekend Picks' own text is translated the same way, once, by the same command or on the first Friday that needs it.
 
 ## Pilot feedback
 
@@ -90,13 +90,13 @@ For pilot families only. When turned on, the emailed Brief (HTML version) shows 
 - Only the item clicked is sent; nothing is sent if nothing is clicked. The rest of the Brief, and the original mail and chat messages, are never sent.
 - It can be turned off at any time (`enabled: false`); the links then disappear from the Brief.
 
-**How to configure it:** the program ships the pilot form's details (the team creates the form with the script in `ops/feedback-form`), so nothing is pasted. Turn it on with `family-brief setup save <<< '{"feedback": {"enabled": true}}'`, or by answering yes on the setup page's Welcome. That writes the whole section: `prefill_base_url` and `fields` from the program, and a `household_label`, which starts as the setup parent's email user (`virtanen.home` for `virtanen.home@gmail.com`). Change it to a name the team will recognize, such as `"Virtanen family"`, on the setup page's check step or with `family-brief setup save <<< '{"feedback": {"household_label": "Virtanen family"}}'`; the feedback sheet uses it to tell Households apart. Don't change `prefill_base_url` or any `entry.` number in `fields`, or the form won't be pre-filled. A version that ships no pilot form doesn't ask, and refuses to turn it on. Without this section, or with `enabled: false`, there are no links.
+**How to configure it:** the program ships the pilot form's details (the team creates the form with the script in `ops/feedback-form`), so nothing is pasted. Turn it on with `parent-recap setup save <<< '{"feedback": {"enabled": true}}'`, or by answering yes on the setup page's Welcome. That writes the whole section: `prefill_base_url` and `fields` from the program, and a `household_label`, which starts as the setup parent's email user (`virtanen.home` for `virtanen.home@gmail.com`). Change it to a name the team will recognize, such as `"Virtanen family"`, on the setup page's check step or with `parent-recap setup save <<< '{"feedback": {"household_label": "Virtanen family"}}'`; the feedback sheet uses it to tell Households apart. Don't change `prefill_base_url` or any `entry.` number in `fields`, or the form won't be pre-filled. A version that ships no pilot form doesn't ask, and refuses to turn it on. Without this section, or with `enabled: false`, there are no links.
 
-Afterwards run `family-brief doctor`: a ⚠️ on the pilot feedback line means a field is missing or `household_label` is empty. It doesn't stop the Brief or setup from finishing. `run --dry-run` doesn't build the HTML version, so it doesn't show the links; only the next real Brief confirms that ⭐ / ❌ appear.
+Afterwards run `parent-recap doctor`: a ⚠️ on the pilot feedback line means a field is missing or `household_label` is empty. It doesn't stop the Brief or setup from finishing. `run --dry-run` doesn't build the HTML version, so it doesn't show the links; only the next real Brief confirms that ⭐ / ❌ appear.
 
 ## New school year (every August)
 
 1. Update each Kid's `grade` and `class_name`, if the config has them
-2. Class groups are often replaced or renamed: run `family-brief bg discover whatsapp-chats` and replace the old group names in `whatsapp.chats` with the new ones
+2. Class groups are often replaced or renamed: run `parent-recap bg discover whatsapp-chats` and replace the old group names in `whatsapp.chats` with the new ones
 3. Music school groups named after the school year (such as `EMO-PIANO 2025-2026`) also get the new year's name
-4. Run `family-brief doctor` once to confirm every group is found
+4. Run `parent-recap doctor` once to confirm every group is found

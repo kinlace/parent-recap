@@ -1,8 +1,8 @@
-# FamilyBrief
+# Parent Recap
 
 A tool that reads a household's school, club and parent-group messages each evening and sends the parents one summary of what needs attention. Terms are canonical in English; the Chinese (zh) and Finnish (fi) names in parentheses are the ones to use in a Brief in that language or when talking to a user in it.
 
-Families know the product as Kinlace Parent Recap: the plugin is `parent-recap`, and the email subject and the top of each Brief say "Parent Recap". The code, the `family-brief` command, the `~/FamilyBrief` and `~/.family` folders and the terms below keep their names.
+Families know the product as Kinlace Parent Recap: the plugin is `parent-recap`, and the email subject and the top of each Brief say "Parent Recap". The command is `parent-recap`, and `family-brief` still works. The Python package `family_brief`, the Keychain service `family-brief`, the Google Calendar properties, the `~/.family` folder and the terms below keep their names (ADR 0010).
 
 ## Output
 
@@ -39,7 +39,7 @@ The unit that receives a Brief: its Kids, its Recipients and their configured So
 _Avoid_: family, user, account
 
 **Recipient** (zh 收件人, fi vastaanottaja):
-A person who receives the Brief or Weekend Picks for a Household. Each Recipient has their own language, used for everything FamilyBrief sends or says to them.
+A person who receives the Brief or Weekend Picks for a Household. Each Recipient has their own language, used for everything Parent Recap sends or says to them.
 _Avoid_: reader, subscriber, user, 用户
 
 **Kid** (zh 孩子, fi lapsi):

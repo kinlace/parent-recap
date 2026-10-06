@@ -27,7 +27,7 @@ Open Terminal (press ⌘Space, type Terminal and press Enter), paste this line a
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kinlace/parent-recap/stable/get.sh)"
 ```
 
-It downloads the latest stable release into `~/FamilyBrief/plugin`, installs the program from it and opens the setup page in your browser. Keep the Terminal window open until setup is done: the page runs from it, on your Mac only. Once you pick Claude or ChatGPT on the page, it also installs the Parent Recap plugin in Claude Code, or the two Parent Recap skills in Codex, so you can ask for changes in the chat later.
+It downloads the latest stable release into `~/ParentRecap/plugin`, installs the program from it and opens the setup page in your browser. Keep the Terminal window open until setup is done: the page runs from it, on your Mac only. Once you pick Claude or ChatGPT on the page, it also installs the Parent Recap plugin in Claude Code, or the two Parent Recap skills in Codex, so you can ask for changes in the chat later.
 
 The line fetches [`get.sh`](get.sh) and everything else from the `stable` branch, which only ever holds a tested release. Running it again is safe: it updates what it installed and takes you back to the step setup got to.
 
@@ -39,7 +39,7 @@ Once installed, if something goes wrong or you want to change a setting (a new s
 
 ### Other ways to install
 
-If you'd rather not paste a line from the internet into Terminal, install by hand. Installed a version before 0.4.0 in Claude Code? It was called Family Brief: first type `/plugin uninstall family-brief@family-brief` and `/plugin marketplace remove family-brief` to remove it. Your settings and Briefs in `~/.family` and `~/FamilyBrief` stay as they are.
+If you'd rather not paste a line from the internet into Terminal, install by hand. Installed a version before 0.4.0 in Claude Code? It was called Family Brief: first type `/plugin uninstall family-brief@family-brief` and `/plugin marketplace remove family-brief` to remove it. Your settings and Briefs in `~/.family` and `~/ParentRecap` stay as they are.
 
 In Claude Code, type these one at a time, and choose **user** when `/plugin install` asks for a scope ("project" ties the plugin to the folder Claude Code started in):
 
@@ -52,14 +52,14 @@ In Claude Code, type these one at a time, and choose **user** when `/plugin inst
 Or from the package file, for Claude Code or Codex:
 
 1. Download `parent-recap-<version>.zip` from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) (under **Assets**). Safari unzips it by itself into a `parent-recap` folder in Downloads; in another browser, double-click the zip in Finder
-2. Move the `parent-recap` folder to `~/FamilyBrief/plugin` (create the FamilyBrief folder in your home folder if it doesn't exist)
-3. In Claude Code, type `/plugin marketplace add ~/FamilyBrief/plugin`, `/plugin install parent-recap@kinlace` (choose **user**) and `/parent-recap:setup`. For Codex, run `bash ~/FamilyBrief/plugin/install.sh --codex` in Terminal, then type `$parent-recap-setup` in a new Codex chat
+2. Move the `parent-recap` folder to `~/ParentRecap/plugin` (create the Parent Recap folder in your home folder if it doesn't exist)
+3. In Claude Code, type `/plugin marketplace add ~/ParentRecap/plugin`, `/plugin install parent-recap@kinlace` (choose **user**) and `/parent-recap:setup`. For Codex, run `bash ~/ParentRecap/plugin/install.sh --codex` in Terminal, then type `$parent-recap-setup` in a new Codex chat
 
 ## Updating
 
 - **Installed with the line**: paste it into Terminal again. With Claude Code, also type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`
 - **Installed by hand in Claude Code**: type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`
-- **From the package file**: unzip the zip from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) over `~/FamilyBrief/plugin`, then in Claude Code type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`, or for Codex run `bash ~/FamilyBrief/plugin/install.sh --codex` in Terminal again
+- **From the package file**: unzip the zip from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) over `~/ParentRecap/plugin`, then in Claude Code type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`, or for Codex run `bash ~/ParentRecap/plugin/install.sh --codex` in Terminal again
 
 After updating, tell Claude or Codex "upgrade Parent Recap"; it syncs the program and runs a check.
 
@@ -72,9 +72,9 @@ Tell Claude or Codex "uninstall Parent Recap". It lists everything setup created
 - Passwords and tokens are stored in the macOS Keychain; the config file `~/.family/config.yaml` is readable only by you
 - Gmail only scans senders on your allowlist, and skips mail you sent yourself, drafts, Promotions and Social
 - WhatsApp only reads the groups you picked; the database is copied first, read, and the copy deleted
-- Every Brief and the raw data it was built from are archived in `~/FamilyBrief/`
+- Every Brief and the raw data it was built from are archived in `~/ParentRecap/`
 
-The folders `~/FamilyBrief` and `~/.family` and the `family-brief` command keep the product's earlier name, so families who installed before the rename keep their settings, archive and schedule as they are.
+The `family-brief` command still works beside `parent-recap`, and `~/.family` keeps its name. Installed an earlier version, whose folder is `~/FamilyBrief`? Uninstall it with that version first (`~/FamilyBrief/app/.venv/bin/family-brief uninstall`), then paste the install line again: the install line stops and says so.
 
 ## Disclaimer
 
