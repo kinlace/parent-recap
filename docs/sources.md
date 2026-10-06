@@ -2,7 +2,7 @@
 
 Each section is written for the agent (Claude or Codex) guiding the user. The agent runs the `$FB setup` commands itself: each asks for a secret in a macOS dialog with hidden input, or opens what the user signs in to, checks the result and prints one line of JSON, so a secret never reaches the chat. Every command marked **Terminal** must be run by the user in their own Terminal app.
 
-`FB=~/FamilyBrief/app/.venv/bin/family-brief`, `PY=~/FamilyBrief/app/.venv/bin/python`
+`FB=~/ParentRecap/app/.venv/bin/parent-recap`, `PY=~/ParentRecap/app/.venv/bin/python`
 
 ## Gmail (required)
 
@@ -70,7 +70,7 @@ Note: Wilma only publishes the timetable for about two weeks ahead, so later dat
 After login, the wilma CLI stores the Wilma username and password in `~/.config/wilmai/config.json`. If you chose to save the two-step secret, it's stored there too. The password is only Base64-encoded, **not encrypted**: anyone with this file can recover the password, and two-step verification doesn't stop them. The file's permissions let only the current Mac user read it, and that is its only protection. So:
 
 - Don't sync `~/.config/wilmai` to cloud storage, put it in a dotfiles repository, or copy it to another computer
-- When you stop using Parent Recap (including at the end of the pilot), `family-brief uninstall` deletes the sign-in setup made, and the wilma CLI if setup installed it. If you had signed in with the wilma CLI before setup, uninstall leaves that, and you delete it yourself:
+- When you stop using Parent Recap (including at the end of the pilot), `parent-recap uninstall` deletes the sign-in setup made, and the wilma CLI if setup installed it. If you had signed in with the wilma CLI before setup, uninstall leaves that, and you delete it yourself:
 
   ```bash
   rm -rf ~/.config/wilmai
@@ -122,7 +122,7 @@ The plugin doesn't include a Google app. Authorizing needs a Google app file (th
    ```
    The file contains a secret; don't paste it into a chat or send it to a group.
 2. Set `google_calendar.mode: google` in the config, then run `bash PLUGIN/install.sh` again. In google mode it installs Google's packages, which a default install leaves out because only Google Calendar uses them. Every later update keeps them while the mode is google
-3. **Terminal**: `$PY ~/FamilyBrief/app/scripts/setup_google_calendar.py`
+3. **Terminal**: `$PY ~/ParentRecap/app/scripts/setup_google_calendar.py`
 4. When the browser says "Google hasn't verified this app": click "Advanced" → "Go to (app name) (unsafe)" → "Allow". The app only asks for one permission, managing calendar events
 5. To invite a partner automatically, put their address in `invite_attendees`
 6. Check: in `$FB doctor` the calendar line shows the authorization is valid

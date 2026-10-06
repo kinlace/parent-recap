@@ -31,9 +31,9 @@ The parent should always know what to do next, without asking.
 
 ## Paths
 
-- **PLUGIN**: the plugin root folder, two levels above this skill's folder (two levels above `skills/setup/`; it contains `install.sh`). If unsure, run `ls -d ~/.claude/plugins/cache/*/parent-recap/*/ | sort -V | tail -1`; for an install from the release zip, with the install line (`get.sh`) or with `get.sh --codex`, `~/FamilyBrief/plugin` is also the plugin root. When running in Codex, a line at the top of this file gives the plugin root.
-- The program is installed in `~/FamilyBrief/app`; the command is `FB=~/FamilyBrief/app/.venv/bin/family-brief`.
-- Config is `~/.family/config.yaml` (mode 600), logs are in `~/FamilyBrief/logs/`, and daily archives in `~/FamilyBrief/`.
+- **PLUGIN**: the plugin root folder, two levels above this skill's folder (two levels above `skills/setup/`; it contains `install.sh`). If unsure, run `ls -d ~/.claude/plugins/cache/*/parent-recap/*/ | sort -V | tail -1`; for an install from the release zip, with the install line (`get.sh`) or with `get.sh --codex`, `~/ParentRecap/plugin` is also the plugin root. When running in Codex, a line at the top of this file gives the plugin root.
+- The program is installed in `~/ParentRecap/app`; the command is `FB=~/ParentRecap/app/.venv/bin/parent-recap`.
+- Config is `~/.family/config.yaml` (mode 600), logs are in `~/ParentRecap/logs/`, and daily archives in `~/ParentRecap/`.
 - Read the detailed docs only when needed, not all at once:
   - `PLUGIN/docs/sources.md`: each Source, and what to tell the family about it
   - `PLUGIN/docs/config.md`: config fields and city presets
@@ -263,7 +263,7 @@ Save `"progress": {"phase": "first-brief"}` first.
 
 1. **Preview**, with no email sent and nothing recorded: `$FB bg run --dry-run --lookback-hours 72` (72 hours, since a single day often has nothing new). Show the parent the preview and end with one choice: it looks right, or something is off (a wrong Kid, a group or sender that shouldn't be there, something missing). If something is off, they say what in their own words; save the fix with `$FB setup save`, and show a new preview. Repeat until they're happy.
 2. **The real Brief**: `$FB bg run --lookback-hours 72`. It goes to both Recipients.
-3. Each run can take several minutes. Never start one while another is going. If your tool cut the real run off, don't run it again: it may still be going and will send the Brief. Wait a few minutes, then check with `$FB setup status` whether it went out. A run started while another is going stops at once with "Another FamilyBrief run is still going"; then wait, don't retry.
+3. Each run can take several minutes. Never start one while another is going. If your tool cut the real run off, don't run it again: it may still be going and will send the Brief. Wait a few minutes, then check with `$FB setup status` whether it went out. A run started while another is going stops at once with "Another Parent Recap run is still going"; then wait, don't retry.
 4. With the partner in another language, the preview shows only the parent's. Ask the parent to have their partner check that their copy came in their language, without a line at the top saying it couldn't be translated.
 5. With pilot feedback on, the preview has no ⭐ / ❌. Ask the parent to check the real Brief has a ⭐ and a ❌ next to each Action Item, and one ❌ under the Digest.
 
@@ -280,4 +280,4 @@ Setup ends only when `setup status` says `done` and the parent has confirmed the
 - What time the Brief comes each day
 - That on the first nightly run, if macOS asks whether python3.x may access data from other apps, they click Allow
 - That for any problem or change later (a new school year, a new group, a skipped Source, another Recipient, Weekend Picks, uninstalling), they type `/parent-recap:manage` or just say what they want
-- That the config is in `~/.family/config.yaml`, and the archive of Briefs in `~/FamilyBrief/`
+- That the config is in `~/.family/config.yaml`, and the archive of Briefs in `~/ParentRecap/`

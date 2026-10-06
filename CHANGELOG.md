@@ -4,6 +4,16 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010).
+
+### Upgrading
+- This version does not move an earlier install. If `~/FamilyBrief` holds a program, or the jobs `com.family.brief` or `com.family.weekend-events` are loaded, `get.sh` and `install.sh` stop and say so: run `~/FamilyBrief/app/.venv/bin/family-brief uninstall` first, then install again. An archive you kept in `~/FamilyBrief` doesn't block the install.
+
+### Changed
+- The program lives in `~/ParentRecap`, the jobs are `com.parentrecap.daily` and `com.parentrecap.weekend-events`, and the variables are `PARENT_RECAP_HOME` and `PARENT_RECAP_BG`.
+- The command is `parent-recap`; `family-brief` still works. The Brief's own text, hints, logs and docs say Parent Recap and `~/ParentRecap`.
+- Unchanged: the Keychain service, the Google Calendar event properties, the `.ics` UID and `~/.family`.
+
 ## 0.5.4 · 2026-10-06
 
 The pilot feedback Form ships with the program.

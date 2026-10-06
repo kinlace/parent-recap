@@ -7,7 +7,7 @@ python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
 python -m pytest                     # whole suite
 ```
 
-`test_nightly_run.py` runs the real `family-brief run` with fakes only at the outside edges
+`test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.
 `test_busy_model.py` runs the evening Brief against a `codex` or `claude` that is busy (at capacity,
@@ -20,30 +20,30 @@ inside the call's time budget, and that doctor and the setup page's preview wait
 all. `test_eval_runner.py` checks the eval runner tries a busy model again the same way.
 `test_source_failures.py` runs the real Gmail, Wilma and MyClub Sources against a fake IMAP server,
 `wilma` CLI and MyClub feed, for a Source that fails partway through a night or times out.
-`test_setup_gmail.py` runs `family-brief setup gmail` against a fake macOS dialog, `open`,
+`test_setup_gmail.py` runs `parent-recap setup gmail` against a fake macOS dialog, `open`,
 Keychain and IMAP server, and checks the App Password never reaches the output, the logs or a
 command line.
-`test_setup_wilma.py` runs `family-brief setup wilma` against a fake `wilma` CLI and a Terminal
+`test_setup_wilma.py` runs `parent-recap setup wilma` against a fake `wilma` CLI and a Terminal
 that runs the sign-in script at once, and checks the Kids, the city from every preset Wilma
 address, the window's guide in each language, that the window ends the CLI before its student
 picker and menu, and that the Wilma password never reaches the output. Where no pseudo-terminal
 can be opened (a sandbox), the window talks to the fake CLI through `no_pty/sitecustomize.py`.
-`test_setup_claude.py` runs `family-brief setup claude` against a fake Terminal, macOS dialog,
+`test_setup_claude.py` runs `parent-recap setup claude` against a fake Terminal, macOS dialog,
 Keychain and `claude` test call, and checks the token never reaches the output, the logs or a
 command line. `test_setup_claude_token.py` keeps the older Terminal script working.
-`test_setup_whatsapp.py` runs `family-brief setup whatsapp` against a fake `launchctl` that runs
+`test_setup_whatsapp.py` runs `parent-recap setup whatsapp` against a fake `launchctl` that runs
 each `bg` job in-process, and a WhatsApp database only those jobs can read once the fake Mac has
 the permission. It checks each permission state, the chats and their Kid hints, and that
 WhatsApp is never read outside a `bg` job.
-`test_setup_myclub.py` runs `family-brief setup myclub` against a fake macOS dialog, `open` and
+`test_setup_myclub.py` runs `parent-recap setup myclub` against a fake macOS dialog, `open` and
 MyClub server, and checks the link never reaches the output, the logs or a command line, that a
 failed download names only the server and the HTTP status, and that the older Terminal script
 still works.
-`test_setup_status.py` runs `family-brief setup status` against a fake `launchctl`, `pmset`,
+`test_setup_status.py` runs `parent-recap setup status` against a fake `launchctl`, `pmset`,
 Keychain, IMAP server and `claude` test call, with a real Brief sent through the harness. It checks
 each of the five outcomes true and false, that the first Brief counts once it has reached the setup
 parent, and that no secret or message text reaches either form.
-`test_setup_save.py` runs `family-brief setup save` with answers on stdin against real config and
+`test_setup_save.py` runs `parent-recap setup save` with answers on stdin against real config and
 progress files in the temporary HOME. It checks the config it writes loads, that answers not given
 leave the config as it was, that invalid answers are refused with the reason and nothing saved,
 that a MyClub link is never repeated, and that progress is saved and read back, with the partner
@@ -132,9 +132,9 @@ Where no port can be listened on (a sandbox), the server takes each connection t
 pair instead, and where no pseudo-terminal can be opened, `claude setup-token` gets a socket pair.
 `test_one_line_install.py` runs the README's one-line install, `get.sh`, and the chat setup's
 `get.sh --claude` and `--codex`, against a fake `claude` and a fake `curl` serving a stand-in
-`stable` tarball, whose `install.sh` leaves a fake `family-brief` for the line to open the setup
+`stable` tarball, whose `install.sh` leaves a fake `parent-recap` for the line to open the setup
 page with. It checks a first install, a second run updating, and that nothing it didn't put in
-`~/FamilyBrief/plugin` is replaced. The setup page's install of the Claude Code plugin or the
+`~/ParentRecap/plugin` is replaced. The setup page's install of the Claude Code plugin or the
 Codex skills, once Welcome is saved, is in `test_setup_page.py`, with the harness answering
 `claude plugin`.
 `test_install.py` runs the real `install.sh` and pip offline, against packages `fake_packages.py`
@@ -178,7 +178,7 @@ python -m family_brief.eval --backend claude,codex --repeat 2   # or one backend
 ```
 
 It scores Briefs in every reviewed language (English, Chinese and Finnish), one scorecard each (`--language en`, `zh` or `fi` for one).
-Each run is saved under `~/FamilyBrief/eval/` and compared with the previous one of the same
+Each run is saved under `~/ParentRecap/eval/` and compared with the previous one of the same
 language (runs saved before Briefs had a language count as `zh`); the spread column shows
 run-to-run noise. `--cases DIR` scores a private folder instead; the case format is described
 in `src/family_brief/eval/cases.py`. Keywords in `expect` need Chinese, English and Finnish alternatives; give the Finnish as stems (`lupalap`, `retk`), since a Finnish Brief inflects them.
