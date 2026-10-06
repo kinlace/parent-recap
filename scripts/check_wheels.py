@@ -18,8 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # Apple Silicon is recommended, and Intel works for now on a best-effort basis (README). Every
 # wheel must install on macOS 13, so a wheel made only for macOS 14 or later fails the check.
 MACS = {"Apple Silicon": "macosx_13_0_arm64", "Intel": "macosx_13_0_x86_64"}
-# install.sh takes Python 3.11 or later, and setup installs Homebrew's, which is the newest.
-# Add each new Python here once Homebrew's `python` moves to it.
+# install.sh pins the Python it installs (ADR 0011); the older ones are for running the tests.
+# Add each new Python here before install.sh pins it.
 PYTHONS = ["3.11", "3.12", "3.13", "3.14"]
 
 

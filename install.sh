@@ -28,19 +28,67 @@ refuse_old_install() {
   exit 1
 }
 
-pick_python() {
-  for c in /opt/homebrew/bin/python3 /usr/local/bin/python3 python3.13 python3.12 python3.11 python3; do
-    p=$(command -v "$c" 2>/dev/null) || continue
-    if "$p" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
-      echo "$p"; return 0
-    fi
-  done
-  return 1
+# ── Parent Recap's own Python (ADR 0011)
+# A pinned python-build-standalone build, so no `brew upgrade` or `uv python upgrade` can move the
+# Python that WhatsApp's permission names, or break the venv. To bump it, see CONTRIBUTING.md.
+PYTHON_VERSION=3.13.16
+PYTHON_BUILD=20261003
+PYTHON_SHA256_AARCH64=d8975d7df4f08f7b1c7aafcdfacbddcec3d366415f2c1a72b2466b6850815933
+PYTHON_SHA256_X86_64=8e9cb087305bfb8969f68a905f79f41469d4aa5220c1aa71ada7fc9953bdba0f
+PYTHON_RELEASES=https://github.com/astral-sh/python-build-standalone/releases/download
+# Each pinned version gets its own folder: macOS is assumed not to keep the permission for a
+# binary replaced at the same path (#168).
+RUNTIMES="$TARGET/runtime"
+RUNTIME="$RUNTIMES/python-$PYTHON_VERSION-$PYTHON_BUILD"
+PY="$RUNTIME/bin/python3"
+# `uname -m` says x86_64 in a Rosetta terminal; this says 1 on any Apple Silicon Mac.
+if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ]; then ARCH=aarch64; else ARCH=x86_64; fi
+
+python_failed() {
+  echo "❌ $1 Nothing was changed."
+  echo "   Run the install again. If it fails again, tell the Parent Recap team."
+  exit 1
+}
+
+# Downloads and unpacks the pinned Python unless it's already there. Everything happens in a
+# temporary folder first, so a failure leaves the install as it was.
+install_python() {
+  [ -x "$PY" ] && return 0
+  local sha=$PYTHON_SHA256_X86_64
+  [ "$ARCH" = x86_64 ] || sha=$PYTHON_SHA256_AARCH64
+  local url="$PYTHON_RELEASES/$PYTHON_BUILD/cpython-$PYTHON_VERSION+$PYTHON_BUILD-$ARCH-apple-darwin-install_only.tar.gz"
+  tmp=$(mktemp -d)  # not local: the trap reads it when python_failed exits
+  trap 'rm -rf "$tmp"' EXIT
+  curl -fsSL --retry 2 -o "$tmp/python.tar.gz" "$url" 2>/dev/null ||
+    python_failed "Parent Recap couldn't download its Python (is this Mac online?)."
+  [ "$(shasum -a 256 "$tmp/python.tar.gz" | cut -d' ' -f1)" = "$sha" ] ||
+    python_failed "The Python Parent Recap downloaded isn't the one it expects (its checksum doesn't match), so it wasn't used."
+  mkdir "$tmp/python"
+  tar -xzf "$tmp/python.tar.gz" -C "$tmp/python" --strip-components 1 2>/dev/null && [ -x "$tmp/python/bin/python3" ] ||
+    python_failed "Parent Recap couldn't unpack the Python it downloaded."
+  mkdir -p "$RUNTIMES"
+  # Moved in under a temporary name first: $TMPDIR may be another disk, and only a rename on
+  # the same disk can't leave a half-copied $RUNTIME behind. A run cut off here leaves
+  # .incoming, which the next one clears.
+  rm -rf "$RUNTIMES/.incoming"
+  { mv "$tmp/python" "$RUNTIMES/.incoming" && mv "$RUNTIMES/.incoming" "$RUNTIME"; } || {
+    rm -rf "$RUNTIMES/.incoming"
+    python_failed "Parent Recap couldn't put the Python it downloaded in place (is the disk full?)."
+  }
+  rm -rf "$tmp"
+  trap - EXIT
+}
+
+# The venv's Python with its links followed, which is what WhatsApp's permission names; empty
+# without a venv.
+venv_real_python() {
+  [ -e "$APP/.venv/bin/python" ] || [ -L "$APP/.venv/bin/python" ] || return 0
+  "$PY" -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$APP/.venv/bin/python"
 }
 
 if [ "$(uname)" != "Darwin" ]; then echo "❌ Only macOS is supported for now"; exit 1; fi
 refuse_old_install
-PY=$(pick_python) || { echo "❌ Python 3.11 or later is needed. Install it with: brew install python"; exit 1; }
+install_python
 
 mkdir -p "$APP" "$TARGET/logs"
 # The archive holds every collected message and the logs, so only this Mac account may read them
@@ -52,7 +100,13 @@ rsync -a --delete --exclude .venv --exclude '__pycache__' --exclude '*.egg-info'
 VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$PLUGIN_ROOT/.claude-plugin/plugin.json" | head -1)
 echo "${VERSION:-unknown}" > "$APP/VERSION"
 
-[ -x "$APP/.venv/bin/python" ] || "$PY" -m venv "$APP/.venv"
+# A venv on another Python (Homebrew's, before ADR 0011) or an older pinned one is rebuilt.
+OLD_REAL_PY=$(venv_real_python)
+REAL_PY=$("$PY" -c 'import os, sys; print(os.path.realpath(sys.executable))')
+if [ "$OLD_REAL_PY" != "$REAL_PY" ] || ! "$APP/.venv/bin/python" -c '' 2>/dev/null; then
+  rm -rf "$APP/.venv"
+  "$PY" -m venv "$APP/.venv"
+fi
 
 # pip's full output goes to a dated log, not the Terminal: a failed build is pages of compiler
 # output a family can't act on. The log starts with the one line triage needs about this Mac,
@@ -76,7 +130,7 @@ tilde() {
   esac
 }
 CC=$(command -v cc 2>/dev/null) || CC=none
-MAC="Mac: $(uname -m), macOS $(sw_vers -productVersion 2>/dev/null || echo unknown),"
+MAC="Mac: $ARCH, macOS $(sw_vers -productVersion 2>/dev/null || echo unknown),"
 MAC+=" Python $(tilde "$PY") ($("$PY" -c 'import platform; print(platform.python_version())' 2>/dev/null || echo unknown)),"
 MAC+=" pip $("$APP/.venv/bin/python" -c 'from importlib.metadata import version; print(version("pip"))' 2>/dev/null || echo unknown), cc $(tilde "$CC")"
 printf '%s\n%s\n' "$MAC" "$UPGRADE" > "$LOG"
@@ -87,8 +141,12 @@ printf '%s\n%s\n' "$MAC" "$UPGRADE" > "$LOG"
 if "$APP/.venv/bin/python" -m family_brief.google_packages wanted; then
   "${PIP[@]}" -c "$APP/constraints.txt" -e "$APP[google]" >> "$LOG" 2>&1 || pip_failed
 fi
+# Only once the program runs on the new Python, so a failed pip step keeps the old one.
+for old in "$RUNTIMES"/python-*; do
+  [ "$old" = "$RUNTIME" ] || rm -rf "$old"
+done
 RECORD=("$APP/.venv/bin/python" -m family_brief.install_record)
-"${RECORD[@]}" program "$APP" logs "$TARGET/logs"
+"${RECORD[@]}" program "$APP" logs "$TARGET/logs" runtime "$RUNTIMES"
 # The copy of the plugin the install line downloads, which the Codex skills run from; Claude
 # Code manages its own copy.
 if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_ROOT"; fi
@@ -100,7 +158,13 @@ if [ "${1:-}" = "--codex" ]; then
   "$APP/.venv/bin/python" -m family_brief.chat_install codex-skills "$PLUGIN_ROOT"
 fi
 
-REAL_PY=$("$APP/.venv/bin/python" -c 'import os, sys; print(os.path.realpath(sys.executable))')
 echo "✅ Parent Recap ${VERSION:-} installed to $APP"
 echo "   Command: $APP/.venv/bin/parent-recap"
 echo "   Real Python path (needed for the WhatsApp permission): $REAL_PY"
+if [ -n "$OLD_REAL_PY" ] && [ "$OLD_REAL_PY" != "$REAL_PY" ]; then
+  echo "⚠️  Parent Recap now runs on a new Python, so macOS no longer lets it read WhatsApp."
+  echo "   If Parent Recap reads your WhatsApp groups, grant the permission again: System Settings →"
+  echo "   Privacy & Security → App Management, press +, and add this Python:"
+  echo "     $REAL_PY"
+  echo "   (In the file picker, press ⌘⇧G and paste the path.) You can remove the old Python from that list."
+fi

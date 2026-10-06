@@ -65,6 +65,17 @@ python3 ../scripts/check_wheels.py
 
 `cryptography<49` stays while Intel Macs are supported: 49 and later have no Intel wheel. Drop it there and in the file's comment once they aren't.
 
+## Pinned Python
+
+`install.sh` downloads its own Python, a python-build-standalone `install_only` build, and builds the venv on it (ADR 0011). To move it to a newer Python or build, take one [release](https://github.com/astral-sh/python-build-standalone/releases) and change the four lines under `Parent Recap's own Python` in `install.sh`: `PYTHON_VERSION` and `PYTHON_BUILD` (the release's date tag), then `PYTHON_SHA256_AARCH64` and `PYTHON_SHA256_X86_64`, the checksums of the two `cpython-<version>+<build>-<arch>-apple-darwin-install_only.tar.gz` files, from the release's `SHA256SUMS`:
+
+```bash
+curl -fsSL https://github.com/astral-sh/python-build-standalone/releases/download/<build>/SHA256SUMS \
+  | grep -E 'cpython-<version>\+<build>-(aarch64|x86_64)-apple-darwin-install_only\.tar\.gz$'
+```
+
+A new minor Python also goes into `PYTHONS` in `scripts/check_wheels.py`. Each version goes into its own folder, so every family has to grant WhatsApp's permission again: `install.sh` says so and prints the new path, and the release's changelog should say it too.
+
 ## Two kinds of skills
 
 - `skills/` is the product: the `setup` and `manage` skills users install. Edit these freely.

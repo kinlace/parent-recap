@@ -16,11 +16,13 @@ from pathlib import Path
 
 def wheel(folder: Path, name: str, version: str, files: dict[str, str] | None = None,
           requires: tuple[str, ...] = (), tag: str = "py3-none-any",
-          extras: dict[str, list[str]] | None = None) -> Path:
+          extras: dict[str, list[str]] | None = None, scripts: dict[str, str] | None = None) -> Path:
     dist = name.replace("-", "_")
     info = f"{dist}-{version}.dist-info"
     contents = {
         **(files or {}),
+        **({f"{info}/entry_points.txt": "[console_scripts]\n"
+            + "".join(f"{s} = {target}\n" for s, target in scripts.items())} if scripts else {}),
         f"{info}/METADATA": f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n"
                             + "".join(f"Requires-Dist: {r}\n" for r in requires)
                             + "".join(f"Provides-Extra: {extra}\n" + "".join(
@@ -37,15 +39,17 @@ def wheel(folder: Path, name: str, version: str, files: dict[str, str] | None = 
 
 
 def project(folder: Path, name: str, version: str, requires: tuple[str, ...] = (),
-            build_marker: Path | None = None, extras: dict[str, list[str]] | None = None) -> Path:
-    """A source tree pip builds with this module, with `extras` such as {"google": [...]}."""
+            build_marker: Path | None = None, extras: dict[str, list[str]] | None = None,
+            scripts: dict[str, str] | None = None) -> Path:
+    """A source tree pip builds with this module, with `extras` such as {"google": [...]} and
+    `scripts` such as {"parent-recap": "family_brief.__main__:main"}."""
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "pyproject.toml").write_text(
         '[build-system]\nrequires = []\nbuild-backend = "fake_packages"\nbackend-path = ["."]\n')
     shutil.copy(__file__, folder / "fake_packages.py")
     (folder / "fake-package.json").write_text(json.dumps({
         "name": name, "version": version, "requires": list(requires), "extras": extras or {},
-        "build_marker": str(build_marker) if build_marker else None}))
+        "scripts": scripts or {}, "build_marker": str(build_marker) if build_marker else None}))
     return folder
 
 
@@ -71,7 +75,7 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None) 
     # Editable: the tree itself goes on the path.
     pth = {f"_{spec['name'].replace('-', '_')}.pth": f"{Path.cwd()}\n"}
     return wheel(Path(wheel_directory), spec["name"], spec["version"], pth, tuple(spec["requires"]),
-                 extras=spec["extras"]).name
+                 extras=spec["extras"], scripts=spec.get("scripts")).name
 
 
 build_editable = build_wheel

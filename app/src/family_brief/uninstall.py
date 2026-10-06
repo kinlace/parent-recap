@@ -32,6 +32,7 @@ from .config import Config
 from .utils import keychain
 
 OK, FAIL = ops.OK, ops.FAIL
+PYTHONS = re.compile(r"^(python-[\w.+-]+|\.incoming)$")  # install.sh's pinned Pythons
 DATED = re.compile(r"^\d{4}-\d{2}-\d{2}\.(md|raw\.json)$")  # an archived Brief and its messages
 MARKETPLACE = "kinlace"
 
@@ -141,6 +142,8 @@ def survey(config: Path) -> Survey:
     _job_logs(s, archive / "logs")
     for p in programs:
         _program(s, p)  # last of all: this command may be running from it
+    runtimes = [*(Path(p) for p in install_record.entries("runtime")), home / "ParentRecap" / "runtime"]
+    pythons = [python for d in dict.fromkeys(runtimes) for python in _runtime(s, d)]
     if install_record.exists():
         s.items.append(_file("Setup's record of what it created", install_record.path(), last=True))
 
@@ -152,7 +155,7 @@ def survey(config: Path) -> Survey:
     if cfg and run_lock.is_busy(cfg):
         s.stops.append("A Parent Recap run is going right now. Wait a few minutes for it to "
                        "finish, then run uninstall again.")
-    _notes(s, defaults)
+    _notes(s, defaults, pythons)
     return s
 
 
@@ -397,6 +400,21 @@ def _program(s: Survey, program: Path) -> None:
         s.stops.append(f"{_show(program)} is where the program goes, but it isn't Parent Recap")
 
 
+def _runtime(s: Survey, runtime: Path) -> list[Path]:
+    """install.sh's pinned Pythons, after the program that runs on them. Returns the real path
+    of each, which WhatsApp's permission names."""
+    if not runtime.is_dir():
+        return []
+    inside = sorted(runtime.iterdir())
+    if not all(p.is_dir() and not p.is_symlink() and PYTHONS.match(p.name) for p in inside):
+        s.stops.append(f"{_show(runtime)} is where Parent Recap keeps its own Python, but it holds "
+                       "other files too")
+        return []
+    s.items.append(_file("Parent Recap's own Python", runtime))
+    return [(p / "bin" / "python3").resolve() for p in inside
+            if p.name.startswith("python-") and (p / "bin" / "python3").exists()]
+
+
 def _left_in(s: Survey, folder: Path, archive: Path) -> None:
     """Say which other files share Parent Recap's folders, since they stay."""
     if not folder.is_dir():
@@ -407,7 +425,7 @@ def _left_in(s: Survey, folder: Path, archive: Path) -> None:
             s.left.append(f"{_show(p)}: not Parent Recap's")
 
 
-def _notes(s: Survey, cfg: Config) -> None:
+def _notes(s: Survey, cfg: Config, pythons: list[Path]) -> None:
     s.notes.append("Your accounts aren't touched: Gmail, Google, Wilma, WhatsApp and MyClub stay "
                    "as they are.")
     s.notes.append("The Gmail App Password keeps working until you delete it in your Google "
@@ -426,8 +444,10 @@ def _notes(s: Survey, cfg: Config) -> None:
                        "a sign-in setup didn't make, so uninstall leaves it. If you only used it "
                        f"for Parent Recap, remove it in Terminal: rm -rf {folder} && npm "
                        f"uninstall -g {setup_wilma.PACKAGE}")
-    s.notes.append("If you gave the program's Python access to WhatsApp, remove it from System "
-                   "Settings → Privacy & Security → App Management (and Full Disk Access).")
+    python = f" ({', '.join(str(p) for p in pythons)})" if pythons else ""
+    s.notes.append(f"If you gave the program's Python{python} access to WhatsApp, remove it by "
+                   "hand from System Settings → Privacy & Security → App Management (and Full "
+                   "Disk Access): a program can't change that list.")
     if not any(i.what == "Claude Code plugin" for i in s.items):
         s.notes.append("In Claude Code, remove the plugin itself with /plugin uninstall "
                        f"parent-recap@{MARKETPLACE}, then /plugin marketplace remove {MARKETPLACE}.")

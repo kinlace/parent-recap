@@ -134,8 +134,16 @@ def store_app_password(harness, address: str, password: str) -> None:
     install_record.add("keychain", gmail.keychain_account(address))
 
 
+PINNED_PYTHON = "ParentRecap/runtime/python-3.13.16-20261003/bin/python3.13"
+
+
 def make_program(home: Path, monkeypatch) -> Path:
-    """What install.sh leaves in ~/ParentRecap/app, running as the program's own Python."""
+    """What install.sh leaves in ~/ParentRecap/app, running as the program's own Python, and its
+    pinned Python in ~/ParentRecap/runtime."""
+    python = home / PINNED_PYTHON
+    python.parent.mkdir(parents=True)
+    python.write_text("")
+    (python.parent / "python3").symlink_to(python.name)
     app = home / "ParentRecap" / "app"
     (app / ".venv" / "bin").mkdir(parents=True)
     (app / ".venv" / "bin" / "python").write_text("")
@@ -155,6 +163,7 @@ def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
     app = make_program(home, monkeypatch)
     if record:  # what install.sh records
         install_record.main(["program", str(app), "logs", str(home / "ParentRecap" / "logs"),
+                             "runtime", str(home / "ParentRecap" / "runtime"),
                              "codex-skill", str(home / ".agents/skills/parent-recap-setup"),
                              "codex-skill", str(home / ".agents/skills/parent-recap-manage")])
     store_app_password(harness, "parent@example.com", APP_PASSWORD)
@@ -202,7 +211,7 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
 
     out = capsys.readouterr().out
     for item in ("com.parentrecap.daily", "Library/LaunchAgents/com.parentrecap.daily.plist", OUR_WAKE,
-                 "ParentRecap/app", "ParentRecap/logs", ".family/config.yaml",
+                 "ParentRecap/app", "ParentRecap/logs", "ParentRecap/runtime", ".family/config.yaml",
                  ".family/config.yaml.bak-202609011200", ".family/state.json", ".family/languages",
                  ".family/install-record.json", ".family/setup-progress.json",
                  ".family/programs.json", "gmail-imap-parent@example.com",
@@ -215,6 +224,17 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
     assert leftovers(harness.home) == before
     assert mac.removals() == []
     assert mac.keychain and mac.loaded and mac.repeating
+
+
+def test_says_to_remove_its_python_from_app_management_by_hand(harness, mac, monkeypatch, capsys):
+    set_up(harness, mac, monkeypatch)
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    out = capsys.readouterr().out
+    note = next(line for line in out.splitlines() if "App Management" in line)
+    assert "by hand" in note and str(harness.home / PINNED_PYTHON) in note
+    assert not (harness.home / "ParentRecap" / "runtime").exists()
 
 
 def test_names_the_family_accounts_it_leaves_alone(harness, mac, monkeypatch, capsys):
@@ -544,6 +564,17 @@ def test_stops_on_a_program_folder_that_is_not_parent_recap(harness, mac, monkey
     assert "ParentRecap/app" in out
 
 
+def test_stops_on_a_runtime_folder_holding_something_else(harness, mac, monkeypatch, capsys):
+    set_up(harness, mac, monkeypatch)
+    (harness.home / "ParentRecap" / "runtime" / "notes.txt").write_text("mine\n")
+    before = leftovers(harness.home)
+    mac.ran.clear()
+
+    out = assert_stopped(harness, mac, before, capsys)
+
+    assert "ParentRecap/runtime" in out
+
+
 def test_stops_on_a_codex_skill_with_its_name_that_it_did_not_install(harness, mac, monkeypatch,
                                                                       capsys):
     set_up(harness, mac, monkeypatch)
@@ -633,7 +664,7 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     items = out.split("\n\nLeft as it is:")[0].split("\n\nNothing has been removed yet")[0]
     listed = [line.split(": ", 1)[1].split(" (", 1)[0] for line in items.splitlines()
               if line.startswith("  • ")]
-    assert len(listed) == 20
+    assert len(listed) == 21
     for where in listed:
         name = where.rsplit("/", 1)[-1].strip().replace("parent@example.com", "<address>")
         name = name.replace("202609011200", "<date>").replace("1 day in ~", "~")

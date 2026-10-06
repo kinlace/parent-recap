@@ -7,6 +7,7 @@ What changes for families in each release, collected from the `What changes for 
 Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010).
 
 ### Upgrading
+- Parent Recap now installs its own Python into `~/ParentRecap/runtime` and no longer needs Homebrew's, so a `brew upgrade` can't stop the evening Brief any more (ADR 0011). The install rebuilds the program's Python packages on it. Since the Python is new, macOS no longer lets Parent Recap read WhatsApp: if it reads your WhatsApp groups, add the Python path the install prints to System Settings → Privacy & Security → App Management once more.
 - This version does not move an earlier install. If `~/FamilyBrief` holds a program, or the jobs `com.family.brief` or `com.family.weekend-events` are loaded, `get.sh` and `install.sh` stop and say so: run `~/FamilyBrief/app/.venv/bin/family-brief uninstall` first, then install again. An archive you kept in `~/FamilyBrief` doesn't block the install.
 
 ### Changed
