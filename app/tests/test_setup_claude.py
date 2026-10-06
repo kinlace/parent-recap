@@ -1,4 +1,4 @@
-"""Storing the Claude token with `family-brief setup claude`: Claude's sign-in opens in Terminal,
+"""Storing the Claude token with `parent-recap setup claude`: Claude's sign-in opens in Terminal,
 the token goes from macOS's dialog to one test call and the Keychain, and nowhere else (ADR 0005).
 
 `claude setup-token` draws its sign-in on Ink's interactive screen, which needs a real terminal,
@@ -330,7 +330,7 @@ def test_doctor_points_to_the_setup_step_when_no_token_is_stored(harness, termin
     harness.cli("doctor")
 
     out = capsys.readouterr().out
-    assert "family-brief setup claude" in out and "setup_claude_token" not in out
+    assert "parent-recap setup claude" in out and "setup_claude_token" not in out
 
 
 # ── Claude Code from its native installer, in ~/.local/bin
@@ -411,7 +411,7 @@ def test_doctor_tells_a_token_the_keychain_asks_about_from_a_missing_one(harness
     assert line.startswith(ops.FAIL)
     assert "no claude-oauth-token" not in line
     assert "asks for the Keychain password" in line and "evening" in line
-    assert "family-brief setup claude" in line
+    assert "parent-recap setup claude" in line
 
 
 def test_doctor_reads_a_token_stored_for_security(harness, terminal, monkeypatch, capsys):

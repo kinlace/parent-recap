@@ -15,7 +15,7 @@ TEXT = json.dumps(REPLY, ensure_ascii=False)
 
 @pytest.fixture(autouse=True)
 def tmp_home(tmp_path, monkeypatch):
-    # A total failure saves the raw reply under ~/FamilyBrief/logs.
+    # A total failure saves the raw reply under ~/ParentRecap/logs.
     monkeypatch.setenv("HOME", str(tmp_path))
     return tmp_path
 
@@ -60,7 +60,7 @@ def test_repairs_near_json(reply, expected):
 def test_reply_with_no_json_fails_and_is_saved(tmp_home):
     with pytest.raises(ValueError):
         _parse_model_json("  Sorry, I can't help with that.\n")
-    assert (tmp_home / "FamilyBrief" / "logs" / "summarize_failed.txt").read_text() \
+    assert (tmp_home / "ParentRecap" / "logs" / "summarize_failed.txt").read_text() \
         == "Sorry, I can't help with that."
 
 
@@ -75,7 +75,7 @@ def test_valid_json_that_is_not_an_object_fails_and_is_saved(reply, tmp_home):
     # Digging an object out of well-formed JSON of the wrong shape would give a wrong Brief.
     with pytest.raises(ValueError):
         _parse_model_json(reply)
-    assert (tmp_home / "FamilyBrief" / "logs" / "summarize_failed.txt").exists()
+    assert (tmp_home / "ParentRecap" / "logs" / "summarize_failed.txt").exists()
 
 
 def test_claude_envelope_with_text_result():

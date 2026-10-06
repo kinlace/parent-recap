@@ -1,4 +1,4 @@
-"""Connecting Gmail with `family-brief setup gmail`: the App Password goes from macOS's dialog
+"""Connecting Gmail with `parent-recap setup gmail`: the App Password goes from macOS's dialog
 to a test sign-in and the Keychain, and nowhere else (ADR 0005).
 
 The outside edges are faked: the dialog, `open`, the Keychain and Gmail's IMAP server. The
@@ -267,7 +267,7 @@ def test_doctor_tells_an_app_password_the_keychain_asks_about_from_a_missing_one
     line = next(l for l in capsys.readouterr().out.splitlines() if "Gmail:" in l)
     assert line.startswith(ops.FAIL) and "No App Password" not in line
     assert "asks for the Keychain password" in line and "evening" in line
-    assert "family-brief setup gmail" in line and "setup page" in line
+    assert "parent-recap setup gmail" in line and "setup page" in line
 
 
 # ── without a desktop session
@@ -311,7 +311,7 @@ def test_with_neither_a_dialog_nor_a_terminal_it_says_where_to_run_it(harness, g
     assert harness.cli("setup", "gmail") == 1
 
     res, _ = result(capsys)
-    assert res["result"] == "no-prompt" and "family-brief setup gmail" in res["next"]
+    assert res["result"] == "no-prompt" and "parent-recap setup gmail" in res["next"]
     assert harness.keychain == {}
 
 

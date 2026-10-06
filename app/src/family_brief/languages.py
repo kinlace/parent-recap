@@ -34,7 +34,7 @@ def is_finnish(language: Language) -> bool:
 _SYSTEM_PROMPT = Template("""You translate the fixed text of a program that emails a Household a daily Brief about their kids' school and hobbies in Finland. Translate every value of the JSON object from English into the language whose code is $code.
 
 1. Reply with one JSON object with exactly the same keys, and the same number of entries in every list
-2. Keep every {placeholder} in braces exactly as written, and keep the emoji, the Markdown (## and **) and the names Gmail, Wilma, WhatsApp, MyClub, Google Calendar, Claude, Codex, .ics, $product and ~/FamilyBrief as they are
+2. Keep every {placeholder} in braces exactly as written, and keep the emoji, the Markdown (## and **) and the names Gmail, Wilma, WhatsApp, MyClub, Google Calendar, Claude, Codex, .ics, $product and ~/ParentRecap as they are
 3. language_name: the English name of the language (e.g. Swedish)
 4. quotes: the quotation marks the language uses, shown around a word or two; never straight double quotes
 5. weekdays: short weekday names, Monday first; who: the words for mom, dad and either parent
@@ -183,7 +183,7 @@ def describe(cfg: Config, language: Language, tables: tuple[Table, ...] = TABLES
         return True, "reviewed program text"
     if all(_stored(cfg, language, table) is not None for table in tables):
         return True, f"program text translated once, kept in {_path(cfg, language, BRIEF).parent}"
-    return False, f"English program text until its translation works (family-brief language {language})"
+    return False, f"English program text until its translation works (parent-recap language {language})"
 
 
 def prepare_each(cfg: Config, languages: list[Language], tables: tuple[Table, ...] = (BRIEF,)) -> None:

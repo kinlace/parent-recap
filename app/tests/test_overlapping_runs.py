@@ -35,7 +35,7 @@ def test_a_run_while_another_is_going_stops_with_a_message_and_sends_nothing(har
         code = harness.run()
 
     assert code == run_lock.BUSY
-    assert "Another FamilyBrief run is still going" in caplog.text
+    assert "Another Parent Recap run is still going" in caplog.text
     assert harness.sent == [] and harness.model_calls == []
     assert not harness.state_path.exists()
 
@@ -90,7 +90,7 @@ def test_weekend_picks_while_another_run_is_going_stop_with_a_message(harness, c
         code = harness.cli("weekend-events")
 
     assert code == run_lock.BUSY
-    assert "Another FamilyBrief run is still going" in caplog.text
+    assert "Another Parent Recap run is still going" in caplog.text
 
 
 class FakeLaunchctl:
@@ -132,7 +132,7 @@ def test_bg_stopped_by_a_signal_boots_out_its_job_and_removes_its_output(bg, mon
         bg.cli("bg", "run", "--dry-run", "--lookback-hours", "72")
 
     assert stopped.value.code == 128 + sig
-    assert launchctl.booted_out() == [f"gui/{os.getuid()}/com.family.bg.{os.getpid()}"]
+    assert launchctl.booted_out() == [f"gui/{os.getuid()}/com.parentrecap.bg.{os.getpid()}"]
     assert list(bg.temp.iterdir()) == []  # the output log holds the preview Brief
     assert {s: signal.getsignal(s) for s in before} == before
 

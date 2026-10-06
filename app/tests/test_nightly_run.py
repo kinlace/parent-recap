@@ -1,4 +1,4 @@
-"""The nightly `family-brief run`, end to end. Assertions are only on what leaves the system:
+"""The nightly `parent-recap run`, end to end. Assertions are only on what leaves the system:
 the email (text, HTML, attachments), the model command line, and persisted state."""
 from __future__ import annotations
 
@@ -317,7 +317,7 @@ def test_model_reply_needing_repair_still_makes_the_brief(harness):
 
 # ── Odd-shaped replies (#91): each still makes a Brief with every item the model got right
 
-CUT_OFF_ZH = "⚠️ 今晚 Claude 的回复不完整，这份日报可能漏了几条。今晚的原始消息都在 ~/FamilyBrief 归档里。"
+CUT_OFF_ZH = "⚠️ 今晚 Claude 的回复不完整，这份日报可能漏了几条。今晚的原始消息都在 ~/ParentRecap 归档里。"
 
 
 def test_null_per_kid_still_sends_the_digest_and_events(harness):
@@ -471,7 +471,7 @@ def test_cut_off_reply_note_is_in_each_recipients_language(harness):
     assert "给 Leo 准备拍照穿的衣服" in zh.html and "photo-day clothes ready" in en.html
     assert en.text.startswith("👨‍👩‍👧‍👦 Parent Recap Sun 27 Sep\n\n⚠️ Claude's reply tonight was cut off, "
                               "so this Brief may be missing some items. All of tonight's messages are in the "
-                              "archive in ~/FamilyBrief.\n\n")
+                              "archive in ~/ParentRecap.\n\n")
     assert zh.text.startswith(f"👨‍👩‍👧‍👦 Parent Recap 9月27日 周日\n\n{CUT_OFF_ZH}\n\n")
     assert not zh.attachments and not en.attachments
 

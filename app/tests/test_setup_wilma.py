@@ -1,4 +1,4 @@
-"""Connecting Wilma with `family-brief setup wilma`: it opens the wilma CLI's sign-in in a
+"""Connecting Wilma with `parent-recap setup wilma`: it opens the wilma CLI's sign-in in a
 Terminal window, waits for the family, then reports the Kids and the city as one JSON line.
 
 The outside edges are faked: `open` runs the Terminal script it's given right away, as if the

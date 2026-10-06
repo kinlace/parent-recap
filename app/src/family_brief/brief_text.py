@@ -146,12 +146,12 @@ EN = BriefText(
     fix_other="If the Mac was offline, this fixes itself. If it happens again, tell {assistant} "
               "“check Parent Recap”.",
     fallback_header="⚠️ Tonight's Digest could not be written, so here are the raw messages "
-                    "(all of them are in the archive in ~/FamilyBrief):",
+                    "(all of them are in the archive in ~/ParentRecap):",
     unsorted="Unsorted",
     fallback_count=" ({count})",
     fallback_more="  …{n} more in the archive",
     reply_incomplete="⚠️ {assistant}'s reply tonight was cut off, so this Brief may be missing some items. "
-                     "All of tonight's messages are in the archive in ~/FamilyBrief.",
+                     "All of tonight's messages are in the archive in ~/ParentRecap.",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
     action_items="✅ Action Items",
@@ -203,11 +203,11 @@ ZH = BriefText(
     fix_login="跟 {assistant} 说「重新授权 {source}」即可修复。",
     fix_permission="跟 {assistant} 说「Parent Recap 读不了 {source}」即可修复。",
     fix_other="如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 {assistant} 说「检查 Parent Recap」。",
-    fallback_header="⚠️ 今日 LLM 总结失败，以下是原始消息清单（详见 ~/FamilyBrief 归档）：",
+    fallback_header="⚠️ 今日 LLM 总结失败，以下是原始消息清单（详见 ~/ParentRecap 归档）：",
     unsorted="未分类",
     fallback_count="（{count}）",
     fallback_more="  …另外 {n} 条，见归档",
-    reply_incomplete="⚠️ 今晚 {assistant} 的回复不完整，这份日报可能漏了几条。今晚的原始消息都在 ~/FamilyBrief 归档里。",
+    reply_incomplete="⚠️ 今晚 {assistant} 的回复不完整，这份日报可能漏了几条。今晚的原始消息都在 ~/ParentRecap 归档里。",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ 今晚的日报没能翻译成功，下面是原文。",
     action_items="✅ 待办",
@@ -253,14 +253,14 @@ FI = BriefText(
     permission_denied="macOS ei antanut käyttöoikeutta",
     login_failed="kirjautuminen epäonnistui",
     fallback_header="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua, joten tässä ovat viestit sellaisenaan "
-                    "(kaikki ovat tallessa arkistossa ~/FamilyBrief):",
+                    "(kaikki ovat tallessa arkistossa ~/ParentRecap):",
     unsorted="Muut viestit",
     fallback_count=" ({count})",
     fallback_more="  …arkistossa vielä {n} lisää",
     # Added after the first review and not yet checked by a Finnish speaker: reply_incomplete,
     # message_unreadable, nothing_read, source_problem, fix_login, fix_permission, fix_other.
     reply_incomplete="⚠️ {assistant}-avustajan vastaus katkesi tänä iltana, joten koosteesta voi puuttua "
-                     "joitakin kohtia. Kaikki tämäniltaiset viestit ovat arkistossa kansiossa ~/FamilyBrief.",
+                     "joitakin kohtia. Kaikki tämäniltaiset viestit ovat arkistossa kansiossa ~/ParentRecap.",
     message_unreadable="yhtä viestiä ei voitu lukea",
     nothing_read="⚠️ Tänä iltana yhtäkään lähdettä ei voitu lukea, joten yhteenvetoa ei ole. Niiden viestit "
                  "tulevat ensimmäiseen koosteeseen sen jälkeen, kun ne voidaan taas lukea.",

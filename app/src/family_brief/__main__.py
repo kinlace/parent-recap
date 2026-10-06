@@ -799,7 +799,7 @@ def cmd_summarize(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(prog="family-brief")
+    p = argparse.ArgumentParser(prog="parent-recap")
     p.add_argument("-c", "--config", default=None, help="Path to config.yaml")
     sub = p.add_subparsers(dest="cmd", required=True)
 

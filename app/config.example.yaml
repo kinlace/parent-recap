@@ -1,4 +1,4 @@
-# FamilyBrief configuration. Lives at ~/.family/config.yaml (permissions 600).
+# Parent Recap configuration. Lives at ~/.family/config.yaml (permissions 600).
 # No passwords or logins go here: the Gmail App Password and Claude token are in the macOS Keychain,
 # the wilma CLI keeps its own Wilma login, and the Google Calendar authorization is in ~/.family/calendar_token.json.
 
@@ -19,7 +19,7 @@ kids:
 gmail:
   username: you@gmail.com # Used both to receive (IMAP) and to send (SMTP) the Brief
   lookback_hours: 26
-  allowlist_domains: # Only mail from these domains is scanned; find them with family-brief discover gmail-senders
+  allowlist_domains: # Only mail from these domains is scanned; find them with parent-recap discover gmail-senders
     - espoo.fi
   allowlist_senders: [] # Add personal addresses of individual teachers/coaches here
 
@@ -32,7 +32,7 @@ wilma:
 whatsapp:
   enabled: false
   lookback_hours: 26
-  chats: [] # Find group names with family-brief discover whatsapp-chats; they must match exactly
+  chats: [] # Find group names with parent-recap discover whatsapp-chats; they must match exactly
   # - name: "3A vanhemmat"
   #   kid: "Kid's full name"     # or both
   #   label: class               # class / football / piano / playdate ...
@@ -91,6 +91,6 @@ llm:
   timeout_seconds: 300
 
 archive:
-  dir: ~/FamilyBrief
+  dir: ~/ParentRecap
 
 state_path: ~/.family/state.json

@@ -157,7 +157,7 @@ def _parse_cli_response(stdout: str) -> tuple[dict[str, Any], bool]:
 
 
 def _save_unparsed(result: str, reason: object) -> None:
-    dbg = Path.home() / "FamilyBrief" / "logs" / "summarize_failed.txt"
+    dbg = Path.home() / "ParentRecap" / "logs" / "summarize_failed.txt"
     dbg.parent.mkdir(parents=True, exist_ok=True)
     dbg.write_text(result)
     log.error("JSON parse fully failed (%s). Raw saved to %s", reason, dbg)
@@ -431,7 +431,7 @@ def _run_with_retry(cmd: list[str], timeout: int, what: str, budget: int = CALL_
 
 
 def _save_diagnostics(name: str, proc: subprocess.CompletedProcess, cmd_desc: str) -> None:
-    dbg = Path.home() / "FamilyBrief" / "logs" / name
+    dbg = Path.home() / "ParentRecap" / "logs" / name
     dbg.parent.mkdir(parents=True, exist_ok=True)
     dbg.write_text(
         f"returncode: {proc.returncode}\n"
@@ -487,7 +487,7 @@ def _run_claude(cfg: Config, prompt: str, system_prompt: str, timeout: int, budg
         cmd += ["--model", cfg.llm.model]
     env, auth_label = _claude_env()
     what = f"claude CLI (prompt: {len(prompt.encode('utf-8'))} B, auth: {auth_label})"
-    with tempfile.TemporaryDirectory(prefix="family-brief-claude-") as work:
+    with tempfile.TemporaryDirectory(prefix="parent-recap-claude-") as work:
         ran = _run_with_retry(cmd, timeout, what, budget, env=env, cwd=work, input=prompt)
     proc = ran.proc
     if proc.returncode != 0:
@@ -534,7 +534,7 @@ def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int, budge
     # codex exec has no separate system prompt, so the instructions go first in one message.
     text = (f"{system_prompt}\n\n---\n\n{prompt}\n\n"
             "Output only the final JSON object. Don't run any commands, and don't read or write any files.")
-    with tempfile.TemporaryDirectory(prefix="family-brief-codex-") as work:
+    with tempfile.TemporaryDirectory(prefix="parent-recap-codex-") as work:
         out = Path(work) / "last_message.txt"
         # Isolated run: empty working dir, read-only sandbox, no web search, no saved session, and
         # none of the user's config (their MCP servers and tools stay out). Auth still comes from ~/.codex.

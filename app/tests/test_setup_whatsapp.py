@@ -1,4 +1,4 @@
-"""Connecting WhatsApp with `family-brief setup whatsapp`: it reads WhatsApp through a `bg` job,
+"""Connecting WhatsApp with `parent-recap setup whatsapp`: it reads WhatsApp through a `bg` job,
 and when the scheduled job's Python can't read it yet, shows that Python in Finder, opens App
 Management and waits for the family. Then it reports the permission and the chats as one JSON
 line, with a hint on each chat that looks like it's about a Kid.

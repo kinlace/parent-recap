@@ -6,7 +6,7 @@ Usage: python scripts/release.py v0.4.0
 
 The zip comes from `git archive` of the tag, so local edits never leak in, and
 `.gitattributes` export-ignore rules drop the developer-only files. Unzipping it
-gives a `parent-recap/` folder that families move to ~/FamilyBrief/plugin.
+gives a `parent-recap/` folder that families move to ~/ParentRecap/plugin.
 """
 from __future__ import annotations
 

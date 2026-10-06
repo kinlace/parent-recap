@@ -1,4 +1,4 @@
-"""Other accounts on the family Mac can't read what FamilyBrief keeps, and the MyClub link's
+"""Other accounts on the family Mac can't read what Parent Recap keeps, and the MyClub link's
 personal token never shows up in what it prints, logs or archives."""
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ def test_doctor_names_only_the_myclub_host_and_status(harness, monkeypatch, caps
 
     line = next(l for l in capsys.readouterr().out.splitlines() if "MyClub (Mia)" in l)
     assert "example.myclub.fi" in line
-    assert "family-brief setup myclub --kid Mia" in line
+    assert "parent-recap setup myclub --kid Mia" in line
     if kind == "404":
         assert "404" in line
     assert TOKEN not in line and "/ical/" not in line
@@ -156,7 +156,7 @@ def test_an_existing_install_is_tightened_on_the_next_run(harness):
 
 
 def test_scheduled_jobs_write_their_logs_owner_only(tmp_path):
-    plist = ops._plist("com.family.brief", "run", {"Hour": 21, "Minute": 0}, tmp_path)
+    plist = ops._plist("com.parentrecap.daily", "run", {"Hour": 21, "Minute": 0}, tmp_path)
     assert plist["Umask"] == 0o077
 
 

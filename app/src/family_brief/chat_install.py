@@ -124,7 +124,7 @@ def install_codex_skills(root: Path) -> list[Path]:
 
 def plugin_copy() -> Path | None:
     """The plugin folder install.sh ran from, which the Codex skills point to: the copy the install
-    line downloaded to ~/FamilyBrief/plugin, as setup's record has it. None without one."""
+    line downloaded to ~/ParentRecap/plugin, as setup's record has it. None without one."""
     for recorded in reversed(install_record.entries("plugin")):
         folder = Path(recorded)
         try:

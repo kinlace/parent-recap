@@ -113,7 +113,7 @@ def test_each_weekend_picks_recipient_gets_them_in_their_language(harness, monke
     [event] = harness.calendar.inserted
     assert event["description"].startswith("免费的木偶剧，适合小的")
     assert "[本条来自 Parent Recap 周末活动推荐" in event["description"]
-    assert "免费的木偶剧" in (harness.home / "FamilyBrief" / "weekend_events" / "2026-09-26.md").read_text()
+    assert "免费的木偶剧" in (harness.home / "ParentRecap" / "weekend_events" / "2026-09-26.md").read_text()
 
 
 def test_weekend_picks_for_one_language_make_no_extra_call(harness, monkeypatch):
@@ -211,7 +211,7 @@ def test_a_pick_for_an_invented_event_is_dropped_and_the_rest_keep_their_own_eve
     assert (private["candidate_ext_id"], private["pick_rank"]) == ("le-2", "2")
     [email] = harness.sent
     assert "Made up" not in email.text and "💡 Try floorball" in email.text
-    archived = json.loads((harness.home / "FamilyBrief" / "weekend_events" / "2026-09-26.json").read_text())
+    archived = json.loads((harness.home / "ParentRecap" / "weekend_events" / "2026-09-26.json").read_text())
     assert [p["ext_id"] for p in archived["picks"]] == ["le-2"]
 
 

@@ -1,4 +1,4 @@
-"""Finding the programs FamilyBrief runs (claude, codex, wilma, npm, node) when they're installed
+"""Finding the programs Parent Recap runs (claude, codex, wilma, npm, node) when they're installed
 but this process's PATH doesn't lead to them.
 
 Terminal's shell, the setup page and the evening job each have their own PATH, and a family's own

@@ -284,7 +284,7 @@ def test_doctor_says_which_languages_have_their_own_program_text(harness, monkey
 
     out = capsys.readouterr().out.splitlines()
     assert "✅ Language zh: reviewed program text" in out
-    assert "⚠️  Language sv: English program text until its translation works (family-brief language sv)" in out
+    assert "⚠️  Language sv: English program text until its translation works (parent-recap language sv)" in out
     assert any(line.startswith("✅ Language sv: program text translated once, kept in ") for line in out)
 
 
@@ -298,7 +298,7 @@ def test_doctor_counts_weekend_picks_text_once_they_are_on(harness, monkeypatch,
 
     harness.cli("doctor", "--skip-llm")
 
-    assert "⚠️  Language sv: English program text until its translation works (family-brief language sv)" \
+    assert "⚠️  Language sv: English program text until its translation works (parent-recap language sv)" \
         in capsys.readouterr().out.splitlines()
 
 

@@ -31,9 +31,9 @@ from .config import Config
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
 DEFAULT_CONFIG = Path.home() / ".family" / "config.yaml"
 LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
-JOB_DAILY = "com.family.brief"
-JOB_WEEKEND = "com.family.weekend-events"
-BG_ENV = "FAMILY_BRIEF_BG"  # set inside `bg` jobs so doctor doesn't recurse
+JOB_DAILY = "com.parentrecap.daily"
+JOB_WEEKEND = "com.parentrecap.weekend-events"
+BG_ENV = "PARENT_RECAP_BG"  # set inside `bg` jobs so doctor doesn't recurse
 TIMED_OUT = 124  # run_as_job's exit code for a job it stopped, as timeout(1) gives
 APP_MANAGEMENT_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles"
 
@@ -61,7 +61,7 @@ def register(sub) -> None:
                          "App Management, so you can drag it in for WhatsApp")
     pam.set_defaults(func=cmd_app_management)
 
-    pbg = sub.add_parser("bg", help="Run a family-brief command as a one-off launchd job "
+    pbg = sub.add_parser("bg", help="Run a parent-recap command as a one-off launchd job "
                                     "(same Python and macOS permissions as the scheduled job)")
     pbg.add_argument("--timeout", type=int, default=900, help="Give up after this many seconds")
     pbg.add_argument("command", nargs=argparse.REMAINDER, help="e.g. discover whatsapp-chats")
@@ -142,14 +142,14 @@ def _check_gmail(cfg: Config, add) -> None:
     except keychain.NeedsPrompt:
         add(FAIL, "Gmail", f"the App Password for {username} is in the Keychain, but macOS asks "
             f"for the Keychain password before reading it, which the evening Brief can't answer "
-            "(store it again with family-brief setup gmail, or the setup page's Gmail step)")
+            "(store it again with parent-recap setup gmail, or the setup page's Gmail step)")
         return
     except keychain.KeychainError as e:
         add(FAIL, "Gmail", f"couldn't read the App Password for {username} from the Keychain: {e}")
         return
     if not password:
         add(FAIL, "Gmail", f"No App Password in the Keychain for {username} "
-            "(store one with family-brief setup gmail)")
+            "(store one with parent-recap setup gmail)")
         return
     if not (cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders):
         add(FAIL, "Gmail", "the sender allowlist is empty (allowlist_domains / allowlist_senders)")
@@ -207,13 +207,13 @@ def _check_claude(add) -> None:
     if label == "inherited":
         # This shell's own sign-in can work while the evening job, which has none, can't.
         add(FAIL, "Claude", "no claude-oauth-token in the Keychain, so the evening Brief can't "
-            f"call Claude (store one with family-brief setup claude{where})")
+            f"call Claude (store one with parent-recap setup claude{where})")
         return
     if label == "keychain-needs-prompt":
         # Stored by an earlier version, so it trusts that version's Python and not security.
         add(FAIL, "Claude", "the Claude token is in the Keychain, but macOS asks for the Keychain "
             "password before reading it, which the evening Brief can't answer (store it again "
-            f"with family-brief setup claude{where})")
+            f"with parent-recap setup claude{where})")
         return
     error = claude_test_call(claude, env)
     if error is not None:
@@ -254,7 +254,7 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
             code, out = run_as_job(["doctor", "--whatsapp-only"], config, timeout=180, echo=False)
         except Exception as e:
             add(WARN, "WhatsApp", f"this process can't read WhatsApp, and the background check "
-                f"didn't start ({e}). Run family-brief bg doctor to confirm")
+                f"didn't start ({e}). Run parent-recap bg doctor to confirm")
             return
         lines = [l for l in out.splitlines() if "WhatsApp: " in l]
         if not lines and code == TIMED_OUT:
@@ -272,7 +272,7 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
                 + " (checked with the scheduled job's Python)")
         return
     if err == whatsapp.NO_ACCESS:
-        err = ("the scheduled job's Python can't read WhatsApp yet: run family-brief "
+        err = ("the scheduled job's Python can't read WhatsApp yet: run parent-recap "
                "app-management and drag the Python file it shows into System Settings → Privacy & "
                "Security → App Management, and if that's not enough, into Full Disk Access too")
     if err:
@@ -299,7 +299,7 @@ def _check_myclub(kid: str, url: str, add) -> None:
         add(OK, f"MyClub ({kid})", f"subscription link works, {n} events in the calendar")
     except Exception as e:
         add(FAIL, f"MyClub ({kid})", f"subscription link doesn't open: {e} (save a new one with "
-            f"family-brief setup myclub --kid {shlex.quote(kid)})")
+            f"parent-recap setup myclub --kid {shlex.quote(kid)})")
 
 
 def _check_calendar(cfg: Config, add) -> None:
@@ -337,12 +337,12 @@ def _check_feedback(cfg: Config, add) -> None:
     fb = cfg.feedback
     if not fb.active():
         add(WARN, "Pilot feedback", "feedback is on but prefill_base_url or fields is missing, so the "
-            "Brief has no ⭐/❌ links (turn it on again with family-brief setup save <<< "
+            "Brief has no ⭐/❌ links (turn it on again with parent-recap setup save <<< "
             "'{\"feedback\": {\"enabled\": true}}', which writes the pilot form this version ships)")
     elif not fb.household_label:
         # One Form serves every pilot Household; without a label their rows can't be told apart.
         add(WARN, "Pilot feedback", "feedback.household_label is empty, so the feedback sheet "
-            "can't tell which Household a row came from (set one with family-brief setup save)")
+            "can't tell which Household a row came from (set one with parent-recap setup save)")
     else:
         add(OK, "Pilot feedback", f"the Brief has ⭐/❌ links, Household label {fb.household_label}")
 
@@ -364,7 +364,7 @@ def _check_schedule(cfg: Config, add) -> None:
     missing = [j for j in jobs if j not in loaded]
     if missing:
         add(WARN, "Schedule", f"not installed yet: {', '.join(missing)} "
-            "(run family-brief schedule install)")
+            "(run parent-recap schedule install)")
     else:
         add(OK, "Schedule", f"runs every day at {cfg.schedule.daily_hour:02d}:{cfg.schedule.daily_minute:02d}"
             + (", Weekend Picks once every Friday" if cfg.weekend_events.enabled else ""))
@@ -380,7 +380,7 @@ def _check_schedule(cfg: Config, add) -> None:
 
 def launchctl_loaded() -> set[str]:
     out = subprocess.run(["launchctl", "list"], capture_output=True, text=True).stdout
-    return {line.split()[-1] for line in out.splitlines() if "com.family." in line}
+    return {line.split()[-1] for line in out.splitlines() if "com.parentrecap." in line}
 
 
 # ---------------------------------------------------------------- discover
@@ -392,7 +392,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
         if err:
             print(f"{FAIL} {err}")
             if err == whatsapp.NO_ACCESS and not os.environ.get(BG_ENV):
-                print("   Use family-brief bg discover whatsapp-chats instead, to read with the "
+                print("   Use parent-recap bg discover whatsapp-chats instead, to read with the "
                       "scheduled job's Python and its permissions")
             return 1
         groups = whatsapp.list_groups(days=args.days or 180)
@@ -493,7 +493,7 @@ def _discover_senders_json(config: str | None, days: int) -> int:
         senders = gmail_senders(Config.load(config), days, progress=lambda done, total: print(
             f"  read {done} of {total} senders", file=sys.stderr, flush=True))
     except Exception:  # its error can name the address or the config: doctor says what's wrong
-        return _report("read-failed", "Gmail's senders couldn't be read. Run family-brief doctor, "
+        return _report("read-failed", "Gmail's senders couldn't be read. Run parent-recap doctor, "
                        "fix what it names for Gmail, then run this again.")
     return _report("read", days=days, senders=senders)
 
@@ -528,9 +528,9 @@ def show_python_for_app_management() -> tuple[str, list[list[str]]]:
 def cmd_bg(args: argparse.Namespace) -> int:
     inner = args.command[1:] if args.command[:1] == ["--"] else list(args.command)
     if not inner or inner[0] == "bg":
-        print("Usage: family-brief bg <command>, e.g. family-brief bg discover whatsapp-chats")
+        print("Usage: parent-recap bg <command>, e.g. parent-recap bg discover whatsapp-chats")
         return 2
-    print(f"Running family-brief {' '.join(inner)} as a background job "
+    print(f"Running parent-recap {' '.join(inner)} as a background job "
           "(same Python and permissions as the scheduled job)", flush=True)
     print('If macOS asks whether "python3.x" may access data from other apps, click Allow.', flush=True)
     code, _ = run_as_job(inner, args.config, timeout=args.timeout)
@@ -544,7 +544,7 @@ def _exit_on_signal(signum: int, _frame: FrameType | None) -> None:
 def run_as_job(cmd_args: list[str], config: str | None, timeout: int = 900,
                echo: bool = True,
                output: Callable[[str], None] | None = None) -> tuple[int, str]:
-    """Run `family-brief <cmd_args>` as a one-off launchd job, wait for it, return (exit code, output).
+    """Run `parent-recap <cmd_args>` as a one-off launchd job, wait for it, return (exit code, output).
     `output`, if given, is handed all of the output so far each time the job is checked on.
 
     macOS grants WhatsApp access per responsible process. Started from Terminal, Claude Code or
@@ -552,8 +552,8 @@ def run_as_job(cmd_args: list[str], config: str | None, timeout: int = 900,
     responsible process, so it gets exactly the permission the scheduled job's Python has."""
     import tempfile
     import time
-    work = Path(tempfile.mkdtemp(prefix="family-brief-bg-"))
-    label = f"com.family.bg.{os.getpid()}"
+    work = Path(tempfile.mkdtemp(prefix="parent-recap-bg-"))
+    label = f"com.parentrecap.bg.{os.getpid()}"
     domain = f"gui/{os.getuid()}"
     out = work / "output.log"
     prog = [sys.executable, "-m", "family_brief"]
@@ -786,7 +786,7 @@ def _set_wake(hour: int, minute: int, replace: bool) -> None:
         else:
             print("If something else needs that schedule, leave it. The Brief then only comes on "
                   f"nights the Mac is awake at {hour:02d}:{minute:02d}. To replace it, run "
-                  "family-brief schedule install --replace-wake, which asks for your Mac "
+                  "parent-recap schedule install --replace-wake, which asks for your Mac "
                   "password in a macOS dialog.")
         return
     if existing:
@@ -795,7 +795,7 @@ def _set_wake(hour: int, minute: int, replace: bool) -> None:
             print(f"  {line}")
     if result == "cancelled":
         print("The wake schedule wasn't set: the Mac password dialog was closed. Run "
-              "family-brief schedule install again, or set it in Terminal instead.")
+              "parent-recap schedule install again, or set it in Terminal instead.")
         print(in_terminal)
     elif result == "no-dialog":
         print(in_terminal)

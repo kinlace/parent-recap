@@ -1,4 +1,4 @@
-"""`family-brief setup status` reports the outcomes that decide whether setup is done.
+"""`parent-recap setup status` reports the outcomes that decide whether setup is done.
 
 macOS's edges are faked: `launchctl` (which jobs are loaded), `pmset` (sleep and the wake
 schedule), the Keychain, Gmail's IMAP server and the `claude` test call. The program folder,
@@ -81,7 +81,7 @@ def outcome(report: dict[str, Any], name: str) -> dict[str, Any]:
 
 
 def install_program(harness) -> None:
-    app = harness.home / "FamilyBrief" / "app"
+    app = harness.home / "ParentRecap" / "app"
     (app / ".venv" / "bin").mkdir(parents=True)
     (app / ".venv" / "bin" / "family-brief").write_text("#!/bin/sh\n")
     (app / "pyproject.toml").write_text('[project]\nname = "family-brief"\n')
@@ -99,7 +99,7 @@ def test_the_program_is_installed_when_install_sh_has_put_it_in_place(harness, m
 
     installed = outcome(report, "installed")
     assert installed["ok"] is True
-    assert "0.5.0" in installed["reason"] and "FamilyBrief/app" in installed["reason"]
+    assert "0.5.0" in installed["reason"] and "ParentRecap/app" in installed["reason"]
 
 
 def test_the_program_isnt_installed_before_install_sh_has_run(harness, mac, capsys):
@@ -142,7 +142,7 @@ def test_the_health_check_names_the_checks_that_arent_ok(harness, healthy, capsy
 
     doctor = outcome(report, "doctor")
     assert doctor["ok"] is False
-    assert "Gmail" in doctor["reason"] and "family-brief doctor" in doctor["reason"]
+    assert "Gmail" in doctor["reason"] and "parent-recap doctor" in doctor["reason"]
     assert "Claude" not in doctor["reason"]
 
 
@@ -153,7 +153,7 @@ def test_warnings_alone_dont_hold_the_health_check_up_but_are_named(harness, hea
 
     doctor = outcome(report, "doctor")
     assert doctor["ok"] is True, doctor
-    assert "Pilot feedback" in doctor["reason"] and "family-brief doctor" in doctor["reason"]
+    assert "Pilot feedback" in doctor["reason"] and "parent-recap doctor" in doctor["reason"]
 
 
 def test_without_a_claude_token_the_health_check_isnt_ok(harness, healthy, capsys):
@@ -275,7 +275,7 @@ def test_the_nightly_job_isnt_loaded_before_the_schedule_is_installed(harness, m
 
     nightly = outcome(report, "nightly")
     assert nightly["ok"] is False
-    assert "family-brief schedule install" in nightly["reason"]
+    assert "parent-recap schedule install" in nightly["reason"]
 
 
 # ── 5. The wake schedule is set, or the Mac never sleeps
@@ -353,7 +353,7 @@ def test_the_readable_form_marks_what_isnt_done(harness, mac, capsys):
 
     lines = capsys.readouterr().out.splitlines()
     nightly = next(line for line in lines if ops.JOB_DAILY in line)
-    assert nightly.startswith(ops.FAIL) and "family-brief schedule install" in nightly
+    assert nightly.startswith(ops.FAIL) and "parent-recap schedule install" in nightly
 
 
 def test_no_secret_or_message_text_is_in_either_form(harness, set_up, capsys, monkeypatch):
