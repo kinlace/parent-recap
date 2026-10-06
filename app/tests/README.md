@@ -144,6 +144,8 @@ Codex skills, once Welcome is saved, is in `test_setup_page.py`, with the harnes
 makes in a folder, for a stand-in program. Its pinned Python comes from a fake `curl` serving a
 stand-in python-build-standalone tarball (a copy of the Python running the tests, with its
 standard library), the Mac's kind from a fake `sysctl` and `uname`, and a `python3` on PATH fails.
+A framework build such as python.org's can't be copied that way, so these tests skip on one, and
+fail on one in CI, which runs on uv's python-build-standalone Python for that reason.
 It checks that a fresh install's `parent-recap` runs on the pinned Python, that the build is picked
 for Apple Silicon, Intel and a Rosetta terminal by `sysctl`, that a rerun downloads nothing, that a
 venv on another Python is rebuilt, that a newly pinned version goes into a new folder, removes the
