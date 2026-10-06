@@ -134,7 +134,10 @@ pair instead, and where no pseudo-terminal can be opened, `claude setup-token` g
 `get.sh --claude` and `--codex`, against a fake `claude` and a fake `curl` serving a stand-in
 `stable` tarball, whose `install.sh` leaves a fake `parent-recap` for the line to open the setup
 page with. It checks a first install, a second run updating, and that nothing it didn't put in
-`~/ParentRecap/plugin` is replaced. The setup page's install of the Claude Code plugin or the
+`~/ParentRecap/plugin` is replaced. It also checks that the line, with or without a flag, stops and
+changes nothing over an install from before the rename (`~/FamilyBrief/app`, or an old
+`com.family.*` job that runs `family_brief`), and that a kept archive in `~/FamilyBrief` alone
+doesn't stop it. The setup page's install of the Claude Code plugin or the
 Codex skills, once Welcome is saved, is in `test_setup_page.py`, with the harness answering
 `claude plugin`.
 `test_install.py` runs the real `install.sh` and pip offline, against packages `fake_packages.py`
@@ -147,7 +150,9 @@ shows a short message and the log's path instead of pip's output. It checks that
 extra is installed, pinned and prebuilt, only when the config's calendar mode is google. It checks
 that `app/constraints.txt` pins every dependency `pyproject.toml` names, the `google` extra's
 included, and keeps `cryptography` below 49, that the default dependencies bring in no Google
-package and no `cryptography`, and that `scripts/check_wheels.py` fails when a pin has no Intel wheel.
+package and no `cryptography`, and that `scripts/check_wheels.py` fails when a pin has no Intel wheel. It checks that `install.sh`
+run alone stops over an old `~/FamilyBrief/app` too, and that `parent-recap` and `family-brief`
+are the same entry point in `pyproject.toml`.
 `test_without_google_packages.py` blocks Google's packages from import and checks that every
 module imports, that the evening Brief with `.ics`, Weekend Picks, setup and doctor run, that google
 mode without them sends the events as `.ics`, and that doctor says how to install them.
