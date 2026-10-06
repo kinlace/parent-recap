@@ -51,10 +51,16 @@ def register(sub) -> None:
                       "each sender domain with whether it looks like school, city or club mail")
     pdis.set_defaults(func=cmd_discover)
 
-    psch = sub.add_parser("schedule", help="Install / remove / inspect the launchd jobs")
-    psch.add_argument("action", choices=["install", "uninstall", "status"])
+    psch = sub.add_parser("schedule", help="Install / remove / inspect the launchd jobs, or start one "
+                          "now with run-now")
+    psch.add_argument("action", choices=["install", "uninstall", "status", "run-now"])
+    psch.add_argument("--weekend", action="store_true",
+                      help="With run-now: start the Weekend Picks job instead of the evening one")
     psch.add_argument("--replace-wake", action="store_true",
                       help="With install: replace the Mac's other repeating wake schedule")
+    psch.epilog = ("run-now asks launchd to start the installed job right now, so it runs exactly "
+                   "as the scheduler would. A Brief it sends goes to every Recipient, like the "
+                   "evening one.")
     psch.set_defaults(func=cmd_schedule)
 
     pam = sub.add_parser("app-management", help="Show the scheduled job's Python in Finder and open "
@@ -822,12 +828,39 @@ def install_jobs(cfg: Config) -> None:
         _unload(JOB_WEEKEND)
 
 
+def _run_now(label: str, log_dir: Path) -> int:
+    """Asks launchd to start the installed job, which then runs with the job's own Python, PATH,
+    environment and log files. Doesn't wait for it."""
+    target = f"gui/{os.getuid()}/{label}"
+    logs = log_dir / ("weekend-events" if label == JOB_WEEKEND else "run")
+    where = f"Its logs:\n  {logs}-stdout.log\n  {logs}-stderr.log"
+    probe = subprocess.run(["launchctl", "print", target], capture_output=True, text=True)
+    if probe.returncode != 0:
+        print(f"{FAIL} {label} isn't installed. Run family-brief schedule install first.")
+        return 1
+    # Plain kickstart (no -k) leaves a running job alone, so say so instead of looking like a start.
+    # Exit 1: the Brief wasn't started by this call, which a script calling it should see.
+    if re.search(r"^\tstate = running$", probe.stdout, re.M):
+        print(f"{WARN}{label} is already running, so no second run was started. {where}")
+        return 1
+    kick = subprocess.run(["launchctl", "kickstart", target], capture_output=True, text=True)
+    if kick.returncode != 0:
+        print(f"{FAIL} launchctl couldn't start {label}: {kick.stderr.strip() or kick.returncode}")
+        return 1
+    print(f"{OK} Started {label}. It runs in the background, so this doesn't wait for the Brief. "
+          f"{where}")
+    return 0
+
+
 def cmd_schedule(args: argparse.Namespace) -> int:
     cfg = Config.load(args.config)
     log_dir = cfg.archive.resolved_dir() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     private_files.tighten(cfg)
     sc = cfg.schedule
+
+    if args.action == "run-now":
+        return _run_now(JOB_WEEKEND if args.weekend else JOB_DAILY, log_dir)
 
     if args.action == "install":
         install_jobs(cfg)

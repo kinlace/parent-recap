@@ -30,6 +30,10 @@ First run `~/ParentRecap/app/.venv/bin/parent-recap doctor`; it points out most 
 | Personal mail unrelated to the Kids was scanned                                                | The allowlist has too broad a domain                                                                       | Remove public domains from `allowlist_domains` and use `allowlist_senders` for individual people                                                                                                                                                                                                                                                                          |
 | iMessage shows "Not Delivered"                                                                 | Sending iMessage by script on macOS is unreliable                                                          | Email is already the default; keep `imessage.enabled: false`                                                                                                                                                                                                                                                                                                              |
 
+## Testing the scheduled job
+
+`family-brief schedule run-now` asks launchd to start the installed evening job right now, so it runs with the job's own Python, `PATH`, environment and log files, and prints where the logs are. It doesn't wait for the Brief, and it sends it to every Recipient, like the evening one. `--weekend` starts the Weekend Picks job instead. If the job isn't installed it points to `family-brief schedule install`, and if a run is already going it says so. `family-brief bg run` is different: a one-off job with the same Python, not the scheduled job itself.
+
 ## Upgrading
 
 Updating the plugin itself: see [Updating](../README.md#updating) in the README.
