@@ -141,9 +141,16 @@ doesn't stop it. The setup page's install of the Claude Code plugin or the
 Codex skills, once Welcome is saved, is in `test_setup_page.py`, with the harness answering
 `claude plugin`.
 `test_install.py` runs the real `install.sh` and pip offline, against packages `fake_packages.py`
-makes in a folder, for a stand-in program. It checks that the versions in the constraints file are
-installed rather than the newest, that a package published only as source stops the install
-without being compiled, and that an older prebuilt version is taken over a newer one that would
+makes in a folder, for a stand-in program. Its pinned Python comes from a fake `curl` serving a
+stand-in python-build-standalone tarball (a copy of the Python running the tests, with its
+standard library), the Mac's kind from a fake `sysctl` and `uname`, and a `python3` on PATH fails.
+It checks that a fresh install's `parent-recap` runs on the pinned Python, that the build is picked
+for Apple Silicon, Intel and a Rosetta terminal by `sysctl`, that a rerun downloads nothing, that a
+venv on another Python is rebuilt, that a newly pinned version goes into a new folder, removes the
+old one only once pip has succeeded, and asks to grant WhatsApp's permission again only when the real path changed, and that a
+failed download or a wrong checksum says so and leaves the install as it was.
+It also checks that the versions in the constraints file are installed rather than the newest,
+that a package published only as source stops the install without being compiled, and that an older prebuilt version is taken over a newer one that would
 compile. It checks that every install writes a dated log of pip's output under `logs/` that starts
 with one line about the Mac, with the home folder written as `~`, and that a failing pip step
 shows a short message and the log's path instead of pip's output. It checks that the `google`

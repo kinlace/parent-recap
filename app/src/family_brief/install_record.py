@@ -1,8 +1,8 @@
 """The record of what setup created on this Mac, so uninstall removes exactly that.
 
 Each step that creates something adds it here: `install.sh` the program, its logs folder, the
-Codex skills and the plugin copy it runs from; `schedule install` the launchd jobs; storing a
-Gmail App Password its Keychain account; installing the wilma CLI and saving its sign-in the
+folder of its pinned Python, the Codex skills and the plugin copy it runs from; `schedule
+install` the launchd jobs; storing a Gmail App Password its Keychain account; installing the wilma CLI and saving its sign-in the
 CLI's package and the profile's id; installing Claude Code's plugin, and its marketplace, their
 names. Only what setup installed goes in: a wilma CLI, Wilma profile, plugin or marketplace
 that was there before stays when Parent Recap is uninstalled. Uninstall still checks each
@@ -20,7 +20,7 @@ import os
 import sys
 from pathlib import Path
 
-KINDS = ("program", "logs", "plugin", "codex-skill", "launchd", "keychain", "wilma-cli",
+KINDS = ("program", "logs", "runtime", "plugin", "codex-skill", "launchd", "keychain", "wilma-cli",
          "wilma-profile", "claude-plugin", "claude-marketplace")
 
 
