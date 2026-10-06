@@ -6,7 +6,7 @@
 #
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/kinlace/parent-recap/stable/get.sh)"
 #
-# Without a flag: downloads the `stable` branch into ~/FamilyBrief/plugin, replacing the copy
+# Without a flag: downloads the `stable` branch into ~/ParentRecap/plugin, replacing the copy
 #   there, runs its `install.sh`, and opens the setup page (ADR 0006), which stays served from
 #   this Terminal window. Once the family picks Claude or ChatGPT there, the page installs the
 #   Claude Code plugin or the Codex skills, so changes later work in the chat.
@@ -14,14 +14,32 @@
 # --claude: adds the `kinlace/parent-recap#stable` marketplace and installs the plugin for this
 #   Mac user (or updates both), then starts Claude Code with setup. A `kinlace` marketplace from
 #   somewhere else (the folder a release zip was unzipped into) is switched to that one.
-# --codex: downloads the `stable` branch into ~/FamilyBrief/plugin, as without a flag, and runs
+# --codex: downloads the `stable` branch into ~/ParentRecap/plugin, as without a flag, and runs
 #   its `install.sh --codex`.
 # Safe to run again: that is how an install updates, and the page resumes where setup got to.
 set -euo pipefail
 
 REPO="kinlace/parent-recap"
-TARGET="${FAMILY_BRIEF_HOME:-$HOME/FamilyBrief}"
+TARGET="${PARENT_RECAP_HOME:-$HOME/ParentRecap}"
 PLUGIN="$TARGET/plugin"
+
+# ── Old install check
+# An install from before ADR 0010 lives in ~/FamilyBrief and runs the jobs com.family.brief and
+# com.family.weekend-events. There is no migration: the version that made it uninstalls it. A
+# ~/FamilyBrief that only holds a kept archive of past Briefs is not an install.
+refuse_old_install() {
+  local old=no plist
+  [ ! -d "$HOME/FamilyBrief/app" ] || old=yes
+  for plist in com.family.brief com.family.weekend-events; do
+    plist="$HOME/Library/LaunchAgents/$plist.plist"
+    if [ -f "$plist" ] && grep -q family_brief "$plist"; then old=yes; fi
+  done
+  [ "$old" = yes ] || return 0
+  echo "❌ An older Parent Recap is installed (its folder is ~/FamilyBrief). Nothing was changed."
+  echo "   Uninstall it with its own version first, then paste the install line again:"
+  echo "     ~/FamilyBrief/app/.venv/bin/family-brief uninstall"
+  exit 1
+}
 
 usage() {
   echo "Paste this into Terminal:"
@@ -74,7 +92,7 @@ install_claude() {
     echo "   Then open a new Terminal window (⌘N) and paste the line again."
     exit 1
   }
-  # The plugin's name before 0.4.0. Settings and Briefs in ~/.family and ~/FamilyBrief stay.
+  # The plugin's name before 0.4.0. Settings and Briefs in ~/.family and ~/ParentRecap stay.
   if listed id family-brief@family-brief plugin list --json; then
     claude plugin uninstall family-brief@family-brief
   fi
@@ -88,7 +106,7 @@ install_claude() {
   [ "$installed" = yes ] || new+=(claude-plugin parent-recap@kinlace)
   [ -n "$marketplace" ] || new+=(claude-marketplace kinlace)
   # Installed from the release zip, `kinlace` comes from the unzipped folder, so updating it
-  # would only reread that folder. ~/FamilyBrief/plugin stays: the Codex path uses it.
+  # would only reread that folder. ~/ParentRecap/plugin stays: the Codex path uses it.
   if [ -n "$marketplace" ] && ! grep -qE "\"repo\": *\"$REPO(#[^\"]*)?\"" <<<"$marketplace"; then
     switched=$(marketplace_folder "$marketplace")
     if [ "$installed" = yes ]; then claude plugin uninstall parent-recap@kinlace; fi
@@ -117,7 +135,7 @@ is_parent_recap() {
   grep -qE '"name": *"(parent-recap|family-brief)"' "$1/.claude-plugin/plugin.json" 2>/dev/null
 }
 
-# Puts the `stable` branch in ~/FamilyBrief/plugin, replacing what's there only if it's Parent Recap.
+# Puts the `stable` branch in ~/ParentRecap/plugin, replacing what's there only if it's Parent Recap.
 download_stable() {
   if [ -e "$PLUGIN" ] && ! is_parent_recap "$PLUGIN"; then
     echo "❌ $PLUGIN holds something that isn't Parent Recap, so it was left as it is."
@@ -144,7 +162,7 @@ install_page() {
   bash "$PLUGIN/install.sh"
   echo "✅ Parent Recap is installed. The setup page opens in your browser now."
   echo "   Keep this Terminal window open until setup is done: the page runs from it."
-  exec "$TARGET/app/.venv/bin/family-brief" setup page
+  exec "$TARGET/app/.venv/bin/parent-recap" setup page
 }
 
 install_codex() {
@@ -158,6 +176,7 @@ install_codex() {
 }
 
 [ "$(uname)" = "Darwin" ] || { echo "❌ Parent Recap only runs on macOS for now."; exit 1; }
+refuse_old_install
 case "${1:-}" in
   --claude) install_claude ;;
   --codex) install_codex ;;

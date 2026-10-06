@@ -3,7 +3,7 @@ setup's `get.sh --claude` and `get.sh --codex`.
 
 Runs the real `get.sh` with a fake `claude` (which logs its calls and answers the two list
 commands from files) and a fake `curl` (which hands over a tarball built here, standing in
-for the `stable` branch's, whose install.sh puts a fake `family-brief` where the real one
+for the `stable` branch's, whose install.sh puts a fake `parent-recap` where the real one
 goes), in a fake home.
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ KINLACE = json.dumps([{"name": "kinlace", "source": "github", "repo": "kinlace/p
 # What a family who installed from the release zip has: the same name, from the unzipped folder.
 KINLACE_FROM_FOLDER = json.dumps([
     {"name": "claude-plugins-official", "source": "github", "repo": "anthropics/claude-plugins-official"},
-    {"name": "kinlace", "source": "directory", "path": "/Users/mum/FamilyBrief/plugin"},
+    {"name": "kinlace", "source": "directory", "path": "/Users/mum/ParentRecap/plugin"},
 ], indent=2)
 NO_PLUGINS = "[]"
 PARENT_RECAP = json.dumps([{"id": "parent-recap@kinlace", "version": "0.4.1", "scope": "user"}], indent=2)
@@ -74,9 +74,9 @@ def stable_release(mac: dict, version: str, files: dict[str, str] | None = None,
     contents = {
         ".claude-plugin/plugin.json": json.dumps({"name": name, "version": version}),
         "install.sh": f'''echo "install.sh $* from $(cd "$(dirname "$0")" && pwd)" >> "{mac["log"]}"
-mkdir -p "$HOME/FamilyBrief/app/.venv/bin"
-echo 'echo "family-brief $*" >> "{mac["log"]}"' > "$HOME/FamilyBrief/app/.venv/bin/family-brief"
-chmod +x "$HOME/FamilyBrief/app/.venv/bin/family-brief"
+mkdir -p "$HOME/ParentRecap/app/.venv/bin"
+echo 'echo "parent-recap $*" >> "{mac["log"]}"' > "$HOME/ParentRecap/app/.venv/bin/parent-recap"
+chmod +x "$HOME/ParentRecap/app/.venv/bin/parent-recap"
 ''',
         **(files or {}),
     }
@@ -96,12 +96,12 @@ def test_the_line_installs_the_stable_release_and_opens_the_setup_page(mac):
     result = get(mac)
 
     assert result.returncode == 0, result.stderr
-    plugin = mac["home"] / "FamilyBrief" / "plugin"
+    plugin = mac["home"] / "ParentRecap" / "plugin"
     assert json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())["version"] == "0.5.0"
     curl, install, page = calls(mac)
     assert "kinlace/parent-recap/archive/refs/heads/stable.tar.gz" in curl
     assert install == f"install.sh  from {plugin.resolve()}"  # neither Claude Code's nor Codex's
-    assert page == "family-brief setup page"
+    assert page == "parent-recap setup page"
     assert not any(c.startswith("claude") for c in calls(mac))  # the page installs the plugin
 
 
@@ -113,17 +113,60 @@ def test_the_line_run_again_updates_and_opens_the_page_again(mac):
     result = get(mac)
 
     assert result.returncode == 0, result.stderr
-    plugin = mac["home"] / "FamilyBrief" / "plugin"
+    plugin = mac["home"] / "ParentRecap" / "plugin"
     assert json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())["version"] == "0.6.0"
     assert not (plugin / "docs" / "gone-in-0.6.md").exists()
-    assert calls(mac).count("family-brief setup page") == 2
+    assert calls(mac).count("parent-recap setup page") == 2
+
+
+def old_job(mac: dict, label: str = "com.family.brief") -> None:
+    agents = mac["home"] / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True)
+    (agents / f"{label}.plist").write_text("<string>-m</string><string>family_brief</string>")
+
+
+@pytest.mark.parametrize("flag", [(), ("--claude",), ("--codex",)])
+def test_the_line_stops_over_an_install_from_before_the_rename(mac, flag):
+    stable_release(mac, "0.5.0")
+    (mac["home"] / "FamilyBrief" / "app").mkdir(parents=True)
+
+    result = get(mac, *flag)
+
+    assert result.returncode != 0
+    assert "Uninstall it with its own version first" in result.stdout
+    assert "~/FamilyBrief/app/.venv/bin/family-brief uninstall" in result.stdout
+    assert calls(mac) == [] and not (mac["home"] / "ParentRecap").exists()
+
+
+def test_the_line_stops_over_a_job_from_before_the_rename(mac):
+    stable_release(mac, "0.5.0")
+    old_job(mac, "com.family.weekend-events")
+
+    result = get(mac)
+
+    assert result.returncode != 0 and "older Parent Recap" in result.stdout
+    assert calls(mac) == []
+
+
+def test_a_kept_archive_in_the_old_folder_is_not_an_install(mac):
+    stable_release(mac, "0.5.0")
+    old = mac["home"] / "FamilyBrief"
+    old.mkdir(parents=True)
+    (old / "2026-09-26.md").write_text("a Brief")
+    old_job(mac, "com.family.brief")
+    (mac["home"] / "Library" / "LaunchAgents" / "com.family.brief.plist").write_text("a daily-brief job")  # not ours
+
+    result = get(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert calls(mac).count("parent-recap setup page") == 1
 
 
 def test_the_line_without_a_download_opens_nothing(mac):
     result = get(mac)
 
     assert result.returncode != 0
-    assert not any(c.startswith(("install.sh", "family-brief")) for c in calls(mac))
+    assert not any(c.startswith(("install.sh", "parent-recap")) for c in calls(mac))
 
 
 def test_an_unknown_flag_shows_the_line(mac):
@@ -164,17 +207,17 @@ def test_claude_records_the_plugin_and_marketplace_it_installed_for_uninstall(ma
 
 def test_claude_adds_to_a_record_setup_started_and_only_once(mac, monkeypatch):
     monkeypatch.setenv("HOME", str(mac["home"]))
-    install_record.add("program", "/Users/mum/FamilyBrief/app")
+    install_record.add("program", "/Users/mum/ParentRecap/app")
     install_record.add("keychain", "claude-oauth-token")
 
     assert get(mac, "--claude").returncode == 0
     assert get(mac, "--claude").returncode == 0
 
-    assert install_record.entries("program") == ["/Users/mum/FamilyBrief/app"]
+    assert install_record.entries("program") == ["/Users/mum/ParentRecap/app"]
     assert install_record.entries("keychain") == ["claude-oauth-token"]
     assert install_record.entries("claude-plugin") == ["parent-recap@kinlace"]
     assert install_record.entries("claude-marketplace") == ["kinlace"]
-    install_record.add("launchd", "/Users/mum/Library/LaunchAgents/com.family.brief.plist")
+    install_record.add("launchd", "/Users/mum/Library/LaunchAgents/com.parentrecap.daily.plist")
     assert install_record.entries("claude-plugin") == ["parent-recap@kinlace"]
 
 
@@ -218,7 +261,7 @@ def test_claude_switches_a_kinlace_marketplace_from_a_local_folder_to_the_stable
         "claude plugin install parent-recap@kinlace --scope user",
         "claude /parent-recap:setup",
     ]
-    assert any("/Users/mum/FamilyBrief/plugin" in line and "kinlace/parent-recap#stable" in line
+    assert any("/Users/mum/ParentRecap/plugin" in line and "kinlace/parent-recap#stable" in line
                for line in result.stdout.splitlines())
     assert not (mac["home"] / ".family").exists()  # the family's own, from the release zip
 
@@ -264,13 +307,13 @@ def test_codex_puts_the_stable_release_in_familybrief_plugin_and_installs_it(mac
     result = get(mac, "--codex")
 
     assert result.returncode == 0, result.stderr
-    plugin = mac["home"] / "FamilyBrief" / "plugin"
+    plugin = mac["home"] / "ParentRecap" / "plugin"
     assert json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())["version"] == "0.5.0"
     curl, install = calls(mac)
     assert "kinlace/parent-recap/archive/refs/heads/stable.tar.gz" in curl
     assert install == f"install.sh --codex from {plugin.resolve()}"
     assert "$parent-recap-setup" in result.stdout
-    assert sorted(p.name for p in (mac["home"] / "FamilyBrief").iterdir()) == ["app", "plugin"]
+    assert sorted(p.name for p in (mac["home"] / "ParentRecap").iterdir()) == ["app", "plugin"]
 
 
 def test_codex_run_again_replaces_the_plugin_with_the_new_release(mac):
@@ -283,7 +326,7 @@ def test_codex_run_again_replaces_the_plugin_with_the_new_release(mac):
     result = get(mac, "--codex")
 
     assert result.returncode == 0, result.stderr
-    plugin = mac["home"] / "FamilyBrief" / "plugin"
+    plugin = mac["home"] / "ParentRecap" / "plugin"
     assert json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())["version"] == "0.6.0"
     assert not (plugin / "docs" / "gone-in-0.6.md").exists()
     assert calls(mac).count(f"install.sh --codex from {plugin.resolve()}") == 2
@@ -291,7 +334,7 @@ def test_codex_run_again_replaces_the_plugin_with_the_new_release(mac):
 
 
 def test_codex_replaces_a_family_brief_plugin_from_before_the_rename(mac):
-    old = mac["home"] / "FamilyBrief" / "plugin" / ".claude-plugin"
+    old = mac["home"] / "ParentRecap" / "plugin" / ".claude-plugin"
     old.mkdir(parents=True)
     (old / "plugin.json").write_text(json.dumps({"name": "family-brief", "version": "0.3.0"}))
     stable_release(mac, "0.5.0")
@@ -303,7 +346,7 @@ def test_codex_replaces_a_family_brief_plugin_from_before_the_rename(mac):
 
 def test_codex_stops_when_familybrief_plugin_holds_something_else(mac):
     stable_release(mac, "0.5.0")
-    other = mac["home"] / "FamilyBrief" / "plugin"
+    other = mac["home"] / "ParentRecap" / "plugin"
     other.mkdir(parents=True)
     (other / "notes.txt").write_text("mine\n")
 
@@ -323,9 +366,9 @@ def test_codex_leaves_the_installed_plugin_alone_when_the_download_fails(mac):
     result = get(mac, "--codex")
 
     assert result.returncode != 0
-    plugin = mac["home"] / "FamilyBrief" / "plugin"
+    plugin = mac["home"] / "ParentRecap" / "plugin"
     assert json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())["version"] == "0.5.0"
-    assert sorted(p.name for p in (mac["home"] / "FamilyBrief").iterdir()) == ["app", "plugin"]
+    assert sorted(p.name for p in (mac["home"] / "ParentRecap").iterdir()) == ["app", "plugin"]
 
 
 def test_codex_refuses_a_download_that_is_not_parent_recap(mac):
@@ -334,7 +377,7 @@ def test_codex_refuses_a_download_that_is_not_parent_recap(mac):
     result = get(mac, "--codex")
 
     assert result.returncode != 0
-    assert not (mac["home"] / "FamilyBrief" / "plugin").exists()
+    assert not (mac["home"] / "ParentRecap" / "plugin").exists()
 
 
 def test_only_runs_on_a_mac(mac):
