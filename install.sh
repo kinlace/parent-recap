@@ -12,11 +12,13 @@ APP="$TARGET/app"
 # An install from before ADR 0010 lives in ~/FamilyBrief and runs the jobs com.family.brief and
 # com.family.weekend-events. There is no migration: the version that made it uninstalls it. A
 # ~/FamilyBrief that only holds a kept archive of past Briefs is not an install.
+# Kept in sync with get.sh: that one runs before anything is downloaded, this one when a
+# release zip's install.sh runs alone.
 refuse_old_install() {
-  local old=no plist
+  local old=no label plist
   [ ! -d "$HOME/FamilyBrief/app" ] || old=yes
-  for plist in com.family.brief com.family.weekend-events; do
-    plist="$HOME/Library/LaunchAgents/$plist.plist"
+  for label in com.family.brief com.family.weekend-events; do
+    plist="$HOME/Library/LaunchAgents/$label.plist"
     if [ -f "$plist" ] && grep -q family_brief "$plist"; then old=yes; fi
   done
   [ "$old" = yes ] || return 0
