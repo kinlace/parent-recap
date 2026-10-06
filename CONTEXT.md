@@ -2,7 +2,7 @@
 
 A tool that reads a household's school, club and parent-group messages each evening and sends the parents one summary of what needs attention. Terms are canonical in English; the Chinese (zh) and Finnish (fi) names in parentheses are the ones to use in a Brief in that language or when talking to a user in it.
 
-Families know the product as Kinlace Parent Recap: the plugin is `parent-recap`, and the email subject and the top of each Brief say "Parent Recap". The command is `parent-recap`, and `family-brief` still works. The Python package `family_brief`, the Keychain service `family-brief`, the Google Calendar properties, the `~/.family` folder and the terms below keep their names (ADR 0010).
+Families know the product as Kinlace Parent Recap: the plugin is `parent-recap`, and the email subject and the top of each Brief say "Parent Recap". The command is `parent-recap`, and `family-brief` still works. The Python package `family_brief`, the Keychain service `family-brief`, the Google Calendar properties, the `.ics` UID suffix and PRODID, the `~/.family` folder and the terms below keep their names (ADR 0010).
 
 ## Output
 
