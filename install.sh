@@ -1,12 +1,30 @@
 #!/bin/bash
-# Install or update FamilyBrief into ~/FamilyBrief/app.
+# Install or update Parent Recap into ~/ParentRecap/app.
 # Safe to re-run: never touches the config, tokens or Keychain. It only adds what it creates to
-# setup's record (~/.family/install-record.json), so `family-brief uninstall` can remove it.
+# setup's record (~/.family/install-record.json), so `parent-recap uninstall` can remove it.
 set -euo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="${FAMILY_BRIEF_HOME:-$HOME/FamilyBrief}"
+TARGET="${PARENT_RECAP_HOME:-$HOME/ParentRecap}"
 APP="$TARGET/app"
+
+# ── Old install check
+# An install from before ADR 0010 lives in ~/FamilyBrief and runs the jobs com.family.brief and
+# com.family.weekend-events. There is no migration: the version that made it uninstalls it. A
+# ~/FamilyBrief that only holds a kept archive of past Briefs is not an install.
+refuse_old_install() {
+  local old=no plist
+  [ ! -d "$HOME/FamilyBrief/app" ] || old=yes
+  for plist in com.family.brief com.family.weekend-events; do
+    plist="$HOME/Library/LaunchAgents/$plist.plist"
+    if [ -f "$plist" ] && grep -q family_brief "$plist"; then old=yes; fi
+  done
+  [ "$old" = yes ] || return 0
+  echo "❌ An older Parent Recap is installed (its folder is ~/FamilyBrief). Nothing was changed."
+  echo "   Uninstall it with its own version first, then paste the install line again:"
+  echo "     ~/FamilyBrief/app/.venv/bin/family-brief uninstall"
+  exit 1
+}
 
 pick_python() {
   for c in /opt/homebrew/bin/python3 /usr/local/bin/python3 python3.13 python3.12 python3.11 python3; do
@@ -19,6 +37,7 @@ pick_python() {
 }
 
 if [ "$(uname)" != "Darwin" ]; then echo "❌ Only macOS is supported for now"; exit 1; fi
+refuse_old_install
 PY=$(pick_python) || { echo "❌ Python 3.11 or later is needed. Install it with: brew install python"; exit 1; }
 
 mkdir -p "$APP" "$TARGET/logs"
@@ -80,6 +99,6 @@ if [ "${1:-}" = "--codex" ]; then
 fi
 
 REAL_PY=$("$APP/.venv/bin/python" -c 'import os, sys; print(os.path.realpath(sys.executable))')
-echo "✅ FamilyBrief ${VERSION:-} installed to $APP"
-echo "   Command: $APP/.venv/bin/family-brief"
+echo "✅ Parent Recap ${VERSION:-} installed to $APP"
+echo "   Command: $APP/.venv/bin/parent-recap"
 echo "   Real Python path (needed for the WhatsApp permission): $REAL_PY"

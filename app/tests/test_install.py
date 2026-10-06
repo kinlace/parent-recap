@@ -55,7 +55,7 @@ def google_mode(mac: dict) -> None:
 
 def install(mac: dict, path_first: Path | None = None) -> subprocess.CompletedProcess:
     path = f"{path_first}:{os.environ['PATH']}" if path_first else os.environ["PATH"]
-    env = {**os.environ, "PATH": path, "HOME": str(mac["home"]), "FAMILY_BRIEF_HOME": str(mac["home"] / "FamilyBrief"),
+    env = {**os.environ, "PATH": path, "HOME": str(mac["home"]), "PARENT_RECAP_HOME": str(mac["home"] / "ParentRecap"),
            "PIP_NO_INDEX": "1", "PIP_FIND_LINKS": str(mac["packages"]),
            "PIP_DISABLE_PIP_VERSION_CHECK": "1", "PIP_NO_CACHE_DIR": "1"}
     env.pop("PIP_CONSTRAINT", None)
@@ -64,7 +64,7 @@ def install(mac: dict, path_first: Path | None = None) -> subprocess.CompletedPr
 
 
 def installed(mac: dict) -> dict[str, str]:
-    pip = mac["home"] / "FamilyBrief" / "app" / ".venv" / "bin" / "pip"
+    pip = mac["home"] / "ParentRecap" / "app" / ".venv" / "bin" / "pip"
     listing = subprocess.run([pip, "list", "--format", "json"], capture_output=True, text=True, check=True)
     return {p["name"]: p["version"] for p in json.loads(listing.stdout)}
 
@@ -137,7 +137,7 @@ def test_googles_packages_are_never_compiled_either(mac):
 # --- The install log -------------------------------------------------------------------------
 
 def install_log(mac: dict) -> Path:
-    logs = sorted((mac["home"] / "FamilyBrief" / "logs").glob("install-*.log"))
+    logs = sorted((mac["home"] / "ParentRecap" / "logs").glob("install-*.log"))
     assert len(logs) == 1, logs
     assert re.fullmatch(r"install-\d{4}-\d{2}-\d{2}-\d{6}\.log", logs[0].name)
     return logs[0]
@@ -169,7 +169,7 @@ def test_every_install_keeps_a_dated_log_that_starts_with_the_mac_it_ran_on(mac)
 
     assert result.returncode == 0, result.stdout + result.stderr
     first, *rest = install_log(mac).read_text().splitlines()
-    venv = mac["home"] / "FamilyBrief" / "app" / ".venv" / "bin"
+    venv = mac["home"] / "ParentRecap" / "app" / ".venv" / "bin"
     pip_version = subprocess.run([venv / "pip", "--version"], capture_output=True, text=True).stdout.split()[1]
     machine = subprocess.run(["uname", "-m"], capture_output=True, text=True).stdout.strip()
     macos = subprocess.run(["sw_vers", "-productVersion"], capture_output=True, text=True).stdout.strip()
@@ -291,3 +291,19 @@ def test_the_check_fails_when_a_pin_has_no_intel_wheel(tmp_path):
     assert "Apple Silicon" not in result.stderr
     assert "native-dep" in result.stderr
     assert not (tmp_path / "compiled").exists()
+
+
+def test_install_stops_over_an_install_from_before_the_rename(mac):
+    program(mac, ())
+    (mac["home"] / "FamilyBrief" / "app").mkdir(parents=True)
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    assert "Uninstall it with its own version first" in result.stdout
+    assert not (mac["home"] / "ParentRecap").exists()
+
+
+def test_both_commands_name_the_same_entry_point():
+    scripts = tomllib.loads((ROOT / "app" / "pyproject.toml").read_text())["project"]["scripts"]
+    assert scripts["parent-recap"] == scripts["family-brief"] == "family_brief.__main__:main"
