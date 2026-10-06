@@ -4,6 +4,13 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.5.4 · 2026-10-06
+
+The pilot feedback Form ships with the program.
+
+### Setup
+- Setup asks whether you're a pilot family. If you say yes, the evening Brief has ⭐ / ❌ links that open the pilot feedback Form already filled in, so you only press Submit.
+
 ## 0.5.3 · 2026-10-05
 
 Fixes from setting up on Xiao xi's Mac mini.
