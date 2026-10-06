@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from . import install_record, secret_dialog, setup_wilma, tools
+from . import install_record, own_node, secret_dialog, setup_wilma
 from .config import Config, Kid
 from .utils import keychain
 
@@ -67,7 +67,6 @@ CITY_DOMAINS = {
     "Vantaa": "vantaa.fi",
     "Kauniainen": "kauniainen.fi",
 }
-WILMA_INSTALL = shlex.join(["npm", *setup_wilma.INSTALL_ARGS])  # the pinned version (ADR 0008)
 WILMA_POLL_SECONDS = 2
 # The Wilma window's own text, in the reviewed languages; any other language gets the English.
 # Wilma comes before the AI login in setup, so there's no AI yet to translate it.
@@ -144,7 +143,7 @@ def register(sub) -> None:
                         help="Don't open the sign-in again, only wait for it and read the Kids")
     pwilma.add_argument("--language", default="en",
                         help="The family's language code, for the window's guide (default: en)")
-    pwilma.add_argument("--screen", default=None, help=argparse.SUPPRESS)  # in the window
+    pwilma.add_argument("--screen", action="store_true", help=argparse.SUPPRESS)  # in the window
     pwilma.set_defaults(func=cmd_wilma)
 
     pclaude = steps.add_parser("claude", help="Open Claude's sign-in for the nightly token in "
@@ -284,7 +283,7 @@ def gmail_sign_in(address: str, password: str) -> tuple[str, str | None, dict[st
 
 def cmd_wilma(args: argparse.Namespace) -> int:
     if args.screen:
-        return _sign_in_screen(args.screen, args.language)
+        return _sign_in_screen(args.language)
     out = sign_in_in_terminal(args.language, args.timeout, no_open=args.no_open)
     return _report(out.pop("result"), out.pop("next", None), **out)
 
@@ -303,12 +302,15 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
     def outcome(result: str, next_: str | None = None, **extra: Any) -> dict[str, Any]:
         return {"result": result, **extra, **({"next": next_} if next_ else {})}
 
-    setup_wilma.install()
-    program = tools.find(wilma.WILMA)
-    if not program:
-        return outcome("not-installed", f"Install the wilma CLI in Terminal with {WILMA_INSTALL} "
-                       "(it needs Node: brew install node), then run this again.")
     again = f"{_program()} setup wilma"
+    installed = setup_wilma.install()
+    if installed == "no-node":
+        return outcome("not-installed", "Parent Recap's own Node, which the wilma CLI runs on, "
+                       "is missing. The family pastes the Parent Recap install line into "
+                       f"Terminal again, then run: {again}")
+    if installed != "installed":
+        return outcome("not-installed", "The wilma CLI didn't install. The family checks that "
+                       f"the Mac is online, then run: {again}")
     config = setup_wilma.config_path()
     profiles_before = setup_wilma.profile_ids(config)
     with tempfile.TemporaryDirectory(prefix="parent-recap-wilma-") as tmp:
@@ -316,7 +318,7 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
         seen = _mtime(config)
         if not no_open:
             script = Path(tmp) / "Wilma sign-in.command"
-            script.write_text(_sign_in_script(program, language, status))
+            script.write_text(_sign_in_script(language, status))
             script.chmod(0o700)
             if subprocess.run(["open", "-a", "Terminal", str(script)],
                               capture_output=True).returncode != 0:
@@ -353,10 +355,10 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
                    f"{again} --no-open. Otherwise run: {again}")
 
 
-def _sign_in_script(program: str, language: str, status: Path) -> str:
+def _sign_in_script(language: str, status: Path) -> str:
     # This Python, since the window's PATH may not lead to this program.
     screen = (f"{shlex.quote(sys.executable)} -m family_brief setup wilma "
-              f"--screen {shlex.quote(program)} --language {shlex.quote(language)}")
+              f"--screen --language {shlex.quote(language)}")
     return (
         "#!/bin/sh\n"
         "clear\n"
@@ -365,8 +367,8 @@ def _sign_in_script(program: str, language: str, status: Path) -> str:
     )
 
 
-def _sign_in_screen(program: str, language: str) -> int:
-    """Runs the wilma CLI's sign-in in this window, through a pseudo-terminal so this sees what
+def _sign_in_screen(language: str) -> int:
+    """Runs the wilma CLI's sign-in on Parent Recap's own Node in this window, through a pseudo-terminal so this sees what
     it shows: the guide stays on top of each question the CLI clears the screen for, the student
     picker is answered (setup reads every Kid, so which one doesn't matter) and hidden, and once
     the CLI has saved its profile it's ended, before its menu, whose default choice fails with a
@@ -378,10 +380,13 @@ def _sign_in_screen(program: str, language: str) -> int:
     out.flush()
     config = setup_wilma.config_path()
     seen = _mtime(config)
+    command = own_node.wilma()
+    if command is None:
+        return 127
     pid, fd = pty.fork()
     if pid == 0:
         try:
-            os.execv(program, [program])
+            os.execv(command[0], command)
         finally:
             os._exit(127)
     # The CLI truncates its config before writing it, so a new one counts once it reads whole.

@@ -25,7 +25,8 @@ from pathlib import Path
 from types import FrameType
 from typing import Callable
 
-from . import google_packages, install_record, languages, private_files, secret_dialog, tools
+from . import (google_packages, install_record, languages, own_node, private_files,
+               secret_dialog, tools)
 from .config import Config
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
@@ -229,14 +230,14 @@ def _check_claude(add) -> None:
 
 
 def _check_wilma(cfg: Config, add) -> None:
-    from .collectors.wilma import WILMA, _run_or_log
-    if not tools.find(WILMA):
-        add(FAIL, "Wilma", "wilma command not found (npm i -g @wilm-ai/wilma-cli)")
+    from .collectors.wilma import NOT_INSTALLED, _run_or_log
+    if own_node.wilma() is None:
+        add(FAIL, "Wilma", NOT_INSTALLED)
         return
     data = _run_or_log(["kids", "list"])
     if data is None:
         add(FAIL, "Wilma", "wilma kids list failed: not signed in yet, or the password changed "
-            "(run wilma in Terminal to sign in again)")
+            "(sign in again: parent-recap setup wilma)")
         return
     items = data if isinstance(data, list) else (data.get("kids") or data.get("students") or [])
     names = [str(k.get("name") or (k.get("student") or {}).get("name") or "?") for k in items]
@@ -633,7 +634,8 @@ def _job_exit_code(domain: str, label: str) -> int | None:
 def _path_env() -> str:
     from .summarize import native_claude_dir
     dirs: list[str] = []
-    for tool in ("claude", "wilma", "node"):
+    # Node for a claude installed with npm; the wilma CLI runs on Parent Recap's own (ADR 0011).
+    for tool in ("claude", "node"):
         found = tools.find(tool)
         if found:
             dirs.append(str(Path(found).resolve().parent))

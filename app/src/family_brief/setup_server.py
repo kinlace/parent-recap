@@ -62,7 +62,7 @@ WILMA_RESULTS = ("signed-in", "wrong-password", "sign-in-failed", "no-kids", "no
 TOWN_RESULTS = ("not-installed", "no-list")
 # Getting the pinned wilma CLI ready, which the town list comes with: while it installs, and why
 # it couldn't be.
-WILMA_READY_RESULTS = ("installing", "no-npm", "install-failed")
+WILMA_READY_RESULTS = ("installing", "no-node", "install-failed")
 # The Terminal sign-in window: while the family signs in there, and how it ended if not signed in.
 WILMA_WINDOW_RESULTS = ("waiting", "not-signed-in", "sign-in-failed", "timeout", "no-terminal",
                         "not-installed")
@@ -1100,9 +1100,7 @@ class SetupServer:
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Nothing to give.", errors=["answers: should be {}"])
-        result = setup_wilma.install()
-        return HTTPStatus.OK, {"result": result,
-                               **({"install": setup_wilma.NODE_INSTALL} if result == "no-npm" else {})}
+        return HTTPStatus.OK, {"result": setup_wilma.install()}
 
     def find_towns(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """The entries of Wilma's list that the town or name typed finds, each with its town."""

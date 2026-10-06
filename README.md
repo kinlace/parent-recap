@@ -15,7 +15,6 @@ The whole program runs on your own Mac. Data only moves between this Mac, the AI
 
 - A Mac that is on or asleep around 9 pm (the program wakes it up on schedule). A Mac with Apple Silicon (M1 or later) is recommended. An Intel Mac works for now, on a best-effort basis
 - Either a Claude Pro or Max subscription with Claude Code installed, or ChatGPT Plus or higher with the ChatGPT desktop app installed. Install Claude Code with its [native installer](https://code.claude.com/docs/en/setup), which keeps it up to date by itself: paste `curl -fsSL https://claude.ai/install.sh | bash` into Terminal
-- For Wilma, [Homebrew](https://brew.sh), which setup uses to install Node. The install downloads Parent Recap's own Python, so you don't need to install one
 - A Gmail account with two-step verification turned on
 - Optional: a Wilma parent account, WhatsApp from the App Store, a MyClub account
 
@@ -33,7 +32,7 @@ The line fetches [`get.sh`](get.sh) and everything else from the `stable` branch
 
 ### Next
 
-The page walks you through setup in Finnish, English or Chinese: a few choices with defaults, then your Sources one at a time from a list (WhatsApp and MyClub can be skipped and added later), one page of what was found, and a preview of your first Brief before it's sent. Setup downloads about 175 MB, mostly the Python packages the program uses. Passwords go only into the page's own fields, on your Mac, and never into a chat. If you get stuck, **Continue in the chat** on any step hands setup over to Claude Code or Codex at the same step.
+The page walks you through setup in Finnish, English or Chinese: a few choices with defaults, then your Sources one at a time from a list (WhatsApp and MyClub can be skipped and added later), one page of what was found, and a preview of your first Brief before it's sent. Setup downloads about 230 MB, mostly the Python packages the program uses and its own Python and Node, so you don't need Homebrew, Python or Node of your own. Passwords go only into the page's own fields, on your Mac, and never into a chat. If you get stuck, **Continue in the chat** on any step hands setup over to Claude Code or Codex at the same step.
 
 Once installed, if something goes wrong or you want to change a setting (a new school year, a different group, another recipient), type `/parent-recap:manage` (`$parent-recap-manage` in Codex), or just say what you want.
 

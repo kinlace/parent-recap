@@ -8,6 +8,7 @@ Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010).
 
 ### Upgrading
 - Parent Recap now installs its own Python into `~/ParentRecap/runtime` and no longer needs Homebrew's, so a `brew upgrade` can't stop the evening Brief any more (ADR 0011). The install rebuilds the program's Python packages on it. Since the Python is new, macOS no longer lets Parent Recap read WhatsApp: if it reads your WhatsApp groups, add the Python path the install prints to System Settings → Privacy & Security → App Management once more.
+- Parent Recap also installs its own Node, and setup installs the Wilma program into `~/ParentRecap/wilma` and runs it on that Node, so Wilma works on a Mac without Node and you don't need Homebrew any more (ADR 0011). Setup installs the Wilma program again the first time you connect Wilma; a Node or Wilma program the Mac already has isn't used or touched. The install downloads about 230 MB.
 - This version does not move an earlier install. If `~/FamilyBrief` holds a program, or the jobs `com.family.brief` or `com.family.weekend-events` are loaded, `get.sh` and `install.sh` stop and say so: run `~/FamilyBrief/app/.venv/bin/family-brief uninstall` first, then install again. An archive you kept in `~/FamilyBrief` doesn't block the install.
 
 ### Changed

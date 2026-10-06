@@ -16,6 +16,7 @@ import logging
 import os
 import queue
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -35,7 +36,8 @@ from family_brief import (__main__ as cli, feedback, install_record, ops, run_lo
 from family_brief.collectors import myclub, whatsapp
 from family_brief.config import Config
 from family_brief.state import State
-from conftest import PILOT_FORM_FIELDS, PILOT_FORM_URL, msg
+import fake_node
+from conftest import PILOT_FORM_FIELDS, PILOT_FORM_URL, msg, program
 from test_nightly_run import FEEDBACK, FORM, feedback_links
 from test_setup_status import install_program
 from test_setup_steps import HeaderImap
@@ -1197,27 +1199,27 @@ print(json.dumps(ctl["students"], indent=2))
 
 
 class WilmaCLI:
-    """The Mac's npm and the wilma CLI it installs globally, laid out as npm lays it out, with
-    Wilma's tenant list inside it. Not installed until `npm install -g` or `install()`."""
+    """Parent Recap's own Node and the wilma CLI its npm installs into ~/ParentRecap/wilma,
+    laid out as npm lays it out, with Wilma's tenant list inside it. The CLI isn't installed
+    until npm or `install()` installs it."""
 
     def __init__(self, home: Path) -> None:
         self.home = home
-        self.prefix = home / "homebrew"
-        self.bin_dir = self.prefix / "bin"
-        self.bin_dir.mkdir(parents=True)
+        self.prefix = fake_node.wilma_folder(home)
+        self.node = fake_node.pinned_node(home)
         self.accounts = {f"{ESPOO}|mia.parent": WILMA_PASSWORD}  # tenant|username → password
         self.students: list[dict[str, Any]] = WILMA_STUDENTS
         self.fails: str | None = None    # any other failure, in the CLI's words
-        self.npm = True                  # whether Node's npm is on this Mac
         self.npm_works = True
         self.installs: list[list[str]] = []
+        self.npm_env: dict[str, str] = {}  # the last npm's
         self.ships_tenants = True
         self.terminal: list[str] = []    # each script opened in Terminal
         self.signs_in_terminal = True    # the family signs in in the window
 
     @property
     def package(self) -> Path:
-        return self.prefix / "lib" / "node_modules" / "@wilm-ai" / "wilma-cli"
+        return fake_node.wilma_package(self.home)
 
     @property
     def profile_path(self) -> Path:
@@ -1227,19 +1229,14 @@ class WilmaCLI:
         return json.loads(self.profile_path.read_text())
 
     def install(self) -> None:
-        dist = self.package / "dist"
-        dist.mkdir(parents=True, exist_ok=True)
+        fake_node.install_wilma(self.home, FAKE_WILMA_CLI.format(python=sys.executable))
         (self.package / "package.json").write_text(json.dumps(
             {"name": "@wilm-ai/wilma-cli", "version": "1.6.2"}))
-        (dist / "index.js").write_text(FAKE_WILMA_CLI.format(python=sys.executable))
-        (dist / "index.js").chmod(0o755)
         if self.ships_tenants:
             client = self.package / "node_modules" / "@wilm-ai" / "wilma-client"
             client.mkdir(parents=True, exist_ok=True)
             (client / "tenant_list.json").write_text(json.dumps(TENANTS, ensure_ascii=False))
-        (self.bin_dir / "wilma").unlink(missing_ok=True)
-        (self.bin_dir / "wilma").symlink_to(dist / "index.js")
-        (dist / "wilma.json").write_text(json.dumps(
+        (self.package / "dist" / "wilma.json").write_text(json.dumps(
             {"accounts": self.accounts, "students": self.students, "fails": self.fails}))
 
     def signed_in_before(self, tenant: str, username: str = "old.parent",
@@ -1261,20 +1258,18 @@ def wilma_cli(harness, monkeypatch) -> WilmaCLI:
     w = WilmaCLI(harness.home)
     for var in ("WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
         monkeypatch.delenv(var, raising=False)
-    monkeypatch.setenv("PATH", f"{w.bin_dir}:/usr/bin:/bin")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")  # no Node of the Mac's own
     monkeypatch.setattr(time, "sleep", lambda _s: None)
     others = subprocess.run  # the harness's fakes
 
     def run(cmd: list[str], *a: Any, **k: Any) -> Any:
-        name = Path(cmd[0]).name
-        if name == "wilma":
+        if fake_node.is_wilma(cmd):
             harness.commands.append(list(cmd))
             return REAL_RUN(cmd, *a, **k)
-        if name == "npm":
+        if fake_node.is_npm(cmd):
             harness.commands.append(list(cmd))
-            if not w.npm:
-                raise FileNotFoundError(cmd[0])
-            w.installs.append(cmd[1:])
+            w.installs.append(cmd[2:])
+            w.npm_env = k["env"]
             if not w.npm_works:
                 return subprocess.CompletedProcess(cmd, 1, "", "npm error code E404")
             w.install()
@@ -1287,8 +1282,6 @@ def wilma_cli(harness, monkeypatch) -> WilmaCLI:
             return subprocess.CompletedProcess(cmd, 0, "", "")
         return others(cmd, *a, **k)
     monkeypatch.setattr(subprocess, "run", run)
-    (w.bin_dir / "npm").write_text("#!/bin/sh\n")
-    (w.bin_dir / "npm").chmod(0o755)
     return w
 
 
@@ -1344,52 +1337,58 @@ def test_the_town_search_finds_entries_by_name_and_without_accents(harness, page
         assert call(page.url, "api/towns", method="POST", body=body).status == 400, body
 
 
-def test_setup_installs_the_pinned_wilma_cli_when_it_is_missing(harness, page, wilma_cli):
+def test_setup_installs_the_pinned_wilma_cli_with_its_own_node_when_it_is_missing(
+        harness, page, wilma_cli):
     assert towns(page.url, "Espoo").json()["result"] == "not-installed"
 
     r = wilma_ready(page.url)
 
     assert r.status == 200 and r.json()["result"] == "installed"
-    assert wilma_cli.installs == [["install", "-g", "@wilm-ai/wilma-cli@1.6.2"]]
-    assert setup_steps.WILMA_INSTALL == "npm install -g @wilm-ai/wilma-cli@1.6.2"
+    prefix = str(wilma_cli.prefix)
+    assert wilma_cli.installs == [["install", "-g", "--prefix", prefix, "@wilm-ai/wilma-cli@1.6.2"]]
+    [npm] = [c for c in harness.commands if fake_node.is_npm(c)]
+    assert npm[0] == str(wilma_cli.node)
+    # Its package scripts find that Node too, and its cache leaves nothing behind.
+    assert wilma_cli.npm_env["PATH"].split(":")[0] == str(wilma_cli.node.parent)
+    assert not Path(wilma_cli.npm_env["npm_config_cache"]).exists()
     assert towns(page.url, "Espoo").json()["result"] == "found"
 
     assert wilma_ready(page.url).json()["result"] == "installed"
     assert len(wilma_cli.installs) == 1  # already there: not installed again
-    assert install_record.entries("wilma-cli") == ["@wilm-ai/wilma-cli"]  # so uninstall removes it
+    assert install_record.entries("wilma-cli") == [prefix]  # so uninstall removes it
 
 
-def test_npm_and_a_wilma_cli_only_the_login_shell_finds_are_used(harness, page, wilma_cli,
-                                                                  login_shell, monkeypatch):
-    # npm's folder, where it installs the CLI too, is on the family's shell's PATH only.
-    monkeypatch.setenv("PATH", "/usr/bin:/bin")
-    login_shell(wilma_cli.bin_dir)
+def test_a_wilma_cli_and_node_the_mac_already_has_are_not_used(harness, page, wilma_cli,
+                                                                tmp_path, monkeypatch):
+    # The family's own, on PATH: Parent Recap still installs and runs its own (ADR 0011).
+    theirs = tmp_path / "their-bin"
+    program(theirs, "wilma", "#!/bin/sh\nexit 99\n")
+    program(theirs, "node", "#!/bin/sh\nexit 99\n")
+    monkeypatch.setenv("PATH", f"{theirs}:/usr/bin:/bin")
 
     assert wilma_ready(page.url).json()["result"] == "installed"
-
-    assert harness.commands[-1][0] == str(wilma_cli.bin_dir / "npm")
-    assert towns(page.url, "Espoo").json()["result"] == "found"
     assert sign_in_wilma(page.url).json()["result"] == "signed-in"
 
-
-def test_a_wilma_cli_from_before_setup_is_not_recorded(harness, page, wilma_cli):
-    wilma_cli.install()
-
-    assert wilma_ready(page.url).json()["result"] == "installed"
-
-    assert wilma_cli.installs == [] and install_record.entries("wilma-cli") == []
+    ran = [c for c in harness.commands if fake_node.is_wilma(c) or fake_node.is_npm(c)]
+    assert ran and all(c[0] == str(wilma_cli.node) for c in ran)
+    assert not any(str(theirs) in arg for c in harness.commands for arg in c)
 
 
-def test_without_node_it_says_how_to_install_it(harness, page, wilma_cli):
-    (wilma_cli.bin_dir / "npm").unlink()
+def test_without_its_own_node_it_says_to_run_the_install_again(harness, page, wilma_cli):
+    shutil.rmtree(wilma_cli.node.parents[1])
 
-    assert wilma_ready(page.url).json() == {"result": "no-npm", "install": "brew install node"}
+    assert wilma_ready(page.url).json() == {"result": "no-node"}
+    assert wilma_cli.installs == []
 
-    (wilma_cli.bin_dir / "npm").write_text("#!/bin/sh\n")
-    (wilma_cli.bin_dir / "npm").chmod(0o755)
+    fake_node.pinned_node(harness.home)
     wilma_cli.npm_works = False
     assert wilma_ready(page.url).json()["result"] == "install-failed"
-    assert install_record.entries("wilma-cli") == []
+
+
+def test_no_message_suggests_homebrew_any_more():
+    for lang in json.loads((PAGE_DIR / "text.json").read_text()).values():
+        assert not any("brew" in text for text in lang.values())
+        assert "brew" not in lang["wilma.ready.no-node"].lower()
 
 
 def test_a_cli_without_the_tenant_list_says_so(harness, page, wilma_cli):

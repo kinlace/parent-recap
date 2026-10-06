@@ -9,13 +9,13 @@ import json
 import subprocess
 from datetime import timedelta
 from email.message import EmailMessage
-from pathlib import Path
 from typing import Any
 
 import pytest
 import requests
 import time_machine
 
+import fake_node
 from conftest import NOW, msg
 
 from family_brief.collectors import gmail, myclub, wilma
@@ -158,19 +158,22 @@ def wilma_list(ids: list[int]) -> dict:
 
 @pytest.fixture
 def real_wilma(harness, monkeypatch):
-    """Runs the real Wilma collector against a fake `wilma` CLI. `reads` maps a message id to its
-    body, or to what reading it does instead: an exit code (int) or an exception it raises."""
+    """Runs the real Wilma collector against a fake wilma CLI on Parent Recap's own Node.
+    `reads` maps a message id to its body, or to what reading it does instead: an exit code
+    (int) or an exception it raises."""
     harness.config["gmail"]["allowlist_domains"] = []  # Gmail fails fast; this is about Wilma
     one_whatsapp_message(harness)
     caught_up_last_night(harness)
     monkeypatch.setattr(wilma, "collect", REAL_WILMA_COLLECT)
+    fake_node.pinned_node(harness.home)
+    fake_node.install_wilma(harness.home, "#!/bin/sh\n")
     model_or_osascript = subprocess.run
 
     def serve(message_ids: list[int], reads: dict[int, str | int | Exception]) -> None:
         def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-            if Path(cmd[0]).name != wilma.WILMA:  # by its full path where this Mac has one
+            if not fake_node.is_wilma(cmd):
                 return model_or_osascript(cmd, *a, **k)
-            args = cmd[1:-1]  # without "--json"
+            args = cmd[2:-1]  # without node, the CLI and "--json"
             if args[:2] == ["messages", "list"]:
                 out: Any = wilma_list(message_ids)
             elif args[:2] == ["messages", "read"]:
@@ -271,7 +274,7 @@ def test_wilma_command_timing_out_once_is_run_again(harness, real_wilma, monkeyp
     timed_out: list[list[str]] = []
 
     def slow_the_first_time(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if Path(cmd[0]).name == wilma.WILMA and cmd[1:3] == command and not timed_out:
+        if fake_node.is_wilma(cmd) and cmd[2:4] == command and not timed_out:
             timed_out.append(cmd)
             raise subprocess.TimeoutExpired(cmd, k["timeout"])
         return fake_wilma(cmd, *a, **k)
@@ -291,7 +294,7 @@ def test_wilma_timing_out_twice_is_reported_as_not_read(harness, real_wilma, mon
     tries: list[list[str]] = []
 
     def always_slow(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if Path(cmd[0]).name == wilma.WILMA and cmd[1:3] == ["messages", "list"]:
+        if fake_node.is_wilma(cmd) and cmd[2:4] == ["messages", "list"]:
             tries.append(cmd)
             raise subprocess.TimeoutExpired(cmd, k["timeout"])
         return fake_wilma(cmd, *a, **k)

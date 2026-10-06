@@ -44,7 +44,7 @@ One town outside the presets was set up end to end in a fresh-install test in Oc
 | `kids[].myclub_ical_url`               | MyClub calendar subscription link                                                                                               |
 | `gmail.allowlist_domains`              | **Only these domains are scanned**; without an allowlist the program refuses to run                                             |
 | `gmail.allowlist_senders`              | Individual teachers or coaches who use a personal address                                                                       |
-| `wilma.enabled`                        | Set to true only after logging in to wilma in Terminal                                                                          |
+| `wilma.enabled`                        | Set to true only after signing in to Wilma with `parent-recap setup wilma`                                                      |
 | `whatsapp.chats[]`                     | Copy `name` exactly; `kid` is the Kid's full name or `both`; `label` is the kind of group                                       |
 | `google_calendar.mode`                 | `ics` / `google` / `off`                                                                                                        |
 | `google_calendar.invite_attendees`     | In google mode, people automatically invited to new events                                                                      |

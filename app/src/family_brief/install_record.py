@@ -1,12 +1,12 @@
 """The record of what setup created on this Mac, so uninstall removes exactly that.
 
 Each step that creates something adds it here: `install.sh` the program, its logs folder, the
-folder of its pinned Python, the Codex skills and the plugin copy it runs from; `schedule
-install` the launchd jobs; storing a Gmail App Password its Keychain account; installing the wilma CLI and saving its sign-in the
-CLI's package and the profile's id; installing Claude Code's plugin, and its marketplace, their
-names. Only what setup installed goes in: a wilma CLI, Wilma profile, plugin or marketplace
-that was there before stays when Parent Recap is uninstalled. Uninstall still checks each
-recorded item is this install's before removing it. Installs from before the record (0.4.1 and
+folder of its pinned Python and Node, the Codex skills and the plugin copy it runs from; `schedule
+install` the launchd jobs; storing a Gmail App Password its Keychain account; installing the
+wilma CLI and saving its sign-in the CLI's folder and the profile's id; installing Claude Code's
+plugin, and its marketplace, their names. Only what setup installed goes in: a Wilma profile,
+plugin or marketplace that was there before stays when Parent Recap is uninstalled. Uninstall
+still checks each recorded item is this install's before removing it. Installs from before the record (0.4.1 and
 older) have none, and uninstall recognises their items in the places setup uses.
 
 install.sh calls it as `python -m family_brief.install_record <kind> <value> [<kind> <value> ...]`.

@@ -1,5 +1,6 @@
-"""Finding the programs Parent Recap runs (claude, codex, wilma, npm, node) when they're installed
-but this process's PATH doesn't lead to them.
+"""Finding the programs of the Mac's own that Parent Recap runs (claude, codex, and node for a
+claude installed with npm) when they're installed but this process's PATH doesn't lead to them.
+The wilma CLI isn't one: it runs on Parent Recap's own Node (`own_node`, ADR 0011).
 
 Terminal's shell, the setup page and the evening job each have their own PATH, and a family's own
 shell setup (fish, nix, a custom npm prefix such as ~/.npm-global/bin) can put a program on one of
@@ -30,7 +31,7 @@ def remembered_path() -> Path:
 def find(name: str) -> str | None:
     """`name`'s full path, or None when it isn't installed. One found outside PATH is
     remembered, and its folder goes on this process's PATH, with node's for a Node script such
-    as wilma or npm, so that the programs it starts can run them too."""
+    as a claude installed with npm, so that the programs it starts can run them too."""
     found = shutil.which(name)
     if found:
         return found
