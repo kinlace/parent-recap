@@ -142,7 +142,7 @@ class LLMConfig(BaseModel):
 
 
 class ArchiveConfig(BaseModel):
-    dir: str = "~/FamilyBrief"
+    dir: str = "~/ParentRecap"
 
     def resolved_dir(self) -> Path:
         return Path(_expand(self.dir))
@@ -157,7 +157,7 @@ class WeekendEventsConfig(BaseModel):
     max_candidates: int = 12
     kid_preferences: str = ""     # free-form; passed to LLM as context
     parent_preferences: str = ""
-    dir: str = "~/FamilyBrief/weekend_events"
+    dir: str = "~/ParentRecap/weekend_events"
 
     def resolved_dir(self) -> Path:
         return Path(_expand(self.dir))

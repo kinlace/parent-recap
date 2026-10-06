@@ -112,7 +112,7 @@ def test_discover_gmail_senders_as_json_says_when_gmail_cannot_be_read(harness, 
     assert harness.cli("discover", "gmail-senders", "--json") == 1  # no App Password stored
 
     out = json.loads(capsys.readouterr().out)
-    assert out["result"] == "read-failed" and "family-brief doctor" in out["next"]
+    assert out["result"] == "read-failed" and "parent-recap doctor" in out["next"]
 
 
 # ── App Management

@@ -178,7 +178,7 @@ def cmd_save(args: argparse.Namespace) -> int:
     if args.read:
         return _print(read(config))
     if sys.stdin.isatty():
-        return _print(outcome("no-answers", "Give the answers as JSON on stdin, such as: family-brief "
+        return _print(outcome("no-answers", "Give the answers as JSON on stdin, such as: parent-recap "
                            "setup save <<< '{\"evening\": \"21:00\"}'"))
     try:
         raw = json.loads(sys.stdin.read())
@@ -199,7 +199,7 @@ def save(config: Path, raw: Any) -> dict[str, Any]:
     if isinstance(raw, dict) and any(isinstance(k, dict) and "myclub_ical_url" in k
                                      for k in raw.get("kids") or []):
         return outcome("invalid-answers", "A Kid's MyClub link is a secret and isn't an answer: "
-                    "family-brief setup myclub --kid NAME asks for it and saves it. Save the "
+                    "parent-recap setup myclub --kid NAME asks for it and saves it. Save the "
                     "answers again without it.", errors=["kids: myclub_ical_url isn't an answer"])
     try:
         answers = Answers.model_validate(raw)
@@ -217,7 +217,7 @@ def save(config: Path, raw: Any) -> dict[str, Any]:
             data = _read_config(config)
         except (OSError, ValueError, yaml.YAMLError, ValidationError):
             return outcome("bad-config", f"The config at {config} can't be read, so nothing was "
-                        "saved. Run family-brief doctor, fix what it names, then save again.")
+                        "saved. Run parent-recap doctor, fix what it names, then save again.")
         _merge(data, answers, form)
         try:
             Config.model_validate(data)

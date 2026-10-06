@@ -79,7 +79,7 @@ def check(config: str | None) -> list[Outcome]:
 
 def _installed() -> Outcome:
     programs = [Path(p) for p in install_record.entries("program")] or \
-        [Path.home() / "FamilyBrief" / "app"]
+        [Path.home() / "ParentRecap" / "app"]
     for program in programs:
         try:
             ours = re.search(r'^name\s*=\s*"family-brief"', (program / "pyproject.toml").read_text(),
@@ -103,9 +103,9 @@ def _doctor(config: str | None) -> Outcome:
     # Only a ❌ holds setup up; a ⚠️ is named, with what to do, but the Brief works without it.
     if all(status == ops.WARN for status, _ in checks):
         return Outcome("doctor", True, f"no check failed, {len(not_ok)} of {len(results)} have a "
-                       f"warning: {', '.join(not_ok)} (run family-brief doctor to see why)", checks)
+                       f"warning: {', '.join(not_ok)} (run parent-recap doctor to see why)", checks)
     return Outcome("doctor", False, f"{len(not_ok)} of {len(results)} checks aren't OK: "
-                   f"{', '.join(not_ok)} (run family-brief doctor to see why)", checks)
+                   f"{', '.join(not_ok)} (run parent-recap doctor to see why)", checks)
 
 
 def _brief(cfg: Config | None) -> Outcome:
@@ -118,7 +118,7 @@ def _brief(cfg: Config | None) -> Outcome:
     parent, others = to[0], to[1:]
     if State(cfg.resolved_state_path()).delivered_at(parent) is None:
         return Outcome("brief", False, f"no Brief has gone out to {parent} yet (send the first one "
-                       "from the setup page, or with family-brief bg run --lookback-hours 72)")
+                       "from the setup page, or with parent-recap bg run --lookback-hours 72)")
     later = f", and {', '.join(others)} get theirs with the evening Brief" if others else ""
     return Outcome("brief", True, f"sent to {parent}{later}")
 
@@ -126,7 +126,7 @@ def _brief(cfg: Config | None) -> Outcome:
 def _nightly(hour: int, minute: int) -> Outcome:
     if ops.JOB_DAILY in ops.launchctl_loaded():
         return Outcome("nightly", True, f"{ops.JOB_DAILY} runs every day at {hour:02d}:{minute:02d}")
-    return Outcome("nightly", False, f"{ops.JOB_DAILY} isn't loaded: run family-brief schedule "
+    return Outcome("nightly", False, f"{ops.JOB_DAILY} isn't loaded: run parent-recap schedule "
                    "install")
 
 
@@ -137,7 +137,7 @@ def _wake(hour: int, minute: int) -> Outcome:
     repeating = ops.repeating_wakes()
     if any(ops.is_our_wake(line, hour, minute) for line in repeating):
         return Outcome("wake", True, f"the Mac wakes at {wake_h:02d}:{wake_m:02d} every day")
-    install = "family-brief schedule install"
+    install = "parent-recap schedule install"
     if repeating:  # replaced only once the family agrees
         install = (f"{install} --replace-wake once the family agrees to replace this Mac's other "
                    f"repeating wake schedule ({', '.join(repeating)})")

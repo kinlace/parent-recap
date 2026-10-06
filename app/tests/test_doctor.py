@@ -1,4 +1,4 @@
-"""`family-brief doctor` and `discover` speak English, whatever language the Brief is in."""
+"""`parent-recap doctor` and `discover` speak English, whatever language the Brief is in."""
 from __future__ import annotations
 
 import re
@@ -25,7 +25,7 @@ def test_doctor_reports_every_check_in_english(harness, monkeypatch, capsys):
     assert code == 1  # no Gmail App Password in the Keychain
     assert "Config file" in out and "2 kids" in out
     assert "No App Password in the Keychain for parent@example.com" in out
-    assert "family-brief schedule install" in out
+    assert "parent-recap schedule install" in out
     assert not HAN.findall(out)
 
 
@@ -49,7 +49,7 @@ def test_doctor_fails_claude_without_a_token_for_the_evening_brief(harness, clau
     out = capsys.readouterr().out
     line = next(l for l in out.splitlines() if "Claude:" in l)
     assert line.startswith(ops.FAIL)
-    assert "no claude-oauth-token" in line and "family-brief setup claude" in line
+    assert "no claude-oauth-token" in line and "parent-recap setup claude" in line
     assert "tmux" not in line
 
 
@@ -91,7 +91,7 @@ def test_discover_without_whatsapp_access_points_to_bg(harness, monkeypatch, cap
     assert harness.cli("discover", "whatsapp-chats") == 1
 
     out = capsys.readouterr().out
-    assert "family-brief bg discover whatsapp-chats" in out
+    assert "parent-recap bg discover whatsapp-chats" in out
     assert not HAN.findall(out)
 
 

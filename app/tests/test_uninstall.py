@@ -1,4 +1,4 @@
-"""`family-brief uninstall` removes what setup created on this Mac, and nothing else.
+"""`parent-recap uninstall` removes what setup created on this Mac, and nothing else.
 
 macOS's edges are faked: `launchctl`, `pmset`, the Keychain's `security` command and the
 administrator dialog (`osascript`). Everything setup writes is real files in a temporary HOME.
@@ -135,13 +135,13 @@ def store_app_password(harness, address: str, password: str) -> None:
 
 
 def make_program(home: Path, monkeypatch) -> Path:
-    """What install.sh leaves in ~/FamilyBrief/app, running as the program's own Python."""
-    app = home / "FamilyBrief" / "app"
+    """What install.sh leaves in ~/ParentRecap/app, running as the program's own Python."""
+    app = home / "ParentRecap" / "app"
     (app / ".venv" / "bin").mkdir(parents=True)
     (app / ".venv" / "bin" / "python").write_text("")
     (app / "pyproject.toml").write_text('[project]\nname = "family-brief"\n')
     (app / "VERSION").write_text("0.5.0\n")
-    (home / "FamilyBrief" / "logs").mkdir()
+    (home / "ParentRecap" / "logs").mkdir()
     monkeypatch.setattr(sys, "executable", str(app / ".venv" / "bin" / "python"))
     return app
 
@@ -154,7 +154,7 @@ def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
         assert install_codex_skills(home).returncode == 0
     app = make_program(home, monkeypatch)
     if record:  # what install.sh records
-        install_record.main(["program", str(app), "logs", str(home / "FamilyBrief" / "logs"),
+        install_record.main(["program", str(app), "logs", str(home / "ParentRecap" / "logs"),
                              "codex-skill", str(home / ".agents/skills/parent-recap-setup"),
                              "codex-skill", str(home / ".agents/skills/parent-recap-manage")])
     store_app_password(harness, "parent@example.com", APP_PASSWORD)
@@ -201,8 +201,8 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
     assert uninstall(harness) == 0
 
     out = capsys.readouterr().out
-    for item in ("com.family.brief", "Library/LaunchAgents/com.family.brief.plist", OUR_WAKE,
-                 "FamilyBrief/app", "FamilyBrief/logs", ".family/config.yaml",
+    for item in ("com.parentrecap.daily", "Library/LaunchAgents/com.parentrecap.daily.plist", OUR_WAKE,
+                 "ParentRecap/app", "ParentRecap/logs", ".family/config.yaml",
                  ".family/config.yaml.bak-202609011200", ".family/state.json", ".family/languages",
                  ".family/install-record.json", ".family/setup-progress.json",
                  ".family/programs.json", "gmail-imap-parent@example.com",
@@ -236,11 +236,11 @@ def test_confirmed_with_the_archive_kept_removes_all_but_the_archive(harness, ma
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
-    assert leftovers(harness.home) == ["FamilyBrief", "FamilyBrief/2026-09-26.md",
-                                       "FamilyBrief/2026-09-26.raw.json"]
+    assert leftovers(harness.home) == ["ParentRecap", "ParentRecap/2026-09-26.md",
+                                       "ParentRecap/2026-09-26.raw.json"]
     assert mac.keychain == {} and mac.loaded == set() and mac.repeating == []
     out = capsys.readouterr().out
-    assert "kept" in out.lower() and "FamilyBrief" in out
+    assert "kept" in out.lower() and "ParentRecap" in out
     assert "https://myaccount.google.com/apppasswords" in out
     assert APP_PASSWORD not in out and CLAUDE_TOKEN not in out
 
@@ -276,7 +276,7 @@ def test_leaves_files_it_did_not_create_in_its_folders(harness, mac, monkeypatch
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
     assert leftovers(harness.home) == [".family", ".family/other-tool.yaml",
-                                       "FamilyBrief", "FamilyBrief/notes.txt"]
+                                       "ParentRecap", "ParentRecap/notes.txt"]
     out = capsys.readouterr().out
     assert "notes.txt" in out and "other-tool.yaml" in out
 
@@ -291,7 +291,7 @@ def test_a_denied_keychain_deletion_is_reported_and_the_rest_still_removed(harne
     out = capsys.readouterr().out
     assert "claude-oauth-token" in out.split("❌", 1)[1]
     assert "Keychain Access" in out
-    assert not (harness.home / "FamilyBrief" / "app").exists()
+    assert not (harness.home / "ParentRecap" / "app").exists()
 
 
 def test_a_cancelled_administrator_dialog_leaves_the_wake_schedule_and_says_how(harness, mac,
@@ -484,13 +484,13 @@ def test_an_install_without_a_record_is_recognised_and_listed_for_confirmation(h
 
     out = capsys.readouterr().out
     assert "record" in out.lower()
-    for item in ("com.family.brief", "FamilyBrief/app", ".family/config.yaml",
+    for item in ("com.parentrecap.daily", "ParentRecap/app", ".family/config.yaml",
                  "gmail-imap-parent@example.com", ".agents/skills/parent-recap-setup"):
         assert item in out, item
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
-    assert leftovers(harness.home) == ["FamilyBrief", "FamilyBrief/2026-09-26.md",
-                                       "FamilyBrief/2026-09-26.raw.json"]
+    assert leftovers(harness.home) == ["ParentRecap", "ParentRecap/2026-09-26.md",
+                                       "ParentRecap/2026-09-26.raw.json"]
 
 
 # ── stopping on what isn't this install's
@@ -508,7 +508,7 @@ def assert_stopped(harness, mac: FakeMac, before: list[str], capsys) -> str:
 def test_stops_on_a_launchd_job_with_its_name_that_runs_another_program(harness, mac,
                                                                         monkeypatch, capsys):
     set_up(harness, mac, monkeypatch)
-    plist = harness.home / "Library" / "LaunchAgents" / "com.family.brief.plist"
+    plist = harness.home / "Library" / "LaunchAgents" / "com.parentrecap.daily.plist"
     data = plistlib.loads(plist.read_bytes())
     data["ProgramArguments"][0] = "/Users/maintainer/family-brief/.venv/bin/python"
     plist.write_bytes(plistlib.dumps(data))
@@ -518,7 +518,7 @@ def test_stops_on_a_launchd_job_with_its_name_that_runs_another_program(harness,
     out = assert_stopped(harness, mac, before, capsys)
 
     assert "/Users/maintainer/family-brief/.venv/bin/python" in out
-    assert "com.family.brief" in out
+    assert "com.parentrecap.daily" in out
 
 
 def test_stops_on_a_config_parent_recap_did_not_write(harness, mac, monkeypatch, capsys):
@@ -534,14 +534,14 @@ def test_stops_on_a_config_parent_recap_did_not_write(harness, mac, monkeypatch,
 
 def test_stops_on_a_program_folder_that_is_not_parent_recap(harness, mac, monkeypatch, capsys):
     set_up(harness, mac, monkeypatch)
-    (harness.home / "FamilyBrief" / "app" / "pyproject.toml").write_text(
+    (harness.home / "ParentRecap" / "app" / "pyproject.toml").write_text(
         '[project]\nname = "something-else"\n')
     before = leftovers(harness.home)
     mac.ran.clear()
 
     out = assert_stopped(harness, mac, before, capsys)
 
-    assert "FamilyBrief/app" in out
+    assert "ParentRecap/app" in out
 
 
 def test_stops_on_a_codex_skill_with_its_name_that_it_did_not_install(harness, mac, monkeypatch,

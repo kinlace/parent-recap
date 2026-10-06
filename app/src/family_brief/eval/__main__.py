@@ -139,7 +139,7 @@ def _problems(night: dict[str, Any]) -> list[str]:
 
 def report(data: dict[str, Any], previous: dict[str, Any] | None) -> str:
     runs = data["runs"]
-    lines = [f"FamilyBrief eval · {data['backend']} ({data['model'] or 'default model'}) · "
+    lines = [f"Parent Recap eval · {data['backend']} ({data['model'] or 'default model'}) · "
              f"{data['language']} · {len(runs[0]['cases'])} cases × {len(runs)} run(s) · "
              f"prompt {data['prompt_sha']}"]
     if previous:
@@ -215,15 +215,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--language", default=",".join(TEXT),
                    help=f"the reviewed Brief language(s) to score, one scorecard each (default: {','.join(TEXT)})")
     p.add_argument("--cases", type=Path, default=BUNDLED,
-                   help="case folder (default: the synthetic cases shipped with FamilyBrief)")
+                   help="case folder (default: the synthetic cases shipped with Parent Recap)")
     p.add_argument("--only", default=None, help="comma-separated case names to run")
     p.add_argument("--repeat", type=int, default=1, help="run the whole set N times to see the spread")
     p.add_argument("--jobs", type=int, default=1,
                    help="cases in flight at once (faster; seconds_per_night then includes queueing)")
     p.add_argument("--judge", action="store_true", help="also have the model rate each Digest's readability")
     p.add_argument("--codex-path", default=None)
-    p.add_argument("--out", type=Path, default=Path("~/FamilyBrief/eval").expanduser(),
-                   help="where runs are saved (default: ~/FamilyBrief/eval)")
+    p.add_argument("--out", type=Path, default=Path("~/ParentRecap/eval").expanduser(),
+                   help="where runs are saved (default: ~/ParentRecap/eval)")
     p.add_argument("--compare", type=Path, default=None, help="saved run to compare with (default: latest)")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")

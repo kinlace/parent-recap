@@ -1,4 +1,4 @@
-"""Saving a Kid's MyClub calendar link with `family-brief setup myclub`: the link goes from
+"""Saving a Kid's MyClub calendar link with `parent-recap setup myclub`: the link goes from
 macOS's dialog to one download and the owner-only config, and nowhere else (ADR 0005).
 
 The link carries a personal token, so it's a secret like the others. The outside edges are faked:

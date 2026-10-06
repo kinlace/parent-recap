@@ -67,7 +67,7 @@ def run_alone(cfg: Config, kind: str, run: Callable[[], int]) -> int:
     `kind` names the run in that message ("Brief", "Weekend Picks")."""
     f = _take(cfg)
     if f is None:
-        log.error("Another FamilyBrief run is still going, so this %s run didn't start. Wait for "
+        log.error("Another Parent Recap run is still going, so this %s run didn't start. Wait for "
                   "that one to finish (it can take several minutes) instead of starting it again.", kind)
         return BUSY
     with f:

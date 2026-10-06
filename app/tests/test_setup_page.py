@@ -1,4 +1,4 @@
-"""The setup page's server, `family-brief setup page` (ADR 0006), driven with HTTP calls as the page
+"""The setup page's server, `parent-recap setup page` (ADR 0006), driven with HTTP calls as the page
 makes them.
 
 The server runs in-process on a free port, inside the harness, so the config, the progress record,
@@ -764,7 +764,7 @@ def test_a_plugin_from_an_unzipped_release_or_its_old_name_is_switched_to_stable
     ai("claude")
     harness.claude_marketplaces = [{"name": "family-brief"},
                                    {"name": "kinlace", "source": "directory",
-                                    "path": "/Users/mum/FamilyBrief/plugin"}]
+                                    "path": "/Users/mum/ParentRecap/plugin"}]
     harness.claude_plugins = [{"id": "family-brief@family-brief"}, {"id": "parent-recap@kinlace"}]
 
     welcome(page.url, ai="claude")
@@ -2870,7 +2870,7 @@ def test_the_preview_makes_the_real_brief_and_sends_nothing(harness, page, mac):
     assert "Parent Recap" in out["html"]
     assert harness.sent == [] and harness.imessages == []
     assert not harness.state_path.exists()  # nothing recorded: the evening Brief reads it again
-    assert not list(harness.home.glob("FamilyBrief/*.md"))
+    assert not list(harness.home.glob("ParentRecap/*.md"))
     # Through a bg job, so WhatsApp can be read, over the last three days.
     assert mac.jobs[-1][5:] == ["run", "--preview", "--lookback-hours", "72"]
     assert harness.lookback_hours["gmail"] == [72]

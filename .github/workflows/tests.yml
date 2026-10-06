@@ -10,7 +10,7 @@ on:
 
 jobs:
   test:
-    # macOS is the only platform FamilyBrief supports, and Actions minutes are free
+    # macOS is the only platform Parent Recap supports, and Actions minutes are free
     # on a public repo, so every run (PRs, main, tags) is on macOS (ADR 0002).
     runs-on: macos-latest
     defaults:

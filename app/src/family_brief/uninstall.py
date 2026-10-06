@@ -121,7 +121,7 @@ def survey(config: Path) -> Survey:
     home = Path.home()
     cfg = _config(config, s)
     defaults = cfg or Config(kids=[])
-    programs = [Path(p) for p in install_record.entries("program")] or [home / "FamilyBrief" / "app"]
+    programs = [Path(p) for p in install_record.entries("program")] or [home / "ParentRecap" / "app"]
     archive = defaults.archive.resolved_dir()
 
     _jobs(s, programs)
@@ -134,7 +134,7 @@ def survey(config: Path) -> Survey:
     _archive(s, defaults)
     _config_and_state(s, config, cfg, defaults)
     logs = [*(Path(p) for p in install_record.entries("logs")), *(p.parent / "logs" for p in programs),
-            home / "FamilyBrief" / "logs"]
+            home / "ParentRecap" / "logs"]
     for d in dict.fromkeys(logs):
         if d.is_dir():
             s.items.append(_file("Logs", d))
@@ -147,7 +147,7 @@ def survey(config: Path) -> Survey:
     for folder in dict.fromkeys([*(p.parent for p in programs), archive, config.parent]):
         _left_in(s, folder, archive)
     # Only the folders setup makes: an archive in a folder like ~/Documents stays, even empty.
-    s.folders = list(dict.fromkeys([home / "FamilyBrief" / "weekend_events", home / "FamilyBrief",
+    s.folders = list(dict.fromkeys([home / "ParentRecap" / "weekend_events", home / "ParentRecap",
                                     *(p.parent for p in programs), home / ".family"]))
     if cfg and run_lock.is_busy(cfg):
         s.stops.append("A Parent Recap run is going right now. Wait a few minutes for it to "
@@ -168,7 +168,7 @@ def _config(path: Path, s: Survey) -> Config | None:
         pass
     s.stops.append(f"{_show(path)} isn't a Parent Recap config (it has no Kids, Gmail and email "
                    "settings), so another program may be using that folder. If it's Parent "
-                   "Recap's after all, fix it so `family-brief doctor` reads it, then run "
+                   "Recap's after all, fix it so `parent-recap doctor` reads it, then run "
                    "uninstall again.")
     return None
 
@@ -322,7 +322,7 @@ def _codex_skills(s: Survey, home: Path) -> None:
 
 
 def _plugin_copies(s: Survey, home: Path) -> None:
-    usual = home / "FamilyBrief" / "plugin"
+    usual = home / "ParentRecap" / "plugin"
     for d in dict.fromkeys([usual, *(Path(p) for p in install_record.entries("plugin"))]):
         if not d.exists():
             continue

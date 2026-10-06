@@ -218,7 +218,7 @@ def cmd_gmail(args: argparse.Namespace) -> int:
     address = (args.address or _configured_address(args.config) or "").strip().lower()
     if "@" not in address:
         return _report("no-address", "Run it again with --address and the family's Gmail "
-                       "address: family-brief setup gmail --address name@gmail.com")
+                       "address: parent-recap setup gmail --address name@gmail.com")
     warning = _warn_if_unreachable()
     if not args.no_open:
         subprocess.run(["open", APP_PASSWORDS_URL], capture_output=True)
@@ -819,7 +819,7 @@ def _program() -> str:
     """How to run this program again from Terminal, where it isn't on the PATH."""
     if sys.argv[0].endswith("__main__.py"):
         return f"{shlex.quote(sys.executable)} -m family_brief"
-    return shlex.quote(sys.argv[0]) if "/" in sys.argv[0] else "family-brief"
+    return shlex.quote(sys.argv[0]) if "/" in sys.argv[0] else "parent-recap"
 
 
 def _configured_address(config: str | None) -> str | None:

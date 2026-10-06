@@ -1,4 +1,4 @@
-"""Saving the Household's setup answers and progress with `family-brief setup save`, which both the
+"""Saving the Household's setup answers and progress with `parent-recap setup save`, which both the
 setup page and the chat setup use (ADR 0006).
 
 The answers go in as JSON on stdin; the command prints one line of JSON. Assertions are on that

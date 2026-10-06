@@ -29,6 +29,7 @@ test = [
 
 [project.scripts]
 family-brief = "family_brief.__main__:main"
+parent-recap = "family_brief.__main__:main"
 
 [build-system]
 requires = ["setuptools>=68"]

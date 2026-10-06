@@ -1,4 +1,4 @@
-"""End-to-end harness: runs the real `family-brief run` in-process with fakes at the outside edges.
+"""End-to-end harness: runs the real `parent-recap run` in-process with fakes at the outside edges.
 
 Fakes sit at exactly four boundaries, so internals can be refactored without touching tests:
   1. Sources: each Source's collect entry point returns fixtures or raises. Like the real
@@ -265,7 +265,7 @@ class Harness:
     # Paths
     @property
     def archive_dir(self) -> Path:
-        return self.home / "FamilyBrief"
+        return self.home / "ParentRecap"
 
     @property
     def state_path(self) -> Path:
@@ -510,7 +510,7 @@ def default_config() -> dict[str, Any]:
         "email": {"enabled": True, "to": ["parent@example.com", "partner@example.com"]},
         "imessage": {"enabled": False},
         "llm": {"backend": "claude"},
-        "archive": {"dir": "~/FamilyBrief"},
+        "archive": {"dir": "~/ParentRecap"},
         "state_path": "~/.family/state.json",
     }
 
