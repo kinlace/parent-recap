@@ -368,11 +368,12 @@ def _sign_in_script(language: str, status: Path) -> str:
 
 
 def _sign_in_screen(language: str) -> int:
-    """Runs the wilma CLI's sign-in on Parent Recap's own Node in this window, through a pseudo-terminal so this sees what
-    it shows: the guide stays on top of each question the CLI clears the screen for, the student
-    picker is answered (setup reads every Kid, so which one doesn't matter) and hidden, and once
-    the CLI has saved its profile it's ended, before its menu, whose default choice fails with a
-    403 for some accounts. Returns 0 once signed in, otherwise the CLI's exit status."""
+    """Runs the wilma CLI's sign-in on Parent Recap's own Node in this window, through a
+    pseudo-terminal so this sees what it shows: the guide stays on top of each question the CLI
+    clears the screen for, the student picker is answered (setup reads every Kid, so which one
+    doesn't matter) and hidden, and once the CLI has saved its profile it's ended, before its
+    menu, whose default choice fails with a 403 for some accounts. Returns 0 once signed in,
+    otherwise the CLI's exit status."""
     text = WILMA_WINDOW.get(language.lower(), WILMA_WINDOW["en"])
     guide = "\r\n".join(text["guide"]).encode() + b"\r\n\r\n"
     out = sys.stdout.buffer
