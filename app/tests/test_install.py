@@ -1,10 +1,11 @@
-"""`install.sh` installs Parent Recap's own pinned Python, and only prebuilt packages at the
-versions in the shipped constraints file.
+"""`install.sh` installs Parent Recap's own pinned Python and Node, and only prebuilt packages at
+the versions in the shipped constraints file.
 
 Runs the real `install.sh` and the real pip, offline: pip reads packages only from a folder made
 here (`fake_packages.py`), and the program it installs is a stand-in with the real one's layout.
 The pinned Python comes from a fake `curl` serving a stand-in python-build-standalone tarball
-(`python_build`), and the Mac's kind from a fake `sysctl`. A `python3` on PATH fails, so nothing
+(`python_build`), the pinned Node from a stand-in nodejs.org tarball (`serve_node`), and the
+Mac's kind from a fake `sysctl`. A `python3` on PATH fails, so nothing
 runs on a Python the Mac already has.
 """
 from __future__ import annotations
@@ -29,6 +30,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 PINNED = ("3.13.16", "20261003")
+NODE = "24.21.0"
+NODE_ARCHES = {"aarch64": "arm64", "x86_64": "x64"}
 
 
 @pytest.fixture(scope="session")
@@ -80,6 +83,7 @@ cp "$served" "$out"
     fake(bin_ / "python3", 'echo "the Mac\'s own python3 was run" >&2; exit 97')
     a_mac(m, "arm64")
     serve(m, *PINNED)
+    serve_node(m, NODE)
     return m
 
 
@@ -123,8 +127,44 @@ def serve(mac: dict, version: str, build: str, tamper: bool = False) -> None:
     script.write_text(text)
 
 
+def node_name(version: str, arch: str) -> str:
+    return f"node-v{version}-darwin-{NODE_ARCHES[arch]}.tar.xz"
+
+
+def serve_node(mac: dict, version: str, tamper: bool = False) -> None:
+    """Serves a stand-in nodejs.org build for both kinds of Mac, a `node` and npm's entry point
+    in its layout, and pins it in the plugin's install.sh. Tampered, what's served isn't what the
+    pinned checksum says."""
+    script = mac["plugin"] / "install.sh"
+    text = re.sub(r"(?m)^NODE_VERSION=.*$", f"NODE_VERSION={version}", script.read_text())
+    for arch, node_arch in NODE_ARCHES.items():
+        top = mac["tmp"] / f"node-v{version}-darwin-{node_arch}"
+        (top / "bin").mkdir(parents=True, exist_ok=True)
+        (top / "bin" / "node").write_text(f"#!/bin/sh\necho v{version}\n")
+        (top / "bin" / "node").chmod(0o755)
+        npm = top / "lib" / "node_modules" / "npm" / "bin" / "npm-cli.js"
+        npm.parent.mkdir(parents=True, exist_ok=True)
+        npm.write_text("#!/usr/bin/env node\n")
+        tarball = mac["served"] / node_name(version, arch)
+        with tarfile.open(tarball, "w:xz") as tar:
+            tar.add(top, arcname=top.name)
+        digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
+        if tamper:
+            with tarfile.open(tarball, "w:xz") as tar:
+                tar.add(top / "bin", arcname=f"{top.name}/bin")
+        key = node_arch.upper()
+        text, n = re.subn(rf"(?m)^NODE_SHA256_{key}=.*$", f"NODE_SHA256_{key}={digest}", text)
+        assert n == 1, key
+    script.write_text(text)
+
+
 def offline(mac: dict) -> None:
     for tarball in mac["served"].iterdir():
+        tarball.unlink()
+
+
+def node_offline(mac: dict) -> None:
+    for tarball in mac["served"].glob("node-*"):
         tarball.unlink()
 
 
@@ -443,6 +483,18 @@ def test_a_fresh_install_runs_parent_recap_on_the_pinned_python(mac):
     assert "grant" not in result.stdout.lower()  # setup asks for the permission the first time
 
 
+def test_a_fresh_install_puts_the_pinned_node_next_to_the_pinned_python(mac):
+    program(mac, ())
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    node = runtimes(mac) / f"node-v{NODE}" / "bin" / "node"
+    assert subprocess.run([node], capture_output=True, text=True).stdout.strip() == f"v{NODE}"
+    assert (node.parents[1] / "lib" / "node_modules" / "npm" / "bin" / "npm-cli.js").is_file()
+    assert sorted(p.name for p in runtimes(mac).iterdir()) == [f"node-v{NODE}", "python-3.13.16-20261003"]
+
+
 @pytest.mark.parametrize("kind, arch", [("arm64", "aarch64"), ("intel", "x86_64"),
                                         ("rosetta", "aarch64")])
 def test_picks_the_build_for_the_mac_s_chip_even_in_a_rosetta_terminal(mac, kind, arch):
@@ -453,7 +505,8 @@ def test_picks_the_build_for_the_mac_s_chip_even_in_a_rosetta_terminal(mac, kind
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert downloads(mac) == ["https://github.com/astral-sh/python-build-standalone/releases/download/"
-                              f"20261003/{build_name(*PINNED, arch)}"]
+                              f"20261003/{build_name(*PINNED, arch)}",
+                              f"https://nodejs.org/dist/v{NODE}/{node_name(NODE, arch)}"]
 
 
 def test_running_the_install_again_reuses_the_python_already_there(mac):
@@ -464,7 +517,7 @@ def test_running_the_install_again_reuses_the_python_already_there(mac):
     result = install(mac)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert len(downloads(mac)) == 1
+    assert len(downloads(mac)) == 2  # the Python and the Node, once
     assert real_python(mac) == before
     assert "grant" not in result.stdout.lower()
 
@@ -494,7 +547,7 @@ def test_a_new_pinned_version_goes_into_a_new_folder_and_asks_to_grant_again(mac
     result = install(mac)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert sorted(p.name for p in runtimes(mac).iterdir()) == ["python-3.13.17-20261101"]
+    assert sorted(p.name for p in runtimes(mac).iterdir()) == [f"node-v{NODE}", "python-3.13.17-20261101"]
     assert real_python(mac).is_relative_to(runtimes(mac) / "python-3.13.17-20261101") and real_python(mac) != old
     shown = result.stdout
     assert "WhatsApp" in shown and "grant" in shown.lower() and "App Management" in shown
@@ -504,15 +557,33 @@ def test_a_new_pinned_version_goes_into_a_new_folder_and_asks_to_grant_again(mac
     assert again.returncode == 0 and "grant" not in again.stdout.lower()
 
 
-@pytest.mark.parametrize("break_it, said", [(offline, "couldn't download"),
-                                            (lambda m: serve(m, "3.13.17", "20261101", tamper=True),
-                                             "checksum")])
+def test_a_new_pinned_node_replaces_the_old_one_without_asking_to_grant_again(mac):
+    program(mac, ())
+    assert install(mac).returncode == 0
+    python = real_python(mac)
+    serve_node(mac, "24.22.0")
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert sorted(p.name for p in runtimes(mac).iterdir()) == ["node-v24.22.0", "python-3.13.16-20261003"]
+    assert real_python(mac) == python
+    assert "grant" not in result.stdout.lower()  # WhatsApp's permission names the Python only
+
+
+@pytest.mark.parametrize("break_it, said", [
+    (offline, "couldn't download its Python"),
+    (lambda m: serve(m, "3.13.17", "20261101", tamper=True), "The Python Parent Recap downloaded"),
+    (node_offline, "couldn't download its Node"),
+    (lambda m: serve_node(m, "24.22.0", tamper=True), "The Node Parent Recap downloaded"),
+], ids=["python-offline", "python-checksum", "node-offline", "node-checksum"])
 def test_a_failed_download_leaves_the_existing_install_as_it_was(mac, break_it, said):
     program(mac, ())
     assert install(mac).returncode == 0
     before = {"python": real_python(mac), "runtimes": sorted(runtimes(mac).iterdir()),
               "version": (mac["home"] / "ParentRecap" / "app" / "VERSION").read_text()}
     serve(mac, "3.13.17", "20261101")
+    serve_node(mac, "24.22.0")
     (mac["plugin"] / ".claude-plugin" / "plugin.json").write_text(
         json.dumps({"name": "parent-recap", "version": "9.9.10"}))
     break_it(mac)
@@ -542,9 +613,10 @@ def test_a_new_pinned_version_keeps_the_old_one_when_pip_fails(mac):
     assert (runtimes(mac) / "python-3.13.16-20261003" / "bin" / "python3").exists()
 
 
-def test_a_failed_first_download_creates_nothing(mac):
+@pytest.mark.parametrize("break_it", [offline, node_offline])
+def test_a_failed_first_download_creates_nothing(mac, break_it):
     program(mac, ())
-    offline(mac)
+    break_it(mac)
 
     result = install(mac)
 

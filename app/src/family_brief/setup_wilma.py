@@ -6,6 +6,7 @@ itself, this writes that profile the way the CLI does after its own sign-in, and
 list checks that it works. The format isn't documented, so setup installs the CLI version below,
 and tests/test_setup_page.py checks the profile written against that version's way of reading it.
 
+The CLI is installed and run with Parent Recap's own Node, in its own folder (`own_node`, ADR 0011).
 The town list is Wilma's public tenant list, the copy the CLI ships inside its wilma-client.
 The password goes only into the CLI's own owner-only file, lightly encoded as the CLI keeps it,
 never onto a command line, into a log or back to the page.
@@ -16,18 +17,17 @@ import base64
 import json
 import os
 import subprocess
+import tempfile
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import install_record, tools
+from . import install_record, own_node
 from .collectors import wilma
 
 WILMA_CLI_VERSION = "1.6.2"
 PACKAGE = "@wilm-ai/wilma-cli"
-INSTALL_ARGS = ["install", "-g", f"{PACKAGE}@{WILMA_CLI_VERSION}"]
-NODE_INSTALL = "brew install node"
 INSTALL_SECONDS = 300
 # What the CLI says when Wilma turns the username and password down, and nothing else does.
 WRONG_PASSWORD = "Wilma login failed"
@@ -37,55 +37,47 @@ MAX_TOWNS = 20
 
 
 def installed() -> bool:
-    return tools.find(wilma.WILMA) is not None
+    return own_node.wilma() is not None
 
 
 def install() -> str:
-    """Installs the pinned wilma CLI with npm unless one is installed, and adds it to setup's
-    record. Returns `installed`, `no-npm` (Node isn't on this Mac) or `install-failed`."""
+    """Installs the pinned wilma CLI with Parent Recap's own Node into its folder, unless it's
+    there, and adds that folder to setup's record. Returns `installed`, `no-node` (the install
+    didn't leave Parent Recap's own Node) or `install-failed`."""
     if installed():
         return "installed"
-    program = npm()
-    if program is None:
-        return "no-npm"
+    npm = own_node.npm()
+    if npm is None:
+        return "no-node"
+    folder = own_node.wilma_folder()
+    # Before npm runs, so uninstall also removes what a failed install left.
+    install_record.add("wilma-cli", str(folder))
     try:
-        proc = subprocess.run([program, *INSTALL_ARGS], capture_output=True, text=True,
-                              timeout=INSTALL_SECONDS, stdin=subprocess.DEVNULL)
-    except FileNotFoundError:
-        return "no-npm"
+        # npm's cache in a temporary folder, so nothing is left outside Parent Recap's.
+        with tempfile.TemporaryDirectory(prefix="parent-recap-npm-") as cache:
+            # npm runs package scripts with the `node` its PATH finds: this one, not the Mac's.
+            env = {**os.environ, "npm_config_cache": cache, "npm_config_update_notifier": "false",
+                   "PATH": os.pathsep.join([str(Path(npm[0]).parent), os.environ.get("PATH", "")])}
+            proc = subprocess.run([*npm, *install_args(folder)], capture_output=True, text=True,
+                                  timeout=INSTALL_SECONDS, stdin=subprocess.DEVNULL, env=env)
     except (OSError, subprocess.SubprocessError):
         return "install-failed"
-    if proc.returncode != 0 or not installed():
-        return "install-failed"
-    install_record.add("wilma-cli", PACKAGE)
-    return "installed"
+    return "installed" if proc.returncode == 0 and installed() else "install-failed"
 
 
-def npm() -> str | None:
-    """Node's npm, also where Homebrew puts it for a server started without it on its PATH."""
-    return tools.find("npm")
-
-
-def uninstall() -> bool:
-    """Removes the wilma CLI setup installed, with npm. Returns whether npm did."""
-    program = npm()
-    if program is None:
-        return False
-    try:
-        proc = subprocess.run([program, "uninstall", "-g", PACKAGE], capture_output=True,
-                              text=True, timeout=INSTALL_SECONDS, stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return proc.returncode == 0
+def install_args(folder: Path) -> list[str]:
+    """npm's arguments that install the pinned CLI (ADR 0008) into `folder`, laid out as a global
+    install: `bin/wilma`, and the package in `lib/node_modules`."""
+    return ["install", "-g", "--prefix", str(folder), f"{PACKAGE}@{WILMA_CLI_VERSION}"]
 
 
 def tenants() -> list[dict[str, Any]] | None:
     """Each Wilma in the tenant list the installed CLI ships, as its address, its name and its
     towns (Finnish, Swedish), or None without the CLI or the list."""
-    program = tools.find(wilma.WILMA)
-    if program is None:
+    command = own_node.wilma()
+    if command is None:
         return None
-    package = Path(os.path.realpath(program)).parent.parent  # past dist/index.js
+    package = Path(os.path.realpath(command[-1])).parent.parent  # past dist/index.js
     for path in (package / "node_modules" / "@wilm-ai" / "wilma-client" / "tenant_list.json",
                  package.parent / "wilma-client" / "tenant_list.json"):  # where npm hoists it
         try:

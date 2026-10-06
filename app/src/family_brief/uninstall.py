@@ -3,9 +3,9 @@
 It first looks in every place setup writes to (docs/setup-internals.md lists them) and lists what
 it found. Something there that isn't this install's, such as a launchd job with Parent Recap's
 name that runs another program, or a config Parent Recap didn't write, stops it before it removes
-anything. The archive of past Briefs is kept or removed as the family chooses. The wilma CLI,
-its Wilma sign-in, and Claude Code's plugin and marketplace go only when setup's record has that
-setup installed them. The family's accounts (Gmail, Google, Wilma, WhatsApp, MyClub) are never
+anything. The archive of past Briefs is kept or removed as the family chooses. The Wilma
+sign-in, and Claude Code's plugin and marketplace go only when setup's record has that setup
+installed them. The family's accounts (Gmail, Google, Wilma, WhatsApp, MyClub) are never
 touched: it says where they can take back what they gave Parent Recap.
 """
 from __future__ import annotations
@@ -32,7 +32,9 @@ from .config import Config
 from .utils import keychain
 
 OK, FAIL = ops.OK, ops.FAIL
-PYTHONS = re.compile(r"^(python-[\w.+-]+|\.incoming)$")  # install.sh's pinned Pythons
+RUNTIMES = re.compile(r"^(python-[\w.+-]+|node-v[\w.-]+|\.incoming)$")  # install.sh's pinned ones
+# What `npm install -g --prefix` makes in the wilma CLI's folder.
+NPM_PREFIX = {"bin", "lib", "etc", "share"}
 DATED = re.compile(r"^\d{4}-\d{2}-\d{2}\.(md|raw\.json)$")  # an archived Brief and its messages
 MARKETPLACE = "kinlace"
 
@@ -128,7 +130,7 @@ def survey(config: Path) -> Survey:
     _jobs(s, programs)
     _wake(s, defaults)
     _keychain(s, defaults)
-    _wilma(s)
+    _wilma(s, programs)
     _claude_code(s)
     _codex_skills(s, home)
     _plugin_copies(s, home)
@@ -254,9 +256,10 @@ def _delete_secret(account: str) -> None:
                          f"search for {keychain.SERVICE}")
 
 
-def _wilma(s: Survey) -> None:
-    """The wilma CLI and the profile, with the Wilma password, that setup's record has: a CLI or
-    a profile that was there before setup isn't Parent Recap's to remove."""
+def _wilma(s: Survey, programs: list[Path]) -> None:
+    """The profile, with the Wilma password, that setup's record has, since one that was there
+    before setup isn't Parent Recap's to remove, and the wilma CLI setup installed in Parent
+    Recap's folder (ADR 0011). A wilma CLI of the Mac's own isn't touched."""
     config = setup_wilma.config_path()
     for profile_id in install_record.entries("wilma-profile"):
         profile = setup_wilma.profile(config, profile_id)
@@ -264,15 +267,17 @@ def _wilma(s: Survey) -> None:
             s.items.append(Item("Wilma sign-in", f"{profile.get('username')} at "
                                 f"{profile.get('tenantUrl')}, in {_show(config)}",
                                 partial(setup_wilma.remove_profile, config, profile_id)))
-    if install_record.entries("wilma-cli") and setup_wilma.installed():
-        s.items.append(Item("The wilma CLI", f"{setup_wilma.PACKAGE}, installed with npm",
-                            _uninstall_wilma))
-
-
-def _uninstall_wilma() -> None:
-    if not setup_wilma.uninstall():
-        raise NotRemoved(f"npm didn't remove it. Run this in Terminal instead: npm uninstall -g "
-                         f"{setup_wilma.PACKAGE}")
+    # Before ADR 0011 the record held the npm package's name, not a folder.
+    recorded = [Path(p) for p in install_record.entries("wilma-cli") if Path(p).is_absolute()]
+    usual = [*(p.parent / "wilma" for p in programs), Path.home() / "ParentRecap" / "wilma"]
+    for folder in dict.fromkeys([*recorded, *usual]):
+        if not folder.is_dir() or folder.is_symlink():
+            continue
+        if all(p.name in NPM_PREFIX for p in folder.iterdir()):
+            s.items.append(_file("The wilma CLI", folder))
+        else:
+            s.stops.append(f"{_show(folder)} is where Parent Recap installs the wilma CLI, but "
+                           "it holds other files too")
 
 
 def _claude_code(s: Survey) -> None:
@@ -379,7 +384,7 @@ def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Con
     found += [("Setup's progress", setup_save.progress_path(config)),
               ("State", state), ("Run lock", run_lock.lock_path(defaults)),
               ("The program's text in other languages", state.parent / "languages"),
-              ("Where Claude, Codex, Wilma and Node were found", tools.remembered_path()),
+              ("Where Claude, Codex and Node were found", tools.remembered_path()),
               ("Google Calendar app file", family / "calendar_credentials.json"),
               ("Google Calendar authorization", family / "calendar_token.json")]
     for what, p in dict.fromkeys(found):
@@ -401,16 +406,16 @@ def _program(s: Survey, program: Path) -> None:
 
 
 def _runtime(s: Survey, runtime: Path) -> list[Path]:
-    """install.sh's pinned Pythons, after the program that runs on them. Returns the real path
-    of each, which WhatsApp's permission names."""
+    """install.sh's pinned Python and Node, after the program that runs on them. Returns the
+    real path of each Python, which WhatsApp's permission names."""
     if not runtime.is_dir():
         return []
     inside = sorted(runtime.iterdir())
-    if not all(p.is_dir() and not p.is_symlink() and PYTHONS.match(p.name) for p in inside):
-        s.stops.append(f"{_show(runtime)} is where Parent Recap keeps its own Python, but it holds "
-                       "other files too")
+    if not all(p.is_dir() and not p.is_symlink() and RUNTIMES.match(p.name) for p in inside):
+        s.stops.append(f"{_show(runtime)} is where Parent Recap keeps its own Python and Node, "
+                       "but it holds other files too")
         return []
-    s.items.append(_file("Parent Recap's own Python", runtime))
+    s.items.append(_file("Parent Recap's own Python and Node", runtime))
     return [(p / "bin" / "python3").resolve() for p in inside
             if p.name.startswith("python-") and (p / "bin" / "python3").exists()]
 
@@ -442,8 +447,7 @@ def _notes(s: Survey, cfg: Config, pythons: list[Path]) -> None:
         folder = _show(wilma_config.parent)
         s.notes.append(f"The wilma CLI keeps a Wilma password, not encrypted, in {folder}, from "
                        "a sign-in setup didn't make, so uninstall leaves it. If you only used it "
-                       f"for Parent Recap, remove it in Terminal: rm -rf {folder} && npm "
-                       f"uninstall -g {setup_wilma.PACKAGE}")
+                       f"for Parent Recap, remove it in Terminal: rm -rf {folder}")
     python = f" ({', '.join(str(p) for p in pythons)})" if pythons else ""
     s.notes.append(f"If you gave the program's Python{python} access to WhatsApp, remove it by "
                    "hand from System Settings → Privacy & Security → App Management (and Full "

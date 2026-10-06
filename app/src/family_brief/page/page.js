@@ -444,8 +444,7 @@ const OFFER_TERMINAL = [
   "wilma.window.sign-in-failed", "wilma.window.timeout", "wilma.window.no-terminal",
 ];
 const TRY_AGAIN = [
-  "wilma.ready.no-npm", "wilma.ready.install-failed", "wilma.not-installed",
-  "wilma.window.not-installed",
+  "wilma.ready.install-failed", "wilma.not-installed", "wilma.window.not-installed",
 ];
 
 // What the last step said, under the Source: a text key, or null for nothing, with an address
@@ -565,7 +564,7 @@ async function getWilmaReady() {
   try {
     const out = await post("api/wilma/install", {});
     if (out.result !== "installed") {
-      showSource("wilma.ready." + out.result, { install: out.install });
+      showSource("wilma.ready." + out.result);
       return;
     }
     wilmaStep.ready = true;

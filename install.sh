@@ -41,40 +41,74 @@ PYTHON_RELEASES=https://github.com/astral-sh/python-build-standalone/releases/do
 RUNTIMES="$TARGET/runtime"
 RUNTIME="$RUNTIMES/python-$PYTHON_VERSION-$PYTHON_BUILD"
 PY="$RUNTIME/bin/python3"
+
+# ── Parent Recap's own Node (ADR 0011)
+# A nodejs.org LTS release, which the wilma CLI runs on (own_node.py), so a family needs no Node,
+# and no Homebrew, for Wilma. To bump it, see CONTRIBUTING.md.
+NODE_VERSION=24.21.0
+NODE_SHA256_ARM64=6239d4cf92d864487ec8cd3615038f7b67e7f58b77b21cd2f09ea9fbd68065fe
+NODE_SHA256_X64=0ae5a24c24bb7d015cd816c5036b3f90f2945aa872fcf54e58da054753b3a299
+NODE_RELEASES=https://nodejs.org/dist
+NODE_RUNTIME="$RUNTIMES/node-v$NODE_VERSION"
+NODE="$NODE_RUNTIME/bin/node"
+
 # `uname -m` says x86_64 in a Rosetta terminal; this says 1 on any Apple Silicon Mac.
 if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ]; then ARCH=aarch64; else ARCH=x86_64; fi
 
-python_failed() {
+runtime_failed() {
   echo "❌ $1 Nothing was changed."
   echo "   Run the install again. If it fails again, tell the Parent Recap team."
   exit 1
 }
 
-# Downloads and unpacks the pinned Python unless it's already there. Everything happens in a
-# temporary folder first, so a failure leaves the install as it was.
-install_python() {
-  [ -x "$PY" ] && return 0
-  local sha=$PYTHON_SHA256_X86_64
-  [ "$ARCH" = x86_64 ] || sha=$PYTHON_SHA256_AARCH64
-  local url="$PYTHON_RELEASES/$PYTHON_BUILD/cpython-$PYTHON_VERSION+$PYTHON_BUILD-$ARCH-apple-darwin-install_only.tar.gz"
-  tmp=$(mktemp -d)  # not local: the trap reads it when python_failed exits
-  trap 'rm -rf "$tmp"' EXIT
-  curl -fsSL --retry 2 -o "$tmp/python.tar.gz" "$url" 2>/dev/null ||
-    python_failed "Parent Recap couldn't download its Python (is this Mac online?)."
-  [ "$(shasum -a 256 "$tmp/python.tar.gz" | cut -d' ' -f1)" = "$sha" ] ||
-    python_failed "The Python Parent Recap downloaded isn't the one it expects (its checksum doesn't match), so it wasn't used."
-  mkdir "$tmp/python"
-  tar -xzf "$tmp/python.tar.gz" -C "$tmp/python" --strip-components 1 2>/dev/null && [ -x "$tmp/python/bin/python3" ] ||
-    python_failed "Parent Recap couldn't unpack the Python it downloaded."
-  mkdir -p "$RUNTIMES"
-  # Moved in under a temporary name first: $TMPDIR may be another disk, and only a rename on
-  # the same disk can't leave a half-copied $RUNTIME behind. A run cut off here leaves
-  # .incoming, which the next one clears.
+# Downloads the pinned $1 (Python or Node) from $2, checks it against the checksum $3, and unpacks
+# it into $tmp/$1, where $4 must then be.
+fetch_runtime() {
+  local what=$1 url=$2 sha=$3 program=$4
+  local tarball
+  tarball="$tmp/$(basename "$url")"
+  curl -fsSL --retry 2 -o "$tarball" "$url" 2>/dev/null ||
+    runtime_failed "Parent Recap couldn't download its $what (is this Mac online?)."
+  [ "$(shasum -a 256 "$tarball" | cut -d' ' -f1)" = "$sha" ] ||
+    runtime_failed "The $what Parent Recap downloaded isn't the one it expects (its checksum doesn't match), so it wasn't used."
+  mkdir "$tmp/$what"
+  tar -xf "$tarball" -C "$tmp/$what" --strip-components 1 2>/dev/null && [ -x "$tmp/$what/$program" ] ||
+    runtime_failed "Parent Recap couldn't unpack the $what it downloaded."
+}
+
+# Moves the $1 unpacked in $tmp to its folder $2: under a temporary name first, since $TMPDIR may
+# be another disk, and only a rename on the same disk can't leave a half-copied folder behind. A
+# run cut off here leaves .incoming, which the next one clears.
+place_runtime() {
   rm -rf "$RUNTIMES/.incoming"
-  { mv "$tmp/python" "$RUNTIMES/.incoming" && mv "$RUNTIMES/.incoming" "$RUNTIME"; } || {
+  { mv "$tmp/$1" "$RUNTIMES/.incoming" && mv "$RUNTIMES/.incoming" "$2"; } || {
     rm -rf "$RUNTIMES/.incoming"
-    python_failed "Parent Recap couldn't put the Python it downloaded in place (is the disk full?)."
+    runtime_failed "Parent Recap couldn't put the $1 it downloaded in place (is the disk full?)."
   }
+}
+
+# Downloads and unpacks the pinned Python and Node unless they're already there. Both are
+# downloaded and checked in a temporary folder before either is put in place, so a failure
+# leaves the install as it was.
+install_runtimes() {
+  local python=no node=no
+  [ -x "$PY" ] || python=yes
+  [ -x "$NODE" ] || node=yes
+  [ "$python$node" != nono ] || return 0
+  local py_sha=$PYTHON_SHA256_X86_64 node_arch=x64 node_sha=$NODE_SHA256_X64
+  if [ "$ARCH" = aarch64 ]; then
+    py_sha=$PYTHON_SHA256_AARCH64 node_arch=arm64 node_sha=$NODE_SHA256_ARM64
+  fi
+  tmp=$(mktemp -d)  # not local: the trap reads it when runtime_failed exits
+  trap 'rm -rf "$tmp"' EXIT
+  [ "$python" = no ] || fetch_runtime Python \
+    "$PYTHON_RELEASES/$PYTHON_BUILD/cpython-$PYTHON_VERSION+$PYTHON_BUILD-$ARCH-apple-darwin-install_only.tar.gz" \
+    "$py_sha" bin/python3
+  [ "$node" = no ] || fetch_runtime Node \
+    "$NODE_RELEASES/v$NODE_VERSION/node-v$NODE_VERSION-darwin-$node_arch.tar.xz" "$node_sha" bin/node
+  mkdir -p "$RUNTIMES"
+  [ "$python" = no ] || place_runtime Python "$RUNTIME"
+  [ "$node" = no ] || place_runtime Node "$NODE_RUNTIME"
   rm -rf "$tmp"
   trap - EXIT
 }
@@ -88,7 +122,7 @@ venv_real_python() {
 
 if [ "$(uname)" != "Darwin" ]; then echo "❌ Only macOS is supported for now"; exit 1; fi
 refuse_old_install
-install_python
+install_runtimes
 
 mkdir -p "$APP" "$TARGET/logs"
 # The archive holds every collected message and the logs, so only this Mac account may read them
@@ -141,9 +175,10 @@ printf '%s\n%s\n' "$MAC" "$UPGRADE" > "$LOG"
 if "$APP/.venv/bin/python" -m family_brief.google_packages wanted; then
   "${PIP[@]}" -c "$APP/constraints.txt" -e "$APP[google]" >> "$LOG" 2>&1 || pip_failed
 fi
-# Only once the program runs on the new Python, so a failed pip step keeps the old one.
-for old in "$RUNTIMES"/python-*; do
-  [ "$old" = "$RUNTIME" ] || rm -rf "$old"
+# Only once the program runs on the new Python, so a failed pip step keeps the old one. The
+# wilma CLI runs on whichever Node is there, so an old Node goes with it.
+for old in "$RUNTIMES"/python-* "$RUNTIMES"/node-*; do
+  [ "$old" = "$RUNTIME" ] || [ "$old" = "$NODE_RUNTIME" ] || rm -rf "$old"
 done
 RECORD=("$APP/.venv/bin/python" -m family_brief.install_record)
 "${RECORD[@]}" program "$APP" logs "$TARGET/logs" runtime "$RUNTIMES"

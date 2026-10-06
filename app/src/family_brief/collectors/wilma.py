@@ -6,15 +6,15 @@ import subprocess
 from datetime import datetime, timezone
 from typing import Any
 
-from .. import tools
+from .. import own_node
 from ..config import Config
 from ..state import State
 from .base import Message, retry_once_on_timeout, unreadable
 
 log = logging.getLogger(__name__)
 
-WILMA = "wilma"  # installed via: npm i -g @wilm-ai/wilma-cli
 MAX_BODY_CHARS = 8000
+NOT_INSTALLED = "the wilma CLI isn't installed (connect Wilma again: parent-recap setup wilma)"
 
 
 class WilmaError(Exception):
@@ -22,13 +22,17 @@ class WilmaError(Exception):
 
 
 def _run(args: list[str]) -> Any:
+    """`wilma <args> --json` on Parent Recap's own Node (ADR 0011), as JSON."""
+    command = own_node.wilma()
+    if command is None:
+        raise WilmaError(NOT_INSTALLED)
     try:
         proc = retry_once_on_timeout(
-            lambda: subprocess.run([tools.find(WILMA) or WILMA, *args, "--json"], capture_output=True,
-                                   text=True, timeout=60),
+            lambda: subprocess.run([*command, *args, "--json"], capture_output=True, text=True,
+                                   timeout=60),
             (subprocess.TimeoutExpired,), f"wilma {' '.join(args)}")
     except FileNotFoundError:
-        raise WilmaError("wilma CLI not installed (npm i -g @wilm-ai/wilma-cli)") from None
+        raise WilmaError(NOT_INSTALLED) from None
     except subprocess.TimeoutExpired:
         raise WilmaError(f"wilma {' '.join(args)} timed out") from None
     if proc.returncode != 0:

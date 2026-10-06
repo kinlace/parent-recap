@@ -19,14 +19,22 @@ a Household's own message echoed back by `codex` isn't taken for a busy model, t
 inside the call's time budget, and that doctor and the setup page's preview wait less or not at
 all. `test_eval_runner.py` checks the eval runner tries a busy model again the same way.
 `test_source_failures.py` runs the real Gmail, Wilma and MyClub Sources against a fake IMAP server,
-`wilma` CLI and MyClub feed, for a Source that fails partway through a night or times out.
+wilma CLI and MyClub feed, for a Source that fails partway through a night or times out.
+`test_own_node.py` lays out Parent Recap's own Node and a wilma CLI in the test's `~/ParentRecap`
+(`fake_node.py`: a stand-in `node` that runs the script it's given, and a shell script answering
+as the CLI does) with no Node on PATH, and checks that `doctor` and the evening job run that CLI
+on that Node, never a Node or wilma CLI the Mac has, that `doctor` without the CLI says to
+connect Wilma again rather than to install Node, and that the newest pinned Node is picked.
 `test_setup_gmail.py` runs `parent-recap setup gmail` against a fake macOS dialog, `open`,
 Keychain and IMAP server, and checks the App Password never reaches the output, the logs or a
 command line.
-`test_setup_wilma.py` runs `parent-recap setup wilma` against a fake `wilma` CLI and a Terminal
+`test_setup_wilma.py` runs `parent-recap setup wilma` against a fake wilma CLI on Parent Recap's
+own Node (`fake_node.py`) and a Terminal
 that runs the sign-in script at once, and checks the Kids, the city from every preset Wilma
 address, the window's guide in each language, that the window ends the CLI before its student
-picker and menu, and that the Wilma password never reaches the output. Where no pseudo-terminal
+picker and menu, that a missing CLI is installed with that Node's npm into `~/ParentRecap/wilma`
+and recorded, that without that Node it says to run the install line again, and that the Wilma
+password never reaches the output. Where no pseudo-terminal
 can be opened (a sandbox), the window talks to the fake CLI through `no_pty/sitecustomize.py`.
 `test_setup_claude.py` runs `parent-recap setup claude` against a fake Terminal, macOS dialog,
 Keychain and `claude` test call, and checks the token never reaches the output, the logs or a
@@ -65,10 +73,11 @@ language, skipping and coming back, and the page's Gmail
 step against a fake IMAP server and Keychain: a valid App Password is stored and Gmail turns done,
 each known result has its explanation in all three languages, and the App Password never reaches
 a response, the output, the logs, a command line or a file in `~/.family`. Its Wilma step runs
-against a fake `npm` and a fake wilma CLI, laid out as `npm install -g` lays out the pinned
-version with Wilma's tenant list inside, which reads the profile the page writes the way the
+against Parent Recap's own Node with a faked npm and a fake wilma CLI, laid out in `~/ParentRecap/wilma`
+as `npm install -g --prefix` lays out the pinned version with Wilma's tenant list inside (`fake_node.py`), which reads the profile the page writes the way the
 pinned CLI's own code does and signs in to a fake Wilma that knows one account. It checks that
-"Espoo" and "Esbo" find the Espoo entries, that the pinned CLI is installed when missing, that a
+"Espoo" and "Esbo" find the Espoo entries, that the pinned CLI is installed when missing, with that Node and none of the Mac's, that without
+that Node it says to run the install line again and no text suggests Homebrew, that a
 good login writes the profile in the CLI's format and the page lists the Kids from it, that a
 wrong password is reported as such and any other failure offers the Terminal window (whose `open
 -a Terminal` the test answers by saving the CLI's profile), that the CLI's earlier profile is put
@@ -143,14 +152,16 @@ Codex skills, once Welcome is saved, is in `test_setup_page.py`, with the harnes
 `test_install.py` runs the real `install.sh` and pip offline, against packages `fake_packages.py`
 makes in a folder, for a stand-in program. Its pinned Python comes from a fake `curl` serving a
 stand-in python-build-standalone tarball (a copy of the Python running the tests, with its
-standard library), the Mac's kind from a fake `sysctl` and `uname`, and a `python3` on PATH fails.
+standard library), its pinned Node from a stand-in nodejs.org tarball, the Mac's kind from a fake `sysctl` and `uname`, and a `python3` on PATH fails.
 A framework build such as python.org's can't be copied that way, so these tests skip on one, and
 fail on one in CI, which runs on uv's python-build-standalone Python for that reason.
 It checks that a fresh install's `parent-recap` runs on the pinned Python, that the build is picked
 for Apple Silicon, Intel and a Rosetta terminal by `sysctl`, that a rerun downloads nothing, that a
 venv on another Python is rebuilt, that a newly pinned version goes into a new folder, removes the
-old one only once pip has succeeded, and asks to grant WhatsApp's permission again only when the real path changed, and that a
-failed download or a wrong checksum says so and leaves the install as it was.
+old one only once pip has succeeded, and asks to grant WhatsApp's permission again only when the real path changed, that the pinned Node
+is unpacked next to it, picked by chip the same way and replaced by a newly pinned one without
+asking to grant anything, and that a failed download or a wrong checksum of either says so and
+leaves the install as it was, the other runtime included.
 It also checks that the versions in the constraints file are installed rather than the newest,
 that a package published only as source stops the install without being compiled, and that an older prebuilt version is taken over a newer one that would
 compile. It checks that every install writes a dated log of pip's output under `logs/` that starts

@@ -76,6 +76,16 @@ curl -fsSL https://github.com/astral-sh/python-build-standalone/releases/downloa
 
 A new minor Python also goes into `PYTHONS` in `scripts/check_wheels.py`. Each version goes into its own folder, so every family has to grant WhatsApp's permission again: `install.sh` says so and prints the new path, and the release's changelog should say it too.
 
+## Pinned Node
+
+`install.sh` also downloads its own Node, which the wilma CLI runs on (ADR 0011). To move it to a newer Node, take an LTS [release](https://nodejs.org/en/about/previous-releases) and change the three lines under `Parent Recap's own Node` in `install.sh`: `NODE_VERSION`, then `NODE_SHA256_ARM64` and `NODE_SHA256_X64`, the checksums of the two `node-v<version>-darwin-<arch>.tar.xz` files, from the release's `SHASUMS256.txt`:
+
+```bash
+curl -fsSL https://nodejs.org/dist/v<version>/SHASUMS256.txt | grep -E 'darwin-(arm64|x64)\.tar\.xz$'
+```
+
+A new Node needs no new WhatsApp permission, and the wilma CLI already installed keeps working on it: the next install replaces the old Node.
+
 ## Two kinds of skills
 
 - `skills/` is the product: the `setup` and `manage` skills users install. Edit these freely.

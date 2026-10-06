@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import fake_node
 from test_codex_install import install_codex_skills
 
 from family_brief import install_record, ops, run_lock, setup_wilma, tools
@@ -28,8 +29,8 @@ REAL_RUN = subprocess.run
 
 
 class FakeMac:
-    """launchctl, pmset, the Keychain, the administrator dialog, npm's global packages and Claude
-    Code's plugins, as uninstall sees them."""
+    """launchctl, pmset, the Keychain, the administrator dialog and Claude Code's plugins, as
+    uninstall sees them."""
 
     def __init__(self, keychain: dict[str, str]) -> None:
         self.keychain = keychain
@@ -37,7 +38,6 @@ class FakeMac:
         self.repeating: list[str] = []      # the lines under "Repeating power events:"
         self.admin_dialog = "allow"         # or "cancel"
         self.keychain_prompt = "allow"      # or "deny"
-        self.npm_packages: set[str] = set()  # installed with npm install -g
         self.claude_plugins: list[str] = []  # by id
         self.claude_marketplaces: list[str] = []  # by name
         self.claude_removes = True          # False: `claude plugin uninstall` fails
@@ -47,10 +47,6 @@ class FakeMac:
         cmd = list(cmd)
         self.ran.append(cmd)
         prog = Path(cmd[0]).name
-        if prog == "npm":
-            assert cmd[1:3] == ["uninstall", "-g"], cmd
-            self.npm_packages.discard(cmd[3])
-            return done(cmd, "removed 40 packages")
         if prog == "claude":
             return self._claude(cmd)
         if prog == "launchctl":
@@ -139,11 +135,12 @@ PINNED_PYTHON = "ParentRecap/runtime/python-3.13.16-20261003/bin/python3.13"
 
 def make_program(home: Path, monkeypatch) -> Path:
     """What install.sh leaves in ~/ParentRecap/app, running as the program's own Python, and its
-    pinned Python in ~/ParentRecap/runtime."""
+    pinned Python and Node in ~/ParentRecap/runtime."""
     python = home / PINNED_PYTHON
     python.parent.mkdir(parents=True)
     python.write_text("")
     (python.parent / "python3").symlink_to(python.name)
+    fake_node.pinned_node(home)
     app = home / "ParentRecap" / "app"
     (app / ".venv" / "bin").mkdir(parents=True)
     (app / ".venv" / "bin" / "python").write_text("")
@@ -234,7 +231,19 @@ def test_says_to_remove_its_python_from_app_management_by_hand(harness, mac, mon
     out = capsys.readouterr().out
     note = next(line for line in out.splitlines() if "App Management" in line)
     assert "by hand" in note and str(harness.home / PINNED_PYTHON) in note
-    assert not (harness.home / "ParentRecap" / "runtime").exists()
+    assert not (harness.home / "ParentRecap" / "runtime").exists()  # the Node with it
+
+
+def test_stops_on_a_wilma_cli_folder_holding_something_else(harness, mac, monkeypatch, tmp_path,
+                                                            capsys):
+    set_up(harness, mac, monkeypatch)
+    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
+    (fake_node.wilma_folder(harness.home) / "notes.txt").write_text("mine\n")
+
+    assert uninstall(harness, "--confirm", "--remove-archive") != 0
+
+    assert "ParentRecap/wilma" in capsys.readouterr().out
+    assert (fake_node.wilma_folder(harness.home) / "notes.txt").exists()
 
 
 def test_names_the_family_accounts_it_leaves_alone(harness, mac, monkeypatch, capsys):
@@ -389,8 +398,9 @@ WILMA_PASSWORD = "fake-wilma-password"  # no real Wilma password, ever
 
 
 def wilma_and_claude(harness, mac: FakeMac, monkeypatch, tmp_path: Path, *, by_setup: bool) -> Path:
-    """The wilma CLI with a profile, and Claude Code with Parent Recap's plugin and marketplace,
-    installed by setup (and in its record) or there before it. Returns the CLI's config."""
+    """A wilma CLI with a profile, and Claude Code with Parent Recap's plugin and marketplace,
+    installed by setup (and in its record) or there before it. Setup's CLI is in Parent Recap's
+    folder; the Mac's own is on PATH. Returns the CLI's config."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name in ("wilma", "npm", "claude"):
@@ -399,13 +409,15 @@ def wilma_and_claude(harness, mac: FakeMac, monkeypatch, tmp_path: Path, *, by_s
     monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
     for var in ("WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
         monkeypatch.delenv(var, raising=False)
-    mac.npm_packages.add("@wilm-ai/wilma-cli")
+    if by_setup:
+        fake_node.install_wilma(harness.home, "#!/bin/sh\n")
     config = setup_wilma.config_path()
     setup_wilma.write_profile(config, ESPOO, "mia.parent", WILMA_PASSWORD)
     mac.claude_plugins = ["parent-recap@kinlace"]
     mac.claude_marketplaces = ["claude-plugins-official", "kinlace"]
     if by_setup:
-        install_record.main(["wilma-cli", "@wilm-ai/wilma-cli", "wilma-profile", OUR_PROFILE,
+        install_record.main(["wilma-cli", str(fake_node.wilma_folder(harness.home)),
+                             "wilma-profile", OUR_PROFILE,
                              "claude-plugin", "parent-recap@kinlace",
                              "claude-marketplace", "kinlace"])
     return config
@@ -420,7 +432,7 @@ def test_lists_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness,
     assert uninstall(harness) == 0
 
     removes = capsys.readouterr().out.split("Uninstall removes:", 1)[1].split("\n\n", 1)[0]
-    for item in ("@wilm-ai/wilma-cli", "mia.parent at https://espoo.inschool.fi",
+    for item in ("The wilma CLI: ~/ParentRecap/wilma", "mia.parent at https://espoo.inschool.fi",
                  ".config/wilmai/config.json", "Claude Code plugin: parent-recap@kinlace",
                  "Claude Code marketplace: kinlace"):
         assert item in removes, item
@@ -436,7 +448,7 @@ def test_removes_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harnes
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
-    assert mac.npm_packages == set()
+    assert not fake_node.wilma_folder(harness.home).exists()
     assert mac.claude_plugins == [] and mac.claude_marketplaces == ["claude-plugins-official"]
     assert leftovers(harness.home) == [".config"]  # the folder other programs share
     out = capsys.readouterr().out
@@ -453,7 +465,7 @@ def test_leaves_a_wilma_cli_profile_and_plugin_that_were_there_before_setup(harn
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
     assert config.read_text() == before
-    assert mac.npm_packages == {"@wilm-ai/wilma-cli"}
+    assert (tmp_path / "bin" / "wilma").exists()
     assert mac.claude_plugins == ["parent-recap@kinlace"]
     assert mac.claude_marketplaces == ["claude-plugins-official", "kinlace"]
     assert not any(Path(c[0]).name in ("npm", "claude") for c in mac.ran)

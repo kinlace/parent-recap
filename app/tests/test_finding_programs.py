@@ -1,4 +1,4 @@
-"""Claude, Codex, the wilma CLI and Node are found when they're installed but not on this PATH.
+"""Claude, Codex and Node are found when they're installed but not on this PATH.
 
 macOS's own Terminal, and the evening job, may not have a folder the family's own shell setup
 (fish, nix, a custom npm prefix) puts on their login shell's PATH. Doctor finds the program there,
@@ -6,12 +6,10 @@ and the evening job runs the same one, without the login shell. The login shell 
 adds one folder to PATH; the programs in it are the harness's fakes, or small scripts."""
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
-from typing import Any
 
 import pytest
-from conftest import REAL_RUN, msg, program
+from conftest import msg, program
 
 from family_brief import ops, summarize
 
@@ -90,40 +88,3 @@ def test_without_claude_anywhere_doctor_says_how_to_install_it(harness, terminal
 
     line = doctor_line(capsys, "Claude")
     assert line.startswith(ops.FAIL) and "curl -fsSL https://claude.ai/install.sh | bash" in line
-
-
-# A Node script that answers `wilma kids list --json` as the CLI does, once `env` finds node.
-WILMA = "#!/usr/bin/env node\n"
-NODE = """#!/bin/sh
-echo '[{"name": "Mia"}, {"name": "Leo"}]'
-"""
-
-
-@pytest.fixture
-def wilma_runs(harness, monkeypatch) -> list[list[str]]:
-    """The wilma CLI runs for real, past the harness's fakes. Returns each command."""
-    harness.config["wilma"]["enabled"] = True
-    others = subprocess.run
-    ran: list[list[str]] = []
-
-    def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if Path(cmd[0]).name == "wilma":
-            ran.append(list(cmd))
-            return REAL_RUN(cmd, *a, **k)
-        return others(cmd, *a, **k)
-    monkeypatch.setattr(subprocess, "run", run)
-    return ran
-
-
-def test_doctor_runs_a_wilma_cli_whose_node_only_the_login_shell_finds(
-        harness, terminal_path, wilma_runs, login_shell, capsys):
-    npm_global = harness.home / ".npm-global" / "bin"  # a custom npm prefix
-    wilma = program(npm_global, "wilma", WILMA)
-    program(terminal_path, "node", NODE)
-    login_shell(terminal_path)
-
-    harness.cli("doctor", "--skip-llm")
-
-    line = doctor_line(capsys, "Wilma")
-    assert line.startswith(ops.OK) and "Mia, Leo" in line
-    assert wilma_runs[-1][0] == str(wilma)
