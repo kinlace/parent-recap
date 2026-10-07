@@ -1,7 +1,8 @@
-"""The Python macOS allowed to read WhatsApp, as setup's WhatsApp step found it (ADR 0011).
+"""The Python given Full Disk Access to read WhatsApp, as setup's WhatsApp step found it (ADR
+0011, 0012).
 
-App Management names a Python by its real path. Once Parent Recap's pinned Python changes, the
-evening job runs on another file, which macOS hasn't allowed, and WhatsApp quietly stops being
+Full Disk Access names a Python by its real path. Once Parent Recap's pinned Python changes, the
+evening job runs on another file, which macOS hasn't given it, and WhatsApp quietly stops being
 read. Setup records the real path once WhatsApp has been read, so doctor can say when it's no
 longer the evening job's. Installs from before the record have none, and aren't compared.
 """

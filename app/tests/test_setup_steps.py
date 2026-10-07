@@ -115,40 +115,43 @@ def test_discover_gmail_senders_as_json_says_when_gmail_cannot_be_read(harness, 
     assert out["result"] == "read-failed" and "parent-recap doctor" in out["next"]
 
 
-# ── App Management
+# ── Full Disk Access
 
 
-def test_app_management_shows_the_python_file_and_opens_the_settings_pane(monkeypatch, capsys):
+@pytest.mark.parametrize("command", ["full-disk-access", "app-management"])
+def test_full_disk_access_shows_the_python_file_and_opens_the_settings_pane(monkeypatch, capsys,
+                                                                            command):
     ran: list[list[str]] = []
 
     def run(cmd: list[str], *_a: Any, **_k: Any) -> subprocess.CompletedProcess:
         ran.append(list(cmd))
         return subprocess.CompletedProcess(cmd, 0, "", "")
     monkeypatch.setattr(subprocess, "run", run)
-    monkeypatch.setattr(sys, "argv", ["family-brief", "app-management"])
+    monkeypatch.setattr(sys, "argv", ["family-brief", command])
 
     from family_brief import __main__ as cli
     assert cli.main() == 0
 
     python = os.path.realpath(sys.executable)
     assert ["open", "-R", python] in ran
-    assert any(c[0] == "open" and "Privacy_AppBundles" in c[-1] for c in ran)
+    assert any(c[0] == "open" and "Privacy_AllFiles" in c[-1] for c in ran)
     out = capsys.readouterr().out
-    assert python in out and "drag" in out
+    assert python in out and "drag" in out.lower() and "Full Disk Access" in out
+    assert "App Management" not in out
 
 
-def test_app_management_gives_the_commands_when_it_cant_open_them(monkeypatch, capsys):
+def test_full_disk_access_gives_the_commands_when_it_cant_open_them(monkeypatch, capsys):
     # An agent's sandbox can block `open`; the family then runs the same commands in Terminal.
     monkeypatch.setattr(subprocess, "run",
                         lambda cmd, *_a, **_k: subprocess.CompletedProcess(cmd, 1, "", "-10822"))
-    monkeypatch.setattr(sys, "argv", ["family-brief", "app-management"])
+    monkeypatch.setattr(sys, "argv", ["family-brief", "full-disk-access"])
 
     from family_brief import __main__ as cli
     assert cli.main() == 0
 
     out = capsys.readouterr().out
     assert shlex.join(["open", "-R", os.path.realpath(sys.executable)]) in out
-    assert shlex.join(["open", ops.APP_MANAGEMENT_URL]) in out
+    assert shlex.join(["open", ops.FULL_DISK_ACCESS_URL]) in out
 
 
 # ── schedule install and the wake schedule

@@ -22,10 +22,12 @@ all. `test_eval_runner.py` checks the eval runner tries a busy model again the s
 wilma CLI and MyClub feed, for a Source that fails partway through a night or times out, and the
 real WhatsApp Source against `test_setup_whatsapp.py`'s fake Mac without the permission, checking
 that the Brief and the log name a changed Python as the likely cause.
-`test_doctor.py` checks that doctor speaks English, and compares the Python macOS allowed to read
-WhatsApp with the evening job's in its plist: quiet when they match or with no record (an install
-from before it), a warning with the path to allow when they differ, and a failure when the job's
-venv Python points at nothing.
+`test_doctor.py` checks that doctor speaks English, that `doctor` and `bg doctor` on
+`test_setup_whatsapp.py`'s fake Mac fail with the Python's real path and "add it to Full Disk
+Access" without Full Disk Access and pass with it, with no question from macOS either way, and
+compares the Python given Full Disk Access with the evening job's in its plist: quiet when they
+match or with no record (an install from before it), a warning with the path to add when they
+differ, and a failure when the job's venv Python points at nothing.
 `test_own_node.py` lays out Parent Recap's own Node and a wilma CLI in the test's `~/ParentRecap`
 (`fake_node.py`: a stand-in `node` that runs the script it's given, and a shell script answering
 as the CLI does) with no Node on PATH, and checks that `doctor` and the evening job run that CLI
@@ -46,10 +48,14 @@ can be opened (a sandbox), the window talks to the fake CLI through `no_pty/site
 Keychain and `claude` test call, and checks the token never reaches the output, the logs or a
 command line. `test_setup_claude_token.py` keeps the older Terminal script working.
 `test_setup_whatsapp.py` runs `parent-recap setup whatsapp` against a fake `launchctl` that runs
-each `bg` job in-process, and a WhatsApp database only those jobs can read once the fake Mac has
-the permission. It checks each permission state, the chats and their Kid hints, that
-WhatsApp is never read outside a `bg` job, and that once it's read the real path of the Python
-macOS allowed is recorded, and nothing without the permission.
+each `bg` job in-process, and a fake Mac in the temporary HOME: a stand-in for the file only Full
+Disk Access opens, which those jobs can open once the fake Mac gives them Full Disk Access, and a
+WhatsApp database whose every read without it makes the fake macOS ask about data from other apps,
+and lets one through on Allow. The real macOS permission database is never touched. It checks
+each permission state, that WhatsApp is never read before Full Disk Access is on, so macOS never
+asks and an Allow click can't make the step pass, the chats and their Kid hints, that WhatsApp is
+never read outside a `bg` job, and that once it's read the real path of the Python with Full Disk
+Access is recorded, and nothing without it.
 `test_setup_myclub.py` runs `parent-recap setup myclub` against a fake macOS dialog, `open` and
 MyClub server, and checks the link never reaches the output, the logs or a command line, that a
 failed download names only the server and the HTTP status, and that the older Terminal script
@@ -98,8 +104,9 @@ that times out, offers the Terminal window and the page takes the pasted token i
 the token never reaches a response, the output, the logs, a command line or `~/.family`, and that
 the Codex entry ticks itself once Codex is signed in.
 Its WhatsApp step runs against `test_setup_whatsapp.py`'s fake Mac, with each `bg` job run
-in-process. It checks that the button shows the Python in Finder and opens App Management, that
-the entry ticks itself on the read after the permission is given, with the groups found and
+in-process. It checks that the button shows the Python in Finder and opens Full Disk Access, that
+the entry ticks itself on the read after Full Disk Access is given and an Allow click alone never
+ticks it, that no WhatsApp text or picture names App Management or Allow, with the groups found and
 their Kid hints kept in setup's progress for the check page, that every other read result is
 said without its error, and that each result is explained in all three languages.
 Its MyClub step runs against `test_setup_myclub.py`'s fake MyClub server. It checks that the

@@ -86,12 +86,15 @@ def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
         return []
 
     try:
+        # Checked first: without Full Disk Access a read of WhatsApp would make macOS ask, and the
+        # evening job would wait on a question nobody answers (ADR 0012).
+        _require_full_disk_access()
         snap = _snapshot_db()
     except PermissionError as e:
         # The likely cause once setup has worked: Parent Recap's own Python changed (ADR 0011).
         log.error("WhatsApp snapshot failed: %s. Likely cause: Parent Recap's Python changed since "
-                  "macOS allowed it to read WhatsApp. Allow %s in System Settings → Privacy & "
-                  "Security → App Management (or Full Disk Access), and run parent-recap doctor to check",
+                  "it was given Full Disk Access. Add %s to System Settings → Privacy & Security → "
+                  "Full Disk Access, and run parent-recap doctor to check",
                   e, os.path.realpath(sys.executable))
         return []
     except Exception as e:
@@ -162,12 +165,40 @@ def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
 
 
 # doctor and discover compare against this to offer the scheduled job's Python, which often has access.
-NO_ACCESS = ("macOS doesn't let this process read WhatsApp data "
-             "(grant it in System Settings → Privacy & Security → App Management)")
+NO_ACCESS = ("macOS doesn't let this process read WhatsApp data: it has no Full Disk Access "
+             "(System Settings → Privacy & Security → Full Disk Access)")
+
+
+def full_disk_access_file() -> Path:
+    """A file only Full Disk Access opens: without it, opening fails at once with "Operation not
+    permitted" and macOS never asks. WhatsApp's own files instead make macOS ask whether python3.x
+    may access data from other apps, and on macOS 26 an Allow there lasts one read (ADR 0012)."""
+    return Path.home() / "Library" / "Application Support" / "com.apple.TCC" / "TCC.db"
+
+
+def _require_full_disk_access() -> None:
+    """Raises PermissionError without Full Disk Access, before anything touches WhatsApp."""
+    open(full_disk_access_file(), "rb").close()
+
+
+def has_full_disk_access() -> bool:
+    """Whether this process has Full Disk Access, checked without a question from macOS. Raises
+    OSError when it can't tell."""
+    try:
+        _require_full_disk_access()
+    except PermissionError:
+        return False
+    return True
 
 
 def check_access() -> str | None:
-    """None if the DB can be copied, else a human-readable reason (NO_ACCESS when macOS refuses)."""
+    """None if the DB can be copied, else a human-readable reason (NO_ACCESS without Full Disk
+    Access). WhatsApp is only touched once Full Disk Access is there, so macOS never asks."""
+    try:
+        if not has_full_disk_access():
+            return NO_ACCESS
+    except OSError as e:
+        return f"Couldn't check for Full Disk Access: {e}"
     if not DB_FILE.exists():
         return ("No WhatsApp Desktop data found (WhatsApp for Mac isn't installed, "
                 "or has never been signed in on this Mac)")

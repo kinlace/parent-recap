@@ -6,8 +6,8 @@ setup wilma — open the wilma CLI's sign-in in a Terminal window with a guide i
               language, end it once signed in, then read the Kids and the city
 setup claude — open Claude's sign-in for the nightly token in a Terminal window, ask for the
                token in a macOS dialog, make one test call, store it in the Keychain
-setup whatsapp — read WhatsApp through a `bg` job; when the scheduled job's Python can't yet,
-                 show it in Finder, open App Management and wait for the permission, then list
+setup whatsapp — read WhatsApp through a `bg` job; until the scheduled job's Python has Full
+                 Disk Access, show it in Finder, open Full Disk Access and wait for it, then list
                  the chats with a hint on those that look like they're about a Kid
 setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, download it once,
                save it in the owner-only config
@@ -108,8 +108,7 @@ CLAUDE_TOKEN_ACCOUNT = "claude-oauth-token"
 # Loose on purpose, like scripts/setup_claude_token.py: the test call decides whether it works.
 CLAUDE_TOKEN = re.compile(r"sk-ant-[A-Za-z0-9_-]+")
 WHATSAPP_POLL_SECONDS = 5
-# Each read gets at least this long: while macOS shows its one-time Allow prompt, the read waits
-# for the family's answer.
+# Each read gets at least this long, for the background job to start and copy a large database.
 WHATSAPP_READ_SECONDS = 60
 WHATSAPP_DAYS = 180  # the groups listed are those with messages in this many days
 MYCLUB_URL = "https://id.myclub.fi"
@@ -154,15 +153,15 @@ def register(sub) -> None:
     pclaude.set_defaults(func=cmd_claude)
 
     pwhatsapp = steps.add_parser("whatsapp", help="Read WhatsApp with the scheduled job's Python, "
-                                 "opening App Management and waiting for the permission when "
-                                 "needed, then report the chats")
+                                 "opening Full Disk Access and waiting for it when needed, then "
+                                 "report the chats")
     pwhatsapp.add_argument("--timeout", type=int, default=600,
-                           help="Seconds to wait for the permission (default: 600)")
+                           help="Seconds to wait for Full Disk Access (default: 600)")
     pwhatsapp.add_argument("--days", type=int, default=WHATSAPP_DAYS,
                            help="List chats with messages in this many days "
                            f"(default: {WHATSAPP_DAYS})")
     pwhatsapp.add_argument("--no-open", action="store_true",
-                           help="Don't open Finder and App Management again, only wait and read")
+                           help="Don't open Finder and Full Disk Access again, only wait and read")
     pwhatsapp.add_argument("--read", action="store_true", help=argparse.SUPPRESS)  # inside the bg job
     pwhatsapp.set_defaults(func=cmd_whatsapp)
 
@@ -584,7 +583,9 @@ def setup_token_script(program: str, paste_into: str = "the Parent Recap dialog"
 def cmd_whatsapp(args: argparse.Namespace) -> int:
     """macOS grants WhatsApp access per responsible process, so every read goes through a `bg`
     job, which reads with exactly the scheduled job's permission. This process never reads
-    WhatsApp itself, so macOS never asks for Terminal, Claude Code or Codex to get access."""
+    WhatsApp itself, so macOS never asks for Terminal, Claude Code or Codex to get access. The job
+    reads WhatsApp only once its Python has Full Disk Access, so an Allow on macOS's question about
+    data from other apps, which lasts one read on macOS 26, can't make this pass (ADR 0012)."""
     from . import ops
 
     if args.read:
@@ -596,9 +597,8 @@ def cmd_whatsapp(args: argparse.Namespace) -> int:
     python = os.path.realpath(sys.executable)
     again = f"{_program()} setup whatsapp --no-open"
     grant = ("In Finder the Python file is selected. The family drags it into the list in System "
-             "Settings → Privacy & Security → App Management and turns its switch on (if App "
-             "Management isn't there, into Full Disk Access the same way), clicks Allow if macOS "
-             f"asks whether python3.x may access data from other apps, then run: {again}")
+             "Settings → Privacy & Security → Full Disk Access and turns its switch on, then run: "
+             f"{again}")
     deadline = time.time() + max(0, args.timeout)
     opened = args.no_open
     while True:
@@ -609,9 +609,8 @@ def cmd_whatsapp(args: argparse.Namespace) -> int:
                            f"Run this again; if it fails again, run: {_program()} bg doctor",
                            python=python, error=read["error"])
         if read["result"] == "waiting":
-            return _report("waiting", "Reading WhatsApp didn't finish, most likely because macOS "
-                           "is asking whether python3.x may access data from other apps. The "
-                           f"family clicks Allow, then run: {again}", python=python)
+            return _report("waiting", "Reading WhatsApp didn't finish in time. Check that WhatsApp "
+                           f"for Mac opens and shows the chats, then run: {again}", python=python)
         if read["result"] == "readable":
             return _report("readable", python=python, chats=read["chats"])
         if read["result"] == "not-installed":
@@ -625,22 +624,22 @@ def cmd_whatsapp(args: argparse.Namespace) -> int:
                            f"and run: {_program()} bg doctor", python=python, error=read["error"])
         if not opened:
             opened = True
-            _, failed = ops.show_python_for_app_management()
+            _, failed = ops.show_python_for_full_disk_access()
             if failed:
                 return _report("no-permission", "Finder or System Settings didn't open from "
                                "here. The family runs these in Terminal: "
                                f"{'; '.join(shlex.join(c) for c in failed)}. {grant}",
                                python=python)
         if time.time() + WHATSAPP_POLL_SECONDS > deadline:
-            return _report("no-permission", f"The scheduled job's Python can't read WhatsApp yet. "
-                           f"{grant}", python=python)
+            return _report("no-permission", "The scheduled job's Python doesn't have Full Disk "
+                           f"Access yet. {grant}", python=python)
         time.sleep(WHATSAPP_POLL_SECONDS)
 
 
 def read_whatsapp_through_bg(config: str | None, days: int, timeout: float) -> dict[str, Any]:
     """Reads WhatsApp once through a `bg` job, with the scheduled job's permission. `result` is
-    `readable`, with the chats, each with its Kid hint; `no-permission`; `waiting`, when the read
-    didn't finish, most likely on macOS's Allow prompt; `not-installed`; or `unreadable` or
+    `readable`, with the chats, each with its Kid hint; `no-permission`, without Full Disk Access;
+    `waiting`, when the read didn't finish in time; `not-installed`; or `unreadable` or
     `bg-failed`, with the error. The setup page reads through this too."""
     try:
         read = _read_through_bg(config, days, timeout)
@@ -680,22 +679,26 @@ def _read_whatsapp(days: int) -> int:
     """Inside the bg job: one JSON line saying whether WhatsApp could be read, and its chats."""
     from .collectors import whatsapp
 
+    # Full Disk Access is checked before anything of WhatsApp's is touched, even to see whether
+    # it's installed, so macOS never asks.
+    error = whatsapp.check_access()
+    if error == whatsapp.NO_ACCESS:
+        print(json.dumps({"permission": "none"}))
+        return 1
     if not whatsapp.DB_FILE.exists():
         print(json.dumps({"permission": "not-installed"}))
         return 1
-    error = whatsapp.check_access()
     if error is None:
         try:
             chats = whatsapp.list_groups(days=days)
         except Exception as e:
             error = str(e)
         else:
-            # This bg job reads with the evening job's Python, so this is the one macOS allowed.
+            # This bg job reads with the evening job's Python: the one with Full Disk Access.
             whatsapp_python.record(sys.executable)
             print(json.dumps({"permission": "readable", "chats": chats}, ensure_ascii=False))
             return 0
-    print(json.dumps({"permission": "none"} if error == whatsapp.NO_ACCESS
-                     else {"permission": "error", "error": error}, ensure_ascii=False))
+    print(json.dumps({"permission": "error", "error": error}, ensure_ascii=False))
     return 1
 
 

@@ -550,7 +550,8 @@ def test_a_new_pinned_version_goes_into_a_new_folder_and_asks_to_grant_again(mac
     assert sorted(p.name for p in runtimes(mac).iterdir()) == [f"node-v{NODE}", "python-3.13.17-20261101"]
     assert real_python(mac).is_relative_to(runtimes(mac) / "python-3.13.17-20261101") and real_python(mac) != old
     shown = result.stdout
-    assert "WhatsApp" in shown and "grant" in shown.lower() and "App Management" in shown
+    assert "WhatsApp" in shown and "grant" in shown.lower() and "Full Disk Access" in shown
+    assert "App Management" not in shown
     assert str(real_python(mac)) in shown
 
     again = install(mac)

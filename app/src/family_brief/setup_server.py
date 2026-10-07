@@ -79,7 +79,7 @@ CLAUDE_SIGN_IN_SECONDS = 600
 CODEX_RESULTS = ("signed-in", "signed-out", "waiting", "login-failed", "not-installed",
                  "check-failed")
 # What one read of WhatsApp can say, as `setup whatsapp` does, and whether the button opened
-# Finder, with the Python to allow, and App Management.
+# Finder, with the Python to allow, and Full Disk Access.
 WHATSAPP_RESULTS = ("readable", "no-permission", "waiting", "not-installed", "unreadable",
                     "bg-failed")
 WHATSAPP_OPEN_RESULTS = ("opened", "not-opened")
@@ -475,12 +475,12 @@ class SetupServer:
             return HTTPStatus.CONFLICT, out
         return HTTPStatus.OK, {**out, "result": "readable", "chats": read["chats"]}
 
-    def open_app_management(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
-        """Selects the scheduled job's Python in Finder and opens App Management next to it, as
+    def open_full_disk_access(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Selects the scheduled job's Python in Finder and opens Full Disk Access next to it, as
         `setup whatsapp` does, for the family to drag it in and turn its switch on."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
-        _, failed = ops.show_python_for_app_management()
+        _, failed = ops.show_python_for_full_disk_access()
         return HTTPStatus.OK, {"result": "not-opened" if failed else "opened"}
 
     # ── MyClub
@@ -1533,7 +1533,7 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/claude/token": setup.save_claude_token,
                    "api/codex": setup.check_codex, "api/codex/login": setup.sign_in_codex,
                    "api/whatsapp/check": setup.check_whatsapp,
-                   "api/whatsapp/open": setup.open_app_management,
+                   "api/whatsapp/open": setup.open_full_disk_access,
                    "api/myclub": setup.save_myclub_link, "api/myclub/kid": setup.add_kid,
                    "api/myclub/done": setup.myclub_done,
                    "api/working": setup.start_reading, "api/working/check": setup.check_reading,

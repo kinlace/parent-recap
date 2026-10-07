@@ -304,7 +304,7 @@ function renderConnect() {
   });
   renderWilma();
   renderAI();
-  document.getElementById("whatsapp-open").addEventListener("click", openAppManagement);
+  document.getElementById("whatsapp-open").addEventListener("click", openFullDiskAccess);
   document.getElementById("myclub-open").addEventListener("click", () => openSite("myclub"));
   document.getElementById("myclub-form").addEventListener("submit", saveMyClubLink);
   document.getElementById("myclub-kid-form").addEventListener("submit", addKid);
@@ -862,8 +862,8 @@ function leaveWhatsApp() {
   whatsappStep.opened = false;
 }
 
-// Finder shows the Python to allow, and System Settings opens at App Management next to it.
-async function openAppManagement() {
+// Finder shows the Python to allow, and System Settings opens at Full Disk Access next to it.
+async function openFullDiskAccess() {
   clearError();
   try {
     const out = await post("api/whatsapp/open", {});

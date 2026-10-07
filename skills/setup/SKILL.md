@@ -216,11 +216,11 @@ Why: class and club parent groups are often where things are said first. Parent 
 
 It needs WhatsApp for Mac from the App Store (not the older version from WhatsApp's website), linked to the phone that's in those groups, with its chats synced. The command finds out whether it's there.
 
-Tell the parent that if macOS needs a permission, Finder will show a Python file and System Settings will open at App Management: they drag the file into the list and turn its switch on, and click Allow if macOS asks whether python3.x may access data from other apps. Then run `$FB setup whatsapp --timeout 540`. It waits for the permission itself.
+Tell the parent that if the Python doesn't have Full Disk Access yet, Finder will show a Python file and System Settings will open at Full Disk Access: they drag the file into the list and turn its switch on. Then run `$FB setup whatsapp --timeout 540`. It waits for Full Disk Access itself.
 
 - `readable`: keep `chats` for Check. Don't show them yet.
 - `not-installed`: WhatsApp for Mac isn't installed or signed in. Offer a choice: install it now (they install it, link it and let the chats sync, and you run the command again), or skip WhatsApp for now.
-- `no-permission` or `waiting`: help with what `next` says, then run `$FB setup whatsapp --no-open --timeout 540`. If App Management doesn't work, the same file goes into Full Disk Access.
+- `no-permission` or `waiting`: help with what `next` says, then run `$FB setup whatsapp --no-open --timeout 540`.
 - `bg-failed` or `unreadable`: run it again once; if it fails again, do what `next` says.
 
 ### MyClub
@@ -278,6 +278,5 @@ Save `"progress": {"phase": "finish"}` first.
 Setup ends only when `setup status` says `done` and the parent has confirmed the restart reminder. Then tell them:
 
 - What time the Brief comes each day
-- That on the first nightly run, if macOS asks whether python3.x may access data from other apps, they click Allow
 - That for any problem or change later (a new school year, a new group, a skipped Source, another Recipient, Weekend Picks, uninstalling), they type `/parent-recap:manage` or just say what they want
 - That the config is in `~/.family/config.yaml`, and the archive of Briefs in `~/ParentRecap/`
