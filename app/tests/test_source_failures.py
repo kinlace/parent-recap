@@ -352,8 +352,8 @@ def test_myclub_feed_timing_out_once_is_fetched_again(harness, monkeypatch):
 
 def test_whatsapp_macos_refuses_names_a_changed_python_in_the_brief_and_the_log(harness, monkeypatch,
                                                                                 caplog):
-    # The evening job's Python isn't the one macOS allowed, as after Parent Recap's pinned Python
-    # changed (ADR 0011): the database is there, and copying it is refused.
+    # The evening job's Python isn't the one given Full Disk Access, as after Parent Recap's pinned
+    # Python changed (ADR 0011): the database is there, and Full Disk Access is refused.
     harness.config["summary_language"] = "en"
     harness.sources["gmail"] = [msg("gmail", "g-1", "2026-09-27T18:00:00+03:00", "Piano moves to Wednesday")]
     mac = fake_mac(harness, monkeypatch)

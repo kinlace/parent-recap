@@ -2052,20 +2052,20 @@ def test_a_whatsapp_the_job_can_read_ticks_the_entry_and_keeps_the_groups(harnes
     assert_read_only_through_bg(harness, mac)
 
 
-def test_the_button_shows_the_python_and_opens_app_management(harness, page, mac):
+def test_the_button_shows_the_python_and_opens_full_disk_access(harness, page, mac):
     at_the_whatsapp_step(harness)
 
     r = call(page.url, "api/whatsapp/open", method="POST", body={})
 
     assert r.status == 200 and r.json() == {"result": "opened"}
-    assert harness.opened == [WHATSAPP_PYTHON, ops.APP_MANAGEMENT_URL]
+    assert harness.opened == [WHATSAPP_PYTHON, ops.FULL_DISK_ACCESS_URL]
     assert ["open", "-R", WHATSAPP_PYTHON] in harness.commands
 
 
-def test_without_the_permission_the_entry_ticks_itself_once_it_is_given(harness, page, mac):
+def test_without_full_disk_access_the_entry_ticks_itself_once_it_is_given(harness, page, mac):
     at_the_whatsapp_step(harness)
     mac.install_whatsapp(WHATSAPP_CHATS)
-    mac.grants_after = 2  # the family turns the switch on while the page checks
+    mac.full_disk_access_after = 2  # the family turns the switch on while the page checks
 
     assert check_whatsapp(page.url).json() == {"result": "no-permission"}
     assert check_whatsapp(page.url).json() == {"result": "no-permission"}
@@ -2074,7 +2074,7 @@ def test_without_the_permission_the_entry_ticks_itself_once_it_is_given(harness,
 
     assert out["result"] == "readable" and len(out["chats"]) == 3
     assert statuses(page.url)["whatsapp"] == "done"
-    assert mac.prompts == 1
+    assert mac.prompts == 0
     assert_read_only_through_bg(harness, mac)
 
 
@@ -2104,10 +2104,23 @@ def test_a_read_that_ends_after_the_parent_moved_on_keeps_their_choice(harness, 
     assert statuses(page.url)["whatsapp"] == "done"
 
 
-def test_an_unanswered_allow_prompt_is_waiting(harness, page, mac):
+def test_an_allow_click_cannot_tick_the_entry_without_full_disk_access(harness, page, mac):
+    # On macOS 26 Allow lets one read through and macOS asks again on the next (ADR 0012).
     at_the_whatsapp_step(harness)
     mac.install_whatsapp(WHATSAPP_CHATS)
-    mac.allow = None
+    mac.full_disk_access_after = 10_000
+    mac.allow = "allow"
+
+    assert check_whatsapp(page.url).json() == {"result": "no-permission"}
+    assert check_whatsapp(page.url).json() == {"result": "no-permission"}
+    assert mac.prompts == 0 and mac.reads == []  # macOS never asked
+    assert statuses(page.url)["whatsapp"] == "to-do"
+
+
+def test_a_read_that_does_not_finish_is_waiting(harness, page, mac):
+    at_the_whatsapp_step(harness)
+    mac.install_whatsapp(WHATSAPP_CHATS)
+    mac.hangs = True
 
     assert check_whatsapp(page.url).json() == {"result": "waiting"}
     assert not any(mac.reads)
@@ -2171,6 +2184,23 @@ def test_every_whatsapp_result_is_explained_in_all_three_languages():
             assert table.get(f"whatsapp.{result}", "").strip(), (language, result)
         for result in setup_server.WHATSAPP_OPEN_RESULTS:
             assert table.get(f"whatsapp.open.{result}", "").strip(), (language, result)
+
+
+def test_the_whatsapp_step_names_full_disk_access_and_never_allow(page):
+    # ADR 0012: only Full Disk Access lasts; an Allow click lets one read through.
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+    names = {"en": "Full Disk Access", "fi": "Täysi levyn käyttöoikeus", "zh": "完全磁盘访问权限"}
+    allow = {"en": ("App Management", "Allow"), "fi": ("Apin hallinta", "Salli"),
+             "zh": ("App 管理", "允许")}
+
+    for language, table in text.items():
+        whatsapp = {k: v for k, v in table.items() if k.startswith("whatsapp.")}
+        assert names[language] in whatsapp["whatsapp.explain"], language
+        for key, value in whatsapp.items():
+            assert not any(word in value for word in allow[language]), (language, key)
+    html = call(page.url).body.decode()
+    step = re.search(r'<div id="source-whatsapp".*?\n    </div>\n', html, re.S).group(0)
+    assert "allow" not in step.lower()
 
 
 # ── Connect: MyClub

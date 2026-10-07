@@ -12,6 +12,7 @@ import pytest
 
 from family_brief import __main__ as cli, ops, setup_steps, whatsapp_python
 from family_brief.collectors import whatsapp, wilma
+from test_setup_whatsapp import fake_mac
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
 
@@ -83,11 +84,58 @@ def test_doctor_in_a_bg_job_says_which_python_needs_whatsapp_access(harness, mon
     assert harness.cli("doctor", "--whatsapp-only") == 1
 
     out = capsys.readouterr().out
-    assert "App Management" in out
+    assert os.path.realpath(sys.executable) in out and "add it to Full Disk Access" in out
+    assert "App Management" not in out
     assert not HAN.findall(out)
 
 
-# ── the Python macOS allowed to read WhatsApp, against the evening job's (ADR 0011)
+# ── Full Disk Access, checked through bg on the fake Mac without a question from macOS (ADR 0012)
+
+
+@pytest.fixture
+def mac_with_whatsapp(harness, monkeypatch):
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    harness.config["wilma"]["enabled"] = False
+    monkeypatch.delenv(ops.BG_ENV, raising=False)
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: {ops.JOB_DAILY})
+    mac = fake_mac(harness, monkeypatch)
+    mac.install_whatsapp([("3B parents", 1, False), ("Leo piano", 2, False)])
+    return mac
+
+
+def whatsapp_lines(out: str) -> list[str]:
+    return [l for l in out.splitlines() if "WhatsApp:" in l]
+
+
+@pytest.mark.parametrize("command", [["doctor", "--skip-llm"], ["bg", "doctor", "--skip-llm"]])
+def test_doctor_fails_without_full_disk_access_and_macos_never_asks(harness, mac_with_whatsapp,
+                                                                    capsys, command):
+    mac = mac_with_whatsapp
+    mac.full_disk_access_after = 10_000
+    mac.allow = "allow"  # an Allow click would let one read through
+
+    harness.cli(*command)
+
+    [line] = whatsapp_lines(capsys.readouterr().out)
+    assert line.lstrip().startswith(ops.FAIL.strip())
+    assert os.path.realpath(sys.executable) in line and "add it to Full Disk Access" in line
+    assert mac.prompts == 0 and mac.reads == []
+
+
+@pytest.mark.parametrize("command", [["doctor", "--skip-llm"], ["bg", "doctor", "--skip-llm"]])
+def test_doctor_reads_whatsapp_with_full_disk_access_and_macos_never_asks(harness,
+                                                                          mac_with_whatsapp,
+                                                                          capsys, command):
+    mac = mac_with_whatsapp
+
+    harness.cli(*command)
+
+    [line] = whatsapp_lines(capsys.readouterr().out)
+    assert line.lstrip().startswith(ops.OK.strip()) and "all 2 configured groups found" in line
+    assert mac.prompts == 0 and mac.reads and all(mac.reads)
+
+
+# ── the Python given Full Disk Access, against the evening job's (ADR 0011, 0012)
 
 
 @pytest.fixture
@@ -138,8 +186,8 @@ def test_doctor_says_when_the_python_allowed_is_no_longer_the_evening_jobs(harne
     [line] = allowed_python_lines(capsys.readouterr().out)
     assert line.startswith(ops.WARN.strip())
     assert "no longer the evening job's Python" in line
-    assert f"allow {python} " in line and "App Management" in line
-    assert "parent-recap app-management" in line
+    assert f"add {python} to Full Disk Access" in line
+    assert "parent-recap full-disk-access" in line
     assert not HAN.findall(line)
 
 
@@ -154,7 +202,7 @@ def test_doctor_fails_when_the_evening_jobs_python_points_at_nothing(harness, ev
     assert f"{evening_job} points at nothing" in line
     assert "no longer the evening job's Python" in line
     assert "parent-recap schedule install" in line
-    assert f"allow {os.path.realpath(sys.executable)} " in line and "App Management" in line
+    assert f"add {os.path.realpath(sys.executable)} to Full Disk Access" in line
 
 
 def test_doctor_does_not_compare_an_install_from_before_the_record(harness, evening_job, capsys):

@@ -385,7 +385,7 @@ def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Con
               ("State", state), ("Run lock", run_lock.lock_path(defaults)),
               ("The program's text in other languages", state.parent / "languages"),
               ("Where Claude, Codex and Node were found", tools.remembered_path()),
-              ("The Python macOS allowed to read WhatsApp", whatsapp_python.path()),
+              ("Which Python reads WhatsApp", whatsapp_python.path()),
               ("Google Calendar app file", family / "calendar_credentials.json"),
               ("Google Calendar authorization", family / "calendar_token.json")]
     for what, p in dict.fromkeys(found):
@@ -451,8 +451,8 @@ def _notes(s: Survey, cfg: Config, pythons: list[Path]) -> None:
                        f"for Parent Recap, remove it in Terminal: rm -rf {folder}")
     python = f" ({', '.join(str(p) for p in pythons)})" if pythons else ""
     s.notes.append(f"If you gave the program's Python{python} access to WhatsApp, remove it by "
-                   "hand from System Settings → Privacy & Security → App Management (and Full "
-                   "Disk Access): a program can't change that list.")
+                   "hand from System Settings → Privacy & Security → Full Disk Access: a program "
+                   "can't change that list.")
     if not any(i.what == "Claude Code plugin" for i in s.items):
         s.notes.append("In Claude Code, remove the plugin itself with /plugin uninstall "
                        f"parent-recap@{MARKETPLACE}, then /plugin marketplace remove {MARKETPLACE}.")

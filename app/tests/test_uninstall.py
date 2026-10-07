@@ -224,13 +224,14 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
     assert mac.keychain and mac.loaded and mac.repeating
 
 
-def test_says_to_remove_its_python_from_app_management_by_hand(harness, mac, monkeypatch, capsys):
+def test_says_to_remove_its_python_from_full_disk_access_by_hand(harness, mac, monkeypatch, capsys):
     set_up(harness, mac, monkeypatch)
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
     out = capsys.readouterr().out
-    note = next(line for line in out.splitlines() if "App Management" in line)
+    note = next(line for line in out.splitlines() if "Full Disk Access" in line)
+    assert "App Management" not in out
     assert "by hand" in note and str(harness.home / PINNED_PYTHON) in note
     assert not (harness.home / "ParentRecap" / "runtime").exists()  # the Node with it
 

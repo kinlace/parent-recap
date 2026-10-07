@@ -199,7 +199,7 @@ echo "   Real Python path (needed for the WhatsApp permission): $REAL_PY"
 if [ -n "$OLD_REAL_PY" ] && [ "$OLD_REAL_PY" != "$REAL_PY" ]; then
   echo "⚠️  Parent Recap now runs on a new Python, so macOS no longer lets it read WhatsApp."
   echo "   If Parent Recap reads your WhatsApp groups, grant the permission again: System Settings →"
-  echo "   Privacy & Security → App Management, press +, and add this Python:"
+  echo "   Privacy & Security → Full Disk Access, press +, and add this Python:"
   echo "     $REAL_PY"
   echo "   (In the file picker, press ⌘⇧G and paste the path.) You can remove the old Python from that list."
 fi

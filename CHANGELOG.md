@@ -7,7 +7,7 @@ What changes for families in each release, collected from the `What changes for 
 Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010).
 
 ### Upgrading
-- Parent Recap now installs its own Python into `~/ParentRecap/runtime` and no longer needs Homebrew's, so a `brew upgrade` can't stop the evening Brief any more (ADR 0011). The install rebuilds the program's Python packages on it. Since the Python is new, macOS no longer lets Parent Recap read WhatsApp: if it reads your WhatsApp groups, add the Python path the install prints to System Settings → Privacy & Security → App Management once more.
+- Parent Recap now installs its own Python into `~/ParentRecap/runtime` and no longer needs Homebrew's, so a `brew upgrade` can't stop the evening Brief any more (ADR 0011). The install rebuilds the program's Python packages on it. Since the Python is new, macOS no longer lets Parent Recap read WhatsApp: if it reads your WhatsApp groups, add the Python path the install prints to System Settings → Privacy & Security → Full Disk Access.
 - Parent Recap also installs its own Node, and setup installs the Wilma program into `~/ParentRecap/wilma` and runs it on that Node, so Wilma works on a Mac without Node and you don't need Homebrew any more (ADR 0011). Setup installs the Wilma program again the first time you connect Wilma; a Node or Wilma program the Mac already has isn't used or touched. The install downloads about 230 MB.
 - This version does not move an earlier install. If `~/FamilyBrief` holds a program, or the jobs `com.family.brief` or `com.family.weekend-events` are loaded, `get.sh` and `install.sh` stop and say so: run `~/FamilyBrief/app/.venv/bin/family-brief uninstall` first, then install again. An archive you kept in `~/FamilyBrief` doesn't block the install.
 
@@ -15,7 +15,8 @@ Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010).
 - The program lives in `~/ParentRecap`, the jobs are `com.parentrecap.daily` and `com.parentrecap.weekend-events`, and the variables are `PARENT_RECAP_HOME` and `PARENT_RECAP_BG`.
 - The command is `parent-recap`; `family-brief` still works. The Brief's own text, hints, logs and docs say Parent Recap and `~/ParentRecap`.
 - Unchanged: the Keychain service, the Google Calendar event properties, the `.ics` UID and `~/.family`.
-- When WhatsApp can't be read, the Brief says Parent Recap's Python may have changed, and `doctor` says when the Python macOS allowed is no longer the evening job's and prints the path to allow.
+- When WhatsApp can't be read, the Brief says Parent Recap's Python may have changed, and `doctor` says when the Python given Full Disk Access is no longer the evening job's and prints the path to add.
+- WhatsApp's permission is Full Disk Access on Parent Recap's own Python, not App Management (ADR 0012): on macOS 26, Allow on "python3.x would like to access data from other apps" lasted one read, so the evening Brief went out without WhatsApp. Setup, the setup page and `doctor` check for Full Disk Access first, without macOS asking anything, and only then read WhatsApp, so an Allow click can no longer make them pass. `parent-recap full-disk-access` (formerly `app-management`, which still works) opens it.
 
 ## 0.5.4 · 2026-10-06
 

@@ -3,8 +3,8 @@
 doctor   — check every configured connection; prints status + counts only, never message content
 discover — list candidate Gmail sender domains / WhatsApp group names / Wilma students
 schedule — install, remove or inspect the launchd jobs
-app-management — show the scheduled job's Python in Finder and open App Management, to grant WhatsApp
-                 (setup whatsapp does this and waits for the permission)
+full-disk-access — show the scheduled job's Python in Finder and open Full Disk Access, to grant
+                   WhatsApp (setup whatsapp does this and waits for it)
 bg       — run any of the above (or run/collect) as a one-off launchd job, for WhatsApp access
 """
 from __future__ import annotations
@@ -36,7 +36,10 @@ JOB_DAILY = "com.parentrecap.daily"
 JOB_WEEKEND = "com.parentrecap.weekend-events"
 BG_ENV = "PARENT_RECAP_BG"  # set inside `bg` jobs so doctor doesn't recurse
 TIMED_OUT = 124  # run_as_job's exit code for a job it stopped, as timeout(1) gives
-APP_MANAGEMENT_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles"
+# Where doctor says to grant WhatsApp's permission.
+FULL_DISK_ACCESS = ("in System Settings → Privacy & Security → Full Disk Access (parent-recap "
+                    "full-disk-access shows it in Finder)")
+FULL_DISK_ACCESS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
 
 
 def register(sub) -> None:
@@ -64,9 +67,11 @@ def register(sub) -> None:
                    "evening one.")
     psch.set_defaults(func=cmd_schedule)
 
-    pam = sub.add_parser("app-management", help="Show the scheduled job's Python in Finder and open "
-                         "App Management, so you can drag it in for WhatsApp")
-    pam.set_defaults(func=cmd_app_management)
+    # app-management: its name before WhatsApp's permission moved to Full Disk Access (ADR 0012).
+    pfda = sub.add_parser("full-disk-access", aliases=["app-management"],
+                          help="Show the scheduled job's Python in Finder and open Full Disk "
+                          "Access, so you can drag it in for WhatsApp")
+    pfda.set_defaults(func=cmd_full_disk_access)
 
     pbg = sub.add_parser("bg", help="Run a parent-recap command as a one-off launchd job "
                                     "(same Python and macOS permissions as the scheduled job)")
@@ -267,8 +272,8 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
         lines = [l for l in out.splitlines() if "WhatsApp: " in l]
         if not lines and code == TIMED_OUT:
             add(FAIL, "WhatsApp", "the background check didn't finish within 180 seconds and was "
-                "stopped (if macOS asked whether python3.x may access data from other apps, click "
-                "Allow and run doctor again)")
+                "stopped (check that WhatsApp for Mac opens and shows the chats, then run doctor "
+                "again)")
             return
         if not lines:
             add(FAIL, "WhatsApp", f"the background check gave no result (exit code {code}): "
@@ -280,9 +285,9 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
                 + " (checked with the scheduled job's Python)")
         return
     if err == whatsapp.NO_ACCESS:
-        err = ("the scheduled job's Python can't read WhatsApp yet: run parent-recap "
-               "app-management and drag the Python file it shows into System Settings → Privacy & "
-               "Security → App Management, and if that's not enough, into Full Disk Access too")
+        python = os.path.realpath(sys.executable)
+        err = (f"the scheduled job's Python {python} can't read WhatsApp: add it to Full Disk "
+               f"Access {FULL_DISK_ACCESS}")
     if err:
         add(FAIL, "WhatsApp", err)
         return
@@ -300,23 +305,22 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
 
 
 def _check_whatsapp_python(add) -> None:
-    """Whether the Python macOS allowed to read WhatsApp is still the evening job's (ADR 0011).
-    An update of Parent Recap's own Python moves the evening job to a new real path, which macOS
-    hasn't allowed, and the WhatsApp check alone can't tell that apart from never allowed."""
+    """Whether the Python given Full Disk Access to read WhatsApp is still the evening job's (ADR
+    0011, 0012). An update of Parent Recap's own Python moves the evening job to a new real path,
+    which macOS hasn't given it, and the WhatsApp check alone can't tell that from never given."""
     job = _evening_job_python()
-    allow = ("in System Settings → Privacy & Security → App Management (parent-recap "
-             "app-management shows it in Finder)")
     if not os.path.exists(job):
         here = os.path.realpath(sys.executable)
         add(FAIL, "WhatsApp", f"the evening job's Python {job} points at nothing, so the "
-            "evening job can't start and the Python macOS allowed to read WhatsApp is no longer "
-            "the evening job's Python: run parent-recap schedule install to give it this "
-            f"Python, then allow {here} {allow}")
+            "evening job can't start and the Python given Full Disk Access to read WhatsApp is no "
+            "longer the evening job's Python: run parent-recap schedule install to give it this "
+            f"Python, then add {here} to Full Disk Access {FULL_DISK_ACCESS}")
         return
     granted, real = whatsapp_python.granted(), os.path.realpath(job)
     if granted and granted != real:
-        add(WARN, "WhatsApp", f"the Python macOS allowed to read WhatsApp, {granted}, is no longer "
-            f"the evening job's Python, which is now {real}: allow {real} {allow}")
+        add(WARN, "WhatsApp", f"the Python given Full Disk Access to read WhatsApp, {granted}, is "
+            f"no longer the evening job's Python, which is now {real}: add {real} to Full Disk "
+            f"Access {FULL_DISK_ACCESS}")
 
 
 def _evening_job_python() -> str:
@@ -412,7 +416,7 @@ def _check_schedule(cfg: Config, add) -> None:
         add(status, "Last run", f"{hours:.0f} hours ago" + ("" if hours < 30 else
             " (no run for over a day; the Mac may be asleep, consider a pmset wake-up)"))
     add(OK, "Python path", f"{os.path.realpath(sys.executable)} "
-        "(this is the path WhatsApp needs under App Management)")
+        "(this is the path WhatsApp needs under Full Disk Access)")
 
 
 def launchctl_loaded() -> set[str]:
@@ -535,28 +539,27 @@ def _discover_senders_json(config: str | None, days: int) -> int:
     return _report("read", days=days, senders=senders)
 
 
-# ---------------------------------------------------------------- app-management
+# ---------------------------------------------------------------- full-disk-access
 
-def cmd_app_management(args: argparse.Namespace) -> int:
-    python, failed = show_python_for_app_management()
+def cmd_full_disk_access(args: argparse.Namespace) -> int:
+    python, failed = show_python_for_full_disk_access()
     print(f"The scheduled job's Python is {python}")
     if failed:
         print(f"{WARN}Couldn't open Finder or System Settings from here. Run this in Terminal:")
         for c in failed:
             print(f"  {shlex.join(c)}")
     print("In Finder that Python file is selected. Drag it into the list in System Settings → "
-          "Privacy & Security → App Management, then turn its switch on. If App Management isn't "
-          "in the list, drag it into Full Disk Access the same way.")
+          "Privacy & Security → Full Disk Access, then turn its switch on.")
     return 0
 
 
-def show_python_for_app_management() -> tuple[str, list[list[str]]]:
-    """Selects the scheduled job's Python in Finder and opens App Management. Returns that Python
+def show_python_for_full_disk_access() -> tuple[str, list[list[str]]]:
+    """Selects the scheduled job's Python in Finder and opens Full Disk Access. Returns that Python
     and the commands that didn't work, for the family to run in Terminal."""
     # The real Python sits in a hidden folder, so finding it with ⌘⇧G is hard. Selecting it in
     # Finder next to the open pane leaves the family one drag.
     python = os.path.realpath(sys.executable)
-    commands = [["open", "-R", python], ["open", APP_MANAGEMENT_URL]]
+    commands = [["open", "-R", python], ["open", FULL_DISK_ACCESS_URL]]
     return python, [c for c in commands if subprocess.run(c, capture_output=True).returncode != 0]
 
 
@@ -569,7 +572,6 @@ def cmd_bg(args: argparse.Namespace) -> int:
         return 2
     print(f"Running parent-recap {' '.join(inner)} as a background job "
           "(same Python and permissions as the scheduled job)", flush=True)
-    print('If macOS asks whether "python3.x" may access data from other apps, click Allow.', flush=True)
     code, _ = run_as_job(inner, args.config, timeout=args.timeout)
     return code
 
