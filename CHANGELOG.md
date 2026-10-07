@@ -4,7 +4,9 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
-Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010).
+## 0.5.5 · 2026-10-07
+
+Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010), brings its own Python and Node, and reads WhatsApp with Full Disk Access.
 
 ### Upgrading
 - Parent Recap now installs its own Python into `~/ParentRecap/runtime` and no longer needs Homebrew's, so a `brew upgrade` can't stop the evening Brief any more (ADR 0011). The install rebuilds the program's Python packages on it. Since the Python is new, macOS no longer lets Parent Recap read WhatsApp: if it reads your WhatsApp groups, add the Python path the install prints to System Settings → Privacy & Security → Full Disk Access.
@@ -15,6 +17,7 @@ Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010).
 - The program lives in `~/ParentRecap`, the jobs are `com.parentrecap.daily` and `com.parentrecap.weekend-events`, and the variables are `PARENT_RECAP_HOME` and `PARENT_RECAP_BG`.
 - The command is `parent-recap`; `family-brief` still works. The Brief's own text, hints, logs and docs say Parent Recap and `~/ParentRecap`.
 - Unchanged: the Keychain service, the Google Calendar event properties, the `.ics` UID and `~/.family`.
+- `parent-recap schedule run-now` starts the evening job right away, with the job's own Python and settings, so the real scheduled run can be tested without waiting for its hour. `--weekend` starts the Weekend Picks job.
 - When WhatsApp can't be read, the Brief says Parent Recap's Python may have changed, and `doctor` says when the Python given Full Disk Access is no longer the evening job's and prints the path to add.
 - WhatsApp's permission is Full Disk Access on Parent Recap's own Python, not App Management (ADR 0012): on macOS 26, Allow on "python3.x would like to access data from other apps" lasted one read, so the evening Brief went out without WhatsApp. Setup, the setup page and `doctor` check for Full Disk Access first, without macOS asking anything, and only then read WhatsApp, so an Allow click can no longer make them pass. `parent-recap full-disk-access` (formerly `app-management`, which still works) opens it.
 
