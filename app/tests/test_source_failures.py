@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import imaplib
 import json
+import logging
+import os
 import subprocess
+import sys
 from datetime import timedelta
 from email.message import EmailMessage
 from typing import Any
@@ -17,12 +20,14 @@ import time_machine
 
 import fake_node
 from conftest import NOW, msg
+from test_setup_whatsapp import fake_mac
 
-from family_brief.collectors import gmail, myclub, wilma
+from family_brief.collectors import gmail, myclub, whatsapp, wilma
 
 REAL_GMAIL_COLLECT = gmail.collect  # captured before the harness fakes it
 REAL_WILMA_COLLECT = wilma.collect
 REAL_MYCLUB_COLLECT_EVENTS = myclub.collect_events
+REAL_WHATSAPP_COLLECT = whatsapp.collect
 
 
 def payload_ids(h, source: str) -> list[str]:
@@ -341,3 +346,27 @@ def test_myclub_feed_timing_out_once_is_fetched_again(harness, monkeypatch):
     assert len(gets) == 2
     coverage = json.loads((harness.archive_dir / "2026-09-27.raw.json").read_text())["summary"]["_coverage"]
     assert coverage["myclub"] == {"count": 1, "error": None}
+
+
+# ── WhatsApp
+
+def test_whatsapp_macos_refuses_names_a_changed_python_in_the_brief_and_the_log(harness, monkeypatch,
+                                                                                caplog):
+    # The evening job's Python isn't the one macOS allowed, as after Parent Recap's pinned Python
+    # changed (ADR 0011): the database is there, and copying it is refused.
+    harness.config["summary_language"] = "en"
+    harness.sources["gmail"] = [msg("gmail", "g-1", "2026-09-27T18:00:00+03:00", "Piano moves to Wednesday")]
+    mac = fake_mac(harness, monkeypatch)
+    mac.install_whatsapp([("Leo piano", 1, False)])
+    monkeypatch.setattr(whatsapp, "collect", REAL_WHATSAPP_COLLECT)
+
+    with caplog.at_level(logging.ERROR, logger="family_brief.collectors.whatsapp"):
+        assert harness.run() == 0
+
+    [email] = harness.sent
+    assert ("WhatsApp not read (macOS permission denied, maybe because Parent Recap's Python "
+            "changed)") in email.text
+    [error] = [r.getMessage() for r in caplog.records if r.name == "family_brief.collectors.whatsapp"]
+    assert "Operation not permitted" in error or "Permission denied" in error
+    assert "Parent Recap's Python changed" in error
+    assert os.path.realpath(sys.executable) in error and "parent-recap doctor" in error

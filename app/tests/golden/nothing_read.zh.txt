@@ -4,4 +4,4 @@
 • Gmail：登录失败。跟 Claude 说「重新授权 Gmail」即可修复。
 • MyClub：[Errno 8] nodename nor servname provided, or not known。如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 Claude 说「检查 Parent Recap」。
 • Wilma：wilma: request timed out。如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 Claude 说「检查 Parent Recap」。
-• WhatsApp：macOS 权限被拒绝。跟 Claude 说「Parent Recap 读不了 WhatsApp」即可修复。
+• WhatsApp：macOS 权限被拒绝，可能是 Parent Recap 的 Python 换了。跟 Claude 说「Parent Recap 读不了 WhatsApp」即可修复。

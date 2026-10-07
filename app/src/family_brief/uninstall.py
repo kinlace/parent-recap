@@ -26,7 +26,7 @@ import yaml
 from pydantic import ValidationError
 
 from . import (chat_install, install_record, ops, run_lock, secret_dialog, setup_save,
-               setup_wilma, summarize, tools)
+               setup_wilma, summarize, tools, whatsapp_python)
 from .collectors.gmail import keychain_account
 from .config import Config
 from .utils import keychain
@@ -385,6 +385,7 @@ def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Con
               ("State", state), ("Run lock", run_lock.lock_path(defaults)),
               ("The program's text in other languages", state.parent / "languages"),
               ("Where Claude, Codex and Node were found", tools.remembered_path()),
+              ("The Python macOS allowed to read WhatsApp", whatsapp_python.path()),
               ("Google Calendar app file", family / "calendar_credentials.json"),
               ("Google Calendar authorization", family / "calendar_token.json")]
     for what, p in dict.fromkeys(found):

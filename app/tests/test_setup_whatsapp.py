@@ -24,7 +24,7 @@ from typing import Any
 
 import pytest
 
-from family_brief import __main__ as cli, ops
+from family_brief import __main__ as cli, ops, whatsapp_python
 from family_brief.collectors import whatsapp
 
 MESSAGE_DATE = datetime(2026, 9, 26, 18, 0).timestamp() - whatsapp.CORE_DATA_EPOCH
@@ -287,6 +287,30 @@ def test_permission_not_given_in_time_is_reported(harness, mac, capsys):
     assert harness.opened == [PYTHON, ops.APP_MANAGEMENT_URL]
     assert 0 < mac.clock[0] - start <= 60 + 5
     assert_read_only_through_bg(harness, mac)
+
+
+# ── the Python macOS allowed, for doctor to compare with the evening job's (ADR 0011)
+
+
+def test_once_whatsapp_is_read_setup_records_the_real_path_of_the_python_allowed(harness, mac, capsys):
+    mac.install_whatsapp(CHATS)
+    mac.grants_after = 1
+
+    assert harness.cli("setup", "whatsapp") == 0
+
+    assert result(capsys)["result"] == "readable"
+    assert whatsapp_python.granted() == PYTHON
+
+
+def test_without_the_permission_nothing_is_recorded(harness, mac, capsys):
+    mac.install_whatsapp(CHATS)
+    mac.grants_after = 10_000
+
+    assert harness.cli("setup", "whatsapp", "--timeout", "0") == 1
+
+    assert result(capsys)["result"] == "no-permission"
+    assert whatsapp_python.granted() is None
+    assert not whatsapp_python.path().exists()
 
 
 def test_an_unanswered_allow_prompt_is_reported_as_waiting(harness, mac, capsys):
