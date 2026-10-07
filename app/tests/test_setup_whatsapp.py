@@ -107,7 +107,7 @@ class Mac:
         if self.hangs:
             return None
         self._job_has_access = self.refused >= self.full_disk_access_after
-        if self._job_has_access:
+        if self._job_has_access and self.tcc_db.exists():
             self.tcc_db.chmod(0o600)
         else:
             self.refused += 1
@@ -121,7 +121,8 @@ class Mac:
         finally:
             os.environ.clear()
             os.environ.update(before)
-            self.tcc_db.chmod(0)
+            if self.tcc_db.exists():
+                self.tcc_db.chmod(0)
             self._job_has_access = False
         return code
 
@@ -383,6 +384,17 @@ def test_without_whatsapp_for_mac_it_says_to_install_it(harness, mac, capsys):
     res = result(capsys)
     assert res["result"] == "not-installed" and "App Store" in res["next"]
     assert harness.opened == []
+
+
+def test_full_disk_access_that_cannot_be_checked_leaves_whatsapp_untouched(harness, mac, capsys):
+    mac.install_whatsapp(CHATS)
+    mac.tcc_db.unlink()
+
+    assert harness.cli("setup", "whatsapp", "--timeout", "0") == 1
+
+    res = result(capsys)
+    assert res["result"] == "unreadable" and "Full Disk Access" in res["error"]
+    assert mac.reads == [] and mac.prompts == 0
 
 
 def test_a_background_job_that_does_not_start_is_reported(harness, mac, capsys):

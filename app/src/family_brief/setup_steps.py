@@ -681,13 +681,18 @@ def _read_whatsapp(days: int) -> int:
 
     # Full Disk Access is checked before anything of WhatsApp's is touched, even to see whether
     # it's installed, so macOS never asks.
-    error = whatsapp.check_access()
-    if error == whatsapp.NO_ACCESS:
-        print(json.dumps({"permission": "none"}))
+    try:
+        if not whatsapp.has_full_disk_access():
+            print(json.dumps({"permission": "none"}))
+            return 1
+    except OSError as e:
+        print(json.dumps({"permission": "error", "error": f"Couldn't check for Full Disk Access: "
+                          f"{e}"}, ensure_ascii=False))
         return 1
     if not whatsapp.DB_FILE.exists():
         print(json.dumps({"permission": "not-installed"}))
         return 1
+    error = whatsapp.check_access()
     if error is None:
         try:
             chats = whatsapp.list_groups(days=days)

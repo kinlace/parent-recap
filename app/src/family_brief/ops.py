@@ -36,9 +36,9 @@ JOB_DAILY = "com.parentrecap.daily"
 JOB_WEEKEND = "com.parentrecap.weekend-events"
 BG_ENV = "PARENT_RECAP_BG"  # set inside `bg` jobs so doctor doesn't recurse
 TIMED_OUT = 124  # run_as_job's exit code for a job it stopped, as timeout(1) gives
-# Where doctor says to grant WhatsApp's permission.
-FULL_DISK_ACCESS = ("in System Settings → Privacy & Security → Full Disk Access (parent-recap "
-                    "full-disk-access shows it in Finder)")
+# Where doctor says to grant WhatsApp's permission, after "Full Disk Access".
+FULL_DISK_ACCESS_WHERE = ("(System Settings → Privacy & Security; parent-recap full-disk-access "
+                          "shows the Python in Finder)")
 FULL_DISK_ACCESS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
 
 
@@ -287,7 +287,7 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
     if err == whatsapp.NO_ACCESS:
         python = os.path.realpath(sys.executable)
         err = (f"the scheduled job's Python {python} can't read WhatsApp: add it to Full Disk "
-               f"Access {FULL_DISK_ACCESS}")
+               f"Access {FULL_DISK_ACCESS_WHERE}")
     if err:
         add(FAIL, "WhatsApp", err)
         return
@@ -314,13 +314,13 @@ def _check_whatsapp_python(add) -> None:
         add(FAIL, "WhatsApp", f"the evening job's Python {job} points at nothing, so the "
             "evening job can't start and the Python given Full Disk Access to read WhatsApp is no "
             "longer the evening job's Python: run parent-recap schedule install to give it this "
-            f"Python, then add {here} to Full Disk Access {FULL_DISK_ACCESS}")
+            f"Python, then add {here} to Full Disk Access {FULL_DISK_ACCESS_WHERE}")
         return
     granted, real = whatsapp_python.granted(), os.path.realpath(job)
     if granted and granted != real:
         add(WARN, "WhatsApp", f"the Python given Full Disk Access to read WhatsApp, {granted}, is "
             f"no longer the evening job's Python, which is now {real}: add {real} to Full Disk "
-            f"Access {FULL_DISK_ACCESS}")
+            f"Access {FULL_DISK_ACCESS_WHERE}")
 
 
 def _evening_job_python() -> str:
