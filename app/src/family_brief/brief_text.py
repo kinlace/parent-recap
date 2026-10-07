@@ -53,6 +53,7 @@ class BriefText:
     may_be_incomplete: str              # {missed}
     missed_sep: str
     permission_denied: str
+    whatsapp_permission_denied: str     # WhatsApp's, whose likely cause is a changed Python
     login_failed: str
     message_unreadable: str             # a Source skipped a Message it couldn't read
 
@@ -136,6 +137,7 @@ EN = BriefText(
     may_be_incomplete="⚠️ {missed}. Tonight's Brief may be incomplete.",
     missed_sep=", ",
     permission_denied="macOS permission denied",
+    whatsapp_permission_denied="macOS permission denied, maybe because Parent Recap's Python changed",
     login_failed="login failed",
     message_unreadable="a message couldn't be read",
     nothing_read="⚠️ No Source could be read tonight, so there is no Digest. Their messages will be "
@@ -196,6 +198,7 @@ ZH = BriefText(
     may_be_incomplete="⚠️ {missed}，今天的日报可能缺这一块。",
     missed_sep="，",
     permission_denied="macOS 权限被拒绝",
+    whatsapp_permission_denied="macOS 权限被拒绝，可能是 Parent Recap 的 Python 换了",
     login_failed="登录失败",
     message_unreadable="有一条消息读不出来",
     nothing_read="⚠️ 今晚所有信息源都没读到，所以没有摘要。等它们恢复后，这些消息会出现在下一份日报里。",
@@ -251,6 +254,7 @@ FI = BriefText(
     may_be_incomplete="⚠️ {missed}. Tämäniltaisesta koosteesta voi puuttua jotain.",
     missed_sep=", ",
     permission_denied="macOS ei antanut käyttöoikeutta",
+    whatsapp_permission_denied="macOS ei antanut käyttöoikeutta, ehkä koska Parent Recapin Python vaihtui",
     login_failed="kirjautuminen epäonnistui",
     fallback_header="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua, joten tässä ovat viestit sellaisenaan "
                     "(kaikki ovat tallessa arkistossa ~/ParentRecap):",
@@ -258,7 +262,8 @@ FI = BriefText(
     fallback_count=" ({count})",
     fallback_more="  …arkistossa vielä {n} lisää",
     # Added after the first review and not yet checked by a Finnish speaker: reply_incomplete,
-    # message_unreadable, nothing_read, source_problem, fix_login, fix_permission, fix_other.
+    # message_unreadable, nothing_read, source_problem, fix_login, fix_permission, fix_other,
+    # whatsapp_permission_denied.
     reply_incomplete="⚠️ {assistant}-avustajan vastaus katkesi tänä iltana, joten koosteesta voi puuttua "
                      "joitakin kohtia. Kaikki tämäniltaiset viestit ovat arkistossa kansiossa ~/ParentRecap.",
     message_unreadable="yhtä viestiä ei voitu lukea",

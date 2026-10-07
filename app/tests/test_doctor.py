@@ -1,13 +1,16 @@
 """`parent-recap doctor` and `discover` speak English, whatever language the Brief is in."""
 from __future__ import annotations
 
+import os
+import plistlib
 import re
 import shutil
 import sys
+from pathlib import Path
 
 import pytest
 
-from family_brief import __main__ as cli, ops, setup_steps
+from family_brief import __main__ as cli, ops, setup_steps, whatsapp_python
 from family_brief.collectors import whatsapp, wilma
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
@@ -82,6 +85,85 @@ def test_doctor_in_a_bg_job_says_which_python_needs_whatsapp_access(harness, mon
     out = capsys.readouterr().out
     assert "App Management" in out
     assert not HAN.findall(out)
+
+
+# ── the Python macOS allowed to read WhatsApp, against the evening job's (ADR 0011)
+
+
+@pytest.fixture
+def evening_job(harness, monkeypatch):
+    """Parent Recap's own Python under ~/ParentRecap/runtime and the evening job's venv Python
+    linking to it, as install.sh and schedule install lay them out. Returns the venv's link."""
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    harness.config["wilma"]["enabled"] = False
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: {ops.JOB_DAILY})
+    monkeypatch.setattr(ops, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
+    venv_python = harness.home / "ParentRecap" / "app" / ".venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True)
+    ops.LAUNCH_AGENTS.mkdir(parents=True)
+    (ops.LAUNCH_AGENTS / f"{ops.JOB_DAILY}.plist").write_bytes(plistlib.dumps(
+        {"Label": ops.JOB_DAILY, "ProgramArguments": [str(venv_python), "-m", "family_brief", "run"]}))
+    return venv_python
+
+
+def pinned_python(harness, version: str) -> str:
+    python = harness.home / "ParentRecap" / "runtime" / f"python-{version}" / "bin" / "python3.12"
+    python.parent.mkdir(parents=True, exist_ok=True)
+    python.touch()
+    return os.path.realpath(python)
+
+
+def allowed_python_lines(out: str) -> list[str]:
+    return [l for l in out.splitlines() if "WhatsApp:" in l and "evening job's Python" in l]
+
+
+def test_doctor_is_quiet_when_the_python_allowed_is_the_evening_jobs(harness, evening_job, capsys):
+    python = pinned_python(harness, "3.12.7")
+    evening_job.symlink_to(python)
+    whatsapp_python.record(python)
+
+    harness.cli("doctor", "--skip-llm")
+
+    assert allowed_python_lines(capsys.readouterr().out) == []
+
+
+def test_doctor_says_when_the_python_allowed_is_no_longer_the_evening_jobs(harness, evening_job,
+                                                                         capsys):
+    whatsapp_python.record(pinned_python(harness, "3.12.6"))
+    python = pinned_python(harness, "3.12.7")
+    evening_job.symlink_to(python)
+
+    harness.cli("doctor", "--skip-llm")
+
+    [line] = allowed_python_lines(capsys.readouterr().out)
+    assert line.startswith(ops.WARN.strip())
+    assert "no longer the evening job's Python" in line
+    assert f"allow {python} " in line and "App Management" in line
+    assert "parent-recap app-management" in line
+    assert not HAN.findall(line)
+
+
+def test_doctor_fails_when_the_evening_jobs_python_points_at_nothing(harness, evening_job, capsys):
+    whatsapp_python.record(pinned_python(harness, "3.12.6"))
+    evening_job.symlink_to(harness.home / "ParentRecap" / "runtime" / "python-3.12.5" / "bin" / "python3.12")
+
+    harness.cli("doctor", "--skip-llm")
+
+    [line] = allowed_python_lines(capsys.readouterr().out)
+    assert line.startswith(ops.FAIL)
+    assert f"{evening_job} points at nothing" in line
+    assert "no longer the evening job's Python" in line
+    assert "parent-recap schedule install" in line
+    assert f"allow {os.path.realpath(sys.executable)} " in line and "App Management" in line
+
+
+def test_doctor_does_not_compare_an_install_from_before_the_record(harness, evening_job, capsys):
+    evening_job.symlink_to(pinned_python(harness, "3.12.7"))
+
+    harness.cli("doctor", "--skip-llm")
+
+    assert not whatsapp_python.path().exists()
+    assert allowed_python_lines(capsys.readouterr().out) == []
 
 
 def test_discover_without_whatsapp_access_points_to_bg(harness, monkeypatch, capsys):

@@ -4,4 +4,4 @@
 • Gmail: kirjautuminen epäonnistui. Voit korjata tämän kirjoittamalla Claude-avustajalle ”valtuuta Gmail uudelleen”.
 • MyClub: [Errno 8] nodename nor servname provided, or not known. Jos Mac oli offline-tilassa, tämä korjaantuu itsestään. Jos sama toistuu, kirjoita Claude-avustajalle ”tarkista Parent Recap”.
 • Wilma: wilma: request timed out. Jos Mac oli offline-tilassa, tämä korjaantuu itsestään. Jos sama toistuu, kirjoita Claude-avustajalle ”tarkista Parent Recap”.
-• WhatsApp: macOS ei antanut käyttöoikeutta. Voit korjata tämän kirjoittamalla Claude-avustajalle ”Parent Recap ei pysty lukemaan lähdettä WhatsApp”.
+• WhatsApp: macOS ei antanut käyttöoikeutta, ehkä koska Parent Recapin Python vaihtui. Voit korjata tämän kirjoittamalla Claude-avustajalle ”Parent Recap ei pysty lukemaan lähdettä WhatsApp”.

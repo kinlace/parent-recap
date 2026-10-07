@@ -122,9 +122,11 @@ def _problem(err: str) -> Literal["unreadable", "permission", "login", "other"]:
     return "other"
 
 
-def _short_reason(err: str, t: BriefText) -> str:
+def _short_reason(source: str, err: str, t: BriefText) -> str:
+    # WhatsApp's permission is lost when Parent Recap's own Python changes (ADR 0011).
+    permission = t.whatsapp_permission_denied if source == "whatsapp" else t.permission_denied
     return {"unreadable": t.message_unreadable,  # without the Message's id and the error, which are for the log
-            "permission": t.permission_denied,
+            "permission": permission,
             "login": t.login_failed}.get(_problem(err)) or err.splitlines()[0][:60]
 
 
@@ -138,7 +140,7 @@ def _coverage_note(coverage: dict[str, dict], t: BriefText) -> str:
         read.append(f"{name} {(t.events if source == 'myclub' else t.messages)(c['count'])}")
         if c["error"]:
             missed.append((t.partly_read if c["count"] else t.not_read)
-                          .format(source=name, reason=_short_reason(c["error"], t)))
+                          .format(source=name, reason=_short_reason(source, c["error"], t)))
     note = t.read_tonight.format(counts=" · ".join(read))
     if missed:
         note += "\n" + t.may_be_incomplete.format(missed=t.missed_sep.join(missed))
@@ -151,7 +153,7 @@ def _nothing_read(coverage: dict[str, dict], t: BriefText, assistant: str) -> st
     for source, c in coverage.items():
         name = _SOURCE_NAMES.get(source, source)
         fix = {"login": t.fix_login, "permission": t.fix_permission}.get(_problem(c["error"]), t.fix_other)
-        lines.append(t.source_problem.format(source=name, reason=_short_reason(c["error"], t).rstrip(".。 "),
+        lines.append(t.source_problem.format(source=name, reason=_short_reason(source, c["error"], t).rstrip(".。 "),
                                              fix=fix.format(assistant=assistant, source=name)))
     return "\n".join(lines)
 

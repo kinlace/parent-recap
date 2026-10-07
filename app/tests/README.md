@@ -19,7 +19,13 @@ a Household's own message echoed back by `codex` isn't taken for a busy model, t
 inside the call's time budget, and that doctor and the setup page's preview wait less or not at
 all. `test_eval_runner.py` checks the eval runner tries a busy model again the same way.
 `test_source_failures.py` runs the real Gmail, Wilma and MyClub Sources against a fake IMAP server,
-wilma CLI and MyClub feed, for a Source that fails partway through a night or times out.
+wilma CLI and MyClub feed, for a Source that fails partway through a night or times out, and the
+real WhatsApp Source against `test_setup_whatsapp.py`'s fake Mac without the permission, checking
+that the Brief and the log name a changed Python as the likely cause.
+`test_doctor.py` checks that doctor speaks English, and compares the Python macOS allowed to read
+WhatsApp with the evening job's in its plist: quiet when they match or with no record (an install
+from before it), a warning with the path to allow when they differ, and a failure when the job's
+venv Python points at nothing.
 `test_own_node.py` lays out Parent Recap's own Node and a wilma CLI in the test's `~/ParentRecap`
 (`fake_node.py`: a stand-in `node` that runs the script it's given, and a shell script answering
 as the CLI does) with no Node on PATH, and checks that `doctor` and the evening job run that CLI
@@ -41,8 +47,9 @@ Keychain and `claude` test call, and checks the token never reaches the output, 
 command line. `test_setup_claude_token.py` keeps the older Terminal script working.
 `test_setup_whatsapp.py` runs `parent-recap setup whatsapp` against a fake `launchctl` that runs
 each `bg` job in-process, and a WhatsApp database only those jobs can read once the fake Mac has
-the permission. It checks each permission state, the chats and their Kid hints, and that
-WhatsApp is never read outside a `bg` job.
+the permission. It checks each permission state, the chats and their Kid hints, that
+WhatsApp is never read outside a `bg` job, and that once it's read the real path of the Python
+macOS allowed is recorded, and nothing without the permission.
 `test_setup_myclub.py` runs `parent-recap setup myclub` against a fake macOS dialog, `open` and
 MyClub server, and checks the link never reaches the output, the logs or a command line, that a
 failed download names only the server and the HTTP status, and that the older Terminal script

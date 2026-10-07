@@ -26,7 +26,7 @@ from types import FrameType
 from typing import Callable
 
 from . import (google_packages, install_record, languages, own_node, private_files,
-               secret_dialog, tools)
+               secret_dialog, tools, whatsapp_python)
 from .config import Config
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
@@ -123,6 +123,7 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
     if cfg.wilma.enabled:
         _check_wilma(cfg, add)
     if cfg.whatsapp.enabled:
+        _check_whatsapp_python(add)
         _check_whatsapp(cfg, add, config)
     for kid in cfg.kids:
         if kid.myclub_ical_url:
@@ -296,6 +297,35 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
             f"new group for the new school year?): {json.dumps(missing, ensure_ascii=False)}")
     else:
         add(OK, "WhatsApp", f"readable, all {len(cfg.whatsapp.chats)} configured groups found")
+
+
+def _check_whatsapp_python(add) -> None:
+    """Whether the Python macOS allowed to read WhatsApp is still the evening job's (ADR 0011).
+    An update of Parent Recap's own Python moves the evening job to a new real path, which macOS
+    hasn't allowed, and the WhatsApp check alone can't tell that apart from never allowed."""
+    job = _evening_job_python()
+    allow = ("in System Settings → Privacy & Security → App Management (parent-recap "
+             "app-management shows it in Finder)")
+    if not os.path.exists(job):
+        here = os.path.realpath(sys.executable)
+        add(FAIL, "WhatsApp", f"the evening job's Python {job} points at nothing, so the "
+            "evening job can't start and the Python macOS allowed to read WhatsApp is no longer "
+            "the evening job's Python: run parent-recap schedule install to give it this "
+            f"Python, then allow {here} {allow}")
+        return
+    granted, real = whatsapp_python.granted(), os.path.realpath(job)
+    if granted and granted != real:
+        add(WARN, "WhatsApp", f"the Python macOS allowed to read WhatsApp, {granted}, is no longer "
+            f"the evening job's Python, which is now {real}: allow {real} {allow}")
+
+
+def _evening_job_python() -> str:
+    """The Python the installed evening job starts, or this one before it's installed."""
+    try:
+        argv = plistlib.loads((LAUNCH_AGENTS / f"{JOB_DAILY}.plist").read_bytes())["ProgramArguments"]
+        return str(argv[0])
+    except (OSError, ValueError, KeyError, IndexError):
+        return sys.executable
 
 
 def _check_myclub(kid: str, url: str, add) -> None:

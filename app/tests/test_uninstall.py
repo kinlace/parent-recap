@@ -17,7 +17,7 @@ import pytest
 import fake_node
 from test_codex_install import install_codex_skills
 
-from family_brief import install_record, ops, run_lock, setup_wilma, tools
+from family_brief import install_record, ops, run_lock, setup_wilma, tools, whatsapp_python
 from family_brief.collectors import gmail
 from family_brief.config import Config
 
@@ -172,6 +172,7 @@ def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
     (home / ".family" / "languages" / "sv.json").write_text("{}")
     (home / ".family" / "config.yaml.bak-202609011200").write_text("old: config\n")
     tools.remembered_path().write_text('{"node": "/nix/store/node/bin/node"}\n')  # found off PATH
+    whatsapp_python.record(str(home / PINNED_PYTHON))  # setup's WhatsApp step
     with monkeypatch.context() as mp:  # the progress the setup page and the chat share
         mp.setattr(sys, "stdin", io.StringIO('{"progress": {"phase": "finish"}}'))
         assert harness.cli("setup", "save") == 0
@@ -211,7 +212,7 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
                  "ParentRecap/app", "ParentRecap/logs", "ParentRecap/runtime", ".family/config.yaml",
                  ".family/config.yaml.bak-202609011200", ".family/state.json", ".family/languages",
                  ".family/install-record.json", ".family/setup-progress.json",
-                 ".family/programs.json", "gmail-imap-parent@example.com",
+                 ".family/programs.json", ".family/whatsapp-python.json", "gmail-imap-parent@example.com",
                  "claude-oauth-token", ".agents/skills/parent-recap-setup",
                  ".agents/skills/parent-recap-manage", "/plugin uninstall parent-recap@kinlace"):
         assert item in out, item
@@ -676,7 +677,7 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     items = out.split("\n\nLeft as it is:")[0].split("\n\nNothing has been removed yet")[0]
     listed = [line.split(": ", 1)[1].split(" (", 1)[0] for line in items.splitlines()
               if line.startswith("  • ")]
-    assert len(listed) == 21
+    assert len(listed) == 22
     for where in listed:
         name = where.rsplit("/", 1)[-1].strip().replace("parent@example.com", "<address>")
         name = name.replace("202609011200", "<date>").replace("1 day in ~", "~")

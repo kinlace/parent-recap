@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import sqlite3
+import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -86,6 +87,13 @@ def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
 
     try:
         snap = _snapshot_db()
+    except PermissionError as e:
+        # The likely cause once setup has worked: Parent Recap's own Python changed (ADR 0011).
+        log.error("WhatsApp snapshot failed: %s. Likely cause: Parent Recap's Python changed since "
+                  "macOS allowed it to read WhatsApp. Allow %s in System Settings → Privacy & "
+                  "Security → App Management (or Full Disk Access), and run parent-recap doctor to check",
+                  e, os.path.realpath(sys.executable))
+        return []
     except Exception as e:
         log.error("WhatsApp snapshot failed: %s — check Full Disk Access", e)
         return []

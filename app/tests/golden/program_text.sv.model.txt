@@ -48,6 +48,7 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "may_be_incomplete": "⚠️ {missed}. Tonight's Brief may be incomplete.",
   "missed_sep": ", ",
   "permission_denied": "macOS permission denied",
+  "whatsapp_permission_denied": "macOS permission denied, maybe because Parent Recap's Python changed",
   "login_failed": "login failed",
   "message_unreadable": "a message couldn't be read",
   "nothing_read": "⚠️ No Source could be read tonight, so there is no Digest. Their messages will be in the first Brief after they can be read again.",

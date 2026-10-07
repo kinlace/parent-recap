@@ -32,6 +32,18 @@ First run `~/ParentRecap/app/.venv/bin/parent-recap doctor`; it points out most 
 | Personal mail unrelated to the Kids was scanned                                                | The allowlist has too broad a domain                                                                       | Remove public domains from `allowlist_domains` and use `allowlist_senders` for individual people                                                                                                                                                                                                                                                                          |
 | iMessage shows "Not Delivered"                                                                 | Sending iMessage by script on macOS is unreliable                                                          | Email is already the default; keep `imessage.enabled: false`                                                                                                                                                                                                                                                                                                              |
 
+## WhatsApp stopped being read after Parent Recap's Python changed
+
+macOS lets one exact Python file read WhatsApp: the one dragged into App Management during setup. When an update moves Parent Recap to a newer pinned Python, the evening job runs on a new file, which macOS hasn't allowed, so the Brief says WhatsApp wasn't read, "maybe because Parent Recap's Python changed". Setup remembers which Python was allowed (`~/.family/whatsapp-python.json`), and `doctor` compares it with the evening job's Python: when they differ it says so and prints the path to allow. When the evening job's Python points at nothing, the job can't start at all, and `doctor` says to run `parent-recap schedule install` first.
+
+To allow it again:
+
+1. Run `parent-recap app-management`. It selects the evening job's Python in Finder and opens System Settings → Privacy & Security → App Management.
+2. Drag that Python file into the list and turn its switch on (or press +, then ⌘⇧G and paste the path `doctor` printed). If App Management isn't in the list, use Full Disk Access the same way.
+3. Run `parent-recap setup whatsapp`. Once it reads WhatsApp it remembers the new Python, and `doctor` no longer warns.
+
+The old Python's entry can be removed from App Management.
+
 ## Testing the scheduled job
 
 `family-brief schedule run-now` asks launchd to start the installed evening job right now, so it runs with the job's own Python, `PATH`, environment and log files, and prints where the logs are. It doesn't wait for the Brief, and it sends it to every Recipient, like the evening one. `--weekend` starts the Weekend Picks job instead. If the job isn't installed it points to `family-brief schedule install`, and if a run is already going it says so. `family-brief bg run` is different: a one-off job with the same Python, not the scheduled job itself.

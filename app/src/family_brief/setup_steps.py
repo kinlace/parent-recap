@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from . import install_record, own_node, secret_dialog, setup_wilma
+from . import install_record, own_node, secret_dialog, setup_wilma, whatsapp_python
 from .config import Config, Kid
 from .utils import keychain
 
@@ -690,6 +690,8 @@ def _read_whatsapp(days: int) -> int:
         except Exception as e:
             error = str(e)
         else:
+            # This bg job reads with the evening job's Python, so this is the one macOS allowed.
+            whatsapp_python.record(sys.executable)
             print(json.dumps({"permission": "readable", "chats": chats}, ensure_ascii=False))
             return 0
     print(json.dumps({"permission": "none"} if error == whatsapp.NO_ACCESS

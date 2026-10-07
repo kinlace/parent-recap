@@ -4,4 +4,4 @@
 • Gmail: login failed. Tell Claude “re-authorize Gmail” to fix it.
 • MyClub: [Errno 8] nodename nor servname provided, or not known. If the Mac was offline, this fixes itself. If it happens again, tell Claude “check Parent Recap”.
 • Wilma: wilma: request timed out. If the Mac was offline, this fixes itself. If it happens again, tell Claude “check Parent Recap”.
-• WhatsApp: macOS permission denied. Tell Claude “Parent Recap can't read WhatsApp” to fix it.
+• WhatsApp: macOS permission denied, maybe because Parent Recap's Python changed. Tell Claude “Parent Recap can't read WhatsApp” to fix it.

@@ -15,6 +15,7 @@ Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010).
 - The program lives in `~/ParentRecap`, the jobs are `com.parentrecap.daily` and `com.parentrecap.weekend-events`, and the variables are `PARENT_RECAP_HOME` and `PARENT_RECAP_BG`.
 - The command is `parent-recap`; `family-brief` still works. The Brief's own text, hints, logs and docs say Parent Recap and `~/ParentRecap`.
 - Unchanged: the Keychain service, the Google Calendar event properties, the `.ics` UID and `~/.family`.
+- When WhatsApp can't be read, the Brief says Parent Recap's Python may have changed, and `doctor` says when the Python macOS allowed is no longer the evening job's and prints the path to allow.
 
 ## 0.5.4 · 2026-10-06
 

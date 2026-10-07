@@ -232,7 +232,7 @@ def test_failing_source_adds_coverage_warning(harness):
 
     [email] = harness.sent
     coverage = ("📥 今晚读取：Gmail 0 条 · MyClub 1 个日程 · Wilma 1 条 · WhatsApp 0 条\n"
-                "⚠️ Gmail 没读到（登录失败），WhatsApp 没读到（macOS 权限被拒绝），今天的日报可能缺这一块。")
+                "⚠️ Gmail 没读到（登录失败），WhatsApp 没读到（macOS 权限被拒绝，可能是 Parent Recap 的 Python 换了），今天的日报可能缺这一块。")
     assert email.text.endswith("\n\n" + coverage)
     assert coverage.replace("\n", "<br>") in email.html
 
