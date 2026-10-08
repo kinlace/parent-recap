@@ -88,3 +88,22 @@ def test_without_claude_anywhere_doctor_says_how_to_install_it(harness, terminal
 
     line = doctor_line(capsys, "Claude")
     assert line.startswith(ops.FAIL) and "curl -fsSL https://claude.ai/install.sh | bash" in line
+
+
+def test_codex_inside_the_chatgpt_app_is_one_of_the_bundled_ones():
+    """The ChatGPT app keeps its Codex in codex-cli/bin, and a Mac may have only that app (#203)."""
+    assert "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex" in summarize.CODEX_BUNDLED
+    assert summarize.CODEX_BUNDLED.index("/Applications/Codex.app/Contents/Resources/codex") < \
+        summarize.CODEX_BUNDLED.index("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex")
+
+
+def test_the_evening_job_runs_the_codex_inside_the_chatgpt_app(harness, terminal_path, monkeypatch):
+    app = harness.home / "Applications" / "ChatGPT.app"
+    codex = program(app / "Contents" / "Resources" / "codex-cli" / "bin", "codex")
+    monkeypatch.setattr(summarize, "CODEX_BUNDLED", (str(codex),))
+    harness.config["llm"]["backend"] = "codex"
+
+    the_evening_job(harness, monkeypatch)
+    assert harness.run() == 0
+    assert [c.argv[0] for c in harness.model_calls] == [str(codex)]
+

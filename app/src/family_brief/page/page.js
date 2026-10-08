@@ -746,6 +746,7 @@ function renderAI() {
   document.getElementById("claude-terminal").addEventListener("click", openClaudeWindow);
   document.getElementById("claude-form").addEventListener("submit", saveClaudeToken);
   document.getElementById("codex-login").addEventListener("click", signInCodex);
+  document.getElementById("codex-download").addEventListener("click", () => openSite("codex-app"));
 }
 
 // Once the AI sign-in is done, setup moves on to the next Source.
@@ -844,6 +845,7 @@ function codexResult(out) {
   const key = "codex." + out.result;
   document.getElementById("codex-login").hidden =
     !["codex.signed-out", "codex.login-failed"].includes(key);
+  document.getElementById("codex-download").hidden = key !== "codex.not-installed";
   if (out.result === "signed-in") return aiDone(out, key);
   showSource(key);
   if (CODEX_AGAIN.includes(key)) aiStep.timer = setTimeout(checkCodex, AI_MS);

@@ -522,10 +522,15 @@ def _run_claude(cfg: Config, prompt: str, system_prompt: str, timeout: int, budg
     return LLMReply(data, text, tokens, repaired, ran.waited)
 
 
-CODEX_BUNDLED = (
-    "/Applications/Codex.app/Contents/Resources/codex",
-    "/Applications/ChatGPT.app/Contents/Resources/codex",
-)
+# The desktop apps that ship codex, in the order they're tried, in /Applications or ~/Applications.
+CODEX_APPS = ("Codex.app", "ChatGPT.app")
+# Where codex sits inside one of them: the ChatGPT app keeps its Codex in codex-cli/bin since
+# its own Codex arrived (#203); the older place is kept for older versions of both apps.
+CODEX_IN_APP = ("Contents/Resources/codex-cli/bin/codex", "Contents/Resources/codex")
+CODEX_BUNDLED = tuple(os.path.join(folder, app, inside)
+                      for app in CODEX_APPS
+                      for folder in ("/Applications", os.path.expanduser("~/Applications"))
+                      for inside in CODEX_IN_APP)
 
 
 def find_codex(cfg: Config) -> str | None:

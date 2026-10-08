@@ -132,7 +132,7 @@ CHAT_SKILLS = {"claude": "/parent-recap:setup", "codex": "$parent-recap-setup"}
 CHAT_RESULTS = {"claude": ("opened", "no-terminal", "not-installed"), "codex": ("open-codex",)}
 # The sites the page's buttons open, by name: the page itself names none.
 SITES = {"app-passwords": setup_steps.APP_PASSWORDS_URL, "two-step": setup_steps.TWO_STEP_URL,
-         "myclub": setup_steps.MYCLUB_URL}
+         "myclub": setup_steps.MYCLUB_URL, "codex-app": setup_steps.CODEX_APP_URL}
 # The apps they open, each tried in turn: the Passwords app, or before macOS 15, where the
 # passwords were in System Settings.
 APPS = {"passwords": (["-a", "Passwords"],
