@@ -81,7 +81,13 @@ def _build_service():
 
 
 def get_upcoming_events(cfg: Config, days: int) -> list[dict]:
-    """Return existing events in the next N days (for LLM context + conflict awareness)."""
+    """The calendar's events in the next N days, as the model sees them: to leave out events
+    already there and to notice clashes.
+
+    Only Kid-related events keep their title and location (ADR 0013): those Parent Recap added,
+    the MyClub ones among them, and those whose title names a Kid. Any other event, such as a
+    parent's own appointment, is a busy block with its times only. Its id is a hash, since an
+    invitation's event id can carry the sender's UID, and a conflict Notice can still cite it."""
     from datetime import datetime, timedelta, timezone
     service = _build_service()
     now = datetime.now(timezone.utc)
@@ -93,16 +99,21 @@ def get_upcoming_events(cfg: Config, days: int) -> list[dict]:
         orderBy="startTime",
         maxResults=250,
     ).execute()
-    return [
-        {
-            "id": e.get("id"),
-            "summary": e.get("summary"),
+    kid_terms = [term.casefold() for k in cfg.kids for term in k.match_terms()]
+    snapshot = []
+    for e in resp.get("items", []):
+        times = {
             "start": e.get("start", {}).get("dateTime") or e.get("start", {}).get("date"),
             "end": e.get("end", {}).get("dateTime") or e.get("end", {}).get("date"),
-            "location": e.get("location"),
         }
-        for e in resp.get("items", [])
-    ]
+        added = e.get("extendedProperties", {}).get("private", {}).get("family_brief") == "1"
+        names_a_kid = any(term in (e.get("summary") or "").casefold() for term in kid_terms)
+        if added or names_a_kid:
+            snapshot.append({"id": e.get("id"), "summary": e.get("summary"), **times,
+                             "location": e.get("location")})
+        else:
+            snapshot.append({"id": _hash(e.get("id") or ""), "summary": "busy", **times})
+    return snapshot
 
 
 def sync_attendees(cfg: Config) -> dict[str, int]:
