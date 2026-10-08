@@ -2261,6 +2261,16 @@ def test_each_kid_known_so_far_is_listed_without_its_link(harness, page, myclub_
     assert MYCLUB_TOKEN.encode() not in r.body
 
 
+def test_the_link_saved_for_one_kid_is_refused_for_the_next(harness, page, myclub_server):
+    at_the_myclub_step(harness)
+    assert save_link(page.url, "Mia").json()["result"] == "saved"
+
+    r = save_link(page.url, "Leo", MYCLUB_LINK.replace("webcal://", "https://"))
+
+    assert r.status == 200 and r.json() == {"result": "same-link"}
+    assert myclub_links(harness) == {"Mia": MYCLUB_LINK, "Leo": None}
+
+
 def test_a_good_link_is_checked_and_saved_for_the_right_kid(harness, page, myclub_server, caplog,
                                                            capsys):
     caplog.set_level(logging.DEBUG)
@@ -2419,7 +2429,8 @@ def test_the_myclub_step_shows_where_the_link_is_and_takes_it_in_the_page_s_own_
         assert "<svg" in figure and re.search(r'<figcaption data-text="[\w.-]+">', figure)
     assert 'id="myclub-open"' in step
     field = re.search(r'<input[^>]*id="myclub-link"[^>]*>', step).group(0)
-    assert 'type="password"' in field and 'autocomplete="off"' in field
+    # A text field, so the parent can check what they pasted (#209): it's their own screen.
+    assert 'type="text"' in field and 'autocomplete="off"' in field
 
 
 def test_every_myclub_result_is_explained_in_all_three_languages():

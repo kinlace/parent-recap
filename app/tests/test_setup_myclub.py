@@ -140,6 +140,20 @@ def test_a_new_link_replaces_the_old_one(harness, server, capsys):
     assert saved_links(harness)["Mia"] == LINK
 
 
+def test_a_link_already_saved_for_another_kid_is_not_saved_again(harness, server, capsys):
+    """A link made with several members ticked is one link for all of them (#207, #209)."""
+    harness.config["kids"][0]["myclub_ical_url"] = LINK
+    harness.dialog.typed = LINK.replace("webcal://", "https://")
+
+    harness.cli("setup", "myclub", "--kid", "Leo")
+
+    res, printed = result(capsys)
+    assert res["result"] == "same-link" and "Mia" in res["next"] and "Valitut jäsenet" in res["next"]
+    assert saved_links(harness) == {"Mia": LINK, "Leo": None}
+    assert server.downloads == []
+    assert LINK not in printed
+
+
 @pytest.mark.parametrize("typed", [
     "my-myclub-password",
     "https://example.com/ical/s3cr3t-t0ken",
