@@ -15,7 +15,7 @@ from string import Template
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from . import ai_filter, citations, languages, tools
+from . import ai_filter, citations, held_back, languages, tools
 from .brief_text import TEXT, BriefText
 from .languages import FINNISH_WORDS, is_finnish
 from .collectors.base import CalendarEvent, Message
@@ -119,6 +119,14 @@ def placeholders_for(cfg: Config, run: ai_filter.Placeholders | None = None) -> 
     if not cfg.ai_filter.enabled:
         return None
     return run if run is not None else ai_filter.Placeholders()
+
+
+def for_the_ai(cfg: Config, messages: list[Message]) -> tuple[list[Message], list[Message]]:
+    """The night's `messages` that may go to the AI, and those held back from every model call
+    because they look sensitive (ADR 0013). With the AI filter off, none are held back."""
+    if not cfg.ai_filter.enabled:
+        return messages, []
+    return held_back.hold_back(messages)
 
 
 def _strip_code_fence(text: str) -> str:

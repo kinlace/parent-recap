@@ -22,7 +22,9 @@ from typing import Any
 
 from ..config import LLMConfig
 from ..brief_text import TEXT
-from ..summarize import _strip_code_fence, call_llm_json, digest_of, summarize_reply, system_prompt
+from ..collectors.base import Message
+from ..summarize import (_strip_code_fence, call_llm_json, digest_of, for_the_ai, summarize_reply,
+                         system_prompt)
 from .cases import BUNDLED, Case, load_cases
 from .score import aggregate, is_clean, score_case
 
@@ -45,8 +47,8 @@ def _strictly_valid(text: str) -> bool:
         return False
 
 
-def _judge(case: Case, digest: str) -> dict[str, Any] | None:
-    bodies = "\n\n".join(f"[{m.source}] {m.subject or m.chat_name or ''}\n{m.body}" for m in case.messages)
+def _judge(case: Case, messages: list[Message], digest: str) -> dict[str, Any] | None:
+    bodies = "\n\n".join(f"[{m.source}] {m.subject or m.chat_name or ''}\n{m.body}" for m in messages)
     try:
         verdict = call_llm_json(case.household, f"## Raw messages\n\n{bodies or '(none)'}\n\n## Digest\n\n{digest}",
                                 JUDGE_PROMPT)
@@ -59,8 +61,10 @@ def _judge(case: Case, digest: str) -> dict[str, Any] | None:
 def run_case(case: Case, judge: bool) -> dict[str, Any]:
     started = time.monotonic()
     summary, reply, error = None, None, None
+    # A message that looks sensitive reaches neither the Brief's call nor the judge's, as on an evening.
+    messages, _held_back = for_the_ai(case.household, case.messages)
     try:
-        summary, reply = summarize_reply(case.household, case.messages, case.calendar, case.queued,
+        summary, reply = summarize_reply(case.household, messages, case.calendar, case.queued,
                                          case.earlier_briefs, now=case.now)
     except Exception as e:
         error = str(e)
@@ -75,7 +79,7 @@ def run_case(case: Case, judge: bool) -> dict[str, Any]:
     )
     result["clean"] = is_clean(result)
     if judge and summary and (digest := digest_of(summary)):
-        result["judge"] = _judge(case, digest)
+        result["judge"] = _judge(case, messages, digest)
     return result
 
 

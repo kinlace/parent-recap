@@ -63,6 +63,11 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "reply_incomplete": "⚠️ {assistant}'s reply tonight was cut off, so this Brief may be missing some items. All of tonight's messages are in the archive in ~/ParentRecap.",
   "message_time": "{month:02}-{day:02} {hour:02}:{minute:02}",
   "translation_failed": "⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
+  "held_back": "🔒 Held-back messages",
+  "held_back_note": "These messages looked sensitive, such as health, support, bullying or child welfare, so they were not sent to {assistant}. Read them where they came from.",
+  "held_back_open": "open it",
+  "held_back_read_in": "read it in {source}",
+  "no_subject": "(no subject)",
   "action_items": "✅ Action Items",
   "due": "by {date}",
   "months": [

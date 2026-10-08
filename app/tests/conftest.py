@@ -303,9 +303,11 @@ class Harness:
     def _install(self, mp: pytest.MonkeyPatch) -> None:
         mp.setenv("HOME", str(self.home))
         # Over SSH, macOS's dialogs aren't tried, and in tmux or SSH setup warns that the Keychain
-        # can't be written: a test that wants that sets these itself.
+        # can't be written: a test that wants that sets these itself. The wilma CLI's config is
+        # the one in the temporary HOME.
         for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
-                    "CLAUDE_CODE_OAUTH_TOKEN", "SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY", "TMUX"):
+                    "CLAUDE_CODE_OAUTH_TOKEN", "SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY", "TMUX",
+                    "WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
             mp.delenv(var, raising=False)
 
         def source(name: str) -> Callable[..., Any]:

@@ -250,6 +250,24 @@ def _collect_schedule(state: State) -> list[Message]:
     )]
 
 
+def link(m: Message) -> str | None:
+    """Where the family reads the Wilma message or news item `m` in Wilma: its page under the
+    Kid's role (the role a path starting /!<student number> picks, as the CLI's own requests do), on
+    the Wilma the CLI signed in to last. None for the timetable, or when that Wilma isn't known."""
+    from .. import setup_wilma  # it reads this module's Kid list, so it is imported only here
+
+    kind = {"message": "messages", "news": "news"}.get(str(m.metadata.get("wilma_kind")))
+    raw_id = m.metadata.get("raw_id")
+    path = setup_wilma.config_path()
+    profile = setup_wilma.profile(path, setup_wilma.last_profile_id(path) or "")
+    tenant = profile.get("tenantUrl") if profile else None
+    if not (kind and raw_id and isinstance(tenant, str) and tenant.startswith("https://")):
+        return None
+    student = m.metadata.get("student_number")
+    role = f"/!{student}" if student else ""
+    return f"{tenant.rstrip('/')}{role}/{kind}/{raw_id}"
+
+
 def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
     from datetime import timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=cfg.wilma.lookback_hours)
