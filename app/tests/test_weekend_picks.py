@@ -106,6 +106,16 @@ def test_the_translation_gets_placeholders_and_each_recipient_reads_the_names(ha
     assert "Kid A" in system_prompt_of(harness.model_calls[1])
 
 
+def test_a_finnish_case_ending_joins_the_kids_name_again(harness):
+    cfg = household_with_names_everywhere(harness)
+    harness.model_reply = {"picks": [{"ext_id": "le-1", "rank": 1,
+                                      "why": "Kid A:lle sopii ulkoilu, ja Kid B:n kaveri tulee mukaan"}]}
+
+    [pick] = weekend_pipeline.rank(cfg, [candidate()])
+
+    assert pick["why"] == "Mialle sopii ulkoilu, ja Leon kaveri tulee mukaan"
+
+
 # ── Weekend Picks in their first Recipient's language (summary_language for a plain address)
 
 def run_weekend_picks(harness, monkeypatch, language: str, candidates: list[Candidate] | None = None,

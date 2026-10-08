@@ -140,7 +140,9 @@ _LATIN = "A-Za-zÀ-ÖØ-öø-ÿ"
 # Finnish case endings a Kid's name may carry in a parent's own text (Mian, Mialle).
 _FINNISH_ENDINGS = ("n", "a", "ä", "ta", "tä", "na", "nä", "ksi", "lla", "llä", "lta", "ltä", "lle",
                     "ssa", "ssä", "sta", "stä", "kin")
-_PLACEHOLDER = re.compile(r"(?<![A-Za-z])Kid ([A-Z])(?![A-Za-z])")
+# A placeholder, with the Finnish case ending `mask` wrote after a colon (Kid A:lle), if any.
+_PLACEHOLDER = re.compile(r"(?<![A-Za-z])Kid ([A-Z])(?::([A-Za-zäöÄÖ]+))?(?![A-Za-z])")
+_VOWELS = "aeiouyäöåAEIOUYÄÖÅ"
 
 
 class _KidPlaceholders:
@@ -192,10 +194,17 @@ class _KidPlaceholders:
         return value
 
     def restore(self, text: str) -> str:
-        """`text` with each Kid's placeholder as the name the Brief calls them by."""
+        """`text` with each Kid's placeholder as the name the Brief calls them by. A Finnish case
+        ending joins a name that ends in a vowel (Kid A:lle as Mialle) and keeps its colon after
+        a consonant, where the right form would need the name's own stem."""
         def one(m: re.Match) -> str:
             i = ord(m.group(1)) - ord("A")
-            return self.kids[i].called() if i < len(self.kids) else m.group()
+            if i >= len(self.kids):
+                return m.group()
+            name, ending = self.kids[i].called(), m.group(2)
+            if not ending:
+                return name
+            return name + ending if name[-1:] in _VOWELS else f"{name}:{ending}"
         return _PLACEHOLDER.sub(one, text)
 
 
