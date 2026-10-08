@@ -95,7 +95,7 @@ Note: without `bg`, reading WhatsApp directly from Terminal, Claude Code or Code
 
 ## MyClub (optional)
 
-1. The user signs in to MyClub on the web (https://id.myclub.fi), finds "Tilaa kalenteri / Calendar subscription" on the Kid's calendar page, and copies the link starting with `webcal://` (menu names may change between versions)
+1. The user signs in to MyClub on the web (https://id.myclub.fi), finds "Tilaa kalenteri / Calendar subscription" on the Kid's calendar page, chooses "Valitut jäsenet / Selected members" under "Jäsenet / Members" with only that Kid ticked, saves, and copies the link starting with `webcal://` (menu names may change between versions). Each Kid needs their own link, since the program attributes every event in a link to the one Kid it is saved for (#207)
 2. `$FB setup myclub --kid "Kid's name"` opens MyClub and a dialog; the user pastes the link there (the input is hidden). The command downloads it once and saves it in that Kid's `myclub_ical_url`. The link contains a personal token, so it's never pasted in the chat and is only kept in the local config; if the link doesn't open, doctor and the logs name only the MyClub server and the HTTP status
 3. In ics calendar mode, it's worth also subscribing to this link directly in the phone's calendar, so it stays in sync with the club in real time:
    - Google Calendar on the web: "Other calendars" on the left → "+" → "From URL", replace `webcal://` with `https://` and paste
