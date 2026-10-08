@@ -141,6 +141,14 @@ class LLMConfig(BaseModel):
         return "claude" if v == "cli" else v  # configs written before 0.3.0 say "cli"
 
 
+class AIFilterConfig(BaseModel):
+    """What reaches the AI (ADR 0013). On: before each model call of the evening run, phone
+    numbers, email addresses and links become placeholders, and identifiers the model doesn't need
+    stay out. The real values go back into the reply before anything is written or sent. Off: the
+    model gets the night's messages as they are."""
+    enabled: bool = True
+
+
 class ArchiveConfig(BaseModel):
     dir: str = "~/ParentRecap"
 
@@ -205,6 +213,7 @@ class Config(BaseModel):
     imessage: IMessageConfig = IMessageConfig()
     email: EmailConfig = EmailConfig()
     llm: LLMConfig = LLMConfig()
+    ai_filter: AIFilterConfig = AIFilterConfig()
     archive: ArchiveConfig = ArchiveConfig()
     weekend_events: WeekendEventsConfig = WeekendEventsConfig()
     feedback: FeedbackConfig = FeedbackConfig()

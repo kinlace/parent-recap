@@ -51,6 +51,7 @@ One town outside the presets was set up end to end in a fresh-install test in Oc
 | `llm.backend`                          | `claude` (Claude Pro/Max subscription) or `codex` (ChatGPT account); `cli` in older configs means `claude`                      |
 | `llm.codex_path`                       | Optional, where codex is. By default the one bundled in Codex.app or ChatGPT.app is used first                                  |
 | `llm.timeout_seconds`                  | Timeout for one model call, 300 seconds by default; raise it to 600 if there are a lot of messages, for example after a holiday |
+| `ai_filter.enabled`                    | `true` by default: the AI gets placeholders for phone numbers, email addresses and links. See [What the AI sees](#what-the-ai-sees) |
 | `email.to`                             | Brief recipients; see [Recipients in their own language](#recipients-in-their-own-language) below                               |
 | `email.weekend_to`                     | Weekend Picks recipients (`email.to` when empty); each can have its own `language` too                                          |
 | `weekend_events.kid_preferences`       | Free text describing each Kid's interests                                                                                       |
@@ -78,6 +79,14 @@ Weekend Picks work the same way: they are written once, in the language of the f
 ### Reviewed and best-effort languages
 
 `en` (English), `zh` (Chinese) and `fi` (Finnish) are reviewed: we check the program's own text in the Brief (headings, the coverage line, calendar hints, the footer), and they have golden Briefs and eval cases. Any other language is best effort. The first time it's needed, the model translates the program's own text into it once; the result is kept in the `languages` folder next to the state file (for example `~/.family/languages/sv.json`) and used every night after that. `parent-recap language sv` does this ahead of time. If that translation fails, the Brief's own text is in English that night and it's tried again the next time; `parent-recap doctor` shows which languages have their own text yet. Weekend Picks' own text is translated the same way, once, by the same command or on the first Friday that needs it.
+
+## What the AI sees
+
+Every evening the night's messages go to the Household's own Claude or ChatGPT, which writes the Brief. With `ai_filter.enabled: true`, the default, the program first replaces each phone number, email address and link in them with a placeholder such as ⟦P1⟧, ⟦E1⟧ or ⟦L1⟧, and leaves out what the AI doesn't need: the link back to each Gmail message and the Kid's Wilma student number. A sender such as `Maija Opettaja <maija@school.fi>` keeps its name. The translation for each Recipient gets the same placeholders. The program keeps which value each placeholder stands for in memory on the Mac, for that run only, and puts the real values back before the Brief, the `.ics` file, Google Calendar and the archive are written, so the Brief looks the same. If the AI changed a placeholder so it can't be put back, the Brief says "a phone number", "an email address" or "a link" in its place, in the Recipient's language, and keeps the item.
+
+This reduces what reaches the AI. It doesn't hide everything: names and the rest of the text still reach it ([ADR 0013](adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md)).
+
+To turn it off, set `ai_filter.enabled: false`, or ask Claude or Codex to turn off the AI filter. The AI then gets the messages as they are, from the next Brief on.
 
 ## Pilot feedback
 

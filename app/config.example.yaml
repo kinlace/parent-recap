@@ -90,6 +90,9 @@ llm:
   backend: claude # claude (Claude Pro/Max subscription) or codex (ChatGPT account)
   timeout_seconds: 300
 
+ai_filter:
+  enabled: true # The AI gets placeholders for phone numbers, email addresses and links, and the Brief shows the real ones
+
 archive:
   dir: ~/ParentRecap
 

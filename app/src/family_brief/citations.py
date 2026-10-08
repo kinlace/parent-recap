@@ -11,6 +11,7 @@ import logging
 import re
 from typing import Any
 
+from .ai_filter import TLDS
 from .brief_text import TEXT
 from .collectors.base import Message
 
@@ -26,9 +27,8 @@ DERIVED = ("source", "ref_sources", "verified", "legacy")
 
 # A web or mail link, as a calendar app would make it clickable. Without a scheme only common
 # top-level domains count, so a missing space after a full stop or a file name is not a link.
-_TLDS = "com|net|org|info|biz|fi|se|eu|io|co|me|app|dev|xyz|site|online|link|page|top|click|ly|to|gl|ru|cn|uk|de|us"
 _LINK = re.compile(r"(?:[a-z][a-z0-9+.-]*://|www\.|mailto:)[^\s<>\"'()\[\]]+"
-                   rf"|\b(?:[a-z0-9-]+\.)+(?:{_TLDS})\b(?:/[^\s<>\"'()\[\]]*)?", re.IGNORECASE)
+                   rf"|\b(?:[a-z0-9-]+\.)+(?:{TLDS})\b(?:/[^\s<>\"'()\[\]]*)?", re.IGNORECASE)
 
 
 def keep_links(text: str, allowed: str) -> str:

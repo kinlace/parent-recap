@@ -88,6 +88,11 @@ class BriefText:
     written_by: str                     # {assistant}
     untitled: str
 
+    # ── In place of a placeholder the model changed so it can't be put back (ADR 0013)
+    phone_number: str
+    email_address: str
+    link: str
+
     # ── Calendar notes
     ics_hint: str
     ics_hint_mixed: str
@@ -165,6 +170,9 @@ EN = BriefText(
     new_events_line="📅 New calendar events:",
     written_by="Written by {assistant}",
     untitled="(untitled)",
+    phone_number="a phone number",
+    email_address="an email address",
+    link="a link",
     ics_hint="They are in the attached .ics. Open it to add them to your calendar.",
     ics_hint_mixed="Linked events are in Google Calendar; the rest are in the attached .ics. "
                    "Open it to add them to your calendar.",
@@ -222,6 +230,9 @@ ZH = BriefText(
     new_events_line="📅 新加日历事件:",
     written_by="由 {assistant} 生成",
     untitled="(无标题)",
+    phone_number="一个电话号码",
+    email_address="一个邮箱地址",
+    link="一个链接",
     ics_hint="已打包在邮件附件的 .ics 里，点开附件即可一键加入你的日历。",
     ics_hint_mixed="带链接的已写入 Google 日历，其余已打包在邮件附件的 .ics 里，点开附件即可一键加入你的日历。",
     reauth="跟 {assistant} 说「重新授权 Google Calendar」即可修复。",
@@ -263,7 +274,7 @@ FI = BriefText(
     fallback_more="  …arkistossa vielä {n} lisää",
     # Added after the first review and not yet checked by a Finnish speaker: reply_incomplete,
     # message_unreadable, nothing_read, source_problem, fix_login, fix_permission, fix_other,
-    # whatsapp_permission_denied.
+    # whatsapp_permission_denied, phone_number, email_address, link.
     reply_incomplete="⚠️ {assistant}-avustajan vastaus katkesi tänä iltana, joten koosteesta voi puuttua "
                      "joitakin kohtia. Kaikki tämäniltaiset viestit ovat arkistossa kansiossa ~/ParentRecap.",
     message_unreadable="yhtä viestiä ei voitu lukea",
@@ -287,6 +298,9 @@ FI = BriefText(
     new_events_line="📅 Uudet kalenteritapahtumat:",
     written_by="Kirjoittanut: {assistant}",
     untitled="(ei otsikkoa)",
+    phone_number="puhelinnumero",
+    email_address="sähköpostiosoite",
+    link="linkki",
     ics_hint="Ne ovat liitteenä olevassa .ics-tiedostossa. Avaa se, niin saat ne kalenteriisi.",
     ics_hint_mixed="Osa tapahtumista on lisätty Google Kalenteriin, loput ovat liitteenä olevassa .ics-tiedostossa. "
                    "Avaa se, niin saat ne kalenteriisi.",

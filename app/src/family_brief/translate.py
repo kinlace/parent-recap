@@ -4,7 +4,9 @@ The model writes the Brief once; for each other language, one more call translat
 summary. A reply that doesn't carry the same Brief (the same Kids, Notices, Action Items and
 calendar events, with the same due dates, times and refs) counts as a failed translation. Only
 text is taken from it: the translation is a copy of the original with its Digest, Notices, Action
-Items and calendar event titles and descriptions replaced, so its Sources are the original's too."""
+Items and calendar event titles and descriptions replaced, so its Sources are the original's too.
+While the AI filter is on, the model gets the Brief with the night's placeholders (ADR 0013) and
+the reply gets the real values back before it is checked."""
 from __future__ import annotations
 
 import copy
@@ -14,11 +16,11 @@ from datetime import date, timedelta
 from string import Template
 from typing import Any, Callable
 
-from . import citations, languages
+from . import ai_filter, citations, languages
 from .brief_text import BriefText, Language
 from .languages import FINNISH_WORDS, is_finnish
 from .config import Config
-from .summarize import call_llm, digest_of
+from .summarize import call_llm, digest_of, placeholder_words, placeholders_for
 from .utils.dates import today_str
 
 log = logging.getLogger(__name__)
@@ -36,6 +38,7 @@ _KEEP = [
     Template("Keep every other value exactly as it is (kid, by, refs, start), and keep every list with the same "
              "entries in the same order: don't add, drop, merge or reorder anything"),
 ]
+_PLACEHOLDERS = Template(ai_filter.INSTRUCTION)
 _KEEP_FINNISH = Template("Keep the key Finnish words the Brief kept as written (such as $finnish_words), so "
                          "parents can still search Wilma and talk to the teacher with them")
 _REPLY = [
@@ -58,8 +61,10 @@ def instructions(intro: Template, translate: Template, keep_finnish: Template, k
             + "".join(f"{n}. {r.substitute(values)}\n" for n, r in enumerate(rules, 1)))
 
 
-def system_prompt(src: BriefText, dst: BriefText, target: Language, tomorrow: date) -> str:
-    return instructions(_INTRO, _TRANSLATE, _KEEP_FINNISH, _KEEP, src, dst, target, tomorrow)
+def system_prompt(src: BriefText, dst: BriefText, target: Language, tomorrow: date, masked: bool = False) -> str:
+    """The translation instructions, saying how to treat placeholders when the Brief is `masked`."""
+    keep = [*_KEEP, _PLACEHOLDERS] if masked else _KEEP
+    return instructions(_INTRO, _TRANSLATE, _KEEP_FINNISH, keep, src, dst, target, tomorrow)
 
 
 def _unprefixed(what: str, t: BriefText) -> str:
@@ -153,16 +158,22 @@ def _merge(original: dict[str, Any], reply: dict[str, Any], src: BriefText, dst:
     return out
 
 
-def translate(cfg: Config, summary: dict[str, Any], original: Language, target: Language) -> dict[str, Any]:
+def translate(cfg: Config, summary: dict[str, Any], original: Language, target: Language,
+              placeholders: ai_filter.Placeholders | None = None) -> dict[str, Any]:
     """`summary`, written in `original`, as a Recipient reading `target` gets it. Raises when the
-    model call fails or its reply doesn't carry the same Brief; the caller then sends the original."""
+    model call fails or its reply doesn't carry the same Brief; the caller then sends the original.
+    `placeholders` are the run's, so the model sees each value as the Brief's call did."""
     if not _has_text(summary):  # e.g. a night with only MyClub events: nothing for the model to do
         return summary
     src, dst = languages.text(cfg, original), languages.text(cfg, target)
     log.info("Translating the Brief from %s into %s", original, target)
     payload = _payload(summary, src)
+    placeholders = placeholders_for(cfg, placeholders)
+    sent = payload if placeholders is None else ai_filter.mask(payload, placeholders)[0]
     tomorrow = date.fromisoformat(today_str(cfg.timezone)) + timedelta(days=1)
-    reply = call_llm(cfg, json.dumps(payload, ensure_ascii=False, indent=2),
-                     system_prompt(src, dst, target, tomorrow)).data
+    reply = call_llm(cfg, json.dumps(sent, ensure_ascii=False, indent=2),
+                     system_prompt(src, dst, target, tomorrow, masked=placeholders is not None)).data
+    if placeholders is not None:  # before the checks, which compare links with the original's
+        reply = ai_filter.restore(reply, placeholders, placeholder_words(dst))
     _check(payload, reply, src, dst)
     return _merge(summary, reply, src, dst)

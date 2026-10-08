@@ -14,7 +14,7 @@ from string import Template
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from . import citations, languages, tools
+from . import ai_filter, citations, languages, tools
 from .brief_text import TEXT, BriefText
 from .languages import FINNISH_WORDS, is_finnish
 from .collectors.base import CalendarEvent, Message
@@ -96,16 +96,33 @@ Earlier Briefs (earlier_briefs in the payload):
 """)
 
 
-def system_prompt(language: str, t: BriefText | None = None) -> str:
+_PLACEHOLDERS = f"\nPlaceholders:\n- {ai_filter.INSTRUCTION}\n"
+
+
+def system_prompt(language: str, t: BriefText | None = None, masked: bool = False) -> str:
     """The summarize instructions, asking for a Brief in `language` with its program text `t`
-    (by default the reviewed table). A Finnish Brief has no Finnish words to keep."""
+    (by default the reviewed table), and saying how to treat placeholders when the payload is
+    `masked`. A Finnish Brief has no Finnish words to keep."""
     t = t or TEXT[language]
     mom, dad, either = t.who
     keep_finnish = "" if is_finnish(language) else \
         f", but keep the key Finnish words as written (such as {FINNISH_WORDS}) so nothing is lost in translation"
     return _SYSTEM_PROMPT.substitute(language=t.language_name, keep_finnish=keep_finnish, quotes=t.quotes,
                                      household=t.household, mom=mom, dad=dad, either=either,
-                                     reminder=t.re_reminder)
+                                     reminder=t.re_reminder) + (_PLACEHOLDERS if masked else "")
+
+
+def placeholders_for(cfg: Config, run: ai_filter.Placeholders | None = None) -> ai_filter.Placeholders | None:
+    """The placeholders a model call masks its payload with while the AI filter is on: the run's,
+    so a value has one placeholder in all of its calls, or else new ones. None when it's off."""
+    if not cfg.ai_filter.enabled:
+        return None
+    return run if run is not None else ai_filter.Placeholders()
+
+
+def placeholder_words(t: BriefText) -> dict[str, str]:
+    """What a Brief in `t`'s language says in place of a placeholder the model changed beyond repair."""
+    return {"phone": t.phone_number, "email": t.email_address, "link": t.link}
 
 
 def _strip_code_fence(text: str) -> str:
@@ -202,9 +219,15 @@ def _parse_model_json(result: str) -> tuple[dict[str, Any], bool]:
         raise
 
 
+# Identifiers the model doesn't need: Gmail's link back to a message, which holds its Message-ID,
+# and Wilma's student number.
+_NOT_FOR_THE_MODEL = ("url", "student_number")
+
+
 def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[dict],
                   already_captured: list[dict], now: datetime,
-                  earlier_briefs: list[dict] | None = None) -> str:
+                  earlier_briefs: list[dict] | None = None,
+                  placeholders: ai_filter.Placeholders | None = None) -> str:
     from datetime import timedelta as _td
     t = languages.text(cfg, cfg.brief_language())
     weekdays = t.weekdays
@@ -237,6 +260,8 @@ def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[di
         "earlier_briefs": citations.for_prompt(earlier_briefs or []),
         "messages": [m.to_dict() for m in messages],
     }
+    if placeholders is not None:
+        payload, _ = ai_filter.mask(payload, placeholders, drop=_NOT_FOR_THE_MODEL)
     return (
         "The payload below holds the kid profiles, which kid each WhatsApp group belongs to, the messages, "
         "a snapshot of the existing calendar, and **events already added to the calendar automatically "
@@ -579,17 +604,23 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
                     already_captured: list[dict] | None = None,
                     earlier_briefs: list[dict] | None = None,
                     now: datetime | None = None,
-                    budget: int = CALL_BUDGET) -> tuple[dict[str, Any], LLMReply]:
+                    budget: int = CALL_BUDGET,
+                    placeholders: ai_filter.Placeholders | None = None) -> tuple[dict[str, Any], LLMReply]:
     """The night's summary with its citations resolved, plus the backend call it came from.
     `now` pins the night the prompt is written for; the eval replays past nights with it.
-    `budget` is how long a busy model is tried for, as call_llm takes it."""
+    `budget` is how long a busy model is tried for, as call_llm takes it. While the AI filter is
+    on, the prompt has placeholders (the run's `placeholders`, if given) and the summary the values."""
     already_captured = already_captured or []
     now = now or datetime.now().astimezone()
-    prompt = _build_prompt(cfg, messages, upcoming_events, already_captured, now, earlier_briefs)
+    placeholders = placeholders_for(cfg, placeholders)
+    prompt = _build_prompt(cfg, messages, upcoming_events, already_captured, now, earlier_briefs, placeholders)
     log.info("Summarizing %d messages via %s", len(messages), cfg.llm.backend)
     language = cfg.brief_language()
-    reply = call_llm(cfg, prompt, system_prompt(language, languages.text(cfg, language)), budget=budget)
+    t = languages.text(cfg, language)
+    reply = call_llm(cfg, prompt, system_prompt(language, t, masked=placeholders is not None), budget=budget)
     summary = normalise(reply.data, reply.repaired)
+    if placeholders is not None:  # before citations, which check event links against the messages
+        summary = ai_filter.restore(summary, placeholders, placeholder_words(t))
     _call_kids(summary, cfg)
     citations.resolve(summary, messages, upcoming_events, already_captured, earlier_briefs or [])
     return summary, reply
@@ -703,9 +734,10 @@ def summarize(cfg: Config, messages: list[Message],
               upcoming_events: list[dict],
               already_captured: list[dict] | None = None,
               earlier_briefs: list[dict] | None = None,
-              budget: int = CALL_BUDGET) -> dict[str, Any]:
+              budget: int = CALL_BUDGET,
+              placeholders: ai_filter.Placeholders | None = None) -> dict[str, Any]:
     return summarize_reply(cfg, messages, upcoming_events, already_captured, earlier_briefs,
-                           budget=budget)[0]
+                           budget=budget, placeholders=placeholders)[0]
 
 
 def _localize(dt: datetime, tz: str) -> datetime:

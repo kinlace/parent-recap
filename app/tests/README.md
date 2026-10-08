@@ -10,6 +10,14 @@ python -m pytest                     # whole suite
 `test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.
+`test_ai_filter.py` calls the AI filter on its own with a list of messages, as another tool could.
+In `test_nightly_run.py`, a night with phone numbers, email addresses and links in every part of the
+payload checks that none reaches the Brief or translation prompt, only placeholders, the same one for
+a value in both, with no Gmail message link or Wilma student number. It checks that the Brief, the
+`.ics`, iMessage and the archive get the real values back, that an event keeps a link only if a
+message it cites has it, and that a placeholder the model changed beyond repair is said as its kind
+in each Recipient's language, with the item kept. With the filter off, the prompts must match the
+goldens from before it, those without `.masked` in their name.
 `test_busy_model.py` runs the evening Brief against a `codex` or `claude` that is busy (at capacity,
 rate-limited, overloaded) for a few calls. The harness records the pauses between model calls on a
 fake clock instead of sleeping. It checks that the Brief comes once the model is free, after pauses
