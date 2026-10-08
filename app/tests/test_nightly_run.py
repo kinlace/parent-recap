@@ -836,7 +836,7 @@ def test_a_due_date_the_program_cant_read_is_shown_as_written(harness):
 def test_google_mode_writes_events_and_links_them(harness):
     normal_night(harness)
     harness.config["google_calendar"] = {"mode": "google", "invite_attendees": ["partner@example.com"]}
-    harness.calendar.existing = [{"id": "x1", "summary": "Dentist",
+    harness.calendar.existing = [{"id": "x1", "summary": "Mia dentist",
                                   "start": {"dateTime": "2026-09-29T08:00:00+03:00"},
                                   "end": {"dateTime": "2026-09-29T09:00:00+03:00"}}]
     harness.authorize_google_calendar()
@@ -849,13 +849,106 @@ def test_google_mode_writes_events_and_links_them(harness):
     assert all(e["attendees"] == [{"email": "partner@example.com"}] for e in harness.calendar.inserted)
     assert harness.calendar.inserted[0]["start"] == {"dateTime": "2026-10-01T09:00:00+03:00",
                                                      "timeZone": "Europe/Helsinki"}
-    assert harness.model_payload()["upcoming_calendar_events_next_7d"][0]["summary"] == "Dentist"
+    assert harness.model_payload()["upcoming_calendar_events_next_7d"][0]["summary"] == "Mia dentist"
 
     [email] = harness.sent
     assert email.attachments == []
     assert '<a href="https://calendar.google.com/event?eid=gev1">3B 远足 Nuuksio</a>' in email.html
     assert sorted(v["google_event_id"] for v in harness.state()["created_event_hashes"].values()) \
         == ["gev1", "gev2", "gev3"]
+
+
+def test_a_parents_own_appointment_reaches_the_ai_as_a_busy_block(harness):
+    google_mode(harness)
+    harness.calendar.existing = [
+        {"id": "p1", "summary": "Dr. Salo, back pain", "location": "Kilo Health Centre",
+         "start": {"dateTime": "2026-09-29T08:00:00+03:00"},
+         "end": {"dateTime": "2026-09-29T09:00:00+03:00"}},
+        {"id": "p2", "summary": "Work trip Tampere", "location": "Tampere",
+         "start": {"date": "2026-10-01"}, "end": {"date": "2026-10-03"}},
+    ]
+
+    assert harness.run() == 0
+
+    snapshot = harness.model_payload()["upcoming_calendar_events_next_7d"]
+    assert [{k: v for k, v in e.items() if k != "id"} for e in snapshot] == [
+        {"summary": "busy", "start": "2026-09-29T08:00:00+03:00", "end": "2026-09-29T09:00:00+03:00"},
+        {"summary": "busy", "start": "2026-10-01", "end": "2026-10-03"},
+    ]
+    sent = harness.model_prompt() + " ".join(harness.model_calls[-1].argv)
+    for private in ("Salo", "back pain", "Kilo Health Centre", "Work trip", "Tampere"):
+        assert private not in sent
+
+
+def test_an_event_naming_a_kid_keeps_its_title_and_location(harness):
+    google_mode(harness)
+    harness.calendar.existing = [
+        {"id": "k1", "summary": "MIA swimming", "location": "Leppävaara pool",
+         "start": {"dateTime": "2026-09-29T17:00:00+03:00"},
+         "end": {"dateTime": "2026-09-29T18:00:00+03:00"}},
+        {"id": "k2", "summary": "小狮 理发", "location": "Kilo barber",  # Leo's alias
+         "start": {"dateTime": "2026-09-30T15:00:00+03:00"},
+         "end": {"dateTime": "2026-09-30T15:30:00+03:00"}},
+    ]
+
+    assert harness.run() == 0
+
+    assert harness.model_payload()["upcoming_calendar_events_next_7d"] == [
+        {"id": "k1", "summary": "MIA swimming", "start": "2026-09-29T17:00:00+03:00",
+         "end": "2026-09-29T18:00:00+03:00", "location": "Leppävaara pool"},
+        {"id": "k2", "summary": "小狮 理发", "start": "2026-09-30T15:00:00+03:00",
+         "end": "2026-09-30T15:30:00+03:00", "location": "Kilo barber"},
+    ]
+
+
+def test_events_parent_recap_added_keep_their_title_and_location(harness):
+    google_mode(harness)
+
+    def added(source: str) -> dict:
+        return {"private": {"family_brief": "1", "family_brief_hash": f"h-{source}",
+                            "source": source, "external_id": f"{source}-1", "kid": "Mia"}}
+
+    harness.calendar.existing = [
+        {"id": "fb1", "summary": "3B 远足 Nuuksio", "location": "Nuuksio",
+         "start": {"dateTime": "2026-10-01T09:00:00+03:00"},
+         "end": {"dateTime": "2026-10-01T14:00:00+03:00"}, "extendedProperties": added("gmail")},
+        {"id": "fb2", "summary": "⚽ FC Kilo P2017 training", "location": "Leppävaara field",
+         "start": {"dateTime": "2026-10-02T17:00:00+03:00"},
+         "end": {"dateTime": "2026-10-02T18:30:00+03:00"}, "extendedProperties": added("myclub")},
+    ]
+
+    assert harness.run() == 0
+
+    assert harness.model_payload()["upcoming_calendar_events_next_7d"] == [
+        {"id": "fb1", "summary": "3B 远足 Nuuksio", "start": "2026-10-01T09:00:00+03:00",
+         "end": "2026-10-01T14:00:00+03:00", "location": "Nuuksio"},
+        {"id": "fb2", "summary": "⚽ FC Kilo P2017 training", "start": "2026-10-02T17:00:00+03:00",
+         "end": "2026-10-02T18:30:00+03:00", "location": "Leppävaara field"},
+    ]
+
+
+def test_a_clash_with_a_busy_block_is_cited_without_the_events_own_id(harness):
+    google_mode(harness)
+    # An invitation's event id can be its UID in base32hex, here appt-77@dental.example.
+    google_id = "_c5o70t1d6srk0p35dpq62r1ecls62rbgdhig"
+    harness.calendar.existing = [{"id": google_id, "summary": "Dentist",
+                                  "start": {"dateTime": "2026-10-01T09:00:00+03:00"},
+                                  "end": {"dateTime": "2026-10-01T10:00:00+03:00"}}]
+
+    def clash(prompt: str) -> dict:
+        [busy] = json.loads(prompt[prompt.index("\n{") + 1:])["upcoming_calendar_events_next_7d"]
+        return {"per_kid": [{"kid": "Mia", "action_items": [], "notices": [
+            {"text": "The trip on Thu 1 Oct clashes with something in the calendar at 9:00",
+             "refs": [busy["id"], "g-101"]}]}],
+            "calendar_events": [], "message_digest": ""}
+
+    harness.model_reply = clash
+
+    assert harness.run() == 0
+
+    assert google_id not in harness.model_prompt()
+    [mia] = archived_summary(harness)["per_kid"]
+    assert [n["source"] for n in mia["notices"]] == [["calendar", "gmail"]]
 
 
 def test_google_mode_undelivered_night_reworded_is_not_written_twice(harness):
@@ -1269,7 +1362,7 @@ def test_uncited_and_unknown_citations_are_unverified(harness):
 def test_conflict_notice_citing_calendar_events_is_verified(harness):
     normal_night(harness)
     harness.config["google_calendar"] = {"mode": "google"}
-    harness.calendar.existing = [{"id": "x1", "summary": "Dentist",
+    harness.calendar.existing = [{"id": "x1", "summary": "Mia dentist",
                                   "start": {"dateTime": "2026-09-29T08:00:00+03:00"},
                                   "end": {"dateTime": "2026-09-29T09:00:00+03:00"}}]
     harness.authorize_google_calendar()
