@@ -6,50 +6,54 @@
 # lists wait for review by the maintainers. Changing a word here changes which messages the AI
 # never sees, so tests/test_held_back.py lists the cases that must and must not be held back.
 #
-# What the lists aim at: a message about one person's sensitive situation, such as a diagnosis,
-# medication, a meeting with a psychologist or a school social worker (kuraattori), special or
-# intensified support, bullying, harassment, violence, child welfare or the police. This includes
-# messages about the Household's own Kids. Routine notices to a whole class are not the aim: head
-# lice, chickenpox, a sick-day absence, the school nurse's check-up schedule or a sports injury in
-# a club chat. So everyday health words are left out on purpose: sick, ill, fever, nurse, doctor,
-# check-up, lice, chickenpox, allergy, injury and hospital (sairas, kipeä, terveydenhoitaja,
-# lääkäri, terveystarkastus, täi, vesirokko, allergia, loukkaantui, sairaala, and the same in the
-# other languages). A message with a word here is held back even when it goes to the whole class,
-# such as a talk about bullying or a police visit about traffic safety: the word lists can't tell.
+# What the lists aim at: a message about one person's sensitive situation, such as a diagnosis, a
+# meeting with a psychologist or a school social worker (kuraattori), special or intensified
+# support, bullying, harassment, violence, child welfare or the police. This includes messages
+# about the Household's own Kids. A held-back message loses its summary and Action Items, so
+# routine school messages must still reach the AI: head lice, chickenpox, a sick-day absence, the
+# school nurse's check-up schedule, a sports injury in a club chat, a camp notice that asks about
+# medication, a diagnostic test in maths, the school subject psychology, the guidance counsellor's
+# course choices, and a newsletter whose footer lists the staff. So these words are left out on
+# purpose: sick, ill, fever, nurse, doctor, check-up, lice, chickenpox, allergy, injury, hospital
+# and medication (sairas, kipeä, terveydenhoitaja, lääkäri, terveystarkastus, täi, vesirokko,
+# allergia, loukkaantui, sairaala, lääkitys, lääke, medicinering, 用药, 服药, and the like). A message
+# with a word here is held back even when it goes to the whole class, such as a talk about bullying
+# or a police visit about traffic safety: the word lists can't tell.
 #
 # How an entry matches:
-# - Case doesn't matter, and every list is checked against the subject, the body and the sender of
-#   every message, whatever language it is in.
+# - Case doesn't matter, and every list is checked against the subject, the body and the sender's
+#   name of every message, whatever language it is in.
 # - An entry is the start of a word, a stem, and it counts anywhere inside a word too. One stem
 #   covers the Finnish and Swedish case endings and compounds: kiusa finds kiusattu, kiusasi,
 #   kiusaamista and koulukiusaaminen, and mobb finds mobbad and nätmobbning. Chinese has no spaces
 #   between words, so a Chinese entry counts wherever it stands, also right next to other text.
+# - A word that ends in . must end there: "diagnos." finds the Swedish diagnos but not diagnostiska
+#   prov (diagnostic tests).
 # - An entry with a space is stems in a row, each a word of its own, and a word may list its forms
 #   with |: "tehostet tuki|tukea|tue" finds tehostettu tuki, tehostettua tukea and tehostetun tuen,
 #   but not erityisen tukevat kengät (especially sturdy shoes).
 # - Text that matches an entry under `not` is taken out before the check, for words that hold a
-#   stem but mean something else: kiusallinen (awkward) is not kiusaaminen, and fysioterapia after a
-#   sports injury is not terapia.
+#   stem but mean something else: kiusallinen (awkward) is not kiusaaminen, fysioterapia after a
+#   sports injury is not terapia, and psykologian koe (the psychology exam) is not a psychologist.
+# - The `staff` list counts only on a line without a phone number, an email address or a link, as
+#   the AI filter finds them: "Kuraattori Maija Laine, 040 123 4567" in a newsletter's footer is a
+#   contact, not a meeting. The other lists count on any line.
 # - A stem needs enough letters not to turn up in everyday words: abus would find syllabus, so the
 #   English list has abuse and abusi. Support is matched by its pairs (erityinen tuki), since tuki
 #   alone would find tukiopetus and tukikohta.
 #
-# Categories: health (diagnoses, medication, psychologists and therapy), support (special or
-# intensified support and individual plans), bullying (bullying, harassment and violence) and
-# welfare (child welfare, social workers and the police). The Brief doesn't show them. They are
-# only for reviewing the lists and for the log.
+# Categories: health (diagnoses, conditions and therapy), support (special or intensified support
+# and individual plans), bullying (bullying, harassment and violence), welfare (child welfare and
+# the police) and staff (psychologists, school social workers and other staff or services a family
+# meets about one child). The Brief doesn't show them. They are for reviewing the lists and the log.
 
 fi:
   health:
-    - diagno            # diagnoosi, diagnoosin, diagnosoitu
-    - lääkity           # lääkitys, lääkityksen, lääkitystä
-    - lääkehoi          # lääkehoito, lääkehoidon, lääkehoitosuunnitelma
-    - psykolog          # psykologi, koulupsykologin, psykologille
+    - diagnoos          # diagnoosi, diagnoosin, diagnooseja (not diagnostinen koe, a diagnostic test)
+    - diagnosoi         # diagnosoitu, diagnosoitiin
     - psykiatr          # psykiatri, nuorisopsykiatrian
-    - neuropsyk         # neuropsykologinen, neuropsykiatrinen
-    - kuraattor         # kuraattori, koulukuraattorin
+    - neuropsyk         # neuropsykologinen tutkimus, neuropsykiatrinen
     - terapi            # terapia, puheterapiaan, toimintaterapia
-    - terapeu           # terapeutti, toimintaterapeutin
     - masennu           # masennus, masennuksen
     - masentu           # masentunut, masentuneisuus
     - ahdistu           # ahdistus, ahdistunut, ahdistuneisuus
@@ -66,6 +70,7 @@ fi:
     - tehostet tuki|tukea|tukeen|tukena|tue      # tehostettu tuki, tehostettua tukea, tehostetun tuen
     - yksilökohtai tuki|tukea|tukeen|tukena|tue  # yksilökohtainen tuki, yksilökohtaiset tukitoimet
     - tukipäätö         # tukipäätös, tukipäätöksen
+    - tukipalaver       # tukipalaveri, tukipalaverin
     - tuen tarv         # tuen tarve
     - tuen tarpe        # tuen tarpeen, tuen tarpeesta
     - hojks
@@ -90,14 +95,19 @@ fi:
     - nimittel          # nimittely, nimitteli
   welfare:
     - lastensuojel      # lastensuojelu, lastensuojeluilmoitus, lastensuojelun
-    - sosiaalityönt     # sosiaalityöntekijä, sosiaalityöntekijän
-    - sosiaalipäivy     # sosiaalipäivystys
-    - perhetyönt        # perhetyöntekijä
-    - perheneuvol       # perheneuvola, perheneuvolaan
     - huostaan          # huostaanotto, otettiin huostaan
     - sijaisperhe       # sijaisperhe, sijaisperheeseen
     - poliisi           # poliisi, poliisin, poliisille, poliisiasema
     - rikosilmoit       # rikosilmoitus
+  staff:
+    - psykolog          # psykologi, koulupsykologin, psykologille, tapasimme psykologia
+    - kuraattor         # kuraattori, koulukuraattorin
+    - terapeu           # terapeutti, toimintaterapeutin
+    - sosiaalityönt     # sosiaalityöntekijä, sosiaalityöntekijän
+    - sosiaaliohjaaj    # sosiaaliohjaaja
+    - perhetyönt        # perhetyöntekijä
+    - perheneuvol       # perheneuvola, perheneuvolaan
+    - sosiaalipäivy     # sosiaalipäivystys
   not:
     - kiusall           # kiusallinen, kiusallista: awkward
     - kiusaant          # kiusaantua, kiusaantunut: to get annoyed
@@ -105,17 +115,21 @@ fi:
     - fysioterap        # fysioterapia, fysioterapeutti: after a sports injury
     - terapiakoir       # terapiakoira: a therapy dog visiting the class
     - erityisesti       # especially: kiitos erityisesti tuesta (thanks especially for the support) is not erityinen tuki
+    - psykologian       # the school subject: psykologian koe, psykologian tunti
+    - psykologiaa       # psykologiaa opiskellaan
+    - psykologiass      # psykologiassa
+    - psykologiaan      # psykologiaan
+    - psykologiast      # psykologiasta
 
 sv:
   health:
-    - diagnos           # diagnos, diagnosen, diagnostiserad
-    - medicinering      # medicinering, medicineringen
-    - medicinera        # medicinerar, medicinerad
-    - psykolog          # psykolog, skolpsykologen
+    - diagnos.          # diagnos (not diagnostiska prov, diagnostic tests)
+    - diagnosen         # diagnosen, diagnosens
+    - diagnoser         # diagnoser, diagnoserna
+    - diagnostiser      # diagnostiserad, diagnostiseras
+    - diagnosticer      # diagnosticerad
     - psykiatr          # psykiatri, barnpsykiatrin
-    - kurator           # kurator, skolkuratorn
     - terapi            # terapi, talterapi
-    - terapeut          # terapeut, terapeuten
     - depression
     - ångest            # ångest, ångesten
     - ätstörning
@@ -149,11 +163,8 @@ sv:
   welfare:
     - barnskydd         # barnskydd, barnskyddsanmälan
     - orosanmälan
-    - socialtjänst      # socialtjänsten
-    - socialarbetare
-    - socialsekreterare
-    - socialjour
-    - polisen           # polisen, polisens (polis alone would find Polish and metropolis)
+    - polis.            # polis (polis inside a word would find Polish and metropolis)
+    - polisen           # polisen, polisens
     - poliser           # poliser, poliserna
     - polisanmäl        # polisanmälan
     - polishus          # polishuset
@@ -161,21 +172,32 @@ sv:
     - omhändertag       # omhändertagande, omhändertagen
     - fosterfamilj
     - familjehem
+  staff:
+    - psykolog          # psykolog, skolpsykologen
+    - kurator           # kurator, skolkuratorn
+    - terapeut          # terapeut, terapeuten
+    - socialarbetare
+    - socialsekreterare
+    - socialjour
+    - socialtjänst      # socialtjänsten
   not:
     - fysioterap        # fysioterapi: after a sports injury
     - terapihund        # a therapy dog visiting the class
     - stödja            # to support: vi vill särskilt stödja läsningen is not särskilt stöd
     - stödjer
     - stöder
+    - psykologiprov     # the school subject
+    - psykologilektion
+    - psykologikurs
 
 en:
   health:
-    - diagnos           # diagnosis, diagnosed
-    - medication
-    - psycholog         # psychologist, psychology
+    - diagnosis         # (diagnos would find a diagnostic test)
+    - diagnose          # diagnosed, diagnoses
+    - psychologic       # psychological assessment (psychology, the school subject, doesn't count)
     - psychiatr         # psychiatrist, psychiatric
-    - counsel           # counsellor, counselor, counselling
-    - therap            # therapy, therapist, speech therapy
+    - therapy           # therapy, speech therapy
+    - therapies
     - depression        # (depress would find a depressing rainy day)
     - panic attack
     - eating disorder
@@ -192,6 +214,7 @@ en:
     - special education # special education, special educational needs
     - special support
     - intensified support
+    - support meeting
     - individual learning plan
     - individual education plan
     - pedagogical assessment
@@ -211,27 +234,28 @@ en:
   welfare:
     - child protect     # child protection, child protective services
     - child welfare
-    - social worker
-    - social services
     - police            # police, policeman
     - foster care
     - foster famil      # foster family, foster families
     - foster parent
+  staff:
+    - psychologist      # school psychologist, educational psychologist
+    - counsel           # counsellor, counselor, counselling
+    - therapist
+    - social worker
+    - social services
   not:
     - physiotherap      # physiotherapy, physiotherapist: after a sports injury
     - physical therap   # physical therapy
     - therapy dog       # a therapy dog visiting the class
+    - guidance counsel  # course choices, not a sensitive meeting
+    - career counsel
+    - careers counsel
+    - study counsel
 
 zh:
   health:
-    - 诊断               # 诊断, 诊断书, 被诊断为
-    - 服药
-    - 用药
-    - 药物治疗
-    - 心理咨询
-    - 心理医生
-    - 心理老师
-    - 心理师
+    - 诊断               # 诊断书, 被诊断为
     - 心理治疗
     - 精神科
     - 抑郁
@@ -270,11 +294,19 @@ zh:
   welfare:
     - 儿童保护
     - 儿童福利
-    - 社工
-    - 社会工作者
     - 警察
     - 警方
     - 报警
     - 寄养
+  staff:
+    - 心理老师
+    - 心理医生
+    - 心理师
+    - 心理咨询
+    - 社工
+    - 社会工作者
   not:
     - 报警器             # an alarm: 测试火灾报警器 (testing the fire alarms) is not calling the police
+    - 诊断测试           # a diagnostic test in a subject
+    - 诊断性测试
+    - 诊断考试

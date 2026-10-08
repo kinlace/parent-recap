@@ -17,22 +17,32 @@ from pathlib import Path
 
 import yaml
 
+from . import ai_filter
 from .collectors.base import Message
 
 log = logging.getLogger(__name__)
 
 WORDS = Path(__file__).with_name("sensitive_words.yaml")
-CATEGORIES = ("health", "support", "bullying", "welfare")
+# Words about what happened count wherever they stand.
+ANYWHERE = ("health", "support", "bullying", "welfare")
+# The staff and services a newsletter lists with their phone numbers, email addresses or links count
+# only on a line without one.
+STAFF = "staff"
+CATEGORIES = (*ANYWHERE, STAFF)
 _NOT = "not"
 
 
 def _pattern(entries: Iterable[str]) -> re.Pattern[str] | None:
     """One pattern for the list's `entries`, or None for an empty list. An entry is a stem that
     counts anywhere in a word, or stems in a row, each starting a word of its own after the one
-    before, and a word may list its forms with |."""
+    before. A word may list its forms with |, and one ending in . must end there."""
+    def word(text: str) -> str:
+        whole = text.endswith(".")
+        forms = "(?:" + "|".join(map(re.escape, text.removesuffix(".").split("|"))) + ")"
+        return forms + (r"(?!\w)" if whole else "")
+
     def entry(text: str) -> str:
-        return r"\w*\s+".join("(?:" + "|".join(map(re.escape, word.split("|"))) + ")"
-                              for word in text.split())
+        return r"\w*\s+".join(map(word, text.split()))
     alternatives = [entry(e) for e in entries if str(e).strip()]
     return re.compile("|".join(alternatives), re.IGNORECASE) if alternatives else None
 
@@ -52,20 +62,34 @@ def _lists() -> tuple[dict[str, re.Pattern[str]], re.Pattern[str] | None]:
     return patterns, _pattern(entries[_NOT])
 
 
+def _contact_line(line: str) -> bool:
+    """Whether `line` has a phone number, an email address or a link, as the AI filter finds them."""
+    return ai_filter.mask(line)[0] != line
+
+
 def sensitive(text: str | None) -> str | None:
-    """The category of `text`'s sensitive words (health, support, bullying or welfare, the first
-    in that order), or None when it has none."""
+    """The category of `text`'s sensitive words (health, support, bullying, welfare or staff, the
+    first in that order), or None when it has none."""
     if not text:
         return None
     patterns, skip = _lists()
     if skip is not None:
         text = skip.sub(" ", text)
-    return next((category for category, pattern in patterns.items() if pattern.search(text)), None)
+    found = next((c for c in ANYWHERE if c in patterns and patterns[c].search(text)), None)
+    if found is None and STAFF in patterns:
+        lines = "\n".join(line for line in text.splitlines() if not _contact_line(line))
+        found = STAFF if patterns[STAFF].search(lines) else None
+    return found
+
+
+_ADDRESS = re.compile(r"<[^<>]*>")
 
 
 def category(message: Message) -> str | None:
-    """The category of a message's sensitive words, in its subject, body or sender, or None."""
-    return next((c for c in map(sensitive, (message.subject, message.body, message.sender)) if c), None)
+    """The category of a message's sensitive words, in its subject, body or sender, or None. The
+    sender's name counts, as in Koulupsykologi Laine <laine@school.fi>, and its address doesn't."""
+    sender = _ADDRESS.sub(" ", message.sender or "")
+    return next((c for c in map(sensitive, (message.subject, message.body, sender)) if c), None)
 
 
 def hold_back(messages: Iterable[Message]) -> tuple[list[Message], list[Message]]:

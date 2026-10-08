@@ -2401,7 +2401,7 @@ def test_with_the_ai_filter_off_the_model_gets_the_messages_as_they_are(harness)
 
 # A message with a word from each category in each language: (id, Source, sender, subject, body).
 SENSITIVE = [
-    ("s-fi-health", "wilma", "Opettaja Virtanen", "Lääkitys", "Mia aloittaa uuden lääkityksen maanantaina."),
+    ("s-fi-health", "wilma", "Opettaja Virtanen", "Lääkärin lausunto", "Mialla todettiin epilepsia."),
     ("s-fi-support", "wilma", "Erityisopettaja Laine", "Leon koulunkäynti",
      "Leolle on tehty pedagoginen selvitys, ja aloitamme tehostetun tuen."),
     ("s-fi-bullying", "gmail", "Rehtori <rehtori@kilo.example.fi>", "Välituntitilanne",
@@ -2416,7 +2416,7 @@ SENSITIVE = [
      "Mia's individual learning plan is ready to sign."),
     ("s-en-bullying", "whatsapp", "Sam", None, "Two older boys keep bullying Leo on the bus."),
     ("s-en-welfare", "whatsapp", "Sam", None, "The police came to school about Mia today."),
-    ("s-zh-health", "whatsapp", "王老师", None, "米娅最近在服药，可能会犯困"),
+    ("s-zh-health", "whatsapp", "王老师", None, "米娅确诊了多动症，可能会犯困"),
     ("s-zh-support", "whatsapp", "王老师", None, "老师建议给小狮申请特殊教育支持"),
     ("s-zh-bullying", "whatsapp", "李妈妈", None, "米娅在学校被欺负了"),
     ("s-zh-welfare", "whatsapp", "李妈妈", None, "社工下周要来家访"),
@@ -2537,6 +2537,7 @@ def test_a_night_with_only_held_back_messages_still_sends_a_brief_that_lists_the
         f"• Wilma · Opettaja Virtanen · Välituntitilanne · {WILMA_TENANT}/!7731905/messages/812\n\n"
         "📥 Read tonight: Gmail 0 messages · MyClub 0 events · Wilma 1 message · WhatsApp 0 messages")
     assert "message:812" in harness.state()["seen_message_ids"]["wilma"]  # not listed again tomorrow
+    assert "Written by" not in email.html  # no model wrote any of it
 
 
 def test_held_back_messages_are_kept_in_the_archive_like_the_others(harness):
@@ -2624,3 +2625,22 @@ def test_the_setup_pages_preview_lists_held_back_messages_too(harness, capsys):
     for body in HELD_BACK_BODIES:
         assert body not in harness.model_prompt()
     assert harness.sent == []
+
+
+def test_a_newsletter_listing_its_staff_and_a_camp_notice_about_medication_still_reach_the_model(harness):
+    normal_night(harness)
+    newsletter = ("Viikkotiedote 40\nTorstaina retki Nuuksioon.\n\nYhteystiedot:\n"
+                  "Kuraattori Maija Laine, 040 123 4567\nKoulupsykologi Pekka Virtanen, pekka.virtanen@kilo.example.fi")
+    harness.sources["wilma"].append(msg(
+        "wilma", "news:41", "2026-09-27T09:00:00+03:00", newsletter, sender="Rehtori", subject="Viikkotiedote 40",
+        metadata={"wilma_kind": "news", "raw_id": 41, "student_number": "7731905"}))
+    harness.sources["gmail"].append(msg(
+        "gmail", "g-104", "2026-09-27T09:30:00+03:00",
+        "Leirikoulu: ilmoitattehan opettajalle lapsen lääkityksestä ja allergioista perjantaihin mennessä.",
+        sender="teacher.3b@kilo.example.fi", subject="Leirikoulu", kid="Mia"))
+
+    assert harness.run() == 0
+
+    assert payload_message_ids(harness) == sorted([*NORMAL_NIGHT_IDS, "g-104", "news:41"])
+    [email] = harness.sent
+    assert "🔒" not in email.text and "🔒" not in email.html
