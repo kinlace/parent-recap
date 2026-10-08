@@ -99,7 +99,8 @@ def get_upcoming_events(cfg: Config, days: int) -> list[dict]:
         orderBy="startTime",
         maxResults=250,
     ).execute()
-    kid_terms = [term.casefold() for k in cfg.kids for term in k.match_terms()]
+    # An empty alias would match every title and send the whole calendar.
+    kid_terms = [term.casefold() for k in cfg.kids for term in k.match_terms() if term.strip()]
     snapshot = []
     for e in resp.get("items", []):
         times = {
