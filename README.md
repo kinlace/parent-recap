@@ -9,7 +9,7 @@ Every evening Parent Recap reads the places your kids' news comes from, has Clau
 
 The Brief is grouped by Kid and lists **Notices** (things to know) and **Action Items** (things to do, with due dates). New events come with the email as a calendar attachment you can add with one tap, or can be written straight into Google Calendar. Optional: Weekend Picks, family events in the Helsinki region recommended every Friday.
 
-The whole program runs on your own Mac. Data only moves between this Mac, the AI you chose (Claude or ChatGPT) and your mailbox; there is no other server.
+The whole program runs on your own Mac. Data only moves between this Mac, the AI you chose (Claude or ChatGPT) and your mailbox; there is no other server. See [What the AI sees](#what-the-ai-sees) for what the AI gets.
 
 ## What you need
 
@@ -74,6 +74,23 @@ Tell Claude or Codex "uninstall Parent Recap". It lists everything setup created
 - Every Brief and the raw data it was built from are archived in `~/ParentRecap/`
 
 The `family-brief` command still works beside `parent-recap`, and `~/.family` keeps its name. Installed an earlier version, whose folder is `~/FamilyBrief`? Uninstall it with that version first (`~/FamilyBrief/app/.venv/bin/family-brief uninstall`), then paste the install line again: the install line stops and says so.
+
+## What the AI sees
+
+Every evening Parent Recap sends the night's messages to your own Claude or ChatGPT, which writes the Brief. Before anything leaves your Mac, the program cuts down what the AI gets:
+
+- Phone numbers, email addresses, links and the names of the people who send the messages (teachers, other parents, the people in your WhatsApp groups) become placeholders such as ⟦N1⟧. The Mac keeps what each one stands for, for that evening only, and puts the real values back before the Brief is written, so your Brief looks the same
+- Messages that look sensitive, such as ones about a diagnosis, special support, bullying or child welfare, don't reach the AI at all. The Brief lists each one by Source, sender and subject, so you read it where it came from
+- From Google Calendar, only Kid-related events reach the AI with their title: the ones Parent Recap added and the ones whose title names a Kid. Every other event goes as a busy time with no title or place
+- Weekend Picks are chosen with your Kids as Kid A and Kid B, not their names
+
+The first two are the AI filter. It is on by default, and you can turn it off by asking Claude or Codex.
+
+This reduces what reaches the AI and doesn't guarantee anything. The rest of each message's text still reaches it, and so do your Kids' names, school and class, and any name the program can't tell is a person's, such as one that appears only inside a message.
+
+Claude and ChatGPT process this text in the US: their consumer plans offer no processing in the EU. By default both may also use your chats to train their models, including the ones that write the Brief. Parent Recap can't check this setting, so the setup page says where to turn it off: "Help improve Claude" under Settings > Privacy in Claude, or "Improve the model for everyone" under Settings > Data controls in ChatGPT, which covers Codex too.
+
+The details are in [What the AI sees](docs/config.md#what-the-ai-sees), and the reasons in [ADR 0013](docs/adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md).
 
 ## Disclaimer
 

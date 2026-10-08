@@ -1994,6 +1994,37 @@ def test_every_ai_sign_in_result_is_explained_in_all_three_languages():
             assert table.get(f"codex.{result}", "").strip(), (language, result)
 
 
+def inside(markup: str, element_id: str) -> str:
+    """The markup inside the element with `element_id`, up to its own closing tag."""
+    start = re.search(rf'<(\w+)[^>]*\bid="{element_id}"[^>]*>', markup)
+    assert start, element_id
+    depth = 1
+    for tag in re.finditer(rf"<(/?){start.group(1)}\b[^>]*>", markup[start.end():]):
+        depth += -1 if tag.group(1) else 1
+        if depth == 0:
+            return markup[start.end():start.end() + tag.start()]
+    raise AssertionError(f"{element_id} isn't closed")
+
+
+# Where each AI's consumer plans let the family turn off training on their chats, named as the
+# app names it (ADR 0013).
+TRAINING_SETTINGS = {"claude": ("Settings > Privacy", "Help improve Claude"),
+                     "codex": ("Settings > Data controls", "Improve the model for everyone")}
+
+
+def test_the_ai_sign_in_says_where_to_turn_off_training_on_the_chats():
+    # Both AIs may train on the family's chats by default, and Parent Recap can't check the
+    # setting, so the sign-in for the AI the family chose names it, as a hint beside the step.
+    page_html = (PAGE_DIR / "index.html").read_text()
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for name, (menu, setting) in TRAINING_SETTINGS.items():
+        assert f'<p class="hint" data-text="{name}.training"></p>' in inside(page_html, f"ai-{name}")
+        for language, table in text.items():
+            assert menu in table[f"{name}.training"], (language, name)
+            assert setting in table[f"{name}.training"], (language, name)
+
+
 def test_the_claude_token_field_is_the_page_s_own(page):
     html = call(page.url).body.decode()
 
