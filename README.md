@@ -88,7 +88,7 @@ The first two are the AI filter. It is on by default, and you can turn it off by
 
 This reduces what reaches the AI and doesn't guarantee anything. The rest of each message's text still reaches it, and so do your Kids' names, school and class, and any name the program can't tell is a person's, such as one that appears only inside a message.
 
-Claude and ChatGPT process this text in the US: their consumer plans offer no processing in the EU. By default both may also use your chats to train their models, including the ones that write the Brief. Parent Recap can't check this setting, so the setup page says where to turn it off: "Help improve Claude" under Settings > Privacy in Claude, or "Improve the model for everyone" under Settings > Data controls in ChatGPT, which covers Codex too.
+Claude and ChatGPT process this text in the US: their consumer plans offer no processing in the EU. By default both may also use your chats to train their models, including the ones that write the Brief. Parent Recap can't check this setting, so the setup page says where to turn it off: "Help improve Claude" under Settings > Privacy in Claude, or "Improve the model for everyone" under Settings > Data controls in ChatGPT, which OpenAI says also covers Codex tasks.
 
 The details are in [What the AI sees](docs/config.md#what-the-ai-sees), and the reasons in [ADR 0013](docs/adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md).
 
