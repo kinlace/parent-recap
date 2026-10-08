@@ -136,9 +136,10 @@ _SOURCE_NAMES = ("Wilma", "Gmail", "WhatsApp", "MyClub")
 
 def third_parties(cfg: Config, messages: list[dict[str, Any]]) -> list[str]:
     """The names of the people `messages` (as Message.to_dict gives them) come from, from the fields
-    that hold them: an email's display name, the people who post in the WhatsApp groups, and the
-    sender of a Wilma or any other message. The Household's Recipients are left out: an email from
-    one of their addresses, and their own WhatsApp posts (ADR 0013)."""
+    that hold them: an email's display name with its address (an info@ address is no person's),
+    the people who post in the WhatsApp groups, and the sender of a Wilma or any other message.
+    The Household's Recipients are left out: an email from one of their addresses, and their own
+    WhatsApp posts (ADR 0013). Calendar attendees aren't in the events the program reads."""
     own = {a.casefold() for a in (*(r.address for r in (*cfg.email.to, *cfg.email.weekend_to)),
                                   cfg.gmail.username, cfg.email.from_addr) if a}
     names = []
@@ -146,8 +147,8 @@ def third_parties(cfg: Config, messages: list[dict[str, Any]]) -> list[str]:
         sender = m.get("sender") or ""
         if m.get("source") == "gmail":
             name, address = parseaddr(sender)
-            if address.casefold() not in own:
-                names.append(name)
+            if name and address.casefold() not in own:
+                names.append(f"{name} <{address}>")
         elif not (m.get("source") == "whatsapp" and (m.get("metadata") or {}).get("from_me")):
             names.append(sender)
     return [n for n in names if n]
