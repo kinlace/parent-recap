@@ -91,7 +91,7 @@ llm:
   timeout_seconds: 300
 
 ai_filter:
-  enabled: true # The AI gets placeholders for phone numbers, email addresses and links, and the Brief shows the real ones
+  enabled: true # The AI gets placeholders for phone numbers, email addresses and links, and the Brief shows the real ones. Messages that look sensitive never reach the AI: the Brief lists them to read where they came from
 
 archive:
   dir: ~/ParentRecap

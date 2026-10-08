@@ -76,6 +76,13 @@ class BriefText:
     # ── At the top of the original, sent to a Recipient whose translation failed
     translation_failed: str
 
+    # ── Held-back Messages, which the program lists itself, without the AI (ADR 0013)
+    held_back: str                      # the heading
+    held_back_note: str                 # {assistant}
+    held_back_open: str                 # the link to read one at its Source
+    held_back_read_in: str              # {source}, for one without a link, such as WhatsApp's
+    no_subject: str
+
     # ── Sections and footer
     action_items: str
     due: str                            # {date}, after an Action Item
@@ -165,6 +172,12 @@ EN = BriefText(
                      "All of tonight's messages are in the archive in ~/ParentRecap.",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
+    held_back="🔒 Held-back messages",
+    held_back_note="These messages looked sensitive, such as health, support, bullying or child welfare, "
+                   "so they were not sent to {assistant}. Read them where they came from.",
+    held_back_open="open it",
+    held_back_read_in="read it in {source}",
+    no_subject="(no subject)",
     action_items="✅ Action Items",
     due="by {date}",
     months=("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"),
@@ -225,6 +238,11 @@ ZH = BriefText(
     reply_incomplete="⚠️ 今晚 {assistant} 的回复不完整，这份日报可能漏了几条。今晚的原始消息都在 ~/ParentRecap 归档里。",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ 今晚的日报没能翻译成功，下面是原文。",
+    held_back="🔒 未交给 AI 的消息",
+    held_back_note="这些消息看起来涉及健康、特殊支持、霸凌或儿童保护等敏感内容，所以没有交给 {assistant}。请到原处查看。",
+    held_back_open="打开原文",
+    held_back_read_in="请在 {source} 里查看",
+    no_subject="（无主题）",
     action_items="✅ 待办",
     due="by {date}",
     months=("1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"),
@@ -278,7 +296,8 @@ FI = BriefText(
     fallback_more="  …arkistossa vielä {n} lisää",
     # Added after the first review and not yet checked by a Finnish speaker: reply_incomplete,
     # message_unreadable, nothing_read, source_problem, fix_login, fix_permission, fix_other,
-    # whatsapp_permission_denied, phone_number, email_address, link.
+    # whatsapp_permission_denied, phone_number, email_address, link, held_back, held_back_note,
+    # held_back_open, held_back_read_in, no_subject.
     reply_incomplete="⚠️ {assistant}-avustajan vastaus katkesi tänä iltana, joten koosteesta voi puuttua "
                      "joitakin kohtia. Kaikki tämäniltaiset viestit ovat arkistossa kansiossa ~/ParentRecap.",
     message_unreadable="yhtä viestiä ei voitu lukea",
@@ -292,6 +311,12 @@ FI = BriefText(
               "{assistant}-avustajalle ”tarkista Parent Recap”.",
     message_time="{day}.{month}. klo {hour}.{minute:02}",
     translation_failed="⚠️ Tämäniltaista koostetta ei saatu käännettyä, joten tässä se on alkuperäisellä kielellä.",
+    held_back="🔒 Tekoälyltä piilotetut viestit",
+    held_back_note="Nämä viestit vaikuttivat arkaluonteisilta (esimerkiksi terveys, tuki, kiusaaminen tai "
+                   "lastensuojelu), joten niitä ei lähetetty {assistant}-avustajalle. Lue ne alkuperäisessä lähteessä.",
+    held_back_open="avaa viesti",
+    held_back_read_in="lue viesti lähteessä {source}",
+    no_subject="(ei aihetta)",
     action_items="✅ Hoidettavat",
     due="viimeistään {date}",
     months=("tammi", "helmi", "maalis", "huhti", "touko", "kesä", "heinä", "elo", "syys", "loka", "marras",

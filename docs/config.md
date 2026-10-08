@@ -51,7 +51,7 @@ One town outside the presets was set up end to end in a fresh-install test in Oc
 | `llm.backend`                          | `claude` (Claude Pro/Max subscription) or `codex` (ChatGPT account); `cli` in older configs means `claude`                      |
 | `llm.codex_path`                       | Optional, where codex is. By default the one bundled in Codex.app or ChatGPT.app is used first (ChatGPT.app keeps it in `Contents/Resources/codex-cli/bin/codex`)                                  |
 | `llm.timeout_seconds`                  | Timeout for one model call, 300 seconds by default; raise it to 600 if there are a lot of messages, for example after a holiday |
-| `ai_filter.enabled`                    | `true` by default: the AI gets placeholders for phone numbers, email addresses and links. See [What the AI sees](#what-the-ai-sees) |
+| `ai_filter.enabled`                    | `true` by default: the AI gets placeholders for phone numbers, email addresses and links, and nothing of messages that look sensitive. See [What the AI sees](#what-the-ai-sees) |
 | `email.to`                             | Brief recipients; see [Recipients in their own language](#recipients-in-their-own-language) below                               |
 | `email.weekend_to`                     | Weekend Picks recipients (`email.to` when empty); each can have its own `language` too                                          |
 | `weekend_events.kid_preferences`       | Free text describing each Kid's interests                                                                                       |
@@ -84,9 +84,11 @@ Weekend Picks work the same way: they are written once, in the language of the f
 
 Every evening the night's messages go to the Household's own Claude or ChatGPT, which writes the Brief. With `ai_filter.enabled: true`, the default, the program first replaces each phone number, email address and link in them with a placeholder such as ⟦P1⟧, ⟦E1⟧ or ⟦L1⟧, and leaves out what the AI doesn't need: the link back to each Gmail message and the Kid's Wilma student number. A sender such as `Maija Opettaja <maija@school.fi>` keeps its name. The translation for each Recipient gets the same placeholders. The program keeps which value each placeholder stands for in memory on the Mac, for that run only, and puts the real values back before the Brief, the `.ics` file, Google Calendar and the archive are written, so the Brief looks the same. If the AI changed a placeholder so it can't be put back, the Brief says "a phone number", "an email address" or "a link" in its place, in the Recipient's language, and keeps the item.
 
+A message that looks sensitive doesn't reach the AI at all: one about a diagnosis, medication, a meeting with a psychologist or school social worker, special or intensified support, bullying, harassment, violence, child welfare or the police, also when it is about your own Kids. The program checks each message's subject, body and sender on the Mac against word lists in Finnish, Swedish, English and Chinese (`app/src/family_brief/sensitive_words.yaml`), and lists each such message in the Brief by its Source, sender and subject, with a link to read it in Gmail or Wilma, or a note to read it in WhatsApp. The Brief doesn't summarize it, and it is kept in the archive like the others. Routine notices to a whole class, such as head lice, chickenpox, a sick day or the school nurse's check-ups, still go to the AI. The lists only look for words, so a notice to the whole class about bullying or a police visit is held back too.
+
 This reduces what reaches the AI. It doesn't hide everything: names and the rest of the text still reach it ([ADR 0013](adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md)).
 
-To turn it off, set `ai_filter.enabled: false`, or ask Claude or Codex to turn off the AI filter. The AI then gets the messages as they are, from the next Brief on.
+To turn it off, set `ai_filter.enabled: false`, or ask Claude or Codex to turn off the AI filter. The AI then gets the messages as they are, sensitive ones included, from the next Brief on.
 
 ## Pilot feedback
 

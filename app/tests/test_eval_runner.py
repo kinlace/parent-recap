@@ -118,6 +118,24 @@ def test_the_eval_runs_to_the_end_with_contact_details_as_placeholders(case_dir,
         "付 kausimaksu 120 € https://eagles.example.fi/maksu"
 
 
+def test_a_sensitive_message_reaches_neither_the_brief_nor_the_judge(case_dir, model, tmp_path):
+    case = copy.deepcopy(CASE)
+    case["messages"].append({"id": "wa-2", "source": "whatsapp", "at": "2026-10-04T19:00:00+03:00",
+                             "chat": "Salibandy Eagles", "sender": "Coach",
+                             "body": "Eeroa on kiusattu pukuhuoneessa, soitan teille huomenna."})
+    (case_dir / "floorball-fee.yaml").write_text(yaml.safe_dump(case, allow_unicode=True))
+    model["replies"] = [lambda prompt: {"score": 4, "reason": "clear"} if "## Digest" in prompt else GOOD]
+
+    assert runner.main(["--cases", str(case_dir), "--out", str(tmp_path / "r"), "--language", "zh",
+                        "--judge"]) == 0
+
+    brief, judge = model["prompts"]
+    assert "## Digest" in judge
+    for prompt in (brief, judge):
+        assert "kiusattu" not in prompt and "wa-2" not in prompt
+        assert "kausimaksu" in prompt
+
+
 def test_compares_with_the_previous_run_and_reports_the_spread(case_dir, model, tmp_path, capsys):
     out = tmp_path / "results"
     runner.main(["--cases", str(case_dir), "--out", str(out), "--language", "zh"])

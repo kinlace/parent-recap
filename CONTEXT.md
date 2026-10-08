@@ -37,7 +37,7 @@ A place messages or events are read from for a Household, such as Gmail, Wilma, 
 _Avoid_: collector, channel, feed, 采集器, 来源
 
 **AI filter** (zh AI 过滤, fi tekoälysuodatin):
-The step on the Mac that every AI call of the evening Brief goes through: phone numbers, email addresses and links become placeholders, which the program turns back into the real values before the Brief goes out (ADR 0013). It is on by default, and a parent can turn it off with `manage`.
+The step on the Mac that every AI call of the evening Brief goes through: phone numbers, email addresses and links become placeholders, which the program turns back into the real values before the Brief goes out, and Held-back Messages are left out altogether (ADR 0013). It is on by default, and a parent can turn it off with `manage`.
 _Avoid_: anonymizer, redaction, masking (in user-facing text), 脱敏
 
 ## People

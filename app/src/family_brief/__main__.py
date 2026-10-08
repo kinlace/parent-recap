@@ -26,7 +26,8 @@ from .brief_text import PRODUCT_NAME, BriefText
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, Message
 from .config import Config
 from .state import State
-from .summarize import CALL_BUDGET, digest_of, extract_calendar_events, placeholders_for, summarize
+from .summarize import (CALL_BUDGET, digest_of, extract_calendar_events, for_the_ai, placeholders_for,
+                        summarize)
 from .translate import translate
 from .utils.dates import to_local, today_str
 
@@ -295,6 +296,54 @@ def _action_meta(a: dict, t: BriefText) -> str:
                                   str(a.get("who", "")), source] if x)
 
 
+@dataclass(frozen=True)
+class _HeldBack:
+    """A Held-back Message as the Brief lists it, without the AI (ADR 0013): its Source, sender and
+    subject (for WhatsApp, which has none, its group), and the link to read it at its Source."""
+    source: str
+    sender: str
+    subject: str | None
+    link: str | None
+
+    def label(self, t: BriefText) -> str:
+        subject = self.subject or t.no_subject
+        about = [subject, self.sender] if self.source == "whatsapp" else [self.sender, subject]
+        return " · ".join(x for x in [self.source_name, *about] if x)
+
+    @property
+    def source_name(self) -> str:
+        return _SOURCE_NAMES.get(self.source, self.source)
+
+
+_ADDRESS = re.compile(r"\s*<[^<>]*>$")
+
+
+def _sender_name(sender: str | None) -> str:
+    """A sender as the Brief names them: the name of `Name <address>`, or else the address."""
+    sender = (sender or "").strip()
+    return _ADDRESS.sub("", sender).strip().strip('"') or sender.strip("<>")
+
+
+def _held_back(held: list[Message]) -> list[_HeldBack]:
+    """Tonight's Held-back Messages as the Brief lists them: Gmail's with the link the Source gives,
+    Wilma's with their page in Wilma, and WhatsApp's with none."""
+    out = []
+    for m in held:
+        link = wilma_collector.link(m) if m.source == "wilma" else m.url
+        out.append(_HeldBack(m.source, _sender_name(m.sender),
+                             m.chat_name if m.source == "whatsapp" else m.subject,
+                             link if link and link.startswith("https://") else None))
+    return out
+
+
+def _held_back_lines(held: list[_HeldBack], t: BriefText, assistant: str) -> list[str]:
+    """The plain-text Brief's list of Held-back Messages, or nothing on a night without one."""
+    if not held:
+        return []
+    return [t.held_back, t.held_back_note.format(assistant=assistant),
+            *(f"• {h.label(t)} · {h.link or t.held_back_read_in.format(source=h.source_name)}" for h in held)]
+
+
 def _header_date(date_str: str, t: BriefText) -> str:
     """Tonight's date at the top of the Brief; the subject keeps it as YYYY-MM-DD, so threads sort."""
     return t.on(date.fromisoformat(date_str))
@@ -365,11 +414,13 @@ def _daily_brief_html(summary: dict, calendar_created: list[dict],
                       date_str: str, t: BriefText, tz: str, note: str = "", ics_attached: bool = False,
                       coverage: str = "", footer: str = "",
                       feedback_link: Callable[..., str] | None = None,
-                      original: dict | None = None, top_note: str = "") -> str:
+                      original: dict | None = None, top_note: str = "",
+                      held_back: list[_HeldBack] | None = None, assistant: str = "") -> str:
     """Simple HTML rendering of the Brief, safe for Gmail. `summary` is translated from
     `original` for a Recipient in another language; feedback links carry the original's text, so
     the Form gets the same words from every language version (ADR 0004). `top_note` holds the
-    warnings shown above the Digest (see _top_note)."""
+    warnings shown above the Digest (see _top_note), and `held_back` the Held-back Messages, which
+    were not sent to the `assistant`."""
     import html as _h
     original = original or summary
 
@@ -388,6 +439,14 @@ def _daily_brief_html(summary: dict, calendar_created: list[dict],
             parts.append("<p><small>"
                          f"{form_link(feedback.DIGEST_WRONG, t.feedback_digest_wrong, digest_of(original))}"
                          "</small></p>")
+    if held_back:
+        parts.append(f"<h3>{_h.escape(t.held_back)}</h3><p style='color:#666'>"
+                     f"{_h.escape(t.held_back_note.format(assistant=assistant))}</p><ul>")
+        for h in held_back:
+            where = (f'<a href="{_h.escape(h.link)}">{_h.escape(t.held_back_open)}</a>' if h.link
+                     else _h.escape(t.held_back_read_in.format(source=h.source_name)))
+            parts.append(f"<li>{_h.escape(h.label(t))} · {where}</li>")
+        parts.append("</ul>")
     all_actions = _action_items(summary)
     if all_actions:
         parts.append(f"<h3>{t.action_items}</h3><ul>")
@@ -428,13 +487,16 @@ def _daily_brief_html(summary: dict, calendar_created: list[dict],
 
 
 def _format_imessage_body(summary: dict, calendar_created: list[dict], date_str: str,
-                          t: BriefText, tz: str, top_note: str = "") -> str:
+                          t: BriefText, tz: str, top_note: str = "",
+                          held_back: list[str] | None = None) -> str:
     parts = [f"👨‍👩‍👧‍👦 {PRODUCT_NAME} {_header_date(date_str, t)}"]
     if top_note:
         parts += ["", top_note]
     digest = digest_of(summary)
     if digest:
         parts += ["", digest]
+    if held_back:
+        parts += ["", *held_back]
     actions = _action_items(summary)
     if actions:
         parts += ["", t.action_items]
@@ -454,9 +516,12 @@ def _top_note(summary: dict, t: BriefText, assistant: str, translation_note: str
 
 
 def _brief_text(summary: dict, created: list[dict], date_str: str, t: BriefText, tz: str,
-                coverage: str, calendar_note: str, top_note: str = "") -> str:
-    """The plain-text Brief: the email's text part, and the iMessage."""
-    body = _format_imessage_body(summary, created, date_str, t, tz, top_note)
+                coverage: str, calendar_note: str, top_note: str = "",
+                held_back: list[_HeldBack] | None = None, assistant: str = "") -> str:
+    """The plain-text Brief: the email's text part, and the iMessage. `held_back` are the
+    Held-back Messages, which were not sent to the `assistant`."""
+    body = _format_imessage_body(summary, created, date_str, t, tz, top_note,
+                                 _held_back_lines(held_back or [], t, assistant))
     for note in (coverage, calendar_note):
         if note:
             body += "\n\n" + note
@@ -547,7 +612,8 @@ def _preview_step(step: str, **more: object) -> None:
 
 
 def _print_preview(cfg: Config, summary: dict, created: list[dict], coverage: dict[str, dict],
-                   body: str, date_str: str, t: BriefText, assistant: str) -> None:
+                   body: str, date_str: str, t: BriefText, assistant: str,
+                   held_back: list[_HeldBack] | None = None) -> None:
     """The first Recipient's email as tonight's Brief would send it, as one line of JSON: its
     subject, text and HTML, and for a pilot Household the Digest's feedback link."""
     model_wrote = "_llm_error" not in summary
@@ -556,7 +622,8 @@ def _print_preview(cfg: Config, summary: dict, created: list[dict], coverage: di
     html = _daily_brief_html(summary, created, date_str, t, cfg.timezone,
                              coverage=_coverage_note(coverage, t),
                              footer=t.written_by.format(assistant=assistant) if model_wrote else "",
-                             feedback_link=links, top_note=_top_note(summary, t, assistant))
+                             feedback_link=links, top_note=_top_note(summary, t, assistant),
+                             held_back=held_back, assistant=assistant)
     wrong = feedback.link(cfg, feedback.DIGEST_WRONG, digest_of(summary) if model_wrote else "",
                           date=date_str) if cfg.feedback.active() else None
     _preview_step("made", subject=f"{PRODUCT_NAME} · {date_str}", text=body, html=html,
@@ -623,22 +690,27 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
     # Tonight's placeholders while the AI filter is on: the Brief's call and each translation share
     # them, so a value has the same placeholder in every prompt (ADR 0013).
     placeholders = placeholders_for(cfg)
-    if messages or due_soon:
+    # Messages that look sensitive reach no model call: the Brief lists them itself (ADR 0013).
+    for_ai, held = for_the_ai(cfg, messages)
+    if for_ai or due_soon:
         if args.preview:
             _preview_step("writing")
         try:
             # Pass direct_events so the LLM doesn't duplicate them into calendar_events.
             already_captured = [e.to_dict() for e in direct_events]
-            summary = summarize(cfg, messages, upcoming, already_captured, earlier,
+            summary = summarize(cfg, for_ai, upcoming, already_captured, earlier,
                                 budget=PREVIEW_BUDGET if args.preview else CALL_BUDGET,
                                 placeholders=placeholders)
         except Exception as e:
             log.error("Summarizer failed: %s (falling back to rule-based digest)", e)
-            summary = _fallback_summary(messages, str(e), t, cfg)
+            summary = _fallback_summary(for_ai, str(e), t, cfg)
     else:
         summary = {"per_kid": [], "calendar_events": [], "message_digest": ""}
 
     summary["_coverage"] = coverage  # kept in the archive for later checks
+    if held:  # the messages in the archive that the AI never saw
+        summary["_held_back"] = [m.external_id for m in held]
+    listed_held_back = _held_back(held)
     model_events = extract_calendar_events(summary, cfg.timezone, t.untitled)
     events = model_events + direct_events
     created: list[dict] = []
@@ -676,9 +748,9 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
     date_str = today_str(cfg.timezone)
     body = _brief_text(summary, created, date_str, t, cfg.timezone, _coverage_note(coverage, t),
                        _calendar_note(calendar_problem, bool(ics_events), t, assistant),
-                       _top_note(summary, t, assistant))
+                       _top_note(summary, t, assistant), listed_held_back, assistant)
     if args.preview:
-        _print_preview(cfg, summary, created, coverage, body, date_str, t, assistant)
+        _print_preview(cfg, summary, created, coverage, body, date_str, t, assistant, listed_held_back)
     if args.dry_run:
         # Dry runs leave no trace: no archive, no state, no email.
         log.info("DRY-RUN: body (%d chars):\n%s", len(body), body)
@@ -693,7 +765,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
         model_wrote = "_llm_error" not in summary
         links = partial(feedback.link, cfg, date=date_str) \
             if cfg.feedback.active() and model_wrote else None
-        for v in _versions(cfg, summary, model_events, messages, placeholders):
+        for v in _versions(cfg, summary, model_events, for_ai, placeholders):
             try:
                 listed = v.translated_list(created)
                 coverage_note = _coverage_note(coverage, v.t)
@@ -705,11 +777,12 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
                 html = _daily_brief_html(v.summary, listed, date_str, v.t, cfg.timezone, calendar_note,
                                          ics_attached=bool(attachments), coverage=coverage_note,
                                          footer=v.t.written_by.format(assistant=assistant) if model_wrote else "",
-                                         feedback_link=links, original=summary, top_note=top_note)
+                                         feedback_link=links, original=summary, top_note=top_note,
+                                         held_back=listed_held_back, assistant=assistant)
                 email_action.send(
                     subject=f"{PRODUCT_NAME} · {date_str}",
                     body_text=_brief_text(v.summary, listed, date_str, v.t, cfg.timezone, coverage_note,
-                                          calendar_note, top_note),
+                                          calendar_note, top_note, listed_held_back, assistant),
                     body_html=html,
                     from_addr=cfg.email.from_addr or cfg.gmail.username or "",
                     to_addrs=v.to,
@@ -799,7 +872,7 @@ def cmd_summarize(args: argparse.Namespace) -> int:
         chat_name=m.get("chat_name"), kid_hint=m.get("kid_hint"), url=m.get("url"),
         metadata=m.get("metadata", {}),
     ) for m in raw.get("messages", [])]
-    summary = summarize(cfg, msgs, [])
+    summary = summarize(cfg, for_the_ai(cfg, msgs)[0], [])
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
 

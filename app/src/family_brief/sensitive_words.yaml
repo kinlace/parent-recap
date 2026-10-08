@@ -1,0 +1,280 @@
+# Words that make a message look sensitive. While the AI filter is on, the evening Brief holds such
+# a message back from the AI and lists it by Source, sender and subject, so the parents read it
+# where it came from (ADR 0013, held_back.py). The check runs on the Mac and never asks the AI.
+#
+# REVIEW: the Finnish list waits for a native speaker's review. The Swedish, English and Chinese
+# lists wait for review by the maintainers. Changing a word here changes which messages the AI
+# never sees, so tests/test_held_back.py lists the cases that must and must not be held back.
+#
+# What the lists aim at: a message about one person's sensitive situation, such as a diagnosis,
+# medication, a meeting with a psychologist or a school social worker (kuraattori), special or
+# intensified support, bullying, harassment, violence, child welfare or the police. This includes
+# messages about the Household's own Kids. Routine notices to a whole class are not the aim: head
+# lice, chickenpox, a sick-day absence, the school nurse's check-up schedule or a sports injury in
+# a club chat. So everyday health words are left out on purpose: sick, ill, fever, nurse, doctor,
+# check-up, lice, chickenpox, allergy, injury and hospital (sairas, kipeä, terveydenhoitaja,
+# lääkäri, terveystarkastus, täi, vesirokko, allergia, loukkaantui, sairaala, and the same in the
+# other languages). A message with a word here is held back even when it goes to the whole class,
+# such as a talk about bullying or a police visit about traffic safety: the word lists can't tell.
+#
+# How an entry matches:
+# - Case doesn't matter, and every list is checked against the subject, the body and the sender of
+#   every message, whatever language it is in.
+# - An entry is the start of a word, a stem, and it counts anywhere inside a word too. One stem
+#   covers the Finnish and Swedish case endings and compounds: kiusa finds kiusattu, kiusasi,
+#   kiusaamista and koulukiusaaminen, and mobb finds mobbad and nätmobbning. Chinese has no spaces
+#   between words, so a Chinese entry counts wherever it stands, also right next to other text.
+# - An entry with a space is stems in a row, each a word of its own, and a word may list its forms
+#   with |: "tehostet tuki|tukea|tue" finds tehostettu tuki, tehostettua tukea and tehostetun tuen,
+#   but not erityisen tukevat kengät (especially sturdy shoes).
+# - Text that matches an entry under `not` is taken out before the check, for words that hold a
+#   stem but mean something else: kiusallinen (awkward) is not kiusaaminen, and fysioterapia after a
+#   sports injury is not terapia.
+# - A stem needs enough letters not to turn up in everyday words: abus would find syllabus, so the
+#   English list has abuse and abusi. Support is matched by its pairs (erityinen tuki), since tuki
+#   alone would find tukiopetus and tukikohta.
+#
+# Categories: health (diagnoses, medication, psychologists and therapy), support (special or
+# intensified support and individual plans), bullying (bullying, harassment and violence) and
+# welfare (child welfare, social workers and the police). The Brief doesn't show them. They are
+# only for reviewing the lists and for the log.
+
+fi:
+  health:
+    - diagno            # diagnoosi, diagnoosin, diagnosoitu
+    - lääkity           # lääkitys, lääkityksen, lääkitystä
+    - lääkehoi          # lääkehoito, lääkehoidon, lääkehoitosuunnitelma
+    - psykolog          # psykologi, koulupsykologin, psykologille
+    - psykiatr          # psykiatri, nuorisopsykiatrian
+    - neuropsyk         # neuropsykologinen, neuropsykiatrinen
+    - kuraattor         # kuraattori, koulukuraattorin
+    - terapi            # terapia, puheterapiaan, toimintaterapia
+    - terapeu           # terapeutti, toimintaterapeutin
+    - masennu           # masennus, masennuksen
+    - masentu           # masentunut, masentuneisuus
+    - ahdistu           # ahdistus, ahdistunut, ahdistuneisuus
+    - syömishäiri       # syömishäiriö
+    - itsetuho          # itsetuhoinen, itsetuhoisuus
+    - itsemurh          # itsemurha
+    - adhd
+    - autism            # autismi, autismikirjo
+    - autisti           # autistinen
+    - epilep            # epilepsia
+    - diabete           # diabetes, diabeteksen
+  support:
+    - erityi tuki|tukea|tukeen|tukena|tue        # erityinen tuki, erityistä tukea, erityisen tuen
+    - tehostet tuki|tukea|tukeen|tukena|tue      # tehostettu tuki, tehostettua tukea, tehostetun tuen
+    - yksilökohtai tuki|tukea|tukeen|tukena|tue  # yksilökohtainen tuki, yksilökohtaiset tukitoimet
+    - tukipäätö         # tukipäätös, tukipäätöksen
+    - tuen tarv         # tuen tarve
+    - tuen tarpe        # tuen tarpeen, tuen tarpeesta
+    - hojks
+    - oppimissuunnitelm # oppimissuunnitelma, oppimissuunnitelman
+    - pedagogi selvit   # pedagoginen selvitys, pedagogisen selvityksen
+    - pedagogi arvio    # pedagoginen arvio, pedagogisen arvion
+    - erityisopetu      # erityisopetus, osa-aikaiseen erityisopetukseen
+    - erityisluok       # erityisluokka, erityisluokalle
+    - lukihäiri         # lukihäiriö
+    - lukivaikeu        # lukivaikeus, lukivaikeuden
+    - oppimisvaikeu     # oppimisvaikeus, oppimisvaikeuksia
+  bullying:
+    - kiusa             # kiusata, kiusattu, kiusattiin, kiusasi, kiusaa, kiusaaminen, kiusaamista, kiusaaja, kiusanteko
+    - kiusoittel        # kiusoittelu, kiusoitteli
+    - häirint           # häirintä, häirintää, seksuaalinen häirintä
+    - häirinnä          # häirinnän, häirinnästä
+    - ahdistel          # ahdistelu, ahdisteli
+    - väkival           # väkivalta, väkivallan, väkivaltaisesti, perheväkivalta
+    - pahoinpi          # pahoinpitely, pahoinpiteli
+    - uhkail            # uhkailu, uhkaili
+    - syrji             # syrjintä, syrjitty, syrjii
+    - nimittel          # nimittely, nimitteli
+  welfare:
+    - lastensuojel      # lastensuojelu, lastensuojeluilmoitus, lastensuojelun
+    - sosiaalityönt     # sosiaalityöntekijä, sosiaalityöntekijän
+    - sosiaalipäivy     # sosiaalipäivystys
+    - perhetyönt        # perhetyöntekijä
+    - perheneuvol       # perheneuvola, perheneuvolaan
+    - huostaan          # huostaanotto, otettiin huostaan
+    - sijaisperhe       # sijaisperhe, sijaisperheeseen
+    - poliisi           # poliisi, poliisin, poliisille, poliisiasema
+    - rikosilmoit       # rikosilmoitus
+  not:
+    - kiusall           # kiusallinen, kiusallista: awkward
+    - kiusaant          # kiusaantua, kiusaantunut: to get annoyed
+    - kiusau            # kiusaus, kiusauksen: temptation
+    - fysioterap        # fysioterapia, fysioterapeutti: after a sports injury
+    - terapiakoir       # terapiakoira: a therapy dog visiting the class
+    - erityisesti       # especially: kiitos erityisesti tuesta (thanks especially for the support) is not erityinen tuki
+
+sv:
+  health:
+    - diagnos           # diagnos, diagnosen, diagnostiserad
+    - medicinering      # medicinering, medicineringen
+    - medicinera        # medicinerar, medicinerad
+    - psykolog          # psykolog, skolpsykologen
+    - psykiatr          # psykiatri, barnpsykiatrin
+    - kurator           # kurator, skolkuratorn
+    - terapi            # terapi, talterapi
+    - terapeut          # terapeut, terapeuten
+    - depression
+    - ångest            # ångest, ångesten
+    - ätstörning
+    - självskad         # självskada, självskadebeteende
+    - självmord
+    - autism            # autism, autismen
+    - autisti           # autistisk
+    - epilepsi
+    - diabetes
+  support:
+    - särskil stöd      # särskilt stöd, särskilda stödet
+    - intensifier stöd  # intensifierat stöd, intensifierade stödet
+    - specialundervisning
+    - individuell plan  # individuell plan, individuella planen
+    - lärplan           # lärplan, lärplanen (not läroplan, the curriculum)
+    - pedagogisk utredning
+    - pedagogisk bedömning
+    - åtgärdsprogram
+    - dyslexi
+    - läs- och skrivsvårigh  # läs- och skrivsvårigheter
+    - inlärningssvårigh      # inlärningssvårigheter
+  bullying:
+    - mobb              # mobbning, mobbad, mobbar, nätmobbning
+    - trakasser         # trakasserier, trakasserad
+    - kränkning         # kränkning, kränkningar
+    - kränkande         # kränkande behandling
+    - våld              # våld, våldet, våldsam, familjevåld
+    - misshandel
+    - hotelse           # hotelse, hotelser
+    - hotfull           # hotfull, hotfullt
+  welfare:
+    - barnskydd         # barnskydd, barnskyddsanmälan
+    - orosanmälan
+    - socialtjänst      # socialtjänsten
+    - socialarbetare
+    - socialsekreterare
+    - socialjour
+    - polisen           # polisen, polisens (polis alone would find Polish and metropolis)
+    - poliser           # poliser, poliserna
+    - polisanmäl        # polisanmälan
+    - polishus          # polishuset
+    - polisstation
+    - omhändertag       # omhändertagande, omhändertagen
+    - fosterfamilj
+    - familjehem
+  not:
+    - fysioterap        # fysioterapi: after a sports injury
+    - terapihund        # a therapy dog visiting the class
+    - stödja            # to support: vi vill särskilt stödja läsningen is not särskilt stöd
+    - stödjer
+    - stöder
+
+en:
+  health:
+    - diagnos           # diagnosis, diagnosed
+    - medication
+    - psycholog         # psychologist, psychology
+    - psychiatr         # psychiatrist, psychiatric
+    - counsel           # counsellor, counselor, counselling
+    - therap            # therapy, therapist, speech therapy
+    - depression        # (depress would find a depressing rainy day)
+    - panic attack
+    - eating disorder
+    - self-harm
+    - self harm
+    - suicid            # suicide, suicidal
+    - adhd
+    - autism
+    - autisti           # autistic (autist would find flautist)
+    - epilep            # epilepsy, epileptic
+    - diabet            # diabetes, diabetic
+  support:
+    - special needs
+    - special education # special education, special educational needs
+    - special support
+    - intensified support
+    - individual learning plan
+    - individual education plan
+    - pedagogical assessment
+    - pedagogical report
+    - dyslexi           # dyslexia, dyslexic
+    - learning difficult  # learning difficulty, learning difficulties
+    - learning disabilit  # learning disability, learning disabilities
+  bullying:
+    - bully             # bully, bullying
+    - bullied
+    - bullies           # (bulli would find bullion and ebullient)
+    - harass            # harassment, harassed
+    - assault
+    - violen            # violence, violent
+    - abuse             # abuse, abused, abuser (abus would find syllabus)
+    - abusi             # abusive
+  welfare:
+    - child protect     # child protection, child protective services
+    - child welfare
+    - social worker
+    - social services
+    - police            # police, policeman
+    - foster care
+    - foster famil      # foster family, foster families
+    - foster parent
+  not:
+    - physiotherap      # physiotherapy, physiotherapist: after a sports injury
+    - physical therap   # physical therapy
+    - therapy dog       # a therapy dog visiting the class
+
+zh:
+  health:
+    - 诊断               # 诊断, 诊断书, 被诊断为
+    - 服药
+    - 用药
+    - 药物治疗
+    - 心理咨询
+    - 心理医生
+    - 心理老师
+    - 心理师
+    - 心理治疗
+    - 精神科
+    - 抑郁
+    - 焦虑症
+    - 多动症
+    - 自闭症
+    - 孤独症
+    - 癫痫
+    - 糖尿病
+    - 自残
+    - 自伤
+    - 自杀
+    - 厌食
+    - 进食障碍
+  support:
+    - 特殊教育
+    - 特殊支持
+    - 强化支持
+    - 特殊需要
+    - 个别化教育
+    - 个人学习计划
+    - 学习障碍
+    - 阅读障碍
+    - 读写障碍
+  bullying:
+    - 霸凌
+    - 欺凌
+    - 欺负
+    - 骚扰
+    - 暴力
+    - 恐吓
+    - 性侵
+    - 猥亵
+    - 虐待
+    - 家暴
+  welfare:
+    - 儿童保护
+    - 儿童福利
+    - 社工
+    - 社会工作者
+    - 警察
+    - 警方
+    - 报警
+    - 寄养
+  not:
+    - 报警器             # an alarm: 测试火灾报警器 (testing the fire alarms) is not calling the police
