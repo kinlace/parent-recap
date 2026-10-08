@@ -160,6 +160,14 @@ def household_names(cfg: Config) -> list[str]:
     return [*(term for k in cfg.kids for term in k.chat_hint_terms()), *_SOURCE_NAMES]
 
 
+def add_the_nights_people(cfg: Config, placeholders: ai_filter.Placeholders, messages: list[dict[str, Any]],
+                          earlier_briefs: list[dict[str, Any]]) -> None:
+    """Mask from here on the people `messages` (as Message.to_dict gives them) come from, and those
+    of the earlier Briefs' nights, keeping the Household's own names."""
+    earlier = [name for day in earlier_briefs for name in day.get("third_parties") or []]
+    placeholders.add_people([*third_parties(cfg, messages), *earlier], keep_names=household_names(cfg))
+
+
 def _strip_code_fence(text: str) -> str:
     m = re.search(r"```(?:json)?\s*(.+?)\s*```", text, re.DOTALL)
     return m.group(1) if m else text
@@ -672,9 +680,7 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
     log.info("Summarizing %d messages via %s", len(messages), cfg.llm.backend)
     placeholders = placeholders_for(cfg, placeholders)
     if placeholders is not None:
-        earlier = [name for day in earlier_briefs or [] for name in day.get("third_parties") or []]
-        placeholders.add_people([*third_parties(cfg, payload["messages"]), *earlier],
-                                keep_names=household_names(cfg))
+        add_the_nights_people(cfg, placeholders, payload["messages"], earlier_briefs or [])
     language = cfg.brief_language()
     t = languages.text(cfg, language)
     reply = call_llm_filtered(cfg, intro, payload, lambda masked: system_prompt(language, t, masked),

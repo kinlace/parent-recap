@@ -3128,7 +3128,7 @@ def test_a_pilot_household_can_say_something_is_wrong_through_the_feedback_form(
     # The Brief's own Digest link, pre-filled with tonight's Digest.
     [(_, answers, _)] = feedback_links(f'<a href="{html.escape(harness.opened[-1])}">x</a>')
     assert answers["verdict"] == feedback.DIGEST_WRONG and answers["item_text"] == BRIEF_TEXT
-    assert answers["household"] == "王家"
+    assert answers["household"] == "Household 24ebb1"  # 王家's pseudonym, as in the evening's Brief
 
 
 def test_only_a_pilot_household_has_the_feedback_button(harness, page, mac):

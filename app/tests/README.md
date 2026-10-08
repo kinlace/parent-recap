@@ -28,7 +28,12 @@ and the partner's own name do, a role in a sender stays beside its placeholder, 
 coach whose sender names his club, a Chinese pupil written by the given name alone (小明), a
 pupil named Leon beside the Kid Leo (Leon stays), and a newsletter from a news@ address (no one).
 A name from an earlier Brief's night is masked too, and a person placeholder changed beyond
-repair is said as "someone" in each Recipient's language. `test_ai_filter.py` checks the names on
+repair is said as "someone" in each Recipient's language. Pilot feedback links carry an item as
+the AI saw it: a teacher in a Finnish case form, a teacher and a phone number inside Chinese text
+with no spaces, and a name the model wrote out itself go as that night's placeholders, the Kids as
+Kid A and Kid B, also with the AI filter off, and the Household as a pseudonym that is the same
+the next evening and differs for another label. The Form keeps the fields `ops/feedback-form`
+gives it, in their order. `test_ai_filter.py` checks the names on
 their own: a full name and its parts as one person, stems that change (Pekan, Niemen, Markuksen),
 that a reply copying the placeholders gets back exactly the text they stood for (Ville Virtanen,
 Maria, Kevät juhla, Toivon), how a form the text never had is made, a part two people share, a

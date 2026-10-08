@@ -11,7 +11,7 @@ from datetime import timedelta
 from html import escape, unescape
 from pathlib import Path
 from typing import Callable
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
 import time_machine
@@ -1665,22 +1665,23 @@ def test_feedback_links_prefill_each_action_item_and_the_digest(harness):
 
     [email] = harness.sent
     links = feedback_links(email.html)
-    common = {"backend": "claude", "date": "2026-09-27", "household": "王家"}
-    digest = harness.model_reply["message_digest"]
+    # Household 24ebb1 is the pseudonym for 王家, which a new version must keep too.
+    common = {"backend": "claude", "date": "2026-09-27", "household": "Household 24ebb1"}
+    digest = "**Kid A**\n- 周四远足，周二前在 Wilma 签同意书\n- 下周一数学考试\n\n**Kid B**\n- 周三拍班级照\n- 钢琴课本周改到周三 17:30"
     assert [(label, answers) for label, answers, _ in links] == [
         ("❌ 摘要里有错", {"verdict": "❌ The Digest has a mistake", "item_text": digest, "source": "", "kid": "", **common}),
         ("⭐ 幸好有这条", {"verdict": "⭐ Glad this was here", "item_text": "在 Wilma 签远足同意书", "source": "gmail",
-                         "kid": "Mia", **common}),
+                         "kid": "Kid A", **common}),
         ("❌ 这条错了", {"verdict": "❌ This is wrong", "item_text": "在 Wilma 签远足同意书", "source": "gmail",
-                        "kid": "Mia", **common}),
+                        "kid": "Kid A", **common}),
         ("⭐ 幸好有这条", {"verdict": "⭐ Glad this was here", "item_text": "签 reissuvihko", "source": "whatsapp",
-                         "kid": "Mia", **common}),
+                         "kid": "Kid A", **common}),
         ("❌ 这条错了", {"verdict": "❌ This is wrong", "item_text": "签 reissuvihko", "source": "whatsapp",
-                        "kid": "Mia", **common}),
-        ("⭐ 幸好有这条", {"verdict": "⭐ Glad this was here", "item_text": "给 Leo 准备拍照穿的衣服 <整洁>",
-                         "source": "gmail", "kid": "Leo", **common}),
-        ("❌ 这条错了", {"verdict": "❌ This is wrong", "item_text": "给 Leo 准备拍照穿的衣服 <整洁>",
-                        "source": "gmail", "kid": "Leo", **common}),
+                        "kid": "Kid A", **common}),
+        ("⭐ 幸好有这条", {"verdict": "⭐ Glad this was here", "item_text": "给 Kid B 准备拍照穿的衣服 <整洁>",
+                         "source": "gmail", "kid": "Kid B", **common}),
+        ("❌ 这条错了", {"verdict": "❌ This is wrong", "item_text": "给 Kid B 准备拍照穿的衣服 <整洁>",
+                        "source": "gmail", "kid": "Kid B", **common}),
     ]
     assert FORM not in email.text
 
@@ -1716,7 +1717,7 @@ def test_long_feedback_text_is_truncated_to_keep_urls_short(harness):
     assert len(links) == 7
     assert all(len(url) <= 2000 for _, _, url in links)
     digest_text = links[0][1]["item_text"]
-    assert digest_text.startswith("**Mia**\n- 周四远足\n") and digest_text.endswith("…")
+    assert digest_text.startswith("**Kid A**\n- 周四远足\n") and digest_text.endswith("…")
     item_text = links[1][1]["item_text"]
     assert long_item.startswith(item_text[:-1]) and item_text.endswith("…") and len(item_text) > 50
     assert links[3][1]["item_text"] == "签 reissuvihko"  # short text stays whole
@@ -1782,6 +1783,17 @@ def test_feedback_verdicts_match_the_forms_choices():
     script = (Path(__file__).resolve().parents[2] / "ops" / "feedback-form" / "create_feedback_form.gs").read_text()
     [choices] = re.findall(r"const VERDICTS = \[(.*?)\];", script, re.S)
     assert re.findall(r"'([^']+)'", choices) == [feedback.SAVED, feedback.WRONG, feedback.DIGEST_WRONG]
+
+
+def test_the_pilot_form_keeps_its_fields_in_their_order():
+    # The Household's pseudonym and Kid A go in the Form's own Household and Kid fields (#195).
+    script = (Path(__file__).resolve().parents[2] / "ops" / "feedback-form" / "create_feedback_form.gs").read_text()
+    [fields] = re.findall(r"const PREFILL_FIELDS = \[(.*?)\];", script, re.S)
+    titles = re.findall(r"key: '([^']+)', title: '([^']+)'", fields)
+    assert titles == [("verdict", "Feedback"), ("item_text", "Item"), ("source", "Source"), ("backend", "AI (backend)"),
+                      ("date", "Brief date"), ("household", "Household"), ("kid", "Kid")]
+    if feedback.PILOT_FORM.exists():  # until the team ships one, setup doesn't offer it
+        assert list(feedback.pilot_form()["fields"]) == [key for key, _ in titles]
 
 
 # ── Recipients in their own language
@@ -2572,6 +2584,127 @@ def test_with_the_ai_filter_off_the_model_gets_the_messages_as_they_are(harness)
     for value in [*CONTACT_DETAILS, GMAIL_LINK, STUDENT_NUMBER]:
         assert value in prompt
     assert "⟦" not in prompt and "⟦" not in system_prompt_of(harness.model_calls[0])
+
+
+# ── Pilot feedback links carry the text as the AI saw it (ADR 0013, #195)
+
+# The Household's own names that a feedback link never carries: the Kids' names and aliases.
+KIDS = ["Mia", "Leo", "米娅", "小狮"]
+
+
+def item_links(html: str) -> list[dict[str, str]]:
+    """The pre-filled answers of each Action Item's ❌ link in the Brief."""
+    return [answers for _, answers, _ in feedback_links(html) if answers["verdict"] == feedback.WRONG]
+
+
+def test_a_feedback_link_has_an_item_as_the_ai_saw_it_without_the_teachers_or_kids_name(harness):
+    names_night(harness)
+    harness.config["feedback"] = FEEDBACK
+
+    def reply(prompt: str) -> dict:
+        brief = names_reply(prompt)
+        [teacher] = people_in(brief["per_kid"][0]["action_items"][0]["what"])
+        brief["per_kid"][0]["action_items"][0]["what"] = f"Palauta Mian retken lupalappu {teacher}:lle"
+        return brief
+    harness.model_reply = [reply, json.loads]
+
+    assert harness.run() == 0
+
+    fi, en = harness.sent
+    assert "Palauta Mian retken lupalappu Maijalle" in fi.text  # the Brief itself has the names
+    [teacher] = people_in(next(m["sender"] for m in harness.model_payload(0)["messages"] if m["external_id"] == "w-701"))
+    for email in (fi, en):
+        [item] = item_links(email.html)
+        assert (item["item_text"], item["kid"]) == (f"Palauta Kid A:n retken lupalappu {teacher}:lle", "Kid A")
+        for _, answers, _ in feedback_links(email.html):
+            for name in [*THIRD_PARTIES, *KIDS]:
+                assert name not in json.dumps(answers, ensure_ascii=False)
+
+
+def test_a_feedback_link_masks_people_and_contact_details_inside_chinese_text_with_no_spaces(harness):
+    chinese_night(harness)
+    harness.config["feedback"] = FEEDBACK
+
+    def reply(prompt: str) -> dict:
+        brief = chinese_reply(prompt)
+        wa_501 = next(m for m in json.loads(prompt[prompt.index("\n{") + 1:])["messages"] if m["external_id"] == "wa-501")
+        [wang], [mobile] = people_in(wa_501["sender"]), placeholders_in(wa_501["body"])
+        brief["per_kid"][1]["action_items"][0]["what"] = f"周六前告诉{wang}老师小狮不去中文课，或打{mobile}"
+        return brief
+    harness.model_reply = reply
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "周六前告诉王老师小狮不去中文课，或打13800138000" in email.text
+    messages = {m["external_id"]: m for m in harness.model_payload(0)["messages"]}
+    [wang], [mobile] = people_in(messages["wa-501"]["sender"]), placeholders_in(messages["wa-501"]["body"])
+    [anna], [form, anna_phone] = people_in(messages["wa-502"]["sender"]), placeholders_in(messages["wa-502"]["body"])
+    digest, item = (answers for _, answers, _ in feedback_links(email.html) if answers["verdict"] != feedback.SAVED)
+    assert (item["item_text"], item["kid"]) == (f"周六前告诉{wang}老师Kid B不去中文课，或打{mobile}", "Kid B")
+    # Anna, whom the model wrote out itself, goes as the placeholder the AI saw for her too.
+    assert digest["item_text"] == \
+        f"**Kid B**\n- 中文课报名打{mobile}\n\n**Kid A**\n- 足球在{form}报名，也可以WhatsApp{anna_phone}联系{anna}"
+    for _, answers, _ in feedback_links(email.html):
+        for value in [*CHINESE_DETAILS, "Anna", *KIDS]:
+            assert value not in json.dumps(answers, ensure_ascii=False)
+
+
+def test_with_the_ai_filter_off_feedback_links_still_carry_no_ones_name(harness):
+    # The links go to the team, not the AI, so they are masked all the same.
+    names_night(harness)
+    harness.config["ai_filter"] = {"enabled": False}
+    harness.config["email"]["to"] = ["parent@example.com"]
+    harness.config["feedback"] = FEEDBACK
+    harness.model_reply = {
+        "per_kid": [{"kid": "Mia", "notices": [], "action_items": [
+            {"what": "Palauta Mian retken lupalappu Maijalle", "by": "2026-09-30", "refs": ["w-701"]}]}],
+        "calendar_events": [],
+        "message_digest": "**Mia**\n- Lupalappu Maijalle tai Virtaselle\n- Eetun synttärit lauantaina",
+    }
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "Palauta Mian retken lupalappu Maijalle" in email.text and "Maija" in harness.model_prompt(0)
+    digest, item = (answers for _, answers, _ in feedback_links(email.html) if answers["verdict"] != feedback.SAVED)
+    assert re.fullmatch(r"Palauta Kid A:n retken lupalappu (⟦N\d+⟧):lle", item["item_text"]) and item["kid"] == "Kid A"
+    assert re.fullmatch(r"\*\*Kid A\*\*\n- Lupalappu (⟦N\d+⟧):lle tai \1:lle\n- ⟦N\d+⟧:n synttärit lauantaina",
+                        digest["item_text"])
+
+
+def households_in(email) -> set[str]:
+    return {answers["household"] for _, answers, _ in feedback_links(email.html)}
+
+
+def test_the_form_gets_a_households_pseudonym_the_same_every_evening_and_never_its_label(harness):
+    normal_night(harness)
+    harness.config["feedback"] = FEEDBACK  # the Household label is 王家
+    assert harness.run() == 0
+    # The next evening has no new messages, but last night's to-dos are due soon, so the model writes again.
+    with time_machine.travel(NOW + timedelta(days=1), tick=False):
+        assert harness.run() == 0
+
+    first, second = harness.sent
+    [pseudonym] = households_in(first)
+    assert households_in(second) == {pseudonym}
+    assert re.fullmatch(r"Household [0-9a-f]{6}", pseudonym)
+    for email in (first, second):
+        assert "王家" not in unquote(email.html)
+
+
+def test_another_household_gets_another_pseudonym(harness):
+    normal_night(harness)
+    harness.config["feedback"] = FEEDBACK
+    assert harness.run() == 0
+    harness.config["feedback"] = {**FEEDBACK, "household_label": "Virtanen family"}
+    with time_machine.travel(NOW + timedelta(days=1), tick=False):
+        assert harness.run() == 0
+
+    first, second = harness.sent
+    [one], [other] = households_in(first), households_in(second)
+    assert one != other and re.fullmatch(r"Household [0-9a-f]{6}", other)
+    assert "Virtanen" not in unquote(second.html)
 
 
 # ── Sensitive messages are held back from the AI and listed in the Brief (ADR 0013)
