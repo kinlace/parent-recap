@@ -8,6 +8,7 @@ from html import escape
 import pytest
 
 from conftest import NOW, FailedCall, assert_isolated_claude, system_prompt_of
+from test_nightly_run import model_call_for_golden
 
 from family_brief import weekend_pipeline
 from family_brief.collectors.weekend_events import Candidate
@@ -33,12 +34,84 @@ def test_rank_runs_claude_without_tools_from_an_empty_dir(harness):
     assert_isolated_claude(call)
 
 
+# ── The ranking call gets no Kid names (ADR 0013)
+
+KID_NAMES = ["Mia", "Virtanen", "Leo", "米娅", "小狮"]
+
+
+def household_with_names_everywhere(harness) -> Config:
+    harness.config["kids"][0].update(name="Mia Virtanen", everyday_name="Mia")
+    harness.config["weekend_events"] = {
+        "enabled": True,
+        "kid_preferences": "Mia loves football. 小狮 likes puppets, and Mialle sopii ulkoilu.",
+        "parent_preferences": "Nothing after 18:00 for Leo.",
+    }
+    return Config.model_validate(harness.config)
+
+
+def test_ranking_sends_each_kid_as_a_placeholder_and_no_name(harness, golden):
+    cfg = household_with_names_everywhere(harness)
+    harness.model_reply = {"picks": [{"ext_id": "le-1", "rank": 1, "why": "puppets"}]}
+    feedback = [{"title": "Kids' football", "locality": "Espoo", "keywords": ["football"],
+                 "why_shown": "Mia Virtanen plays football, and Leo can watch", "outcome": "kept"}]
+
+    weekend_pipeline.rank(cfg, [candidate()], feedback=feedback)
+
+    prompt = harness.model_prompt(0)
+    assert [n for n in KID_NAMES if n in prompt] == []
+    payload = harness.model_payload(0)
+    assert [(k["name"], k["grade"], k["class"], k["activities"]) for k in payload["kid_profiles"]] == [
+        ("Kid A", 3, "3B", ["football"]), ("Kid B", 1, "1A", ["piano"])]
+    assert payload["kid_preferences"] == "Kid A loves football. Kid B likes puppets, and Kid A:lle sopii ulkoilu."
+    assert payload["parent_preferences"] == "Nothing after 18:00 for Kid B."
+    assert payload["last_week_feedback"][0]["why_shown"] == "Kid A plays football, and Kid B can watch"
+    assert payload["candidates"][0]["title"] == "Puppet theatre"
+    [call] = harness.model_calls
+    golden("weekend_picks.en.model.txt", model_call_for_golden(call.argv, call.stdin))
+
+
+def test_a_reason_names_the_kid_by_their_everyday_name_in_the_message_and_the_calendar(harness, monkeypatch):
+    household_with_names_everywhere(harness)
+    harness.model_reply = {"picks": [{"ext_id": "le-1", "rank": 1,
+                                      "why": "Kid B likes puppets, and Kid A can come along"}]}
+
+    run_weekend_picks(harness, monkeypatch, "en")
+
+    why = "Leo likes puppets, and Mia can come along"
+    [email] = harness.sent
+    assert f"💡 {why}" in email.text and f"💡 {why}" in email.html
+    [event] = harness.calendar.inserted
+    assert event["description"].startswith(why + "\n\n")
+    archive = harness.home / "ParentRecap" / "weekend_events"
+    assert json.loads((archive / "2026-09-26.json").read_text())["picks"][0]["why"] == why
+    assert f"💡 {why}" in (archive / "2026-09-26.md").read_text()
+
+
+def test_the_translation_gets_placeholders_and_each_recipient_reads_the_names(harness, monkeypatch):
+    household_with_names_everywhere(harness)
+    harness.config["email"]["weekend_to"] = ["parent@example.com", {"address": "partner@example.com", "language": "en"}]
+    harness.model_reply = [{"picks": [{"ext_id": "le-1", "rank": 1, "why": "Kid B喜欢木偶，Kid A也可以一起去"}]},
+                           {"picks": [{"ext_id": "le-1", "rank": 1,
+                                       "why": "Kid B likes puppets, and Kid A can come along"}]}]
+
+    run_weekend_picks(harness, monkeypatch, "zh")
+
+    zh, en = harness.sent
+    assert "💡 Leo喜欢木偶，Mia也可以一起去" in zh.text
+    why = "Leo likes puppets, and Mia can come along"
+    assert f"💡 {why}" in en.text and f"💡 {why}" in en.html
+    sent = harness.model_prompt(1)
+    assert json.loads(sent)["picks"][0]["why"] == "Kid B喜欢木偶，Kid A也可以一起去"
+    assert [n for n in KID_NAMES if n in sent] == []
+    assert "Kid A" in system_prompt_of(harness.model_calls[1])
+
+
 # ── Weekend Picks in their first Recipient's language (summary_language for a plain address)
 
 def run_weekend_picks(harness, monkeypatch, language: str, candidates: list[Candidate] | None = None,
                       dry_run: bool = False) -> None:
     harness.config["summary_language"] = language
-    harness.config["weekend_events"] = {"enabled": True}
+    harness.config["weekend_events"] = {**harness.config.get("weekend_events", {}), "enabled": True}
     harness.authorize_google_calendar()
     monkeypatch.setattr(weekend_pipeline.we, "collect", lambda cfg: candidates or [candidate()])
     assert weekend_pipeline.run(Config.model_validate(harness.config), dry_run=dry_run) == 0

@@ -1,0 +1,96 @@
+argv: ["claude", "-p", "--output-format", "json", "--system-prompt", "<system prompt>", "--tools", "", "--strict-mcp-config", "--disallowedTools", "mcp__*", "--setting-sources", "", "--no-session-persistence"]
+
+--- system prompt ---
+You help families with kids in Finland (Greater Helsinki) pick weekend events. The kids' ages and interests are in kid_profiles and kid_preferences. Each kid is called by a placeholder such as Kid A, there and in the preferences and feedback.
+
+The user gives you:
+- The kids' and parents' preferences (free text)
+- **Feedback on last week's picks**: each entry in `last_week_feedback` has the title, keywords, area, the reason shown, and an `outcome` (kept|deleted|unknown).
+  - `kept` = the family left it in the calendar (a weak positive signal: they may not have gone, but it was worth keeping)
+  - `deleted` = the family deleted it (**a strong negative signal**: rank this kind of event, venue, keyword and time slot lower from now on)
+  - `unknown` = not decided
+- A list of this weekend's candidate events (from the Linked Events API, Helsinki, Espoo and Vantaa), each with title / start / price / locality / description / keywords / audience ages and so on
+
+Your task:
+1. Pick and **rank** the top N events strictly by the preferences (N is given in the user's instructions)
+2. **Sports, outdoor, hands-on and children's theatre must make up the bulk (at least 70%)**
+3. **At most 2 arts or music events in total**: a hard cap, so parents can broaden the kids' interests now and then
+4. **Use last_week_feedback**: avoid the kinds, keywords, time slots and venues that were deleted; treat kept ones as a positive signal
+5. Leave out events clearly meant for adults, late at night, or needing fluent Finnish (unless it is a sport the kids like that works across languages)
+6. Spread them out geographically; don't pack too much into one day
+7. Give each pick a one-sentence reason why it suits this family. When it is about one kid, call them by their placeholder exactly as written (Kid A) in every language: never translate it or guess a name
+
+Return only one JSON object, with this schema:
+{
+  "picks": [
+    {
+      "ext_id": "<the original event id>",
+      "rank": 1,
+      "why": "one-sentence reason, in Simplified Chinese"
+    },
+    ...
+  ]
+}
+
+- Copy ext_id exactly from the input, so the pick links back to its record
+- No markdown fences, no extra explanation
+
+
+--- stdin ---
+From the 1 weekend candidates below, pick and rank the top 12, and produce the JSON as the system instructions say.
+
+{
+  "kid_profiles": [
+    {
+      "name": "Kid A",
+      "grade": 3,
+      "class": "3B",
+      "activities": [
+        "football"
+      ]
+    },
+    {
+      "name": "Kid B",
+      "grade": 1,
+      "class": "1A",
+      "activities": [
+        "piano"
+      ]
+    }
+  ],
+  "kid_preferences": "Kid A loves football. Kid B likes puppets, and Kid A:lle sopii ulkoilu.",
+  "parent_preferences": "Nothing after 18:00 for Kid B.",
+  "last_week_feedback": [
+    {
+      "title": "Kids' football",
+      "locality": "Espoo",
+      "keywords": [
+        "football"
+      ],
+      "why_shown": "Kid A plays football, and Kid B can watch",
+      "outcome": "kept"
+    }
+  ],
+  "max_picks": 12,
+  "candidates": [
+    {
+      "ext_id": "le-1",
+      "title": "Puppet theatre",
+      "description": "For kids 4-10",
+      "start": "2026-10-03T21:00:00+03:00",
+      "end": "2026-10-03T22:00:00+03:00",
+      "price_eur": null,
+      "is_free": true,
+      "location_name": "Sello library",
+      "locality": "Espoo",
+      "address": "Leppävaarantori 1",
+      "url": "https://example.fi/le-1",
+      "keywords": [],
+      "audience": {
+        "min_age": null,
+        "max_age": null
+      },
+      "data_source": ""
+    }
+  ]
+}

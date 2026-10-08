@@ -13,6 +13,7 @@ from typing import Any
 import copy
 import hashlib
 import math
+import re
 from dataclasses import dataclass
 from datetime import timedelta
 from string import Template
@@ -24,14 +25,14 @@ from .actions import calendar as calendar_action, email as email_action, imessag
 from .collectors import weekend_events as we
 from .collectors.base import CalendarEvent
 from .collectors.weekend_events import Candidate
-from .config import Config
+from .config import Config, Kid
 from .state import State
 from .summarize import call_llm, call_llm_json
 
 log = logging.getLogger(__name__)
 
 
-SYSTEM_PROMPT = """You help families with kids in Finland (Greater Helsinki) pick weekend events. The kids' ages and interests are in kid_profiles and kid_preferences.
+SYSTEM_PROMPT = """You help families with kids in Finland (Greater Helsinki) pick weekend events. The kids' ages and interests are in kid_profiles and kid_preferences. Each kid is called by a placeholder such as Kid A, there and in the preferences and feedback.
 
 The user gives you:
 - The kids' and parents' preferences (free text)
@@ -48,7 +49,7 @@ Your task:
 4. **Use last_week_feedback**: avoid the kinds, keywords, time slots and venues that were deleted; treat kept ones as a positive signal
 5. Leave out events clearly meant for adults, late at night, or needing fluent Finnish (unless it is a sport the kids like that works across languages)
 6. Spread them out geographically; don't pack too much into one day
-7. Give each pick a one-sentence reason why it suits this family
+7. Give each pick a one-sentence reason why it suits this family. When it is about one kid, call them by their placeholder exactly as written (Kid A) in every language: never translate it or guess a name
 
 Return only one JSON object, with this schema:
 {
@@ -135,6 +136,69 @@ def _trim(candidates: list[Candidate], cap: int) -> list[Candidate]:
     return kept
 
 
+_LATIN = "A-Za-zÀ-ÖØ-öø-ÿ"
+# Finnish case endings a Kid's name may carry in a parent's own text (Mian, Mialle).
+_FINNISH_ENDINGS = ("n", "a", "ä", "ta", "tä", "na", "nä", "ksi", "lla", "llä", "lta", "ltä", "lle",
+                    "ssa", "ssä", "sta", "stä", "kin")
+_PLACEHOLDER = re.compile(r"(?<![A-Za-z])Kid ([A-Z])(?![A-Za-z])")
+
+
+class _KidPlaceholders:
+    """Each Kid as Kid A, Kid B (in the Household's Kid order) for the model, and back (ADR 0013).
+    The model never sees a Kid's name, everyday name or alias, and the Recipient sees the everyday
+    name wherever the model wrote a placeholder."""
+
+    def __init__(self, kids: list[Kid]):
+        self.kids = kids[:26]
+        by_term: dict[str, tuple[str, str]] = {}  # each term once, for the first Kid it names
+        for i, kid in enumerate(self.kids):
+            first = kid.name.split()[0] if len(kid.name.split()) > 1 else None
+            for term in (kid.name, first, kid.everyday_name, *kid.aliases):
+                if term and term.strip():
+                    by_term.setdefault(term.strip().casefold(), (term.strip(), self.placeholder(i)))
+        self._terms = sorted(by_term.values(), key=lambda tp: len(tp[0]), reverse=True)  # full name first
+        self._pattern = re.compile("|".join(self._term_pattern(j, t) for j, (t, _) in enumerate(self._terms)),
+                                   re.IGNORECASE) if self._terms else None
+
+    @staticmethod
+    def placeholder(i: int) -> str:
+        return f"Kid {chr(ord('A') + i)}"
+
+    @staticmethod
+    def _term_pattern(j: int, term: str) -> str:
+        """The term on its own, not inside a longer Latin word, with a Finnish case ending if any."""
+        latin = re.compile(f"[{_LATIN}]")
+        before = f"(?<![{_LATIN}])" if latin.match(term[0]) else ""
+        after = f"(?:{'|'.join(_FINNISH_ENDINGS)})?(?![{_LATIN}])" if latin.match(term[-1]) else ""
+        return f"{before}(?P<t{j}>{re.escape(term)}){after}"
+
+    def mask(self, text: str) -> str:
+        """`text` with every Kid's name or alias as their placeholder, an inflected one as `Kid A:lle`."""
+        if not self._pattern:
+            return text
+        def one(m: re.Match) -> str:
+            ending = m.group()[len(m.group(m.lastgroup)):]
+            return self._terms[int(m.lastgroup[1:])][1] + (f":{ending}" if ending else "")
+        return self._pattern.sub(one, text)
+
+    def mask_all(self, value: Any) -> Any:
+        """`value` with `mask` applied to every string in it."""
+        if isinstance(value, str):
+            return self.mask(value)
+        if isinstance(value, list):
+            return [self.mask_all(v) for v in value]
+        if isinstance(value, dict):
+            return {k: self.mask_all(v) for k, v in value.items()}
+        return value
+
+    def restore(self, text: str) -> str:
+        """`text` with each Kid's placeholder as the name the Brief calls them by."""
+        def one(m: re.Match) -> str:
+            i = ord(m.group(1)) - ord("A")
+            return self.kids[i].called() if i < len(self.kids) else m.group()
+        return _PLACEHOLDER.sub(one, text)
+
+
 def rank(cfg: Config, candidates: list[Candidate],
          feedback: list[dict] | None = None) -> list[dict[str, Any]]:
     """The picks, each with a reason in the first Weekend Picks Recipient's language. When the model
@@ -143,15 +207,16 @@ def rank(cfg: Config, candidates: list[Candidate],
     if not candidates:
         return []
     trimmed = _trim(candidates, cap=100)
+    kids = _KidPlaceholders(cfg.kids)
     payload = {
         "kid_profiles": [
-            {"name": k.name, "grade": k.grade, "class": k.class_name,
-             "activities": k.activities}
-            for k in cfg.kids
+            {"name": kids.placeholder(i), "grade": k.grade, "class": k.class_name,
+             "activities": kids.mask_all(k.activities)}
+            for i, k in enumerate(kids.kids)
         ],
-        "kid_preferences": cfg.weekend_events.kid_preferences,
-        "parent_preferences": cfg.weekend_events.parent_preferences,
-        "last_week_feedback": feedback or [],
+        "kid_preferences": kids.mask(cfg.weekend_events.kid_preferences),
+        "parent_preferences": kids.mask(cfg.weekend_events.parent_preferences),
+        "last_week_feedback": kids.mask_all(feedback or []),
         "max_picks": cfg.weekend_events.max_candidates,
         "candidates": [c.to_dict() for c in trimmed],
     }
@@ -181,7 +246,8 @@ def rank(cfg: Config, candidates: list[Candidate],
                 break
         return fallback
 
-    return _ranked_picks(result.get("picks"), {c.ext_id for c in candidates})
+    picks = _ranked_picks(result.get("picks"), {c.ext_id for c in candidates})
+    return [{**p, "why": kids.restore(p["why"])} if isinstance(p.get("why"), str) else p for p in picks]
 
 
 def _numeric_rank(pick: Any) -> float | None:
@@ -222,7 +288,7 @@ You receive one JSON object with the picks, each with its ext_id, its rank and a
 _PICKS_TRANSLATE = Template("Translate every why into $target")
 _PICKS_KEEP_FINNISH = Template("Keep Finnish event, venue and place names as written, so parents can still find them")
 _PICKS_KEEP = [
-    Template("Keep names, dates, times and amounts as they are"),
+    Template("Keep names, dates, times and amounts as they are, and each kid's placeholder (Kid A) exactly as written"),
     Template("Keep every ext_id and rank exactly as it is, and every pick in the same order: don't add, drop or "
              "reorder any"),
 ]
@@ -233,7 +299,9 @@ def _translated(cfg: Config, picks: list[dict], original: Language, target: Lang
     the same picks in the same order; the caller then sends the original."""
     if not any(p.get("why") for p in picks):  # no reason written: nothing for the model to do
         return picks
-    sent = {"picks": [{"ext_id": p.get("ext_id"), "rank": p.get("rank"), "why": p.get("why") or ""} for p in picks]}
+    kids = _KidPlaceholders(cfg.kids)
+    sent = {"picks": [{"ext_id": p.get("ext_id"), "rank": p.get("rank"), "why": kids.mask(p.get("why") or "")}
+                      for p in picks]}
     instructions = translate.instructions(_PICKS_INTRO, _PICKS_TRANSLATE, _PICKS_KEEP_FINNISH, _PICKS_KEEP,
                                           languages.text(cfg, original), languages.text(cfg, target), target)
     log.info("Translating Weekend Picks from %s into %s", original, target)
@@ -253,7 +321,7 @@ def _translated(cfg: Config, picks: list[dict], original: Language, target: Lang
         if p.get("why"):
             if not isinstance(r.get("why"), str) or not r["why"].strip():
                 raise ValueError("the translation has a pick without its reason")
-            p["why"] = r["why"]
+            p["why"] = kids.restore(r["why"])
     return out
 
 
