@@ -11,7 +11,7 @@ import logging
 import re
 from typing import Any
 
-from .ai_filter import TLDS
+from .ai_filter import LINK, LINK_CHARS
 from .brief_text import TEXT
 from .collectors.base import Message
 
@@ -25,10 +25,8 @@ RE_REMINDER = tuple(t.re_reminder for t in TEXT.values())
 DERIVED = ("source", "ref_sources", "verified", "legacy")
 
 
-# A web or mail link, as a calendar app would make it clickable. Without a scheme only common
-# top-level domains count, so a missing space after a full stop or a file name is not a link.
-_LINK = re.compile(r"(?:[a-z][a-z0-9+.-]*://|www\.|mailto:)[^\s<>\"'()\[\]]+"
-                   rf"|\b(?:[a-z0-9-]+\.)+(?:{TLDS})\b(?:/[^\s<>\"'()\[\]]*)?", re.IGNORECASE)
+# A web or mail link: the AI filter's, so a link it masks is the link checked here (see ai_filter).
+_LINK = re.compile(rf"mailto:{LINK_CHARS}+|{LINK}", re.IGNORECASE)
 
 
 def keep_links(text: str, allowed: str) -> str:

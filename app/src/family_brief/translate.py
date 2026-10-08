@@ -10,7 +10,6 @@ the reply gets the real values back before it is checked."""
 from __future__ import annotations
 
 import copy
-import json
 import logging
 from datetime import date, timedelta
 from string import Template
@@ -20,7 +19,7 @@ from . import ai_filter, citations, languages
 from .brief_text import BriefText, Language
 from .languages import FINNISH_WORDS, is_finnish
 from .config import Config
-from .summarize import call_llm, digest_of, placeholder_words, placeholders_for
+from .summarize import call_llm_filtered, digest_of
 from .utils.dates import today_str
 
 log = logging.getLogger(__name__)
@@ -168,12 +167,9 @@ def translate(cfg: Config, summary: dict[str, Any], original: Language, target: 
     src, dst = languages.text(cfg, original), languages.text(cfg, target)
     log.info("Translating the Brief from %s into %s", original, target)
     payload = _payload(summary, src)
-    placeholders = placeholders_for(cfg, placeholders)
-    sent = payload if placeholders is None else ai_filter.mask(payload, placeholders)[0]
     tomorrow = date.fromisoformat(today_str(cfg.timezone)) + timedelta(days=1)
-    reply = call_llm(cfg, json.dumps(sent, ensure_ascii=False, indent=2),
-                     system_prompt(src, dst, target, tomorrow, masked=placeholders is not None)).data
-    if placeholders is not None:  # before the checks, which compare links with the original's
-        reply = ai_filter.restore(reply, placeholders, placeholder_words(dst))
+    # Restored before the checks, which compare links with the original's.
+    reply = call_llm_filtered(cfg, "", payload, lambda masked: system_prompt(src, dst, target, tomorrow, masked),
+                              dst.placeholder_words(), placeholders).data
     _check(payload, reply, src, dst)
     return _merge(summary, reply, src, dst)
