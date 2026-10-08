@@ -927,7 +927,12 @@ function renderMyClub() {
     input.name = "myclub-kid";
     input.value = name;
     input.checked = name === myclubStep.kid;
-    input.addEventListener("change", () => { myclubStep.kid = name; });
+    // Another Kid's link starts empty, so what was pasted for one Kid isn't saved for the next.
+    input.addEventListener("change", () => {
+      myclubStep.kid = name;
+      document.getElementById("myclub-link").value = "";
+      showSource(null);
+    });
     const shown = document.createElement("span");
     shown.className = "name";
     shown.textContent = name;
@@ -961,6 +966,10 @@ async function saveMyClubLink(event) {
       renderSources();
     }
     showSource("myclub." + out.result);
+    // The result is shown under the whole step: bring it into view next to the button.
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById("source-status").scrollIntoView({ behavior: still ? "auto" : "smooth",
+                                                              block: "nearest" });
   } catch (e) {
     showSource(null);
     failed(e);

@@ -776,7 +776,8 @@ def cmd_myclub(args: argparse.Namespace) -> int:
         url = secret_dialog.ask(
             f"Paste {args.kid}'s MyClub calendar link.\n\nSign in to MyClub in your browser "
             f"({MYCLUB_URL}), open {args.kid}'s calendar, choose Calendar subscription (Tilaa "
-            "kalenteri) and copy the link starting with webcal://.")
+            f"kalenteri), choose Valitut jäsenet with only {args.kid} ticked, save, and copy the "
+            "link starting with webcal://.")
     except secret_dialog.Cancelled:
         return _report("cancelled", "The family closed the dialog. Run this again when they're "
                        f"ready: {again}")
@@ -795,6 +796,10 @@ def cmd_myclub(args: argparse.Namespace) -> int:
                           "link from Calendar subscription (Tilaa kalenteri) on the Kid's MyClub "
                           f"calendar, not the browser's address bar: {again} --no-open",
         "save-failed": "The link works, but it couldn't be saved in the config (see error).",
+        "same-link": f"That link is already saved for {extra.get('other_kid')}, so it wasn't saved "
+                     f"again. Each Kid needs their own link: in MyClub's Calendar subscription, "
+                     f"choose Valitut jäsenet, tick only {args.kid}, save, and copy that link: "
+                     f"{again} --no-open",
     }.get(result)
     return _report(result, next_, **({"kid": args.kid} if result == "saved" else {}), **extra)
 
@@ -812,6 +817,10 @@ def myclub_link(path: Path, kid: str, url: str,
     if not _is_myclub_link(url):
         # Not downloaded: it's most likely the family's MyClub password, or another page's address.
         return "not-a-myclub-link", {}
+    other = _kid_with_link(path, kid, url)
+    if other is not None:
+        # One link for two Kids would write every event twice, under both names (#209).
+        return "same-link", {"other_kid": other}
     try:
         text = myclub.download(url)
     except myclub.FetchError as e:  # names only the server and the HTTP status
@@ -824,6 +833,24 @@ def myclub_link(path: Path, kid: str, url: str,
     except (OSError, ValueError) as e:  # names the Kid and the config, never the link
         return "save-failed", {"error": str(e)[:300]}
     return "saved", {"events": text.count("BEGIN:VEVENT")}
+
+
+def _kid_with_link(path: Path, kid: str, url: str) -> str | None:
+    """The other Kid `url` is already saved for, if any. A link made with several members ticked
+    is the same link for each of them (#207)."""
+    import yaml
+    from .collectors import myclub
+
+    try:
+        kids = (yaml.safe_load(Path(path).read_text()) or {}).get("kids") or []
+    except (OSError, yaml.YAMLError, AttributeError):
+        return None
+    same = myclub._normalize_url(url).rstrip("/")
+    return next((k["name"] for k in kids
+                 if isinstance(k, dict) and k.get("name") != kid
+                 and isinstance(k.get("myclub_ical_url"), str)
+                 and myclub._normalize_url("".join(k["myclub_ical_url"].split())).rstrip("/") == same),
+                None)
 
 
 def _is_myclub_link(url: str) -> bool:

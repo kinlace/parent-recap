@@ -86,7 +86,8 @@ WHATSAPP_OPEN_RESULTS = ("opened", "not-opened")
 WHATSAPP_READ_SECONDS = setup_steps.WHATSAPP_READ_SECONDS
 # What saving a Kid's MyClub calendar link can say, as `setup myclub` does, and adding a Kid by
 # the name the family calls them, for a Household without Wilma.
-MYCLUB_RESULTS = ("saved", "not-a-myclub-link", "link-failed", "not-a-calendar", "save-failed")
+MYCLUB_RESULTS = ("saved", "not-a-myclub-link", "link-failed", "not-a-calendar", "save-failed",
+                  "same-link")
 MYCLUB_KID_RESULTS = ("added", "kid-exists")
 # Working: reading the Gmail senders for the check page, how far it is and how it ended, and
 # `no-read` when this server hasn't started one. Wilma's Kids and WhatsApp's groups were read in
