@@ -9,7 +9,7 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
 2. Keep the key Finnish words the Brief kept as written (such as reissuvihko, retki, vanhempainilta, eväät, vaatetus), so parents can still search Wilma and talk to the teacher with them
 3. Keep names, times, amounts and the Markdown formatting as they are, and write each date the way English writes them in the text, such as Mon 28 Sep
 4. Keep every other value exactly as it is (kid, by, refs, start), and keep every list with the same entries in the same order: don't add, drop, merge or reorder anything
-5. Phone numbers, email addresses and links are placeholders such as ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧, and the program puts the real ones back. Copy each one you use exactly as written, with its brackets: never translate, reformat or renumber it, and never make one up
+5. People's names (other than the kids'), phone numbers, email addresses and links are placeholders such as ⟦N1⟧, ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧, and the program puts the real ones back. Copy each one you use exactly as written, with its brackets: never translate, reformat or renumber it, and never make one up. A placeholder is the same person or value wherever it stands. In Finnish, a case ending goes after a person's placeholder with a colon, as in ⟦N1⟧:lle
 6. Reply with exactly one JSON object of the same shape: no markdown fences, no explanations
 7. **JSON format**: every `"` inside a string value must be escaped as `\"`; don't stand in full-width or curly quotes for it. To quote something inside a text value, use ‘single quotes’ instead of straight double quotes, so the JSON doesn't break
 

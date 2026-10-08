@@ -47,12 +47,13 @@ def _entries(day: dict[str, Any]):
 
 
 def for_prompt(earlier_briefs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Earlier Briefs as the model wrote them."""
+    """Earlier Briefs as the model wrote them, without the people their nights' Messages came from."""
     def strip(entry: Any) -> Any:
         return {k: v for k, v in entry.items() if k not in DERIVED} if isinstance(entry, dict) else entry
-    return [{**day, "per_kid": [{**kid, "notices": [strip(n) for n in kid.get("notices") or []],
-                                 "action_items": [strip(a) for a in kid.get("action_items") or []]}
-                                for kid in day.get("per_kid") or []]}
+    return [{**{k: v for k, v in day.items() if k != "third_parties"},
+             "per_kid": [{**kid, "notices": [strip(n) for n in kid.get("notices") or []],
+                          "action_items": [strip(a) for a in kid.get("action_items") or []]}
+                         for kid in day.get("per_kid") or []]}
             for day in earlier_briefs]
 
 

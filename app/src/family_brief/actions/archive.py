@@ -9,7 +9,7 @@ from .. import languages
 from ..brief_text import PRODUCT_NAME, BriefText
 from ..collectors.base import Message
 from ..config import Config
-from ..summarize import digest_of
+from ..summarize import digest_of, third_parties
 
 
 def write(cfg: Config, date_str: str, messages: list[Message], summary: dict[str, Any],
@@ -82,7 +82,8 @@ def recent_points(cfg: Config, today: str, days: int = 3) -> list[dict[str, Any]
     """Notices and to-dos from the previous few nights' briefs, oldest first. Tonight's summary
     uses them to stay consistent with what it already said and to re-surface near deadlines.
     Briefs that were never delivered are skipped: the parents were not told, and their Messages
-    come round again tonight. Archives from before the flag count as delivered."""
+    come round again tonight. Archives from before the flag count as delivered. Each night's
+    `third_parties` are the people its Messages came from, for the AI filter, not for the model."""
     base = date.fromisoformat(today)
     out: list[dict[str, Any]] = []
     for i in range(days, 0, -1):
@@ -98,7 +99,8 @@ def recent_points(cfg: Config, today: str, days: int = 3) -> list[dict[str, Any]
                 for k in (data.get("summary") or {}).get("per_kid") or []
                 if k.get("notices") or k.get("action_items")]
         if kids:
-            out.append({"date": day, "per_kid": kids})
+            out.append({"date": day, "per_kid": kids,
+                        "third_parties": third_parties(cfg, data.get("messages") or [])})
     return out
 
 

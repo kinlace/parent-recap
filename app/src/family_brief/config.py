@@ -143,10 +143,10 @@ class LLMConfig(BaseModel):
 
 class AIFilterConfig(BaseModel):
     """What reaches the AI (ADR 0013). On: before each model call of the evening run, phone
-    numbers, email addresses and links become placeholders, and identifiers the model doesn't need
-    stay out. The real values go back into the reply before anything is written or sent. Messages
-    that look sensitive (held_back.py) reach no model call, and the Brief lists them itself. Off:
-    the model gets the night's messages as they are."""
+    numbers, email addresses, links and Third Parties' names become placeholders, and identifiers
+    the model doesn't need stay out. The real values go back into the reply before anything is
+    written or sent. Messages that look sensitive (held_back.py) reach no model call, and the
+    Brief lists them itself. Off: the model gets the night's messages as they are."""
     enabled: bool = True
 
 

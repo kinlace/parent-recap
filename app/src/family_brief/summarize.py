@@ -10,6 +10,7 @@ import time
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from email.utils import parseaddr
 from pathlib import Path
 from string import Template
 from typing import Any
@@ -127,6 +128,35 @@ def for_the_ai(cfg: Config, messages: list[Message]) -> tuple[list[Message], lis
     if not cfg.ai_filter.enabled:
         return messages, []
     return held_back.hold_back(messages)
+
+
+# The Sources' own names, which a person may share (Wilma is a first name too).
+_SOURCE_NAMES = ("Wilma", "Gmail", "WhatsApp", "MyClub")
+
+
+def third_parties(cfg: Config, messages: list[dict[str, Any]]) -> list[str]:
+    """The names of the people `messages` (as Message.to_dict gives them) come from, from the fields
+    that hold them: an email's display name, the people who post in the WhatsApp groups, and the
+    sender of a Wilma or any other message. The Household's Recipients are left out: an email from
+    one of their addresses, and their own WhatsApp posts (ADR 0013)."""
+    own = {a.casefold() for a in (*(r.address for r in (*cfg.email.to, *cfg.email.weekend_to)),
+                                  cfg.gmail.username, cfg.email.from_addr) if a}
+    names = []
+    for m in messages:
+        sender = m.get("sender") or ""
+        if m.get("source") == "gmail":
+            name, address = parseaddr(sender)
+            if address.casefold() not in own:
+                names.append(name)
+        elif not (m.get("source") == "whatsapp" and (m.get("metadata") or {}).get("from_me")):
+            names.append(sender)
+    return [n for n in names if n]
+
+
+def household_names(cfg: Config) -> list[str]:
+    """What stays as it is wherever a person's name is masked: the Kids' names, aliases, class,
+    school and activities (ADR 0013), and the Sources' names."""
+    return [*(term for k in cfg.kids for term in k.chat_hint_terms()), *_SOURCE_NAMES]
 
 
 def _strip_code_fence(text: str) -> str:
@@ -633,11 +663,17 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
     """The night's summary with its citations resolved, plus the backend call it came from.
     `now` pins the night the prompt is written for; the eval replays past nights with it.
     `budget` is how long a busy model is tried for, as call_llm takes it. The call goes through the
-    AI filter with the run's `placeholders`, if given, so citations check the real links."""
+    AI filter with the run's `placeholders`, if given, so citations check the real links. The people
+    tonight's messages come from, and those of the earlier Briefs' nights, are masked from here on."""
     already_captured = already_captured or []
     now = now or datetime.now().astimezone()
     intro, payload = _build_prompt(cfg, messages, upcoming_events, already_captured, now, earlier_briefs)
     log.info("Summarizing %d messages via %s", len(messages), cfg.llm.backend)
+    placeholders = placeholders_for(cfg, placeholders)
+    if placeholders is not None:
+        earlier = [name for day in earlier_briefs or [] for name in day.get("third_parties") or []]
+        placeholders.add_people([*third_parties(cfg, payload["messages"]), *earlier],
+                                keep_names=household_names(cfg))
     language = cfg.brief_language()
     t = languages.text(cfg, language)
     reply = call_llm_filtered(cfg, intro, payload, lambda masked: system_prompt(language, t, masked),

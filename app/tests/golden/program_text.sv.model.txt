@@ -93,6 +93,7 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "phone_number": "a phone number",
   "email_address": "an email address",
   "link": "a link",
+  "someone": "someone",
   "ics_hint": "They are in the attached .ics. Open it to add them to your calendar.",
   "ics_hint_mixed": "Linked events are in Google Calendar; the rest are in the attached .ics. Open it to add them to your calendar.",
   "reauth": "Tell {assistant} “re-authorize Google Calendar” to fix it. ",
