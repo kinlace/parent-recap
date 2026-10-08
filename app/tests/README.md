@@ -28,13 +28,16 @@ given, and scores the real values.
 `test_held_back.py` checks which texts look sensitive on their own, against the word lists in
 `sensitive_words.yaml`: messages about one person's health, support, bullying or child welfare in
 Finnish with its case endings and compounds, Swedish, English, and Chinese with no spaces, and the
-routine notices and everyday words that must not be held back (head lice, chickenpox, a sick day, the
-school nurse's check-ups, a sports injury, kiusallinen, syllabus, a fire alarm test). In
+routine messages and everyday words that must not be held back (head lice, chickenpox, a sick day, the
+school nurse's check-ups, a sports injury, a camp notice asking about medication, a diagnostic test,
+the psychology subject, the guidance counsellor, kiusallinen, syllabus, a fire alarm test), and
+newsletters in each language whose footer lists the staff with their contact details. In
 `test_nightly_run.py`, a night with a sensitive message from each category in each language checks
 that none of them reaches the Brief's or the translation's prompt, and the `held_back.*` goldens show
 the Brief listing each Held-back Message by Source, sender and subject, with its Gmail link, its page
 in the Wilma the CLI's profile in the temporary HOME names, or a note to read it in WhatsApp. It also
-checks that a night with only Held-back Messages sends a Brief with no model call, that the archive
+checks that a night with only Held-back Messages sends a Brief with no model call and no "Written by",
+that such a newsletter and a camp notice about medication still reach the model, that the archive
 keeps them, that the rule-based fallback doesn't list them twice, that the setup page's preview and
 `parent-recap summarize` hold them back too, and that with the AI filter off they go to the model as
 before. `test_eval_runner.py` checks that the eval's Brief call and its judge never get one either.

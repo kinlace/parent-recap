@@ -612,11 +612,10 @@ def _preview_step(step: str, **more: object) -> None:
 
 
 def _print_preview(cfg: Config, summary: dict, created: list[dict], coverage: dict[str, dict],
-                   body: str, date_str: str, t: BriefText, assistant: str,
+                   body: str, date_str: str, t: BriefText, assistant: str, model_wrote: bool,
                    held_back: list[_HeldBack] | None = None) -> None:
     """The first Recipient's email as tonight's Brief would send it, as one line of JSON: its
     subject, text and HTML, and for a pilot Household the Digest's feedback link."""
-    model_wrote = "_llm_error" not in summary
     links = partial(feedback.link, cfg, date=date_str) \
         if cfg.feedback.active() and model_wrote else None
     html = _daily_brief_html(summary, created, date_str, t, cfg.timezone,
@@ -707,6 +706,9 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
     else:
         summary = {"per_kid": [], "calendar_events": [], "message_digest": ""}
 
+    # The rule-based fallback is a raw message list the model never wrote, and a night with only
+    # MyClub events or Held-back Messages asks no model: nothing to judge and no model to credit.
+    model_wrote = bool(for_ai or due_soon) and "_llm_error" not in summary
     summary["_coverage"] = coverage  # kept in the archive for later checks
     if held:  # the messages in the archive that the AI never saw
         summary["_held_back"] = [m.external_id for m in held]
@@ -750,7 +752,8 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
                        _calendar_note(calendar_problem, bool(ics_events), t, assistant),
                        _top_note(summary, t, assistant), listed_held_back, assistant)
     if args.preview:
-        _print_preview(cfg, summary, created, coverage, body, date_str, t, assistant, listed_held_back)
+        _print_preview(cfg, summary, created, coverage, body, date_str, t, assistant, model_wrote,
+                       listed_held_back)
     if args.dry_run:
         # Dry runs leave no trace: no archive, no state, no email.
         log.info("DRY-RUN: body (%d chars):\n%s", len(body), body)
@@ -760,9 +763,6 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
     email_sent = False
     delivered = not (cfg.email.enabled or cfg.imessage.enabled)
     if cfg.email.enabled:
-        # The rule-based fallback is a raw message list the model never wrote: nothing to judge
-        # and no model to credit.
-        model_wrote = "_llm_error" not in summary
         links = partial(feedback.link, cfg, date=date_str) \
             if cfg.feedback.active() and model_wrote else None
         for v in _versions(cfg, summary, model_events, for_ai, placeholders):
