@@ -13,11 +13,18 @@ The fake Sources honor seen-state like the real ones, so multi-night tests see o
 `test_ai_filter.py` calls the AI filter on its own with a list of messages, as another tool could.
 In `test_nightly_run.py`, a night with phone numbers, email addresses and links in every part of the
 payload checks that none reaches the Brief or translation prompt, only placeholders, the same one for
-a value in both, with no Gmail message link or Wilma student number. It checks that the Brief, the
-`.ics`, iMessage and the archive get the real values back, that an event keeps a link only if a
-message it cites has it, and that a placeholder the model changed beyond repair is said as its kind
-in each Recipient's language, with the item kept. With the filter off, the prompts must match the
-goldens from before it, those without `.masked` in their name.
+a value in both, with no Gmail message link or Wilma student number. A Chinese night has them inside
+Chinese text with no space around them, and its Chinese reply writes the placeholders the same way:
+the text around them stays, and the translation prompt has none of the night's values. It checks that
+the Brief, the `.ics`, iMessage and the archive get the real values back, that an event keeps a link
+only if a message it cites has it, that a placeholder the model wrote in other brackets, another case,
+full-width digits or a lookalike letter still gets its value, that one it changed beyond repair is
+said as its kind in each Recipient's language with the item kept, and that a bare P1, or a (P2017)
+the night's messages have themselves, stays as written. With the filter off, the Brief and translation
+prompts must match `normal_night.*.model.txt` and `two_languages.translate.model.txt`, the goldens from
+before the filter. The prompts with it on are the `.masked` goldens. `test_eval_runner.py` runs an
+eval case with a link and a phone number to the end, the model answering with the placeholders it was
+given, and scores the real values.
 `test_busy_model.py` runs the evening Brief against a `codex` or `claude` that is busy (at capacity,
 rate-limited, overloaded) for a few calls. The harness records the pauses between model calls on a
 fake clock instead of sleeping. It checks that the Brief comes once the model is free, after pauses

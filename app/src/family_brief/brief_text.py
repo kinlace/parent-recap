@@ -114,6 +114,10 @@ class BriefText:
     feedback_wrong: str
     feedback_digest_wrong: str
 
+    def placeholder_words(self) -> dict[str, str]:
+        """What this language says in place of a placeholder the model changed beyond repair, by kind."""
+        return {"phone": self.phone_number, "email": self.email_address, "link": self.link}
+
     def on(self, day: date) -> str:
         """`day` the way this language writes a date."""
         return self.date.format(**self._date_fields(day))

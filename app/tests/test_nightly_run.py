@@ -10,6 +10,7 @@ import re
 from datetime import timedelta
 from html import escape, unescape
 from pathlib import Path
+from typing import Callable
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -211,7 +212,7 @@ def test_codex_backend_sends_prompt_on_stdin(harness, golden, tmp_path):
     assert not any(call.stdin in a for a in call.argv)
     work = call.argv[call.argv.index("-C") + 1]
     argv = [a.replace(work, "<workdir>").replace(str(codex), "<codex>") for a in call.argv]
-    golden("codex.model.txt", model_call_for_golden(argv, call.stdin))
+    golden("codex.masked.model.txt", model_call_for_golden(argv, call.stdin))
     [email] = harness.sent
     golden("normal_night.zh.txt", email.text)  # same Brief whichever backend wrote it
 
@@ -2183,23 +2184,142 @@ def test_the_translation_prompt_has_the_same_placeholders_and_the_translation_th
     assert f"DESCRIPTION:Sign up at {SIGNUP} or \\n" in ics
 
 
-def test_a_placeholder_in_other_brackets_case_or_digits_still_gets_its_value(harness):
+LAOSHI = "laoshi@zhongwen.example.com"
+ILMO = "https://kilo-fc.example.fi/ilmo"
+CHINESE_DETAILS = ["13800138000", LAOSHI, ILMO, "040 765 4321", "040 123 4567", OFFICE,
+                   "www.zhongwen.example.com/kebiao", "kilo-fc.example.fi", "zhongwen.example.com"]
+
+
+def chinese_night(h) -> None:
+    """Contact details inside Chinese text with no space around them, as Chinese parents write it."""
+    h.config["summary_language"] = "zh"
+    h.sources = {
+        "gmail": [msg("gmail", "g-601", "2026-09-27T10:00:00+03:00",
+                      f"请联系040 123 4567或发邮件到{OFFICE}。课表见www.zhongwen.example.com/kebiao。",
+                      sender=f"中文学校 <{LAOSHI}>", subject="中文课", kid="Leo")],
+        "whatsapp": [msg("whatsapp", "wa-501", "2026-09-27T18:00:00+03:00", "周六中文课请联系13800138000报名",
+                         sender="王老师", chat="Leo piano", kid="Leo"),
+                     msg("whatsapp", "wa-502", "2026-09-27T19:00:00+03:00",
+                         f"请在{ILMO}报名，或致电040 765 4321。", sender="Anna", chat="3B parents", kid="Mia")],
+    }
+
+
+def chinese_reply(prompt: str) -> dict:
+    """The Chinese night as a model writes it in Chinese: placeholders with no space around them."""
+    body = {m["external_id"]: m["body"] for m in json.loads(prompt[prompt.index("\n{") + 1:])["messages"]}
+    phone, _office, timetable = placeholders_in(body["g-601"])
+    [mobile] = placeholders_in(body["wa-501"])
+    form, anna = placeholders_in(body["wa-502"])
+    return {
+        "per_kid": [
+            {"kid": "Mia", "notices": [{"text": f"足球在{form}报名，也可以WhatsApp{anna}联系Anna", "refs": ["wa-502"]}],
+             "action_items": []},
+            {"kid": "Leo", "notices": [{"text": f"课表见{timetable}", "refs": ["g-601"]}],
+             "action_items": [{"what": f"打{mobile}给中文课报名，或致电{phone}", "by": "2026-10-02", "who": "任一",
+                               "refs": ["wa-501", "g-601"]}]},
+        ],
+        "calendar_events": [{"kid": "Mia", "title": "足球报名截止", "start": "2026-10-02",
+                             "description": f"报名链接：{form}，周五截止", "refs": ["wa-502"]}],
+        "message_digest": f"**Leo**\n- 中文课报名打{mobile}\n\n**Mia**\n- 足球在{form}报名，也可以WhatsApp{anna}联系Anna",
+    }
+
+
+def test_contact_details_inside_chinese_text_become_placeholders_and_the_text_stays(harness):
+    chinese_night(harness)
+
+    assert harness.run() == 0
+
+    prompt = harness.model_prompt(0)
+    for value in CHINESE_DETAILS:
+        assert value not in prompt
+    body = {m["external_id"]: m["body"] for m in harness.model_payload(0)["messages"]}
+    assert re.fullmatch(r"请联系⟦P\d⟧或发邮件到⟦E\d⟧。课表见⟦L\d⟧。", body["g-601"])
+    assert re.fullmatch(r"周六中文课请联系⟦P\d⟧报名", body["wa-501"])
+    assert re.fullmatch(r"请在⟦L\d⟧报名，或致电⟦P\d⟧。", body["wa-502"])
+
+
+def test_a_chinese_brief_gets_its_values_back_and_its_translation_prompt_has_none(harness):
+    chinese_night(harness)
+    harness.config["email"]["to"] = ["parent@example.com", PARTNER_EN]
+    harness.model_reply = [chinese_reply, json.loads]  # the translation keeps every placeholder
+
+    assert harness.run() == 0
+
+    zh, en = harness.sent
+    for email in (zh, en):
+        assert "打13800138000给中文课报名，或致电040 123 4567" in email.text
+        assert f"足球在{ILMO}报名，也可以WhatsApp040 765 4321联系Anna" in email.text
+        assert not placeholders_in(email.html)
+    assert archived_summary(harness)["per_kid"][0]["notices"][0]["text"] == \
+        f"足球在{ILMO}报名，也可以WhatsApp040 765 4321联系Anna"
+    prompt = harness.model_prompt(1)
+    for value in CHINESE_DETAILS:
+        assert value not in prompt
+    ics = zh.attachment(".ics")[1].decode().replace("\r\n ", "")
+    assert f"DESCRIPTION:报名链接：{ILMO}，周五截止\\n" in ics
+
+
+FULL_WIDTH_DIGITS = str.maketrans("0123456789", "０１２３４５６７８９")
+CYRILLIC = {"P": "Р", "E": "Е"}  # letters that look like P and E
+
+
+def written_as(write) -> Callable[[str], dict]:
+    """The contact night's reply, with g-201's placeholders in its Action Item as `write` gives them back."""
+    def reply(prompt: str) -> dict:
+        written = reply_with_placeholders(prompt)
+        body = next(m["body"] for m in json.loads(prompt[prompt.index("\n{") + 1:])["messages"]
+                    if m["external_id"] == "g-201")
+        form, phone, office = (write(token[1:-1]) for token in placeholders_in(body))
+        written["per_kid"][0]["action_items"][0]["what"] = f"Sign up at {form}, call {phone} or write to {office}"
+        return written
+    return reply
+
+
+@pytest.mark.parametrize("write", [
+    pytest.param(lambda p: f"⟦ {p[0]} {p[1:]} ⟧", id="spaced"),
+    pytest.param(lambda p: f"【{p[0].lower()}{p[1:].translate(FULL_WIDTH_DIGITS)}】", id="lower-case-full-width"),
+    pytest.param(lambda p: f"[{p}]", id="square"),
+    pytest.param(lambda p: f"({p})", id="round"),
+    pytest.param(lambda p: f"（{p}）", id="full-width-round"),
+    pytest.param(lambda p: f"〔{p}〕", id="tortoise-shell"),
+    pytest.param(lambda p: f"⟦{CYRILLIC.get(p[0], p[0])}{p[1:]}⟧", id="cyrillic-letter"),
+    pytest.param(lambda p: f"{p}⟧", id="no-opening-bracket"),
+])
+def test_a_placeholder_written_another_way_still_gets_its_value(harness, write):
     contact_night(harness)
+    harness.model_reply = written_as(write)
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert f"Sign up at {RETKI_FORM}, call 040 123 4567 or write to {OFFICE} (Mia)" in email.text
+
+
+@pytest.mark.parametrize("written, shown", [("[P9]", "a phone number"), ("〔L9〕", "a link"),
+                                            ("（Е9）", "an email address"), ("⟦Р9⟧", "a phone number")])
+def test_a_placeholder_written_another_way_with_no_value_is_shown_as_its_kind(harness, written, shown):
+    contact_night(harness)
+    harness.model_reply = written_as(lambda _p: written)
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert f"Sign up at {shown}, call {shown} or write to {shown} (Mia)" in email.text
+
+
+def test_text_that_only_looks_like_a_placeholder_stays_as_written(harness):
+    contact_night(harness)  # its MyClub event is FC Kilo P2017's match
 
     def reply(prompt: str) -> dict:
         written = reply_with_placeholders(prompt)
-        item = written["per_kid"][0]["action_items"][0]
-        form, phone = placeholders_in(item["what"])
-        # As a model writing Chinese might give them back: other brackets, full-width digits, spaces.
-        loose_form = f"【{form[1].lower()}{form[2:-1].translate(str.maketrans('0123456789', '０１２３４５６７８９'))}】"
-        item["what"] = f"Sign up for the retki at {loose_form} or call ⟦ {phone[1]} {phone[2:-1]} ⟧"
+        written["per_kid"][0]["action_items"][0]["what"] = "Park at P1 for the FC Kilo (P2017) match"
         return written
     harness.model_reply = reply
 
     assert harness.run() == 0
 
     [email] = harness.sent
-    assert f"Sign up for the retki at {RETKI_FORM} or call 040 123 4567 (Mia)" in email.text
+    assert "Park at P1 for the FC Kilo (P2017) match (Mia)" in email.text
 
 
 @pytest.mark.parametrize("language, phone_number", [("en", "a phone number"), ("zh", "一个电话号码"),
@@ -2242,7 +2362,8 @@ def test_a_placeholder_a_translation_changed_is_shown_as_its_kind_in_that_langua
     assert f"Sign up for the retki at {RETKI_FORM} or call 040 123 4567 (Mia)" in zh.text
 
 
-# The goldens without `.masked` are the prompts from before the AI filter, left as they were.
+# normal_night.*.model.txt and two_languages.translate.model.txt are the prompts from before the
+# AI filter, left as they were.
 @pytest.mark.parametrize("language", ["en", "zh", "fi"])
 def test_with_the_ai_filter_off_the_brief_prompt_is_as_before_the_filter(harness, golden, language):
     normal_night(harness, language)

@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import time
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -120,11 +121,6 @@ def placeholders_for(cfg: Config, run: ai_filter.Placeholders | None = None) -> 
     return run if run is not None else ai_filter.Placeholders()
 
 
-def placeholder_words(t: BriefText) -> dict[str, str]:
-    """What a Brief in `t`'s language says in place of a placeholder the model changed beyond repair."""
-    return {"phone": t.phone_number, "email": t.email_address, "link": t.link}
-
-
 def _strip_code_fence(text: str) -> str:
     m = re.search(r"```(?:json)?\s*(.+?)\s*```", text, re.DOTALL)
     return m.group(1) if m else text
@@ -226,8 +222,8 @@ _NOT_FOR_THE_MODEL = ("url", "student_number")
 
 def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[dict],
                   already_captured: list[dict], now: datetime,
-                  earlier_briefs: list[dict] | None = None,
-                  placeholders: ai_filter.Placeholders | None = None) -> str:
+                  earlier_briefs: list[dict] | None = None) -> tuple[str, dict[str, Any]]:
+    """The Brief prompt's instructions and the payload that follows them as JSON."""
     from datetime import timedelta as _td
     t = languages.text(cfg, cfg.brief_language())
     weekdays = t.weekdays
@@ -260,8 +256,6 @@ def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[di
         "earlier_briefs": citations.for_prompt(earlier_briefs or []),
         "messages": [m.to_dict() for m in messages],
     }
-    if placeholders is not None:
-        payload, _ = ai_filter.mask(payload, placeholders, drop=_NOT_FOR_THE_MODEL)
     return (
         "The payload below holds the kid profiles, which kid each WhatsApp group belongs to, the messages, "
         "a snapshot of the existing calendar, and **events already added to the calendar automatically "
@@ -280,8 +274,7 @@ def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[di
         "Don't add calendar_events for the events in `already_queued_for_calendar` (a match or training "
         "already listed there must not be repeated). "
         "Produce the JSON as the system instructions say.\n\n"
-        + json.dumps(payload, ensure_ascii=False, indent=2)
-    )
+    ), payload
 
 
 def _sessionless_env() -> dict[str, str]:
@@ -595,6 +588,24 @@ def call_llm(cfg: Config, prompt: str, system_prompt: str, timeout: int | None =
     return run(cfg, prompt, system_prompt, timeout or cfg.llm.timeout_seconds, budget)
 
 
+def call_llm_filtered(cfg: Config, intro: str, payload: Any, system_prompt: Callable[[bool], str],
+                      words: Mapping[str, str], placeholders: ai_filter.Placeholders | None = None, *,
+                      drop: Collection[str] = (), budget: int = CALL_BUDGET) -> LLMReply:
+    """call_llm with `payload` as JSON after `intro`, through the AI filter while it's on (ADR 0013):
+    the payload goes with placeholders (the run's `placeholders`, if given) and without the `drop`
+    keys, `system_prompt(True)` says how to treat them, and the reply's data comes back with the
+    real values, or `words` for a placeholder the model changed beyond repair. With the filter off,
+    the payload goes as it is with `system_prompt(False)`."""
+    placeholders = placeholders_for(cfg, placeholders)
+    if placeholders is not None:
+        payload, _ = ai_filter.mask(payload, placeholders, drop=drop)
+    reply = call_llm(cfg, intro + json.dumps(payload, ensure_ascii=False, indent=2),
+                     system_prompt(placeholders is not None), budget=budget)
+    if placeholders is not None:
+        reply.data = ai_filter.restore(reply.data, placeholders, words)
+    return reply
+
+
 def call_llm_json(cfg: Config, prompt: str, system_prompt: str,
                   timeout: int | None = None, budget: int = CALL_BUDGET) -> dict[str, Any]:
     return call_llm(cfg, prompt, system_prompt, timeout, budget).data
@@ -608,19 +619,17 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
                     placeholders: ai_filter.Placeholders | None = None) -> tuple[dict[str, Any], LLMReply]:
     """The night's summary with its citations resolved, plus the backend call it came from.
     `now` pins the night the prompt is written for; the eval replays past nights with it.
-    `budget` is how long a busy model is tried for, as call_llm takes it. While the AI filter is
-    on, the prompt has placeholders (the run's `placeholders`, if given) and the summary the values."""
+    `budget` is how long a busy model is tried for, as call_llm takes it. The call goes through the
+    AI filter with the run's `placeholders`, if given, so citations check the real links."""
     already_captured = already_captured or []
     now = now or datetime.now().astimezone()
-    placeholders = placeholders_for(cfg, placeholders)
-    prompt = _build_prompt(cfg, messages, upcoming_events, already_captured, now, earlier_briefs, placeholders)
+    intro, payload = _build_prompt(cfg, messages, upcoming_events, already_captured, now, earlier_briefs)
     log.info("Summarizing %d messages via %s", len(messages), cfg.llm.backend)
     language = cfg.brief_language()
     t = languages.text(cfg, language)
-    reply = call_llm(cfg, prompt, system_prompt(language, t, masked=placeholders is not None), budget=budget)
+    reply = call_llm_filtered(cfg, intro, payload, lambda masked: system_prompt(language, t, masked),
+                              t.placeholder_words(), placeholders, drop=_NOT_FOR_THE_MODEL, budget=budget)
     summary = normalise(reply.data, reply.repaired)
-    if placeholders is not None:  # before citations, which check event links against the messages
-        summary = ai_filter.restore(summary, placeholders, placeholder_words(t))
     _call_kids(summary, cfg)
     citations.resolve(summary, messages, upcoming_events, already_captured, earlier_briefs or [])
     return summary, reply
