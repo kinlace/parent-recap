@@ -4,6 +4,13 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.5.6 · 2026-10-08
+
+The Wilma step of setup asks for your town, not your school.
+
+### Changed
+- The setup page's Wilma search asks for your town, and says that all of a town's schools sign in through the town's Wilma, so the school's name isn't needed. Before, it said "town or school", and a school's name never matched, because Wilma's list has one entry for each town's schools. The few independent schools with their own Wilma can still be found by name.
+
 ## 0.5.5 · 2026-10-07
 
 Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010), brings its own Python and Node, and reads WhatsApp with Full Disk Access.
