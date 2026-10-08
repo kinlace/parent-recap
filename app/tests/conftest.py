@@ -536,10 +536,12 @@ KEYCHAIN_MESSAGES = {
 
 
 def msg(source: str, ext_id: str, when: str, body: str, *, sender: str | None = None,
-        subject: str | None = None, chat: str | None = None, kid: str | None = None) -> Message:
+        subject: str | None = None, chat: str | None = None, kid: str | None = None,
+        url: str | None = None, metadata: dict[str, Any] | None = None) -> Message:
     return Message(source=source, external_id=ext_id,
                    timestamp=datetime.fromisoformat(when).astimezone(ZoneInfo("UTC")),
-                   sender=sender, subject=subject, body=body, chat_name=chat, kid_hint=kid)
+                   sender=sender, subject=subject, body=body, chat_name=chat, kid_hint=kid,
+                   url=url, metadata=metadata or {})
 
 
 def myclub_event(ext_id: str, title: str, start: str, end: str, kid: str = "Mia") -> CalendarEvent:

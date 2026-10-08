@@ -3,7 +3,9 @@ each night is summarized through the real prompt and citation code, and a scorec
 saved and compared with the previous run. Also checks the bundled cases stay well-formed."""
 from __future__ import annotations
 
+import copy
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -45,8 +47,8 @@ def case_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    """Replies to every `claude` call with `replies[0]` (a dict, or raw text), recording prompts.
-    Each stderr in `busy` first makes one call fail with it."""
+    """Replies to every `claude` call with `replies[0]` (a dict, raw text, or a function making
+    one from the prompt), recording prompts. Each stderr in `busy` first makes one call fail with it."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     state = {"replies": [GOOD], "prompts": [], "busy": []}
 
@@ -58,6 +60,7 @@ def model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
             state["prompts"].append(k["input"])
             return subprocess.CompletedProcess(cmd, 1, "", state["busy"].pop(0))
         reply = state["replies"][0]
+        reply = reply(k["input"]) if callable(reply) else reply
         text = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
         if prog == "codex":
             state["prompts"].append(k["input"])
@@ -91,6 +94,28 @@ def test_scores_a_case_folder_and_saves_the_run(case_dir, model, tmp_path, capsy
     assert data["metrics"]["tokens_per_night"] == 1000
     night = data["runs"][0]["cases"]["floorball-fee"]
     assert night["valid_json"] is True and night["summary"]["per_kid"][0]["kid"] == "Eero"
+
+
+def test_the_eval_runs_to_the_end_with_contact_details_as_placeholders(case_dir, model, tmp_path):
+    case = copy.deepcopy(CASE)
+    case["messages"][0]["body"] += " Maksu: https://eagles.example.fi/maksu, kysy 040 765 4321."
+    (case_dir / "floorball-fee.yaml").write_text(yaml.safe_dump(case, allow_unicode=True))
+
+    def reply(prompt: str) -> dict:  # the model gives back the placeholder it was given
+        [link] = re.findall(r"⟦L\d+⟧", prompt)
+        answer = copy.deepcopy(GOOD)
+        answer["per_kid"][0]["action_items"][0]["what"] += f" {link}"
+        return answer
+    model["replies"] = [reply]
+
+    assert runner.main(["--cases", str(case_dir), "--out", str(tmp_path / "r"), "--language", "zh"]) == 0
+
+    [prompt] = model["prompts"]
+    assert "eagles.example.fi" not in prompt and "040 765 4321" not in prompt
+    night = json.loads(next((tmp_path / "r").glob("*.json")).read_text())["runs"][0]["cases"]["floorball-fee"]
+    assert night["error"] is None and night["clean"]
+    assert night["summary"]["per_kid"][0]["action_items"][0]["what"] == \
+        "付 kausimaksu 120 € https://eagles.example.fi/maksu"
 
 
 def test_compares_with_the_previous_run_and_reports_the_spread(case_dir, model, tmp_path, capsys):

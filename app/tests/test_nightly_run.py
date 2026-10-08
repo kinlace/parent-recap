@@ -3,6 +3,7 @@ the email (text, HTML, attachments), the model command line, and persisted state
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 import logging
 import re
@@ -157,7 +158,7 @@ def test_normal_night_matches_golden(harness, golden, language):
     golden(f"normal_night.{language}.ics", ics_for_golden(payload))
 
     [call] = harness.model_calls
-    golden(f"normal_night.{language}.model.txt", model_call_for_golden(call.argv, call.stdin))
+    golden(f"normal_night.{language}.masked.model.txt", model_call_for_golden(call.argv, call.stdin))
 
     state = harness.state()
     assert state["last_run_at"] == "2026-09-27T18:00:00+00:00"
@@ -1827,8 +1828,8 @@ def test_second_recipient_gets_the_brief_translated_into_their_language(harness,
     golden("two_languages.en.ics", ics_for_golden(payload))
 
     summarize, translate = harness.model_calls
-    golden("normal_night.zh.model.txt", model_call_for_golden(summarize.argv, summarize.stdin))
-    golden("two_languages.translate.model.txt", model_call_for_golden(translate.argv, translate.stdin))
+    golden("normal_night.zh.masked.model.txt", model_call_for_golden(summarize.argv, summarize.stdin))
+    golden("two_languages.translate.masked.model.txt", model_call_for_golden(translate.argv, translate.stdin))
     assert_isolated_claude(translate)
 
 
@@ -1959,7 +1960,7 @@ def test_the_model_writes_in_the_first_recipients_language(harness, golden):
     en, zh = harness.sent
     assert (en.to, zh.to) == (["partner@example.com"], ["parent@example.com"])
     summarize, translate = harness.model_calls
-    golden("normal_night.en.model.txt", model_call_for_golden(summarize.argv, summarize.stdin))
+    golden("normal_night.en.masked.model.txt", model_call_for_golden(summarize.argv, summarize.stdin))
     golden("normal_night.en.txt", en.text)
     golden("normal_night.en.html", html_for_golden(en.html))
     assert "from English into Simplified Chinese" in translate.argv[translate.argv.index("--system-prompt") + 1]
@@ -2034,3 +2035,242 @@ def test_translation_puts_the_programs_own_words_in_the_target_language(harness,
     assert "（再提醒）交班费<small style='color:#666'> (全家) · by 9月28日 周一 · 任一</small>" in zh.html
     assert "(Reminder) Pay the class fee<small style='color:#666'> (Household) · by Mon 28 Sep · Either</small>" \
         in en.html
+
+
+# ── Contact details reach the AI only as placeholders (ADR 0013)
+
+TEACHER = "maija.opettaja@kilo.example.fi"
+OFFICE = "office@kilo.example.fi"
+RETKI_FORM = "https://forms.kilo.example.fi/retki?id=42"
+SIGNUP = "www.kilo-fc.fi/signup"
+KIT_LIST = "https://kilo-fc.example.fi/kit"
+CONTACT_DETAILS = [TEACHER, OFFICE, RETKI_FORM, "040 123 4567", "+358 9 816 2000", SIGNUP, "050-765 4321",
+                   KIT_LIST, "kilo.example.fi"]
+GMAIL_LINK = "https://mail.google.com/mail/u/0/#search/rfc822msgid:retki-201@kilo.example.fi"
+STUDENT_NUMBER = "7731905"
+
+
+def contact_night(h) -> None:
+    """A night whose every part has contact details: each Source's messages, the queued MyClub
+    events and last night's Brief. The Gmail message has its link back and the Wilma one the
+    Kid's student number, as the Sources give them."""
+    h.config["summary_language"] = "en"
+    h.sources = {
+        "gmail": [msg("gmail", "g-201", "2026-09-27T08:15:00+03:00",
+                      f"Sign up for the retki at {RETKI_FORM} or call 040 123 4567. Questions to {OFFICE}.",
+                      sender=f"Maija Opettaja <{TEACHER}>", subject="Retki", kid="Mia", url=GMAIL_LINK,
+                      metadata={"sender_email": TEACHER, "thread_id": "1812345678901234567"})],
+        "wilma": [msg("wilma", "w-301", "2026-09-27T12:00:00+03:00",
+                      "If Leo is ill, call the school nurse on +358 9 816 2000.",
+                      sender="Terveydenhoitaja", subject="Sairauspoissaolot", kid="Leo",
+                      metadata={"wilma_kind": "messages", "raw_id": 301, "student_number": STUDENT_NUMBER})],
+        "whatsapp": [msg("whatsapp", "wa-401", "2026-09-27T19:00:00+03:00",
+                         f"Football sign-up is at {SIGNUP}, or text me on 050-765 4321",
+                         sender="Anna", chat="3B parents", kid="Mia")],
+        "myclub": ([dataclasses.replace(myclub_event("mc-1", "FC Kilo P2017 vs HJK", "2026-10-03T07:00:00+00:00",
+                                                     "2026-10-03T08:30:00+00:00"),
+                                        description=f"Kit list: {KIT_LIST}")], []),
+    }
+    h.write_archive("2026-09-26", {"delivered": True, "summary": {"per_kid": [{"kid": "Mia", "notices": [
+        {"text": f"The lost-property box is at the office, {OFFICE}", "refs": ["g-200"]}], "action_items": []}]}})
+
+
+def test_the_brief_prompt_has_placeholders_in_place_of_contact_details(harness):
+    contact_night(harness)
+
+    assert harness.run() == 0
+
+    prompt = harness.model_prompt(0)
+    for value in CONTACT_DETAILS:
+        assert value not in prompt
+    payload = harness.model_payload(0)
+    gmail, wilma, whatsapp = (next(m for m in payload["messages"] if m["external_id"] == i)
+                              for i in ("g-201", "w-301", "wa-401"))
+    # The display name still reaches the model, and the address has one placeholder everywhere.
+    assert gmail["sender"] == f"Maija Opettaja <{gmail['metadata']['sender_email']}>"
+    assert re.fullmatch(r"⟦E\d⟧", gmail["metadata"]["sender_email"])
+    assert re.fullmatch(r"Sign up for the retki at ⟦L\d⟧ or call ⟦P\d⟧\. Questions to ⟦E\d⟧\.", gmail["body"])
+    assert re.fullmatch(r"If Leo is ill, call the school nurse on ⟦P\d⟧\.", wilma["body"])
+    assert re.fullmatch(r"Football sign-up is at ⟦L\d⟧, or text me on ⟦P\d⟧", whatsapp["body"])
+    assert re.fullmatch(r"Kit list: ⟦L\d⟧", payload["already_queued_for_calendar"][0]["description"])
+    assert re.fullmatch(r"The lost-property box is at the office, ⟦E\d⟧",
+                        payload["earlier_briefs"][0]["per_kid"][0]["notices"][0]["text"])
+    # Identifiers the model doesn't need aren't sent, and the ids it cites are sent as they are.
+    assert "url" not in gmail and "rfc822msgid" not in prompt and "mail.google.com" not in prompt
+    assert "student_number" not in wilma["metadata"] and STUDENT_NUMBER not in prompt
+    assert payload_message_ids(harness, 0) == ["g-201", "w-301", "wa-401"]
+    assert payload["earlier_briefs"][0]["per_kid"][0]["notices"][0]["refs"] == ["g-200"]
+    assert "placeholders such as ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧" in system_prompt_of(harness.model_calls[0])
+
+
+def placeholders_in(text: str) -> list[str]:
+    return re.findall(r"⟦[PEL]\d+⟧", text)
+
+
+def reply_with_placeholders(prompt: str) -> dict:
+    """The contact night as a model writes it: with the placeholders it was given."""
+    body = {m["external_id"]: m["body"] for m in json.loads(prompt[prompt.index("\n{") + 1:])["messages"]}
+    form, phone, _office = placeholders_in(body["g-201"])
+    [nurse] = placeholders_in(body["w-301"])
+    signup, _anna = placeholders_in(body["wa-401"])
+    return {
+        "per_kid": [
+            {"kid": "Mia", "notices": [], "action_items": [
+                {"what": f"Sign up for the retki at {form} or call {phone}", "by": "2026-09-29", "who": "Either",
+                 "refs": ["g-201"]}]},
+            {"kid": "Leo", "notices": [{"text": f"If Leo is ill, call the school nurse on {nurse}", "refs": ["w-301"]}],
+             "action_items": []},
+        ],
+        "calendar_events": [
+            {"kid": "Mia", "title": "Retki", "start": "2026-10-01T09:00:00", "description": f"Sign up: {form}",
+             "refs": ["g-201"]},
+            # The retki's link pinned to an event whose message never had it.
+            {"kid": "Mia", "title": "Football sign-up", "start": "2026-10-02T17:00:00",
+             "description": f"Sign up at {signup} or {form}", "refs": ["wa-401"]},
+        ],
+        "message_digest": f"**Mia**\n- Retki: sign up at {form}\n\n**Leo**\n- Ill? Call the nurse on {nurse}",
+    }
+
+
+def test_the_brief_calendar_and_archive_get_the_real_contact_details_back(harness):
+    contact_night(harness)
+    harness.config["imessage"] = {"enabled": True, "recipients": ["+358401111111"]}
+    harness.model_reply = reply_with_placeholders
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    [(_, imessage)] = harness.imessages
+    item = f"Sign up for the retki at {RETKI_FORM} or call 040 123 4567"
+    for text in (email.text, email.html, imessage):
+        assert item in text
+        assert "+358 9 816 2000" in text
+        assert not placeholders_in(text)
+    assert f"Retki: sign up at {RETKI_FORM}" in email.text
+    ics = email.attachment(".ics")[1].decode().replace("\r\n ", "")  # unfolded
+    assert f"DESCRIPTION:Sign up: {RETKI_FORM}\\n" in ics
+    # A link is kept in an event only if a message the event cites has it, checked on the real link.
+    assert f"DESCRIPTION:Sign up at {SIGNUP} or \\n" in ics
+    summary = archived_summary(harness)
+    assert summary["per_kid"][0]["action_items"][0]["what"] == item
+    assert summary["calendar_events"][0]["description"] == f"Sign up: {RETKI_FORM}"
+    assert summary["calendar_events"][1]["description"] == f"Sign up at {SIGNUP} or "
+    assert item in (harness.archive_dir / "2026-09-27.md").read_text()
+
+
+def test_the_translation_prompt_has_the_same_placeholders_and_the_translation_the_values(harness):
+    contact_night(harness)
+    harness.config["summary_language"] = "zh"
+    harness.config["email"]["to"] = ["parent@example.com", PARTNER_EN]
+    # The translation keeps every placeholder, as its instructions ask.
+    harness.model_reply = [reply_with_placeholders, json.loads]
+
+    assert harness.run() == 0
+
+    prompt = harness.model_prompt(1)
+    for value in CONTACT_DETAILS:
+        assert value not in prompt
+    written = reply_with_placeholders(harness.model_prompt(0))
+    sent = json.loads(prompt)
+    assert sent["per_kid"][0]["action_items"][0]["what"] == written["per_kid"][0]["action_items"][0]["what"]
+    assert sent["message_digest"] == written["message_digest"]
+    assert "placeholders such as ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧" in system_prompt_of(harness.model_calls[1])
+    _zh, en = harness.sent
+    assert f"Sign up for the retki at {RETKI_FORM} or call 040 123 4567" in en.text
+    assert "Ill? Call the nurse on +358 9 816 2000" in en.html and not placeholders_in(en.html)
+    ics = en.attachment(".ics")[1].decode().replace("\r\n ", "")
+    assert f"DESCRIPTION:Sign up: {RETKI_FORM}\\n" in ics
+    assert f"DESCRIPTION:Sign up at {SIGNUP} or \\n" in ics
+
+
+def test_a_placeholder_in_other_brackets_case_or_digits_still_gets_its_value(harness):
+    contact_night(harness)
+
+    def reply(prompt: str) -> dict:
+        written = reply_with_placeholders(prompt)
+        item = written["per_kid"][0]["action_items"][0]
+        form, phone = placeholders_in(item["what"])
+        # As a model writing Chinese might give them back: other brackets, full-width digits, spaces.
+        loose_form = f"【{form[1].lower()}{form[2:-1].translate(str.maketrans('0123456789', '０１２３４５６７８９'))}】"
+        item["what"] = f"Sign up for the retki at {loose_form} or call ⟦ {phone[1]} {phone[2:-1]} ⟧"
+        return written
+    harness.model_reply = reply
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert f"Sign up for the retki at {RETKI_FORM} or call 040 123 4567 (Mia)" in email.text
+
+
+@pytest.mark.parametrize("language, phone_number", [("en", "a phone number"), ("zh", "一个电话号码"),
+                                                    ("fi", "puhelinnumero")])
+def test_a_placeholder_the_model_changed_beyond_repair_is_shown_as_its_kind_and_the_item_stays(
+        harness, language, phone_number):
+    contact_night(harness)
+    harness.config["summary_language"] = language
+
+    def reply(prompt: str) -> dict:
+        written = reply_with_placeholders(prompt)
+        written["per_kid"][0]["action_items"][0]["what"] = "Call ⟦P9⟧ to sign up for the retki"
+        return written
+    harness.model_reply = reply
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert f"Call {phone_number} to sign up for the retki" in email.text
+    assert "⟦" not in email.html
+    assert archived_summary(harness)["per_kid"][0]["action_items"][0]["what"] == \
+        f"Call {phone_number} to sign up for the retki"
+
+
+def test_a_placeholder_a_translation_changed_is_shown_as_its_kind_in_that_language(harness):
+    contact_night(harness)
+    harness.config["summary_language"] = "zh"
+    harness.config["email"]["to"] = ["parent@example.com", PARTNER_EN]
+
+    def translation(prompt: str) -> dict:
+        translated = json.loads(prompt)
+        translated["per_kid"][0]["action_items"][0]["what"] = "Sign up for the retki at ⟦L 9⟧"
+        return translated
+    harness.model_reply = [reply_with_placeholders, translation]
+
+    assert harness.run() == 0
+
+    zh, en = harness.sent
+    assert "Sign up for the retki at a link (Mia)" in en.text
+    assert f"Sign up for the retki at {RETKI_FORM} or call 040 123 4567 (Mia)" in zh.text
+
+
+# The goldens without `.masked` are the prompts from before the AI filter, left as they were.
+@pytest.mark.parametrize("language", ["en", "zh", "fi"])
+def test_with_the_ai_filter_off_the_brief_prompt_is_as_before_the_filter(harness, golden, language):
+    normal_night(harness, language)
+    harness.config["ai_filter"] = {"enabled": False}
+
+    assert harness.run() == 0
+
+    [call] = harness.model_calls
+    golden(f"normal_night.{language}.model.txt", model_call_for_golden(call.argv, call.stdin))
+
+
+def test_with_the_ai_filter_off_the_translation_prompt_is_as_before_the_filter(harness, golden):
+    two_languages(harness)
+    harness.config["ai_filter"] = {"enabled": False}
+
+    assert harness.run() == 0
+
+    _summarize, translate = harness.model_calls
+    golden("two_languages.translate.model.txt", model_call_for_golden(translate.argv, translate.stdin))
+
+
+def test_with_the_ai_filter_off_the_model_gets_the_messages_as_they_are(harness):
+    contact_night(harness)
+    harness.config["ai_filter"] = {"enabled": False}
+
+    assert harness.run() == 0
+
+    prompt = harness.model_prompt(0)
+    for value in [*CONTACT_DETAILS, GMAIL_LINK, STUDENT_NUMBER]:
+        assert value in prompt
+    assert "⟦" not in prompt and "⟦" not in system_prompt_of(harness.model_calls[0])

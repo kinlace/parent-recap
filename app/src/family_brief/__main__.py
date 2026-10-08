@@ -21,12 +21,12 @@ from .collectors import (
     whatsapp as whatsapp_collector,
     wilma as wilma_collector,
 )
-from . import feedback, languages, private_files, run_lock
+from . import ai_filter, feedback, languages, private_files, run_lock
 from .brief_text import PRODUCT_NAME, BriefText
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, Message
 from .config import Config
 from .state import State
-from .summarize import CALL_BUDGET, digest_of, extract_calendar_events, summarize
+from .summarize import CALL_BUDGET, digest_of, extract_calendar_events, placeholders_for, summarize
 from .translate import translate
 from .utils.dates import to_local, today_str
 
@@ -506,10 +506,10 @@ class _Version:
 
 
 def _versions(cfg: Config, summary: dict, model_events: list[CalendarEvent],
-              messages: list[Message]) -> list[_Version]:
+              messages: list[Message], placeholders: ai_filter.Placeholders | None = None) -> list[_Version]:
     """One version of tonight's Brief per language among the Recipients, the original first.
     Everything the Household shares (Google Calendar, the archive, feedback text) stays the
-    original's (ADR 0004)."""
+    original's (ADR 0004). Translations use tonight's `placeholders`."""
     original = cfg.brief_language()
     versions = []
     for language, to in (cfg.brief_recipients_by_language() or {original: []}).items():
@@ -521,7 +521,7 @@ def _versions(cfg: Config, summary: dict, model_events: list[CalendarEvent],
             versions.append(_Version(t, to, _fallback_summary(messages, summary["_llm_error"], t, cfg)))
         else:
             try:
-                translated = translate(cfg, summary, original, language)
+                translated = translate(cfg, summary, original, language, placeholders)
             except Exception as e:
                 log.error("Translating the Brief into %s failed: %s (sending the original)", language, e)
                 versions.append(_Version(languages.text(cfg, original), to, summary,
@@ -620,6 +620,9 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
         except Exception as e:
             log.warning("Failed to fetch upcoming events (continuing): %s", e)
 
+    # Tonight's placeholders while the AI filter is on: the Brief's call and each translation share
+    # them, so a value has the same placeholder in every prompt (ADR 0013).
+    placeholders = placeholders_for(cfg)
     if messages or due_soon:
         if args.preview:
             _preview_step("writing")
@@ -627,7 +630,8 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
             # Pass direct_events so the LLM doesn't duplicate them into calendar_events.
             already_captured = [e.to_dict() for e in direct_events]
             summary = summarize(cfg, messages, upcoming, already_captured, earlier,
-                                budget=PREVIEW_BUDGET if args.preview else CALL_BUDGET)
+                                budget=PREVIEW_BUDGET if args.preview else CALL_BUDGET,
+                                placeholders=placeholders)
         except Exception as e:
             log.error("Summarizer failed: %s (falling back to rule-based digest)", e)
             summary = _fallback_summary(messages, str(e), t, cfg)
@@ -689,7 +693,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
         model_wrote = "_llm_error" not in summary
         links = partial(feedback.link, cfg, date=date_str) \
             if cfg.feedback.active() and model_wrote else None
-        for v in _versions(cfg, summary, model_events, messages):
+        for v in _versions(cfg, summary, model_events, messages, placeholders):
             try:
                 listed = v.translated_list(created)
                 coverage_note = _coverage_note(coverage, v.t)

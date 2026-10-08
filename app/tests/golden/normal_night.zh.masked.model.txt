@@ -1,6 +1,6 @@
-argv: ["<codex>", "exec", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "--sandbox", "read-only", "-c", "approval_policy=\"never\"", "-c", "web_search=\"disabled\"", "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "apps", "--disable", "plugins", "--color", "never", "-C", "<workdir>", "-o", "<workdir>/last_message.txt", "-"]
+argv: ["claude", "-p", "--output-format", "json", "--system-prompt", "<system prompt>", "--tools", "", "--strict-mcp-config", "--disallowedTools", "mcp__*", "--setting-sources", "", "--no-session-persistence"]
 
---- stdin ---
+--- system prompt ---
 You are a careful assistant who sorts out a Household's school and hobby messages. The reader is a parent whose kids go to school in Finland (the kids and their details are in kid_profiles in the payload).
 
 You receive:
@@ -73,8 +73,7 @@ Placeholders:
 - Phone numbers, email addresses and links are placeholders such as ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧, and the program puts the real ones back. Copy each one you use exactly as written, with its brackets: never translate, reformat or renumber it, and never make one up
 
 
----
-
+--- stdin ---
 The payload below holds the kid profiles, which kid each WhatsApp group belongs to, the messages, a snapshot of the existing calendar, and **events already added to the calendar automatically from Sources such as MyClub**.
 
 **Important**: in `date_reference`, today=2026-09-27 周日, tomorrow=2026-09-28 周一, day_after=2026-09-29 周二.
@@ -206,5 +205,3 @@ Don't add calendar_events for the events in `already_queued_for_calendar` (a mat
     }
   ]
 }
-
-Output only the final JSON object. Don't run any commands, and don't read or write any files.

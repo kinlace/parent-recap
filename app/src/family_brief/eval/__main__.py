@@ -188,7 +188,8 @@ def evaluate(cases: list[Case], args: argparse.Namespace, backend: str, language
         "model": args.model,
         "language": language,
         "cases_dir": str(args.cases.resolve()),
-        "prompt_sha": hashlib.sha256(system_prompt(language).encode()).hexdigest()[:8],
+        "prompt_sha": hashlib.sha256(system_prompt(language, masked=cases[0].household.ai_filter.enabled)
+                                     .encode()).hexdigest()[:8],
         "finished": finished.isoformat(timespec="seconds"),
         "metrics": metrics,
         "spread": spread,
