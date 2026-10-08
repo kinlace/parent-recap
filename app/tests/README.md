@@ -24,12 +24,17 @@ the night's messages have themselves, stays as written. A Finnish night names a 
 other pupils and other parents in Finnish case forms (Maijalle, Virtaselle) and inside Chinese text
 with no spaces: none of them reaches the Brief or translation prompt, the Kids' names and aliases
 and the partner's own name do, a role in a sender stays beside its placeholder, and the Brief, the
-`.ics` and the archive get the names back with their Finnish endings. A name from an earlier
-Brief's night is masked too, and a person placeholder changed beyond repair is said as "someone"
-in each Recipient's language. `test_ai_filter.py` checks the names on their own: a full name and
-its parts as one person, stems that change (Pekan, Niemen, Markuksen), a part two people share,
-roles and organisations, and that an ordinary word that is a name elsewhere (Onni, Toivo, toivo)
-is masked only when that night's list has it. With the filter off, the Brief and translation
+`.ics` and the archive get the names back as the messages wrote them. The night also has a
+coach whose sender names his club, a Chinese pupil written by the given name alone (小明), a
+pupil named Leon beside the Kid Leo (Leon stays), and a newsletter from a news@ address (no one).
+A name from an earlier Brief's night is masked too, and a person placeholder changed beyond
+repair is said as "someone" in each Recipient's language. `test_ai_filter.py` checks the names on
+their own: a full name and its parts as one person, stems that change (Pekan, Niemen, Markuksen),
+that a reply copying the placeholders gets back exactly the text they stood for (Ville Virtanen,
+Maria, Kevät juhla, Toivon), how a form the text never had is made, a part two people share, a
+Kid's name in a case form, roles, senders with an organisation and organisations alone, Chinese
+given names, and that an ordinary word that is a name elsewhere (Onni, Toivo, toivo) is masked
+only when that night's list has it. With the filter off, the Brief and translation
 prompts must match `normal_night.*.model.txt` and `two_languages.translate.model.txt`, the goldens from
 before the filter. The prompts with it on are the `.masked` goldens. `test_eval_runner.py` runs an
 eval case with a link and a phone number to the end, the model answering with the placeholders it was

@@ -72,22 +72,38 @@ def test_a_name_whose_finnish_stem_changes_is_found_in_its_case_forms():
         "⟦N1⟧:n ja ⟦N1⟧:n, ⟦N2⟧:lle ja ⟦N2⟧:lle, ⟦N3⟧:n ja ⟦N3⟧:n, ⟦N4⟧:n ja ⟦N4⟧:n. ⟦N1⟧:stä ja ⟦N1⟧:a."
 
 
-def test_a_reply_gets_each_name_back_with_its_finnish_case_ending():
-    placeholders = people("Maija Virtanen", "Anna Korpela", "Daniel", "Pekka")
-    reply = {"text": "Kiitos ⟦N1⟧:lle ja ⟦N2⟧:n äidille. Vastaa ⟦N3⟧:lle. ⟦N4⟧:n kentällä ⟦N4⟧:a ei näkynyt. "
-                     "⟦N1⟧ tulee, ⟦N1⟧:kin. ⟦N4⟧:na ja ⟦N4⟧:llekin.",
-             "zh": "请回复⟦N2⟧，⟦N4⟧也去"}
+def test_a_reply_that_copies_the_placeholders_gets_back_exactly_the_text_they_stood_for():
+    # Ville Virtanen, Maria and the spring party Kevät juhla are no one on tonight's list, but a
+    # listed name's part or case form matches them.
+    placeholders = people("Maija Virtanen", "Mari Korhonen", "Kevät Lehto", "Pekka Niemi", "Markus Lahti",
+                          "Satu Mäki", "Daniel Laine", "Anna Ranta")
+    text = ("Maija Virtanen kirjoitti, että Ville Virtanen ja Virtasta. Maria ja Marille. Kevät juhla on "
+            "Lehdon talossa. Niemen ja Lahden, Laineen ja Mäen, Rannan ja Sadun, Markuksen ja Pekan.")
 
+    masked = masked_text(placeholders, text)
+
+    for name in ("Virta", "Mari", "Kevät", "Lehdo", "Nieme", "Lahde", "Laine", "Mäen", "Ranna", "Sadun",
+                 "Markuk", "Pekan"):
+        assert name not in masked
+    assert ai_filter.restore({"text": masked}, placeholders, PERSON_WORDS) == {"text": text}
+
+
+def test_a_form_the_text_never_had_is_made_from_the_name_as_the_text_wrote_it():
+    placeholders = people("Maija Virtanen", "Pekka Korpela", "Daniel")
+    masked_text(placeholders, "Maija tulee. Virtasen kanssa. Pekalle kiitos. Danielin reppu.")
+    reply = {"text": "⟦N1⟧:lle ja ⟦N1⟧:kin. ⟦N2⟧ tulee, ⟦N2⟧:n reppu. ⟦N3⟧ ja ⟦N3⟧:lle.",
+             "zh": "请回复⟦N2⟧"}
+
+    # From the name as the text wrote it without an ending (Maija), or else the shortest name
+    # listed (Pekka, Daniel), never a full name the text didn't have. An ending joins a vowel, a
+    # kk, pp or tt before the last vowel takes its weak stem, and the colon stays after any other
+    # consonant, where the right form would need the name's own stem.
     assert ai_filter.restore(reply, placeholders, PERSON_WORDS) == {
-        # A -nen surname and a kk, pp or tt before the last vowel take their own stems, an ending
-        # joins a vowel, and keeps its colon after any other consonant, where the right form would
-        # need the name's own stem.
-        "text": "Kiitos Maija Virtaselle ja Anna Korpelan äidille. Vastaa Daniel:lle. Pekan kentällä Pekkaa ei "
-                "näkynyt. Maija Virtanen tulee, Maija Virtanenkin. Pekkana ja Pekallekin.",
-        "zh": "请回复Anna Korpela，Pekka也去"}
+        "text": "Maijalle ja Maijakin. Pekka tulee, Pekan reppu. Daniel ja Daniel:lle.",
+        "zh": "请回复Pekka"}
     # Only a Finnish case ending joins the name: other text after a colon stays as written.
-    assert ai_filter.restore({"text": "Ask ⟦N2⟧:she knows. ⟦N2⟧: 040"}, placeholders, PERSON_WORDS) == \
-        {"text": "Ask Anna Korpela:she knows. Anna Korpela: 040"}
+    assert ai_filter.restore({"text": "Ask ⟦N1⟧:she knows. ⟦N1⟧: 040"}, placeholders, PERSON_WORDS) == \
+        {"text": "Ask Maija:she knows. Maija: 040"}
 
 
 def test_names_inside_chinese_text_with_no_spaces_are_masked_and_come_back():
@@ -100,7 +116,18 @@ def test_names_inside_chinese_text_with_no_spaces_are_masked_and_come_back():
     assert masked == "请联系⟦N1⟧老师，⟦N2⟧今天没来。⟦N3⟧老师说周五考试，⟦N1⟧老师也同意。王子的故事不考。"
     assert masked_text(placeholders, "李明妈妈：明天带雨衣") == "⟦N2⟧妈妈：明天带雨衣"
     reply = {"text": "⟦N3⟧老师说⟦N2⟧周五考试，问⟦N1⟧"}
-    assert ai_filter.restore(reply, placeholders, PERSON_WORDS) == {"text": "王老师说李明周五考试，问Maija Virtanen"}
+    assert ai_filter.restore(reply, placeholders, PERSON_WORDS) == {"text": "王老师说李明周五考试，问Maija"}
+    assert ai_filter.restore({"text": masked}, placeholders, PERSON_WORDS) == {"text": text}
+
+
+def test_a_three_character_chinese_name_is_also_masked_by_its_given_name():
+    placeholders = people("王小明妈妈", "李伟")
+    text = "小明今天没来，王小明的作业在李伟那里。伟大的老师和小李都在。"
+
+    masked = masked_text(placeholders, text)
+
+    assert masked == "⟦N1⟧今天没来，⟦N1⟧的作业在⟦N2⟧那里。伟大的老师和小李都在。"
+    assert ai_filter.restore({"text": masked}, placeholders, PERSON_WORDS) == {"text": text}
 
 
 def test_only_the_nights_people_are_masked_so_a_word_that_is_a_name_elsewhere_stays():
@@ -110,8 +137,11 @@ def test_only_the_nights_people_are_masked_so_a_word_that_is_a_name_elsewhere_st
     # Toivo is a parent in tonight's WhatsApp group: the name goes, in its case forms too (a
     # capital Toivon starting a sentence may be the verb, and goes as well), and the lower-case
     # word for hope stays.
-    assert masked_text(people("Toivo Mäkelä"), text) == \
-        "Onni ja ⟦N1⟧ tulevat. ⟦N1⟧:n, että sää on hyvä, ja onnea matkaan! toivo on suuri."
+    placeholders = people("Toivo Mäkelä")
+    masked = masked_text(placeholders, text)
+    assert masked == "Onni ja ⟦N1⟧ tulevat. ⟦N1⟧:n, että sää on hyvä, ja onnea matkaan! toivo on suuri."
+    # Copied back, each one is the word the text had.
+    assert ai_filter.restore({"text": masked}, placeholders, PERSON_WORDS) == {"text": text}
 
 
 def test_the_households_own_names_stay_and_a_part_two_people_share_is_a_person_of_its_own():
@@ -128,6 +158,15 @@ def test_the_households_own_names_stay_and_a_part_two_people_share_is_a_person_o
     assert ai_filter.restore(reply, placeholders, PERSON_WORDS) == {"text": "Maijalle ja Mia Virtaselle kiitos"}
 
 
+def test_a_kids_name_in_a_finnish_case_form_stays_when_a_third_partys_name_has_that_form():
+    # The Kid is Leo, and a pupil in the class is Leon Mäkinen.
+    placeholders = people("Leon Mäkinen", "Pekka", keep=("Leo", "Pekka Virtanen", "Pekka"))
+    text = "Leon synttärit ovat lauantaina, Leolle kiitos. Leon Mäkinen ja Mäkisen äiti tulevat. Pekan reppu."
+
+    assert masked_text(placeholders, text) == \
+        "Leon synttärit ovat lauantaina, Leolle kiitos. ⟦N1⟧ ja ⟦N1⟧:n äiti tulevat. Pekan reppu."
+
+
 def test_a_role_or_label_stays_beside_the_placeholder_and_an_organisation_is_no_person():
     senders = ["Opettaja Virtanen", "Terveydenhoitaja", "Anna (piano)", "Eetun äiti", "Parent rep",
                "Espoon kaupunki", "Kilonkoulu", "中文学校", "Info <info@kilo.example.fi>"]
@@ -139,6 +178,20 @@ def test_a_role_or_label_stays_beside_the_placeholder_and_an_organisation_is_no_
     assert masked_text(placeholders, "Eetu ja Virtanen") == "⟦N3⟧ ja ⟦N1⟧"
 
 
+def test_a_sender_with_an_organisation_keeps_its_person_and_an_organisation_alone_is_no_one():
+    senders = ["Maija Virtanen, Kilon koulu", "Juha Lahtinen Espoon kaupunki", "中文学校王老师", "Korpela, Anna",
+               "Espoo Music Institute <info@emi.example.fi>", "Kide Science <hello@kide.example.com>", "Kilo FC",
+               "Kilon koulu tiedottaa"]
+    placeholders = people(*senders)
+
+    assert [masked_text(placeholders, s) for s in senders] == [
+        "⟦N1⟧, Kilon koulu", "⟦N2⟧ Espoon kaupunki", "中文学校⟦N3⟧老师", "⟦N4⟧, ⟦N4⟧",
+        "Espoo Music Institute <⟦E1⟧>", "Kide Science <⟦E2⟧>", "Kilo FC", "Kilon koulu tiedottaa"]
+    text = "Espoossa on Music lesson ja Science fair. Kilo pelaa. Anna Korpela ja Juhalle."
+    assert masked_text(placeholders, text) == \
+        "Espoossa on Music lesson ja Science fair. Kilo pelaa. ⟦N4⟧ ja ⟦N2⟧:lle."
+
+
 def test_a_person_placeholder_written_another_way_gets_the_name_and_one_beyond_repair_a_word():
     placeholders = people("Maija Virtanen", "Anna Korpela")
     masked_text(placeholders, "Huone N1 on auki")  # the night's own text has an N1
@@ -146,6 +199,5 @@ def test_a_person_placeholder_written_another_way_gets_the_name_and_one_beyond_r
              "zh": "请回复【Ｎ２】和⟦N7⟧"}
 
     assert ai_filter.restore(reply, placeholders, {**PERSON_WORDS, "person": "henkilö"}) == {
-        "text": "Vastaa Anna Korpelalle, Maija Virtaselle ja Anna Korpelan äidille, ei henkilölle. "
-                "Huone (N1) on auki.",
-        "zh": "请回复Anna Korpela和henkilö"}
+        "text": "Vastaa Annalle, Maijalle ja Annan äidille, ei henkilölle. Huone (N1) on auki.",
+        "zh": "请回复Anna和henkilö"}

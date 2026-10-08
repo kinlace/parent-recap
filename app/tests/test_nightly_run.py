@@ -2365,22 +2365,28 @@ def test_a_placeholder_a_translation_changed_is_shown_as_its_kind_in_that_langua
 # ── Third Parties' names reach the AI only as placeholders (ADR 0013, #191)
 
 # Parts of tonight's Third Parties' names, in any case form: a coach, a teacher, a pupil whose
-# mother writes in the class group, a parent, and a pupil in a Chinese parent's WhatsApp name.
-THIRD_PARTIES = ["Juha", "Lahtin", "Lahtis", "Maija", "Virtan", "Virtas", "Eetu", "Toivo", "Mäkelä", "李明"]
+# mother writes in the class group, a parent, a pupil in a Chinese parent's WhatsApp name, and a
+# pupil whose first name is also the Kid Leo's genitive.
+THIRD_PARTIES = ["Juha", "Lahtin", "Lahtis", "Maija", "Virtan", "Virtas", "Eetu", "Toivo", "Mäkelä", "小明",
+                 "Mäkin", "Mäkis"]
 
 
 def names_night(h) -> None:
-    """A Finnish Brief for a night whose messages name a coach, a teacher, other pupils and other
-    parents, in Finnish case forms and inside Chinese text with no spaces, and a message from the
-    partner, a Recipient, under her own name. The partner reads English."""
+    """A Finnish Brief for a night whose messages name a coach (whose sender names his club too), a
+    teacher, other pupils and other parents, in Finnish case forms and inside Chinese text with no
+    spaces, and a message from the partner, a Recipient, under her own name. The partner reads
+    English."""
     h.config["summary_language"] = "fi"
     h.config["email"]["to"] = ["parent@example.com", PARTNER_EN]
     h.sources = {
         "gmail": [msg("gmail", "g-701", "2026-09-27T08:00:00+03:00",
                       "Hi! Juha here. Training moves to Tuesday. Questions to Juha or Lahtisen apuvalmentaja.",
-                      sender="Juha Lahtinen <juha.lahtinen@kilo-fc.example.fi>", subject="Training", kid="Mia"),
+                      sender='"Juha Lahtinen, Kilo FC" <juha.lahtinen@kilo-fc.example.fi>', subject="Training",
+                      kid="Mia"),
                   msg("gmail", "g-702", "2026-09-27T09:00:00+03:00", "Hanna picks Leo up on Monday.",
-                      sender="Hanna Parent <partner@example.com>", subject="Monday")],
+                      sender="Hanna Parent <partner@example.com>", subject="Monday"),
+                  msg("gmail", "g-703", "2026-09-27T09:30:00+03:00", "Science fair on Friday. Greetings, Kilo News",
+                      sender="Kilo News <news@kilo.example.fi>", subject="Science fair")],
         "wilma": [msg("wilma", "w-701", "2026-09-27T12:00:00+03:00",
                       "Retki torstaina. Palauttakaa lupalappu Maijalle tai Virtaselle. Eetu ja Mia ovat samassa "
                       "ryhmässä.", sender="Virtanen Maija", subject="Retki", kid="Mia")],
@@ -2389,8 +2395,10 @@ def names_night(h) -> None:
                 sender="Eetun äiti", chat="3B parents", kid="Mia"),
             msg("whatsapp", "wa-702", "2026-09-27T18:30:00+03:00", "Kiitos Maijalle retkestä! Onni-koira tulee mukaan.",
                 sender="Toivo Mäkelä", chat="3B parents", kid="Mia"),
-            msg("whatsapp", "wa-703", "2026-09-27T19:00:00+03:00", "李明和米娅周六一起去Juha教练的足球课",
-                sender="李明妈妈", chat="3B parents", kid="Mia"),
+            msg("whatsapp", "wa-703", "2026-09-27T19:00:00+03:00", "小明和米娅周六一起去Juha教练的足球课",
+                sender="王小明妈妈", chat="3B parents", kid="Mia"),
+            msg("whatsapp", "wa-704", "2026-09-27T19:30:00+03:00", "Mäkisen perhe tuo kakun. Leon reppu jäi kouluun.",
+                sender="Leon Mäkinen", chat="Leo piano", kid="Leo"),
         ],
     }
 
@@ -2403,12 +2411,12 @@ def names_reply(prompt: str) -> dict:
     """The names night as a model writes it in Finnish: with the placeholders it was given, and a
     Finnish case ending after a colon."""
     sender = {m["external_id"]: m["sender"] for m in json.loads(prompt[prompt.index("\n{") + 1:])["messages"]}
-    [coach], [teacher], [eetu], [toivo], [li_ming] = (people_in(sender[i]) for i in
-                                                      ("g-701", "w-701", "wa-701", "wa-702", "wa-703"))
+    [coach], [teacher], [eetu], [toivo], [xiaoming] = (people_in(sender[i]) for i in
+                                                       ("g-701", "w-701", "wa-701", "wa-702", "wa-703"))
     return {
         "per_kid": [
             {"kid": "Mia",
-             "notices": [{"text": f"{eetu}:n synttärit lauantaina, {li_ming} ja Mia menevät {coach}:n treeneihin",
+             "notices": [{"text": f"{eetu}:n synttärit lauantaina, {xiaoming} ja Mia menevät {coach}:n treeneihin",
                           "refs": ["wa-701", "wa-703"]}],
              "action_items": [{"what": f"Palauta retken lupalappu {teacher}:lle", "by": "2026-09-30",
                                "who": "Kumpi tahansa", "refs": ["w-701"]}]},
@@ -2432,20 +2440,26 @@ def test_third_parties_names_reach_the_brief_prompt_only_as_placeholders(harness
         assert name not in prompt
     messages = {m["external_id"]: m for m in harness.model_payload(0)["messages"]}
     # One placeholder per person: a name, its parts and their case forms, also inside Chinese text.
-    coach, teacher, eetu, toivo, li_ming = (people_in(messages[i]["sender"])[0] for i in
-                                            ("g-701", "w-701", "wa-701", "wa-702", "wa-703"))
-    assert len({coach, teacher, eetu, toivo, li_ming}) == 5
-    assert re.fullmatch(rf"{coach} <⟦E\d⟧>", messages["g-701"]["sender"])
+    coach, teacher, eetu, toivo, xiaoming, leon = (people_in(messages[i]["sender"])[0] for i in
+                                                   ("g-701", "w-701", "wa-701", "wa-702", "wa-703", "wa-704"))
+    assert len({coach, teacher, eetu, toivo, xiaoming, leon}) == 6
+    # The club in the coach's sender stays, as an organisation and no one's name.
+    assert re.fullmatch(rf'"{coach}, Kilo FC" <⟦E\d⟧>', messages["g-701"]["sender"])
     assert messages["g-701"]["body"] == \
         f"Hi! {coach} here. Training moves to Tuesday. Questions to {coach} or {coach}:n apuvalmentaja."
     assert messages["w-701"]["body"] == f"Retki torstaina. Palauttakaa lupalappu {teacher}:lle tai {teacher}:lle. " \
                                         f"{eetu} ja Mia ovat samassa ryhmässä."
     assert messages["wa-701"]["sender"] == f"{eetu}:n äiti"
     assert messages["wa-701"]["body"] == f"{eetu}:lle synttärit lauantaina! Mia ja Leo tervetuloa."
+    # A newsletter's sender is no person, so its words stay.
+    assert messages["g-703"]["body"] == "Science fair on Friday. Greetings, Kilo News"
     # Only tonight's people: Onni is no one's name tonight.
     assert messages["wa-702"]["body"] == f"Kiitos {teacher}:lle retkestä! Onni-koira tulee mukaan."
-    assert messages["wa-703"] == {**messages["wa-703"], "sender": f"{li_ming}妈妈",
-                                  "body": f"{li_ming}和米娅周六一起去{coach}教练的足球课"}
+    # A Chinese name's given name alone is the same person.
+    assert messages["wa-703"] == {**messages["wa-703"], "sender": f"{xiaoming}妈妈",
+                                  "body": f"{xiaoming}和米娅周六一起去{coach}教练的足球课"}
+    # Leon is a pupil's name, and the Kid Leo's genitive: Leo's backpack stays.
+    assert messages["wa-704"]["body"] == f"{leon}:n perhe tuo kakun. Leon reppu jäi kouluun."
     # The Household's own names still reach the model: the Kids, their aliases and the partner.
     assert messages["g-702"]["sender"] == "Hanna Parent <⟦E2⟧>" and "Hanna picks Leo up" in messages["g-702"]["body"]
     assert [k["name"] for k in harness.model_payload(0)["kid_profiles"]] == ["Mia", "Leo"]
@@ -2460,17 +2474,19 @@ def test_the_brief_calendar_and_archive_get_the_names_back_and_the_translation_p
     assert harness.run() == 0
 
     fi, en = harness.sent
+    # Each name comes back as the messages wrote it where the model copied that placeholder and
+    # ending, and is made from the name the messages wrote where they never had that form.
     for email in (fi, en):
-        assert "Palauta retken lupalappu Virtanen Maijalle" in email.text
+        assert "Palauta retken lupalappu Maijalle" in email.text
         assert "Eetun synttärit lauantaina" in email.text
         assert not people_in(email.html)
         ics = email.attachment(".ics")[1].decode().replace("\r\n ", "")
         assert "SUMMARY:Eetun synttärit" in ics and "DESCRIPTION:Toivo Mäkelä kiitti Virtanen Maijaa" in ics
     summary = archived_summary(harness)
-    assert summary["per_kid"][0]["action_items"][0]["what"] == "Palauta retken lupalappu Virtanen Maijalle"
+    assert summary["per_kid"][0]["action_items"][0]["what"] == "Palauta retken lupalappu Maijalle"
     assert summary["per_kid"][0]["notices"][0]["text"] == \
-        "Eetun synttärit lauantaina, 李明 ja Mia menevät Juha Lahtisen treeneihin"
-    assert "Lupalappu Virtanen Maijalle" in (harness.archive_dir / "2026-09-27.md").read_text()
+        "Eetun synttärit lauantaina, 王小明 ja Mia menevät Lahtisen treeneihin"
+    assert "Lupalappu Maijalle" in (harness.archive_dir / "2026-09-27.md").read_text()
     translation = harness.model_prompt(1)
     for name in THIRD_PARTIES:
         assert name not in translation
