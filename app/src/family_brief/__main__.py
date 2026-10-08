@@ -9,7 +9,6 @@ import sys
 import traceback
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
-from functools import partial
 from pathlib import Path
 from typing import Callable, Literal
 from zoneinfo import ZoneInfo
@@ -26,8 +25,8 @@ from .brief_text import PRODUCT_NAME, BriefText
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, Message
 from .config import Config
 from .state import State
-from .summarize import (CALL_BUDGET, digest_of, extract_calendar_events, for_the_ai, placeholders_for,
-                        summarize)
+from .summarize import (CALL_BUDGET, add_the_nights_people, digest_of, extract_calendar_events, for_the_ai,
+                        placeholders_for, summarize)
 from .translate import translate
 from .utils.dates import to_local, today_str
 
@@ -613,20 +612,29 @@ def _preview_step(step: str, **more: object) -> None:
 
 def _print_preview(cfg: Config, summary: dict, created: list[dict], coverage: dict[str, dict],
                    body: str, date_str: str, t: BriefText, assistant: str, model_wrote: bool,
-                   held_back: list[_HeldBack] | None = None) -> None:
+                   held_back: list[_HeldBack] | None = None, form: feedback.Links | None = None) -> None:
     """The first Recipient's email as tonight's Brief would send it, as one line of JSON: its
-    subject, text and HTML, and for a pilot Household the Digest's feedback link."""
-    links = partial(feedback.link, cfg, date=date_str) \
-        if cfg.feedback.active() and model_wrote else None
+    subject, text and HTML, and for a pilot Household (with its `form` links) the Digest's
+    feedback link."""
     html = _daily_brief_html(summary, created, date_str, t, cfg.timezone,
                              coverage=_coverage_note(coverage, t),
                              footer=t.written_by.format(assistant=assistant) if model_wrote else "",
-                             feedback_link=links, top_note=_top_note(summary, t, assistant),
-                             held_back=held_back, assistant=assistant)
-    wrong = feedback.link(cfg, feedback.DIGEST_WRONG, digest_of(summary) if model_wrote else "",
-                          date=date_str) if cfg.feedback.active() else None
+                             feedback_link=form.link if form and model_wrote else None,
+                             top_note=_top_note(summary, t, assistant), held_back=held_back, assistant=assistant)
+    wrong = form.link(feedback.DIGEST_WRONG, digest_of(summary) if model_wrote else "") if form else None
     _preview_step("made", subject=f"{PRODUCT_NAME} · {date_str}", text=body, html=html,
                   feedback=wrong)
+
+
+def _form_people(cfg: Config, placeholders: ai_filter.Placeholders | None, for_ai: list[Message],
+                 earlier: list[dict]) -> ai_filter.Placeholders:
+    """The placeholders the pilot feedback links carry for other people: tonight's, as the AI saw
+    them. With the AI filter off, new ones for the same people, since the links go to the team."""
+    if placeholders is not None:
+        return placeholders
+    people = ai_filter.Placeholders()
+    add_the_nights_people(cfg, people, [m.to_dict() for m in for_ai], earlier)
+    return people
 
 
 def _run(cfg: Config, args: argparse.Namespace) -> int:
@@ -748,12 +756,14 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
     # A Source's events carry the Kid's configured name, which their calendar identity keeps.
     created = [{**c, "kid": cfg.kid_called(c.get("kid"))} for c in created]
     date_str = today_str(cfg.timezone)
+    form = feedback.Links(cfg, date_str, _form_people(cfg, placeholders, for_ai, earlier)) \
+        if cfg.feedback.active() else None
     body = _brief_text(summary, created, date_str, t, cfg.timezone, _coverage_note(coverage, t),
                        _calendar_note(calendar_problem, bool(ics_events), t, assistant),
                        _top_note(summary, t, assistant), listed_held_back, assistant)
     if args.preview:
         _print_preview(cfg, summary, created, coverage, body, date_str, t, assistant, model_wrote,
-                       listed_held_back)
+                       listed_held_back, form)
     if args.dry_run:
         # Dry runs leave no trace: no archive, no state, no email.
         log.info("DRY-RUN: body (%d chars):\n%s", len(body), body)
@@ -763,8 +773,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
     email_sent = False
     delivered = not (cfg.email.enabled or cfg.imessage.enabled)
     if cfg.email.enabled:
-        links = partial(feedback.link, cfg, date=date_str) \
-            if cfg.feedback.active() and model_wrote else None
+        links = form.link if form and model_wrote else None
         for v in _versions(cfg, summary, model_events, for_ai, placeholders):
             try:
                 listed = v.translated_list(created)

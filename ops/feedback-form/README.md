@@ -40,7 +40,7 @@ Some Google accounts refuse the script's authorization with "This app is blocked
 
 ## Shipping it to pilot families
 
-Save the `feedback:` block as `app/src/family_brief/pilot_feedback.yaml` and release it. Until a release has this file, setup doesn't ask about pilot feedback at all. With it, the setup page's Welcome and the chat setup ask whether the family is a pilot family; when they agree, `setup save` writes the block into their `config.yaml` with a `household_label` of their own (the setup parent's email user by default, which they can change on the setup page's check step), so the response sheet shows who reported what. Nothing needs to be sent to families by hand.
+Save the `feedback:` block as `app/src/family_brief/pilot_feedback.yaml` and release it. Until a release has this file, setup doesn't ask about pilot feedback at all. With it, the setup page's Welcome and the chat setup ask whether the family is a pilot family; when they agree, `setup save` writes the block into their `config.yaml` with a `household_label` of their own (the setup parent's email user by default, which they can change on the setup page's check step). The links send a pseudonym made from it, such as `Household 3f9a2c`, and the Kids as Kid A and Kid B, so the response sheet groups each Household's feedback without its label or the Kids' names. Nothing needs to be sent to families by hand.
 
 ## Checking
 

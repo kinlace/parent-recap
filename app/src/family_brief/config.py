@@ -187,7 +187,7 @@ class FeedbackConfig(BaseModel):
     """Pilot feedback: ⭐/❌ links in the HTML Brief that open the shared, pre-filled Google Form."""
     enabled: bool = False
     prefill_base_url: str = ""
-    household_label: str = ""   # tells this Household's rows apart in the shared response Sheet
+    household_label: str = ""   # stays on the Mac: the Form gets its pseudonym (feedback.pseudonym)
     fields: FeedbackFields | None = None
 
     def active(self) -> bool:

@@ -29,7 +29,7 @@ How long Anthropic or OpenAI keep that data, and whether they train on it, is se
 
 - The Brief is sent through Gmail SMTP from your own address to the recipients you configured. New calendar events go with it as an `.ics` attachment.
 - In Google Calendar mode, new events are written to your calendar through the Google Calendar API instead.
-- If the pilot feedback links are turned on, clicking ⭐ or ❌ in a Brief opens a pre-filled Google Form owned by the Parent Recap maintainers. The link carries that item's text, its Source, the model, the date, your Household label and the Kid. Opening the link sends these fields to Google as part of the address, and the maintainers receive them only if you press submit.
+- If the pilot feedback links are turned on, clicking ⭐ or ❌ in a Brief opens a pre-filled Google Form owned by the Parent Recap maintainers. The link carries that item's text as the AI saw it, with other people's names, phone numbers, email addresses and links as placeholders, its Source, the model, the date, a pseudonym made from your Household label on the Mac, and the Kid as Kid A or Kid B. Opening the link sends these fields to Google as part of the address, and the maintainers receive them only if you press submit.
 
 ### What stays on the Mac
 
