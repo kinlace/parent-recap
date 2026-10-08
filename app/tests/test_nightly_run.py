@@ -2087,8 +2087,8 @@ def test_the_brief_prompt_has_placeholders_in_place_of_contact_details(harness):
     payload = harness.model_payload(0)
     gmail, wilma, whatsapp = (next(m for m in payload["messages"] if m["external_id"] == i)
                               for i in ("g-201", "w-301", "wa-401"))
-    # The display name still reaches the model, and the address has one placeholder everywhere.
-    assert gmail["sender"] == f"Maija Opettaja <{gmail['metadata']['sender_email']}>"
+    # The display name's person and the address each have one placeholder everywhere (#191).
+    assert re.fullmatch(rf"⟦N\d⟧ Opettaja <{gmail['metadata']['sender_email']}>", gmail["sender"])
     assert re.fullmatch(r"⟦E\d⟧", gmail["metadata"]["sender_email"])
     assert re.fullmatch(r"Sign up for the retki at ⟦L\d⟧ or call ⟦P\d⟧\. Questions to ⟦E\d⟧\.", gmail["body"])
     assert re.fullmatch(r"If Leo is ill, call the school nurse on ⟦P\d⟧\.", wilma["body"])
@@ -2101,7 +2101,7 @@ def test_the_brief_prompt_has_placeholders_in_place_of_contact_details(harness):
     assert "student_number" not in wilma["metadata"] and STUDENT_NUMBER not in prompt
     assert payload_message_ids(harness, 0) == ["g-201", "w-301", "wa-401"]
     assert payload["earlier_briefs"][0]["per_kid"][0]["notices"][0]["refs"] == ["g-200"]
-    assert "placeholders such as ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧" in system_prompt_of(harness.model_calls[0])
+    assert "placeholders such as ⟦N1⟧, ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧" in system_prompt_of(harness.model_calls[0])
 
 
 def placeholders_in(text: str) -> list[str]:
@@ -2175,7 +2175,7 @@ def test_the_translation_prompt_has_the_same_placeholders_and_the_translation_th
     sent = json.loads(prompt)
     assert sent["per_kid"][0]["action_items"][0]["what"] == written["per_kid"][0]["action_items"][0]["what"]
     assert sent["message_digest"] == written["message_digest"]
-    assert "placeholders such as ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧" in system_prompt_of(harness.model_calls[1])
+    assert "placeholders such as ⟦N1⟧, ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧" in system_prompt_of(harness.model_calls[1])
     _zh, en = harness.sent
     assert f"Sign up for the retki at {RETKI_FORM} or call 040 123 4567" in en.text
     assert "Ill? Call the nurse on +358 9 816 2000" in en.html and not placeholders_in(en.html)
@@ -2360,6 +2360,167 @@ def test_a_placeholder_a_translation_changed_is_shown_as_its_kind_in_that_langua
     zh, en = harness.sent
     assert "Sign up for the retki at a link (Mia)" in en.text
     assert f"Sign up for the retki at {RETKI_FORM} or call 040 123 4567 (Mia)" in zh.text
+
+
+# ── Third Parties' names reach the AI only as placeholders (ADR 0013, #191)
+
+# Parts of tonight's Third Parties' names, in any case form: a coach, a teacher, a pupil whose
+# mother writes in the class group, a parent, and a pupil in a Chinese parent's WhatsApp name.
+THIRD_PARTIES = ["Juha", "Lahtin", "Lahtis", "Maija", "Virtan", "Virtas", "Eetu", "Toivo", "Mäkelä", "李明"]
+
+
+def names_night(h) -> None:
+    """A Finnish Brief for a night whose messages name a coach, a teacher, other pupils and other
+    parents, in Finnish case forms and inside Chinese text with no spaces, and a message from the
+    partner, a Recipient, under her own name. The partner reads English."""
+    h.config["summary_language"] = "fi"
+    h.config["email"]["to"] = ["parent@example.com", PARTNER_EN]
+    h.sources = {
+        "gmail": [msg("gmail", "g-701", "2026-09-27T08:00:00+03:00",
+                      "Hi! Juha here. Training moves to Tuesday. Questions to Juha or Lahtisen apuvalmentaja.",
+                      sender="Juha Lahtinen <juha.lahtinen@kilo-fc.example.fi>", subject="Training", kid="Mia"),
+                  msg("gmail", "g-702", "2026-09-27T09:00:00+03:00", "Hanna picks Leo up on Monday.",
+                      sender="Hanna Parent <partner@example.com>", subject="Monday")],
+        "wilma": [msg("wilma", "w-701", "2026-09-27T12:00:00+03:00",
+                      "Retki torstaina. Palauttakaa lupalappu Maijalle tai Virtaselle. Eetu ja Mia ovat samassa "
+                      "ryhmässä.", sender="Virtanen Maija", subject="Retki", kid="Mia")],
+        "whatsapp": [
+            msg("whatsapp", "wa-701", "2026-09-27T18:00:00+03:00", "Eetulle synttärit lauantaina! Mia ja Leo tervetuloa.",
+                sender="Eetun äiti", chat="3B parents", kid="Mia"),
+            msg("whatsapp", "wa-702", "2026-09-27T18:30:00+03:00", "Kiitos Maijalle retkestä! Onni-koira tulee mukaan.",
+                sender="Toivo Mäkelä", chat="3B parents", kid="Mia"),
+            msg("whatsapp", "wa-703", "2026-09-27T19:00:00+03:00", "李明和米娅周六一起去Juha教练的足球课",
+                sender="李明妈妈", chat="3B parents", kid="Mia"),
+        ],
+    }
+
+
+def people_in(text: str) -> list[str]:
+    return re.findall(r"⟦N\d+⟧", text)
+
+
+def names_reply(prompt: str) -> dict:
+    """The names night as a model writes it in Finnish: with the placeholders it was given, and a
+    Finnish case ending after a colon."""
+    sender = {m["external_id"]: m["sender"] for m in json.loads(prompt[prompt.index("\n{") + 1:])["messages"]}
+    [coach], [teacher], [eetu], [toivo], [li_ming] = (people_in(sender[i]) for i in
+                                                      ("g-701", "w-701", "wa-701", "wa-702", "wa-703"))
+    return {
+        "per_kid": [
+            {"kid": "Mia",
+             "notices": [{"text": f"{eetu}:n synttärit lauantaina, {li_ming} ja Mia menevät {coach}:n treeneihin",
+                          "refs": ["wa-701", "wa-703"]}],
+             "action_items": [{"what": f"Palauta retken lupalappu {teacher}:lle", "by": "2026-09-30",
+                               "who": "Kumpi tahansa", "refs": ["w-701"]}]},
+            {"kid": "Leo", "notices": [{"text": "Hanna hakee Leon maanantaina", "refs": ["g-702"]}],
+             "action_items": []},
+        ],
+        "calendar_events": [{"kid": "Mia", "title": f"{eetu}:n synttärit", "start": "2026-10-03",
+                             "description": f"{toivo} kiitti {teacher}:a", "refs": ["wa-701", "wa-702"]}],
+        "message_digest": f"**Mia**\n- Lupalappu {teacher}:lle\n- {eetu}:n synttärit lauantaina",
+    }
+
+
+def test_third_parties_names_reach_the_brief_prompt_only_as_placeholders(harness):
+    names_night(harness)
+    harness.model_reply = [names_reply, json.loads]
+
+    assert harness.run() == 0
+
+    prompt = harness.model_prompt(0)
+    for name in THIRD_PARTIES:
+        assert name not in prompt
+    messages = {m["external_id"]: m for m in harness.model_payload(0)["messages"]}
+    # One placeholder per person: a name, its parts and their case forms, also inside Chinese text.
+    coach, teacher, eetu, toivo, li_ming = (people_in(messages[i]["sender"])[0] for i in
+                                            ("g-701", "w-701", "wa-701", "wa-702", "wa-703"))
+    assert len({coach, teacher, eetu, toivo, li_ming}) == 5
+    assert re.fullmatch(rf"{coach} <⟦E\d⟧>", messages["g-701"]["sender"])
+    assert messages["g-701"]["body"] == \
+        f"Hi! {coach} here. Training moves to Tuesday. Questions to {coach} or {coach}:n apuvalmentaja."
+    assert messages["w-701"]["body"] == f"Retki torstaina. Palauttakaa lupalappu {teacher}:lle tai {teacher}:lle. " \
+                                        f"{eetu} ja Mia ovat samassa ryhmässä."
+    assert messages["wa-701"]["sender"] == f"{eetu}:n äiti"
+    assert messages["wa-701"]["body"] == f"{eetu}:lle synttärit lauantaina! Mia ja Leo tervetuloa."
+    # Only tonight's people: Onni is no one's name tonight.
+    assert messages["wa-702"]["body"] == f"Kiitos {teacher}:lle retkestä! Onni-koira tulee mukaan."
+    assert messages["wa-703"] == {**messages["wa-703"], "sender": f"{li_ming}妈妈",
+                                  "body": f"{li_ming}和米娅周六一起去{coach}教练的足球课"}
+    # The Household's own names still reach the model: the Kids, their aliases and the partner.
+    assert messages["g-702"]["sender"] == "Hanna Parent <⟦E2⟧>" and "Hanna picks Leo up" in messages["g-702"]["body"]
+    assert [k["name"] for k in harness.model_payload(0)["kid_profiles"]] == ["Mia", "Leo"]
+    assert "米娅" in prompt and "小狮" in prompt
+    assert "⟦N1⟧" in system_prompt_of(harness.model_calls[0])
+
+
+def test_the_brief_calendar_and_archive_get_the_names_back_and_the_translation_prompt_has_none(harness):
+    names_night(harness)
+    harness.model_reply = [names_reply, json.loads]  # the translation keeps every placeholder
+
+    assert harness.run() == 0
+
+    fi, en = harness.sent
+    for email in (fi, en):
+        assert "Palauta retken lupalappu Virtanen Maijalle" in email.text
+        assert "Eetun synttärit lauantaina" in email.text
+        assert not people_in(email.html)
+        ics = email.attachment(".ics")[1].decode().replace("\r\n ", "")
+        assert "SUMMARY:Eetun synttärit" in ics and "DESCRIPTION:Toivo Mäkelä kiitti Virtanen Maijaa" in ics
+    summary = archived_summary(harness)
+    assert summary["per_kid"][0]["action_items"][0]["what"] == "Palauta retken lupalappu Virtanen Maijalle"
+    assert summary["per_kid"][0]["notices"][0]["text"] == \
+        "Eetun synttärit lauantaina, 李明 ja Mia menevät Juha Lahtisen treeneihin"
+    assert "Lupalappu Virtanen Maijalle" in (harness.archive_dir / "2026-09-27.md").read_text()
+    translation = harness.model_prompt(1)
+    for name in THIRD_PARTIES:
+        assert name not in translation
+    assert "Hanna hakee Leon maanantaina" in translation
+
+
+def test_an_earlier_briefs_names_reach_the_model_only_as_placeholders(harness):
+    """Last night a teacher who doesn't write tonight sent a message, and its Brief names her."""
+    names_night(harness)
+    harness.write_archive("2026-09-26", {
+        "delivered": True,
+        "messages": [msg("wilma", "w-600", "2026-09-26T12:00:00+03:00", "Vanhempainilta tiistaina.",
+                         sender="Niemi Sanna", subject="Vanhempainilta", kid="Leo").to_dict()],
+        "summary": {"per_kid": [{"kid": "Leo", "notices": [], "action_items": [
+            {"what": "Vastaa Sanna Niemelle vanhempainillasta (Niemen luokka)", "by": "2026-09-29",
+             "refs": ["w-600"]}]}]}})
+    harness.model_reply = [names_reply, json.loads]
+
+    assert harness.run() == 0
+
+    prompt = harness.model_prompt(0)
+    assert "Sanna" not in prompt and "Niem" not in prompt
+    [earlier] = harness.model_payload(0)["earlier_briefs"]
+    assert re.fullmatch(r"Vastaa (⟦N\d⟧):lle vanhempainillasta \(\1:n luokka\)",
+                        earlier["per_kid"][0]["action_items"][0]["what"])
+    assert set(earlier) == {"date", "per_kid"}  # what the program knows of that night stays here
+
+
+@pytest.mark.parametrize("language, written, shown", [
+    ("en", "Return the slip to ⟦N9⟧", "Return the slip to someone"),
+    ("zh", "把同意书交给⟦N9⟧", "把同意书交给某人"),
+    ("fi", "Palauta lupalappu ⟦N9⟧:lle", "Palauta lupalappu henkilölle"),
+])
+def test_a_person_placeholder_the_model_changed_beyond_repair_is_said_in_each_language(harness, language, written,
+                                                                                       shown):
+    names_night(harness)
+    harness.config["summary_language"] = language
+    harness.config["email"]["to"] = ["parent@example.com"]
+
+    def reply(prompt: str) -> dict:
+        brief = names_reply(prompt)
+        brief["per_kid"][0]["action_items"][0]["what"] = written
+        return brief
+    harness.model_reply = reply
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert f"{shown} (Mia)" in email.text
+    assert "⟦" not in email.html
 
 
 # normal_night.*.model.txt and two_languages.translate.model.txt are the prompts from before the

@@ -20,7 +20,16 @@ the Brief, the `.ics`, iMessage and the archive get the real values back, that a
 only if a message it cites has it, that a placeholder the model wrote in other brackets, another case,
 full-width digits or a lookalike letter still gets its value, that one it changed beyond repair is
 said as its kind in each Recipient's language with the item kept, and that a bare P1, or a (P2017)
-the night's messages have themselves, stays as written. With the filter off, the Brief and translation
+the night's messages have themselves, stays as written. A Finnish night names a coach, a teacher,
+other pupils and other parents in Finnish case forms (Maijalle, Virtaselle) and inside Chinese text
+with no spaces: none of them reaches the Brief or translation prompt, the Kids' names and aliases
+and the partner's own name do, a role in a sender stays beside its placeholder, and the Brief, the
+`.ics` and the archive get the names back with their Finnish endings. A name from an earlier
+Brief's night is masked too, and a person placeholder changed beyond repair is said as "someone"
+in each Recipient's language. `test_ai_filter.py` checks the names on their own: a full name and
+its parts as one person, stems that change (Pekan, Niemen, Markuksen), a part two people share,
+roles and organisations, and that an ordinary word that is a name elsewhere (Onni, Toivo, toivo)
+is masked only when that night's list has it. With the filter off, the Brief and translation
 prompts must match `normal_night.*.model.txt` and `two_languages.translate.model.txt`, the goldens from
 before the filter. The prompts with it on are the `.masked` goldens. `test_eval_runner.py` runs an
 eval case with a link and a phone number to the end, the model answering with the placeholders it was

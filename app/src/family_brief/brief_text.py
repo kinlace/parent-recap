@@ -99,6 +99,7 @@ class BriefText:
     phone_number: str
     email_address: str
     link: str
+    someone: str                        # a person
 
     # ── Calendar notes
     ics_hint: str
@@ -123,7 +124,8 @@ class BriefText:
 
     def placeholder_words(self) -> dict[str, str]:
         """What this language says in place of a placeholder the model changed beyond repair, by kind."""
-        return {"phone": self.phone_number, "email": self.email_address, "link": self.link}
+        return {"phone": self.phone_number, "email": self.email_address, "link": self.link,
+                "person": self.someone}
 
     def on(self, day: date) -> str:
         """`day` the way this language writes a date."""
@@ -190,6 +192,7 @@ EN = BriefText(
     phone_number="a phone number",
     email_address="an email address",
     link="a link",
+    someone="someone",
     ics_hint="They are in the attached .ics. Open it to add them to your calendar.",
     ics_hint_mixed="Linked events are in Google Calendar; the rest are in the attached .ics. "
                    "Open it to add them to your calendar.",
@@ -255,6 +258,7 @@ ZH = BriefText(
     phone_number="一个电话号码",
     email_address="一个邮箱地址",
     link="一个链接",
+    someone="某人",
     ics_hint="已打包在邮件附件的 .ics 里，点开附件即可一键加入你的日历。",
     ics_hint_mixed="带链接的已写入 Google 日历，其余已打包在邮件附件的 .ics 里，点开附件即可一键加入你的日历。",
     reauth="跟 {assistant} 说「重新授权 Google Calendar」即可修复。",
@@ -296,8 +300,8 @@ FI = BriefText(
     fallback_more="  …arkistossa vielä {n} lisää",
     # Added after the first review and not yet checked by a Finnish speaker: reply_incomplete,
     # message_unreadable, nothing_read, source_problem, fix_login, fix_permission, fix_other,
-    # whatsapp_permission_denied, phone_number, email_address, link, held_back, held_back_note,
-    # held_back_open, held_back_read_in, no_subject.
+    # whatsapp_permission_denied, phone_number, email_address, link, someone, held_back,
+    # held_back_note, held_back_open, held_back_read_in, no_subject.
     reply_incomplete="⚠️ {assistant}-avustajan vastaus katkesi tänä iltana, joten koosteesta voi puuttua "
                      "joitakin kohtia. Kaikki tämäniltaiset viestit ovat arkistossa kansiossa ~/ParentRecap.",
     message_unreadable="yhtä viestiä ei voitu lukea",
@@ -330,6 +334,7 @@ FI = BriefText(
     phone_number="puhelinnumero",
     email_address="sähköpostiosoite",
     link="linkki",
+    someone="henkilö",
     ics_hint="Ne ovat liitteenä olevassa .ics-tiedostossa. Avaa se, niin saat ne kalenteriisi.",
     ics_hint_mixed="Osa tapahtumista on lisätty Google Kalenteriin, loput ovat liitteenä olevassa .ics-tiedostossa. "
                    "Avaa se, niin saat ne kalenteriisi.",

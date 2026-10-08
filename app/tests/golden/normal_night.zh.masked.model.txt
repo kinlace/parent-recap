@@ -70,7 +70,7 @@ Earlier Briefs (earlier_briefs in the payload):
 - An earlier action item due between today and 3 days from now, which today's messages don't show as done or cancelled, goes into today's action_items again: start its what with "（再提醒）", and keep that item's refs as they were (write [] if it had none). Don't list again those already past their due date
 
 Placeholders:
-- Phone numbers, email addresses and links are placeholders such as ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧, and the program puts the real ones back. Copy each one you use exactly as written, with its brackets: never translate, reformat or renumber it, and never make one up
+- People's names (other than the kids'), phone numbers, email addresses and links are placeholders such as ⟦N1⟧, ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧, and the program puts the real ones back. Copy each one you use exactly as written, with its brackets: never translate, reformat or renumber it, and never make one up. A placeholder is the same person or value wherever it stands. In Finnish, a case ending goes after a person's placeholder with a colon, as in ⟦N1⟧:lle
 
 
 --- stdin ---
@@ -171,7 +171,7 @@ Don't add calendar_events for the events in `already_queued_for_calendar` (a mat
       "source": "wilma",
       "external_id": "w-55",
       "timestamp": "2026-09-27T09:00:00+00:00",
-      "sender": "Opettaja Virtanen",
+      "sender": "Opettaja ⟦N1⟧",
       "recipient": null,
       "subject": "Koe 5.10.",
       "body": "Matematiikan koe maanantaina 5.10. Kertotaulut 2-5.",
@@ -183,7 +183,7 @@ Don't add calendar_events for the events in `already_queued_for_calendar` (a mat
       "source": "whatsapp",
       "external_id": "wa-1",
       "timestamp": "2026-09-27T15:02:00+00:00",
-      "sender": "Anna (piano)",
+      "sender": "⟦N2⟧ (piano)",
       "recipient": null,
       "subject": null,
       "body": "Piano lesson moves to Wednesday 17:30 this week",
