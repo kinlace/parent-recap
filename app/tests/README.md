@@ -60,6 +60,17 @@ that such a newsletter and a camp notice about medication still reach the model,
 keeps them, that the rule-based fallback doesn't list them twice, that the setup page's preview and
 `parent-recap summarize` hold them back too, and that with the AI filter off they go to the model as
 before. `test_eval_runner.py` checks that the eval's Brief call and its judge never get one either.
+`test_ai_filter_report.py` runs `parent-recap ai-filter-report` on an archive of three evenings in
+Finnish, English and Chinese, as the evening run writes it. It checks the counts of evenings, messages
+and Held-back Messages by category, of the names that become placeholders in senders and in the text
+with each evening's own list (the earlier Brief's people included), and of phone numbers, email
+addresses and links, with no Gmail message link or Wilma student number among them. It checks the
+estimate of names missed beside a role, a title or a name's placeholder, where a Kid's alias
+(小狮妈妈) and 周五开家长会 don't count. It
+checks that no name, contact detail, link or message text reaches the output, that the report makes no
+network call and starts no program, that with the AI filter off it says what the filter would do, that
+an evening whose Brief wasn't delivered and a file that can't be read are skipped, and that a missing
+or empty archive gets a friendly answer.
 `test_busy_model.py` runs the evening Brief against a `codex` or `claude` that is busy (at capacity,
 rate-limited, overloaded) for a few calls. The harness records the pauses between model calls on a
 fake clock instead of sleeping. It checks that the Brief comes once the model is free, after pauses
