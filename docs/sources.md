@@ -141,7 +141,7 @@ At https://console.cloud.google.com, with your own Google account (menu names ma
 
 Setup doesn't ask about them; the family turns them on later through manage.
 
-Every Friday, 12 weekend events suitable for kids, at most €20 per person, are picked from the public event database of Helsinki / Espoo / Vantaa (Linked Events) and emailed as recommendations.
+Every Friday, 12 weekend events suitable for kids, at most €20 per person, are picked from the public event database of Helsinki / Espoo / Vantaa (Linked Events) and emailed as recommendations. The AI that ranks them gets each Kid as Kid A, Kid B, never their names, and the email and the calendar show each Kid's everyday name again.
 
 Ask the user:
 
