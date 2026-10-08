@@ -112,6 +112,8 @@ WHATSAPP_POLL_SECONDS = 5
 WHATSAPP_READ_SECONDS = 60
 WHATSAPP_DAYS = 180  # the groups listed are those with messages in this many days
 MYCLUB_URL = "https://id.myclub.fi"
+# OpenAI's page for the ChatGPT desktop app, with Codex in it, and its download for macOS.
+CODEX_APP_URL = "https://developers.openai.com/codex/app"
 _OK = ("saved", "signed-in", "readable", "read")
 # Where macOS lets setup save a password in the Keychain: a Terminal window in the family's own
 # desktop session. Shell → New Command… starts a command outside tmux, even when each new window

@@ -37,7 +37,7 @@ The program reads and sends with the one Gmail account above, and can't read a s
 
 Notes:
 
-- The program prefers the codex bundled in `/Applications/Codex.app` or `/Applications/ChatGPT.app`, because it updates with the app. A `codex` installed with npm or brew is only used when no app is found. To point to another path, set `llm.codex_path`
+- The program prefers the codex bundled in `Codex.app` or `ChatGPT.app` (in `/Applications` or `~/Applications`; the ChatGPT app keeps it in `Contents/Resources/codex-cli/bin/codex`), because it updates with the app. A `codex` installed with npm or brew is only used when no app is found. To point to another path, set `llm.codex_path`
 - Every call is isolated: an empty temporary folder, a read-only sandbox, no saved session, and none of the user's own Codex configuration or MCP tools
 
 ### Claude (`llm.backend: claude`)

@@ -2236,6 +2236,13 @@ def myclub_links(harness) -> dict[str, str | None]:
             for k in yaml.safe_load(config_file(harness).read_text())["kids"]}
 
 
+def test_the_button_opens_the_page_to_download_the_chatgpt_app(harness, page):
+    r = call(page.url, "api/open", method="POST", body={"site": "codex-app"})
+
+    assert r.status == 200 and r.json()["result"] == "opened"
+    assert harness.opened == ["https://developers.openai.com/codex/app"]
+
+
 def test_the_button_opens_myclub_s_site(harness, page):
     r = call(page.url, "api/open", method="POST", body={"site": "myclub"})
 

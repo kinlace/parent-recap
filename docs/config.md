@@ -49,7 +49,7 @@ One town outside the presets was set up end to end in a fresh-install test in Oc
 | `google_calendar.mode`                 | `ics` / `google` / `off`                                                                                                        |
 | `google_calendar.invite_attendees`     | In google mode, people automatically invited to new events                                                                      |
 | `llm.backend`                          | `claude` (Claude Pro/Max subscription) or `codex` (ChatGPT account); `cli` in older configs means `claude`                      |
-| `llm.codex_path`                       | Optional, where codex is. By default the one bundled in Codex.app or ChatGPT.app is used first                                  |
+| `llm.codex_path`                       | Optional, where codex is. By default the one bundled in Codex.app or ChatGPT.app is used first (ChatGPT.app keeps it in `Contents/Resources/codex-cli/bin/codex`)                                  |
 | `llm.timeout_seconds`                  | Timeout for one model call, 300 seconds by default; raise it to 600 if there are a lot of messages, for example after a holiday |
 | `ai_filter.enabled`                    | `true` by default: the AI gets placeholders for phone numbers, email addresses and links. See [What the AI sees](#what-the-ai-sees) |
 | `email.to`                             | Brief recipients; see [Recipients in their own language](#recipients-in-their-own-language) below                               |
