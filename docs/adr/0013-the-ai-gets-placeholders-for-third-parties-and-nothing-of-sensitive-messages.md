@@ -1,0 +1,21 @@
+# The AI gets placeholders for Third Parties and nothing of sensitive messages
+
+Every evening the Brief sends the night's messages to the Recipient's own Claude or ChatGPT. Their consumer plans process the data in the US and, unless the Recipient turns it off, may train on it. The same messages name teachers, other pupils and other parents, and some carry a Kid's health, special support or bullying matters: exactly what school-system providers and municipalities worry about most (see Wilma's article of 19 Feb 2026 on AI agents and logins). So on the Mac, before any model call, the program holds back messages that look sensitive and lists them in the Brief by Source, sender and subject without the AI; replaces Third Parties' names, phone numbers, email addresses and links with opaque placeholders, and puts them back in the reply before anything is written or sent; sends only Kid-related calendar events, with every other event as a busy block; and drops identifiers the model doesn't need (Wilma student numbers, Gmail message links). The detection never goes through the AI. It is on by default, with a switch in `manage` (#188).
+
+## Considered Options
+
+- **Send everything, as before.** Simplest and best for quality, but puts other people's data and the most sensitive content into a US provider, and into its training set by default.
+- **Ask the AI to redact.** The data has already left the Mac by then.
+- **A local name-recognition model.** Hundreds of MB to install, with uncertain results for Finnish and Chinese. Instead the program builds a list of names from structured fields (Wilma senders, email display names, the people who post in the chosen WhatsApp groups, calendar attendees) and matches them in the text with Finnish case endings. Its coverage is measured on a parent's own archive, as counts only, before a model is considered again.
+- **Delete phone numbers and addresses.** Action Items often need them ("call 040… to sign up"), so they become placeholders instead.
+- **Hold back only Third Parties' sensitive content.** A Kid's own diagnosis or support plan is the most sensitive of all, and the Brief still lists the message, so the parent misses only the AI's summary of it.
+- **Mask the Kids' names too, now.** The model attributes items to Kids by their names, aliases and Finnish inflections. Kids' names stay for now and are masked later only if the eval shows no meaningful drop. School and class stay: they are not Third Parties' data and help attribution.
+
+## Consequences
+
+- Placeholders are tokens the model must copy unchanged, since a "Teacher 1" translated into Chinese or Finnish could not be restored. One that can't be restored shows the person's role, and the item stays. Translation per Recipient (ADR 0004) sends the masked Brief and restores afterwards. Citations (ADR 0001) are ids and don't change.
+- It reduces what reaches the AI and doesn't guarantee anything: a name that appears only inside the text gets through, and school, class and dates can still point to a person. The README, setup and anything we tell school-system providers say "reduces".
+- Weekend Picks ranking gets no Kid names. Pilot feedback links carry the masked text, Kid placeholders and a Household pseudonym, so the maintainers don't receive Third Parties' names either.
+- Setup tells Recipients to turn off model training in Claude ("Help improve Claude") and ChatGPT ("Improve the model for everyone"), both on by default for consumer plans. The program can't check either setting.
+- The sensitive-word lists need a native speaker's review in each language, Finnish first.
+- Keeping data in the EU is not solved here: consumer plans offer no EU processing. An API backend for families without a subscription could, later.

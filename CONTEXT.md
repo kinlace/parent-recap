@@ -26,6 +26,10 @@ _Avoid_: task, todo, 家长要做的事
 The separate Friday message recommending local family events for the weekend; not part of the Brief.
 _Avoid_: weekend events, weekend brief
 
+**Held-back Message** (zh 未交给 AI 的消息, fi tekoälyltä piilotettu viesti):
+A message that looked sensitive, such as health, special support or bullying, and was not sent to the AI. The Brief lists it by Source, sender and subject so the Recipient reads it where it came from (ADR 0013).
+_Avoid_: filtered message, hidden message, 敏感消息
+
 ## Inputs
 
 **Source** (zh 信息源, fi lähde):
@@ -45,3 +49,7 @@ _Avoid_: reader, subscriber, user, 用户
 **Kid** (zh 孩子, fi lapsi):
 A child in the Household whom messages are attributed to. A Brief calls each Kid by one everyday name everywhere, even where a Source uses their full name.
 _Avoid_: child, student
+
+**Third Party** (zh 第三方, fi ulkopuolinen henkilö):
+Anyone named in a Household's messages who is not one of its Kids or Recipients, such as teachers, other pupils and other parents. The AI sees Third Parties only as placeholders (ADR 0013).
+_Avoid_: others, outsiders, 别人
