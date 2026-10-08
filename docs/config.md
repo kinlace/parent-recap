@@ -90,6 +90,8 @@ Two more limits apply with the AI filter on or off. In `google` calendar mode th
 
 This reduces what reaches the AI. It doesn't hide everything: names the program can't list and the rest of the text still reach it ([ADR 0013](adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md)). Claude and ChatGPT process what they get in the US, and by default may use it to train their models. Parent Recap can't check that setting: the setup page and the README's [What the AI sees](../README.md#what-the-ai-sees) say where to turn it off.
 
+To check what the filter catches in your own messages, run `parent-recap ai-filter-report`. It reads every evening in the archive in `~/ParentRecap` and runs the evening Brief's filter on that evening's messages, with that evening's own list of names. It prints counts only: the messages it holds back, by category, the names, phone numbers, email addresses and links that become placeholders, and an estimate of the names it likely missed. A likely miss is a capitalised word or a Chinese name next to a role or a title (opettaja, teacher, 老师, -n äiti, 妈妈), or right after a name's placeholder, that wasn't on that evening's list. The report prints no message text, no names and no links, and it makes no network call. With the AI filter off, it shows what the filter would do. These counts decide whether a local name-recognition model is worth adding (ADR 0013).
+
 To turn the AI filter off, set `ai_filter.enabled: false`, or ask Claude or Codex to turn off the AI filter. The AI then gets the messages as they are, sensitive ones included, from the next Brief on. The calendar's busy blocks and Weekend Picks' Kid A and Kid B stay.
 
 ## Pilot feedback

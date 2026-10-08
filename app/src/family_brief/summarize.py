@@ -264,7 +264,7 @@ def _parse_model_json(result: str) -> tuple[dict[str, Any], bool]:
 
 # Identifiers the model doesn't need: Gmail's link back to a message, which holds its Message-ID,
 # and Wilma's student number.
-_NOT_FOR_THE_MODEL = ("url", "student_number")
+NOT_FOR_THE_MODEL = ("url", "student_number")
 
 
 def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[dict],
@@ -684,7 +684,7 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
     language = cfg.brief_language()
     t = languages.text(cfg, language)
     reply = call_llm_filtered(cfg, intro, payload, lambda masked: system_prompt(language, t, masked),
-                              t.placeholder_words(), placeholders, drop=_NOT_FOR_THE_MODEL, budget=budget)
+                              t.placeholder_words(), placeholders, drop=NOT_FOR_THE_MODEL, budget=budget)
     summary = normalise(reply.data, reply.repaired)
     _call_kids(summary, cfg)
     citations.resolve(summary, messages, upcoming_events, already_captured, earlier_briefs or [])

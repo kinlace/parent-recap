@@ -65,6 +65,15 @@ class Message:
             "metadata": self.metadata,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Message:
+        """The Message that to_dict gave `data`, as the archive keeps it."""
+        return cls(source=data["source"], external_id=data["external_id"],
+                   timestamp=datetime.fromisoformat(data["timestamp"]), sender=data.get("sender"),
+                   recipient=data.get("recipient"), subject=data.get("subject"), body=data.get("body") or "",
+                   chat_name=data.get("chat_name"), kid_hint=data.get("kid_hint"), url=data.get("url"),
+                   metadata=data.get("metadata") or {})
+
 
 @dataclass
 class CalendarEvent:
