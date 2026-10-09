@@ -54,6 +54,10 @@ def test_a_model_at_capacity_twice_then_free_writes_the_brief(night, caplog):
     "ERROR: unexpected status 401 Unauthorized: Your refresh token has expired. Please log out and sign in again.\n",
     # A plan's usage limit is a rate limit too, but it lasts hours: waiting minutes won't help.
     "ERROR: You've hit your usage limit. Upgrade to Pro or try again in 3 days.\n",
+    # Out of API credit comes as a 429 from OpenAI, but it lasts until someone pays.
+    "ERROR: unexpected status 429 Too Many Requests: credit_balance_exhausted: Your credit balance is exhausted\n",
+    'API Error: 400 {"type":"error","error":{"type":"invalid_request_error",'
+    '"message":"Your credit balance is too low to access the Anthropic API."}}\n',
 ])
 def test_a_signed_out_model_fails_at_once_with_the_usual_brief(night, stderr):
     night.model_reply = [FailedCall(stderr)]
