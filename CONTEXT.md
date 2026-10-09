@@ -27,7 +27,7 @@ The separate Friday message recommending local family events for the weekend; no
 _Avoid_: weekend events, weekend brief
 
 **Held-back Message** (zh 未交给 AI 的消息, fi tekoälyltä piilotettu viesti):
-A message that looked sensitive, such as health, special support or bullying, and was not sent to the AI. The Brief lists it by Source, sender and subject so the Recipient reads it where it came from (ADR 0013).
+A message that looked sensitive, such as health, special support or bullying, and was not sent to the AI. Announcements and other messages sent to everyone are never held back. The Brief lists it by Source, sender and subject so the Recipient reads it where it came from (ADR 0013).
 _Avoid_: filtered message, hidden message, 敏感消息
 
 ## Inputs
