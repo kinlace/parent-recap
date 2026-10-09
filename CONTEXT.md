@@ -40,6 +40,10 @@ _Avoid_: collector, channel, feed, 采集器, 来源
 The step on the Mac that every AI call of the evening Brief goes through: Third Parties' names, phone numbers, email addresses and links become placeholders, which the program turns back into the real values before the Brief goes out, and Held-back Messages are left out altogether (ADR 0013). It is on by default, and a parent can turn it off with `manage`.
 _Avoid_: anonymizer, redaction, masking (in user-facing text), 脱敏
 
+**Gateway Key** (zh 网关密钥, fi yhdyskäytävän avain):
+The key the maintainers give an invited Household so its Briefs are written through the maintainers' gateway instead of the Household's own Claude or ChatGPT subscription (ADR 0014).
+_Avoid_: API key, virtual key, token
+
 ## People
 
 **Household** (zh 家庭, fi perhe):
