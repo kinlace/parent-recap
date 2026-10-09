@@ -1,6 +1,7 @@
 """`parent-recap ai-filter-report` reads the Household's own archive and counts what the AI filter
 catches, as the evening run would filter each night, with counts only (#197, ADR 0013). With
---held-back it lists the Held-back Messages too, only in the parent's own terminal (#220)."""
+--held-back it lists the Held-back Messages too, only in the parent's own terminal (#220), never in
+an AI assistant's shell (#223)."""
 from __future__ import annotations
 
 import re
@@ -73,9 +74,12 @@ def report(harness: Harness, capsys: pytest.CaptureFixture[str], *args: str) -> 
 
 
 def held_back_list(harness: Harness, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
-                   terminal: bool) -> str:
-    """The report with --held-back, its output a terminal or, as when an AI assistant runs it, not."""
+                   terminal: bool, **env: str) -> str:
+    """The report with --held-back, its output a terminal or, as when an AI assistant runs it, not.
+    The harness clears what an AI assistant's shell sets, unless `env` sets it again."""
     monkeypatch.setattr(sys.stdout, "isatty", lambda: terminal)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
     return report(harness, capsys, "--held-back")
 
 
@@ -267,9 +271,35 @@ def test_with_its_output_piped_or_captured_held_back_prints_the_counts_and_says_
     assert listed(out) == []
     assert out.startswith(counts_only)
     assert out[len(counts_only):] == (
-        "\nThe list of held-back messages isn't printed here: it holds the messages' own text, so it prints "
-        "only to a terminal, not when the output is piped or captured, as when an AI assistant runs the "
-        "report. Run this same command in Terminal yourself to see it.\n")
+        "\nThe list of held-back messages isn't printed here: it holds the messages' own text, and the output "
+        "is piped or captured, as when an AI assistant runs the report. Run this same command yourself in the "
+        "macOS Terminal app to see it, not with ! in Claude Code or in the Claude app's Terminal panel.\n")
+
+
+# What Claude Code and Codex set in the shell of each command they run, also one run with ! in
+# Claude Code, whose output is a terminal.
+AI_ASSISTANT_SHELLS = [{"CLAUDECODE": "1"}, {"AI_AGENT": "claude-code_2-1-0_agent"},
+                       {"CODEX_THREAD_ID": "019a0000-0000-7000-8000-000000000000"},
+                       {"CODEX_SANDBOX": "seatbelt"}, {"CODEX_SANDBOX_NETWORK_DISABLED": "1"}]
+
+
+@pytest.mark.parametrize("env", AI_ASSISTANT_SHELLS, ids=lambda env: next(iter(env)))
+def test_in_an_ai_assistants_shell_held_back_prints_the_counts_and_says_to_run_it_in_the_terminal_app(
+        harness, capsys, monkeypatch, env):
+    archive(harness)
+    counts_only = report(harness, capsys)
+
+    out = held_back_list(harness, capsys, monkeypatch, terminal=True, **env)
+
+    assert listed(out) == []
+    assert out.startswith(counts_only)
+    assert out[len(counts_only):] == (
+        "\nThe list of held-back messages isn't printed here: it holds the messages' own text, and this is the "
+        "shell of an AI assistant such as Claude Code or Codex, which reads what it prints. Run this same "
+        "command yourself in the macOS Terminal app to see it, not with ! in Claude Code or in the Claude "
+        "app's Terminal panel.\n")
+    for value in PRIVATE:
+        assert value not in out
 
 
 def test_with_the_ai_filter_off_held_back_lists_what_the_filter_would_hold_back(harness, capsys, monkeypatch):
