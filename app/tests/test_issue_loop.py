@@ -202,10 +202,8 @@ def test_named_issues_that_cannot_be_worked_say_why(backlog):
                    "99 skipped: no such issue"]
 
 
-def test_a_named_issue_given_twice_or_with_a_hash_is_taken_once(backlog):
-    (backlog / "issues.json").write_text(json.dumps([issue(7, 10)]))
-    env = {**os.environ, "PATH": f"{backlog / 'bin'}:{os.environ['PATH']}", "ISSUE_LOOP_COPY": "1"}
-    result = subprocess.run(["bash", "scripts/issue-loop.sh", "--dry-run", "7", "#7"], cwd=ROOT,
-                            capture_output=True, text=True, env=env)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.count("#7 ready") == 1
+def test_a_named_issue_given_twice_or_with_a_hash_is_taken_once_and_sets_the_job_limit():
+    # Sourcing with arguments runs the script's option parsing, which stops short of its main part.
+    script = 'source scripts/issue-loop.sh 7 "#9" 7; echo "$PICKS|$MAX_JOBS"'
+    out = subprocess.run(["bash", "-c", script], cwd=ROOT, capture_output=True, text=True)
+    assert out.stdout.strip() == "7 9|2", out.stderr
