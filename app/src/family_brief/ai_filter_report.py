@@ -11,12 +11,14 @@ as well: it then says what the filter would do.
 
 With --held-back it also lists each Held-back Message with the word that matched and the text
 around it, so the parent can see which words hold back routine notices. That is the messages' own
-text, so it prints only to a terminal: piped or captured, as when an AI assistant runs it, the
-report prints the counts alone and says to run it in Terminal."""
+text, so it prints only to a terminal no AI assistant runs or reads: piped or captured, as when an
+AI assistant runs it, or in a shell an AI assistant started, as with Claude Code's ! command, the
+report prints the counts alone and says to run it in the macOS Terminal app."""
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import unicodedata
@@ -79,7 +81,8 @@ def register(sub) -> None:
                        "leaves the Mac)")
     p.add_argument("--held-back", action="store_true",
                    help="Also list each held-back message with the word that matched and the text around "
-                   "it. Only in Terminal: piped or captured, the report prints the counts alone")
+                   "it. Only in the Terminal app: piped, captured or in an AI assistant's shell, the report "
+                   "prints the counts alone")
     p.set_defaults(func=cmd_ai_filter_report)
 
 
@@ -151,15 +154,33 @@ def cmd_ai_filter_report(args: argparse.Namespace) -> int:
             report.undelivered += 1
             continue
         report.add(cfg, path.name[:10], messages)
-    listing = args.held_back and sys.stdout.isatty()
+    not_here = _not_listed_here() if args.held_back else None
+    listing = args.held_back and not not_here
     _print(report, folder, files[0].name[:10], files[-1].name[:10], cfg.ai_filter.enabled, listing)
     if listing:
         _print_held_back(report, cfg.ai_filter.enabled, ZoneInfo(cfg.timezone))
-    elif args.held_back:
-        print("\nThe list of held-back messages isn't printed here: it holds the messages' own text, so it "
-              "prints only to a terminal, not when the output is piped or captured, as when an AI assistant "
-              "runs the report. Run this same command in Terminal yourself to see it.")
+    elif not_here:
+        print(f"\nThe list of held-back messages isn't printed here: it holds the messages' own text, and "
+              f"{not_here}. Run this same command yourself in the macOS Terminal app to see it, not with ! in "
+              "Claude Code or in the Claude app's Terminal panel.")
     return 0
+
+
+# Set in the shell of every command an AI assistant runs, also one its user runs through it, such as
+# with ! in Claude Code. Claude Code sets CLAUDECODE and AI_AGENT. Codex sets CODEX_THREAD_ID for
+# every command, its own and the user's (codex-rs/core/src/unified_exec/process_manager.rs and
+# tasks/user_shell.rs in github.com/openai/codex), and CODEX_SANDBOX or CODEX_SANDBOX_NETWORK_DISABLED
+# for one in its sandbox (codex-rs/core/src/sandboxing/mod.rs and spawn.rs).
+AI_ASSISTANT_SHELL = ("CLAUDECODE", "AI_AGENT", "CODEX_THREAD_ID", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED")
+
+
+def _not_listed_here() -> str | None:
+    """Why --held-back doesn't list the messages here, or None in a terminal of the parent's own."""
+    if any(os.environ.get(name) for name in AI_ASSISTANT_SHELL):
+        return "this is the shell of an AI assistant such as Claude Code or Codex, which reads what it prints"
+    if not sys.stdout.isatty():
+        return "the output is piped or captured, as when an AI assistant runs the report"
+    return None
 
 
 def _print(report: Report, folder: Path, first: str, last: str, on: bool, listing: bool) -> None:

@@ -50,7 +50,7 @@
 # the police) and staff (psychologists, school social workers and other staff or services a family
 # meets about one child). The Brief doesn't show them. They are for reviewing the lists and the log.
 # To see which words hold back which messages in a Household's archive, the parent runs
-# `parent-recap ai-filter-report --held-back` in Terminal.
+# `parent-recap ai-filter-report --held-back` in the macOS Terminal app.
 
 fi:
   health:

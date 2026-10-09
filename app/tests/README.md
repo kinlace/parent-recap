@@ -90,7 +90,10 @@ the evening run holds them back. A long notice to the whole class, read again a 
 comes first by its own date and shows about 40 characters on each side, on one line, with no word cut
 in two and no newline, tab or terminal escape code, and a message held back for its sender's title
 shows the name without the address. Piped or captured, `--held-back` prints the same counts, no name,
-contact detail, link or message text, and a line saying to run it in Terminal.
+contact detail, link or message text, and a line saying to run it in the macOS Terminal app. So does
+it in a terminal with `CLAUDECODE`, `AI_AGENT` or one of Codex's variables set, as in the shell of a
+command Claude Code or Codex runs, also one run with `!`. The harness clears these, so the suite
+runs the same inside Claude Code or Codex.
 `test_busy_model.py` runs the evening Brief against a `codex` or `claude` that is busy (at capacity,
 rate-limited, overloaded) for a few calls. The harness records the pauses between model calls on a
 fake clock instead of sleeping. It checks that the Brief comes once the model is free, after pauses
