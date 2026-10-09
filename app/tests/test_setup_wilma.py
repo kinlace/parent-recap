@@ -6,15 +6,19 @@ family had just finished in that window, and `wilma` is a fake CLI in Parent Rec
 run on its own Node (`fake_node`), whose sign-in screen behaves like the real one's: it clears the screen before each question, asks which
 student when there are several, writes its config only after that, then asks what to view and
 fails with a 403 if anything is picked. Waiting takes no time: `time.sleep` returns at once.
+A window still open after WINDOW_SECONDS is ended, with the processes it started, and fails its
+test, so a hang can't hold up the run.
 Assertions are on the JSON result, on what the window showed, on what was opened, and on every
 place the Wilma password must never reach."""
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -28,6 +32,7 @@ from family_brief import install_record, setup_wilma
 
 REAL_RUN = subprocess.run  # before the harness fakes it
 PASSWORD = "Wilma-salasana-42"
+WINDOW_SECONDS = 30  # the window closes within about a second
 CONFIG_MD = Path(__file__).resolve().parents[2] / "docs" / "config.md"
 NO_PTY = Path(__file__).with_name("no_pty")
 STUDENTS = [{"studentNumber": "1001", "name": "Mia Virtanen", "href": "/!1001/"},
@@ -35,7 +40,7 @@ STUDENTS = [{"studentNumber": "1001", "name": "Mia Virtanen", "href": "/!1001/"}
 
 CLEAR = "\x1b[1;1H\x1b[0J"  # Node's console.clear(), which the CLI calls before each question
 FAKE_WILMA = """#!{python}
-import json, os, pathlib, select, sys, time
+import json, os, pathlib, select, signal, sys, time
 ctl = json.loads(pathlib.Path(__file__).with_name("wilma.json").read_text())
 cfg = pathlib.Path(os.environ["HOME"]) / ".config" / "wilmai" / "config.json"
 args = sys.argv[1:]
@@ -44,6 +49,20 @@ def ask(question):  # the answer's first key, or None when none comes
     print(question, flush=True)
     if select.select([0], [], [], 5)[0]:
         return os.read(0, 1) or None
+
+def ended(*_):  # shows the cursor again, after the window has stopped reading
+    print("\\x1b[?25h", end="", flush=True)
+    sys.exit(143)
+
+if ctl["writes_when_ended"]:
+    # Once its session has opened /dev/tty, macOS lets this exit only after the window has read
+    # what it wrote, however long that takes. Bash, the /bin/sh that runs the stand-in node,
+    # opens it when it starts. Opened here too, so that holds whichever shell /bin/sh is.
+    try:
+        os.close(os.open("/dev/tty", os.O_RDWR))
+    except OSError:  # no terminal (no_pty)
+        pass
+    signal.signal(signal.SIGTERM, ended)
 
 if not args:  # the interactive sign-in screen
     print({clear!r} + "? Search tenant by city/name (blank to list all, or type URL)", flush=True)
@@ -88,6 +107,7 @@ class Wilma:
         self.signs_in_to: str | None = "https://espoo.inschool.fi"  # None: no sign-in
         self.exit = 0                 # the sign-in screen's exit status
         self.students: list[dict[str, Any]] = STUDENTS
+        self.writes_when_ended = False  # True: the sign-in screen writes once it's ended
         self.terminal_runs = True     # False: the family never finishes in the window
         self.terminal_opens = True    # False: macOS won't open Terminal
         self.terminal: list[str] = []  # each script opened in Terminal, as it read then
@@ -106,7 +126,7 @@ class Wilma:
         config = wilma_config(self.signs_in_to) if self.signs_in_to else None
         (self.bin_dir / "wilma.json").write_text(json.dumps(
             {"signs_in_to": self.signs_in_to, "config": config, "exit": self.exit,
-             "students": self.students}))
+             "students": self.students, "writes_when_ended": self.writes_when_ended}))
 
 
 def can_open_a_pty() -> bool:
@@ -143,13 +163,29 @@ def wilma(harness, tmp_path, monkeypatch) -> Wilma:
                 return subprocess.CompletedProcess(cmd, 1, "", "Unable to find application")
             w.terminal.append(Path(cmd[3]).read_text())
             if w.terminal_runs:
-                shown = REAL_RUN(["/bin/sh", cmd[3]], stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                w.window += shown.stdout.decode()
+                w.window += run_window(cmd[3])
             return subprocess.CompletedProcess(cmd, 0, "", "")
         return others(cmd, *a, **k)
     monkeypatch.setattr(subprocess, "run", run)
     return w
+
+
+def run_window(script: str) -> str:
+    """Runs the Terminal window's script and returns what the window showed. A window still open
+    after WINDOW_SECONDS is ended, with the processes it started, and fails the test."""
+    window = subprocess.Popen(["/bin/sh", script], stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              start_new_session=True)
+    try:
+        shown, _ = window.communicate(timeout=WINDOW_SECONDS)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(window.pid, signal.SIGKILL)
+        shown, _ = window.communicate()
+        pytest.fail(f"The Wilma window didn't close within {WINDOW_SECONDS} seconds: its script, "
+                    "`setup wilma --screen` or the wilma CLI was still running. The window "
+                    f"showed: {shown.decode(errors='replace')!r}")
+    return shown.decode()
 
 
 def result(capsys) -> tuple[dict[str, Any], str]:
@@ -325,6 +361,18 @@ def test_once_signed_in_the_window_ends_wilma_before_its_student_picker_and_menu
         assert hidden not in wilma.window
     assert wilma.window.rsplit(CLEAR, 1)[-1].strip().endswith("You can close this window.")
     assert "signed in to Wilma" in wilma.window.rsplit(CLEAR, 1)[-1]
+
+
+def test_the_window_closes_when_wilma_writes_after_it_is_ended(harness, wilma, capsys):
+    # As when wilma prints its menu just as the window ends it: nothing reads that output, and
+    # macOS may not let wilma finish exiting until something does (#216).
+    wilma.writes_when_ended = True
+    wilma.install()
+
+    assert harness.cli("setup", "wilma") == 0
+
+    assert result(capsys)[0]["result"] == "signed-in"
+    assert wilma.window.strip().endswith("You can close this window.")
 
 
 def test_the_window_says_it_can_be_closed_when_wilma_ends_without_a_sign_in(harness, wilma,
