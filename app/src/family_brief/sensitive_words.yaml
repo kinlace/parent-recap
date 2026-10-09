@@ -16,9 +16,12 @@
 # course choices, and a newsletter whose footer lists the staff. So these words are left out on
 # purpose: sick, ill, fever, nurse, doctor, check-up, lice, chickenpox, allergy, injury, hospital
 # and medication (sairas, kipeä, terveydenhoitaja, lääkäri, terveystarkastus, täi, vesirokko,
-# allergia, loukkaantui, sairaala, lääkitys, lääke, medicinering, 用药, 服药, and the like). A message
-# with a word here is held back even when it goes to the whole class, such as a talk about bullying
-# or a police visit about traffic safety: the word lists can't tell.
+# allergia, loukkaantui, sairaala, lääkitys, lääke, medicinering, 用药, 服药, and the like). The
+# word lists can't tell a notice to the whole school from a message about one child, so the Sources
+# do: a Wilma announcement, the announcements in Wilma's notification emails and an email to a
+# mailing list are sent to everyone and never held back (held_back.sent_to_everyone). A message to
+# the Household with a word here is held back even when a teacher sent it to the whole class, such
+# as a Wilma message about a talk on bullying or a police visit about traffic safety.
 #
 # How an entry matches:
 # - Case doesn't matter, and every list is checked against the subject, the body and the sender's

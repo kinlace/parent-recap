@@ -53,7 +53,12 @@ the psychology subject, the guidance counsellor, kiusallinen, syllabus, a fire a
 newsletters in each language whose footer lists the staff with their contact details. It also checks
 that a match names the entry that matched and where it stands in the text as written, past the words
 the `not` list takes out and a newsletter's contact lines, and in which of a message's subject, body
-and sender's name (not its address) it is. In
+and sender's name (not its address) it is. Messages sent to everyone are never held back, whatever
+their words: a Wilma announcement (the same words in a Wilma message are), an email the Gmail Source
+reads with a `List-Id`, `List-Unsubscribe` or `Precedence: bulk` or `list` header, and the
+announcements in made-up Wilma notification emails in Finnish and English. The message such an email
+copies is held back, and the match points into it. A Wilma email with no announcements heading, or
+with a mailing list's headers, is checked whole. In
 `test_nightly_run.py`, a night with a sensitive message from each category in each language checks
 that none of them reaches the Brief's or the translation's prompt, and the `held_back.*` goldens show
 the Brief listing each Held-back Message by Source, sender and subject, with its Gmail link, its page
@@ -62,7 +67,10 @@ checks that a night with only Held-back Messages sends a Brief with no model cal
 that such a newsletter and a camp notice about medication still reach the model, that the archive
 keeps them, that the rule-based fallback doesn't list them twice, that the setup page's preview and
 `parent-recap summarize` hold them back too, and that with the AI filter off they go to the model as
-before. `test_eval_runner.py` checks that the eval's Brief call and its judge never get one either.
+before. A night with a Wilma announcement, a city's mass email and a Wilma notification email with
+only announcements, each with a sensitive word, sends them to the model, and the Brief lists only a
+Wilma message to the Household and a notification email that copies one. `test_eval_runner.py`
+checks that the eval's Brief call and its judge never get one either.
 `test_ai_filter_report.py` runs `parent-recap ai-filter-report` on an archive of three evenings in
 Finnish, English and Chinese, as the evening run writes it. It checks the counts of evenings, messages
 and Held-back Messages by category, of the names that become placeholders in senders and in the text
@@ -76,7 +84,9 @@ an evening whose Brief wasn't delivered and a file that can't be read are skippe
 or empty archive gets a friendly answer. With `--held-back` and its output a terminal (the test fakes
 `isatty`), it checks that every Held-back Message is listed after the counts, by date, with its Source,
 category, the word that matched as the message writes it, sender, subject or WhatsApp chat and the text
-around the word, also with the AI filter off. A long notice to the whole class, read again a day late,
+around the word, also with the AI filter off. An evening of messages sent to everyone beside one to
+the Household counts and lists only that one and the message a Wilma notification email copies, as
+the evening run holds them back. A long notice to the whole class, read again a day late,
 comes first by its own date and shows about 40 characters on each side, on one line, with no word cut
 in two and no newline, tab or terminal escape code, and a message held back for its sender's title
 shows the name without the address. Piped or captured, `--held-back` prints the same counts, no name,

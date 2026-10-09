@@ -80,7 +80,7 @@ The `family-brief` command still works beside `parent-recap`, and `~/.family` ke
 Every evening Parent Recap sends the night's messages to your own Claude or ChatGPT, which writes the Brief. Before anything leaves your Mac, the program cuts down what the AI gets:
 
 - Phone numbers, email addresses, links and the names of the people who send the messages (teachers, other parents, the people in your WhatsApp groups) become placeholders such as ⟦N1⟧. The Mac keeps what each one stands for, for that evening only, and puts the real values back before the Brief is written, so your Brief looks the same
-- Messages that look sensitive, such as ones about a diagnosis, special support, bullying or child welfare, don't reach the AI at all. The Brief lists each one by Source, sender and subject, so you read it where it came from
+- Messages that look sensitive, such as ones about a diagnosis, special support, bullying or child welfare, don't reach the AI at all, unless they were sent to everyone, such as a school announcement. The Brief lists each one by Source, sender and subject, so you read it where it came from
 - From Google Calendar, only Kid-related events reach the AI with their title: the ones Parent Recap added and the ones whose title names a Kid. Every other event goes as a busy time with no title or place
 - Weekend Picks are chosen with your Kids as Kid A and Kid B, not their names
 

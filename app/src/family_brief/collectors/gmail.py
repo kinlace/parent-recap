@@ -216,6 +216,9 @@ def _parse(raw: bytes, ext_id: str, cutoff: datetime) -> Message | None:
         ts = datetime.now(timezone.utc)
     if ts < cutoff:
         return None
+    metadata = {"sender_email": sender_email, "thread_id": msg.get("X-GM-THRID") or ""}
+    if _to_a_mailing_list(msg):
+        metadata["mailing_list"] = True  # sent to everyone, so never held back from the AI (held_back.py)
     return Message(
         source="gmail",
         external_id=ext_id,
@@ -224,8 +227,16 @@ def _parse(raw: bytes, ext_id: str, cutoff: datetime) -> Message | None:
         subject=subject,
         body=_extract_body(msg),
         url=f"https://mail.google.com/mail/u/0/#search/rfc822msgid:{msg.get('Message-ID','').strip('<>')}",
-        metadata={"sender_email": sender_email, "thread_id": msg.get("X-GM-THRID") or ""},
+        metadata=metadata,
     )
+
+
+def _to_a_mailing_list(msg: EmailMessage) -> bool:
+    """Whether the email went out to a list, as a city's or a school's mass email does: it has a
+    List-Id or List-Unsubscribe header, or Precedence: bulk or list. The headers come with the
+    message the collector reads anyway."""
+    return bool(msg.get("List-Id") or msg.get("List-Unsubscribe")) or \
+        str(msg.get("Precedence") or "").strip().casefold() in ("bulk", "list")
 
 
 def _login(cfg: Config) -> tuple[imaplib.IMAP4_SSL, str]:
