@@ -246,11 +246,11 @@ def test_a_long_message_shows_about_40_characters_on_each_side_of_the_word_on_on
 
     out = held_back_list(harness, capsys, monkeypatch, terminal=True)
 
-    # By the messages' own dates, with no word cut in two at either end, and the newlines, the tab
-    # and the terminal's escape code made spaces.
+    # By the messages' own dates, with no word cut in two at either end, the newlines and the tab
+    # made spaces, and the terminal's escape code gone, all of it.
     assert listed(out) == [
         '  2026-09-20  Wilma     bullying  [kiusaamisesta]  Rehtori Saarinen · Viikkotiedote 40 · '
-        '"…Maanantaina puhumme luokissa kiusaamisesta [1mja siitä, miten jokainen voi…"',
+        '"…Maanantaina puhumme luokissa kiusaamisesta ja siitä, miten jokainen voi…"',
         '  2026-09-24  Gmail     staff     [Kuraattori]  Kuraattori Maija Laine · (no subject) · '
         '"Kuraattori Maija Laine"',
     ]

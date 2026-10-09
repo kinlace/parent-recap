@@ -215,9 +215,13 @@ def _run_start(run: tuple[re.Pattern[str], re.Pattern[str]], text: str, at: int,
     return at - len(run[1].search(text, since, at)[0])
 
 
+_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?|.)?")  # CSI, OSC or one-character
+
+
 def _one_line(text: str) -> str:
-    """`text` on one line: newlines, tabs and other control characters, such as a terminal's escape
-    codes, become spaces, and runs of spaces one."""
+    """`text` on one line: a terminal's escape codes go, and newlines, tabs and other control
+    characters become spaces, and runs of spaces one."""
+    text = _ESCAPE.sub(" ", text)
     return " ".join("".join(" " if unicodedata.category(c) == "Cc" else c for c in text).split())
 
 
