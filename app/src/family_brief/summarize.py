@@ -418,13 +418,14 @@ BUSY_PAUSES = (60, 180, 600)
 CALL_BUDGET = 30 * 60
 
 # The errors waiting won't fix win over those it will: signed out, an expired token or key, or a
-# plan's usage limit, which lasts hours.
+# plan's usage limit, which lasts hours, or API credit run out, which lasts until someone pays and
+# comes as a 429 from OpenAI.
 # A status number counts only as a status ("status: 429", "API Error: 529", "HTTP 503"), so
 # that a token count or a time in the output isn't taken for one.
 _STATUS = r"(?:status|error|http)\W{0,3}"
 _WONT_PASS = re.compile(r"not logged in|log ?in again|sign in again|/login|unauthori[sz]ed|forbidden|"
                         rf"{_STATUS}40[13]\b|authentication|invalid (?:api key|credentials)|expired|"
-                        r"usage limit|limit reached|quota", re.I)
+                        r"usage limit|limit reached|quota|credit.balance", re.I)
 _BUSY = re.compile(r"at capacity|overloaded|rate.?limit|too many requests|"
                    rf"{_STATUS}(?:429|5(?:00|02|03|04|29))\b|"
                    r"service unavailable|bad gateway|temporarily unavailable", re.I)
