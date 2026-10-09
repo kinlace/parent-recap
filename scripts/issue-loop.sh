@@ -41,6 +41,14 @@
 #   scripts/issue-loop.sh --max-jobs 1   # one job while you watch (do this until you trust it)
 #   scripts/issue-loop.sh                # up to 5 jobs, then stops; run again to continue
 #   scripts/issue-loop.sh --milestone 0.4.0  # only issues in that milestone
+#   scripts/issue-loop.sh 207 202        # only these issues, in this order (#207 also works)
+#
+# Without numbers it takes the smallest ready issue first, judged by the length of the issue
+# text (the repo has no size labels; a short ticket is a small change more often than not).
+# With numbers it works exactly those, in the order given, and ignores the ready-for-agent
+# label and --milestone: you picked them. They still skip a spec, an issue someone is
+# assigned to, one with an open PR or an open blocker, or a closed one; the run says why.
+# --max-jobs defaults to the number of issues given.
 #
 # --milestone keeps the loop on one release: issues outside the milestone are skipped, so
 # tickets filed for later don't pull it away.
@@ -66,6 +74,8 @@ set -euo pipefail
 REPO=kinlace/parent-recap
 MAX_JOBS=5
 MILESTONE=
+PICKS= # issue numbers given on the command line, space-separated; empty = pick automatically
+MAX_JOBS_SET=
 AGENT_TIMEOUT=3600 # seconds per claude call
 MAX_TURNS=200
 
@@ -88,12 +98,17 @@ DRY_RUN=0
 while [ $# -gt 0 ]; do
   case $1 in
     --dry-run) DRY_RUN=1 ;;
-    --max-jobs) MAX_JOBS=$2; shift ;;
+    --max-jobs) MAX_JOBS=$2 MAX_JOBS_SET=1; shift ;;
     --milestone) MILESTONE=$2; shift ;;
-    *) echo "usage: $0 [--dry-run] [--max-jobs N] [--milestone NAME]" >&2; exit 2 ;;
+    \#[0-9]* | [0-9]*)
+      n=${1#\#}
+      case $n in *[!0-9]*) echo "not an issue number: $1" >&2; exit 2 ;; esac
+      case " $PICKS " in *" $n "*) ;; *) PICKS+="${PICKS:+ }$n" ;; esac ;;
+    *) echo "usage: $0 [--dry-run] [--max-jobs N] [--milestone NAME] [ISSUE...]" >&2; exit 2 ;;
   esac
   shift
 done
+[ -z "$PICKS" ] || [ -n "$MAX_JOBS_SET" ] || MAX_JOBS=$(wc -w <<<"$PICKS" | tr -d ' ')
 
 # Colour only on a terminal; the saved log gets the escapes stripped.
 if [ -t 2 ]; then
@@ -247,24 +262,42 @@ sync_main() {
 }
 
 # ── Picking work
-# Every open ready-for-agent issue as "<n><TAB>ready" or "<n><TAB>skipped: <reason>", lowest first.
-# Ready means in $MILESTONE (when given), no assignee, not a spec, no open PR closing it and
-# no open blocker.
+# The issues to consider, as a JSON array in the order they will be taken: the ones named on the
+# command line as given, otherwise every open ready-for-agent issue, smallest first. Size is the
+# length of the issue text, the only size signal the tickets carry; ties go to the lower number.
+candidate_issues() {
+  local fields=number,title,assignees,milestone,body,state n
+  if [ -n "$PICKS" ]; then
+    for n in $PICKS; do
+      gh issue view "$n" -R "$REPO" --json "$fields" 2>/dev/null ||
+        echo "{\"number\": $n, \"missing\": true}"
+    done | jq -s '.'
+  else
+    gh issue list -R "$REPO" --label ready-for-agent --state open --limit 100 --json "$fields" |
+      jq 'sort_by([(.body // "" | length), .number])'
+  fi
+}
+
+# Every candidate as "<n><TAB>ready" or "<n><TAB>skipped: <reason>".
+# Ready means in $MILESTONE (when given and no numbers were named), no assignee, not a spec,
+# no open PR closing it and no open blocker.
 issue_statuses() {
   local prs
   prs=$(gh pr list -R "$REPO" --state open --limit 100 --json number,closingIssuesReferences \
     --jq '[.[] | {pr: .number, issues: [.closingIssuesReferences[].number]}]')
-  gh issue list -R "$REPO" --label ready-for-agent --state open --limit 100 --json number,title,assignees,milestone |
-    jq -r --argjson prs "$prs" --arg ms "$MILESTONE" '
+  candidate_issues |
+    jq -r --argjson prs "$prs" --arg ms "$MILESTONE" --arg picked "$PICKS" '
       .[] | .number as $n
       | ([$prs[] | select(.issues | index($n)) | "#\(.pr)"] | join(", ")) as $pr
       | [$n,
-         if $ms != "" and .milestone.title != $ms then "skipped: not in milestone \($ms)"
+         if .missing then "skipped: no such issue"
+         elif .state != "OPEN" then "skipped: closed"
+         elif $picked == "" and $ms != "" and .milestone.title != $ms then "skipped: not in milestone \($ms)"
          elif (.title | startswith("Spec:")) then "skipped: spec"
          elif (.assignees | length) > 0 then "skipped: assigned to \([.assignees[].login] | join(", "))"
          elif $pr != "" then "skipped: open PR \($pr)"
          else "" end]
-      | @tsv' | sort -n |
+      | @tsv' |
     while IFS=$'\t' read -r n status; do
       if [ -z "$status" ]; then
         local blockers
@@ -352,7 +385,11 @@ gh auth status >/dev/null 2>&1 || die "gh is not logged in; run: gh auth login"
   die "no app/.venv; create it and install the test deps (see \"For maintainers\" in README.md)"
 
 if [ "$DRY_RUN" = 1 ]; then
-  echo "Issues labelled ready-for-agent${MILESTONE:+, milestone $MILESTONE} (ready ones are taken lowest first):"
+  if [ -n "$PICKS" ]; then
+    echo "Issues you named (ready ones are taken in this order):"
+  else
+    echo "Issues labelled ready-for-agent${MILESTONE:+, milestone $MILESTONE} (ready ones are taken smallest first):"
+  fi
   issue_statuses | awk -F'\t' '{ printf "  #%s %s\n", $1, $2 }'
   exit 0
 fi
@@ -381,7 +418,12 @@ while [ "$jobs" -lt "$MAX_JOBS" ]; do
   for n in $ready; do
     case $SKIPPED in *" $n "*) ;; *) next=$n; break ;; esac
   done
-  [ -n "$next" ] || { ok "done: nothing left to do after $jobs job(s)"; log "full log: $LOG_FILE"; exit 0; }
+  if [ -z "$next" ]; then
+    ok "done: nothing left to do after $jobs job(s)"
+    # A named issue that was never worked on: say why, or it looks like the loop forgot it.
+    [ -z "$PICKS" ] || issue_statuses | awk -F'\t' '$2 != "ready" { printf "  #%s %s\n", $1, $2 }' >&2
+    log "full log: $LOG_FILE"; exit 0
+  fi
   # An issue that shows up twice means a step silently didn't stick; stop rather than loop.
   case $SEEN in *" $next "*) CURRENT="#$next"; fail "picked the same issue twice in one run" ;; esac
 
