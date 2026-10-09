@@ -1,5 +1,6 @@
 """Which messages look sensitive, checked on their own, as another tool could: a text in, its
-category or None out, and a night's messages split into those for the AI and those held back.
+category or None out, the entry that matched and where, and a night's messages split into those for
+the AI and those held back.
 The evening run's use of it (nothing held back reaches a prompt, and the Brief lists it) is in
 test_nightly_run.py. The words are in src/family_brief/sensitive_words.yaml."""
 from __future__ import annotations
@@ -143,6 +144,40 @@ def test_staff_listed_with_their_contact_details_are_not_a_sensitive_message(tex
 def message(ext_id: str, body: str, subject: str | None = None, sender: str | None = None) -> Message:
     return Message(source="gmail", external_id=ext_id, timestamp=datetime(2026, 9, 27, tzinfo=timezone.utc),
                    sender=sender, subject=subject, body=body)
+
+
+# A text, the category, the entry that matched and the text it matched, which the not list's words
+# and the staff list's contact lines, both taken out before the check, don't move.
+MATCHES = [
+    ("Tämä on vähän kiusallista, mutta Leoa on kiusattu.", "bullying", "kiusa", "kiusa"),
+    ("Mia tarvitsee tehostettua tukea lukemiseen.", "support", "tehostet tuki|tukea|tukeen|tukena|tue",
+     "tehostettua tukea"),
+    ("老师说小狮最近被霸凌", "bullying", "霸凌", "霸凌"),
+    (NEWSLETTERS[0] + "\n\nKoulupsykologi haluaa tavata teidät.", "staff", "psykolog", "psykolog"),
+]
+
+
+@pytest.mark.parametrize("text, category, entry, matched", MATCHES)
+def test_a_match_says_which_entry_matched_and_where_in_the_text(text, category, entry, matched):
+    found = held_back.match(text)
+
+    assert (found.category, found.entry, text[found.start:found.end]) == (category, entry, matched)
+    assert found.start == text.rindex(matched)
+
+
+def test_a_messages_match_says_which_of_its_texts_it_is_in():
+    m = message("1", "Voisimmeko tavata?", subject="Tapaaminen",
+                sender="Koulupsykologi Laine <psykologi@kilo.example.fi>")
+
+    found = held_back.match_message(m)
+
+    # The sender's name, not its address.
+    assert (found.category, found.entry, found.field) == ("staff", "psykolog", "sender")
+    assert held_back.fields(m)["sender"][found.start:found.end] == "psykolog"
+    assert found.start == m.sender.index("psykolog")
+    assert held_back.match_message(message("2", "Leoa on kiusattu.", subject="Leon kiusaaminen")).field == \
+        "subject"
+    assert held_back.match_message(message("3", "Retki torstaina.")) is None
 
 
 def test_a_nights_messages_are_split_into_those_for_the_ai_and_those_held_back():
