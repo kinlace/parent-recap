@@ -3,8 +3,9 @@
 The words are in sensitive_words.yaml: one file with lists in Finnish, Swedish, English and Chinese
 that a native speaker can review, which also says how an entry matches and what the lists aim at.
 The check runs on the Mac and never goes through the AI. sensitive() says whether a text looks
-sensitive and in which category, and hold_back() splits a night's messages into those that may go
-to the AI and those held back, which the Brief lists itself.
+sensitive and in which category, match() also says which entry matched and where, and hold_back()
+splits a night's messages into those that may go to the AI and those held back, which the Brief
+lists itself.
 
 The module knows nothing of the Brief, so other tools can check text with it too."""
 from __future__ import annotations
@@ -13,6 +14,7 @@ import functools
 import logging
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml
@@ -32,7 +34,27 @@ CATEGORIES = (*ANYWHERE, STAFF)
 _NOT = "not"
 
 
-def _pattern(entries: Iterable[str]) -> re.Pattern[str] | None:
+@dataclass(frozen=True)
+class Match:
+    """Where a text looks sensitive: its category, the entry of sensitive_words.yaml that matched,
+    and where the matched text starts and ends in that text. For a message, `field` says which of
+    the texts fields() gives it is in."""
+    category: str
+    entry: str
+    start: int
+    end: int
+    field: str | None = None
+
+
+@dataclass(frozen=True)
+class _List:
+    """One pattern for a list, and its entries in the order of the pattern's groups: each entry is a
+    group of its own, so a match's lastindex says which one matched."""
+    pattern: re.Pattern[str]
+    entries: list[str]
+
+
+def _pattern(entries: Iterable[str]) -> _List | None:
     """One pattern for the list's `entries`, or None for an empty list. An entry is a stem that
     counts anywhere in a word, or stems in a row, each starting a word of its own after the one
     before. A word may list its forms with |, and one ending in . must end there."""
@@ -43,12 +65,14 @@ def _pattern(entries: Iterable[str]) -> re.Pattern[str] | None:
 
     def entry(text: str) -> str:
         return r"\w*\s+".join(map(word, text.split()))
-    alternatives = [entry(e) for e in entries if str(e).strip()]
-    return re.compile("|".join(alternatives), re.IGNORECASE) if alternatives else None
+    entries = [e for e in entries if str(e).strip()]
+    if not entries:
+        return None
+    return _List(re.compile("|".join(f"({entry(e)})" for e in entries), re.IGNORECASE), entries)
 
 
 @functools.cache
-def _lists() -> tuple[dict[str, re.Pattern[str]], re.Pattern[str] | None]:
+def _lists() -> tuple[dict[str, _List], _List | None]:
     """Each category's pattern over every language, and the pattern of what is taken out first."""
     data = yaml.safe_load(WORDS.read_text(encoding="utf-8"))
     entries: dict[str, list[str]] = {key: [] for key in (*CATEGORIES, _NOT)}
@@ -67,29 +91,86 @@ def _contact_line(line: str) -> bool:
     return ai_filter.mask(line)[0] != line
 
 
-def sensitive(text: str | None) -> str | None:
-    """The category of `text`'s sensitive words (health, support, bullying, welfare or staff, the
-    first in that order), or None when it has none."""
+def _without_contacts(text: str) -> str:
+    """`text`'s lines without those with a phone number, an email address or a link."""
+    return "\n".join(line for line in text.splitlines() if not _contact_line(line))
+
+
+def match(text: str | None) -> Match | None:
+    """Where `text` looks sensitive, or None when it has no sensitive words: the first category in
+    the order health, support, bullying, welfare and staff with a match, its first match in `text`
+    and the entry that made it."""
     if not text:
         return None
     patterns, skip = _lists()
-    if skip is not None:
-        text = skip.sub(" ", text)
-    found = next((c for c in ANYWHERE if c in patterns and patterns[c].search(text)), None)
-    if found is None and STAFF in patterns:
-        lines = "\n".join(line for line in text.splitlines() if not _contact_line(line))
-        found = STAFF if patterns[STAFF].search(lines) else None
-    return found
+    checked = skip.pattern.sub(" ", text) if skip is not None else text
+    for c in ANYWHERE:
+        if c in patterns and (m := patterns[c].pattern.search(checked)):
+            return _found(c, patterns[c], m, _where_taken_out(skip, text))
+    if STAFF in patterns and (m := patterns[STAFF].pattern.search(_without_contacts(checked))):
+        where = _where_taken_out(skip, text)
+        return _found(STAFF, patterns[STAFF], m, [where[i] for i in _where_without_contacts(checked)])
+    return None
+
+
+# Where each character of the text a list was checked against stands in the text before: worked out
+# only for a match, so the check itself stays as fast as it was.
+def _where_taken_out(skip: _List | None, text: str) -> list[int]:
+    """For each character of skip.pattern.sub(" ", text), where it stands in `text`."""
+    where, last = [], 0
+    for m in skip.pattern.finditer(text) if skip is not None else ():
+        where += [*range(last, m.start()), m.start()]
+        last = m.end()
+    return where + list(range(last, len(text)))
+
+
+def _where_without_contacts(text: str) -> list[int]:
+    """For each character of _without_contacts(text), where it stands in `text`."""
+    where, at, first = [], 0, True
+    for line, whole in zip(text.splitlines(), text.splitlines(keepends=True)):
+        if not _contact_line(line):
+            if not first:
+                where.append(at)  # the newline that joins it to the line before
+            where += range(at, at + len(line))
+            first = False
+        at += len(whole)
+    return where
+
+
+def _found(category: str, found: _List, m: re.Match[str], where: list[int]) -> Match:
+    """The Match of `m`, a match of `found` in a text whose characters stand at `where` in the
+    original. A match starts and ends with an entry's own letters, never with what was taken out."""
+    return Match(category, found.entries[m.lastindex - 1], where[m.start()], where[m.end() - 1] + 1)
+
+
+def sensitive(text: str | None) -> str | None:
+    """The category of `text`'s sensitive words (health, support, bullying, welfare or staff, the
+    first in that order), or None when it has none."""
+    found = match(text)
+    return found.category if found else None
 
 
 _ADDRESS = re.compile(r"<[^<>]*>")
 
 
+def fields(message: Message) -> dict[str, str]:
+    """The texts of a message the check reads: its subject, its body and its sender. The sender's
+    name counts, as in Koulupsykologi Laine <laine@school.fi>, and its address doesn't."""
+    return {"subject": message.subject or "", "body": message.body or "",
+            "sender": _ADDRESS.sub(" ", message.sender or "")}
+
+
+def match_message(message: Message) -> Match | None:
+    """Where a message looks sensitive, in the first of its subject, body and sender with sensitive
+    words, or None. The Match's start and end are in that text as fields() gives it."""
+    return next((replace(found, field=name) for name, text in fields(message).items()
+                 if (found := match(text))), None)
+
+
 def category(message: Message) -> str | None:
-    """The category of a message's sensitive words, in its subject, body or sender, or None. The
-    sender's name counts, as in Koulupsykologi Laine <laine@school.fi>, and its address doesn't."""
-    sender = _ADDRESS.sub(" ", message.sender or "")
-    return next((c for c in map(sensitive, (message.subject, message.body, sender)) if c), None)
+    """The category of a message's sensitive words, in its subject, body or sender, or None."""
+    found = match_message(message)
+    return found.category if found else None
 
 
 def hold_back(messages: Iterable[Message]) -> tuple[list[Message], list[Message]]:

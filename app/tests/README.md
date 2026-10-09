@@ -50,7 +50,10 @@ Finnish with its case endings and compounds, Swedish, English, and Chinese with 
 routine messages and everyday words that must not be held back (head lice, chickenpox, a sick day, the
 school nurse's check-ups, a sports injury, a camp notice asking about medication, a diagnostic test,
 the psychology subject, the guidance counsellor, kiusallinen, syllabus, a fire alarm test), and
-newsletters in each language whose footer lists the staff with their contact details. In
+newsletters in each language whose footer lists the staff with their contact details. It also checks
+that a match names the entry that matched and where it stands in the text as written, past the words
+the `not` list takes out and a newsletter's contact lines, and in which of a message's subject, body
+and sender's name (not its address) it is. In
 `test_nightly_run.py`, a night with a sensitive message from each category in each language checks
 that none of them reaches the Brief's or the translation's prompt, and the `held_back.*` goldens show
 the Brief listing each Held-back Message by Source, sender and subject, with its Gmail link, its page
@@ -70,7 +73,14 @@ estimate of names missed beside a role, a title or a name's placeholder, where a
 checks that no name, contact detail, link or message text reaches the output, that the report makes no
 network call and starts no program, that with the AI filter off it says what the filter would do, that
 an evening whose Brief wasn't delivered and a file that can't be read are skipped, and that a missing
-or empty archive gets a friendly answer.
+or empty archive gets a friendly answer. With `--held-back` and its output a terminal (the test fakes
+`isatty`), it checks that every Held-back Message is listed after the counts, by date, with its Source,
+category, the word that matched as the message writes it, sender, subject or WhatsApp chat and the text
+around the word, also with the AI filter off. A long notice to the whole class, read again a day late,
+comes first by its own date and shows about 40 characters on each side, on one line, with no word cut
+in two and no newline, tab or terminal escape code, and a message held back for its sender's title
+shows the name without the address. Piped or captured, `--held-back` prints the same counts, no name,
+contact detail, link or message text, and a line saying to run it in Terminal.
 `test_busy_model.py` runs the evening Brief against a `codex` or `claude` that is busy (at capacity,
 rate-limited, overloaded) for a few calls. The harness records the pauses between model calls on a
 fake clock instead of sleeping. It checks that the Brief comes once the model is free, after pauses
