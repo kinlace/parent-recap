@@ -396,8 +396,11 @@ def _sign_in_screen(language: str) -> int:
         fd, guide, lambda: _mtime(config) != seen and _wilma_address(config) is not None)
     if signed_in:
         os.kill(pid, signal.SIGTERM)
-    status = os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1])
+    # Closed before the wait, since nothing reads the CLI any more: macOS may not let it finish
+    # exiting while its terminal holds output nobody has read, such as the menu it shows just as
+    # it's ended (#216).
     os.close(fd)
+    status = os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1])
     if signed_in:
         out.write(b"\x1b[H\x1b[2J\x1b[3J")  # the screen and the scrollback
         out.write(f"{text['signed_in']} {text['close']}\n".encode())

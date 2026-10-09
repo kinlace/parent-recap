@@ -101,9 +101,12 @@ command line.
 own Node (`fake_node.py`) and a Terminal
 that runs the sign-in script at once, and checks the Kids, the city from every preset Wilma
 address, the window's guide in each language, that the window ends the CLI before its student
-picker and menu, that a missing CLI is installed with that Node's npm into `~/ParentRecap/wilma`
-and recorded, that without that Node it says to run the install line again, and that the Wilma
-password never reaches the output. Where no pseudo-terminal
+picker and menu, that the window still closes when the CLI writes something just as it's ended
+(macOS can hold up the CLI's exit until that is read), that a missing CLI is installed with
+that Node's npm into `~/ParentRecap/wilma` and recorded, that without that Node it says to run
+the install line again, and that the Wilma password never reaches the output. A window still
+open after 30 seconds is ended, with the processes it started, and its test fails with what the
+window showed. Where no pseudo-terminal
 can be opened (a sandbox), the window talks to the fake CLI through `no_pty/sitecustomize.py`.
 `test_setup_claude.py` runs `parent-recap setup claude` against a fake Terminal, macOS dialog,
 Keychain and `claude` test call, and checks the token never reaches the output, the logs or a
