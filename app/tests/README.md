@@ -75,7 +75,7 @@ or empty archive gets a friendly answer.
 rate-limited, overloaded) for a few calls. The harness records the pauses between model calls on a
 fake clock instead of sleeping. It checks that the Brief comes once the model is free, after pauses
 of 1 and then 3 minutes that the log names, that a model that is signed out, has an expired token or
-has used up its plan fails at once with the usual Brief without its Digest, that "at capacity" in
+has used up its plan or its API credit fails at once with the usual Brief without its Digest, that "at capacity" in
 a Household's own message echoed back by `codex` isn't taken for a busy model, that the pauses stop
 inside the call's time budget, and that doctor and the setup page's preview wait less or not at
 all. `test_eval_runner.py` checks the eval runner tries a busy model again the same way.

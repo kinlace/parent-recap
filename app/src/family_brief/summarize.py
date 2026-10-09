@@ -418,8 +418,8 @@ BUSY_PAUSES = (60, 180, 600)
 CALL_BUDGET = 30 * 60
 
 # The errors waiting won't fix win over those it will: signed out, an expired token or key, or a
-# plan's usage limit, which lasts hours, or API credit run out, which lasts until someone pays and
-# comes as a 429 from OpenAI.
+# plan's usage limit, which lasts hours, or API credit run out, which lasts until someone pays
+# (OpenAI says so with a 429).
 # A status number counts only as a status ("status: 429", "API Error: 529", "HTTP 503"), so
 # that a token count or a time in the output isn't taken for one.
 _STATUS = r"(?:status|error|http)\W{0,3}"
