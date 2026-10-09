@@ -1,16 +1,19 @@
 """Which messages look sensitive, checked on their own, as another tool could: a text in, its
 category or None out, the entry that matched and where, and a night's messages split into those for
-the AI and those held back.
+the AI and those held back. Messages sent to everyone are never held back: Wilma announcements,
+mailing-list email and the announcements in Wilma's notification emails.
 The evening run's use of it (nothing held back reaches a prompt, and the Brief lists it) is in
 test_nightly_run.py. The words are in src/family_brief/sensitive_words.yaml."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from email.message import EmailMessage
 
 import pytest
 import yaml
 
 from family_brief import held_back
+from family_brief.collectors import gmail
 from family_brief.collectors.base import Message
 
 # A message about one person's sensitive situation, written as parents and schools write it:
@@ -191,6 +194,128 @@ def test_a_nights_messages_are_split_into_those_for_the_ai_and_those_held_back()
 
     assert [m.external_id for m in for_the_ai] == ["1", "3"]
     assert [m.external_id for m in held] == ["2", "4", "5"]
+
+
+# ── Messages sent to everyone are never held back, whatever their words (ADR 0013)
+
+POLICE = "Poliisi muistuttaa: koulun takana oleva aidattu alue on suljettu. Kiusaamisen vastainen viikko alkaa."
+
+
+def wilma(ext_id: str, body: str, kind: str) -> Message:
+    """A Wilma item as the Wilma Source gives it: an announcement from the news list, or a message."""
+    return Message(source="wilma", external_id=f"{kind}:{ext_id}", timestamp=datetime(2026, 9, 27, tzinfo=timezone.utc),
+                   sender="Rehtori Saarinen", subject="Tiedote", body=body, chat_name=kind,
+                   metadata={"wilma_kind": kind, "raw_id": ext_id, "student_number": "7731905"})
+
+
+def test_a_wilma_announcement_is_never_held_back_and_the_same_words_in_a_wilma_message_are():
+    announcement, to_the_household = wilma("41", POLICE, "news"), wilma("812", POLICE, "message")
+
+    assert held_back.sent_to_everyone(announcement)
+    assert held_back.match_message(announcement) is None
+    assert held_back.category(to_the_household) == "bullying"
+    assert held_back.hold_back([announcement, to_the_household]) == ([announcement], [to_the_household])
+
+
+def test_an_email_to_a_mailing_list_is_never_held_back():
+    mass = message("1", "Iltapäivätoiminnan haku päättyy perjantaina. Erityisen tuen oppilaat hakevat samalla lomakkeella.",
+                   subject="Iltapäivätoiminta", sender="Kilon kaupunki <info@kilo.example.fi>")
+    mass.metadata["mailing_list"] = True
+
+    assert held_back.sent_to_everyone(mass)
+    assert held_back.match_message(mass) is None
+    # The same email to the Household alone.
+    assert held_back.category(message("2", mass.body, subject=mass.subject, sender=mass.sender)) == "support"
+
+
+def email(raw_headers: dict[str, str]) -> bytes:
+    m = EmailMessage()
+    m["From"] = "Kilon kaupunki <info@kilo.example.fi>"
+    m["Subject"] = "Iltapäivätoiminta"
+    m["Date"] = "Sun, 27 Sep 2026 10:00:00 +0300"
+    for name, value in raw_headers.items():
+        m[name] = value
+    m.set_content("Poliisi valvoo koulun ympäristön liikennettä ensi viikolla.")
+    return m.as_bytes()
+
+
+@pytest.mark.parametrize("headers", [{"List-Id": "<huoltajat.kilo.example.fi>"},
+                                     {"List-Unsubscribe": "<mailto:unsubscribe@kilo.example.fi>"},
+                                     {"Precedence": "bulk"}, {"Precedence": "list"}],
+                         ids=["list-id", "list-unsubscribe", "precedence-bulk", "precedence-list"])
+def test_the_gmail_source_marks_an_email_with_a_mailing_lists_headers_as_sent_to_everyone(headers):
+    cutoff = datetime(2026, 9, 26, tzinfo=timezone.utc)
+
+    mass = gmail._parse(email(headers), "1", cutoff)
+    personal = gmail._parse(email({}), "2", cutoff)
+
+    assert mass.metadata["mailing_list"] is True and held_back.match_message(mass) is None
+    assert "mailing_list" not in personal.metadata and held_back.category(personal) == "welfare"
+
+
+# Wilma's notification emails, made up: Wilma gathers the new items under a heading for each kind.
+# Announcements go to everyone. A message copied from Wilma goes to the Household.
+WILMA_EMAIL_FI = """Hei,
+
+Wilmaan on tullut uusia asioita oppilaalle Mia.
+
+Uudet viestit (1):
+Opettaja Virtanen: Välituntitilanne
+Miaa on kiusattu välitunneilla. Soitattehan minulle.
+
+Uudet tiedotteet (2):
+Poliisi muistuttaa liikenteestä
+Poliisi valvoo ensi viikolla koulun ympäristön liikennettä.
+
+Kiusaamisen vastainen viikko
+Viikolla 41 puhumme kaikissa luokissa kiusaamisesta.
+
+Lue lisää Wilmassa."""
+WILMA_EMAIL_EN = """New announcements:
+Police reminder
+The police remind everyone to keep out of the fenced area behind the gym.
+
+Anti-bullying week
+Next week every class talks about bullying.
+
+NEW MESSAGES
+Teacher Virtanen: Break time
+Leo was bullied at break again. Please call me."""
+
+
+def wilma_email(ext_id: str, body: str, subject: str = "Viesti Wilmasta") -> Message:
+    return message(ext_id, body, subject=subject, sender="Wilma <noreply@kilo.example.fi>")
+
+
+@pytest.mark.parametrize("body, subject, matched", [(WILMA_EMAIL_FI, "Viesti Wilmasta", "kiusa"),
+                                                    (WILMA_EMAIL_EN, "Message from Wilma", "bullied")],
+                         ids=["fi", "en"])
+def test_a_wilma_email_holds_back_a_copied_message_and_not_its_announcements(body, subject, matched):
+    copied = wilma_email("1", body, subject)
+    announcements_alone = wilma_email("2", "\n\n".join(part for part in body.split("\n\n")
+                                                       if "Virtanen" not in part), subject)
+
+    found = held_back.match_message(copied)
+
+    # Held back for the copied message's own words, which the list shows around the word.
+    assert found.field == "body"
+    text = held_back.fields(copied)["body"]
+    assert text[found.start:found.end].casefold() == matched
+    assert "Virtanen" in text and "olice" not in text and "Poliisi" not in text
+    assert held_back.match_message(announcements_alone) is None
+    assert held_back.hold_back([copied, announcements_alone]) == ([announcements_alone], [copied])
+
+
+def test_a_wilma_email_with_no_announcements_heading_is_checked_whole():
+    single = wilma_email("1", "Opettaja Virtanen lähetti viestin: Miaa on kiusattu välitunneilla.")
+    other_subject = message("2", WILMA_EMAIL_FI, subject="Retki")  # not one of Wilma's emails
+    on_a_list = wilma_email("3", WILMA_EMAIL_FI)
+    on_a_list.metadata["mailing_list"] = True  # Wilma's own rule comes first
+
+    assert held_back.category(single) == "bullying"
+    assert held_back.fields(other_subject)["body"] == WILMA_EMAIL_FI
+    assert held_back.category(other_subject) == "bullying"
+    assert held_back.category(on_a_list) == "bullying"
 
 
 def test_the_word_lists_are_in_one_file_with_every_category_in_every_language():

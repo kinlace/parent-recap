@@ -282,6 +282,42 @@ def test_with_the_ai_filter_off_held_back_lists_what_the_filter_would_hold_back(
     assert listed(out) == HELD_BACK
 
 
+# An evening of messages sent to everyone, each with a sensitive word, beside one to the Household:
+# a Wilma announcement, a city's mass email, and Wilma's notification email with its announcements and
+# a copied message. The report counts them the way the evening run holds them back.
+EVERYONE = [
+    msg("wilma", "news:41", "2026-09-25T09:00:00+03:00", "Poliisi muistuttaa: koulun takana oleva alue on suljettu.",
+        sender="Rehtori Saarinen", subject="Poliisin tiedote", metadata={"wilma_kind": "news", "raw_id": 41}),
+    msg("gmail", "g-8", "2026-09-25T10:00:00+03:00", "Erityisen tuen oppilaat hakevat samalla lomakkeella.",
+        sender="Kilon kaupunki <info@kilo.example.fi>", subject="Iltapäivätoiminnan haku",
+        metadata={"mailing_list": True}),
+    msg("gmail", "g-9", "2026-09-25T11:00:00+03:00",
+        "Uudet tiedotteet (1):\nKiusaamisen vastainen viikko alkaa maanantaina.\n\n"
+        "Uudet viestit (1):\nOpettaja Virtanen: Retki\nLeon diagnoosi on liitteenä.",
+        sender="Wilma <noreply@kilo.example.fi>", subject="Viesti Wilmasta"),
+    msg("wilma", "message:812", "2026-09-25T12:00:00+03:00", "Miaa on kiusattu välitunneilla.",
+        sender="Opettaja Virtanen", subject="Välituntitilanne", metadata={"wilma_kind": "message", "raw_id": 812}),
+]
+
+
+def test_messages_sent_to_everyone_are_counted_and_listed_as_the_evening_run_holds_them_back(harness, capsys,
+                                                                                            monkeypatch):
+    archive(harness, {"2026-09-25": EVERYONE})
+
+    out = held_back_list(harness, capsys, monkeypatch, terminal=True)
+
+    found = counts(out)
+    assert (found["Messages read"], found["Held back from the AI"]) == (4, 2)
+    assert (found["health"], found["bullying"], found["support"], found["welfare"]) == (1, 1, 0, 0)
+    # The notification email for its copied message, never for its announcements.
+    assert listed(out) == [
+        '  2026-09-25  Gmail     health    [diagnoosi]  Wilma · Viesti Wilmasta · '
+        '"…(1): Opettaja Virtanen: Retki Leon diagnoosi on liitteenä."',
+        '  2026-09-25  Wilma     bullying  [kiusattu]  Opettaja Virtanen · Välituntitilanne · '
+        '"Miaa on kiusattu välitunneilla."',
+    ]
+
+
 def test_held_back_with_nothing_held_back_says_so(harness, capsys, monkeypatch):
     archive(harness, {"2026-09-21": [m for m in FINNISH if m.external_id not in ("g-2", "w-3")]})
 

@@ -2954,3 +2954,45 @@ def test_a_newsletter_listing_its_staff_and_a_camp_notice_about_medication_still
     assert payload_message_ids(harness) == sorted([*NORMAL_NIGHT_IDS, "g-104", "news:41"])
     [email] = harness.sent
     assert "🔒" not in email.text and "🔒" not in email.html
+
+
+# Made-up notification emails from the town's Wilma, read through Gmail: one with only
+# announcements, and one that also copies a message to the Household.
+WILMA_ANNOUNCEMENTS = ("Uudet tiedotteet (2):\nPoliisi muistuttaa liikenteestä\n"
+                       "Poliisi valvoo ensi viikolla koulun ympäristön liikennettä.\n\n"
+                       "Kiusaamisen vastainen viikko\nViikolla 41 puhumme kaikissa luokissa kiusaamisesta.")
+WILMA_MESSAGE_COPY = ("Uudet viestit (1):\nOpettaja Virtanen: Välituntitilanne\n"
+                      "Miaa on kiusattu välitunneilla. Soitattehan minulle.\n\n" + WILMA_ANNOUNCEMENTS)
+
+
+def test_announcements_and_mass_email_reach_the_model_and_a_message_to_the_household_does_not(harness):
+    normal_night(harness, "en")
+    signed_in_to_wilma(harness)
+    harness.sources["wilma"] += [
+        msg("wilma", "news:41", "2026-09-27T09:00:00+03:00",
+            "Poliisi muistuttaa: koulun takana oleva aidattu alue on suljettu.", sender="Rehtori Saarinen",
+            subject="Poliisin tiedote", metadata={"wilma_kind": "news", "raw_id": 41, "student_number": "7731905"}),
+        msg("wilma", "message:812", "2026-09-27T13:00:00+03:00", "Miaa on kiusattu välitunneilla.",
+            sender="Opettaja Virtanen", subject="Välituntitilanne", kid="Mia",
+            metadata={"wilma_kind": "message", "raw_id": 812, "student_number": "7731905"})]
+    harness.sources["gmail"] += [
+        msg("gmail", "g-103", "2026-09-27T09:30:00+03:00",
+            "Iltapäivätoiminnan haku päättyy perjantaina 2.10. Erityisen tuen oppilaat hakevat samalla lomakkeella.",
+            sender="Kilon kaupunki <info@kilo.example.fi>", subject="Iltapäivätoiminnan haku",
+            metadata={"mailing_list": True}),
+        msg("gmail", "g-104", "2026-09-27T10:00:00+03:00", WILMA_ANNOUNCEMENTS,
+            sender="Wilma <noreply@kilo.example.fi>", subject="Viesti Wilmasta"),
+        msg("gmail", "g-105", "2026-09-27T14:00:00+03:00", WILMA_MESSAGE_COPY,
+            sender="Wilma <noreply@kilo.example.fi>", subject="Viesti Wilmasta")]
+
+    assert harness.run() == 0
+
+    assert payload_message_ids(harness) == sorted([*NORMAL_NIGHT_IDS, "g-103", "g-104", "news:41"])
+    prompt = harness.model_prompt()
+    for text in ("aidattu alue", "Erityisen tuen oppilaat", "Kiusaamisen vastainen viikko"):
+        assert text in prompt
+    assert "Miaa on kiusattu" not in prompt
+    [email] = harness.sent
+    listed = email.text.split("\n🔒 Held-back messages\n", 1)[1].split("\n\n", 1)[0].splitlines()[1:]
+    assert listed == ["• Gmail · Wilma · Viesti Wilmasta · read it in Gmail",
+                      f"• Wilma · Opettaja Virtanen · Välituntitilanne · {WILMA_TENANT}/!7731905/messages/812"]

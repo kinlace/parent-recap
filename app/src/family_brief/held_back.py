@@ -7,6 +7,10 @@ sensitive and in which category, match() also says which entry matched and where
 splits a night's messages into those that may go to the AI and those held back, which the Brief
 lists itself.
 
+A message sent to everyone is never held back, whatever words it has: the word lists can't tell a
+notice to the whole school from a message about one child, but the Sources can (sent_to_everyone()).
+match_message() holds that rule, so the evening run and ai-filter-report both follow it.
+
 The module knows nothing of the Brief, so other tools can check text with it too."""
 from __future__ import annotations
 
@@ -152,17 +156,65 @@ def sensitive(text: str | None) -> str | None:
 
 _ADDRESS = re.compile(r"<[^<>]*>")
 
+# ── Sent to everyone (ADR 0013). Wilma's notification emails, by their subject in Finnish, English
+# and Swedish. One can gather several kinds of new items, each under its own heading: announcements
+# (Tiedotteet), which go to everyone, and messages, lesson notes, exams and exam grades, which go to
+# the Household. A heading is a line with the kind alone, maybe after New and with a count or a
+# colon: "Uudet tiedotteet (2):". The announcements run to the next heading or the end. Any other
+# kind's heading ends them, so the list of those can be long: a word too many only checks more.
+_WILMA_EMAIL = re.compile(r"\s*(?:viesti wilmasta|message from wilma|meddelande från wilma)\b", re.IGNORECASE)
+_ANNOUNCEMENTS = r"tiedotte\w*|announcements|news|bulletins|nyheter"
+_OTHER_KINDS = (r"viest\w*|messages?|meddelanden?|tuntimerkin\w*|lesson\s+notes|koearvosan\w*|exam\s+grades"
+                r"|koke\w*|exams?|läks\w*|homework")
+_HEADING = re.compile(rf"[^\w\n]*(?:(?:uudet|uusia|new|nya)\s+)?(?:(?P<announcements>{_ANNOUNCEMENTS})"
+                      rf"|{_OTHER_KINDS})[^\w\n]*(?:\d+[^\w\n]*)?", re.IGNORECASE)
+
+
+def _wilma_email(message: Message) -> bool:
+    """Whether `message` is one of Wilma's notification emails, by its subject."""
+    return message.source == "gmail" and bool(_WILMA_EMAIL.match(message.subject or ""))
+
+
+def _without_announcements(body: str) -> str:
+    """A Wilma notification email's `body` without its announcements, each from its heading to the
+    next heading. With no announcements heading, the whole body."""
+    kept, announcements = [], False
+    for line in body.splitlines():
+        if heading := _HEADING.fullmatch(line):
+            announcements = heading["announcements"] is not None
+        if not announcements:
+            kept.append(line)
+    return "\n".join(kept)
+
+
+def sent_to_everyone(message: Message) -> bool:
+    """Whether `message` went to everyone, so it is never held back: an announcement the Wilma Source
+    reads from the news list, or an email the Gmail Source found a mailing list's headers on. A
+    Wilma message, even one to every guardian of a class, is checked: the wilma CLI Parent Recap
+    installs doesn't say who it went to. So is a post in a WhatsApp group, where incidents get
+    discussed. Wilma's notification emails are checked outside their announcements (fields())."""
+    if message.source == "wilma":
+        return message.metadata.get("wilma_kind") == "news"
+    return message.source == "gmail" and bool(message.metadata.get("mailing_list")) and \
+        not _wilma_email(message)
+
 
 def fields(message: Message) -> dict[str, str]:
     """The texts of a message the check reads: its subject, its body and its sender. The sender's
-    name counts, as in Koulupsykologi Laine <laine@school.fi>, and its address doesn't."""
-    return {"subject": message.subject or "", "body": message.body or "",
+    name counts, as in Koulupsykologi Laine <laine@school.fi>, and its address doesn't. Of a Wilma
+    notification email's body, only the part outside its announcements counts."""
+    body = message.body or ""
+    return {"subject": message.subject or "",
+            "body": _without_announcements(body) if _wilma_email(message) else body,
             "sender": _ADDRESS.sub(" ", message.sender or "")}
 
 
 def match_message(message: Message) -> Match | None:
     """Where a message looks sensitive, in the first of its subject, body and sender with sensitive
-    words, or None. The Match's start and end are in that text as fields() gives it."""
+    words, or None, also for a message sent to everyone. The Match's start and end are in that text
+    as fields() gives it."""
+    if sent_to_everyone(message):
+        return None
     return next((replace(found, field=name) for name, text in fields(message).items()
                  if (found := match(text))), None)
 
