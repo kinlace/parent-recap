@@ -276,6 +276,21 @@ def test_confirmed_with_the_archive_kept_removes_all_but_the_archive(harness, ma
     assert APP_PASSWORD not in out and CLAUDE_TOKEN not in out
 
 
+def test_the_list_of_held_back_messages_goes_also_when_the_archive_stays(harness, mac, monkeypatch, capsys):
+    set_up(harness, mac, monkeypatch)
+    (harness.archive_dir / "held-back-list.txt").write_text("1 message held back from the AI, by date\n")
+
+    assert uninstall(harness) == 0
+    listing = capsys.readouterr().out
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    removes = listing[listing.index("Uninstall removes:"):listing.index("You choose whether")]
+    assert "List of held-back messages: ~/ParentRecap/held-back-list.txt" in removes
+    assert "not Parent Recap's" not in listing
+    assert leftovers(harness.home) == ["ParentRecap", "ParentRecap/2026-09-26.md",
+                                       "ParentRecap/2026-09-26.raw.json"]
+
+
 def test_confirmed_with_the_archive_removed_leaves_nothing_of_parent_recap(harness, mac,
                                                                           monkeypatch):
     set_up(harness, mac, monkeypatch)

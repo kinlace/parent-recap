@@ -35,7 +35,7 @@ How long Anthropic or OpenAI keep that data, and whether they train on it, is se
 
 - `~/.family/config.yaml`: your configuration, including Kids' names, allowlisted senders, chosen WhatsApp chats and MyClub links. Setup creates it owner-only (`chmod 600`), inside `~/.family`, which the installer makes owner-only (`chmod 700`).
 - `~/.family/state.json`: which messages and events were already handled, and when a Brief last went out to each Recipient's address.
-- `~/ParentRecap/`: every Brief as Markdown, plus the raw messages it was built from (`*.raw.json`), Weekend Picks under `weekend_events/`, and logs and model diagnostics under `~/ParentRecap/logs/`. These are not encrypted beyond your Mac's own disk encryption.
+- `~/ParentRecap/`: every Brief as Markdown, plus the raw messages it was built from (`*.raw.json`), Weekend Picks under `weekend_events/`, logs and model diagnostics under `~/ParentRecap/logs/`, and `held-back-list.txt`, the list of held-back messages that `parent-recap ai-filter-report --held-back` opens in TextEdit. These are not encrypted beyond your Mac's own disk encryption.
 
 Everything Parent Recap writes is owner-only: files `600`, folders `700`, so other accounts on the same Mac, such as a Kid's own account, can't read them. The installer makes `~/ParentRecap` owner-only, the program and its scheduled jobs create files with umask `077`, and each run takes group and other access off the archive, log, Weekend Picks and `~/.family` folders and the files in them (such as config backups), which also fixes installs from before 0.4.0.
 
