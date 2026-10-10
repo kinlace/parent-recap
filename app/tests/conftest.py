@@ -11,8 +11,9 @@ Fakes sit at exactly four boundaries, so internals can be refactored without tou
   3. Delivery: email sending, iMessage (`osascript`) and the Google Calendar API record what
      they are given, or fail.
   4. The pauses between model calls are recorded and move a fake clock on, instead of being slept.
-Setup commands also meet macOS's secret dialog (`osascript`), `open`, the Mac's preferred
-languages (`defaults`) and the Keychain (`/usr/bin/security`), faked the same way.
+Setup commands also meet macOS's secret dialog (`osascript`), `open` (which ai-filter-report
+--held-back uses too), the Mac's preferred languages (`defaults`) and the Keychain
+(`/usr/bin/security`), faked the same way.
 
 Everything else (config, state, archive) is real and lives in a temporary HOME.
 "Now" and the local timezone are pinned. Regenerate golden files with:
@@ -37,7 +38,7 @@ import pytest
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli, ai_filter_report, feedback, summarize, tools
+from family_brief import __main__ as cli, feedback, summarize, tools
 from family_brief.actions import calendar as calendar_action, email as email_action
 from family_brief.collectors import gmail, myclub, whatsapp, wilma
 from family_brief.collectors.base import CalendarEvent, Message
@@ -302,13 +303,12 @@ class Harness:
     # Fakes
     def _install(self, mp: pytest.MonkeyPatch) -> None:
         mp.setenv("HOME", str(self.home))
-        # Over SSH, macOS's dialogs aren't tried, in tmux or SSH setup warns that the Keychain
-        # can't be written, and in an AI assistant's shell, such as the one these tests may run in,
-        # ai-filter-report --held-back lists nothing: a test that wants that sets these itself. The
-        # wilma CLI's config is the one in the temporary HOME.
+        # Over SSH, macOS's dialogs aren't tried, and in tmux or SSH setup warns that the Keychain
+        # can't be written: a test that wants that sets these itself. The wilma CLI's config is
+        # the one in the temporary HOME.
         for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
                     "CLAUDE_CODE_OAUTH_TOKEN", "SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY", "TMUX",
-                    "WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME", *ai_filter_report.AI_ASSISTANT_SHELL):
+                    "WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
             mp.delenv(var, raising=False)
 
         def source(name: str) -> Callable[..., Any]:

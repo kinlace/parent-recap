@@ -17,6 +17,14 @@ def restrict_new_files() -> None:
     os.umask(UMASK)
 
 
+def write(path: Path, text: str) -> None:
+    """Write `text` to `path` readable by this Mac account only, whatever the umask, also over a
+    file that others could read."""
+    with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+        os.fchmod(f.fileno(), 0o600)
+        f.write(text)
+
+
 def tighten(cfg: Config) -> None:
     """Make the archive, log, Weekend Picks and config folders owner-only, and the files directly
     in them (state, config backups), so installs from before this was done are fixed on their

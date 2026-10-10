@@ -78,22 +78,24 @@ with each evening's own list (the earlier Brief's people included), and of phone
 addresses and links, with no Gmail message link or Wilma student number among them. It checks the
 estimate of names missed beside a role, a title or a name's placeholder, where a Kid's alias
 (小狮妈妈) and 周五开家长会 don't count. It
-checks that no name, contact detail, link or message text reaches the output, that the report makes no
-network call and starts no program, that with the AI filter off it says what the filter would do, that
-an evening whose Brief wasn't delivered and a file that can't be read are skipped, and that a missing
-or empty archive gets a friendly answer. With `--held-back` and its output a terminal (the test fakes
-`isatty`), it checks that every Held-back Message is listed after the counts, by date, with its Source,
-category, the word that matched as the message writes it, sender, subject or WhatsApp chat and the text
-around the word, also with the AI filter off. An evening of messages sent to everyone beside one to
+checks that no name, contact detail, link or message text reaches the output, with or without
+`--held-back` and with the output captured or a terminal (the test fakes `isatty`), that the report
+makes no network call and starts no program but `open -e` for the list, that with the AI filter off
+it says what the filter would do, that an evening whose Brief wasn't delivered and a file that can't
+be read are skipped, and that a missing or empty archive gets a friendly answer. A held-back message
+and one with a name, a phone number and a link, archived again on later evenings, count once, so the
+counts and the list are the same as without the copies. With `--held-back`, it checks that every
+Held-back Message is listed in `held-back-list.txt` in the archive folder, by date, with its Source,
+category, the word that matched as the message writes it, sender, subject or WhatsApp chat and the
+text around the word, also with the AI filter off. The file is owner-only, also when it replaces an
+older list others could read, and the output is the counts and one line with how many messages it
+lists and where, now open in TextEdit. When `open` fails or isn't there, the line says where the file
+is instead. An evening of messages sent to everyone beside one to
 the Household counts and lists only that one and the message a Wilma notification email copies, as
 the evening run holds them back. A long notice to the whole class, read again a day late,
 comes first by its own date and shows about 40 characters on each side, on one line, with no word cut
 in two and no newline, tab or terminal escape code, and a message held back for its sender's title
-shows the name without the address. Piped or captured, `--held-back` prints the same counts, no name,
-contact detail, link or message text, and a line saying to run it in the macOS Terminal app. So does
-it in a terminal with `CLAUDECODE`, `AI_AGENT` or one of Codex's variables set, as in the shell of a
-command Claude Code or Codex runs, also one run with `!`. The harness clears these, so the suite
-runs the same inside Claude Code or Codex.
+shows the name without the address. With nothing held back, it says so and opens nothing.
 `test_busy_model.py` runs the evening Brief against a `codex` or `claude` that is busy (at capacity,
 rate-limited, overloaded) for a few calls. The harness records the pauses between model calls on a
 fake clock instead of sleeping. It checks that the Brief comes once the model is free, after pauses

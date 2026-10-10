@@ -4,23 +4,23 @@ It reads every evening in the archive and runs the evening run's own filter code
 messages: the Held-back Messages by category, and in the rest the names, phone numbers, email
 addresses and links that become placeholders, with that evening's own list of names (its senders
 and those of the earlier Briefs' evenings). It also estimates the names the filter likely missed.
-It prints counts only, never message text, a name or a link, and it makes no network call and
-starts no program. The counts decide whether a local name-recognition model is worth adding, and
-whether the Kids' own names can be masked too (ADR 0013). It works with the filter switched off
-as well: it then says what the filter would do.
+A message archived on several evenings, as versions before the Wilma Source's lookback cutoff
+archived some, counts once, on the first. It prints counts only, never message text, a name or a
+link, and it makes no network call. The counts decide whether a local name-recognition model is
+worth adding, and whether the Kids' own names can be masked too (ADR 0013). It works with the
+filter switched off as well: it then says what the filter would do.
 
 With --held-back it also lists each Held-back Message with the word that matched and the text
 around it, so the parent can see which words hold back routine notices. That is the messages' own
-text, so it prints only to a terminal no AI assistant runs or reads: piped or captured, as when an
-AI assistant runs it, or in a shell an AI assistant started, as with Claude Code's ! command, the
-report prints the counts alone and says to run it in the macOS Terminal app."""
+text, so it never prints, in any shell: it goes to a file in the archive folder that only the Mac
+account can read, which `open -e` shows in TextEdit, and the report prints how many it lists and
+where. So an AI assistant can run it for the parent without the text reaching the chat."""
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
-import sys
+import subprocess
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
@@ -29,13 +29,14 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from . import ai_filter, held_back, summarize
+from . import ai_filter, held_back, private_files, summarize
 from .actions import archive
 from .collectors.base import Message
 from .config import Config
 
 _EVENING = re.compile(r"\d{4}-\d{2}-\d{2}\.raw\.json")  # one evening's messages, as archive.write names it
 _PLACEHOLDER = re.compile(r"⟦([PELN])[0-9]+⟧")
+HELD_BACK_LIST = "held-back-list.txt"  # --held-back's list, in the archive folder, written again each run
 
 # ── Likely misses: a name the filter didn't mask where a name usually stands, in the masked text.
 # A capitalised word after a role or a title (opettaja Korhoselta, Mrs Taylor) or after a person's
@@ -77,12 +78,11 @@ def _likely_misses(text: str, keep: list[str]) -> int:
 
 def register(sub) -> None:
     p = sub.add_parser("ai-filter-report", help="Count what the AI filter catches in the archive of past "
-                       "evenings (counts only, no message text unless --held-back in Terminal, nothing "
-                       "leaves the Mac)")
+                       "evenings (prints counts only, no message text, and nothing leaves the Mac)")
     p.add_argument("--held-back", action="store_true",
                    help="Also list each held-back message with the word that matched and the text around "
-                   "it. Only in the Terminal app: piped, captured or in an AI assistant's shell, the report "
-                   "prints the counts alone")
+                   f"it, in {HELD_BACK_LIST} in the archive folder, which opens in TextEdit. The list is "
+                   "never printed")
     p.set_defaults(func=cmd_ai_filter_report)
 
 
@@ -99,11 +99,14 @@ class Report:
     undelivered: int = 0
     unreadable: int = 0
     held: list[tuple[Message, held_back.Match]] = field(default_factory=list)  # for --held-back
+    seen: set[tuple[str, str]] = field(default_factory=set)  # each message counted, by Source and id
 
     def add(self, cfg: Config, day: str, messages: list[dict[str, Any]]) -> None:
         """Count one evening's `messages`, as the archive keeps them, the way that evening's run
         filters them: its Held-back Messages, then the rest masked with the people of its senders
-        and of the earlier Briefs' evenings, without what the model never gets."""
+        and of the earlier Briefs' evenings, without what the model never gets. A message an
+        earlier evening has too was counted there, so it is left out."""
+        messages = [m for m in messages if self._first_time(m)]
         self.evenings += 1
         self.messages += len(messages)
         to_the_ai = []
@@ -126,6 +129,14 @@ class Report:
             self.names_in_senders += _PLACEHOLDER.findall(m.get("sender") or "").count("N")
             self.likely_missed += sum(_likely_misses(m.get(key) or "", keep)
                                       for key in ("subject", "body", "chat_name"))
+
+    def _first_time(self, m: dict[str, Any]) -> bool:
+        """Whether no evening counted so far has message `m`, which it then counts as seen."""
+        key = (m["source"], m["external_id"])
+        if key in self.seen:
+            return False
+        self.seen.add(key)
+        return True
 
 
 def _show(p: Path) -> str:
@@ -154,41 +165,18 @@ def cmd_ai_filter_report(args: argparse.Namespace) -> int:
             report.undelivered += 1
             continue
         report.add(cfg, path.name[:10], messages)
-    not_here = _not_listed_here() if args.held_back else None
-    listing = args.held_back and not not_here
-    _print(report, folder, files[0].name[:10], files[-1].name[:10], cfg.ai_filter.enabled, listing)
-    if listing:
-        _print_held_back(report, cfg.ai_filter.enabled, ZoneInfo(cfg.timezone))
-    elif not_here:
-        print(f"\nThe list of held-back messages isn't printed here: it holds the messages' own text, and "
-              f"{not_here}. Run this same command yourself in the macOS Terminal app to see it, not with ! in "
-              "Claude Code or in the Claude app's Terminal panel.")
+    first, last = files[0].name[:10], files[-1].name[:10]
+    _print(report, folder, first, last, cfg.ai_filter.enabled)
+    if args.held_back:
+        _list_held_back(report, cfg, folder, first, last)
     return 0
 
 
-# Set in the shell of every command an AI assistant runs, also one its user runs through it, such as
-# with ! in Claude Code. Claude Code sets CLAUDECODE and AI_AGENT. Codex sets CODEX_THREAD_ID for
-# every command, its own and the user's (codex-rs/core/src/unified_exec/process_manager.rs and
-# tasks/user_shell.rs in github.com/openai/codex), and CODEX_SANDBOX or CODEX_SANDBOX_NETWORK_DISABLED
-# for one in its sandbox (codex-rs/core/src/sandboxing/mod.rs and spawn.rs).
-AI_ASSISTANT_SHELL = ("CLAUDECODE", "AI_AGENT", "CODEX_THREAD_ID", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED")
-
-
-def _not_listed_here() -> str | None:
-    """Why --held-back doesn't list the messages here, or None in a terminal of the parent's own."""
-    if any(os.environ.get(name) for name in AI_ASSISTANT_SHELL):
-        return "this is the shell of an AI assistant such as Claude Code or Codex, which reads what it prints"
-    if not sys.stdout.isatty():
-        return "the output is piped or captured, as when an AI assistant runs the report"
-    return None
-
-
-def _print(report: Report, folder: Path, first: str, last: str, on: bool, listing: bool) -> None:
+def _print(report: Report, folder: Path, first: str, last: str, on: bool) -> None:
     names = report.masked["person"]
     print(f"AI filter report for {_show(folder)}, {first} to {last}")
     print("Each archived evening goes through the AI filter as the evening Brief would send it today. "
-          + ("The counts come first, then each held-back message with its own text, for your eyes only. "
-             if listing else "Counts only: no message text, names or links. ") + "Nothing leaves this Mac.")
+          "Counts only: no message text, names or links. Nothing leaves this Mac.")
     if not on:
         print("The AI filter is off in this Household's config, so the AI gets the messages as they are. "
               "These counts show what it would do.")
@@ -215,7 +203,7 @@ def _print(report: Report, folder: Path, first: str, last: str, on: bool, listin
           "isn't always a name.")
 
 
-# ── --held-back: one line per Held-back Message, in the parent's own terminal only.
+# ── --held-back: one line per Held-back Message, in a file that opens in TextEdit.
 _AROUND = 40  # characters of the text shown on each side of the word that matched
 _SOURCES = {"gmail": "Gmail", "wilma": "Wilma", "whatsapp": "WhatsApp", "myclub": "MyClub"}
 # Runs of characters, each as the pattern of a run starting at a position and of one ending there.
@@ -271,15 +259,33 @@ def _held_back_line(m: Message, found: held_back.Match, zone: ZoneInfo) -> str:
             f"[{_one_line(text[start:end])}]  {sender or '(no sender)'} · {subject} · \"{excerpt}\"")
 
 
-def _print_held_back(report: Report, on: bool, zone: ZoneInfo) -> None:
-    """Every Held-back Message of the report, by date. Only for a terminal: they hold message text."""
+def _list_held_back(report: Report, cfg: Config, folder: Path, first: str, last: str) -> None:
+    """Write every Held-back Message of the report, by date, to the list in the archive folder and
+    open it in TextEdit. Only how many it lists and where print: they hold the messages' own text."""
     if not report.held:
         print("\nNo messages to list: none was held back.")
         return
     held = sorted(report.held, key=lambda h: h[0].timestamp.astimezone(timezone.utc))
-    what = "held back from the AI" if on else "the AI filter would hold back"
-    print(f"\nThe {len(held)} messages {what}, by date. Each line has the date, the Source, the "
-          "category, [the word that matched], the sender · the subject or WhatsApp chat · \"the text around "
-          "the word\":")
-    for m, found in held:
-        print(_held_back_line(m, found, zone))
+    zone, n = ZoneInfo(cfg.timezone), len(held)
+    what = f"{n} message{'s' * (n != 1)} " + ("held back from the AI" if cfg.ai_filter.enabled
+                                             else "the AI filter would hold back")
+    path = folder / HELD_BACK_LIST
+    private_files.write(path, f"{what}, by date, from the archive in {_show(folder)}, {first} to {last}. Each "
+                        "line has the date, the Source, the category, [the word that matched], the sender · "
+                        "the subject or WhatsApp chat · \"the text around the word\".\n"
+                        "This file holds the messages' own text. Parent Recap writes it again each time "
+                        "ai-filter-report --held-back runs.\n\n"
+                        + "".join(_held_back_line(m, found, zone) + "\n" for m, found in held))
+    listed = f"\n{what} {'is' if n == 1 else 'are'} listed in {_show(path)}"
+    if _open_in_textedit(path):
+        print(f"{listed}, now open in TextEdit. The list isn't printed here: it holds the messages' own text.")
+    else:
+        print(f"{listed}. TextEdit couldn't be opened here, so open that file on this Mac to read it. The list "
+              "isn't printed here: it holds the messages' own text.")
+
+
+def _open_in_textedit(path: Path) -> bool:
+    try:
+        return subprocess.run(["open", "-e", str(path)], capture_output=True).returncode == 0
+    except OSError:
+        return False

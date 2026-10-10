@@ -1,12 +1,16 @@
 """`parent-recap ai-filter-report` reads the Household's own archive and counts what the AI filter
-catches, as the evening run would filter each night, with counts only (#197, ADR 0013). With
---held-back it lists the Held-back Messages too, only in the parent's own terminal (#220), never in
-an AI assistant's shell (#223)."""
+catches, as the evening run would filter each night, with counts only (#197, ADR 0013). A message
+archived on several evenings counts once. With --held-back it lists the Held-back Messages too
+(#220), in an owner-only file it opens in TextEdit, and prints none of them in any shell (#236)."""
 from __future__ import annotations
 
 import re
 import socket
+import stat
+import subprocess
 import sys
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -73,14 +77,16 @@ def report(harness: Harness, capsys: pytest.CaptureFixture[str], *args: str) -> 
     return capsys.readouterr().out
 
 
-def held_back_list(harness: Harness, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
-                   terminal: bool, **env: str) -> str:
-    """The report with --held-back, its output a terminal or, as when an AI assistant runs it, not.
-    The harness clears what an AI assistant's shell sets, unless `env` sets it again."""
-    monkeypatch.setattr(sys.stdout, "isatty", lambda: terminal)
-    for name, value in env.items():
-        monkeypatch.setenv(name, value)
-    return report(harness, capsys, "--held-back")
+def list_file(harness: Harness) -> Path:
+    """Where --held-back writes its list: in the archive folder."""
+    return harness.archive_dir / "held-back-list.txt"
+
+
+def held_back_list(harness: Harness, capsys: pytest.CaptureFixture[str]) -> tuple[str, str]:
+    """The report with --held-back: what it prints, and the list it writes and opens in TextEdit."""
+    out = report(harness, capsys, "--held-back")
+    assert harness.commands[-1] == ["open", "-e", str(list_file(harness))]
+    return out, list_file(harness).read_text()
 
 
 def counts(out: str) -> dict[str, int]:
@@ -161,19 +167,23 @@ PRIVATE = ["Virtanen", "Virtasen", "Korhoselta", "Maija", "Mäkinen", "Eetu", "N
            "forms.kilo.example.fi", "kilo-fc.fi", "mail.google.com", "@"]
 
 
-@pytest.mark.parametrize("args", [(), ("--held-back",)], ids=["counts", "held-back-captured"])
-def test_the_report_has_no_message_text_names_or_links_and_makes_no_network_call(harness, capsys,
-                                                                                     monkeypatch, args):
+@pytest.mark.parametrize("terminal", [False, True], ids=["captured", "terminal"])
+@pytest.mark.parametrize("args", [(), ("--held-back",)], ids=["counts", "held-back"])
+def test_the_report_prints_no_message_text_names_or_links_in_any_shell_and_makes_no_network_call(
+        harness, capsys, monkeypatch, args, terminal):
     archive(harness)
+    # A terminal, as with ! in Claude Code, or captured, as when an AI assistant runs it.
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: terminal)
 
     def no_network(*_a, **_k):
         raise AssertionError("the report reached for the network")
     for name in ("socket", "create_connection", "getaddrinfo"):
         monkeypatch.setattr(socket, name, no_network)
 
-    out = report(harness, capsys, *args)  # captured, so not a terminal, as when an AI assistant runs it
+    out = report(harness, capsys, *args)
 
-    assert harness.commands == []  # no model call, and no other program either
+    # No model call and no other program, but TextEdit for the list.
+    assert harness.commands == ([["open", "-e", str(list_file(harness))]] if args else [])
     for value in PRIVATE:
         assert value not in out
     for m in [*FINNISH, *ENGLISH, *CHINESE]:
@@ -210,24 +220,85 @@ HELD_BACK = [
 ]
 
 
-def listed(out: str) -> list[str]:
-    """The report's lines listing a Held-back Message, in their order."""
-    return [line for line in out.splitlines() if re.match(r"  \d{4}-\d{2}-\d{2}  ", line)]
+def listed(text: str) -> list[str]:
+    """The lines of the list that each list a Held-back Message, in their order."""
+    return [line for line in text.splitlines() if re.match(r"  \d{4}-\d{2}-\d{2}  ", line)]
 
 
-def test_in_a_terminal_held_back_lists_every_held_back_message_after_the_counts(harness, capsys, monkeypatch):
+def mode(p: Path) -> int:
+    return stat.S_IMODE(p.stat().st_mode)
+
+
+def test_held_back_lists_every_held_back_message_in_an_owner_only_file_it_opens_in_textedit(harness, capsys):
     archive(harness)
+    counts_only = report(harness, capsys)
 
-    out = held_back_list(harness, capsys, monkeypatch, terminal=True)
+    out, text = held_back_list(harness, capsys)
 
-    assert listed(out) == HELD_BACK
-    assert out.index("Likely missed names") < out.index(HELD_BACK[0])
-    assert "The 6 messages held back from the AI, by date." in out
-    assert "then each held-back message with its own text, for your eyes only" in out
-    assert "Counts only" not in out
-    # The counts are the same as without the list.
-    assert counts(out)["Held back from the AI"] == 6
-    assert "Names: 14 (7 in senders, 7 in subjects and text)" in out
+    assert text.startswith(
+        "6 messages held back from the AI, by date, from the archive in ~/ParentRecap, 2026-09-21 to 2026-09-23. "
+        "Each line has the date, the Source, the category, [the word that matched], the sender · the subject or "
+        "WhatsApp chat · \"the text around the word\".\n")
+    assert listed(text) == HELD_BACK
+    assert mode(list_file(harness)) == 0o600
+    # The same counts as without --held-back, then how many it lists and where, never the list.
+    assert out == counts_only + (
+        "\n6 messages held back from the AI are listed in ~/ParentRecap/held-back-list.txt, now open in TextEdit. "
+        "The list isn't printed here: it holds the messages' own text.\n")
+
+
+def test_held_back_writes_the_list_again_each_time_owner_only_over_one_others_could_read(harness, capsys):
+    archive(harness, {"2026-09-21": [m for m in FINNISH if m.external_id == "g-2"]})
+    list_file(harness).write_text("An older list\n" * 20)
+    list_file(harness).chmod(0o644)
+
+    out, text = held_back_list(harness, capsys)
+
+    assert "An older list" not in text
+    assert listed(text) == HELD_BACK[:1]
+    assert mode(list_file(harness)) == 0o600
+    assert "\n1 message held back from the AI is listed in ~/ParentRecap/held-back-list.txt, now open" in out
+
+
+@pytest.mark.parametrize("fails", ["exits-1", "missing"])
+def test_when_textedit_cant_be_opened_held_back_says_where_the_list_is(harness, capsys, monkeypatch, fails):
+    archive(harness)
+    others = subprocess.run
+
+    def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
+        if Path(cmd[0]).name != "open":
+            return others(cmd, *a, **k)
+        if fails == "missing":
+            raise FileNotFoundError(2, "No such file or directory", "open")
+        return subprocess.CompletedProcess(cmd, 1, "", "")  # no desktop session, as over SSH
+    monkeypatch.setattr(subprocess, "run", run)
+
+    out = report(harness, capsys, "--held-back")
+
+    assert out.endswith(
+        "\n6 messages held back from the AI are listed in ~/ParentRecap/held-back-list.txt. TextEdit couldn't be "
+        "opened here, so open that file on this Mac to read it. The list isn't printed here: it holds the "
+        "messages' own text.\n")
+    assert listed(list_file(harness).read_text()) == HELD_BACK
+    for value in PRIVATE:
+        assert value not in out
+
+
+def test_a_message_archived_on_several_evenings_counts_once_on_the_first(harness, capsys):
+    archive(harness)
+    once, once_listed = held_back_list(harness, capsys)
+    # Before the Wilma Source's lookback cutoff, it read old messages again once their seen marks
+    # expired, so the archive has them on later evenings too: a held-back one and one with a name,
+    # a phone number and a link.
+    copies = [m for m in FINNISH if m.external_id in ("w-1", "w-3")]
+    archive(harness, {"2026-09-22": ENGLISH + copies, "2026-09-23": CHINESE + copies[1:]})
+
+    again, again_listed = held_back_list(harness, capsys)
+
+    assert again == once
+    assert again_listed == once_listed
+    found = counts(again)
+    assert (found["Messages read"], found["Held back from the AI"], found["staff"]) == (14, 6, 1)
 
 
 # A notice to the whole class about bullying, long and over several lines, read again after an
@@ -244,72 +315,31 @@ LATE = [
 ]
 
 
-def test_a_long_message_shows_about_40_characters_on_each_side_of_the_word_on_one_line(harness, capsys,
-                                                                                        monkeypatch):
+def test_a_long_message_shows_about_40_characters_on_each_side_of_the_word_on_one_line(harness, capsys):
     archive(harness, {"2026-09-24": LATE})
 
-    out = held_back_list(harness, capsys, monkeypatch, terminal=True)
+    _, text = held_back_list(harness, capsys)
 
     # By the messages' own dates, with no word cut in two at either end, the newlines and the tab
     # made spaces, and the terminal's escape code gone, all of it.
-    assert listed(out) == [
+    assert listed(text) == [
         '  2026-09-20  Wilma     bullying  [kiusaamisesta]  Rehtori Saarinen · Viikkotiedote 40 · '
         '"…Maanantaina puhumme luokissa kiusaamisesta ja siitä, miten jokainen voi…"',
         '  2026-09-24  Gmail     staff     [Kuraattori]  Kuraattori Maija Laine · (no subject) · '
         '"Kuraattori Maija Laine"',
     ]
-    assert "\x1b" not in out
+    assert "\x1b" not in text
 
 
-def test_with_its_output_piped_or_captured_held_back_prints_the_counts_and_says_to_run_it_in_terminal(
-        harness, capsys, monkeypatch):
-    archive(harness)
-    counts_only = report(harness, capsys)
-
-    out = held_back_list(harness, capsys, monkeypatch, terminal=False)
-
-    assert listed(out) == []
-    assert out.startswith(counts_only)
-    assert out[len(counts_only):] == (
-        "\nThe list of held-back messages isn't printed here: it holds the messages' own text, and the output "
-        "is piped or captured, as when an AI assistant runs the report. Run this same command yourself in the "
-        "macOS Terminal app to see it, not with ! in Claude Code or in the Claude app's Terminal panel.\n")
-
-
-# What Claude Code and Codex set in the shell of each command they run, also one run with ! in
-# Claude Code, whose output is a terminal.
-AI_ASSISTANT_SHELLS = [{"CLAUDECODE": "1"}, {"AI_AGENT": "claude-code_2-1-0_agent"},
-                       {"CODEX_THREAD_ID": "019a0000-0000-7000-8000-000000000000"},
-                       {"CODEX_SANDBOX": "seatbelt"}, {"CODEX_SANDBOX_NETWORK_DISABLED": "1"}]
-
-
-@pytest.mark.parametrize("env", AI_ASSISTANT_SHELLS, ids=lambda env: next(iter(env)))
-def test_in_an_ai_assistants_shell_held_back_prints_the_counts_and_says_to_run_it_in_the_terminal_app(
-        harness, capsys, monkeypatch, env):
-    archive(harness)
-    counts_only = report(harness, capsys)
-
-    out = held_back_list(harness, capsys, monkeypatch, terminal=True, **env)
-
-    assert listed(out) == []
-    assert out.startswith(counts_only)
-    assert out[len(counts_only):] == (
-        "\nThe list of held-back messages isn't printed here: it holds the messages' own text, and this is the "
-        "shell of an AI assistant such as Claude Code or Codex, which reads what it prints. Run this same "
-        "command yourself in the macOS Terminal app to see it, not with ! in Claude Code or in the Claude "
-        "app's Terminal panel.\n")
-    for value in PRIVATE:
-        assert value not in out
-
-
-def test_with_the_ai_filter_off_held_back_lists_what_the_filter_would_hold_back(harness, capsys, monkeypatch):
+def test_with_the_ai_filter_off_held_back_lists_what_the_filter_would_hold_back(harness, capsys):
     harness.config["ai_filter"] = {"enabled": False}
     archive(harness)
 
-    out = held_back_list(harness, capsys, monkeypatch, terminal=True)
+    out, text = held_back_list(harness, capsys)
 
-    assert "The 6 messages the AI filter would hold back, by date." in out
-    assert listed(out) == HELD_BACK
+    assert text.startswith("6 messages the AI filter would hold back, by date, from the archive in ~/ParentRecap")
+    assert listed(text) == HELD_BACK
+    assert "\n6 messages the AI filter would hold back are listed in ~/ParentRecap/held-back-list.txt" in out
 
 
 # An evening of messages sent to everyone, each with a sensitive word, beside one to the Household:
@@ -330,17 +360,16 @@ EVERYONE = [
 ]
 
 
-def test_messages_sent_to_everyone_are_counted_and_listed_as_the_evening_run_holds_them_back(harness, capsys,
-                                                                                            monkeypatch):
+def test_messages_sent_to_everyone_are_counted_and_listed_as_the_evening_run_holds_them_back(harness, capsys):
     archive(harness, {"2026-09-25": EVERYONE})
 
-    out = held_back_list(harness, capsys, monkeypatch, terminal=True)
+    out, text = held_back_list(harness, capsys)
 
     found = counts(out)
     assert (found["Messages read"], found["Held back from the AI"]) == (4, 2)
     assert (found["health"], found["bullying"], found["support"], found["welfare"]) == (1, 1, 0, 0)
     # The notification email for its copied message, never for its announcements.
-    assert listed(out) == [
+    assert listed(text) == [
         '  2026-09-25  Gmail     health    [diagnoosi]  Wilma · Viesti Wilmasta · '
         '"…(1): Opettaja Virtanen: Retki Leon diagnoosi on liitteenä."',
         '  2026-09-25  Wilma     bullying  [kiusattu]  Opettaja Virtanen · Välituntitilanne · '
@@ -348,10 +377,11 @@ def test_messages_sent_to_everyone_are_counted_and_listed_as_the_evening_run_hol
     ]
 
 
-def test_held_back_with_nothing_held_back_says_so(harness, capsys, monkeypatch):
+def test_held_back_with_nothing_held_back_says_so_and_opens_nothing(harness, capsys):
     archive(harness, {"2026-09-21": [m for m in FINNISH if m.external_id not in ("g-2", "w-3")]})
 
-    out = held_back_list(harness, capsys, monkeypatch, terminal=True)
+    out = report(harness, capsys, "--held-back")
 
-    assert listed(out) == []
-    assert "No messages to list: none was held back." in out
+    assert out.endswith("\nNo messages to list: none was held back.\n")
+    assert harness.commands == []
+    assert not list_file(harness).exists()

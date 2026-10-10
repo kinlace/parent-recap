@@ -25,8 +25,8 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import (chat_install, install_record, ops, run_lock, secret_dialog, setup_save,
-               setup_wilma, summarize, tools, whatsapp_python)
+from . import (ai_filter_report, chat_install, install_record, ops, run_lock, secret_dialog,
+               setup_save, setup_wilma, summarize, tools, whatsapp_python)
 from .collectors.gmail import keychain_account
 from .config import Config
 from .utils import keychain
@@ -351,6 +351,10 @@ def _archive(s: Survey, cfg: Config) -> None:
     if dated:
         s.items.append(Item("Archive of past Briefs", f"{days} day{'s' if days != 1 else ''} in "
                             f"{_show(archive)}", partial(_unlink_all, dated), archive=True))
+    # --held-back makes it from the archive again each time, so it goes also when the archive stays.
+    listed = archive / ai_filter_report.HELD_BACK_LIST
+    if listed.is_file():
+        s.items.append(_file("List of held-back messages", listed))
     weekend = cfg.weekend_events.resolved_dir()
     picks = sorted(p for p in weekend.iterdir() if DATED.match(p.name)) \
         if weekend.is_dir() and weekend != archive else []
