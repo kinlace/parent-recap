@@ -2974,7 +2974,14 @@ def test_announcements_and_mass_email_reach_the_model_and_a_message_to_the_house
             subject="Poliisin tiedote", metadata={"wilma_kind": "news", "raw_id": 41, "student_number": "7731905"}),
         msg("wilma", "message:812", "2026-09-27T13:00:00+03:00", "Miaa on kiusattu välitunneilla.",
             sender="Opettaja Virtanen", subject="Välituntitilanne", kid="Mia",
-            metadata={"wilma_kind": "message", "raw_id": 812, "student_number": "7731905"})]
+            metadata={"wilma_kind": "message", "raw_id": 812, "student_number": "7731905",
+                      "recipient_count": 2}),
+        # The wilma CLI names its 34 recipients: every guardian of the class.
+        msg("wilma", "message:813", "2026-09-27T15:00:00+03:00",
+            "Huoltajakysely on auki 9.10. asti. Kiusaamiseen puututaan aina.", sender="Opettaja Virtanen",
+            subject="Huoltajakysely", kid="Mia",
+            metadata={"wilma_kind": "message", "raw_id": 813, "student_number": "7731905",
+                      "recipient_count": 34})]
     harness.sources["gmail"] += [
         msg("gmail", "g-103", "2026-09-27T09:30:00+03:00",
             "Iltapäivätoiminnan haku päättyy perjantaina 2.10. Erityisen tuen oppilaat hakevat samalla lomakkeella.",
@@ -2987,9 +2994,11 @@ def test_announcements_and_mass_email_reach_the_model_and_a_message_to_the_house
 
     assert harness.run() == 0
 
-    assert payload_message_ids(harness) == sorted([*NORMAL_NIGHT_IDS, "g-103", "g-104", "news:41"])
+    assert payload_message_ids(harness) == sorted([*NORMAL_NIGHT_IDS, "g-103", "g-104", "message:813",
+                                                   "news:41"])
     prompt = harness.model_prompt()
-    for text in ("aidattu alue", "Erityisen tuen oppilaat", "Kiusaamisen vastainen viikko"):
+    for text in ("aidattu alue", "Erityisen tuen oppilaat", "Kiusaamisen vastainen viikko",
+                 "Kiusaamiseen puututaan"):
         assert text in prompt
     assert "Miaa on kiusattu" not in prompt
     [email] = harness.sent

@@ -343,8 +343,9 @@ def test_with_the_ai_filter_off_held_back_lists_what_the_filter_would_hold_back(
 
 
 # An evening of messages sent to everyone, each with a sensitive word, beside one to the Household:
-# a Wilma announcement, a city's mass email, and Wilma's notification email with its announcements and
-# a copied message. The report counts them the way the evening run holds them back.
+# a Wilma announcement, a city's mass email, Wilma's notification email with its announcements and
+# a copied message, and a Wilma message to every guardian of a class. The report counts them the
+# way the evening run holds them back.
 EVERYONE = [
     msg("wilma", "news:41", "2026-09-25T09:00:00+03:00", "Poliisi muistuttaa: koulun takana oleva alue on suljettu.",
         sender="Rehtori Saarinen", subject="Poliisin tiedote", metadata={"wilma_kind": "news", "raw_id": 41}),
@@ -356,7 +357,11 @@ EVERYONE = [
         "Uudet viestit (1):\nOpettaja Virtanen: Retki\nLeon diagnoosi on liitteenä.",
         sender="Wilma <noreply@kilo.example.fi>", subject="Viesti Wilmasta"),
     msg("wilma", "message:812", "2026-09-25T12:00:00+03:00", "Miaa on kiusattu välitunneilla.",
-        sender="Opettaja Virtanen", subject="Välituntitilanne", metadata={"wilma_kind": "message", "raw_id": 812}),
+        sender="Opettaja Virtanen", subject="Välituntitilanne",
+        metadata={"wilma_kind": "message", "raw_id": 812, "recipient_count": 2}),
+    msg("wilma", "message:813", "2026-09-25T13:00:00+03:00", "Kiusaamiseen puututaan aina. Vastatkaa kyselyyn.",
+        sender="Opettaja Virtanen", subject="Huoltajakysely",
+        metadata={"wilma_kind": "message", "raw_id": 813, "recipient_count": 34}),
 ]
 
 
@@ -366,7 +371,7 @@ def test_messages_sent_to_everyone_are_counted_and_listed_as_the_evening_run_hol
     out, text = held_back_list(harness, capsys)
 
     found = counts(out)
-    assert (found["Messages read"], found["Held back from the AI"]) == (4, 2)
+    assert (found["Messages read"], found["Held back from the AI"]) == (5, 2)
     assert (found["health"], found["bullying"], found["support"], found["welfare"]) == (1, 1, 0, 0)
     # The notification email for its copied message, never for its announcements.
     assert listed(text) == [

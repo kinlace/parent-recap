@@ -162,6 +162,17 @@ def _item(detail: Any) -> dict:
     return next((detail[k] for k in ("message", "news") if isinstance(detail.get(k), dict)), detail)
 
 
+def _recipients(item: dict) -> int | None:
+    """How many people a Wilma message went to, by the different names in its `recipients`, or
+    None when it has none: wilma CLI 1.x doesn't give them, and Wilma may hide them. Only the
+    count is kept, since the names are Third Parties' (ADR 0013)."""
+    names = item.get("recipients")
+    if not isinstance(names, list):
+        return None
+    different = {" ".join(n.split()).casefold() for n in names if isinstance(n, str) and n.strip()}
+    return len(different) or None
+
+
 def _collect_list(state: State, source_tag: str,
                    list_cmd: list[str],
                    read_cmd_prefix: list[str] | None,
@@ -194,7 +205,7 @@ def _collect_list(state: State, source_tag: str,
                 continue
             sender = _first(it, "sender", "from", "senderName", "author", default="")
 
-            body = ""
+            body, recipients = "", None
             if read_cmd_prefix and student_number:
                 try:
                     detail = _item(_run([*read_cmd_prefix, str(wilma_id), "--student",
@@ -205,9 +216,14 @@ def _collect_list(state: State, source_tag: str,
                     continue
                 body = _first(detail, "body", "content", "text", "html", "plainText",
                               default="") or ""
+                recipients = _recipients(detail)
                 if not sender:
                     sender = _first(detail, "senderName", "sender", "from", "author", default="")
 
+            metadata = {"wilma_kind": source_tag, "raw_id": wilma_id,
+                        "student_number": student_number}
+            if source_tag == "message":
+                metadata["recipient_count"] = recipients  # held_back.sent_to_everyone reads it
             results.append(Message(
                 source="wilma",
                 external_id=dedup_key,
@@ -217,8 +233,7 @@ def _collect_list(state: State, source_tag: str,
                 body=str(body)[:MAX_BODY_CHARS],
                 chat_name=source_tag,
                 kid_hint=student_name,
-                metadata={"wilma_kind": source_tag, "raw_id": wilma_id,
-                          "student_number": student_number},
+                metadata=metadata,
             ))
             state.mark_message_seen("wilma", dedup_key)
 

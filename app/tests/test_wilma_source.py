@@ -1,6 +1,6 @@
 """The Wilma Source reads what the pinned wilma CLI (2.x) prints, run for real against a fake CLI on
-Parent Recap's own Node: a message's text and its sender, news with their text, and the CLI's
-errors. A CLI kept from before 2.0, when an update couldn't install the
+Parent Recap's own Node: a message's text, its sender and how many people it went to, news with
+their text, and the CLI's errors. A CLI kept from before 2.0, when an update couldn't install the
 new one, is still read. All names and messages are made up."""
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ from test_source_failures import (REAL_WILMA_COLLECT, caught_up_last_night, one_
 from family_brief.collectors import wilma
 
 STUDENT = {"studentNumber": "7731905", "name": "Virtanen Mia"}
+# Every guardian of a class, as Wilma names them: the guardian, then the pupil and the class.
+CLASS = [f"Huoltaja{n} Kuvitteellinen (Oppilas{n} Kuvitteellinen, 3B)" for n in range(1, 35)]
 
 
 def listed(*messages: dict[str, Any]) -> dict[str, Any]:
@@ -74,22 +76,60 @@ def archived(harness) -> list[dict[str, Any]]:
     return [m for m in raw["messages"] if m["source"] == "wilma"]
 
 
-def test_a_message_s_text_and_sender_come_from_the_new_json(harness, cli):
+def test_a_message_s_text_sender_and_how_many_it_went_to_come_from_the_new_json(harness, cli):
     cli.answers = {
         ("messages", "list"): listed({"wilmaId": 813, "subject": "Huoltajakysely"},
                                      {"wilmaId": 814, "subject": "Retki"}),
-        ("messages", "read", "813"): read(813, "Kysely on auki 9.10. asti."),
-        ("messages", "read", "814"): read(814, "Retki torstaina."),
+        ("messages", "read", "813"): read(813, "Kysely on auki 9.10. asti.", CLASS + CLASS[:3]),
+        ("messages", "read", "814"): read(814, "Retki torstaina.", ["Huoltaja Kuvitteellinen (Mia Virtanen, 3B)"]),
     }
 
     assert harness.run() == 0
 
     survey, trip = archived(harness)
-    assert (survey["sender"], survey["body"]) == ("Opettaja Saarinen", "Kysely on auki 9.10. asti.")
-    assert (trip["sender"], trip["body"]) == ("Opettaja Saarinen", "Retki torstaina.")
+    assert (survey["body"], survey["metadata"]["recipient_count"]) == ("Kysely on auki 9.10. asti.", 34)
+    assert (trip["body"], trip["metadata"]["recipient_count"]) == ("Retki torstaina.", 1)
     assert [c[:3] for c in cli.ran if c[1] == "read"] == [["messages", "read", "813"],
                                                           ["messages", "read", "814"]]
     assert all(c[3:] == ["--student", "7731905"] for c in cli.ran if c[1] == "read")
+    # Only the count is kept: the guardians are Third Parties (ADR 0013).
+    archive = "".join(p.read_text() for p in harness.archive_dir.glob("*.raw.json"))
+    for name in ("Kuvitteellinen", "Oppilas1"):
+        assert name not in harness.model_prompt() and name not in archive
+
+
+@pytest.mark.parametrize("recipients, count", [
+    (None, None),             # Wilma hides who it went to
+    ([], None),
+    (["", "  "], None),
+    (["Virtanen  Maija", "virtanen maija", "Saarinen Leo"], 2),  # one name twice is one person
+], ids=["hidden", "empty", "blank", "repeated"])
+def test_recipients_wilma_hides_count_as_none(harness, cli, recipients, count):
+    cli.answers = {("messages", "list"): listed({"wilmaId": 815, "subject": "Viesti"}),
+                   ("messages", "read"): read(815, "Tervehdys.", recipients)}
+
+    assert harness.run() == 0
+
+    [m] = archived(harness)
+    assert m["metadata"]["recipient_count"] == count
+
+
+def test_a_message_to_every_guardian_reaches_the_ai_and_one_to_the_household_is_held_back(harness, cli):
+    cli.answers = {
+        ("messages", "list"): listed({"wilmaId": 813, "subject": "Huoltajakysely"},
+                                     {"wilmaId": 812, "subject": "Välituntitilanne"}),
+        ("messages", "read", "813"): read(813, "Kiusaamiseen puututaan aina. Vastatkaa kyselyyn.", CLASS),
+        ("messages", "read", "812"): read(812, "Miaa on kiusattu välitunneilla.",
+                                          ["Huoltaja Kuvitteellinen (Mia Virtanen, 3B)",
+                                           "Toinen Kuvitteellinen (Mia Virtanen, 3B)"]),
+    }
+
+    assert harness.run() == 0
+
+    assert payload_ids(harness, "wilma") == ["message:813"]
+    assert "Miaa on kiusattu" not in harness.model_prompt()
+    [email] = harness.sent
+    assert "Välituntitilanne" in email.text.split("🔒", 1)[1]
 
 
 def test_news_text_comes_from_the_new_json_and_pinned_news_without_a_date_are_left(harness, cli):
@@ -112,6 +152,7 @@ def test_news_text_comes_from_the_new_json_and_pinned_news_without_a_date_are_le
     [news] = archived(harness)
     assert (news["external_id"], news["sender"], news["body"]) == \
         ("news:41", "Rehtori Saarinen", "Poliisi valvoo liikennettä.")
+    assert "recipient_count" not in news["metadata"]
     assert not any(c[:3] == ["news", "read", "7"] for c in cli.ran)
     assert seen(harness, "wilma") == ["news:41", "news:7"]
 
@@ -178,3 +219,4 @@ def test_a_wilma_cli_kept_from_before_2_0_is_still_read(harness, cli):
 
     [m] = archived(harness)
     assert (m["external_id"], m["sender"], m["body"]) == ("message:819", "Opettaja Saarinen", "Retki torstaina.")
+    assert m["metadata"]["recipient_count"] is None  # so it is checked, as before

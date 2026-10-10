@@ -54,7 +54,9 @@ newsletters in each language whose footer lists the staff with their contact det
 that a match names the entry that matched and where it stands in the text as written, past the words
 the `not` list takes out and a newsletter's contact lines, and in which of a message's subject, body
 and sender's name (not its address) it is. Messages sent to everyone are never held back, whatever
-their words: a Wilma announcement (the same words in a Wilma message are), an email the Gmail Source
+their words: a Wilma announcement (the same words in a Wilma message to the Household are), a Wilma
+message to 15 or more recipients (one to 14, to two, to twelve, or to recipients Wilma hides is
+checked), an email the Gmail Source
 reads with a `List-Id`, `List-Unsubscribe` or `Precedence: bulk` or `list` header, and the
 announcements in made-up Wilma notification emails in Finnish and English. The message such an email
 copies is held back, and the match points into it. A Wilma email with no announcements heading, or
@@ -67,9 +69,10 @@ checks that a night with only Held-back Messages sends a Brief with no model cal
 that such a newsletter and a camp notice about medication still reach the model, that the archive
 keeps them, that the rule-based fallback doesn't list them twice, that the setup page's preview and
 `parent-recap summarize` hold them back too, and that with the AI filter off they go to the model as
-before. A night with a Wilma announcement, a city's mass email and a Wilma notification email with
+before. A night with a Wilma announcement, a city's mass email, a Wilma message to the class's 34
+guardians and a Wilma notification email with
 only announcements, each with a sensitive word, sends them to the model, and the Brief lists only a
-Wilma message to the Household and a notification email that copies one. `test_eval_runner.py`
+Wilma message to the Household's two guardians and a notification email that copies one. `test_eval_runner.py`
 checks that the eval's Brief call and its judge never get one either.
 `test_ai_filter_report.py` runs `parent-recap ai-filter-report` on an archive of three evenings in
 Finnish, English and Chinese, as the evening run writes it. It checks the counts of evenings, messages
@@ -109,11 +112,14 @@ wilma CLI and MyClub feed, for a Source that fails partway through a night or ti
 real WhatsApp Source against `test_setup_whatsapp.py`'s fake Mac without the permission, checking
 that the Brief and the log name a changed Python as the likely cause.
 `test_wilma_source.py` runs the real Wilma Source against a fake wilma CLI that prints the pinned
-2.x's JSON, all of it made up. It checks that a message's text and sender are read. A news item's
-text comes from its own JSON, and a pinned one with no date is marked seen and never read. A
-message with no time is left as old. The CLI's `login_failed` error on stdout is said in the Brief
-as a failed login, and it alone counts as a wrong password. A sign-in that didn't answer beside one
-that did says Wilma was partly read. What a CLI before 2.0 printed is still read.
+2.x's JSON, all of it made up. It checks that a message's text, sender and the number of different
+names among its recipients are read, and that no recipient's name reaches the AI or the archive.
+A hidden, empty or blank list counts as none. A message to a class's 34 guardians reaches the AI,
+and one to the Household's two is held back. A news item's text comes from its own JSON, and a
+pinned one with no date is marked seen and never read. A message with no time is left as old. The
+CLI's `login_failed` error on stdout is said in the Brief as a failed login, and it alone counts as
+a wrong password. A sign-in that didn't answer beside one that did says Wilma was partly read. What
+a CLI before 2.0 printed is still read, with no recipients.
 `test_doctor.py` checks that doctor speaks English, that `doctor` and `bg doctor` on
 `test_setup_whatsapp.py`'s fake Mac fail with the Python's real path and "add it to Full Disk
 Access" without Full Disk Access and pass with it, with no question from macOS either way, and

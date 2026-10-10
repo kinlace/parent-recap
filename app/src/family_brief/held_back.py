@@ -187,14 +187,25 @@ def _without_announcements(body: str) -> str:
     return "\n".join(kept)
 
 
+# How many people a Wilma message must name as its recipients to count as sent to everyone. A
+# message about one child goes to its guardians (usually two, rarely four), its teachers and the
+# school's student welfare staff (principal, school social worker, psychologist and nurse): about
+# 10 at most, and about 12 for two children. One to the guardians of a teaching group names 15 or
+# more even for a small group of 10 pupils, and a class of 20 to 25 pupils has 30 to 45.
+EVERYONE = 15
+
+
 def sent_to_everyone(message: Message) -> bool:
     """Whether `message` went to everyone, so it is never held back: an announcement the Wilma Source
-    reads from the news list, or an email the Gmail Source found a mailing list's headers on. A
-    Wilma message, even one to every guardian of a class, is checked: the wilma CLI Parent Recap
-    installs doesn't say who it went to. So is a post in a WhatsApp group, where incidents get
-    discussed. Wilma's notification emails are checked outside their announcements (fields())."""
+    reads from the news list, a Wilma message whose recipients number EVERYONE or more, or an email
+    the Gmail Source found a mailing list's headers on. A Wilma message with fewer, or whose
+    recipients Wilma hides or the wilma CLI doesn't give (before 2.0), is checked. So is a post in
+    a WhatsApp group, where incidents get discussed. Wilma's notification emails are checked
+    outside their announcements (fields())."""
     if message.source == "wilma":
-        return message.metadata.get("wilma_kind") == "news"
+        kind, count = message.metadata.get("wilma_kind"), message.metadata.get("recipient_count")
+        return kind == "news" or (kind == "message" and isinstance(count, int)
+                                  and not isinstance(count, bool) and count >= EVERYONE)
     return message.source == "gmail" and bool(message.metadata.get("mailing_list")) and \
         not _wilma_email(message)
 
