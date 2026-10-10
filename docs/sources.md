@@ -65,6 +65,8 @@ This uses the community open-source wilma CLI (not affiliated with Visma).
 
 Note: Wilma only publishes the timetable for about two weeks ahead, so later dates being empty is normal.
 
+The wilma CLI signs in with every sign-in saved in `~/.config/wilmai/config.json`, also one made with a wilma CLI of the family's own, and Parent Recap reads the Kids of each. When a sign-in for none of the Kids stops working, the Brief doesn't say so: `$FB doctor` names it, with the command that removes it.
+
 ### Where the Wilma password is stored
 
 After login, the wilma CLI stores the Wilma username and password in `~/.config/wilmai/config.json`. If you chose to save the two-step secret, it's stored there too. The password is only Base64-encoded, **not encrypted**: anyone with this file can recover the password, and two-step verification doesn't stop them. The file's permissions let only the current Mac user read it, and that is its only protection. Next to it, in `wilmai-sessions.json`, the CLI keeps the Wilma session its last command used, for up to six hours, so the evening run signs in to Wilma once rather than for every message: each sign-in also signs the parent out of Wilma in their own browser. A saved session gives the same access as the password while it lasts, and the file has the same protection. So:

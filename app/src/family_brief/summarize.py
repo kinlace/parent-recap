@@ -263,8 +263,8 @@ def _parse_model_json(result: str) -> tuple[dict[str, Any], bool]:
 
 
 # Identifiers the model doesn't need: Gmail's link back to a message, which holds its Message-ID,
-# and Wilma's student number.
-NOT_FOR_THE_MODEL = ("url", "student_number")
+# and Wilma's student number and address.
+NOT_FOR_THE_MODEL = ("url", "student_number", "wilma_url")
 
 
 def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[dict],

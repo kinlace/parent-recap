@@ -18,7 +18,7 @@
 # and medication (sairas, kipeä, terveydenhoitaja, lääkäri, terveystarkastus, täi, vesirokko,
 # allergia, loukkaantui, sairaala, lääkitys, lääke, medicinering, 用药, 服药, and the like). The
 # word lists can't tell a notice to the whole school from a message about one child, so the Sources
-# do: a Wilma announcement, a Wilma message that names 15 or more recipients, the announcements in
+# do: a Wilma announcement, a Wilma message to 15 or more addressees Wilma lists, the announcements in
 # Wilma's notification emails and an email to a mailing list are sent to everyone and never held
 # back (held_back.sent_to_everyone). A message to the Household with a word here is held back even
 # when a teacher sent it to the whole class, if Wilma hides who it went to, such as a Wilma

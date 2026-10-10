@@ -2975,13 +2975,13 @@ def test_announcements_and_mass_email_reach_the_model_and_a_message_to_the_house
         msg("wilma", "message:812", "2026-09-27T13:00:00+03:00", "Miaa on kiusattu välitunneilla.",
             sender="Opettaja Virtanen", subject="Välituntitilanne", kid="Mia",
             metadata={"wilma_kind": "message", "raw_id": 812, "student_number": "7731905",
-                      "recipient_count": 2}),
-        # The wilma CLI names its 34 recipients: every guardian of the class.
+                      "addressee_count": 2}),
+        # The wilma CLI names its 34 addressees: every guardian of the class.
         msg("wilma", "message:813", "2026-09-27T15:00:00+03:00",
             "Huoltajakysely on auki 9.10. asti. Kiusaamiseen puututaan aina.", sender="Opettaja Virtanen",
             subject="Huoltajakysely", kid="Mia",
             metadata={"wilma_kind": "message", "raw_id": 813, "student_number": "7731905",
-                      "recipient_count": 34})]
+                      "addressee_count": 34})]
     harness.sources["gmail"] += [
         msg("gmail", "g-103", "2026-09-27T09:30:00+03:00",
             "Iltapäivätoiminnan haku päättyy perjantaina 2.10. Erityisen tuen oppilaat hakevat samalla lomakkeella.",

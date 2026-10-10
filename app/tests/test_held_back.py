@@ -1,7 +1,7 @@
 """Which messages look sensitive, checked on their own, as another tool could: a text in, its
 category or None out, the entry that matched and where, and a night's messages split into those for
 the AI and those held back. Messages sent to everyone are never held back: Wilma announcements,
-Wilma messages to 15 or more recipients, mailing-list email and the announcements in Wilma's
+Wilma messages to 15 or more addressees, mailing-list email and the announcements in Wilma's
 notification emails.
 The evening run's use of it (nothing held back reaches a prompt, and the Brief lists it) is in
 test_nightly_run.py. The words are in src/family_brief/sensitive_words.yaml."""
@@ -202,12 +202,12 @@ def test_a_nights_messages_are_split_into_those_for_the_ai_and_those_held_back()
 POLICE = "Poliisi muistuttaa: koulun takana oleva aidattu alue on suljettu. Kiusaamisen vastainen viikko alkaa."
 
 
-def wilma(ext_id: str, body: str, kind: str, recipients: object = None) -> Message:
+def wilma(ext_id: str, body: str, kind: str, addressees: object = None) -> Message:
     """A Wilma item as the Wilma Source gives it: an announcement from the news list, or a message
-    with how many people it went to (None when the wilma CLI gives no recipients)."""
+    with how many people it is addressed to (None when the wilma CLI gives no names)."""
     metadata = {"wilma_kind": kind, "raw_id": ext_id, "student_number": "7731905"}
     if kind == "message":
-        metadata["recipient_count"] = recipients
+        metadata["addressee_count"] = addressees
     return Message(source="wilma", external_id=f"{kind}:{ext_id}", timestamp=datetime(2026, 9, 27, tzinfo=timezone.utc),
                    sender="Rehtori Saarinen", subject="Tiedote", body=body, chat_name=kind, metadata=metadata)
 
@@ -222,30 +222,30 @@ def test_a_wilma_announcement_is_never_held_back_and_the_same_words_in_a_wilma_m
 
 
 def test_a_wilma_message_to_every_guardian_of_a_class_is_never_held_back():
-    to_the_class = wilma("813", POLICE, "message", recipients=34)
+    to_the_class = wilma("813", POLICE, "message", addressees=34)
 
     assert held_back.sent_to_everyone(to_the_class)
     assert held_back.match_message(to_the_class) is None
     assert held_back.hold_back([to_the_class]) == ([to_the_class], [])
 
 
-@pytest.mark.parametrize("recipients", [
-    held_back.EVERYONE - 1,  # the most that is still checked
+@pytest.mark.parametrize("addressees", [
+    held_back.EVERYONE_MIN_ADDRESSEES - 1,  # the most that is still checked
     2,                       # the Household's two guardians
     12,                      # two children's guardians, their teachers and the student welfare staff
     None,                    # Wilma hides who it went to, or a wilma CLI before 2.0
     True, "34", 34.0,        # not a count the Wilma Source writes
 ], ids=["just-under", "household", "welfare-meeting", "hidden", "bool", "text", "float"])
-def test_a_wilma_message_to_fewer_people_or_to_people_wilma_hides_is_still_checked(recipients):
-    message = wilma("814", POLICE, "message", recipients=recipients)
+def test_a_wilma_message_to_fewer_people_or_to_people_wilma_hides_is_still_checked(addressees):
+    message = wilma("814", POLICE, "message", addressees=addressees)
 
     assert not held_back.sent_to_everyone(message)
     assert held_back.category(message) == "bullying"
 
 
-def test_a_count_of_recipients_on_an_announcement_or_another_source_changes_nothing():
+def test_a_count_of_addressees_on_an_announcement_or_another_source_changes_nothing():
     whatsapp = Message(source="whatsapp", external_id="wa-1", timestamp=datetime(2026, 9, 27, tzinfo=timezone.utc),
-                       sender="Maija", body=POLICE, chat_name="3B vanhemmat", metadata={"recipient_count": 40})
+                       sender="Maija", body=POLICE, chat_name="3B vanhemmat", metadata={"addressee_count": 40})
 
     assert held_back.sent_to_everyone(wilma("42", POLICE, "news"))
     assert not held_back.sent_to_everyone(whatsapp)

@@ -37,17 +37,19 @@ def wilma_package(home: Path) -> Path:
     return wilma_folder(home) / PACKAGE
 
 
-def install_wilma(home: Path, script: str, version: str = setup_wilma.WILMA_CLI_VERSION) -> Path:
-    """The wilma CLI's package in wilma/, as `npm install -g --prefix` puts it there, with
-    `script` as its dist/index.js and bin/wilma linking to it, and its package.json saying
-    `version`, the pinned one unless given. Returns bin/wilma."""
-    dist = wilma_package(home) / "dist"
+def install_wilma(home: Path, script: str, version: str = setup_wilma.WILMA_CLI_VERSION,
+                  prefix: Path | None = None) -> Path:
+    """The wilma CLI's package in wilma/, or in `prefix`, as `npm install -g --prefix` puts it
+    there, with `script` as its dist/index.js and bin/wilma linking to it by a relative path, and
+    its package.json saying `version`, the pinned one unless given. Returns bin/wilma."""
+    folder = prefix or wilma_folder(home)
+    dist = folder / PACKAGE / "dist"
     dist.mkdir(parents=True, exist_ok=True)
     (dist / "index.js").write_text(script)
     (dist / "index.js").chmod(0o755)
-    (wilma_package(home) / "package.json").write_text(
+    (folder / PACKAGE / "package.json").write_text(
         json.dumps({"name": setup_wilma.PACKAGE, "version": version}))
-    link = wilma_folder(home) / "bin" / "wilma"
+    link = folder / "bin" / "wilma"
     link.parent.mkdir(parents=True, exist_ok=True)
     link.unlink(missing_ok=True)
     link.symlink_to(Path("..") / PACKAGE / "dist" / "index.js")
@@ -60,3 +62,8 @@ def is_npm(cmd: list[str]) -> bool:
 
 def is_wilma(cmd: list[str]) -> bool:
     return len(cmd) > 1 and Path(cmd[0]).name == "node" and Path(cmd[1]).name == "wilma"
+
+
+def npm_prefix(cmd: list[str]) -> Path:
+    """The folder an `npm install -g --prefix <folder>` command installs into."""
+    return Path(cmd[cmd.index("--prefix") + 1])
