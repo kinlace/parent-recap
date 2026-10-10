@@ -4,6 +4,31 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.5.7 · 2026-10-10
+
+Much less of your messages reaches the AI: other people's names, phone numbers, email addresses and links go as placeholders, and messages about a child's health, support, bullying or welfare stay on your Mac (ADR 0013).
+
+### Upgrading
+- Updating installs the new Wilma program (wilma CLI 2.1.2) into `~/ParentRecap/wilma`. If the download fails, the old one keeps working and the next update tries again. The evening Brief now signs in to Wilma once, not once for every message, so Wilma signs you out in your browser less often.
+
+### Added
+- The AI filter, on by default. Ask Claude or Codex to turn it off if you want the AI to get your messages as they are.
+  - Phone numbers, email addresses and links reach the AI only as placeholders. The Brief still shows them.
+  - The names of the teachers, other pupils and other parents who send the evening's messages reach the AI only as placeholders. The Brief shows each name as the message wrote it.
+  - Messages about health, special support, bullying or child welfare are not sent to Claude or ChatGPT. The Brief lists them with a link, so you read them yourself. Announcements and other messages sent to everyone are never held back, nor a Wilma message that Wilma lists 15 or more addressees for.
+  - With Google Calendar, the AI sees only events about the Kids. Your own appointments reach it only as busy time.
+  - The AI that picks weekend events no longer sees the Kids' names.
+- `parent-recap ai-filter-report` shows, as counts only, what the AI filter catches in your own archive of past evenings. With `--held-back` it opens the list of held-back messages in TextEdit and never prints it, so Claude or Codex can run it for you without the messages reaching the chat.
+
+### Changed
+- The setup page's AI sign-in step says that Claude and ChatGPT may train on your chats by default, and where to turn that off. The README explains what reaches the AI and what doesn't.
+- In a pilot family's Brief, the ⭐ / ❌ feedback links send the team the item as the AI saw it, the Kids as Kid A and Kid B, and a code made from your family's name instead of the name.
+- The MyClub step says to tick only one Kid in MyClub's calendar subscription and make one link per Kid. It shows the link you pasted, starts empty for each Kid, shows the result where you pressed Check and save, and won't save the same link for two Kids.
+
+### Fixed
+- With only the ChatGPT app installed, setup and the evening Brief now find its Codex. When Codex is missing, the page says where to get it and offers a download button.
+- A Household whose model is billed per use and runs out of API credit gets its fallback Brief at the usual time, not 30 minutes late.
+
 ## 0.5.6 · 2026-10-08
 
 The Wilma step of setup asks for your town, not your school.
