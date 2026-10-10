@@ -194,13 +194,14 @@ def test_a_plain_finnish_brief_scores_clean_on_the_bundled_cases():
         assert is_clean(score_case(cases[name].expect, night, TZ)), name
 
 
-def test_puoli_viisi_read_as_half_past_five_is_not_clean():
+def test_puoli_viisi_read_as_another_time_is_not_clean():
     from family_brief.eval.cases import BUNDLED, load_cases
     case = next(c for c in load_cases(BUNDLED) if c.name == "fi-puoli-viisi")
-    night = summary([kid("Eero", notices=["Pianotunti siirtyy ti 13.10. klo 17.30"])],
-                    [{"kid": "Eero", "title": "Pianotunti", "start": "2026-10-13T17:30:00+03:00"}])
-    s = score_case(case.expect, night, TZ)
-    assert s["events"]["start_ok"] == 0 and s["notices"]["found"] == 0
+    for wrong in ("17.30", "14.30", "14:30"):  # half past five, or a 4:30 inside 14:30
+        night = summary([kid("Eero", notices=[f"Pianotunti siirtyy ti 13.10. klo {wrong}"])],
+                        [{"kid": "Eero", "title": "Pianotunti", "start": "2026-10-13T17:30:00+03:00"}])
+        s = score_case(case.expect, night, TZ)
+        assert s["events"]["start_ok"] == 0 and s["notices"]["found"] == 0, wrong
 
 
 def test_a_deadline_or_a_training_that_carries_on_is_not_a_calendar_event():
