@@ -270,7 +270,7 @@ def run_model(cases: list[Case], args: argparse.Namespace, backend: str, languag
         "cases_dir": str(args.cases.resolve()),
         "prompt_sha": hashlib.sha256(system_prompt(language, masked=cases[0].household.ai_filter.enabled)
                                      .encode()).hexdigest()[:8],
-        "prices_read": cost.read_on(),
+        "prices_read": cost.prices_read(),
         "finished": finished.isoformat(timespec="seconds"),
         "metrics": metrics,
         "spread": spread,
