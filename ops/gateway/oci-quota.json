@@ -1,0 +1,14 @@
+[
+  "zero compute-core quotas in tenancy",
+  "set compute-core quota standard-a1-core-count to 4 in tenancy",
+  "set compute-core quota standard-e2-micro-core-count to 2 in tenancy",
+  "zero compute-memory quotas in tenancy",
+  "set compute-memory quota standard-a1-memory-count to 24 in tenancy",
+  "zero compute quotas in tenancy",
+  "set compute quota vm-standard-e2-1-micro-count to 2 in tenancy",
+  "zero database quotas in tenancy",
+  "zero load-balancer quotas in tenancy",
+  "set block-storage quota total-storage-gb to 200 in tenancy",
+  "set block-storage quota backup-count to 5 in tenancy",
+  "zero filesystem quotas in tenancy"
+]
