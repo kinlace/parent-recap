@@ -108,6 +108,12 @@ all. `test_eval_runner.py` checks the eval runner tries a busy model again the s
 wilma CLI and MyClub feed, for a Source that fails partway through a night or times out, and the
 real WhatsApp Source against `test_setup_whatsapp.py`'s fake Mac without the permission, checking
 that the Brief and the log name a changed Python as the likely cause.
+`test_wilma_source.py` runs the real Wilma Source against a fake wilma CLI that prints the pinned
+2.x's JSON, all of it made up. It checks that a message's text and sender are read. A news item's
+text comes from its own JSON, and a pinned one with no date is marked seen and never read. A
+message with no time is left as old. The CLI's `login_failed` error on stdout is said in the Brief
+as a failed login, and it alone counts as a wrong password. A sign-in that didn't answer beside one
+that did says Wilma was partly read. What a CLI before 2.0 printed is still read.
 `test_doctor.py` checks that doctor speaks English, that `doctor` and `bg doctor` on
 `test_setup_whatsapp.py`'s fake Mac fail with the Python's real path and "add it to Full Disk
 Access" without Full Disk Access and pass with it, with no question from macOS either way, and
@@ -117,7 +123,8 @@ differ, and a failure when the job's venv Python points at nothing.
 `test_own_node.py` lays out Parent Recap's own Node and a wilma CLI in the test's `~/ParentRecap`
 (`fake_node.py`: a stand-in `node` that runs the script it's given, and a shell script answering
 as the CLI does) with no Node on PATH, and checks that `doctor` and the evening job run that CLI
-on that Node, never a Node or wilma CLI the Mac has, that `doctor` without the CLI says to
+on that Node, never a Node or wilma CLI the Mac has, and with `WILMAI_NO_UPDATE_CHECK=1`, so it
+never looks for a newer version, that `doctor` without the CLI says to
 connect Wilma again rather than to install Node, and that the newest pinned Node is picked.
 `test_setup_gmail.py` runs `parent-recap setup gmail` against a fake macOS dialog, `open`,
 Keychain and IMAP server, and checks the App Password never reaches the output, the logs or a
@@ -129,7 +136,11 @@ address, the window's guide in each language, that the window ends the CLI befor
 picker and menu, that the window still closes when the CLI writes something just as it's ended
 (macOS can hold up the CLI's exit until that is read), that a missing CLI is installed with
 that Node's npm into `~/ParentRecap/wilma` and recorded, that without that Node it says to run
-the install line again, and that the Wilma password never reaches the output. A window still
+the install line again, that the window's CLI never looks for a newer version, and that the Wilma
+password never reaches the output. It checks that `python -m family_brief.setup_wilma update`,
+which `install.sh` runs, installs the pinned version over an older one with that Node's npm,
+leaves the pinned one and a Household without the CLI alone, and says so when npm or the Node
+fails, keeping the CLI that was there, without failing the install. A window still
 open after 30 seconds is ended, with the processes it started, and its test fails with what the
 window showed. Where no pseudo-terminal
 can be opened (a sandbox), the window talks to the fake CLI through `no_pty/sitecustomize.py`.
@@ -176,12 +187,16 @@ step against a fake IMAP server and Keychain: a valid App Password is stored and
 each known result has its explanation in all three languages, and the App Password never reaches
 a response, the output, the logs, a command line or a file in `~/.family`. Its Wilma step runs
 against Parent Recap's own Node with a faked npm and a fake wilma CLI, laid out in `~/ParentRecap/wilma`
-as `npm install -g --prefix` lays out the pinned version with Wilma's tenant list inside (`fake_node.py`), which reads the profile the page writes the way the
-pinned CLI's own code does and signs in to a fake Wilma that knows one account. It checks that
+as `npm install -g --prefix` lays out the pinned version with Wilma's tenant list inside (`fake_node.py`), which reads the profiles the page writes the way the
+pinned CLI's own code does, every one of them as 2.x does, signs in to a fake Wilma that knows one
+account, saves the Kids and a session back as 2.x does, and answers in 2.x's JSON, errors too. It checks that
 "Espoo" and "Esbo" find the Espoo entries, that the pinned CLI is installed when missing, with that Node and none of the Mac's, that without
 that Node it says to run the install line again and no text suggests Homebrew, that a
-good login writes the profile in the CLI's format and the page lists the Kids from it, that a
-wrong password is reported as such and any other failure offers the Terminal window (whose `open
+good login writes the profile in the CLI's format and the page lists the Kids from it, that the
+CLI checked it alone in a temporary config that is gone afterwards, with the session it saved, and
+never looked for a newer version, that a wrong password is reported as such, also when an earlier
+sign-in works, that signing in again as the same account in another case keeps that profile's
+place, id and two-step key, and any other failure offers the Terminal window (whose `open
 -a Terminal` the test answers by saving the CLI's profile), that the CLI's earlier profile is put
 back when a sign-in fails, that a Household without Wilma saves only its town, and that the Wilma
 password never reaches a response, the output, the logs, a command line or `~/.family`.
@@ -273,7 +288,8 @@ shows a short message and the log's path instead of pip's output. It checks that
 extra is installed, pinned and prebuilt, only when the config's calendar mode is google. It checks
 that `app/constraints.txt` pins every dependency `pyproject.toml` names, the `google` extra's
 included, and keeps `cryptography` below 49, that the default dependencies bring in no Google
-package and no `cryptography`, and that `scripts/check_wheels.py` fails when a pin has no Intel wheel. It checks that `install.sh`
+package and no `cryptography`, and that `scripts/check_wheels.py` fails when a pin has no Intel wheel. It checks that every install asks
+`family_brief.setup_wilma` to move the wilma CLI to the pinned version. It checks that `install.sh`
 run alone stops over an old `~/FamilyBrief/app` too, and that `parent-recap` and `family-brief`
 are the same entry point in `pyproject.toml`.
 `test_without_google_packages.py` blocks Google's packages from import and checks that every

@@ -20,22 +20,32 @@ from test_source_failures import REAL_WILMA_COLLECT, caught_up_last_night, paylo
 from family_brief import ops, own_node
 from family_brief.collectors import wilma
 
-LISTED = {"students": [{"student": {"name": "Virtanen Mia", "studentNumber": 7}, "items": [
+STUDENT = {"studentNumber": "7", "name": "Virtanen Mia"}
+LISTED = {"students": [{"student": STUDENT, "messages": [
     {"wilmaId": 1, "subject": "Retki", "sentAt": "2026-09-27T09:00:00+03:00",
-     "sender": "Opettaja Virtanen"}]}]}
-# Answers as the CLI does: the Kids, one message and its text, and nothing else tonight.
+     "senderName": "Opettaja Virtanen"}]}]}
+READ = {"student": STUDENT, "message": {"wilmaId": 1, "content": "Retki torstaina."}}
+# Answers as the CLI 2.x does: the Kids, one message and its text, and nothing else tonight.
 WILMA = f"""#!/bin/sh
 case "$1 $2" in
-  "kids list") echo '[{{"name": "Mia"}}, {{"name": "Leo"}}]' ;;
+  "kids list") echo '{{"students": [{{"studentNumber": "7", "name": "Mia"}}, {{"studentNumber": "8", "name": "Leo"}}]}}' ;;
   "messages list") echo '{json.dumps(LISTED)}' ;;
-  "messages read") echo '{{"body": "Retki torstaina."}}' ;;
+  "messages read") echo '{json.dumps(READ)}' ;;
   *) echo '{{"students": []}}' ;;
 esac
 """
 
 
+class Runs(list):
+    """Each command the wilma CLI was run with, and in `envs` the environment of each."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.envs: list[dict[str, str] | None] = []
+
+
 @pytest.fixture
-def no_node(harness, monkeypatch, tmp_path) -> list[list[str]]:
+def no_node(harness, monkeypatch, tmp_path) -> Runs:
     """A Mac without Node, whose PATH leads to none, with Parent Recap's own Node and wilma CLI
     in its folder. Returns each command the CLI was run with."""
     harness.config["wilma"]["enabled"] = True
@@ -46,11 +56,12 @@ def no_node(harness, monkeypatch, tmp_path) -> list[list[str]]:
     fake_node.pinned_node(harness.home)
     fake_node.install_wilma(harness.home, WILMA)
     others = subprocess.run
-    ran: list[list[str]] = []
+    ran = Runs()
 
     def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
         if fake_node.is_wilma(cmd):
             ran.append(list(cmd))
+            ran.envs.append(k.get("env"))
             return REAL_RUN(cmd, *a, **k)
         return others(cmd, *a, **k)
     monkeypatch.setattr(subprocess, "run", run)
@@ -84,6 +95,21 @@ def test_the_evening_job_runs_the_wilma_cli_on_parent_recaps_own_node(harness, n
     assert payload_ids(harness, "wilma") == ["message:1"]
     node = str(fake_node.pinned_node(harness.home))
     assert no_node and all(c[0] == node for c in no_node)
+
+
+def test_the_wilma_cli_never_checks_npm_for_a_newer_version(harness, no_node, monkeypatch, capsys):
+    # Parent Recap installs the version it pins, and the CLI's "Run wilma update" would install
+    # another one.
+    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(wilma, "collect", REAL_WILMA_COLLECT)
+    caught_up_last_night(harness)
+
+    harness.cli("doctor", "--skip-llm")
+    assert harness.run() == 0
+
+    assert len(no_node.envs) == len(no_node) > 1
+    assert all(env and env["WILMAI_NO_UPDATE_CHECK"] == "1" for env in no_node.envs)
+    assert all("WILMAI_CONFIG_PATH" not in env for env in no_node.envs)  # the CLI's own config
 
 
 def test_a_node_and_wilma_cli_the_mac_has_are_not_used(harness, no_node, monkeypatch, tmp_path,

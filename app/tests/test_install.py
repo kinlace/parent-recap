@@ -179,6 +179,12 @@ def program(mac: dict, requires: tuple[str, ...], constraints: str = "",
     (app / "family_brief" / "__main__.py").write_text(
         "import os, sys\ndef main():\n    print('runs on', os.path.realpath(sys.executable))\n")
     (app / "family_brief" / "install_record.py").write_text("")
+    # The real one moves an installed wilma CLI to the pinned version (test_setup_wilma.py). This
+    # one notes that it was asked.
+    (app / "family_brief" / "setup_wilma.py").write_text(
+        "import pathlib, sys\n"
+        "with open(pathlib.Path.home() / 'setup_wilma.calls', 'a') as calls:\n"
+        "    calls.write(' '.join(sys.argv[1:]) + '\\n')\n")
     # The real one reads the config with PyYAML; its answer is tested in test_without_google_packages.py.
     (app / "family_brief" / "google_packages.py").write_text(
         "import pathlib, sys\n"
@@ -288,6 +294,20 @@ def test_googles_packages_are_never_compiled_either(mac):
     assert not built.exists()
     assert "couldn't install its Python packages" in result.stdout
     assert "google-dep" in install_log(mac).read_text()
+
+
+# --- The wilma CLI -------------------------------------------------------------------------------
+
+def test_every_install_moves_the_wilma_cli_to_the_pinned_version(mac):
+    # An update is how a Household that connected Wilma gets the version a release pins.
+    wheel(mac["packages"], "pure-dep", "1.0")
+    program(mac, ("pure-dep",))
+
+    for _ in range(2):
+        result = install(mac)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    assert (mac["home"] / "setup_wilma.calls").read_text() == "update\nupdate\n"
 
 
 # --- The install log -------------------------------------------------------------------------

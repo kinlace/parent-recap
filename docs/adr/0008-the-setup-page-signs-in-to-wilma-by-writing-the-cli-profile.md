@@ -9,5 +9,5 @@ Parent Recap reads Wilma through the Wilma CLI (`@wilm-ai/wilma-cli`), which sig
 
 ## Consequences
 
-- Parent Recap depends on a file format the CLI doesn't document. It was the same from 1.4.2 to 1.6.2. Setup pins the CLI version it installs, a test checks the profile written against the pinned version, and if the check after writing fails, the page offers the Terminal window instead.
+- Parent Recap depends on a file format the CLI doesn't document. It was the same from 1.4.2 to 2.1.2. Setup pins the CLI version it installs, a test checks the profile written against the pinned version, and if the check after writing fails, the page offers the Terminal window instead. From 2.0 the CLI's commands read every profile in its config, so the page checks the new profile alone, in a temporary config the CLI reads through `WILMAI_CONFIG_PATH`, before adding it to the CLI's own.
 - The password ends up where the CLI keeps it today: in its owner-only file, lightly encoded, not encrypted. This is no change from signing in on the CLI's own screen.

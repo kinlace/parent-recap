@@ -185,6 +185,9 @@ RECORD=("$APP/.venv/bin/python" -m family_brief.install_record)
 # The copy of the plugin the install line downloads, which the Codex skills run from; Claude
 # Code manages its own copy.
 if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_ROOT"; fi
+# A Household that connected Wilma gets the wilma CLI version this release pins (ADR 0008), on
+# the Node above. One that couldn't be updated keeps working, and the next install tries again.
+"$APP/.venv/bin/python" -m family_brief.setup_wilma update
 
 # --codex: also install the two skills for Codex, which reads user skills from ~/.agents/skills.
 # They get unique names, Codex's $skill syntax, and a note saying where this plugin folder is.

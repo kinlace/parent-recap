@@ -155,10 +155,15 @@ def test_gmail_unreadable_message_is_skipped_and_the_rest_arrive(harness, real_g
 
 # ── Wilma
 
+STUDENT = {"studentNumber": "7", "name": "Virtanen Mia"}
+
+
 def wilma_list(ids: list[int]) -> dict:
-    return {"students": [{"student": {"name": "Virtanen Mia", "studentNumber": 7}, "items": [
+    """`messages list` as the wilma CLI 2.x prints it."""
+    return {"students": [{"student": STUDENT, "messages": [
         {"wilmaId": i, "subject": f"Viesti {i}", "sentAt": "2026-09-27T09:00:00+03:00",
-         "sender": "Opettaja Virtanen"} for i in ids]}]}
+         "senderName": "Opettaja Virtanen", "folder": "inbox", "unread": True, "replyCount": 0}
+        for i in ids]}]}
 
 
 @pytest.fixture
@@ -185,9 +190,10 @@ def real_wilma(harness, monkeypatch):
                 r = reads[int(args[2])]
                 if isinstance(r, Exception):
                     raise r
-                if isinstance(r, int):
-                    return subprocess.CompletedProcess(cmd, r, "", "session expired")
-                out = {"body": r}
+                if isinstance(r, int):  # as the CLI says it, on stdout
+                    return subprocess.CompletedProcess(cmd, r, json.dumps(
+                        {"status": "error", "code": "wilma_error", "message": "Wilma HTTP 500"}), "")
+                out = {"student": STUDENT, "message": {"wilmaId": int(args[2]), "content": r}}
             else:  # news and schedule: nothing tonight
                 out = {"students": []}
             return subprocess.CompletedProcess(cmd, 0, json.dumps(out), "")

@@ -15,7 +15,7 @@ from family_brief.state import State
     ("2026-10-01", "Thu · in 4 days"),
 ])
 def test_wilma_timetable_is_headed_with_its_date(harness, monkeypatch, day, label):
-    payload = {"students": [{"student": {"name": "Virtanen Aino"}, "items": [
+    payload = {"when": "tomorrow", "date": day, "students": [{"student": {"name": "Virtanen Aino"}, "lessons": [
         {"date": day, "start": "08:15", "end": "09:45", "subject": "Liikunta", "room": "ulkokenttä"}]}]}
     monkeypatch.setattr(wilma, "_run", lambda args: payload)
 
