@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import subprocess
@@ -134,7 +135,6 @@ def _walk_students(payload: Any) -> list[tuple[dict, list[dict]]]:
     `news` or `lessons` from wilma CLI 2.0. Returns [(student_info, items), ...]."""
     if not isinstance(payload, dict):
         return []
-    _log_problems(payload)
     out: list[tuple[dict, list[dict]]] = []
     for block in payload.get("students", []) or []:
         if not isinstance(block, dict):
@@ -145,13 +145,62 @@ def _walk_students(payload: Any) -> list[tuple[dict, list[dict]]]:
     return out
 
 
-def _log_problems(payload: dict) -> None:
-    """Logs each sign-in that didn't answer while others did, which the CLI lists from 2.0 on,
-    since it reads every sign-in its config has: the Brief then says Wilma was partly read."""
-    for problem in payload.get("problems") or []:
-        if isinstance(problem, dict):
-            log.error("wilma: the sign-in to %s didn't answer: %s", problem.get("wilma"),
-                      problem.get("message"))
+class _Wilmas:
+    """The Wilmas the CLI's saved sign-ins are for, from its config. From 2.0 the CLI signs in with
+    every one of them, labels each student with their Wilma when there are several, and a message
+    or news id is unique only within one Wilma."""
+
+    def __init__(self, kids: set[str]) -> None:
+        from .. import setup_wilma  # it reads this module's Kid list, so it is imported only here
+        self._setup = setup_wilma
+        path = setup_wilma.config_path()
+        self.profiles = setup_wilma.profiles(path)
+        last = setup_wilma.last_profile_id(path)
+        first = next((p for p in self.profiles if p.get("id") == last),
+                     self.profiles[0] if len(self.profiles) == 1 else None)
+        # The Wilma the CLI's commands sign in to first: before 2.0, the only one.
+        self.first = self._address(first)
+        self.kids = kids
+
+    def _address(self, profile: dict | None) -> str | None:
+        url = profile.get("tenantUrl") if profile else None
+        return self._setup.normalized(url) if isinstance(url, str) and url else None
+
+    def named(self, label: Any) -> list[dict]:
+        """The sign-ins the CLI calls `label`: the Wilma's name, or its address."""
+        return [p for p in self.profiles
+                if isinstance(label, str) and label in (p.get("tenantName"), p.get("tenantUrl"))]
+
+    def of(self, student: dict) -> str | None:
+        """The address of the Wilma `student`'s items come from, or None when it isn't known."""
+        label = student.get("wilma")
+        if label is None:
+            return self.first
+        addresses = {self._address(p) for p in self.named(label)} - {None}
+        return addresses.pop() if len(addresses) == 1 else None
+
+    def log_problems(self, payload: dict) -> None:
+        """Logs each sign-in that didn't answer while others did, which the CLI lists from 2.0 on,
+        by its username and Wilma. One the Household's Brief depends on is an error, so the Brief
+        says Wilma was partly read. One for none of the Kids, such as one left from an earlier use
+        of the CLI, is only a warning, and doctor names it."""
+        for problem in payload.get("problems") or []:
+            if not isinstance(problem, dict):
+                continue
+            signins = self.named(problem.get("wilma"))
+            who = ", ".join(f"{p.get('username')} at {p.get('tenantName') or p.get('tenantUrl')}"
+                            for p in signins) or str(problem.get("wilma"))
+            if not signins or any(self._setup.for_the_household(p, self.kids) for p in signins):
+                log.error("wilma: %s (the sign-in as %s)", problem.get("message"), who)
+            else:
+                log.warning("wilma: %s (the sign-in as %s, for none of the Kids, so the Brief "
+                            "doesn't say so)", problem.get("message"), who)
+
+
+def _scope(address: str | None) -> str | None:
+    """A short tag for the Wilma at `address`, which the Source's ids carry so that two Wilmas'
+    items with the same id stay apart. A tag, not the address, since the model sees the ids."""
+    return hashlib.sha256(address.encode()).hexdigest()[:8] if address else None
 
 
 def _item(detail: Any) -> dict:
@@ -162,10 +211,10 @@ def _item(detail: Any) -> dict:
     return next((detail[k] for k in ("message", "news") if isinstance(detail.get(k), dict)), detail)
 
 
-def _recipients(item: dict) -> int | None:
-    """How many people a Wilma message went to, by the different names in its `recipients`, or
-    None when it has none: wilma CLI 1.x doesn't give them, and Wilma may hide them. Only the
-    count is kept, since the names are Third Parties' (ADR 0013)."""
+def _addressees(item: dict) -> int | None:
+    """How many people a Wilma message is addressed to, by the different names the CLI gives as
+    its `recipients`, or None when it gives none: wilma CLI 1.x doesn't, and Wilma may hide them.
+    Only the count is kept, since the names are Third Parties' (ADR 0013)."""
     names = item.get("recipients")
     if not isinstance(names, list):
         return None
@@ -176,24 +225,33 @@ def _recipients(item: dict) -> int | None:
 def _collect_list(state: State, source_tag: str,
                    list_cmd: list[str],
                    read_cmd_prefix: list[str] | None,
-                   cutoff: datetime | None = None) -> list[Message]:
-    """Pull a list (messages|news) per student and fetch bodies."""
+                   cutoff: datetime | None = None,
+                   wilmas: _Wilmas | None = None) -> list[Message]:
+    """Pull a list (messages|news) per student and fetch bodies. Each item's id carries its Wilma's
+    tag when that is known. An id seen without one, as before 2.0, when the CLI read only the first
+    Wilma, still counts as seen for that Wilma's items."""
     payload = _run_or_log(list_cmd)
     if payload is None:
         return []
+    wilmas = wilmas or _Wilmas(set())
+    wilmas.log_problems(payload)
 
     results: list[Message] = []
     total = 0
     for student, items in _walk_students(payload):
         student_name = student.get("name")
         student_number = student.get("studentNumber")
+        address = wilmas.of(student)
+        scope = _scope(address)
         for it in items:
             total += 1
             wilma_id = _first(it, "wilmaId", "id", "newsId")
             if not wilma_id:
                 continue
-            dedup_key = f"{source_tag}:{wilma_id}"
-            if state.has_seen_message("wilma", dedup_key):
+            before = f"{source_tag}:{wilma_id}"
+            dedup_key = f"{source_tag}:{scope}:{wilma_id}" if scope else before
+            if state.has_seen_message("wilma", dedup_key) or (
+                    address == wilmas.first and state.has_seen_message("wilma", before)):
                 continue
 
             subject = _first(it, "subject", "title", "headline", default="") or ""
@@ -205,7 +263,7 @@ def _collect_list(state: State, source_tag: str,
                 continue
             sender = _first(it, "sender", "from", "senderName", "author", default="")
 
-            body, recipients = "", None
+            body, addressees = "", None
             if read_cmd_prefix and student_number:
                 try:
                     detail = _item(_run([*read_cmd_prefix, str(wilma_id), "--student",
@@ -216,14 +274,14 @@ def _collect_list(state: State, source_tag: str,
                     continue
                 body = _first(detail, "body", "content", "text", "html", "plainText",
                               default="") or ""
-                recipients = _recipients(detail)
+                addressees = _addressees(detail)
                 if not sender:
                     sender = _first(detail, "senderName", "sender", "from", "author", default="")
 
             metadata = {"wilma_kind": source_tag, "raw_id": wilma_id,
-                        "student_number": student_number}
+                        "student_number": student_number, "wilma_url": address}
             if source_tag == "message":
-                metadata["recipient_count"] = recipients  # held_back.sent_to_everyone reads it
+                metadata["addressee_count"] = addressees  # held_back.sent_to_everyone reads it
             results.append(Message(
                 source="wilma",
                 external_id=dedup_key,
@@ -245,7 +303,7 @@ def _collect_list(state: State, source_tag: str,
 _WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
-def _collect_schedule(state: State) -> list[Message]:
+def _collect_schedule(state: State, wilmas: _Wilmas | None = None) -> list[Message]:
     """Next-school-day schedule as a synthetic Message per run.
 
     IMPORTANT: `wilma schedule --when tomorrow` on Fri/Sat/Sun skips ahead to the
@@ -256,6 +314,8 @@ def _collect_schedule(state: State) -> list[Message]:
     payload = _run_or_log(["schedule", "list", "--all-students", "--when", "tomorrow"])
     if payload is None:
         return []
+    if isinstance(payload, dict):
+        (wilmas or _Wilmas(set())).log_problems(payload)
     now = datetime.now(timezone.utc)
     sched_ext_id = f"schedule:{now.strftime('%Y%m%d')}"
     if state.has_seen_message("wilma", sched_ext_id):
@@ -323,14 +383,17 @@ def _collect_schedule(state: State) -> list[Message]:
 def link(m: Message) -> str | None:
     """Where the family reads the Wilma message or news item `m` in Wilma: its page under the
     Kid's role (the role a path starting /!<student number> picks, as the CLI's own requests do), on
-    the Wilma the CLI signed in to last. None for the timetable, or when that Wilma isn't known."""
+    the Wilma it came from, or for one read before that was kept, the Wilma the CLI signed in to
+    last. None for the timetable, or when that Wilma isn't known."""
     from .. import setup_wilma  # it reads this module's Kid list, so it is imported only here
 
     kind = {"message": "messages", "news": "news"}.get(str(m.metadata.get("wilma_kind")))
     raw_id = m.metadata.get("raw_id")
-    path = setup_wilma.config_path()
-    profile = setup_wilma.profile(path, setup_wilma.last_profile_id(path) or "")
-    tenant = profile.get("tenantUrl") if profile else None
+    tenant = m.metadata.get("wilma_url")
+    if not tenant:
+        path = setup_wilma.config_path()
+        profile = setup_wilma.profile(path, setup_wilma.last_profile_id(path) or "")
+        tenant = profile.get("tenantUrl") if profile else None
     if not (kind and raw_id and isinstance(tenant, str) and tenant.startswith("https://")):
         return None
     student = m.metadata.get("student_number")
@@ -341,11 +404,13 @@ def link(m: Message) -> str | None:
 def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
     from datetime import timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=cfg.wilma.lookback_hours)
+    wilmas = _Wilmas({k.name.casefold() for k in cfg.kids})
     msgs = _collect_list(
         state, "message",
         list_cmd=["messages", "list", "--all-students", "--limit", "30"],
         read_cmd_prefix=["messages", "read"],
         cutoff=cutoff,
+        wilmas=wilmas,
     )
     news = _collect_list(
         state, "news",
@@ -354,6 +419,7 @@ def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
         # News only has a publication date (midnight), so allow an extra day or an item
         # posted after last night's run would already look too old tonight.
         cutoff=cutoff - timedelta(days=1),
+        wilmas=wilmas,
     )
-    schedule = _collect_schedule(state)
+    schedule = _collect_schedule(state, wilmas)
     return [*msgs, *news, *schedule]

@@ -55,7 +55,7 @@ that a match names the entry that matched and where it stands in the text as wri
 the `not` list takes out and a newsletter's contact lines, and in which of a message's subject, body
 and sender's name (not its address) it is. Messages sent to everyone are never held back, whatever
 their words: a Wilma announcement (the same words in a Wilma message to the Household are), a Wilma
-message to 15 or more recipients (one to 14, to two, to twelve, or to recipients Wilma hides is
+message to 15 or more addressees (one to 14, to two, to twelve, or to addressees Wilma hides is
 checked), an email the Gmail Source
 reads with a `List-Id`, `List-Unsubscribe` or `Precedence: bulk` or `list` header, and the
 announcements in made-up Wilma notification emails in Finnish and English. The message such an email
@@ -113,13 +113,18 @@ real WhatsApp Source against `test_setup_whatsapp.py`'s fake Mac without the per
 that the Brief and the log name a changed Python as the likely cause.
 `test_wilma_source.py` runs the real Wilma Source against a fake wilma CLI that prints the pinned
 2.x's JSON, all of it made up. It checks that a message's text, sender and the number of different
-names among its recipients are read, and that no recipient's name reaches the AI or the archive.
+names it is addressed to are read, and that no addressee's name reaches the AI or the archive.
 A hidden, empty or blank list counts as none. A message to a class's 34 guardians reaches the AI,
 and one to the Household's two is held back. A news item's text comes from its own JSON, and a
 pinned one with no date is marked seen and never read. A message with no time is left as old. The
 CLI's `login_failed` error on stdout is said in the Brief as a failed login, and it alone counts as
 a wrong password. A sign-in that didn't answer beside one that did says Wilma was partly read. What
-a CLI before 2.0 printed is still read, with no recipients.
+a CLI before 2.0 printed is still read, with no addressees. With two made-up Wilmas, two items with
+one id are both read, each linked to its own Wilma, and neither address reaches the AI. Ids kept
+before 2.0, without their Wilma, still count as seen for the Wilma signed in with last. A single
+sign-in's items link to its Wilma. A failing sign-in for none of the Kids stays out of the Brief
+and is logged by its username and Wilma, and one for a Kid makes the Brief say Wilma was partly
+read. Doctor names a sign-in setup didn't make for none of the Kids, with how to remove it.
 `test_doctor.py` checks that doctor speaks English, that `doctor` and `bg doctor` on
 `test_setup_whatsapp.py`'s fake Mac fail with the Python's real path and "add it to Full Disk
 Access" without Full Disk Access and pass with it, with no question from macOS either way, and
@@ -141,12 +146,16 @@ that runs the sign-in script at once, and checks the Kids, the city from every p
 address, the window's guide in each language, that the window ends the CLI before its student
 picker and menu, that the window still closes when the CLI writes something just as it's ended
 (macOS can hold up the CLI's exit until that is read), that a missing CLI is installed with
-that Node's npm into `~/ParentRecap/wilma` and recorded, that without that Node it says to run
+that Node's npm into a new folder next to `~/ParentRecap/wilma`, which then takes its place, and
+recorded, that without that Node it says to run
 the install line again, that the window's CLI never looks for a newer version, and that the Wilma
 password never reaches the output. It checks that `python -m family_brief.setup_wilma update`,
-which `install.sh` runs, installs the pinned version over an older one with that Node's npm,
-leaves the pinned one and a Household without the CLI alone, and says so when npm or the Node
-fails, keeping the CLI that was there, without failing the install. A window still
+which `install.sh` runs, with the program's umask, installs the pinned version over an older one
+with that Node's npm, leaves the pinned one and a Household without the CLI alone, and says so
+when npm or the Node fails, keeping the CLI that was there, without failing the install. An npm
+ended at the time limit halfway through leaves the CLI as it was, still signing in, and nothing
+beside it, and on a first install leaves nothing at all. A CLI left half installed, with no
+`bin/wilma`, is installed again when the CLI's config has a sign-in, and left alone without one. A window still
 open after 30 seconds is ended, with the processes it started, and its test fails with what the
 window showed. Where no pseudo-terminal
 can be opened (a sandbox), the window talks to the fake CLI through `no_pty/sitecustomize.py`.
@@ -196,15 +205,15 @@ against Parent Recap's own Node with a faked npm and a fake wilma CLI, laid out 
 as `npm install -g --prefix` lays out the pinned version with Wilma's tenant list inside (`fake_node.py`), which reads the profiles the page writes the way the
 pinned CLI's own code does, every one of them as 2.x does, signs in to a fake Wilma that knows one
 account, saves the Kids and a session back as 2.x does, and answers in 2.x's JSON, errors too. It checks that
-"Espoo" and "Esbo" find the Espoo entries, that the pinned CLI is installed when missing, with that Node and none of the Mac's, that without
+"Espoo" and "Esbo" find the Espoo entries, that the pinned CLI is installed when missing, with that Node and none of the Mac's, into a new folder that then takes its place, that without
 that Node it says to run the install line again and no text suggests Homebrew, that a
 good login writes the profile in the CLI's format and the page lists the Kids from it, that the
 CLI checked it alone in a temporary config that is gone afterwards, with the session it saved, and
 never looked for a newer version, that a wrong password is reported as such, also when an earlier
 sign-in works, that signing in again as the same account in another case keeps that profile's
 place, id and two-step key, and any other failure offers the Terminal window (whose `open
--a Terminal` the test answers by saving the CLI's profile), that the CLI's earlier profile is put
-back when a sign-in fails, that a Household without Wilma saves only its town, and that the Wilma
+-a Terminal` the test answers by saving the CLI's profile), that a sign-in that fails leaves the
+CLI's config as it was, an earlier profile included, that a Household without Wilma saves only its town, and that the Wilma
 password never reaches a response, the output, the logs, a command line or `~/.family`.
 Its AI sign-in runs a fake `claude` whose `setup-token` draws the token on the pseudo-terminal
 the page gives it, with Ink's escape sequences, and a fake `codex` whose `login` the harness's

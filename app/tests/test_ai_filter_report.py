@@ -358,10 +358,10 @@ EVERYONE = [
         sender="Wilma <noreply@kilo.example.fi>", subject="Viesti Wilmasta"),
     msg("wilma", "message:812", "2026-09-25T12:00:00+03:00", "Miaa on kiusattu välitunneilla.",
         sender="Opettaja Virtanen", subject="Välituntitilanne",
-        metadata={"wilma_kind": "message", "raw_id": 812, "recipient_count": 2}),
+        metadata={"wilma_kind": "message", "raw_id": 812, "addressee_count": 2}),
     msg("wilma", "message:813", "2026-09-25T13:00:00+03:00", "Kiusaamiseen puututaan aina. Vastatkaa kyselyyn.",
         sender="Opettaja Virtanen", subject="Huoltajakysely",
-        metadata={"wilma_kind": "message", "raw_id": 813, "recipient_count": 34}),
+        metadata={"wilma_kind": "message", "raw_id": 813, "addressee_count": 34}),
 ]
 
 

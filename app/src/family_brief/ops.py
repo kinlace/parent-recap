@@ -255,6 +255,17 @@ def _check_wilma(cfg: Config, add) -> None:
             "so their messages may go to the wrong Kid")
     else:
         add(OK, "Wilma", detail)
+    # From 2.0 the CLI signs in with every saved profile, so a stale one fails every evening. The
+    # evening run doesn't put that in the Brief when the profile is for none of the Kids.
+    from . import setup_wilma
+    signins = setup_wilma.profiles(setup_wilma.config_path())
+    kids = {k.name.casefold() for k in cfg.kids}
+    for p in signins if len(signins) > 1 else []:
+        if not setup_wilma.for_the_household(p, kids):
+            add(WARN, "Wilma", f"the wilma CLI also signs in as {p.get('username')} at "
+                f"{p.get('tenantName') or p.get('tenantUrl')} every evening, a sign-in setup didn't "
+                "make, for none of the Kids, so the Brief doesn't say when it fails. If it's no "
+                f"longer used, remove it: wilma accounts remove {p.get('username')}")
 
 
 def _check_whatsapp(cfg: Config, add, config: str | None) -> None:

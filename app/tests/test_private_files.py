@@ -155,6 +155,21 @@ def test_an_existing_install_is_tightened_on_the_next_run(harness):
     assert _mode(backup) == 0o600
 
 
+def test_the_wilma_cli_s_sign_in_and_session_are_made_owner_only_on_the_next_run(harness):
+    # The CLI writes them owner-only itself. One made open some other way is fixed.
+    folder = harness.home / ".config" / "wilmai"
+    folder.mkdir(parents=True)
+    for name in ("config.json", "wilmai-sessions.json"):
+        (folder / name).write_text("{}")
+        (folder / name).chmod(0o644)
+    folder.chmod(0o755)
+
+    assert harness.run() == 0  # a quiet night still tightens
+
+    assert _mode(folder) == 0o700
+    assert _mode(folder / "config.json") == 0o600 and _mode(folder / "wilmai-sessions.json") == 0o600
+
+
 def test_scheduled_jobs_write_their_logs_owner_only(tmp_path):
     plist = ops._plist("com.parentrecap.daily", "run", {"Hour": 21, "Minute": 0}, tmp_path)
     assert plist["Umask"] == 0o077

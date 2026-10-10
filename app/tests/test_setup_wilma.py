@@ -115,6 +115,7 @@ class Wilma:
         self.writes_when_ended = False  # True: the sign-in screen writes once it's ended
         self.terminal_runs = True     # False: the family never finishes in the window
         self.npm_works = True         # False: npm can't reach its registry
+        self.npm_ended = False        # True: npm is ended at the time limit, halfway through
         self.terminal_opens = True    # False: macOS won't open Terminal
         self.terminal: list[str] = []  # each script opened in Terminal, as it read then
         self.window = ""              # everything the Terminal window showed
@@ -127,11 +128,12 @@ class Wilma:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         self.config_path.write_text(json.dumps(wilma_config(tenant_url)))
 
-    def install(self, version: str = setup_wilma.WILMA_CLI_VERSION) -> None:
-        fake_node.install_wilma(self.home, FAKE_WILMA.format(python=sys.executable, clear=CLEAR),
-                                version)
+    def install(self, version: str = setup_wilma.WILMA_CLI_VERSION, prefix: Path | None = None) -> None:
+        """The fake CLI, in Parent Recap's folder or in npm's `prefix`."""
+        bin_wilma = fake_node.install_wilma(
+            self.home, FAKE_WILMA.format(python=sys.executable, clear=CLEAR), version, prefix)
         config = wilma_config(self.signs_in_to) if self.signs_in_to else None
-        (self.bin_dir / "wilma.json").write_text(json.dumps(
+        (bin_wilma.parent / "wilma.json").write_text(json.dumps(
             {"signs_in_to": self.signs_in_to, "config": config, "exit": self.exit,
              "students": self.students, "writes_when_ended": self.writes_when_ended}))
 
@@ -164,7 +166,12 @@ def wilma(harness, tmp_path, monkeypatch) -> Wilma:
             harness.commands.append(list(cmd))
             if not w.npm_works:
                 return subprocess.CompletedProcess(cmd, 1, "", "npm error code ENOTFOUND")
-            w.install()
+            if w.npm_ended:  # the package half unpacked, and no bin/wilma yet
+                package = fake_node.npm_prefix(cmd) / fake_node.PACKAGE
+                package.mkdir(parents=True)
+                (package / "package.json").write_text("{")
+                raise subprocess.TimeoutExpired(cmd, k["timeout"])
+            w.install(prefix=fake_node.npm_prefix(cmd))
             return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
         if cmd[:3] == ["open", "-a", "Terminal"]:
             harness.commands.append(list(cmd))
@@ -261,7 +268,7 @@ def test_without_the_wilma_cli_it_installs_the_pinned_one_and_records_it(harness
     assert result(capsys)[0]["result"] == "signed-in"
     folder = str(fake_node.wilma_folder(harness.home))
     npm = [c for c in harness.commands if fake_node.is_npm(c)]
-    assert [c[2:] for c in npm] == [["install", "-g", "--prefix", folder, "@wilm-ai/wilma-cli@2.1.2"]]
+    assert [pinned_install(c) for c in npm] == [True]
     assert npm[0][0] == str(wilma.node)
     assert install_record.entries("wilma-cli") == [folder]
     # The Kid list ran on that Node too.
@@ -471,16 +478,27 @@ def package_version(harness) -> str:
     return json.loads((fake_node.wilma_package(harness.home) / "package.json").read_text())["version"]
 
 
-def test_an_older_wilma_cli_is_moved_to_the_pinned_version(harness, wilma, capsys):
+def pinned_install(cmd: list[str]) -> bool:
+    """Whether npm installed the pinned CLI into a new folder next to Parent Recap's own, as a
+    global install, the folder gone now that it has taken the place of Parent Recap's own."""
+    staging = fake_node.npm_prefix(cmd)
+    return cmd[2:] == ["install", "-g", "--prefix", str(staging), "@wilm-ai/wilma-cli@2.1.2"] \
+        and staging.parent == fake_node.wilma_folder(Path.home()).parent \
+        and staging.name.startswith(".wilma-") and not staging.exists()
+
+
+def test_an_older_wilma_cli_is_moved_to_the_pinned_version(harness, wilma, capsys, monkeypatch):
     wilma.install("1.6.2")
+    umasks: list[int] = []
+    monkeypatch.setattr(os, "umask", lambda mask: umasks.append(mask) or 0o022)
 
     assert setup_wilma.main(["update"]) == 0
 
-    folder = str(fake_node.wilma_folder(harness.home))
     npm = [c for c in harness.commands if fake_node.is_npm(c)]
-    assert [c[2:] for c in npm] == [["install", "-g", "--prefix", folder, "@wilm-ai/wilma-cli@2.1.2"]]
+    assert [pinned_install(c) for c in npm] == [True]
     assert npm[0][0] == str(wilma.node)
     assert package_version(harness) == setup_wilma.WILMA_CLI_VERSION
+    assert umasks == [0o077]  # install.sh runs it with the shell's umask
     assert capsys.readouterr().out == "✅ The wilma CLI is updated to 2.1.2.\n"
 
 
@@ -527,3 +545,51 @@ def test_an_update_without_its_own_node_says_to_run_the_install_again(harness, w
 
     assert "Node is missing" in capsys.readouterr().out
     assert package_version(harness) == "1.6.2"
+
+
+def nothing_left_beside_the_cli(harness) -> bool:
+    return sorted(p.name for p in (harness.home / "ParentRecap").iterdir()) == ["runtime", "wilma"]
+
+
+def test_an_npm_ended_at_the_time_limit_leaves_the_wilma_cli_as_it_was(harness, wilma, capsys):
+    wilma.install("1.6.2")
+    wilma.signed_in_before("https://espoo.inschool.fi")
+    wilma.npm_ended = True
+
+    assert setup_wilma.main(["update"]) == 0
+
+    assert "couldn't be updated to 2.1.2" in capsys.readouterr().out
+    assert setup_wilma.installed() and package_version(harness) == "1.6.2"
+    assert nothing_left_beside_the_cli(harness)
+    assert harness.cli("setup", "wilma", "--no-open") == 0  # it still signs in
+    assert result(capsys)[0]["result"] == "signed-in"
+    # The next install tries again.
+    wilma.npm_ended = False
+    assert setup_wilma.update() == "updated" and package_version(harness) == "2.1.2"
+
+
+def test_an_npm_ended_during_the_first_install_leaves_nothing_behind(harness, wilma, capsys):
+    wilma.npm_ended = True
+
+    assert harness.cli("setup", "wilma") == 1
+
+    assert result(capsys)[0]["result"] == "not-installed"
+    assert not fake_node.wilma_folder(harness.home).exists()
+    assert sorted(p.name for p in (harness.home / "ParentRecap").iterdir()) == ["runtime"]
+
+
+@pytest.mark.parametrize("signed_in", [True, False], ids=["with a sign-in", "without"])
+def test_a_wilma_cli_left_half_installed_is_installed_again_when_wilma_was_connected(
+        harness, wilma, capsys, signed_in):
+    # As an npm ended partway left it, before installs were staged: no bin/wilma.
+    wilma.install("1.6.2")
+    (fake_node.wilma_folder(harness.home) / "bin" / "wilma").unlink()
+    if signed_in:
+        wilma.signed_in_before("https://espoo.inschool.fi")
+    assert not setup_wilma.installed()
+
+    assert setup_wilma.update() == ("updated" if signed_in else "not-installed")
+
+    assert setup_wilma.installed() is signed_in
+    if signed_in:
+        assert package_version(harness) == "2.1.2" and nothing_left_beside_the_cli(harness)

@@ -1247,13 +1247,15 @@ class WilmaCLI:
     def profile(self) -> dict[str, Any]:
         return json.loads(self.profile_path.read_text())
 
-    def install(self) -> None:
-        fake_node.install_wilma(self.home, FAKE_WILMA_CLI.format(python=sys.executable))
+    def install(self, prefix: Path | None = None) -> None:
+        """The fake CLI, in Parent Recap's folder or in npm's `prefix`."""
+        package = fake_node.install_wilma(self.home, FAKE_WILMA_CLI.format(python=sys.executable),
+                                          prefix=prefix).resolve().parents[1]
         if self.ships_tenants:
-            client = self.package / "node_modules" / "@wilm-ai" / "wilma-client"
+            client = package / "node_modules" / "@wilm-ai" / "wilma-client"
             client.mkdir(parents=True, exist_ok=True)
             (client / "tenant_list.json").write_text(json.dumps(TENANTS, ensure_ascii=False))
-        (self.package / "dist" / "wilma.json").write_text(json.dumps(
+        (package / "dist" / "wilma.json").write_text(json.dumps(
             {"accounts": self.accounts, "students": self.students, "fails": self.fails}))
 
     def runs(self) -> list[dict[str, Any]]:
@@ -1295,7 +1297,7 @@ def wilma_cli(harness, monkeypatch) -> WilmaCLI:
             w.npm_env = k["env"]
             if not w.npm_works:
                 return subprocess.CompletedProcess(cmd, 1, "", "npm error code E404")
-            w.install()
+            w.install(prefix=fake_node.npm_prefix(cmd))
             return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
         if cmd[:3] == ["open", "-a", "Terminal"]:
             harness.commands.append(list(cmd))
@@ -1368,7 +1370,11 @@ def test_setup_installs_the_pinned_wilma_cli_with_its_own_node_when_it_is_missin
 
     assert r.status == 200 and r.json()["result"] == "installed"
     prefix = str(wilma_cli.prefix)
-    assert wilma_cli.installs == [["install", "-g", "--prefix", prefix, "@wilm-ai/wilma-cli@2.1.2"]]
+    # Into a folder of its own next to Parent Recap's, which then takes its place.
+    [[*args, staging, version]] = wilma_cli.installs
+    assert (args, version) == (["install", "-g", "--prefix"], "@wilm-ai/wilma-cli@2.1.2")
+    assert Path(staging).parent == wilma_cli.prefix.parent and not Path(staging).exists()
+    assert sorted(p.name for p in wilma_cli.prefix.parent.iterdir()) == ["runtime", "wilma"]
     [npm] = [c for c in harness.commands if fake_node.is_npm(c)]
     assert npm[0] == str(wilma_cli.node)
     # Its package scripts find that Node too, and its cache leaves nothing behind.

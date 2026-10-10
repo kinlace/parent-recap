@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,7 +28,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from . import install_record, own_node
+from . import install_record, own_node, private_files
 from .collectors import wilma
 
 WILMA_CLI_VERSION = "2.1.2"
@@ -46,9 +47,10 @@ def installed() -> bool:
     return own_node.wilma() is not None
 
 
-def installed_version() -> str | None:
-    """The version of the wilma CLI in Parent Recap's folder, as its package says, or None."""
-    package = own_node.wilma_folder() / "lib" / "node_modules" / PACKAGE / "package.json"
+def installed_version(folder: Path | None = None) -> str | None:
+    """The version of the wilma CLI in `folder` (Parent Recap's own, unless given), as its package
+    says, or None."""
+    package = (folder or own_node.wilma_folder()) / "lib" / "node_modules" / PACKAGE / "package.json"
     try:
         version = json.loads(package.read_text()).get("version")
     except (OSError, ValueError, AttributeError):
@@ -62,51 +64,86 @@ def install() -> str:
     didn't leave Parent Recap's own Node) or `install-failed`."""
     if installed():
         return "installed"
-    if own_node.npm() is None:
+    npm = own_node.npm()
+    if npm is None:
         return "no-node"
-    # Before npm runs, so uninstall also removes what a failed install left.
+    # Before npm runs, so uninstall removes the folder however this install ends.
     install_record.add("wilma-cli", str(own_node.wilma_folder()))
-    return "installed" if _npm_install() and installed() else "install-failed"
+    return "installed" if _npm_install(npm) else "install-failed"
 
 
 def update() -> str:
     """Moves the wilma CLI in Parent Recap's folder to the pinned version, which install.sh asks
-    for on every update, so a Household that connected Wilma gets the version a release pins.
-    Returns `not-installed` (no CLI there, so nothing is installed), `up-to-date`, `updated`,
-    `no-node` or `update-failed`, when npm keeps the CLI that was there."""
-    if not installed():
-        return "not-installed"
-    if installed_version() == WILMA_CLI_VERSION:
+    for on every update, so a Household that connected Wilma gets the version a release pins. A
+    CLI left half there, as by an npm ended partway before the install was staged, is installed
+    again when the CLI's config has a sign-in. Returns `not-installed` (no CLI to update, so
+    nothing is installed), `up-to-date`, `updated`, `no-node` or `update-failed`, which leaves the
+    CLI that was there as it was."""
+    if installed() and installed_version() == WILMA_CLI_VERSION:
         return "up-to-date"
-    if own_node.npm() is None:
-        return "no-node"
-    return "updated" if _npm_install() and installed_version() == WILMA_CLI_VERSION \
-        else "update-failed"
-
-
-def _npm_install() -> bool:
-    """Whether npm, on Parent Recap's own Node, installed the pinned CLI into its folder, in place
-    of one that was there."""
+    if not (installed() or _half_there()):
+        return "not-installed"
     npm = own_node.npm()
     if npm is None:
-        return False
+        return "no-node"
+    return "updated" if _npm_install(npm) else "update-failed"
+
+
+def _half_there() -> bool:
+    """Whether the CLI's folder is there, or setup's record has it, without a CLI that runs, while
+    the CLI's config has a sign-in: Wilma was connected, and the CLI broke."""
+    folder = own_node.wilma_folder()
+    return (folder.exists() or str(folder) in install_record.entries("wilma-cli")) \
+        and bool(profile_ids(config_path()))
+
+
+def _npm_install(npm: list[str]) -> bool:
+    """Whether `npm`, on Parent Recap's own Node, installed the pinned CLI. It installs into a new
+    folder next to the CLI's, which takes the CLI's place only once npm has finished and left the
+    pinned version, so an npm that fails, or is ended at the time limit, changes nothing."""
+    folder = own_node.wilma_folder()
+    folder.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    for left in folder.parent.glob(f".{folder.name}-*"):  # by an install that was itself ended
+        shutil.rmtree(left, ignore_errors=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{folder.name}-", dir=folder.parent))
     try:
         # npm's cache in a temporary folder, so nothing is left outside Parent Recap's.
         with tempfile.TemporaryDirectory(prefix="parent-recap-npm-") as cache:
             # npm runs package scripts with the `node` its PATH finds: this one, not the Mac's.
             env = {**os.environ, "npm_config_cache": cache, "npm_config_update_notifier": "false",
                    "PATH": os.pathsep.join([str(Path(npm[0]).parent), os.environ.get("PATH", "")])}
-            proc = subprocess.run([*npm, *install_args(own_node.wilma_folder())],
-                                  capture_output=True, text=True, timeout=INSTALL_SECONDS,
-                                  stdin=subprocess.DEVNULL, env=env)
+            proc = subprocess.run([*npm, *install_args(staging)], capture_output=True, text=True,
+                                  timeout=INSTALL_SECONDS, stdin=subprocess.DEVNULL, env=env)
+        if proc.returncode != 0 or installed_version(staging) != WILMA_CLI_VERSION \
+                or not (staging / "bin" / "wilma").is_file():
+            return False
+        _replace(folder, staging)
+        return True
     except (OSError, subprocess.SubprocessError):
         return False
-    return proc.returncode == 0
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _replace(folder: Path, new: Path) -> None:
+    """Puts the CLI npm installed in `new` in `folder`'s place, and removes the one that was there.
+    npm links bin/wilma to the package by a relative path, so the CLI runs from its new place."""
+    old = new.with_name(new.name + "-old")
+    if folder.exists():
+        folder.rename(old)
+    try:
+        new.rename(folder)
+    except OSError:
+        if old.exists():
+            old.rename(folder)
+        raise
+    shutil.rmtree(old, ignore_errors=True)
 
 
 def install_args(folder: Path) -> list[str]:
     """npm's arguments that install the pinned CLI (ADR 0008) into `folder`, laid out as a global
-    install: `bin/wilma`, and the package in `lib/node_modules`."""
+    install: `bin/wilma`, and the package in `lib/node_modules`. `_npm_install` gives a new folder,
+    which then takes the place of Parent Recap's own."""
     return ["install", "-g", "--prefix", str(folder), f"{PACKAGE}@{WILMA_CLI_VERSION}"]
 
 
@@ -224,12 +261,13 @@ def write_profile(path: Path, tenant: dict[str, Any], username: str, password: s
     its place and its two-step key, or else after the others, and the one its commands use first.
     `students` are the Kids the CLI listed for it, as it saves them. Returns its id."""
     config = _read(path)
-    url = _normalized(tenant["url"])
+    url = normalized(tenant["url"])
 
     def same(p: Any) -> bool:
-        return isinstance(p, dict) and _normalized(str(p.get("tenantUrl", ""))) == url \
+        return isinstance(p, dict) and normalized(str(p.get("tenantUrl", ""))) == url \
             and str(p.get("username", "")).lower() == username.lower()
-    previous = next((p for p in config["profiles"] if same(p)), None)
+    at = next((i for i, p in enumerate(config["profiles"]) if same(p)), None)
+    previous = config["profiles"][at] if at is not None else None
     kids = [{"studentNumber": s["studentNumber"], "name": s["name"]} for s in students or []
             if isinstance(s, dict) and isinstance(s.get("studentNumber"), str)
             and isinstance(s.get("name"), str)]
@@ -250,7 +288,6 @@ def write_profile(path: Path, tenant: dict[str, Any], username: str, password: s
         "lastUsedAt": datetime.now(timezone.utc).isoformat(timespec="milliseconds")
                               .replace("+00:00", "Z"),
     }
-    at = next((i for i, p in enumerate(config["profiles"]) if same(p)), None)
     others = [p for p in config["profiles"] if not same(p)]
     config["profiles"] = [*others, stored] if at is None else [*others[:at], stored, *others[at:]]
     config["lastProfileId"] = stored["id"]
@@ -258,13 +295,30 @@ def write_profile(path: Path, tenant: dict[str, Any], username: str, password: s
     return stored["id"]
 
 
-def _normalized(url: str) -> str:
+def normalized(url: str) -> str:
     """A Wilma address as the CLI compares two (from 2.0): its scheme and host in lower case,
     with no slash at the end."""
     parts = urlsplit(url.strip())
     if parts.scheme and parts.netloc:
         return f"{parts.scheme.lower()}://{parts.netloc.lower()}{parts.path}".rstrip("/")
     return url.strip().rstrip("/")
+
+
+def profiles(path: Path) -> list[dict[str, Any]]:
+    """The CLI's saved profiles, passwords included."""
+    return [p for p in _read(path)["profiles"] if isinstance(p, dict)]
+
+
+def for_the_household(profile: dict[str, Any], kids: set[str]) -> bool:
+    """Whether the CLI's `profile` is a sign-in the Household's Brief depends on: one setup made,
+    one the CLI saved one of `kids` for (their names as Wilma spells them, case folded), or one
+    whose Kids aren't known. From 2.0 the CLI signs in with every profile, also one left from an
+    earlier use of it, for none of the Kids."""
+    if profile.get("id") in install_record.entries("wilma-profile"):
+        return True
+    names = [s.get("name") for s in profile.get("students") or [] if isinstance(s, dict)]
+    names = [n.casefold() for n in names if isinstance(n, str) and n]
+    return not names or not kids or any(n in kids for n in names)
 
 
 def profile_ids(path: Path) -> list[str]:
@@ -346,6 +400,7 @@ def main(argv: list[str]) -> int:
     if argv != ["update"]:
         print("Usage: python -m family_brief.setup_wilma update", file=sys.stderr)
         return 2
+    private_files.restrict_new_files()  # install.sh runs this with the shell's umask
     try:
         result = update()
     except Exception:  # noqa: BLE001 - the install goes on, and the next one tries again
