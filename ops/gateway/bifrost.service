@@ -1,0 +1,24 @@
+[Unit]
+Description=Bifrost gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=bifrost
+Group=bifrost
+EnvironmentFile=/etc/bifrost/bifrost.env
+# -app-dir holds config.db and logs.db; config.json is read from it.
+ExecStart=/usr/local/lib/bifrost/current/bifrost-http -app-dir /var/lib/bifrost -host 127.0.0.1 -port 8080
+Restart=on-failure
+RestartSec=5
+StateDirectory=bifrost
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

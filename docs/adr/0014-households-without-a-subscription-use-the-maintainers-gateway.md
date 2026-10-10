@@ -12,5 +12,5 @@ Most pilot Households have neither a Claude nor a ChatGPT subscription, and crea
 - School mail and chat, after the AI filter, now pass through a server the maintainers run. The gateway keeps token counts and cost but no request or reply text, and the server is in the EU.
 - The maintainers become a processor of the Households' personal data under GDPR. So before any Household uses the gateway, SECURITY.md and the setup page say what passes through it and what it keeps.
 - Only invited Households get a Gateway Key, created by hand. There is no sign-up.
-- Switching the model, for example to Haiku once #217 passes, is a change in the gateway's config, not a release.
+- The gateway starts on Haiku 5.5, which the maintainers chose for cost. #217 checks that the Brief stays as good, Finnish especially. Switching the model is a change in the gateway's config, not a release.
 - The gateway backend has its own model call, so it needs its own handling of busy, timeout and out-of-credit replies from their HTTP status, instead of the CLI output the other two backends are read from.

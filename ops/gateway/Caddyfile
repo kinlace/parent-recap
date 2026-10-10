@@ -1,0 +1,11 @@
+# Only inference is public. Bifrost's admin API and UI stay on 127.0.0.1 (ssh -L).
+# No access log: request lines are not worth keeping.
+{$GATEWAY_HOST} {
+	handle /v1/messages {
+		rewrite * /anthropic/v1/messages
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		respond "Not found" 404
+	}
+}
