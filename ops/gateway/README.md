@@ -40,7 +40,7 @@ Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`).
 
    Caddy gets the hostname's certificate over port 443 (TLS-ALPN-01), so port 80 stays closed. Check with `curl -i https://<hostname>/` (404) and a call with a Gateway Key (below).
 
-8. **Spend limit.** In the Anthropic Console, set the account's monthly spend limit to $10.
+8. **Spend limit.** In the Anthropic Console, create a workspace for the gateway, put the gateway's API key in it and set that workspace's monthly spend limit to $10 (Settings > Workspaces > Spend limits). The default workspace can't be limited.
 9. **Record it.** Keep the provider, region, IP, hostname and SSH logins in the maintainers' private notes, not here.
 
 Both scripts are safe to run again.
@@ -82,9 +82,18 @@ curl -s -u "$ADMIN" -X PATCH localhost:8080/api/governance/virtual-keys/<id> \
   -H 'content-type: application/json' -d '{"is_active": false}'
 ```
 
-**Check spend.** `budgets[].current_usage` in the same list is what each key has spent today. The month's total is in the Anthropic Console, which also enforces the $10 limit.
+**Check spend.** `budgets[].current_usage` in the same list is what each key has spent today. The month's total is in the Anthropic Console, which also enforces the gateway workspace's $10 limit.
 
 **Upgrade.** Try the new version on your own machine first (`npx -y @maximhq/bifrost --transport-version vX.Y.Z`). Then, in `gateway-setup.sh`, change `BIFROST_VERSION` and both `SHA256_*` lines (hash the binaries at `https://downloads.getmaxim.ai/bifrost/<version>/linux/<arm64|amd64>/bifrost-http`), and run step 7 again. The old version stays in `/usr/local/lib/bifrost/`; repoint the `current` symlink and restart to roll back.
+
+**Rotate the provider key.** Create the new key in the Console first (in the gateway's workspace, whose monthly limit is the gateway's ceiling), then:
+
+```sh
+scp ops/gateway/set-provider-key.sh ubuntu@<ip>:/tmp/
+ssh -t ubuntu@<ip> "sudo bash /tmp/set-provider-key.sh"
+```
+
+Make a test call, then delete the old key in the Console.
 
 **Change the model.** Edit the `aliases` entry in `config.json` and run step 7 again.
 
