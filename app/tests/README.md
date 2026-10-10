@@ -341,3 +341,39 @@ Each run is saved under `~/ParentRecap/eval/` and compared with the previous one
 language (runs saved before Briefs had a language count as `zh`); the spread column shows
 run-to-run noise. `--cases DIR` scores a private folder instead; the case format is described
 in `src/family_brief/eval/cases.py`. Keywords in `expect` need Chinese, English and Finnish alternatives; give the Finnish as stems (`lupalap`, `retk`), since a Finnish Brief inflects them. A keyword matches anywhere in the text, so check that a short stem can't hide in another word: `kuva` (photo) also matches `jatkuvat` (continue). Start it with a space (`" kuva"`) to match only at a word's start.
+
+`test_eval_scoring.py` checks the scoring on its own, and that a plain Finnish Brief scores clean
+on the Finnish cases. `test_eval_runner.py` runs the eval with only the model process faked,
+also with several models side by side, their cost, and a placeholder the model changed beyond repair.
+
+### Trying another model
+
+Before switching the model, or the provider, check that the Brief stays as good, Finnish
+especially. Score the backend's own model and the candidate in one run:
+
+```bash
+python -m family_brief.eval --backend claude --model default,claude-haiku-5-5 --language fi --repeat 3
+```
+
+`--model` takes a comma-separated list; `default` is the model the backend picks itself, the one
+Parent Recap uses today. Every case runs on each model in turn, and each language gets one
+scorecard with a column per model. With `--repeat`, each cell shows the score and, in brackets, the
+spread across runs. A quality score worse than every run of the first model is marked ↓. Each
+model's run is also saved on its own, so a later single-model run compares with it.
+
+How to read it:
+
+- **Quality:** a model is good enough when its scores stay within the spread of the current
+  default: no ↓, and no case that is clean in every run of the default slips on the candidate
+  (Clean runs per case, then What slipped says why). Run at least `--repeat 3`: with fewer runs
+  the spread is too narrow to tell noise from a real slip.
+- **`placeholders_left`:** texts in the Brief that still show a placeholder (`⟦N1⟧`), plus
+  placeholders the model changed beyond repair, which the Brief gives as their kind's words
+  ("someone", "a link") where the night's text had the real name or link. A smaller model tends
+  to change them more often. It should stay at 0.
+- **Cost:** input, cache-write, cached-input and output tokens per night, turned into dollars per
+  night and per month (30 nights) from `src/family_brief/eval/prices.yaml`, the Anthropic API's
+  prices on the date it gives. A subscription bills none of it; this is what the maintainers' key
+  would pay (#186). A night is priced as the model the claude CLI says answered, so `default` gets
+  a price too. Codex reports no tokens, and a model missing from the table has no price: the card
+  says which. Update the table, and its date, before comparing a model it doesn't list.
