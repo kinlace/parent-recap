@@ -1151,50 +1151,69 @@ TENANTS = {"wilmat": [  # as the Wilma CLI ships them: Wilma's public tenant lis
 WILMA_STUDENTS = [{"studentNumber": "1001", "name": "Mia Virtanen", "href": "/!1001/"},
                   {"studentNumber": "1002", "name": "Leo Virtanen", "href": "/!1002/"}]
 
-# The pinned wilma CLI as setup uses it, reading its saved profile the way its dist/config.js
-# (loadConfig, revealSecret) and dist/index.js (getProfileForCommandNonInteractive, then
-# getStudentsForCommand, which saves the students back) do, and signing in to a fake Wilma
-# that knows one account. What it says when Wilma turns a login down is the CLI's own.
+# The pinned wilma CLI (2.x) as setup uses it. It reads its saved profiles the way its
+# dist/config.js (getConfigPath, loadConfig, revealSecret) and dist/credentials.js (resolveAccounts:
+# every profile, the one signed in with last first, one per account) do, signs in to a fake Wilma
+# that knows one account, and, as dist/access.js (onStudents) and dist/session-store.js do, saves
+# each sign-in's Kids back into the config and its session next to it. It answers in 2.x's JSON,
+# its errors too, on stdout, and notes in runs.jsonl which config each run read.
 FAKE_WILMA_CLI = """#!{python}
 import base64, json, os, pathlib, sys
-ctl = json.loads((pathlib.Path(os.path.realpath(__file__)).parent / "wilma.json").read_text())
+here = pathlib.Path(os.path.realpath(__file__)).parent
+ctl = json.loads((here / "wilma.json").read_text())
 if os.environ.get("WILMAI_CONFIG_PATH"):
     path = pathlib.Path(os.environ["WILMAI_CONFIG_PATH"])
 else:
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.environ["HOME"], ".config")
     path = pathlib.Path(base) / "wilmai" / "config.json"
+with open(here / "runs.jsonl", "a") as runs:
+    runs.write(json.dumps(dict(config=str(path), update_check=os.environ.get("WILMAI_NO_UPDATE_CHECK") != "1")) + "\\n")
+
+def fail(code, message, status=1):
+    print(json.dumps(dict(status="error", code=code, message=message)))
+    sys.exit(status)
+
 if sys.argv[1:] != ["kids", "list", "--json"]:
-    sys.exit(2)
+    fail("unknown_command", "Unknown command.", 2)
 try:
     config = json.loads(path.read_text())
-except Exception:
-    config = {{"profiles": []}}
-if not config.get("profiles"):
-    config = {{"profiles": []}}
-if not config.get("lastProfileId"):
-    print("No saved profile found. Run the interactive CLI first.", file=sys.stderr)
-    sys.exit(0)
-stored = next((p for p in config["profiles"] if p["id"] == config["lastProfileId"]), None)
-if stored is None:
-    print("Saved profile not found. Run the interactive CLI first.", file=sys.stderr)
-    sys.exit(0)
-try:
-    decoded = base64.b64decode(stored["passwordObfuscated"]).decode()
-except Exception:
-    decoded = ""
-if not decoded.startswith("wilmai::"):
-    print("Stored password could not be decoded. Re-login interactively.", file=sys.stderr)
-    sys.exit(0)
-if ctl["fails"]:
-    print("CLI error: " + ctl["fails"], file=sys.stderr)
-    sys.exit(1)
-if ctl["accounts"].get(stored["tenantUrl"] + "|" + stored["username"]) != decoded[8:]:
-    print("CLI error: Wilma login failed", file=sys.stderr)
-    sys.exit(1)
-stored["students"] = [{{"studentNumber": s["studentNumber"], "name": s["name"]}}
-                      for s in ctl["students"]]
+except FileNotFoundError:
+    config = dict(profiles=[])
+except ValueError:
+    fail("config_invalid", "The WilmAI config isn't valid JSON.")
+profiles = config.get("profiles") if isinstance(config.get("profiles"), list) else []
+accounts, seen = [], set()
+for stored in sorted(profiles, key=lambda p: p.get("id") != config.get("lastProfileId")):
+    key = stored["tenantUrl"].rstrip("/").lower() + "|" + stored["username"].lower()
+    try:
+        decoded = base64.b64decode(stored["passwordObfuscated"]).decode()
+    except Exception:
+        decoded = ""
+    if key not in seen and decoded.startswith("wilmai::"):
+        seen.add(key)
+        accounts.append((stored, decoded[8:]))
+if not accounts:
+    fail("not_logged_in", "No saved Wilma login. Run `wilma login`.", 3)
+kids, sessions, first_error = [], dict(), None
+for stored, password in accounts:
+    if ctl["fails"]:
+        first_error = first_error or ctl["fails"]
+    elif ctl["accounts"].get(stored["tenantUrl"] + "|" + stored["username"]) != password:
+        first_error = first_error or ["login_failed",
+                                      "Wilma didn't accept the saved login (has the password changed?)."]
+    else:
+        sessions[stored["id"]] = dict(state="a Wilma session", savedAt=0)
+        if ctl["students"]:
+            stored["students"] = [dict(studentNumber=s["studentNumber"], name=s["name"])
+                                  for s in ctl["students"]]
+        for s in ctl["students"] or [dict(studentNumber="", name="")]:
+            if s["studentNumber"] not in [k["studentNumber"] for k in kids]:
+                kids.append(dict((k, v) for k, v in s.items() if k != "href"))
+if not sessions:
+    fail(*first_error)
 path.write_text(json.dumps(config, indent=2) + "\\n")
-print(json.dumps(ctl["students"], indent=2))
+(path.parent / "wilmai-sessions.json").write_text(json.dumps(sessions))
+print(json.dumps(dict(students=kids)))
 """
 
 
@@ -1209,7 +1228,7 @@ class WilmaCLI:
         self.node = fake_node.pinned_node(home)
         self.accounts = {f"{ESPOO}|mia.parent": WILMA_PASSWORD}  # tenant|username → password
         self.students: list[dict[str, Any]] = WILMA_STUDENTS
-        self.fails: str | None = None    # any other failure, in the CLI's words
+        self.fails: list[str] | None = None  # any other failure, as the CLI's code and words
         self.npm_works = True
         self.installs: list[list[str]] = []
         self.npm_env: dict[str, str] = {}  # the last npm's
@@ -1230,14 +1249,18 @@ class WilmaCLI:
 
     def install(self) -> None:
         fake_node.install_wilma(self.home, FAKE_WILMA_CLI.format(python=sys.executable))
-        (self.package / "package.json").write_text(json.dumps(
-            {"name": "@wilm-ai/wilma-cli", "version": "1.6.2"}))
         if self.ships_tenants:
             client = self.package / "node_modules" / "@wilm-ai" / "wilma-client"
             client.mkdir(parents=True, exist_ok=True)
             (client / "tenant_list.json").write_text(json.dumps(TENANTS, ensure_ascii=False))
         (self.package / "dist" / "wilma.json").write_text(json.dumps(
             {"accounts": self.accounts, "students": self.students, "fails": self.fails}))
+
+    def runs(self) -> list[dict[str, Any]]:
+        """Which config each run of the CLI read, and whether it would check npm for a newer
+        version."""
+        runs = self.package / "dist" / "runs.jsonl"
+        return [json.loads(line) for line in runs.read_text().splitlines()] if runs.exists() else []
 
     def signed_in_before(self, tenant: str, username: str = "old.parent",
                          password: str = "old") -> str:
@@ -1345,7 +1368,7 @@ def test_setup_installs_the_pinned_wilma_cli_with_its_own_node_when_it_is_missin
 
     assert r.status == 200 and r.json()["result"] == "installed"
     prefix = str(wilma_cli.prefix)
-    assert wilma_cli.installs == [["install", "-g", "--prefix", prefix, "@wilm-ai/wilma-cli@1.6.2"]]
+    assert wilma_cli.installs == [["install", "-g", "--prefix", prefix, "@wilm-ai/wilma-cli@2.1.2"]]
     [npm] = [c for c in harness.commands if fake_node.is_npm(c)]
     assert npm[0] == str(wilma_cli.node)
     # Its package scripts find that Node too, and its cache leaves nothing behind.
@@ -1416,12 +1439,22 @@ def test_a_good_login_writes_the_cli_profile_and_lists_the_kids(harness, page, w
     stored = profile["profiles"][0]
     assert profile["lastProfileId"] == stored["id"] == f"{ESPOO}|mia.parent"
     assert set(stored) == {"id", "tenantUrl", "tenantName", "username", "passwordObfuscated",
-                           "students", "lastStudentNumber", "lastStudentName", "lastUsedAt"}
+                           "totpSecretObfuscated", "students", "lastStudentNumber",
+                           "lastStudentName", "lastUsedAt"}
     assert (stored["tenantUrl"], stored["tenantName"], stored["username"]) == \
         (ESPOO, TENANTS["wilmat"][2]["name"], "mia.parent")
     assert stored["passwordObfuscated"] == \
         base64.b64encode(f"wilmai::{WILMA_PASSWORD}".encode()).decode()
-    assert [s["name"] for s in stored["students"]] == ["Mia Virtanen", "Leo Virtanen"]
+    assert stored["totpSecretObfuscated"] is None
+    assert stored["students"] == [{"studentNumber": "1001", "name": "Mia Virtanen"},
+                                  {"studentNumber": "1002", "name": "Leo Virtanen"}]
+    assert (stored["lastStudentNumber"], stored["lastStudentName"]) == ("1001", "Mia Virtanen")
+    # The CLI checked it on its own, in a config of its own that is gone with the session the CLI
+    # saved next to it, and never looked for a newer version of itself.
+    [run] = wilma_cli.runs()
+    assert run["config"] != str(wilma_cli.profile_path) and not Path(run["config"]).parent.exists()
+    assert run["update_check"] is False
+    assert sorted(p.name for p in wilma_cli.profile_path.parent.iterdir()) == ["config.json"]
     assert wilma_cli.profile_path.stat().st_mode & 0o777 == 0o600
     assert wilma_cli.profile_path.parent.stat().st_mode & 0o777 == 0o700
     # The Household's answers: the Kids as Wilma spells them, its city, and Wilma on.
@@ -1463,6 +1496,44 @@ def test_a_failed_sign_in_records_no_profile(harness, page, wilma_cli):
     assert install_record.entries("wilma-profile") == []
 
 
+def test_a_wrong_password_is_found_even_when_an_earlier_sign_in_works(harness, page, wilma_cli):
+    # From 2.0 the CLI's commands read every profile, so the old one would answer for the new.
+    wilma_cli.accounts["https://helsinki.inschool.fi|old.parent"] = "old"
+    wilma_cli.install()
+    earlier = wilma_cli.signed_in_before("https://helsinki.inschool.fi")
+
+    assert sign_in_wilma(page.url, password="wrong-salasana").json() == {"result": "wrong-password"}
+
+    assert wilma_cli.profile_path.read_text() == earlier
+    assert install_record.entries("wilma-profile") == []
+
+
+def test_signing_in_again_replaces_the_account_s_profile_in_its_place_as_the_cli_does(
+        harness, page, wilma_cli):
+    # As the CLI's saveLogin: the same Wilma and username in any case is one account, which keeps
+    # its id, its place among the profiles and its two-step key.
+    wilma_cli.accounts = {f"{ESPOO}|Mia.Parent": WILMA_PASSWORD}
+    wilma_cli.install()
+    helsinki = json.loads(wilma_cli.signed_in_before("https://helsinki.inschool.fi"))["profiles"][0]
+    wilma_cli.profile_path.write_text(json.dumps({"profiles": [
+        {"id": f"{ESPOO}/|mia.parent", "tenantUrl": f"{ESPOO}/", "tenantName": "Wilma",
+         "username": "mia.parent", "passwordObfuscated": setup_wilma.obfuscate("older-password"),
+         "totpSecretObfuscated": setup_wilma.obfuscate("JBSWY3DPEHPK3PXP"), "students": []},
+        helsinki], "lastProfileId": helsinki["id"]}))
+
+    assert sign_in_wilma(page.url, username="Mia.Parent").json()["result"] == "signed-in"
+
+    config = wilma_cli.profile()
+    assert [p["id"] for p in config["profiles"]] == [f"{ESPOO}/|mia.parent",
+                                                     "https://helsinki.inschool.fi|old.parent"]
+    ours = config["profiles"][0]
+    assert (ours["tenantUrl"], ours["username"]) == (ESPOO, "Mia.Parent")
+    assert ours["passwordObfuscated"] == setup_wilma.obfuscate(WILMA_PASSWORD)
+    assert ours["totpSecretObfuscated"] == setup_wilma.obfuscate("JBSWY3DPEHPK3PXP")
+    assert config["lastProfileId"] == ours["id"]
+    assert install_record.entries("wilma-profile") == []  # there before setup
+
+
 def test_school_and_class_are_saved_only_when_wilma_gives_them(harness, page, wilma_cli):
     wilma_cli.students = [{"studentNumber": "1001", "name": "Mia Virtanen", "school": "Kilo School",
                            "className": "3B"},
@@ -1496,7 +1567,10 @@ def test_a_wrong_password_is_reported_as_such_and_not_kept(harness, page, wilma_
     assert_never_leaked(harness, [r], caplog, capsys, "wrong-salasana")
 
 
-@pytest.mark.parametrize("fails", ["Wilma HTTP 503 at /login", "MFA verification required"])
+@pytest.mark.parametrize("fails", [["wilma_error", "Wilma answered HTTP 503 while logging in"],
+                                   ["mfa_required", "Two-step verification is on for this Wilma account."],
+                                   ["network", "fetch failed (ENOTFOUND)"]],
+                         ids=["wilma-down", "two-step", "offline"])
 def test_any_other_failure_offers_the_terminal_window(harness, page, wilma_cli, fails):
     wilma_cli.fails = fails
     wilma_cli.install()

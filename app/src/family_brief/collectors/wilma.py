@@ -4,6 +4,7 @@ import json
 import logging
 import subprocess
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .. import own_node
@@ -18,29 +19,58 @@ NOT_INSTALLED = "the wilma CLI isn't installed (connect Wilma again: parent-reca
 
 
 class WilmaError(Exception):
-    """A `wilma` command that didn't give JSON back; the message says why."""
+    """A `wilma` command that didn't give JSON back, with why in its message. `code` is the CLI's
+    own name for what went wrong, which it gives from 2.0 on, such as login_failed."""
+
+    def __init__(self, message: str, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+
+    @property
+    def wrong_password(self) -> bool:
+        """Whether Wilma turned the username and password down, and nothing else went wrong. The
+        CLI before 2.0 said only "Wilma login failed"."""
+        return self.code == "login_failed" or "Wilma login failed" in str(self)
 
 
-def _run(args: list[str]) -> Any:
-    """`wilma <args> --json` on Parent Recap's own Node (ADR 0011), as JSON."""
+def _run(args: list[str], config: Path | None = None) -> Any:
+    """`wilma <args> --json` on Parent Recap's own Node (ADR 0011), as JSON. `config` is the CLI's
+    config file to read instead of its own."""
     command = own_node.wilma()
     if command is None:
         raise WilmaError(NOT_INSTALLED)
     try:
         proc = retry_once_on_timeout(
             lambda: subprocess.run([*command, *args, "--json"], capture_output=True, text=True,
-                                   timeout=60),
+                                   timeout=60, env=own_node.wilma_env(config)),
             (subprocess.TimeoutExpired,), f"wilma {' '.join(args)}")
     except FileNotFoundError:
         raise WilmaError(NOT_INSTALLED) from None
     except subprocess.TimeoutExpired:
         raise WilmaError(f"wilma {' '.join(args)} timed out") from None
     if proc.returncode != 0:
-        raise WilmaError(f"wilma {' '.join(args)} failed: {proc.stderr.strip()[:200]}")
+        raise _failed(args, proc)
     try:
         return json.loads(proc.stdout)
     except json.JSONDecodeError as e:
         raise WilmaError(f"wilma JSON parse failed: {e}; head: {proc.stdout[:200]}") from None
+
+
+def _failed(args: list[str], proc: subprocess.CompletedProcess) -> WilmaError:
+    """Why `wilma <args> --json` failed. The CLI says it on stdout, as {"status": "error", "code":
+    ..., "message": ...}, with a code of its own from 2.0 on. Anything else goes to stderr."""
+    try:
+        said = json.loads(proc.stdout)
+    except ValueError:
+        said = None
+    code = message = None
+    if isinstance(said, dict) and said.get("status") == "error":
+        code = said["code"] if isinstance(said.get("code"), str) else None
+        message = said["message"] if isinstance(said.get("message"), str) else None
+    reason = message or proc.stderr.strip() or proc.stdout.strip()
+    if code:
+        reason = f"{code}: {reason}"
+    return WilmaError(f"wilma {' '.join(args)} failed: {reason[:200]}", code)
 
 
 def _run_or_log(args: list[str]) -> Any:
@@ -52,18 +82,21 @@ def _run_or_log(args: list[str]) -> Any:
         return None
 
 
-def _parse_ts(v: Any) -> datetime:
-    if isinstance(v, (int, float)):
-        return datetime.fromtimestamp(v, tz=timezone.utc)
-    if isinstance(v, str):
+def _parse_ts(v: Any) -> datetime | None:
+    """A time the CLI gives, or None when it doesn't know it: from 2.0 it says null, and before
+    that it gave the epoch."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        dt = datetime.fromtimestamp(v, tz=timezone.utc)
+    elif isinstance(v, str):
         try:
             dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt
         except ValueError:
-            pass
-    return datetime.now(timezone.utc)
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        return None
+    return dt if dt.timestamp() > 0 else None
 
 
 def _first(d: dict, *keys: str, default: Any = None) -> Any:
@@ -74,11 +107,12 @@ def _first(d: dict, *keys: str, default: Any = None) -> Any:
     return default
 
 
-def list_kids() -> list[dict[str, Any]]:
-    """Each Kid in Wilma as their full name, school and class, from `wilma kids list`. Wilma CLI
-    1.4 gives only the name, so school and class are None unless the CLI gives them. Raises
-    WilmaError when the CLI isn't signed in."""
-    data = _run(["kids", "list"])
+def list_kids(config: Path | None = None) -> list[dict[str, Any]]:
+    """Each Kid in Wilma as their full name, school and class, from `wilma kids list`. The CLI
+    gives only the name, so school and class are None unless it gives them. From 2.0 it lists
+    the Kids of every sign-in its config has, so `config`, a config file of its own, checks one
+    sign-in alone. Raises WilmaError when the CLI isn't signed in."""
+    data = _run(["kids", "list"], config)
     items = data if isinstance(data, list) else (data.get("kids") or data.get("students") or [])
     kids = []
     for item in items:
@@ -90,19 +124,42 @@ def list_kids() -> list[dict[str, Any]]:
     return kids
 
 
+# What a student's block lists its items under: `items` in wilma CLI 1.x, and from 2.0 what the
+# command lists.
+_ITEMS = ("items", "messages", "news", "lessons")
+
+
 def _walk_students(payload: Any) -> list[tuple[dict, list[dict]]]:
-    """Parse `{students: [{student: {...}, items: [...]}]}` shape. Returns [(student_info, items), ...]."""
+    """Parse `{students: [{student: {...}, items: [...]}]}` shape, whose items are `messages`,
+    `news` or `lessons` from wilma CLI 2.0. Returns [(student_info, items), ...]."""
     if not isinstance(payload, dict):
         return []
+    _log_problems(payload)
     out: list[tuple[dict, list[dict]]] = []
     for block in payload.get("students", []) or []:
         if not isinstance(block, dict):
             continue
         student = block.get("student") or {}
-        items = block.get("items") or []
-        if isinstance(items, list):
-            out.append((student, items))
+        items = next((block[k] for k in _ITEMS if isinstance(block.get(k), list)), [])
+        out.append((student, items))
     return out
+
+
+def _log_problems(payload: dict) -> None:
+    """Logs each sign-in that didn't answer while others did, which the CLI lists from 2.0 on,
+    since it reads every sign-in its config has: the Brief then says Wilma was partly read."""
+    for problem in payload.get("problems") or []:
+        if isinstance(problem, dict):
+            log.error("wilma: the sign-in to %s didn't answer: %s", problem.get("wilma"),
+                      problem.get("message"))
+
+
+def _item(detail: Any) -> dict:
+    """The message or news item `messages read` or `news read` gives: the whole answer in wilma
+    CLI 1.x, and its `message` or `news` from 2.0."""
+    if not isinstance(detail, dict):
+        return {}
+    return next((detail[k] for k in ("message", "news") if isinstance(detail.get(k), dict)), detail)
 
 
 def _collect_list(state: State, source_tag: str,
@@ -130,7 +187,9 @@ def _collect_list(state: State, source_tag: str,
 
             subject = _first(it, "subject", "title", "headline", default="") or ""
             ts = _parse_ts(_first(it, "sentAt", "publishedAt", "published", "date", "timestamp", "createdAt"))
-            if cutoff and ts < cutoff:
+            if cutoff and (ts is None or ts < cutoff):
+                # Too old for tonight, or with no date: from 2.0 the CLI also lists the news
+                # pinned to Wilma's page, which have none and stay there all year.
                 state.mark_message_seen("wilma", dedup_key)
                 continue
             sender = _first(it, "sender", "from", "senderName", "author", default="")
@@ -138,25 +197,21 @@ def _collect_list(state: State, source_tag: str,
             body = ""
             if read_cmd_prefix and student_number:
                 try:
-                    detail = _run([*read_cmd_prefix, str(wilma_id), "--student", str(student_number)])
+                    detail = _item(_run([*read_cmd_prefix, str(wilma_id), "--student",
+                                         str(student_number)]))
                 except WilmaError as e:
                     # Left unseen, so a later run reads it again rather than passing on no body.
                     log.error("%s", unreadable("wilma", dedup_key, e))
                     continue
-                if isinstance(detail, dict):
-                    body = _first(detail, "body", "content", "text", "html", "plainText",
-                                  default="") or ""
-                    if not body and isinstance(detail.get("message"), dict):
-                        body = _first(detail["message"], "body", "content", "text",
-                                      default="") or ""
-                    if not sender:
-                        sender = _first(detail, "senderName", "sender", "from",
-                                        "author", default="")
+                body = _first(detail, "body", "content", "text", "html", "plainText",
+                              default="") or ""
+                if not sender:
+                    sender = _first(detail, "senderName", "sender", "from", "author", default="")
 
             results.append(Message(
                 source="wilma",
                 external_id=dedup_key,
-                timestamp=ts,
+                timestamp=ts or datetime.now(timezone.utc),
                 sender=str(sender) if sender else None,
                 subject=str(subject),
                 body=str(body)[:MAX_BODY_CHARS],

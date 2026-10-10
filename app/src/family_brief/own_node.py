@@ -49,3 +49,13 @@ def wilma() -> list[str] | None:
     either."""
     program, cli = node(), wilma_folder() / "bin" / "wilma"
     return [str(program), str(cli)] if program and cli.is_file() else None
+
+
+def wilma_env(config: Path | None = None) -> dict[str, str]:
+    """The environment the wilma CLI runs in: without its daily check for a newer version on npm,
+    since Parent Recap installs the version it pins (ADR 0008) and the CLI's advice to run
+    `wilma update` would install another one, and with `config` as its config file when given."""
+    env = {**os.environ, "WILMAI_NO_UPDATE_CHECK": "1"}
+    if config is not None:
+        env["WILMAI_CONFIG_PATH"] = str(config)
+    return env

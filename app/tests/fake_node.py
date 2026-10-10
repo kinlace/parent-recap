@@ -7,7 +7,10 @@ nothing: the tests that install the CLI fake the npm command itself.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+from family_brief import setup_wilma
 
 NODE_VERSION = "24.21.0"
 PACKAGE = Path("lib") / "node_modules" / "@wilm-ai" / "wilma-cli"
@@ -34,13 +37,16 @@ def wilma_package(home: Path) -> Path:
     return wilma_folder(home) / PACKAGE
 
 
-def install_wilma(home: Path, script: str) -> Path:
+def install_wilma(home: Path, script: str, version: str = setup_wilma.WILMA_CLI_VERSION) -> Path:
     """The wilma CLI's package in wilma/, as `npm install -g --prefix` puts it there, with
-    `script` as its dist/index.js and bin/wilma linking to it. Returns bin/wilma."""
+    `script` as its dist/index.js and bin/wilma linking to it, and its package.json saying
+    `version`, the pinned one unless given. Returns bin/wilma."""
     dist = wilma_package(home) / "dist"
     dist.mkdir(parents=True, exist_ok=True)
     (dist / "index.js").write_text(script)
     (dist / "index.js").chmod(0o755)
+    (wilma_package(home) / "package.json").write_text(
+        json.dumps({"name": setup_wilma.PACKAGE, "version": version}))
     link = wilma_folder(home) / "bin" / "wilma"
     link.parent.mkdir(parents=True, exist_ok=True)
     link.unlink(missing_ok=True)

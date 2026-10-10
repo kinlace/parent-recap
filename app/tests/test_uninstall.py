@@ -472,6 +472,25 @@ def test_removes_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harnes
     assert "/plugin uninstall" not in out and "rm -rf ~/.config/wilmai" not in out
 
 
+def cli_files_beside(config: Path) -> None:
+    """What the wilma CLI keeps next to its config: from 2.0 the Wilma sessions its commands
+    carry on with, which give the same access as the password, and its note of the newest version."""
+    (config.parent / "wilmai-sessions.json").write_text('{"x": {"state": "a session", "savedAt": 0}}')
+    (config.parent / "version-check.json").write_text('{"latestVersion": "2.1.2", "checkedAt": 0}')
+
+
+def test_the_wilma_cli_s_sessions_go_with_setup_s_profile(harness, mac, monkeypatch, tmp_path,
+                                                          capsys):
+    set_up(harness, mac, monkeypatch)
+    config = wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
+    cli_files_beside(config)
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert not config.parent.exists()
+    assert leftovers(harness.home) == [".config"]
+
+
 def test_leaves_a_wilma_cli_profile_and_plugin_that_were_there_before_setup(harness, mac,
                                                                             monkeypatch, tmp_path,
                                                                             capsys):
@@ -497,6 +516,7 @@ def test_removes_only_setup_s_profile_from_the_wilma_cli_s_config(harness, mac, 
     helsinki = {"url": "https://helsinki.inschool.fi", "name": "Helsinki"}
     setup_wilma.write_profile(config, helsinki, "dad", "another-fake-password")
     setup_wilma.write_profile(config, ESPOO, "mia.parent", WILMA_PASSWORD)  # the last used
+    cli_files_beside(config)
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
@@ -505,6 +525,8 @@ def test_removes_only_setup_s_profile_from_the_wilma_cli_s_config(harness, mac, 
     assert left["lastProfileId"] == "https://helsinki.inschool.fi|dad"
     assert config.stat().st_mode & 0o777 == 0o600
     assert WILMA_PASSWORD not in config.read_text()
+    # The sessions go, as when the CLI removes a sign-in itself: the other signs in again.
+    assert sorted(p.name for p in config.parent.iterdir()) == ["config.json", "version-check.json"]
     assert "~/.config/wilmai" in capsys.readouterr().out  # the other sign-in stays there
 
 

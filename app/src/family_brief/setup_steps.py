@@ -385,10 +385,11 @@ def _sign_in_screen(language: str) -> int:
     command = own_node.wilma()
     if command is None:
         return 127
+    env = own_node.wilma_env()  # before the fork: the child only runs the CLI
     pid, fd = pty.fork()
     if pid == 0:
         try:
-            os.execv(command[0], command)
+            os.execve(command[0], command, env)
         finally:
             os._exit(127)
     # The CLI truncates its config before writing it, so a new one counts once it reads whole.
