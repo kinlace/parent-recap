@@ -181,3 +181,21 @@ def test_a_keyword_ending_in_a_space_matches_at_the_end_of_the_text():
     from family_brief.eval.score import matches
     assert matches(["klo 10 "], "kalenterissa klo 10")
     assert not matches(["klo 10 "], "kokoontuminen klo 10.30")
+
+
+def test_a_photo_word_counts_as_forbidden_but_a_training_that_continues_does_not():
+    # A bare stem kuva (photo) also matches "jatkuvat" (continue), which failed right Briefs (#243).
+    from family_brief.eval.cases import BUNDLED, load_cases
+    cases = {c.name: c for c in load_cases(BUNDLED)}
+    for name, other in (("whatsapp-two-groups", "Eero"), ("fi-tiistaihin-mennessa", "Aino")):
+        rules = cases[name].expect["notices"]["must_not"]
+        rule = next(r for r in rules if r["kid"] == other)
+
+        def hits(text: str) -> int:
+            got = summary([kid(other, notices=[text])])
+            return score_case({"notices": {"must_not": [rule]}}, got, TZ)["notices"]["hits"]
+
+        assert hits("Treenit jatkuvat normaalisti torstaina klo 17") == 0, name
+        assert hits("Jatkuvia harjoituksia on kaksi viikossa") == 0, name
+        assert hits("Koulukuvaus on tiistaina") == 1, name
+        assert hits("Tilaa kuvat verkkokaupasta") == 1, name

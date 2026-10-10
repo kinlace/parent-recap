@@ -340,4 +340,4 @@ It scores Briefs in every reviewed language (English, Chinese and Finnish), one 
 Each run is saved under `~/ParentRecap/eval/` and compared with the previous one of the same
 language (runs saved before Briefs had a language count as `zh`); the spread column shows
 run-to-run noise. `--cases DIR` scores a private folder instead; the case format is described
-in `src/family_brief/eval/cases.py`. Keywords in `expect` need Chinese, English and Finnish alternatives; give the Finnish as stems (`lupalap`, `retk`), since a Finnish Brief inflects them.
+in `src/family_brief/eval/cases.py`. Keywords in `expect` need Chinese, English and Finnish alternatives; give the Finnish as stems (`lupalap`, `retk`), since a Finnish Brief inflects them. A keyword matches anywhere in the text, so check that a short stem can't hide in another word: `kuva` (photo) also matches `jatkuvat` (continue). Start it with a space (`" kuva"`) to match only at a word's start.

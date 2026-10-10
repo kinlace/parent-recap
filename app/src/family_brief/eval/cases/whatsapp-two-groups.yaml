@@ -76,6 +76,8 @@ expect:
         }
       - {
           kid: Eero,
-          text: [kuvaus, kuva, 拍照, 照相, 合影, photo, picture],
+          # Photo words at a word's start (" kuva", the matcher pads the text with spaces) or as
+          # stems that can't hide in another word: a bare kuva also matches "jatkuvat" (continue).
+          text: [" kuva", kuvaus, valokuv, koulukuv, 拍照, 照相, 合影, photo, picture],
           where: both,
         }
