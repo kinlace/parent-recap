@@ -2,9 +2,10 @@
 # Sets up the gateway's server: an Oracle Cloud Ubuntu 24.04 VM (see README.md).
 # Safe to run again; each step checks before it changes anything.
 #
-#   ssh <vm> "sudo GATEWAY_HOST=<hostname> bash -s" < ops/gateway/host-setup.sh
+#   ssh <vm> "sudo MINI_PUBKEY='<ssh public key>' bash -s" < ops/gateway/host-setup.sh
 #
-# Without GATEWAY_HOST, Caddy is installed but no site is configured.
+# Ubuntu/Debian only (apt, iptables-persistent). Without MINI_PUBKEY no
+# assistant login is created.
 set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)" >&2; exit 1; }
@@ -39,19 +40,19 @@ if ! iptables -C INPUT "${rule[@]}" 2>/dev/null; then
 fi
 netfilter-persistent save
 
-# ── Caddy
-# Ubuntu's own package (installed above) is older than Caddy's repo, but
-# unattended-upgrades keeps it patched. Caddy's Cloudsmith repo answered
-# 402 Payment Required in October 2026.
-if [ -n "${GATEWAY_HOST:-}" ]; then
-  # A placeholder until the gateway itself runs behind Caddy.
-  cat >/etc/caddy/Caddyfile <<EOF
-$GATEWAY_HOST {
-	respond "Parent Recap gateway" 200
-}
-EOF
-  caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-  systemctl reload-or-restart caddy
+# ── Read-only login for the AI assistant
+# It can read logs and service status but has no sudo and cannot read the
+# gateway's state or secrets: the provider key and family messages pass through
+# this server, so changes run from the committed scripts by a maintainer.
+# Set MINI_PUBKEY to the assistant host's public key.
+if [ -n "${MINI_PUBKEY:-}" ]; then
+  id mini >/dev/null 2>&1 || useradd --create-home --shell /bin/bash mini
+  usermod -aG systemd-journal,adm mini
+  install -d -o mini -g mini -m 0700 /home/mini/.ssh
+  printf '%s\n' "$MINI_PUBKEY" >/home/mini/.ssh/authorized_keys
+  chown mini:mini /home/mini/.ssh/authorized_keys
+  chmod 0600 /home/mini/.ssh/authorized_keys
 fi
 
+# Caddy's site and the gateway itself are set up by gateway-setup.sh.
 echo "done"

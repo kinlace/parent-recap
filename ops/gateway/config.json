@@ -1,0 +1,41 @@
+{
+  "client": {
+    "enable_logging": true,
+    "disable_content_logging": true,
+    "allow_per_request_content_storage_override": false,
+    "enforce_auth_on_inference": true,
+    "log_retention_days": 90,
+    "allowed_origins": []
+  },
+  "governance": {
+    "auth_config": {
+      "is_enabled": true,
+      "admin_username": "env.BIFROST_ADMIN_USERNAME",
+      "admin_password": "env.BIFROST_ADMIN_PASSWORD",
+      "disable_auth_on_inference": false
+    }
+  },
+  "providers": {
+    "anthropic": {
+      "keys": [
+        {
+          "name": "primary",
+          "value": "env.ANTHROPIC_API_KEY",
+          "models": ["*"],
+          "weight": 1.0,
+          "aliases": { "parent-recap": "claude-sonnet-5-5" }
+        }
+      ]
+    }
+  },
+  "config_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": { "database": "/var/lib/bifrost/config.db" }
+  },
+  "logs_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": { "database": "/var/lib/bifrost/logs.db" }
+  }
+}
