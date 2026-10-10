@@ -5,9 +5,11 @@ The server that invited Households' Gateway Keys go through (ADR 0014). Everythi
 - `host-setup.sh` sets up the VM: system updates, SSH with keys only, a firewall that lets in only SSH and HTTPS, and Caddy for HTTPS.
 - `oci-quota.json` is the Oracle Cloud quota policy that lets the account create only Always Free resources.
 
+This is how we run it. Take as much as fits your own setup. `host-setup.sh` works on any Ubuntu 24.04 server. On a cloud other than Oracle's, use that cloud's own firewall too: the script only opens port 443 in front of the reject-all rule Oracle's image ships, and adds no rules of its own on an image without one. Steps 1–4 below are Oracle's.
+
 ## Building the server
 
-The VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`). These steps are in Oracle's console and can't be scripted.
+Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`). Steps 1–4 are in Oracle's console and can't be scripted.
 
 1. **Pay-As-You-Go.** Upgrade the Oracle account to Pay-As-You-Go. Always Free resources stay free, and Oracle doesn't reclaim them as idle.
 2. **Spending guards.** In Billing, add a budget of $1 a month that emails the maintainers on any actual spend. Then add the quota policy, which makes anything not Always Free impossible to create:
