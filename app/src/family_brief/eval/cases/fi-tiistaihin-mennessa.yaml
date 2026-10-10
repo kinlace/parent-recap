@@ -25,6 +25,8 @@ expect:
     must_not:
       - {
           kid: Aino,
-          text: [kuva, kuvi, 照片, 相片, 合影, photo, picture],
+          # Photo words at a word's start, or stems that can't hide in another word: a bare kuva
+          # or kuvi also matches "jatkuvat" and "jatkuvia" (continue).
+          text: [" kuva", " kuvi", valokuv, luokkakuv, koulukuv, 照片, 相片, 合影, photo, picture],
           where: both,
         }
