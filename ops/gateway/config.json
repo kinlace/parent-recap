@@ -23,7 +23,7 @@
           "value": "env.ANTHROPIC_API_KEY",
           "models": ["*"],
           "weight": 1.0,
-          "aliases": { "parent-recap": "claude-sonnet-5-5" }
+          "aliases": { "parent-recap": "claude-haiku-5-5" }
         }
       ]
     }

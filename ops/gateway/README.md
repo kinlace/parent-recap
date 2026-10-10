@@ -40,7 +40,7 @@ Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`).
 
    Caddy gets the hostname's certificate over port 443 (TLS-ALPN-01), so port 80 stays closed. Check with `curl -i https://<hostname>/` (404) and a call with a Gateway Key (below).
 
-8. **Spend limit.** In the Anthropic Console, set the account's monthly spend limit to $20.
+8. **Spend limit.** In the Anthropic Console, set the account's monthly spend limit to $10.
 9. **Record it.** Keep the provider, region, IP, hostname and SSH logins in the maintainers' private notes, not here.
 
 Both scripts are safe to run again.
@@ -82,7 +82,7 @@ curl -s -u "$ADMIN" -X PATCH localhost:8080/api/governance/virtual-keys/<id> \
   -H 'content-type: application/json' -d '{"is_active": false}'
 ```
 
-**Check spend.** `budgets[].current_usage` in the same list is what each key has spent today. The month's total is in the Anthropic Console, which also enforces the $20 limit.
+**Check spend.** `budgets[].current_usage` in the same list is what each key has spent today. The month's total is in the Anthropic Console, which also enforces the $10 limit.
 
 **Upgrade.** Try the new version on your own machine first (`npx -y @maximhq/bifrost --transport-version vX.Y.Z`). Then, in `gateway-setup.sh`, change `BIFROST_VERSION` and both `SHA256_*` lines (hash the binaries at `https://downloads.getmaxim.ai/bifrost/<version>/linux/<arm64|amd64>/bifrost-http`), and run step 7 again. The old version stays in `/usr/local/lib/bifrost/`; repoint the `current` symlink and restart to roll back.
 
