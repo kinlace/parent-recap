@@ -50,7 +50,7 @@ def model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """Replies to every `claude` call with `replies[0]` (a dict, raw text, or a function making
     one from the prompt), recording prompts. Each stderr in `busy` first makes one call fail with it."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    state = {"replies": [GOOD], "prompts": [], "busy": []}
+    state = {"replies": [GOOD], "prompts": [], "busy": [], "models": []}
 
     def run(cmd, *_a, **k):
         prog = Path(cmd[0]).name
@@ -59,6 +59,8 @@ def model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         if state["busy"]:
             state["prompts"].append(k["input"])
             return subprocess.CompletedProcess(cmd, 1, "", state["busy"].pop(0))
+        if prog == "claude":
+            state["models"].append(cmd[cmd.index("--model") + 1] if "--model" in cmd else None)
         reply = state["replies"][0]
         reply = reply(k["input"]) if callable(reply) else reply
         text = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
@@ -68,8 +70,13 @@ def model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
             return subprocess.CompletedProcess(cmd, 0, "", "tokens used\n2,000\n")
         assert prog == "claude", cmd
         state["prompts"].append(k["input"])
+        # The CLI reports the model that answered, the full name also for its default or an alias.
+        answered = {None: "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}.get(state["models"][-1],
+                                                                              state["models"][-1])
         envelope = {"type": "result", "result": text,
-                    "usage": {"input_tokens": 900, "cache_read_input_tokens": 50, "output_tokens": 50}}
+                    "usage": {"input_tokens": 900, "cache_read_input_tokens": 50, "output_tokens": 50},
+                    "modelUsage": {answered: {"inputTokens": 900, "outputTokens": 50},
+                                   "claude-haiku-4-5": {"inputTokens": 30, "outputTokens": 5}}}
         return subprocess.CompletedProcess(cmd, 0, json.dumps(envelope), "")
 
     monkeypatch.setattr(subprocess, "run", run)
@@ -91,9 +98,66 @@ def test_scores_a_case_folder_and_saves_the_run(case_dir, model, tmp_path, capsy
     data = json.loads(saved.read_text())
     assert data["metrics"]["action_recall"] == 1.0
     assert data["metrics"]["citations_verified"] == 1.0
-    assert data["metrics"]["tokens_per_night"] == 1000
+    assert (data["metrics"]["input_tokens"], data["metrics"]["cached_tokens"],
+            data["metrics"]["output_tokens"]) == (900, 50, 50)
+    # Priced as the model the CLI says answered, Sonnet 5.5: 900 × $2 + 50 × $0.10 + 50 × $10 per million.
+    assert data["metrics"]["usd_per_night"] == 0.00231 and data["metrics"]["usd_per_month"] == 0.069
+    assert data["prices_read"] == "2026-10-10"
+    assert "prices read 2026-10-10" in card
     night = data["runs"][0]["cases"]["floorball-fee"]
     assert night["valid_json"] is True and night["summary"]["per_kid"][0]["kid"] == "Eero"
+    assert night["model"] == "claude-sonnet-5-5"
+
+
+def test_several_models_are_scored_side_by_side_with_their_cost(case_dir, model, tmp_path, capsys):
+    out = tmp_path / "results"
+    wrong = copy.deepcopy(GOOD)
+    wrong["per_kid"][0]["action_items"][0]["by"] = "2026-10-13"
+    model["replies"] = [lambda prompt: wrong if model["models"][-1] == "haiku" else GOOD]
+
+    assert runner.main(["--cases", str(case_dir), "--out", str(out), "--language", "fi,en",
+                        "--model", "default,haiku", "--repeat", "2"]) == 0
+
+    assert model["models"] == [None] * 2 + ["haiku"] * 2 + [None] * 2 + ["haiku"] * 2
+    card = capsys.readouterr().out
+    assert card.count("Parent Recap eval") == 2  # one card per language, each with both models
+    fi_card = card[card.index("· fi ·"):card.index("· en ·")]
+    header = next(line for line in fi_card.splitlines() if line.startswith("metric"))
+    assert header.split() == ["metric", "default", "haiku"]
+    due = next(line for line in fi_card.splitlines() if line.startswith("due_date_ok"))
+    assert due.split() == ["due_date_ok", "1.0", "(1.0–1.0)", "0.0", "(0.0–0.0)", "↓"]  # worse than the default's spread
+    month = next(line for line in fi_card.splitlines() if line.startswith("usd_per_month"))
+    assert month.split()[1] == "0.069" and month.split()[3] == "0.003"  # Haiku 5.5 at $0.10/$0.01/$0.50
+    row = next(line for line in fi_card.splitlines() if "floorball-fee" in line and "clean" not in line)
+    assert row.split() == ["floorball-fee", "2/2", "0/2"]
+    assert "haiku · floorball-fee: run 1: 1 wrong due date; run 2: 1 wrong due date" in fi_card
+    saved = sorted(p.name.split("-", 3)[3] for p in out.glob("*.json"))  # each model's run on its own
+    assert saved == ["claude-en.json", "claude-fi.json", "claude-haiku-en.json", "claude-haiku-fi.json"]
+
+
+def test_a_model_without_a_price_has_no_cost_and_the_card_says_so(case_dir, model, tmp_path, capsys):
+    runner.main(["--cases", str(case_dir), "--out", str(tmp_path / "r"), "--language", "en",
+                 "--model", "claude-sonnet-5-5,claude-next-1"])
+    card = capsys.readouterr().out
+    month = next(line for line in card.splitlines() if line.startswith("usd_per_month"))
+    assert month.split()[1:] == ["0.069", "—"]
+    assert "no price in prices.yaml for claude-next-1" in card
+
+
+def test_a_placeholder_the_model_changed_beyond_repair_counts_against_the_night(case_dir, model, tmp_path):
+    case = copy.deepcopy(CASE)
+    case["messages"][0]["body"] += " Maksu: https://eagles.example.fi/maksu"
+    (case_dir / "floorball-fee.yaml").write_text(yaml.safe_dump(case, allow_unicode=True))
+    answer = copy.deepcopy(GOOD)
+    answer["per_kid"][0]["action_items"][0]["what"] += " ⟦L7⟧"  # no such placeholder: becomes "a link"
+    model["replies"] = [answer]
+
+    runner.main(["--cases", str(case_dir), "--out", str(tmp_path / "r"), "--language", "en"])
+
+    data = json.loads(next((tmp_path / "r").glob("*.json")).read_text())
+    night = data["runs"][0]["cases"]["floorball-fee"]
+    assert night["placeholders"] == {"shown": 0, "lost": 1} and not night["clean"]
+    assert data["metrics"]["placeholders_left"] == 1
 
 
 def test_the_eval_runs_to_the_end_with_contact_details_as_placeholders(case_dir, model, tmp_path):
@@ -178,10 +242,11 @@ def test_one_command_scores_both_backends(case_dir, model, tmp_path, capsys):
     card = capsys.readouterr().out
     assert "eval · claude" in card and "eval · codex" in card
     saved = json.loads(next(out.glob("*-codex-en.json")).read_text())
-    assert saved["metrics"]["action_recall"] == 1.0 and saved["metrics"]["tokens_per_night"] is None
+    assert saved["metrics"]["action_recall"] == 1.0 and saved["metrics"]["input_tokens"] is None
     codex_card = card[card.index("eval · codex"):]
-    row = next(line for line in codex_card.splitlines() if line.startswith("tokens_per_night"))
-    assert "—" in row  # no Codex count, rather than a wrong one
+    for metric in ("input_tokens", "usd_per_night"):
+        row = next(line for line in codex_card.splitlines() if line.startswith(metric))
+        assert "—" in row  # no Codex count or cost, rather than a wrong one
 
 
 def test_a_busy_model_is_tried_again_and_its_pauses_are_not_counted_as_its_time(

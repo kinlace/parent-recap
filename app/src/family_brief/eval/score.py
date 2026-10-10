@@ -69,6 +69,20 @@ def _date_counts(summary: dict, notices: list[dict], actions: list[dict]) -> dic
     return {"texts": len(texts), "iso": sum(1 for text in texts if _ISO_DATE.search(text))}
 
 
+# The AI filter's brackets, which no ordinary text has: a placeholder left in the Brief as it was.
+_PLACEHOLDER = re.compile(r"[⟦⟧〚〛]")
+
+
+def _placeholders_shown(summary: dict, notices: list[dict], actions: list[dict]) -> int:
+    """How many of the Brief's texts (Digest lines, Notices, Action Items, Calendar Events) still
+    show a placeholder that didn't go back to its value."""
+    texts = digest_of(summary).splitlines()
+    texts += [str(n.get("text", "")) for n in notices] + [str(a.get("what", "")) for a in actions]
+    texts += [f"{ev.get('title', '')} {ev.get('description', '')} {ev.get('location', '')}"
+              for ev in summary.get("calendar_events") or [] if isinstance(ev, dict)]
+    return sum(1 for text in texts if _PLACEHOLDER.search(text))
+
+
 def _local_start(ev: dict, tz: str) -> str | None:
     try:
         return _localize(datetime.fromisoformat(str(ev.get("start"))), tz).strftime("%Y-%m-%dT%H:%M")
@@ -76,8 +90,11 @@ def _local_start(ev: dict, tz: str) -> str | None:
         return None
 
 
-def score_case(expect: dict[str, Any], summary: dict[str, Any] | None, tz: str) -> dict[str, Any]:
-    """Counts for one night. A `None` summary (the model call failed) misses everything expected."""
+def score_case(expect: dict[str, Any], summary: dict[str, Any] | None, tz: str,
+               lost_placeholders: int = 0) -> dict[str, Any]:
+    """Counts for one night. A `None` summary (the model call failed) misses everything expected.
+    `lost_placeholders` is how many the model changed beyond repair, so the Brief has their kind's
+    words ("someone", "a link") where the night's text had the real value."""
     summary = summary or {}
     required = lambda items: sum(1 for e in items if not e.get("optional"))  # noqa: E731
 
@@ -129,19 +146,32 @@ def score_case(expect: dict[str, Any], summary: dict[str, Any] | None, tz: str) 
         "events": event_counts,
         "notices": notice_counts,
         "dates": _date_counts(summary, notices, actions),
+        "placeholders": {"shown": _placeholders_shown(summary, notices, actions), "lost": lost_placeholders},
         "citations": {"entries": cites.get("entries", 0),
                       "verified": cites.get("entries", 0) - cites.get("unverified", 0) - cites.get("legacy", 0)},
     }
 
 
 def is_clean(s: dict[str, Any]) -> bool:
-    """Nothing missed, nothing extra, every date, Kid and start time right, no forbidden text, and
-    no date in the text written as YYYY-MM-DD."""
+    """Nothing missed, nothing extra, every date, Kid and start time right, no forbidden text, no
+    date in the text written as YYYY-MM-DD, and every placeholder back to its value."""
     a, e, n = s["actions"], s["events"], s["notices"]
+    p = s.get("placeholders") or {}  # runs saved before the metric have none
     return (a["matched"] == a["expected"] == a["predicted"] == a["due_ok"] == a["kid_ok"]
             and e["matched"] == e["expected"] == e["predicted"] == e["start_ok"]
             and n["found"] == n["required"] and n["hits"] == 0 and s["dates"]["iso"] == 0
+            and not p.get("shown") and not p.get("lost")
             and s.get("valid_json", True))
+
+
+# A night's tokens by kind, as summarize.LLMReply.usage keeps them, and their metric names.
+TOKEN_KINDS = {"input": "input_tokens", "cache_write": "cache_write_tokens",
+               "cached_input": "cached_tokens", "output": "output_tokens"}
+NIGHTS_PER_MONTH = 30
+
+
+def _mean(values: list, digits: int | None) -> float | None:
+    return round(mean(values), digits) if values else None
 
 
 def _ratio(num: int, den: int) -> float | None:
@@ -152,7 +182,9 @@ def aggregate(cases: list[dict[str, Any]]) -> dict[str, Any]:
     """Pool the counts of many nights into rates; a rate with nothing to measure is None."""
     total = lambda part, key: sum(c[part][key] for c in cases)  # noqa: E731
     seconds = [c["seconds"] for c in cases if c.get("seconds") is not None]
-    tokens = [c["tokens"] for c in cases if c.get("tokens") is not None]
+    usages = [c["usage"] for c in cases if c.get("usage")]
+    usd = _mean([c["usd"] for c in cases if c.get("usd") is not None], 9)
+    placeholders = [c.get("placeholders") or {} for c in cases]
     return {
         "action_recall": _ratio(total("actions", "matched"), total("actions", "expected")),
         "action_precision": _ratio(total("actions", "matched"), total("actions", "predicted")),
@@ -167,6 +199,9 @@ def aggregate(cases: list[dict[str, Any]]) -> dict[str, Any]:
         "citations_verified": _ratio(total("citations", "verified"), total("citations", "entries")),
         "valid_json": _ratio(sum(1 for c in cases if c.get("valid_json")), len(cases)),
         "cases_clean": _ratio(sum(1 for c in cases if is_clean(c)), len(cases)),
-        "seconds_per_night": round(mean(seconds), 1) if seconds else None,
-        "tokens_per_night": round(mean(tokens)) if tokens else None,
+        "placeholders_left": sum(p.get("shown", 0) + p.get("lost", 0) for p in placeholders),
+        "seconds_per_night": _mean(seconds, 1),
+        **{name: _mean([u.get(kind, 0) for u in usages], None) for kind, name in TOKEN_KINDS.items()},
+        "usd_per_night": round(usd, 5) if usd is not None else None,
+        "usd_per_month": round(usd * NIGHTS_PER_MONTH, 3) if usd is not None else None,
     }

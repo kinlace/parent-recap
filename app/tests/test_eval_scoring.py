@@ -111,15 +111,39 @@ def test_aggregate_pools_counts_across_cases():
     b = score_case({"action_items": [{"kid": "Aino", "what": ["z"], "by": "2026-10-06"}],
                     "notices": {"must_not": [{"text": ["x"]}]}},
                    summary([kid("Aino", notices=["x"])]), TZ)
-    a.update(valid_json=True, seconds=10.0, tokens=1000)
-    b.update(valid_json=False, seconds=20.0, tokens=None)
+    a.update(valid_json=True, seconds=10.0, usd=0.004,
+             usage={"input": 900, "cache_write": 100, "cached_input": 3000, "output": 500})
+    b.update(valid_json=False, seconds=20.0, usd=None, usage=None)
     m = aggregate([a, b])
     assert m["action_recall"] == 0.5 and m["action_precision"] == 0.5
     assert m["due_date_ok"] == 1.0 and m["kid_ok"] == 1.0
     assert m["forbidden_hits"] == 1
     assert m["valid_json"] == 0.5
-    assert m["seconds_per_night"] == 15.0 and m["tokens_per_night"] == 1000
+    assert m["seconds_per_night"] == 15.0
+    # Only the nights the backend reported tokens for, each kind apart, priced per night and month.
+    assert (m["input_tokens"], m["cache_write_tokens"], m["cached_tokens"], m["output_tokens"]) == \
+        (900, 100, 3000, 500)
+    assert m["usd_per_night"] == 0.004 and m["usd_per_month"] == 0.12
     assert m["event_recall"] is None  # nothing expected anywhere
+
+
+def test_a_placeholder_shown_in_the_brief_or_put_back_as_a_word_is_counted():
+    got = summary([kid("Aino", notices=["Soita ⟦P1⟧", "Opettaja ⟦N⟧ kertoi"],
+                       actions=[("Maksa 〚L2〛", "2026-10-06")])],
+                  [{"kid": "Aino", "title": "Retki", "description": "Lisätietoja ⟦L1⟧",
+                    "start": "2026-10-08"}])
+    got["message_digest"] = "**Aino**\n- Soita ⟦P1⟧"
+    s = score_case({}, got, TZ, lost_placeholders=2)
+    assert s["placeholders"] == {"shown": 5, "lost": 2}  # the Digest line, two notices, the action, the event
+    s.update(valid_json=True)
+    assert not is_clean(s)
+    assert aggregate([s])["placeholders_left"] == 7
+
+
+def test_a_brief_with_every_placeholder_put_back_is_clean():
+    s = score_case({}, summary([kid("Aino", notices=["Soita Maijalle 040 123 4567"])]), TZ)
+    s.update(valid_json=True)
+    assert s["placeholders"] == {"shown": 0, "lost": 0} and is_clean(s)
 
 
 # A Finnish Brief inflects its words, so the bundled cases list Finnish stems.
@@ -145,6 +169,20 @@ FINNISH_NIGHTS = {
     "kid-alias-chinese": summary([kid("Aino", notices=["la 10.10. kiinan kurssi alkaa klo 14"],
                                       actions=[("Ota mukaan viime viikon tehtäväkirja", "2026-10-10")])],
                                  [{"kid": "Aino", "title": "Kiinan kurssi", "start": "2026-10-10T14:00:00"}]),
+    "fi-inflected-names-places": summary(
+        [kid("Eero", actions=[("Pakkaa Eerolle uimakassi mukaan", "2026-10-07")]),
+         kid("Aino", actions=[("Ainolle kirjastokortti mukaan", "2026-10-09")])],
+        [{"kid": "Eero", "title": "Uintitunti Leppävaaran uimahallissa", "start": "2026-10-07T10:00:00+03:00"}]),
+    "fi-viikolla-43": summary([kid("Aino", actions=[("Palauta koulukirjaston kirjat", "2026-10-09")])],
+                              [{"kid": "Aino", "title": "Ympäristöopin koe", "start": "2026-10-20"},
+                               {"kid": "Aino", "title": "4B:n vanhempainilta",
+                                "start": "2026-10-28T18:00:00+03:00"}]),
+    "fi-puoli-viisi": summary([kid("Eero", notices=["Pianotunti siirtyy ma 12.10. → ti 13.10. klo 16.30"])],
+                              [{"kid": "Eero", "title": "Pianotunti", "start": "2026-10-13T16:30:00+03:00"}]),
+    "fi-mixed-languages": summary(
+        [kid("Aino", notices=["la 10.10. kiinan tunti on peruttu"],
+             actions=[("Maksa luokkakuvat 15 €", "2026-10-12")])],
+        [{"kid": "Aino", "title": "Ottelu HJK:ta vastaan", "start": "2026-10-10T12:00:00+03:00"}]),
 }
 
 
@@ -154,6 +192,15 @@ def test_a_plain_finnish_brief_scores_clean_on_the_bundled_cases():
     cases = {c.name: c for c in load_cases(BUNDLED)}
     for name, night in FINNISH_NIGHTS.items():
         assert is_clean(score_case(cases[name].expect, night, TZ)), name
+
+
+def test_puoli_viisi_read_as_half_past_five_is_not_clean():
+    from family_brief.eval.cases import BUNDLED, load_cases
+    case = next(c for c in load_cases(BUNDLED) if c.name == "fi-puoli-viisi")
+    night = summary([kid("Eero", notices=["Pianotunti siirtyy ti 13.10. klo 17.30"])],
+                    [{"kid": "Eero", "title": "Pianotunti", "start": "2026-10-13T17:30:00+03:00"}])
+    s = score_case(case.expect, night, TZ)
+    assert s["events"]["start_ok"] == 0 and s["notices"]["found"] == 0
 
 
 def test_a_deadline_or_a_training_that_carries_on_is_not_a_calendar_event():

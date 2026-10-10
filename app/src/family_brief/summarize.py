@@ -513,24 +513,32 @@ def _save_diagnostics(name: str, proc: subprocess.CompletedProcess, cmd_desc: st
 
 @dataclass
 class LLMReply:
-    """One backend call: the parsed object, the model's reply text as given, the tokens it
-    used in and out together (None where the backend does not report them), whether the
-    object needed json-repair, and the seconds it paused for a busy model."""
+    """One backend call: the parsed object, the model's reply text as given, the tokens it used
+    by kind ({"input", "cache_write", "cached_input", "output"}, each priced apart; None where
+    the backend does not report them), whether the object needed json-repair, the seconds it
+    paused for a busy model, and the model the backend says answered, if it says."""
     data: dict[str, Any]
     text: str
-    tokens: int | None = None
+    usage: dict[str, int] | None = None
     repaired: bool = False
     waited: float = 0.0
+    model: str | None = None
 
 
-def _claude_reply_text(stdout: str) -> tuple[str, int | None]:
+# The claude CLI's usage fields, by the kind of token LLMReply.usage calls them.
+_CLAUDE_USAGE = {"input": "input_tokens", "cache_write": "cache_creation_input_tokens",
+                 "cached_input": "cache_read_input_tokens", "output": "output_tokens"}
+
+
+def _claude_reply(stdout: str) -> tuple[str, dict[str, int] | None, str | None]:
+    """The reply text, the tokens by kind and the model that wrote most of the reply."""
     envelope = json.loads(stdout)
     result = envelope.get("result", "")
     usage = envelope.get("usage") or {}
-    tokens = sum(usage.get(k) or 0 for k in ("input_tokens", "cache_creation_input_tokens",
-                                             "cache_read_input_tokens", "output_tokens"))
+    by_model = envelope.get("modelUsage") or {}
+    model = max(by_model, key=lambda m: (by_model[m] or {}).get("outputTokens") or 0) if by_model else None
     text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
-    return text, (tokens if usage else None)
+    return text, ({kind: usage.get(k) or 0 for kind, k in _CLAUDE_USAGE.items()} if usage else None), model
 
 
 def _run_claude(cfg: Config, prompt: str, system_prompt: str, timeout: int, budget: int) -> LLMReply:
@@ -565,9 +573,9 @@ def _run_claude(cfg: Config, prompt: str, system_prompt: str, timeout: int, budg
             f"claude CLI failed ({proc.returncode}). "
             f"stderr={proc.stderr!r} stdout[:500]={proc.stdout[:500]!r}"
         )
-    text, tokens = _claude_reply_text(proc.stdout)
+    text, usage, model = _claude_reply(proc.stdout)
     data, repaired = _parse_cli_response(proc.stdout)
-    return LLMReply(data, text, tokens, repaired, ran.waited)
+    return LLMReply(data, text, usage, repaired, ran.waited, model)
 
 
 # The desktop apps that ship codex, in the order they're tried, in /Applications or ~/Applications.

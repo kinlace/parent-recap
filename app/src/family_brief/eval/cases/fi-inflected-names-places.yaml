@@ -1,0 +1,43 @@
+covers: [finnish-inflection, kid-attribution, finnish-dates]
+note: >
+  Sunday night. One school email for both Kids names them only in case forms (Eerolle, Ainon,
+  Ainolla) and the places too (Leppävaaran uimahallissa, Tapiolan kirjastoon): the swimming kit is
+  Eero's, the library card Aino's. The PE teacher signs in a case form of his name (Pekka Niemelle),
+  which the AI filter masks, so the Brief must put it back as written.
+now: 2026-10-04T21:00:00+03:00
+messages:
+  - id: gm-koulu-1004
+    source: gmail
+    at: 2026-10-04T15:40:00+03:00
+    sender: Niemi Pekka <pekka.niemi@kilonkoulu.example.fi>
+    subject: Uinti ja kirjastokäynti tällä viikolla
+    body: |
+      Hei Virtasen perhe!
+      Eerolle uimakassi mukaan keskiviikkona 7.10.: 1A:n uintitunti on Leppävaaran uimahallissa klo 10.00–11.30.
+      Jos Eero ei voi uida, ilmoittakaa siitä Pekka Niemelle tiistaihin mennessä.
+      Ainon luokka menee perjantaina 9.10. Tapiolan kirjastoon lainaamaan kirjoja syyslomaksi, joten Ainolla pitää olla kirjastokortti mukana.
+      Terveisin, Pekka Niemi
+expect:
+  action_items:
+    - {
+        kid: Eero,
+        what: [uimakass, uimahous, uimavarus, uima, swim, 泳],
+        by: 2026-10-07,
+      }
+    - {
+        kid: Aino,
+        what: [kirjastokort, library card, 借书证, 图书证, 图书卡, 读者证],
+        by: 2026-10-09,
+      }
+    - {
+        kid: Eero,
+        what: [Niemi, Pekka, ilmoit, tell, inform, 告诉, 通知],
+        optional: true,
+      }
+  calendar_events:
+    - { title: [uinti, uima, swim, 游泳], start: 2026-10-07T10:00 }
+    - { title: [kirjasto, library, 图书馆], start: 2026-10-09, optional: true }
+  notices:
+    must_not:
+      - { kid: Aino, text: [uima, uinti, swim, 游泳], where: both }
+      - { kid: Eero, text: [kirjasto, library, 图书], where: both }
