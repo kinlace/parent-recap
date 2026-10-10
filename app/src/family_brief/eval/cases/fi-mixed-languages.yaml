@@ -1,0 +1,80 @@
+covers: [mixed-languages, finnish-dates, whatsapp-group, kid-attribution]
+note: >
+  Thursday night in three languages: Finnish school mail about Aino's class photo and its fee, a
+  Chinese chat cancelling Saturday's Chinese class, and an English football chat moving Saturday's
+  game. All three are Aino's; Eero takes neither Chinese nor football.
+now: 2026-10-08T21:00:00+03:00
+messages:
+  - id: w-kuvaus-1008
+    source: wilma
+    at: 2026-10-08T11:30:00+03:00
+    sender: Laine Maija
+    subject: Luokkakuvaus huomenna
+    kid_hint: Virtanen Aino
+    body: |
+      Hei! Huomenna perjantaina 4B:n luokka- ja yksilökuvat otetaan klo 9 alkaen.
+      Kuvien hinta on 15 €, ja se maksetaan maanantaihin 12.10. mennessä osoitteessa https://kuvaus.example.fi/4b.
+      Terveisin, Maija Laine (maija.laine@kilonkoulu.example.fi)
+  - id: wa-zh-1008b
+    source: whatsapp
+    at: 2026-10-08T19:45:00+03:00
+    chat: 华人家长群
+    sender: 王老师
+    body: |
+      各位家长：本周六（10月10日）中文课停课一次，10月17日照常上课。
+  - id: wa-fc-1008b
+    source: whatsapp
+    at: 2026-10-08T20:05:00+03:00
+    chat: FC Kilo T2016
+    sender: Coach Mike
+    body: |
+      Hi parents! Saturday's game vs HJK is moved to 12:00 at Leppävaara stadium. Please be there by 11:30 and bring the red away shirt.
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what: [maks, 15 €, "15€", pay, fee, 付, 交, 缴, 费],
+        by: 2026-10-12,
+      }
+    - {
+        kid: Aino,
+        what: [paita, shirt, 球衣, 红色, 衣服],
+        by: 2026-10-10,
+        optional: true,
+      }
+  calendar_events:
+    - { title: [HJK, ottelu, peli, match, game, 比赛], start: 2026-10-10T12:00 }
+    - {
+        title: [valokuva, " kuva", kuvaus, photo, picture, 拍照, 照相, 合影],
+        start: 2026-10-09,
+        optional: true,
+      }
+  notices:
+    must:
+      - {
+          kid: Aino,
+          text:
+            [
+              [中文, chinese, kiina],
+              [
+                停课,
+                取消,
+                不上课,
+                cancel,
+                no class,
+                no lesson,
+                perut,
+                peruu,
+                ei ole,
+                ei tunti,
+                ei opetus,
+              ],
+            ],
+          where: both,
+        }
+    must_not:
+      - {
+          kid: Eero,
+          text: [中文, chinese, kiina, HJK, 比赛, game, match, ottelu, peli],
+          where: both,
+        }

@@ -325,6 +325,7 @@ class Placeholders:
         self._kept_pattern: re.Pattern[str] | None = None   # the kept names in their case forms (Leon)
         self._listed: dict[str, list[str]] = {}  # a person's token: the forms of their name listed
         self._seen: dict[str, list[_Seen]] = {}  # a person's token: where it stands in the masked text
+        self.lost = 0  # placeholders the model changed beyond repair, put back as their kind's words
 
     def add_people(self, names: Iterable[str], keep_names: Iterable[str] = ()) -> None:
         """Mask these people's names from now on, as display names give them ("Maija Virtanen",
@@ -475,6 +476,7 @@ class Placeholders:
             if token not in self._values:
                 log.warning("The model changed a placeholder so it can't be put back (%r); "
                             "the Brief says what kind of value it was", m.group())
+                self.lost += 1
                 word = words[KINDS[kind]]
                 return _inflected(word, ending) if kind == "N" else word + (f":{ending}" if ending else "")
             if kind == "N":

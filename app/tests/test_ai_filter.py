@@ -201,3 +201,4 @@ def test_a_person_placeholder_written_another_way_gets_the_name_and_one_beyond_r
     assert ai_filter.restore(reply, placeholders, {**PERSON_WORDS, "person": "henkilö"}) == {
         "text": "Vastaa Annalle, Maijalle ja Annan äidille, ei henkilölle. Huone (N1) on auki.",
         "zh": "请回复Anna和henkilö"}
+    assert placeholders.lost == 2  # ⟦N9⟧ and ⟦N7⟧, which the eval counts against the model

@@ -40,7 +40,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "family_brief" = ["page/*", "pilot_feedback.yaml", "sensitive_words.yaml"]
-"family_brief.eval" = ["cases/*.yaml"]
+"family_brief.eval" = ["cases/*.yaml", "prices.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

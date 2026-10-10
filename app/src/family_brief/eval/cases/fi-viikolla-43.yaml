@@ -1,0 +1,53 @@
+covers: [finnish-dates, dates-in-words]
+note: >
+  Wednesday night of week 41. Wilma gives no date in figures: the exam is "viikolla 43 tiistaina"
+  (20 October), the books go back "lokakuun yhdeksänteen päivään mennessä" (9 October), and the
+  parents' evening is "viikolla 44 keskiviikkona" (28 October). Week 42 is the autumn break.
+now: 2026-10-07T21:00:00+03:00
+messages:
+  - id: w-4b-1007
+    source: wilma
+    at: 2026-10-07T13:25:00+03:00
+    sender: Laine Maija
+    subject: Syksyn tärkeitä päiviä
+    kid_hint: Virtanen Aino
+    body: |
+      Hei 4B:n huoltajat!
+      Viikolla 42 on syysloma. Sen jälkeen ympäristöopin koe pidetään viikolla 43 tiistaina; koealueena kirjan luvut 6–7.
+      Koulukirjaston kirjat pitää palauttaa ennen lomaa, lokakuun yhdeksänteen päivään mennessä.
+      Luokan vanhempainilta on viikolla 44 keskiviikkona kello kahdeksantoista luokassa 4B.
+      Terveisin, Maija Laine
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what: [kirja, palaut, return, book, 还书, 归还, 图书],
+        by: 2026-10-09,
+      }
+    - {
+        kid: Aino,
+        what: [koe, kokee, luvu, exam, test, study, revise, 考试, 测验, 复习],
+        by: 2026-10-20,
+        optional: true,
+      }
+  calendar_events:
+    - {
+        title: [ympäristöop, ympäristö, koe, exam, test, 考试, 测验],
+        start: 2026-10-20,
+      }
+    - {
+        title:
+          [
+            vanhempainil,
+            parents' evening,
+            parent evening,
+            parents evening,
+            家长会,
+          ],
+        start: 2026-10-28T18:00,
+      }
+    - {
+        title: [syysloma, syyslom, 秋假, autumn break, fall break],
+        start: 2026-10-12,
+        optional: true,
+      }
