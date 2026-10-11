@@ -458,6 +458,9 @@ fieldset label.all { background: var(--panel); }
 
 .checks .hint { margin: 2px 0 0; }
 
+/* The step that fixes it, under what to do, such as opening Full Disk Access. */
+.checks li > button { display: block; margin-top: 8px; }
+
 .status[data-result="health.checking"] { border-color: var(--accent-line); }
 
 /* ── First Brief: the email as it will look in the inbox, on white */

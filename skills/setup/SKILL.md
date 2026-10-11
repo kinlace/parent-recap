@@ -101,7 +101,7 @@ Every step of the setup page has a **Continue in the chat** button, for a family
 2. Read the answers already given with `grep -v myclub_ical_url ~/.family/config.yaml`. `summary_language` is the language the parent picked on the page: use it from your first line, since they haven't written anything yet, and don't ask for it again. The AI (`llm.backend`), pilot feedback (`feedback.enabled`), the Recipients (`email.to`), the Gmail address (`gmail.username`), the city and the Kids are answers too. Without `llm.backend` yet (the parent left Welcome before saving it), the AI is the one whose chat you're in.
 3. The progress can also have `partner`, Welcome's choice of partner (see "Saving answers and progress"), `whatsapp_chats`, the WhatsApp groups the page found, in the same form as `chats` from `setup whatsapp`, and `gmail_senders`, the Gmail senders the page read in Working, in the same form as `senders` from `discover gmail-senders --json`, for Check. Use them instead of asking again or reading WhatsApp again.
 4. The program is already installed, since it serves the page: skip "Get the Mac ready first" and `install.sh` unless `$FB` is missing.
-5. In one short message, say you're carrying on from where setup got to: the phase, and in Connect the Source list with its statuses. Ask the parent to carry on here rather than on the page, which they can close. Then go straight to that step and end with its one thing to do. On Welcome, ask only what isn't answered yet. Don't redo a Source that's `done`; a `skipped` one stays skipped unless the parent asks for it. If the parent says what went wrong on the page, help with that first.
+5. In one short message, say you're carrying on from where setup got to: the phase, and in Connect the Source list with its statuses. Ask the parent to carry on here rather than on the page, which they can close. Then go straight to that step and end with its one thing to do. On Welcome, ask only what isn't answered yet. Don't redo a Source that's `done`; a `skipped` one stays skipped unless the parent asks for it. If the parent says what went wrong on the page, help with that first. When it was WhatsApp at Check or Finish, run `$FB doctor` and follow "When doctor's WhatsApp line isn't ✅" below: the page said the same.
 
 ## 1. Welcome
 
@@ -237,7 +237,7 @@ Tell the parent they can step away for a few minutes. Save `"progress": {"phase"
 
 1. Run `$FB language <code>` for each language in the config (`summary_language` and any Recipient's `language`). For a reviewed language it only says so; for any other, the AI translates the program's own text once. If it fails, run it again, or the preview shows English headings.
 2. Run `$FB discover gmail-senders --json`. It reads only the senders of the last 60 days, takes 1 to 2 minutes, and prints one line of JSON: `senders`, each with its `domain`, how many mails (`count`), an `example` sender name, `likely` when it looks like school, city or club mail, and `public` for a mail service anyone has an address at. If the setup page already read them, they're in the progress's `gmail_senders` (see "Coming from the setup page"): use those instead.
-3. Run `$FB doctor`. It makes a test call to the AI, and with ChatGPT this is the check for the AI login. Fix each ❌ with the parent before going on.
+3. Run `$FB doctor`. It makes a test call to the AI, and with ChatGPT this is the check for the AI login. Fix each ❌ with the parent before going on, and for WhatsApp do what "When doctor's WhatsApp line isn't ✅" below says.
 
 Wilma's Kids and WhatsApp's chats came back from their sub-flows; read them again only if they're lost (`$FB setup wilma --no-open`, `$FB setup whatsapp --no-open`).
 
@@ -255,7 +255,7 @@ Then save it with `$FB setup save`: `kids` with every ticked Kid's `name`, `ever
 
 **Pilot feedback**, if the card says pilot family. Read the "Pilot feedback" section of `PLUGIN/docs/config.md` and tell the parent every point the parents must know before turning it on, in your own words, leaving none out, especially that "just opening the link without submitting still leaves a record". End with one choice: turn it on, or not now. If not, save no `feedback`, and say they can turn it on later with `/parent-recap:manage`. If they agree, in the next message offer a `household_label` as a choice: the family name from the Kids' names (such as "Virtanen family"), with their own typed as the other option. Save `"feedback": {"enabled": true, "household_label": "..."}` with `$FB setup save`: it writes the rest of the section from the pilot form the program ships. Nothing is pasted.
 
-Then run `$FB doctor` once more. Fix every ❌, and with pilot feedback on, any ⚠️ on its line. Other ⚠️ don't stop setup: tell the parent what each one means and what to do, as doctor says.
+Then run `$FB doctor` once more. Fix every ❌, and with pilot feedback on, any ⚠️ on its line. Other ⚠️ don't stop setup: tell the parent what each one means and what to do, as doctor says. For WhatsApp, follow "When doctor's WhatsApp line isn't ✅" below.
 
 ## 5. First Brief
 
@@ -272,7 +272,7 @@ Save `"progress": {"phase": "first-brief"}` first.
 Save `"progress": {"phase": "finish"}` first.
 
 1. Tell the parent macOS will ask for their Mac password in its own dialog, to wake the Mac 5 minutes before the Brief. Run `$FB schedule install`. If it warns the Mac already has a repeating wake schedule, show the parent what it lists and ask, as a choice, whether to replace it (keep it first); only if they choose to replace it, run `$FB schedule install --replace-wake`. If it prints a `sudo pmset ...` command, give it to the parent to run in Terminal.
-2. Run `$FB setup status`. It reports five outcomes: the program installed, the health check with nothing to fix (no ❌; its `reason` names any ⚠️, which you tell the parent about with what to do, but which don't stop setup), the first Brief delivered to the setup parent (the first Recipient; the others' first is the first evening one), the nightly job loaded, and the wake schedule set or the Mac never sleeping. Show them as a checklist. For each with `ok: false`, do what its `reason` says, and run it again, until `result` is `done`.
+2. Run `$FB setup status`. It reports five outcomes: the program installed, the health check with nothing to fix (no ❌; its `reason` names any ⚠️, which you tell the parent about with what to do, but which don't stop setup), the first Brief delivered to the setup parent (the first Recipient; the others' first is the first evening one), the nightly job loaded, and the wake schedule set or the Mac never sleeping. Show them as a checklist. For each with `ok: false`, do what its `reason` says, and run it again, until `result` is `done`. When the health check's `reason` names WhatsApp, run `$FB doctor` and follow "When doctor's WhatsApp line isn't ✅" below.
 3. The sixth outcome is yours to confirm: after the Mac restarts, such as after a macOS update, someone must log in to this Mac user once, or no Brief comes until they do. The wake-up wakes a sleeping Mac only: a Mac that's shut down makes no Brief, so in the evening it should be left asleep or locked, not shut down. Tell the parent both, and end with one choice for them to confirm they've got it.
 
 Setup ends only when `setup status` says `done` and the parent has confirmed the restart reminder. Then tell them:
@@ -280,3 +280,13 @@ Setup ends only when `setup status` says `done` and the parent has confirmed the
 - What time the Brief comes each day
 - That for any problem or change later (a new school year, a new group, a skipped Source, another Recipient, Weekend Picks, uninstalling), they type `/parent-recap:manage` or just say what they want
 - That the config is in `~/.family/config.yaml`, and the archive of Briefs in `~/ParentRecap/`
+
+## When doctor's WhatsApp line isn't ✅
+
+doctor reads WhatsApp with the scheduled job's Python and says in its line why it couldn't. Each reason has its own fix, the same one the setup page gives. Never tell the parent it's fixed until `$FB doctor` shows WhatsApp ✅ again.
+
+- **"can't read WhatsApp: add it to Full Disk Access"**: the scheduled job's Python has no Full Disk Access. Say plainly that only the parent can turn it on, in System Settings: you can't do it for them, and opening WhatsApp doesn't help. Don't give Terminal, Claude Code or Codex the permission instead. Run `$FB full-disk-access`: Finder shows the python3 file and System Settings opens at Full Disk Access. The parent drags the file into the list and turns its switch on. Then run `$FB doctor` again.
+- **"the background check didn't start", "didn't finish within 180 seconds" or "gave no result"**: the check didn't get to read WhatsApp. The parent opens WhatsApp for Mac and waits until the chats show. Then run `$FB doctor` again.
+- **"these group names aren't on this Mac"**: WhatsApp is readable, but a ticked group has a new name, is a new group for the school year, or its name in the config isn't exactly WhatsApp's. Read the groups again with `$FB setup whatsapp --no-open --timeout 540`, and show the parent its `chats` with the new names ticked and the groups doctor names unticked, as on the Check page. Save their answer with `$FB setup save`, each name copied exactly from `chats`, then run `$FB doctor` again.
+- **"couldn't list the groups"**: as when the check didn't finish, the parent opens WhatsApp for Mac and waits until the chats show, then run `$FB doctor` again. If it still fails, the rest of doctor's line is the error: help with what it says.
+- Anything else, such as a Python that's no longer the evening job's: follow the WhatsApp rows and sections of `PLUGIN/docs/troubleshooting.md`.

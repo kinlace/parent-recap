@@ -509,6 +509,32 @@ class SetupServer:
         _, failed = ops.show_python_for_full_disk_access()
         return HTTPStatus.OK, {"result": "not-opened" if failed else "opened"}
 
+    def back_to_whatsapp(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Takes setup from Check or Finish back to WhatsApp's step in Connect, for ticked groups
+        the health check didn't find on this Mac. The step reads the groups again, so a group's
+        new name is there to tick in Check, and setup goes on from there as before."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        with self._working:
+            if (self._health or {}).get("result") == "checking" or \
+                    (self._finish or {}).get("result") in ("installing", "checking"):
+                return HTTPStatus.CONFLICT, {"result": "busy"}
+            with self._saving:
+                progress = setup_save.read(self.config)["progress"]
+                if progress["phase"] not in ("check", "finish") or \
+                        progress["sources"]["whatsapp"] != "done":
+                    return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                        "invalid-answers", "Only Check and Finish go back to WhatsApp.",
+                        errors=["answers: should be {}, at Check or Finish with WhatsApp done"])
+                out = setup_save.save(self.config, {"progress": {"phase": "connect",
+                                                                 "source": "whatsapp"}})
+            if out["result"] != "saved":
+                return HTTPStatus.CONFLICT, out
+            # How the health check and Finish went was about the groups as they were.
+            self._health = None
+            self._finish = None
+        return HTTPStatus.OK, out
+
     # ── MyClub
 
     def save_myclub_link(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
@@ -716,8 +742,7 @@ class SetupServer:
     def _run_health_check(self) -> None:
         try:
             results = ops.health_checks(str(self.config), schedule=False)
-            checks = [_health_check(status, item) for status, item, _ in results
-                      if item not in SCHEDULE_CHECKS]
+            checks = [_health_check(c) for c in results if c.item not in SCHEDULE_CHECKS]
             if any(c["status"] == "fail" for c in checks):
                 done = {"result": "not-ok", "checks": checks}
             else:
@@ -1395,16 +1420,21 @@ def _check_errors(answer: CheckAnswer, offered: dict[str, Any], phase: str) -> l
     return errors
 
 
-def _health_check(status: str, item: str, names: dict[str, str] = HEALTH_CHECKS) -> dict[str, Any]:
+def _health_check(check: ops.Check, names: dict[str, str] = HEALTH_CHECKS) -> dict[str, Any]:
     """One of doctor's checks as the check page shows it, or Finish with its own `names`,
-    without its details."""
-    out: dict[str, Any] = {"status": HEALTH_STATUSES.get(status, "warn")}
-    name, _, rest = item.partition(" ")
+    without its details: with why it isn't OK, where doctor says, and the groups that's about,
+    whose names the check page shows anyway."""
+    out: dict[str, Any] = {"status": HEALTH_STATUSES.get(check.status, "warn")}
+    name, _, rest = check.item.partition(" ")
     if name == "Language" and rest:
         return {"check": "language", **out, "language": rest}
     if name == "MyClub" and rest.startswith("(") and rest.endswith(")"):
         return {"check": "myclub", **out, "kid": rest[1:-1]}
-    return {"check": names.get(item, "other"), **out}
+    if check.reason:
+        out["reason"] = check.reason
+    if check.groups:
+        out["groups"] = list(check.groups)
+    return {"check": names.get(check.item, "other"), **out}
 
 
 def _finish_outcome(o: setup_status.Outcome) -> dict[str, Any]:
@@ -1412,7 +1442,7 @@ def _finish_outcome(o: setup_status.Outcome) -> dict[str, Any]:
     it's true, and for a health check that isn't, the checks that aren't OK."""
     out: dict[str, Any] = {"outcome": o.outcome, "ok": o.ok}
     if o.checks:
-        out["checks"] = [_health_check(status, item, FINISH_CHECKS) for status, item in o.checks]
+        out["checks"] = [_health_check(c, FINISH_CHECKS) for c in o.checks]
     return out
 
 
@@ -1562,6 +1592,7 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/gateway": setup.save_gateway_key,
                    "api/whatsapp/check": setup.check_whatsapp,
                    "api/whatsapp/open": setup.open_full_disk_access,
+                   "api/whatsapp/back": setup.back_to_whatsapp,
                    "api/myclub": setup.save_myclub_link, "api/myclub/kid": setup.add_kid,
                    "api/myclub/done": setup.myclub_done,
                    "api/working": setup.start_reading, "api/working/check": setup.check_reading,

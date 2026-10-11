@@ -130,7 +130,11 @@ read. Doctor names a sign-in setup didn't make for none of the Kids, with how to
 Access" without Full Disk Access and pass with it, with no question from macOS either way, and
 compares the Python given Full Disk Access with the evening job's in its plist: quiet when they
 match or with no record (an install from before it), a warning with the path to add when they
-differ, and a failure when the job's venv Python points at nothing.
+differ, and a failure when the job's venv Python points at nothing. On that fake Mac it also
+checks each reason the WhatsApp check gives when it isn't OK: no Full Disk Access, a `bg` job that
+hangs or doesn't start, a ticked group with a new name, and groups that can't be listed. The
+reason, with the group's old name, comes back from the `bg` job as a line of JSON, doctor's own
+line stays as it was, and the setup skill's advice for each reason quotes doctor's words.
 `test_own_node.py` lays out Parent Recap's own Node and a wilma CLI in the test's `~/ParentRecap`
 (`fake_node.py`: a stand-in `node` that runs the script it's given, and a shell script answering
 as the CLI does) with no Node on PATH, and checks that `doctor` and the evening job run that CLI
@@ -265,7 +269,12 @@ offered, that each Recipient comes with their language and the evening at 21:00,
 confirming saves it all through `setup save` and runs the health check, faked so it can be seen
 running, except in one test that runs doctor's real checks against the harness's fakes. It checks
 that a failing check keeps the page and names only the check, that warnings alone move setup on,
-and that answers the page didn't offer are refused with nothing saved.
+and that answers the page didn't offer are refused with nothing saved. For each reason the
+WhatsApp check gives on `test_setup_whatsapp.py`'s fake Mac, run for real through the `bg` job,
+it checks that the page gets the reason, and the groups not found, with no path or error, and has
+its own text in all three languages: Full Disk Access with the button that opens it, saying only
+the parent can turn it on, or the groups named with the way back to WhatsApp's step, which reads
+the groups again for Check. A reason the page doesn't know gets the general text.
 First Brief makes the real Brief through `run --preview` in a `bg` job on `test_setup_whatsapp.py`'s
 fake Mac, with the harness's Sources and model, and one test fakes the job to see its progress.
 It checks that the preview returns the email's HTML and sends or records nothing, that the frame
@@ -277,7 +286,8 @@ Finish runs against a fake `launchctl`, `pmset` and administrator dialog, which 
 once the test lets it go, with doctor's checks faked as on the check page. It checks that the
 evening job is loaded and the wake-up set through macOS's dialog only, that the API takes no
 password, that each outcome comes back true or false without its reason, that a health check that
-isn't OK names only its checks, that another wake schedule
+isn't OK names only its checks, with why WhatsApp isn't and its own text in all three languages,
+that Finish leads back to WhatsApp's step while the page is open, that another wake schedule
 is replaced only once the family agrees, that a closed dialog or jobs that can't be loaded say so
 and can be tried again, that a finished Household is only checked, with nothing installed again,
 that the server stops once every outcome is true, and that "Finish for now" stops it only at

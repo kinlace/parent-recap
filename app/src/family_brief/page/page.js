@@ -1361,15 +1361,65 @@ function healthResult(out) {
     status.className = "state";
     setText(status, "health.status." + check.status);
     item.append(name, " ", status);
-    if (check.status !== "ok") {
-      const next = document.createElement("p");
-      next.className = "hint";
-      setText(next, "health.fail." + check.check, values);
-      item.append(next);
-    }
+    if (check.status !== "ok") item.append(...nextStep("health", check, values));
     return item;
   }));
   if (checkStep.checking) checkStep.timer = setTimeout(checkHealth, HEALTH_MS);
+}
+
+// The button that fixes a WhatsApp check, by why it isn't OK: its text and what it does. One
+// opens Full Disk Access, the other goes back to WhatsApp's step for groups not on this Mac.
+// Once the page has closed, neither is shown.
+const WHATSAPP_STEPS = {
+  "no-access": ["whatsapp.open", openFullDiskAccessForCheck],
+  "missing-groups": ["whatsapp.back", backToWhatsApp],
+};
+
+// What to do about a check that isn't OK, as the check page ("health") or Finish ("finish") says
+// it: the text for why it isn't, where the check says why, else the check's own, and the button
+// that fixes it, if there's one.
+function nextStep(prefix, check, values) {
+  const general = `${prefix}.fail.${check.check}`;
+  const own = `${general}.${check.reason}`;
+  const next = document.createElement("p");
+  next.className = "hint";
+  setText(next, check.reason && own in page.text[page.language] ? own : general,
+    { ...values, groups: (check.groups || []).join(", ") });
+  const step = check.check === "whatsapp" && WHATSAPP_STEPS[check.reason];
+  if (!step) return [next];
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary";
+  setText(button, step[0]);
+  button.addEventListener("click", step[1]);
+  return [next, button];
+}
+
+// As on WhatsApp's step, but here the page doesn't read WhatsApp again by itself: the text says
+// to check again.
+async function openFullDiskAccessForCheck() {
+  clearError();
+  try {
+    const out = await post("api/whatsapp/open", {});
+    if (out.result !== "opened") showError("whatsapp.open.not-opened");
+  } catch (e) {
+    failed(e);
+  }
+}
+
+// Back to WhatsApp's step in Connect, which reads the groups again for Check. The page loads
+// again there, since each step sets itself up only once.
+async function backToWhatsApp(event) {
+  clearError();
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await post("api/whatsapp/back", {});
+    window.location.reload();
+  } catch (e) {
+    failed(e);
+    button.disabled = false;
+  }
 }
 
 // ── First Brief: the real Brief, made from the Sources without sending it and shown as it
@@ -1611,10 +1661,7 @@ function failedChecks(checks) {
     const status = document.createElement("span");
     status.className = "state";
     setText(status, "health.status." + check.status);
-    const next = document.createElement("p");
-    next.className = "hint";
-    setText(next, "finish.fail." + check.check, values);
-    item.append(name, " ", status, next);
+    item.append(name, " ", status, ...nextStep("finish", check, values));
     return item;
   }));
   return list;
@@ -1646,6 +1693,7 @@ function closed() {
   page.finished = true;
   document.getElementById("phases").hidden = true;
   document.getElementById("chat").hidden = true;
+  for (const button of document.querySelectorAll("#finish-checklist button")) button.hidden = true;
   document.getElementById("finish-closed").hidden = false;
 }
 

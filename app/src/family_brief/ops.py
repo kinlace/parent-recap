@@ -23,13 +23,18 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from types import FrameType
-from typing import Callable
+from typing import Callable, NamedTuple
 
 from . import (google_packages, install_record, languages, own_node, private_files,
                secret_dialog, tools, whatsapp_python)
 from .config import Config
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
+# Why the WhatsApp check isn't OK, for the setup page and the chat skills to say what fixes it:
+# the scheduled job's Python has no Full Disk Access, the background check didn't start, gave no
+# result or timed out, a ticked group's name isn't on this Mac, or listing the groups failed. Any
+# other failure has no reason, and gets the general advice.
+WHATSAPP_REASONS = ("no-access", "not-finished", "missing-groups", "list-failed")
 DEFAULT_CONFIG = Path.home() / ".family" / "config.yaml"
 LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
 JOB_DAILY = "com.parentrecap.daily"
@@ -40,6 +45,17 @@ TIMED_OUT = 124  # run_as_job's exit code for a job it stopped, as timeout(1) gi
 FULL_DISK_ACCESS_WHERE = ("(System Settings → Privacy & Security; parent-recap full-disk-access "
                           "shows the Python in Finder)")
 FULL_DISK_ACCESS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+
+
+class Check(NamedTuple):
+    """One of doctor's checks. doctor prints its status, item and detail. A WhatsApp check that
+    isn't OK can also have a `reason` from WHATSAPP_REASONS, and `groups` names the groups a
+    missing-groups reason is about."""
+    status: str
+    item: str
+    detail: str
+    reason: str | None = None
+    groups: tuple[str, ...] = ()
 
 
 def register(sub) -> None:
@@ -84,23 +100,29 @@ def register(sub) -> None:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     results = health_checks(args.config, skip_llm=args.skip_llm, whatsapp_only=args.whatsapp_only,
-                            show=True)
-    fails = sum(1 for s, _, _ in results if s == FAIL)
-    if not args.whatsapp_only:
-        warns = sum(1 for s, _, _ in results if s == WARN)
+                            show=not args.whatsapp_only)
+    fails = sum(1 for c in results if c.status == FAIL)
+    if args.whatsapp_only:
+        # For the doctor that started this bg job: one line of JSON per check, so that the reason
+        # gets there too. That doctor prints the detail.
+        for c in results:
+            print(json.dumps(c._asdict(), ensure_ascii=False), flush=True)
+    else:
+        warns = sum(1 for c in results if c.status == WARN)
         print(f"\n{len(results)} checks: {len(results) - fails - warns} OK, {warns} warnings, "
               f"{fails} to fix")
     return 1 if fails else 0
 
 
 def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: bool = False,
-                  show: bool = False, schedule: bool = True) -> list[tuple[str, str, str]]:
-    """Doctor's checks, each (status, item, detail). With `show`, each is printed as it's done.
-    Without `schedule`, the scheduled job's checks are left out, for before it's installed."""
-    results: list[tuple[str, str, str]] = []
+                  show: bool = False, schedule: bool = True) -> list[Check]:
+    """Doctor's checks. With `show`, each is printed as it's done. Without `schedule`, the
+    scheduled job's checks are left out, for before it's installed."""
+    results: list[Check] = []
 
-    def add(status: str, item: str, detail: str) -> None:
-        results.append((status, item, detail))
+    def add(status: str, item: str, detail: str, reason: str | None = None,
+            groups: list[str] | tuple[str, ...] = ()) -> None:
+        results.append(Check(status, item, detail, reason, tuple(groups)))
         if show:
             print(f"{status} {item}: {detail}", flush=True)
 
@@ -310,41 +332,56 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
             code, out = run_as_job(["doctor", "--whatsapp-only"], config, timeout=180, echo=False)
         except Exception as e:
             add(WARN, "WhatsApp", f"this process can't read WhatsApp, and the background check "
-                f"didn't start ({e}). Run parent-recap bg doctor to confirm")
+                f"didn't start ({e}). Run parent-recap bg doctor to confirm", "not-finished")
             return
-        lines = [l for l in out.splitlines() if "WhatsApp: " in l]
-        if not lines and code == TIMED_OUT:
+        checks = [c for c in _job_checks(out) if c.item == "WhatsApp"]
+        if not checks and code == TIMED_OUT:
             add(FAIL, "WhatsApp", "the background check didn't finish within 180 seconds and was "
                 "stopped (check that WhatsApp for Mac opens and shows the chats, then run doctor "
-                "again)")
+                "again)", "not-finished")
             return
-        if not lines:
+        if not checks:
             add(FAIL, "WhatsApp", f"the background check gave no result (exit code {code}): "
-                f"{out.strip()[-200:]}")
+                f"{out.strip()[-200:]}", "not-finished")
             return
-        for line in lines:
-            status = next((s for s in (OK, WARN, FAIL) if line.startswith(s.strip())), WARN)
-            add(status, "WhatsApp", line.split("WhatsApp: ", 1)[1]
-                + " (checked with the scheduled job's Python)")
+        for c in checks:
+            add(c.status, "WhatsApp", c.detail + " (checked with the scheduled job's Python)",
+                c.reason, c.groups)
         return
     if err == whatsapp.NO_ACCESS:
         python = os.path.realpath(sys.executable)
-        err = (f"the scheduled job's Python {python} can't read WhatsApp: add it to Full Disk "
-               f"Access {FULL_DISK_ACCESS_WHERE}")
+        add(FAIL, "WhatsApp", f"the scheduled job's Python {python} can't read WhatsApp: add it "
+            f"to Full Disk Access {FULL_DISK_ACCESS_WHERE}", "no-access")
+        return
     if err:
         add(FAIL, "WhatsApp", err)
         return
     try:
         known = {g["name"] for g in whatsapp.list_groups(days=3650)}
     except Exception as e:
-        add(FAIL, "WhatsApp", f"couldn't list the groups: {e}")
+        add(FAIL, "WhatsApp", f"couldn't list the groups: {e}", "list-failed")
         return
     missing = [c.name for c in cfg.whatsapp.chats if c.name not in known]
     if missing:
         add(WARN, "WhatsApp", "readable, but these group names aren't on this Mac (renamed, or a "
-            f"new group for the new school year?): {json.dumps(missing, ensure_ascii=False)}")
+            f"new group for the new school year?): {json.dumps(missing, ensure_ascii=False)}",
+            "missing-groups", missing)
     else:
         add(OK, "WhatsApp", f"readable, all {len(cfg.whatsapp.chats)} configured groups found")
+
+
+def _job_checks(out: str) -> list[Check]:
+    """The checks a `doctor --whatsapp-only` bg job printed, one line of JSON each, among
+    whatever else the job printed."""
+    checks = []
+    for line in out.splitlines():
+        try:
+            c = json.loads(line)
+            checks.append(Check(c["status"], c["item"], c["detail"], c.get("reason"),
+                                tuple(c.get("groups") or ())))
+        except (ValueError, KeyError, TypeError):
+            continue
+    return checks
 
 
 def _check_whatsapp_python(add) -> None:

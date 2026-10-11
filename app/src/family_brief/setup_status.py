@@ -41,9 +41,9 @@ class Outcome:
     outcome: str
     ok: bool
     reason: str
-    # Doctor's checks that aren't OK, each (status, name), for the setup page to name: on a true
-    # outcome, its warnings.
-    checks: list[tuple[str, str]] = field(default_factory=list)
+    # Doctor's checks that aren't OK, without their details, for the setup page to name and say
+    # what to do about: on a true outcome, its warnings.
+    checks: list[ops.Check] = field(default_factory=list)
 
 
 def register(steps) -> None:
@@ -96,12 +96,12 @@ def _installed() -> Outcome:
 def _doctor(config: str | None) -> Outcome:
     # Only the checks' names and statuses go into the reason: their details can quote an error.
     results = ops.health_checks(config)
-    checks = list(dict.fromkeys((status, item) for status, item, _ in results if status != ops.OK))
+    checks = list(dict.fromkeys(c._replace(detail="") for c in results if c.status != ops.OK))
     if not checks:
         return Outcome("doctor", True, f"all {len(results)} checks OK")
-    not_ok = [f"{item} {status.strip()}" for status, item in checks]
+    not_ok = list(dict.fromkeys(f"{c.item} {c.status.strip()}" for c in checks))
     # Only a ❌ holds setup up; a ⚠️ is named, with what to do, but the Brief works without it.
-    if all(status == ops.WARN for status, _ in checks):
+    if all(c.status == ops.WARN for c in checks):
         return Outcome("doctor", True, f"no check failed, {len(not_ok)} of {len(results)} have a "
                        f"warning: {', '.join(not_ok)} (run parent-recap doctor to see why)", checks)
     return Outcome("doctor", False, f"{len(not_ok)} of {len(results)} checks aren't OK: "

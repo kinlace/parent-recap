@@ -38,6 +38,7 @@ from family_brief.config import Config
 from family_brief.state import State
 import fake_node
 from conftest import FailedCall, HTTPReply, PILOT_FORM_FIELDS, PILOT_FORM_URL, msg, program
+from test_doctor import WHATSAPP_FAILURES, break_whatsapp
 from test_nightly_run import FEEDBACK, FORM, feedback_links
 from test_setup_status import install_program
 from test_setup_steps import HeaderImap
@@ -2259,8 +2260,8 @@ def test_the_gateway_key_field_is_the_page_s_own(page):
 
 def test_the_check_page_names_the_gateway_s_own_checks():
     for item in ("AI gateway", "Gateway Key"):
-        assert setup_server._health_check(ops.FAIL, item)["check"] == "gateway"
-    assert setup_server._health_check(ops.FAIL, "Claude")["check"] == "ai"
+        assert setup_server._health_check(ops.Check(ops.FAIL, item, ""))["check"] == "gateway"
+    assert setup_server._health_check(ops.Check(ops.FAIL, "Claude", ""))["check"] == "ai"
 
 
 # ── Connect: WhatsApp
@@ -2856,8 +2857,9 @@ def check_page(url: str) -> dict[str, Any]:
 
 
 class Health:
-    """Doctor's checks, as the server runs them: each (status, item, detail), held until the test
-    lets them go, so the page can be seen while they run."""
+    """Doctor's checks, as the server runs them: each (status, item, detail), with why it isn't
+    OK where doctor says, held until the test lets them go, so the page can be seen while they
+    run."""
 
     def __init__(self) -> None:
         self.results = [(ops.OK, "Config file", "~/.family/config.yaml, 2 kids"),
@@ -2868,10 +2870,10 @@ class Health:
         self.go.set()
 
     def __call__(self, config: str | None, skip_llm: bool = False, whatsapp_only: bool = False,
-                 show: bool = False, schedule: bool = True) -> list[tuple[str, str, str]]:
+                 show: bool = False, schedule: bool = True) -> list[ops.Check]:
         self.runs.append((config, schedule))
         assert self.go.wait(5)
-        return list(self.results)
+        return [ops.Check(*c) for c in self.results]
 
 
 @pytest.fixture
@@ -3129,6 +3131,142 @@ def test_every_health_check_doctor_runs_has_a_name_on_the_page():
     items -= setup_server.SCHEDULE_CHECKS
 
     assert items and items <= set(setup_server.HEALTH_CHECKS), items - set(setup_server.HEALTH_CHECKS)
+
+
+# ── Check and Finish: why WhatsApp isn't OK, and the step that fixes it
+
+
+FULL_DISK_ACCESS = {"en": "Full Disk Access", "fi": "levyn käyttöoikeu", "zh": "完全磁盘访问权限"}
+WHATSAPP_FOR_MAC = {"en": "WhatsApp for Mac", "fi": "WhatsAppin Mac-sovellus", "zh": "WhatsApp Mac 版"}
+
+
+def next_step(table: dict[str, str], prefix: str, check: dict[str, Any]) -> str:
+    """What the page says to do under a check that isn't OK, on the check page ("health") or
+    Finish ("finish"), as page.js's nextStep picks it: its reason's own text, else the check's."""
+    own = f"{prefix}.fail.{check['check']}.{check.get('reason')}"
+    key = own if check.get("reason") and own in table else f"{prefix}.fail.{check['check']}"
+    return table[key].replace("{groups}", ", ".join(check.get("groups", [])))
+
+
+def assert_says_why(prefix: str, check: dict[str, Any]) -> None:
+    """In every language, the page says why WhatsApp isn't OK and what fixes it."""
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        said = next_step(table, prefix, check)
+        assert said != table[f"{prefix}.fail.whatsapp"], (language, check)
+        if check["reason"] == "no-access":  # only the parent can turn it on, with the button
+            assert FULL_DISK_ACCESS[language] in said and table["whatsapp.open"] in said, language
+            assert "Claude" in said and "ChatGPT" in said, language
+        elif check["reason"] == "missing-groups":
+            assert "Leo piano" in said and "WhatsApp" in said, language
+        else:
+            assert WHATSAPP_FOR_MAC[language] in said, language
+        if check["reason"] == "list-failed":
+            assert "parent-recap doctor" in said, language
+
+
+def back_to_whatsapp(url: str, body: Any = None) -> Response:
+    return call(url, "api/whatsapp/back", method="POST", body={} if body is None else body)
+
+
+@pytest.mark.parametrize("failure", WHATSAPP_FAILURES)
+def test_the_check_page_says_why_whatsapp_isn_t_ok(harness, page, mac, monkeypatch, failure):
+    at_the_check_step(harness)
+    break_whatsapp(mac, monkeypatch, failure)
+    real = ops.health_checks  # only the WhatsApp check, for real, through the bg job
+    monkeypatch.setattr(ops, "health_checks", lambda config, **k: real(config, whatsapp_only=True))
+
+    confirm(page.url, whatsapp=["3B parents", "Leo piano"])
+    out = health_result(page.url)
+
+    status, reason = WHATSAPP_FAILURES[failure]
+    check = {"check": "whatsapp", "status": setup_server.HEALTH_STATUSES[status], "reason": reason,
+             **({"groups": ["Leo piano"]} if reason == "missing-groups" else {})}
+    assert out["checks"] == [check]
+    # Only the reason, and the groups the check page lists anyway: no path and no error.
+    assert WHATSAPP_PYTHON not in json.dumps(out) and "malformed" not in json.dumps(out)
+    assert_says_why("health", check)
+    assert all(mac.reads) and mac.prompts == 0  # only ever read in a bg job, and never asked
+
+
+def test_a_reason_the_page_doesn_t_know_gets_the_general_text():
+    for table in json.loads((PAGE_DIR / "text.json").read_text()).values():
+        for prefix in ("health", "finish"):
+            check = {"check": "whatsapp", "status": "fail", "reason": "something-new"}
+            assert next_step(table, prefix, check) == table[f"{prefix}.fail.whatsapp"]
+            assert next_step(table, prefix, {"check": "whatsapp", "status": "fail"}) == \
+                table[f"{prefix}.fail.whatsapp"]
+
+
+def test_every_reason_whatsapp_isn_t_ok_has_its_own_text_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        assert table.get("whatsapp.back", "").strip(), language
+        for prefix in ("health", "finish"):
+            for reason in ops.WHATSAPP_REASONS:
+                said = table.get(f"{prefix}.fail.whatsapp.{reason}", "")
+                assert said.strip() and said != table[f"{prefix}.fail.whatsapp"], (language, reason)
+            assert "{groups}" in table[f"{prefix}.fail.whatsapp.missing-groups"], language
+
+
+def test_the_page_shows_the_reason_s_text_and_the_button_that_fixes_it():
+    script = (PAGE_DIR / "page.js").read_text()
+
+    step = script.split("function nextStep(", 1)[1].split("\n}\n", 1)[0]
+    assert "`${general}.${check.reason}`" in step and "own in page.text[page.language]" in step
+    for prefix in ("health", "finish"):  # the check page's list and Finish's
+        assert f'nextStep("{prefix}", check, values)' in script
+    buttons = script.split("const WHATSAPP_STEPS = {", 1)[1].split("};", 1)[0]
+    assert '"no-access": ["whatsapp.open", openFullDiskAccessForCheck]' in buttons
+    assert '"missing-groups": ["whatsapp.back", backToWhatsApp]' in buttons
+    opens = script.split("async function openFullDiskAccessForCheck(", 1)[1].split("\n}\n", 1)[0]
+    assert 'post("api/whatsapp/open", {})' in opens
+    back = script.split("async function backToWhatsApp(", 1)[1].split("\n}\n", 1)[0]
+    assert 'post("api/whatsapp/back", {})' in back and "location.reload()" in back
+    # Once the page has closed, nothing on it can be pressed.
+    assert 'querySelectorAll("#finish-checklist button")' in \
+        script.split("function closed(", 1)[1].split("\n}\n", 1)[0]
+
+
+def test_groups_not_on_this_mac_lead_back_to_whatsapp_s_step_to_read_them_again(harness, page,
+                                                                                 mac, health):
+    at_the_check_step(harness)
+    health.results = [(ops.FAIL, "Gmail", "IMAP login failed"),
+                      (ops.WARN, "WhatsApp", "not on this Mac", "missing-groups", ("3B parents",))]
+    confirm(page.url)
+    assert health_result(page.url)["result"] == "not-ok"
+
+    r = back_to_whatsapp(page.url)
+
+    assert r.status == 200
+    progress = r.json()["progress"]
+    assert (progress["phase"], progress["source"]) == ("connect", "whatsapp")
+    assert progress["sources"]["whatsapp"] == "done"
+    # What the health check said was about the groups as they were.
+    assert call(page.url, "api/check/health", method="POST", body={}).json() == \
+        {"result": "no-check"}
+    # WhatsApp's step reads the groups again, and Check offers the new name.
+    mac.install_whatsapp([("3B parents 2026", 1, False)])
+    out = check_whatsapp(page.url).json()
+    assert out["result"] == "readable" and out["progress"]["source"] is None
+    assert "3B parents 2026" in [g["name"] for g in check_page(page.url)["whatsapp"]]
+
+
+def test_only_check_and_finish_go_back_to_whatsapp_and_never_while_checking(harness, page,
+                                                                            health):
+    at_the_check_step(harness)
+    assert back_to_whatsapp(page.url, {"x": 1}).status == 400
+    health.go.clear()
+    confirm(page.url)
+    assert back_to_whatsapp(page.url).status == 409  # the health check is running
+    health.go.set()
+    health_result(page.url)
+
+    more_progress(harness, phase="first-brief")
+    assert back_to_whatsapp(page.url).status == 400
+    more_progress(harness, phase="check", sources={"whatsapp": "skipped"})
+    assert back_to_whatsapp(page.url).status == 400
+    assert setup_save.read(config_file(harness))["progress"]["phase"] == "check"
 
 
 # ── First Brief: the real Brief in the page, then sent to the setup parent only
@@ -3567,6 +3705,40 @@ def test_warnings_alone_dont_hold_finish_up_and_are_listed(harness, page, schedu
     assert doctor == {"outcome": "doctor", "ok": True, "checks": [
         {"check": "feedback", "status": "warn"},
         {"check": "language", "status": "warn", "language": "sv"}]}
+
+
+@pytest.mark.parametrize("failure", WHATSAPP_FAILURES)
+def test_finish_says_why_whatsapp_isn_t_ok(harness, page, schedule, health, failure):
+    at_finish(harness)
+    status, reason = WHATSAPP_FAILURES[failure]
+    groups = ("Leo piano",) if reason == "missing-groups" else ()
+    health.results.append((status, "WhatsApp", f"{WHATSAPP_PYTHON} can't", reason, groups))
+
+    finish(page.url)
+    out = finished(page.url)
+
+    doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
+    check = {"check": "whatsapp", "status": setup_server.HEALTH_STATUSES[status], "reason": reason,
+             **({"groups": list(groups)} if groups else {})}
+    assert doctor == {"outcome": "doctor", "ok": status == ops.WARN, "checks": [check]}
+    assert WHATSAPP_PYTHON not in json.dumps(out)
+    assert_says_why("finish", check)
+
+
+def test_finish_leads_back_to_whatsapp_s_step_while_the_page_is_open(harness, page, schedule,
+                                                                      health):
+    at_finish(harness, delivered=False)  # so the page stays open
+    health.results.append((ops.WARN, "WhatsApp", "", "missing-groups", ("3B parents",)))
+    finish(page.url)
+    assert finished(page.url)["result"] == "not-done"
+
+    r = back_to_whatsapp(page.url)
+
+    assert r.status == 200
+    assert (r.json()["progress"]["phase"], r.json()["progress"]["source"]) == ("connect", "whatsapp")
+    # Finish checks again once setup is back there.
+    assert call(page.url, "api/finish/check", method="POST", body={}).json() == \
+        {"result": "no-finish"}
 
 
 def test_finish_for_now_stops_the_page_once_a_try_has_ended(harness, page, schedule):
