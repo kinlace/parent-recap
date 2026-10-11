@@ -37,7 +37,7 @@ from family_brief.collectors import myclub, whatsapp
 from family_brief.config import Config
 from family_brief.state import State
 import fake_node
-from conftest import PILOT_FORM_FIELDS, PILOT_FORM_URL, msg, program
+from conftest import FailedCall, HTTPReply, PILOT_FORM_FIELDS, PILOT_FORM_URL, msg, program
 from test_nightly_run import FEEDBACK, FORM, feedback_links
 from test_setup_status import install_program
 from test_setup_steps import HeaderImap
@@ -696,7 +696,8 @@ def test_every_ai_result_says_what_to_do_in_all_three_languages():
 
     for language, table in text.items():
         for name in setup_server.AIS:
-            for result in setup_server.AI_RESULTS:
+            # The gateway has nothing to install or sign in to on the Mac: it's always ready.
+            for result in ("ready",) if name == "gateway" else setup_server.AI_RESULTS:
                 assert table.get(f"ai.{name}.{result}", "").strip(), (language, name, result)
 
 
@@ -2110,6 +2111,143 @@ def test_the_claude_token_field_is_the_page_s_own(page):
 
     field = re.search(r'<input[^>]*id="claude-token"[^>]*>', html).group(0)
     assert 'type="password"' in field and 'autocomplete="off"' in field
+
+
+# ── Welcome and Connect: the maintainers' gateway, for an invited Household (ADR 0014)
+
+
+GATEWAY_KEY = "sk-bf-fake-gateway-key"
+GATEWAY_UNKNOWN_KEY = HTTPReply(401, {"type": "error", "error": {
+    "type": "authentication_error", "message": "virtual key not found"}})
+
+
+def save_gateway_key(url: str, key: str) -> Response:
+    return call(url, "api/gateway", method="POST", body={"key": key})
+
+
+def test_the_gateway_is_ready_with_nothing_installed_and_no_chat_to_install(harness, page, ai):
+    r = check_ai(page.url, "gateway")
+
+    assert r.status == 200 and r.json() == {"result": "ready", "ai": "gateway"}
+    assert welcome(page.url, ai="gateway").status == 200
+    assert Config.load(config_file(harness)).llm.backend == "gateway"
+    state = call(page.url, "api/state").json()
+    assert state["welcome"]["ai"] == "gateway"
+    # Neither Claude Code nor Codex is looked for, run or given the plugin: there's no chat.
+    assert not any(Path(c[0]).name in ("claude", "codex") for c in harness.commands)
+    assert harness.plugin_calls == [] and state["chat"] == {}
+
+
+def test_a_gateway_key_pasted_on_the_page_is_tested_stored_and_ticks_the_ai(harness, page, caplog,
+                                                                            capsys):
+    caplog.set_level(logging.DEBUG)
+    at_the_ai_step(harness, page.url, "gateway")
+    harness.model_reply = "OK"
+
+    r = save_gateway_key(page.url, f" {GATEWAY_KEY}\n")  # as copied from a message
+
+    assert r.status == 200 and r.json()["result"] == "saved"
+    assert r.json()["progress"]["sources"]["ai"] == "done"
+    assert r.json()["progress"]["source"] == "whatsapp"
+    [test_call] = harness.model_calls
+    assert test_call.argv == ["POST", "https://gateway.parentrecap.com/v1/messages"]
+    assert test_call.headers["x-api-key"] == GATEWAY_KEY
+    assert harness.keychain == {"gateway-key": GATEWAY_KEY}
+    assert install_record.entries("keychain") == ["gateway-key"]  # so uninstall removes it
+    assert Config.load(config_file(harness)).llm.backend == "gateway"
+    assert_never_leaked(harness, [r, call(page.url, "api/state")], caplog, capsys, GATEWAY_KEY)
+
+
+def test_the_key_is_tested_with_the_gateway_the_config_names(harness, page):
+    at_the_ai_step(harness, page.url, "gateway")
+    data = yaml.safe_load(config_file(harness).read_text())
+    data["llm"]["gateway_url"] = "https://gateway.example.test"
+    config_file(harness).write_text(yaml.safe_dump(data))
+    harness.model_reply = "OK"
+
+    assert save_gateway_key(page.url, GATEWAY_KEY).json()["result"] == "saved"
+
+    assert harness.model_calls[0].argv == ["POST", "https://gateway.example.test/v1/messages"]
+
+
+@pytest.mark.parametrize("pasted, reply, result", [
+    ("my-mac-password", None, "not-a-key"),
+    (GATEWAY_KEY, GATEWAY_UNKNOWN_KEY, "rejected"),
+    (GATEWAY_KEY, requests.ConnectionError("Connection refused"), "no-connection"),
+    (GATEWAY_KEY, FailedCall(f"upstream error for {GATEWAY_KEY} in /Users/mum"), "test-call-failed"),
+])
+def test_a_gateway_key_that_does_not_work_is_explained_and_not_kept(harness, page, caplog, capsys,
+                                                                    pasted, reply, result):
+    caplog.set_level(logging.DEBUG)
+    at_the_ai_step(harness, page.url, "gateway")
+    harness.model_reply = [reply]
+
+    r = save_gateway_key(page.url, pasted)
+
+    # Only the result: what the gateway said can name the Mac's files, or echo the key.
+    assert r.status == 200 and r.json() == {"result": result}
+    assert harness.keychain == {} and statuses(page.url)["ai"] == "to-do"
+    if result == "not-a-key":  # most likely a password: never sent to the gateway
+        assert not harness.model_calls
+    assert_never_leaked(harness, [r], caplog, capsys, pasted)
+
+
+@pytest.mark.parametrize("code, result", [(-128, "keychain-failed"),
+                                          (-25308, "keychain-not-reachable")])
+def test_a_keychain_that_refuses_the_gateway_key_says_so_with_its_code(harness, page, code, result):
+    at_the_ai_step(harness, page.url, "gateway")
+    harness.keychain_refuses = code
+    harness.model_reply = "OK"
+
+    r = save_gateway_key(page.url, GATEWAY_KEY)
+
+    assert r.json() == {"result": result, "code": code}
+    assert statuses(page.url)["ai"] == "to-do"
+
+
+def test_the_gateway_call_takes_only_the_key(harness, page):
+    for body in [{}, {"key": 1}, {"key": GATEWAY_KEY, "x": 1}]:
+        r = call(page.url, "api/gateway", method="POST", body=body)
+        assert r.status == 400 and GATEWAY_KEY.encode() not in r.body, body
+    assert not harness.model_calls and not harness.keychain
+
+
+def test_every_gateway_result_is_explained_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        assert table.get("ai.gateway.ready", "").strip(), language
+        for result in setup_server.GATEWAY_RESULTS:
+            assert table.get(f"gateway.{result}", "").strip(), (language, result)
+
+
+# How each language names the maintainers' gateway, and the EU it runs in.
+GATEWAY_WORDS = {"en": ("gateway", "EU"), "fi": ("yhdyskäytävä", "EU"), "zh": ("网关", "欧盟")}
+
+
+def test_the_page_says_the_messages_go_through_the_maintainers_gateway():
+    # ADR 0014: before a Household uses the gateway, the page says what passes through it.
+    page_html = (PAGE_DIR / "index.html").read_text()
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    assert '<p class="hint" data-text="gateway.privacy"></p>' in inside(page_html, "ai-gateway")
+    for language, (gateway, eu) in GATEWAY_WORDS.items():
+        for key in ("ai.gateway.ready", "gateway.privacy"):
+            assert gateway in text[language][key] and eu in text[language][key], (language, key)
+
+
+def test_the_gateway_key_field_is_the_page_s_own(page):
+    html = call(page.url).body.decode()
+
+    field = re.search(r'<input[^>]*id="gateway-key"[^>]*>', html).group(0)
+    assert 'type="password"' in field and 'autocomplete="off"' in field
+    assert 'name="ai" value="gateway"' in html
+
+
+def test_the_check_page_names_the_gateway_s_own_checks():
+    for item in ("AI gateway", "Gateway Key"):
+        assert setup_server._health_check(ops.FAIL, item)["check"] == "gateway"
+    assert setup_server._health_check(ops.FAIL, "Claude")["check"] == "ai"
 
 
 # ── Connect: WhatsApp
@@ -3766,7 +3904,8 @@ def test_continue_in_the_chat_without_terminal_says_what_to_type_there(harness, 
 
 
 def test_continue_in_the_chat_takes_only_the_ai(page):
-    for body in [{}, {"ai": "gemini"}, {"ai": "claude", "x": 1}, ["claude"]]:
+    # The gateway is no chat: a gateway Household has neither Claude Code nor Codex to open.
+    for body in [{}, {"ai": "gemini"}, {"ai": "gateway"}, {"ai": "claude", "x": 1}, ["claude"]]:
         r = call(page.url, "api/chat", method="POST", body=body)
         assert r.status == 400 and r.json()["result"] == "invalid-answers", body
 
@@ -3809,6 +3948,7 @@ def test_every_step_of_the_page_has_continue_in_the_chat():
     after = html.rsplit("</section>", 1)[1]
     assert 'id="chat-continue"' in after and 'data-text="chat.continue"' in after
     assert 'getElementById("chat").hidden = !page.chosen' in script
+    assert '|| chatAI() === "gateway"' in script  # nothing to chat with on the gateway
 
 
 def test_every_chat_result_is_explained_in_all_three_languages():

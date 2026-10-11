@@ -40,14 +40,16 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 from . import (chat_install, feedback, ops, run_lock, setup_ai, setup_save, setup_status,
                setup_steps, setup_wilma, summarize)
 from .actions import email as email_action
-from .config import Config, Kid
+from .config import Config, Kid, LLMConfig
 from .state import State
 from .utils import keychain
 
 IDLE_SECONDS = 30 * 60
 AI_CHECK_SECONDS = 20
-# The AIs Welcome offers, Claude in Claude Code and ChatGPT in Codex, and what checking one says.
-AIS = ("claude", "codex")
+# The AIs Welcome offers, Claude in Claude Code, ChatGPT in Codex and, for an invited Household,
+# the maintainers' gateway (ADR 0014), and what checking one says. The gateway needs nothing on
+# the Mac, so it's always ready, and it has no chat to carry on in.
+AIS = ("claude", "codex", "gateway")
 AI_RESULTS = ("ready", "not-installed", "signed-out", "check-failed")
 # The Sources a family can skip and add later through manage. Wilma too, for a school without it.
 SKIPPABLE = ("wilma", "whatsapp", "myclub")
@@ -78,6 +80,9 @@ CLAUDE_SIGN_IN_SECONDS = 600
 # browser, and `login-failed` when that ended without signing in or didn't start.
 CODEX_RESULTS = ("signed-in", "signed-out", "waiting", "login-failed", "not-installed",
                  "check-failed")
+# The Gateway Key pasted into the page, tested and stored as `setup gateway` does.
+GATEWAY_RESULTS = ("saved", "not-a-key", "rejected", "no-connection", "test-call-failed",
+                   "keychain-not-reachable", "keychain-failed")
 # What one read of WhatsApp can say, as `setup whatsapp` does, and whether the button opened
 # Finder, with the Python to allow, and Full Disk Access.
 WHATSAPP_RESULTS = ("readable", "no-permission", "waiting", "not-installed", "unreadable",
@@ -100,8 +105,8 @@ HEALTH_RESULTS = ("checking", "ok", "not-ok", "no-check")
 # Doctor's checks as the check page names them, by the name doctor gives each. A language's and
 # a Kid's MyClub check carry the language or the Kid too. Any other is `other`.
 HEALTH_CHECKS = {"Config file": "config", "Recipients": "recipients", "Language": "language",
-                 "Gmail": "gmail", "Claude": "ai", "Codex": "ai", "AI gateway": "ai",
-                 "Gateway Key": "ai", "Wilma": "wilma",
+                 "Gmail": "gmail", "Claude": "ai", "Codex": "ai", "AI gateway": "gateway",
+                 "Gateway Key": "gateway", "Wilma": "wilma",
                  "WhatsApp": "whatsapp", "MyClub": "myclub", "Calendar": "calendar",
                  "Pilot feedback": "feedback", "Weekend Picks": "weekend"}
 # The scheduled job's checks, which aren't run before Finish installs it.
@@ -311,8 +316,11 @@ class SetupServer:
         """Checks that the AI picked is installed and signed in, with its own status check."""
         if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in AIS):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                "invalid-answers", "Pick Claude or ChatGPT.", errors=["ai: should be claude or codex"])
+                "invalid-answers", "Pick Claude, ChatGPT or the gateway.",
+                errors=["ai: should be claude, codex or gateway"])
         name = raw["ai"]
+        if name == "gateway":
+            return HTTPStatus.OK, {"result": "ready", "ai": name}
         program = self._ai_program(name)
         if program is None:
             install = summarize.CLAUDE_INSTALL if name == "claude" else None
@@ -445,6 +453,22 @@ class SetupServer:
                 self._codex = setup_ai.start_codex_login(program)
             started = self._codex is not None
         return HTTPStatus.OK, {"result": "waiting" if started else "login-failed"}
+
+    def save_gateway_key(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Tests the Gateway Key pasted into the page's own field with one call to the gateway the
+        config names, and stores it, as `setup gateway` does with the dialog's (ADR 0007). The
+        key, and what the gateway said, are never returned, logged or put on a command line."""
+        if not (isinstance(raw, dict) and set(raw) == {"key"} and isinstance(raw["key"], str)):
+            # Names the field only: the answers carry the key.
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Paste the Gateway Key.", errors=["key: should be text"])
+        url = _section(self._config_data(), "llm").get("gateway_url")
+        result, extra = setup_steps.gateway_sign_in(
+            url if isinstance(url, str) and url else LLMConfig().gateway_url, raw["key"])
+        if result != "saved":
+            return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
+        out = self._ai_signed_in()
+        return (HTTPStatus.OK if out["result"] == "saved" else HTTPStatus.CONFLICT), out
 
     # ── WhatsApp
 
@@ -970,7 +994,7 @@ class SetupServer:
         in a Terminal window, or says what to type in Codex. The skill reads the progress and the
         answers saved so far, and carries on from the same phase and Source. The plugin or the
         Codex skills are installed first if they aren't yet, since the skill comes with them."""
-        if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in AIS):
+        if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in CHAT_SKILLS):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Pick Claude or ChatGPT.", errors=["ai: should be claude or codex"])
         skill = CHAT_SKILLS[raw["ai"]]
@@ -1022,7 +1046,8 @@ class SetupServer:
         if out["result"] != "saved":
             return (HTTPStatus.BAD_REQUEST if out["result"] == "invalid-answers"
                     else HTTPStatus.CONFLICT), out
-        self._install_chat(answer.ai)
+        if answer.ai in CHAT_SKILLS:  # the gateway has no chat to install
+            self._install_chat(answer.ai)
         return HTTPStatus.OK, out
 
     def _install_chat(self, name: str) -> threading.Thread:
@@ -1320,7 +1345,7 @@ class PartnerAnswer(BaseModel):
 
 class WelcomeAnswer(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    ai: Literal["claude", "codex"]
+    ai: Literal["claude", "codex", "gateway"]
     partner: PartnerAnswer | None  # None for only me
     feedback: StrictBool
 
@@ -1534,6 +1559,7 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/claude/terminal": setup.open_claude_window,
                    "api/claude/token": setup.save_claude_token,
                    "api/codex": setup.check_codex, "api/codex/login": setup.sign_in_codex,
+                   "api/gateway": setup.save_gateway_key,
                    "api/whatsapp/check": setup.check_whatsapp,
                    "api/whatsapp/open": setup.open_full_disk_access,
                    "api/myclub": setup.save_myclub_link, "api/myclub/kid": setup.add_kid,

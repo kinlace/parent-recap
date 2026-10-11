@@ -35,6 +35,7 @@
         <legend data-text="welcome.ai"></legend>
         <label><input type="radio" name="ai" value="claude"><span data-text="welcome.ai.claude"></span></label>
         <label><input type="radio" name="ai" value="codex"><span data-text="welcome.ai.codex"></span></label>
+        <label><input type="radio" name="ai" value="gateway"><span data-text="welcome.ai.gateway"></span></label>
         <p class="hint" data-text="welcome.ai.plan"></p>
         <div id="ai-status" class="status" role="status">
           <p id="ai-message"></p>
@@ -154,6 +155,19 @@
         <p><button type="button" id="codex-login" data-text="codex.login" hidden></button></p>
         <p><button type="button" id="codex-download" class="secondary" data-text="codex.download" hidden></button></p>
         <p class="hint" data-text="codex.training"></p>
+      </div>
+      <div id="ai-gateway" hidden>
+        <p data-text="gateway.explain"></p>
+        <form id="gateway-form" class="details">
+          <div class="field">
+            <label for="gateway-key" data-text="gateway.key"></label>
+            <input type="password" id="gateway-key" autocomplete="off" spellcheck="false" required>
+          </div>
+          <div class="actions">
+            <button type="submit" id="gateway-save" data-text="gateway.save"></button>
+          </div>
+        </form>
+        <p class="hint" data-text="gateway.privacy"></p>
       </div>
     </div>
     <div id="source-whatsapp" class="source" hidden>

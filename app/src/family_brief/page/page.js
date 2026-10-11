@@ -211,6 +211,7 @@ function showPartner() {
 // itself once the parent has installed it or signed in.
 async function checkAI() {
   clearTimeout(ai.timer);
+  showChat();
   const name = picked("ai");
   const check = ++ai.checking;
   showAI(name, "checking");
@@ -370,6 +371,7 @@ function renderSources() {
   document.getElementById("source-ai").hidden = current !== "ai";
   document.getElementById("ai-claude").hidden = page.welcome.ai !== "claude";
   document.getElementById("ai-codex").hidden = page.welcome.ai !== "codex";
+  document.getElementById("ai-gateway").hidden = page.welcome.ai !== "gateway";
   document.getElementById("source-whatsapp").hidden = current !== "whatsapp";
   document.getElementById("source-myclub").hidden = current !== "myclub";
   document.getElementById("connect-done").hidden = Boolean(current);
@@ -424,6 +426,7 @@ async function chooseSource(name, action) {
     document.getElementById("gmail-password").value = "";
     document.getElementById("wilma-password").value = "";
     document.getElementById("claude-token").value = "";
+    document.getElementById("gateway-key").value = "";
     document.getElementById("myclub-link").value = "";
     clearTimeout(wilmaStep.timer);
     clearTimeout(aiStep.timer);
@@ -727,7 +730,8 @@ function windowResult(out) {
 }
 
 // ── Connect: the AI sign-in for the evening Brief: Claude's own token, read from its sign-in
-// without anything copied, or Codex's ChatGPT login. Each ticks itself once it's done.
+// without anything copied, Codex's ChatGPT login, or the Gateway Key pasted into the page. Each
+// ticks itself once it's done.
 
 const AI_MS = 3000;
 const aiStep = { shown: false, timer: null };
@@ -747,6 +751,7 @@ function renderAI() {
   document.getElementById("claude-form").addEventListener("submit", saveClaudeToken);
   document.getElementById("codex-login").addEventListener("click", signInCodex);
   document.getElementById("codex-download").addEventListener("click", () => openSite("codex-app"));
+  document.getElementById("gateway-form").addEventListener("submit", saveGatewayKey);
 }
 
 // Once the AI sign-in is done, setup moves on to the next Source.
@@ -849,6 +854,27 @@ function codexResult(out) {
   if (out.result === "signed-in") return aiDone(out, key);
   showSource(key);
   if (CODEX_AGAIN.includes(key)) aiStep.timer = setTimeout(checkCodex, AI_MS);
+}
+
+// The Gateway Key the Parent Recap team sent an invited Household (ADR 0014), tested with one
+// call to the gateway and kept in the Keychain. It stays in the field only when the same key can
+// be tried again as it is.
+async function saveGatewayKey(event) {
+  event.preventDefault();
+  clearError();
+  const button = event.submitter;
+  button.disabled = true;
+  const key = document.getElementById("gateway-key");
+  try {
+    const out = await post("api/gateway", { key: key.value });
+    if (!["no-connection", "test-call-failed", "keychain-failed"].includes(out.result)) key.value = "";
+    if (out.result === "saved") return aiDone(out, "gateway.saved");
+    showSource("gateway." + out.result);
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // ── Connect: WhatsApp, read with the evening job's own permission. The page reads again every
@@ -1633,12 +1659,21 @@ function renderChat() {
   });
 }
 
+// The AI the chat carries on with: on Welcome, the one picked there, even before it's saved.
+function chatAI() {
+  return page.progress.phase === "welcome" ? picked("ai") : page.welcome.ai;
+}
+
+// A gateway Household has neither Claude nor ChatGPT to carry on with in a chat.
+function showChat() {
+  document.getElementById("chat").hidden = !page.chosen || page.finished || chatAI() === "gateway";
+}
+
 async function continueInChat(event) {
   clearError();
   const button = event.currentTarget;
   button.disabled = true;
-  // On Welcome, the AI picked there, even before it's saved.
-  const name = page.progress.phase === "welcome" ? picked("ai") : page.welcome.ai;
+  const name = chatAI();
   try {
     const out = await post("api/chat", { ai: name });
     const message = document.getElementById("chat-message");
@@ -1659,7 +1694,6 @@ function show() {
   const phase = page.chosen ? page.progress.phase : null;
   document.getElementById("language").hidden = Boolean(page.chosen);
   document.getElementById("phases").hidden = !page.chosen || page.finished;
-  document.getElementById("chat").hidden = !page.chosen || page.finished;
   document.getElementById("welcome").hidden = phase !== "welcome";
   document.getElementById("connect").hidden = phase !== "connect";
   document.getElementById("working").hidden = phase !== "working";
@@ -1690,6 +1724,7 @@ function show() {
     page.finishShown = true;
     enterFinish();
   }
+  showChat(); // once Welcome's choices are on the page
   applyText();
 }
 

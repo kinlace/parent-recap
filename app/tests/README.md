@@ -231,7 +231,13 @@ the page gives it, with Ink's escape sequences, and a fake `codex` whose `login`
 the harness's test call and stored with nothing copied, that a sign-in without a token, or one
 that times out, offers the Terminal window and the page takes the pasted token in its field, that
 the token never reaches a response, the output, the logs, a command line or `~/.family`, and that
-the Codex entry ticks itself once Codex is signed in.
+the Codex entry ticks itself once Codex is signed in. For the gateway (ADR 0014), answered by the
+harness's fake `/v1/messages`, it checks that Welcome offers it as ready with no Claude Code or
+Codex run and no chat installed, that a Gateway Key pasted in its field is tested with the gateway
+the config names and stored, that a key the gateway refuses or can't test is explained without
+what the gateway said and not kept, that the key never reaches a response, the output, the logs,
+a command line or `~/.family`, and that the page says the messages go through the maintainers'
+gateway in all three languages.
 Its WhatsApp step runs against `test_setup_whatsapp.py`'s fake Mac, with each `bg` job run
 in-process. It checks that the button shows the Python in Finder and opens Full Disk Access, that
 the entry ticks itself on the read after Full Disk Access is given and an Allow click alone never
