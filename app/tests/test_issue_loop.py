@@ -207,3 +207,87 @@ def test_a_named_issue_given_twice_or_with_a_hash_is_taken_once_and_sets_the_job
     script = 'source scripts/issue-loop.sh 7 "#9" 7; echo "$PICKS|$MAX_JOBS"'
     out = subprocess.run(["bash", "-c", script], cwd=ROOT, capture_output=True, text=True)
     assert out.stdout.strip() == "7 9|2", out.stderr
+
+
+# ── Checking the work before the PR
+
+@pytest.fixture
+def branch(tmp_path: Path) -> Path:
+    """A repo with one commit, the implementer's last result in .loop/ and a Claude Code
+    config dir holding the implementer's session, whose subagents are two reviews and a search."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo)]
+    subprocess.run([*git, "init", "-q"], check=True)
+    (repo / ".gitignore").write_text(".loop/\n")
+    subprocess.run([*git, "add", "."], check=True)
+    subprocess.run([*git, "commit", "-qm", "work"], check=True)
+    (repo / ".loop").mkdir()
+    (repo / ".loop" / "last.json").write_text(json.dumps({"result": "Done. Nothing for you to decide."}))
+    project = "".join(c if c.isalnum() else "-" for c in str(repo.resolve()))
+    subagents = tmp_path / "claude" / "projects" / project / "impl-session" / "subagents"
+    subagents.mkdir(parents=True)
+    for name, description, texts in [
+        ("a1", "Spec review of the diff", ["Reading the diff.", "Spec: the notice is missing."]),
+        ("a2", "Standards review of the diff", ["Standards: no hard violations."]),
+        ("a3", "Find the gateway module", ["It is in gateway.py."]),
+    ]:
+        (subagents / f"agent-{name}.meta.json").write_text(json.dumps({"description": description}))
+        lines = [{"type": "assistant", "message": {"content": [{"type": "text", "text": t}]}} for t in texts]
+        (subagents / f"agent-{name}.jsonl").write_text("\n".join(json.dumps(line) for line in lines))
+    return repo
+
+
+def check(repo: Path, checker: str) -> subprocess.CompletedProcess:
+    """Runs check_work with `checker` as the agent's run (bash, in the repo)."""
+    env = {**os.environ, "CLAUDE_CONFIG_DIR": str(repo.parent / "claude")}
+    script = (f'source "{ROOT}/scripts/issue-loop.sh"; ISSUE=5 CURRENT="#5" SESSION=impl-session; '
+              f'run_agent() {{ SESSION=check-session; {checker}; }}; check_work; echo "session $SESSION"')
+    return subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True, env=env)
+
+
+def test_the_checker_gets_the_report_and_only_the_reviews_last_words(branch):
+    result = check(branch, "echo PASS > .loop/check.md")
+    assert result.returncode == 0, result.stderr
+    assert "check passed" in result.stderr
+    assert (branch / ".loop" / "report.md").read_text().strip() == "Done. Nothing for you to decide."
+    reviews = (branch / ".loop" / "reviews.md").read_text()
+    assert "## Spec review of the diff" in reviews and "Spec: the notice is missing." in reviews
+    assert "Standards: no hard violations." in reviews
+    assert "Reading the diff." not in reviews and "gateway.py" not in reviews
+
+
+def test_a_pass_with_a_reason_passes_and_says_it(branch):
+    result = check(branch, "echo 'PASS: every criterion is met' > .loop/check.md")
+    assert result.returncode == 0, result.stderr
+    assert "check passed: every criterion is met" in result.stderr
+
+
+def test_after_a_pass_the_implementer_s_session_is_resumed_for_the_pr(branch):
+    result = check(branch, "echo PASS > .loop/check.md")
+    assert "session impl-session" in result.stdout
+
+
+def test_a_failed_check_stops_the_loop_and_points_at_the_implementer_s_session(branch):
+    result = check(branch, "printf 'FAIL: a question is left for a person\\n- #5 asks for a decision\\n' > .loop/check.md")
+    assert result.returncode != 0
+    assert "stopped at #5: check failed: a question is left for a person" in result.stderr
+    assert "claude --resume impl-session" in result.stderr
+
+
+def test_a_checker_that_writes_no_verdict_stops_the_loop(branch):
+    result = check(branch, "true")
+    assert result.returncode != 0
+    assert "the checker wrote no .loop/check.md" in result.stderr
+
+
+def test_a_verdict_that_is_neither_pass_nor_fail_stops_the_loop(branch):
+    result = check(branch, "echo 'Looks good to me' > .loop/check.md")
+    assert result.returncode != 0
+    assert "isn't PASS or FAIL: Looks good to me" in result.stderr
+
+
+def test_a_checker_that_changes_the_branch_stops_the_loop(branch):
+    result = check(branch, "echo PASS > .loop/check.md; echo x > stray.txt")
+    assert result.returncode != 0
+    assert "the checker changed the branch" in result.stderr

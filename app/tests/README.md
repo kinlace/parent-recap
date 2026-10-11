@@ -333,7 +333,10 @@ mode without them sends the events as `.ics`, and that doctor says how to instal
 It checks that a PR is merged only once the `test` check has passed, also when it shows up after
 the other checks, that a missing, failing or skipped `test` stops the loop with the reason and no
 merge, that a merge GitHub refuses stops the loop with GitHub's message, and that the script run
-rather than sourced still runs its main part.
+rather than sourced still runs its main part. With a fake agent standing in for the checker, it
+checks that the checker gets the implementer's report and only the review subagents' last words,
+that a pass resumes the implementer's session for the PR, and that a failed check, no verdict, an
+unreadable one or a checker that changed the branch stops the loop.
 The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
 
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:

@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # Works through the backlog unattended: runs /implement on each ready issue, opens its PR and
-# rebases and merges it once CI is green, its `test` check included. No reviewer is added;
+# rebases and merges it once CI is green, its `test` check included. No human reviewer is added;
 # quality is checked at milestones. It only ever touches the PRs it opens itself, and works the
 # same whoever runs it.
+#
+# Before the PR, a fresh agent checks the work against the issue (check_work). /implement's own
+# /code-review finds real bugs, but the implementer decides which findings to fix, and in past
+# runs it merged with review findings unaddressed and questions it had listed for a human (#231).
+# The checker stops the loop with a draft PR when that happens.
 #
 # ── When to use it
 # Use the loop to clear several ready-for-agent tickets while you're away, e.g. the rest of a
@@ -67,8 +72,8 @@
 # Comments left on a loop PR, and loop PRs that later conflict with main, are yours to handle.
 #
 # Files it writes into .loop/ (git-excluded): logs/<date-time>.log (everything it printed,
-# one file per run), last.json (the agent's last result), pytest.log, and the PR text the
-# agent hands over.
+# one file per run), last.json (the agent's last result), pytest.log, report.md and reviews.md
+# (what the checker reads), check.md (its verdict), and the PR text the agent hands over.
 set -euo pipefail
 
 REPO=kinlace/parent-recap
@@ -123,6 +128,7 @@ header() { printf '\n%s━━ %s ━━%s\n' "$CYAN$BOLD" "$*" "$OFF" >&2; }
 
 # ── State for the failure report
 CURRENT= # "#12", later "#12 (<PR url>)"
+FAIL_NOTE= # more for the draft PR than the one-line reason, e.g. the checker's findings
 BRANCH=
 SESSION=
 ISSUE=
@@ -131,8 +137,10 @@ TITLE=
 # ── Failure: stop the whole loop, keep the work visible
 fail() {
   REPORTED=1
-  local reason=$1 line
+  local reason=$1 line body
   line="stopped at $CURRENT: $reason"
+  body="issue-loop stopped here: $reason"
+  [ -z "$FAIL_NOTE" ] || body+=$'\n\n'"$FAIL_NOTE"
   [ -n "$SESSION" ] && line+=" — inspect with: claude --resume $SESSION"
   if [ -n "$BRANCH" ] &&
     [ "$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)" -gt 0 ]; then
@@ -141,10 +149,10 @@ fail() {
     pr=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
     if [ -n "$pr" ]; then
       gh pr ready "$pr" -R "$REPO" --undo >/dev/null 2>&1 || true
-      gh pr comment "$pr" -R "$REPO" --body "issue-loop stopped here: $reason" >/dev/null || true
+      gh pr comment "$pr" -R "$REPO" --body "$body" >/dev/null || true
     else
       gh pr create -R "$REPO" --draft --base main --head "$BRANCH" --title "wip: #$ISSUE $TITLE" \
-        --body "issue-loop stopped here: $reason"$'\n\n'"Refs #$ISSUE" >/dev/null || true
+        --body "$body"$'\n\n'"Refs #$ISSUE" >/dev/null || true
     fi
     line+=" (draft PR on $BRANCH)"
   fi
@@ -337,6 +345,72 @@ Don't push, open PRs or post to GitHub: the calling script does that after you f
 Don't run the real-model eval (python -m family_brief.eval) or list it as unverified: it runs once per release, not per PR. \
 Nobody is watching this run, so if you need a human decision, stop without committing and say why in your final message."
 
+# ── Check: a fresh agent reads the work before it merges
+# The reports /code-review's subagents gave the implementer in session $1, one section each, into
+# .loop/reviews.md. Claude Code keeps each subagent's transcript next to the session's; the review
+# ones are told apart by their description ("Spec review of ...", "Standards review of ...").
+collect_reviews() {
+  local dir meta
+  dir=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(pwd -P | sed 's/[^a-zA-Z0-9]/-/g')/$1/subagents
+  : >"$LOOP_DIR/reviews.md"
+  for meta in "$dir"/*.meta.json; do
+    [ -e "$meta" ] || continue
+    jq -e '.description // "" | test("review"; "i")' "$meta" >/dev/null || continue
+    {
+      printf '## %s\n\n' "$(jq -r .description "$meta")"
+      jq -rs '[.[] | select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text]
+        | last // "(no report)"' "${meta%.meta.json}.jsonl"
+      printf '\n'
+    } >>"$LOOP_DIR/reviews.md"
+  done
+  [ -s "$LOOP_DIR/reviews.md" ] || echo "(no review reports found)" >"$LOOP_DIR/reviews.md"
+}
+
+CHECK_PROMPT="You are checking another agent's work on issue #%s before it merges, with no human \
+reviewing it. Don't change any file or commit; your only write is .loop/check.md. $GH_NOTE
+
+Read the issue (gh issue view %s -R $REPO), the change (git log and git diff origin/main...HEAD), \
+the implementer's final report in .loop/report.md and the reviews it got in .loop/reviews.md.
+
+Fail the work if any of these holds:
+- An acceptance criterion isn't met, or can only be met by a person: a decision, a real account or \
+device, an outside fact to look up. Tested against fakes counts as met; not trying the real service \
+is fine when the report says so.
+- The report leaves a question for a person to decide.
+- A review finding about wrong behaviour or a missed requirement was neither fixed nor answered with \
+a reason that holds up when you read the code.
+- Text a family reads, or the docs, state as fact something outside the repo (another company's \
+terms, prices, an outside service's behaviour) that nothing in the repo or the issue backs.
+Don't fail it for style, naming, structure, or extra work the issue implies: that was the reviews' job.
+
+Write .loop/check.md: first line PASS: <one sentence> or FAIL: <one sentence>, then one bullet per \
+problem, naming the file and line or the issue line it is about."
+
+# Runs the checker; stops the loop unless it passes. Leaves $SESSION as the implementer's, so a stop
+# points at the session that can fix the work.
+check_work() {
+  local impl_session=$SESSION head verdict
+  jq -r '.result // ""' "$LOOP_DIR/last.json" >"$LOOP_DIR/report.md"
+  collect_reviews "$impl_session"
+  rm -f "$LOOP_DIR/check.md"
+  head=$(git rev-parse HEAD)
+  # shellcheck disable=SC2059 # the prompt is the format
+  run_agent "$(printf "$CHECK_PROMPT" "$ISSUE" "$ISSUE")"
+  local check_session=$SESSION
+  SESSION=$impl_session
+  [ "$(git rev-parse HEAD)" = "$head" ] && [ -z "$(git status --porcelain)" ] ||
+    fail "the checker changed the branch (checker session $check_session)"
+  verdict=$(head -1 "$LOOP_DIR/check.md" 2>/dev/null) ||
+    fail "the checker wrote no .loop/check.md (checker session $check_session)"
+  case $verdict in
+    PASS | "PASS:"*) log "check passed${verdict#PASS}" ;;
+    "FAIL: "*)
+      FAIL_NOTE="The checker found (\`claude --resume $check_session\`):"$'\n\n'"$(tail -n +2 "$LOOP_DIR/check.md")"
+      fail "check failed: ${verdict#FAIL: }" ;;
+    *) fail "the checker's verdict isn't PASS or FAIL: ${verdict:0:200} (checker session $check_session)" ;;
+  esac
+}
+
 do_issue() {
   ISSUE=$1 CURRENT="#$1" SESSION=
   TITLE=$(gh issue view "$ISSUE" -R "$REPO" --json title --jq .title)
@@ -353,6 +427,7 @@ do_issue() {
     fail "no commits (the agent may have stopped to ask something): $(jq -r .result "$LOOP_DIR/last.json" | head -c 300)"
   [ -z "$(git status --porcelain)" ] || fail "uncommitted changes left behind"
   run_tests
+  check_work
 
   rm -f "$LOOP_DIR"/pr-title "$LOOP_DIR"/pr-body.md
   run_agent "Now write the pull request for this work into files; don't run gh or push, the calling script opens the PR.
