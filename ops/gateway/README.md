@@ -61,7 +61,7 @@ ssh -L 8080:localhost:8080 ubuntu@<ip>      # leave open
 export ADMIN=<admin user>:<admin password>
 ```
 
-**Create a Gateway Key and give it to a Household.** The name is a neutral label; who holds which key is kept only in the gateway's database, never in the repo. The reply's `virtual_key.value` (`sk-bf-…`) is shown once to you: send it to the Household over a private channel and don't save it anywhere.
+**Create a Gateway Key and give it to a Household.** The name is a neutral label; who holds which key is kept only in the gateway's database, never in the repo. The reply's `virtual_key.value` (`sk-bf-…`) is the key: send it to the Household over a private channel and don't save it anywhere. Bifrost keeps it in plaintext and the key list returns it too, so a lost key can be read back, and the admin login (kept only in the maintainers' password manager) can read every Household's key.
 
 ```sh
 curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
