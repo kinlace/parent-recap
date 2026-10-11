@@ -4,6 +4,7 @@ the message handed to the server, parsed back the way a mail client reads it."""
 from __future__ import annotations
 
 import email
+import re
 import smtplib
 from email.message import Message
 from email.policy import default
@@ -102,11 +103,11 @@ def test_without_html_the_email_is_the_plain_text_alone_inside_the_alternative(s
 
 
 def test_without_attachments_the_email_is_the_plain_and_html_alternative_alone(smtp):
-    send(attachments=None)
-    send(attachments=[])
+    for attachments in (None, []):
+        smtp.connections = []
+        send(attachments=attachments)
 
-    for conn in smtp.connections:
-        msg = email.message_from_string(conn.sent[0][2], policy=default)
+        msg = received(smtp)
         assert msg.get_content_type() == "multipart/alternative"
         assert [p.get_content_type() for p in msg.iter_parts()] == ["text/plain", "text/html"]
 
@@ -145,7 +146,7 @@ def test_subject_from_and_to_name_every_recipient_and_the_send_logs_in_with_the_
 def test_with_no_app_password_in_the_keychain_it_fails_clearly_and_sends_nothing(smtp, harness):
     harness.keychain.clear()
 
-    with pytest.raises(RuntimeError, match=f"No Gmail App Password in Keychain for {SENDER}"):
+    with pytest.raises(RuntimeError, match=re.escape(f"No Gmail App Password in Keychain for {SENDER}")):
         send()
 
     assert smtp.connections == []
