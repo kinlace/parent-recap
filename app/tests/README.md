@@ -158,6 +158,11 @@ as the CLI does) with no Node on PATH, and checks that `doctor` and the evening 
 on that Node, never a Node or wilma CLI the Mac has, and with `WILMAI_NO_UPDATE_CHECK=1`, so it
 never looks for a newer version, that `doctor` without the CLI says to
 connect Wilma again rather than to install Node, and that the newest pinned Node is picked.
+`test_email.py` runs the real email action against a fake SMTP server and the fake Keychain, and
+checks the message handed to the server: UTF-8 plain-text and HTML parts with Finnish and Chinese
+intact, an `.ics` attachment with `method=PUBLISH` beside them or the alternative alone, Subject,
+From and every Recipient in To, a login with the Keychain's App Password after STARTTLS, and that
+nothing is sent with no App Password (a clear error) or no Recipients.
 `test_setup_gmail.py` runs `parent-recap setup gmail` against a fake macOS dialog, `open`,
 Keychain and IMAP server, and checks the App Password never reaches the output, the logs or a
 command line.
