@@ -144,7 +144,7 @@ class Answers(_Strict):
     city: str | None = None         # the Household's town, in Finnish, as in Wilma's list
     kids: list[KidAnswer] | None = None
     recipients: list[RecipientAnswer] | None = None
-    ai: Literal["claude", "codex"] | None = None
+    ai: Literal["claude", "codex", "gateway"] | None = None
     evening: str | None = None      # HH:MM, when the Brief comes
     sources: SourcesAnswer | None = None
     feedback: FeedbackAnswer | None = None

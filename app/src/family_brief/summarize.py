@@ -13,10 +13,12 @@ from datetime import datetime
 from email.utils import parseaddr
 from pathlib import Path
 from string import Template
-from typing import Any
+from typing import Any, TypeVar
 from zoneinfo import ZoneInfo
 
-from . import ai_filter, citations, held_back, languages, tools
+import requests
+
+from . import ai_filter, citations, gateway, held_back, languages, tools
 from .brief_text import TEXT, BriefText
 from .languages import FINNISH_WORDS, is_finnish
 from .collectors.base import CalendarEvent, Message
@@ -463,10 +465,22 @@ class _Ran:
 
 def _run_with_retry(cmd: list[str], timeout: int, what: str, budget: int = CALL_BUDGET,
                     **kwargs) -> _Ran:
-    """Run an LLM CLI, retrying once on timeout (both CLIs occasionally hang on start), and after
-    each of BUSY_PAUSES while the model is busy, as long as the next try could still end within
-    `budget` seconds of the first. Errors waiting won't fix, such as being signed out, come back
-    at once."""
+    """Run an LLM CLI, retrying as _with_retry does. Both CLIs occasionally hang on start."""
+    proc, waited = _with_retry(
+        lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kwargs),
+        lambda proc: _busy_reason(proc, kwargs.get("input")), timeout, what, budget)
+    return _Ran(proc, waited)
+
+
+_R = TypeVar("_R")
+
+
+def _with_retry(call: Callable[[], _R], busy_reason: Callable[[_R], str | None], timeout: int,
+                what: str, budget: int) -> tuple[_R, float]:
+    """Make one model `call`, retrying once on timeout, and after each of BUSY_PAUSES while
+    `busy_reason` says the model is busy, as long as the next try could still end within `budget`
+    seconds of the first. Errors waiting won't fix, such as being signed out, come back at once.
+    Returns the last answer and the seconds paused for a busy model."""
     started = _clock()
     pauses = iter(BUSY_PAUSES)
     waited = 0.0
@@ -476,21 +490,21 @@ def _run_with_retry(cmd: list[str], timeout: int, what: str, budget: int = CALL_
         attempt += 1
         log.info("Calling %s (attempt %d)", what, attempt)
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kwargs)
-        except subprocess.TimeoutExpired as e:
+            answer = call()
+        except (subprocess.TimeoutExpired, TimeoutError) as e:
             log.warning("%s timeout on attempt %d (%ds)", what, attempt, timeout)
             if timed_out:
                 raise RuntimeError(f"{what} timed out twice after {timeout}s each") from e
             timed_out = True
             _sleep(5)
             continue
-        busy = _busy_reason(proc, kwargs.get("input"))
+        busy = busy_reason(answer)
         if not busy:
-            return _Ran(proc, waited)
+            return answer, waited
         pause = next(pauses, None)
         if pause is None or _clock() - started + pause + timeout > budget:
             log.error("%s still busy after %d attempts (%s); giving up on it tonight", what, attempt, busy)
-            return _Ran(proc, waited)
+            return answer, waited
         log.warning("%s busy on attempt %d (%s); trying again in %s", what, attempt, busy, _minutes(pause))
         _sleep(pause)
         waited += pause
@@ -641,11 +655,41 @@ def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int, budge
     return LLMReply(data, result, None, repaired, ran.waited)
 
 
+def _gateway_busy(response: requests.Response) -> str | None:
+    """What says the model behind the gateway is busy, from the reply's HTTP status, or None. A
+    busy status whose error waiting won't fix, such as the gateway's own credit run out, isn't."""
+    if response.status_code not in gateway.BUSY:
+        return None
+    said = gateway.said(response)
+    return None if _WONT_PASS.search(said) else said[:120]
+
+
+def _run_gateway(cfg: Config, prompt: str, system_prompt: str, timeout: int, budget: int) -> LLMReply:
+    # Its own HTTP call with the Gateway Key (ADR 0014): no CLI, so nothing of the Mac's own
+    # Claude Code or Codex setup reaches it, and the key is only ever in the request's header.
+    key = gateway.key()
+    url = cfg.llm.gateway_url
+    what = f"gateway {gateway.host(url)} (prompt: {len(prompt.encode('utf-8'))} B)"
+    # An error that echoes the key back goes no further than here, to the log or the Brief.
+    response, waited = _with_retry(
+        lambda: gateway.post(url, key, system_prompt, prompt, timeout, cfg.llm.model),
+        lambda r: (_gateway_busy(r) or "").replace(key, "<key>") or None, timeout, what, budget)
+    try:
+        reply = gateway.read(response)
+    except gateway.GatewayError as e:
+        raise gateway.GatewayError(str(e).replace(key, "<key>"), e.status) from None
+    data, repaired = _parse_model_json(reply.text)
+    return LLMReply(data, reply.text, reply.usage, repaired, waited, reply.model)
+
+
+_BACKENDS = {"claude": _run_claude, "codex": _run_codex, "gateway": _run_gateway}
+
+
 def call_llm(cfg: Config, prompt: str, system_prompt: str, timeout: int | None = None,
              budget: int = CALL_BUDGET) -> LLMReply:
     """Send one prompt to the configured backend and parse the JSON object it returns. While the
     model is busy it is tried again for up to `budget` seconds (0 for none)."""
-    run = _run_codex if cfg.llm.backend == "codex" else _run_claude
+    run = _BACKENDS[cfg.llm.backend]
     return run(cfg, prompt, system_prompt, timeout or cfg.llm.timeout_seconds, budget)
 
 

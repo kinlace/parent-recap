@@ -181,8 +181,40 @@ def _check_gmail(cfg: Config, add) -> None:
 def _check_llm(cfg: Config, add) -> None:
     if cfg.llm.backend == "codex":
         _check_codex(cfg, add)
+    elif cfg.llm.backend == "gateway":
+        _check_gateway(cfg, add)
     else:
         _check_claude(add)
+
+
+def _check_gateway(cfg: Config, add) -> None:
+    """Whether the gateway answers at its configured address, and whether the Gateway Key works,
+    from one small call. Without a readable key the call goes with none, which a gateway that
+    answers refuses."""
+    from . import gateway
+    url = cfg.llm.gateway_url
+    try:
+        key, missing = gateway.key(), None
+    except gateway.NoKey as e:
+        key, missing = "", str(e)
+    outcome, detail = gateway.test_call(url, key, timeout=120)
+    if outcome == gateway.NO_ANSWER:
+        add(FAIL, "AI gateway", f"no answer from {url}: {detail} (check the Mac is online and "
+            "llm.gateway_url in the config)")
+    else:
+        add(OK, "AI gateway", f"answers at {url}")
+    if missing:
+        add(FAIL, "Gateway Key", f"{missing}, so the evening Brief can't call the gateway")
+    elif outcome == gateway.WORKS:
+        add(OK, "Gateway Key", "works, test call succeeded")
+    elif outcome == gateway.UNKNOWN:
+        add(FAIL, "Gateway Key", "the gateway doesn't know this Gateway Key, or it was revoked "
+            f"(ask the Parent Recap maintainers for a new one and store it with {gateway.SETUP})")
+    elif outcome == gateway.SPENT:
+        add(WARN, "Gateway Key", "works, but has used up today's budget, so the gateway takes no "
+            "more calls with it until tomorrow")
+    elif outcome == gateway.FAILED:
+        add(FAIL, "Gateway Key", f"test call failed: {detail}")
 
 
 def _check_codex(cfg: Config, add) -> None:

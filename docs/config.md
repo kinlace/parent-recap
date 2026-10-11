@@ -32,31 +32,32 @@ One town outside the presets was set up end to end in a fresh-install test in Oc
 
 ## Key fields
 
-| Field                                  | Meaning                                                                                                                         |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `summary_language`                     | Language code of Recipients who don't pick their own: `en` (the default), `zh`, `sv` or others                                  |
-| `city`                                 | The Household's town in Finnish, such as `Espoo`, picked from Wilma's town list in setup, with or without Wilma                 |
-| `kids[].name`                          | The Kid's full name, ideally spelled as in Wilma; the model uses it to tell which Kid a message is about                        |
-| `kids[].everyday_name`                 | What the family calls the Kid; the Brief uses it everywhere (Digest, Action Items, calendar events). Leave it out to use `name`  |
-| `kids[].aliases`                       | Other names used in chats and mail: nicknames, English name, Chinese name                                                       |
-| `kids[].grade` / `class_name`          | Optional; setup fills them in only from Wilma. Update them every August when the school year changes                           |
-| `kids[].activities`                    | Hobby classes and clubs, to help the model understand the group chats                                                           |
-| `kids[].myclub_ical_url`               | MyClub calendar subscription link                                                                                               |
-| `gmail.allowlist_domains`              | **Only these domains are scanned**; without an allowlist the program refuses to run                                             |
-| `gmail.allowlist_senders`              | Individual teachers or coaches who use a personal address                                                                       |
-| `wilma.enabled`                        | Set to true only after signing in to Wilma with `parent-recap setup wilma`                                                      |
-| `whatsapp.chats[]`                     | Copy `name` exactly; `kid` is the Kid's full name or `both`; `label` is the kind of group                                       |
-| `google_calendar.mode`                 | `ics` / `google` / `off`                                                                                                        |
-| `google_calendar.invite_attendees`     | In google mode, people automatically invited to new events                                                                      |
-| `llm.backend`                          | `claude` (Claude Pro/Max subscription) or `codex` (ChatGPT account); `cli` in older configs means `claude`                      |
-| `llm.codex_path`                       | Optional, where codex is. By default the one bundled in Codex.app or ChatGPT.app is used first (ChatGPT.app keeps it in `Contents/Resources/codex-cli/bin/codex`)                                  |
-| `llm.timeout_seconds`                  | Timeout for one model call, 300 seconds by default; raise it to 600 if there are a lot of messages, for example after a holiday |
-| `ai_filter.enabled`                    | `true` by default: the AI gets placeholders for other people's names, phone numbers, email addresses and links, and nothing of messages that look sensitive. See [What the AI sees](#what-the-ai-sees) |
-| `email.to`                             | Brief recipients; see [Recipients in their own language](#recipients-in-their-own-language) below                               |
-| `email.weekend_to`                     | Weekend Picks recipients (`email.to` when empty); each can have its own `language` too                                          |
-| `weekend_events.kid_preferences`       | Free text describing each Kid's interests                                                                                       |
-| `feedback`                             | Optional, pilot families only; see [Pilot feedback](#pilot-feedback) below                                                      |
-| `schedule.daily_hour` / `daily_minute` | When the Brief runs; after changing it, run `parent-recap schedule install` again                                               |
+| Field                                  | Meaning                                                                                                                                                                                                        |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `summary_language`                     | Language code of Recipients who don't pick their own: `en` (the default), `zh`, `sv` or others                                                                                                                 |
+| `city`                                 | The Household's town in Finnish, such as `Espoo`, picked from Wilma's town list in setup, with or without Wilma                                                                                                |
+| `kids[].name`                          | The Kid's full name, ideally spelled as in Wilma; the model uses it to tell which Kid a message is about                                                                                                       |
+| `kids[].everyday_name`                 | What the family calls the Kid; the Brief uses it everywhere (Digest, Action Items, calendar events). Leave it out to use `name`                                                                                |
+| `kids[].aliases`                       | Other names used in chats and mail: nicknames, English name, Chinese name                                                                                                                                      |
+| `kids[].grade` / `class_name`          | Optional; setup fills them in only from Wilma. Update them every August when the school year changes                                                                                                           |
+| `kids[].activities`                    | Hobby classes and clubs, to help the model understand the group chats                                                                                                                                          |
+| `kids[].myclub_ical_url`               | MyClub calendar subscription link                                                                                                                                                                              |
+| `gmail.allowlist_domains`              | **Only these domains are scanned**; without an allowlist the program refuses to run                                                                                                                            |
+| `gmail.allowlist_senders`              | Individual teachers or coaches who use a personal address                                                                                                                                                      |
+| `wilma.enabled`                        | Set to true only after signing in to Wilma with `parent-recap setup wilma`                                                                                                                                     |
+| `whatsapp.chats[]`                     | Copy `name` exactly; `kid` is the Kid's full name or `both`; `label` is the kind of group                                                                                                                      |
+| `google_calendar.mode`                 | `ics` / `google` / `off`                                                                                                                                                                                       |
+| `google_calendar.invite_attendees`     | In google mode, people automatically invited to new events                                                                                                                                                     |
+| `llm.backend`                          | `claude` (Claude Pro/Max subscription), `codex` (ChatGPT account) or `gateway` (a Gateway Key from the maintainers, stored with `parent-recap setup gateway`; ADR 0014); `cli` in older configs means `claude` |
+| `llm.gateway_url`                      | With `gateway`, where the gateway is: `https://gateway.parentrecap.com` by default. The program calls its `/v1/messages`                                                                                       |
+| `llm.codex_path`                       | Optional, where codex is. By default the one bundled in Codex.app or ChatGPT.app is used first (ChatGPT.app keeps it in `Contents/Resources/codex-cli/bin/codex`)                                              |
+| `llm.timeout_seconds`                  | Timeout for one model call, 300 seconds by default; raise it to 600 if there are a lot of messages, for example after a holiday                                                                                |
+| `ai_filter.enabled`                    | `true` by default: the AI gets placeholders for other people's names, phone numbers, email addresses and links, and nothing of messages that look sensitive. See [What the AI sees](#what-the-ai-sees)         |
+| `email.to`                             | Brief recipients; see [Recipients in their own language](#recipients-in-their-own-language) below                                                                                                              |
+| `email.weekend_to`                     | Weekend Picks recipients (`email.to` when empty); each can have its own `language` too                                                                                                                         |
+| `weekend_events.kid_preferences`       | Free text describing each Kid's interests                                                                                                                                                                      |
+| `feedback`                             | Optional, pilot families only; see [Pilot feedback](#pilot-feedback) below                                                                                                                                     |
+| `schedule.daily_hour` / `daily_minute` | When the Brief runs; after changing it, run `parent-recap schedule install` again                                                                                                                              |
 
 ## Recipients in their own language
 

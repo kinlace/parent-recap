@@ -100,7 +100,8 @@ HEALTH_RESULTS = ("checking", "ok", "not-ok", "no-check")
 # Doctor's checks as the check page names them, by the name doctor gives each. A language's and
 # a Kid's MyClub check carry the language or the Kid too. Any other is `other`.
 HEALTH_CHECKS = {"Config file": "config", "Recipients": "recipients", "Language": "language",
-                 "Gmail": "gmail", "Claude": "ai", "Codex": "ai", "Wilma": "wilma",
+                 "Gmail": "gmail", "Claude": "ai", "Codex": "ai", "AI gateway": "ai",
+                 "Gateway Key": "ai", "Wilma": "wilma",
                  "WhatsApp": "whatsapp", "MyClub": "myclub", "Calendar": "calendar",
                  "Pilot feedback": "feedback", "Weekend Picks": "weekend"}
 # The scheduled job's checks, which aren't run before Finish installs it.

@@ -162,6 +162,16 @@ can be opened (a sandbox), the window talks to the fake CLI through `no_pty/site
 `test_setup_claude.py` runs `parent-recap setup claude` against a fake Terminal, macOS dialog,
 Keychain and `claude` test call, and checks the token never reaches the output, the logs or a
 command line. `test_setup_claude_token.py` keeps the older Terminal script working.
+`test_gateway.py` runs the evening Brief, doctor and `parent-recap setup gateway` with
+`backend: gateway` against a fake gateway (`requests.post` to its `/v1/messages`, answered from the
+harness's model replies), Keychain and macOS dialog. It checks the Brief's and translations' calls
+go to the configured address with the Gateway Key and `model: parent-recap`, and no `claude` or
+`codex` runs; that 429 and 5xx are tried again after the usual pauses, and 401, 402, a refusal,
+a reply that isn't the gateway's and the gateway's own credit run out fail at once with the usual
+Brief without its Digest; that a timeout is tried once more and an unreachable gateway isn't; that
+doctor says whether the gateway answers and whether the key works, is past today's budget or is
+missing; that setup tests the key before storing it; and that the key never reaches the output,
+the logs, a command line, an email or a file in HOME, even when the gateway echoes it back.
 `test_setup_whatsapp.py` runs `parent-recap setup whatsapp` against a fake `launchctl` that runs
 each `bg` job in-process, and a fake Mac in the temporary HOME: a stand-in for the file only Full
 Disk Access opens, which those jobs can open once the fake Mac gives them Full Disk Access, and a

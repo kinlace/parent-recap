@@ -20,7 +20,7 @@ from .collectors import (
     whatsapp as whatsapp_collector,
     wilma as wilma_collector,
 )
-from . import ai_filter, feedback, languages, private_files, run_lock
+from . import ai_filter, feedback, gateway, languages, private_files, run_lock
 from .brief_text import PRODUCT_NAME, BriefText
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, Message
 from .config import Config
@@ -249,6 +249,8 @@ PREVIEW_BUDGET = 10 * 60
 
 
 def _llm_host(cfg: Config) -> str:
+    if cfg.llm.backend == "gateway":
+        return gateway.host(cfg.llm.gateway_url)
     return "chatgpt.com" if cfg.llm.backend == "codex" else "api.anthropic.com"
 
 

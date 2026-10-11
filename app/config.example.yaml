@@ -87,7 +87,7 @@ schedule:
   weekend_hour: 16
 
 llm:
-  backend: claude # claude (Claude Pro/Max subscription) or codex (ChatGPT account)
+  backend: claude # claude (Claude Pro/Max subscription), codex (ChatGPT account) or gateway (a Gateway Key from the maintainers)
   timeout_seconds: 300
 
 ai_filter:

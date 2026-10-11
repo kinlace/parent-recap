@@ -128,12 +128,15 @@ class EmailConfig(BaseModel):
 class LLMConfig(BaseModel):
     # claude: `claude -p`, signed in with a Claude Pro/Max subscription
     # codex:  `codex exec`, signed in with a ChatGPT account
-    backend: Literal["claude", "codex"] = "claude"
+    # gateway: the maintainers' gateway, called with the Gateway Key in the Keychain (ADR 0014)
+    backend: Literal["claude", "codex", "gateway"] = "claude"
     model: str | None = None
     timeout_seconds: int = 300
     # Default: the codex bundled in Codex.app / ChatGPT.app, then PATH, the usual folders and the
     # login shell's PATH.
     codex_path: str | None = None
+    # Where the gateway backend sends its calls; it adds /v1/messages.
+    gateway_url: str = "https://gateway.parentrecap.com"
 
     @field_validator("backend", mode="before")
     @classmethod

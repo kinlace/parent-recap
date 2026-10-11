@@ -7,7 +7,9 @@ Fakes sit at exactly four boundaries, so internals can be refactored without tou
      server and `wilma` CLI instead.)
   2. Model process: `subprocess.run` for `claude` / `codex` records argv + stdin, returns a canned reply
      (the same for every call, or one per call from a list, where FailedCall makes that call fail
-     and a function makes the reply, or the FailedCall, from the prompt it is given).
+     and a function makes the reply, or the FailedCall, from the prompt it is given). The
+     gateway backend's `requests.post` to /v1/messages is recorded and answered from the same
+     replies, where an HTTPReply sets its status and an exception is raised.
   3. Delivery: email sending, iMessage (`osascript`) and the Google Calendar API record what
      they are given, or fail.
   4. The pauses between model calls are recorded and move a fake clock on, instead of being slept.
@@ -35,10 +37,11 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 import pytest
+import requests
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli, feedback, summarize, tools
+from family_brief import __main__ as cli, feedback, gateway, summarize, tools
 from family_brief.actions import calendar as calendar_action, email as email_action
 from family_brief.collectors import gmail, myclub, whatsapp, wilma
 from family_brief.collectors.base import CalendarEvent, Message
@@ -143,12 +146,16 @@ class SentEmail:
 
 @dataclass
 class ModelCall:
+    """A model process started, or a call to the gateway: then `argv` is ["POST", its URL],
+    `stdin` the user message, and `headers` and `body` the request's."""
     argv: list[str]
     stdin: str | None
     cwd: str | None
     cwd_contents: list[str] | None  # what was in cwd when the process started
     env: dict[str, str] | None
     stdin_source: Any  # the `stdin=` argument, e.g. subprocess.DEVNULL
+    headers: dict[str, str] | None = None
+    body: dict[str, Any] | None = None
 
 
 def system_prompt_of(call: ModelCall) -> str:
@@ -174,8 +181,17 @@ def assert_isolated_claude(call: ModelCall) -> None:
 
 @dataclass
 class FailedCall:
-    """In a list of model replies: this call's process exits non-zero with `stderr`."""
+    """In a list of model replies: this call's process exits non-zero with `stderr`. The
+    gateway answers it with HTTP 500 and `stderr` as the error's message."""
     stderr: str
+
+
+@dataclass
+class HTTPReply:
+    """In a list of model replies: the gateway answers this call with HTTP `status` and `body`
+    (JSON for a dict). The model processes never get one."""
+    status: int
+    body: str | dict[str, Any]
 
 
 @dataclass
@@ -333,7 +349,13 @@ class Harness:
         mp.setattr(myclub, "collect_events", source("myclub"))
 
         mp.setattr(subprocess, "run", self._fake_subprocess_run)
-        mp.setattr(socket, "create_connection", lambda *_a, **_k: _FakeSocket())
+        mp.setattr(gateway.requests, "post", self._fake_gateway_post)
+        self.probed: list[str] = []  # each host the run waited for the network on
+
+        def connect(address: tuple[str, int], *_a: Any, **_k: Any) -> _FakeSocket:
+            self.probed.append(address[0])
+            return _FakeSocket()
+        mp.setattr(socket, "create_connection", connect)
 
         def pause(seconds: float) -> None:
             self.pauses.append(seconds)
@@ -412,12 +434,8 @@ class Harness:
                                           dict(env) if env is not None else None, stdin))
         if self.model_error is not None:
             return subprocess.CompletedProcess(cmd, 1, "", self.model_error)
-        reply = self.model_reply
-        if isinstance(reply, list):
-            assert reply, "more model calls than replies"
-            reply = reply.pop(0)
-        if callable(reply):
-            reply = reply(input)
+        reply = self._next_reply(input)
+        assert not isinstance(reply, (HTTPReply, Exception)), "only the gateway answers with these"
         if isinstance(reply, FailedCall):
             return subprocess.CompletedProcess(cmd, 1, "", reply.stderr)
         reply = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
@@ -426,6 +444,38 @@ class Harness:
             return subprocess.CompletedProcess(cmd, 0, "", "")
         envelope = {"type": "result", "subtype": "success", "is_error": False, "result": reply}
         return subprocess.CompletedProcess(cmd, 0, json.dumps(envelope, ensure_ascii=False), "")
+
+    def _next_reply(self, prompt: str | None) -> Any:
+        reply = self.model_reply
+        if isinstance(reply, list):
+            assert reply, "more model calls than replies"
+            reply = reply.pop(0)
+        return reply(prompt) if callable(reply) else reply
+
+    def _fake_gateway_post(self, url: str, **kwargs: Any) -> requests.Response:
+        """The gateway's /v1/messages, answering as an Anthropic-format endpoint does. A reply
+        that is an exception is raised, as requests raises a timeout or a refused connection."""
+        body = kwargs["json"]
+        [message] = body["messages"]
+        self.model_calls.append(ModelCall(["POST", url], message["content"], None, None, None, None,
+                                          dict(kwargs["headers"]), body))
+        if self.model_error is not None:
+            return _response(500, {"type": "error", "error": {"type": "api_error",
+                                                              "message": self.model_error}})
+        reply = self._next_reply(message["content"])
+        if isinstance(reply, Exception):
+            raise reply
+        if isinstance(reply, HTTPReply):
+            return _response(reply.status, reply.body)
+        if isinstance(reply, FailedCall):
+            return _response(500, {"type": "error", "error": {"type": "api_error",
+                                                              "message": reply.stderr}})
+        text = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
+        return _response(200, {
+            "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-haiku-5-5",
+            "content": [{"type": "text", "text": text}], "stop_reason": "end_turn",
+            "usage": {"input_tokens": 1200, "output_tokens": 300, "cache_creation_input_tokens": 0,
+                      "cache_read_input_tokens": 0}})
 
     def _security(self, cmd: list[str], input: str | None,
                   timeout: float | None) -> subprocess.CompletedProcess:
@@ -489,6 +539,14 @@ class Harness:
 class _FakeSocket:
     def close(self) -> None:
         pass
+
+
+def _response(status: int, body: str | dict[str, Any]) -> requests.Response:
+    r = requests.Response()
+    r.status_code = status
+    r._content = (body if isinstance(body, str) else json.dumps(body)).encode()
+    r.encoding = "utf-8"
+    return r
 
 
 def default_config() -> dict[str, Any]:
