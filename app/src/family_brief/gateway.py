@@ -4,9 +4,9 @@ Claude or ChatGPT subscription (ADR 0014).
 The program calls the gateway's Anthropic-format `POST /v1/messages` itself, so the Household
 needs neither Claude Code nor Codex. The Gateway Key lives in the Keychain and goes only into the
 request's `x-api-key` header: it's never printed, logged or put on a command line (ADR 0005).
-What a reply means is read from its HTTP status: 401 an unknown or revoked key, 402 a key past
-its daily budget (or any reply that says `Budget exceeded`), 429 and 5xx a busy model, and a 200 whose `stop_reason` is `refusal` a failed
-call, never an empty Brief.
+What a reply means is read from its HTTP status: 401 an unknown or revoked key, 402 (or any error
+that says `Budget exceeded`) a key past its daily budget, 429 and 5xx a busy model, and a 200
+whose `stop_reason` is `refusal` a failed call, never an empty Brief.
 """
 from __future__ import annotations
 
@@ -104,8 +104,10 @@ def said(response: requests.Response) -> str:
 
 def out_of_budget(response: requests.Response) -> bool:
     """Whether the gateway refused the call because the key has used today's budget. Bifrost says
-    so with a 402 and `Budget exceeded: …`; the words count with any status."""
-    return response.status_code == OUT_OF_BUDGET or "budget exceeded" in said(response).lower()
+    so with a 402 and `Budget exceeded: …`; the words count with any error status, never in a
+    reply, which may quote a message that says them."""
+    return response.status_code == OUT_OF_BUDGET or (
+        response.status_code != 200 and "budget exceeded" in said(response).lower())
 
 
 def spent(error: str) -> bool:

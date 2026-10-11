@@ -7,6 +7,7 @@ requests the gateway got, the pauses between them, doctor's lines, the setup ste
 every place the Gateway Key must never reach (ADR 0005)."""
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -176,6 +177,16 @@ def test_a_key_out_of_credit_for_the_day_fails_at_once_and_says_so(night, reply)
     assert SPENT in en.text and "tomorrow evening's Brief" in en.text
     assert "Retki" in en.text  # the raw messages still follow
     assert "Gateway Key 今天的额度已用完" in zh.text
+
+
+def test_a_brief_that_mentions_a_budget_exceeded_is_not_taken_for_one(night):
+    digest = "**Mia**\n- Budget exceeded: the class trip costs more this year"
+    night.model_reply = [HTTPReply(200, {"content": [{"type": "text", "text": json.dumps(
+        {"message_digest": digest, "per_kid": [], "calendar_events": []})}], "stop_reason": "end_turn"})]
+
+    night.run()
+
+    assert "the class trip costs more" in night.sent[0].text and FAILED not in night.sent[0].text
 
 
 def test_any_other_failure_does_not_say_the_credit_ran_out(night):
