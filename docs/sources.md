@@ -57,7 +57,7 @@ Notes:
 
 For invited Households without a Claude or ChatGPT subscription (ADR 0014). The maintainers send the Household a Gateway Key, starting with `sk-`, over a private channel. Neither Claude Code nor Codex is needed.
 
-1. Before the Household picks it, tell them what [The maintainers' gateway](../SECURITY.md#the-maintainers-gateway) in SECURITY.md says: after the AI filter, their messages go through a server the maintainers run in the EU, which keeps token counts and cost but not the text
+1. Before the Household picks it, tell them what [The maintainers' gateway](../SECURITY.md#the-maintainers-gateway) in SECURITY.md says: after the AI filter when it's on, their messages go through a server the maintainers run in the EU, which keeps token counts and cost but not the text
 2. `$FB setup gateway` asks for the key in a macOS dialog, makes one small test call through the gateway and saves it in the Keychain (service `family-brief`, account `gateway-key`). On the setup page, the key goes into the AI step's own field instead
 3. `$FB doctor` checks that the gateway answers and the key works
 

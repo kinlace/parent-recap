@@ -2236,6 +2236,19 @@ def test_the_page_says_the_messages_go_through_the_maintainers_gateway():
             assert gateway in text[language][key] and eu in text[language][key], (language, key)
 
 
+# How each language says the AI filter applies only while it's on, as SECURITY.md does.
+FILTER_ON_WORDS = {"en": "when it's on", "fi": "kun se on päällä", "zh": "开着时"}
+
+
+def test_the_gateway_text_says_the_ai_filter_applies_only_when_it_s_on():
+    # ADR 0013: a Household can turn the AI filter off, so the page doesn't promise it always runs.
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, words in FILTER_ON_WORDS.items():
+        for key in ("ai.gateway.ready", "gateway.privacy"):
+            assert words in text[language][key], (language, key)
+
+
 def test_the_gateway_key_field_is_the_page_s_own(page):
     html = call(page.url).body.decode()
 
