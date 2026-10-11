@@ -93,6 +93,15 @@ def test_a_translation_goes_through_the_gateway_too(night):
     assert all(call.argv == ["POST", f"{URL}/v1/messages"] for call in night.model_calls)
 
 
+def test_a_model_left_from_another_backend_is_not_asked_of_the_gateway(night):
+    night.config["llm"]["model"] = "sonnet"
+    night.model_reply = GOOD
+
+    night.run()
+
+    assert night.model_calls[0].body["model"] == "parent-recap"
+
+
 def test_the_gateway_address_defaults_to_the_maintainers_gateway(night):
     del night.config["llm"]["gateway_url"]
     night.model_reply = GOOD

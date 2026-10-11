@@ -630,7 +630,7 @@ def cmd_gateway(args: argparse.Namespace) -> int:
     return _report(result, next_, **extra)
 
 
-# Loose on purpose, like CLAUDE_TOKEN: the test call decides whether it works. A gateway key is
+# Loose on purpose, like CLAUDE_TOKEN: the test call decides whether it works. A Gateway Key is
 # sk-bf-…, and an Anthropic-compatible endpoint used in its place takes sk-ant-….
 GATEWAY_KEY = re.compile(r"sk-[A-Za-z0-9_-]{8,}")
 

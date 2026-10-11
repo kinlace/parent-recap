@@ -72,10 +72,11 @@ def key() -> str:
 
 
 def post(url: str, gateway_key: str, system: str, prompt: str, timeout: float,
-         model: str | None = None, max_tokens: int = MAX_TOKENS) -> requests.Response:
+         max_tokens: int = MAX_TOKENS) -> requests.Response:
     """One call to the gateway at `url`. A call that times out raises TimeoutError, one that
-    reaches no gateway GatewayError, so neither says more than the address."""
-    body = {"model": model or MODEL, "max_tokens": max_tokens, "system": system,
+    reaches no gateway GatewayError, so neither says more than the address. It always asks for
+    MODEL: a Gateway Key may use no other, so an llm.model left from another backend is ignored."""
+    body = {"model": MODEL, "max_tokens": max_tokens, "system": system,
             "messages": [{"role": "user", "content": prompt}]}
     try:
         return requests.post(f"{url.rstrip('/')}/v1/messages", json=body, timeout=timeout,

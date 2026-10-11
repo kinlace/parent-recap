@@ -672,7 +672,7 @@ def _run_gateway(cfg: Config, prompt: str, system_prompt: str, timeout: int, bud
     what = f"gateway {gateway.host(url)} (prompt: {len(prompt.encode('utf-8'))} B)"
     # An error that echoes the key back goes no further than here, to the log or the Brief.
     response, waited = _with_retry(
-        lambda: gateway.post(url, key, system_prompt, prompt, timeout, cfg.llm.model),
+        lambda: gateway.post(url, key, system_prompt, prompt, timeout),
         lambda r: (_gateway_busy(r) or "").replace(key, "<key>") or None, timeout, what, budget)
     try:
         reply = gateway.read(response)
