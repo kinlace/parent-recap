@@ -53,6 +53,20 @@ Notes:
 - If the user's `~/.zshrc` exports `ANTHROPIC_API_KEY`, it clashes with subscription login. The program prefers the Keychain token, but it's best to have the user remove that line
 - Without a subscription, an API key works too: in **Terminal** run `security add-generic-password -U -s family-brief -a anthropic-api-key -T /usr/bin/security -w`, press Enter and paste the key (`-T /usr/bin/security` lets the evening job read it without a Keychain prompt). It's billed per use, a few cents a day
 
+### Parent Recap's gateway (`llm.backend: gateway`)
+
+For invited Households without a Claude or ChatGPT subscription (ADR 0014). The maintainers send the Household a Gateway Key, starting with `sk-`, over a private channel. Neither Claude Code nor Codex is needed.
+
+1. Before the Household picks it, tell them what [The maintainers' gateway](../SECURITY.md#the-maintainers-gateway) in SECURITY.md says: after the AI filter, their messages go through a server the maintainers run in the EU, which keeps token counts and cost but not the text
+2. `$FB setup gateway` asks for the key in a macOS dialog, makes one small test call through the gateway and saves it in the Keychain (service `family-brief`, account `gateway-key`). On the setup page, the key goes into the AI step's own field instead
+3. `$FB doctor` checks that the gateway answers and the key works
+
+Notes:
+
+- Each key is capped at $0.10 a day. A key past its cap is ⚠️ in doctor until the next day, and that night's Brief comes without its Digest
+- A key the gateway doesn't know, or that the maintainers turned off, is ❌ in doctor: ask the maintainers for a new one and run `$FB setup gateway` again
+- `llm.gateway_url` says where the gateway is, `https://gateway.parentrecap.com` by default
+
 ## Wilma (optional)
 
 This uses the community open-source wilma CLI (not affiliated with Visma).
