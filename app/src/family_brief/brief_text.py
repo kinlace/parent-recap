@@ -66,6 +66,7 @@ class BriefText:
 
     # ── Rule-based fallback when the model fails
     fallback_header: str
+    fallback_spent: str                 # the header when the Gateway Key used up today's credit
     unsorted: str
     fallback_count: str                 # {count}, as `messages` gives it
     fallback_more: str                  # {n}
@@ -167,6 +168,9 @@ EN = BriefText(
               "“check Parent Recap”.",
     fallback_header="⚠️ Tonight's Digest could not be written, so here are the raw messages "
                     "(all of them are in the archive in ~/ParentRecap):",
+    fallback_spent="⚠️ Tonight's Digest could not be written: the Gateway Key has used up today's credit. "
+                   "It comes back within a day, in time for tomorrow evening's Brief. Here are the raw "
+                   "messages (all of them are in the archive in ~/ParentRecap):",
     unsorted="Unsorted",
     fallback_count=" ({count})",
     fallback_more="  …{n} more in the archive",
@@ -235,6 +239,8 @@ ZH = BriefText(
     fix_permission="跟 {assistant} 说「Parent Recap 读不了 {source}」即可修复。",
     fix_other="如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 {assistant} 说「检查 Parent Recap」。",
     fallback_header="⚠️ 今日 LLM 总结失败，以下是原始消息清单（详见 ~/ParentRecap 归档）：",
+    fallback_spent="⚠️ 今晚没能写摘要：Gateway Key 今天的额度已用完，一天之内会恢复，赶得上明晚的日报。"
+                   "以下是原始消息清单（详见 ~/ParentRecap 归档）：",
     unsorted="未分类",
     fallback_count="（{count}）",
     fallback_more="  …另外 {n} 条，见归档",
@@ -295,13 +301,16 @@ FI = BriefText(
     login_failed="kirjautuminen epäonnistui",
     fallback_header="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua, joten tässä ovat viestit sellaisenaan "
                     "(kaikki ovat tallessa arkistossa ~/ParentRecap):",
+    fallback_spent="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua: Gateway Keyn tämän päivän saldo on "
+                   "käytetty. Se palautuu vuorokauden kuluessa, ajoissa huomisillan koosteeseen. Tässä ovat "
+                   "viestit sellaisenaan (kaikki ovat tallessa arkistossa ~/ParentRecap):",
     unsorted="Muut viestit",
     fallback_count=" ({count})",
     fallback_more="  …arkistossa vielä {n} lisää",
     # Added after the first review and not yet checked by a Finnish speaker: reply_incomplete,
     # message_unreadable, nothing_read, source_problem, fix_login, fix_permission, fix_other,
     # whatsapp_permission_denied, phone_number, email_address, link, someone, held_back,
-    # held_back_note, held_back_open, held_back_read_in, no_subject.
+    # held_back_note, held_back_open, held_back_read_in, no_subject, fallback_spent.
     reply_incomplete="⚠️ {assistant}-avustajan vastaus katkesi tänä iltana, joten koosteesta voi puuttua "
                      "joitakin kohtia. Kaikki tämäniltaiset viestit ovat arkistossa kansiossa ~/ParentRecap.",
     message_unreadable="yhtä viestiä ei voitu lukea",

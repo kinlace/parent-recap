@@ -57,6 +57,7 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "fix_permission": "Tell {assistant} “Parent Recap can't read {source}” to fix it.",
   "fix_other": "If the Mac was offline, this fixes itself. If it happens again, tell {assistant} “check Parent Recap”.",
   "fallback_header": "⚠️ Tonight's Digest could not be written, so here are the raw messages (all of them are in the archive in ~/ParentRecap):",
+  "fallback_spent": "⚠️ Tonight's Digest could not be written: the Gateway Key has used up today's credit. It comes back within a day, in time for tomorrow evening's Brief. Here are the raw messages (all of them are in the archive in ~/ParentRecap):",
   "unsorted": "Unsorted",
   "fallback_count": " ({count})",
   "fallback_more": "  …{n} more in the archive",

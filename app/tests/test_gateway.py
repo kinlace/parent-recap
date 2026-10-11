@@ -156,6 +156,36 @@ def test_a_reply_waiting_wont_fix_fails_at_once_with_the_usual_brief(night, repl
     assert len(night.model_calls) == 1 and night.pauses == []
 
 
+SPENT = "the Gateway Key has used up today's credit. It comes back within a day"
+
+
+@pytest.mark.parametrize("reply", [
+    BUDGET_EXCEEDED,
+    # Said with a busy status instead, it still won't pass by waiting minutes.
+    HTTPReply(429, {"type": "error", "error": {"type": "rate_limit_error", "message":
+                    "Budget exceeded: VK budget exceeded: 0.1766 >= 0.1000 dollars"}}),
+])
+def test_a_key_out_of_credit_for_the_day_fails_at_once_and_says_so(night, reply):
+    night.config["email"]["to"] = ["parent@example.com", {"address": "partner@example.com", "language": "zh"}]
+    night.model_reply = [reply]
+
+    assert night.run() == 0
+
+    assert len(night.model_calls) == 1 and night.pauses == []
+    en, zh = sorted(night.sent, key=lambda email: "今日" in email.text)
+    assert SPENT in en.text and "tomorrow evening's Brief" in en.text
+    assert "Retki" in en.text  # the raw messages still follow
+    assert "Gateway Key 今天的额度已用完" in zh.text
+
+
+def test_any_other_failure_does_not_say_the_credit_ran_out(night):
+    night.model_reply = [UNKNOWN_KEY]
+
+    night.run()
+
+    assert FAILED in night.sent[0].text and "credit" not in night.sent[0].text
+
+
 def test_a_refusal_is_a_failed_call_not_an_empty_brief(night, caplog):
     night.model_reply = [REFUSAL]
 

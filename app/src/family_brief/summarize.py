@@ -657,8 +657,9 @@ def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int, budge
 
 def _gateway_busy(response: requests.Response) -> str | None:
     """What says the model behind the gateway is busy, from the reply's HTTP status, or None. A
-    busy status whose error waiting won't fix, such as the gateway's own credit run out, isn't."""
-    if response.status_code not in gateway.BUSY:
+    busy status whose error waiting won't fix, such as the gateway's own credit or the key's
+    budget for the day run out, isn't."""
+    if response.status_code not in gateway.BUSY or gateway.out_of_budget(response):
         return None
     said = gateway.said(response)
     return None if _WONT_PASS.search(said) else said[:120]

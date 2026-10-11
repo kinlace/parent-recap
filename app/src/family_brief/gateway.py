@@ -5,7 +5,7 @@ The program calls the gateway's Anthropic-format `POST /v1/messages` itself, so 
 needs neither Claude Code nor Codex. The Gateway Key lives in the Keychain and goes only into the
 request's `x-api-key` header: it's never printed, logged or put on a command line (ADR 0005).
 What a reply means is read from its HTTP status: 401 an unknown or revoked key, 402 a key past
-its daily budget, 429 and 5xx a busy model, and a 200 whose `stop_reason` is `refusal` a failed
+its daily budget (or any reply that says `Budget exceeded`), 429 and 5xx a busy model, and a 200 whose `stop_reason` is `refusal` a failed
 call, never an empty Brief.
 """
 from __future__ import annotations
@@ -28,6 +28,9 @@ SETUP = "parent-recap setup gateway"
 # The statuses waiting may fix: rate-limited, and the gateway or the model behind it busy.
 BUSY = frozenset({429, 500, 502, 503, 504, 529})
 UNKNOWN_KEY, OUT_OF_BUDGET = 401, 402
+# How a call refused for a key past its daily budget starts, so the Brief can say so. The budget
+# resets a day after it last did (ops/gateway/README.md).
+SPENT_MESSAGE = "the Gateway Key has used up today's credit"
 
 # The gateway's usage fields, by the kind of token LLMReply.usage calls them.
 _USAGE = {"input": "input_tokens", "cache_write": "cache_creation_input_tokens",
@@ -99,9 +102,22 @@ def said(response: requests.Response) -> str:
     return f"HTTP {response.status_code}: {(message or response.text or '').strip()[:300]}"
 
 
+def out_of_budget(response: requests.Response) -> bool:
+    """Whether the gateway refused the call because the key has used today's budget. Bifrost says
+    so with a 402 and `Budget exceeded: …`; the words count with any status."""
+    return response.status_code == OUT_OF_BUDGET or "budget exceeded" in said(response).lower()
+
+
+def spent(error: str) -> bool:
+    """Whether a failed call's error is the key's budget run out for the day."""
+    return error.startswith(SPENT_MESSAGE)
+
+
 def read(response: requests.Response) -> Reply:
     """The reply's text, tokens by kind and model. Raises GatewayError for any other answer: an
     error status, a refusal, or a reply with no text."""
+    if out_of_budget(response):
+        raise GatewayError(f"{SPENT_MESSAGE} (the gateway answered {said(response)})", response.status_code)
     if response.status_code != 200:
         raise GatewayError(f"the gateway answered {said(response)}", response.status_code)
     try:
@@ -135,8 +151,8 @@ def test_call(url: str, gateway_key: str, timeout: float = 60) -> tuple[str, str
         read(response)
     except (TimeoutError, GatewayError) as e:
         status = getattr(e, "status", None)
-        outcome = (NO_ANSWER if status is None else UNKNOWN if status == UNKNOWN_KEY
-                   else SPENT if status == OUT_OF_BUDGET else FAILED)
+        outcome = (NO_ANSWER if status is None else SPENT if spent(str(e))
+                   else UNKNOWN if status == UNKNOWN_KEY else FAILED)
         detail = str(e).replace(gateway_key, "<key>") if gateway_key else str(e)
         return outcome, detail
     return WORKS, None

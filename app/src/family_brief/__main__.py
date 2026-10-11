@@ -262,7 +262,8 @@ def _fallback_summary(messages: list[Message], err: str, t: BriefText, cfg: Conf
         key = (cfg.kid_called(m.kid_hint) or t.unsorted, m.source)
         buckets.setdefault(key, []).append(m)
 
-    lines = [t.fallback_header, ""]
+    # A Gateway Key out of credit for the day is no fault to look into: it says so, and when it ends.
+    lines = [t.fallback_spent if gateway.spent(err) else t.fallback_header, ""]
     for (kid, source), msgs in sorted(buckets.items()):
         lines.append(f"**{kid} · {source}**{t.fallback_count.format(count=t.messages(len(msgs)))}")
         for m in msgs[:15]:
