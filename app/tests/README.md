@@ -33,11 +33,11 @@ the AI saw it: a teacher in a Finnish case form, a teacher and a phone number in
 with no spaces, and a name the model wrote out itself go as that night's placeholders, the Kids as
 Kid A and Kid B, also with the AI filter off, and the Household as a pseudonym that is the same
 the next evening and differs for another label. The Form keeps the fields `ops/feedback-form`
-gives it, in their order. With the AI filter's `mask_kids` switch on (#268), the same night's Brief
+gives it, in their order. With the AI filter's `mask_kids` switch on (#268), as by default, the same night's Brief
 and translation prompts have no Kid's name or alias either, only Kid A and Kid B (Leon, Leo's
 genitive, as Kid B:n), and the Brief and archive get the Kids' names back; Kids called Elias and
 Pekka go as Kid A and Kid B in the forms their stems change in (Eliaksen, Pekan) and come back as
-Pekalle. With the switch off, as by default, the Kids' names reach the model as before.
+Pekalle. With the switch off, the Kids' names reach the model as before.
 `test_ai_filter.py` checks the names on their own: a full name and its parts as one person, stems that change (Pekan, Niemen, Markuksen),
 that a reply copying the placeholders gets back exactly the text they stood for (Ville Virtanen,
 Maria, Kevät juhla, Toivon), how a form the text never had is made, a part two people share, a
@@ -395,7 +395,7 @@ in `src/family_brief/eval/cases.py`. Keywords in `expect` need Chinese, English 
 `test_eval_scoring.py` checks the scoring on its own, and that a plain Finnish Brief scores clean
 on the Finnish cases. `test_eval_runner.py` runs the eval with only the model process faked,
 also with several models side by side, their cost, a placeholder the model changed beyond repair,
-and `--mask-kids`, whose prompt has no Kid's name and whose run compares with one without it.
+and the Kids as Kid A, Kid B by default, whose prompt has no Kid's name and whose run compares with one with `--no-mask-kids`.
 
 ### Trying another model
 
@@ -431,15 +431,15 @@ How to read it:
 
 ### Masking the Kids' names too
 
-The AI filter's `mask_kids` switch, off by default, sends each Kid's names, aliases and their case
-forms as Kid A, Kid B too (#268). Before it is turned on by default, score each backend and
-language without it and then with it, so the second run compares with the first:
+The AI filter's `mask_kids` switch, on by default since #300, sends each Kid's names, aliases and
+their case forms as Kid A, Kid B too (#268), and the eval does the same. To see what it costs a
+backend or language, score it without the switch and then with it, so the second run compares
+with the first:
 
 ```bash
+python -m family_brief.eval --backend claude,codex --repeat 2 --no-mask-kids
 python -m family_brief.eval --backend claude,codex --repeat 2
-python -m family_brief.eval --backend claude,codex --repeat 2 --mask-kids
 ```
 
 The card of a run with it says `Kids as Kid A, Kid B`. Watch `kid_ok` and `cases_clean`
-especially, and the cases with a Kid's alias or genitive. The maintainers record the decision in
-ADR 0013.
+especially, and the cases with a Kid's alias or genitive. ADR 0013 records why it is on.

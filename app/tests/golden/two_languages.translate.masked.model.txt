@@ -10,16 +10,17 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
 3. Keep names, times, amounts and the Markdown formatting as they are, and write each date the way English writes them in the text, such as Mon 28 Sep
 4. Keep every other value exactly as it is (kid, by, refs, start), and keep every list with the same entries in the same order: don't add, drop, merge or reorder anything
 5. People's names (other than the kids'), phone numbers, email addresses and links are placeholders such as ⟦N1⟧, ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧, and the program puts the real ones back. Copy each one you use exactly as written, with its brackets: never translate, reformat or renumber it, and never make one up. A placeholder is the same person or value wherever it stands. In Finnish, a case ending goes after a person's placeholder with a colon, as in ⟦N1⟧:lle
-6. Reply with exactly one JSON object of the same shape: no markdown fences, no explanations
-7. **JSON format**: every `"` inside a string value must be escaped as `\"`; don't stand in full-width or curly quotes for it. To quote something inside a text value, use ‘single quotes’ instead of straight double quotes, so the JSON doesn't break
+6. Each kid is a placeholder such as Kid A, in kid_profiles and wherever a message names them, and the program puts their names back. Call each kid by their placeholder exactly as written, in every language: never translate it or guess a name. In Finnish, a case ending goes after a kid's placeholder with a colon, as in Kid A:lle
+7. Reply with exactly one JSON object of the same shape: no markdown fences, no explanations
+8. **JSON format**: every `"` inside a string value must be escaped as `\"`; don't stand in full-width or curly quotes for it. To quote something inside a text value, use ‘single quotes’ instead of straight double quotes, so the JSON doesn't break
 
 
 --- stdin ---
 {
-  "message_digest": "**Mia**\n- 周四远足，周二前在 Wilma 签同意书\n- 下周一数学考试\n\n**Leo**\n- 周三拍班级照\n- 钢琴课本周改到周三 17:30",
+  "message_digest": "**Kid A**\n- 周四远足，周二前在 Wilma 签同意书\n- 下周一数学考试\n\n**Kid B**\n- 周三拍班级照\n- 钢琴课本周改到周三 17:30",
   "per_kid": [
     {
-      "kid": "Mia",
+      "kid": "Kid A",
       "notices": [
         {
           "text": "周四 10/1 班级去 Nuuksio 远足（retki），带 eväät 和雨衣",
@@ -52,7 +53,7 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
       ]
     },
     {
-      "kid": "Leo",
+      "kid": "Kid B",
       "notices": [
         {
           "text": "周三 9/30 上午拍班级照",
@@ -63,7 +64,7 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
       ],
       "action_items": [
         {
-          "what": "给 Leo 准备拍照穿的衣服 <整洁>",
+          "what": "给 Kid B 准备拍照穿的衣服 <整洁>",
           "by": "2026-09-30",
           "refs": [
             "g-102"
@@ -74,13 +75,13 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
   ],
   "calendar_events": [
     {
-      "kid": "Mia",
+      "kid": "Kid A",
       "title": "3B 远足 Nuuksio",
       "start": "2026-10-01T09:00:00",
       "description": "班级远足，带午餐和雨衣（gmail）"
     },
     {
-      "kid": "Leo",
+      "kid": "Kid B",
       "title": "钢琴课（改期）",
       "start": "2026-09-30T17:30:00+03:00",
       "description": "本周改到周三"

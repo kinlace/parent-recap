@@ -326,9 +326,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--jobs", type=int, default=1,
                    help="cases in flight at once (faster; seconds_per_night then includes queueing)")
     p.add_argument("--judge", action="store_true", help="also have the model rate each Digest's readability")
-    p.add_argument("--mask-kids", action="store_true",
-                   help="send the Kids' names as Kid A, Kid B too (the AI filter's mask_kids switch), "
-                        "to compare with a run without it")
+    p.add_argument("--mask-kids", action=argparse.BooleanOptionalAction, default=True,
+                   help="send the Kids' names as Kid A, Kid B too (the AI filter's mask_kids switch, on by "
+                        "default); --no-mask-kids sends their names, to compare with a run with it")
     p.add_argument("--codex-path", default=None)
     p.add_argument("--out", type=Path, default=Path("~/ParentRecap/eval").expanduser(),
                    help="where runs are saved (default: ~/ParentRecap/eval)")

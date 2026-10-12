@@ -90,7 +90,7 @@ def test_scores_a_case_folder_and_saves_the_run(case_dir, model, tmp_path, capsy
     payload = json.loads(model["prompts"][0][model["prompts"][0].index("\n{") + 1:])
     assert payload["now"] == "2026-10-04T21:00:00+03:00"
     assert payload["date_reference"]["today"] == "2026-10-04 周日"
-    assert payload["messages"][0]["kid_hint"] == "Eero"  # from the chat map, as the collector does
+    assert payload["messages"][0]["kid_hint"] == "Kid B"  # Eero, from the chat map, as the collector does
 
     card = capsys.readouterr().out
     assert "action_recall" in card and "1.0" in card
@@ -182,17 +182,17 @@ def test_the_eval_runs_to_the_end_with_contact_details_as_placeholders(case_dir,
         "付 kausimaksu 120 € https://eagles.example.fi/maksu"
 
 
-def test_with_mask_kids_the_model_gets_kid_a_and_kid_b_and_the_run_compares_with_one_without(
+def test_by_default_the_model_gets_kid_a_and_kid_b_and_the_run_compares_with_one_without(
         case_dir, model, tmp_path, capsys):
     out = tmp_path / "r"
-    assert runner.main(["--cases", str(case_dir), "--out", str(out), "--language", "fi"]) == 0
+    assert runner.main(["--cases", str(case_dir), "--out", str(out), "--language", "fi", "--no-mask-kids"]) == 0
     masked = copy.deepcopy(GOOD)
     masked["per_kid"][0]["kid"] = "Kid B"
     masked["message_digest"] = "**Kid B**\n- Kid B:n kausimaksu"
     model["replies"] = [masked]
     capsys.readouterr()
 
-    assert runner.main(["--cases", str(case_dir), "--out", str(out), "--language", "fi", "--mask-kids"]) == 0
+    assert runner.main(["--cases", str(case_dir), "--out", str(out), "--language", "fi"]) == 0
 
     prompt = model["prompts"][-1]
     for name in ("Aino", "Eero", "Eetu", "小艾"):

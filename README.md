@@ -81,13 +81,14 @@ The `family-brief` command still works beside `parent-recap`, and `~/.family` ke
 Every evening Parent Recap sends the night's messages to your own Claude or ChatGPT, which writes the Brief. Before anything leaves your Mac, the program cuts down what the AI gets:
 
 - Phone numbers, email addresses, links and the names of the people who send the messages (teachers, other parents, the people in your WhatsApp groups) become placeholders such as ⟦N1⟧. The Mac keeps what each one stands for, for that evening only, and puts the real values back before the Brief is written, so your Brief looks the same
+- Your Kids go as Kid A and Kid B, and the Brief shows their names again
 - Messages that look sensitive, such as ones about a diagnosis, special support, bullying or child welfare, don't reach the AI at all, unless they were sent to everyone, such as a school announcement. The Brief lists each one by Source, sender and subject, so you read it where it came from
 - From Google Calendar, only Kid-related events reach the AI with their title: the ones Parent Recap added and the ones whose title names a Kid. Every other event goes as a busy time with no title or place
 - Weekend Picks are chosen with your Kids as Kid A and Kid B, not their names
 
-The first two are the AI filter. It is on by default, and you can turn it off by asking Claude or Codex.
+The first three are the AI filter. It is on by default, and you can turn it off by asking Claude or Codex, or keep it and let only your Kids' names through.
 
-This reduces what reaches the AI and doesn't guarantee anything. The rest of each message's text still reaches it, and so do your Kids' names, school and class, and any name the program can't tell is a person's, such as one that appears only inside a message.
+This reduces what reaches the AI and doesn't guarantee anything. The rest of each message's text still reaches it, and so do your Kids' school and class, and any name the program can't tell is a person's, such as one that appears only inside a message.
 
 Claude and ChatGPT process this text in the US: their consumer plans offer no processing in the EU. By default both may also use your chats to train their models, including the ones that write the Brief. Parent Recap can't check this setting, so the setup page says where to turn it off: "Help improve Claude" under Settings > Privacy in Claude, or "Improve the model for everyone" under Settings > Data controls in ChatGPT, which OpenAI says also covers Codex tasks.
 

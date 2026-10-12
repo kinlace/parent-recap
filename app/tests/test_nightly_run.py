@@ -808,6 +808,7 @@ def test_a_kid_has_one_name_across_the_brief(harness):
     normal_night(harness, "en")
     mia = harness.config["kids"][0]
     mia.update(name="Virtanen Mia Sofia", everyday_name="Mia")  # name as Wilma spells it
+    harness.config["ai_filter"] = {"mask_kids": False}  # the Kids' names reach the model
     harness.sources["myclub"][0][0].kid = "Virtanen Mia Sofia"
     reply = harness.model_reply
     reply["per_kid"][0]["kid"] = "Virtanen Mia Sofia"
@@ -851,7 +852,7 @@ def test_google_mode_writes_events_and_links_them(harness):
     assert all(e["attendees"] == [{"email": "partner@example.com"}] for e in harness.calendar.inserted)
     assert harness.calendar.inserted[0]["start"] == {"dateTime": "2026-10-01T09:00:00+03:00",
                                                      "timeZone": "Europe/Helsinki"}
-    assert harness.model_payload()["upcoming_calendar_events_next_7d"][0]["summary"] == "Mia dentist"
+    assert harness.model_payload()["upcoming_calendar_events_next_7d"][0]["summary"] == "Kid A dentist"
 
     [email] = harness.sent
     assert email.attachments == []
@@ -896,9 +897,9 @@ def test_an_event_naming_a_kid_keeps_its_title_and_location(harness):
     assert harness.run() == 0
 
     assert harness.model_payload()["upcoming_calendar_events_next_7d"] == [
-        {"id": "k1", "summary": "MIA swimming", "start": "2026-09-29T17:00:00+03:00",
+        {"id": "k1", "summary": "Kid A swimming", "start": "2026-09-29T17:00:00+03:00",
          "end": "2026-09-29T18:00:00+03:00", "location": "Leppävaara pool"},
-        {"id": "k2", "summary": "小狮 理发", "start": "2026-09-30T15:00:00+03:00",
+        {"id": "k2", "summary": "Kid B 理发", "start": "2026-09-30T15:00:00+03:00",
          "end": "2026-09-30T15:30:00+03:00", "location": "Kilo barber"},
     ]
 
@@ -1296,10 +1297,10 @@ def test_old_shape_archives_feed_continuity(harness):
 
     assert harness.model_payload()["earlier_briefs"] == [
         {"date": "2026-09-24", "per_kid": [
-            {"kid": "Mia", "notices": ["足球训练改到周五"],
+            {"kid": "Kid A", "notices": ["足球训练改到周五"],
              "action_items": [{"what": "交班费", "by": "本周"}, "带手工材料"]}]},
         {"date": "2026-09-26", "per_kid": [
-            {"kid": "Leo", "notices": [],
+            {"kid": "Kid B", "notices": [],
              "action_items": [{"what": "交图书馆的书", "by": "2026-09-28T00:00:00", "who": "爸爸"},
                               {"what": "没写日期"}]}]},
     ]
@@ -2104,7 +2105,7 @@ def test_the_brief_prompt_has_placeholders_in_place_of_contact_details(harness):
     assert re.fullmatch(rf"⟦N\d⟧ Opettaja <{gmail['metadata']['sender_email']}>", gmail["sender"])
     assert re.fullmatch(r"⟦E\d⟧", gmail["metadata"]["sender_email"])
     assert re.fullmatch(r"Sign up for the retki at ⟦L\d⟧ or call ⟦P\d⟧\. Questions to ⟦E\d⟧\.", gmail["body"])
-    assert re.fullmatch(r"If Leo is ill, call the school nurse on ⟦P\d⟧\.", wilma["body"])
+    assert re.fullmatch(r"If Kid B is ill, call the school nurse on ⟦P\d⟧\.", wilma["body"])
     assert re.fullmatch(r"Football sign-up is at ⟦L\d⟧, or text me on ⟦P\d⟧", whatsapp["body"])
     assert re.fullmatch(r"Kit list: ⟦L\d⟧", payload["already_queued_for_calendar"][0]["description"])
     assert re.fullmatch(r"The lost-property box is at the office, ⟦E\d⟧",
@@ -2174,6 +2175,7 @@ def test_the_brief_calendar_and_archive_get_the_real_contact_details_back(harnes
 
 def test_the_translation_prompt_has_the_same_placeholders_and_the_translation_the_values(harness):
     contact_night(harness)
+    harness.config["ai_filter"] = {"mask_kids": False}  # the Kids' names reach the model
     harness.config["summary_language"] = "zh"
     harness.config["email"]["to"] = ["parent@example.com", PARTNER_EN]
     # The translation keeps every placeholder, as its instructions ask.
@@ -2444,6 +2446,7 @@ def names_reply(prompt: str) -> dict:
 
 def test_third_parties_names_reach_the_brief_prompt_only_as_placeholders(harness):
     names_night(harness)
+    harness.config["ai_filter"] = {"mask_kids": False}  # the Kids' names reach the model
     harness.model_reply = [names_reply, json.loads]
 
     assert harness.run() == 0
@@ -2482,6 +2485,7 @@ def test_third_parties_names_reach_the_brief_prompt_only_as_placeholders(harness
 
 def test_the_brief_calendar_and_archive_get_the_names_back_and_the_translation_prompt_has_none(harness):
     names_night(harness)
+    harness.config["ai_filter"] = {"mask_kids": False}  # the Kids' names reach the model
     harness.model_reply = [names_reply, json.loads]  # the translation keeps every placeholder
 
     assert harness.run() == 0
@@ -2528,7 +2532,7 @@ def test_an_earlier_briefs_names_reach_the_model_only_as_placeholders(harness):
     assert set(earlier) == {"date", "per_kid"}  # what the program knows of that night stays here
 
 
-# ── The Kids' own names as Kid A and Kid B, behind a switch that is off by default (#268)
+# ── The Kids' own names as Kid A and Kid B, behind a switch that is on by default (#268, #300)
 
 def kids_masked_reply(prompt: str) -> dict:
     """The names night as a model writes it with the Kids as the placeholders it was given."""
@@ -2591,8 +2595,21 @@ def test_with_the_kids_masked_a_kids_name_whose_stem_changes_goes_as_their_place
     assert "Hae Pekalle reppu (Pekka)" in email.text and "Pekan reppu jäi kouluun" in email.text
 
 
-def test_the_kids_names_reach_the_model_unless_the_switch_is_on(harness):
+def test_without_the_switch_in_the_config_the_kids_go_as_kid_a_and_kid_b(harness):
     names_night(harness)
+    harness.model_reply = [kids_masked_reply, json.loads]
+
+    assert harness.run() == 0
+
+    assert [k["name"] for k in harness.model_payload(0)["kid_profiles"]] == ["Kid A", "Kid B"]
+    for name in KIDS:
+        assert name not in harness.model_prompt(0)
+    assert "**Mia**" in harness.sent[0].text
+
+
+def test_the_kids_names_reach_the_model_when_the_switch_is_off(harness):
+    names_night(harness)
+    harness.config["ai_filter"] = {"mask_kids": False}
     harness.model_reply = [names_reply, json.loads]
 
     assert harness.run() == 0

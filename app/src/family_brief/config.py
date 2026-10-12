@@ -151,10 +151,10 @@ class AIFilterConfig(BaseModel):
     written or sent. Messages that look sensitive (held_back.py) reach no model call, and the
     Brief lists them itself. Off: the model gets the night's messages as they are.
     mask_kids, while the filter is on: each Kid's names, aliases and their case forms go as Kid A,
-    Kid B too. Off by default until the eval shows the model attributes items as well without
-    them (#268)."""
+    Kid B too. On by default since the eval showed the model attributes items as well without
+    them (#268, #300)."""
     enabled: bool = True
-    mask_kids: bool = False
+    mask_kids: bool = True
 
 
 class ArchiveConfig(BaseModel):
