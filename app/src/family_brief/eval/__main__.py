@@ -43,8 +43,9 @@ COST = {"seconds_per_night", *TOKEN_KINDS.values(), "usd_per_night", "usd_per_mo
 LOWER_IS_BETTER = {"forbidden_hits", "placeholders_left", *COST}
 # What --model calls the backend's own model.
 DEFAULT_MODEL = "default"
-# What a scorecard says of a run with --mask-kids.
-_KIDS_MASKED = " · Kids as Kid A, Kid B"
+def _kids_note(data: dict[str, Any]) -> str:
+    """What a scorecard says of a run with --mask-kids."""
+    return " · Kids as Kid A, Kid B" if data.get("kids_masked") else ""
 
 
 def _strictly_valid(text: str) -> bool:
@@ -201,7 +202,7 @@ def side_by_side(datas: list[dict[str, Any]]) -> str:
         f"{label:<{label_width}}" + "".join(f"{c:>{width}}" for c in cells))
     lines = [f"Parent Recap eval · {first['backend']} · {first['language']} · "
              f"{len(first['runs'][0]['cases'])} cases × {runs} run(s) · prompt {first['prompt_sha']}"
-             f"{_KIDS_MASKED if first.get('kids_masked') else ''}",
+             f"{_kids_note(first)}",
              f"↓ = worse than every run of {names[0]}" + (" (score, then the spread across runs)" if runs > 1 else ""),
              "", row("metric", names)]
     for key in first["metrics"]:
@@ -228,10 +229,10 @@ def report(data: dict[str, Any], previous: dict[str, Any] | None) -> str:
     runs = data["runs"]
     lines = [f"Parent Recap eval · {data['backend']} ({data['model'] or 'default model'}) · "
              f"{data['language']} · {len(runs[0]['cases'])} cases × {len(runs)} run(s) · "
-             f"prompt {data['prompt_sha']}{_KIDS_MASKED if data.get('kids_masked') else ''}"]
+             f"prompt {data['prompt_sha']}{_kids_note(data)}"]
     if previous:
-        lines.append(f"compared with {Path(previous['_path']).name} (prompt {previous.get('prompt_sha')}"
-                     f"{_KIDS_MASKED if previous.get('kids_masked') else ''})")
+        lines.append(f"compared with {Path(previous['_path']).name} "
+                     f"(prompt {previous.get('prompt_sha')}{_kids_note(previous)})")
     lines.append("")
     lines.append(f"{'metric':<20}{'score':>8}{'spread':>16}{'previous':>10}{'change':>9}")
     for key, value in data["metrics"].items():

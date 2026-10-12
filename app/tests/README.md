@@ -37,8 +37,8 @@ gives it, in their order. With the AI filter's `mask_kids` switch on (#268), the
 and translation prompts have no Kid's name or alias either, only Kid A and Kid B (Leon, Leo's
 genitive, as Kid B:n), and the Brief and archive get the Kids' names back; Kids called Elias and
 Pekka go as Kid A and Kid B in the forms their stems change in (Eliaksen, Pekan) and come back as
-Pekalle. With the switch off, as by default, the Kids' names reach the model as before. `test_ai_filter.py` checks the names on
-their own: a full name and its parts as one person, stems that change (Pekan, Niemen, Markuksen),
+Pekalle. With the switch off, as by default, the Kids' names reach the model as before.
+`test_ai_filter.py` checks the names on their own: a full name and its parts as one person, stems that change (Pekan, Niemen, Markuksen),
 that a reply copying the placeholders gets back exactly the text they stood for (Ville Virtanen,
 Maria, Kevät juhla, Toivon), how a form the text never had is made, a part two people share, a
 Kid's name in a case form, roles, senders with an organisation and organisations alone, Chinese
