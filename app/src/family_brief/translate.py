@@ -40,6 +40,13 @@ _KEEP = [
 _PLACEHOLDERS = Template(ai_filter.INSTRUCTION)
 _KID_PLACEHOLDERS = Template(kid_placeholders.INSTRUCTION)
 _KEEP_FINNISH = Template(FINNISH_TERMS)
+# The original's Finnish was kept for a reader who reads no Finnish; copied into a Finnish text it
+# doubles a word or reads as a fragment (#287).
+_INTO_FINNISH = Template(
+    "The original may pair a Finnish word with its translation in brackets, either way round (such as "
+    "syysloma（秋假） or 秋假（syysloma）): write that Finnish word once, with nothing in brackets after it. "
+    "Write Finnish the original splits with slashes or quotes (such as koe/kokeita) as the words a Finnish "
+    "parent would use in that sentence, instead of copying it")
 _REPLY = [
     Template("Reply with exactly one JSON object of the same shape: no markdown fences, no explanations"),
     Template("**JSON format**: every `\"` inside a string value must be escaped as `\\\"`; don't stand in "
@@ -50,10 +57,10 @@ _REPLY = [
 
 def instructions(intro: Template, translate: Template, keep_finnish: Template, keep: list[Template],
                  src: BriefText, dst: BriefText, target: Language, day: date | None = None) -> str:
-    """Numbered translation instructions: what to translate, what to do with Finnish words (nothing
-    for a Finnish translation), what else to keep, and how to reply. Weekend Picks use them too. `day`
-    shows how the target writes a date."""
-    rules = [translate, *([] if is_finnish(target) else [keep_finnish]), *keep, *_REPLY]
+    """Numbered translation instructions: what to translate, what to do with Finnish words (for a
+    Finnish translation, with the Finnish the original kept for its readers), what else to keep, and
+    how to reply. Weekend Picks use them too. `day` shows how the target writes a date."""
+    rules = [translate, _INTO_FINNISH if is_finnish(target) else keep_finnish, *keep, *_REPLY]
     values = {"original": src.language_name, "target": dst.language_name, "quotes": dst.quotes,
               "date": dst.on(day) if day else ""}
     return (intro.substitute(values) + "\n"

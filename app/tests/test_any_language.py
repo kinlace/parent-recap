@@ -225,8 +225,27 @@ def test_a_translation_into_finnish_has_no_finnish_words_to_keep(harness):
     summarize, translate = harness.model_calls
     assert "Translate Finnish words too" in system_prompt_of(summarize)  # the Chinese Brief needs it
     instructions = system_prompt_of(translate)
-    assert "into Finnish" in instructions and "Finnish words" not in instructions
-    assert "\n2. Keep names, times" in instructions
+    assert "into Finnish" in instructions and "Translate Finnish words too" not in instructions
+    assert "\n3. Keep names, times" in instructions
+
+
+def test_a_translation_into_finnish_writes_the_finnish_the_original_glossed_only_once(harness):
+    """Preview run, 2026-10-12: the Chinese Brief's "syysloma（秋假）" became "syysloman (syysloma)
+    jälkeen" in Finnish, and its "koe/kokeita" was copied as "koe-/kokeita-paperit" (#287)."""
+    normal_night(harness)
+    harness.config["email"]["to"] = ["parent@example.com", {"address": "partner@example.com", "language": "fi"}]
+    harness.model_reply["message_digest"] = "**Mia**\n- syysloma（秋假）后交回签好的 koe/kokeita 试卷"
+    harness.model_reply = [harness.model_reply, copy.deepcopy(FINNISH_REPLY)]
+
+    assert harness.run() == 0
+
+    _, translate = harness.model_calls
+    assert "syysloma（秋假）" in translate.stdin and "koe/kokeita" in translate.stdin
+    instructions = system_prompt_of(translate)
+    assert ("2. The original may pair a Finnish word with its translation in brackets, either way round (such as "
+            "syysloma（秋假） or 秋假（syysloma）): write that Finnish word once, with nothing in brackets after "
+            "it") in instructions
+    assert "Finnish the original splits with slashes or quotes (such as koe/kokeita)" in instructions
 
 
 def test_language_command_translates_the_program_text_once(harness, capsys):
