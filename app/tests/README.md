@@ -22,10 +22,11 @@ full-width digits or a lookalike letter still gets its value, that one it change
 said as its kind in each Recipient's language with the item kept, and that a bare P1, or a (P2017)
 the night's messages have themselves, stays as written. A Finnish night names a coach, a teacher,
 other pupils and other parents in Finnish case forms (Maijalle, Virtaselle) and inside Chinese text
-with no spaces: none of them reaches the Brief or translation prompt, the Kids' names and aliases
-and the partner's own name do, a role in a sender stays beside its placeholder, and the Brief, the
-`.ics` and the archive get the names back as the messages wrote them. The night also has a
-coach whose sender names his club, a Chinese pupil written by the given name alone (小明), a
+with no spaces: none of them reaches the Brief or translation prompt, the partner's own name does,
+and so do the Kids' names and aliases with the `mask_kids` switch off, a role in a sender stays
+beside its placeholder, and the Brief, the `.ics` and the archive get the names back as the
+messages wrote them. The night also has a coach whose sender names his club, a Chinese pupil
+written by the given name alone (小明), a
 pupil named Leon beside the Kid Leo (Leon stays), and a newsletter from a news@ address (no one).
 A name from an earlier Brief's night is masked too, and a person placeholder changed beyond
 repair is said as "someone" in each Recipient's language. Pilot feedback links carry an item as
@@ -33,11 +34,11 @@ the AI saw it: a teacher in a Finnish case form, a teacher and a phone number in
 with no spaces, and a name the model wrote out itself go as that night's placeholders, the Kids as
 Kid A and Kid B, also with the AI filter off, and the Household as a pseudonym that is the same
 the next evening and differs for another label. The Form keeps the fields `ops/feedback-form`
-gives it, in their order. With the AI filter's `mask_kids` switch on (#268), as by default, the same night's Brief
-and translation prompts have no Kid's name or alias either, only Kid A and Kid B (Leon, Leo's
-genitive, as Kid B:n), and the Brief and archive get the Kids' names back; Kids called Elias and
-Pekka go as Kid A and Kid B in the forms their stems change in (Eliaksen, Pekan) and come back as
-Pekalle. With the switch off, the Kids' names reach the model as before.
+gives it, in their order. With the AI filter's `mask_kids` switch on (#268), as by default, the
+same night's Brief and translation prompts have no Kid's name or alias either, only Kid A and Kid B
+(Leon, Leo's genitive, as Kid B:n), and the Brief and archive get the Kids' names back; Kids called
+Elias and Pekka go as Kid A and Kid B in the forms their stems change in (Eliaksen, Pekan) and come
+back as Pekalle. With the switch off, the Kids' names reach the model as before.
 `test_ai_filter.py` checks the names on their own: a full name and its parts as one person, stems that change (Pekan, Niemen, Markuksen),
 that a reply copying the placeholders gets back exactly the text they stood for (Ville Virtanen,
 Maria, Kevät juhla, Toivon), how a form the text never had is made, a part two people share, a
@@ -395,7 +396,8 @@ in `src/family_brief/eval/cases.py`. Keywords in `expect` need Chinese, English 
 `test_eval_scoring.py` checks the scoring on its own, and that a plain Finnish Brief scores clean
 on the Finnish cases. `test_eval_runner.py` runs the eval with only the model process faked,
 also with several models side by side, their cost, a placeholder the model changed beyond repair,
-and the Kids as Kid A, Kid B by default, whose prompt has no Kid's name and whose run compares with one with `--no-mask-kids`.
+and the Kids as Kid A, Kid B by default, whose prompt has no Kid's name and whose run compares
+with one with `--no-mask-kids`.
 
 ### Trying another model
 

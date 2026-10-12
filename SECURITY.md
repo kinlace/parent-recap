@@ -18,7 +18,7 @@ Each evening the scheduled job on your Mac does the following.
 
 ### Summarizing
 
-Everything read above for that evening, plus your Kids' names and aliases (as Kid A, Kid B while the AI filter is on) and the Weekend Picks preferences you configured, goes to the model you chose, cut down first on your Mac as [What the AI sees](README.md#what-the-ai-sees) describes:
+Everything read above for that evening, plus your Kids' names and aliases (as Kid A, Kid B while the AI filter is on, unless you ask for their names to go as they are) and the Weekend Picks preferences you configured, goes to the model you chose, cut down first on your Mac as [What the AI sees](README.md#what-the-ai-sees) describes:
 
 - **Claude** (`llm.backend: claude`): through the `claude` CLI to Anthropic, under your Claude subscription or API key. Each call runs in an empty temporary folder with no tools, no MCP servers and none of your own Claude settings, so the model can't run commands or read files. The prompt goes to the CLI on standard input, not on its command line, so other accounts can't see it in the process list. The session isn't saved, so nothing is left under `~/.claude/projects`.
 - **ChatGPT** (`llm.backend: codex`): through `codex exec` to OpenAI, under your ChatGPT account. Each call runs in an empty temporary folder with a read-only sandbox, with Codex's shell, command execution, apps and plugins turned off, so the model can't run commands or read files. The prompt goes on standard input, the session isn't saved, and your own Codex configuration and MCP tools aren't loaded.

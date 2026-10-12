@@ -86,7 +86,7 @@ Every evening Parent Recap sends the night's messages to your own Claude or Chat
 - From Google Calendar, only Kid-related events reach the AI with their title: the ones Parent Recap added and the ones whose title names a Kid. Every other event goes as a busy time with no title or place
 - Weekend Picks are chosen with your Kids as Kid A and Kid B, not their names
 
-The first three are the AI filter. It is on by default, and you can turn it off by asking Claude or Codex, or keep it and let only your Kids' names through.
+The first three are the AI filter. It is on by default, and you can turn it off by asking Claude or Codex, or keep it and ask for only your Kids' names to go as they are.
 
 This reduces what reaches the AI and doesn't guarantee anything. The rest of each message's text still reaches it, and so do your Kids' school and class, and any name the program can't tell is a person's, such as one that appears only inside a message.
 
