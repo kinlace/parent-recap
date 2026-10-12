@@ -77,7 +77,7 @@ def received(smtp: type[FakeSMTP]) -> Message:
     return email.message_from_string(raw, policy=default)
 
 
-def text_parts(alt: Message) -> dict[str, Message]:
+def parts_by_subtype(alt: Message) -> dict[str, Message]:
     return {p.get_content_subtype(): p for p in alt.iter_parts()}
 
 
@@ -86,7 +86,7 @@ def test_the_email_has_a_plain_text_and_an_html_part_in_utf8_with_chinese_and_fi
 
     alt = received(smtp)
     assert alt.get_content_type() == "multipart/alternative"
-    parts = text_parts(alt)
+    parts = parts_by_subtype(alt)
     assert list(parts) == ["plain", "html"]
     for part in parts.values():
         assert part.get_content_charset() == "utf-8"
@@ -99,17 +99,16 @@ def test_without_html_the_email_is_the_plain_text_alone_inside_the_alternative(s
 
     alt = received(smtp)
     assert alt.get_content_type() == "multipart/alternative"
-    assert list(text_parts(alt)) == ["plain"]
+    assert list(parts_by_subtype(alt)) == ["plain"]
 
 
-def test_without_attachments_the_email_is_the_plain_and_html_alternative_alone(smtp):
-    for attachments in (None, []):
-        smtp.connections = []
-        send(attachments=attachments)
+@pytest.mark.parametrize("attachments", [None, []])
+def test_without_attachments_the_email_is_the_plain_and_html_alternative_alone(smtp, attachments):
+    send(attachments=attachments)
 
-        msg = received(smtp)
-        assert msg.get_content_type() == "multipart/alternative"
-        assert [p.get_content_type() for p in msg.iter_parts()] == ["text/plain", "text/html"]
+    msg = received(smtp)
+    assert msg.get_content_type() == "multipart/alternative"
+    assert [p.get_content_type() for p in msg.iter_parts()] == ["text/plain", "text/html"]
 
 
 def test_a_calendar_attachment_goes_beside_the_alternative_as_a_publish_ics(smtp):
@@ -119,7 +118,7 @@ def test_a_calendar_attachment_goes_beside_the_alternative_as_a_publish_ics(smtp
     assert msg.get_content_type() == "multipart/mixed"
     alt, ics = msg.iter_parts()
     assert alt.get_content_type() == "multipart/alternative"
-    assert text_parts(alt)["plain"].get_content().strip() == TEXT
+    assert parts_by_subtype(alt)["plain"].get_content().strip() == TEXT
     assert ics.get_content_type() == "text/calendar"
     assert ics.get_param("method") == "PUBLISH"
     assert ics.get_filename() == "events.ics"
