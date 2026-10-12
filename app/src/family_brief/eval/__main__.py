@@ -24,7 +24,7 @@ from typing import Any
 from ..config import LLMConfig
 from ..brief_text import TEXT
 from ..collectors.base import Message
-from ..summarize import (_strip_code_fence, call_llm_json, digest_of, for_the_ai, placeholders_for,
+from ..summarize import (_strip_code_fence, call_llm_json, digest_of, for_the_ai, kids_for, placeholders_for,
                          summarize_reply, system_prompt)
 from . import cost
 from .cases import BUNDLED, Case, load_cases
@@ -43,6 +43,8 @@ COST = {"seconds_per_night", *TOKEN_KINDS.values(), "usd_per_night", "usd_per_mo
 LOWER_IS_BETTER = {"forbidden_hits", "placeholders_left", *COST}
 # What --model calls the backend's own model.
 DEFAULT_MODEL = "default"
+# What a scorecard says of a run with --mask-kids.
+_KIDS_MASKED = " · Kids as Kid A, Kid B"
 
 
 def _strictly_valid(text: str) -> bool:
@@ -198,7 +200,8 @@ def side_by_side(datas: list[dict[str, Any]]) -> str:
     row = lambda label, cells, label_width=20: (  # noqa: E731
         f"{label:<{label_width}}" + "".join(f"{c:>{width}}" for c in cells))
     lines = [f"Parent Recap eval · {first['backend']} · {first['language']} · "
-             f"{len(first['runs'][0]['cases'])} cases × {runs} run(s) · prompt {first['prompt_sha']}",
+             f"{len(first['runs'][0]['cases'])} cases × {runs} run(s) · prompt {first['prompt_sha']}"
+             f"{_KIDS_MASKED if first.get('kids_masked') else ''}",
              f"↓ = worse than every run of {names[0]}" + (" (score, then the spread across runs)" if runs > 1 else ""),
              "", row("metric", names)]
     for key in first["metrics"]:
@@ -225,9 +228,10 @@ def report(data: dict[str, Any], previous: dict[str, Any] | None) -> str:
     runs = data["runs"]
     lines = [f"Parent Recap eval · {data['backend']} ({data['model'] or 'default model'}) · "
              f"{data['language']} · {len(runs[0]['cases'])} cases × {len(runs)} run(s) · "
-             f"prompt {data['prompt_sha']}"]
+             f"prompt {data['prompt_sha']}{_KIDS_MASKED if data.get('kids_masked') else ''}"]
     if previous:
-        lines.append(f"compared with {Path(previous['_path']).name} (prompt {previous.get('prompt_sha')})")
+        lines.append(f"compared with {Path(previous['_path']).name} (prompt {previous.get('prompt_sha')}"
+                     f"{_KIDS_MASKED if previous.get('kids_masked') else ''})")
     lines.append("")
     lines.append(f"{'metric':<20}{'score':>8}{'spread':>16}{'previous':>10}{'change':>9}")
     for key, value in data["metrics"].items():
@@ -255,7 +259,10 @@ def run_model(cases: list[Case], args: argparse.Namespace, backend: str, languag
     """Run and save one model of one backend writing Briefs in one language (None: the backend's own)."""
     llm = LLMConfig(backend=backend, model=model, codex_path=args.codex_path)
     for c in cases:
-        c.household = c.household.model_copy(update={"llm": llm, "summary_language": language})
+        ai = c.household.ai_filter.model_copy(update={"mask_kids": args.mask_kids})
+        c.household = c.household.model_copy(update={"llm": llm, "summary_language": language, "ai_filter": ai})
+    masked = cases[0].household.ai_filter.enabled
+    kids_masked = kids_for(cases[0].household) is not None
     runs = []
     for i in range(args.repeat):
         print(f"{backend} {model or DEFAULT_MODEL} {language} run {i + 1}/{args.repeat}: {len(cases)} cases…",
@@ -269,7 +276,8 @@ def run_model(cases: list[Case], args: argparse.Namespace, backend: str, languag
         "model": model,
         "language": language,
         "cases_dir": str(args.cases.resolve()),
-        "prompt_sha": hashlib.sha256(system_prompt(language, masked=cases[0].household.ai_filter.enabled)
+        "kids_masked": kids_masked,
+        "prompt_sha": hashlib.sha256(system_prompt(language, masked=masked, kids_masked=kids_masked)
                                      .encode()).hexdigest()[:8],
         "prices_read": cost.prices_read(),
         "finished": finished.isoformat(timespec="seconds"),
@@ -317,6 +325,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--jobs", type=int, default=1,
                    help="cases in flight at once (faster; seconds_per_night then includes queueing)")
     p.add_argument("--judge", action="store_true", help="also have the model rate each Digest's readability")
+    p.add_argument("--mask-kids", action="store_true",
+                   help="send the Kids' names as Kid A, Kid B too (the AI filter's mask_kids switch), "
+                        "to compare with a run without it")
     p.add_argument("--codex-path", default=None)
     p.add_argument("--out", type=Path, default=Path("~/ParentRecap/eval").expanduser(),
                    help="where runs are saved (default: ~/ParentRecap/eval)")

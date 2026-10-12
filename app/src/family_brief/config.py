@@ -149,8 +149,12 @@ class AIFilterConfig(BaseModel):
     numbers, email addresses, links and Third Parties' names become placeholders, and identifiers
     the model doesn't need stay out. The real values go back into the reply before anything is
     written or sent. Messages that look sensitive (held_back.py) reach no model call, and the
-    Brief lists them itself. Off: the model gets the night's messages as they are."""
+    Brief lists them itself. Off: the model gets the night's messages as they are.
+    mask_kids, while the filter is on: each Kid's names, aliases and their case forms go as Kid A,
+    Kid B too. Off by default until the eval shows the model attributes items as well without
+    them (#268)."""
     enabled: bool = True
+    mask_kids: bool = False
 
 
 class ArchiveConfig(BaseModel):

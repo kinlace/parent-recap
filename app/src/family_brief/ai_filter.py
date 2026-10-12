@@ -217,7 +217,7 @@ _GRADES = (("kk", "k"), ("pp", "p"), ("tt", "t"), ("nt", "nn"), ("lt", "ll"), ("
            ("nk", "ng"), ("ht", "hd"), ("t", "d"), ("p", "v"), ("k", ""))
 
 
-def _stems(word: str) -> list[tuple[str, str]]:
+def name_stems(word: str) -> list[tuple[str, str]]:
     """The other stems a Finnish case ending joins for `word`, each with the endings it takes:
     Virtanen as Virtasen and Virtasta, Pekka as Pekan, Niemi as Niemen, Lahti as Lahden, Laine as
     Laineen, Markus as Markuksen and Daniel as Danielin."""
@@ -245,7 +245,7 @@ def _form_pattern(form: _Name) -> str:
     latin = re.compile(f"[{_NAME_LETTERS}]")
     if latin.match(last) and len(last) >= 3:
         alternatives = [f"{re.escape(last)}{_CASE}?{_CLITIC}?",
-                        *(f"{re.escape(stem)}{endings}{_CLITIC}?" for stem, endings in _stems(last))]
+                        *(f"{re.escape(stem)}{endings}{_CLITIC}?" for stem, endings in name_stems(last))]
         last_pattern = "(?:" + "|".join(alternatives) + ")"
     else:
         last_pattern = re.escape(last)
@@ -262,7 +262,7 @@ def _form_pattern(form: _Name) -> str:
 _WEAK = ("n", "lla", "llä", "lta", "ltä", "lle", "ssa", "ssä", "sta", "stä", "ksi")
 
 
-def _inflected(name: str, ending: str) -> str:
+def inflected(name: str, ending: str) -> str:
     """`name` with a Finnish case `ending` the masked text never had it with: joined after a vowel
     (Maijalle), with the stem a -nen name (Virtaselle) or a kk, pp or tt before the last vowel
     (Pekalle) takes, and after a colon after any other consonant (Daniel:lle), where the right form
@@ -379,7 +379,7 @@ class Placeholders:
             owners = owners_of[key]
             token = tokens[next(iter(owners))] if len(owners) == 1 else self._token("N", " ".join(form.words))
             last = form.words[-1]
-            stems = [last, *(s for s, _ in _stems(last))] if re.match(f"[{_NAME_LETTERS}]", last) else [last]
+            stems = [last, *(s for s, _ in name_stems(last))] if re.match(f"[{_NAME_LETTERS}]", last) else [last]
             alternatives.append(f"(?P<f{len(self._forms)}>{_form_pattern(form)})")
             self._forms.append((token, sorted(stems, key=len, reverse=True)))
             self._listed.setdefault(token, []).append(" ".join(form.words))
@@ -421,7 +421,7 @@ class Placeholders:
         if same:
             return _likeliest(same, before, after)
         bare = [s for s in seen if not s.ending]
-        return _inflected(_likeliest(bare, before, after) if bare else min(self._listed[token], key=len), ending)
+        return inflected(_likeliest(bare, before, after) if bare else min(self._listed[token], key=len), ending)
 
     def _token(self, kind: str, value: str) -> str:
         if (kind, value) not in self._tokens:
@@ -478,7 +478,7 @@ class Placeholders:
                             "the Brief says what kind of value it was", m.group())
                 self.lost += 1
                 word = words[KINDS[kind]]
-                return _inflected(word, ending) if kind == "N" else word + (f":{ending}" if ending else "")
+                return inflected(word, ending) if kind == "N" else word + (f":{ending}" if ending else "")
             if kind == "N":
                 return self._person_text(token, ending, *_around(m.string, m.start(), m.end()))
             return self._values[token] + (f":{ending}" if ending else "")

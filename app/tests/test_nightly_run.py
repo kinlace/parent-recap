@@ -2528,6 +2528,79 @@ def test_an_earlier_briefs_names_reach_the_model_only_as_placeholders(harness):
     assert set(earlier) == {"date", "per_kid"}  # what the program knows of that night stays here
 
 
+# ── The Kids' own names as Kid A and Kid B, behind a switch that is off by default (#268)
+
+def kids_masked_reply(prompt: str) -> dict:
+    """The names night as a model writes it with the Kids as the placeholders it was given."""
+    written = json.dumps(names_reply(prompt), ensure_ascii=False)
+    return json.loads(written.replace("Mia", "Kid A").replace("Leon", "Kid B:n").replace("Leo", "Kid B"))
+
+
+def test_with_the_kids_masked_no_kids_name_reaches_the_model_and_the_brief_has_them(harness):
+    names_night(harness)
+    harness.config["ai_filter"] = {"mask_kids": True}
+    harness.model_reply = [kids_masked_reply, json.loads]
+
+    assert harness.run() == 0
+
+    for i in (0, 1):  # the Brief's call and the translation's
+        prompt = harness.model_prompt(i)
+        for name in [*KIDS, *THIRD_PARTIES]:
+            assert name not in prompt
+    payload = harness.model_payload(0)
+    assert [(k["name"], k["aliases"]) for k in payload["kid_profiles"]] == [("Kid A", []), ("Kid B", [])]
+    assert [(c["name"], c["kid"]) for c in payload["whatsapp_chat_map"]] == \
+        [("3B parents", "Kid A"), ("Kid B piano", "Kid B")]
+    messages = {m["external_id"]: m for m in payload["messages"]}
+    [xiaoming] = people_in(messages["wa-703"]["sender"])
+    assert messages["wa-701"]["body"].endswith("Kid A ja Kid B tervetuloa.")
+    assert messages["wa-703"]["body"].startswith(f"{xiaoming}和Kid A周六")
+    assert messages["wa-704"]["body"].endswith("Kid B:n reppu jäi kouluun.")  # Leo's, in the genitive
+    assert "Kid A" in system_prompt_of(harness.model_calls[0])
+    fi, en = harness.sent
+    assert "Palauta retken lupalappu Maijalle (Mia)" in fi.text and "**Mia**" in fi.text
+    for email in (fi, en):
+        assert "Kid A" not in email.html and "Kid B" not in email.html
+    summary = archived_summary(harness)
+    assert [k["kid"] for k in summary["per_kid"]] == ["Mia", "Leo"]
+    assert summary["per_kid"][1]["notices"][0]["text"] == "Hanna hakee Leon maanantaina"
+
+
+def test_with_the_kids_masked_a_kids_name_whose_stem_changes_goes_as_their_placeholder(harness):
+    harness.config["summary_language"] = "fi"
+    harness.config["email"]["to"] = ["parent@example.com"]
+    harness.config["ai_filter"] = {"mask_kids": True}
+    harness.config["kids"] = [{"name": "Elias Virta", "everyday_name": "Elias", "grade": 3},
+                              {"name": "Pekka", "grade": 1}]
+    harness.sources = {"whatsapp": [
+        msg("whatsapp", "wa-801", "2026-09-27T18:00:00+03:00",
+            "Eliaksen ja Pekan reput jäivät kouluun. Eliakselle ja Pekalle uudet kumisaappaat.",
+            sender="Opettaja", chat="3B parents")]}
+    harness.model_reply = {
+        "per_kid": [{"kid": "Kid B", "notices": [{"text": "Kid B:n reppu jäi kouluun", "refs": ["wa-801"]}],
+                     "action_items": [{"what": "Hae Kid B:lle reppu", "by": "2026-09-28", "refs": ["wa-801"]}]}],
+        "calendar_events": [],
+        "message_digest": "**Kid B**\n- Kid B:n reppu jäi kouluun",
+    }
+
+    assert harness.run() == 0
+
+    [message] = harness.model_payload(0)["messages"]
+    assert message["body"] == "Kid A:n ja Kid B:n reput jäivät kouluun. Kid A:lle ja Kid B:lle uudet kumisaappaat."
+    [email] = harness.sent
+    assert "Hae Pekalle reppu (Pekka)" in email.text and "Pekan reppu jäi kouluun" in email.text
+
+
+def test_the_kids_names_reach_the_model_unless_the_switch_is_on(harness):
+    names_night(harness)
+    harness.model_reply = [names_reply, json.loads]
+
+    assert harness.run() == 0
+
+    assert [k["name"] for k in harness.model_payload(0)["kid_profiles"]] == ["Mia", "Leo"]
+    assert "Kid A" not in harness.model_prompt(0) and "Kid A" not in system_prompt_of(harness.model_calls[0])
+
+
 @pytest.mark.parametrize("language, written, shown", [
     ("en", "Return the slip to ⟦N9⟧", "Return the slip to someone"),
     ("zh", "把同意书交给⟦N9⟧", "把同意书交给某人"),

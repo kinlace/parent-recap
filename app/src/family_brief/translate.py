@@ -15,7 +15,7 @@ from datetime import date, timedelta
 from string import Template
 from typing import Any, Callable
 
-from . import ai_filter, citations, languages
+from . import ai_filter, citations, kid_placeholders, languages
 from .brief_text import BriefText, Language
 from .languages import FINNISH_TERMS, is_finnish
 from .config import Config
@@ -38,6 +38,7 @@ _KEEP = [
              "entries in the same order: don't add, drop, merge or reorder anything"),
 ]
 _PLACEHOLDERS = Template(ai_filter.INSTRUCTION)
+_KID_PLACEHOLDERS = Template(kid_placeholders.INSTRUCTION)
 _KEEP_FINNISH = Template(FINNISH_TERMS)
 _REPLY = [
     Template("Reply with exactly one JSON object of the same shape: no markdown fences, no explanations"),
@@ -59,9 +60,11 @@ def instructions(intro: Template, translate: Template, keep_finnish: Template, k
             + "".join(f"{n}. {r.substitute(values)}\n" for n, r in enumerate(rules, 1)))
 
 
-def system_prompt(src: BriefText, dst: BriefText, target: Language, tomorrow: date, masked: bool = False) -> str:
-    """The translation instructions, saying how to treat placeholders when the Brief is `masked`."""
-    keep = [*_KEEP, _PLACEHOLDERS] if masked else _KEEP
+def system_prompt(src: BriefText, dst: BriefText, target: Language, tomorrow: date, masked: bool = False,
+                  kids_masked: bool = False) -> str:
+    """The translation instructions, saying how to treat placeholders when the Brief is `masked`,
+    and the Kids' when `kids_masked`."""
+    keep = [*_KEEP, _PLACEHOLDERS, *([_KID_PLACEHOLDERS] if kids_masked else [])] if masked else _KEEP
     return instructions(_INTRO, _TRANSLATE, _KEEP_FINNISH, keep, src, dst, target, tomorrow)
 
 
@@ -168,7 +171,8 @@ def translate(cfg: Config, summary: dict[str, Any], original: Language, target: 
     payload = _payload(summary, src)
     tomorrow = date.fromisoformat(today_str(cfg.timezone)) + timedelta(days=1)
     # Restored before the checks, which compare links with the original's.
-    reply = call_llm_filtered(cfg, "", payload, lambda masked: system_prompt(src, dst, target, tomorrow, masked),
+    reply = call_llm_filtered(cfg, "", payload,
+                              lambda masked, kids: system_prompt(src, dst, target, tomorrow, masked, kids),
                               dst.placeholder_words(), placeholders).data
     _check(payload, reply, src, dst)
     return _merge(summary, reply, src, dst)

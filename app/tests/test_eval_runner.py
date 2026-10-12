@@ -182,6 +182,33 @@ def test_the_eval_runs_to_the_end_with_contact_details_as_placeholders(case_dir,
         "付 kausimaksu 120 € https://eagles.example.fi/maksu"
 
 
+def test_with_mask_kids_the_model_gets_kid_a_and_kid_b_and_the_run_compares_with_one_without(
+        case_dir, model, tmp_path, capsys):
+    out = tmp_path / "r"
+    assert runner.main(["--cases", str(case_dir), "--out", str(out), "--language", "fi"]) == 0
+    masked = copy.deepcopy(GOOD)
+    masked["per_kid"][0]["kid"] = "Kid B"
+    masked["message_digest"] = "**Kid B**\n- Kid B:n kausimaksu"
+    model["replies"] = [masked]
+    capsys.readouterr()
+
+    assert runner.main(["--cases", str(case_dir), "--out", str(out), "--language", "fi", "--mask-kids"]) == 0
+
+    prompt = model["prompts"][-1]
+    for name in ("Aino", "Eero", "Eetu", "小艾"):
+        assert name not in prompt
+    assert '"kid_hint": "Kid B"' in prompt
+    card = capsys.readouterr().out
+    assert card.splitlines()[0].endswith("· Kids as Kid A, Kid B")
+    assert "compared with" in card and "Kids as" not in card.splitlines()[1]
+    unmasked, kids_masked = (json.loads(p.read_text()) for p in sorted(out.glob("*.json")))
+    assert (unmasked["kids_masked"], kids_masked["kids_masked"]) == (False, True)
+    assert unmasked["prompt_sha"] != kids_masked["prompt_sha"]
+    night = kids_masked["runs"][0]["cases"]["floorball-fee"]
+    assert night["clean"] and night["summary"]["per_kid"][0]["kid"] == "Eero"
+    assert night["summary"]["message_digest"] == "**Eero**\n- Eeron kausimaksu"
+
+
 def test_a_sensitive_message_reaches_neither_the_brief_nor_the_judge(case_dir, model, tmp_path):
     case = copy.deepcopy(CASE)
     case["messages"].append({"id": "wa-2", "source": "whatsapp", "at": "2026-10-04T19:00:00+03:00",

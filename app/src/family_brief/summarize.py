@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from . import ai_filter, citations, gateway, held_back, languages, tools
+from . import ai_filter, citations, gateway, held_back, kid_placeholders, languages, tools
 from .brief_text import TEXT, BriefText
 from .languages import FINNISH_TERMS, is_finnish
 from .collectors.base import CalendarEvent, Message
@@ -101,18 +101,20 @@ Earlier Briefs (earlier_briefs in the payload):
 
 
 _PLACEHOLDERS = f"\nPlaceholders:\n- {ai_filter.INSTRUCTION}\n"
+_KID_PLACEHOLDERS = f"- {kid_placeholders.INSTRUCTION}\n"
 
 
-def system_prompt(language: str, t: BriefText | None = None, masked: bool = False) -> str:
+def system_prompt(language: str, t: BriefText | None = None, masked: bool = False, kids_masked: bool = False) -> str:
     """The summarize instructions, asking for a Brief in `language` with its program text `t`
     (by default the reviewed table), and saying how to treat placeholders when the payload is
-    `masked`. A Finnish Brief has no Finnish words to translate."""
+    `masked`, and the Kids' when `kids_masked`. A Finnish Brief has no Finnish words to translate."""
     t = t or TEXT[language]
     mom, dad, either = t.who
     keep_finnish = "" if is_finnish(language) else f". {FINNISH_TERMS}"
     return _SYSTEM_PROMPT.substitute(language=t.language_name, keep_finnish=keep_finnish, quotes=t.quotes,
                                      household=t.household, mom=mom, dad=dad, either=either,
-                                     reminder=t.re_reminder) + (_PLACEHOLDERS if masked else "")
+                                     reminder=t.re_reminder) + (_PLACEHOLDERS if masked else "") \
+        + (_KID_PLACEHOLDERS if masked and kids_masked else "")
 
 
 def placeholders_for(cfg: Config, run: ai_filter.Placeholders | None = None) -> ai_filter.Placeholders | None:
@@ -121,6 +123,14 @@ def placeholders_for(cfg: Config, run: ai_filter.Placeholders | None = None) -> 
     if not cfg.ai_filter.enabled:
         return None
     return run if run is not None else ai_filter.Placeholders()
+
+
+def kids_for(cfg: Config) -> kid_placeholders.KidPlaceholders | None:
+    """The Kids' placeholders a model call masks their names with while the AI filter and its
+    mask_kids switch are both on (#268). None otherwise."""
+    if not (cfg.ai_filter.enabled and cfg.ai_filter.mask_kids):
+        return None
+    return kid_placeholders.KidPlaceholders(cfg.kids)
 
 
 def for_the_ai(cfg: Config, messages: list[Message]) -> tuple[list[Message], list[Message]]:
@@ -693,19 +703,25 @@ def call_llm(cfg: Config, prompt: str, system_prompt: str, timeout: int | None =
     return run(cfg, prompt, system_prompt, timeout or cfg.llm.timeout_seconds, budget)
 
 
-def call_llm_filtered(cfg: Config, intro: str, payload: Any, system_prompt: Callable[[bool], str],
+def call_llm_filtered(cfg: Config, intro: str, payload: Any, system_prompt: Callable[[bool, bool], str],
                       words: Mapping[str, str], placeholders: ai_filter.Placeholders | None = None, *,
                       drop: Collection[str] = (), budget: int = CALL_BUDGET) -> LLMReply:
     """call_llm with `payload` as JSON after `intro`, through the AI filter while it's on (ADR 0013):
     the payload goes with placeholders (the run's `placeholders`, if given) and without the `drop`
-    keys, `system_prompt(True)` says how to treat them, and the reply's data comes back with the
-    real values, or `words` for a placeholder the model changed beyond repair. With the filter off,
-    the payload goes as it is with `system_prompt(False)`."""
+    keys, `system_prompt(True, kids_masked)` says how to treat them, and the reply's data comes back
+    with the real values, or `words` for a placeholder the model changed beyond repair. While its
+    mask_kids switch is on too, the Kids go as Kid A, Kid B and come back as the names the Brief
+    calls them by. With the filter off, the payload goes as it is with `system_prompt(False, False)`."""
     placeholders = placeholders_for(cfg, placeholders)
+    kids = kids_for(cfg)
     if placeholders is not None:
         payload, _ = ai_filter.mask(payload, placeholders, drop=drop)
+    if kids is not None:  # after the people, so a pupil who shares a Kid's first name stays someone else
+        payload = kids.mask_all(payload, keep=ai_filter.IDS)
     reply = call_llm(cfg, intro + json.dumps(payload, ensure_ascii=False, indent=2),
-                     system_prompt(placeholders is not None), budget=budget)
+                     system_prompt(placeholders is not None, kids is not None), budget=budget)
+    if kids is not None:  # first, so the words around a person's placeholder are as it saw them
+        reply.data = kids.restore_all(reply.data)
     if placeholders is not None:
         reply.data = ai_filter.restore(reply.data, placeholders, words)
     return reply
@@ -734,9 +750,12 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
     placeholders = placeholders_for(cfg, placeholders)
     if placeholders is not None:
         add_the_nights_people(cfg, placeholders, payload["messages"], earlier_briefs or [])
+    if kids_for(cfg) is not None:  # every alias would be the same placeholder as the name
+        for profile in payload["kid_profiles"]:
+            profile["aliases"] = []
     language = cfg.brief_language()
     t = languages.text(cfg, language)
-    reply = call_llm_filtered(cfg, intro, payload, lambda masked: system_prompt(language, t, masked),
+    reply = call_llm_filtered(cfg, intro, payload, lambda masked, kids: system_prompt(language, t, masked, kids),
                               t.placeholder_words(), placeholders, drop=NOT_FOR_THE_MODEL, budget=budget)
     summary = normalise(reply.data, reply.repaired)
     _call_kids(summary, cfg)
