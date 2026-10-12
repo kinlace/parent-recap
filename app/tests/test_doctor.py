@@ -21,12 +21,17 @@ from test_setup_whatsapp import fake_mac
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
 
 
-def test_doctor_reports_every_check_in_english(harness, monkeypatch, capsys):
+@pytest.fixture
+def nothing_loaded(harness, monkeypatch):
+    """launchd has loaded no Parent Recap job for this login, with doctor's network checks off."""
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
     monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(ops, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
 
+
+def test_doctor_reports_every_check_in_english(harness, nothing_loaded, capsys):
     code = harness.cli("doctor", "--skip-llm")
 
     out = capsys.readouterr().out
@@ -35,6 +40,35 @@ def test_doctor_reports_every_check_in_english(harness, monkeypatch, capsys):
     assert "No App Password in the Keychain for parent@example.com" in out
     assert "parent-recap schedule install" in out
     assert not HAN.findall(out)
+
+
+def schedule_line(out: str) -> str:
+    [line] = [l for l in out.splitlines() if "Schedule:" in l]
+    return line
+
+
+def test_doctor_says_an_installed_job_isnt_loaded_until_someone_logs_in(harness, nothing_loaded,
+                                                                       capsys):
+    # After a restart, or over SSH, the LaunchAgent is on disk but launchd hasn't loaded it.
+    ops.LAUNCH_AGENTS.mkdir(parents=True)
+    (ops.LAUNCH_AGENTS / f"{ops.JOB_DAILY}.plist").write_bytes(plistlib.dumps({"Label": ops.JOB_DAILY}))
+
+    harness.cli("doctor", "--skip-llm")
+
+    line = schedule_line(capsys.readouterr().out)
+    assert line.startswith(ops.WARN.strip())
+    assert f"installed but not loaded for this login: {ops.JOB_DAILY}" in line
+    assert "only runs while you're logged in" in line and "No Brief after the Mac restarted" in line
+    assert "not installed yet" not in line
+    assert not HAN.findall(line)
+
+
+def test_doctor_says_a_job_with_no_launch_agent_isnt_installed_yet(harness, nothing_loaded, capsys):
+    harness.cli("doctor", "--skip-llm")
+
+    line = schedule_line(capsys.readouterr().out)
+    assert f"not installed yet: {ops.JOB_DAILY}" in line and "parent-recap schedule install" in line
+    assert "not loaded" not in line
 
 
 @pytest.fixture

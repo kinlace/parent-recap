@@ -483,10 +483,19 @@ def _check_schedule(cfg: Config, add) -> None:
     loaded = launchctl_loaded()
     jobs = [JOB_DAILY] + ([JOB_WEEKEND] if cfg.weekend_events.enabled else [])
     missing = [j for j in jobs if j not in loaded]
-    if missing:
-        add(WARN, "Schedule", f"not installed yet: {', '.join(missing)} "
+    # launchd loads a LaunchAgent only for a desktop login, so after a restart, or seen from
+    # SSH, an installed job shows as missing.
+    unloaded = [j for j in missing if (LAUNCH_AGENTS / f"{j}.plist").exists()]
+    uninstalled = [j for j in missing if j not in unloaded]
+    if uninstalled:
+        add(WARN, "Schedule", f"not installed yet: {', '.join(uninstalled)} "
             "(run parent-recap schedule install)")
-    else:
+    if unloaded:
+        add(WARN, "Schedule", f"installed but not loaded for this login: {', '.join(unloaded)}. "
+            "The evening job only runs while you're logged in to the Mac (an SSH login doesn't "
+            "count, so over SSH this is expected): after a restart, log in once or turn on "
+            "automatic login, see \"No Brief after the Mac restarted\" in docs/troubleshooting.md")
+    if not missing:
         add(OK, "Schedule", f"runs every day at {cfg.schedule.daily_hour:02d}:{cfg.schedule.daily_minute:02d}"
             + (", Weekend Picks once every Friday" if cfg.weekend_events.enabled else ""))
     last = State(cfg.resolved_state_path()).last_run_at
