@@ -324,6 +324,12 @@ def test_kuljetusoppilaat_are_pupils_on_school_transport():
         ("zh", "周五 10/16 户外日 12:30 放学，坐校车的学生 12:45 出发；周二 10/20 18:00 家长会（vanhempainilta）", True),
         ("en", "Fri 16.10 outdoor day ends at 12:30; pupils on school transport leave at 12:45. "
                "Parents' evening (vanhempainilta) Tue 20.10 at 18:00", True),
+        # How the default Claude model put it in #289's run (#294).
+        ("en", "Fri 16.10 outdoor day ends at 12:30; transport pupils' rides leave the school yard at 12:45. "
+               "Parents' evening (vanhempainilta) Tue 20.10 at 18:00", True),
+        ("zh", "周五 10/16 户外日 12:30 放学，接送学生的车 12:45 从校园出发；周二 10/20 18:00 家长会（vanhempainilta）", True),
+        ("en", "Fri 16.10 outdoor day ends at 12:30; the transport class leaves at 12:45. "
+               "Parents' evening (vanhempainilta) Tue 20.10 at 18:00", False),
         ("zh", "周五 10/16 户外日 12:30 放学，交通班学生 12:45 出发；周二 10/20 18:00 家长会（vanhempainilta）", False),
         ("zh", "周五 10/16 户外日 12:30 放学；周二 10/20 18:00 家长会（vanhempainilta）", False),
     ]
