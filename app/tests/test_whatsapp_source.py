@@ -22,6 +22,7 @@ from family_brief.state import State
 
 # ZWAMESSAGE.ZMESSAGETYPE values the Source treats differently.
 TEXT, IMAGE, VOICE, SYSTEM, URL = 0, 1, 3, 6, 7
+NEW_TYPE = 99  # a type a later WhatsApp adds, which has no placeholder
 
 SCHEMA = """
 CREATE TABLE ZWACHATSESSION (
@@ -202,7 +203,7 @@ def test_media_without_text_gets_a_placeholder_and_empty_rows_are_seen_not_retur
     mac.message(chat, NOW - timedelta(hours=4), "  ", msg_type=VOICE)
     mac.message(chat, NOW - timedelta(hours=3), "Kuva retkeltä", msg_type=IMAGE)
     empty = mac.message(chat, NOW - timedelta(hours=2), None, msg_type=TEXT)
-    unknown = mac.message(chat, NOW - timedelta(hours=1), "   ", msg_type=99)
+    unknown = mac.message(chat, NOW - timedelta(hours=1), "   ", msg_type=NEW_TYPE)
     state = State(tmp_path / "state.json")
 
     got = collect(config(CLASS), state)
@@ -289,7 +290,11 @@ def test_the_snapshot_is_removed_and_the_live_database_is_untouched(mac, tmp_pat
     mac.message(mac.chat(CLASS["name"]), NOW - timedelta(hours=1), "Tonight")
     snapshots: list[Path] = []
     real = whatsapp._snapshot_db
-    monkeypatch.setattr(whatsapp, "_snapshot_db", lambda: snapshots.append(real()) or snapshots[-1])
+
+    def snapshot_db() -> Path:
+        snapshots.append(real())
+        return snapshots[-1]
+    monkeypatch.setattr(whatsapp, "_snapshot_db", snapshot_db)
     before = whatsapp.DB_FILE.read_bytes()
 
     assert bodies(collect(config(CLASS), State(tmp_path / "state.json"))) == ["Tonight"]
