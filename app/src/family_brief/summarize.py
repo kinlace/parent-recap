@@ -20,7 +20,7 @@ import requests
 
 from . import ai_filter, citations, gateway, held_back, languages, tools
 from .brief_text import TEXT, BriefText
-from .languages import FINNISH_WORDS, is_finnish
+from .languages import FINNISH_TERMS, is_finnish
 from .collectors.base import CalendarEvent, Message
 from .config import Config
 from .utils import keychain
@@ -106,11 +106,10 @@ _PLACEHOLDERS = f"\nPlaceholders:\n- {ai_filter.INSTRUCTION}\n"
 def system_prompt(language: str, t: BriefText | None = None, masked: bool = False) -> str:
     """The summarize instructions, asking for a Brief in `language` with its program text `t`
     (by default the reviewed table), and saying how to treat placeholders when the payload is
-    `masked`. A Finnish Brief has no Finnish words to keep."""
+    `masked`. A Finnish Brief has no Finnish words to translate."""
     t = t or TEXT[language]
     mom, dad, either = t.who
-    keep_finnish = "" if is_finnish(language) else \
-        f", but keep the key Finnish words as written (such as {FINNISH_WORDS}) so nothing is lost in translation"
+    keep_finnish = "" if is_finnish(language) else f". {FINNISH_TERMS}"
     return _SYSTEM_PROMPT.substitute(language=t.language_name, keep_finnish=keep_finnish, quotes=t.quotes,
                                      household=t.household, mom=mom, dad=dad, either=either,
                                      reminder=t.re_reminder) + (_PLACEHOLDERS if masked else "")

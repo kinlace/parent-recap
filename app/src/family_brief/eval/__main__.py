@@ -76,7 +76,8 @@ def run_case(case: Case, judge: bool) -> dict[str, Any]:
     except Exception as e:
         error = str(e)
     result = score_case(case.expect, summary, case.household.timezone,
-                        lost_placeholders=placeholders.lost if placeholders else 0)
+                        lost_placeholders=placeholders.lost if placeholders else 0,
+                        language=case.household.brief_language())
     # Priced as the model the backend says answered, which also names the one a default stands for.
     model = (reply.model if reply else None) or case.household.llm.model
     usage = reply.usage if reply else None

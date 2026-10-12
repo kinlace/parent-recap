@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 from . import ai_filter, citations, languages
 from .brief_text import BriefText, Language
-from .languages import FINNISH_WORDS, is_finnish
+from .languages import FINNISH_TERMS, is_finnish
 from .config import Config
 from .summarize import call_llm_filtered, digest_of
 from .utils.dates import today_str
@@ -38,8 +38,7 @@ _KEEP = [
              "entries in the same order: don't add, drop, merge or reorder anything"),
 ]
 _PLACEHOLDERS = Template(ai_filter.INSTRUCTION)
-_KEEP_FINNISH = Template("Keep the key Finnish words the Brief kept as written (such as $finnish_words), so "
-                         "parents can still search Wilma and talk to the teacher with them")
+_KEEP_FINNISH = Template(FINNISH_TERMS)
 _REPLY = [
     Template("Reply with exactly one JSON object of the same shape: no markdown fences, no explanations"),
     Template("**JSON format**: every `\"` inside a string value must be escaped as `\\\"`; don't stand in "
@@ -50,12 +49,12 @@ _REPLY = [
 
 def instructions(intro: Template, translate: Template, keep_finnish: Template, keep: list[Template],
                  src: BriefText, dst: BriefText, target: Language, day: date | None = None) -> str:
-    """Numbered translation instructions: what to translate, the Finnish words to keep (none for a
-    Finnish translation), what else to keep, and how to reply. Weekend Picks use them too. `day`
+    """Numbered translation instructions: what to translate, what to do with Finnish words (nothing
+    for a Finnish translation), what else to keep, and how to reply. Weekend Picks use them too. `day`
     shows how the target writes a date."""
     rules = [translate, *([] if is_finnish(target) else [keep_finnish]), *keep, *_REPLY]
     values = {"original": src.language_name, "target": dst.language_name, "quotes": dst.quotes,
-              "finnish_words": FINNISH_WORDS, "date": dst.on(day) if day else ""}
+              "date": dst.on(day) if day else ""}
     return (intro.substitute(values) + "\n"
             + "".join(f"{n}. {r.substitute(values)}\n" for n, r in enumerate(rules, 1)))
 

@@ -19,6 +19,7 @@ A folder holds `household.yaml` (the Config fields the prompt uses: `timezone`, 
       notices:
         must: [{text: [keywords], kid: Aino, where: notices|action_items|both}]
         must_not: [{text: [keywords]}]   # `where` defaults to notices
+        # a rule with `languages: [en, zh]` is checked only on Briefs in those languages
 
 Keyword lists are explained in `score.py`. An `optional` entry may appear or not without
 affecting the score; an optional event with a `start` only covers an event that starts then.
@@ -83,6 +84,7 @@ class NoticeRule(_Strict):
     text: Spec
     kid: KidSpec = None
     where: Literal["notices", "action_items", "both"] = "notices"
+    languages: list[str] | None = None
 
 
 class NoticeRules(_Strict):

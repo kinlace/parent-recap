@@ -1,7 +1,7 @@
 """Deterministic scoring of one night's summary against a case's `expect` block.
 
 Entries are matched on keywords, not exact text, because the model writes its own words in the
-Brief's language (keeping only the Finnish key words in an English or Chinese Brief), so a spec
+Brief's language (an English or Chinese Brief keeps a Finnish term only in brackets), so a spec
 lists Chinese, English and Finnish alternatives, the Finnish as stems that survive inflection. A
 keyword spec is a list of alternatives (any one must appear, case-insensitively); a list whose
 items are themselves lists is a set of groups that must all appear. Everything is counted, not averaged, so `aggregate` can pool cases of different sizes."""
@@ -91,10 +91,11 @@ def _local_start(ev: dict, tz: str) -> str | None:
 
 
 def score_case(expect: dict[str, Any], summary: dict[str, Any] | None, tz: str,
-               lost_placeholders: int = 0) -> dict[str, Any]:
+               lost_placeholders: int = 0, language: str | None = None) -> dict[str, Any]:
     """Counts for one night. A `None` summary (the model call failed) misses everything expected.
     `lost_placeholders` is how many the model changed beyond repair, so the Brief has their kind's
-    words ("someone", "a link") where the night's text had the real value."""
+    words ("someone", "a link") where the night's text had the real value. A notice rule limited to
+    other `languages` than the Brief's `language` is skipped."""
     summary = summary or {}
     required = lambda items: sum(1 for e in items if not e.get("optional"))  # noqa: E731
 
@@ -123,7 +124,9 @@ def score_case(expect: dict[str, Any], summary: dict[str, Any] | None, tz: str,
 
     notices = _entries(summary, "notices")
     rules = expect.get("notices") or {}
-    must, must_not = rules.get("must") or [], rules.get("must_not") or []
+    applies = lambda r: language is None or "languages" not in r or language in r["languages"]  # noqa: E731
+    must = [r for r in rules.get("must") or [] if applies(r)]
+    must_not = [r for r in rules.get("must_not") or [] if applies(r)]
 
     def found(rule: dict, entries: list[dict], text_of) -> bool:
         return any(matches(rule["text"], text_of(e)) and _kid_ok(rule.get("kid"), e["_kid"]) for e in entries)

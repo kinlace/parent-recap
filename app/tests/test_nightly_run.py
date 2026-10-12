@@ -2003,14 +2003,15 @@ def test_dry_run_translates_nothing(harness):
     assert len(harness.model_calls) == 1 and harness.sent == []
 
 
-def test_translation_keeps_the_finnish_terms_the_original_kept(harness):
+def test_translation_translates_finnish_words_but_keeps_terms_in_brackets(harness):
     two_languages(harness)
 
     assert harness.run() == 0
 
     translate = harness.model_calls[1]
     instructions = translate.argv[translate.argv.index("--system-prompt") + 1]
-    assert "Keep the key Finnish words the Brief kept as written (such as reissuvihko" in instructions
+    assert "write an everyday one (such as eväät, vaatetus, retki, kota) only in translation" in instructions
+    assert "such as reissuvihko or vanhempainilta), keeps its Finnish in brackets" in instructions
     zh, en = harness.sent
     assert "签 reissuvihko" in zh.html and "Sign the reissuvihko" in en.html
 

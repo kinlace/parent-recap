@@ -180,7 +180,7 @@ def test_the_model_writes_the_brief_in_a_first_recipient_language_without_a_revi
     assert harness.run() == 0
 
     _, summarize, translate = harness.model_calls
-    assert "Write every text value in the JSON in Swedish, but keep the key Finnish words" in system_prompt_of(summarize)
+    assert "Write every text value in the JSON in Swedish. Translate Finnish words too" in system_prompt_of(summarize)
     assert "sv:Mon" in harness.model_prompt(1)  # the date reference uses its weekdays
     assert "from Swedish into Simplified Chinese" in system_prompt_of(translate)
     sv, zh = harness.sent
@@ -212,7 +212,7 @@ def test_a_finnish_brief_has_no_finnish_words_to_keep(harness):
 
     summarize, translate = harness.model_calls
     assert "Write every text value in the JSON in Finnish\n" in system_prompt_of(summarize)
-    assert "Keep the key Finnish words" in system_prompt_of(translate)  # the Chinese translation keeps them
+    assert "Translate Finnish words too" in system_prompt_of(translate)  # the Chinese translation needs it
 
 
 def test_a_translation_into_finnish_has_no_finnish_words_to_keep(harness):
@@ -223,7 +223,7 @@ def test_a_translation_into_finnish_has_no_finnish_words_to_keep(harness):
     assert harness.run() == 0
 
     summarize, translate = harness.model_calls
-    assert "keep the key Finnish words as written" in system_prompt_of(summarize)  # the Chinese Brief keeps them
+    assert "Translate Finnish words too" in system_prompt_of(summarize)  # the Chinese Brief needs it
     instructions = system_prompt_of(translate)
     assert "into Finnish" in instructions and "Finnish words" not in instructions
     assert "\n2. Keep names, times" in instructions

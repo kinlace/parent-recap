@@ -38,14 +38,40 @@ expect:
     - {
         kid: Aino,
         what:
-          [eväät, eväs, eväi, 午餐, 便当, 饭盒, 食物, 吃的, lunch, snack, food],
+          [
+            eväät,
+            eväs,
+            eväi,
+            午餐,
+            便当,
+            饭盒,
+            饭,
+            餐,
+            干粮,
+            食物,
+            吃的,
+            lunch,
+            snack,
+            food,
+          ],
         by: 2026-10-08,
         optional: true,
       }
     - {
         kid: Aino,
         what:
-          [vaatetus, vaatetu, vaatte, pukeu, 衣服, 穿, clothes, dress, wear],
+          [
+            vaatetus,
+            vaatetu,
+            vaatte,
+            pukeu,
+            衣,
+            服装,
+            穿,
+            clothes,
+            dress,
+            wear,
+          ],
         optional: true,
       }
   calendar_events:

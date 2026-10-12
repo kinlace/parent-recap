@@ -22,9 +22,13 @@ from .config import Config
 
 log = logging.getLogger(__name__)
 
-# Key Finnish words a Brief in any other language keeps as written, so parents can still search
-# Wilma and talk to the teacher with them (ADR 0004).
-FINNISH_WORDS = "reissuvihko, retki, vanhempainilta, eväät, vaatetus"
+# What a Brief in any other language does with the Finnish in the messages (ADR 0004): a parent who
+# reads no Finnish can't act on an everyday word left untranslated, but needs a form's or an event's
+# Finnish name to search Wilma and talk to the teacher.
+FINNISH_TERMS = ("Translate Finnish words too, and write an everyday one (such as eväät, vaatetus, retki, kota) "
+                 "only in translation, with no Finnish after it. Only a term the parent will need in Finnish later, to find it in Wilma or name it to the teacher "
+                 "(a form, a notebook or a named event, such as reissuvihko or vanhempainilta), keeps its Finnish "
+                 "in brackets after the translation")
 
 
 def is_finnish(language: Language) -> bool:

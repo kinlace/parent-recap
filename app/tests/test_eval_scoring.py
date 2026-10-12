@@ -75,6 +75,21 @@ def test_forbidden_text_is_looked_for_where_the_rule_says():
     assert score_case(expect, got, TZ)["notices"] == {"required": 0, "found": 0, "forbidden": 2, "hits": 1}
 
 
+def test_a_notice_rule_for_some_languages_is_checked_only_on_briefs_in_them():
+    expect = {"notices": {"must": [{"text": [["家长会", "parents' evening"], ["vanhempainil"]],
+                                    "where": "both", "languages": ["en", "zh"]}],
+                          "must_not": [{"text": ["eväät"], "where": "both", "languages": ["en", "zh"]}]}}
+    untranslated = summary([kid("Aino", actions=[("带 eväät", "2026-10-16"), ("报名家长会", "2026-10-15")])])
+    translated = summary([kid("Aino", actions=[("带午餐", "2026-10-16"),
+                                               ("报名家长会（vanhempainilta）", "2026-10-15")])])
+    assert score_case(expect, untranslated, TZ, language="zh")["notices"] == \
+        {"required": 1, "found": 0, "forbidden": 1, "hits": 1}
+    assert score_case(expect, translated, TZ, language="zh")["notices"] == \
+        {"required": 1, "found": 1, "forbidden": 1, "hits": 0}
+    assert score_case(expect, untranslated, TZ, language="fi")["notices"] == \
+        {"required": 0, "found": 0, "forbidden": 0, "hits": 0}
+
+
 def test_event_start_is_compared_as_local_wall_clock():
     expect = {"calendar_events": [{"title": ["turnaus", "锦标赛"], "start": "2026-10-25T10:00"},
                                   {"title": ["piano", "钢琴"], "start": "2026-10-27T17:00"}]}
@@ -179,6 +194,11 @@ FINNISH_NIGHTS = {
                                 "start": "2026-10-28T18:00:00+03:00"}]),
     "fi-puoli-viisi": summary([kid("Eero", notices=["Pianotunti siirtyy ma 12.10. → ti 13.10. klo 16.30"])],
                               [{"kid": "Eero", "title": "Pianotunti", "start": "2026-10-13T16:30:00+03:00"}]),
+    # A Finnish Brief keeps the everyday words the other languages must translate.
+    "everyday-finnish-translated": summary(
+        [kid("Aino", actions=[("Ilmoittaudu vanhempainiltaan Wilman lomakkeella", "2026-10-15"),
+                              ("Pakkaa omat eväät ja säänmukaiset ulkoiluvarusteet", "2026-10-16")])],
+        [{"kid": "Aino", "title": "4B:n vanhempainilta", "start": "2026-10-20T18:00:00+03:00"}]),
     "fi-mixed-languages": summary(
         [kid("Aino", notices=["la 10.10. kiinan tunti on peruttu"],
              actions=[("Maksa luokkakuvat 15 €", "2026-10-12")])],
@@ -191,7 +211,7 @@ def test_a_plain_finnish_brief_scores_clean_on_the_bundled_cases():
     from family_brief.eval.score import is_clean
     cases = {c.name: c for c in load_cases(BUNDLED)}
     for name, night in FINNISH_NIGHTS.items():
-        assert is_clean(score_case(cases[name].expect, night, TZ)), name
+        assert is_clean(score_case(cases[name].expect, night, TZ, language="fi")), name
 
 
 def test_puoli_viisi_read_as_another_time_is_not_clean():

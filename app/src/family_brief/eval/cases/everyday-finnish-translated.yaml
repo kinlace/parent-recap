@@ -1,0 +1,141 @@
+covers: [mixed-languages]
+note: >
+  Monday night. A Wilma message full of everyday Finnish words (eväät, säänmukaiset
+  ulkoiluvarusteet, kota, pieni herkku) and one term a parent needs later, vanhempainilta. A Brief
+  in English or Chinese translates the everyday words and keeps vanhempainilta in brackets after
+  its translation (ADR 0004).
+now: 2026-10-12T21:00:00+03:00
+messages:
+  - id: w-kota-1012
+    source: wilma
+    at: 2026-10-12T13:40:00+03:00
+    sender: Laine Maija
+    subject: Ulkoilupäivä ja vanhempainilta
+    kid_hint: Virtanen Aino
+    body: |
+      Hei 4B:n huoltajat!
+      Perjantaina 16.10. vietämme ulkoilupäivän kodalla koulun metsässä. Lapsilla pitää olla
+      säänmukaiset ulkoiluvarusteet ja omat eväät. Mukaan saa pakata myös pienen herkun.
+      Luokan vanhempainilta on tiistaina 20.10. klo 18. Ilmoittautukaa Wilman lomakkeella
+      torstaihin 15.10. mennessä.
+      Terveisin, Maija Laine
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what:
+          [
+            ilmoittau,
+            ilmoit,
+            lomak,
+            报名,
+            登记,
+            回复,
+            sign up,
+            register,
+            reply,
+            rsvp,
+          ],
+        by: 2026-10-15,
+      }
+    - {
+        kid: Aino,
+        what:
+          [
+            eväät,
+            eväs,
+            eväi,
+            午餐,
+            便当,
+            饭盒,
+            饭,
+            餐,
+            干粮,
+            食物,
+            吃的,
+            零食,
+            lunch,
+            snack,
+            food,
+          ],
+        by: 2026-10-16,
+        optional: true,
+      }
+    - {
+        kid: Aino,
+        what:
+          [
+            varust,
+            vaatte,
+            衣,
+            服装,
+            装备,
+            穿,
+            clothes,
+            clothing,
+            gear,
+            dress,
+            wear,
+          ],
+        by: 2026-10-16,
+        optional: true,
+      }
+  calendar_events:
+    - {
+        title:
+          [
+            vanhempainilta,
+            vanhempainil,
+            家长会,
+            parents' evening,
+            parent meeting,
+            parents' meeting,
+            parent evening,
+          ],
+        start: 2026-10-20T18:00,
+      }
+    - {
+        title: [ulkoilu, kota, 户外, 野外, outdoor, hut, forest, 森林],
+        start: 2026-10-16,
+        optional: true,
+      }
+    - {
+        title: [ilmoittau, ilmoit, lomak, 报名, 登记, sign up, register],
+        optional: true,
+      }
+  notices:
+    must:
+      # The term parents search Wilma with stays, after its translation.
+      - {
+          kid: Aino,
+          text:
+            [
+              [
+                家长会,
+                parents' evening,
+                parent meeting,
+                parents' meeting,
+                parent evening,
+              ],
+              [vanhempainil],
+            ],
+          where: both,
+          languages: [en, zh],
+        }
+    must_not:
+      # Everyday words a parent who reads no Finnish couldn't act on.
+      - {
+          text:
+            [
+              eväät,
+              eväs,
+              eväi,
+              ulkoiluvarust,
+              säänmukai,
+              herkku,
+              " kodalla",
+              " kota",
+            ],
+          where: both,
+          languages: [en, zh],
+        }
