@@ -307,20 +307,19 @@ FI = BriefText(
     unsorted="Muut viestit",
     fallback_count=" ({count})",
     fallback_more="  …arkistossa vielä {n} lisää",
-    # Added after the first review and not yet checked by a Finnish speaker: reply_incomplete,
-    # message_unreadable, nothing_read, source_problem, fix_login, fix_permission, fix_other,
+    # Added after the first review and not yet checked by a Finnish speaker:
     # whatsapp_permission_denied, phone_number, email_address, link, someone, held_back,
     # held_back_note, held_back_open, held_back_read_in, no_subject, fallback_spent.
-    reply_incomplete="⚠️ {assistant}-avustajan vastaus katkesi tänä iltana, joten koosteesta voi puuttua "
-                     "joitakin kohtia. Kaikki tämäniltaiset viestit ovat arkistossa kansiossa ~/ParentRecap.",
+    reply_incomplete="⚠️ {assistant}-avustajan vastaus jäi tänä iltana kesken, joten koosteesta voi puuttua "
+                     "joitakin kohtia. Kaikki tämäniltaiset viestit ovat tallessa arkistossa ~/ParentRecap.",
     message_unreadable="yhtä viestiä ei voitu lukea",
-    nothing_read="⚠️ Tänä iltana yhtäkään lähdettä ei voitu lukea, joten yhteenvetoa ei ole. Niiden viestit "
-                 "tulevat ensimmäiseen koosteeseen sen jälkeen, kun ne voidaan taas lukea.",
+    nothing_read="⚠️ Yhtäkään lähdettä ei voitu lukea tänä iltana, joten yhteenvetoa ei ole. Lähteiden viestit "
+                 "tulevat mukaan ensimmäiseen koosteeseen, kun lähteet saadaan taas luettua.",
     source_problem="• {source}: {reason}. {fix}",
     fix_login="Voit korjata tämän kirjoittamalla {assistant}-avustajalle ”valtuuta {source} uudelleen”.",
     fix_permission="Voit korjata tämän kirjoittamalla {assistant}-avustajalle "
                    "”Parent Recap ei pysty lukemaan lähdettä {source}”.",
-    fix_other="Jos Mac oli offline-tilassa, tämä korjaantuu itsestään. Jos sama toistuu, kirjoita "
+    fix_other="Jos Macissa ei ollut verkkoyhteyttä, tämä korjaantuu itsestään. Jos ongelma toistuu, kirjoita "
               "{assistant}-avustajalle ”tarkista Parent Recap”.",
     message_time="{day}.{month}. klo {hour}.{minute:02}",
     translation_failed="⚠️ Tämäniltaista koostetta ei saatu käännettyä, joten tässä se on alkuperäisellä kielellä.",
