@@ -424,3 +424,48 @@ def test_a_failed_job_that_leaves_uncommitted_changes_stops_the_run(branch):
     assert "still running" not in result.stdout
     assert "uncommitted changes" in result.stderr and "synced" not in result.stderr
     assert (branch / "stray.txt").exists()
+# ── Precheck: an issue only a person can finish is sent back to triage
+
+def precheck(repo: Path, agent: str, gh_bin: Path) -> subprocess.CompletedProcess:
+    """Runs precheck_issue on #5 with `agent` as the agent's run (bash, in the repo)."""
+    env = {**os.environ, "PATH": f"{gh_bin}:{os.environ['PATH']}"}
+    script = (f'source "{ROOT}/scripts/issue-loop.sh"; SESSION=; '
+              f'run_agent() {{ SESSION=pre-session; echo "model $3" >&2; {agent}; }}; '
+              f'precheck_issue 5 && echo agent || echo person')
+    return subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True, env=env)
+
+
+def test_an_issue_an_agent_can_finish_goes_on_with_sonnet(branch, gh):
+    result = precheck(branch, "echo 'AGENT: all criteria are code' > .loop/precheck.md", gh["bin"])
+    assert result.stdout.strip() == "agent", result.stderr
+    assert "model sonnet" in result.stderr
+    assert "#5 precheck: all criteria are code" in result.stderr
+    assert calls(gh) == []
+
+
+def test_an_issue_that_needs_a_person_is_sent_back_to_triage_and_says_why(branch, gh):
+    result = precheck(branch, "echo 'PERSON: \"the eval comparison\" needs the real-model eval' > .loop/precheck.md",
+                      gh["bin"])
+    assert result.stdout.strip() == "person", result.stderr
+    assert "#5 skipped, needs a person: \"the eval comparison\"" in result.stderr
+    log = gh["log"].read_text()
+    assert "gh issue comment 5" in log and "ready-for-human" in log
+    assert "gh issue edit 5 -R kinlace/parent-recap --remove-label ready-for-agent --add-label needs-triage" in log
+
+
+def test_a_precheck_that_writes_no_verdict_stops_the_loop(branch, gh):
+    result = precheck(branch, "true", gh["bin"])
+    assert result.returncode != 0
+    assert "stopped at #5: the precheck wrote no .loop/precheck.md" in result.stderr
+
+
+def test_a_precheck_verdict_that_is_neither_agent_nor_person_stops_the_loop(branch, gh):
+    result = precheck(branch, "echo 'Probably fine' > .loop/precheck.md", gh["bin"])
+    assert result.returncode != 0
+    assert "isn't AGENT or PERSON: Probably fine" in result.stderr
+
+
+def test_a_precheck_that_changes_the_checkout_stops_the_loop(branch, gh):
+    result = precheck(branch, "echo 'AGENT: fine' > .loop/precheck.md; echo x > stray.txt", gh["bin"])
+    assert result.returncode != 0
+    assert "the precheck changed the checkout" in result.stderr

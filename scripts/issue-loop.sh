@@ -13,6 +13,11 @@
 # loop goes on with the next issue, and stops only after two failed jobs in a row (more likely a
 # login, network or CI problem than the issues) or when a job leaves uncommitted changes.
 #
+# Before /implement, a Sonnet agent reads the issue (precheck_issue). When an acceptance criterion
+# needs a person (a decision, a real account, the real-model eval), the loop skips the issue,
+# moves it from ready-for-agent to needs-triage and says on it which criterion, so it gets split.
+# --dry-run doesn't run it.
+#
 # ── When to use it
 # Use the loop to clear several ready-for-agent tickets while you're away, e.g. the rest of a
 # release milestone. Each PR is merged as soon as CI is green, with no review, so only point it
@@ -354,6 +359,51 @@ Don't push, open PRs or post to GitHub: the calling script does that after you f
 Don't run the real-model eval (python -m family_brief.eval) or list it as unverified: it runs once per release, not per PR. \
 Nobody is watching this run, so if you need a human decision, stop without committing and say why in your final message."
 
+# ── Precheck: a ticket only a person can finish never reaches /implement
+# #268 asked for a real-model eval, which IMPLEMENT_NOTE forbids and only a person can run: the
+# loop paid for a full run, then the checker failed it. A cheap read of the issue catches that
+# first and sends the issue back to triage, to be split into a ready-for-agent and a
+# ready-for-human ticket (docs/agents/triage-labels.md).
+PRECHECK_PROMPT="Issue #%s is about to go to an unattended agent that codes, tests against fakes \
+and opens a PR, with no human around. It must not run the real-model eval \
+(python -m family_brief.eval). Don't change any file; your only write is .loop/precheck.md. $GH_NOTE
+
+Read the issue (gh issue view %s -R $REPO) and decide whether every acceptance criterion can be met \
+by that agent. One can't when only a person can meet it: a decision for the maintainers, a real \
+account or device, the real-model eval. Tested against fakes counts as met, and so does an outside \
+fact the agent can look up on the web. A criterion that only keeps something as it is until the \
+maintainers decide is fine.
+
+Write .loop/precheck.md: one line, AGENT: <one sentence> or PERSON: <the criterion, quoted, and who \
+or what it needs>."
+
+# Returns 1, having sent the issue back to triage with a comment, when a criterion needs a person.
+# Runs on main before the issue is claimed, so a skipped issue leaves no branch or assignee.
+precheck_issue() {
+  local ISSUE=$1 CURRENT="#$1" BRANCH head verdict
+  BRANCH=$(git branch --show-current)
+  head=$(git rev-parse HEAD)
+  rm -f "$LOOP_DIR/precheck.md"
+  # shellcheck disable=SC2059 # the prompt is the format
+  run_agent "$(printf "$PRECHECK_PROMPT" "$ISSUE" "$ISSUE")" --model sonnet
+  [ "$(git rev-parse HEAD)" = "$head" ] && [ -z "$(git status --porcelain)" ] ||
+    fail "the precheck changed the checkout"
+  verdict=$(head -1 "$LOOP_DIR/precheck.md" 2>/dev/null) || fail "the precheck wrote no .loop/precheck.md"
+  case $verdict in
+    "AGENT: "*) log "#$ISSUE precheck: ${verdict#AGENT: }"; return 0 ;;
+    "PERSON: "*)
+      gh issue comment "$ISSUE" -R "$REPO" --body "issue-loop skipped this: ${verdict#PERSON: }
+
+Split the step a person has to do into its own \`ready-for-human\` issue, blocked by this one, \
+then label this one \`ready-for-agent\` again." >/dev/null || true
+      gh issue edit "$ISSUE" -R "$REPO" --remove-label ready-for-agent --add-label needs-triage \
+        >/dev/null 2>&1 || true
+      log "#$ISSUE skipped, needs a person: ${verdict#PERSON: }"
+      return 1 ;;
+    *) fail "the precheck's verdict isn't AGENT or PERSON: ${verdict:0:200}" ;;
+  esac
+}
+
 # ── Check: a fresh agent reads the work before it merges
 # The reports /code-review's subagents gave the implementer in session $1, one section each, into
 # .loop/reviews.md. Claude Code keeps each subagent's transcript next to the session's; the review
@@ -598,7 +648,8 @@ while [ "$jobs" -lt "$MAX_JOBS" ]; do
   # An issue that shows up twice means a step silently didn't stick; stop rather than loop.
   case $SEEN in *" $next "*) CURRENT="#$next"; fail "picked the same issue twice in one run" ;; esac
 
-  # Called in a condition so set -e is off inside; claim_issue handles its own errors.
+  # Called in conditions so set -e is off inside; both handle their own errors.
+  precheck_issue "$next" || { SKIPPED+="$next "; continue; }
   claim_issue "$next" || { SKIPPED+="$next "; continue; }
   SEEN+="$next "
   run_job "$next"

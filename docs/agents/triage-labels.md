@@ -12,4 +12,6 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
+`ready-for-agent` means an agent can meet every acceptance criterion alone. A step only a person can do (a decision for the maintainers, a real account or device, the real-model eval `python -m family_brief.eval`) goes into its own `ready-for-human` issue, blocked by the agent's one. `scripts/issue-loop.sh` sends a `ready-for-agent` issue that breaks this back to `needs-triage`.
+
 Edit the right-hand column to match whatever vocabulary you actually use.
