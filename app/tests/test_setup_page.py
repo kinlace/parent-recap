@@ -702,15 +702,76 @@ def test_every_ai_result_says_what_to_do_in_all_three_languages():
                 assert table.get(f"ai.{name}.{result}", "").strip(), (language, name, result)
 
 
-def test_welcome_says_which_sources_come_next_and_to_have_the_wilma_login_ready():
+def test_welcome_says_which_sources_come_next():
     text = json.loads((PAGE_DIR / "text.json").read_text())
     used = (PAGE_DIR / "index.html").read_text()
 
     for language, table in text.items():
-        assert "Wilma" in table["welcome.wilma"], language
         for source in ("Wilma", "Gmail", "WhatsApp", "MyClub"):
             assert source in table["welcome.sources"], (language, source)
-    assert 'data-text="welcome.wilma"' in used and 'data-text="welcome.sources"' in used
+    assert 'data-text="welcome.sources"' in inside(used, "welcome")
+
+
+# What Welcome's "Have these ready" list says in each language (#298), in the words the steps and
+# Wilma's own sign-in page use: the Wilma login and Wilma's link for a forgotten password, one
+# MyClub link per Kid and the buttons that make it, 2-Step Verification for the App Password, and
+# the phone that signs in WhatsApp for Mac and may confirm the App Password. The last line says
+# WhatsApp and MyClub can wait.
+READY_WORDS = {
+    "en": {"wilma": ("username", "password", '"Forgot your password?"', "sign-in page"),
+           "gmail": ("2-Step Verification", "App Password"),
+           "myclub": ("each Kid", "Calendar subscription (Tilaa kalenteri)",
+                      "Selected members (Valitut jäsenet)", "only that Kid", "copy the link"),
+           "phone.why": ("WhatsApp for Mac", "installed", "QR code", "confirm", "App Password"),
+           "later": ("WhatsApp and MyClub", "until later")},
+    "fi": {"wilma": ("käyttäjätunnus", "salasana", "”Unohditko salasanasi?”", "kirjautumissivu"),
+           "gmail": ("2-vaiheinen vahvistus", "sovellussalasana"),
+           "myclub": ("jokaiselle lapselle", "Tilaa kalenteri", "Valitut jäsenet",
+                      "vain tämä lapsi", "kopioi linkki"),
+           "phone.why": ("WhatsAppin Mac-sovellu", "asennettu", "QR-koodi", "vahvistus",
+                         "sovellussalasana"),
+           "later": ("WhatsApp ja MyClub", "myöhemmäksi")},
+    "zh": {"wilma": ("用户名", "密码", "“Forgot your password?”", "“Unohditko salasanasi?”", "登录页"),
+           "gmail": ("两步验证", "应用专用密码"),
+           "myclub": ("每个孩子", "“订阅日历”（Tilaa kalenteri）", "“选定成员”（Valitut jäsenet）",
+                      "只勾这一个孩子", "复制链接"),
+           "phone.why": ("WhatsApp Mac 版", "装好", "二维码", "确认", "应用专用密码"),
+           "later": ("WhatsApp 和 MyClub", "以后再连")},
+}
+
+
+def test_welcome_has_a_folded_list_of_what_to_have_ready():
+    # A pilot parent asked for calm pages that don't show everything at once: it opens on a click.
+    page_html = (PAGE_DIR / "index.html").read_text()
+
+    folded = re.search(r'<details\b[^>]*\bid="welcome-ready"[^>]*>', inside(page_html, "welcome"))
+    assert folded and not re.search(r"\bopen\b", folded.group(0))
+    ready = inside(page_html, "welcome-ready")
+    assert '<summary data-text="welcome.ready"></summary>' in ready
+    # Each Source by the name the Source list gives it, then the phone, each with what it needs.
+    items = re.findall(r'<dt data-text="([\w.]+)"></dt>\s*<dd data-text="([\w.]+)"></dd>', ready)
+    assert items == [("source.wilma", "welcome.ready.wilma"),
+                     ("source.gmail", "welcome.ready.gmail"),
+                     ("source.myclub", "welcome.ready.myclub"),
+                     ("welcome.ready.phone", "welcome.ready.phone.why")]
+    assert 'data-text="welcome.ready.later"' in ready
+
+
+def test_the_ready_list_names_what_setup_needs_in_each_language():
+    page_html = (PAGE_DIR / "index.html").read_text()
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    assert set(READY_WORDS) == set(text)
+    for language, items in READY_WORDS.items():
+        for item, words in items.items():
+            said = text[language][f"welcome.ready.{item}"]
+            for word in words:
+                assert word.lower() in said.lower(), (language, item, word)
+        # Said once: the list says what can wait, and the line above it no longer does.
+        assert items["later"][-1] not in text[language]["welcome.sources"], language
+    # The list replaces Welcome's old Wilma sentence rather than adding a second one.
+    assert all("welcome.wilma" not in table for table in text.values())
+    assert "welcome.wilma" not in page_html
 
 
 # ── Welcome: what lets the family ask for changes in the chat later (#98)

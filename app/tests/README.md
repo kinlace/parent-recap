@@ -227,7 +227,11 @@ and language are asked only with a partner, and that a missing or signed-out Cla
 is caught and checked again: the harness answers `claude auth status` and `codex login status`
 from `harness.signed_in`, and the test puts a fake `claude` or `codex` on PATH to install one.
 It also checks that the install box and its Copy button start hidden, that `hidden` wins over the
-box's own layout in the CSS, and that a ready AI gets no install line.
+box's own layout in the CSS, and that a ready AI gets no install line. Welcome's "Have these
+ready" list starts folded, and in all three languages names the Wilma login with Wilma's own link
+for a forgotten password, one MyClub link per Kid with the buttons that make it, 2-Step
+Verification for Gmail's App Password, and the phone that signs in WhatsApp for Mac, in place of
+the old Wilma sentence.
 On Connect, it checks the Source list's statuses, each row's name with its status in every
 language, skipping and coming back, and the page's Gmail
 step against a fake IMAP server and Keychain: a valid App Password is stored and Gmail turns done,
