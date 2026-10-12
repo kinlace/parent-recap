@@ -73,26 +73,32 @@ expect:
               already covered,
               not repeat,
               reminder window,
-              aiemmassa,
+              aiemmassa brief,
+              aiemmissa brief,
               edellisessä brief,
               jo kerrottu,
               ei toisteta,
             ],
           where: anywhere,
         }
+      # A bare "24 hours" could be a school rule (fever-free for 24 hours), so it needs "past".
       - {
           text:
             [
-              24 小时,
-              24小时,
+              [24 小时, 24小时, 24 hours, 24-hour, 24 tun],
+              [过去, 最近, past, last, viimei],
+            ],
+          where: anywhere,
+        }
+      - {
+          text:
+            [
               过去一天,
               没有新消息,
               无新消息,
-              24 hours,
-              24-hour,
               no new messages,
-              24 tun,
               ei uusia viest,
+              ei viestejä,
             ],
           where: anywhere,
         }
