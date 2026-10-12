@@ -164,14 +164,15 @@ def issue(number: int, body_len: int, *, title: str = "Do a thing", state: str =
             "milestone": {"title": milestone} if milestone else None}
 
 
-def statuses(backlog: Path, issues: list[dict], args: str = "") -> list[str]:
+def statuses(backlog: Path, issues: list[dict], args: str = "", *, titles: bool = False) -> list[str]:
     """What the script says about each issue, in the order it would take them."""
     (backlog / "issues.json").write_text(json.dumps(issues))
     env = {**os.environ, "PATH": f"{backlog / 'bin'}:{os.environ['PATH']}"}
     script = f'source scripts/issue-loop.sh; set -- {args}; PICKS="$*"; issue_statuses'
     out = subprocess.run(["bash", "-c", script], cwd=ROOT, capture_output=True, text=True, env=env)
     assert out.returncode == 0, out.stderr
-    return [line.replace("\t", " ") for line in out.stdout.splitlines()]
+    return [line.replace("\t", " ") if titles else " ".join(line.split("\t")[:2])
+            for line in out.stdout.splitlines()]
 
 
 def test_without_numbers_the_smallest_issue_comes_first(backlog):
@@ -191,7 +192,7 @@ def test_a_named_issue_needs_no_ready_label_and_ignores_the_milestone(backlog):
     env = {**os.environ, "PATH": f"{backlog / 'bin'}:{os.environ['PATH']}"}
     script = 'source scripts/issue-loop.sh; PICKS=4; MILESTONE=0.4.0; issue_statuses'
     out = subprocess.run(["bash", "-c", script], cwd=ROOT, capture_output=True, text=True, env=env)
-    assert out.stdout.split() == ["4", "ready"]
+    assert out.stdout.split("\t")[:2] == ["4", "ready"]
 
 
 def test_named_issues_that_cannot_be_worked_say_why(backlog):
@@ -200,6 +201,11 @@ def test_named_issues_that_cannot_be_worked_say_why(backlog):
     ], "1 2 3 99")
     assert got == ["1 skipped: spec", "2 skipped: closed", "3 skipped: assigned to sam",
                    "99 skipped: no such issue"]
+
+
+def test_every_issue_comes_with_its_title(backlog):
+    got = statuses(backlog, [issue(1, 10, title="Spec: big"), issue(2, 10, title="Fix it")], "1 2 99", titles=True)
+    assert got == ["1 skipped: spec Spec: big", "2 ready Fix it", "99 skipped: no such issue "]
 
 
 def test_a_named_issue_given_twice_or_with_a_hash_is_taken_once_and_sets_the_job_limit():
