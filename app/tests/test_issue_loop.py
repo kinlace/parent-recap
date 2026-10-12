@@ -274,11 +274,11 @@ def test_after_a_pass_the_implementer_s_session_is_resumed_for_the_pr(branch):
     assert "session impl-session" in result.stdout
 
 
-def test_a_failed_check_stops_the_loop_and_points_at_the_implementer_s_session(branch):
+def test_a_failed_check_is_reported_back_without_stopping_yet(branch):
     result = check(branch, "printf 'FAIL: a question is left for a person\\n- #5 asks for a decision\\n' > .loop/check.md")
-    assert result.returncode != 0
-    assert "stopped at #5: check failed: a question is left for a person" in result.stderr
-    assert "claude --resume impl-session" in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert "check failed: a question is left for a person" in result.stderr
+    assert "session impl-session" in result.stdout
 
 
 def test_a_checker_that_writes_no_verdict_stops_the_loop(branch):
@@ -297,3 +297,130 @@ def test_a_checker_that_changes_the_branch_stops_the_loop(branch):
     result = check(branch, "echo PASS > .loop/check.md; echo x > stray.txt")
     assert result.returncode != 0
     assert "the checker changed the branch" in result.stderr
+
+
+# ── A fix round after a failed check
+
+FAIL_CHECK = "printf 'FAIL: a fact has no source\\n- docs/x.md:3 states macOS behaviour\\n' > .loop/check.md"
+
+
+def check_and_fix(repo: Path, checks: list[str], fixer: str) -> subprocess.CompletedProcess:
+    """Runs check_and_fix with the checker's runs taken from `checks` in turn and `fixer` as the
+    implementer's fix run. Every agent call is logged to agents.log, next to the repo (a file in
+    it would count as the agent changing the branch), with whether it got the web."""
+    env = {**os.environ, "CLAUDE_CONFIG_DIR": str(repo.parent / "claude")}
+    cases = "\n".join(f"    {i}) {c} ;;" for i, c in enumerate(checks))
+    script = f'''source "{ROOT}/scripts/issue-loop.sh"; ISSUE=5 CURRENT="#5" SESSION=impl-session
+n=0
+run_tests() {{ :; }}
+run_agent() {{
+  printf '%s | web=%s | %s\\n' "$(printf '%s' "$1" | head -1 | cut -c1-40)" "${{AGENT_WEB:-}}" "${{*:2}}" >> ../agents.log
+  case $1 in
+    "You are checking"*)
+      case $n in
+{cases}
+      esac
+      n=$((n + 1)); SESSION=check-session ;;
+    *) {fixer} ;;
+  esac
+}}
+check_and_fix; echo "session $SESSION"'''
+    return subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True, env=env)
+
+
+def commit(file: str) -> str:
+    return f"echo fixed > {file}; git -c user.name=t -c user.email=t@t add {file}; git -c user.name=t -c user.email=t@t commit -qm fix"
+
+
+def test_a_failed_check_gets_one_fix_round_and_passes_when_the_fix_holds(branch):
+    result = check_and_fix(branch, [FAIL_CHECK, "echo PASS > .loop/check.md"], commit("fix.txt"))
+    assert result.returncode == 0, result.stderr
+    assert "check passed" in result.stderr
+    assert "session impl-session" in result.stdout
+    agents = (branch.parent / "agents.log").read_text().splitlines()
+    assert len(agents) == 3
+    fix = agents[1]
+    assert "--resume impl-session" in fix
+    assert "web=1" in fix
+    assert "web=1" not in agents[0] and "web=1" not in agents[2]
+
+
+def test_the_fixer_is_given_the_checker_s_findings(branch):
+    script_dir = branch.parent / "prompt.txt"
+    fixer = f'printf "%s" "$1" > {script_dir}; {commit("fix.txt")}'
+    check_and_fix(branch, [FAIL_CHECK, "echo PASS > .loop/check.md"], fixer)
+    prompt = script_dir.read_text()
+    assert "docs/x.md:3 states macOS behaviour" in prompt
+
+
+def test_the_second_check_reads_both_reports(branch):
+    fixer = f"echo '{{\"result\": \"Cited Apple.\"}}' > .loop/last.json; {commit('fix.txt')}"
+    result = check_and_fix(branch, [FAIL_CHECK, "echo PASS > .loop/check.md"], fixer)
+    assert result.returncode == 0, result.stderr
+    report = (branch / ".loop" / "report.md").read_text()
+    assert "Done. Nothing for you to decide." in report and "Cited Apple." in report
+
+
+def test_a_check_that_fails_again_after_the_fix_stops_the_job(branch):
+    result = check_and_fix(branch, [FAIL_CHECK, FAIL_CHECK], commit("fix.txt"))
+    assert result.returncode != 0
+    assert "stopped at #5: check failed after a fix round: a fact has no source" in result.stderr
+    assert "claude --resume impl-session" in result.stderr
+
+
+def test_a_fix_round_that_commits_nothing_stops_the_job(branch):
+    result = check_and_fix(branch, [FAIL_CHECK, "echo PASS > .loop/check.md"], "true")
+    assert result.returncode != 0
+    assert "the fix round made no commit" in result.stderr
+    assert len((branch.parent / "agents.log").read_text().splitlines()) == 2
+
+
+# ── A failed job doesn't end the run
+
+def run_jobs(repo: Path, body: str) -> subprocess.CompletedProcess:
+    """Sources the script with `do_issue` replaced by `body` (bash), then runs `body`'s jobs."""
+    script = (f'source "{ROOT}/scripts/issue-loop.sh"; sync_main() {{ echo "synced" >&2; }}; '
+              f'{body}')
+    return subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True)
+
+
+def test_a_job_that_fails_ends_only_its_own_job(branch):
+    result = run_jobs(branch, 'do_issue() { CURRENT="#$1"; fail "tests red"; }; '
+                              'run_job 5; echo "status $JOB_STATUS"; after_job 5; echo "after $FAILED"')
+    assert "stopped at #5: tests red" in result.stderr
+    assert "status 1" in result.stdout
+    assert "synced" in result.stderr
+    assert "after #5" in result.stdout
+    assert result.returncode == 0, result.stderr
+
+
+def test_an_unexpected_error_in_a_job_is_reported_and_the_run_goes_on(branch):
+    result = run_jobs(branch, 'do_issue() { CURRENT="#$1"; false; echo "not reached"; }; '
+                              'run_job 5; echo "status $JOB_STATUS"')
+    assert "stopped at #5: unexpected error (exit 1)" in result.stderr
+    assert "not reached" not in result.stdout
+    assert "status 1" in result.stdout
+    assert result.returncode == 0, result.stderr
+
+
+def test_a_job_that_succeeds_resets_the_failure_count(branch):
+    result = run_jobs(branch, 'do_issue() { :; }; FAILS_IN_ROW=1; '
+                              'run_job 5; after_job 5; echo "status $JOB_STATUS fails $FAILS_IN_ROW"')
+    assert "status 0 fails 0" in result.stdout, result.stderr
+
+
+def test_two_failed_jobs_in_a_row_stop_the_run(branch):
+    result = run_jobs(branch, 'do_issue() { CURRENT="#$1"; fail "agent ended with timeout"; }; '
+                              'run_job 5; after_job 5; run_job 6; after_job 6; echo "still running"')
+    assert result.returncode != 0
+    assert "still running" not in result.stdout
+    assert "2 jobs in a row failed" in result.stderr
+
+
+def test_a_failed_job_that_leaves_uncommitted_changes_stops_the_run(branch):
+    result = run_jobs(branch, 'do_issue() { CURRENT="#$1"; echo x > stray.txt; fail "uncommitted changes left behind"; }; '
+                              'run_job 5; after_job 5; echo "still running"')
+    assert result.returncode != 0
+    assert "still running" not in result.stdout
+    assert "uncommitted changes" in result.stderr and "synced" not in result.stderr
+    assert (branch / "stray.txt").exists()
