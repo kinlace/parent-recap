@@ -208,6 +208,8 @@ FINNISH_NIGHTS = {
         [kid("Aino", actions=[("Ilmoittaudu vanhempainiltaan Wilman lomakkeella", "2026-10-15"),
                               ("Pakkaa omat eväät ja säänmukaiset ulkoiluvarusteet", "2026-10-16")])],
         [{"kid": "Aino", "title": "4B:n vanhempainilta", "start": "2026-10-20T18:00:00+03:00"}]),
+    "wilma-kotipostikansio-papers": summary(
+        [kid("Aino", actions=[("Allekirjoita kotipostikansion matematiikan ja englannin kokeet", "2026-10-19")])]),
     "fi-mixed-languages": summary(
         [kid("Aino", notices=["la 10.10. kiinan tunti on peruttu"],
              actions=[("Maksa luokkakuvat 15 €", "2026-10-12")])],
@@ -291,6 +293,45 @@ def test_a_brief_that_says_there_is_nothing_new_or_explains_itself_is_not_clean(
         s = score_case(cases[name].expect, brief, TZ, language="zh")
         s.update(valid_json=True)
         assert is_clean(s) is clean, (name, brief["message_digest"], s)
+
+
+def test_papers_in_the_home_folder_are_not_placed_in_wilma():
+    # A Wilma message about papers in the paper home folder put them "in Wilma's kotipostikansio" (#285).
+    from family_brief.eval.cases import BUNDLED, load_cases
+    case = next(c for c in load_cases(BUNDLED) if c.name == "wilma-kotipostikansio-papers")
+    notice = "老师说数学和英语考卷已发回，下周一 10/19 前交回"
+    nights = [
+        ("签好 Aino 书包里家庭文件夹（kotipostikansio）中的数学和英语考卷，下周一交回", True),
+        ("签好 Aino 的 kotipostikansio 里的考卷", True),
+        ("签好班主任在Wilma的kotipostikansio里放入的考卷", False),
+        ("在 Wilma 里签好数学和英语考卷", False),
+        ("签好数学和英语考卷", False),  # doesn't say where they are
+    ]
+    for action, clean in nights:
+        s = score_case(case.expect, summary([kid("Aino", notices=[notice], actions=[(action, "2026-10-19")])]),
+                       TZ, language="zh")
+        s.update(valid_json=True)
+        assert is_clean(s) is clean, (action, s)
+
+
+def test_kuljetusoppilaat_are_pupils_on_school_transport():
+    # The Chinese Brief rendered kuljetusoppilaat as "transport class pupils" (#285).
+    from family_brief.eval.cases import BUNDLED, load_cases
+    case = next(c for c in load_cases(BUNDLED) if c.name == "everyday-finnish-translated")
+    actions = [("周四 10/15 前用 Wilma 表格报名家长会", "2026-10-15")]
+    meeting = {"kid": "Aino", "title": "4B 家长会", "start": "2026-10-20T18:00:00"}
+    nights = [
+        ("zh", "周五 10/16 户外日 12:30 放学，坐校车的学生 12:45 出发；周二 10/20 18:00 家长会（vanhempainilta）", True),
+        ("en", "Fri 16.10 outdoor day ends at 12:30; pupils on school transport leave at 12:45. "
+               "Parents' evening (vanhempainilta) Tue 20.10 at 18:00", True),
+        ("zh", "周五 10/16 户外日 12:30 放学，交通班学生 12:45 出发；周二 10/20 18:00 家长会（vanhempainilta）", False),
+        ("zh", "周五 10/16 户外日 12:30 放学；周二 10/20 18:00 家长会（vanhempainilta）", False),
+    ]
+    for language, notice, clean in nights:
+        s = score_case(case.expect, summary([kid("Aino", notices=[notice], actions=actions)], [meeting]),
+                       TZ, language=language)
+        s.update(valid_json=True)
+        assert is_clean(s) is clean, (notice, s)
 
 
 def test_a_keyword_ending_in_a_space_matches_at_the_end_of_the_text():

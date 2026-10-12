@@ -1,9 +1,10 @@
 covers: [mixed-languages]
 note: >
   Monday night. A Wilma message full of everyday Finnish words (eväät, säänmukaiset
-  ulkoiluvarusteet, kota, pieni herkku) and one term a parent needs later, vanhempainilta. A Brief
-  in English or Chinese translates the everyday words and keeps vanhempainilta in brackets after
-  its translation (ADR 0004).
+  ulkoiluvarusteet, kota, pieni herkku, kuljetusoppilaat) and one term a parent needs later,
+  vanhempainilta. A Brief in English or Chinese translates the everyday words and keeps
+  vanhempainilta in brackets after its translation (ADR 0004). Kuljetusoppilaat are pupils on
+  school transport, not a "transport class" (#285).
 now: 2026-10-12T21:00:00+03:00
 messages:
   - id: w-kota-1012
@@ -16,6 +17,8 @@ messages:
       Hei 4B:n huoltajat!
       Perjantaina 16.10. vietämme ulkoilupäivän kodalla koulun metsässä. Lapsilla pitää olla
       säänmukaiset ulkoiluvarusteet ja omat eväät. Mukaan saa pakata myös pienen herkun.
+      Ulkoilupäivänä koulu päättyy klo 12.30, ja kuljetusoppilaiden kyydit lähtevät koulun
+      pihalta klo 12.45.
       Luokan vanhempainilta on tiistaina 20.10. klo 18. Ilmoittautukaa Wilman lomakkeella
       torstaihin 15.10. mennessä.
       Terveisin, Maija Laine
@@ -122,6 +125,23 @@ expect:
           where: both,
           languages: [en, zh],
         }
+      # Kuljetusoppilaat, in words a parent recognises.
+      - {
+          kid: Aino,
+          text:
+            [
+              校车,
+              班车,
+              乘车,
+              坐车,
+              school transport,
+              " bus",
+              taxi,
+              school ride,
+            ],
+          where: both,
+          languages: [en, zh],
+        }
     must_not:
       # Everyday words a parent who reads no Finnish couldn't act on.
       - {
@@ -139,3 +159,4 @@ expect:
           where: both,
           languages: [en, zh],
         }
+      - { text: [交通班, transport class], where: both, languages: [en, zh] }

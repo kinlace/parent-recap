@@ -1,0 +1,47 @@
+covers: [item-location, wilma-events]
+note: >
+  Friday night before the autumn break (#285). A Wilma message says the signed tests are in the
+  kotipostikansio, the paper home folder in the school bag. The message came through Wilma, but the
+  papers aren't in Wilma: the action item says they are in Aino's home folder or bag, and never
+  sends the parents to look in Wilma.
+now: 2026-10-09T21:00:00+03:00
+messages:
+  - id: w-kokeet-1009
+    source: wilma
+    at: 2026-10-09T14:05:00+03:00
+    sender: Laine Maija
+    subject: Allekirjoitettavat kokeet
+    kid_hint: Virtanen Aino
+    body: |
+      Hei 4B:n huoltajat!
+      Oppilailla on tänään kotipostikansiossa matematiikan ja englannin kokeet. Katsokaa ne
+      yhdessä lapsen kanssa, allekirjoittakaa ja palauttakaa ne kansiossa syysloman jälkeen
+      maanantaina 19.10.
+      Hyvää syyslomaa!
+      Maija Laine
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what:
+          [
+            [allekirj, 签, sign],
+            [
+              kotipost,
+              kansio,
+              reppu,
+              repus,
+              文件夹,
+              联络夹,
+              书包,
+              folder,
+              bag,
+              backpack,
+            ],
+          ],
+        by: 2026-10-19,
+      }
+  notices:
+    must_not:
+      # The papers are in the bag; Wilma is only where the message came from.
+      - { text: [wilma], where: action_items }

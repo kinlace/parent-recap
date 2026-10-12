@@ -54,6 +54,7 @@ Only what a parent can use:
 Notes:
 - If an event is already in the existing Google Calendar events (similar title, close in time), do **not** add it again
 - If a message is vague or repeated, leave the calendar event out rather than report a wrong one
+- Say where a thing is as the message says, apart from the Source the message came through: a Wilma message about papers in the kotipostikansio (the paper home folder in the kid's school bag) doesn't put them in Wilma
 - The "by" of an action item must be an absolute date (YYYY-MM-DD), never "tomorrow" or "this week"
 - If an existing calendar event (upcoming_calendar_events_next_7d, already_queued_for_calendar) disagrees with a message on time or place, say so in that kid's notices: what the calendar says and what the message says
 - An event, or a change to its time or place (including a new pick-up or drop-off time), is not an action item by itself: getting the kid there and back is implied by the event. Write it only as notices or calendar_events; don't add action_items such as "take the kid to training / drop off / pick up / arrange a ride" that only repeat an event's time or place. Write an action_item only when the parents must do something beyond showing up: bring, pay, sign, reply, or arrange something unusual (bring clothes, pay the fee, sign the permission slip, answer the coach, confirm a time with the teacher, arrange care on a day the school is closed, …)
