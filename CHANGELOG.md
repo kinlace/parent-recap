@@ -4,6 +4,20 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.5.8 · 2026-10-12
+
+A Household without a Claude or ChatGPT subscription can be invited to get its Brief through the maintainers' gateway, and setup says why the WhatsApp check failed.
+
+### Added
+- An invited Household can pick "Provided by Parent Recap" on the setup page and paste its Gateway Key there. The Brief is then written through the maintainers' gateway, without Claude Code or Codex installed. What passes through the gateway, what it keeps and where it runs is in `SECURITY.md`.
+- Each Gateway Key has a credit for the day. When it's used up, the Brief says so at once, instead of waiting as if the model were busy, and the credit comes back in time for the next evening's Brief.
+- `manage` switches between Claude, ChatGPT and the gateway, and can replace a Gateway Key.
+- parentrecap.com has a homepage in Finnish, English and Chinese.
+
+### Changed
+- When the WhatsApp check fails during setup, the page says why and offers the step that fixes it: turning on Full Disk Access yourself, ticking a group again, or waiting for WhatsApp for Mac to show your chats.
+- The setup page says your messages are filtered before they reach the gateway only when the AI filter is on.
+
 ## 0.5.7 · 2026-10-10
 
 Much less of your messages reaches the AI: other people's names, phone numbers, email addresses and links go as placeholders, and messages about a child's health, support, bullying or welfare stay on your Mac (ADR 0013).
