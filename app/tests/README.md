@@ -125,6 +125,16 @@ before 2.0, without their Wilma, still count as seen for the Wilma signed in wit
 sign-in's items link to its Wilma. A failing sign-in for none of the Kids stays out of the Brief
 and is logged by its username and Wilma, and one for a Kid makes the Brief say Wilma was partly
 read. Doctor names a sign-in setup didn't make for none of the Kids, with how to remove it.
+`test_whatsapp_source.py` runs the real WhatsApp Source against a small `ChatStorage.sqlite` it
+builds in the temporary HOME with WhatsApp's own tables and columns for chats, messages, group
+members and push names, with Full Disk Access given. It checks that only the configured chats are
+read, by exact name, and a configured one missing from the database is a warning; that only
+messages inside the lookback are read, in time order, with their times converted from Core Data's
+2001 epoch; that system events are skipped; that media without text gets its placeholder and a
+row with neither is marked seen and not returned; that a message read one night isn't read the
+next though it is still inside the lookback; that each Message has its chat, sender (contact name,
+first name, push name, "me" or "(group member)") and Kid hint; and that the snapshot is removed
+and the live database left as it was.
 `test_doctor.py` checks that doctor speaks English, that `doctor` and `bg doctor` on
 `test_setup_whatsapp.py`'s fake Mac fail with the Python's real path and "add it to Full Disk
 Access" without Full Disk Access and pass with it, with no question from macOS either way, and
