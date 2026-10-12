@@ -131,9 +131,13 @@ def score_case(expect: dict[str, Any], summary: dict[str, Any] | None, tz: str,
     def found(rule: dict, entries: list[dict], text_of) -> bool:
         return any(matches(rule["text"], text_of(e)) and _kid_ok(rule.get("kid"), e["_kid"]) for e in entries)
 
+    # Digest lines sit under no Kid, so a rule with a `kid` never matches one.
+    digest = [{"text": line, "_kid": None} for line in digest_of(summary).splitlines() if line.strip()]
     where = {"notices": [(notices, lambda n: str(n.get("text", "")))],
-             "action_items": [(actions, lambda a: str(a.get("what", "")))]}
+             "action_items": [(actions, lambda a: str(a.get("what", "")))],
+             "digest": [(digest, lambda d: d["text"])]}
     where["both"] = where["notices"] + where["action_items"]
+    where["anywhere"] = where["both"] + where["digest"]
     said = lambda r: any(found(r, entries, text_of)  # noqa: E731
                          for entries, text_of in where[r.get("where", "notices")])
     notice_counts = {

@@ -1,0 +1,98 @@
+covers: [nothing-new, cross-night]
+note: >
+  Friday night that reads again two messages from earlier in the week, both already in
+  Wednesday's Brief (as a preview over the last days does). The Brief may repeat Sunday's match
+  time, which is close, but never tells the parents what it left out, that something was in an
+  earlier Brief, why something isn't reminded, or that no messages came in the last 24 hours.
+now: 2026-10-09T21:00:00+03:00
+calendar:
+  - {
+      id: gcal-match-1011,
+      summary: FC Kilo T2016 vs Espoon Palloseura,
+      start: "2026-10-11T12:00:00+03:00",
+      end: "2026-10-11T13:30:00+03:00",
+      location: Leppävaaran tekonurmi,
+    }
+earlier_briefs:
+  - date: "2026-10-07"
+    per_kid:
+      - kid: Aino
+        notices:
+          - text: 周日 10/11 对 Espoon Palloseura 的比赛改到 12:00 开始（不是 11:00），11:15 在 Leppävaara 人工草场集合
+            refs: [wa-fc-1007]
+            ref_sources: { wa-fc-1007: [whatsapp] }
+            source: [whatsapp]
+            verified: true
+        action_items: []
+      - kid: Eero
+        notices: []
+        action_items:
+          - what: 归还 1A 的图书馆借书
+            by: "2026-10-14"
+            who: 任一
+            refs: [w-kirjasto-1006]
+            ref_sources: { w-kirjasto-1006: [wilma] }
+            source: [wilma]
+            verified: true
+messages:
+  - id: w-kirjasto-1006
+    source: wilma
+    at: 2026-10-06T13:00:00+03:00
+    sender: Opettaja Nieminen Sari
+    subject: Kirjastokirjat
+    kid_hint: Virtanen Eero
+    body: |
+      1A:n kirjastokirjat palautetaan koulun kirjastoon keskiviikkoon 14.10. mennessä.
+  - id: wa-fc-1007
+    source: whatsapp
+    at: 2026-10-07T19:10:00+03:00
+    chat: FC Kilo T2016
+    sender: Valmentaja Mikko
+    body: |
+      Sunnuntain 11.10. ottelu Espoon Palloseuraa vastaan alkaa vasta klo 12.00, ei klo 11.
+      Kokoontuminen klo 11.15 Leppävaaran tekonurmella.
+expect:
+  action_items:
+    - { kid: Eero, what: [kirja, 书, book], optional: true }
+  notices:
+    must_not:
+      - {
+          text:
+            [
+              已在之前,
+              之前的 brief,
+              之前的brief,
+              之前的日报,
+              上一份,
+              不再重复,
+              不重复,
+              提醒范围,
+              earlier brief,
+              previous brief,
+              last brief,
+              already covered,
+              not repeat,
+              reminder window,
+              aiemmassa,
+              edellisessä brief,
+              jo kerrottu,
+              ei toisteta,
+            ],
+          where: anywhere,
+        }
+      - {
+          text:
+            [
+              24 小时,
+              24小时,
+              过去一天,
+              没有新消息,
+              无新消息,
+              24 hours,
+              24-hour,
+              no new messages,
+              24 tun,
+              ei uusia viest,
+            ],
+          where: anywhere,
+        }

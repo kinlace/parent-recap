@@ -17,8 +17,8 @@ A folder holds `household.yaml` (the Config fields the prompt uses: `timezone`, 
       action_items: [{what: [keywords], kid: Aino, by: 2026-10-06, optional: false}]
       calendar_events: [{title: [keywords], start: 2026-10-08T09:00}]   # local wall clock
       notices:
-        must: [{text: [keywords], kid: Aino, where: notices|action_items|both}]
-        must_not: [{text: [keywords]}]   # `where` defaults to notices
+        must: [{text: [keywords], kid: Aino, where: notices|action_items|both|digest|anywhere}]
+        must_not: [{text: [keywords]}]   # `where` defaults to notices; anywhere adds the Digest's lines
         # a rule with `languages: [en, zh]` is checked only on Briefs in those languages
 
 Keyword lists are explained in `score.py`. An `optional` entry may appear or not without
@@ -83,7 +83,7 @@ class ExpectedEvent(_Strict):
 class NoticeRule(_Strict):
     text: Spec
     kid: KidSpec = None
-    where: Literal["notices", "action_items", "both"] = "notices"
+    where: Literal["notices", "action_items", "both", "digest", "anywhere"] = "notices"
     languages: list[str] | None = None
 
 

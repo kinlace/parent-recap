@@ -1,0 +1,76 @@
+covers: [nothing-new, notice-repeats-action]
+note: >
+  Monday night. Aino's class goes to the theatre on Thursday and the ticket money is due
+  Wednesday; Eero's class group and the Chinese school group only chat. Eero and the family have
+  no news, so they get no section and no line saying there is nothing new, and Aino's notice and
+  Digest line give the trip without restating the payment listed as her action item.
+now: 2026-10-05T21:00:00+03:00
+calendar:
+  - {
+      id: gcal-piano-1006,
+      summary: Eero piano,
+      start: "2026-10-06T17:00:00+03:00",
+      end: "2026-10-06T17:45:00+03:00",
+      location: Musiikkikoulu Forte,
+    }
+messages:
+  - id: w-teatteri-1005
+    source: wilma
+    at: 2026-10-05T13:20:00+03:00
+    sender: Opettaja Mäkinen Liisa
+    subject: Teatteriretki torstaina
+    kid_hint: Virtanen Aino
+    body: |
+      4B käy torstaina 8.10. katsomassa Espoon kaupunginteatterin lastennäytelmän. Lähdemme
+      koululta klo 9.15 ja palaamme noin klo 12. Lippu maksaa 6 €. Maksakaa se luokan
+      rahastonhoitajalle MobilePaylla keskiviikkoon 7.10. mennessä.
+  - id: wa-1a-1005
+    source: whatsapp
+    at: 2026-10-05T17:02:00+03:00
+    chat: 1A vanhemmat
+    sender: Johanna
+    body: Onko kenelläkään ylimääräistä sadetakkia lainaksi huomiseksi? Löytyi jo, kiitos!
+  - id: wa-hr-1005
+    source: whatsapp
+    at: 2026-10-05T19:30:00+03:00
+    chat: 华人家长群
+    sender: 王妈妈
+    body: 大家晚上好！今天的中文课大家辛苦了 😊
+expect:
+  action_items:
+    - { kid: Aino, what: ["6 €", "6€", "€6", maks, 付, pay], by: 2026-10-07 }
+  calendar_events:
+    - {
+        title: [teatter, näytel, 剧, 戏, theatre, theater, play],
+        start: 2026-10-08,
+      }
+  notices:
+    must_not:
+      - {
+          text:
+            [
+              没有新,
+              无新,
+              暂无,
+              没有需要,
+              没有其他,
+              无其他,
+              没有待办,
+              无待办,
+              nothing new,
+              no new,
+              nothing else,
+              "nothing to ",
+              no other,
+              no changes,
+              ei uut,
+              ei uusia,
+              ei muuta,
+              ei muita,
+              ei mitään,
+            ],
+          where: anywhere,
+        }
+      # The payment is Aino's action item; her notices and the Digest give the trip only.
+      - { text: ["6 €", "6€", "€6", maks, 付, pay, MobilePay], where: notices }
+      - { text: ["6 €", "6€", "€6", maks, 付, pay, MobilePay], where: digest }

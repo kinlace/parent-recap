@@ -75,6 +75,15 @@ def test_forbidden_text_is_looked_for_where_the_rule_says():
     assert score_case(expect, got, TZ)["notices"] == {"required": 0, "found": 0, "forbidden": 2, "hits": 1}
 
 
+def test_forbidden_text_in_the_digest_counts_where_the_rule_reaches_it():
+    expect = {"notices": {"must_not": [{"text": ["没有新"], "where": "digest"},
+                                       {"text": ["之前的 Brief"], "where": "anywhere"},
+                                       {"text": ["24小时"]}]}}
+    got = summary([kid("Aino", notices=["周四 Nuuksio 远足"])])
+    got["message_digest"] = "**Eero**\n- 本次没有新的待办\n**全家**\n- 都已在之前的 Brief 中处理\n- 过去24小时没有新消息"
+    assert score_case(expect, got, TZ)["notices"] == {"required": 0, "found": 0, "forbidden": 3, "hits": 2}
+
+
 def test_a_notice_rule_for_some_languages_is_checked_only_on_briefs_in_them():
     expect = {"notices": {"must": [{"text": [["家长会", "parents' evening"], ["vanhempainil"]],
                                     "where": "both", "languages": ["en", "zh"]}],
@@ -243,6 +252,45 @@ def test_a_deadline_or_a_training_that_carries_on_is_not_a_calendar_event():
               ("fi-syysloma-ensi-viikolla", summary(autumn_break, [resumes]), False)]
     for name, night, clean in nights:
         assert is_clean(score_case(cases[name].expect, night, TZ)) is clean, (name, night["calendar_events"])
+
+
+def test_a_brief_that_says_there_is_nothing_new_or_explains_itself_is_not_clean():
+    from family_brief.eval.cases import BUNDLED, load_cases
+    cases = {c.name: c for c in load_cases(BUNDLED)}
+    theatre = [kid("Aino", notices=["周四 10/8 4B 去 Espoon kaupunginteatteri 看戏，9:15 从学校出发，约 12 点回来"],
+                   actions=[("把 6 € 戏票钱转到班级账户", "2026-10-07")])]
+    play = {"kid": "Aino", "title": "4B 看戏（teatteri）", "start": "2026-10-08T09:15:00"}
+    rereads = [kid("Aino", notices=["周日 10/11 对 Espoon Palloseura 的比赛改到 12:00"])]
+
+    def night(per_kid, events, digest):
+        s = summary(per_kid, events)
+        s["message_digest"] = digest
+        return s
+
+    nights = [
+        ("one-kid-news-family-none",
+         night(theatre, [play], "**Aino**\n- 周四 10/8 4B 去剧院看戏，9:15 出发，约 12 点回来"), True),
+        ("one-kid-news-family-none",
+         night(theatre, [play], "**Aino**\n- 周四 10/8 去剧院看戏\n**Eero**\n- 本次无新的待办或日程事项"), False),
+        ("one-kid-news-family-none",
+         night(theatre, [play], "**Aino**\n- 周四 10/8 去剧院看戏\n**全家**\n- 本次没有新的日程变更、费用或其他需要处理的事项"),
+         False),
+        ("one-kid-news-family-none",
+         night(theatre, [play], "**Aino**\n- 周四 10/8 去剧院看戏，周三前要付 6 € 戏票钱"), False),
+        ("one-kid-news-family-none",
+         night([kid("Aino", notices=["周三前付 6 € 戏票钱"], actions=[("付 6 € 戏票钱", "2026-10-07")])],
+               [play], "**Aino**\n- 周四 10/8 去剧院看戏"), False),
+        ("re-read-archive-night", night(rereads, [], "**Aino**\n- 周日 10/11 的比赛改到 12:00"), True),
+        ("re-read-archive-night",
+         night(rereads, [], "**Aino**\n- 比赛改到 12:00\n**Eero**\n- 还书的事都已在之前的 Brief 中处理，这里不再重复"), False),
+        ("re-read-archive-night",
+         night(rereads, [], "**Eero**\n- 还书还在提醒范围之外，所以这次不再重复提醒"), False),
+        ("re-read-archive-night", night([], [], "**全家**\n- 过去24小时没有新消息"), False),
+    ]
+    for name, brief, clean in nights:
+        s = score_case(cases[name].expect, brief, TZ, language="zh")
+        s.update(valid_json=True)
+        assert is_clean(s) is clean, (name, brief["message_digest"], s)
 
 
 def test_a_keyword_ending_in_a_space_matches_at_the_end_of_the_text():

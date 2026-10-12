@@ -328,7 +328,7 @@ def test_every_bundled_case_runs_and_an_empty_brief_only_passes_the_quiet_nights
         data = json.loads(saved.read_text())
         clean = {name for name, night in data["runs"][0]["cases"].items() if night["clean"]}
         assert clean == {"empty-night", "noise-ads-and-chit-chat", "dst-existing-event-in-utc",
-                         "re-reminder-already-done"}, data["language"]
+                         "re-reminder-already-done", "re-read-archive-night"}, data["language"]
 
 
 def test_bundled_cases_score_an_english_brief(model, tmp_path):
