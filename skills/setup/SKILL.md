@@ -216,7 +216,7 @@ Why: class and club parent groups are often where things are said first. Parent 
 
 It needs WhatsApp for Mac from the App Store (not the older version from WhatsApp's website), linked to the phone that's in those groups, with its chats synced. The command finds out whether it's there.
 
-Tell the parent that if the Python doesn't have Full Disk Access yet, Finder will show a Python file and System Settings will open at Full Disk Access: they drag the file into the list and turn its switch on. Then run `$FB setup whatsapp --timeout 540`. It waits for Full Disk Access itself.
+Tell the parent that if the Python doesn't have Full Disk Access yet, Finder will select a Python file named python3.x, such as python3.13, and System Settings will open at Full Disk Access: they drag that file into the list and turn its switch on. Then run `$FB setup whatsapp --timeout 540`. It waits for Full Disk Access itself.
 
 - `readable`: keep `chats` for Check. Don't show them yet.
 - `not-installed`: WhatsApp for Mac isn't installed or signed in. Offer a choice: install it now (they install it, link it and let the chats sync, and you run the command again), or skip WhatsApp for now.
@@ -285,7 +285,7 @@ Setup ends only when `setup status` says `done` and the parent has confirmed the
 
 doctor reads WhatsApp with the scheduled job's Python and says in its line why it couldn't. Each reason has its own fix, the same one the setup page gives. Never tell the parent it's fixed until `$FB doctor` shows WhatsApp ✅ again.
 
-- **"can't read WhatsApp: add it to Full Disk Access"**: the scheduled job's Python has no Full Disk Access. Say plainly that only the parent can turn it on, in System Settings: you can't do it for them, and opening WhatsApp doesn't help. Don't give Terminal, Claude Code or Codex the permission instead. Run `$FB full-disk-access`: Finder shows the python3 file and System Settings opens at Full Disk Access. The parent drags the file into the list and turns its switch on. Then run `$FB doctor` again.
+- **"can't read WhatsApp: add it to Full Disk Access"**: the scheduled job's Python has no Full Disk Access. Say plainly that only the parent can turn it on, in System Settings: you can't do it for them, and opening WhatsApp doesn't help. Don't give Terminal, Claude Code or Codex the permission instead. Run `$FB full-disk-access`: Finder selects the Python file whose name it prints, such as python3.13, and System Settings opens at Full Disk Access. Tell the parent that exact name: they drag that file into the list and turn its switch on. Then run `$FB doctor` again.
 - **"the background check didn't start", "didn't finish within 180 seconds" or "gave no result"**: the check didn't get to read WhatsApp. The parent opens WhatsApp for Mac and waits until the chats show. Then run `$FB doctor` again.
 - **"these group names aren't on this Mac"**: WhatsApp is readable, but a ticked group has a new name, is a new group for the school year, or its name in the config isn't exactly WhatsApp's. Read the groups again with `$FB setup whatsapp --no-open --timeout 540`, and show the parent its `chats` with the new names ticked and the groups doctor names unticked, as on the Check page. Save their answer with `$FB setup save`, each name copied exactly from `chats`, then run `$FB doctor` again.
 - **"couldn't list the groups"**: as when the check didn't finish, the parent opens WhatsApp for Mac and waits until the chats show, then run `$FB doctor` again. If it still fails, the rest of doctor's line is the error: help with what it says.

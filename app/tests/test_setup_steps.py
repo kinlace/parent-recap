@@ -137,6 +137,7 @@ def test_full_disk_access_shows_the_python_file_and_opens_the_settings_pane(monk
     assert any(c[0] == "open" and "Privacy_AllFiles" in c[-1] for c in ran)
     out = capsys.readouterr().out
     assert python in out and "drag" in out.lower() and "Full Disk Access" in out
+    assert f"that Python file, {os.path.basename(python)}, is selected" in out  # as Finder names it
     assert "App Management" not in out
 
 

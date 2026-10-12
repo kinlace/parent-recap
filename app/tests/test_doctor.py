@@ -360,6 +360,13 @@ def test_the_chat_skills_say_only_the_parent_can_turn_on_full_disk_access():
     assert "Only the user can turn on Full Disk Access" in manage
 
 
+def test_the_skills_and_docs_never_send_the_parent_to_a_file_called_python3():
+    # Finder selects the pinned Python's own file, such as python3.13 (#297).
+    root = Path(__file__).resolve().parents[2]
+    for path in [*SKILLS.glob("*/SKILL.md"), *(root / "docs").glob("*.md"), root / "README.md"]:
+        assert not re.search(r"python3(?![.\d])", path.read_text()), path
+
+
 def test_the_whatsapp_check_is_ok_with_no_reason(harness, mac_for_reasons):
     mac_for_reasons.install_whatsapp([("3B parents", 1, False), ("Leo piano", 2, False)])
 

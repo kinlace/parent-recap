@@ -149,7 +149,8 @@ differ, and a failure when the job's venv Python points at nothing. On that fake
 checks each reason the WhatsApp check gives when it isn't OK: no Full Disk Access, a `bg` job that
 hangs or doesn't start, a ticked group with a new name, and groups that can't be listed. The
 reason, with the group's old name, comes back from the `bg` job as a line of JSON, doctor's own
-line stays as it was, and the setup skill's advice for each reason quotes doctor's words.
+line stays as it was, and the setup skill's advice for each reason quotes doctor's words. No skill
+or doc sends the parent to a file called python3, since Finder selects one such as python3.13.
 `test_own_node.py` lays out Parent Recap's own Node and a wilma CLI in the test's `~/ParentRecap`
 (`fake_node.py`: a stand-in `node` that runs the script it's given, and a shell script answering
 as the CLI does) with no Node on PATH, and checks that `doctor` and the evening job run that CLI
@@ -265,7 +266,10 @@ in-process. It checks that the button shows the Python in Finder and opens Full 
 the entry ticks itself on the read after Full Disk Access is given and an Allow click alone never
 ticks it, that no WhatsApp text or picture names App Management or Allow, with the groups found and
 their Kid hints kept in setup's progress for the check page, that every other read result is
-said without its error, and that each result is explained in all three languages.
+said without its error, and that each result is explained in all three languages. It checks that
+the texts naming the Python file, on this step, Check and Finish, and the step's pictures give the
+name of the file the button selects in Finder, such as python3.13, also for a newly pinned
+python3.14, and that no text names a python3 file of its own.
 Its MyClub step runs against `test_setup_myclub.py`'s fake MyClub server. It checks that the
 button opens MyClub's site, that the Kids are listed without their links, that a good link is
 downloaded once and saved for the Kid picked, with MyClub done and setup moving on once every Kid

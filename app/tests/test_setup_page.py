@@ -2325,6 +2325,68 @@ def test_the_button_shows_the_python_and_opens_full_disk_access(harness, page, m
     assert ["open", "-R", WHATSAPP_PYTHON] in harness.commands
 
 
+# The texts that name the Python file Finder selects, by its name on this Mac (#297).
+PYTHON_FILE_TEXTS = ("whatsapp.explain", "whatsapp.picture.drag", "whatsapp.open.opened",
+                     "health.fail.whatsapp.no-access", "finish.fail.whatsapp.no-access")
+
+
+@pytest.mark.parametrize("version", ["3.13", "3.14"])
+def test_the_page_names_the_python_file_finder_selects(harness, page, monkeypatch, version):
+    # A parent stopped at "the python3 file" while Finder had python3.13 selected. The name comes
+    # from the file, so a newly pinned Python changes it too.
+    python = (harness.home / "ParentRecap" / "runtime" / f"python-{version}.0-20261003" / "bin" /
+              f"python{version}")
+    python.parent.mkdir(parents=True)
+    python.touch()
+    venv = harness.home / "ParentRecap" / "app" / ".venv" / "bin" / "python"
+    venv.parent.mkdir(parents=True)
+    venv.symlink_to(python)
+    monkeypatch.setattr(sys, "executable", str(venv))
+    at_the_whatsapp_step(harness)
+
+    name = call(page.url, "api/state").json()["whatsapp"]["python"]
+    assert call(page.url, "api/whatsapp/open", method="POST", body={}).json() == \
+        {"result": "opened"}
+
+    revealed = harness.opened[0]
+    assert ["open", "-R", revealed] in harness.commands  # the file Finder selects
+    assert name == Path(revealed).name == f"python{version}"
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        for key in PYTHON_FILE_TEXTS:
+            assert f"python{version}" in table[key].replace("{python}", name), (language, key)
+
+
+def test_every_text_that_names_the_python_file_takes_the_name_from_the_server(page):
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+    for language, table in text.items():
+        for key in PYTHON_FILE_TEXTS:
+            assert "{python}" in table[key], (language, key)
+        # No text names a file of its own, such as python3, that Finder may not show.
+        assert not [k for k, v in table.items() if "python3" in v.lower()], language
+
+    script = (PAGE_DIR / "page.js").read_text()
+    assert "page.whatsapp = state.whatsapp;" in script
+    assert "return { python: page.whatsapp.python };" in \
+        script.split("function pythonFile()", 1)[1].split("\n}\n", 1)[0]
+    step = script.split("function renderWhatsApp()", 1)[1].split("\n}\n", 1)[0]
+    assert '"whatsapp.explain", pythonFile()' in step
+    assert '"whatsapp.picture.drag", pythonFile()' in step
+    assert 'showSource("whatsapp.open." + out.result, { values: pythonFile() })' in \
+        script.split("async function openFullDiskAccess(", 1)[1].split("\n}\n", 1)[0]
+    assert "...pythonFile()" in script.split("function nextStep(", 1)[1].split("\n}\n", 1)[0]
+    assert "setText(message, key, values)" in \
+        script.split("function showSource(", 1)[1].split("\n}\n", 1)[0]
+    # The pictures show the same name.
+    assert 'querySelectorAll("#source-whatsapp .python-file")' in step
+    assert "name.textContent = page.whatsapp.python" in step
+    html = call(page.url).body.decode()
+    whatsapp_step = re.search(r'<div id="source-whatsapp".*?\n    </div>\n', html, re.S).group(0)
+    assert 'id="whatsapp-explain" data-text="whatsapp.explain"' in whatsapp_step
+    assert 'id="whatsapp-drag" data-text="whatsapp.picture.drag"' in whatsapp_step
+    assert len(re.findall(r'<text class="python-file"', whatsapp_step)) == 2
+    assert not re.search(r'<text(?! class="python-file")[^>]*>python', whatsapp_step)
+
+
 def test_without_full_disk_access_the_entry_ticks_itself_once_it_is_given(harness, page, mac):
     at_the_whatsapp_step(harness)
     mac.install_whatsapp(WHATSAPP_CHATS)
@@ -2434,7 +2496,7 @@ def test_the_whatsapp_step_shows_two_or_three_pictures_of_what_to_switch_on(page
     figures = re.findall(r"<figure>.*?</figure>", step, re.S)
     assert 2 <= len(figures) <= 3
     for figure in figures:
-        assert "<svg" in figure and re.search(r'<figcaption data-text="[\w.-]+">', figure)
+        assert "<svg" in figure and re.search(r'<figcaption[^>]* data-text="[\w.-]+">', figure)
     assert 'id="whatsapp-open"' in step
     assert "done" not in step.lower()  # it ticks itself: there's no Done to press
 
@@ -3138,6 +3200,7 @@ def test_every_health_check_doctor_runs_has_a_name_on_the_page():
 
 FULL_DISK_ACCESS = {"en": "Full Disk Access", "fi": "levyn käyttöoikeu", "zh": "完全磁盘访问权限"}
 WHATSAPP_FOR_MAC = {"en": "WhatsApp for Mac", "fi": "WhatsAppin Mac-sovellus", "zh": "WhatsApp Mac 版"}
+PYTHON_FILE = os.path.basename(WHATSAPP_PYTHON)  # the name the server gives the page
 
 
 def next_step(table: dict[str, str], prefix: str, check: dict[str, Any]) -> str:
@@ -3145,7 +3208,8 @@ def next_step(table: dict[str, str], prefix: str, check: dict[str, Any]) -> str:
     Finish ("finish"), as page.js's nextStep picks it: its reason's own text, else the check's."""
     own = f"{prefix}.fail.{check['check']}.{check.get('reason')}"
     key = own if check.get("reason") and own in table else f"{prefix}.fail.{check['check']}"
-    return table[key].replace("{groups}", ", ".join(check.get("groups", [])))
+    return table[key].replace("{groups}", ", ".join(check.get("groups", []))) \
+        .replace("{python}", PYTHON_FILE)
 
 
 def assert_says_why(prefix: str, check: dict[str, Any]) -> None:
@@ -3155,6 +3219,7 @@ def assert_says_why(prefix: str, check: dict[str, Any]) -> None:
         assert said != table[f"{prefix}.fail.whatsapp"], (language, check)
         if check["reason"] == "no-access":  # only the parent can turn it on, with the button
             assert FULL_DISK_ACCESS[language] in said and table["whatsapp.open"] in said, language
+            assert PYTHON_FILE in said and "{python}" not in said, language  # what Finder selects
             assert "Claude" in said and "ChatGPT" in said, language
         elif check["reason"] == "missing-groups":
             assert "Leo piano" in said and "WhatsApp" in said, language

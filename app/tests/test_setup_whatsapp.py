@@ -299,6 +299,7 @@ def test_full_disk_access_not_given_in_time_is_reported(harness, mac, capsys):
     res = result(capsys)
     assert res["result"] == "no-permission" and res["python"] == PYTHON
     assert "Full Disk Access" in res["next"] and "setup whatsapp --no-open" in res["next"]
+    assert f"the Python file {os.path.basename(PYTHON)} is selected" in res["next"]
     assert "App Management" not in res["next"] and "Allow" not in res["next"]
     assert "chats" not in res
     assert harness.opened == [PYTHON, ops.FULL_DISK_ACCESS_URL]

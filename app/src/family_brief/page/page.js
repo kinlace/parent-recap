@@ -4,9 +4,9 @@
 const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish"];
 const page = {
   text: null, language: "en", chosen: null, languages: [], progress: null, welcome: null,
-  connect: null, gmail: null, myclub: null, check: null, brief: null, welcomeShown: false,
-  connectShown: false, workingShown: false, checkShown: false, briefShown: false,
-  finishShown: false, finished: false,
+  connect: null, gmail: null, whatsapp: null, myclub: null, check: null, brief: null,
+  welcomeShown: false, connectShown: false, workingShown: false, checkShown: false,
+  briefShown: false, finishShown: false, finished: false,
 };
 
 function t(key) {
@@ -306,7 +306,7 @@ function renderConnect() {
   });
   renderWilma();
   renderAI();
-  document.getElementById("whatsapp-open").addEventListener("click", openFullDiskAccess);
+  renderWhatsApp();
   document.getElementById("myclub-open").addEventListener("click", () => openSite("myclub"));
   document.getElementById("myclub-form").addEventListener("submit", saveMyClubLink);
   document.getElementById("myclub-kid-form").addEventListener("submit", addKid);
@@ -453,14 +453,13 @@ const TRY_AGAIN = [
 
 // What the last step said, under the Source: a text key, or null for nothing, with an address
 // to open, the Kids found or a line to install something.
-function showSource(key, { url, kids, install } = {}) {
+function showSource(key, { url, kids, install, values } = {}) {
   const status = document.getElementById("source-status");
   const message = document.getElementById("source-message");
   status.hidden = !key;
   status.dataset.result = key || "";
   if (key) {
-    message.dataset.text = key;
-    message.textContent = t(key);
+    setText(message, key, values);
   } else {
     delete message.dataset.text;
   }
@@ -886,6 +885,21 @@ async function saveGatewayKey(event) {
 const WHATSAPP_MS = 5000;
 const whatsappStep = { shown: false, opened: false, checking: 0, timer: null };
 
+// The Python file Finder selects, by the name it has on this Mac, such as python3.13: in the
+// step's texts, its pictures and the texts that send the parent back to Full Disk Access.
+function pythonFile() {
+  return { python: page.whatsapp.python };
+}
+
+function renderWhatsApp() {
+  document.getElementById("whatsapp-open").addEventListener("click", openFullDiskAccess);
+  setText(document.getElementById("whatsapp-explain"), "whatsapp.explain", pythonFile());
+  setText(document.getElementById("whatsapp-drag"), "whatsapp.picture.drag", pythonFile());
+  for (const name of document.querySelectorAll("#source-whatsapp .python-file")) {
+    name.textContent = page.whatsapp.python;
+  }
+}
+
 function leaveWhatsApp() {
   clearTimeout(whatsappStep.timer);
   whatsappStep.checking++; // a read still on its way is old news
@@ -899,7 +913,7 @@ async function openFullDiskAccess() {
   try {
     const out = await post("api/whatsapp/open", {});
     whatsappStep.opened = out.result === "opened";
-    showSource("whatsapp.open." + out.result);
+    showSource("whatsapp.open." + out.result, { values: pythonFile() });
   } catch (e) {
     failed(e);
   }
@@ -1387,7 +1401,7 @@ function nextStep(prefix, check, values) {
   const next = document.createElement("p");
   next.className = "hint";
   setText(next, check.reason && own in page.text[page.language] ? own : general,
-    { ...values, groups: (check.groups || []).join(", ") });
+    { ...values, groups: (check.groups || []).join(", "), ...pythonFile() });
   const step = check.check === "whatsapp" && WHATSAPP_STEPS[check.reason];
   if (!step) return [next];
   const button = document.createElement("button");
@@ -1867,6 +1881,7 @@ async function start() {
   page.welcome = state.welcome;
   page.connect = state.connect;
   page.gmail = state.gmail;
+  page.whatsapp = state.whatsapp;
   page.myclub = state.myclub;
   page.check = state.check;
   page.brief = state.brief;

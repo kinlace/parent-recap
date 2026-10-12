@@ -295,6 +295,9 @@ class SetupServer:
                 "connect": {"sources": [{"name": s, "skippable": s in SKIPPABLE}
                                         for s in setup_save.SOURCES]},
                 "gmail": {"address": self._gmail_address()},
+                # The name of the Python file Finder selects for Full Disk Access, such as
+                # python3.13, for every text that names it. Not its path: that names the Mac's user.
+                "whatsapp": {"python": os.path.basename(ops.full_disk_access_python())},
                 "myclub": self._myclub(),
                 "check": self._check(progress),
                 "brief": {"sent": self._brief_sent()},

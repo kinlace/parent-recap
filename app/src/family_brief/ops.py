@@ -637,9 +637,16 @@ def cmd_full_disk_access(args: argparse.Namespace) -> int:
         print(f"{WARN}Couldn't open Finder or System Settings from here. Run this in Terminal:")
         for c in failed:
             print(f"  {shlex.join(c)}")
-    print("In Finder that Python file is selected. Drag it into the list in System Settings → "
-          "Privacy & Security → Full Disk Access, then turn its switch on.")
+    print(f"In Finder that Python file, {os.path.basename(python)}, is selected. Drag it into "
+          "the list in System Settings → Privacy & Security → Full Disk Access, then turn its "
+          "switch on.")
     return 0
+
+
+def full_disk_access_python() -> str:
+    """The Python file the family gives Full Disk Access: the real file of the scheduled job's
+    Python, which Finder selects. Its name, such as python3.13, follows the pinned Python."""
+    return os.path.realpath(sys.executable)
 
 
 def show_python_for_full_disk_access() -> tuple[str, list[list[str]]]:
@@ -647,7 +654,7 @@ def show_python_for_full_disk_access() -> tuple[str, list[list[str]]]:
     and the commands that didn't work, for the family to run in Terminal."""
     # The real Python sits in a hidden folder, so finding it with ⌘⇧G is hard. Selecting it in
     # Finder next to the open pane leaves the family one drag.
-    python = os.path.realpath(sys.executable)
+    python = full_disk_access_python()
     commands = [["open", "-R", python], ["open", FULL_DISK_ACCESS_URL]]
     return python, [c for c in commands if subprocess.run(c, capture_output=True).returncode != 0]
 

@@ -683,11 +683,11 @@ def cmd_whatsapp(args: argparse.Namespace) -> int:
             return 2
         return _read_whatsapp(args.days)
 
-    python = os.path.realpath(sys.executable)
+    python = ops.full_disk_access_python()
     again = f"{_program()} setup whatsapp --no-open"
-    grant = ("In Finder the Python file is selected. The family drags it into the list in System "
-             "Settings → Privacy & Security → Full Disk Access and turns its switch on, then run: "
-             f"{again}")
+    grant = (f"In Finder the Python file {os.path.basename(python)} is selected. The family drags "
+             "it into the list in System Settings → Privacy & Security → Full Disk Access and "
+             f"turns its switch on, then run: {again}")
     deadline = time.time() + max(0, args.timeout)
     opened = args.no_open
     while True:
