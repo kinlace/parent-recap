@@ -416,6 +416,23 @@
     </div>
     <h2 data-text="finish.checklist"></h2>
     <ul id="finish-checklist" class="checks"></ul>
+    <div id="finish-ai">
+      <h2 data-text="finish.ai.title"></h2>
+      <p id="finish-ai-current"></p>
+      <p id="finish-ai-saved" class="ready" data-text="finish.ai.saved" hidden></p>
+      <p><button type="button" id="finish-ai-open" class="secondary" data-text="finish.ai.open"></button></p>
+      <form id="finish-ai-form" hidden>
+        <fieldset>
+          <legend data-text="welcome.ai"></legend>
+          <label><input type="radio" name="finish-ai" value="claude"><span data-text="welcome.ai.claude"></span></label>
+          <label><input type="radio" name="finish-ai" value="codex"><span data-text="welcome.ai.codex"></span></label>
+          <label><input type="radio" name="finish-ai" value="gateway"><span data-text="welcome.ai.gateway"></span></label>
+          <p class="hint" data-text="finish.ai.note"></p>
+        </fieldset>
+        <button type="submit" id="finish-ai-continue" data-text="finish.ai.continue"></button>
+      </form>
+      <div id="finish-ai-sign-in" hidden></div>
+    </div>
     <p class="ready" data-text="finish.restart"></p>
     <p id="finish-changes" class="note"></p>
     <p id="finish-closed" class="hint" data-text="finish.closed" hidden></p>

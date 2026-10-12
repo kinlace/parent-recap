@@ -3645,7 +3645,9 @@ def test_finish_takes_no_password(page):
         assert r.status == 400 and r.json()["result"] == "invalid-answers", body
     html_text = (PAGE_DIR / "index.html").read_text()
     finish_section = html_text.split('<section id="finish"', 1)[1].split("</section>", 1)[0]
-    assert "<input" not in finish_section
+    # Only the choice of AI, whose sign-ins are Connect's own.
+    assert all('type="radio" name="finish-ai"' in field
+               for field in re.findall(r"<input[^>]*>", finish_section))
 
 
 def test_the_server_stops_once_every_outcome_is_true(harness, page, schedule):
@@ -4012,6 +4014,136 @@ def test_finish_says_a_mac_that_s_shut_down_makes_no_brief():
     assert "shut down" in text["en"]["finish.restart"]
     assert "sammutettu" in text["fi"]["finish.restart"]
     assert "关机" in text["zh"]["finish.restart"]
+
+
+# ── Finish: switching the AI, or a new Gateway Key, once setup is done (ADR 0017)
+
+
+def backend(harness) -> str:
+    return Config.load(config_file(harness)).llm.backend
+
+
+def at_finish_with(harness, ai_name: str) -> None:
+    at_finish(harness)
+    data = yaml.safe_load(config_file(harness).read_text())
+    data["llm"] = {"backend": ai_name}
+    config_file(harness).write_text(yaml.safe_dump(data))
+
+
+def test_on_finish_a_gateway_key_switches_the_household_to_the_gateway(harness, page, caplog,
+                                                                       capsys):
+    caplog.set_level(logging.DEBUG)
+    at_finish(harness)
+    harness.model_reply = "OK"
+
+    r = save_gateway_key(page.url, GATEWAY_KEY)
+
+    assert r.status == 200 and r.json()["result"] == "saved"
+    assert backend(harness) == "gateway"
+    assert harness.keychain == {"gateway-key": GATEWAY_KEY}
+    assert call(page.url, "api/state").json()["progress"]["phase"] == "finish"  # still at Finish
+    assert_never_leaked(harness, [r, call(page.url, "api/state")], caplog, capsys, GATEWAY_KEY)
+
+
+@pytest.mark.parametrize("reply, result", [
+    (GATEWAY_UNKNOWN_KEY, "rejected"),
+    (requests.ConnectionError("Connection refused"), "no-connection"),
+])
+def test_on_finish_a_gateway_key_that_does_not_work_keeps_the_old_ai(harness, page, reply, result):
+    at_finish(harness)
+    harness.model_reply = [reply]
+
+    assert save_gateway_key(page.url, GATEWAY_KEY).json() == {"result": result}
+
+    assert backend(harness) == "claude" and harness.keychain == {}
+
+
+def test_on_finish_a_gateway_household_can_enter_a_new_gateway_key(harness, page):
+    at_finish_with(harness, "gateway")
+    harness.keychain["gateway-key"] = "sk-bf-old-key-turned-off"
+    harness.model_reply = "OK"
+
+    assert save_gateway_key(page.url, GATEWAY_KEY).json()["result"] == "saved"
+
+    assert backend(harness) == "gateway" and harness.keychain == {"gateway-key": GATEWAY_KEY}
+
+
+def test_on_finish_a_claude_token_switches_the_household_to_claude(harness, page, claude):
+    at_finish_with(harness, "gateway")
+    claude.install()
+
+    r = call(page.url, "api/claude/token", method="POST", body={"token": CLAUDE_TOKEN})
+
+    assert r.status == 200 and r.json()["result"] == "saved"
+    assert backend(harness) == "claude"
+    assert harness.keychain == {"claude-oauth-token": CLAUDE_TOKEN}
+    # So that changes after setup work in Claude Code's chat, as when Welcome picks Claude.
+    assert chat_installed(page.url, "claude") == "installed"
+
+
+def test_on_finish_a_claude_token_that_does_not_work_keeps_the_old_ai(harness, page, claude):
+    at_finish_with(harness, "gateway")
+    harness.model_error = "Your organization has disabled Claude Code"
+    claude.install()
+
+    r = call(page.url, "api/claude/token", method="POST", body={"token": CLAUDE_TOKEN})
+
+    assert r.json() == {"result": "test-call-failed"}
+    assert backend(harness) == "gateway" and harness.keychain == {}
+
+
+def test_on_finish_a_signed_in_codex_that_answers_a_test_call_switches_the_household(harness, page,
+                                                                                    codex):
+    at_finish(harness)
+    harness.model_reply = {"ok": True}
+
+    out = codex_check(page.url)
+
+    assert out["result"] == "signed-in"
+    assert backend(harness) == "codex"
+    [test_call] = harness.model_calls
+    assert Path(test_call.argv[0]).name == "codex"
+
+
+@pytest.mark.parametrize("reply", [FailedCall("You've hit your usage limit"), {"ok": False}])
+def test_on_finish_a_codex_that_fails_its_test_call_keeps_the_old_ai(harness, page, codex, reply):
+    at_finish_with(harness, "gateway")
+    harness.model_reply = [reply]
+
+    assert codex_check(page.url) == {"result": "test-call-failed"}
+
+    assert backend(harness) == "gateway"
+
+
+def test_before_finish_codex_s_sign_in_makes_no_test_call(harness, page, codex):
+    at_the_ai_step(harness, page.url, "codex")
+
+    assert codex_check(page.url)["result"] == "signed-in"
+
+    assert not harness.model_calls
+
+
+def test_finish_offers_the_three_ais_and_their_sign_ins():
+    page_html = (PAGE_DIR / "index.html").read_text()
+    panel = inside(page_html, "finish-ai")
+
+    for name in setup_server.AIS:
+        assert f'name="finish-ai" value="{name}"' in panel, name
+        assert f'data-text="welcome.ai.{name}"' in panel, name
+    # The sign-ins are Connect's own, with the gateway's privacy text, moved in when it's opened.
+    assert 'id="finish-ai-sign-in"' in panel
+    assert "finish-ai-sign-in" in (PAGE_DIR / "page.js").read_text()
+
+
+def test_the_ai_check_s_failure_texts_on_finish_point_to_changing_the_ai():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for key in ("finish.ai.title", "finish.ai.open", "finish.ai.continue", "finish.ai.note",
+                    "finish.ai.saved", *(f"finish.ai.current.{a}" for a in setup_server.AIS)):
+            assert table.get(key, "").strip(), (language, key)
+        for key in ("finish.fail.ai", "finish.fail.gateway"):
+            assert table["finish.ai.open"] in table[key], (language, key)
 
 
 # ── Continue in the chat

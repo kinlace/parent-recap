@@ -77,9 +77,10 @@ CLAUDE_RESULTS = ("waiting", "saved", "not-installed", "sign-in-failed", "timeou
 CLAUDE_WINDOW_RESULTS = ("opened", "no-terminal", "not-installed")
 CLAUDE_SIGN_IN_SECONDS = 600
 # Codex's ChatGPT sign-in: signed in, signed out, `waiting` while its sign-in is open in the
-# browser, and `login-failed` when that ended without signing in or didn't start.
+# browser, and `login-failed` when that ended without signing in or didn't start. At Finish,
+# `test-call-failed` when a signed-in Codex didn't answer the test call a switch needs.
 CODEX_RESULTS = ("signed-in", "signed-out", "waiting", "login-failed", "not-installed",
-                 "check-failed")
+                 "check-failed", "test-call-failed")
 # The Gateway Key pasted into the page, tested and stored as `setup gateway` does.
 GATEWAY_RESULTS = ("saved", "not-a-key", "rejected", "no-connection", "test-call-failed",
                    "keychain-not-reachable", "keychain-failed")
@@ -369,7 +370,7 @@ class SetupServer:
             extra: dict[str, Any] = {}
             if token is not None:
                 result, extra = setup_steps.claude_token_sign_in(program, token)
-            sign_in["result"] = self._ai_signed_in() if result == "saved" \
+            sign_in["result"] = self._ai_signed_in("claude") if result == "saved" \
                 else {"result": result, **_keychain_code(extra)}
         except Exception:  # never leave the page waiting
             sign_in["result"] = {"result": "sign-in-failed"}
@@ -410,12 +411,13 @@ class SetupServer:
             if self._claude_script is not None:  # the window's script has done its work
                 self._claude_script.cleanup()
                 self._claude_script = None
-        out = self._ai_signed_in()
+        out = self._ai_signed_in("claude")
         return (HTTPStatus.OK if out["result"] == "saved" else HTTPStatus.CONFLICT), out
 
     def check_codex(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Whether Codex is signed in, with its own status check. Once it is, the AI sign-in is
-        done. While its sign-in is open in the browser, signed out is `waiting`."""
+        done. While its sign-in is open in the browser, signed out is `waiting`. At Finish, where
+        signing in switches the Household to ChatGPT, it must also answer a test call first."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
         program = self._ai_program("codex")
@@ -426,7 +428,10 @@ class SetupServer:
             ended = login is not None and login.poll() is not None
         status = _ai_status(program, "codex")
         if status == "ready":
-            out = self._ai_signed_in()
+            if setup_save.read(self.config)["progress"]["phase"] == "finish" and \
+                    not self._codex_answers():
+                return HTTPStatus.OK, {"result": "test-call-failed"}
+            out = self._ai_signed_in("codex")
             return (HTTPStatus.OK, {**out, "result": "signed-in"}) if out["result"] == "saved" \
                 else (HTTPStatus.CONFLICT, out)
         if status != "signed-out":
@@ -439,6 +444,18 @@ class SetupServer:
                     self._codex = None  # said once, and the family can start it again
             return HTTPStatus.OK, {"result": "login-failed"}
         return HTTPStatus.OK, {"result": "waiting"}
+
+    def _codex_answers(self) -> bool:
+        """Whether Codex answers the test call doctor makes, with the Household's config as the
+        evening Brief would call it. What it said isn't kept: it can name the Mac's files."""
+        cfg = self._config()
+        cfg.llm = cfg.llm.model_copy(update={"backend": "codex"})
+        try:
+            data = summarize.call_llm_json(cfg, 'Reply with only this JSON: {"ok": true}',
+                                           "This is a connectivity test.", timeout=120, budget=0)
+        except Exception:
+            return False
+        return data.get("ok") is True
 
     def sign_in_codex(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Starts `codex login`, which opens the ChatGPT sign-in in the browser. The page then
@@ -467,7 +484,7 @@ class SetupServer:
             url if isinstance(url, str) and url else LLMConfig().gateway_url, raw["key"])
         if result != "saved":
             return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
-        out = self._ai_signed_in()
+        out = self._ai_signed_in("gateway")
         return (HTTPStatus.OK if out["result"] == "saved" else HTTPStatus.CONFLICT), out
 
     # ── WhatsApp
@@ -1042,12 +1059,22 @@ class SetupServer:
             return HTTPStatus.OK, {"result": "opened"}
         return HTTPStatus.OK, {"result": "no-terminal", "type": shlex.join([program, skill])}
 
-    def _ai_signed_in(self) -> dict[str, Any]:
-        """Saves the AI sign-in as done, moving setup on to the next Source."""
+    def _ai_signed_in(self, name: str) -> dict[str, Any]:
+        """Saves the AI sign-in as done, moving setup on to the next Source. Once setup is at
+        Finish, it's a switch: `name`, whose test call has just passed, becomes the Household's
+        one AI (ADR 0017), and its chat is installed as when Welcome picks it."""
         with self._saving:
-            statuses = {**setup_save.read(self.config)["progress"]["sources"], "ai": "done"}
-            return setup_save.save(self.config, {"progress": {
-                "sources": {"ai": "done"}, "source": _next_source(statuses)}})
+            progress = setup_save.read(self.config)["progress"]
+            switch = progress["phase"] == "finish"
+            if switch:
+                out = setup_save.save(self.config, {"ai": name})
+            else:
+                statuses = {**progress["sources"], "ai": "done"}
+                out = setup_save.save(self.config, {"progress": {
+                    "sources": {"ai": "done"}, "source": _next_source(statuses)}})
+        if switch and out["result"] == "saved" and name in CHAT_SKILLS:
+            self._install_chat(name)
+        return out
 
     def save_welcome(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Saves Welcome's choices: the AI, the partner or only me, and pilot feedback, and moves

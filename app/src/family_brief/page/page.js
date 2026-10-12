@@ -74,7 +74,8 @@ function applyText() {
   document.getElementById("language-switch").value = page.language;
   document.getElementById("phases").setAttribute("aria-label", t("phases.label"));
   if (page.progress) renderPhase();
-  if (page.connectShown) renderSources();
+  // Only in Connect: on Finish, its AI sign-in is the one moved into Change the AI.
+  if (page.connectShown && page.progress.phase === "connect") renderSources();
 }
 
 function renderSwitch() {
@@ -754,10 +755,12 @@ function renderAI() {
   document.getElementById("gateway-form").addEventListener("submit", saveGatewayKey);
 }
 
-// Once the AI sign-in is done, setup moves on to the next Source.
+// Once the AI sign-in is done, setup moves on to the next Source. On Finish, the AI picked there
+// is the Household's now.
 function aiDone(out, key) {
-  page.progress = out.progress;
   document.getElementById("claude-form").hidden = true;
+  if (page.progress.phase === "finish") return switchedAI();
+  page.progress = out.progress;
   renderSources();
   showSource(key);
 }
@@ -1554,8 +1557,82 @@ function enterFinish() {
   document.getElementById("finish-replace").addEventListener("click", () => startFinish(true));
   document.getElementById("finish-again").addEventListener("click", checkAgain);
   document.getElementById("finish-stop").addEventListener("click", stopForNow);
-  setText(document.getElementById("finish-changes"), "finish.changes." + page.welcome.ai);
+  document.getElementById("finish-ai-open").addEventListener("click", openFinishAI);
+  document.getElementById("finish-ai-form").addEventListener("submit", signInFinishAI);
+  showHouseholdAI();
   checkFinish();
+}
+
+// What depends on the Household's one AI: who writes the Briefs, and where changes go.
+function showHouseholdAI() {
+  setText(document.getElementById("finish-ai-current"), "finish.ai.current." + page.welcome.ai);
+  setText(document.getElementById("finish-changes"), "finish.changes." + page.welcome.ai);
+  showChat();
+}
+
+// ── Finish: changing the AI, for one that stopped working, or a new Gateway Key (ADR 0017). The
+// choices are Welcome's and the sign-ins Connect's own, moved here; the server makes the AI the
+// Household's only once its test call passes, so a failed try leaves the one it has.
+
+const finishAI = { name: null, ready: false };
+
+function openFinishAI() {
+  clearError();
+  // Connect sets up its sign-ins' buttons; a page opened at Finish hasn't been there.
+  if (!page.connectShown && !finishAI.ready) {
+    renderAI();
+    document.getElementById("source-copy").addEventListener("click", () => {
+      navigator.clipboard.writeText(document.getElementById("source-install-line").textContent);
+    });
+  }
+  finishAI.ready = true;
+  document.getElementById("finish-ai-sign-in").append(
+    document.getElementById("source-ai"), document.getElementById("source-status"));
+  pick("finish-ai", page.welcome.ai);
+  document.getElementById("finish-ai-open").hidden = true;
+  document.getElementById("finish-ai-saved").hidden = true;
+  document.getElementById("finish-ai-form").hidden = false;
+}
+
+// Shows the sign-in of the AI picked, which Codex's starts by itself, as in Connect.
+function signInFinishAI(event) {
+  event.preventDefault();
+  clearError();
+  clearTimeout(aiStep.timer);
+  const name = picked("finish-ai");
+  finishAI.name = name;
+  showSource(null);
+  document.getElementById("claude-token").value = "";
+  document.getElementById("gateway-key").value = "";
+  document.getElementById("claude-form").hidden = true;
+  document.getElementById("codex-login").hidden = true;
+  document.getElementById("codex-download").hidden = true;
+  document.getElementById("source-ai").hidden = false;
+  document.getElementById("ai-claude").hidden = name !== "claude";
+  document.getElementById("ai-codex").hidden = name !== "codex";
+  document.getElementById("ai-gateway").hidden = name !== "gateway";
+  document.getElementById("finish-ai-sign-in").hidden = false;
+  if (name === "codex") {
+    showSource("codex.checking");
+    checkCodex();
+  }
+}
+
+// The new AI answered its test call and is the Household's: the outcomes are checked again.
+async function switchedAI() {
+  clearTimeout(aiStep.timer);
+  page.welcome.ai = finishAI.name;
+  showSource(null);
+  document.getElementById("finish-ai-sign-in").hidden = true;
+  document.getElementById("finish-ai-form").hidden = true;
+  document.getElementById("finish-ai-open").hidden = false;
+  document.getElementById("finish-ai-saved").hidden = false;
+  showHouseholdAI();
+  try {
+    finishResult(await post("api/finish/outcomes", {}));
+  } catch (e) {
+    failed(e);
+  }
 }
 
 async function startFinish(replaceWake) {
@@ -1694,6 +1771,10 @@ function closed() {
   document.getElementById("phases").hidden = true;
   document.getElementById("chat").hidden = true;
   for (const button of document.querySelectorAll("#finish-checklist button")) button.hidden = true;
+  clearTimeout(aiStep.timer);
+  for (const id of ["finish-ai-open", "finish-ai-form", "finish-ai-sign-in"]) {
+    document.getElementById(id).hidden = true;
+  }
   document.getElementById("finish-closed").hidden = false;
 }
 
