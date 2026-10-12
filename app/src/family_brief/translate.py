@@ -58,8 +58,8 @@ _REPLY = [
 def instructions(intro: Template, translate: Template, keep_finnish: Template, keep: list[Template],
                  src: BriefText, dst: BriefText, target: Language, day: date | None = None) -> str:
     """Numbered translation instructions: what to translate, what to do with Finnish words (for a
-    Finnish translation, with the Finnish the original kept for its readers), what else to keep, and
-    how to reply. Weekend Picks use them too. `day` shows how the target writes a date."""
+    Finnish translation, with Finnish the original glossed or quoted), what else to keep, and how to
+    reply. Weekend Picks use them too. `day` shows how the target writes a date."""
     rules = [translate, _INTO_FINNISH if is_finnish(target) else keep_finnish, *keep, *_REPLY]
     values = {"original": src.language_name, "target": dst.language_name, "quotes": dst.quotes,
               "date": dst.on(day) if day else ""}

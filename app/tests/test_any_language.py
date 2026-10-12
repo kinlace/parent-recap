@@ -215,7 +215,7 @@ def test_a_finnish_brief_has_no_finnish_words_to_keep(harness):
     assert "Translate Finnish words too" in system_prompt_of(translate)  # the Chinese translation needs it
 
 
-def test_a_translation_into_finnish_has_no_finnish_words_to_keep(harness):
+def test_a_translation_into_finnish_isnt_told_to_translate_finnish_words(harness):
     normal_night(harness)
     harness.config["email"]["to"] = ["parent@example.com", {"address": "partner@example.com", "language": "fi"}]
     harness.model_reply = [harness.model_reply, copy.deepcopy(ENGLISH_REPLY)]
