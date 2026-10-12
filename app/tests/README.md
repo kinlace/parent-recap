@@ -306,8 +306,11 @@ that Finish leads back to WhatsApp's step while the page is open, that another w
 is replaced only once the family agrees, that a closed dialog or jobs that can't be loaded say so
 and can be tried again, that a finished Household is only checked, with nothing installed again,
 that the server stops once every outcome is true, and that "Finish for now" stops it only at
-Finish and never while it's installing. It also checks that every Finish text, with each check's
-next step, is in all three languages, and that Finish says a Mac that's shut down makes no Brief. Where no port can be listened on, a request
+Finish and never while it's installing.
+It checks that Change the AI on Finish (ADR 0017) switches `llm.backend` to Claude, ChatGPT or
+the gateway only once the new AI's test call passes, a call to Codex too there but not in Connect,
+that a failed one keeps the old AI, and that a gateway Household can enter a new Gateway Key.
+It also checks that every Finish text, with each check's next step, is in all three languages, and that Finish says a Mac that's shut down makes no Brief. Where no port can be listened on, a request
 rung in as the server stops times out, as a closed port refuses it.
 Its "Continue in the chat" runs the Terminal script the page opens against a fake `claude`, and
 checks that it starts Claude Code in the home folder at the setup skill, that a Codex family is
