@@ -297,19 +297,16 @@ FI = BriefText(
     may_be_incomplete="⚠️ {missed}. Tämäniltaisesta koosteesta voi puuttua jotain.",
     missed_sep=", ",
     permission_denied="macOS ei antanut käyttöoikeutta",
-    whatsapp_permission_denied="macOS ei antanut käyttöoikeutta, ehkä koska Parent Recapin Python vaihtui",
+    whatsapp_permission_denied="macOS ei antanut lupaa lukea viestejä, ehkä koska Parent Recapin Python päivittyi",
     login_failed="kirjautuminen epäonnistui",
     fallback_header="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua, joten tässä ovat viestit sellaisenaan "
                     "(kaikki ovat tallessa arkistossa ~/ParentRecap):",
-    fallback_spent="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua: Gateway Keyn tämän päivän saldo on "
-                   "käytetty. Se palautuu vuorokauden kuluessa, ajoissa huomisillan koosteeseen. Tässä ovat "
-                   "viestit sellaisenaan (kaikki ovat tallessa arkistossa ~/ParentRecap):",
+    fallback_spent="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua: yhdyskäytävän avaimen tämän päivän "
+                   "kiintiö on käytetty. Se nollautuu huomiseen mennessä, joten huomisillan kooste kirjoitetaan "
+                   "normaalisti. Tässä ovat viestit sellaisenaan (kaikki ovat tallessa arkistossa ~/ParentRecap):",
     unsorted="Muut viestit",
     fallback_count=" ({count})",
     fallback_more="  …arkistossa vielä {n} lisää",
-    # Added after the first review and not yet checked by a Finnish speaker:
-    # whatsapp_permission_denied, phone_number, email_address, link, someone, held_back,
-    # held_back_note, held_back_open, held_back_read_in, no_subject, fallback_spent.
     reply_incomplete="⚠️ {assistant}-avustajan vastaus jäi tänä iltana kesken, joten koosteesta voi puuttua "
                      "joitakin kohtia. Kaikki tämäniltaiset viestit ovat tallessa arkistossa ~/ParentRecap.",
     message_unreadable="yhtä viestiä ei voitu lukea",
@@ -323,9 +320,10 @@ FI = BriefText(
               "{assistant}-avustajalle ”tarkista Parent Recap”.",
     message_time="{day}.{month}. klo {hour}.{minute:02}",
     translation_failed="⚠️ Tämäniltaista koostetta ei saatu käännettyä, joten tässä se on alkuperäisellä kielellä.",
-    held_back="🔒 Tekoälyltä piilotetut viestit",
-    held_back_note="Nämä viestit vaikuttivat arkaluonteisilta (esimerkiksi terveys, tuki, kiusaaminen tai "
-                   "lastensuojelu), joten niitä ei lähetetty {assistant}-avustajalle. Lue ne alkuperäisessä lähteessä.",
+    held_back="🔒 Viestit, joita tekoäly ei nähnyt",
+    held_back_note="Nämä viestit vaikuttivat arkaluonteisilta (esimerkiksi terveyteen, oppimisen tukeen, "
+                   "kiusaamiseen tai lastensuojeluun liittyviltä), joten niitä ei lähetetty "
+                   "{assistant}-avustajalle. Lue ne alkuperäisessä lähteessä.",
     held_back_open="avaa viesti",
     held_back_read_in="lue viesti lähteessä {source}",
     no_subject="(ei aihetta)",

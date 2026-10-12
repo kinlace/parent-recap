@@ -355,7 +355,7 @@ def test_a_wilma_email_with_no_announcements_heading_is_checked_whole():
 
 def test_the_word_lists_are_in_one_file_with_every_category_in_every_language():
     text = held_back.WORDS.read_text(encoding="utf-8")
-    assert "the Finnish list waits for a native speaker's review" in text
+    assert "a native speaker reviewed the Finnish list" in text
     lists = yaml.safe_load(text)
     assert set(lists) == {"fi", "sv", "en", "zh"}
     for language, categories in lists.items():

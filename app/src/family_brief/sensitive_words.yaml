@@ -2,9 +2,10 @@
 # a message back from the AI and lists it by Source, sender and subject, so the parents read it
 # where it came from (ADR 0013, held_back.py). The check runs on the Mac and never asks the AI.
 #
-# REVIEW: the Finnish list waits for a native speaker's review. The Swedish, English and Chinese
-# lists wait for review by the maintainers. Changing a word here changes which messages the AI
-# never sees, so tests/test_held_back.py lists the cases that must and must not be held back.
+# REVIEW: a native speaker reviewed the Finnish list on 2026-10-12 (#10) and kept holding back on the
+# keyword alone, diabete, epilep and poliisi included. The Swedish, English and Chinese lists wait
+# for review by the maintainers. Changing a word here changes which messages the AI never sees, so
+# tests/test_held_back.py lists the cases that must and must not be held back.
 #
 # What the lists aim at: a message about one person's sensitive situation, such as a diagnosis, a
 # meeting with a psychologist or a school social worker (kuraattori), special or intensified

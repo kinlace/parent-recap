@@ -2876,7 +2876,7 @@ HELD_BACK_BODIES = ["pedagoginen selvitys on valmis", "kiusattu", "被欺负了"
 # Each language's heading, and what it says for a WhatsApp message, which has no link.
 HELD_BACK = {"en": ("🔒 Held-back messages", "read it in WhatsApp"),
              "zh": ("🔒 未交给 AI 的消息", "请在 WhatsApp 里查看"),
-             "fi": ("🔒 Tekoälyltä piilotetut viestit", "lue viesti lähteessä WhatsApp")}
+             "fi": ("🔒 Viestit, joita tekoäly ei nähnyt", "lue viesti lähteessä WhatsApp")}
 
 
 @pytest.mark.parametrize("language", ["en", "zh", "fi"])
