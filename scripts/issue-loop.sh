@@ -286,7 +286,7 @@ candidate_issues() {
   fi
 }
 
-# Every candidate as "<n><TAB>ready" or "<n><TAB>skipped: <reason>".
+# Every candidate as "<n><TAB>ready<TAB><title>" or "<n><TAB>skipped: <reason><TAB><title>".
 # Ready means in $MILESTONE (when given and no numbers were named), no assignee, not a spec,
 # no open PR closing it and no open blocker.
 issue_statuses() {
@@ -304,16 +304,18 @@ issue_statuses() {
          elif (.title | startswith("Spec:")) then "skipped: spec"
          elif (.assignees | length) > 0 then "skipped: assigned to \([.assignees[].login] | join(", "))"
          elif $pr != "" then "skipped: open PR \($pr)"
-         else "" end]
+         else "-" end,
+         .title // ""]
       | @tsv' |
-    while IFS=$'\t' read -r n status; do
-      if [ -z "$status" ]; then
+    while IFS=$'\t' read -r n status title; do
+      if [ "$status" = - ]; then
         local blockers
         blockers=$(gh api "repos/$REPO/issues/$n/dependencies/blocked_by" \
           --jq '[.[] | select(.state == "open") | "#\(.number)"] | join(", ")')
         status=${blockers:+skipped: blocked by $blockers}
+        status=${status:-ready}
       fi
-      printf '%s\t%s\n' "$n" "${status:-ready}"
+      printf '%s\t%s\t%s\n' "$n" "$status" "$title"
     done
 }
 
@@ -465,7 +467,7 @@ if [ "$DRY_RUN" = 1 ]; then
   else
     echo "Issues labelled ready-for-agent${MILESTONE:+, milestone $MILESTONE} (ready ones are taken smallest first):"
   fi
-  issue_statuses | awk -F'\t' '{ printf "  #%s %s\n", $1, $2 }'
+  issue_statuses | awk -F'\t' '{ printf "  #%s %s: %s\n", $1, $2, $3 }'
   exit 0
 fi
 
