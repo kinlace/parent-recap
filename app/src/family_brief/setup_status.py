@@ -25,6 +25,7 @@ from pathlib import Path
 from . import install_record, ops
 from .config import Config
 from .state import State
+from .system import jobs, wake
 
 
 TITLES = {
@@ -124,27 +125,28 @@ def _brief(cfg: Config | None) -> Outcome:
 
 
 def _nightly(hour: int, minute: int) -> Outcome:
-    if ops.JOB_DAILY in ops.launchctl_loaded():
-        return Outcome("nightly", True, f"{ops.JOB_DAILY} runs every day at {hour:02d}:{minute:02d}")
-    return Outcome("nightly", False, f"{ops.JOB_DAILY} isn't loaded: run parent-recap schedule "
-                   "install")
+    label = jobs.system_name(jobs.DAILY)
+    if jobs.DAILY in jobs.installed():
+        return Outcome("nightly", True, f"{label} runs every day at {hour:02d}:{minute:02d}")
+    return Outcome("nightly", False, f"{label} isn't loaded: run parent-recap schedule install")
 
 
 def _wake(hour: int, minute: int) -> Outcome:
-    if ops.never_sleeps():
+    status = wake.status(hour, minute)
+    if status.never_sleeps:
         return Outcome("wake", True, "this Mac never sleeps, so it needs no wake schedule")
-    wake_h, wake_m = ops.wake_time(hour, minute)
-    repeating = ops.repeating_wakes()
-    if any(ops.is_our_wake(line, hour, minute) for line in repeating):
+    wake_h, wake_m = wake.time(hour, minute)
+    if status.ours:
         return Outcome("wake", True, f"the Mac wakes at {wake_h:02d}:{wake_m:02d} every day")
     install = "parent-recap schedule install"
-    if repeating:  # replaced only once the family agrees
+    if status.others:  # replaced only once the family agrees
         install = (f"{install} --replace-wake once the family agrees to replace this Mac's other "
-                   f"repeating wake schedule ({', '.join(repeating)})")
+                   f"repeating wake schedule ({', '.join(status.others)})")
+    step = wake.manual_step(hour, minute)
+    by_hand = f", or the family runs this in Terminal: {step}" if step else ""
     return Outcome("wake", False, f"the Mac sleeps and doesn't wake at {wake_h:02d}:{wake_m:02d} "
                    f"every day, so the Brief only comes on nights it's awake. Run {install}, "
-                   "which sets it through macOS's administrator dialog, or the family runs this "
-                   f"in Terminal: {ops.wake_command(hour, minute)}")
+                   f"which sets it through macOS's administrator dialog{by_hand}")
 
 
 def _read(path: Path) -> str:

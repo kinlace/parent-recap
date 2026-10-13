@@ -17,8 +17,9 @@ import pytest
 import yaml
 
 from conftest import PILOT_FORM_FIELDS, PILOT_FORM_URL
-from family_brief import __main__ as cli, feedback, ops
+from family_brief import __main__ as cli, feedback
 from family_brief.config import Config
+from family_brief.system import jobs_macos
 
 LINK = "https://example.myclub.fi/ical/mia.ics"  # Mia's, in the harness's config
 
@@ -192,7 +193,7 @@ def test_opting_in_to_pilot_feedback_writes_the_shipped_form_with_the_household_
     harness.config.update(wilma={"enabled": False}, whatsapp={"enabled": False})
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     existing_config(harness)
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
 
     assert save(harness, {"feedback": {"enabled": True}}) == 0
 

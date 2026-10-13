@@ -15,7 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from family_brief import google_packages, ops
+from family_brief import google_packages
+from family_brief.system import jobs_macos
 from test_nightly_run import ICS_FALLBACK, normal_night
 from test_setup_save import ANSWERS, save, saved
 from test_setup_status import mac, outcome, status  # noqa: F401 (mac is a fixture)
@@ -96,7 +97,7 @@ def test_setup_saves_and_reports_without_them(harness, mac, no_google, capsys):
 
 
 def doctor(harness, monkeypatch, capsys) -> str:
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False

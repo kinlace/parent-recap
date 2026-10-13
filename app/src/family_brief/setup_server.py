@@ -41,7 +41,7 @@ from . import (chat_install, feedback, ops, run_lock, setup_ai, setup_save, setu
 from .actions import email as email_action
 from .config import Config, Kid, LLMConfig
 from .state import State
-from .system import desktop, desktop_macos, macos_only, secrets
+from .system import desktop, desktop_macos, jobs, macos_only, secrets, wake
 
 IDLE_SECONDS = 30 * 60
 AI_CHECK_SECONDS = 20
@@ -832,9 +832,9 @@ class SetupServer:
 
     def _make_brief(self) -> None:
         try:
-            code, out = ops.run_as_job(
+            code, out = jobs.run_detached(
                 ["run", "--preview", "--lookback-hours", str(BRIEF_LOOKBACK_HOURS)],
-                str(self.config), timeout=BRIEF_SECONDS, echo=False, output=self._brief_progress)
+                BRIEF_SECONDS, config=str(self.config), echo=False, output=self._brief_progress)
             made = next((line for line in reversed(_preview_lines(out))
                          if line["preview"] == "made"), None)
             done = {"result": "made", **{k: made[k] for k in ("subject", "text", "html", "feedback")}} \
@@ -978,8 +978,9 @@ class SetupServer:
             try:
                 cfg = Config.load(self.config)
                 ops.install_jobs(cfg)
-                result, other = ops.set_wake(cfg.schedule.daily_hour, cfg.schedule.daily_minute,
-                                             replace)
+                hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
+                other = wake.status(hour, minute).others
+                result = wake.set(hour, minute, replace)
             except Exception:  # its error can name the Mac's files: never leave the page installing
                 self._finish_wake = {}
                 self._finish = {"result": "install-failed"}

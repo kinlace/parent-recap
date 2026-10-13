@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from family_brief import ops
+from family_brief.system import jobs_macos
 
 
 class FakeLaunchctl:
@@ -46,18 +46,18 @@ def launchctl(harness, monkeypatch) -> FakeLaunchctl:
 
 
 def test_starts_the_evening_job_and_says_where_its_logs_are(harness, launchctl, capsys):
-    launchctl.loaded.add(ops.JOB_DAILY)
+    launchctl.loaded.add(jobs_macos.DAILY)
     assert harness.cli("schedule", "run-now") == 0
-    assert launchctl.kickstarts() == [["launchctl", "kickstart", f"gui/{os.getuid()}/{ops.JOB_DAILY}"]]
+    assert launchctl.kickstarts() == [["launchctl", "kickstart", f"gui/{os.getuid()}/{jobs_macos.DAILY}"]]
     out = capsys.readouterr().out
-    assert f"Started {ops.JOB_DAILY}" in out
+    assert f"Started {jobs_macos.DAILY}" in out
     assert "run-stdout.log" in out and "run-stderr.log" in out
 
 
 def test_weekend_starts_the_weekend_job(harness, launchctl, capsys):
-    launchctl.loaded.update({ops.JOB_DAILY, ops.JOB_WEEKEND})
+    launchctl.loaded.update({jobs_macos.DAILY, jobs_macos.WEEKEND})
     assert harness.cli("schedule", "run-now", "--weekend") == 0
-    assert launchctl.kickstarts() == [["launchctl", "kickstart", f"gui/{os.getuid()}/{ops.JOB_WEEKEND}"]]
+    assert launchctl.kickstarts() == [["launchctl", "kickstart", f"gui/{os.getuid()}/{jobs_macos.WEEKEND}"]]
     assert "weekend-events-stderr.log" in capsys.readouterr().out
 
 
@@ -69,15 +69,15 @@ def test_a_job_that_isnt_installed_points_to_schedule_install(harness, launchctl
 
 
 def test_a_run_already_going_isnt_started_again(harness, launchctl, capsys):
-    launchctl.loaded.add(ops.JOB_DAILY)
-    launchctl.running.add(ops.JOB_DAILY)
+    launchctl.loaded.add(jobs_macos.DAILY)
+    launchctl.running.add(jobs_macos.DAILY)
     assert harness.cli("schedule", "run-now") == 1
     assert launchctl.kickstarts() == []
     assert "already running" in capsys.readouterr().out
 
 
 def test_a_refused_start_shows_launchctls_reason(harness, launchctl, capsys):
-    launchctl.loaded.add(ops.JOB_DAILY)
+    launchctl.loaded.add(jobs_macos.DAILY)
     launchctl.kickstart_fails = True
     assert harness.cli("schedule", "run-now") == 1
     assert "Kickstart failed: 5" in capsys.readouterr().out

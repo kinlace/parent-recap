@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import plistlib
 import re
 import shutil
 import subprocess
@@ -25,11 +24,11 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import (ai_filter_report, chat_install, install_record, ops, run_lock, secret_dialog,
-               setup_save, setup_wilma, summarize, tools, whatsapp_python)
+from . import (ai_filter_report, chat_install, install_record, ops, run_lock, setup_save,
+               setup_wilma, summarize, tools, whatsapp_python)
 from .collectors.gmail import keychain_account
 from .config import Config
-from .system import secrets
+from .system import jobs, secrets, wake
 
 OK, FAIL = ops.OK, ops.FAIL
 RUNTIMES = re.compile(r"^(python-[\w.+-]+|node-v[\w.-]+|\.incoming)$")  # install.sh's pinned ones
@@ -179,58 +178,44 @@ def _config(path: Path, s: Survey) -> Config | None:
 
 
 def _jobs(s: Survey, programs: list[Path]) -> None:
-    usual = [ops.LAUNCH_AGENTS / f"{label}.plist" for label in (ops.JOB_DAILY, ops.JOB_WEEKEND)]
     # The venv's python is a symlink out of the venv, so only the folder it sits in is resolved.
     venvs = [(p / ".venv").resolve() for p in programs]
-    for plist in dict.fromkeys([*usual, *(Path(p) for p in install_record.entries("launchd"))]):
-        if not plist.exists():
-            continue
-        try:
-            prog = [str(a) for a in plistlib.loads(plist.read_bytes()).get("ProgramArguments", [])]
-        except (OSError, plistlib.InvalidFileException, AttributeError):
-            prog = []
-        if prog[1:3] == ["-m", "family_brief"] and any(
-                Path(prog[0]).parent.resolve().is_relative_to(v) for v in venvs):
-            s.items.append(Item(f"Scheduled job {plist.stem}", _show(plist),
-                                partial(_remove_job, plist), path=plist))
-        else:
+    found = jobs.found()
+    for job in found:
+        prog = job.program
+        if not (prog[1:3] == ["-m", "family_brief"] and any(
+                Path(prog[0]).parent.resolve().is_relative_to(v) for v in venvs)):
             runs = prog[0] if prog else "a program it can't read"
-            s.stops.append(f"{_show(plist)} is a launchd job named {plist.stem}, but it runs {runs}, "
-                           f"not this install in {', '.join(_show(p) for p in programs)}. It may be "
-                           "another Parent Recap install from other folders: remove that one "
-                           "first, with its own uninstall.")
-
-
-def _remove_job(plist: Path) -> None:
-    subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
-    plist.unlink()
+            s.stops.append(f"{_show(job.where)} is a scheduled job named {job.system_name}, but "
+                           f"it runs {runs}, not this install in "
+                           f"{', '.join(_show(p) for p in programs)}. It may be another Parent "
+                           "Recap install from other folders: remove that one first, with its own "
+                           "uninstall.")
+    if found:
+        s.items.append(Item(f"Scheduled job{'s' if len(found) != 1 else ''} "
+                            f"{', '.join(j.system_name for j in found)}",
+                            ", ".join(_show(j.where) for j in found), jobs.remove_all))
 
 
 def _wake(s: Survey, cfg: Config) -> None:
-    hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
-    lines = ops.repeating_wakes()
-    ours = [line for line in lines if ops.is_our_wake(line, hour, minute)]
-    others = [line for line in lines if line not in ours]
-    if ours and not others:
-        s.items.append(Item("Wake schedule", ours[0], _cancel_wake,
+    status = wake.status(cfg.schedule.daily_hour, cfg.schedule.daily_minute)
+    if status.ours and not status.others:
+        s.items.append(Item("Wake schedule", status.ours, _cancel_wake,
                             asks="macOS asks for your Mac password to remove it"))
-    elif ours:
-        s.left.append(f"The wake schedule setup gave ({ours[0]}): macOS can only cancel it "
-                      f"together with {'; '.join(others)}. To cancel both, run this in Terminal: "
-                      "sudo pmset repeat cancel")
-    elif others:
-        s.left.append(f"This Mac's repeating power schedule ({'; '.join(others)}): setup didn't "
-                      "set it")
+    elif status.ours:
+        s.left.append(f"The wake schedule setup gave ({status.ours}): macOS can only cancel it "
+                      f"together with {'; '.join(status.others)}. To cancel both, run this in "
+                      f"Terminal: {wake.manual_cancel()}")
+    elif status.others:
+        s.left.append(f"This Mac's repeating power schedule ({'; '.join(status.others)}): setup "
+                      "didn't set it")
 
 
 def _cancel_wake() -> None:
     try:
-        secret_dialog.as_administrator("/usr/bin/pmset repeat cancel", "Parent Recap wants to "
-                                       "remove the wake schedule it set. Enter your Mac password "
-                                       "to allow this.")
-    except (secret_dialog.Cancelled, secret_dialog.NoWayToAsk):
-        raise NotRemoved("the administrator dialog was cancelled or couldn't open. Run this in "
-                         "Terminal instead (it asks for your Mac password): sudo pmset repeat cancel")
+        wake.cancel()
+    except wake.NotCancelled as e:
+        raise NotRemoved(str(e))
 
 
 def _keychain(s: Survey, cfg: Config) -> None:

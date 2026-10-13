@@ -12,6 +12,7 @@ import pytest
 from conftest import msg, program
 
 from family_brief import ops, summarize
+from family_brief.system import jobs_macos
 
 TOKEN = "sk-ant-oat01-Abc_def-123456789"
 
@@ -23,7 +24,7 @@ def terminal_path(harness, monkeypatch) -> Path:
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     monkeypatch.setattr(summarize, "CODEX_BUNDLED", ())  # not this Mac's own apps
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
     return harness.home / "tools" / "bin"

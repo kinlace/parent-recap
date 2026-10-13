@@ -46,7 +46,7 @@ from urllib.parse import urlparse
 
 from . import install_record, own_node, secret_dialog, setup_wilma, whatsapp_python
 from .config import Config, Kid, LLMConfig
-from .system import desktop, secrets
+from .system import desktop, jobs, secrets
 
 APP_PASSWORDS_URL = "https://myaccount.google.com/apppasswords"
 TWO_STEP_URL = "https://myaccount.google.com/signinoptions/two-step-verification"
@@ -679,7 +679,7 @@ def cmd_whatsapp(args: argparse.Namespace) -> int:
     from . import ops
 
     if args.read:
-        if not os.environ.get(ops.BG_ENV):
+        if not os.environ.get(jobs.BG_ENV):
             print(f"Run it through bg: {_program()} setup whatsapp, which does that itself.")
             return 2
         return _read_whatsapp(args.days)
@@ -733,7 +733,7 @@ def read_whatsapp_through_bg(config: str | None, days: int, timeout: float) -> d
     `bg-failed`, with the error. The setup page reads through this too."""
     try:
         read = _read_through_bg(config, days, timeout)
-    except RuntimeError as e:  # launchctl wouldn't start the job
+    except RuntimeError as e:  # the system wouldn't start the job
         return {"result": "bg-failed", "error": str(e)[:200]}
     if read is None:
         return {"result": "waiting"}
@@ -750,17 +750,15 @@ def read_whatsapp_through_bg(config: str | None, days: int, timeout: float) -> d
 
 def _read_through_bg(config: str | None, days: int, timeout: float) -> dict[str, Any] | None:
     """What the bg job read, or None if it didn't finish in time."""
-    from . import ops
-
-    code, out = ops.run_as_job(["setup", "whatsapp", "--read", "--days", str(days)], config,
-                               timeout=math.ceil(timeout), echo=False)
+    code, out = jobs.run_detached(["setup", "whatsapp", "--read", "--days", str(days)],
+                                  math.ceil(timeout), config=config, echo=False)
     for line in reversed(out.splitlines()):
         if line.startswith("{"):
             try:
                 return json.loads(line)
             except ValueError:
                 break
-    if code == ops.TIMED_OUT:
+    if code == jobs.TIMED_OUT:
         return None
     return {"permission": "error", "error": f"exit code {code}: {out.strip()[-200:]}"}
 

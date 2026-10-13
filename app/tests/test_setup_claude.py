@@ -19,6 +19,7 @@ import pytest
 from conftest import msg, program
 
 from family_brief import install_record
+from family_brief.system import jobs_macos
 
 TOKEN = "sk-ant-oat01-Abc_def-123456789"
 ACCOUNT = "claude-oauth-token"
@@ -338,11 +339,10 @@ def test_storing_the_token_again_replaces_one_the_keychain_asks_about(harness, t
 
 def test_doctor_points_to_the_setup_step_when_no_token_is_stored(harness, terminal, monkeypatch,
                                                                  capsys):
-    from family_brief import ops
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
 
     harness.cli("doctor")
 
@@ -381,11 +381,10 @@ def test_setup_claude_finds_claude_from_the_native_installer(harness, terminal, 
 
 
 def test_doctor_finds_claude_from_the_native_installer(harness, native_claude, monkeypatch, capsys):
-    from family_brief import ops
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     harness.keychain[ACCOUNT] = TOKEN
     harness.model_reply = "OK"
 
@@ -407,11 +406,10 @@ def test_the_nightly_run_finds_claude_from_the_native_installer(harness, native_
 
 
 def doctor_claude_line(harness, monkeypatch, capsys) -> str:
-    from family_brief import ops
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     harness.model_reply = "OK"
     harness.cli("doctor")
     return next(l for l in capsys.readouterr().out.splitlines() if "Claude:" in l)

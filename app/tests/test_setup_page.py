@@ -36,6 +36,7 @@ from family_brief import (__main__ as cli, feedback, install_record, ops, run_lo
 from family_brief.collectors import myclub, whatsapp
 from family_brief.config import Config
 from family_brief.state import State
+from family_brief.system import jobs, jobs_macos, wake
 import fake_node
 from conftest import FailedCall, HTTPReply, PILOT_FORM_FIELDS, PILOT_FORM_URL, msg, program
 from test_doctor import WHATSAPP_FAILURES, break_whatsapp
@@ -3499,7 +3500,7 @@ def test_the_page_shows_progress_while_the_brief_is_made(harness, page, monkeypa
              '{"preview": "reading", "source": "gmail"}',
              '{"preview": "reading", "source": "wilma"}']
 
-    def job(cmd_args: list[str], config: str | None, timeout: int = 900, echo: bool = True,
+    def job(cmd_args: list[str], timeout: int, *, config: str | None = None, echo: bool = True,
             output=None) -> tuple[int, str]:
         output("12:00:00 INFO family_brief | Running collectors\n" + "\n".join(lines) + "\n")
         assert go.wait(5)
@@ -3508,7 +3509,7 @@ def test_the_page_shows_progress_while_the_brief_is_made(harness, page, monkeypa
                                   "text": "Brief", "html": "<html><body>Brief</body></html>",
                                   "feedback": None})])
         return 0, "\n".join(lines) + "\n"
-    monkeypatch.setattr(ops, "run_as_job", job)
+    monkeypatch.setattr(jobs, "run_detached", job)
 
     make_brief(page.url)
 
@@ -3720,7 +3721,7 @@ class Schedule:
 def schedule(harness, health, monkeypatch) -> Schedule:
     s = Schedule(subprocess.run)
     monkeypatch.setattr(subprocess, "run", s)
-    monkeypatch.setattr(ops, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
+    monkeypatch.setattr(jobs_macos, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
     return s
 
 
@@ -3765,8 +3766,8 @@ def test_finish_installs_the_evening_job_and_the_wake_up_through_macos_s_dialog(
     assert out["result"] == "done" and out["wake"] == "set"
     assert checklist(out) == {"installed": True, "doctor": True, "brief": True, "nightly": True,
                               "wake": True}
-    assert ops.JOB_DAILY in schedule.loaded
-    assert (ops.LAUNCH_AGENTS / f"{ops.JOB_DAILY}.plist").exists()
+    assert jobs_macos.DAILY in schedule.loaded
+    assert (jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY}.plist").exists()
     # The Mac password goes into macOS's own dialog, which says who is asking and why.
     [dialog] = schedule.dialogs
     assert "pmset repeat wakeorpoweron MTWRFSU 20:55:00" in dialog and "Parent Recap" in dialog
@@ -4006,7 +4007,7 @@ def test_finish_waits_for_the_first_brief(harness, page, schedule):
 
 def test_a_finished_household_sees_only_the_checklist(harness, page, schedule):
     at_finish(harness)
-    schedule.loaded.add(ops.JOB_DAILY)
+    schedule.loaded.add(jobs_macos.DAILY)
     schedule.repeating = ["wakepoweron at 8:55PM every day"]
 
     r = call(page.url, "api/finish/outcomes", method="POST", body={})
@@ -4131,7 +4132,7 @@ def test_every_finish_text_is_in_all_three_languages():
 
     for language, table in text.items():
         keys = [*(f"finish.{r}" for r in setup_server.FINISH_RESULTS),
-                *(f"finish.wake.{r}" for r in ops.WAKE_RESULTS),
+                *(f"finish.wake.{r}" for r in wake.RESULTS),
                 *(f"finish.outcome.{o}" for o in setup_status.TITLES),
                 *(f"finish.missing.{o}" for o in setup_status.TITLES),
                 *(f"finish.changes.{a}" for a in setup_server.AIS),

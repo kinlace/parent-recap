@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 
 from family_brief import install_record, secret_dialog
+from family_brief.system import jobs_macos
 
 APP_PASSWORD = "abcdefghijklmnop"
 TYPED = "abcd efgh ijkl mnop"  # how Google shows it, and how it's copied
@@ -258,7 +259,7 @@ def test_doctor_tells_an_app_password_the_keychain_asks_about_from_a_missing_one
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     harness.keychain[ACCOUNT] = APP_PASSWORD
     harness.keychain_asks.add(ACCOUNT)
 

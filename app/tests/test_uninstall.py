@@ -17,9 +17,10 @@ import pytest
 import fake_node
 from test_codex_install import install_codex_skills
 
-from family_brief import install_record, ops, run_lock, setup_wilma, tools, whatsapp_python
+from family_brief import install_record, run_lock, setup_wilma, tools, whatsapp_python
 from family_brief.collectors import gmail
 from family_brief.config import Config
+from family_brief.system import jobs_macos
 
 SLEEPS = "AC Power:\n sleep                1\n"
 OUR_WAKE = "wakepoweron at 8:55PM every day"
@@ -120,7 +121,7 @@ def done(cmd: list[str], out: str = "", code: int = 0, err: str = "") -> subproc
 def mac(harness, monkeypatch) -> FakeMac:
     fake = FakeMac(harness.keychain)
     monkeypatch.setattr(subprocess, "run", fake.run)
-    monkeypatch.setattr(ops, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
+    monkeypatch.setattr(jobs_macos, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
     return fake
 
 

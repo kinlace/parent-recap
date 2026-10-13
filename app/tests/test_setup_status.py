@@ -15,6 +15,7 @@ import pytest
 from conftest import msg
 
 from family_brief import install_record, ops
+from family_brief.system import jobs_macos, wake_macos
 
 APP_PASSWORD = "abcdabcdabcdabcd"
 CLAUDE_TOKEN = "sk-ant-oat01-secret"
@@ -64,8 +65,8 @@ def mac(harness, monkeypatch) -> FakeMac:
     harness.config["whatsapp"]["enabled"] = False
     del harness.config["kids"][0]["myclub_ical_url"]
     fake = FakeMac()
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set(fake.loaded))
-    monkeypatch.setattr(ops, "_pmset", fake.pmset)
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set(fake.loaded))
+    monkeypatch.setattr(wake_macos, "_pmset", fake.pmset)
     return fake
 
 
@@ -124,7 +125,7 @@ def healthy(harness, mac, monkeypatch) -> None:
     monkeypatch.setattr(shutil, "which", lambda cmd, *a, **k: f"/usr/local/bin/{cmd}"
                         if cmd == "claude" else which(cmd, *a, **k))
     harness.model_reply = "OK"
-    mac.loaded.add(ops.JOB_DAILY)
+    mac.loaded.add(jobs_macos.DAILY)
 
 
 def test_the_health_check_is_all_ok_when_every_doctor_check_is(harness, healthy, capsys):
@@ -259,7 +260,7 @@ def test_a_brief_with_no_recipients_reaches_nobody(harness, mac, capsys):
 
 
 def test_the_nightly_job_is_loaded_once_the_schedule_is_installed(harness, mac, capsys):
-    mac.loaded.add(ops.JOB_DAILY)
+    mac.loaded.add(jobs_macos.DAILY)
 
     _, report = status(harness, capsys)
 
@@ -269,7 +270,7 @@ def test_the_nightly_job_is_loaded_once_the_schedule_is_installed(harness, mac, 
 
 
 def test_the_nightly_job_isnt_loaded_before_the_schedule_is_installed(harness, mac, capsys):
-    mac.loaded.add(ops.JOB_WEEKEND)  # Weekend Picks' job isn't the nightly one
+    mac.loaded.add(jobs_macos.WEEKEND)  # Weekend Picks' job isn't the nightly one
 
     _, report = status(harness, capsys)
 
@@ -352,7 +353,7 @@ def test_the_readable_form_marks_what_isnt_done(harness, mac, capsys):
     assert harness.cli("setup", "status", "--text") == 1
 
     lines = capsys.readouterr().out.splitlines()
-    nightly = next(line for line in lines if ops.JOB_DAILY in line)
+    nightly = next(line for line in lines if jobs_macos.DAILY in line)
     assert nightly.startswith(ops.FAIL) and "parent-recap schedule install" in nightly
 
 

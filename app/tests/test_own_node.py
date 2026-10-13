@@ -19,6 +19,7 @@ from test_source_failures import REAL_WILMA_COLLECT, caught_up_last_night, paylo
 
 from family_brief import ops, own_node
 from family_brief.collectors import wilma
+from family_brief.system import jobs_macos
 
 STUDENT = {"studentNumber": "7", "name": "Virtanen Mia"}
 LISTED = {"students": [{"student": STUDENT, "messages": [
@@ -74,7 +75,7 @@ def doctor_line(capsys, check: str) -> str:
 
 def test_doctor_runs_the_wilma_cli_on_parent_recaps_own_node(harness, no_node, monkeypatch,
                                                               capsys):
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
 
     harness.cli("doctor", "--skip-llm")
 
@@ -100,7 +101,7 @@ def test_the_evening_job_runs_the_wilma_cli_on_parent_recaps_own_node(harness, n
 def test_the_wilma_cli_never_checks_npm_for_a_newer_version(harness, no_node, monkeypatch, capsys):
     # Parent Recap installs the version it pins, and the CLI's "Run wilma update" would install
     # another one.
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     monkeypatch.setattr(wilma, "collect", REAL_WILMA_COLLECT)
     caught_up_last_night(harness)
 
@@ -114,7 +115,7 @@ def test_the_wilma_cli_never_checks_npm_for_a_newer_version(harness, no_node, mo
 
 def test_a_node_and_wilma_cli_the_mac_has_are_not_used(harness, no_node, monkeypatch, tmp_path,
                                                         capsys):
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     theirs = tmp_path / "their-bin"
     program(theirs, "node", "#!/bin/sh\nexit 99\n")
     program(theirs, "wilma", "#!/bin/sh\nexit 99\n")
@@ -128,7 +129,7 @@ def test_a_node_and_wilma_cli_the_mac_has_are_not_used(harness, no_node, monkeyp
 
 def test_without_the_wilma_cli_doctor_says_to_connect_wilma_again(harness, no_node, monkeypatch,
                                                                   capsys):
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     shutil.rmtree(fake_node.wilma_folder(harness.home))
 
     harness.cli("doctor", "--skip-llm")

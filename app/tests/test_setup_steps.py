@@ -17,6 +17,7 @@ import pytest
 from conftest import program
 
 from family_brief import ops
+from family_brief.system import jobs_macos
 
 # ── discover gmail-senders
 
@@ -218,7 +219,7 @@ class FakeMac:
 def mac(harness, monkeypatch):
     fake = FakeMac()
     monkeypatch.setattr(subprocess, "run", fake.run)
-    monkeypatch.setattr(ops, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
+    monkeypatch.setattr(jobs_macos, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
     return fake
 
 
@@ -246,7 +247,7 @@ def test_schedule_install_puts_the_native_installers_folder_on_the_jobs_path(har
 
     assert harness.cli("schedule", "install") == 0
 
-    plist = plistlib.loads((ops.LAUNCH_AGENTS / f"{ops.JOB_DAILY}.plist").read_bytes())
+    plist = plistlib.loads((jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY}.plist").read_bytes())
     assert str(bin_dir) in plist["EnvironmentVariables"]["PATH"].split(":")
 
 
@@ -262,7 +263,7 @@ def test_schedule_install_puts_what_the_login_shell_finds_on_the_jobs_path(harne
 
     assert harness.cli("schedule", "install") == 0
 
-    plist = plistlib.loads((ops.LAUNCH_AGENTS / f"{ops.JOB_DAILY}.plist").read_bytes())
+    plist = plistlib.loads((jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY}.plist").read_bytes())
     path = plist["EnvironmentVariables"]["PATH"].split(":")
     assert str(folder) in path
 

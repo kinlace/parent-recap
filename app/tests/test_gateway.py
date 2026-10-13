@@ -17,6 +17,7 @@ import requests
 from conftest import FailedCall, HTTPReply, msg
 
 from family_brief import install_record, ops
+from family_brief.system import jobs_macos
 
 KEY = "sk-bf-fake-gateway-key"
 ACCOUNT = "gateway-key"
@@ -299,7 +300,7 @@ def doctor_lines(harness, monkeypatch, capsys) -> dict[str, str]:
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     harness.cli("doctor")
     out = capsys.readouterr().out
     assert KEY not in out

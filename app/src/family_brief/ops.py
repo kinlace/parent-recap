@@ -2,33 +2,28 @@
 
 doctor   — check every configured connection; prints status + counts only, never message content
 discover — list candidate Gmail sender domains / WhatsApp group names / Wilma students
-schedule — install, remove or inspect the launchd jobs
+schedule — install, remove or inspect the evening jobs
 full-disk-access — show the scheduled job's Python in Finder and open Full Disk Access, to grant
                    WhatsApp (setup whatsapp does this and waits for it)
-bg       — run any of the above (or run/collect) as a one-off launchd job, for WhatsApp access
+bg       — run any of the above (or run/collect) as a one-off job with the evening job's
+           permissions, for WhatsApp access
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import plistlib
 import re
 import shlex
-import shutil
-import signal
-import subprocess
 import sys
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from types import FrameType
-from typing import Callable, NamedTuple
+from typing import NamedTuple
 
-from . import (google_packages, install_record, languages, own_node, private_files,
-               secret_dialog, tools, whatsapp_python)
+from . import (google_packages, languages, own_node, private_files, secret_dialog,
+               whatsapp_python)
 from .config import Config
-from .system import desktop_macos, macos_only
+from .system import desktop_macos, jobs, macos_only, wake
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
 # Why the WhatsApp check isn't OK, for the setup page and the chat skills to say what fixes it:
@@ -37,11 +32,7 @@ OK, WARN, FAIL = "✅", "⚠️ ", "❌"
 # other failure has no reason, and gets the general advice.
 WHATSAPP_REASONS = ("no-access", "not-finished", "missing-groups", "list-failed")
 DEFAULT_CONFIG = Path.home() / ".family" / "config.yaml"
-LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
-JOB_DAILY = "com.parentrecap.daily"
-JOB_WEEKEND = "com.parentrecap.weekend-events"
-BG_ENV = "PARENT_RECAP_BG"  # set inside `bg` jobs so doctor doesn't recurse
-TIMED_OUT = 124  # run_as_job's exit code for a job it stopped, as timeout(1) gives
+BG_ENV = jobs.BG_ENV  # set inside `bg` jobs so doctor doesn't recurse
 # Where doctor says to grant WhatsApp's permission, after "Full Disk Access".
 FULL_DISK_ACCESS_WHERE = ("(System Settings → Privacy & Security; parent-recap full-disk-access "
                           "shows the Python in Finder)")
@@ -331,13 +322,14 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
         # Terminal, Claude Code and Codex usually can't read WhatsApp, but the scheduled job's
         # Python can. Ask that Python instead of reporting a failure that doesn't apply.
         try:
-            code, out = run_as_job(["doctor", "--whatsapp-only"], config, timeout=180, echo=False)
+            code, out = jobs.run_detached(["doctor", "--whatsapp-only"], 180, config=config,
+                                          echo=False)
         except Exception as e:
             add(WARN, "WhatsApp", f"this process can't read WhatsApp, and the background check "
                 f"didn't start ({e}). Run parent-recap bg doctor to confirm", "not-finished")
             return
         checks = [c for c in _job_checks(out) if c.item == "WhatsApp"]
-        if not checks and code == TIMED_OUT:
+        if not checks and code == jobs.TIMED_OUT:
             add(FAIL, "WhatsApp", "the background check didn't finish within 180 seconds and was "
                 "stopped (check that WhatsApp for Mac opens and shows the chats, then run doctor "
                 "again)", "not-finished")
@@ -407,11 +399,8 @@ def _check_whatsapp_python(add) -> None:
 
 def _evening_job_python() -> str:
     """The Python the installed evening job starts, or this one before it's installed."""
-    try:
-        argv = plistlib.loads((LAUNCH_AGENTS / f"{JOB_DAILY}.plist").read_bytes())["ProgramArguments"]
-        return str(argv[0])
-    except (OSError, ValueError, KeyError, IndexError):
-        return sys.executable
+    program = jobs.program(jobs.DAILY)
+    return program[0] if program else sys.executable
 
 
 def _check_myclub(kid: str, url: str, add) -> None:
@@ -482,13 +471,11 @@ def _check_weekend(add) -> None:
 
 def _check_schedule(cfg: Config, add) -> None:
     from .state import State
-    loaded = launchctl_loaded()
-    jobs = [JOB_DAILY] + ([JOB_WEEKEND] if cfg.weekend_events.enabled else [])
-    missing = [j for j in jobs if j not in loaded]
-    # launchd loads a LaunchAgent only for a desktop login, so after a restart, or seen from
-    # SSH, an installed job shows as missing.
-    unloaded = [j for j in missing if (LAUNCH_AGENTS / f"{j}.plist").exists()]
-    uninstalled = [j for j in missing if j not in unloaded]
+    installed, waiting = jobs.installed(), jobs.waiting_for_login()
+    wanted = [jobs.DAILY] + ([jobs.WEEKEND] if cfg.weekend_events.enabled else [])
+    missing = [j for j in wanted if j not in installed]
+    unloaded = [jobs.system_name(j) for j in missing if j in waiting]
+    uninstalled = [jobs.system_name(j) for j in missing if j not in waiting]
     if uninstalled:
         add(WARN, "Schedule", f"not installed yet: {', '.join(uninstalled)} "
             "(run parent-recap schedule install)")
@@ -508,11 +495,6 @@ def _check_schedule(cfg: Config, add) -> None:
             " (no run for over a day; the Mac may be asleep, consider a pmset wake-up)"))
     add(OK, "Python path", f"{os.path.realpath(sys.executable)} "
         "(this is the path WhatsApp needs under Full Disk Access)")
-
-
-def launchctl_loaded() -> set[str]:
-    out = subprocess.run(["launchctl", "list"], capture_output=True, text=True).stdout
-    return {line.split()[-1] for line in out.splitlines() if "com.parentrecap." in line}
 
 
 # ---------------------------------------------------------------- discover
@@ -669,239 +651,18 @@ def cmd_bg(args: argparse.Namespace) -> int:
         return 2
     print(f"Running parent-recap {' '.join(inner)} as a background job "
           "(same Python and permissions as the scheduled job)", flush=True)
-    code, _ = run_as_job(inner, args.config, timeout=args.timeout)
+    code, _ = jobs.run_detached(inner, args.timeout, config=args.config)
     return code
-
-
-def _exit_on_signal(signum: int, _frame: FrameType | None) -> None:
-    raise SystemExit(128 + signum)
-
-
-def run_as_job(cmd_args: list[str], config: str | None, timeout: int = 900,
-               echo: bool = True,
-               output: Callable[[str], None] | None = None) -> tuple[int, str]:
-    """Run `parent-recap <cmd_args>` as a one-off launchd job, wait for it, return (exit code, output).
-    `output`, if given, is handed all of the output so far each time the job is checked on.
-
-    macOS grants WhatsApp access per responsible process. Started from Terminal, Claude Code or
-    Codex, that is the parent app, which usually has no access. A launchd job is its own
-    responsible process, so it gets exactly the permission the scheduled job's Python has."""
-    import tempfile
-    import time
-    work = Path(tempfile.mkdtemp(prefix="parent-recap-bg-"))
-    label = f"com.parentrecap.bg.{os.getpid()}"
-    domain = f"gui/{os.getuid()}"
-    out = work / "output.log"
-    prog = [sys.executable, "-m", "family_brief"]
-    if config:
-        prog += ["-c", str(Path(config).expanduser())]
-    plist_path = work / f"{label}.plist"
-    plist_path.write_bytes(plistlib.dumps({
-        "Label": label,
-        "ProgramArguments": prog + cmd_args,
-        "RunAtLoad": True,
-        "StandardOutPath": str(out),
-        "StandardErrorPath": str(out),
-        "WorkingDirectory": str(Path.home()),
-        "Umask": private_files.UMASK,
-        "EnvironmentVariables": {"PATH": _path_env(), "HOME": str(Path.home()),
-                                 "PYTHONUNBUFFERED": "1", BG_ENV: "1"},
-    }))
-    shown = 0
-    code: int | None = None
-    # Python skips `finally` on SIGTERM, and the job belongs to launchd, so an agent's command
-    # timeout would leave it running. Turning the signal into an exit lets the cleanup run.
-    # Only the main thread can, so the setup page's reads, from its own threads, leave them be.
-    main = threading.current_thread() is threading.main_thread()
-    stops = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP) if main else ()
-    before = {s: signal.signal(s, _exit_on_signal) for s in stops}
-    try:
-        r = subprocess.run(["launchctl", "bootstrap", domain, str(plist_path)], capture_output=True,
-                           text=True)
-        if r.returncode != 0:
-            raise RuntimeError(f"launchctl bootstrap failed: {r.stderr.strip() or r.returncode}")
-        deadline = time.time() + timeout
-        while code is None and time.time() < deadline:
-            time.sleep(1)
-            code = _job_exit_code(domain, label)
-            if (echo or output) and out.exists():
-                text = out.read_text(errors="replace")
-                if output:
-                    output(text)
-                if echo:
-                    print(text[shown:], end="", flush=True)
-                    shown = len(text)
-    finally:
-        for s in stops:  # a second signal mustn't cut the cleanup short
-            signal.signal(s, signal.SIG_IGN)
-        subprocess.run(["launchctl", "bootout", f"{domain}/{label}"], capture_output=True)
-        text = out.read_text(errors="replace") if out.exists() else ""
-        shutil.rmtree(work, ignore_errors=True)
-        for s, handler in before.items():
-            signal.signal(s, signal.SIG_DFL if handler is None else handler)  # None: set outside Python
-    if echo:
-        print(text[shown:], end="", flush=True)
-    if code is None:
-        if echo:
-            print(f"{FAIL} the background job didn't finish within {timeout} seconds and was "
-                  "stopped", flush=True)
-        return TIMED_OUT, text
-    return code, text
-
-
-def _job_exit_code(domain: str, label: str) -> int | None:
-    """The job's exit code once it has finished, None while it is starting or running."""
-    r = subprocess.run(["launchctl", "print", f"{domain}/{label}"], capture_output=True, text=True)
-    if r.returncode != 0 or re.search(r"^\tstate = running$", r.stdout, re.M):
-        return None
-    m = re.search(r"^\tlast exit code = (-?\d+)$", r.stdout, re.M)
-    return int(m.group(1)) if m else None
 
 
 # ---------------------------------------------------------------- schedule
 
-def _path_env() -> str:
-    from .summarize import native_claude_dir
-    dirs: list[str] = []
-    # Node for a claude installed with npm; the wilma CLI runs on Parent Recap's own (ADR 0011).
-    for tool in ("claude", "node"):
-        found = tools.find(tool)
-        if found:
-            dirs.append(str(Path(found).resolve().parent))
-            dirs.append(str(Path(found).parent))
-    # Claude Code's native installer puts claude there, and the shell running this may not have it.
-    dirs += [str(native_claude_dir()), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
-    seen: list[str] = []
-    for d in dirs:
-        if d not in seen:
-            seen.append(d)
-    return ":".join(seen)
-
-
-def _plist(label: str, subcommand: str, interval: dict, log_dir: Path) -> dict:
-    return {
-        "Label": label,
-        "ProgramArguments": [sys.executable, "-m", "family_brief", subcommand],
-        "StartCalendarInterval": interval,
-        "StandardOutPath": str(log_dir / f"{subcommand}-stdout.log"),
-        "StandardErrorPath": str(log_dir / f"{subcommand}-stderr.log"),
-        "EnvironmentVariables": {"PATH": _path_env(), "HOME": str(Path.home())},
-        "Umask": private_files.UMASK,  # launchd creates the log files with the job's umask
-        "RunAtLoad": False,
-    }
-
-
-def _load(label: str, plist: dict) -> None:
-    path = LAUNCH_AGENTS / f"{label}.plist"
-    LAUNCH_AGENTS.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
-    with path.open("wb") as f:
-        plistlib.dump(plist, f)
-    subprocess.run(["launchctl", "load", str(path)], check=True)
-    install_record.add("launchd", str(path))
-
-
-def _unload(label: str) -> None:
-    path = LAUNCH_AGENTS / f"{label}.plist"
-    if path.exists():
-        subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
-        path.unlink()
-
-
-def _pmset(*args: str) -> str:
-    try:
-        return subprocess.run(["pmset", *args], capture_output=True, text=True).stdout
-    except OSError:
-        return ""
-
-
-def _repeating_wakes(sched: str) -> list[str]:
-    """The lines under "Repeating power events:" in `pmset -g sched`, which `pmset repeat` replaces."""
-    lines: list[str] = []
-    inside = False
-    for line in sched.splitlines():
-        if not line.startswith((" ", "\t")):
-            inside = line.strip() == "Repeating power events:"
-        elif inside and line.strip():
-            lines.append(line.strip())
-    return lines
-
-
-def repeating_wakes() -> list[str]:
-    """This Mac's repeating power events, as `pmset -g sched` lists them."""
-    return _repeating_wakes(_pmset("-g", "sched"))
-
-
-def wake_time(hour: int, minute: int) -> tuple[int, int]:
-    """When the Mac should wake for a job at hour:minute: 5 minutes before."""
-    wake_h, wake_m = divmod(hour * 60 + minute - 5, 60)
-    return wake_h % 24, wake_m
-
-
-def is_our_wake(line: str, hour: int, minute: int) -> bool:
-    """Whether a line of `pmset -g sched` is the daily wake setup gives for a job at hour:minute."""
-    wake_h, wake_m = wake_time(hour, minute)
-    wake_12h = f"{wake_h % 12 or 12}:{wake_m:02d}{'am' if wake_h < 12 else 'pm'}"  # as pmset prints it
-    our_wake = re.compile(rf"wake.*(?<!\d)({wake_12h}|{wake_h}:{wake_m:02d}).*everyday")
-    return bool(our_wake.search(line.lower().replace(" ", "")))
-
-
-def never_sleeps() -> bool:
-    """Whether this Mac is set never to sleep (sleep 0 in pmset), on every power source."""
-    sleeps = re.findall(r"^\s*sleep\s+(\d+)", _pmset("-g", "custom"), re.M)
-    return bool(sleeps) and all(s == "0" for s in sleeps)
-
-
-def _pmset_wake(hour: int, minute: int) -> str:
-    wake_h, wake_m = wake_time(hour, minute)
-    return f"pmset repeat wakeorpoweron MTWRFSU {wake_h:02d}:{wake_m:02d}:00"
-
-
-def wake_command(hour: int, minute: int) -> str:
-    """The Terminal command that sets the daily wake setup gives for a job at hour:minute."""
-    return f"sudo {_pmset_wake(hour, minute)}"
-
-
-# What setting the daily wake can say: no wake needed (`never-sleeps`, `already-set`), another
-# repeating wake schedule kept until the family agrees to replace it (`other-schedule`), set, or
-# not: the dialog was closed (`cancelled`), there was no dialog to ask in (`no-dialog`), or macOS
-# doesn't list it after the dialog (`not-set`).
-WAKE_RESULTS = ("set", "already-set", "never-sleeps", "other-schedule", "cancelled", "no-dialog",
-                "not-set")
-
-
-def set_wake(hour: int, minute: int, replace: bool) -> tuple[str, list[str]]:
-    """Sets the daily wake for a job at hour:minute through macOS's administrator dialog, where
-    the family types their Mac password. Another repeating wake schedule is replaced only with
-    `replace`, so the family can decline before any dialog opens. Returns one of WAKE_RESULTS and
-    the Mac's other repeating wake schedule, as `pmset -g sched` lists it."""
-    if never_sleeps():
-        return "never-sleeps", []
-    existing = repeating_wakes()
-    if any(is_our_wake(line, hour, minute) for line in existing):
-        return "already-set", []
-    if existing and not replace:
-        return "other-schedule", existing
-    wake_h, wake_m = wake_time(hour, minute)
-    try:
-        secret_dialog.as_administrator(
-            f"/usr/bin/{_pmset_wake(hour, minute)}",
-            f"Parent Recap wants to wake your Mac at {wake_h:02d}:{wake_m:02d} every day, 5 "
-            "minutes before the Brief. Enter your Mac password to allow this.")
-    except secret_dialog.Cancelled:
-        return "cancelled", existing
-    except secret_dialog.NoWayToAsk:
-        return "no-dialog", existing
-    if any(is_our_wake(line, hour, minute) for line in repeating_wakes()):
-        return "set", existing
-    return "not-set", existing
-
-
 def _set_wake(hour: int, minute: int, replace: bool) -> None:
-    """`set_wake`, saying how it went. Without a desktop session it gives the `sudo` command for
+    """`wake.set`, saying how it went. Without a desktop session it gives the command for
     Terminal instead."""
-    wake_h, wake_m = wake_time(hour, minute)
-    result, existing = set_wake(hour, minute, replace)
+    wake_h, wake_m = wake.time(hour, minute)
+    existing = wake.status(hour, minute).others
+    result = wake.set(hour, minute, replace)
     if result == "never-sleeps":
         print("\nThis Mac never sleeps (sleep 0 in pmset), so it needs no wake schedule.")
         return
@@ -909,8 +670,9 @@ def _set_wake(hour: int, minute: int, replace: bool) -> None:
         print(f"\nThe Mac already wakes at {wake_h:02d}:{wake_m:02d} every day, before the job starts.")
         return
     print("\nScheduled jobs don't run while the Mac is asleep.")
-    in_terminal = (f"Run this once in Terminal (it asks for your Mac password):\n"
-                   f"  {wake_command(hour, minute)}")
+    step = wake.manual_step(hour, minute)
+    in_terminal = (f"Run this once in Terminal (it asks for your Mac password):\n  {step}"
+                   if step else "")
     if result == "other-schedule":
         print(f"{WARN}This Mac already has a repeating wake schedule, and Parent Recap's wake "
               "schedule replaces it:")
@@ -944,39 +706,35 @@ def _set_wake(hour: int, minute: int, replace: bool) -> None:
 
 
 def install_jobs(cfg: Config) -> None:
-    """Loads the evening job at the config's time, and Weekend Picks' job when they're on."""
+    """Installs the evening job at the config's time, and Weekend Picks' job when they're on."""
     log_dir = cfg.archive.resolved_dir() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     private_files.tighten(cfg)
     sc = cfg.schedule
-    _load(JOB_DAILY, _plist(JOB_DAILY, "run",
-                            {"Hour": sc.daily_hour, "Minute": sc.daily_minute}, log_dir))
+    wanted = [jobs.Job(jobs.DAILY, "run", None, sc.daily_hour, sc.daily_minute, log_dir)]
     if cfg.weekend_events.enabled:
-        _load(JOB_WEEKEND, _plist(JOB_WEEKEND, "weekend-events",
-                                  {"Weekday": sc.weekend_weekday, "Hour": sc.weekend_hour, "Minute": 0},
-                                  log_dir))
-    else:
-        _unload(JOB_WEEKEND)
+        wanted.append(jobs.Job(jobs.WEEKEND, "weekend-events", sc.weekend_weekday, sc.weekend_hour,
+                               0, log_dir))
+    jobs.install(wanted)
 
 
-def _run_now(label: str, log_dir: Path) -> int:
-    """Asks launchd to start the installed job, which then runs with the job's own Python, PATH,
-    environment and log files. Doesn't wait for it."""
-    target = f"gui/{os.getuid()}/{label}"
-    logs = log_dir / ("weekend-events" if label == JOB_WEEKEND else "run")
+def _run_now(name: str, log_dir: Path) -> int:
+    """Asks the system to start the installed job, which then runs with the job's own Python,
+    PATH, environment and log files. Doesn't wait for it."""
+    label = jobs.system_name(name)
+    logs = log_dir / ("weekend-events" if name == jobs.WEEKEND else "run")
     where = f"Its logs:\n  {logs}-stdout.log\n  {logs}-stderr.log"
-    probe = subprocess.run(["launchctl", "print", target], capture_output=True, text=True)
-    if probe.returncode != 0:
+    try:
+        jobs.run_now(name)
+    except jobs.NotInstalled:
         print(f"{FAIL} {label} isn't installed. Run family-brief schedule install first.")
         return 1
-    # Plain kickstart (no -k) leaves a running job alone, so say so instead of looking like a start.
-    # Exit 1: the Brief wasn't started by this call, which a script calling it should see.
-    if re.search(r"^\tstate = running$", probe.stdout, re.M):
+    except jobs.AlreadyRunning:
+        # Exit 1: the Brief wasn't started by this call, which a script calling it should see.
         print(f"{WARN}{label} is already running, so no second run was started. {where}")
         return 1
-    kick = subprocess.run(["launchctl", "kickstart", target], capture_output=True, text=True)
-    if kick.returncode != 0:
-        print(f"{FAIL} launchctl couldn't start {label}: {kick.stderr.strip() or kick.returncode}")
+    except jobs.NotStarted as e:
+        print(f"{FAIL} {e}")
         return 1
     print(f"{OK} Started {label}. It runs in the background, so this doesn't wait for the Brief. "
           f"{where}")
@@ -991,7 +749,7 @@ def cmd_schedule(args: argparse.Namespace) -> int:
     sc = cfg.schedule
 
     if args.action == "run-now":
-        return _run_now(JOB_WEEKEND if args.weekend else JOB_DAILY, log_dir)
+        return _run_now(jobs.WEEKEND if args.weekend else jobs.DAILY, log_dir)
 
     if args.action == "install":
         install_jobs(cfg)
@@ -1002,14 +760,14 @@ def cmd_schedule(args: argparse.Namespace) -> int:
         return 0
 
     if args.action == "uninstall":
-        for label in (JOB_DAILY, JOB_WEEKEND):
-            _unload(label)
+        jobs.remove_all()
         print(f"{OK} Scheduled jobs removed (config and archive are kept)")
         return 0
 
-    loaded = launchctl_loaded()
-    for label in (JOB_DAILY, JOB_WEEKEND):
-        print(f"{OK if label in loaded else '—'} {label}{'' if label in loaded else ' (not installed)'}")
+    installed = jobs.installed()
+    for name in (jobs.DAILY, jobs.WEEKEND):
+        label = jobs.system_name(name)
+        print(f"{OK if name in installed else '—'} {label}{'' if name in installed else ' (not installed)'}")
     for name in ("run-stderr.log", "weekend-events-stderr.log"):
         f = log_dir / name
         if f.exists():

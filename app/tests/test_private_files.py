@@ -12,9 +12,9 @@ import requests
 import yaml
 
 from conftest import msg
-from family_brief import ops
 from family_brief.collectors import myclub
 from family_brief.collectors.myclub import collect_events as real_collect_events  # before the harness fakes it
+from family_brief.system import jobs, jobs_macos
 
 TOKEN = "s3cr3t-t0ken"
 LINK = f"https://example.myclub.fi/ical/{TOKEN}?key={TOKEN}"
@@ -70,7 +70,7 @@ def test_doctor_names_only_the_myclub_host_and_status(harness, monkeypatch, caps
     _real_myclub(harness, monkeypatch, kind)
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(ops, "launchctl_loaded", lambda: set())
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
 
     harness.cli("doctor", "--skip-llm")
 
@@ -171,7 +171,7 @@ def test_the_wilma_cli_s_sign_in_and_session_are_made_owner_only_on_the_next_run
 
 
 def test_scheduled_jobs_write_their_logs_owner_only(tmp_path):
-    plist = ops._plist("com.parentrecap.daily", "run", {"Hour": 21, "Minute": 0}, tmp_path)
+    plist = jobs_macos._plist(jobs.Job(jobs.DAILY, "run", None, 21, 0, tmp_path))
     assert plist["Umask"] == 0o077
 
 
