@@ -34,19 +34,19 @@ import re
 import select
 import shlex
 import signal
-import subprocess
 import sys
 import tempfile
 import termios
 import time
 import tty
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager, nullcontext, suppress
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 from . import install_record, own_node, secret_dialog, setup_wilma, whatsapp_python
 from .config import Config, Kid, LLMConfig
+from .system import desktop
 from .utils import keychain
 
 APP_PASSWORDS_URL = "https://myaccount.google.com/apppasswords"
@@ -107,6 +107,7 @@ NODE_CLEAR = b"\x1b[1;1H\x1b[0J"
 WILMA_STUDENT_PICKER = b"Select student"
 WILMA_MENU = b"What do you want to view?"
 CLAUDE_TOKEN_ACCOUNT = "claude-oauth-token"
+CLAUDE_WINDOW = "Claude sign-in"  # the title of the window `claude setup-token` runs in
 # Loose on purpose, like scripts/setup_claude_token.py: the test call decides whether it works.
 CLAUDE_TOKEN = re.compile(r"sk-ant-[A-Za-z0-9_-]+")
 WHATSAPP_POLL_SECONDS = 5
@@ -147,6 +148,8 @@ def register(sub) -> None:
     pwilma.add_argument("--language", default="en",
                         help="The family's language code, for the window's guide (default: en)")
     pwilma.add_argument("--screen", action="store_true", help=argparse.SUPPRESS)  # in the window
+    # With --screen: where the window records how the screen ended, for the step waiting on it.
+    pwilma.add_argument("--status", type=Path, default=None, help=argparse.SUPPRESS)
     pwilma.set_defaults(func=cmd_wilma)
 
     pclaude = steps.add_parser("claude", help="Open Claude's sign-in for the nightly token in "
@@ -227,7 +230,7 @@ def cmd_gmail(args: argparse.Namespace) -> int:
                        "address: parent-recap setup gmail --address name@gmail.com")
     warning = _warn_if_unreachable()
     if not args.no_open:
-        subprocess.run(["open", APP_PASSWORDS_URL], capture_output=True)
+        desktop.open_url(APP_PASSWORDS_URL)
 
     try:
         password = secret_dialog.ask(
@@ -290,8 +293,15 @@ def gmail_sign_in(address: str, password: str) -> tuple[str, str | None, dict[st
 
 def cmd_wilma(args: argparse.Namespace) -> int:
     if args.screen:
-        return _sign_in_screen(args.language)
-    out = sign_in_in_terminal(args.language, args.timeout, no_open=args.no_open)
+        status = 1
+        try:
+            status = _sign_in_screen(args.language)
+        finally:
+            if args.status is not None:
+                with suppress(OSError):  # the step stopped waiting and took its folder away
+                    args.status.write_text(f"{status}\n")
+        return status
+    out =sign_in_in_terminal(args.language, args.timeout, no_open=args.no_open)
     return _report(out.pop("result"), out.pop("next", None), **out)
 
 
@@ -324,11 +334,7 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
         status = Path(tmp) / "exit-status"
         seen = _mtime(config)
         if not no_open:
-            script = Path(tmp) / "Wilma sign-in.command"
-            script.write_text(_sign_in_script(language, status))
-            script.chmod(0o700)
-            if subprocess.run(["open", "-a", "Terminal", str(script)],
-                              capture_output=True).returncode != 0:
+            if not desktop.open_terminal(sign_in_window(language, status), {}, "Wilma sign-in"):
                 return outcome("no-terminal", "Terminal didn't open. The family runs wilma in "
                                f"Terminal and signs in there, then run: {again} --no-open")
 
@@ -362,16 +368,11 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
                    f"{again} --no-open. Otherwise run: {again}")
 
 
-def _sign_in_script(language: str, status: Path) -> str:
-    # This Python, since the window's PATH may not lead to this program.
-    screen = (f"{shlex.quote(sys.executable)} -m family_brief setup wilma "
-              f"--screen --language {shlex.quote(language)}")
-    return (
-        "#!/bin/sh\n"
-        "clear\n"
-        f"{screen}\n"
-        f"{{ echo $? > {shlex.quote(str(status))}; }} 2>/dev/null\n"
-    )
+def sign_in_window(language: str, status: Path) -> list[str]:
+    """The Wilma window's command, which records at `status` how its screen ended. This Python,
+    since the window's PATH may not lead to this program."""
+    return [sys.executable, "-m", "family_brief", "setup", "wilma", "--screen",
+            "--language", language, "--status", str(status)]
 
 
 def _sign_in_screen(language: str) -> int:
@@ -491,7 +492,7 @@ def cmd_claude(args: argparse.Namespace) -> int:
     """`claude setup-token` signs in on Ink's interactive screen, which needs a real terminal
     (without one it stops with "Raw mode is not supported"), and it shows the token only on that
     screen, wrapped to the window. So this opens it in a Terminal window and asks for the token in
-    the secret dialog, while the window's script is still there for Terminal to run."""
+    the secret dialog."""
     from .summarize import CLAUDE_INSTALL, find_claude
 
     program = find_claude()
@@ -500,28 +501,22 @@ def cmd_claude(args: argparse.Namespace) -> int:
                        f"{CLAUDE_INSTALL}, then run this again.")
     again = f"{_program()} setup claude"
     warning = _warn_if_unreachable()
-    with tempfile.TemporaryDirectory(prefix="parent-recap-claude-") as tmp:
-        if not args.no_open:
-            script = Path(tmp) / "Claude sign-in.command"
-            script.write_text(setup_token_script(program))
-            script.chmod(0o700)
-            if subprocess.run(["open", "-a", "Terminal", str(script)],
-                              capture_output=True).returncode != 0:
-                return _report("no-terminal", "Terminal didn't open. The family runs claude "
-                               f"setup-token in Terminal and signs in there, then run: {again} "
-                               "--no-open")
-        try:
-            typed = secret_dialog.ask(
-                f"{warning}Paste the Claude token for the nightly Brief.\n\nClick Authorize on "
-                "Claude's page in your browser. The Terminal window that opened then shows a "
-                "token starting with sk-ant-oat01-. Copy all of it and paste it here.")
-        except secret_dialog.Cancelled:
-            return _report("cancelled", "The family closed the dialog. Run this again when "
-                           f"they're ready: {again}")
-        except secret_dialog.NoWayToAsk:
-            return _report("no-prompt", "No dialog or Terminal prompt could be shown here. The "
-                           "family runs claude setup-token in Terminal, then this in Terminal: "
-                           f"{again} --no-open")
+    if not args.no_open and not desktop.open_terminal(setup_token_window(program), {},
+                                                      CLAUDE_WINDOW):
+        return _report("no-terminal", "Terminal didn't open. The family runs claude "
+                       f"setup-token in Terminal and signs in there, then run: {again} --no-open")
+    try:
+        typed = secret_dialog.ask(
+            f"{warning}Paste the Claude token for the nightly Brief.\n\nClick Authorize on "
+            "Claude's page in your browser. The Terminal window that opened then shows a "
+            "token starting with sk-ant-oat01-. Copy all of it and paste it here.")
+    except secret_dialog.Cancelled:
+        return _report("cancelled", "The family closed the dialog. Run this again when "
+                       f"they're ready: {again}")
+    except secret_dialog.NoWayToAsk:
+        return _report("no-prompt", "No dialog or Terminal prompt could be shown here. The "
+                       "family runs claude setup-token in Terminal, then this in Terminal: "
+                       f"{again} --no-open")
 
     result, extra = claude_token_sign_in(program, typed)
     if result == "not-a-token":
@@ -568,26 +563,34 @@ def claude_token_sign_in(program: str, typed: str) -> tuple[str, dict[str, Any]]
     return "saved", {}
 
 
-def setup_token_script(program: str, paste_into: str = "the Parent Recap dialog") -> str:
-    """The Terminal window's script for `claude setup-token`, whose token the family copies into
-    `paste_into`."""
-    return (
-        "#!/bin/sh\n"
-        "clear\n"
-        "echo 'Parent Recap: sign in to Claude for the nightly Brief.'\n"
-        "echo 'Click Authorize on the page that opens in your browser. If no page opens, open the'\n"
-        "echo 'link shown below.'\n"
-        f"echo {shlex.quote(f'Copy the token this window then shows and paste it in {paste_into}.')}\n"
-        "echo\n"
-        f"{shlex.quote(program)} setup-token\n"
-        "echo\n"
-        f"echo {shlex.quote(f'When the token is in {paste_into}, press Enter here to clear it from')}\n"
-        "echo 'this window.'\n"
-        "read _\n"
-        # Clears the screen and the scrollback, so the token isn't left behind in the window.
-        "clear; printf '\\033[3J'\n"
-        "echo 'You can close this window.'\n"
-    )
+# The window `claude setup-token` runs in, as a program for this Python, given the claude
+# program and where the family pastes the token. Once they press Enter it clears the screen and
+# the scrollback, so the token isn't left behind in the window.
+SETUP_TOKEN_WINDOW = """\
+import subprocess, sys
+program, paste_into = sys.argv[1:]
+print("Parent Recap: sign in to Claude for the nightly Brief.")
+print("Click Authorize on the page that opens in your browser. If no page opens, open the")
+print("link shown below.")
+print(f"Copy the token this window then shows and paste it in {paste_into}.")
+print()
+try:
+    subprocess.run([program, "setup-token"])
+    print()
+    print(f"When the token is in {paste_into}, press Enter here to clear it from")
+    print("this window.")
+    input()
+except (EOFError, KeyboardInterrupt):
+    pass
+print("\\033[H\\033[2J\\033[3J", end="")
+print("You can close this window.")
+"""
+
+
+def setup_token_window(program: str, paste_into: str = "the Parent Recap dialog") -> list[str]:
+    """The command for the window `claude setup-token` runs in, whose token the family copies
+    into `paste_into`."""
+    return [sys.executable, "-c", SETUP_TOKEN_WINDOW, program, paste_into]
 
 
 # ---------------------------------------------------------------- gateway
@@ -857,7 +860,7 @@ def cmd_myclub(args: argparse.Namespace) -> int:
                        kids=kids)
     again = f"{_program()} setup myclub --kid {shlex.quote(args.kid)}"
     if not args.no_open:
-        subprocess.run(["open", MYCLUB_URL], capture_output=True)
+        desktop.open_url(MYCLUB_URL)
 
     try:
         url = secret_dialog.ask(

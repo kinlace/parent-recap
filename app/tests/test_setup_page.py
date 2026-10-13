@@ -1761,6 +1761,17 @@ def test_the_button_opens_the_passwords_app(harness, page):
     assert ["open", "-a", "Passwords"] in harness.commands
 
 
+def test_off_macos_the_page_offers_neither_whatsapp_nor_the_passwords_app(harness, page,
+                                                                          monkeypatch):
+    # Reading WhatsApp for Mac and the Passwords app exist only on macOS (ADR 0020).
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    sources = [s["name"] for s in call(page.url, "api/state").json()["connect"]["sources"]]
+    assert sources == ["wilma", "gmail", "ai", "myclub"]
+    r = call(page.url, "api/open", method="POST", body={"site": "passwords"})
+    assert r.status == 400 and harness.opened == []
+
+
 def test_the_wilma_fields_are_standard_login_fields(page):
     html = call(page.url).body.decode()
 

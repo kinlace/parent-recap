@@ -100,6 +100,23 @@ def test_a_token_pasted_in_the_dialog_is_tested_and_stored(harness, terminal, ca
     assert_never_leaked(harness, terminal, printed, caplog)
 
 
+def test_the_window_clears_the_token_once_the_family_presses_enter(harness, terminal, tmp_path,
+                                                                  capsys):
+    (tmp_path / "bin" / "claude").write_text(f"#!/bin/sh\n[ \"$1\" = setup-token ] && echo {TOKEN}\n")
+    harness.dialog.typed = TOKEN
+    assert harness.cli("setup", "claude") == 0
+    [opened] = [c for c in harness.commands if c[:3] == ["open", "-a", "Terminal"]]
+
+    # Terminal runs the window's script; the family presses Enter once the token is pasted.
+    window = subprocess.Popen(["/bin/sh", opened[3]], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, text=True)
+    shown, _ = window.communicate("\n", timeout=10)
+
+    before, after = shown.split("\x1b[H\x1b[2J\x1b[3J")
+    assert TOKEN in before and "paste it in the Parent Recap dialog" in before
+    assert after == "You can close this window.\n"
+
+
 def test_a_claude_only_the_login_shell_finds_signs_in(harness, terminal, login_shell, monkeypatch,
                                                       capsys):
     # macOS's own Terminal: the family's shell setup puts claude's folder on their login

@@ -152,6 +152,9 @@ hangs or doesn't start, a ticked group with a new name, and groups that can't be
 reason, with the group's old name, comes back from the `bg` job as a line of JSON, doctor's own
 line stays as it was, and the setup skill's advice for each reason quotes doctor's words. No skill
 or doc sends the parent to a file called python3, since Finder selects one such as python3.13.
+Off macOS, doctor has no WhatsApp check and never reads WhatsApp.
+`test_desktop.py` checks that a terminal window's script, run as Terminal runs it, runs its
+command in the home folder with the variables it was given, and leaves nothing behind.
 `test_own_node.py` lays out Parent Recap's own Node and a wilma CLI in the test's `~/ParentRecap`
 (`fake_node.py`: a stand-in `node` that runs the script it's given, and a shell script answering
 as the CLI does) with no Node on PATH, and checks that `doctor` and the evening job run that CLI
@@ -187,7 +190,8 @@ window showed. Where no pseudo-terminal
 can be opened (a sandbox), the window talks to the fake CLI through `no_pty/sitecustomize.py`.
 `test_setup_claude.py` runs `parent-recap setup claude` against a fake Terminal, macOS dialog,
 Keychain and `claude` test call, and checks the token never reaches the output, the logs or a
-command line. `test_setup_claude_token.py` keeps the older Terminal script working.
+command line, and that the window clears the token from its screen and scrollback once the family
+presses Enter. `test_setup_claude_token.py` keeps the older Terminal script working.
 `test_gateway.py` runs the evening Brief, doctor and `parent-recap setup gateway` with
 `backend: gateway` against a fake gateway (`requests.post` to its `/v1/messages`, answered from the
 harness's model replies), Keychain and macOS dialog. It checks the Brief's and translations' calls
@@ -228,7 +232,8 @@ the page makes them. It checks that a request without the code, or for another H
 another Origin, is refused, that the page loads nothing from the internet, that the server stops
 after 30 idle minutes and Terminal then says, in the language picked, that its window can be
 closed, the Mac's language preselected, that the language picked is saved, that
-every page text is in all three languages, and that a second run resumes at the saved phase. On
+every page text is in all three languages, that a second run resumes at the saved phase, and that
+off macOS the page offers neither WhatsApp nor the Passwords app. On
 Welcome, it checks each choice's default and that the answers are saved, that the partner's email
 and language are asked only with a partner, and that a missing or signed-out Claude Code or Codex
 is caught and checked again: the harness answers `claude auth status` and `codex login status`

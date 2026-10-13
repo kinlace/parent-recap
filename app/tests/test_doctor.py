@@ -173,6 +173,16 @@ def test_doctor_reads_whatsapp_with_full_disk_access_and_macos_never_asks(harnes
     assert mac.prompts == 0 and mac.reads and all(mac.reads)
 
 
+def test_off_macos_doctor_has_no_whatsapp_check(harness, mac_with_whatsapp, monkeypatch, capsys):
+    # WhatsApp for Mac's database and Full Disk Access exist only on macOS (ADR 0020).
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    harness.cli("doctor", "--skip-llm")
+
+    assert whatsapp_lines(capsys.readouterr().out) == []
+    assert mac_with_whatsapp.reads == []
+
+
 # ── the Python given Full Disk Access, against the evening job's (ADR 0011, 0012)
 
 

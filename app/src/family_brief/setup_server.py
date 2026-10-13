@@ -25,7 +25,6 @@ import secrets
 import shlex
 import socketserver
 import subprocess
-import tempfile
 import threading
 import time
 from http import HTTPStatus
@@ -42,6 +41,7 @@ from . import (chat_install, feedback, ops, run_lock, setup_ai, setup_save, setu
 from .actions import email as email_action
 from .config import Config, Kid, LLMConfig
 from .state import State
+from .system import desktop, desktop_macos, macos_only
 from .utils import keychain
 
 IDLE_SECONDS = 30 * 60
@@ -138,13 +138,12 @@ CLOSED_LINES = {
 # can say. Claude Code opens in a Terminal window; a Codex family is told what to type in Codex.
 CHAT_SKILLS = {"claude": "/parent-recap:setup", "codex": "$parent-recap-setup"}
 CHAT_RESULTS = {"claude": ("opened", "no-terminal", "not-installed"), "codex": ("open-codex",)}
+CHAT_WINDOW = "Parent Recap setup"
 # The sites the page's buttons open, by name: the page itself names none.
 SITES = {"app-passwords": setup_steps.APP_PASSWORDS_URL, "two-step": setup_steps.TWO_STEP_URL,
          "myclub": setup_steps.MYCLUB_URL, "codex-app": setup_steps.CODEX_APP_URL}
-# The apps they open, each tried in turn: the Passwords app, or before macOS 15, where the
-# passwords were in System Settings.
-APPS = {"passwords": (["-a", "Passwords"],
-                      ["x-apple.systempreferences:com.apple.Passwords-Settings.extension"])}
+# The apps they open, by name.
+APPS = {"passwords": desktop_macos.open_passwords}
 ADDRESS = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 POLL_SECONDS = 1.0
 clock = time.monotonic  # the idle clock
@@ -182,11 +181,7 @@ def cmd_page(args: argparse.Namespace) -> int:
     config = Path(os.path.expanduser(os.path.expandvars(args.config or "~/.family/config.yaml")))
     server = SetupServer(config)
     out: dict[str, Any] = {"result": "opened", "url": server.url}
-    try:
-        opened = subprocess.run(["open", server.url], capture_output=True).returncode == 0
-    except OSError:
-        opened = False
-    if not opened:
+    if not desktop.open_url(server.url):
         out = {"result": "not-opened", "url": server.url,
                "next": f"The browser didn't open. Open this address in it: {server.url}"}
     if keychain.unreachable_here():  # the page says so too
@@ -222,10 +217,8 @@ class SetupServer:
         self._window: dict[str, Any] | None = None  # the Terminal sign-in window's, once opened
         self._ai = threading.Lock()  # one AI sign-in at a time
         self._claude: dict[str, Any] | None = None  # Claude's sign-in's, once started
-        self._claude_script: tempfile.TemporaryDirectory | None = None  # its Terminal script's
         self._codex: subprocess.Popen | None = None  # Codex's sign-in, once started
         self._whatsapp = threading.Lock()  # one read at a time, since each is a launchd job
-        self._chat_script: tempfile.TemporaryDirectory | None = None  # the chat's Terminal script's
         # What lets the family ask for changes in the chat later, by AI, once Welcome has saved
         # it: `installing`, `installed`, `install-failed`, `not-installed` (no Claude Code) or
         # `no-plugin-copy` (the program wasn't installed by the install line).
@@ -273,10 +266,8 @@ class SetupServer:
             if self._codex is not None and self._codex.poll() is None:
                 self._codex.kill()
                 self._codex.wait()
-            if self._claude_script is not None:
-                self._claude_script.cleanup()
-            if self._chat_script is not None:
-                self._chat_script.cleanup()
+            for window in (setup_steps.CLAUDE_WINDOW, CHAT_WINDOW):
+                desktop.forget_terminal(window)
             threads = list(self._chat_threads.values())
         for thread in threads:  # an install isn't cut off halfway
             thread.join()
@@ -287,13 +278,13 @@ class SetupServer:
         progress = setup_save.read(self.config)["progress"]
         return {"languages": [{"code": c, "name": n} for c, n in LANGUAGES.items()],
                 "language": self.chosen_language(),
-                "preselected": mac_language(),
+                "preselected": preferred_language(),
                 # In tmux or SSH, macOS won't let this server save the passwords in the Keychain.
                 "keychain": {"reachable": not keychain.unreachable_here()},
                 "progress": progress,
                 "welcome": self._welcome(progress),
                 "connect": {"sources": [{"name": s, "skippable": s in SKIPPABLE}
-                                        for s in setup_save.SOURCES]},
+                                        for s in _sources()]},
                 "gmail": {"address": self._gmail_address()},
                 # The name of the Python file Finder selects for Full Disk Access, such as
                 # python3.13, for every text that names it. Not its path: that names the Mac's user.
@@ -386,15 +377,9 @@ class SetupServer:
         program = summarize.find_claude()
         if program is None:
             return HTTPStatus.OK, {"result": "not-installed", "install": summarize.CLAUDE_INSTALL}
-        with self._ai:
-            if self._claude_script is not None:
-                self._claude_script.cleanup()
-            # Kept until the next window or the page stops, since Terminal runs the script from it.
-            self._claude_script = tempfile.TemporaryDirectory(prefix="parent-recap-claude-")
-            script = Path(self._claude_script.name) / "Claude sign-in.command"
-            script.write_text(setup_steps.setup_token_script(program, "the field on the setup page"))
-            script.chmod(0o700)
-        opened = _open(["-a", "Terminal", str(script)])
+        opened = desktop.open_terminal(
+            setup_steps.setup_token_window(program, "the field on the setup page"), {},
+            setup_steps.CLAUDE_WINDOW)
         return HTTPStatus.OK, {"result": "opened" if opened else "no-terminal"}
 
     def save_claude_token(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
@@ -410,10 +395,7 @@ class SetupServer:
         result, extra = setup_steps.claude_token_sign_in(program, raw["token"])
         if result != "saved":
             return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
-        with self._ai:
-            if self._claude_script is not None:  # the window's script has done its work
-                self._claude_script.cleanup()
-                self._claude_script = None
+        desktop.forget_terminal(setup_steps.CLAUDE_WINDOW)  # the window has done its work
         out = self._ai_signed_in("claude")
         return (HTTPStatus.OK if out["result"] == "saved" else HTTPStatus.CONFLICT), out
 
@@ -919,7 +901,7 @@ class SetupServer:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Only a pilot Household's Brief has the feedback link.",
                 errors=["answers: should be {}, once a pilot Household's Brief is made"])
-        return HTTPStatus.OK, {"result": "opened" if _open([link]) else "not-opened"}
+        return HTTPStatus.OK, {"result": "opened" if desktop.open_url(link) else "not-opened"}
 
     def _brief_sent(self) -> bool:
         """Whether a Brief has reached the setup parent, the first Recipient."""
@@ -1050,15 +1032,8 @@ class SetupServer:
         program = summarize.find_claude()
         if program is None:
             return HTTPStatus.OK, {"result": "not-installed", "install": summarize.CLAUDE_INSTALL}
-        with self._ai:
-            if self._chat_script is not None:
-                self._chat_script.cleanup()
-            # Kept until the next window or the page stops, since Terminal runs the script from it.
-            self._chat_script = tempfile.TemporaryDirectory(prefix="parent-recap-chat-")
-            script = Path(self._chat_script.name) / "Parent Recap setup.command"
-            script.write_text(chat_script(program))
-            script.chmod(0o700)
-        if _open(["-a", "Terminal", str(script)]):
+        # Claude Code in the family's home folder, at the setup skill.
+        if desktop.open_terminal([program, skill], {}, CHAT_WINDOW):
             return HTTPStatus.OK, {"result": "opened"}
         return HTTPStatus.OK, {"result": "no-terminal", "type": shlex.join([program, skill])}
 
@@ -1165,15 +1140,17 @@ class SetupServer:
     def open_site(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Opens one of the sites the page sends the family to, in the default browser, or one of
         the Mac's apps."""
-        if not (isinstance(raw, dict) and set(raw) == {"site"} and raw["site"] in {*SITES, *APPS}):
+        apps = {name: open_app for name, open_app in APPS.items() if macos_only.offers(name)}
+        if not (isinstance(raw, dict) and set(raw) == {"site"} and raw["site"] in {*SITES, *apps}):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Open one of the page's own sites.",
-                errors=[f"site: should be one of {', '.join([*SITES, *APPS])}"])
-        if raw["site"] in APPS:
-            opened = any(_open(args) for args in APPS[raw["site"]])
+                errors=[f"site: should be one of {', '.join([*SITES, *apps])}"])
+        if raw["site"] in apps:
+            opened = apps[raw["site"]]()
             return HTTPStatus.OK, {"result": "opened" if opened else "not-opened"}
         url = SITES[raw["site"]]
-        return HTTPStatus.OK, {"result": "opened" if _open([url]) else "not-opened", "url": url}
+        opened = desktop.open_url(url)
+        return HTTPStatus.OK, {"result": "opened" if opened else "not-opened", "url": url}
 
     # ── Wilma (ADR 0008)
 
@@ -1360,7 +1337,7 @@ class SetupServer:
     def _welcome(self, progress: dict[str, Any]) -> dict[str, Any]:
         """Welcome's choices as saved, each with its default until it is."""
         data = self._config_data()
-        language = self.chosen_language() or mac_language()
+        language = self.chosen_language() or preferred_language()
         if "partner" in progress:
             saved = progress["partner"]
         else:  # a config the chat setup wrote: its second Recipient is the partner
@@ -1497,19 +1474,6 @@ def _label(term: str, kid: Kid) -> str | None:
     return term if term in kid.activities else None
 
 
-def chat_script(program: str) -> str:
-    """The Terminal window's script for "Continue in the chat": Claude Code in the family's home
-    folder, at the setup skill."""
-    return f"#!/bin/sh\ncd ~ || exit 1\nexec {shlex.join([program, CHAT_SKILLS['claude']])}\n"
-
-
-def _open(args: list[str]) -> bool:
-    try:
-        return subprocess.run(["open", *args], capture_output=True).returncode == 0
-    except OSError:
-        return False
-
-
 def _ai_status(program: str, name: str) -> str:
     """`ready`, `signed-out` or `check-failed`, from the AI's own status check."""
     status = ["auth", "status"] if name == "claude" else ["login", "status"]
@@ -1542,7 +1506,12 @@ def _wilma_invalid() -> dict[str, Any]:
 
 def _next_source(statuses: dict[str, str]) -> str | None:
     """The first Source in the list still to do, or None once each is done or skipped."""
-    return next((s for s in setup_save.SOURCES if statuses.get(s) == "to-do"), None)
+    return next((s for s in _sources() if statuses.get(s) == "to-do"), None)
+
+
+def _sources() -> list[str]:
+    """The Sources this system offers, in the list's order."""
+    return [s for s in setup_save.SOURCES if macos_only.offers(s)]
 
 
 def _section(data: dict[str, Any], key: str) -> dict[str, Any]:
@@ -1550,14 +1519,9 @@ def _section(data: dict[str, Any], key: str) -> dict[str, Any]:
     return section if isinstance(section, dict) else {}
 
 
-def mac_language() -> str:
-    """The first of the page's languages among the Mac's preferred ones, else English."""
-    try:
-        listed = subprocess.run(["defaults", "read", "-g", "AppleLanguages"], capture_output=True,
-                                text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        return "en"
-    for tag in re.findall(r"[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*", listed or ""):
+def preferred_language() -> str:
+    """The first of the page's languages among the computer's preferred ones, else English."""
+    for tag in desktop.preferred_languages():
         language = re.split(r"[-_]", tag)[0].lower()
         if language in LANGUAGES:
             return language

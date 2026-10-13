@@ -20,7 +20,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
@@ -30,6 +29,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from . import ai_filter, held_back, private_files, summarize
+from .system import desktop
 from .actions import archive
 from .collectors.base import Message
 from .config import Config
@@ -277,15 +277,8 @@ def _list_held_back(report: Report, cfg: Config, folder: Path, first: str, last:
                         "ai-filter-report --held-back runs.\n\n"
                         + "".join(_held_back_line(m, found, zone) + "\n" for m, found in held))
     listed = f"\n{what} {'is' if n == 1 else 'are'} listed in {_show(path)}"
-    if _open_in_textedit(path):
+    if desktop.open_file(path):
         print(f"{listed}, now open in TextEdit. The list isn't printed here: it holds the messages' own text.")
     else:
         print(f"{listed}. TextEdit couldn't be opened here, so open that file on this Mac to read it. The list "
               "isn't printed here: it holds the messages' own text.")
-
-
-def _open_in_textedit(path: Path) -> bool:
-    try:
-        return subprocess.run(["open", "-e", str(path)], capture_output=True).returncode == 0
-    except OSError:
-        return False

@@ -28,6 +28,7 @@ from typing import Callable, NamedTuple
 from . import (google_packages, install_record, languages, own_node, private_files,
                secret_dialog, tools, whatsapp_python)
 from .config import Config
+from .system import desktop_macos, macos_only
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
 # Why the WhatsApp check isn't OK, for the setup page and the chat skills to say what fixes it:
@@ -149,7 +150,7 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
         _check_llm(cfg, add)
     if cfg.wilma.enabled:
         _check_wilma(cfg, add)
-    if cfg.whatsapp.enabled:
+    if cfg.whatsapp.enabled and macos_only.offers("whatsapp"):
         _check_whatsapp_python(add)
         _check_whatsapp(cfg, add, config)
     for kid in cfg.kids:
@@ -655,8 +656,7 @@ def show_python_for_full_disk_access() -> tuple[str, list[list[str]]]:
     # The real Python sits in a hidden folder, so finding it with ⌘⇧G is hard. Selecting it in
     # Finder next to the open pane leaves the family one drag.
     python = full_disk_access_python()
-    commands = [["open", "-R", python], ["open", FULL_DISK_ACCESS_URL]]
-    return python, [c for c in commands if subprocess.run(c, capture_output=True).returncode != 0]
+    return python, desktop_macos.show_beside(python, FULL_DISK_ACCESS_URL)
 
 
 # ---------------------------------------------------------------- bg
