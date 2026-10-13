@@ -18,18 +18,16 @@ import threading
 import time
 from pathlib import Path
 from types import FrameType
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 from .. import install_record, private_files, tools
-
-if TYPE_CHECKING:
-    from .jobs import Found, Job
+from . import jobs  # its names are read at call time: jobs imports this module first
 
 LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
 PREFIX = "com.parentrecap."
-DAILY = f"{PREFIX}daily"
-WEEKEND = f"{PREFIX}weekend-events"
-OURS = (DAILY, WEEKEND)
+DAILY_LABEL = f"{PREFIX}daily"
+WEEKEND_LABEL = f"{PREFIX}weekend-events"
+OURS = (DAILY_LABEL, WEEKEND_LABEL)
 
 
 def system_name(name: str) -> str:
@@ -50,7 +48,7 @@ def _domain() -> str:
 
 # ---------------------------------------------------------------- the evening jobs
 
-def _plist(job: Job) -> dict:
+def _plist(job: jobs.Job) -> dict:
     interval = {"Hour": job.hour, "Minute": job.minute}
     if job.weekday is not None:
         interval = {"Weekday": job.weekday, **interval}
@@ -66,8 +64,8 @@ def _plist(job: Job) -> dict:
     }
 
 
-def install(jobs: list[Job]) -> None:
-    for job in jobs:
+def install(wanted: list[jobs.Job]) -> None:
+    for job in wanted:
         label = system_name(job.name)
         path = _path(label)
         LAUNCH_AGENTS.mkdir(parents=True, exist_ok=True)
@@ -76,7 +74,7 @@ def install(jobs: list[Job]) -> None:
             plistlib.dump(_plist(job), f)
         subprocess.run(["launchctl", "load", str(path)], check=True)
         install_record.add("launchd", str(path))
-    kept = {system_name(job.name) for job in jobs}
+    kept = {system_name(job.name) for job in wanted}
     for label in OURS:
         if label not in kept:
             _remove(_path(label))
@@ -123,9 +121,8 @@ def _program(path: Path) -> list[str]:
         return []
 
 
-def found() -> list[Found]:
-    from .jobs import Found
-    return [Found(p.stem, p, _program(p)) for p in _plists()]
+def found() -> list[jobs.Found]:
+    return [jobs.Found(p.stem, p, _program(p)) for p in _plists()]
 
 
 def program(name: str) -> list[str] | None:
@@ -134,17 +131,16 @@ def program(name: str) -> list[str] | None:
 
 
 def run_now(name: str) -> None:
-    from .jobs import AlreadyRunning, NotInstalled, NotStarted
     target = f"{_domain()}/{system_name(name)}"
     probe = subprocess.run(["launchctl", "print", target], capture_output=True, text=True)
     if probe.returncode != 0:
-        raise NotInstalled()
+        raise jobs.NotInstalled()
     # Plain kickstart (no -k) leaves a running job alone, so say so instead of looking like a start.
     if re.search(r"^\tstate = running$", probe.stdout, re.M):
-        raise AlreadyRunning()
+        raise jobs.AlreadyRunning()
     kick = subprocess.run(["launchctl", "kickstart", target], capture_output=True, text=True)
     if kick.returncode != 0:
-        raise NotStarted(f"launchctl couldn't start {system_name(name)}: "
+        raise jobs.NotStarted(f"launchctl couldn't start {system_name(name)}: "
                          f"{kick.stderr.strip() or kick.returncode}")
 
 
@@ -175,7 +171,6 @@ def _exit_on_signal(signum: int, _frame: FrameType | None) -> None:
 def run_detached(args: list[str], config: str | None, timeout: int,
                  progress: Callable[[str], None]) -> tuple[int | None, str]:
     """`jobs.run_detached` as a one-off launchd job. Its exit code is None when it was stopped."""
-    from .jobs import BG_ENV
     work = Path(tempfile.mkdtemp(prefix="parent-recap-bg-"))
     label = f"{PREFIX}bg.{os.getpid()}"
     domain = _domain()
@@ -193,7 +188,7 @@ def run_detached(args: list[str], config: str | None, timeout: int,
         "WorkingDirectory": str(Path.home()),
         "Umask": private_files.UMASK,
         "EnvironmentVariables": {"PATH": _path_env(), "HOME": str(Path.home()),
-                                 "PYTHONUNBUFFERED": "1", BG_ENV: "1"},
+                                 "PYTHONUNBUFFERED": "1", jobs.BG_ENV: "1"},
     }))
     code: int | None = None
     # Python skips `finally` on SIGTERM, and the job belongs to launchd, so an agent's command

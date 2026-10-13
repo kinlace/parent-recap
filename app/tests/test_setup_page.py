@@ -3766,8 +3766,8 @@ def test_finish_installs_the_evening_job_and_the_wake_up_through_macos_s_dialog(
     assert out["result"] == "done" and out["wake"] == "set"
     assert checklist(out) == {"installed": True, "doctor": True, "brief": True, "nightly": True,
                               "wake": True}
-    assert jobs_macos.DAILY in schedule.loaded
-    assert (jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY}.plist").exists()
+    assert jobs_macos.DAILY_LABEL in schedule.loaded
+    assert (jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY_LABEL}.plist").exists()
     # The Mac password goes into macOS's own dialog, which says who is asking and why.
     [dialog] = schedule.dialogs
     assert "pmset repeat wakeorpoweron MTWRFSU 20:55:00" in dialog and "Parent Recap" in dialog
@@ -4007,7 +4007,7 @@ def test_finish_waits_for_the_first_brief(harness, page, schedule):
 
 def test_a_finished_household_sees_only_the_checklist(harness, page, schedule):
     at_finish(harness)
-    schedule.loaded.add(jobs_macos.DAILY)
+    schedule.loaded.add(jobs_macos.DAILY_LABEL)
     schedule.repeating = ["wakepoweron at 8:55PM every day"]
 
     r = call(page.url, "api/finish/outcomes", method="POST", body={})

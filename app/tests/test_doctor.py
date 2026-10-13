@@ -52,13 +52,13 @@ def test_doctor_says_an_installed_job_isnt_loaded_until_someone_logs_in(harness,
                                                                        capsys):
     # After a restart, or over SSH, the LaunchAgent is on disk but launchd hasn't loaded it.
     jobs_macos.LAUNCH_AGENTS.mkdir(parents=True)
-    (jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY}.plist").write_bytes(plistlib.dumps({"Label": jobs_macos.DAILY}))
+    (jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY_LABEL}.plist").write_bytes(plistlib.dumps({"Label": jobs_macos.DAILY_LABEL}))
 
     harness.cli("doctor", "--skip-llm")
 
     line = schedule_line(capsys.readouterr().out)
     assert line.startswith(ops.WARN.strip())
-    assert f"installed but not loaded for this login: {jobs_macos.DAILY}" in line
+    assert f"installed but not loaded for this login: {jobs_macos.DAILY_LABEL}" in line
     assert "only runs while you're logged in" in line and "No Brief after the Mac restarted" in line
     assert "not installed yet" not in line
     assert not HAN.findall(line)
@@ -68,7 +68,7 @@ def test_doctor_says_a_job_with_no_launch_agent_isnt_installed_yet(harness, noth
     harness.cli("doctor", "--skip-llm")
 
     line = schedule_line(capsys.readouterr().out)
-    assert f"not installed yet: {jobs_macos.DAILY}" in line and "parent-recap schedule install" in line
+    assert f"not installed yet: {jobs_macos.DAILY_LABEL}" in line and "parent-recap schedule install" in line
     assert "not loaded" not in line
 
 
@@ -136,7 +136,7 @@ def mac_with_whatsapp(harness, monkeypatch):
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     monkeypatch.delenv(ops.BG_ENV, raising=False)
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: {jobs_macos.DAILY})
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: {jobs_macos.DAILY_LABEL})
     mac = fake_mac(harness, monkeypatch)
     mac.install_whatsapp([("3B parents", 1, False), ("Leo piano", 2, False)])
     return mac
@@ -193,13 +193,13 @@ def evening_job(harness, monkeypatch):
     linking to it, as install.sh and schedule install lay them out. Returns the venv's link."""
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: {jobs_macos.DAILY})
+    monkeypatch.setattr(jobs_macos, "_loaded", lambda: {jobs_macos.DAILY_LABEL})
     monkeypatch.setattr(jobs_macos, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
     venv_python = harness.home / "ParentRecap" / "app" / ".venv" / "bin" / "python"
     venv_python.parent.mkdir(parents=True)
     jobs_macos.LAUNCH_AGENTS.mkdir(parents=True)
-    (jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY}.plist").write_bytes(plistlib.dumps(
-        {"Label": jobs_macos.DAILY, "ProgramArguments": [str(venv_python), "-m", "family_brief", "run"]}))
+    (jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY_LABEL}.plist").write_bytes(plistlib.dumps(
+        {"Label": jobs_macos.DAILY_LABEL, "ProgramArguments": [str(venv_python), "-m", "family_brief", "run"]}))
     return venv_python
 
 

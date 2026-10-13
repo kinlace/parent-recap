@@ -125,7 +125,7 @@ def healthy(harness, mac, monkeypatch) -> None:
     monkeypatch.setattr(shutil, "which", lambda cmd, *a, **k: f"/usr/local/bin/{cmd}"
                         if cmd == "claude" else which(cmd, *a, **k))
     harness.model_reply = "OK"
-    mac.loaded.add(jobs_macos.DAILY)
+    mac.loaded.add(jobs_macos.DAILY_LABEL)
 
 
 def test_the_health_check_is_all_ok_when_every_doctor_check_is(harness, healthy, capsys):
@@ -260,7 +260,7 @@ def test_a_brief_with_no_recipients_reaches_nobody(harness, mac, capsys):
 
 
 def test_the_nightly_job_is_loaded_once_the_schedule_is_installed(harness, mac, capsys):
-    mac.loaded.add(jobs_macos.DAILY)
+    mac.loaded.add(jobs_macos.DAILY_LABEL)
 
     _, report = status(harness, capsys)
 
@@ -270,7 +270,7 @@ def test_the_nightly_job_is_loaded_once_the_schedule_is_installed(harness, mac, 
 
 
 def test_the_nightly_job_isnt_loaded_before_the_schedule_is_installed(harness, mac, capsys):
-    mac.loaded.add(jobs_macos.WEEKEND)  # Weekend Picks' job isn't the nightly one
+    mac.loaded.add(jobs_macos.WEEKEND_LABEL)  # Weekend Picks' job isn't the nightly one
 
     _, report = status(harness, capsys)
 
@@ -353,7 +353,7 @@ def test_the_readable_form_marks_what_isnt_done(harness, mac, capsys):
     assert harness.cli("setup", "status", "--text") == 1
 
     lines = capsys.readouterr().out.splitlines()
-    nightly = next(line for line in lines if jobs_macos.DAILY in line)
+    nightly = next(line for line in lines if jobs_macos.DAILY_LABEL in line)
     assert nightly.startswith(ops.FAIL) and "parent-recap schedule install" in nightly
 
 
