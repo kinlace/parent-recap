@@ -301,7 +301,7 @@ def cmd_wilma(args: argparse.Namespace) -> int:
                 with suppress(OSError):  # the step stopped waiting and took its folder away
                     args.status.write_text(f"{status}\n")
         return status
-    out =sign_in_in_terminal(args.language, args.timeout, no_open=args.no_open)
+    out = sign_in_in_terminal(args.language, args.timeout, no_open=args.no_open)
     return _report(out.pop("result"), out.pop("next", None), **out)
 
 

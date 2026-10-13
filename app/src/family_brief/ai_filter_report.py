@@ -29,10 +29,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from . import ai_filter, held_back, private_files, summarize
-from .system import desktop
 from .actions import archive
 from .collectors.base import Message
 from .config import Config
+from .system import desktop
 
 _EVENING = re.compile(r"\d{4}-\d{2}-\d{2}\.raw\.json")  # one evening's messages, as archive.write names it
 _PLACEHOLDER = re.compile(r"⟦([PELN])[0-9]+⟧")
