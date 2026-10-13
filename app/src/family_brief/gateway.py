@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from .utils import keychain
+from .system import secrets
 
 ACCOUNT = "gateway-key"
 # What the gateway maps to its real model, so changing model is a gateway config change.
@@ -64,8 +64,8 @@ def host(url: str) -> str:
 def key() -> str:
     """The stored Gateway Key. Raises NoKey when there is none, or one macOS asks about first."""
     try:
-        stored = (keychain.get(ACCOUNT) or "").strip()
-    except keychain.KeychainError:
+        stored = (secrets.get(ACCOUNT) or "").strip()
+    except secrets.SecretsError:
         raise NoKey("the Gateway Key is in the Keychain, but macOS asks for the Keychain password "
                     f"before reading it, which the evening Brief can't answer (store it again with "
                     f"{SETUP})") from None

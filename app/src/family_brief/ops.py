@@ -172,16 +172,17 @@ def _check_gmail(cfg: Config, add) -> None:
     if not username:
         add(FAIL, "Gmail", "no gmail.username in the config")
         return
-    from .utils import keychain
+    from .system import secrets
     try:
         password = gmail.get_app_password(username)
-    except keychain.NeedsPrompt:
-        add(FAIL, "Gmail", f"the App Password for {username} is in the Keychain, but macOS asks "
-            f"for the Keychain password before reading it, which the evening Brief can't answer "
-            "(store it again with parent-recap setup gmail, or the setup page's Gmail step)")
-        return
-    except keychain.KeychainError as e:
-        add(FAIL, "Gmail", f"couldn't read the App Password for {username} from the Keychain: {e}")
+    except secrets.SecretsError as e:
+        if e.reason == "needs-prompt":
+            add(FAIL, "Gmail", f"the App Password for {username} is in the Keychain, but macOS "
+                f"asks for the Keychain password before reading it, which the evening Brief can't "
+                "answer (store it again with parent-recap setup gmail, or the setup page's Gmail "
+                "step)")
+        else:
+            add(FAIL, "Gmail", f"couldn't read the App Password for {username} from the Keychain: {e}")
         return
     if not password:
         add(FAIL, "Gmail", f"No App Password in the Keychain for {username} "
@@ -269,9 +270,9 @@ def _check_claude(add) -> None:
             f"folders, or by your login shell (install Claude Code with: {CLAUDE_INSTALL})")
         return
     from .setup_steps import PLAIN_TERMINAL
-    from .utils import keychain
+    from .system import secrets
     env, label = _claude_env()
-    where = f", {PLAIN_TERMINAL}" if keychain.unreachable_here() else ""
+    where = "" if secrets.reachable() else f", {PLAIN_TERMINAL}"
     if label == "inherited":
         # This shell's own sign-in can work while the evening job, which has none, can't.
         add(FAIL, "Claude", "no claude-oauth-token in the Keychain, so the evening Brief can't "

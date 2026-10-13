@@ -106,8 +106,8 @@ class FakeMac:
         raise AssertionError(f"unexpected claude command in test: {args}")
 
     def removals(self) -> list[list[str]]:
-        return [c for c in self.ran if c[:2] in (["launchctl", "unload"],
-                                                  ["security", "delete-generic-password"])
+        return [c for c in self.ran if c[:2] == ["launchctl", "unload"]
+                or (Path(c[0]).name == "security" and c[1] == "delete-generic-password")
                 or c[0] == "osascript" or Path(c[0]).name == "npm"
                 or (Path(c[0]).name == "claude" and "--json" not in c)]
 

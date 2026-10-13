@@ -155,6 +155,8 @@ or doc sends the parent to a file called python3, since Finder selects one such 
 Off macOS, doctor has no WhatsApp check and never reads WhatsApp.
 `test_desktop.py` checks that a terminal window's script, run as Terminal runs it, runs its
 command in the home folder with the variables it was given, and leaves nothing behind.
+`test_secrets.py` reads, stores and deletes secrets through `family_brief.system.secrets` against
+the fake Keychain, and checks the reason it gives when the Keychain asks first or refuses.
 `test_own_node.py` lays out Parent Recap's own Node and a wilma CLI in the test's `~/ParentRecap`
 (`fake_node.py`: a stand-in `node` that runs the script it's given, and a shell script answering
 as the CLI does) with no Node on PATH, and checks that `doctor` and the evening job run that CLI

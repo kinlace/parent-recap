@@ -23,7 +23,7 @@ from .brief_text import TEXT, BriefText
 from .languages import FINNISH_TERMS, is_finnish
 from .collectors.base import CalendarEvent, Message
 from .config import Config
-from .utils import keychain
+from .system import secrets
 
 _ = CalendarEvent  # re-export-friendly
 
@@ -409,8 +409,8 @@ def _claude_env() -> tuple[dict[str, str], str]:
     def read(account: str) -> str | None:
         nonlocal needs_prompt
         try:
-            return (keychain.get(account) or "").strip() or None
-        except keychain.KeychainError:  # there, or maybe there, but not read: never "missing"
+            return (secrets.get(account) or "").strip() or None
+        except secrets.SecretsError:  # there, or maybe there, but not read: never "missing"
             needs_prompt = True
         return None
 

@@ -1,4 +1,4 @@
-"""Parent Recap's secrets in the macOS Keychain, service family-brief, all written and read with
+"""The macOS adapter of `secrets`: the Keychain, service family-brief, all written and read with
 /usr/bin/security.
 
 Each item trusts /usr/bin/security, so the evening job reads it without macOS asking for the
@@ -11,6 +11,9 @@ import os
 import re
 import subprocess
 
+from .secrets_error import SecretsError
+
+STORE = "Keychain"
 SERVICE = "family-brief"
 SECURITY = "/usr/bin/security"
 # How long a read may take. A readable item takes a fraction of a second; one that makes macOS
@@ -32,48 +35,35 @@ _CODES = {
 }
 
 
-class KeychainError(Exception):
-    """macOS didn't let Parent Recap write or read a secret. `code` is macOS's OSStatus code,
-    when security's message names a known one."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-        self.code = next((c for text, c in _CODES.items() if text in message), None)
-
-
-class NeedsPrompt(KeychainError):
-    """The item is there, but macOS asks for the Keychain password before security may read it,
-    or refused it: an item an earlier version stored, which trusts only that version's Python."""
-
-
 def get(key: str) -> str | None:
-    """The secret stored under `key`, or None when there is none. Raises NeedsPrompt when there
-    is one security can't read without a prompt."""
+    # Any refusal of a read is `needs-prompt`: the item is there, but macOS asks for the
+    # Keychain password before security may read it, or refused it: an item an earlier version
+    # stored, which trusts only that version's Python.
     try:
         r = subprocess.run(_item("find-generic-password", key) + ["-w"], capture_output=True,
                            text=True, timeout=READ_SECONDS)
     except subprocess.TimeoutExpired:
-        raise NeedsPrompt(f"macOS asks for the Keychain password before {key} can be read")
+        raise SecretsError(f"macOS asks for the Keychain password before {key} can be read",
+                           "needs-prompt")
     except OSError as e:
-        raise KeychainError(f"couldn't run {SECURITY}: {e}")
+        raise _error(f"couldn't run {SECURITY}: {e}")
     if r.returncode == NOT_FOUND:
         return None
     if r.returncode != 0:
-        raise NeedsPrompt(f"macOS didn't let {key} be read: {_said(r)}")
+        said = _said(r)
+        raise SecretsError(f"macOS didn't let {key} be read: {said}", "needs-prompt", _code(said))
     return r.stdout.rstrip("\n") or None
 
 
-def set_(key: str, value: str) -> None:
-    """Stores `value` under `key` so security may read it without a prompt. Raises KeychainError
-    when macOS refused it."""
+def put(key: str, value: str) -> None:
     if "\n" in value or "\r" in value:
         raise ValueError("a secret on one line only")
-    if _exists(key):
+    if has(key):
         # An item an earlier version stored trusts only that version's Python. Deleting it gives
         # the new one this access list rather than the old one's.
         r = _run(_item("delete-generic-password", key))
         if r.returncode not in (0, NOT_FOUND):
-            raise KeychainError(_said(r))
+            raise _error(_said(r))
     # Typed into security's own prompt, so the secret is on no command line, where `ps` would
     # show it to every account on the Mac (ADR 0005).
     command = (f"add-generic-password -U -s {_quote(SERVICE)} -a {_quote(key)} "
@@ -82,25 +72,45 @@ def set_(key: str, value: str) -> None:
     # security -i goes on after a command fails, so reading it back tells whether it's stored.
     try:
         stored = get(key)
-    except NeedsPrompt as e:
-        raise KeychainError(_said(r) or str(e))
+    except SecretsError as e:
+        raise _error(_said(r) or str(e))
     if stored != value:
-        raise KeychainError(_said(r) or f"{key} wasn't stored")
+        raise _error(_said(r) or f"{key} wasn't stored")
 
 
-def unreachable_here() -> bool:
-    """Whether this runs inside tmux or an SSH session, where macOS won't let it write the
-    Keychain."""
-    return bool(os.environ.get("TMUX") or os.environ.get("SSH_CONNECTION"))
+def has(key: str) -> bool:
+    # Without -w, security only says whether the item is there and never asks.
+    return _run(_item("find-generic-password", key)).returncode == 0
+
+
+def delete(key: str) -> None:
+    r = _run(_item("delete-generic-password", key))
+    if r.returncode not in (0, NOT_FOUND):
+        raise _error("macOS didn't allow it. Delete it in the Keychain Access app instead: "
+                     f"search for {SERVICE}", _code(_said(r)))
+
+
+def where(key: str) -> str:
+    return f"{SERVICE} / {key}"
+
+
+def reachable() -> bool:
+    return not (os.environ.get("TMUX") or os.environ.get("SSH_CONNECTION"))
+
+
+def _error(message: str, code: int | None = None) -> SecretsError:
+    """A refused write or delete: `not-reachable` when macOS can't even ask from here."""
+    code = code if code is not None else _code(message)
+    return SecretsError(message, "not-reachable" if code == INTERACTION_NOT_ALLOWED else "failed",
+                        code)
+
+
+def _code(message: str) -> int | None:
+    return next((c for text, c in _CODES.items() if text in message), None)
 
 
 def _item(verb: str, key: str) -> list[str]:
     return [SECURITY, verb, "-s", SERVICE, "-a", key]
-
-
-def _exists(key: str) -> bool:
-    # Without -w, security only says whether the item is there and never asks.
-    return _run(_item("find-generic-password", key)).returncode == 0
 
 
 def _run(cmd: list[str], input: str | None = None) -> subprocess.CompletedProcess:
@@ -108,7 +118,7 @@ def _run(cmd: list[str], input: str | None = None) -> subprocess.CompletedProces
         return subprocess.run(cmd, input=input, capture_output=True, text=True,
                               timeout=WRITE_SECONDS)
     except (OSError, subprocess.TimeoutExpired) as e:
-        raise KeychainError(f"{SECURITY} didn't finish: {e}")
+        raise _error(f"{SECURITY} didn't finish: {e}")
 
 
 def _quote(arg: str) -> str:

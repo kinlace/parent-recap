@@ -21,7 +21,6 @@ import hmac
 import json
 import os
 import re
-import secrets
 import shlex
 import socketserver
 import subprocess
@@ -30,6 +29,7 @@ import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from secrets import token_urlsafe
 from typing import Any, Literal
 from urllib.parse import urlparse
 
@@ -41,8 +41,7 @@ from . import (chat_install, feedback, ops, run_lock, setup_ai, setup_save, setu
 from .actions import email as email_action
 from .config import Config, Kid, LLMConfig
 from .state import State
-from .system import desktop, desktop_macos, macos_only
-from .utils import keychain
+from .system import desktop, desktop_macos, macos_only, secrets
 
 IDLE_SECONDS = 30 * 60
 AI_CHECK_SECONDS = 20
@@ -184,7 +183,7 @@ def cmd_page(args: argparse.Namespace) -> int:
     if not desktop.open_url(server.url):
         out = {"result": "not-opened", "url": server.url,
                "next": f"The browser didn't open. Open this address in it: {server.url}"}
-    if keychain.unreachable_here():  # the page says so too
+    if not secrets.reachable():  # the page says so too
         out["warning"] = setup_steps.KEYCHAIN_WARNING
     print(json.dumps(out, ensure_ascii=False), flush=True)
     try:
@@ -200,7 +199,7 @@ class SetupServer:
 
     def __init__(self, config: Path) -> None:
         self.config = config
-        self.code = secrets.token_urlsafe(32)
+        self.code = token_urlsafe(32)
         self._httpd = _HTTPServer(("127.0.0.1", 0), _Handler)
         self._httpd.setup = self  # type: ignore[attr-defined]
         host, port = self._httpd.server_address[:2]
@@ -280,7 +279,7 @@ class SetupServer:
                 "language": self.chosen_language(),
                 "preselected": preferred_language(),
                 # In tmux or SSH, macOS won't let this server save the passwords in the Keychain.
-                "keychain": {"reachable": not keychain.unreachable_here()},
+                "keychain": {"reachable": secrets.reachable()},
                 "progress": progress,
                 "welcome": self._welcome(progress),
                 "connect": {"sources": [{"name": s, "skippable": s in SKIPPABLE}

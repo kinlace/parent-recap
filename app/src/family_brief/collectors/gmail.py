@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 from .. import install_record
 from ..config import Config
 from ..state import State
-from ..utils import keychain
+from ..system import secrets
 from .base import Message, retry_once_on_timeout, unreadable
 
 log = logging.getLogger(__name__)
@@ -32,12 +32,12 @@ def keychain_account(username: str) -> str:
 
 
 def get_app_password(username: str) -> str | None:
-    return keychain.get(keychain_account(username))
+    return secrets.get(keychain_account(username))
 
 
 def store_app_password(username: str, password: str) -> None:
     account = keychain_account(username)
-    keychain.set_(account, password)
+    secrets.put(account, password)
     install_record.add("keychain", account)
 
 

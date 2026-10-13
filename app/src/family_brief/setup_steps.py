@@ -46,8 +46,7 @@ from urllib.parse import urlparse
 
 from . import install_record, own_node, secret_dialog, setup_wilma, whatsapp_python
 from .config import Config, Kid, LLMConfig
-from .system import desktop
-from .utils import keychain
+from .system import desktop, secrets
 
 APP_PASSWORDS_URL = "https://myaccount.google.com/apppasswords"
 TWO_STEP_URL = "https://myaccount.google.com/signinoptions/two-step-verification"
@@ -190,19 +189,18 @@ def register(sub) -> None:
     setup_server.register(steps)
 
 
-def _keychain_failure(e: keychain.KeychainError) -> tuple[str, dict[str, Any]]:
+def _keychain_failure(e: secrets.SecretsError) -> tuple[str, dict[str, Any]]:
     """A step's result when macOS refused to save a secret in the Keychain, with macOS's code
     when there is one: `keychain-not-reachable` when it can't even ask here, as in tmux or over
     SSH, otherwise `keychain-failed`."""
-    result = ("keychain-not-reachable" if e.code == keychain.INTERACTION_NOT_ALLOWED
-              else "keychain-failed")
+    result = "keychain-not-reachable" if e.reason == "not-reachable" else "keychain-failed"
     return result, ({"code": e.code} if e.code is not None else {})
 
 
 def _warn_if_unreachable() -> str:
     """At a Keychain step's start, says once that saving the secret in the Keychain will fail
     here, and returns the same warning to put on top of the dialog, or "" where it won't fail."""
-    if not keychain.unreachable_here():
+    if secrets.reachable():
         return ""
     print(KEYCHAIN_WARNING, file=sys.stderr, flush=True)
     return f"{KEYCHAIN_WARNING}\n\n"
@@ -277,7 +275,7 @@ def gmail_sign_in(address: str, password: str) -> tuple[str, str | None, dict[st
 
     try:
         gmail.store_app_password(address, password)
-    except keychain.KeychainError as e:
+    except secrets.SecretsError as e:
         result, extra = _keychain_failure(e)
         if result == "keychain-not-reachable":
             return result, ("Gmail accepted it, but macOS doesn't let Parent Recap save it in the "
@@ -556,8 +554,8 @@ def claude_token_sign_in(program: str, typed: str) -> tuple[str, dict[str, Any]]
         return "test-call-failed", {"error": error.replace(token, "<token>").strip()[:200]}
 
     try:
-        keychain.set_(CLAUDE_TOKEN_ACCOUNT, token)
-    except keychain.KeychainError as e:
+        secrets.put(CLAUDE_TOKEN_ACCOUNT, token)
+    except secrets.SecretsError as e:
         return _keychain_failure(e)
     install_record.add("keychain", CLAUDE_TOKEN_ACCOUNT)
     return "saved", {}
@@ -656,8 +654,8 @@ def gateway_sign_in(url: str, typed: str) -> tuple[str, dict[str, Any]]:
                   gateway.FAILED: "test-call-failed"}[outcome]
         return result, {"error": (detail or "")[:200]}
     try:
-        keychain.set_(gateway.ACCOUNT, key)
-    except keychain.KeychainError as e:
+        secrets.put(gateway.ACCOUNT, key)
+    except secrets.SecretsError as e:
         return _keychain_failure(e)
     install_record.add("keychain", gateway.ACCOUNT)
     return "saved", {}

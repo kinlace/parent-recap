@@ -29,7 +29,7 @@ from . import (ai_filter_report, chat_install, install_record, ops, run_lock, se
                setup_save, setup_wilma, summarize, tools, whatsapp_python)
 from .collectors.gmail import keychain_account
 from .config import Config
-from .utils import keychain
+from .system import secrets
 
 OK, FAIL = ops.OK, ops.FAIL
 RUNTIMES = re.compile(r"^(python-[\w.+-]+|node-v[\w.-]+|\.incoming)$")  # install.sh's pinned ones
@@ -239,21 +239,17 @@ def _keychain(s: Survey, cfg: Config) -> None:
                 *([keychain_account(username)] if username else []),
                 "claude-oauth-token", "anthropic-api-key"]
     for account in dict.fromkeys(accounts):
-        # Without -w, `security` only says whether the item is there; the secret isn't read.
-        found = subprocess.run(["security", "find-generic-password", "-s", keychain.SERVICE,
-                                "-a", account], capture_output=True, text=True)
-        if found.returncode == 0:
-            s.items.append(Item("Keychain item", f"{keychain.SERVICE} / {account}",
+        if secrets.has(account):  # the secret itself isn't read
+            s.items.append(Item(f"{secrets.STORE} item", secrets.where(account),
                                 partial(_delete_secret, account), account=account,
                                 asks="macOS may ask you to allow deleting it"))
 
 
 def _delete_secret(account: str) -> None:
-    r = subprocess.run(["security", "delete-generic-password", "-s", keychain.SERVICE, "-a", account],
-                       capture_output=True, text=True)
-    if r.returncode != 0:
-        raise NotRemoved("macOS didn't allow it. Delete it in the Keychain Access app instead: "
-                         f"search for {keychain.SERVICE}")
+    try:
+        secrets.delete(account)
+    except secrets.SecretsError as e:
+        raise NotRemoved(str(e))
 
 
 def _wilma(s: Survey, programs: list[Path]) -> None:
