@@ -26,6 +26,12 @@ def has(name: str) -> bool:
     return _adapter.has(name)
 
 
+def put_typed(name: str) -> None:
+    """Stores under `name` a secret the family types at the store's own prompt in this terminal,
+    so it never passes through Parent Recap. Read it back with `get` to check it."""
+    _adapter.put_typed(name)
+
+
 def delete(name: str) -> None:
     """Deletes the secret stored under `name`; one that isn't there is fine."""
     _adapter.delete(name)

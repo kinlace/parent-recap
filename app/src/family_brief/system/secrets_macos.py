@@ -78,6 +78,19 @@ def put(key: str, value: str) -> None:
         raise _error(_said(r) or f"{key} wasn't stored")
 
 
+def put_typed(key: str) -> None:
+    # Deleted first, as put does, so the new item gets this access list. One macOS won't let go
+    # of is updated by -U instead, keeping its old access list.
+    _run(_item("delete-generic-password", key))
+    # With nothing after -w, security asks for the secret on the terminal itself, twice.
+    try:
+        r = subprocess.run([*_item("add-generic-password", key), "-U", "-T", SECURITY, "-w"])
+    except OSError as e:
+        raise _error(f"couldn't run {SECURITY}: {e}")
+    if r.returncode != 0:
+        raise _error(f"{key} wasn't stored")
+
+
 def has(key: str) -> bool:
     # Without -w, security only says whether the item is there and never asks.
     return _run(_item("find-generic-password", key)).returncode == 0

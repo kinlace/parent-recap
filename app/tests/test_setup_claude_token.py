@@ -2,7 +2,6 @@
 accounts on the Mac can read with `ps`."""
 from __future__ import annotations
 
-import getpass
 import importlib.util
 import json
 import subprocess
@@ -15,25 +14,37 @@ TOKEN = "sk-ant-oat01-secret-token"
 
 
 @pytest.fixture
-def setup(harness, monkeypatch: pytest.MonkeyPatch):
-    """Runs the script against the harness's Keychain (the parent types `typed` at its hidden
-    prompt) and a fake `claude`, recording every process started."""
+def setup(monkeypatch: pytest.MonkeyPatch):
+    """Runs the script against a fake `security` (the parent types `typed` at its prompt) and
+    a fake `claude`, recording every process started."""
     spec = importlib.util.spec_from_file_location("setup_claude_token", SCRIPT)
     script = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)
+    keychain: dict[str, str] = {}
     calls: list[tuple[list[str], dict | None]] = []
     typed = {"value": TOKEN}
-    others = subprocess.run
 
-    def run(cmd, *a, env=None, **k):
+    def run(cmd, *_a, env=None, **_k):
         calls.append((list(cmd), env))
-        if cmd[0] != "claude":
-            return others(cmd, *a, env=env, **k)
+        account = cmd[cmd.index("-a") + 1] if "-a" in cmd else None
+        verb = cmd[1] if Path(cmd[0]).name == "security" else None  # run as /usr/bin/security
+        if verb == "add-generic-password":
+            assert cmd[-1] == "-w"  # no value after -w: security prompts for it on the terminal
+            assert cmd[cmd.index("-T") + 1] == "/usr/bin/security"
+            keychain[account] = typed["value"]
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if verb == "find-generic-password":
+            if account not in keychain:
+                return subprocess.CompletedProcess(cmd, 44, "", "item not found")
+            return subprocess.CompletedProcess(cmd, 0, keychain[account] + "\n", "")
+        if verb == "delete-generic-password":
+            keychain.pop(account, None)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        assert cmd[0] == "claude", cmd
         return subprocess.CompletedProcess(cmd, 0, json.dumps({"is_error": False, "result": "OK"}), "")
 
     monkeypatch.setattr(subprocess, "run", run)
-    monkeypatch.setattr(getpass, "getpass", lambda *_a, **_k: typed["value"])
-    return script, harness.keychain, calls, typed
+    return script, keychain, calls, typed
 
 
 def test_the_token_never_appears_in_a_process_argument(setup):
@@ -59,12 +70,12 @@ def test_something_that_is_not_a_claude_token_is_not_kept(setup, capsys):
     assert not any(cmd[0] == "claude" for cmd, _ in calls)
 
 
-def test_a_token_stored_before_is_replaced_so_the_new_one_gets_this_access_list(setup, harness):
+def test_a_token_stored_before_is_deleted_first_so_the_new_one_gets_this_access_list(setup):
     script, keychain, calls, _ = setup
     keychain["claude-oauth-token"] = "sk-ant-oat01-stored-with-keyring"
-    harness.keychain_asks.add("claude-oauth-token")  # it trusts only an earlier version's Python
 
     assert script.main() == 0
 
+    verbs = [cmd[1] for cmd, _ in calls if Path(cmd[0]).name == "security"]
+    assert verbs[:2] == ["delete-generic-password", "add-generic-password"]
     assert keychain == {"claude-oauth-token": TOKEN}
-    assert "claude-oauth-token" not in harness.keychain_asks

@@ -3,11 +3,10 @@
 so the nightly launchd job can call Claude with your subscription.
 
 Run `claude setup-token` first, copy the sk-ant-oat01-... token it prints, then run this
-and paste it when asked (input is hidden).
+and paste it twice when the Keychain asks (input is hidden).
 """
 from __future__ import annotations
 
-import getpass
 import json
 import os
 import subprocess
@@ -20,19 +19,28 @@ ACCOUNT = "claude-oauth-token"
 
 
 def main() -> int:
-    tok = getpass.getpass("Paste the token from claude setup-token (input is hidden): ").strip()
+    print("Paste the token from claude setup-token at each prompt (input is hidden).")
+    # Typed at the Keychain's own prompt, the token is on no command line, where `ps` would show
+    # it to every account on the Mac. A token an earlier version stored is replaced, so the
+    # evening job reads the new one without a prompt.
+    try:
+        secrets.put_typed(ACCOUNT)
+    except secrets.SecretsError:
+        print("The token wasn't stored.", file=sys.stderr)
+        return 1
+    try:
+        tok = (secrets.get(ACCOUNT) or "").strip()
+    except secrets.SecretsError as e:
+        print("The token was stored but can't be read back: " + str(e)[:200], file=sys.stderr)
+        return 1
     if not tok.startswith("sk-ant-"):
-        # Stored, it would win over an API key and fail every night.
+        # Left in place, it would win over an API key and fail every night.
+        try:
+            secrets.delete(ACCOUNT)
+        except secrets.SecretsError:
+            pass
         print("That doesn't look like a Claude token (it should start with sk-ant-), so it wasn't kept. "
               "Run this again and paste the token claude setup-token printed.", file=sys.stderr)
-        return 1
-    # Typed at a hidden prompt and stored through `secrets`, the token is on no command line,
-    # where `ps` would show it to every account on the Mac. A token an earlier version stored is
-    # replaced, so the evening job reads the new one without a prompt.
-    try:
-        secrets.put(ACCOUNT, tok)
-    except (secrets.SecretsError, ValueError) as e:
-        print(f"The token wasn't stored: {e}", file=sys.stderr)
         return 1
     env = {k: v for k, v in os.environ.items()
            if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")}
