@@ -1,8 +1,9 @@
-"""The issue loop's last step for a PR: wait for CI, then merge (#130).
+"""The issue loop's last step for a PR: wait for CI, then merge (#130), rerunning or fixing a
+red CI first (#331).
 
 Sources the real `scripts/issue-loop.sh` and runs `merge_pr` against a fake `gh`, which answers
-`gh pr checks --json` from a file, its `--watch` with the exit code CI would give, and
-`gh pr merge` as GitHub would, logging every call.
+`gh pr checks --json` from a file per CI phase (a rerun or a push starts the next one), the run
+commands from fixed answers, and `gh pr merge` as GitHub would, logging every call.
 """
 from __future__ import annotations
 
@@ -32,28 +33,60 @@ def gh(tmp_path: Path) -> dict:
     fake = bin_ / "gh"
     fake.write_text(f"""#!/bin/bash
 echo "gh $*" >> "{log}"
+phase=$(cat "{tmp_path}/phase" 2>/dev/null || echo 0)
+checks="{tmp_path}/checks.$phase.json"
+[ -f "$checks" ] || checks="{tmp_path}/checks.json"
 case "$*" in
   "pr checks"*--json*)
     late=$(cat "{tmp_path}/test_late_by" 2>/dev/null || echo 0)
-    if [ "$late" -gt 0 ]; then
+    if [ -f "{tmp_path}/pending_now" ]; then
+      echo '[{{"name": "test", "bucket": "pass"}}, {{"name": "windows", "bucket": "pending"}}]'
+    elif [ "$late" -gt 0 ]; then
       echo $((late - 1)) > "{tmp_path}/test_late_by"
       echo '[{{"name": "gitleaks", "bucket": "pass"}}]'
     else
-      cat "{tmp_path}/checks.json"
+      cat "$checks"
     fi ;;
-  "pr checks"*--watch*) exit "$(cat "{tmp_path}/watch_exit")" ;;
+  "pr checks"*--watch*)
+    left=$(cat "{tmp_path}/pending_watches" 2>/dev/null || echo 0)
+    # pending_watches: how many watches end early, on a network error, with windows still running.
+    rm -f "{tmp_path}/pending_now"
+    [ "$left" -gt 0 ] && {{ echo $((left - 1)) > "{tmp_path}/pending_watches"; touch "{tmp_path}/pending_now"; exit 1; }}
+    grep -q '"fail"' "$checks" && exit 1; exit 0 ;;
+  "pr view"*headRefOid*)
+    late=$(cat "{tmp_path}/head_late_by" 2>/dev/null || echo 0)
+    if [ "$late" -gt 0 ]; then echo $((late - 1)) > "{tmp_path}/head_late_by"; echo old; else git rev-parse HEAD; fi ;;
+  # A rerun shows up, and its checks replace the failed ones, once its attempt has been seen.
+  "run rerun"*) cat "{tmp_path}/rerun_late_by" 2>/dev/null > "{tmp_path}/rerun_left" || echo 0 > "{tmp_path}/rerun_left"
+                echo 1 > "{tmp_path}/rerun_pending" ;;
+  "run view"*attempt*)
+    left=$(cat "{tmp_path}/rerun_left" 2>/dev/null || echo 0)
+    if [ "$(cat "{tmp_path}/rerun_pending" 2>/dev/null || echo 0)" = 1 ] && [ "$left" -le 0 ]; then
+      echo 0 > "{tmp_path}/rerun_pending"; echo $((phase + 1)) > "{tmp_path}/phase"
+    fi
+    echo $(( $(cat "{tmp_path}/phase" 2>/dev/null || echo 0) + 1 ))
+    echo $((left - 1)) > "{tmp_path}/rerun_left" ;;
+  "run watch"*) ;;
+  "run view"*--log-failed*)
+    for line in 'Set up job' '##[group]Run python -m pytest' 'FAILED tests/test_x.py::test_y' \\
+                '##[error]Process completed with exit code 1.' 'Cleaning up orphan processes'; do
+      printf 'windows\\tUNKNOWN STEP\\t2026-10-14T07:44:53.1Z %s\\n' "$line"
+    done ;;
   "pr merge"*) [ -f "{tmp_path}/merge_refusal" ] || exit 0; cat "{tmp_path}/merge_refusal" >&2; exit 1 ;;
 esac
 """)
     fake.chmod(0o755)
-    (tmp_path / "watch_exit").write_text("0")
     return {"tmp": tmp_path, "bin": bin_, "log": log}
 
 
-def report(gh: dict, **buckets: str) -> None:
-    """The checks GitHub reports on the PR, by name, with their bucket (pass, fail, pending...)."""
-    checks = [{"name": name, "bucket": bucket} for name, bucket in buckets.items()]
-    (gh["tmp"] / "checks.json").write_text(json.dumps(checks))
+def report(gh: dict, phase: int | None = None, **buckets: str) -> None:
+    """The checks GitHub reports on the PR, by name, with their bucket (pass, fail, pending...);
+    with `phase`, only after that many reruns and pushes. A failed check links to its run."""
+    checks = [{"name": name, "bucket": bucket,
+               "link": f"https://github.com/kinlace/parent-recap/actions/runs/{100 + i}/job/1"}
+              for i, (name, bucket) in enumerate(buckets.items())]
+    name = "checks.json" if phase is None else f"checks.{phase}.json"
+    (gh["tmp"] / name).write_text(json.dumps(checks))
 
 
 def merge_pr(gh: dict) -> subprocess.CompletedProcess:
@@ -111,15 +144,6 @@ def test_a_test_check_that_shows_up_after_gitleaks_is_waited_for(gh):
     assert merged(gh)
 
 
-def test_a_failing_test_check_stops_the_loop_without_merging(gh):
-    report(gh, gitleaks="pass", test="fail")
-    (gh["tmp"] / "watch_exit").write_text("1")
-    result = merge_pr(gh)
-    assert result.returncode != 0
-    assert not merged(gh)
-    assert "CI red" in result.stderr
-
-
 def test_a_test_check_that_ends_other_than_passed_is_not_merged(gh):
     # --watch exits 0 for a skipped or cancelled check too.
     report(gh, gitleaks="pass", test="skipping")
@@ -137,6 +161,130 @@ def test_a_refused_merge_stops_the_loop_with_github_s_reason(gh):
     assert "stopped at #5" in result.stderr
     assert "merge refused" in result.stderr
     assert "base branch policy prohibits the merge" in result.stderr
+
+
+# ── A red CI: one rerun, then fix rounds
+
+def merge_with_fixes(repo: Path, gh: dict, fixer: str) -> subprocess.CompletedProcess:
+    """Runs merge_pr in `repo` with `fixer` as the implementer's CI fix run. A push starts the next
+    CI phase. Every agent call and test run is logged to agents.log, next to the repo."""
+    env = {**os.environ, "PATH": f"{gh['bin']}:{os.environ['PATH']}", "ISSUE_LOOP_CI_POLL": "0"}
+    script = f'''source "{ROOT}/scripts/issue-loop.sh"; ISSUE=5 CURRENT="#5 ({PR})" SESSION=impl-session
+run_tests() {{ echo tests >> ../agents.log; }}
+push_branch() {{ echo $(( $(cat "{gh['tmp']}/phase" 2>/dev/null || echo 0) + 1 )) > "{gh['tmp']}/phase"; }}
+run_agent() {{
+  printf '%s | %s\\n' "$(printf '%s' "$1" | head -1 | cut -c1-30)" "${{*:2}}" >> ../agents.log
+  printf '%s' "$1" > ../prompt.txt
+  {fixer}
+}}
+merge_pr {PR}'''
+    return subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True, env=env)
+
+
+def agent_runs(repo: Path) -> list[str]:
+    log = repo.parent / "agents.log"
+    return log.read_text().splitlines() if log.exists() else []
+
+
+def test_a_red_ci_that_passes_on_a_rerun_is_merged_without_an_agent(branch, gh):
+    report(gh, gitleaks="pass", test="pass", windows="fail")
+    report(gh, 1, gitleaks="pass", test="pass", windows="pass")
+    result = merge_with_fixes(branch, gh, commit("fix.txt"))
+    assert result.returncode == 0, result.stderr
+    assert "gh run rerun 102 -R kinlace/parent-recap --failed" in calls(gh)
+    assert merged(gh)
+    assert agent_runs(branch) == []
+
+
+def test_the_checks_are_read_again_only_once_the_rerun_has_started(branch, gh):
+    report(gh, gitleaks="pass", test="pass", windows="fail")
+    report(gh, 1, gitleaks="pass", test="pass", windows="pass")
+    (gh["tmp"] / "rerun_late_by").write_text("3")
+    result = merge_with_fixes(branch, gh, commit("fix.txt"))
+    assert result.returncode == 0, result.stderr
+    assert agent_runs(branch) == []
+    assert merged(gh)
+
+
+def test_a_cancelled_windows_job_counts_as_red(branch, gh):
+    report(gh, gitleaks="pass", test="pass", windows="cancel")
+    report(gh, 1, gitleaks="pass", test="pass", windows="pass")
+    result = merge_with_fixes(branch, gh, commit("fix.txt"))
+    assert result.returncode == 0, result.stderr
+    assert "gh run rerun 102 -R kinlace/parent-recap --failed" in calls(gh)
+
+
+def test_a_watch_that_ends_while_a_job_is_still_running_is_watched_again(gh):
+    report(gh, gitleaks="pass", test="pass", windows="pass")
+    (gh["tmp"] / "pending_watches").write_text("1")
+    result = merge_pr(gh)
+    assert result.returncode == 0, result.stderr
+    assert len([c for c in calls(gh) if "--watch" in c]) == 2
+    assert merged(gh)
+
+
+def test_a_job_still_running_after_three_watches_is_not_merged(gh):
+    report(gh, gitleaks="pass", test="pass", windows="pass")
+    (gh["tmp"] / "pending_watches").write_text("5")
+    result = merge_pr(gh)
+    assert result.returncode != 0
+    assert "CI still running after three watches" in result.stderr and "windows (pending)" in result.stderr
+    assert not merged(gh)
+
+
+def test_a_red_ci_after_the_rerun_gets_a_fix_round_with_the_logs(branch, gh):
+    report(gh, gitleaks="pass", test="pass", windows="fail")
+    report(gh, 2, gitleaks="pass", test="pass", windows="pass")
+    result = merge_with_fixes(branch, gh, commit("fix.txt"))
+    assert result.returncode == 0, result.stderr
+    assert "fix round 1 of 2" in result.stderr
+    [fix, tests] = agent_runs(branch)
+    assert "--resume impl-session" in fix and tests == "tests"
+    prompt = (branch.parent / "prompt.txt").read_text()
+    assert "windows: FAILED tests/test_x.py::test_y" in prompt and ".loop/ci/102.log" in prompt
+    step = (branch / ".loop" / "ci" / "102.log").read_text()
+    assert step.startswith("windows: ##[group]Run python -m pytest\n")
+    assert step.endswith("windows: ##[error]Process completed with exit code 1.\n")
+    assert merged(gh)
+
+
+def test_the_checks_after_a_fix_are_read_once_the_pr_shows_the_pushed_commit(branch, gh):
+    report(gh, gitleaks="pass", test="pass", windows="fail")
+    report(gh, 2, gitleaks="pass", test="pass", windows="pass")
+    (gh["tmp"] / "head_late_by").write_text("2")
+    result = merge_with_fixes(branch, gh, commit("fix.txt"))
+    assert result.returncode == 0, result.stderr
+    assert len([c for c in calls(gh) if "headRefOid" in c]) == 3
+
+
+def test_a_red_check_with_no_actions_run_stops_without_a_fix_round(branch, gh):
+    checks = [{"name": "test", "bucket": "pass"}, {"name": "external", "bucket": "fail", "link": "https://ci.example/1"}]
+    (gh["tmp"] / "checks.json").write_text(json.dumps(checks))
+    result = merge_with_fixes(branch, gh, commit("fix.txt"))
+    assert result.returncode != 0
+    assert "CI red (external), and no GitHub Actions log to fix it from" in result.stderr
+    assert agent_runs(branch) == []
+
+
+def test_a_ci_fix_round_that_commits_nothing_stops_the_job_with_its_reason(branch, gh):
+    report(gh, gitleaks="pass", test="pass", windows="fail")
+    fixer = "echo '{\"result\": \"Unrelated: the runner lost its network.\"}' > .loop/last.json"
+    result = merge_with_fixes(branch, gh, fixer)
+    assert result.returncode != 0
+    assert "CI red (windows); the CI fix round made no commit: Unrelated" in result.stderr
+    assert not merged(gh)
+
+
+def test_a_ci_still_red_after_two_fix_rounds_stops_the_job(branch, gh):
+    report(gh, gitleaks="pass", test="fail", windows="fail")
+    n = branch.parent / "n"
+    git = "git -c user.name=t -c user.email=t@t"
+    fixer = f"echo x >> {n}; echo x >> fix.txt; {git} add fix.txt; {git} commit -qm fix"
+    result = merge_with_fixes(branch, gh, fixer)
+    assert result.returncode != 0
+    assert "stopped at #5" in result.stderr and "CI red after 2 fix rounds: test, windows" in result.stderr
+    assert len(n.read_text().splitlines()) == 2
+    assert not merged(gh)
 
 
 # ── Picking work

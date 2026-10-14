@@ -13,10 +13,14 @@
 # loop goes on with the next issue, and stops only after two failed jobs in a row (more likely a
 # login, network or CI problem than the issues) or when a job leaves uncommitted changes.
 #
+# A red CI on the PR is rerun once, in case a test is flaky. Still red, the implementer gets the
+# failed jobs' logs and fixes them, up to two rounds, each tested here and pushed; then the job
+# ends with a draft PR. This is how a ticket whose criterion only CI on another OS can show
+# (the windows job) gets done: the agent can't run it, nor read CI's logs (#331).
+#
 # Before /implement, a Sonnet agent reads the issue (precheck_issue). When an acceptance criterion
-# needs a person (a decision, a real account, the real-model eval, a CI job it can't run here),
-# the loop skips the issue, moves it from ready-for-agent to needs-triage and says on it which
-# criterion, so it gets split.
+# needs a person (a decision, a real account, the real-model eval), the loop skips the issue,
+# moves it from ready-for-agent to needs-triage and says on it which criterion, so it gets split.
 # --dry-run doesn't run it.
 #
 # ── When to use it
@@ -95,7 +99,8 @@
 # Files it writes into .loop/ (git-excluded): logs/<date-time>.log (everything it printed,
 # one file per run), last.json (the agent's last result), account (how many fallback accounts
 # the run has moved through) and quota-exhausted (set when none is left), pytest.log, report.md and reviews.md
-# (what the checker reads), check.md (its verdict), and the PR text the agent hands over.
+# (what the checker reads), check.md (its verdict),
+# ci/ (the CI logs a fix round got), and the PR text the agent hands over.
 set -euo pipefail
 
 REPO=kinlace/parent-recap
@@ -317,8 +322,10 @@ has_test_check() {
   case ", $1" in *", $TEST_CHECK (${2:-}"*) return 0 ;; *) return 1 ;; esac
 }
 
-# Checks take a few seconds to show up on a new PR; stops the loop unless `test` passes.
-wait_ci() {
+# Waits for the PR's CI to end. Returns 0 when it passed and 1 when a check failed; stops the job
+# when the test check never shows up or ends other than passed or failed. Checks take a few
+# seconds to show up on a new PR or commit.
+ci_passes() {
   local pr=$1 i checks=
   log "waiting for CI on PR #${pr##*/}"  # called with a number or a PR URL
   for i in $(seq 20); do
@@ -328,15 +335,78 @@ wait_ci() {
   done
   has_test_check "$checks" ||
     fail "the $TEST_CHECK check is missing after $((19 * CI_POLL))s (reported: ${checks:-no checks})"
-  gh pr checks "$pr" -R "$REPO" --watch --fail-fast --interval 30 >/dev/null || fail "CI red"
-  # Don't rely on --watch's exit code for a skipped or cancelled check.
-  checks=$(pr_checks "$pr")
+  # Without --fail-fast, so every failed job's log is complete for a fix round. Its exit code
+  # isn't trusted for a skipped or cancelled check, nor when it ends early on a network error:
+  # the buckets are read after, and a check still pending is watched again.
+  for i in 1 2 3; do
+    gh pr checks "$pr" -R "$REPO" --watch --interval 30 >/dev/null 2>&1 || true
+    checks=$(pr_checks "$pr")
+    case ", $checks" in *" (pending)"*) ;; *) break ;; esac
+  done
+  case ", $checks" in *" (pending)"*) fail "CI still running after three watches (reported: $checks)" ;; esac
+  # Only test is a required check on main, so a red or cancelled windows job must stop it here.
+  case ", $checks" in *" (fail)"* | *" (cancel)"*) return 1 ;; esac
   has_test_check "$checks" pass || fail "the $TEST_CHECK check didn't pass (reported: ${checks:-no checks})"
 }
 
+# The names of the PR's failed checks, comma-separated.
+red_checks() {
+  gh pr checks "$1" -R "$REPO" --json name,bucket 2>/dev/null |
+    jq -r '[.[] | select(.bucket == "fail" or .bucket == "cancel") | .name] | join(", ")' 2>/dev/null || true
+}
+
+# The ids of the Actions runs behind the PR's failed checks, one per line.
+failed_runs() {
+  gh pr checks "$1" -R "$REPO" --json bucket,link 2>/dev/null |
+    jq -r '.[] | select(.bucket == "fail" or .bucket == "cancel") | .link' 2>/dev/null |
+    sed -n 's|.*/actions/runs/\([0-9]*\)/.*|\1|p' | sort -u || true
+}
+
+# A run's attempt number; a rerun starts the next one.
+run_attempt() { gh run view "$1" -R "$REPO" --json attempt --jq .attempt 2>/dev/null || echo 0; }
+
+# A red CI is rerun once before an agent looks at it: a flaky test costs no agent run. Waits for
+# each rerun's attempt to show up first, or the watch could end on the failed attempt.
+rerun_failed() {
+  local pr=$1 id ids before i
+  ids=$(failed_runs "$pr")
+  log "CI red ($(red_checks "$pr")); rerunning the failed jobs once, in case a test is flaky"
+  for id in $ids; do
+    before=$(run_attempt "$id")
+    gh run rerun "$id" -R "$REPO" --failed >/dev/null 2>&1 || fail "couldn't rerun CI run $id"
+    for i in $(seq 20); do
+      [ "$(run_attempt "$id")" -gt "$before" ] && break
+      [ "$i" = 20 ] || sleep "$CI_POLL"
+    done
+    gh run watch "$id" -R "$REPO" --interval 30 >/dev/null 2>&1 || true
+  done
+}
+
+# Waits until the PR's head is the commit just pushed, so its checks aren't the last commit's.
+wait_for_head() {
+  local pr=$1 head i
+  head=$(git rev-parse HEAD)
+  for i in $(seq 20); do
+    [ "$(gh pr view "$pr" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null)" = "$head" ] && return 0
+    [ "$i" = 20 ] || sleep "$CI_POLL"
+  done
+  fail "the PR's head isn't the pushed commit after $((19 * CI_POLL))s"
+}
+
+push_branch() { git push -q -u origin HEAD; }
+
+# CI is green, or made green: once by a rerun, then by up to CI_FIX_ROUNDS fix rounds.
+CI_FIX_ROUNDS=2
 merge_pr() {
-  local pr=$1 out
-  wait_ci "$pr"
+  local pr=$1 out fixes=0
+  if ! ci_passes "$pr"; then
+    rerun_failed "$pr"
+    until ci_passes "$pr"; do
+      [ "$fixes" -lt "$CI_FIX_ROUNDS" ] || fail "CI red after $fixes fix rounds: $(red_checks "$pr")"
+      fixes=$((fixes + 1))
+      fix_ci "$pr" "$fixes"
+    done
+  fi
   # The ruleset on main refuses a PR without its required checks; say why rather than carry on.
   out=$(gh pr merge "$pr" -R "$REPO" --rebase --delete-branch 2>&1) ||
     fail "merge refused: $(printf '%s' "$out" | tr '\n' ' ' | head -c 300)"
@@ -422,6 +492,8 @@ or it can't reach GitHub."
 # ── Job: new issue
 IMPLEMENT_NOTE="work on the current branch and commit there with conventional commits. $GH_NOTE \
 Don't push, open PRs or post to GitHub: the calling script does that after you finish. \
+CI, the windows job included, runs on the PR after you finish; if it fails you get its logs to fix, \
+so a check you can't run here is no reason to stop. \
 Don't run the real-model eval (python -m family_brief.eval) or list it as unverified: it runs once per release, not per PR. \
 Nobody is watching this run, so if you need a human decision, stop without committing and say why in your final message."
 
@@ -436,10 +508,9 @@ and opens a PR, with no human around. It must not run the real-model eval \
 
 Read the issue (gh issue view %s -R $REPO) and decide whether every acceptance criterion can be met \
 by that agent. One can't when only a person can meet it: a decision for the maintainers, a real \
-account or device, the real-model eval, or a CI job it can't run on this Mac (one on Windows, say): \
-the agent never sees CI, as the script pushes only after it exits, and its work is checked before the \
-PR exists. Tested against fakes counts as met, and so does an outside fact the agent can look up \
-on the web. A criterion that only keeps something as it is until the maintainers decide is fine.
+account or device, the real-model eval. Tested against fakes counts as met, and so does an outside \
+fact the agent can look up on the web, or a CI job passing on the PR (one on Windows, say): the \
+script hands a red CI's logs back to the agent to fix. A criterion that only keeps something as it is until the maintainers decide is fine.
 
 Write .loop/precheck.md: one line, AGENT: <one sentence> or PERSON: <the criterion, quoted, and who \
 or what it needs>."
@@ -501,7 +572,9 @@ the implementer's final report in .loop/report.md and the reviews it got in .loo
 Fail the work if any of these holds:
 - An acceptance criterion isn't met, or can only be met by a person: a decision, a real account or \
 device, an outside fact to look up. Tested against fakes counts as met; not trying the real service \
-is fine when the report says so.
+is fine when the report says so. A CI job passing on the PR, Windows included, isn't yours to \
+judge: the PR doesn't exist yet, and the script waits for every job and has the implementer fix a \
+red one before merging.
 - The report leaves a question for a person to decide.
 - A review finding about wrong behaviour or a missed requirement was neither fixed nor answered with \
 a reason that holds up when you read the code.
@@ -576,6 +649,60 @@ check_and_fix() {
   [ "$CHECK" = pass ] || fail "check failed after a fix round: $CHECK_REASON"
 }
 
+# ── CI fix: the implementer reads a red CI's logs
+# The agent can read the checks' status but not their logs (`gh run` is denied), so the script
+# hands it the failed jobs' logs. A check on another OS (the windows job) can only be fixed this way.
+CI_LOG_TAIL=150 # lines of each failed step in the prompt; the whole step is in .loop/ci/
+
+CI_FIX_PROMPT="CI failed on your PR, after a rerun. Each failed run's log, cut to the step that \
+failed in each job, is in .loop/ci/<run id>.log; its last lines are below. Fix the cause on this \
+branch and commit (conventional commits); the calling script runs the tests here, pushes and waits \
+for CI again. A job on another OS than this Mac (Windows, say) can't run here: fix it from the log \
+and the code, and keep the tests passing on this Mac. $GH_NOTE
+
+If the failure has nothing to do with this change, or needs a human decision, don't commit, and \
+say why in your final message.
+"
+
+# `gh run view --log-failed` cut to each job's failing step, as "<job>: <line>". The log has
+# every step of a failed job (setup and cleanup too), one job after another, each line as
+# "<job>\t<step>\t<timestamp> <text>"; a step starts at "##[group]Run" and fails at "##[error]".
+failed_steps() {
+  perl -ne 'next unless s/^([^\t]*)\t[^\t]*\t\S+ ?//; my $j = $1; next if $done{$j};
+    $step{$j} = [] if /^##\[group\]Run /; push @{$step{$j}}, "$j: $_";
+    if (/^##\[error\]/) { print @{$step{$j}}; $done{$j} = 1 }
+    END { for (sort keys %step) { print @{$step{$_}} unless $done{$_} } }'
+}
+
+# Saves the failed runs' steps into .loop/ci/ and prints the prompt's part: each one's end.
+ci_logs() {
+  local id file
+  rm -rf "$LOOP_DIR/ci"
+  mkdir -p "$LOOP_DIR/ci"
+  for id in $(failed_runs "$1"); do
+    file=$LOOP_DIR/ci/$id.log
+    gh run view "$id" -R "$REPO" --log-failed 2>&1 | failed_steps >"$file"
+    printf '\n## .loop/ci/%s.log, last %s lines\n\n' "$id" "$CI_LOG_TAIL"
+    tail -n "$CI_LOG_TAIL" "$file"
+  done
+}
+
+# Fix round $2 for the PR $1: the implementer commits a fix, the tests pass here, it's pushed.
+fix_ci() {
+  local pr=$1 head red
+  red=$(red_checks "$pr")
+  [ -n "$(failed_runs "$pr")" ] || fail "CI red ($red), and no GitHub Actions log to fix it from"
+  log "CI red after a rerun ($red); fix round $2 of $CI_FIX_ROUNDS"
+  head=$(git rev-parse HEAD)
+  run_agent "$CI_FIX_PROMPT$(ci_logs "$pr")" --resume "$SESSION"
+  [ "$(git rev-parse HEAD)" != "$head" ] ||
+    fail "CI red ($red); the CI fix round made no commit: $(jq -r '.result // ""' "$LOOP_DIR/last.json" | head -c 300)"
+  [ -z "$(git status --porcelain)" ] || fail "the CI fix round left uncommitted changes"
+  run_tests
+  push_branch
+  wait_for_head "$pr"
+}
+
 do_issue() {
   ISSUE=$1 CURRENT="#$1" SESSION=
   TITLE=$(gh issue view "$ISSUE" -R "$REPO" --json title --jq .title)
@@ -603,7 +730,7 @@ do_issue() {
   pr_title=$(head -1 "$LOOP_DIR/pr-title" 2>/dev/null) || fail "agent wrote no .loop/pr-title"
   [ -s "$LOOP_DIR/pr-body.md" ] || fail "agent wrote no .loop/pr-body.md"
 
-  git push -q -u origin HEAD
+  push_branch
   local pr_url
   pr_url=$(gh pr create -R "$REPO" --base main --title "$pr_title" --body-file "$LOOP_DIR/pr-body.md")
   CURRENT="#$ISSUE ($pr_url)"
