@@ -14,8 +14,9 @@
 # login, network or CI problem than the issues) or when a job leaves uncommitted changes.
 #
 # Before /implement, a Sonnet agent reads the issue (precheck_issue). When an acceptance criterion
-# needs a person (a decision, a real account, the real-model eval), the loop skips the issue,
-# moves it from ready-for-agent to needs-triage and says on it which criterion, so it gets split.
+# needs a person (a decision, a real account, the real-model eval, a CI job it can't run here),
+# the loop skips the issue, moves it from ready-for-agent to needs-triage and says on it which
+# criterion, so it gets split.
 # --dry-run doesn't run it.
 #
 # ── When to use it
@@ -435,9 +436,10 @@ and opens a PR, with no human around. It must not run the real-model eval \
 
 Read the issue (gh issue view %s -R $REPO) and decide whether every acceptance criterion can be met \
 by that agent. One can't when only a person can meet it: a decision for the maintainers, a real \
-account or device, the real-model eval. Tested against fakes counts as met, and so does an outside \
-fact the agent can look up on the web. A criterion that only keeps something as it is until the \
-maintainers decide is fine.
+account or device, the real-model eval, or a CI job it can't run on this Mac (one on Windows, say): \
+the agent never sees CI, as the script pushes only after it exits, and its work is checked before the \
+PR exists. Tested against fakes counts as met, and so does an outside fact the agent can look up \
+on the web. A criterion that only keeps something as it is until the maintainers decide is fine.
 
 Write .loop/precheck.md: one line, AGENT: <one sentence> or PERSON: <the criterion, quoted, and who \
 or what it needs>."
