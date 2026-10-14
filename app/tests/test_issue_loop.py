@@ -469,3 +469,83 @@ def test_a_precheck_that_changes_the_checkout_stops_the_loop(branch, gh):
     result = precheck(branch, "echo 'AGENT: fine' > .loop/precheck.md; echo x > stray.txt", gh["bin"])
     assert result.returncode != 0
     assert "the precheck changed the checkout" in result.stderr
+
+
+# ── A usage limit moves the run to the next account
+
+LIMIT = "You've hit your session limit · resets 5:30am (Europe/Helsinki)"
+
+
+def agent_on_accounts(repo: Path, spent: list[str], fallbacks: str, body: str) -> subprocess.CompletedProcess:
+    """Runs `body` with a fake `claude` that answers with the usage limit on every account in
+    `spent` (a token, or `login` for no token) and logs each call's account and arguments."""
+    bin_ = repo.parent / "bin"
+    bin_.mkdir(exist_ok=True)
+    fake = bin_ / "claude"
+    fake.write_text(f"""#!/bin/bash
+account=${{CLAUDE_CODE_OAUTH_TOKEN:-login}}
+echo "$account | $*" >> "{repo.parent}/claude.log"
+case " {' '.join(spent)} " in
+  *" $account "*) printf '%s\\n' '{json.dumps({"type": "result", "subtype": "success", "is_error": True, "num_turns": 1, "session_id": "s1", "result": LIMIT}).replace("'", "'\\''")}' ;;
+  *) echo '{{"type": "result", "subtype": "success", "is_error": false, "num_turns": 3, "session_id": "s1", "result": "Done."}}' ;;
+esac
+""")
+    fake.chmod(0o755)
+    env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "CLAUDE_CODE_OAUTH_TOKEN": "start",
+           "ISSUE_LOOP_FALLBACK_TOKENS": fallbacks}
+    script = (f'source "{ROOT}/scripts/issue-loop.sh"; CURRENT="#5" BRANCH=$(git branch --show-current); '
+              f'sync_main() {{ echo "synced" >&2; }}; {body}')
+    return subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True, env=env)
+
+
+def token(repo: Path, name: str, value: str) -> str:
+    path = repo.parent / name
+    path.write_text(value)
+    return str(path)
+
+
+def claude_calls(repo: Path) -> list[str]:
+    return (repo.parent / "claude.log").read_text().splitlines()
+
+
+def test_a_usage_limit_resumes_the_session_on_the_next_account(branch):
+    spare = token(branch, "spare", "spare-token")
+    result = agent_on_accounts(branch, ["start"], f"{spare} login", 'run_agent "/implement #5" --model sonnet')
+    assert result.returncode == 0, result.stderr
+    first, second = claude_calls(branch)
+    assert first.startswith("start | --model sonnet --session-id ")
+    assert second.startswith("spare-token | --model sonnet --resume s1 -p A usage limit cut you off")
+    assert "going on with account spare" in result.stderr
+
+
+def test_the_run_stays_on_the_account_it_moved_to(branch):
+    spare = token(branch, "spare", "spare-token")
+    result = agent_on_accounts(branch, ["start"], spare,
+                               'run_agent "/implement #5"; (run_agent "Now write the pull request" --resume s1)')
+    assert result.returncode == 0, result.stderr
+    assert [c.split(" | ")[0] for c in claude_calls(branch)] == ["start", "spare-token", "spare-token"]
+
+
+def test_login_goes_on_with_the_logged_in_account(branch):
+    spare = token(branch, "spare", "spare-token")
+    result = agent_on_accounts(branch, ["start", "spare-token"], f"{spare} login", 'run_agent "/implement #5"')
+    assert result.returncode == 0, result.stderr
+    assert [c.split(" | ")[0] for c in claude_calls(branch)] == ["start", "spare-token", "login"]
+
+
+def test_a_usage_limit_with_no_account_left_stops_the_job_and_says_so(branch):
+    result = agent_on_accounts(branch, ["start"], "", 'run_agent "/implement #5"')
+    assert result.returncode != 0
+    assert f"stopped at #5: usage limit on every account: {LIMIT}" in result.stderr
+    assert (branch / ".loop" / "quota-exhausted").exists()
+    assert len(claude_calls(branch)) == 1
+
+
+def test_a_job_that_ran_out_of_accounts_stops_the_run_and_keeps_its_work(branch):
+    result = agent_on_accounts(branch, ["start"], "",
+                               'do_issue() { CURRENT="#$1"; echo x > half-done.txt; run_agent "/implement #5"; }; '
+                               'run_job 5; after_job 5; echo "still running"')
+    assert result.returncode != 0
+    assert "still running" not in result.stdout
+    assert "#5 hit the usage limit on every account" in result.stderr and "synced" not in result.stderr
+    assert (branch / "half-done.txt").exists()

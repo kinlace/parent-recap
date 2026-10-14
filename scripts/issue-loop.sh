@@ -80,8 +80,20 @@
 #      in a row, or uncommitted changes), fix that and run the script again.
 # Comments left on a loop PR, and loop PRs that later conflict with main, are yours to handle.
 #
+# ── More than one Claude account
+# When the agent hits the plan's usage limit, the job would end with nothing to show until the
+# limit resets. Set ISSUE_LOOP_FALLBACK_TOKENS to go on with another account instead: token
+# files from `claude setup-token`, space-separated, tried in order; the word `login` stands for
+# the account Claude Code is logged in with. On the limit the loop moves to the next one,
+# resumes the same session there (sessions are local, so any account can pick one up) and stays
+# on it for the rest of the run. With none left, or none set, the run stops: the limit would end
+# every following job too. Unset, the loop uses whichever account `claude` runs with.
+#
+#   ISSUE_LOOP_FALLBACK_TOKENS="$HOME/.config/claude-accounts/spare login" scripts/issue-loop.sh
+#
 # Files it writes into .loop/ (git-excluded): logs/<date-time>.log (everything it printed,
-# one file per run), last.json (the agent's last result), pytest.log, report.md and reviews.md
+# one file per run), last.json (the agent's last result), account (how many fallback accounts
+# the run has moved through) and quota-exhausted (set when none is left), pytest.log, report.md and reviews.md
 # (what the checker reads), check.md (its verdict), and the PR text the agent hands over.
 set -euo pipefail
 
@@ -192,6 +204,7 @@ run_agent() {
   else
     printf '%s▶ agent resumed:%s %s\n' "$CYAN" "$OFF" "$(printf '%s' "$prompt" | head -1 | cut -c1-80)" >&2
   fi
+  use_account
   # macOS has no timeout(1); perl's alarm kills claude when the time is up.
   # The edit rule is absolute (//path) because a relative one follows the agent's `cd`:
   # after `cd app`, Edit(./**) stopped matching .loop/ and the agent's writes there were denied.
@@ -205,8 +218,60 @@ run_agent() {
   sid=$(jq -r '.session_id // empty' "$out" 2>/dev/null || true)
   SESSION=${sid:-$SESSION}
   subtype=$(jq -r '.subtype // empty' "$out" 2>/dev/null || true)
+  # A usage limit ends the run as a "success" whose result is the limit's message.
+  if jq -e '.is_error == true and (.result // "" | test("limit"; "i"))' "$out" >/dev/null 2>&1; then
+    local limit
+    limit=$(jq -r .result "$out" | head -1)
+    next_account || {
+      touch "$LOOP_DIR/quota-exhausted"
+      fail "usage limit on every account: $limit"
+    }
+    log "usage limit: $limit; going on with account $(account_name) and resuming the session"
+    local args=() skip=
+    for a in "$@"; do
+      if [ -n "$skip" ]; then skip=; continue; fi
+      case $a in --session-id | --resume) skip=1 ;; *) args+=("$a") ;; esac
+    done
+    run_agent "$CONTINUE_PROMPT" ${args[@]+"${args[@]}"} --resume "$SESSION"
+    return
+  fi
   [ "$subtype" = success ] || fail "agent ended with '${subtype:-timeout or crash}'"
   [ "$(git branch --show-current)" = "$BRANCH" ] || fail "agent left branch $BRANCH"
+}
+CONTINUE_PROMPT="A usage limit cut you off; you're now on another account. Go on from where you stopped, as the earlier instructions say."
+
+# ── Accounts (see "More than one Claude account" above)
+# Jobs run in subshells, so the account in use is kept in a file: 0 is the one the run started
+# with, N the Nth of ISSUE_LOOP_FALLBACK_TOKENS. ${a[@]+"${a[@]}"} keeps macOS's bash 3.2, where an
+# empty array is unbound under set -u, working.
+# shellcheck disable=SC2206 # space-separated on purpose; paths have no spaces
+FALLBACKS=(${ISSUE_LOOP_FALLBACK_TOKENS:-})
+account_index() { cat "$LOOP_DIR/account" 2>/dev/null || echo 0; }
+account_name() {
+  local n
+  n=$(account_index)
+  [ "$n" -gt 0 ] || { echo "the starting one"; return; }
+  basename "${FALLBACKS[n - 1]}"
+}
+# Points this shell's claude at the account in use; on the starting one it leaves the env alone.
+use_account() {
+  local n entry
+  n=$(account_index)
+  [ "$n" -gt 0 ] || return 0
+  entry=${FALLBACKS[n - 1]}
+  if [ "$entry" = login ]; then
+    unset CLAUDE_CODE_OAUTH_TOKEN
+  else
+    CLAUDE_CODE_OAUTH_TOKEN=$(cat "$entry") || fail "can't read token file $entry"
+    export CLAUDE_CODE_OAUTH_TOKEN
+  fi
+}
+# Moves on to the next fallback account; returns 1 when there is none left.
+next_account() {
+  local n
+  n=$(account_index)
+  [ "$n" -lt "${#FALLBACKS[@]}" ] || return 1
+  echo $((n + 1)) >"$LOOP_DIR/account"
 }
 
 # One line per agent step, so a long run can be followed from the terminal. The agent's final
@@ -572,6 +637,8 @@ after_job() {
   fi
   FAILS_IN_ROW=$((FAILS_IN_ROW + 1))
   FAILED+="#$1 "
+  [ ! -f "$LOOP_DIR/quota-exhausted" ] ||
+    die "run stopped: #$1 hit the usage limit on every account; its work is on $(git branch --show-current), nothing was thrown away"
   [ -z "$(git status --porcelain)" ] ||
     die "run stopped: #$1 left uncommitted changes on $(git branch --show-current); nothing was thrown away"
   [ "$FAILS_IN_ROW" -lt "$MAX_FAILS_IN_ROW" ] ||
@@ -625,6 +692,10 @@ if command -v rtk >/dev/null && rtk rewrite "gh issue view 1" >/dev/null 2>&1; t
   die "RTK rewrites gh, so the agent can't reach GitHub; add [hooks] exclude_commands = [\"gh\"] to $(rtk config 2>/dev/null | sed -n 's/^Config: //p')"
 fi
 [ -z "$(git status --porcelain)" ] || die "working tree not clean; commit or stash first"
+rm -f "$LOOP_DIR/account" "$LOOP_DIR/quota-exhausted"
+for f in ${FALLBACKS[@]+"${FALLBACKS[@]}"}; do
+  [ "$f" = login ] || [ -r "$f" ] || die "ISSUE_LOOP_FALLBACK_TOKENS: can't read token file $f"
+done
 git fetch -q origin
 sync_main
 ME=$(gh api user --jq .login)
