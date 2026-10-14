@@ -1,10 +1,15 @@
 """Opening a web page, a text file or a terminal window, and reading the computer's languages
-(ADR 0020). Each system has its adapter; only macOS's exists so far."""
+(ADR 0020). Each system has its adapter: `open`, Terminal and `defaults` on macOS, the default
+browser, Notepad and Windows PowerShell on Windows."""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-from . import desktop_macos as _adapter
+if sys.platform == "win32":
+    from . import desktop_windows as _adapter
+else:
+    from . import desktop_macos as _adapter
 
 
 def open_url(url: str) -> bool:
