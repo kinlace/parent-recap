@@ -8,8 +8,10 @@ Windows' own `cmdkey` and Credential Manager write it."""
 from __future__ import annotations
 
 import ctypes
+import functools
 import subprocess
 from ctypes import wintypes
+from typing import Any
 
 from .secrets_error import SecretsError
 
@@ -41,25 +43,26 @@ class _Credential(ctypes.Structure):
     ]
 
 
-_advapi = ctypes.WinDLL("advapi32", use_last_error=True)
-_CredWrite = _advapi.CredWriteW
-_CredWrite.argtypes = [ctypes.POINTER(_Credential), wintypes.DWORD]
-_CredWrite.restype = wintypes.BOOL
-_CredRead = _advapi.CredReadW
-_CredRead.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
-                      ctypes.POINTER(ctypes.POINTER(_Credential))]
-_CredRead.restype = wintypes.BOOL
-_CredDelete = _advapi.CredDeleteW
-_CredDelete.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD]
-_CredDelete.restype = wintypes.BOOL
-_CredFree = _advapi.CredFree
-_CredFree.argtypes = [ctypes.c_void_p]
-_CredFree.restype = None
+@functools.cache
+def _api() -> Any:
+    """Credential Manager's functions in advapi32, loaded on first use, so the module imports on
+    any system."""
+    api = ctypes.WinDLL("advapi32", use_last_error=True)  # type: ignore[attr-defined]
+    api.CredWriteW.argtypes = [ctypes.POINTER(_Credential), wintypes.DWORD]
+    api.CredWriteW.restype = wintypes.BOOL
+    api.CredReadW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                              ctypes.POINTER(ctypes.POINTER(_Credential))]
+    api.CredReadW.restype = wintypes.BOOL
+    api.CredDeleteW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD]
+    api.CredDeleteW.restype = wintypes.BOOL
+    api.CredFree.argtypes = [ctypes.c_void_p]
+    api.CredFree.restype = None
+    return api
 
 
 def get(key: str) -> str | None:
     found = ctypes.POINTER(_Credential)()
-    if not _CredRead(where(key), CRED_TYPE_GENERIC, 0, ctypes.byref(found)):
+    if not _api().CredReadW(where(key), CRED_TYPE_GENERIC, 0, ctypes.byref(found)):
         code = ctypes.get_last_error()
         if code == ERROR_NOT_FOUND:
             return None
@@ -68,7 +71,7 @@ def get(key: str) -> str | None:
         cred = found.contents
         blob = ctypes.string_at(cred.CredentialBlob, cred.CredentialBlobSize)
     finally:
-        _CredFree(found)
+        _api().CredFree(found)
     return blob.decode("utf-16-le", errors="replace") or None
 
 
@@ -81,7 +84,7 @@ def put(key: str, value: str) -> None:
                        CredentialBlobSize=len(blob),
                        CredentialBlob=ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)),
                        Persist=CRED_PERSIST_LOCAL_MACHINE)
-    if not _CredWrite(ctypes.byref(cred), 0):
+    if not _api().CredWriteW(ctypes.byref(cred), 0):
         raise _error(f"Windows didn't let {key} be stored", ctypes.get_last_error())
 
 
@@ -101,7 +104,7 @@ def has(key: str) -> bool:
 
 
 def delete(key: str) -> None:
-    if not _CredDelete(where(key), CRED_TYPE_GENERIC, 0):
+    if not _api().CredDeleteW(where(key), CRED_TYPE_GENERIC, 0):
         code = ctypes.get_last_error()
         if code != ERROR_NOT_FOUND:
             raise _error(f"Windows didn't allow it. Delete it in Credential Manager instead, under "
