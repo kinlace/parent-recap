@@ -1,15 +1,21 @@
-"""Waking the computer every day, 5 minutes before the evening job (ADR 0020). Each system has its
-adapter; only macOS's, `pmset`, exists so far."""
+"""Waking the computer every day for the evening job (ADR 0020). Each system has its adapter:
+`pmset` on macOS, 5 minutes before the job; on Windows the job's own task wakes the PC, once the
+family's "Allow wake timers" lets it (ADR 0021)."""
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 
-from . import wake_macos as _adapter
+if sys.platform == "win32":
+    from . import wake_windows as _adapter
+else:
+    from . import wake_macos as _adapter
 
 # What setting the daily wake can say: no wake needed (`never-sleeps`, `already-set`), another
 # repeating wake schedule kept until the family agrees to replace it (`other-schedule`), set, or
 # not: the dialog was closed (`cancelled`), there was no dialog to ask in (`no-dialog`), or the
-# system doesn't list it after the dialog (`not-set`).
+# system doesn't list it after the dialog (`not-set`). Windows has no dialog, and says only
+# `never-sleeps`, `already-set` or `not-set`: the family's own setting doesn't allow the wake.
 RESULTS = ("set", "already-set", "never-sleeps", "other-schedule", "cancelled", "no-dialog",
            "not-set")
 
@@ -51,8 +57,9 @@ def cancel() -> None:
 
 
 def manual_step(hour: int, minute: int) -> str | None:
-    """The command the family runs in a terminal to set the daily wake for a job at hour:minute
-    themselves, when no dialog can ask; None where there is none."""
+    """What the family does themselves to set the daily wake for a job at hour:minute, when no
+    dialog can ask: on macOS a command to run in a terminal, on Windows the setting to turn on in
+    plain words; None where there is none."""
     return _adapter.manual_step(hour, minute)
 
 

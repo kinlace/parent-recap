@@ -1,13 +1,17 @@
 """The evening jobs, and one-off runs with the evening job's permissions (ADR 0020). The program
-describes a job; each system's adapter turns it into its own scheduler's. Only macOS's, launchd,
-exists so far."""
+describes a job; each system's adapter turns it into its own scheduler's: launchd on macOS, Task
+Scheduler on Windows."""
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from . import jobs_macos as _adapter
+if sys.platform == "win32":
+    from . import jobs_windows as _adapter
+else:
+    from . import jobs_macos as _adapter
 
 DAILY = "daily"
 WEEKEND = "weekend-events"
