@@ -160,6 +160,7 @@ def test_full_disk_access_gives_the_commands_when_it_cant_open_them(monkeypatch,
 OTHER_WAKE = "wake every weekday at 07:00"
 
 
+@pytest.mark.macos  # the Mac's wake dialog; Windows' wake: test_windows_only.py
 def test_schedule_install_sets_the_wake_schedule_through_the_administrator_dialog(harness, capsys):
     assert harness.cli("schedule", "install") == 0
 
@@ -181,6 +182,7 @@ def test_schedule_install_skips_the_wake_schedule_when_the_mac_never_sleeps(harn
     assert "never sleeps" in out
 
 
+@pytest.mark.macos  # the Mac's wake dialog; Windows' wake: test_windows_only.py
 def test_schedule_install_warns_before_replacing_another_wake_schedule(harness, capsys):
     harness.wake.wakes = [OTHER_WAKE]
 
@@ -193,6 +195,7 @@ def test_schedule_install_warns_before_replacing_another_wake_schedule(harness, 
     assert "schedule install --replace-wake" in out
 
 
+@pytest.mark.macos  # the Mac's wake dialog; Windows' wake: test_windows_only.py
 def test_schedule_install_replaces_another_wake_schedule_once_the_family_agrees(harness, capsys):
     harness.wake.wakes = [OTHER_WAKE]
 
@@ -205,6 +208,7 @@ def test_schedule_install_replaces_another_wake_schedule_once_the_family_agrees(
     assert "20:55" in out and wake.manual_step(21, 0) not in out
 
 
+@pytest.mark.macos  # the Mac's wake dialog; Windows' wake: test_windows_only.py
 def test_schedule_install_says_when_the_wake_schedule_is_already_set(harness, capsys):
     harness.wake.wakes = [harness.wake.line(21, 0)]
 
@@ -224,6 +228,7 @@ def test_schedule_install_gives_the_sudo_command_without_a_desktop_session(harne
     assert wake.manual_step(21, 0) in capsys.readouterr().out
 
 
+@pytest.mark.macos  # the Mac's wake dialog; Windows' wake: test_windows_only.py
 def test_schedule_install_gives_the_sudo_command_over_ssh(harness, monkeypatch, capsys):
     monkeypatch.setenv("SSH_CONNECTION", "10.0.0.2 52000 10.0.0.1 22")
     harness.wake.wakes = [OTHER_WAKE]
@@ -236,6 +241,7 @@ def test_schedule_install_gives_the_sudo_command_over_ssh(harness, monkeypatch, 
     assert out.index("replaces") < out.index(wake.manual_step(21, 0))
 
 
+@pytest.mark.macos  # the Mac's wake dialog; Windows' wake: test_windows_only.py
 def test_schedule_install_says_the_wake_schedule_wasnt_set_when_the_dialog_is_cancelled(harness,
                                                                                        capsys):
     harness.wake.dialog = "cancel"

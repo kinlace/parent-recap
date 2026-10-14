@@ -282,6 +282,7 @@ def test_a_mac_that_never_sleeps_needs_no_wake_schedule(harness, offline, capsys
     assert "never sleeps" in wake["reason"]
 
 
+@pytest.mark.macos  # the Mac's wake dialog; Windows' wake: test_windows_only.py
 @pytest.mark.parametrize("repeating", [[], ["wake at 07:00 on weekdays"]])
 def test_the_wake_schedule_isnt_set_when_the_mac_sleeps_through_the_nightly_job(
         harness, offline, capsys, repeating):
