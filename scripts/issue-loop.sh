@@ -300,7 +300,17 @@ show_progress() {
       else empty end' >&2
 }
 
+# Claude Code leaves an empty .claude/.cc-writes/ in every folder an agent writes to. One in
+# app/src/family_brief/page/ turned the page test red and stopped #315 and #312, so empty ones go
+# before the tests; a .claude/ with anything else in it stays.
+sweep_cc_writes() {
+  find "$ROOT" \( -name .git -o -name node_modules -o -name .venv \) -prune -o \
+    -path '*/.claude/.cc-writes' -type d -empty -print |
+    while read -r dir; do rmdir "$dir" "${dir%/.cc-writes}" 2>/dev/null || true; done
+}
+
 run_tests() {
+  sweep_cc_writes
   log "running tests"
   (cd "$ROOT/app" && .venv/bin/python -m pytest -q) >"$LOOP_DIR/pytest.log" 2>&1 ||
     fail "tests red, see .loop/pytest.log"

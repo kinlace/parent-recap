@@ -700,3 +700,20 @@ def test_a_job_that_ran_out_of_accounts_stops_the_run_and_keeps_its_work(branch)
     assert "still running" not in result.stdout
     assert "#5 hit the usage limit on every account" in result.stderr and "synced" not in result.stderr
     assert (branch / "half-done.txt").exists()
+
+
+# ── Before the tests
+
+def test_the_empty_folders_claude_code_leaves_are_swept_before_the_tests(branch):
+    page = branch / "app" / "page"
+    (page / ".claude" / ".cc-writes").mkdir(parents=True)
+    (branch / ".claude" / ".cc-writes").mkdir(parents=True)
+    (branch / ".claude" / "settings.json").write_text("{}")
+    (branch / "app" / ".claude" / ".cc-writes").mkdir(parents=True)
+    (branch / "app" / ".claude" / ".cc-writes" / "kept").write_text("")
+    script = f'source "{ROOT}/scripts/issue-loop.sh"; sweep_cc_writes'
+    subprocess.run(["bash", "-c", script], cwd=branch, check=True)
+    assert not (page / ".claude").exists()
+    assert not (branch / ".claude" / ".cc-writes").exists()
+    assert (branch / ".claude" / "settings.json").exists()
+    assert (branch / "app" / ".claude" / ".cc-writes" / "kept").exists()
