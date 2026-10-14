@@ -12,7 +12,14 @@ CI runs the suite on macOS and on Windows. A test that needs macOS is marked `@p
 adapters, macOS-only features (WhatsApp for Mac and its Full Disk Access, the Passwords app),
 `install.sh` and the other shell scripts, permission bits, and what Windows can't do yet (finding
 programs by bare name, shell-script stand-ins, the pseudo-terminal windows). Every other test runs
-on Windows too. When a Windows ticket makes one of these work there, it drops the mark.
+on Windows too. When a Windows ticket makes one of these work there, it drops the mark. A test that
+needs Windows is marked `@pytest.mark.windows` the same way: the Credential Manager adapter
+(`test_secrets_windows.py`), a Brief run by hand with the Gmail App Password and the Gateway Key in
+Credential Manager (`test_brief_by_hand_windows.py`), and Windows' own layout for programs and for
+Parent Recap's own Node. Those store their secrets in the real Credential Manager, under a test name
+of their own, and delete them after. `install.ps1` itself runs in CI's windows-install job, for real
+on a clean runner: a failed download, the install that picks up from there, and a second install
+that downloads and installs nothing.
 
 `test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.

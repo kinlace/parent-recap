@@ -81,3 +81,79 @@ jobs:
           python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
       - name: Test
         run: python -m pytest
+
+  windows-install:
+    # install.ps1 on a clean Windows PC, from this checkout, with the real downloads (ADR 0019).
+    # Windows PowerShell 5.1, which is what runs the line families paste.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: powershell
+    env:
+      PARENT_RECAP: ${{ github.workspace }}\install.ps1
+    steps:
+      - uses: actions/checkout@v7
+      - name: Where it installs
+        run: Add-Content $env:GITHUB_ENV "INSTALLED=$env:LOCALAPPDATA\ParentRecap" -Encoding utf8
+      # Prints the published line for a pin that doesn't match, so a bump can copy it.
+      - name: The pinned Python and Node are the ones their projects published
+        run: |
+          $ps1 = Get-Content install.ps1 -Raw
+          function Pin([string]$Name) {
+            if ($ps1 -notmatch ('(?m)^\s*\$' + $Name + " = '([^']*)'")) { throw "install.ps1 pins no $Name" }
+            return $Matches[1]
+          }
+          $py = Pin PythonVersion; $build = Pin PythonBuild; $node = Pin NodeVersion
+          $pins = @(
+            @{ List = "https://github.com/astral-sh/python-build-standalone/releases/download/$build/SHA256SUMS"
+               File = "cpython-$py+$build-x86_64-pc-windows-msvc-install_only.tar.gz"; Pinned = Pin PythonSha256 },
+            @{ List = "https://nodejs.org/dist/v$node/SHASUMS256.txt"
+               File = "node-v$node-win-x64.zip"; Pinned = Pin NodeSha256 })
+          $wrong = 0
+          foreach ($p in $pins) {
+            Invoke-WebRequest $p.List -OutFile sums.txt -UseBasicParsing
+            $line = Get-Content sums.txt | Where-Object { $_.Trim() -match ('\s\*?' + [regex]::Escape($p.File) + '$') }
+            if (-not $line -or ($line -split '\s+')[0] -ne $p.Pinned) {
+              Write-Host "$($p.File): install.ps1 pins $($p.Pinned), $($p.List) says: $line"
+              $wrong++
+            }
+          }
+          exit $wrong
+      - name: A download that fails says so and leaves nothing half there
+        run: |
+          (Get-Content install.ps1 -Raw) -replace "PythonReleases = '[^']*'", "PythonReleases = 'https://github.com/kinlace/no-such-release'" |
+            Set-Content install-offline.ps1 -Encoding ascii
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File install-offline.ps1 *>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $out
+          if ($code -ne 1) { throw "exited with $code, not 1" }
+          if ($out -notmatch "couldn't download its Python") { throw 'no message about the download' }
+          if (Get-ChildItem "$env:INSTALLED\runtime" -Filter 'python-*') { throw 'a Python was left behind' }
+          Remove-Item install-offline.ps1
+      - name: The install picks up from there
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File $env:PARENT_RECAP
+          if ($LASTEXITCODE -ne 0) { throw "exited with $LASTEXITCODE" }
+          Get-Content "$env:INSTALLED\logs\*.log" -Tail 20
+      - name: The installed program runs on its own Python and Node
+        run: |
+          $py = "$env:INSTALLED\app\.venv\Scripts\python.exe"
+          & "$env:INSTALLED\app\.venv\Scripts\parent-recap.exe" --help
+          if ($LASTEXITCODE -ne 0) { throw 'parent-recap --help failed' }
+          & $py -c "import sys; from family_brief import own_node; n = own_node.node(); print(n, own_node.npm()); sys.exit(n is None or own_node.npm() is None)"
+          if ($LASTEXITCODE -ne 0) { throw "the program doesn't find its own Node" }
+          & $py -c "import sys; print(sys._base_executable); sys.exit('ParentRecap' not in sys._base_executable)"
+          if ($LASTEXITCODE -ne 0) { throw "the venv isn't on Parent Recap's own Python" }
+      - name: A second install downloads and installs nothing
+        run: |
+          $watched = @("$env:INSTALLED\runtime", "$env:INSTALLED\app\.venv\Scripts\python.exe",
+                       "$env:INSTALLED\app\.venv\parent-recap-packages.txt")
+          $before = $watched | ForEach-Object { (Get-Item $_).LastWriteTimeUtc.Ticks }
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File $env:PARENT_RECAP *>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "exited with $LASTEXITCODE" }
+          Write-Host $out
+          if ($out -match 'Downloading|Installing') { throw 'the second install downloaded or installed something' }
+          if ($out -notmatch 'up to date') { throw 'no word that the packages are up to date' }
+          $after = $watched | ForEach-Object { (Get-Item $_).LastWriteTimeUtc.Ticks }
+          if (Compare-Object $before $after) { throw 'the second install changed the runtimes or the venv' }
