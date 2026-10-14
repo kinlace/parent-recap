@@ -1,0 +1,8 @@
+# gitleaks' own rules, plus test fakes that only look like secrets. Each allowed value is a
+# known fake, matched exactly, so a real secret in the same file still fails the scan.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The fake Wilma profile's obfuscated password (base64 of wilmai::salasana) in the Windows sign-in tests"
+regexes = ['''^d2lsbWFpOjpzYWxhc2FuYQ==$''']
