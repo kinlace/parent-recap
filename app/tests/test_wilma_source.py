@@ -313,6 +313,27 @@ def test_the_one_wilma_a_single_sign_in_reads_is_its_own(harness, cli):
     assert wilma.link(Message.from_dict(m)) == f"{FIRST['url']}/!7731905/messages/812"
 
 
+def test_the_sign_in_is_read_where_the_cli_keeps_it_on_every_system(harness, cli):
+    # The pinned CLI's getConfigPath: the home folder's .config, also on Windows, where Node's
+    # homedir() is %USERPROFILE%. The profile is as the CLI's own sign-in saves it.
+    profile_id = f"{FIRST['url']}|huoltaja"
+    config = harness.home / ".config" / "wilmai" / "config.json"
+    config.parent.mkdir(parents=True)
+    config.write_text(json.dumps({"profiles": [{
+        "id": profile_id, "tenantUrl": FIRST["url"], "tenantName": FIRST["name"],
+        "username": "huoltaja", "passwordObfuscated": setup_wilma.obfuscate("salasana-1"),
+        "totpSecretObfuscated": None, "students": [MIA], "lastStudentNumber": MIA["studentNumber"],
+        "lastStudentName": MIA["name"], "lastUsedAt": "2026-09-01T18:00:00.000Z"}],
+        "lastProfileId": profile_id}, indent=2) + "\n")
+    cli.answers = {("messages", "list"): listed({"wilmaId": 812, "subject": "Retki"}),
+                   ("messages", "read"): read(812, "Retki torstaina.")}
+
+    assert harness.run() == 0
+
+    [m] = archived(harness)
+    assert wilma.link(Message.from_dict(m)) == f"{FIRST['url']}/!7731905/messages/812"
+
+
 @pytest.mark.parametrize("failing, in_the_brief", [
     ((OTHER, "vanha.huoltaja", STALE), False),  # left from an earlier use of the CLI
     ((OTHER, "huoltaja.toinen", LEO), True),    # Leo's Wilma

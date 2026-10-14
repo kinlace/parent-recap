@@ -32,6 +32,7 @@ import re
 import select
 import shlex
 import signal
+import subprocess
 import sys
 import tempfile
 import time
@@ -71,6 +72,7 @@ CITY_DOMAINS = {
     "Kauniainen": "kauniainen.fi",
 }
 WILMA_POLL_SECONDS = 2
+WILMA_PAGE_POLL_SECONDS = 0.2  # in the window, so it ends the CLI as soon as it has signed in
 # The Wilma window's own text, in the reviewed languages; any other language gets the English.
 # Wilma comes before the AI login in setup, so there's no AI yet to translate it.
 WILMA_WINDOW = {
@@ -80,6 +82,9 @@ WILMA_WINDOW = {
                   "it from the list.",
                   "2. Sign in with the same username and password as on the Wilma website or "
                   "app. If you don't remember them, look in your browser's saved passwords."],
+        # In place of the guide's first step on Windows, where Wilma's own page signs in.
+        "page": "1. Wilma's sign-in page opens in your browser. Type your town there in Finnish, "
+                "for example Espoo, Helsinki or Vantaa, and pick it from the list.",
         "signed_in": "You're signed in to Wilma.",
         "close": "You can close this window.",
     },
@@ -87,6 +92,8 @@ WILMA_WINDOW = {
         "guide": ["Parent Recap：登录 Wilma",
                   "1. 用芬兰语输入你所在的城市，例如 Espoo、Helsinki 或 Vantaa，然后在列表里选中它。",
                   "2. 用你在 Wilma 网站或 App 上的用户名和密码登录。如果记不清，可以在浏览器保存的密码里找到。"],
+        "page": "1. 浏览器会打开 Wilma 的登录页面。在那里用芬兰语输入你所在的城市，例如 Espoo、Helsinki 或 "
+                "Vantaa，然后在列表里选中它。",
         "signed_in": "已登录 Wilma。",
         "close": "可以关闭这个窗口了。",
     },
@@ -97,6 +104,8 @@ WILMA_WINDOW = {
                   "2. Kirjaudu samalla käyttäjätunnuksella ja salasanalla kuin Wilman "
                   "verkkosivulla tai sovelluksessa. Jos et muista niitä, katso ne selaimesi "
                   "tallennetuista salasanoista."],
+        "page": "1. Wilman kirjautumissivu aukeaa selaimeesi. Kirjoita siellä kuntasi nimi "
+                "suomeksi, esimerkiksi Espoo, Helsinki tai Vantaa, ja valitse se listasta.",
         "signed_in": "Olet kirjautunut Wilmaan.",
         "close": "Voit sulkea tämän ikkunan.",
     },
@@ -376,6 +385,44 @@ def sign_in_window(language: str, status: Path) -> list[str]:
 
 
 def _sign_in_screen(language: str) -> int:
+    if sys.platform == "win32":
+        return _sign_in_page(language)
+    return _sign_in_terminal_screen(language)
+
+
+def _sign_in_page(language: str) -> int:
+    """On Windows, which has no pseudo-terminal for the CLI's own screens: runs the wilma CLI's
+    sign-in page (`wilma login`, from 2.1), which the CLI opens in the browser, on Parent Recap's
+    own Node under the guide in this window. Once the CLI has saved its profile it's ended, before
+    it waits for more Wilmas. Ctrl+C ends it too. Returns 0 once signed in, otherwise the CLI's
+    exit status."""
+    text = WILMA_WINDOW.get(language.lower(), WILMA_WINDOW["en"])
+    guide = [text["guide"][0], text["page"], *text["guide"][2:]]
+    print("\n".join(guide) + "\n", flush=True)
+    config = setup_wilma.config_path()
+    seen = _mtime(config)
+    command = own_node.wilma()
+    if command is None:
+        return 127
+
+    def saved() -> bool:  # the CLI renames its config into place, so it reads whole
+        return _mtime(config) != seen and _wilma_address(config) is not None
+    cli = subprocess.Popen([*command, "login"], env=own_node.wilma_env())
+    try:
+        while not saved() and cli.poll() is None:
+            time.sleep(WILMA_PAGE_POLL_SECONDS)
+    except KeyboardInterrupt:  # the CLI has it too, and ends
+        pass
+    signed_in = saved()
+    if cli.poll() is None:
+        cli.terminate()
+    exit_status = cli.wait()
+    print(f"\n{text['signed_in']} {text['close']}" if signed_in else f"\n{text['close']}",
+          flush=True)
+    return 0 if signed_in else exit_status
+
+
+def _sign_in_terminal_screen(language: str) -> int:
     """Runs the wilma CLI's sign-in on Parent Recap's own Node in this window, through a
     pseudo-terminal so this sees what it shows: the guide stays on top of each question the CLI
     clears the screen for, the student picker is answered (setup reads every Kid, so which one

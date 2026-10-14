@@ -158,3 +158,14 @@ jobs:
           if ($out -notmatch 'up to date') { throw 'no word that the packages are up to date' }
           $after = $watched | ForEach-Object { (Get-Item $_).LastWriteTimeUtc.Ticks }
           if (Compare-Object $before $after) { throw 'the second install changed the runtimes or the venv' }
+      # As the setup page's Wilma step installs it, from npm, with the program's own Node.
+      - name: The wilma CLI installs and runs on the program's own Node
+        run: |
+          $py = "$env:INSTALLED\app\.venv\Scripts\python.exe"
+          & $py -c "import sys; from family_brief import setup_wilma; r = setup_wilma.install(); print(r); sys.exit(r != 'installed')"
+          if ($LASTEXITCODE -ne 0) { throw "the wilma CLI didn't install" }
+          & $py -c "import subprocess, sys; from family_brief import own_node, setup_wilma; c = own_node.wilma(); print(c, setup_wilma.installed_version()); sys.exit(subprocess.run([*c, '--help'], env=own_node.wilma_env()).returncode)"
+          if ($LASTEXITCODE -ne 0) { throw 'wilma --help failed' }
+          # The town list the page searches comes with the CLI.
+          & $py -c "import sys; from family_brief import setup_wilma; t = setup_wilma.tenants(); print(len(t or [])); sys.exit(not t)"
+          if ($LASTEXITCODE -ne 0) { throw "the wilma CLI came without Wilma's town list" }

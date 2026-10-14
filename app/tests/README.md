@@ -15,11 +15,13 @@ programs by bare name, shell-script stand-ins, the pseudo-terminal windows). Eve
 on Windows too. When a Windows ticket makes one of these work there, it drops the mark. A test that
 needs Windows is marked `@pytest.mark.windows` the same way: the Credential Manager adapter
 (`test_secrets_windows.py`), a Brief run by hand with the Gmail App Password and the Gateway Key in
-Credential Manager (`test_brief_by_hand_windows.py`), and Windows' own layout for programs and for
-Parent Recap's own Node. Those store their secrets in the real Credential Manager, under a test name
-of their own, and delete them after. `install.ps1` itself runs in CI's windows-install job, for real
-on a clean runner: a failed download, the install that picks up from there, and a second install
-that downloads and installs nothing.
+Credential Manager (`test_brief_by_hand_windows.py`), Windows' own layout for programs and for
+Parent Recap's own Node, the desktop adapter and the Wilma sign-in window. The first two store
+their secrets in the real Credential Manager, under a test name of their own, and delete them
+after. `install.ps1` itself runs in CI's windows-install job, for real on a clean runner: a failed
+download, the install that picks up from there, a second install that downloads and installs
+nothing, and the pinned wilma CLI installed from npm with the program's own Node, running `--help`
+and shipping Wilma's town list.
 
 `test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
@@ -229,6 +231,12 @@ beside it, and on a first install leaves nothing at all. A CLI left half install
 open after 30 seconds is ended, with the processes it started, and its test fails with what the
 window showed. Where no pseudo-terminal
 can be opened (a sandbox), the window talks to the fake CLI through `no_pty/sitecustomize.py`.
+`test_setup_wilma_windows.py` checks on Windows that the window runs the CLI's own sign-in page
+(`wilma login`) on Parent Recap's own Node under the guide, ends it once it has saved its profile,
+and otherwise ends with the CLI's own exit status. `test_desktop_windows.py` checks on Windows that
+pages open with the default browser, files in Notepad, and that a PowerShell window, whose command
+is run by Windows PowerShell itself, runs it in the home folder with its variables and every word
+as given. The setup page's Wilma tests run on Windows too, with the fake CLI on CI's Python.
 `test_setup_claude.py` runs `parent-recap setup claude` against a fake terminal window, macOS
 dialog, secrets and `claude` test call, and checks the token never reaches the output, the logs or a
 command line, and that the window clears the token from its screen and scrollback once the family

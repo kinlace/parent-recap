@@ -1364,7 +1364,8 @@ def wilma_cli(harness, monkeypatch) -> WilmaCLI:
     w = WilmaCLI(harness.home)
     for var in ("WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
         monkeypatch.delenv(var, raising=False)
-    monkeypatch.setenv("PATH", "/usr/bin:/bin")  # no Node of the Mac's own
+    if not fake_node.WINDOWS:
+        monkeypatch.setenv("PATH", "/usr/bin:/bin")  # no Node of the Mac's own
     monkeypatch.setattr(time, "sleep", lambda _s: None)
     others = subprocess.run  # the harness's fakes
 
@@ -1376,7 +1377,9 @@ def wilma_cli(harness, monkeypatch) -> WilmaCLI:
     def run(cmd: list[str], *a: Any, **k: Any) -> Any:
         if fake_node.is_wilma(cmd):
             harness.commands.append(list(cmd))
-            return REAL_RUN(cmd, *a, **k)
+            # On Windows the stand-in node.exe runs nothing: the fake CLI, a Python script, runs
+            # on this Python instead.
+            return REAL_RUN([sys.executable, *cmd[1:]] if fake_node.WINDOWS else cmd, *a, **k)
         if fake_node.is_npm(cmd):
             harness.commands.append(list(cmd))
             w.installs.append(cmd[2:])
@@ -1414,7 +1417,6 @@ def wilma_window_result(url: str) -> dict[str, Any]:
     return out
 
 
-@pytest.mark.macos
 @pytest.mark.parametrize("query", ["Espoo", "Esbo", "espoo", "ESBO", " Esbo "])
 def test_searching_espoo_or_esbo_finds_the_espoo_entries(harness, page, wilma_cli, query):
     wilma_cli.install()
@@ -1444,7 +1446,6 @@ def test_the_town_search_finds_entries_by_name_and_without_accents(harness, page
         assert call(page.url, "api/towns", method="POST", body=body).status == 400, body
 
 
-@pytest.mark.macos
 def test_setup_installs_the_pinned_wilma_cli_with_its_own_node_when_it_is_missing(
         harness, page, wilma_cli):
     assert towns(page.url, "Espoo").json()["result"] == "not-installed"
@@ -1461,7 +1462,7 @@ def test_setup_installs_the_pinned_wilma_cli_with_its_own_node_when_it_is_missin
     [npm] = [c for c in harness.commands if fake_node.is_npm(c)]
     assert npm[0] == str(wilma_cli.node)
     # Its package scripts find that Node too, and its cache leaves nothing behind.
-    assert wilma_cli.npm_env["PATH"].split(":")[0] == str(wilma_cli.node.parent)
+    assert wilma_cli.npm_env["PATH"].split(os.pathsep)[0] == str(wilma_cli.node.parent)
     assert not Path(wilma_cli.npm_env["npm_config_cache"]).exists()
     assert towns(page.url, "Espoo").json()["result"] == "found"
 
@@ -1513,7 +1514,6 @@ def test_a_cli_without_the_tenant_list_says_so(harness, page, wilma_cli):
     assert towns(page.url, "Espoo").json()["result"] == "no-list"
 
 
-@pytest.mark.macos
 def test_a_good_login_writes_the_cli_profile_and_lists_the_kids(harness, page, wilma_cli,
                                                                  caplog, capsys):
     caplog.set_level(logging.DEBUG)
@@ -1548,8 +1548,9 @@ def test_a_good_login_writes_the_cli_profile_and_lists_the_kids(harness, page, w
     assert run["config"] != str(wilma_cli.profile_path) and not Path(run["config"]).parent.exists()
     assert run["update_check"] is False
     assert sorted(p.name for p in wilma_cli.profile_path.parent.iterdir()) == ["config.json"]
-    assert wilma_cli.profile_path.stat().st_mode & 0o777 == 0o600
-    assert wilma_cli.profile_path.parent.stat().st_mode & 0o777 == 0o700
+    if not fake_node.WINDOWS:  # where a file's mode says nothing of who can read it
+        assert wilma_cli.profile_path.stat().st_mode & 0o777 == 0o600
+        assert wilma_cli.profile_path.parent.stat().st_mode & 0o777 == 0o700
     # The Household's answers: the Kids as Wilma spells them, its city, and Wilma on.
     cfg = Config.load(config_file(harness))
     assert [k.name for k in cfg.kids] == ["Mia Virtanen", "Leo Virtanen"]
@@ -1646,7 +1647,6 @@ def test_school_and_class_are_saved_only_when_wilma_gives_them(harness, page, wi
     assert (leo.school, leo.class_name) == (None, None)
 
 
-@pytest.mark.macos
 @pytest.mark.parametrize("before", [False, True], ids=["first sign-in", "signed in before"])
 def test_a_wrong_password_is_reported_as_such_and_not_kept(harness, page, wilma_cli, caplog,
                                                           capsys, before):
@@ -1667,7 +1667,6 @@ def test_a_wrong_password_is_reported_as_such_and_not_kept(harness, page, wilma_
     assert_never_leaked(harness, [r], caplog, capsys, "wrong-salasana")
 
 
-@pytest.mark.macos
 @pytest.mark.parametrize("fails", [["wilma_error", "Wilma answered HTTP 503 while logging in"],
                                    ["mfa_required", "Two-step verification is on for this Wilma account."],
                                    ["network", "fetch failed (ENOTFOUND)"]],
@@ -1730,7 +1729,6 @@ def test_an_entry_in_several_towns_is_saved_with_the_town_picked(harness, page, 
     assert Config.load(config_file(harness)).city == "Kirkkonummi"
 
 
-@pytest.mark.macos
 def test_the_terminal_window_signs_in_and_the_page_lists_the_kids(harness, page, wilma_cli,
                                                                   caplog, capsys):
     caplog.set_level(logging.DEBUG)
@@ -1752,7 +1750,6 @@ def test_the_terminal_window_signs_in_and_the_page_lists_the_kids(harness, page,
     assert_never_leaked(harness, [r], caplog, capsys, WILMA_PASSWORD)
 
 
-@pytest.mark.macos
 def test_without_a_town_picked_the_terminal_sign_in_takes_its_entry_s_town(harness, page,
                                                                           wilma_cli):
     wilma_cli.install()
@@ -1762,7 +1759,6 @@ def test_without_a_town_picked_the_terminal_sign_in_takes_its_entry_s_town(harne
     assert wilma_window_result(page.url)["city"] == "Espoo"  # signed in to Espoo's Wilma
 
 
-@pytest.mark.macos
 def test_a_terminal_window_without_a_sign_in_says_so(harness, page, wilma_cli, monkeypatch):
     monkeypatch.setattr(setup_server, "WILMA_WINDOW_SECONDS", 4)
     wilma_cli.signs_in_terminal = False
@@ -1779,7 +1775,6 @@ def test_checking_without_a_terminal_window_says_none_is_open(page):
         {"result": "no-window"}
 
 
-@pytest.mark.macos
 def test_a_household_without_wilma_picks_its_town_and_moves_on(harness, page, wilma_cli):
     wilma_cli.install()
 
