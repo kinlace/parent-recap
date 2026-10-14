@@ -24,21 +24,17 @@ it (ADR 0005).
 from __future__ import annotations
 
 import argparse
-import fcntl
 import imaplib
 import json
 import math
 import os
-import pty
 import re
 import select
 import shlex
 import signal
 import sys
 import tempfile
-import termios
 import time
-import tty
 from contextlib import AbstractContextManager, nullcontext, suppress
 from pathlib import Path
 from typing import Any
@@ -47,6 +43,12 @@ from urllib.parse import urlparse
 from . import install_record, own_node, secret_dialog, setup_wilma, whatsapp_python
 from .config import Config, Kid, LLMConfig
 from .system import desktop, jobs, secrets
+
+if sys.platform != "win32":  # the Wilma window's pseudo-terminal, which Windows doesn't have yet
+    import fcntl
+    import pty
+    import termios
+    import tty
 
 APP_PASSWORDS_URL = "https://myaccount.google.com/apppasswords"
 TWO_STEP_URL = "https://myaccount.google.com/signinoptions/two-step-verification"

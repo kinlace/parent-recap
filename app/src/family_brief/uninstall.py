@@ -506,4 +506,4 @@ def _remove(s: Survey, keep_archive: bool) -> int:
 
 def _show(p: Path) -> str:
     home = Path.home()
-    return f"~/{p.relative_to(home)}" if p.is_relative_to(home) else str(p)
+    return f"~/{p.relative_to(home).as_posix()}" if p.is_relative_to(home) else str(p)

@@ -11,19 +11,22 @@ the page only starts it and checks `codex login status` until it says signed in.
 """
 from __future__ import annotations
 
-import fcntl
 import os
 import re
 import select
 import signal
 import struct
 import subprocess
-import termios
+import sys
 import threading
 import time
 
 from .setup_steps import CLAUDE_TOKEN
 from .summarize import _sessionless_env
+
+if sys.platform != "win32":  # `claude setup-token`'s pseudo-terminal, which Windows doesn't have yet
+    import fcntl
+    import termios
 
 # Wide enough that Ink never wraps the token, which it would break across lines.
 COLUMNS, ROWS = 1000, 50
