@@ -26,9 +26,8 @@ def store(credential_manager) -> None:
 
 
 def listed() -> str:
-    """What Windows' own `cmdkey` lists for the credential NAME's secret is in."""
-    return REAL_RUN(["cmdkey", f"/list:{secrets.where(NAME)}"], capture_output=True,
-                    text=True).stdout
+    """Every credential Windows' own `cmdkey` lists for this Windows user."""
+    return REAL_RUN(["cmdkey", "/list"], capture_output=True, text=True).stdout
 
 
 def test_a_stored_secret_is_read_back(store):

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -349,7 +350,8 @@ def native_claude(harness, monkeypatch) -> Path:
     """A fake `claude` where the native installer puts it, on no PATH this process sees."""
     bin_dir = harness.home / ".local" / "bin"
     bin_dir.mkdir(parents=True)
-    claude = bin_dir / "claude"
+    # claude.exe on Windows, where a program without its extension can't be run.
+    claude = bin_dir / ("claude.exe" if sys.platform == "win32" else "claude")
     claude.write_text("#!/bin/sh\nexit 0\n")
     claude.chmod(0o755)
     monkeypatch.setenv("PATH", "/usr/bin:/bin")

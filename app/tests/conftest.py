@@ -424,7 +424,7 @@ class Harness:
     def _fake_subprocess_run(self, cmd: list[str], *_a: Any, input: str | None = None,
                              cwd: str | None = None, env: dict[str, str] | None = None,
                              stdin: Any = None, **_k: Any) -> subprocess.CompletedProcess:
-        prog = Path(cmd[0]).name
+        prog = Path(cmd[0]).name.removesuffix(".exe").removesuffix(".cmd")  # Windows' claude.exe
         self.commands.append(list(cmd))
         if prog == "osascript" and input and "display dialog" in input:  # the secret dialog
             return self._show_dialog(cmd, input)

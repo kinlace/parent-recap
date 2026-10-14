@@ -93,7 +93,9 @@ def put_typed(key: str) -> None:
     # keeps the credential with its own persistence, which follows the user only to another PC
     # with a roaming profile, as an office network has and a family PC doesn't.
     try:
-        r = subprocess.run(["cmdkey", f"/generic:{where(key)}", f"/user:{key}", "/pass"])
+        # One command line, so the name's space is inside quotes after the colon, as cmdkey
+        # reads it: a list would quote the whole /generic:... argument.
+        r = subprocess.run(f'cmdkey /generic:"{where(key)}" /user:"{key}" /pass')
     except OSError as e:
         raise SecretsError(f"couldn't run cmdkey: {e}")
     if r.returncode != 0:

@@ -41,7 +41,7 @@
   # CONTRIBUTING.md.
   $PythonVersion = '3.13.16'
   $PythonBuild = '20261003'
-  $PythonSha256 = '0000000000000000000000000000000000000000000000000000000000000000'
+  $PythonSha256 = '5e100ee3d592ff500f4408a624f054d202e32d9dba8a12b2226bef81083fd778'
   $PythonReleases = 'https://github.com/astral-sh/python-build-standalone/releases/download'
   $PythonFile = "cpython-$PythonVersion+$PythonBuild-x86_64-pc-windows-msvc-install_only.tar.gz"
   $Runtime = Join-Path $Runtimes "python-$PythonVersion-$PythonBuild"
