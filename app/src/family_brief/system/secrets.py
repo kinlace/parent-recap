@@ -1,9 +1,14 @@
 """Reading, storing and deleting Parent Recap's secrets: the Gmail App Password, the Claude token
-and the Gateway Key (ADR 0020). Each system has its adapter; only macOS's, the Keychain, exists
-so far."""
+and the Gateway Key (ADR 0020). Each system has its adapter: the Keychain on macOS, Credential
+Manager on Windows."""
 from __future__ import annotations
 
-from . import secrets_macos as _adapter
+import sys
+
+if sys.platform == "win32":
+    from . import secrets_windows as _adapter
+else:
+    from . import secrets_macos as _adapter
 from .secrets_error import Reason, SecretsError  # noqa: F401  callers catch secrets.SecretsError
 
 STORE: str = _adapter.STORE  # the store's name for messages
@@ -44,5 +49,5 @@ def where(name: str) -> str:
 
 def reachable() -> bool:
     """Whether the store may be written from here: False in tmux or over SSH on macOS, where
-    macOS shows no prompt."""
+    macOS shows no prompt. Windows says so only when a secret is written."""
     return _adapter.reachable()

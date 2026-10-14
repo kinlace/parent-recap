@@ -30,10 +30,11 @@ import os
 import socket
 import subprocess
 import sys
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -91,6 +92,21 @@ def login_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[[Pa
     return put_on_path
 
 
+@pytest.fixture
+def credential_manager(harness: "Harness", monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
+    """Windows' own Credential Manager in place of the harness's fake secrets store, under a name
+    of the test's own, so no secret of the family whose PC runs the tests is touched. The test
+    adds the names it stores to the list given, and their credentials are deleted after it."""
+    from family_brief.system import secrets_windows
+    monkeypatch.setattr(secrets, "_adapter", secrets_windows)
+    monkeypatch.setattr(secrets_windows, "TARGET",
+                        f"Parent Recap test {uuid.uuid4().hex[:8]}/{{name}}")
+    stored: list[str] = []
+    yield stored
+    for name in stored:
+        secrets.delete(name)
+
+
 def program(folder: Path, name: str, text: str = "#!/bin/sh\n") -> Path:
     """An executable `name` in `folder`."""
     folder.mkdir(parents=True, exist_ok=True)
@@ -100,11 +116,12 @@ def program(folder: Path, name: str, text: str = "#!/bin/sh\n") -> Path:
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    # The one way a test says it needs macOS, so the Windows CI job runs every other test.
-    if sys.platform != "darwin":
-        for item in items:
-            if item.get_closest_marker("macos"):
-                item.add_marker(pytest.mark.skip(reason="needs macOS"))
+    # The one way a test says it needs macOS, or Windows, so each CI job runs every other test.
+    for item in items:
+        if sys.platform != "darwin" and item.get_closest_marker("macos"):
+            item.add_marker(pytest.mark.skip(reason="needs macOS"))
+        if sys.platform != "win32" and item.get_closest_marker("windows"):
+            item.add_marker(pytest.mark.skip(reason="needs Windows"))
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

@@ -47,4 +47,5 @@ testpaths = ["tests"]
 addopts = "-p no:cacheprovider --strict-markers"
 markers = [
     "macos: needs macOS (a macOS adapter, a macOS-only feature, or what Windows can't do yet); skipped elsewhere",
+    "windows: needs Windows (a Windows adapter or Windows' own layout); skipped elsewhere",
 ]
