@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 from conftest import msg
+from fake_system import FakeWake
 
 from family_brief import install_record, ops
 from family_brief.system import jobs
@@ -104,6 +105,7 @@ def healthy(harness, offline, monkeypatch) -> None:
                         if cmd == "claude" else which(cmd, *a, **k))
     harness.model_reply = "OK"
     harness.jobs.add(jobs.DAILY)
+    harness.wake.wakes = [FakeWake.line(21, 0)]  # Windows' doctor checks the wake too
 
 
 def test_the_health_check_is_all_ok_when_every_doctor_check_is(harness, healthy, capsys):

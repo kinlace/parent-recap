@@ -23,7 +23,7 @@ from typing import NamedTuple
 from . import (google_packages, languages, own_node, private_files, secret_dialog,
                whatsapp_python)
 from .config import Config
-from .system import desktop_macos, jobs, macos_only, wake
+from .system import desktop_macos, jobs, macos_only, wake, windows_only
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
 # Why the WhatsApp check isn't OK, for the setup page and the chat skills to say what fixes it:
@@ -63,14 +63,15 @@ def register(sub) -> None:
                       "each sender domain with whether it looks like school, city or club mail")
     pdis.set_defaults(func=cmd_discover)
 
-    psch = sub.add_parser("schedule", help="Install / remove / inspect the launchd jobs, or start one "
-                          "now with run-now")
+    psch = sub.add_parser("schedule", help="Install / remove / inspect the scheduled jobs, or start "
+                          "one now with run-now")
     psch.add_argument("action", choices=["install", "uninstall", "status", "run-now"])
     psch.add_argument("--weekend", action="store_true",
                       help="With run-now: start the Weekend Picks job instead of the evening one")
     psch.add_argument("--replace-wake", action="store_true",
                       help="With install: replace the Mac's other repeating wake schedule")
-    psch.epilog = ("run-now asks launchd to start the installed job right now, so it runs exactly "
+    psch.epilog = ("run-now asks the system's scheduler (launchd on macOS, Task Scheduler on "
+                   "Windows) to start the installed job right now, so it runs exactly "
                    "as the scheduler would. A Brief it sends goes to every Recipient, like the "
                    "evening one.")
     psch.set_defaults(func=cmd_schedule)
@@ -154,6 +155,10 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
         _check_weekend(add)
     if schedule:
         _check_schedule(cfg, add)
+        if windows_only.offers("wake-timers"):
+            _check_wake_timers(cfg, add)
+        if windows_only.offers("sign-in-after-update"):
+            _check_sign_in_after_update(add)
     return results
 
 
@@ -491,10 +496,45 @@ def _check_schedule(cfg: Config, add) -> None:
     if last:
         hours = (datetime.now(timezone.utc) - last).total_seconds() / 3600
         status = OK if hours < 30 else WARN
+        why = ("the Mac may be asleep, consider a pmset wake-up" if sys.platform == "darwin" else
+               "the PC may have been asleep, signed out or off")
         add(status, "Last run", f"{hours:.0f} hours ago" + ("" if hours < 30 else
-            " (no run for over a day; the Mac may be asleep, consider a pmset wake-up)"))
-    add(OK, "Python path", f"{os.path.realpath(sys.executable)} "
-        "(this is the path WhatsApp needs under Full Disk Access)")
+            f" (no run for over a day; {why})"))
+    if macos_only.offers("whatsapp"):
+        add(OK, "Python path", f"{os.path.realpath(sys.executable)} "
+            "(this is the path WhatsApp needs under Full Disk Access)")
+
+
+def _check_wake_timers(cfg: Config, add) -> None:
+    """On Windows the evening job's task wakes the PC, once Allow wake timers lets it (ADR 0021)."""
+    hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
+    status = wake.status(hour, minute)
+    if status.never_sleeps:
+        add(OK, "Wake", "this PC never sleeps, so it needs no wake-up")
+    elif status.ours:
+        add(OK, "Wake", "Allow wake timers is on, so the evening job wakes the PC from sleep "
+            "(leave it plugged in)")
+    else:
+        add(WARN, "Wake", "Allow wake timers is off, so the PC doesn't wake from sleep for the "
+            "Brief, which then only comes on evenings it's awake. To turn it on, "
+            f"{wake.manual_step(hour, minute)}")
+
+
+def _check_sign_in_after_update(add) -> None:
+    """The evening job runs only while the family is signed in (ADR 0021), and nobody is after
+    Windows restarts for an update unless it signs them back in."""
+    item, setting = "Sign-in after updates", windows_only.SIGN_IN_SETTING
+    on = windows_only.signs_back_in_after_update()
+    if on:
+        add(OK, item, "Windows signs you back in after it restarts for an update, so the "
+            "evening run still happens")
+    elif on is False:
+        add(WARN, item, "after Windows restarts for an update nobody is signed in, so that "
+            f"night's Brief doesn't come. Turn on {setting}")
+    else:
+        add(WARN, item, "couldn't tell whether Windows signs you back in after it restarts for an "
+            "update. If it doesn't, that night's Brief doesn't come: check that this is on: "
+            f"{setting}")
 
 
 # ---------------------------------------------------------------- discover
@@ -660,6 +700,9 @@ def cmd_bg(args: argparse.Namespace) -> int:
 def _set_wake(hour: int, minute: int, replace: bool) -> None:
     """`wake.set`, saying how it went. Without a desktop session it gives the command for
     Terminal instead."""
+    if windows_only.offers("wake-timers"):
+        _say_wake_timers(hour, minute)
+        return
     wake_h, wake_m = wake.time(hour, minute)
     existing = wake.status(hour, minute).others
     result = wake.set(hour, minute, replace)
@@ -703,6 +746,21 @@ def _set_wake(hour: int, minute: int, replace: bool) -> None:
     else:
         print(f"{FAIL} The wake schedule wasn't set: macOS doesn't list it after the dialog.")
         print(in_terminal)
+
+
+def _say_wake_timers(hour: int, minute: int) -> None:
+    """`wake.set` on Windows, where the task wakes the PC once the family's own Allow wake timers
+    lets it: it is only checked, and the family told where to turn it on."""
+    result = wake.set(hour, minute, False)
+    if result == "never-sleeps":
+        print("\nThis PC never sleeps, so it needs no wake-up.")
+    elif result == "already-set":
+        print(f"\n{OK} Wake: Allow wake timers is on, so the job wakes the PC from sleep "
+              "(leave it plugged in)")
+    else:
+        print(f"\n{WARN}Allow wake timers is off, so the PC doesn't wake from sleep for the Brief, "
+              "which then only comes on evenings it's awake. To turn it on, "
+              f"{wake.manual_step(hour, minute)}.")
 
 
 def install_jobs(cfg: Config) -> None:

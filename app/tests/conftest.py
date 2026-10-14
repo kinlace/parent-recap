@@ -46,7 +46,7 @@ from family_brief import __main__ as cli, feedback, gateway, summarize, tools
 from family_brief.actions import calendar as calendar_action, email as email_action
 from family_brief.collectors import gmail, myclub, whatsapp, wilma
 from family_brief.collectors.base import CalendarEvent, Message
-from family_brief.system import desktop, jobs, secrets, wake
+from family_brief.system import desktop, jobs, secrets, wake, windows_only
 from fake_system import FakeDesktop, FakeJobs, FakeSecrets, FakeWake
 
 TZ = "Europe/Helsinki"
@@ -289,6 +289,8 @@ class Harness:
         self.secrets = FakeSecrets()
         self.jobs = FakeJobs()
         self.wake = FakeWake()
+        # Whether Windows signs the family back in after an update restart; None: never set.
+        self.signs_in_after_update: bool | None = True
         self.desktop = FakeDesktop()
         self.dialog = Dialog()
         self.opened: list[str] = []                 # what the macOS-only steps' `open` opened
@@ -377,6 +379,7 @@ class Harness:
         mp.setattr(jobs, "_adapter", self.jobs)
         mp.setattr(wake, "_adapter", self.wake)
         mp.setattr(desktop, "_adapter", self.desktop)
+        mp.setattr(windows_only, "signs_back_in_after_update", lambda: self.signs_in_after_update)
 
         mp.setattr(subprocess, "run", self._fake_subprocess_run)
         mp.setattr(gateway.requests, "post", self._fake_gateway_post)

@@ -1,8 +1,8 @@
 """In-memory fakes of the OS services in `family_brief.system` (ADR 0020): secrets, the evening
 jobs, the daily wake and the desktop. The harness puts one in place of each interface's adapter,
 so the program reaches it through the same interface it uses on any system, and the tests of
-its callers fake none of these services' commands. Only the macOS adapters' own tests
-(test_secrets.py, test_jobs.py, test_wake.py, test_desktop.py) fake the commands instead.
+its callers fake none of these services' commands. Only the adapters' own tests (test_secrets.py,
+test_jobs.py, test_wake.py, test_desktop.py and their _windows twins) meet the system instead.
 
 Each fake keeps what the system would keep, for a test to set up and check, and has its own
 names for what the family reads (where a secret is, a job's name, the wake's line), so a test
@@ -166,6 +166,9 @@ class FakeWake:
         # The family's answer in the dialog: "allow", "cancel" or "none" (no dialog can open).
         self.dialog = "allow"
         self.asked: list[str] = []   # what each dialog was for: "set HH:MM" or "cancel"
+        # False: as on Windows, where only the family's own setting turns the wake on, so `set`
+        # asks nobody and says not-set until it's in `wakes`.
+        self.settable = True
 
     @staticmethod
     def line(hour: int, minute: int) -> str:
@@ -186,6 +189,8 @@ class FakeWake:
             return "already-set"
         if status.others and not replace:
             return "other-schedule"
+        if not self.settable:
+            return "not-set"
         wake_h, wake_m = wake.time(hour, minute)
         self.asked.append(f"set {wake_h:02d}:{wake_m:02d}")
         if self.dialog == "cancel":

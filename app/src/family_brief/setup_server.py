@@ -109,8 +109,9 @@ HEALTH_CHECKS = {"Config file": "config", "Recipients": "recipients", "Language"
                  "Gateway Key": "gateway", "Wilma": "wilma",
                  "WhatsApp": "whatsapp", "MyClub": "myclub", "Calendar": "calendar",
                  "Pilot feedback": "feedback", "Weekend Picks": "weekend"}
-# The scheduled job's checks, which aren't run before Finish installs it.
-SCHEDULE_CHECKS = frozenset({"Schedule", "Last run", "Python path"})
+# The scheduled job's checks, which aren't run before Finish installs it; Windows adds the last two.
+SCHEDULE_CHECKS = frozenset({"Schedule", "Last run", "Python path", "Wake",
+                             "Sign-in after updates"})
 # Doctor's checks as Finish names them, with the scheduled job's. Python path is always OK.
 FINISH_CHECKS = {**HEALTH_CHECKS, "Schedule": "schedule", "Last run": "last-run"}
 HEALTH_STATUSES = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}

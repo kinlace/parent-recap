@@ -16,12 +16,14 @@ on Windows too. When a Windows ticket makes one of these work there, it drops th
 needs Windows is marked `@pytest.mark.windows` the same way: the Credential Manager adapter
 (`test_secrets_windows.py`), a Brief run by hand with the Gmail App Password and the Gateway Key in
 Credential Manager (`test_brief_by_hand_windows.py`), Windows' own layout for programs and for
-Parent Recap's own Node, the desktop adapter and the Wilma sign-in window. The first two store
-their secrets in the real Credential Manager, under a test name of their own, and delete them
-after. `install.ps1` itself runs in CI's windows-install job, for real on a clean runner: a failed
-download, the install that picks up from there, a second install that downloads and installs
-nothing, and the pinned wilma CLI installed from npm with the program's own Node, running `--help`
-and shipping Wilma's town list.
+Parent Recap's own Node, the desktop adapter and the Wilma sign-in window, and the Task Scheduler
+tasks, power plan and sign-in setting the evening run needs (`test_jobs_windows.py`,
+`test_wake_windows.py`, `test_windows_only.py`). The first two store their secrets in the real
+Credential Manager, and the Task Scheduler tests register their tasks in the real Task Scheduler,
+under a test name of their own, and delete them after. `install.ps1` itself runs in CI's
+windows-install job, for real on a clean runner: a failed download, the install that picks up from
+there, a second install that downloads and installs nothing, and the pinned wilma CLI installed
+from npm with the program's own Node, running `--help` and shipping Wilma's town list.
 
 `test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
@@ -193,6 +195,14 @@ times out leaves no job or output behind.
 telling setup's wake apart from the Mac's others and one-off events, that the dialog says who asks,
 that a Mac sleeping on battery still needs the wake, and that with no dialog to ask in, or over
 SSH, it isn't set.
+`test_jobs_windows.py` checks on any system the Task Scheduler task each job becomes (its time, a
+missed start caught up, the PC woken, run only while signed in, also on battery, and started through
+pythonw with its log files) and that `bg` runs as a hidden child process; on Windows it registers,
+lists, starts and removes real tasks. A runner can't show that a task wakes a sleeping PC.
+`test_wake_windows.py` reads "Allow wake timers" and the sleep timeouts from a fake `powercfg`
+worded in Finnish, and never changes them. `test_windows_only.py` checks that `doctor` on Windows
+reports the tasks, the wake timers and the sign-in after an update restart, each with its fix, and
+how that sign-in is read from the registry.
 `test_own_node.py` lays out Parent Recap's own Node and a wilma CLI in the test's `~/ParentRecap`
 (`fake_node.py`: a stand-in `node` that runs the script it's given, and a shell script answering
 as the CLI does) with no Node on PATH, and checks that `doctor` and the evening job run that CLI
