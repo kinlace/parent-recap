@@ -41,3 +41,34 @@ jobs:
       # Includes the version-consistency check (tests/test_version.py).
       - name: Test
         run: python -m pytest
+
+  windows:
+    # Every test that doesn't need macOS, so maintainers learn on every push whether the program
+    # still works on Windows (ADR 0019). Tests marked `macos` skip themselves here.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+        shell: bash
+    env:
+      # The program reads and writes its files as UTF-8 without saying so, which Python on Windows
+      # does only in UTF-8 mode.
+      PYTHONUTF8: "1"
+    steps:
+      # The golden files and fixtures keep the repo's line endings, as on macOS.
+      - name: Keep line endings
+        working-directory: .
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Python
+        run: |
+          uv python install 3.13
+          uv venv --seed --python 3.13
+          cygpath -w "$PWD/.venv/Scripts" >> "$GITHUB_PATH"
+      - name: Install
+        run: |
+          python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
+      - name: Test
+        run: python -m pytest

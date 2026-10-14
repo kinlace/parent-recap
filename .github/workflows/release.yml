@@ -1,6 +1,6 @@
 name: release
 
-# Pushing a vX.Y.Z tag is a release (ADR 0002): macOS tests, then the zip on a
+# Pushing a vX.Y.Z tag is a release (ADR 0002): the macOS and Windows tests, then the zip on a
 # GitHub Release, then `stable` moves to the tag if it is the highest version so far.
 on:
   push:
