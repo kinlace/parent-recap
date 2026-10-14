@@ -32,7 +32,7 @@ from . import install_record, own_node, private_files
 from .collectors import wilma
 
 WILMA_CLI_VERSION = "2.1.2"
-PACKAGE = "@wilm-ai/wilma-cli"
+PACKAGE = own_node.WILMA_PACKAGE
 INSTALL_SECONDS = 300
 SALT = "wilmai::"  # the CLI's own, in front of the password before it's Base64-encoded
 # What the CLI keeps next to its config: the Wilma sessions its commands carry on with (from 2.0),
@@ -50,7 +50,7 @@ def installed() -> bool:
 def installed_version(folder: Path | None = None) -> str | None:
     """The version of the wilma CLI in `folder` (Parent Recap's own, unless given), as its package
     says, or None."""
-    package = (folder or own_node.wilma_folder()) / "lib" / "node_modules" / PACKAGE / "package.json"
+    package = own_node.modules(folder or own_node.wilma_folder()) / PACKAGE / "package.json"
     try:
         version = json.loads(package.read_text()).get("version")
     except (OSError, ValueError, AttributeError):
@@ -115,7 +115,7 @@ def _npm_install(npm: list[str]) -> bool:
             proc = subprocess.run([*npm, *install_args(staging)], capture_output=True, text=True,
                                   timeout=INSTALL_SECONDS, stdin=subprocess.DEVNULL, env=env)
         if proc.returncode != 0 or installed_version(staging) != WILMA_CLI_VERSION \
-                or not (staging / "bin" / "wilma").is_file():
+                or own_node.wilma_cli(staging) is None:
             return False
         _replace(folder, staging)
         return True
@@ -142,7 +142,8 @@ def _replace(folder: Path, new: Path) -> None:
 
 def install_args(folder: Path) -> list[str]:
     """npm's arguments that install the pinned CLI (ADR 0008) into `folder`, laid out as a global
-    install: `bin/wilma`, and the package in `lib/node_modules`. `_npm_install` gives a new folder,
+    install: `bin/wilma`, and the package in `lib/node_modules` (`own_node` has Windows' layout).
+    `_npm_install` gives a new folder,
     which then takes the place of Parent Recap's own."""
     return ["install", "-g", "--prefix", str(folder), f"{PACKAGE}@{WILMA_CLI_VERSION}"]
 

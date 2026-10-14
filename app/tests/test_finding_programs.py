@@ -6,12 +6,14 @@ and the evening job runs the same one, without the login shell. The login shell 
 adds one folder to PATH; the programs in it are the harness's fakes, or small scripts."""
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 
 import pytest
 from conftest import msg, program
 
-from family_brief import ops, summarize
+from family_brief import ops, summarize, tools
 
 TOKEN = "sk-ant-oat01-Abc_def-123456789"
 
@@ -79,6 +81,32 @@ def test_doctor_finds_codex_on_the_login_shells_path_and_the_evening_job_runs_it
     the_evening_job(harness, monkeypatch)
     assert harness.run() == 0
     assert [c.argv[0] for c in harness.model_calls] == [str(codex)]
+
+
+@pytest.mark.windows
+def test_on_windows_claude_from_its_own_installer_is_found_off_path_and_remembered(
+        harness, terminal_path, monkeypatch):
+    claude = harness.home / ".local" / "bin" / "claude.exe"
+    claude.parent.mkdir(parents=True)
+    claude.write_bytes(b"")
+    monkeypatch.setenv("PATH", str(harness.home / "Windows" / "System32"))
+
+    assert tools.find("claude") == str(claude)
+    assert str(claude.parent) in os.environ["PATH"].split(os.pathsep)
+    assert json.loads(tools.remembered_path().read_text()) == {"claude": str(claude)}
+
+
+@pytest.mark.windows
+def test_on_windows_codex_installed_with_npm_is_found_off_path(harness, terminal_path,
+                                                               monkeypatch):
+    npm = harness.home / "AppData" / "Roaming" / "npm"
+    npm.mkdir(parents=True)
+    (npm / "codex").write_text("#!/bin/sh\n")  # npm's wrapper for Git Bash, which Windows can't run
+    (npm / "codex.cmd").write_text("@node codex.js %*\r\n")
+    monkeypatch.setenv("APPDATA", str(harness.home / "AppData" / "Roaming"))
+    monkeypatch.setenv("PATH", str(harness.home / "Windows" / "System32"))
+
+    assert tools.find("codex") == str(npm / "codex.cmd")
 
 
 def test_without_claude_anywhere_doctor_says_how_to_install_it(harness, terminal_path,

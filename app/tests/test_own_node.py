@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -24,6 +25,7 @@ STUDENT = {"studentNumber": "7", "name": "Virtanen Mia"}
 LISTED = {"students": [{"student": STUDENT, "messages": [
     {"wilmaId": 1, "subject": "Retki", "sentAt": "2026-09-27T09:00:00+03:00",
      "senderName": "Opettaja Virtanen"}]}]}
+KIDS = [{"studentNumber": "7", "name": "Mia"}, {"studentNumber": "8", "name": "Leo"}]
 READ = {"student": STUDENT, "message": {"wilmaId": 1, "content": "Retki torstaina."}}
 # Answers as the CLI 2.x does: the Kids, one message and its text, and nothing else tonight.
 WILMA = f"""#!/bin/sh
@@ -125,6 +127,42 @@ def test_a_node_and_wilma_cli_the_mac_has_are_not_used(harness, no_node, monkeyp
 
     assert doctor_line(capsys, "Wilma").startswith(ops.OK)
     assert not any(str(theirs) in arg for c in no_node for arg in c)
+
+
+@pytest.mark.windows
+def test_on_windows_doctor_runs_the_wilma_clis_script_on_parent_recaps_own_node_exe(
+        harness, monkeypatch, capsys):
+    # npm's wilma.cmd wrapper would run whichever node.exe PATH finds, so the CLI's own script is
+    # run on the pinned Node instead.
+    harness.config["wilma"]["enabled"] = True
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    node = harness.home / "ParentRecap" / "runtime" / "node-v24.21.0" / "node.exe"
+    fake_node.pinned_node(harness.home)
+    fake_node.install_wilma(harness.home, "")
+    others = subprocess.run
+    ran: list[list[str]] = []
+
+    def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
+        if Path(cmd[0]).name != "node.exe":
+            return others(cmd, *a, **k)
+        ran.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, json.dumps({"students": KIDS}), "")
+    monkeypatch.setattr(subprocess, "run", run)
+
+    harness.cli("doctor", "--skip-llm")
+
+    assert doctor_line(capsys, "Wilma").startswith(ops.OK)
+    script = (fake_node.wilma_folder(harness.home) / "node_modules" / "@wilm-ai" / "wilma-cli"
+              / "dist" / "index.js")
+    assert ran == [[str(node), str(script), "kids", "list", "--json"]]
+
+
+@pytest.mark.windows
+def test_on_windows_the_pinned_nodes_npm_runs_beside_node_exe(harness):
+    node = fake_node.pinned_node(harness.home)
+
+    assert own_node.npm() == [str(node), str(node.parent / "node_modules" / "npm" / "bin"
+                                             / "npm-cli.js")]
 
 
 def test_without_the_wilma_cli_doctor_says_to_connect_wilma_again(harness, no_node, monkeypatch,
