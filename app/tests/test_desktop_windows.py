@@ -21,6 +21,8 @@ from family_brief.system import desktop, desktop_windows
 
 pytestmark = pytest.mark.windows
 
+REAL_POPEN = subprocess.Popen  # before the fixture fakes it; subprocess.run starts programs with it
+
 
 class FakeWindows:
     def __init__(self) -> None:
@@ -66,7 +68,8 @@ def test_nothing_opened_is_said_so(harness, windows):
     assert not desktop.open_terminal(["cmd"], {}, "Parent Recap test")
 
 
-def test_a_powershell_window_runs_its_command_in_the_home_folder_with_its_title(harness, windows):
+def test_a_powershell_window_runs_its_command_in_the_home_folder_with_its_title(harness, windows,
+                                                                                  monkeypatch):
     ran = harness.home / "ran"
     title = "Parent Recap's test"
 
@@ -81,6 +84,7 @@ def test_a_powershell_window_runs_its_command_in_the_home_folder_with_its_title(
     assert kwargs["creationflags"] & subprocess.CREATE_NEW_CONSOLE
     assert kwargs["cwd"] == str(harness.home)
     # Its command, as Windows PowerShell runs it once the window is open.
+    monkeypatch.setattr(subprocess, "Popen", REAL_POPEN)
     shown = REAL_RUN([a for a in argv if a != "-NoExit"], env=kwargs["env"], cwd=kwargs["cwd"],
                      capture_output=True, text=True, timeout=60)
     assert shown.returncode == 0, shown.stderr
