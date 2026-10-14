@@ -131,6 +131,7 @@ jobs:
           if ($out -notmatch "couldn't download its Python") { throw 'no message about the download' }
           if (Get-ChildItem "$env:INSTALLED\runtime" -Filter 'python-*') { throw 'a Python was left behind' }
           Remove-Item install-offline.ps1
+          exit 0  # the install's own exit code of 1 was the one expected
       - name: The install picks up from there
         run: |
           powershell -NoProfile -ExecutionPolicy Bypass -File $env:PARENT_RECAP

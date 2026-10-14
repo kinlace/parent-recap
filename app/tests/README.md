@@ -196,7 +196,13 @@ SSH, it isn't set.
 as the CLI does) with no Node on PATH, and checks that `doctor` and the evening job run that CLI
 on that Node, never a Node or wilma CLI the Mac has, and with `WILMAI_NO_UPDATE_CHECK=1`, so it
 never looks for a newer version, that `doctor` without the CLI says to
-connect Wilma again rather than to install Node, and that the newest pinned Node is picked.
+connect Wilma again rather than to install Node, and that the newest pinned Node is picked. On
+Windows, `fake_node.py` lays them out as Node's zip and npm do there (`node.exe` with npm beside
+it, the CLI's package in `node_modules`), and the tests check that `doctor` runs the package's own
+script on that `node.exe` and that npm runs beside it. `test_finding_programs.py` checks on Windows
+that a `claude.exe` from Claude Code's own installer and a `codex.cmd` in npm's global folder are
+found off PATH. `test_install_ps1.py` checks that `install.ps1` pins the Python and Node versions
+`install.sh` pins, and is ASCII only, as Windows PowerShell 5.1 needs.
 `test_email.py` runs the real email action against a fake SMTP server and fake secrets, and
 checks the message handed to the server: UTF-8 plain-text and HTML parts with Finnish and Chinese
 intact, an `.ics` attachment with `method=PUBLISH` beside them or the alternative alone, Subject,

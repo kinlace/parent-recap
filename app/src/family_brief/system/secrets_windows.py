@@ -89,7 +89,9 @@ def put(key: str, value: str) -> None:
 
 
 def put_typed(key: str) -> None:
-    # With nothing after /pass, cmdkey asks for the secret on the terminal itself, hidden.
+    # With nothing after /pass, cmdkey asks for the secret on the terminal itself, hidden. It
+    # keeps the credential with its own persistence, which follows the user only to another PC
+    # with a roaming profile, as an office network has and a family PC doesn't.
     try:
         r = subprocess.run(["cmdkey", f"/generic:{where(key)}", f"/user:{key}", "/pass"])
     except OSError as e:

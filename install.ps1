@@ -200,8 +200,8 @@
       '/XD', '.venv', '__pycache__', '*.egg-info', (Join-Path $plugin 'app\tests'), '/XF', 'VERSION',
       '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
     if ($code -ge 8) { Stop-Install "Parent Recap couldn't copy its program into $App (is the disk full?)." }
-    $version = (Get-Content -LiteralPath (Join-Path $plugin '.claude-plugin\plugin.json') -Raw | ConvertFrom-Json).version
-    if (-not $version) { $version = 'unknown' }
+    $manifest = Get-Content -LiteralPath (Join-Path $plugin '.claude-plugin\plugin.json') -Raw | ConvertFrom-Json
+    $version = if ($manifest.PSObject.Properties['version']) { $manifest.version } else { 'unknown' }
     $versionFile = Join-Path $App 'VERSION'
     if (-not (Test-Path -LiteralPath $versionFile) -or (Get-Content -LiteralPath $versionFile -Raw).Trim() -ne $version) {
       Set-Content -LiteralPath $versionFile -Value $version -Encoding ascii
@@ -220,28 +220,37 @@
     # CONTRIBUTING.md), as install.sh installs them. What they were installed for is noted in the
     # venv: the same again needs no pip, so a run with nothing new to do needs no network. The
     # program's own code is installed in place (-e), so a new copy of it needs no pip either.
-    $google = (Invoke-Logged $venvPython @('-m', 'family_brief.google_packages', 'wanted')) -eq 0
-    $wanted = @(
-      (Get-FileHash -LiteralPath (Join-Path $App 'constraints.txt') -Algorithm SHA256).Hash,
-      (Get-FileHash -LiteralPath (Join-Path $App 'pyproject.toml') -Algorithm SHA256).Hash,
-      "google=$google"
-    ) -join ' '
     $stamp = Join-Path $App '.venv\parent-recap-packages.txt'
     $had = if (Test-Path -LiteralPath $stamp -PathType Leaf) { (Get-Content -LiteralPath $stamp -Raw).Trim() } else { '' }
-    if ($had -eq $wanted) {
-      Write-Host "Parent Recap's Python packages are up to date."
-    } else {
+    $packages = @(
+      (Get-FileHash -LiteralPath (Join-Path $App 'constraints.txt') -Algorithm SHA256).Hash,
+      (Get-FileHash -LiteralPath (Join-Path $App 'pyproject.toml') -Algorithm SHA256).Hash
+    ) -join ' '
+    $pipFailed = "Parent Recap couldn't install its Python packages. The full log is at $Log"
+    $sendLog = 'Run the install line again. If it fails again, send that log to the Parent Recap team.'
+    $pip = @('-m', 'pip', 'install', '--only-binary', ':all:', '--disable-pip-version-check',
+      '-c', (Join-Path $App 'constraints.txt'))
+    $installed = $false
+    if (-not $had.StartsWith("$packages ")) {
       Write-Host "Installing Parent Recap's Python packages..."
-      $pipFailed = "Parent Recap couldn't install its Python packages. The full log is at $Log"
-      $sendLog = 'Run the install line again. If it fails again, send that log to the Parent Recap team.'
-      $pip = @('-m', 'pip', 'install', '--only-binary', ':all:', '--disable-pip-version-check')
-      if ((Invoke-Logged $venvPython ($pip + @('--upgrade', 'pip'))) -ne 0) { Stop-Install $pipFailed $sendLog }
-      $program = if ($google) { "$($App)[google]" } else { $App }
-      if ((Invoke-Logged $venvPython ($pip + @('-c', (Join-Path $App 'constraints.txt'), '-e', $program))) -ne 0) {
+      if ((Invoke-Logged $venvPython @('-m', 'pip', 'install', '--only-binary', ':all:', '--upgrade', 'pip')) -ne 0) {
         Stop-Install $pipFailed $sendLog
       }
-      Set-Content -LiteralPath $stamp -Value $wanted -Encoding ascii
+      if ((Invoke-Logged $venvPython ($pip + @('-e', $App))) -ne 0) { Stop-Install $pipFailed $sendLog }
+      $installed = $true
     }
+    # Google's packages only for a Household whose config uses Google Calendar, which the program
+    # installed above reads: turning it on in manage runs the install again, and an update keeps
+    # them.
+    $google = (Invoke-Logged $venvPython @('-m', 'family_brief.google_packages', 'wanted')) -eq 0
+    $wanted = "$packages google=$google"
+    if ($google -and ($installed -or $had -ne $wanted)) {
+      if (-not $installed) { Write-Host "Installing Parent Recap's Python packages..." }
+      if ((Invoke-Logged $venvPython ($pip + @('-e', "$($App)[google]"))) -ne 0) { Stop-Install $pipFailed $sendLog }
+      $installed = $true
+    }
+    if ($had -ne $wanted) { Set-Content -LiteralPath $stamp -Value $wanted -Encoding ascii }
+    if (-not $installed) { Write-Host "Parent Recap's Python packages are up to date." }
 
     # Only once the program runs on the new Python, so a failed pip step keeps the old one. The
     # wilma CLI runs on whichever Node is there, so an old Node goes with it.
