@@ -505,19 +505,23 @@ def _check_schedule(cfg: Config, add) -> None:
             "(this is the path WhatsApp needs under Full Disk Access)")
 
 
+def _wake_timers(result: str, hour: int, minute: int) -> tuple[str, str]:
+    """How the PC's wake stands on Windows, where the evening job's task wakes it once Allow wake
+    timers lets it (ADR 0021): a status and its words, from `wake.set`'s result."""
+    if result == "never-sleeps":
+        return OK, "this PC never sleeps, so it needs no wake-up"
+    if result == "already-set":
+        return OK, "Allow wake timers is on, so the evening job wakes the PC from sleep (leave it plugged in)"
+    return WARN, ("Allow wake timers is off, so the PC doesn't wake from sleep for the Brief, "
+                  "which then only comes on evenings it's awake. To turn it on, "
+                  f"{wake.manual_step(hour, minute)}")
+
+
 def _check_wake_timers(cfg: Config, add) -> None:
-    """On Windows the evening job's task wakes the PC, once Allow wake timers lets it (ADR 0021)."""
     hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
-    status = wake.status(hour, minute)
-    if status.never_sleeps:
-        add(OK, "Wake", "this PC never sleeps, so it needs no wake-up")
-    elif status.ours:
-        add(OK, "Wake", "Allow wake timers is on, so the evening job wakes the PC from sleep "
-            "(leave it plugged in)")
-    else:
-        add(WARN, "Wake", "Allow wake timers is off, so the PC doesn't wake from sleep for the "
-            "Brief, which then only comes on evenings it's awake. To turn it on, "
-            f"{wake.manual_step(hour, minute)}")
+    # On Windows `set` only reads the family's own setting, and changes nothing.
+    status, words = _wake_timers(wake.set(hour, minute, False), hour, minute)
+    add(status, "Wake", words)
 
 
 def _check_sign_in_after_update(add) -> None:
@@ -751,16 +755,8 @@ def _set_wake(hour: int, minute: int, replace: bool) -> None:
 def _say_wake_timers(hour: int, minute: int) -> None:
     """`wake.set` on Windows, where the task wakes the PC once the family's own Allow wake timers
     lets it: it is only checked, and the family told where to turn it on."""
-    result = wake.set(hour, minute, False)
-    if result == "never-sleeps":
-        print("\nThis PC never sleeps, so it needs no wake-up.")
-    elif result == "already-set":
-        print(f"\n{OK} Wake: Allow wake timers is on, so the job wakes the PC from sleep "
-              "(leave it plugged in)")
-    else:
-        print(f"\n{WARN}Allow wake timers is off, so the PC doesn't wake from sleep for the Brief, "
-              "which then only comes on evenings it's awake. To turn it on, "
-              f"{wake.manual_step(hour, minute)}.")
+    status, words = _wake_timers(wake.set(hour, minute, False), hour, minute)
+    print(f"\n{status} Wake: {words}")
 
 
 def install_jobs(cfg: Config) -> None:

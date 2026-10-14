@@ -33,7 +33,7 @@ def _setting(name: str) -> list[int]:
 
 def _never_sleeps() -> bool:
     sleep, hibernate = _setting("STANDBYIDLE"), _setting("HIBERNATEIDLE")
-    return bool(sleep) and all(v == 0 for v in sleep + hibernate)
+    return bool(sleep) and bool(hibernate) and all(v == 0 for v in sleep + hibernate)
 
 
 def _allowed() -> bool:

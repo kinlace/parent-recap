@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import jobs  # its names are read at call time: jobs imports this module first
+from . import jobs, task_run  # jobs' names are read at call time: jobs imports this module first
 
 PREFIX = "Parent Recap "
 TASK_NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
@@ -243,7 +243,7 @@ def run_detached(args: list[str], config: str | None, timeout: int,
             proc = subprocess.Popen(
                 prog + args, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                 cwd=Path.home(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1", jobs.BG_ENV: "1"})
+                env={**os.environ, **task_run.UTF8, "PYTHONUNBUFFERED": "1", jobs.BG_ENV: "1"})
             try:
                 deadline = time.time() + timeout
                 while code is None and time.time() < deadline:
