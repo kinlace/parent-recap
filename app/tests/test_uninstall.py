@@ -10,6 +10,7 @@ import io
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -706,3 +707,26 @@ def test_the_record_is_owner_only(harness, mac, monkeypatch):
     set_up(harness, mac, monkeypatch)
 
     assert install_record.path().stat().st_mode & 0o077 == 0
+
+
+def test_adds_at_the_same_time_all_land_in_the_record(harness):
+    # The setup page's steps run in threads, and two of them can record at once (#333).
+    start = threading.Barrier(8)
+    errors: list[BaseException] = []
+
+    def add(n: int) -> None:
+        start.wait()
+        try:
+            for i in range(25):
+                install_record.add("keychain", f"account-{n}-{i}")
+        except BaseException as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=add, args=(n,)) for n in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert len(install_record.entries("keychain")) == 8 * 25

@@ -19,10 +19,17 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
+import threading
 from pathlib import Path
 
 KINDS = ("program", "logs", "runtime", "plugin", "codex-skill", "launchd", "keychain", "wilma-cli",
          "wilma-profile", "claude-plugin", "claude-marketplace")
+
+
+# The setup page's steps run in threads; two adds at once would each write the record without the
+# other's entry (#333).
+_lock = threading.Lock()
 
 
 def path() -> Path:
@@ -40,18 +47,19 @@ def entries(kind: str) -> list[str]:
 def add(kind: str, value: str) -> None:
     if kind not in KINDS:
         raise ValueError(f"unknown kind {kind!r}, expected one of {', '.join(KINDS)}")
-    data = _read()
-    if value in data.setdefault(kind, []):
-        return
-    data[kind].append(value)
-    p = path()
-    p.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    tmp = p.with_name(p.name + ".tmp")
-    # Opened owner-only here, since install.sh runs this without the program's umask.
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(data, f, indent=2)
-    tmp.replace(p)
+    with _lock:
+        data = _read()
+        if value in data.setdefault(kind, []):
+            return
+        data[kind].append(value)
+        p = path()
+        p.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # mkstemp opens it owner-only, which install.sh, running this without the program's umask,
+        # relies on; its own name keeps another writer's temporary file apart.
+        fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=p.name + ".", suffix=".tmp")
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+        Path(tmp).replace(p)
 
 
 def _read() -> dict[str, list[str]]:
