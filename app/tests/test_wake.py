@@ -1,4 +1,5 @@
-"""Waking the computer through `family_brief.system.wake` (ADR 0020).
+"""The macOS adapter of `family_brief.system.wake`: `pmset` (ADR 0020). Callers' tests use
+fake_system.FakeWake instead.
 
 The outside edges are faked: `pmset` and macOS's administrator dialog (`osascript`)."""
 from __future__ import annotations
@@ -17,20 +18,27 @@ OTHER_WAKE = "wakepoweron at 7:00AM weekdays only"
 class FakeMac:
     def __init__(self) -> None:
         self.repeating: list[str] = []
-        self.dialog = "allow"  # or "cancel"
+        self.one_off: list[str] = []   # under "Scheduled power events:", which repeat leaves alone
+        self.custom = "AC Power:\n sleep                1\n"
+        self.dialog = "allow"  # or "cancel", or "unavailable" (no desktop session)
         self.dialogs: list[str] = []
 
     def run(self, cmd: list[str], *_a: Any, **_k: Any) -> subprocess.CompletedProcess:
         if cmd[:3] == ["pmset", "-g", "custom"]:
-            return subprocess.CompletedProcess(cmd, 0, "AC Power:\n sleep                1\n", "")
+            return subprocess.CompletedProcess(cmd, 0, self.custom, "")
         if cmd[:3] == ["pmset", "-g", "sched"]:
             listed = "".join(f"  {line}\n" for line in self.repeating)
-            return subprocess.CompletedProcess(
-                cmd, 0, f"Repeating power events:\n{listed}" if listed else "", "")
+            sched = f"Repeating power events:\n{listed}" if listed else ""
+            if self.one_off:
+                sched += "Scheduled power events:\n" + "".join(f" {line}\n" for line in self.one_off)
+            return subprocess.CompletedProcess(cmd, 0, sched, "")
         assert cmd[0] == "osascript" and "administrator privileges" in cmd[-1], cmd
         self.dialogs.append(cmd[-1])
         if self.dialog == "cancel":
             return subprocess.CompletedProcess(cmd, 1, "", "execution error: User canceled. (-128)")
+        if self.dialog == "unavailable":
+            return subprocess.CompletedProcess(
+                cmd, 1, "", "execution error: No user interaction allowed. (-1713)")
         self.repeating = [OUR_WAKE] if "wakeorpoweron MTWRFSU 20:55:00" in cmd[-1] else []
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
@@ -73,3 +81,41 @@ def test_a_cancelled_dialog_leaves_the_wake_and_says_how_to_cancel_it(mac):
 
     assert mac.repeating == [OUR_WAKE]
     assert "sudo pmset repeat cancel" in str(e.value)
+
+
+def test_the_dialog_says_who_asks_and_runs_pmset_repeat(mac):
+    assert wake.set(21, 0, replace=False) == "set"
+
+    [dialog] = mac.dialogs
+    assert "/usr/bin/pmset repeat wakeorpoweron MTWRFSU 20:55:00" in dialog
+    assert "Parent Recap" in dialog and "20:55" in dialog
+
+
+def test_one_off_events_are_not_among_the_others(mac):
+    mac.repeating = [OTHER_WAKE]
+    mac.one_off = ["[0]  wake at 10/03/2026 07:00:00 by 'com.apple.alarm'"]
+
+    assert wake.status(21, 0).others == [OTHER_WAKE]
+
+
+@pytest.mark.parametrize("custom, never", [
+    ("AC Power:\n displaysleep         10\n sleep                0 (sleep prevented by powerd)\n",
+     True),
+    ("Battery Power:\n sleep                1\nAC Power:\n sleep                0\n", False),
+], ids=["never-sleeps", "sleeps-on-battery"])
+def test_a_mac_never_sleeps_only_when_no_power_source_lets_it(mac, custom, never):
+    mac.custom = custom
+
+    assert wake.status(21, 0).never_sleeps is never
+    assert (wake.set(21, 0, replace=False) == "never-sleeps") is never
+
+
+def test_without_a_dialog_to_ask_in_the_wake_isnt_set(mac, monkeypatch):
+    mac.dialog = "unavailable"
+    assert wake.set(21, 0, replace=False) == "no-dialog"
+
+    monkeypatch.setenv("SSH_CONNECTION", "10.0.0.2 52000 10.0.0.1 22")
+    assert wake.set(21, 0, replace=False) == "no-dialog"
+
+    assert len(mac.dialogs) == 1  # over SSH, none is tried
+    assert mac.repeating == []

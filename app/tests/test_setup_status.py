@@ -1,7 +1,7 @@
 """`parent-recap setup status` reports the outcomes that decide whether setup is done.
 
-macOS's edges are faked: `launchctl` (which jobs are loaded), `pmset` (sleep and the wake
-schedule), the Keychain, Gmail's IMAP server and the `claude` test call. The program folder,
+The outside edges are faked: the harness's jobs, wake and secrets, Gmail's IMAP server and the
+`claude` test call. The program folder,
 config, state and archive are real files in a temporary HOME. Assertions are on what the
 assistant reads: one JSON line, or the readable lines with --text."""
 from __future__ import annotations
@@ -15,13 +15,10 @@ import pytest
 from conftest import msg
 
 from family_brief import install_record, ops
-from family_brief.system import jobs_macos, wake_macos
+from family_brief.system import jobs
 
 APP_PASSWORD = "abcdabcdabcdabcd"
 CLAUDE_TOKEN = "sk-ant-oat01-secret"
-SLEEPS = "AC Power:\n sleep                1\n"
-NEVER_SLEEPS = "AC Power:\n sleep                0\nBattery Power:\n sleep                0\n"
-OUR_WAKE = "wakepoweron at 8:55PM every day"
 
 
 class CountingImap:
@@ -43,31 +40,12 @@ class CountingImap:
         pass
 
 
-class FakeMac:
-    """The jobs launchctl has loaded and what pmset says about sleep and the wake schedule."""
-
-    def __init__(self) -> None:
-        self.loaded: set[str] = set()
-        self.sleep = SLEEPS
-        self.repeating: list[str] = []
-
-    def pmset(self, *args: str) -> str:
-        if args == ("-g", "custom"):
-            return self.sleep
-        return "Repeating power events:\n" + "".join(f"  {l}\n" for l in self.repeating) \
-            if self.repeating else ""
-
-
 @pytest.fixture
-def mac(harness, monkeypatch) -> FakeMac:
-    # Sources doctor would reach on the real Mac are off; Gmail and Claude are faked.
+def offline(harness) -> None:
+    """Sources doctor would reach on the real computer are off; Gmail and Claude are faked."""
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
     del harness.config["kids"][0]["myclub_ical_url"]
-    fake = FakeMac()
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set(fake.loaded))
-    monkeypatch.setattr(wake_macos, "_pmset", fake.pmset)
-    return fake
 
 
 def status(harness, capsys, *args: str) -> tuple[int, dict[str, Any]]:
@@ -93,7 +71,7 @@ def install_program(harness) -> None:
 # ── 1. The program is installed
 
 
-def test_the_program_is_installed_when_install_sh_has_put_it_in_place(harness, mac, capsys):
+def test_the_program_is_installed_when_install_sh_has_put_it_in_place(harness, offline, capsys):
     install_program(harness)
 
     _, report = status(harness, capsys)
@@ -103,7 +81,7 @@ def test_the_program_is_installed_when_install_sh_has_put_it_in_place(harness, m
     assert "0.5.0" in installed["reason"] and "ParentRecap/app" in installed["reason"]
 
 
-def test_the_program_isnt_installed_before_install_sh_has_run(harness, mac, capsys):
+def test_the_program_isnt_installed_before_install_sh_has_run(harness, offline, capsys):
     code, report = status(harness, capsys)
 
     installed = outcome(report, "installed")
@@ -116,16 +94,16 @@ def test_the_program_isnt_installed_before_install_sh_has_run(harness, mac, caps
 
 
 @pytest.fixture
-def healthy(harness, mac, monkeypatch) -> None:
+def healthy(harness, offline, monkeypatch) -> None:
     """Everything doctor checks works: Gmail signs in, Claude answers, the nightly job is loaded."""
-    harness.keychain["gmail-imap-parent@example.com"] = APP_PASSWORD
-    harness.keychain["claude-oauth-token"] = CLAUDE_TOKEN
+    harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
+    harness.secrets["claude-oauth-token"] = CLAUDE_TOKEN
     monkeypatch.setattr(imaplib, "IMAP4_SSL", CountingImap())
     which = shutil.which
     monkeypatch.setattr(shutil, "which", lambda cmd, *a, **k: f"/usr/local/bin/{cmd}"
                         if cmd == "claude" else which(cmd, *a, **k))
     harness.model_reply = "OK"
-    mac.loaded.add(jobs_macos.DAILY_LABEL)
+    harness.jobs.add(jobs.DAILY)
 
 
 def test_the_health_check_is_all_ok_when_every_doctor_check_is(harness, healthy, capsys):
@@ -137,7 +115,7 @@ def test_the_health_check_is_all_ok_when_every_doctor_check_is(harness, healthy,
 
 
 def test_the_health_check_names_the_checks_that_arent_ok(harness, healthy, capsys):
-    del harness.keychain["gmail-imap-parent@example.com"]
+    del harness.secrets["gmail-imap-parent@example.com"]
 
     _, report = status(harness, capsys)
 
@@ -158,7 +136,7 @@ def test_warnings_alone_dont_hold_the_health_check_up_but_are_named(harness, hea
 
 
 def test_without_a_claude_token_the_health_check_isnt_ok(harness, healthy, capsys):
-    del harness.keychain["claude-oauth-token"]
+    del harness.secrets["claude-oauth-token"]
 
     _, report = status(harness, capsys)
 
@@ -180,7 +158,7 @@ def send_a_brief(harness) -> None:
     assert harness.run() == 0
 
 
-def test_the_first_brief_reached_the_setup_parent_once_it_was_sent_to_them(harness, mac, capsys):
+def test_the_first_brief_reached_the_setup_parent_once_it_was_sent_to_them(harness, offline, capsys):
     send_a_brief(harness)
     capsys.readouterr()
 
@@ -191,7 +169,7 @@ def test_the_first_brief_reached_the_setup_parent_once_it_was_sent_to_them(harne
     assert "parent@example.com" in brief["reason"]
 
 
-def test_no_brief_has_reached_the_setup_parent_before_the_first_one(harness, mac, capsys):
+def test_no_brief_has_reached_the_setup_parent_before_the_first_one(harness, offline, capsys):
     _, report = status(harness, capsys)
 
     brief = outcome(report, "brief")
@@ -199,7 +177,7 @@ def test_no_brief_has_reached_the_setup_parent_before_the_first_one(harness, mac
     assert "parent@example.com" in brief["reason"] and "partner@example.com" not in brief["reason"]
 
 
-def test_a_brief_that_couldnt_be_sent_hasnt_reached_anyone(harness, mac, capsys):
+def test_a_brief_that_couldnt_be_sent_hasnt_reached_anyone(harness, offline, capsys):
     harness.email_error = OSError("SMTP connection refused")
     send_a_brief(harness)
     capsys.readouterr()
@@ -209,7 +187,7 @@ def test_a_brief_that_couldnt_be_sent_hasnt_reached_anyone(harness, mac, capsys)
     assert outcome(report, "brief")["ok"] is False
 
 
-def test_the_partner_s_first_brief_is_the_first_evening_one(harness, mac, capsys):
+def test_the_partner_s_first_brief_is_the_first_evening_one(harness, offline, capsys):
     # The setup page sends the first Brief to the setup parent only.
     harness.config["email"]["to"] = ["parent@example.com"]
     send_a_brief(harness)
@@ -224,7 +202,7 @@ def test_the_partner_s_first_brief_is_the_first_evening_one(harness, mac, capsys
     assert "parent@example.com" in brief["reason"] and "partner@example.com" in brief["reason"]
 
 
-def test_a_new_setup_parent_hasnt_had_one_yet(harness, mac, capsys):
+def test_a_new_setup_parent_hasnt_had_one_yet(harness, offline, capsys):
     harness.config["email"]["to"] = ["parent@example.com"]
     send_a_brief(harness)
     capsys.readouterr()
@@ -236,7 +214,7 @@ def test_a_new_setup_parent_hasnt_had_one_yet(harness, mac, capsys):
     assert brief["ok"] is False and "other@example.com" in brief["reason"]
 
 
-def test_a_brief_sent_only_by_imessage_reaches_its_recipients(harness, mac, capsys):
+def test_a_brief_sent_only_by_imessage_reaches_its_recipients(harness, offline, capsys):
     harness.config["email"]["enabled"] = False
     harness.config["imessage"] = {"enabled": True, "recipients": ["+358401234567"]}
     send_a_brief(harness)
@@ -248,7 +226,7 @@ def test_a_brief_sent_only_by_imessage_reaches_its_recipients(harness, mac, caps
     assert brief["ok"] is True and "+358401234567" in brief["reason"]
 
 
-def test_a_brief_with_no_recipients_reaches_nobody(harness, mac, capsys):
+def test_a_brief_with_no_recipients_reaches_nobody(harness, offline, capsys):
     harness.config["email"]["to"] = []
 
     _, report = status(harness, capsys)
@@ -259,8 +237,8 @@ def test_a_brief_with_no_recipients_reaches_nobody(harness, mac, capsys):
 # ── 4. The nightly job is loaded
 
 
-def test_the_nightly_job_is_loaded_once_the_schedule_is_installed(harness, mac, capsys):
-    mac.loaded.add(jobs_macos.DAILY_LABEL)
+def test_the_nightly_job_is_loaded_once_the_schedule_is_installed(harness, offline, capsys):
+    harness.jobs.add(jobs.DAILY)
 
     _, report = status(harness, capsys)
 
@@ -269,8 +247,8 @@ def test_the_nightly_job_is_loaded_once_the_schedule_is_installed(harness, mac, 
     assert "21:00" in nightly["reason"]
 
 
-def test_the_nightly_job_isnt_loaded_before_the_schedule_is_installed(harness, mac, capsys):
-    mac.loaded.add(jobs_macos.WEEKEND_LABEL)  # Weekend Picks' job isn't the nightly one
+def test_the_nightly_job_isnt_loaded_before_the_schedule_is_installed(harness, offline, capsys):
+    harness.jobs.add(jobs.WEEKEND)  # Weekend Picks' job isn't the nightly one
 
     _, report = status(harness, capsys)
 
@@ -282,8 +260,8 @@ def test_the_nightly_job_isnt_loaded_before_the_schedule_is_installed(harness, m
 # ── 5. The wake schedule is set, or the Mac never sleeps
 
 
-def test_the_wake_schedule_is_set_when_the_mac_wakes_before_the_nightly_job(harness, mac, capsys):
-    mac.repeating = [OUR_WAKE]
+def test_the_wake_schedule_is_set_when_the_mac_wakes_before_the_nightly_job(harness, offline, capsys):
+    harness.wake.wakes = [harness.wake.line(21, 0)]
 
     _, report = status(harness, capsys)
 
@@ -292,8 +270,8 @@ def test_the_wake_schedule_is_set_when_the_mac_wakes_before_the_nightly_job(harn
     assert "20:55" in wake["reason"]
 
 
-def test_a_mac_that_never_sleeps_needs_no_wake_schedule(harness, mac, capsys):
-    mac.sleep = NEVER_SLEEPS
+def test_a_mac_that_never_sleeps_needs_no_wake_schedule(harness, offline, capsys):
+    harness.wake.never_sleeps = True
 
     _, report = status(harness, capsys)
 
@@ -302,10 +280,10 @@ def test_a_mac_that_never_sleeps_needs_no_wake_schedule(harness, mac, capsys):
     assert "never sleeps" in wake["reason"]
 
 
-@pytest.mark.parametrize("repeating", [[], ["wakepoweron at 7:00AM weekdays"]])
+@pytest.mark.parametrize("repeating", [[], ["wake at 07:00 on weekdays"]])
 def test_the_wake_schedule_isnt_set_when_the_mac_sleeps_through_the_nightly_job(
-        harness, mac, capsys, repeating):
-    mac.repeating = repeating
+        harness, offline, capsys, repeating):
+    harness.wake.wakes = repeating
 
     _, report = status(harness, capsys)
 
@@ -320,10 +298,10 @@ def test_the_wake_schedule_isnt_set_when_the_mac_sleeps_through_the_nightly_job(
 
 
 @pytest.fixture
-def set_up(harness, healthy, mac) -> None:
+def set_up(harness, healthy) -> None:
     """Setup's end: installed, healthy, the first Brief sent, the nightly job and the wake set."""
     install_program(harness)
-    mac.repeating = [OUR_WAKE]
+    harness.wake.wakes = [harness.wake.line(21, 0)]
     send_a_brief(harness)
     harness.model_reply = "OK"  # for doctor's test call
 
@@ -349,11 +327,11 @@ def test_the_readable_form_has_a_short_line_per_outcome(harness, set_up, capsys)
     assert any("20:55" in line for line in lines)
 
 
-def test_the_readable_form_marks_what_isnt_done(harness, mac, capsys):
+def test_the_readable_form_marks_what_isnt_done(harness, offline, capsys):
     assert harness.cli("setup", "status", "--text") == 1
 
     lines = capsys.readouterr().out.splitlines()
-    nightly = next(line for line in lines if jobs_macos.DAILY_LABEL in line)
+    nightly = next(line for line in lines if jobs.system_name(jobs.DAILY) in line)
     assert nightly.startswith(ops.FAIL) and "parent-recap schedule install" in nightly
 
 

@@ -13,9 +13,10 @@ Fakes sit at exactly four boundaries, so internals can be refactored without tou
   3. Delivery: email sending, iMessage (`osascript`) and the Google Calendar API record what
      they are given, or fail.
   4. The pauses between model calls are recorded and move a fake clock on, instead of being slept.
-Setup commands also meet macOS's secret dialog (`osascript`), `open` (which ai-filter-report
---held-back uses too), the Mac's preferred languages (`defaults`) and the Keychain
-(`/usr/bin/security`), faked the same way.
+The OS services in `family_brief.system` (secrets, the evening jobs, the daily wake, the desktop)
+are in-memory fakes from fake_system.py, in place of their adapters. Setup commands also meet
+macOS's secret dialog (`osascript`), and the macOS-only steps' `open` (Finder beside Full Disk
+Access, the Passwords app), faked at the command.
 
 Everything else (config, state, archive) is real and lives in a temporary HOME.
 "Now" and the local timezone are pinned. Regenerate golden files with:
@@ -26,7 +27,6 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import socket
 import subprocess
 import sys
@@ -45,6 +45,8 @@ from family_brief import __main__ as cli, feedback, gateway, summarize, tools
 from family_brief.actions import calendar as calendar_action, email as email_action
 from family_brief.collectors import gmail, myclub, whatsapp, wilma
 from family_brief.collectors.base import CalendarEvent, Message
+from family_brief.system import desktop, jobs, secrets, wake
+from fake_system import FakeDesktop, FakeJobs, FakeSecrets, FakeWake
 
 TZ = "Europe/Helsinki"
 # A Sunday evening in autumn, after the nightly launchd slot.
@@ -259,16 +261,13 @@ class Harness:
         self.calendar = FakeCalendarService()
         self.sent: list[SentEmail] = []
         self.model_calls: list[ModelCall] = []
-        self.keychain: dict[str, str] = {}          # account -> secret under service family-brief
-        # Accounts whose item makes /usr/bin/security ask for the Keychain password before it
-        # reads the secret, as an item an earlier version stored with keyring does. Nobody answers.
-        self.keychain_asks: set[str] = set()
-        self.keychain_refuses: int | None = None    # macOS's code when the Keychain refuses writes
-        self.keychain_input: list[str] = []         # what `security -i` was given on stdin
+        self.secrets = FakeSecrets()
+        self.jobs = FakeJobs()
+        self.wake = FakeWake()
+        self.desktop = FakeDesktop()
         self.dialog = Dialog()
-        self.opened: list[str] = []                 # what `open` was asked to open
+        self.opened: list[str] = []                 # what the macOS-only steps' `open` opened
         self.commands: list[list[str]] = []         # every process started, model calls included
-        self.mac_languages: list[str] = ["en-FI"]   # the Mac's preferred languages, first first
         self.signed_in: dict[str, bool] = {"claude": True, "codex": True}  # what their status says
         # Claude Code's plugins and marketplaces, as `claude plugin ... list --json` gives them,
         # and each `claude plugin` command run, without the program.
@@ -348,6 +347,11 @@ class Harness:
         mp.setattr(whatsapp, "collect", source("whatsapp"))
         mp.setattr(myclub, "collect_events", source("myclub"))
 
+        mp.setattr(secrets, "_adapter", self.secrets)
+        mp.setattr(jobs, "_adapter", self.jobs)
+        mp.setattr(wake, "_adapter", self.wake)
+        mp.setattr(desktop, "_adapter", self.desktop)
+
         mp.setattr(subprocess, "run", self._fake_subprocess_run)
         mp.setattr(gateway.requests, "post", self._fake_gateway_post)
         self.probed: list[str] = []  # each host the run waited for the network on
@@ -398,7 +402,7 @@ class Harness:
         self.commands.append(list(cmd))
         if prog == "osascript" and input and "display dialog" in input:  # the secret dialog
             return self._show_dialog(cmd, input)
-        if prog == "open":
+        if prog == "open":  # Finder and System Settings beside Full Disk Access, and Passwords
             self.opened.append(cmd[-1])
             return subprocess.CompletedProcess(cmd, 0, "", "")
         if prog == "osascript":  # iMessage via Messages.app
@@ -408,11 +412,6 @@ class Harness:
             to = script.split('to buddy "', 1)[1].split('"', 1)[0]
             self.imessages.append((to, script.split('send "', 1)[1].rsplit('" to buddy', 1)[0]))
             return subprocess.CompletedProcess(cmd, 0, "", "")
-        if prog == "defaults" and cmd[1:] == ["read", "-g", "AppleLanguages"]:
-            listed = ",\n".join(f'    "{lang}"' for lang in self.mac_languages)
-            return subprocess.CompletedProcess(cmd, 0, f"(\n{listed}\n)\n", "")
-        if prog == "security":
-            return self._security(cmd, input, _k.get("timeout"))
         if prog not in ("claude", "codex"):
             raise AssertionError(f"unexpected subprocess in test: {cmd[:3]}")
         # Their own sign-in checks, answered the way each one does.
@@ -476,51 +475,6 @@ class Harness:
             "content": [{"type": "text", "text": text}], "stop_reason": "end_turn",
             "usage": {"input_tokens": 1200, "output_tokens": 300, "cache_creation_input_tokens": 0,
                       "cache_read_input_tokens": 0}})
-
-    def _security(self, cmd: list[str], input: str | None,
-                  timeout: float | None) -> subprocess.CompletedProcess:
-        """The Keychain, service family-brief, as /usr/bin/security gives it."""
-        if cmd[1:] == ["-i"]:
-            # Each line is one command, as on security's own command line. It goes on reading
-            # after a command fails; what failed shows on stderr.
-            self.keychain_input.append(input or "")
-            out = [self._security([cmd[0], *shlex.split(line)], None, timeout)
-                   for line in (input or "").splitlines() if line.strip()]
-            return subprocess.CompletedProcess(cmd, 0, "".join(r.stdout for r in out),
-                                               "".join(r.stderr for r in out))
-        verb, args = cmd[1], cmd[2:]
-        assert args[args.index("-s") + 1] == "family-brief", cmd
-        account = args[args.index("-a") + 1]
-        if verb == "add-generic-password":
-            assert args[args.index("-T") + 1] == "/usr/bin/security", cmd
-            if self.keychain_refuses is not None:
-                message = KEYCHAIN_MESSAGES[self.keychain_refuses]
-                return subprocess.CompletedProcess(
-                    cmd, 1, "", f"security: SecKeychainItemCreateFromContent (<default>): {message}\n")
-            if account in self.keychain and "-U" not in args:
-                return subprocess.CompletedProcess(cmd, 45, "", "security: SecKeychainItemCreate"
-                                                   "FromContent (<default>): The specified item "
-                                                   "already exists in the keychain.\n")
-            if account not in self.keychain:
-                self.keychain_asks.discard(account)
-            # -U updates the secret of an item already there but keeps its access list.
-            self.keychain[account] = args[args.index("-w") + 1]
-            return subprocess.CompletedProcess(cmd, 0, "", "")
-        if account not in self.keychain:
-            return subprocess.CompletedProcess(
-                cmd, 44, "", "security: SecKeychainSearchCopyNext: The specified item could not "
-                "be found in the keychain.\n")
-        if verb == "delete-generic-password":
-            del self.keychain[account]
-            self.keychain_asks.discard(account)
-            return subprocess.CompletedProcess(cmd, 0, "password has been deleted.\n", "")
-        assert verb == "find-generic-password", cmd
-        if "-w" not in args:
-            return subprocess.CompletedProcess(cmd, 0, 'keychain: "login.keychain-db"\n', "")
-        if account in self.keychain_asks:  # macOS's prompt waits for an answer
-            assert timeout is not None, "a read the Keychain asks about would wait forever"
-            raise subprocess.TimeoutExpired(cmd, timeout)
-        return subprocess.CompletedProcess(cmd, 0, self.keychain[account] + "\n", "")
 
     def _show_dialog(self, cmd: list[str], script: str) -> subprocess.CompletedProcess:
         # Replies the way osascript does for the dialog's AppleScript, which returns "1" and the
@@ -587,14 +541,6 @@ def harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 # ── Fixture builders
-
-# What `security` says for macOS's Keychain errors, by OSStatus code.
-KEYCHAIN_MESSAGES = {
-    -25308: "User interaction is not allowed.",  # errSecInteractionNotAllowed
-    -25293: "The user name or passphrase you entered is not correct.",  # errSecAuthFailed
-    -128: "User canceled the operation.",  # errSecUserCanceled
-}
-
 
 def msg(source: str, ext_id: str, when: str, body: str, *, sender: str | None = None,
         subject: str | None = None, chat: str | None = None, kid: str | None = None,

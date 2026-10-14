@@ -16,10 +16,9 @@ from pathlib import Path
 import pytest
 
 from family_brief import google_packages
-from family_brief.system import jobs_macos
 from test_nightly_run import ICS_FALLBACK, normal_night
 from test_setup_save import ANSWERS, save, saved
-from test_setup_status import mac, outcome, status  # noqa: F401 (mac is a fixture)
+from test_setup_status import offline, outcome, status  # noqa: F401 (offline is a fixture)
 from test_weekend_picks import candidate
 
 NO_GOOGLE = Path(__file__).with_name("no_google")
@@ -84,7 +83,7 @@ def test_weekend_picks_without_them_still_go_out(harness, monkeypatch, no_google
     assert harness.calendar.inserted == []
 
 
-def test_setup_saves_and_reports_without_them(harness, mac, no_google, capsys):
+def test_setup_saves_and_reports_without_them(harness, offline, no_google, capsys):
     harness.ship_pilot_form()
 
     assert save(harness, ANSWERS) == 0
@@ -97,7 +96,6 @@ def test_setup_saves_and_reports_without_them(harness, mac, no_google, capsys):
 
 
 def doctor(harness, monkeypatch, capsys) -> str:
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False

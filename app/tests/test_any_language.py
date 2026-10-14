@@ -15,7 +15,6 @@ from conftest import NOW, FailedCall, system_prompt_of
 from test_nightly_run import ENGLISH_REPLY, FINNISH_REPLY, model_call_for_golden, normal_night
 from test_weekend_picks import run_weekend_picks
 
-from family_brief.system import jobs_macos
 from family_brief.brief_text import EN, WEEKEND_TEXT
 
 PARTNER_SV = {"address": "partner@example.com", "language": "sv"}
@@ -294,7 +293,6 @@ def test_doctor_says_which_languages_have_their_own_program_text(harness, monkey
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = harness.config["whatsapp"]["enabled"] = False
     harness.config["email"]["to"] = ["parent@example.com", PARTNER_SV]
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
 
     harness.cli("doctor", "--skip-llm")
     harness.model_reply = [swedish, swedish]
@@ -313,7 +311,6 @@ def test_doctor_counts_weekend_picks_text_once_they_are_on(harness, monkeypatch,
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = harness.config["whatsapp"]["enabled"] = False
     harness.config["weekend_events"] = {"enabled": True}
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
 
     harness.cli("doctor", "--skip-llm")
 

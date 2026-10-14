@@ -182,7 +182,7 @@ def test_claude_does_not_inherit_the_callers_claude_code_session(harness, monkey
                 "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_AGENT_SDK_VERSION"):
         monkeypatch.setenv(var, "from-the-parent")
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "parent-token")
-    harness.keychain["claude-oauth-token"] = "keychain-token"
+    harness.secrets["claude-oauth-token"] = "keychain-token"
 
     assert harness.run() == 0
 

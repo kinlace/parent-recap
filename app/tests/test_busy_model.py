@@ -10,7 +10,6 @@ import pytest
 
 from conftest import FailedCall, msg
 
-from family_brief.system import jobs_macos
 
 AT_CAPACITY = "ERROR: Selected model is at capacity. Please try a different model.\n"
 GOOD = {"per_kid": [{"kid": "Mia", "notices": [{"text": "Retki to Nuuksio on Thu 1 Oct", "refs": ["g-1"]}],
@@ -130,7 +129,6 @@ def test_the_doctor_check_does_not_wait_for_a_busy_model(night, monkeypatch, cap
     del night.config["kids"][0]["myclub_ical_url"]  # no network in tests
     night.config["wilma"]["enabled"] = False
     night.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     night.model_reply = [FailedCall(AT_CAPACITY)]
 
     night.cli("doctor")

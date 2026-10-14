@@ -2,8 +2,9 @@
 makes them.
 
 The server runs in-process on a free port, inside the harness, so the config, the progress record,
-`open` and the Mac's languages are the harness's. Assertions are on what the page and the family
-see: the responses, the config and progress written, and what was opened."""
+the secrets, the jobs, the wake and the desktop (what opens, and the computer's languages) are the
+harness's. Assertions are on what the page and the family see: the responses, the config and
+progress written, and what was opened."""
 from __future__ import annotations
 
 import base64
@@ -36,8 +37,10 @@ from family_brief import (__main__ as cli, feedback, install_record, ops, run_lo
 from family_brief.collectors import myclub, whatsapp
 from family_brief.config import Config
 from family_brief.state import State
-from family_brief.system import jobs, jobs_macos, wake
+from family_brief.system import jobs, wake
+from family_brief.system.secrets_error import SecretsError
 import fake_node
+from fake_system import FakeWake
 from conftest import FailedCall, HTTPReply, PILOT_FORM_FIELDS, PILOT_FORM_URL, msg, program
 from test_doctor import WHATSAPP_FAILURES, break_whatsapp
 from test_nightly_run import FEEDBACK, FORM, feedback_links
@@ -184,6 +187,12 @@ def wait_for(condition, seconds: float = 5) -> None:
         time.sleep(0.01)
 
 
+def refuse_secrets(harness, code: int) -> None:
+    """The secrets store refuses to write or delete, with the system's `code`."""
+    reason = "not-reachable" if code == -25308 else "failed"
+    harness.secrets.refuses = SecretsError("the store refused", reason, code)
+
+
 def refused(url: str) -> bool:
     try:
         call(url)
@@ -201,9 +210,9 @@ def test_the_command_opens_the_page_and_stops_after_30_idle_minutes(harness, clo
     codes: list[int] = []
     thread = threading.Thread(target=lambda: codes.append(cli.main()), daemon=True)
     thread.start()
-    wait_for(lambda: harness.opened)
+    wait_for(lambda: harness.desktop.opened)
 
-    url = harness.opened[0]
+    url = harness.desktop.opened[0]
     parts = urlparse(url)
     assert parts.scheme == "http" and parts.hostname == "127.0.0.1" and parts.port
     page = call(url)
@@ -230,8 +239,8 @@ def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock
     monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(config_file(harness)), "setup", "page"])
     thread = threading.Thread(target=cli.main, daemon=True)
     thread.start()
-    wait_for(lambda: harness.opened)
-    url = harness.opened[0]
+    wait_for(lambda: harness.desktop.opened)
+    url = harness.desktop.opened[0]
     assert call(url, "api/language", method="POST", body={"language": "fi"}).status == 200
 
     clock.now += 31 * 60
@@ -241,16 +250,14 @@ def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock
     assert set(setup_server.CLOSED_LINES) == set(setup_server.LANGUAGES)
 
 
-@pytest.mark.parametrize("var", ["TMUX", "SSH_CONNECTION"])
 def test_in_tmux_or_ssh_the_command_warns_the_keychain_cannot_be_reached(harness, clock, capsys,
-                                                                       monkeypatch, var):
-    monkeypatch.setenv(var, "/private/tmp/tmux-501/default,1234,0" if var == "TMUX"
-                       else "10.0.0.2 52000 10.0.0.1 22")
+                                                                       monkeypatch):
+    harness.secrets.reachable_here = False
     monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(config_file(harness)), "setup", "page"])
     thread = threading.Thread(target=cli.main, daemon=True)
     thread.start()
-    wait_for(lambda: harness.opened)
-    url = harness.opened[0]
+    wait_for(lambda: harness.desktop.opened)
+    url = harness.desktop.opened[0]
 
     # Said once, on the page too, before the family types anything.
     assert call(url, "api/state").json()["keychain"] == {"reachable": False}
@@ -433,7 +440,7 @@ def test_each_language_choice_is_named_as_shown_not_by_its_code():
     ([], "en"),
 ])
 def test_the_mac_s_language_is_preselected(harness, page, mac, preselected):
-    harness.mac_languages = mac
+    harness.desktop.languages = mac
 
     state = call(page.url, "api/state").json()
 
@@ -1075,13 +1082,13 @@ def test_the_button_opens_google_s_app_passwords_page(harness, page):
     r = call(page.url, "api/open", method="POST", body={"site": "app-passwords"})
 
     assert r.status == 200 and r.json()["result"] == "opened"
-    assert harness.opened == ["https://myaccount.google.com/apppasswords"]
+    assert harness.desktop.opened == ["https://myaccount.google.com/apppasswords"]
 
     call(page.url, "api/open", method="POST", body={"site": "two-step"})
-    assert harness.opened[-1] == "https://myaccount.google.com/signinoptions/two-step-verification"
+    assert harness.desktop.opened[-1] == "https://myaccount.google.com/signinoptions/two-step-verification"
     for body in [{"site": "https://evil.example"}, {}, {"site": "two-step", "x": 1}]:
         assert call(page.url, "api/open", method="POST", body=body).status == 400, body
-    assert len(harness.opened) == 2
+    assert len(harness.desktop.opened) == 2
 
 
 def test_a_valid_app_password_is_tested_stored_and_gmail_turns_done(harness, page, gmail, caplog,
@@ -1096,7 +1103,7 @@ def test_a_valid_app_password_is_tested_stored_and_gmail_turns_done(harness, pag
     out = r.json()
     assert out["result"] == "saved" and out["address"] == "parent@example.com"
     assert gmail.logins == [("parent@example.com", APP_PASSWORD)]
-    assert harness.keychain == {"gmail-imap-parent@example.com": APP_PASSWORD}
+    assert harness.secrets == {"gmail-imap-parent@example.com": APP_PASSWORD}
     assert out["progress"]["sources"]["gmail"] == "done"
     assert out["progress"]["source"] == "ai"
     cfg = Config.load(config_file(harness))
@@ -1125,7 +1132,7 @@ def test_a_password_gmail_would_not_take_is_explained_and_not_stored(harness, pa
     r = connect_gmail(page.url, password=typed)
 
     assert r.status == 200 and r.json()["result"] == result
-    assert harness.keychain == {}
+    assert harness.secrets == {}
     assert statuses(page.url)["gmail"] == "to-do"
     if result == "not-an-app-password":  # most likely the Google password: never sent to Google
         assert gmail.logins == []
@@ -1136,22 +1143,22 @@ def test_no_connection_to_gmail_says_so(harness, page, gmail):
     gmail.reachable = False
 
     assert connect_gmail(page.url).json()["result"] == "no-connection"
-    assert harness.keychain == {}
+    assert harness.secrets == {}
 
 
 def test_a_keychain_that_refuses_says_so(harness, page, gmail):
-    harness.keychain_refuses = -128  # errSecUserCanceled
+    refuse_secrets(harness, -128)  # errSecUserCanceled
 
     assert connect_gmail(page.url).json()["result"] == "keychain-failed"
     assert statuses(page.url)["gmail"] == "to-do"
 
 
 def test_a_keychain_out_of_reach_says_so_with_its_code(harness, page, gmail):
-    harness.keychain_refuses = -25308  # errSecInteractionNotAllowed
+    refuse_secrets(harness, -25308)  # errSecInteractionNotAllowed
 
     assert connect_gmail(page.url).json() == {"result": "keychain-not-reachable", "code": -25308}
     assert statuses(page.url)["gmail"] == "to-do"
-    harness.keychain_refuses = -25293
+    refuse_secrets(harness, -25293)
     assert connect_gmail(page.url).json() == {"result": "keychain-failed", "code": -25293}
 
 
@@ -1297,7 +1304,6 @@ class WilmaCLI:
         self.installs: list[list[str]] = []
         self.npm_env: dict[str, str] = {}  # the last npm's
         self.ships_tenants = True
-        self.terminal: list[str] = []    # each script opened in Terminal
         self.signs_in_terminal = True    # the family signs in in the window
 
     @property
@@ -1351,6 +1357,11 @@ def wilma_cli(harness, monkeypatch) -> WilmaCLI:
     monkeypatch.setattr(time, "sleep", lambda _s: None)
     others = subprocess.run  # the harness's fakes
 
+    def in_window(window: Any) -> None:
+        if w.signs_in_terminal:  # the family signs in in the window: the CLI saves its profile
+            w.signed_in_before(ESPOO, "mia.parent", WILMA_PASSWORD)
+    harness.desktop.in_window = in_window
+
     def run(cmd: list[str], *a: Any, **k: Any) -> Any:
         if fake_node.is_wilma(cmd):
             harness.commands.append(list(cmd))
@@ -1363,12 +1374,6 @@ def wilma_cli(harness, monkeypatch) -> WilmaCLI:
                 return subprocess.CompletedProcess(cmd, 1, "", "npm error code E404")
             w.install(prefix=fake_node.npm_prefix(cmd))
             return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
-        if cmd[:3] == ["open", "-a", "Terminal"]:
-            harness.commands.append(list(cmd))
-            w.terminal.append(Path(cmd[3]).read_text())
-            if w.signs_in_terminal:  # the family signs in in the window: the CLI saves its profile
-                w.signed_in_before(ESPOO, "mia.parent", WILMA_PASSWORD)
-            return subprocess.CompletedProcess(cmd, 0, "", "")
         return others(cmd, *a, **k)
     monkeypatch.setattr(subprocess, "run", run)
     return w
@@ -1705,8 +1710,8 @@ def test_the_terminal_window_signs_in_and_the_page_lists_the_kids(harness, page,
 
     assert r.status == 200 and r.json()["result"] == "waiting"
     out = wilma_window_result(page.url)
-    [script] = wilma_cli.terminal
-    assert "--language fi" in script
+    [window] = harness.desktop.windows
+    assert window.argv[window.argv.index("--language") + 1] == "fi"
     assert out["result"] == "signed-in"
     assert out["kids"] == ["Mia Virtanen", "Leo Virtanen"] and out["city"] == "Espoo"
     assert out["progress"]["sources"]["wilma"] == "done"
@@ -1932,11 +1937,11 @@ def test_claude_s_token_is_read_tested_and_stored_with_nothing_copied(harness, p
     out = claude_result(page.url)
     assert out["result"] == "saved"
     assert claude.ran and claude.started == [[str(claude.bin_dir / "claude"), "setup-token"]]
-    assert harness.keychain == {"claude-oauth-token": CLAUDE_TOKEN}
+    assert harness.secrets == {"claude-oauth-token": CLAUDE_TOKEN}
     [test_call] = harness.model_calls  # with the token in its environment
     assert test_call.env["CLAUDE_CODE_OAUTH_TOKEN"] == CLAUDE_TOKEN
     assert out["progress"]["sources"]["ai"] == "done" and out["progress"]["source"] == "whatsapp"
-    assert not any(c[:3] == ["open", "-a", "Terminal"] for c in harness.commands)
+    assert not harness.desktop.windows
     assert_never_leaked(harness, [r, call(page.url, "api/claude/check", method="POST", body={}),
                                   call(page.url, "api/state")], caplog, capsys, CLAUDE_TOKEN)
 
@@ -1948,7 +1953,7 @@ def test_a_token_at_the_end_of_the_screen_is_read_once_the_screen_is_still(harne
     call(page.url, "api/claude", method="POST", body={})
 
     assert claude_result(page.url)["result"] == "saved"
-    assert harness.keychain == {"claude-oauth-token": CLAUDE_TOKEN}
+    assert harness.secrets == {"claude-oauth-token": CLAUDE_TOKEN}
 
 
 def test_a_claude_sign_in_already_running_is_not_started_twice(harness, page, claude):
@@ -1973,7 +1978,7 @@ def test_a_claude_sign_in_without_a_token_offers_the_terminal_window(harness, pa
     call(page.url, "api/claude", method="POST", body={})
 
     assert claude_result(page.url) == {"result": result}
-    assert harness.keychain == {} and statuses(page.url)["ai"] == "to-do"
+    assert harness.secrets == {} and statuses(page.url)["ai"] == "to-do"
 
 
 def test_a_token_claude_does_not_accept_is_not_kept(harness, page, claude):
@@ -1983,7 +1988,7 @@ def test_a_token_claude_does_not_accept_is_not_kept(harness, page, claude):
     call(page.url, "api/claude", method="POST", body={})
 
     assert claude_result(page.url) == {"result": "test-call-failed"}
-    assert harness.keychain == {} and statuses(page.url)["ai"] == "to-do"
+    assert harness.secrets == {} and statuses(page.url)["ai"] == "to-do"
 
 
 def test_the_fallback_opens_the_terminal_window_and_takes_the_pasted_token(harness, page, claude,
@@ -1995,18 +2000,19 @@ def test_the_fallback_opens_the_terminal_window_and_takes_the_pasted_token(harne
     r = call(page.url, "api/claude/terminal", method="POST", body={})
 
     assert r.status == 200 and r.json() == {"result": "opened"}
-    [opened] = [c for c in harness.commands if c[:3] == ["open", "-a", "Terminal"]]
-    script = Path(opened[3]).read_text()
-    assert "setup-token" in script and "the field on the setup page" in script
+    [window] = harness.desktop.windows
+    assert window.title == setup_steps.CLAUDE_WINDOW
+    assert window.argv == setup_steps.setup_token_window(str(claude.bin_dir / "claude"),
+                                                          "the field on the setup page")
 
     # Copied from the window, across the lines Terminal wrapped it on.
     pasted = f" {CLAUDE_TOKEN[:30]}\n{CLAUDE_TOKEN[30:]} "
     r = call(page.url, "api/claude/token", method="POST", body={"token": pasted})
 
     assert r.status == 200 and r.json()["result"] == "saved"
-    assert harness.keychain == {"claude-oauth-token": CLAUDE_TOKEN}
+    assert harness.secrets == {"claude-oauth-token": CLAUDE_TOKEN}
     assert r.json()["progress"]["sources"]["ai"] == "done"
-    assert not Path(opened[3]).exists()  # the window's script is gone once it has done its work
+    assert harness.desktop.forgotten == [setup_steps.CLAUDE_WINDOW]  # once it has done its work
     assert_never_leaked(harness, [r], caplog, capsys, CLAUDE_TOKEN)
 
 
@@ -2021,14 +2027,14 @@ def test_a_pasted_token_that_does_not_work_is_explained_and_not_kept(harness, pa
     r = call(page.url, "api/claude/token", method="POST", body={"token": pasted})
 
     assert r.status == 200 and r.json() == {"result": result}
-    assert harness.keychain == {}
+    assert harness.secrets == {}
     if result == "not-a-token":  # most likely a password: never sent to Claude
         assert not harness.model_calls
     assert_never_leaked(harness, [r], caplog, capsys, pasted)
 
 
 def test_a_keychain_that_refuses_the_claude_token_says_so(harness, page, claude):
-    harness.keychain_refuses = -128  # errSecUserCanceled
+    refuse_secrets(harness, -128)  # errSecUserCanceled
     claude.install()
 
     r = call(page.url, "api/claude/token", method="POST", body={"token": CLAUDE_TOKEN})
@@ -2038,7 +2044,7 @@ def test_a_keychain_that_refuses_the_claude_token_says_so(harness, page, claude)
 
 
 def test_a_keychain_out_of_reach_of_the_claude_token_says_so_with_its_code(harness, page, claude):
-    harness.keychain_refuses = -25308  # errSecInteractionNotAllowed
+    refuse_secrets(harness, -25308)  # errSecInteractionNotAllowed
     claude.install()
 
     r = call(page.url, "api/claude/token", method="POST", body={"token": CLAUDE_TOKEN})
@@ -2052,7 +2058,7 @@ def test_without_claude_code_its_sign_in_says_how_to_install_it(harness, page, c
                        ("api/claude/token", {"token": CLAUDE_TOKEN})]:
         assert call(page.url, path, method="POST", body=body).json() == {
             "result": "not-installed", "install": "curl -fsSL https://claude.ai/install.sh | bash"}
-    assert not harness.keychain
+    assert not harness.secrets
 
 
 def test_the_claude_calls_take_only_what_they_need(harness, page, claude):
@@ -2065,7 +2071,7 @@ def test_the_claude_calls_take_only_what_they_need(harness, page, claude):
         assert r.status == 400 and CLAUDE_TOKEN.encode() not in r.body, body
     assert call(page.url, "api/claude/check", method="POST", body={}).json() == \
         {"result": "no-sign-in"}
-    assert not claude.started and not harness.keychain
+    assert not claude.started and not harness.secrets
 
 
 FAKE_CODEX = """#!{python}
@@ -2226,7 +2232,7 @@ def test_a_gateway_key_pasted_on_the_page_is_tested_stored_and_ticks_the_ai(harn
     [test_call] = harness.model_calls
     assert test_call.argv == ["POST", "https://gateway.parentrecap.com/v1/messages"]
     assert test_call.headers["x-api-key"] == GATEWAY_KEY
-    assert harness.keychain == {"gateway-key": GATEWAY_KEY}
+    assert harness.secrets == {"gateway-key": GATEWAY_KEY}
     assert install_record.entries("keychain") == ["gateway-key"]  # so uninstall removes it
     assert Config.load(config_file(harness)).llm.backend == "gateway"
     assert_never_leaked(harness, [r, call(page.url, "api/state")], caplog, capsys, GATEWAY_KEY)
@@ -2260,7 +2266,7 @@ def test_a_gateway_key_that_does_not_work_is_explained_and_not_kept(harness, pag
 
     # Only the result: what the gateway said can name the Mac's files, or echo the key.
     assert r.status == 200 and r.json() == {"result": result}
-    assert harness.keychain == {} and statuses(page.url)["ai"] == "to-do"
+    assert harness.secrets == {} and statuses(page.url)["ai"] == "to-do"
     if result == "not-a-key":  # most likely a password: never sent to the gateway
         assert not harness.model_calls
     assert_never_leaked(harness, [r], caplog, capsys, pasted)
@@ -2270,7 +2276,7 @@ def test_a_gateway_key_that_does_not_work_is_explained_and_not_kept(harness, pag
                                           (-25308, "keychain-not-reachable")])
 def test_a_keychain_that_refuses_the_gateway_key_says_so_with_its_code(harness, page, code, result):
     at_the_ai_step(harness, page.url, "gateway")
-    harness.keychain_refuses = code
+    refuse_secrets(harness, code)
     harness.model_reply = "OK"
 
     r = save_gateway_key(page.url, GATEWAY_KEY)
@@ -2283,7 +2289,7 @@ def test_the_gateway_call_takes_only_the_key(harness, page):
     for body in [{}, {"key": 1}, {"key": GATEWAY_KEY, "x": 1}]:
         r = call(page.url, "api/gateway", method="POST", body=body)
         assert r.status == 400 and GATEWAY_KEY.encode() not in r.body, body
-    assert not harness.model_calls and not harness.keychain
+    assert not harness.model_calls and not harness.secrets
 
 
 def test_every_gateway_result_is_explained_in_all_three_languages():
@@ -2342,7 +2348,7 @@ def test_the_check_page_names_the_gateway_s_own_checks():
 
 @pytest.fixture
 def mac(harness, monkeypatch) -> Mac:
-    """The family's Mac as test_setup_whatsapp.py fakes it: launchctl runs each `bg` job
+    """The family's Mac as test_setup_whatsapp.py fakes it: the harness's jobs run each `bg` job
     in-process, against a WhatsApp database only those jobs can read, once the Mac has given
     the job's Python the permission. The harness stops the clock, so waiting moves it on."""
     m = fake_mac(harness, monkeypatch)
@@ -2518,7 +2524,7 @@ def test_an_allow_click_cannot_tick_the_entry_without_full_disk_access(harness, 
 def test_a_read_that_does_not_finish_is_waiting(harness, page, mac):
     at_the_whatsapp_step(harness)
     mac.install_whatsapp(WHATSAPP_CHATS)
-    mac.hangs = True
+    harness.jobs.hangs = True
 
     assert check_whatsapp(page.url).json() == {"result": "waiting"}
     assert not any(mac.reads)
@@ -2538,7 +2544,7 @@ def test_a_read_that_fails_says_so_without_the_error(harness, page, mac, monkeyp
 
     assert check_whatsapp(page.url).json() == {"result": "unreadable"}
 
-    mac.bootstrap_fails = True
+    harness.jobs.detached_fails = "Bootstrap failed: 5: Input/output error"
     assert check_whatsapp(page.url).json() == {"result": "bg-failed"}
     assert statuses(page.url)["whatsapp"] == "to-do"
 
@@ -2638,14 +2644,14 @@ def test_the_button_opens_the_page_to_download_the_chatgpt_app(harness, page):
     r = call(page.url, "api/open", method="POST", body={"site": "codex-app"})
 
     assert r.status == 200 and r.json()["result"] == "opened"
-    assert harness.opened == ["https://developers.openai.com/codex/app"]
+    assert harness.desktop.opened == ["https://developers.openai.com/codex/app"]
 
 
 def test_the_button_opens_myclub_s_site(harness, page):
     r = call(page.url, "api/open", method="POST", body={"site": "myclub"})
 
     assert r.status == 200 and r.json()["result"] == "opened"
-    assert harness.opened == ["https://id.myclub.fi"]
+    assert harness.desktop.opened == ["https://id.myclub.fi"]
 
 
 def test_each_kid_known_so_far_is_listed_without_its_link(harness, page, myclub_server):
@@ -2866,7 +2872,7 @@ SENDERS = (["Opettaja <opettaja@edu.espoo.fi>"] * 300 + ["Coach <coach@tapiolan-
 def senders(harness, monkeypatch) -> GatedHeaderImap:
     imap = GatedHeaderImap(SENDERS)
     monkeypatch.setattr(imaplib, "IMAP4_SSL", imap)
-    harness.keychain["gmail-imap-parent@example.com"] = APP_PASSWORD
+    harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
     return imap
 
 
@@ -2949,14 +2955,14 @@ def test_reading_picks_up_again_after_the_page_was_restarted(harness, page, send
 def test_a_gmail_that_cannot_be_read_says_so_and_can_be_tried_again(harness, page, senders):
     connect_done(harness)
     senders.go.set()
-    del harness.keychain["gmail-imap-parent@example.com"]
+    del harness.secrets["gmail-imap-parent@example.com"]
 
     start_reading(page.url)
     out = read_to_the_end(page.url)
 
     assert out == {"result": "read-failed"}  # without the error, which names the address
     assert setup_save.read(config_file(harness))["progress"]["phase"] == "working"
-    harness.keychain["gmail-imap-parent@example.com"] = APP_PASSWORD
+    harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
     start_reading(page.url)
     assert read_to_the_end(page.url)["result"] == "read"
 
@@ -3192,8 +3198,8 @@ def test_a_household_not_in_the_pilot_has_no_feedback_label_to_give(harness, pag
 
 def test_the_health_check_runs_for_real_with_the_sources_confirmed(harness, page, ai, monkeypatch):
     ai("claude")
-    harness.keychain["claude-oauth-token"] = "sk-ant-oat01-token"
-    harness.keychain["gmail-imap-parent@example.com"] = APP_PASSWORD
+    harness.secrets["claude-oauth-token"] = "sk-ant-oat01-token"
+    harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
     harness.config["wilma"]["enabled"] = False
     monkeypatch.setattr(imaplib, "IMAP4_SSL", HeaderImap(SENDERS))
     at_the_check_step(harness)
@@ -3420,7 +3426,7 @@ def at_the_first_brief(harness, **config: Any) -> None:
     harness.sources["gmail"] = [msg("gmail", "g1", "2026-09-27T09:00:00+03:00", BRIEF_TEXT,
                                     sender="teacher@edu.espoo.fi", subject="Trip")]
     harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": BRIEF_TEXT}
-    harness.keychain["gmail-imap-parent@example.com"] = APP_PASSWORD
+    harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
 
 
 def make_brief(url: str) -> Response:
@@ -3457,7 +3463,7 @@ def test_the_preview_makes_the_real_brief_and_sends_nothing(harness, page, mac):
     assert not harness.state_path.exists()  # nothing recorded: the evening Brief reads it again
     assert not list(harness.home.glob("ParentRecap/*.md"))
     # Through a bg job, so WhatsApp can be read, over the last three days.
-    assert mac.jobs[-1][5:] == ["run", "--preview", "--lookback-hours", "72"]
+    assert harness.jobs.detached[-1][2:] == ["run", "--preview", "--lookback-hours", "72"]
     assert harness.lookback_hours["gmail"] == [72]
 
 
@@ -3522,13 +3528,13 @@ def test_the_page_shows_progress_while_the_brief_is_made(harness, page, monkeypa
 
 def test_a_brief_that_cannot_be_made_says_so_and_can_be_made_again(harness, page, mac):
     at_the_first_brief(harness)
-    mac.bootstrap_fails = True
+    harness.jobs.detached_fails = "Bootstrap failed: 5: Input/output error"
 
     make_brief(page.url)
     assert brief_made(page.url) == {"result": "make-failed"}  # without the error
     assert call(page.url, "brief.html").status == 404
 
-    mac.bootstrap_fails = False
+    harness.jobs.detached_fails = None
     make_brief(page.url)
     assert brief_made(page.url)["result"] == "made"
 
@@ -3539,7 +3545,7 @@ def test_the_brief_is_made_only_once_check_is_confirmed(harness, page, mac):
     r = make_brief(page.url)
 
     assert r.status == 400 and r.json()["result"] == "invalid-answers"
-    assert mac.jobs == []
+    assert harness.jobs.detached == []
     assert call(page.url, "api/brief/check", method="POST", body={}).json() == {"result": "no-brief"}
     for body in [{"x": 1}, []]:
         assert call(page.url, "api/brief", method="POST", body=body).status == 400
@@ -3633,7 +3639,7 @@ def test_a_pilot_household_can_say_something_is_wrong_through_the_feedback_form(
     r = call(page.url, "api/brief/feedback", method="POST", body={})
     assert r.json() == {"result": "opened"}
     # The Brief's own Digest link, pre-filled with tonight's Digest.
-    [(_, answers, _)] = feedback_links(f'<a href="{html.escape(harness.opened[-1])}">x</a>')
+    [(_, answers, _)] = feedback_links(f'<a href="{html.escape(harness.desktop.opened[-1])}">x</a>')
     assert answers["verdict"] == feedback.DIGEST_WRONG and answers["item_text"] == BRIEF_TEXT
     assert answers["household"] == "Household 24ebb1"  # 王家's pseudonym, as in the evening's Brief
 
@@ -3644,7 +3650,7 @@ def test_only_a_pilot_household_has_the_feedback_button(harness, page, mac):
 
     assert brief_made(page.url)["feedback"] is False
     r = call(page.url, "api/brief/feedback", method="POST", body={})
-    assert r.status == 400 and harness.opened == []
+    assert r.status == 400 and harness.desktop.opened == []
 
 
 def test_every_first_brief_result_is_explained_in_all_three_languages():
@@ -3660,69 +3666,43 @@ def test_every_first_brief_result_is_explained_in_all_three_languages():
 # ── Finish: the evening job and the wake-up, then the outcome checklist
 
 
-OTHER_WAKE = "wakepoweron at 7:00AM weekdays only"
+OTHER_WAKE = "wake every weekday at 07:00"
 
 
 class Schedule:
-    """The Mac as Finish meets it: launchctl loads, unloads and lists the jobs; pmset says
-    whether the Mac sleeps and lists its repeating wake schedule; and macOS's administrator dialog
-    runs `pmset repeat` once the family types their Mac password there, held until the test lets
-    it go. Every other process is the harness's."""
+    """The jobs and the wake as Finish meets them, in harness.jobs and harness.wake: what each
+    install loaded, jobs that can't be loaded, and the administrator dialog held until the test
+    lets it go."""
 
-    def __init__(self, run) -> None:
-        self._run = run
-        self.loaded: set[str] = set()
+    def __init__(self, harness) -> None:
+        self.harness = harness
         self.loads: list[str] = []
         self.load_fails = False
-        self.sleep = "AC Power:\n sleep                1\n"
-        self.repeating: list[str] = []
-        self.dialog = "allow"  # or "cancel", or "unavailable"
-        self.dialogs: list[str] = []
         self.go = threading.Event()
         self.go.set()
+        install, wake_up = harness.jobs.install, harness.wake.set
 
-    def __call__(self, cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        prog = Path(cmd[0]).name
-        if prog == "launchctl" and cmd[1] == "list":
-            listed = "".join(f"-\t0\t{label}\n" for label in sorted(self.loaded))
-            return subprocess.CompletedProcess(cmd, 0, listed, "")
-        if prog == "launchctl":
-            label = Path(cmd[2]).stem
-            if cmd[1] == "load":
-                if self.load_fails:
-                    raise subprocess.CalledProcessError(5, cmd)
-                self.loads.append(label)
-                self.loaded.add(label)
-            else:
-                self.loaded.discard(label)
-            return subprocess.CompletedProcess(cmd, 0, "", "")
-        if prog == "pmset":
-            if cmd[1:] == ["-g", "custom"]:
-                return subprocess.CompletedProcess(cmd, 0, self.sleep, "")
-            listed = "".join(f"  {line}\n" for line in self.repeating)
-            return subprocess.CompletedProcess(
-                cmd, 0, f"Repeating power events:\n{listed}" if listed else "", "")
-        if prog == "osascript" and "administrator privileges" in cmd[-1]:
-            self.dialogs.append(cmd[-1])
+        def installed(wanted: list[jobs.Job]) -> None:
+            if self.load_fails:
+                raise RuntimeError("the jobs couldn't be loaded")
+            install(wanted)
+            self.loads += [job.name for job in wanted]
+
+        def held(hour: int, minute: int, replace: bool) -> str:
+            result = wake_up(hour, minute, replace)
             assert self.go.wait(5)
-            if self.dialog == "cancel":
-                return subprocess.CompletedProcess(cmd, 1, "", "execution error: User canceled. (-128)")
-            if self.dialog == "unavailable":
-                return subprocess.CompletedProcess(
-                    cmd, 1, "", "execution error: No user interaction allowed. (-1713)")
-            hh, mm = cmd[-1].split("MTWRFSU ", 1)[1][:5].split(":")
-            h = int(hh)
-            self.repeating = [f"wakepoweron at {h % 12 or 12}:{mm}{'AM' if h < 12 else 'PM'} every day"]
-            return subprocess.CompletedProcess(cmd, 0, "", "")
-        return self._run(cmd, *a, **k)
+            return result
+        harness.jobs.install = installed
+        harness.wake.set = held
+
+    @property
+    def dialogs(self) -> list[str]:
+        return self.harness.wake.asked
 
 
 @pytest.fixture
-def schedule(harness, health, monkeypatch) -> Schedule:
-    s = Schedule(subprocess.run)
-    monkeypatch.setattr(subprocess, "run", s)
-    monkeypatch.setattr(jobs_macos, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
-    return s
+def schedule(harness, health) -> Schedule:
+    return Schedule(harness)
 
 
 def at_finish(harness, *, delivered: bool = True) -> None:
@@ -3766,12 +3746,10 @@ def test_finish_installs_the_evening_job_and_the_wake_up_through_macos_s_dialog(
     assert out["result"] == "done" and out["wake"] == "set"
     assert checklist(out) == {"installed": True, "doctor": True, "brief": True, "nightly": True,
                               "wake": True}
-    assert jobs_macos.DAILY_LABEL in schedule.loaded
-    assert (jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY_LABEL}.plist").exists()
-    # The Mac password goes into macOS's own dialog, which says who is asking and why.
-    [dialog] = schedule.dialogs
-    assert "pmset repeat wakeorpoweron MTWRFSU 20:55:00" in dialog and "Parent Recap" in dialog
-    assert "with administrator privileges" in dialog
+    assert jobs.DAILY in harness.jobs.installed()
+    # The Mac password goes into macOS's own dialog only.
+    assert schedule.dialogs == ["set 20:55"]
+    assert harness.wake.wakes == [FakeWake.line(21, 0)]
     # Doctor's checks run with the evening job's own, now that it's installed.
     assert health.runs[-1][1] is True
 
@@ -3920,7 +3898,7 @@ def test_finish_for_now_is_only_for_finish(harness, page, schedule):
 
 def test_another_wake_schedule_is_replaced_only_once_the_family_agrees(harness, page, schedule):
     at_finish(harness)
-    schedule.repeating = [OTHER_WAKE]
+    harness.wake.wakes = [OTHER_WAKE]
 
     finish(page.url)
     out = finished(page.url)
@@ -3936,11 +3914,11 @@ def test_another_wake_schedule_is_replaced_only_once_the_family_agrees(harness, 
     assert len(schedule.dialogs) == 1
 
 
-@pytest.mark.parametrize("dialog, result", [("cancel", "cancelled"), ("unavailable", "no-dialog")])
+@pytest.mark.parametrize("dialog, result", [("cancel", "cancelled"), ("none", "no-dialog")])
 def test_a_wake_up_that_isn_t_set_says_why_and_can_be_tried_again(harness, page, schedule, dialog,
                                                                   result):
     at_finish(harness)
-    schedule.dialog = dialog
+    harness.wake.dialog = dialog
 
     finish(page.url)
     out = finished(page.url)
@@ -3948,14 +3926,14 @@ def test_a_wake_up_that_isn_t_set_says_why_and_can_be_tried_again(harness, page,
     assert out["result"] == "not-done" and out["wake"] == result
     assert checklist(out)["wake"] is False
     assert "sudo" not in json.dumps(out)  # the password goes into macOS's dialog only
-    schedule.dialog = "allow"
+    harness.wake.dialog = "allow"
     finish(page.url)
     assert finished(page.url)["result"] == "done"
 
 
 def test_a_mac_that_never_sleeps_needs_no_wake_up(harness, page, schedule):
     at_finish(harness)
-    schedule.sleep = "AC Power:\n sleep                0\n"
+    harness.wake.never_sleeps = True
 
     finish(page.url)
     out = finished(page.url)
@@ -4007,8 +3985,8 @@ def test_finish_waits_for_the_first_brief(harness, page, schedule):
 
 def test_a_finished_household_sees_only_the_checklist(harness, page, schedule):
     at_finish(harness)
-    schedule.loaded.add(jobs_macos.DAILY_LABEL)
-    schedule.repeating = ["wakepoweron at 8:55PM every day"]
+    harness.jobs.add(jobs.DAILY)
+    harness.wake.wakes = [FakeWake.line(21, 0)]
 
     r = call(page.url, "api/finish/outcomes", method="POST", body={})
 
@@ -4078,7 +4056,7 @@ def test_check_again_keeps_saying_what_s_still_missing(harness, page, schedule, 
 
 def test_check_again_still_offers_to_replace_another_wake_schedule(harness, page, schedule):
     at_finish(harness)
-    schedule.repeating = [OTHER_WAKE]
+    harness.wake.wakes = [OTHER_WAKE]
     finish(page.url)
     finished(page.url)
 
@@ -4178,7 +4156,7 @@ def test_on_finish_a_gateway_key_switches_the_household_to_the_gateway(harness, 
 
     assert r.status == 200 and r.json()["result"] == "saved"
     assert backend(harness) == "gateway"
-    assert harness.keychain == {"gateway-key": GATEWAY_KEY}
+    assert harness.secrets == {"gateway-key": GATEWAY_KEY}
     assert call(page.url, "api/state").json()["progress"]["phase"] == "finish"  # still at Finish
     assert_never_leaked(harness, [r, call(page.url, "api/state")], caplog, capsys, GATEWAY_KEY)
 
@@ -4193,17 +4171,17 @@ def test_on_finish_a_gateway_key_that_does_not_work_keeps_the_old_ai(harness, pa
 
     assert save_gateway_key(page.url, GATEWAY_KEY).json() == {"result": result}
 
-    assert backend(harness) == "claude" and harness.keychain == {}
+    assert backend(harness) == "claude" and harness.secrets == {}
 
 
 def test_on_finish_a_gateway_household_can_enter_a_new_gateway_key(harness, page):
     at_finish_with(harness, "gateway")
-    harness.keychain["gateway-key"] = "sk-bf-old-key-turned-off"
+    harness.secrets["gateway-key"] = "sk-bf-old-key-turned-off"
     harness.model_reply = "OK"
 
     assert save_gateway_key(page.url, GATEWAY_KEY).json()["result"] == "saved"
 
-    assert backend(harness) == "gateway" and harness.keychain == {"gateway-key": GATEWAY_KEY}
+    assert backend(harness) == "gateway" and harness.secrets == {"gateway-key": GATEWAY_KEY}
 
 
 def test_on_finish_a_claude_token_switches_the_household_to_claude(harness, page, claude):
@@ -4214,7 +4192,7 @@ def test_on_finish_a_claude_token_switches_the_household_to_claude(harness, page
 
     assert r.status == 200 and r.json()["result"] == "saved"
     assert backend(harness) == "claude"
-    assert harness.keychain == {"claude-oauth-token": CLAUDE_TOKEN}
+    assert harness.secrets == {"claude-oauth-token": CLAUDE_TOKEN}
     # So that changes after setup work in Claude Code's chat, as when Welcome picks Claude.
     assert chat_installed(page.url, "claude") == "installed"
 
@@ -4227,7 +4205,7 @@ def test_on_finish_a_claude_token_that_does_not_work_keeps_the_old_ai(harness, p
     r = call(page.url, "api/claude/token", method="POST", body={"token": CLAUDE_TOKEN})
 
     assert r.json() == {"result": "test-call-failed"}
-    assert backend(harness) == "gateway" and harness.keychain == {}
+    assert backend(harness) == "gateway" and harness.secrets == {}
 
 
 def test_on_finish_a_signed_in_codex_that_answers_a_test_call_switches_the_household(harness, page,
@@ -4305,16 +4283,15 @@ def test_continue_in_the_chat_opens_claude_code_with_the_setup_skill_in_terminal
     r = continue_in_chat(page.url, "claude")
 
     assert r.status == 200 and r.json() == {"result": "opened"}
-    [opened] = [c for c in harness.commands if c[:3] == ["open", "-a", "Terminal"]]
-    script = Path(opened[3])
-    assert script.suffix == ".command" and os.access(script, os.X_OK)
-    # Terminal runs the script: Claude Code starts in the family's home folder, at the setup skill.
-    subprocess.Popen(["/bin/sh", str(script)], env={**os.environ, "HOME": str(harness.home)},
+    [window] = harness.desktop.windows
+    assert window.title == setup_server.CHAT_WINDOW
+    # The window runs Claude Code at the setup skill, in the family's home folder.
+    subprocess.Popen(window.argv, cwd=harness.home, env={**os.environ, **window.env},
                      stdout=subprocess.DEVNULL).wait(10)
     assert (bin_dir / "claude-chat.ran").read_text().splitlines() == \
         [str(harness.home), "/parent-recap:setup"]
     page.stop()
-    assert not script.exists()  # the script's folder goes once the page stops
+    assert setup_server.CHAT_WINDOW in harness.desktop.forgotten  # the window's folder goes
 
 
 def test_continue_in_the_chat_before_welcome_installs_the_plugin_first(harness, page, ai):
@@ -4333,26 +4310,19 @@ def test_continue_in_the_chat_tells_a_codex_family_what_to_type(harness, page, a
     r = continue_in_chat(page.url, "codex")
 
     assert r.status == 200 and r.json() == {"result": "open-codex", "type": "$parent-recap-setup"}
-    assert not harness.opened
+    assert not harness.desktop.opened
     assert (harness.home / ".agents" / "skills" / "parent-recap-setup" / "SKILL.md").is_file()
 
 
 def test_continue_in_the_chat_without_claude_code_says_how_to_install_it(harness, page, ai):
     assert continue_in_chat(page.url, "claude").json() == {
         "result": "not-installed", "install": "curl -fsSL https://claude.ai/install.sh | bash"}
-    assert not harness.opened
+    assert not harness.desktop.opened
 
 
-def test_continue_in_the_chat_without_terminal_says_what_to_type_there(harness, page, ai,
-                                                                       monkeypatch):
+def test_continue_in_the_chat_without_terminal_says_what_to_type_there(harness, page, ai):
     ai("claude")
-    run = setup_server.subprocess.run
-
-    def no_terminal(cmd, *a, **k):
-        if cmd[:3] == ["open", "-a", "Terminal"]:
-            return subprocess.CompletedProcess(cmd, 1, "", "")
-        return run(cmd, *a, **k)
-    monkeypatch.setattr(setup_server.subprocess, "run", no_terminal)
+    harness.desktop.opens = False
 
     assert continue_in_chat(page.url, "claude").json() == {
         "result": "no-terminal", "type": f"{harness.home / 'bin' / 'claude'} /parent-recap:setup"}

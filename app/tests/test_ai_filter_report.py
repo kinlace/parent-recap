@@ -7,10 +7,8 @@ from __future__ import annotations
 import re
 import socket
 import stat
-import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -83,9 +81,9 @@ def list_file(harness: Harness) -> Path:
 
 
 def held_back_list(harness: Harness, capsys: pytest.CaptureFixture[str]) -> tuple[str, str]:
-    """The report with --held-back: what it prints, and the list it writes and opens in TextEdit."""
+    """The report with --held-back: what it prints, and the list it writes and opens."""
     out = report(harness, capsys, "--held-back")
-    assert harness.commands[-1] == ["open", "-e", str(list_file(harness))]
+    assert harness.desktop.opened[-1] == str(list_file(harness))
     return out, list_file(harness).read_text()
 
 
@@ -182,8 +180,9 @@ def test_the_report_prints_no_message_text_names_or_links_in_any_shell_and_makes
 
     out = report(harness, capsys, *args)
 
-    # No model call and no other program, but TextEdit for the list.
-    assert harness.commands == ([["open", "-e", str(list_file(harness))]] if args else [])
+    # No model call and no program at all, but the list is opened.
+    assert harness.commands == []
+    assert harness.desktop.opened == ([str(list_file(harness))] if args else [])
     for value in PRIVATE:
         assert value not in out
     for m in [*FINNISH, *ENGLISH, *CHINESE]:
@@ -260,18 +259,9 @@ def test_held_back_writes_the_list_again_each_time_owner_only_over_one_others_co
     assert "\n1 message held back from the AI is listed in ~/ParentRecap/held-back-list.txt, now open" in out
 
 
-@pytest.mark.parametrize("fails", ["exits-1", "missing"])
-def test_when_textedit_cant_be_opened_held_back_says_where_the_list_is(harness, capsys, monkeypatch, fails):
+def test_when_textedit_cant_be_opened_held_back_says_where_the_list_is(harness, capsys):
     archive(harness)
-    others = subprocess.run
-
-    def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if Path(cmd[0]).name != "open":
-            return others(cmd, *a, **k)
-        if fails == "missing":
-            raise FileNotFoundError(2, "No such file or directory", "open")
-        return subprocess.CompletedProcess(cmd, 1, "", "")  # no desktop session, as over SSH
-    monkeypatch.setattr(subprocess, "run", run)
+    harness.desktop.opens = False
 
     out = report(harness, capsys, "--held-back")
 

@@ -2,7 +2,7 @@
 subscription gets its Brief from the maintainers' gateway, which the program calls itself.
 
 The outside edges are faked: the gateway's /v1/messages (`requests.post`, answered from the
-harness's model replies), the Keychain and the secret dialog. Assertions are on the email, the
+harness's model replies) and the secret dialog. Assertions are on the email, the
 requests the gateway got, the pauses between them, doctor's lines, the setup step's JSON, and
 every place the Gateway Key must never reach (ADR 0005)."""
 from __future__ import annotations
@@ -17,7 +17,7 @@ import requests
 from conftest import FailedCall, HTTPReply, msg
 
 from family_brief import install_record, ops
-from family_brief.system import jobs_macos
+from family_brief.system import secrets
 
 KEY = "sk-bf-fake-gateway-key"
 ACCOUNT = "gateway-key"
@@ -40,7 +40,7 @@ def night(harness):
     """An English night on the gateway with one message, and the Gateway Key in the Keychain."""
     harness.config["summary_language"] = "en"
     harness.config["llm"] = {"backend": "gateway", "gateway_url": URL}
-    harness.keychain[ACCOUNT] = KEY
+    harness.secrets[ACCOUNT] = KEY
     harness.sources = {"gmail": [msg("gmail", "g-1", "2026-09-27T08:15:00+03:00",
                                      "3B goes on a retki to Nuuksio on Thursday 1.10.",
                                      sender="teacher.3b@kilo.example.fi", subject="Retki", kid="Mia")]}
@@ -249,7 +249,7 @@ def test_a_model_busy_all_evening_stops_inside_the_budget(night):
 
 
 def test_without_a_key_no_call_is_made_and_the_log_says_how_to_store_one(night, caplog):
-    del night.keychain[ACCOUNT]
+    del night.secrets[ACCOUNT]
 
     with caplog.at_level(logging.INFO):
         night.run()
@@ -260,7 +260,7 @@ def test_without_a_key_no_call_is_made_and_the_log_says_how_to_store_one(night, 
 
 
 def test_a_key_the_keychain_asks_about_is_said_so(night, caplog):
-    night.keychain_asks.add(ACCOUNT)
+    night.secrets.asks.add(ACCOUNT)
 
     with caplog.at_level(logging.INFO):
         night.run()
@@ -283,7 +283,7 @@ def test_the_key_never_reaches_the_output_logs_or_files_when_the_call_fails(nigh
 
 def test_the_claude_backend_still_runs_claude(night):
     night.config["llm"] = {"backend": "claude"}
-    night.keychain["claude-oauth-token"] = "sk-ant-oat01-abc"
+    night.secrets["claude-oauth-token"] = "sk-ant-oat01-abc"
     night.model_reply = GOOD
 
     night.run()
@@ -300,7 +300,6 @@ def doctor_lines(harness, monkeypatch, capsys) -> dict[str, str]:
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     harness.cli("doctor")
     out = capsys.readouterr().out
     assert KEY not in out
@@ -348,7 +347,7 @@ def test_doctor_says_a_key_past_todays_budget_works_but_waits_for_tomorrow(night
 
 
 def test_doctor_without_a_key_still_checks_the_gateway_answers(night, monkeypatch, capsys):
-    del night.keychain[ACCOUNT]
+    del night.secrets[ACCOUNT]
     night.model_reply = [UNKNOWN_KEY]
 
     lines = doctor_lines(night, monkeypatch, capsys)
@@ -372,11 +371,9 @@ def test_doctor_does_not_wait_for_a_busy_gateway(night, monkeypatch, capsys):
 
 
 @pytest.fixture
-def desktop(harness, monkeypatch):
+def desktop(harness):
     """A desktop session, as when the family runs setup on their own Mac, with the gateway's
     address in the config."""
-    for var in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"):
-        monkeypatch.delenv(var, raising=False)
     harness.config["llm"] = {"backend": "gateway", "gateway_url": URL}
     return harness
 
@@ -401,10 +398,10 @@ def test_a_key_pasted_in_the_dialog_is_tested_and_stored(desktop, capsys, caplog
     assert len(desktop.dialog.shown) == 1 and "hidden answer" in desktop.dialog.shown[0]
     [call] = desktop.model_calls
     assert call.argv == ["POST", f"{URL}/v1/messages"] and call.headers["x-api-key"] == KEY
-    assert desktop.keychain == {ACCOUNT: KEY}
+    assert desktop.secrets == {ACCOUNT: KEY}
     assert install_record.entries("keychain") == [ACCOUNT]
-    # Typed into security -i, so no command line ever holds it (ADR 0005, 0009).
-    assert ["/usr/bin/security", "-i"] in desktop.commands
+    # No command line ever holds the key (ADR 0005, 0009).
+    assert not any(KEY in part for command in desktop.commands for part in command)
     assert_key_never_leaked(desktop, printed, caplog)
 
 
@@ -417,7 +414,7 @@ def test_a_key_the_gateway_does_not_know_is_not_stored(desktop, capsys, caplog):
 
     res, printed = result(capsys)
     assert res["result"] == "rejected" and "setup gateway" in res["next"]
-    assert desktop.keychain == {}
+    assert desktop.secrets == {}
     assert_key_never_leaked(desktop, printed, caplog)
 
 
@@ -428,7 +425,7 @@ def test_a_key_past_todays_budget_works_and_is_stored(desktop, capsys):
     assert desktop.cli("setup", "gateway") == 0
 
     assert result(capsys)[0]["result"] == "saved"
-    assert desktop.keychain == {ACCOUNT: KEY}
+    assert desktop.secrets == {ACCOUNT: KEY}
 
 
 def test_a_gateway_that_does_not_answer_stores_nothing(desktop, capsys):
@@ -439,7 +436,7 @@ def test_a_gateway_that_does_not_answer_stores_nothing(desktop, capsys):
 
     res, _ = result(capsys)
     assert res["result"] == "no-connection" and "online" in res["next"]
-    assert desktop.keychain == {}
+    assert desktop.secrets == {}
 
 
 def test_a_failed_test_call_says_what_the_gateway_said_without_the_key(desktop, capsys, caplog):
@@ -452,7 +449,7 @@ def test_a_failed_test_call_says_what_the_gateway_said_without_the_key(desktop, 
     res, printed = result(capsys)
     assert res["result"] == "test-call-failed" and "HTTP 500" in res["error"]
     assert "<key>" in res["error"]
-    assert desktop.keychain == {}
+    assert desktop.secrets == {}
     assert_key_never_leaked(desktop, printed, caplog)
 
 
@@ -464,7 +461,7 @@ def test_something_that_is_not_a_key_is_never_sent(desktop, capsys, caplog):
 
     res, printed = result(capsys)
     assert res["result"] == "not-a-key"
-    assert desktop.model_calls == [] and desktop.keychain == {}
+    assert desktop.model_calls == [] and desktop.secrets == {}
     assert "my-mac-password" not in printed and "my-mac-password" not in caplog.text
 
 
@@ -474,11 +471,11 @@ def test_closing_the_dialog_stores_nothing(desktop, capsys):
     assert desktop.cli("setup", "gateway") == 1
 
     assert result(capsys)[0]["result"] == "cancelled"
-    assert desktop.model_calls == [] and desktop.keychain == {}
+    assert desktop.model_calls == [] and desktop.secrets == {}
 
 
 def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(desktop, capsys):
-    desktop.keychain_refuses = -25308  # errSecInteractionNotAllowed
+    desktop.secrets.refuses = secrets.SecretsError("not reachable", "not-reachable", -25308)
     desktop.dialog.typed = KEY
     desktop.model_reply = "OK"
 

@@ -88,19 +88,19 @@ estimate of names missed beside a role, a title or a name's placeholder, where a
 (小狮妈妈) and 周五开家长会 don't count. It
 checks that no name, contact detail, link or message text reaches the output, with or without
 `--held-back` and with the output captured or a terminal (the test fakes `isatty`), that the report
-makes no network call and starts no program but `open -e` for the list, that with the AI filter off
-it says what the filter would do, that an evening whose Brief wasn't delivered and a file that can't
-be read are skipped, and that a missing or empty archive gets a friendly answer. A held-back message
-and one with a name, a phone number and a link, archived again on later evenings, count once, so the
-counts and the list are the same as without the copies. With `--held-back`, it checks that every
-Held-back Message is listed in `held-back-list.txt` in the archive folder, by date, with its Source,
-category, the word that matched as the message writes it, sender, subject or WhatsApp chat and the
-text around the word, also with the AI filter off. The file is owner-only, also when it replaces an
-older list others could read, and the output is the counts and one line with how many messages it
-lists and where, now open in TextEdit. When `open` fails or isn't there, the line says where the file
-is instead. An evening of messages sent to everyone beside one to
-the Household counts and lists only that one and the message a Wilma notification email copies, as
-the evening run holds them back. A long notice to the whole class, read again a day late,
+makes no network call and starts no program, opening only the list, in the text editor, that
+with the AI filter off it says what the filter would do, that an evening whose Brief wasn't
+delivered and a file that can't be read are skipped, and that a missing or empty archive gets a
+friendly answer. A held-back message and one with a name, a phone number and a link, archived again
+on later evenings, count once, so the counts and the list are the same as without the copies. With
+`--held-back`, it checks that every Held-back Message is listed in `held-back-list.txt` in the
+archive folder, by date, with its Source, category, the word that matched as the message writes it,
+sender, subject or WhatsApp chat and the text around the word, also with the AI filter off. The file
+is owner-only, also when it replaces an older list others could read, and the output is the counts
+and one line with how many messages it lists and where, now open in the text editor. When nothing
+opens, the line says where the file is instead. An evening of messages sent to everyone beside one
+to the Household counts and lists only that one and the message a Wilma notification email copies,
+as the evening run holds them back. A long notice to the whole class, read again a day late,
 comes first by its own date and shows about 40 characters on each side, on one line, with no word cut
 in two and no newline, tab or terminal escape code, and a message held back for its sender's title
 shows the name without the address. With nothing held back, it says so and opens nothing.
@@ -144,7 +144,7 @@ snapshot is removed and the live database left as it was.
 `test_doctor.py` checks that doctor speaks English, that `doctor` and `bg doctor` on
 `test_setup_whatsapp.py`'s fake Mac fail with the Python's real path and "add it to Full Disk
 Access" without Full Disk Access and pass with it, with no question from macOS either way, and
-compares the Python given Full Disk Access with the evening job's in its plist: quiet when they
+compares the Python given Full Disk Access with the one the evening job runs: quiet when they
 match or with no record (an install from before it), a warning with the path to add when they
 differ, and a failure when the job's venv Python points at nothing. On that fake Mac it also
 checks each reason the WhatsApp check gives when it isn't OK: no Full Disk Access, a `bg` job that
@@ -153,39 +153,53 @@ reason, with the group's old name, comes back from the `bg` job as a line of JSO
 line stays as it was, and the setup skill's advice for each reason quotes doctor's words. No skill
 or doc sends the parent to a file called python3, since Finder selects one such as python3.13.
 Off macOS, doctor has no WhatsApp check and never reads WhatsApp.
-`test_desktop.py` checks that a terminal window's script, run as Terminal runs it, runs its
-command in the home folder with the variables it was given, and leaves nothing behind.
-`test_secrets.py` reads, stores and deletes secrets through `family_brief.system.secrets` against
-the fake Keychain, and checks the reason it gives when the Keychain asks first or refuses.
-`test_jobs.py` installs and removes the evening jobs through `family_brief.system.jobs` against a
-fake `launchctl`: Weekend Picks' job goes when they're turned off, a job not loaded after a restart
-waits for a login, and removing them all takes an older version's job from setup's record too.
-`test_wake.py` sets and cancels the daily wake through `family_brief.system.wake` against a fake
-`pmset` and administrator dialog, telling setup's wake apart from the Mac's others.
+The OS services in `family_brief.system` (secrets, the evening jobs, the daily wake, the desktop)
+are in-memory fakes in every test that runs the program (`fake_system.py`, in place of each
+interface's adapter, as `harness.secrets`, `harness.jobs`, `harness.wake` and `harness.desktop`),
+so those tests fake none of these services' commands; only macOS-only features, which have no
+interface, still meet theirs there (the secret dialog, iMessage, Finder and the Passwords app).
+Only the macOS adapters' own tests fake the services' commands:
+`test_desktop.py` checks against a fake `open` and `defaults` that pages open in the browser and
+files in TextEdit, that the Mac's languages are read, and that a terminal window's script, run as
+Terminal runs it, runs its command in the home folder with the variables it was given, and leaves
+nothing behind.
+`test_secrets.py` reads, stores and deletes secrets against a fake `/usr/bin/security` and its
+Keychain: each goes in on `security -i`'s stdin, on no command line, trusting `/usr/bin/security`,
+one an earlier version stored is replaced, a typed one is asked for by `security` itself, and it
+checks the reason given when the Keychain asks first, refuses, or can't be reached from tmux or SSH.
+`test_jobs.py` installs and removes the evening jobs against a fake `launchctl`: Weekend Picks' job
+goes when they're turned off, a job not loaded after a restart waits for a login, removing them all
+takes an older version's job from setup's record too, a job started by hand tells one not loaded
+from one already running or refused, a job's logs are owner-only and its PATH has the native
+installer's folder and what the login shell finds, and a `bg` run that is stopped by a signal or
+times out leaves no job or output behind.
+`test_wake.py` sets and cancels the daily wake against a fake `pmset` and administrator dialog,
+telling setup's wake apart from the Mac's others and one-off events, that the dialog says who asks,
+that a Mac sleeping on battery still needs the wake, and that with no dialog to ask in, or over
+SSH, it isn't set.
 `test_own_node.py` lays out Parent Recap's own Node and a wilma CLI in the test's `~/ParentRecap`
 (`fake_node.py`: a stand-in `node` that runs the script it's given, and a shell script answering
 as the CLI does) with no Node on PATH, and checks that `doctor` and the evening job run that CLI
 on that Node, never a Node or wilma CLI the Mac has, and with `WILMAI_NO_UPDATE_CHECK=1`, so it
 never looks for a newer version, that `doctor` without the CLI says to
 connect Wilma again rather than to install Node, and that the newest pinned Node is picked.
-`test_email.py` runs the real email action against a fake SMTP server and the fake Keychain, and
+`test_email.py` runs the real email action against a fake SMTP server and fake secrets, and
 checks the message handed to the server: UTF-8 plain-text and HTML parts with Finnish and Chinese
 intact, an `.ics` attachment with `method=PUBLISH` beside them or the alternative alone, Subject,
-From and every Recipient in To, a login with the Keychain's App Password after STARTTLS, and that
+From and every Recipient in To, a login with the stored App Password after STARTTLS, and that
 nothing is sent with no App Password (a clear error) or no Recipients.
-`test_setup_gmail.py` runs `parent-recap setup gmail` against a fake macOS dialog, `open`,
-Keychain and IMAP server, and checks the App Password never reaches the output, the logs or a
+`test_setup_gmail.py` runs `parent-recap setup gmail` against a fake macOS dialog, desktop,
+secrets and IMAP server, and checks the App Password never reaches the output, the logs or a
 command line.
 `test_setup_wilma.py` runs `parent-recap setup wilma` against a fake wilma CLI on Parent Recap's
-own Node (`fake_node.py`) and a Terminal
-that runs the sign-in script at once, and checks the Kids, the city from every preset Wilma
-address, the window's guide in each language, that the window ends the CLI before its student
-picker and menu, that the window still closes when the CLI writes something just as it's ended
-(macOS can hold up the CLI's exit until that is read), that a missing CLI is installed with
-that Node's npm into a new folder next to `~/ParentRecap/wilma`, which then takes its place, and
-recorded, that without that Node it says to run
-the install line again, that the window's CLI never looks for a newer version, and that the Wilma
-password never reaches the output. It checks that `python -m family_brief.setup_wilma update`,
+own Node (`fake_node.py`) and a desktop whose terminal window runs the sign-in command at once,
+and checks the Kids, the city from every preset Wilma address, the window's guide in each language,
+that the window ends the CLI before its student picker and menu, that the window still closes when
+the CLI writes something just as it's ended (macOS can hold up the CLI's exit until that is read),
+that a missing CLI is installed with that Node's npm into a new folder next to
+`~/ParentRecap/wilma`, which then takes its place, and recorded, that without that Node it says to
+run the install line again, that the window's CLI never looks for a newer version, and that the
+Wilma password never reaches the output. It checks that `python -m family_brief.setup_wilma update`,
 which `install.sh` runs, with the program's umask, installs the pinned version over an older one
 with that Node's npm, leaves the pinned one and a Household without the CLI alone, and says so
 when npm or the Node fails, keeping the CLI that was there, without failing the install. An npm
@@ -195,13 +209,14 @@ beside it, and on a first install leaves nothing at all. A CLI left half install
 open after 30 seconds is ended, with the processes it started, and its test fails with what the
 window showed. Where no pseudo-terminal
 can be opened (a sandbox), the window talks to the fake CLI through `no_pty/sitecustomize.py`.
-`test_setup_claude.py` runs `parent-recap setup claude` against a fake Terminal, macOS dialog,
-Keychain and `claude` test call, and checks the token never reaches the output, the logs or a
+`test_setup_claude.py` runs `parent-recap setup claude` against a fake terminal window, macOS
+dialog, secrets and `claude` test call, and checks the token never reaches the output, the logs or a
 command line, and that the window clears the token from its screen and scrollback once the family
-presses Enter. `test_setup_claude_token.py` keeps the older Terminal script working.
+presses Enter. `test_setup_claude_token.py` keeps the older Terminal script working, against fake
+secrets.
 `test_gateway.py` runs the evening Brief, doctor and `parent-recap setup gateway` with
 `backend: gateway` against a fake gateway (`requests.post` to its `/v1/messages`, answered from the
-harness's model replies), Keychain and macOS dialog. It checks the Brief's and translations' calls
+harness's model replies), secrets and macOS dialog. It checks the Brief's and translations' calls
 go to the configured address with the Gateway Key and `model: parent-recap`, and no `claude` or
 `codex` runs; that 429 and 5xx are tried again after the usual pauses, and 401, 402, a refusal,
 a reply that isn't the gateway's and the gateway's own credit run out fail at once with the usual
@@ -212,7 +227,7 @@ isn't; that doctor says whether the gateway answers and whether the key works, i
 budget or is missing; that setup tests the key before storing it; and that the key never reaches
 the output, the logs, a command line, an email or a file in HOME, even when the gateway echoes it
 back.
-`test_setup_whatsapp.py` runs `parent-recap setup whatsapp` against a fake `launchctl` that runs
+`test_setup_whatsapp.py` runs `parent-recap setup whatsapp` against the harness's jobs, which run
 each `bg` job in-process, and a fake Mac in the temporary HOME: a stand-in for the file only Full
 Disk Access opens, which those jobs can open once the fake Mac gives them Full Disk Access, and a
 WhatsApp database whose every read without it makes the fake macOS ask about data from other apps,
@@ -221,14 +236,14 @@ each permission state, that WhatsApp is never read before Full Disk Access is on
 asks and an Allow click can't make the step pass, the chats and their Kid hints, that WhatsApp is
 never read outside a `bg` job, and that once it's read the real path of the Python with Full Disk
 Access is recorded, and nothing without it.
-`test_setup_myclub.py` runs `parent-recap setup myclub` against a fake macOS dialog, `open` and
+`test_setup_myclub.py` runs `parent-recap setup myclub` against a fake macOS dialog, desktop and
 MyClub server, and checks the link never reaches the output, the logs or a command line, that a
 failed download names only the server and the HTTP status, and that the older Terminal script
 still works.
-`test_setup_status.py` runs `parent-recap setup status` against a fake `launchctl`, `pmset`,
-Keychain, IMAP server and `claude` test call, with a real Brief sent through the harness. It checks
-each of the five outcomes true and false, that the first Brief counts once it has reached the setup
-parent, and that no secret or message text reaches either form.
+`test_setup_status.py` runs `parent-recap setup status` against the harness's jobs, wake and
+secrets, a fake IMAP server and `claude` test call, with a real Brief sent through the harness. It
+checks each of the five outcomes true and false, that the first Brief counts once it has reached the
+setup parent, and that no secret or message text reaches either form.
 `test_setup_save.py` runs `parent-recap setup save` with answers on stdin against real config and
 progress files in the temporary HOME. It checks the config it writes loads, that answers not given
 leave the config as it was, that invalid answers are refused with the reason and nothing saved,
@@ -253,7 +268,7 @@ Verification for Gmail's App Password, and the phone that signs in WhatsApp for 
 the old Wilma sentence.
 On Connect, it checks the Source list's statuses, each row's name with its status in every
 language, skipping and coming back, and the page's Gmail
-step against a fake IMAP server and Keychain: a valid App Password is stored and Gmail turns done,
+step against a fake IMAP server and secrets: a valid App Password is stored and Gmail turns done,
 each known result has its explanation in all three languages, and the App Password never reaches
 a response, the output, the logs, a command line or a file in `~/.family`. Its Wilma step runs
 against Parent Recap's own Node with a faked npm and a fake wilma CLI, laid out in `~/ParentRecap/wilma`
@@ -266,8 +281,8 @@ good login writes the profile in the CLI's format and the page lists the Kids fr
 CLI checked it alone in a temporary config that is gone afterwards, with the session it saved, and
 never looked for a newer version, that a wrong password is reported as such, also when an earlier
 sign-in works, that signing in again as the same account in another case keeps that profile's
-place, id and two-step key, and any other failure offers the Terminal window (whose `open
--a Terminal` the test answers by saving the CLI's profile), that a sign-in that fails leaves the
+place, id and two-step key, and any other failure offers the Terminal window (which the test
+answers by saving the CLI's profile), that a sign-in that fails leaves the
 CLI's config as it was, an earlier profile included, that a Household without Wilma saves only its town, and that the Wilma
 password never reaches a response, the output, the logs, a command line or `~/.family`.
 Its AI sign-in runs a fake `claude` whose `setup-token` draws the token on the pseudo-terminal
@@ -323,8 +338,8 @@ it's shown in is sandboxed, that a quiet three days still make one, that "Send i
 Brief to the setup parent only and the outcome check counts it, that a send that fails, or one
 during an evening run, says so, and that only a pilot Household gets the feedback button, which
 opens the Digest's pre-filled Form link.
-Finish runs against a fake `launchctl`, `pmset` and administrator dialog, which sets the wake-up
-once the test lets it go, with doctor's checks faked as on the check page. It checks that the
+Finish runs against the harness's jobs and wake, whose dialog sets the wake-up once the test lets
+it go, with doctor's checks faked as on the check page. It checks that the
 evening job is loaded and the wake-up set through macOS's dialog only, that the API takes no
 password, that each outcome comes back true or false without its reason, that a health check that
 isn't OK names only its checks, with why WhatsApp isn't and its own text in all three languages,
@@ -338,7 +353,8 @@ the gateway only once the new AI's test call passes, a call to Codex too there b
 that a failed one keeps the old AI, and that a gateway Household can enter a new Gateway Key.
 It also checks that every Finish text, with each check's next step, is in all three languages, and that Finish says a Mac that's shut down makes no Brief. Where no port can be listened on, a request
 rung in as the server stops times out, as a closed port refuses it.
-Its "Continue in the chat" runs the Terminal script the page opens against a fake `claude`, and
+Its "Continue in the chat" runs the terminal window's command the page opens against a fake
+`claude`, and
 checks that it starts Claude Code in the home folder at the setup skill, that a Codex family is
 told to type `$parent-recap-setup`, that `setup save --read` gives the chat the same progress the
 page shows, that the setup skill says how to carry on from it, and that each result is explained

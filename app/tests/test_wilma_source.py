@@ -23,7 +23,6 @@ from test_source_failures import (REAL_WILMA_COLLECT, caught_up_last_night, one_
 from family_brief import ops, setup_wilma
 from family_brief.collectors import wilma
 from family_brief.collectors.base import Message
-from family_brief.system import jobs_macos
 
 STUDENT = {"studentNumber": "7731905", "name": "Virtanen Mia"}
 # Every guardian of a class, as Wilma names them: the guardian, then the pupil and the class.
@@ -334,7 +333,6 @@ def test_a_sign_in_for_none_of_the_kids_that_fails_stays_out_of_the_brief(harnes
 
 def test_doctor_names_a_sign_in_setup_didnt_make_for_none_of_the_kids(harness, cli, capsys,
                                                                        monkeypatch):
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     signed_in((OTHER, "vanha.huoltaja", STALE), (OTHER, "huoltaja.toinen", LEO), (FIRST, "huoltaja", MIA))
     cli.answers = {("kids", "list"): {"students": [{**MIA, "wilma": FIRST["name"]},

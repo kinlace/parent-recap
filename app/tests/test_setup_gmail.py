@@ -1,9 +1,9 @@
 """Connecting Gmail with `parent-recap setup gmail`: the App Password goes from macOS's dialog
-to a test sign-in and the Keychain, and nowhere else (ADR 0005).
+to a test sign-in and the secrets store, and nowhere else (ADR 0005).
 
-The outside edges are faked: the dialog, `open`, the Keychain and Gmail's IMAP server. The
-assistant reads only the command's one-line JSON result, so assertions are on that result, on
-what the Keychain holds, and on every place the App Password must never reach."""
+The outside edges are faked: the dialog, the browser, the secrets store and Gmail's IMAP server.
+The assistant reads only the command's one-line JSON result, so assertions are on that result,
+on what the store holds, and on every place the App Password must never reach."""
 from __future__ import annotations
 
 import getpass
@@ -11,7 +11,6 @@ import imaplib
 import importlib.util
 import json
 import logging
-import shlex
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,7 +18,7 @@ from typing import Any
 import pytest
 
 from family_brief import install_record, secret_dialog
-from family_brief.system import jobs_macos
+from family_brief.system import secrets
 
 APP_PASSWORD = "abcdefghijklmnop"
 TYPED = "abcd efgh ijkl mnop"  # how Google shows it, and how it's copied
@@ -106,10 +105,10 @@ def test_an_app_password_typed_in_the_dialog_is_tested_and_stored(harness, gmail
 
     res, printed = result(capsys)
     assert res["result"] == "saved"
-    assert harness.opened == ["https://myaccount.google.com/apppasswords"]
+    assert harness.desktop.opened == ["https://myaccount.google.com/apppasswords"]
     assert len(harness.dialog.shown) == 1 and "hidden answer" in harness.dialog.shown[0]
     assert gmail.logins == [("parent@example.com", APP_PASSWORD)]
-    assert harness.keychain == {ACCOUNT: APP_PASSWORD}
+    assert harness.secrets == {ACCOUNT: APP_PASSWORD}
     assert install_record.entries("keychain") == [ACCOUNT]
     assert_never_leaked(harness, printed, caplog)
 
@@ -146,7 +145,7 @@ def test_the_address_can_be_given_when_the_config_has_none_yet(harness, gmail, c
 
     assert result(capsys)[0]["result"] == "saved"
     assert gmail.logins == [("other@example.com", APP_PASSWORD)]
-    assert harness.keychain == {"gmail-imap-other@example.com": APP_PASSWORD}
+    assert harness.secrets == {"gmail-imap-other@example.com": APP_PASSWORD}
 
 
 def test_without_an_address_it_says_how_to_give_one(harness, gmail, capsys):
@@ -156,7 +155,7 @@ def test_without_an_address_it_says_how_to_give_one(harness, gmail, capsys):
 
     res, _ = result(capsys)
     assert res["result"] == "no-address" and "--address" in res["next"]
-    assert harness.dialog.shown == [] and harness.keychain == {}
+    assert harness.dialog.shown == [] and harness.secrets == {}
 
 
 def test_a_rejected_sign_in_points_to_two_step_verification(harness, gmail, capsys, caplog):
@@ -169,7 +168,7 @@ def test_a_rejected_sign_in_points_to_two_step_verification(harness, gmail, caps
     res, printed = result(capsys)
     assert res["result"] == "rejected"
     assert TWO_STEP in res["next"]
-    assert harness.keychain == {}
+    assert harness.secrets == {}
     assert_never_leaked(harness, printed, caplog, wrong)
 
 
@@ -182,7 +181,7 @@ def test_when_the_app_passwords_page_is_not_available_it_points_to_two_step_veri
     res, _ = result(capsys)
     assert res["result"] == "app-passwords-unavailable"
     assert TWO_STEP in res["next"]
-    assert gmail.logins == [] and harness.keychain == {}
+    assert gmail.logins == [] and harness.secrets == {}
 
 
 def test_something_that_is_not_an_app_password_is_never_sent_to_google(harness, gmail, capsys,
@@ -195,7 +194,7 @@ def test_something_that_is_not_an_app_password_is_never_sent_to_google(harness, 
 
     res, printed = result(capsys)
     assert res["result"] == "not-an-app-password"
-    assert gmail.logins == [] and harness.keychain == {}
+    assert gmail.logins == [] and harness.secrets == {}
     assert_never_leaked(harness, printed, caplog, "MyGooglePassword1")
 
 
@@ -205,7 +204,7 @@ def test_closing_the_dialog_stores_nothing(harness, gmail, capsys):
     assert harness.cli("setup", "gmail") == 1
 
     assert result(capsys)[0]["result"] == "cancelled"
-    assert gmail.logins == [] and harness.keychain == {}
+    assert gmail.logins == [] and harness.secrets == {}
 
 
 def test_no_connection_to_gmail_says_so(harness, monkeypatch, capsys):
@@ -217,7 +216,7 @@ def test_no_connection_to_gmail_says_so(harness, monkeypatch, capsys):
     assert harness.cli("setup", "gmail") == 1
 
     assert result(capsys)[0]["result"] == "no-connection"
-    assert harness.keychain == {}
+    assert harness.secrets == {}
 
 
 def test_no_open_leaves_the_page_alone(harness, gmail, capsys):
@@ -225,32 +224,18 @@ def test_no_open_leaves_the_page_alone(harness, gmail, capsys):
 
     assert harness.cli("setup", "gmail", "--no-open") == 0
 
-    assert harness.opened == []
-
-
-def test_the_app_password_goes_to_the_keychain_on_securitys_stdin_for_it_to_read(harness, gmail,
-                                                                                  capsys):
-    harness.dialog.typed = TYPED
-
-    assert harness.cli("setup", "gmail") == 0
-
-    assert ["/usr/bin/security", "-i"] in harness.commands
-    [stdin] = harness.keychain_input
-    assert shlex.split(stdin) == ["add-generic-password", "-U", "-s", "family-brief", "-a", ACCOUNT,
-                                  "-w", APP_PASSWORD, "-T", "/usr/bin/security"]
-    assert not any(APP_PASSWORD in arg for cmd in harness.commands for arg in cmd)
-    assert harness.keychain == {ACCOUNT: APP_PASSWORD}
+    assert harness.desktop.opened == []
 
 
 def test_storing_it_again_replaces_an_app_password_the_keychain_asks_about(harness, gmail, capsys):
-    harness.keychain[ACCOUNT] = "oldoldoldoldoldo"
-    harness.keychain_asks.add(ACCOUNT)
+    harness.secrets[ACCOUNT] = "oldoldoldoldoldo"
+    harness.secrets.asks.add(ACCOUNT)
     harness.dialog.typed = TYPED
 
     assert harness.cli("setup", "gmail") == 0
 
     assert result(capsys)[0]["result"] == "saved"
-    assert harness.keychain == {ACCOUNT: APP_PASSWORD} and not harness.keychain_asks
+    assert harness.secrets == {ACCOUNT: APP_PASSWORD} and not harness.secrets.asks
 
 
 def test_doctor_tells_an_app_password_the_keychain_asks_about_from_a_missing_one(
@@ -259,9 +244,8 @@ def test_doctor_tells_an_app_password_the_keychain_asks_about_from_a_missing_one
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
-    harness.keychain[ACCOUNT] = APP_PASSWORD
-    harness.keychain_asks.add(ACCOUNT)
+    harness.secrets[ACCOUNT] = APP_PASSWORD
+    harness.secrets.asks.add(ACCOUNT)
 
     harness.cli("doctor", "--skip-llm")
 
@@ -286,7 +270,7 @@ def test_over_ssh_it_asks_in_a_hidden_terminal_prompt(harness, gmail, terminal, 
     assert res["result"] == "saved"
     assert harness.dialog.shown == []
     assert len(terminal["prompts"]) == 1
-    assert harness.keychain == {ACCOUNT: APP_PASSWORD}
+    assert harness.secrets == {ACCOUNT: APP_PASSWORD}
     assert_never_leaked(harness, printed, caplog)
 
 
@@ -301,7 +285,7 @@ def test_when_the_dialog_cannot_be_shown_it_asks_in_terminal(harness, gmail, ter
     assert res["result"] == "saved"
     assert_never_leaked(harness, printed, caplog)
     assert len(terminal["prompts"]) == 1
-    assert harness.keychain == {ACCOUNT: APP_PASSWORD}
+    assert harness.secrets == {ACCOUNT: APP_PASSWORD}
 
 
 def test_with_neither_a_dialog_nor_a_terminal_it_says_where_to_run_it(harness, gmail, terminal,
@@ -313,11 +297,11 @@ def test_with_neither_a_dialog_nor_a_terminal_it_says_where_to_run_it(harness, g
 
     res, _ = result(capsys)
     assert res["result"] == "no-prompt" and "parent-recap setup gmail" in res["next"]
-    assert harness.keychain == {}
+    assert harness.secrets == {}
 
 
 def test_a_keychain_that_refuses_says_so_with_its_code(harness, gmail, capsys):
-    harness.keychain_refuses = -25293  # errSecAuthFailed
+    harness.secrets.refuses = secrets.SecretsError("the store refused", "failed", -25293)
     harness.dialog.typed = TYPED
 
     assert harness.cli("setup", "gmail") == 1
@@ -328,7 +312,8 @@ def test_a_keychain_that_refuses_says_so_with_its_code(harness, gmail, capsys):
 
 
 def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(harness, gmail, capsys):
-    harness.keychain_refuses = -25308  # errSecInteractionNotAllowed
+    harness.secrets.refuses = secrets.SecretsError("the store can't be reached", "not-reachable",
+                                                   -25308)
     harness.dialog.typed = TYPED
 
     assert harness.cli("setup", "gmail") == 1
@@ -343,6 +328,7 @@ def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(harness, gma
 @pytest.mark.parametrize("var", ["TMUX", "SSH_CONNECTION"])
 def test_in_tmux_or_ssh_it_warns_before_the_app_password_is_asked_for(harness, gmail, terminal,
                                                                      monkeypatch, capsys, var):
+    harness.secrets.reachable_here = False
     monkeypatch.setenv(var, "/private/tmp/tmux-501/default,1234,0" if var == "TMUX"
                        else "10.0.0.2 52000 10.0.0.1 22")
     harness.dialog.typed = TYPED
@@ -388,5 +374,5 @@ def test_the_terminal_script_still_stores_the_app_password(harness, gmail, termi
 
     assert script.main() == 0
 
-    assert harness.keychain == {ACCOUNT: APP_PASSWORD}
+    assert harness.secrets == {ACCOUNT: APP_PASSWORD}
     assert APP_PASSWORD not in capsys.readouterr().out

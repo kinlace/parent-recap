@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import plistlib
 import re
 import shutil
 import sqlite3
@@ -16,20 +15,18 @@ import yaml
 
 from family_brief import __main__ as cli, ops, setup_steps, whatsapp_python
 from family_brief.collectors import whatsapp, wilma
-from family_brief.system import jobs_macos
+from family_brief.system import jobs
 from test_setup_whatsapp import fake_mac
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
 
 
 @pytest.fixture
-def nothing_loaded(harness, monkeypatch):
-    """launchd has loaded no Parent Recap job for this login, with doctor's network checks off."""
+def nothing_loaded(harness):
+    """The system has loaded no Parent Recap job for this login, with doctor's network checks off."""
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
-    monkeypatch.setattr(jobs_macos, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
 
 
 def test_doctor_reports_every_check_in_english(harness, nothing_loaded, capsys):
@@ -50,25 +47,24 @@ def schedule_line(out: str) -> str:
 
 def test_doctor_says_an_installed_job_isnt_loaded_until_someone_logs_in(harness, nothing_loaded,
                                                                        capsys):
-    # After a restart, or over SSH, the LaunchAgent is on disk but launchd hasn't loaded it.
-    jobs_macos.LAUNCH_AGENTS.mkdir(parents=True)
-    (jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY_LABEL}.plist").write_bytes(plistlib.dumps({"Label": jobs_macos.DAILY_LABEL}))
+    # After a restart, or over SSH, the job is installed but the system hasn't loaded it.
+    harness.jobs.add(jobs.DAILY, loaded=False)
 
     harness.cli("doctor", "--skip-llm")
 
     line = schedule_line(capsys.readouterr().out)
     assert line.startswith(ops.WARN.strip())
-    assert f"installed but not loaded for this login: {jobs_macos.DAILY_LABEL}" in line
+    assert f"installed but not loaded for this login: {jobs.system_name(jobs.DAILY)}" in line
     assert "only runs while you're logged in" in line and "No Brief after the Mac restarted" in line
     assert "not installed yet" not in line
     assert not HAN.findall(line)
 
 
-def test_doctor_says_a_job_with_no_launch_agent_isnt_installed_yet(harness, nothing_loaded, capsys):
+def test_doctor_says_a_job_that_isnt_installed_isnt_installed_yet(harness, nothing_loaded, capsys):
     harness.cli("doctor", "--skip-llm")
 
     line = schedule_line(capsys.readouterr().out)
-    assert f"not installed yet: {jobs_macos.DAILY_LABEL}" in line and "parent-recap schedule install" in line
+    assert f"not installed yet: {jobs.system_name(jobs.DAILY)}" in line and "parent-recap schedule install" in line
     assert "not loaded" not in line
 
 
@@ -78,7 +74,6 @@ def claude_without_token(harness, monkeypatch):
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     which = shutil.which
     monkeypatch.setattr(shutil, "which", lambda cmd, *a, **k: f"/usr/local/bin/{cmd}"
                         if cmd == "claude" else which(cmd, *a, **k))
@@ -96,9 +91,8 @@ def test_doctor_fails_claude_without_a_token_for_the_evening_brief(harness, clau
     assert "tmux" not in line
 
 
-def test_doctor_in_tmux_says_to_store_the_token_outside_it(harness, claude_without_token,
-                                                          monkeypatch, capsys):
-    monkeypatch.setenv("TMUX", "/private/tmp/tmux-501/default,1,0")
+def test_doctor_in_tmux_says_to_store_the_token_outside_it(harness, claude_without_token, capsys):
+    harness.secrets.reachable_here = False
 
     harness.cli("doctor")
 
@@ -136,7 +130,7 @@ def mac_with_whatsapp(harness, monkeypatch):
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     monkeypatch.delenv(ops.BG_ENV, raising=False)
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: {jobs_macos.DAILY_LABEL})
+    harness.jobs.add(jobs.DAILY)
     mac = fake_mac(harness, monkeypatch)
     mac.install_whatsapp([("3B parents", 1, False), ("Leo piano", 2, False)])
     return mac
@@ -193,13 +187,10 @@ def evening_job(harness, monkeypatch):
     linking to it, as install.sh and schedule install lay them out. Returns the venv's link."""
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: {jobs_macos.DAILY_LABEL})
-    monkeypatch.setattr(jobs_macos, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
     venv_python = harness.home / "ParentRecap" / "app" / ".venv" / "bin" / "python"
     venv_python.parent.mkdir(parents=True)
-    jobs_macos.LAUNCH_AGENTS.mkdir(parents=True)
-    (jobs_macos.LAUNCH_AGENTS / f"{jobs_macos.DAILY_LABEL}.plist").write_bytes(plistlib.dumps(
-        {"Label": jobs_macos.DAILY_LABEL, "ProgramArguments": [str(venv_python), "-m", "family_brief", "run"]}))
+    harness.jobs.add(jobs.DAILY)
+    harness.jobs.programs[jobs.DAILY] = [str(venv_python), "-m", "family_brief", "run"]
     return venv_python
 
 
@@ -284,9 +275,9 @@ def break_whatsapp(mac, monkeypatch, failure: str) -> None:
     if failure == "no-access":
         mac.full_disk_access_after = 10_000
     elif failure == "hangs":
-        mac.hangs = True
+        mac.jobs.hangs = True
     elif failure == "not-started":
-        mac.bootstrap_fails = True
+        mac.jobs.detached_fails = "Bootstrap failed: 5: Input/output error"
     elif failure == "list-failed":
         def malformed(days: int = 180) -> list[dict]:
             raise sqlite3.DatabaseError("database disk image is malformed")
@@ -300,7 +291,6 @@ def mac_for_reasons(harness, monkeypatch):
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     monkeypatch.delenv(ops.BG_ENV, raising=False)
-    monkeypatch.setattr(jobs_macos, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
     mac = fake_mac(harness, monkeypatch)
     clock = [time.time()]
     monkeypatch.setattr(time, "time", lambda: clock[0])

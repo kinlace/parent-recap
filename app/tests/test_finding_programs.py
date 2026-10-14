@@ -12,7 +12,6 @@ import pytest
 from conftest import msg, program
 
 from family_brief import ops, summarize
-from family_brief.system import jobs_macos
 
 TOKEN = "sk-ant-oat01-Abc_def-123456789"
 
@@ -24,7 +23,6 @@ def terminal_path(harness, monkeypatch) -> Path:
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     monkeypatch.setattr(summarize, "CODEX_BUNDLED", ())  # not this Mac's own apps
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
     return harness.home / "tools" / "bin"
@@ -35,8 +33,8 @@ def doctor_line(capsys, check: str) -> str:
 
 
 def the_evening_job(harness, monkeypatch) -> None:
-    """A night with a message to summarise. launchd starts the evening job with the PATH its
-    plist names, which a schedule installed before the program was found doesn't lead to, and
+    """A night with a message to summarise. The system starts the evening job with the PATH its
+    job names, which a schedule installed before the program was found doesn't lead to, and
     without the login shell."""
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
     monkeypatch.delenv("SHELL", raising=False)
@@ -51,7 +49,7 @@ def test_doctor_finds_claude_on_the_login_shells_path_and_the_evening_job_runs_i
         harness, terminal_path, login_shell, monkeypatch, capsys):
     claude = program(terminal_path, "claude")
     login_shell(terminal_path)
-    harness.keychain["claude-oauth-token"] = TOKEN
+    harness.secrets["claude-oauth-token"] = TOKEN
     harness.model_reply = "OK"
 
     harness.cli("doctor")

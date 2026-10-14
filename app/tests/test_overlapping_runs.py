@@ -1,21 +1,17 @@
-"""Runs never overlap, and `bg` leaves no job or output behind when it is stopped.
-
-`launchctl` is faked: it records what it is asked to do and reports the job as running."""
+"""Runs never overlap, and `bg` says when its run didn't finish in time. (That the macOS adapter
+leaves no job or output behind when `bg` is stopped is in test_jobs.py.)"""
 from __future__ import annotations
 
 import os
-import signal
 import subprocess
 import sys
-import tempfile
 import time
-
-import pytest
 
 from conftest import msg
 
-from family_brief import ops, run_lock
+from family_brief import run_lock
 from family_brief.config import Config
+from family_brief.system import jobs
 
 
 def one_message(h) -> None:
@@ -93,55 +89,11 @@ def test_weekend_picks_while_another_run_is_going_stop_with_a_message(harness, c
     assert "Another Parent Recap run is still going" in caplog.text
 
 
-class FakeLaunchctl:
-    """Reports the job as running; `on_print` runs each time `bg` checks on it."""
+def test_bg_that_does_not_finish_in_time_says_so_with_timeouts_code(harness, capsys):
+    harness.jobs.hangs = True
 
-    def __init__(self, on_print=lambda: None) -> None:
-        self.calls: list[list[str]] = []
-        self.on_print = on_print
+    assert harness.cli("bg", "--timeout", "0", "doctor") == jobs.TIMED_OUT
 
-    def __call__(self, cmd, *_a, **_k):
-        assert cmd[0] == "launchctl", cmd
-        self.calls.append(list(cmd))
-        if cmd[1] == "print":
-            self.on_print()
-            return subprocess.CompletedProcess(cmd, 0, "\tstate = running\n", "")
-        return subprocess.CompletedProcess(cmd, 0, "", "")
-
-    def booted_out(self) -> list[str]:
-        return [c[2] for c in self.calls if c[1] == "bootout"]
-
-
-@pytest.fixture
-def bg(harness, monkeypatch, tmp_path):
-    temp = tmp_path / "tmp"
-    temp.mkdir()
-    monkeypatch.setattr(tempfile, "tempdir", str(temp))
-    monkeypatch.setattr("time.sleep", lambda _s: None)
-    harness.temp = temp
-    return harness
-
-
-@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT])
-def test_bg_stopped_by_a_signal_boots_out_its_job_and_removes_its_output(bg, monkeypatch, sig):
-    launchctl = FakeLaunchctl(on_print=lambda: os.kill(os.getpid(), sig))
-    monkeypatch.setattr(subprocess, "run", launchctl)
-    before = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT)}
-
-    with pytest.raises(SystemExit) as stopped:
-        bg.cli("bg", "run", "--dry-run", "--lookback-hours", "72")
-
-    assert stopped.value.code == 128 + sig
-    assert launchctl.booted_out() == [f"gui/{os.getuid()}/com.parentrecap.bg.{os.getpid()}"]
-    assert list(bg.temp.iterdir()) == []  # the output log holds the preview Brief
-    assert {s: signal.getsignal(s) for s in before} == before
-
-
-def test_bg_boots_out_its_job_when_it_times_out(bg, monkeypatch):
-    launchctl = FakeLaunchctl()
-    monkeypatch.setattr(subprocess, "run", launchctl)
-
-    assert bg.cli("bg", "--timeout", "0", "doctor") == 124
-
-    assert len(launchctl.booted_out()) == 1
-    assert list(bg.temp.iterdir()) == []
+    assert harness.jobs.detached == [["-c", str(harness.home / ".family" / "config.yaml"),
+                                      "doctor"]]
+    assert "didn't finish within 0 seconds" in capsys.readouterr().out

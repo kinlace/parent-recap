@@ -1,7 +1,7 @@
 """Connecting Wilma with `parent-recap setup wilma`: it opens the wilma CLI's sign-in in a
-Terminal window, waits for the family, then reports the Kids and the city as one JSON line.
+terminal window, waits for the family, then reports the Kids and the city as one JSON line.
 
-The outside edges are faked: `open` runs the Terminal script it's given right away, as if the
+The outside edges are faked: the desktop runs a terminal window's command right away, as if the
 family had just finished in that window, and `wilma` is a fake CLI in Parent Recap's folder,
 run on its own Node (`fake_node`), whose sign-in screen behaves like the pinned one's (2.x): it clears the screen before each question, asks which
 student when there are several, writes its config only after that, whole and then renamed, then asks what to view and
@@ -29,6 +29,7 @@ import pytest
 
 import fake_node
 from family_brief import install_record, setup_wilma
+from fake_system import Window
 
 REAL_RUN = subprocess.run  # before the harness fakes it
 PASSWORD = "Wilma-salasana-42"
@@ -102,7 +103,7 @@ def wilma_config(tenant_url: str, username: str = "parent@example.com") -> dict[
 
 
 class Wilma:
-    """The fake wilma CLI on Parent Recap's own Node, and the Terminal window it's signed in
+    """The fake wilma CLI on Parent Recap's own Node, and the terminal window it's signed in
     from."""
 
     def __init__(self, home: Path) -> None:
@@ -116,9 +117,7 @@ class Wilma:
         self.terminal_runs = True     # False: the family never finishes in the window
         self.npm_works = True         # False: npm can't reach its registry
         self.npm_ended = False        # True: npm is ended at the time limit, halfway through
-        self.terminal_opens = True    # False: macOS won't open Terminal
-        self.terminal: list[str] = []  # each script opened in Terminal, as it read then
-        self.window = ""              # everything the Terminal window showed
+        self.window = ""              # everything the terminal window showed
 
     @property
     def config_path(self) -> Path:
@@ -156,6 +155,11 @@ def wilma(harness, tmp_path, monkeypatch) -> Wilma:
         monkeypatch.setenv("PYTHONPATH", str(NO_PTY))
     monkeypatch.setattr(time, "sleep", lambda _s: None)
     w = Wilma(harness.home)
+
+    def in_window(window: Window) -> None:
+        if w.terminal_runs:
+            w.window += run_window(window, harness.home)
+    harness.desktop.in_window = in_window
     others = subprocess.run  # the harness's fakes
 
     def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
@@ -173,32 +177,25 @@ def wilma(harness, tmp_path, monkeypatch) -> Wilma:
                 raise subprocess.TimeoutExpired(cmd, k["timeout"])
             w.install(prefix=fake_node.npm_prefix(cmd))
             return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
-        if cmd[:3] == ["open", "-a", "Terminal"]:
-            harness.commands.append(list(cmd))
-            if not w.terminal_opens:
-                return subprocess.CompletedProcess(cmd, 1, "", "Unable to find application")
-            w.terminal.append(Path(cmd[3]).read_text())
-            if w.terminal_runs:
-                w.window += run_window(cmd[3])
-            return subprocess.CompletedProcess(cmd, 0, "", "")
         return others(cmd, *a, **k)
     monkeypatch.setattr(subprocess, "run", run)
     return w
 
 
-def run_window(script: str) -> str:
-    """Runs the Terminal window's script and returns what the window showed. A window still open
-    after WINDOW_SECONDS is ended, with the processes it started, and fails the test."""
-    window = subprocess.Popen(["/bin/sh", script], stdin=subprocess.DEVNULL,
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                              start_new_session=True)
+def run_window(window: Window, home: Path) -> str:
+    """Runs the terminal window's command, in the home folder with the window's variables added,
+    and returns what the window showed. A window still open after WINDOW_SECONDS is ended, with
+    the processes it started, and fails the test."""
+    running = subprocess.Popen(window.argv, cwd=home, env={**os.environ, **window.env},
+                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, start_new_session=True)
     try:
-        shown, _ = window.communicate(timeout=WINDOW_SECONDS)
+        shown, _ = running.communicate(timeout=WINDOW_SECONDS)
     except subprocess.TimeoutExpired:
         with contextlib.suppress(ProcessLookupError):
-            os.killpg(window.pid, signal.SIGKILL)
-        shown, _ = window.communicate()
-        pytest.fail(f"The Wilma window didn't close within {WINDOW_SECONDS} seconds: its script, "
+            os.killpg(running.pid, signal.SIGKILL)
+        shown, _ = running.communicate()
+        pytest.fail(f"The Wilma window didn't close within {WINDOW_SECONDS} seconds: its command, "
                     "`setup wilma --screen` or the wilma CLI was still running. The window "
                     f"showed: {shown.decode(errors='replace')!r}")
     return shown.decode()
@@ -217,7 +214,8 @@ def assert_password_never_leaked(harness, wilma: Wilma, printed: str, caplog) ->
         assert value not in printed
         assert value not in caplog.text
         assert not any(value in arg for cmd in harness.commands for arg in cmd)
-        assert not any(value in script for script in wilma.terminal)
+        assert not any(value in part for window in harness.desktop.windows
+                       for part in [*window.argv, *window.env.values()])
 
 
 def preset_cities() -> list[tuple[str, str]]:
@@ -243,8 +241,8 @@ def test_signing_in_reports_each_kid_and_the_city(harness, wilma, capsys, caplog
         "kids": [{"name": "Mia Virtanen", "school": None, "class": None},
                  {"name": "Leo Virtanen", "school": None, "class": None}],
     }
-    [script] = wilma.terminal
-    assert "setup wilma --screen" in script
+    [window] = harness.desktop.windows
+    assert "setup wilma --screen" in " ".join(window.argv)
     assert_password_never_leaked(harness, wilma, printed, caplog)
     # So uninstall removes the profile the CLI saved, and only that.
     assert install_record.entries("wilma-profile") == ["https://espoo.inschool.fi|parent@example.com"]
@@ -327,7 +325,7 @@ def test_no_open_reads_at_once_when_already_signed_in(harness, wilma, capsys):
     assert harness.cli("setup", "wilma", "--no-open") == 0
 
     assert result(capsys)[0]["result"] == "signed-in"
-    assert wilma.terminal == []
+    assert harness.desktop.windows == []
 
 
 # ── the window
@@ -458,11 +456,11 @@ def test_without_its_own_node_it_says_to_run_the_install_again(harness, wilma, c
     res, _ = result(capsys)
     assert res["result"] == "not-installed" and "install line" in res["next"]
     assert "brew" not in res["next"]
-    assert wilma.terminal == []
+    assert harness.desktop.windows == []
 
 
 def test_when_terminal_cannot_be_opened_it_says_where_to_sign_in(harness, wilma, capsys):
-    wilma.terminal_opens = False
+    harness.desktop.opens = False
     wilma.install()
 
     assert harness.cli("setup", "wilma") == 1

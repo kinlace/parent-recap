@@ -12,9 +12,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+from fake_system import FakeSecrets
+
 from family_brief import summarize
 from family_brief.eval import __main__ as runner
 from family_brief.eval.cases import BUNDLED, load_cases
+from family_brief.system import secrets
 
 HOUSEHOLD = {
     "timezone": "Europe/Helsinki",
@@ -50,12 +53,11 @@ def model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """Replies to every `claude` call with `replies[0]` (a dict, raw text, or a function making
     one from the prompt), recording prompts. Each stderr in `busy` first makes one call fail with it."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(secrets, "_adapter", FakeSecrets())
     state = {"replies": [GOOD], "prompts": [], "busy": [], "models": []}
 
     def run(cmd, *_a, **k):
         prog = Path(cmd[0]).name
-        if prog == "security":
-            return subprocess.CompletedProcess(cmd, 44, "", "item not found")
         if state["busy"]:
             state["prompts"].append(k["input"])
             return subprocess.CompletedProcess(cmd, 1, "", state["busy"].pop(0))

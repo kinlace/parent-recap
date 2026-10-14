@@ -1,13 +1,13 @@
 """`parent-recap uninstall` removes what setup created on this Mac, and nothing else.
 
-macOS's edges are faked: `launchctl`, `pmset`, the Keychain's `security` command and the
-administrator dialog (`osascript`). Everything setup writes is real files in a temporary HOME.
-Assertions are on what the family reads and on what is left on the Mac afterwards."""
+The OS services (secrets, the evening jobs, the wake schedule) are the harness's in-memory
+fakes, and Claude Code's plugin commands are faked here. Everything setup writes is real files
+in a temporary HOME. Assertions are on what the family reads and on what is left on the Mac
+afterwards."""
 from __future__ import annotations
 
 import io
 import json
-import plistlib
 import subprocess
 import sys
 from pathlib import Path
@@ -20,25 +20,19 @@ from test_codex_install import install_codex_skills
 from family_brief import install_record, run_lock, setup_wilma, tools, whatsapp_python
 from family_brief.collectors import gmail
 from family_brief.config import Config
-from family_brief.system import jobs_macos
+from family_brief.system import jobs, wake
+from family_brief.system.secrets_error import SecretsError
 
-SLEEPS = "AC Power:\n sleep                1\n"
-OUR_WAKE = "wakepoweron at 8:55PM every day"
+OTHER_WAKE = "wake every weekday at 07:00"
 APP_PASSWORD = "abcdabcdabcdabcd"
 CLAUDE_TOKEN = "sk-ant-oat01-secret"
 REAL_RUN = subprocess.run
 
 
 class FakeMac:
-    """launchctl, pmset, the Keychain, the administrator dialog and Claude Code's plugins, as
-    uninstall sees them."""
+    """Claude Code's plugins, as uninstall sees them."""
 
-    def __init__(self, keychain: dict[str, str]) -> None:
-        self.keychain = keychain
-        self.loaded: set[str] = set()
-        self.repeating: list[str] = []      # the lines under "Repeating power events:"
-        self.admin_dialog = "allow"         # or "cancel"
-        self.keychain_prompt = "allow"      # or "deny"
+    def __init__(self) -> None:
         self.claude_plugins: list[str] = []  # by id
         self.claude_marketplaces: list[str] = []  # by name
         self.claude_removes = True          # False: `claude plugin uninstall` fails
@@ -50,41 +44,6 @@ class FakeMac:
         prog = Path(cmd[0]).name
         if prog == "claude":
             return self._claude(cmd)
-        if prog == "launchctl":
-            if cmd[1] == "load":
-                self.loaded.add(Path(cmd[2]).stem)
-            elif cmd[1] == "unload":
-                self.loaded.discard(Path(cmd[2]).stem)
-            elif cmd[1] == "list":
-                return done(cmd, "".join(f"-\t0\t{label}\n" for label in sorted(self.loaded)))
-            return done(cmd)
-        if cmd[:2] == ["pmset", "-g"]:
-            if cmd[2] == "custom":
-                return done(cmd, SLEEPS)
-            sched = ("Repeating power events:\n" + "".join(f"  {l}\n" for l in self.repeating)
-                     if self.repeating else "")
-            return done(cmd, sched)
-        if prog == "security":
-            account = cmd[cmd.index("-a") + 1]
-            if account not in self.keychain:
-                return done(cmd, code=44, err="The specified item could not be found in the keychain.")
-            if cmd[1] == "delete-generic-password":
-                if self.keychain_prompt == "deny":
-                    return done(cmd, code=128, err="User canceled the operation.")
-                del self.keychain[account]
-                return done(cmd, "password has been deleted.\n")
-            assert "-w" not in cmd, "uninstall must not read the secret itself"
-            return done(cmd, f'keychain: "login.keychain-db"\n    "acct"<blob>="{account}"\n')
-        if prog == "osascript":
-            assert "administrator privileges" in cmd[-1]
-            if self.admin_dialog == "cancel":
-                return done(cmd, code=1, err="execution error: User canceled. (-128)")
-            if "pmset repeat wakeorpoweron MTWRFSU 20:55:00" in cmd[-1]:  # schedule install
-                self.repeating = [OUR_WAKE]
-            else:
-                assert "pmset repeat cancel" in cmd[-1]
-                self.repeating = []
-            return done(cmd)
         raise AssertionError(f"unexpected subprocess in test: {cmd[:3]}")
 
     def _claude(self, cmd: list[str]) -> subprocess.CompletedProcess:
@@ -107,9 +66,7 @@ class FakeMac:
         raise AssertionError(f"unexpected claude command in test: {args}")
 
     def removals(self) -> list[list[str]]:
-        return [c for c in self.ran if c[:2] == ["launchctl", "unload"]
-                or (Path(c[0]).name == "security" and c[1] == "delete-generic-password")
-                or c[0] == "osascript" or Path(c[0]).name == "npm"
+        return [c for c in self.ran if Path(c[0]).name == "npm"
                 or (Path(c[0]).name == "claude" and "--json" not in c)]
 
 
@@ -119,15 +76,14 @@ def done(cmd: list[str], out: str = "", code: int = 0, err: str = "") -> subproc
 
 @pytest.fixture
 def mac(harness, monkeypatch) -> FakeMac:
-    fake = FakeMac(harness.keychain)
+    fake = FakeMac()
     monkeypatch.setattr(subprocess, "run", fake.run)
-    monkeypatch.setattr(jobs_macos, "LAUNCH_AGENTS", harness.home / "Library" / "LaunchAgents")
     return fake
 
 
 def store_app_password(harness, address: str, password: str) -> None:
     """What setup's Gmail step leaves: the Keychain item and its entry in the record."""
-    harness.keychain[gmail.keychain_account(address)] = password
+    harness.secrets[gmail.keychain_account(address)] = password
     install_record.add("keychain", gmail.keychain_account(address))
 
 
@@ -152,6 +108,18 @@ def make_program(home: Path, monkeypatch) -> Path:
     return app
 
 
+def our_wake(harness) -> str:
+    """The wake schedule setup gave for the evening job at 21:00."""
+    return harness.wake.line(21, 0)
+
+
+def nothing_removed(harness, mac: FakeMac) -> bool:
+    """Everything setup stored, scheduled and set is still there, and nothing was asked to go."""
+    return bool(harness.secrets) and harness.jobs.installed() == {jobs.DAILY} \
+        and harness.wake.wakes == [our_wake(harness)] and harness.wake.asked == [] \
+        and mac.removals() == []
+
+
 def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
     """Everything a Claude setup with Codex skills, Wilma and a wake schedule leaves on the Mac."""
     home = harness.home
@@ -165,9 +133,10 @@ def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
                              "codex-skill", str(home / ".agents/skills/parent-recap-setup"),
                              "codex-skill", str(home / ".agents/skills/parent-recap-manage")])
     store_app_password(harness, "parent@example.com", APP_PASSWORD)
-    harness.keychain["claude-oauth-token"] = CLAUDE_TOKEN
+    harness.secrets["claude-oauth-token"] = CLAUDE_TOKEN
     assert harness.cli("schedule", "install") == 0
-    assert mac.repeating == [OUR_WAKE]
+    assert harness.wake.wakes == [our_wake(harness)]
+    harness.wake.asked.clear()
     harness.state_path.write_text("{}")
     (home / ".family" / "languages").mkdir()
     (home / ".family" / "languages" / "sv.json").write_text("{}")
@@ -194,7 +163,7 @@ def uninstall(harness, *args: str) -> int:
 
 def leftovers(home: Path) -> list[str]:
     """Every file and folder in HOME, but the folders macOS and Codex own."""
-    theirs = {"Library", "Library/LaunchAgents", ".agents", ".agents/skills"}
+    theirs = {".agents", ".agents/skills"}
     return sorted(r for r in (str(p.relative_to(home)) for p in home.rglob("*")) if r not in theirs)
 
 
@@ -209,7 +178,8 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
     assert uninstall(harness) == 0
 
     out = capsys.readouterr().out
-    for item in ("com.parentrecap.daily", "Library/LaunchAgents/com.parentrecap.daily.plist", OUR_WAKE,
+    for item in (jobs.system_name(jobs.DAILY), f"Scheduler/{jobs.system_name(jobs.DAILY)}",
+                 our_wake(harness),
                  "ParentRecap/app", "ParentRecap/logs", "ParentRecap/runtime", ".family/config.yaml",
                  ".family/config.yaml.bak-202609011200", ".family/state.json", ".family/languages",
                  ".family/install-record.json", ".family/setup-progress.json",
@@ -221,8 +191,7 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
     assert "--confirm" in out
     assert APP_PASSWORD not in out and CLAUDE_TOKEN not in out
     assert leftovers(harness.home) == before
-    assert mac.removals() == []
-    assert mac.keychain and mac.loaded and mac.repeating
+    assert nothing_removed(harness, mac)
 
 
 def test_says_to_remove_its_python_from_full_disk_access_by_hand(harness, mac, monkeypatch, capsys):
@@ -270,7 +239,7 @@ def test_confirmed_with_the_archive_kept_removes_all_but_the_archive(harness, ma
 
     assert leftovers(harness.home) == ["ParentRecap", "ParentRecap/2026-09-26.md",
                                        "ParentRecap/2026-09-26.raw.json"]
-    assert mac.keychain == {} and mac.loaded == set() and mac.repeating == []
+    assert harness.secrets == {} and harness.jobs.found() == [] and harness.wake.wakes == []
     out = capsys.readouterr().out
     assert "kept" in out.lower() and "ParentRecap" in out
     assert "https://myaccount.google.com/apppasswords" in out
@@ -312,7 +281,7 @@ def test_confirming_needs_a_choice_about_the_archive(harness, mac, monkeypatch, 
     assert uninstall(harness, "--confirm") == 2
 
     assert "--keep-archive" in capsys.readouterr().out
-    assert leftovers(harness.home) == before and mac.removals() == []
+    assert leftovers(harness.home) == before and nothing_removed(harness, mac)
 
 
 def test_leaves_files_it_did_not_create_in_its_folders(harness, mac, monkeypatch, capsys):
@@ -331,7 +300,8 @@ def test_leaves_files_it_did_not_create_in_its_folders(harness, mac, monkeypatch
 def test_a_denied_keychain_deletion_is_reported_and_the_rest_still_removed(harness, mac,
                                                                          monkeypatch, capsys):
     set_up(harness, mac, monkeypatch)
-    mac.keychain_prompt = "deny"
+    harness.secrets.refuses = SecretsError("macOS didn't allow it. Delete it in the Keychain "
+                                           "Access app instead.", "failed", -128)
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 1
 
@@ -344,24 +314,24 @@ def test_a_denied_keychain_deletion_is_reported_and_the_rest_still_removed(harne
 def test_a_cancelled_administrator_dialog_leaves_the_wake_schedule_and_says_how(harness, mac,
                                                                               monkeypatch, capsys):
     set_up(harness, mac, monkeypatch)
-    mac.admin_dialog = "cancel"
+    harness.wake.dialog = "cancel"
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 1
 
-    assert mac.repeating == [OUR_WAKE]
-    assert "sudo pmset repeat cancel" in capsys.readouterr().out
+    assert harness.wake.wakes == [our_wake(harness)]
+    assert wake.manual_cancel() in capsys.readouterr().out
 
 
 def test_leaves_a_wake_schedule_setup_did_not_set(harness, mac, monkeypatch, capsys):
     set_up(harness, mac, monkeypatch)
-    mac.repeating = ["wakepoweron at 7:00AM weekdays only"]
+    harness.wake.wakes = [OTHER_WAKE]
     mac.ran.clear()
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
-    assert mac.repeating == ["wakepoweron at 7:00AM weekdays only"]
-    assert not any(c[0] == "osascript" for c in mac.ran)
-    assert "wakepoweron at 7:00AM weekdays only" in capsys.readouterr().out
+    assert harness.wake.wakes == [OTHER_WAKE]
+    assert harness.wake.asked == []
+    assert OTHER_WAKE in capsys.readouterr().out
 
 
 def test_removes_a_gmail_app_password_stored_for_an_earlier_address(harness, mac, monkeypatch,
@@ -371,7 +341,7 @@ def test_removes_a_gmail_app_password_stored_for_an_earlier_address(harness, mac
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
-    assert mac.keychain == {}
+    assert harness.secrets == {}
     assert "gmail-imap-old@example.com" in capsys.readouterr().out
 
 
@@ -379,15 +349,15 @@ def test_a_keychain_item_macos_refused_to_delete_is_found_again_on_the_next_try(
                                                                               monkeypatch, capsys):
     # Without a record, the Gmail account comes from the config, which the first try removes.
     set_up(harness, mac, monkeypatch, record=False)
-    mac.keychain_prompt = "deny"
+    harness.secrets.refuses = SecretsError("macOS didn't allow it", "failed", -128)
     assert uninstall(harness, "--confirm", "--keep-archive") == 1
     capsys.readouterr()
-    mac.keychain_prompt = "allow"
+    harness.secrets.refuses = None
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
     assert "gmail-imap-parent@example.com" in capsys.readouterr().out
-    assert mac.keychain == {}
+    assert harness.secrets == {}
     assert not (harness.home / ".family").exists()
 
 
@@ -455,7 +425,7 @@ def test_lists_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness,
                  "Claude Code marketplace: kinlace"):
         assert item in removes, item
     assert "claude-plugins-official" not in removes
-    assert mac.removals() == [] and config.exists()
+    assert nothing_removed(harness, mac) and config.exists()
     assert WILMA_PASSWORD not in removes
 
 
@@ -556,7 +526,7 @@ def test_an_install_without_a_record_is_recognised_and_listed_for_confirmation(h
 
     out = capsys.readouterr().out
     assert "record" in out.lower()
-    for item in ("com.parentrecap.daily", "ParentRecap/app", ".family/config.yaml",
+    for item in (jobs.system_name(jobs.DAILY), "ParentRecap/app", ".family/config.yaml",
                  "gmail-imap-parent@example.com", ".agents/skills/parent-recap-setup"):
         assert item in out, item
 
@@ -573,24 +543,21 @@ def assert_stopped(harness, mac: FakeMac, before: list[str], capsys) -> str:
     out = capsys.readouterr().out
     assert "❌" in out and "nothing" in out.lower()
     assert leftovers(harness.home) == before
-    assert mac.removals() == []
+    assert nothing_removed(harness, mac)
     return out
 
 
-def test_stops_on_a_launchd_job_with_its_name_that_runs_another_program(harness, mac,
+def test_stops_on_a_scheduled_job_with_its_name_that_runs_another_program(harness, mac,
                                                                         monkeypatch, capsys):
     set_up(harness, mac, monkeypatch)
-    plist = harness.home / "Library" / "LaunchAgents" / "com.parentrecap.daily.plist"
-    data = plistlib.loads(plist.read_bytes())
-    data["ProgramArguments"][0] = "/Users/maintainer/family-brief/.venv/bin/python"
-    plist.write_bytes(plistlib.dumps(data))
+    harness.jobs.programs[jobs.DAILY][0] = "/Users/maintainer/family-brief/.venv/bin/python"
     before = leftovers(harness.home)
     mac.ran.clear()
 
     out = assert_stopped(harness, mac, before, capsys)
 
     assert "/Users/maintainer/family-brief/.venv/bin/python" in out
-    assert "com.parentrecap.daily" in out
+    assert jobs.system_name(jobs.DAILY) in out
 
 
 def test_stops_on_a_config_parent_recap_did_not_write(harness, mac, monkeypatch, capsys):
@@ -667,7 +634,7 @@ def test_a_fresh_setup_works_after_uninstall(harness, mac, monkeypatch, capsys):
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
-    assert mac.keychain == {} and mac.loaded == set() and mac.repeating == []
+    assert harness.secrets == {} and harness.jobs.found() == [] and harness.wake.wakes == []
     assert not (harness.home / ".family").exists() and not app.exists()
 
 
@@ -707,7 +674,7 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     (weekend / "2026-09-26.md").write_text("picks\n")
     for name in ("calendar_credentials.json", "calendar_token.json"):
         (harness.home / ".family" / name).write_text("{}")
-    harness.keychain["anthropic-api-key"] = "sk-ant-api-secret"
+    harness.secrets["anthropic-api-key"] = "sk-ant-api-secret"
     doc = (Path(__file__).resolve().parents[2] / "docs" / "setup-internals.md").read_text()
 
     assert uninstall(harness) == 0
@@ -720,8 +687,10 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     for where in listed:
         name = where.rsplit("/", 1)[-1].strip().replace("parent@example.com", "<address>")
         name = name.replace("202609011200", "<date>").replace("1 day in ~", "~")
-        assert name in doc or where.startswith("wakepoweron"), where
-    assert "pmset repeat cancel" in doc
+        ours = (our_wake(harness), f"~/Scheduler/{jobs.system_name(jobs.DAILY)}")  # the fakes' own
+        assert name in doc or where in ours, where
+    # What the macOS adapters keep in their place.
+    assert "com.parentrecap.daily.plist" in doc and "pmset repeat cancel" in doc
 
 
 def test_the_record_is_owner_only(harness, mac, monkeypatch):

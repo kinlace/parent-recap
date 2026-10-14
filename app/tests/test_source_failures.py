@@ -107,7 +107,7 @@ def real_gmail(harness, monkeypatch):
     harness.config["wilma"]["enabled"] = False
     one_whatsapp_message(harness)
     caught_up_last_night(harness)
-    harness.keychain["gmail-imap-parent@example.com"] = "app-password"
+    harness.secrets["gmail-imap-parent@example.com"] = "app-password"
     monkeypatch.setattr(gmail, "collect", REAL_GMAIL_COLLECT)
 
     def serve(bodies: dict[int, bytes | Exception]) -> None:

@@ -8,6 +8,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from fake_system import FakeSecrets
+
+from family_brief.system import secrets
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "setup_claude_token.py"
 TOKEN = "sk-ant-oat01-secret-token"
@@ -15,44 +18,31 @@ TOKEN = "sk-ant-oat01-secret-token"
 
 @pytest.fixture
 def setup(monkeypatch: pytest.MonkeyPatch):
-    """Runs the script against a fake `security` (the parent types `typed` at its prompt) and
+    """Runs the script against fake secrets (the parent types `typed` at the store's prompt) and
     a fake `claude`, recording every process started."""
     spec = importlib.util.spec_from_file_location("setup_claude_token", SCRIPT)
     script = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)
-    keychain: dict[str, str] = {}
+    store = FakeSecrets()
+    store.typed = TOKEN
+    monkeypatch.setattr(secrets, "_adapter", store)
     calls: list[tuple[list[str], dict | None]] = []
-    typed = {"value": TOKEN}
 
     def run(cmd, *_a, env=None, **_k):
         calls.append((list(cmd), env))
-        account = cmd[cmd.index("-a") + 1] if "-a" in cmd else None
-        verb = cmd[1] if Path(cmd[0]).name == "security" else None  # run as /usr/bin/security
-        if verb == "add-generic-password":
-            assert cmd[-1] == "-w"  # no value after -w: security prompts for it on the terminal
-            assert cmd[cmd.index("-T") + 1] == "/usr/bin/security"
-            keychain[account] = typed["value"]
-            return subprocess.CompletedProcess(cmd, 0, "", "")
-        if verb == "find-generic-password":
-            if account not in keychain:
-                return subprocess.CompletedProcess(cmd, 44, "", "item not found")
-            return subprocess.CompletedProcess(cmd, 0, keychain[account] + "\n", "")
-        if verb == "delete-generic-password":
-            keychain.pop(account, None)
-            return subprocess.CompletedProcess(cmd, 0, "", "")
         assert cmd[0] == "claude", cmd
         return subprocess.CompletedProcess(cmd, 0, json.dumps({"is_error": False, "result": "OK"}), "")
 
     monkeypatch.setattr(subprocess, "run", run)
-    return script, keychain, calls, typed
+    return script, store, calls
 
 
 def test_the_token_never_appears_in_a_process_argument(setup):
-    script, keychain, calls, _ = setup
+    script, store, calls = setup
 
     assert script.main() == 0
 
-    assert keychain == {"claude-oauth-token": TOKEN}
+    assert store == {"claude-oauth-token": TOKEN}
     assert calls and not any(TOKEN in a for cmd, _ in calls for a in cmd)
     [(claude, env)] = [(cmd, env) for cmd, env in calls if cmd[0] == "claude"]
     assert env["CLAUDE_CODE_OAUTH_TOKEN"] == TOKEN
@@ -60,22 +50,21 @@ def test_the_token_never_appears_in_a_process_argument(setup):
 
 
 def test_something_that_is_not_a_claude_token_is_not_kept(setup, capsys):
-    script, keychain, calls, typed = setup
-    typed["value"] = "not-a-token"
+    script, store, calls = setup
+    store.typed = "not-a-token"
 
     assert script.main() == 1
 
-    assert "claude-oauth-token" not in keychain
+    assert "claude-oauth-token" not in store
     assert "Run this again" in capsys.readouterr().err
-    assert not any(cmd[0] == "claude" for cmd, _ in calls)
+    assert calls == []
 
 
-def test_a_token_stored_before_is_deleted_first_so_the_new_one_gets_this_access_list(setup):
-    script, keychain, calls, _ = setup
-    keychain["claude-oauth-token"] = "sk-ant-oat01-stored-with-keyring"
+def test_a_token_stored_before_is_replaced(setup):
+    script, store, _ = setup
+    store["claude-oauth-token"] = "sk-ant-oat01-stored-with-keyring"
+    store.asks.add("claude-oauth-token")
 
     assert script.main() == 0
 
-    verbs = [cmd[1] for cmd, _ in calls if Path(cmd[0]).name == "security"]
-    assert verbs[:2] == ["delete-generic-password", "add-generic-password"]
-    assert keychain == {"claude-oauth-token": TOKEN}
+    assert store == {"claude-oauth-token": TOKEN} and not store.asks

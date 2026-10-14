@@ -2,9 +2,9 @@
 macOS's dialog to one download and the owner-only config, and nowhere else (ADR 0005).
 
 The link carries a personal token, so it's a secret like the others. The outside edges are faked:
-the dialog, `open`, Terminal's hidden prompt and MyClub's server. The assistant reads only the
-command's one-line JSON result, so assertions are on that result, on the config file, and on
-every place the link must never reach."""
+the dialog, the desktop that opens MyClub's page, Terminal's hidden prompt and MyClub's server.
+The assistant reads only the command's one-line JSON result, so assertions are on that result, on
+the config file, and on every place the link must never reach."""
 from __future__ import annotations
 
 import getpass
@@ -113,7 +113,7 @@ def test_a_link_pasted_in_the_dialog_is_downloaded_and_saved(harness, server, ca
 
     res, printed = result(capsys)
     assert res == {"result": "saved", "kid": "Mia", "events": 2}
-    assert harness.opened == ["https://id.myclub.fi"]
+    assert harness.desktop.opened == ["https://id.myclub.fi"]
     assert len(harness.dialog.shown) == 1 and "hidden answer" in harness.dialog.shown[0]
     assert "Mia" in harness.dialog.shown[0]
     assert server.downloads == [LINK.replace("webcal://", "https://")]
@@ -236,7 +236,7 @@ def test_no_open_leaves_the_page_alone(harness, server, capsys):
 
     assert harness.cli("setup", "myclub", "--kid", "Mia", "--no-open") == 0
 
-    assert harness.opened == []
+    assert harness.desktop.opened == []
 
 
 # ── which Kid
@@ -247,7 +247,7 @@ def test_an_unknown_kid_is_reported_with_the_kids_there_are_before_asking(harnes
 
     res, _ = result(capsys)
     assert res["result"] == "no-such-kid" and res["kids"] == ["Mia", "Leo"]
-    assert harness.dialog.shown == [] and harness.opened == []
+    assert harness.dialog.shown == [] and harness.desktop.opened == []
 
 
 def test_without_a_kid_it_lists_the_kids(harness, server, capsys):

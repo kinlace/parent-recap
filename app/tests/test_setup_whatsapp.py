@@ -3,35 +3,34 @@ the scheduled job's Python has Full Disk Access, and until it does, shows that P
 opens Full Disk Access and waits for the family. Only then does it read WhatsApp. Then it reports the permission and the chats as one JSON
 line, with a hint on each chat that looks like it's about a Kid.
 
-The outside edges are faked: `launchctl` runs the job in this process with the job's
-environment, against a WhatsApp database and macOS's permission file in the temporary HOME that
-only the job can read, and only once the fake Mac has given the job's Python Full Disk Access. Waiting takes no time: a fake
-clock moves on when the command sleeps."""
+The outside edges are faked: the harness's FakeJobs runs the `bg` job in this process, against a
+WhatsApp database and macOS's permission file in the temporary HOME that only the job can read,
+and only once the fake Mac has given the job's Python Full Disk Access. Waiting takes no time: a
+fake clock moves on when the command sleeps."""
 from __future__ import annotations
 
 import contextlib
 import json
 import os
-import plistlib
 import shutil
 import sqlite3
-import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import pytest
 
-from family_brief import __main__ as cli, ops, whatsapp_python
+from family_brief import ops, whatsapp_python
+from fake_system import FakeJobs
 from family_brief.collectors import whatsapp
 
 MESSAGE_DATE = datetime(2026, 9, 26, 18, 0).timestamp() - whatsapp.CORE_DATA_EPOCH
 
 
 class Mac:
-    """The family's Mac: WhatsApp's database, macOS's permissions for the job's Python, and launchd.
+    """The family's Mac: WhatsApp's database, and macOS's permissions for the job's Python.
 
     Full Disk Access lets the job's Python read WhatsApp without a question, and opens the one file
     only it unlocks. Without it, reading WhatsApp makes macOS ask whether python3 may access data
@@ -45,14 +44,11 @@ class Mac:
         self.tcc_db.chmod(0)  # only Full Disk Access opens it
         self.full_disk_access_after = 0  # jobs run before the family turns Full Disk Access on
         self.allow = "allow"           # the answer to macOS's question: "allow" or "deny"
-        self.bootstrap_fails = False
-        self.hangs = False             # a job that doesn't finish
         self.refused = 0               # jobs run without Full Disk Access
         self.prompts = 0               # questions macOS asked about data from other apps
-        self.jobs: list[list[str]] = []      # each job's ProgramArguments
         self.reads: list[bool] = []          # each read of the database: was it inside a job?
-        self._running: dict[str, int | None] = {}
         self._job_has_access = False
+        self.jobs: FakeJobs | None = None  # the scheduler its `bg` jobs run in
 
     def install_whatsapp(self, chats: list[tuple[str, int, bool]]) -> None:
         """(name, days before the last message, archived) for each group chat."""
@@ -79,52 +75,22 @@ class Mac:
         if not inside or self.allow != "allow":
             raise PermissionError(1, "Operation not permitted", str(src))
 
-    def launchctl(self, cmd: list[str]) -> subprocess.CompletedProcess:
-        action = cmd[1]
-        if action == "bootstrap":
-            if self.bootstrap_fails:
-                return subprocess.CompletedProcess(cmd, 5, "", "Bootstrap failed: 5: Input/output error")
-            job = plistlib.loads(Path(cmd[3]).read_bytes())
-            self._running[job["Label"]] = self._run(job)
-            return subprocess.CompletedProcess(cmd, 0, "", "")
-        label = cmd[2].split("/")[-1]
-        if action == "print":
-            if label not in self._running:
-                return subprocess.CompletedProcess(cmd, 113, "", "Could not find service")
-            code = self._running[label]
-            state = "\tstate = running\n" if code is None else f"\tstate = not running\n\tlast exit code = {code}\n"
-            return subprocess.CompletedProcess(cmd, 0, state, "")
-        if action == "bootout":
-            self._running.pop(label, None)
-            return subprocess.CompletedProcess(cmd, 0, "", "")
-        raise AssertionError(f"unexpected launchctl call: {cmd}")
-
-    def _run(self, job: dict[str, Any]) -> int | None:
-        """Runs the job's family-brief command with its environment; None while it's still going."""
-        argv = job["ProgramArguments"]
-        assert argv[:3] == [sys.executable, "-m", "family_brief"]
-        self.jobs.append(argv)
-        if self.hangs:
-            return None
+    @contextlib.contextmanager
+    def job(self) -> Iterator[None]:
+        """A `bg` job as it runs: with Full Disk Access once the family has given it, which opens
+        the one file only it unlocks."""
         self._job_has_access = self.refused >= self.full_disk_access_after
         if self._job_has_access and self.tcc_db.exists():
             self.tcc_db.chmod(0o600)
         else:
             self.refused += 1
-        before = dict(os.environ)
-        os.environ.update(job["EnvironmentVariables"])
         try:
-            with open(job["StandardOutPath"], "w") as out, contextlib.redirect_stdout(out), \
-                    pytest.MonkeyPatch.context() as mp:
-                mp.setattr(sys, "argv", ["family-brief", *argv[3:]])
-                code = cli.main()
+            yield
         finally:
-            os.environ.clear()
-            os.environ.update(before)
             if self.tcc_db.exists():
                 self.tcc_db.chmod(0)
             self._job_has_access = False
-        return code
+        self.jobs: FakeJobs | None = None  # the scheduler its `bg` jobs run in
 
 
 @pytest.fixture
@@ -138,8 +104,11 @@ def mac(harness, monkeypatch) -> Mac:
 
 
 def fake_mac(harness, monkeypatch) -> Mac:
-    """The family's Mac, with launchctl and WhatsApp's database faked, and the real clock."""
+    """The family's Mac, with WhatsApp's database faked, and the real clock. Its `bg` jobs run
+    in the harness's FakeJobs, with the permissions the Mac gives them."""
     m = Mac(harness.home)
+    m.jobs = harness.jobs
+    harness.jobs.inside = m.job
     monkeypatch.setattr(whatsapp, "DB_DIR", m.db_dir)
     monkeypatch.setattr(whatsapp, "DB_FILE", m.db_dir / "ChatStorage.sqlite")
 
@@ -151,14 +120,6 @@ def fake_mac(harness, monkeypatch) -> Mac:
         return real_copy(src, dst, **k)
     monkeypatch.setattr(shutil, "copy2", copy2)
 
-    others = subprocess.run  # the harness's fakes
-
-    def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if Path(cmd[0]).name == "launchctl":
-            harness.commands.append(list(cmd))
-            return m.launchctl(cmd)
-        return others(cmd, *a, **k)
-    monkeypatch.setattr(subprocess, "run", run)
     return m
 
 
@@ -171,8 +132,9 @@ def result(capsys) -> dict[str, Any]:
 
 def assert_read_only_through_bg(harness, mac: Mac) -> None:
     assert mac.reads and all(mac.reads), "WhatsApp was read outside a bg job"
-    assert all(job[3:5] == ["-c", str(harness.home / ".family" / "config.yaml")] for job in mac.jobs)
-    assert not any("Terminal" in arg for cmd in harness.commands for arg in cmd)
+    assert all(job[:2] == ["-c", str(harness.home / ".family" / "config.yaml")]
+               for job in harness.jobs.detached)
+    assert harness.desktop.windows == []
 
 
 PYTHON = os.path.realpath(sys.executable)
@@ -346,14 +308,13 @@ def test_without_full_disk_access_nothing_is_recorded(harness, mac, capsys):
 
 def test_a_read_that_does_not_finish_is_reported_as_waiting(harness, mac, capsys):
     mac.install_whatsapp(CHATS)
-    mac.hangs = True
+    harness.jobs.hangs = True
 
     assert harness.cli("setup", "whatsapp", "--timeout", "60") == 1
 
     res = result(capsys)
     assert res["result"] == "waiting" and "--no-open" in res["next"]
     assert "Allow" not in res["next"]
-    assert ["launchctl", "bootout"] == harness.commands[-1][:2]  # the job didn't outlive it
 
 
 def test_no_open_waits_without_opening_finder_or_system_settings_again(harness, mac, capsys):
@@ -373,7 +334,7 @@ def test_timeout_zero_only_reports_where_it_stands(harness, mac, capsys):
     assert harness.cli("setup", "whatsapp", "--no-open", "--timeout", "0") == 1
 
     assert result(capsys)["result"] == "no-permission"
-    assert len(mac.jobs) == 1
+    assert len(harness.jobs.detached) == 1
 
 
 # ── when it doesn't work
@@ -400,7 +361,7 @@ def test_full_disk_access_that_cannot_be_checked_leaves_whatsapp_untouched(harne
 
 def test_a_background_job_that_does_not_start_is_reported(harness, mac, capsys):
     mac.install_whatsapp(CHATS)
-    mac.bootstrap_fails = True
+    harness.jobs.detached_fails = "Bootstrap failed: 5: Input/output error"
 
     assert harness.cli("setup", "whatsapp") == 1
 

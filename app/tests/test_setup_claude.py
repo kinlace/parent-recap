@@ -1,16 +1,16 @@
-"""Storing the Claude token with `parent-recap setup claude`: Claude's sign-in opens in Terminal,
-the token goes from macOS's dialog to one test call and the Keychain, and nowhere else (ADR 0005).
+"""Storing the Claude token with `parent-recap setup claude`: Claude's sign-in opens in a terminal
+window, the token goes from macOS's dialog to one test call and the secrets store, and nowhere
+else (ADR 0005).
 
 `claude setup-token` draws its sign-in on Ink's interactive screen, which needs a real terminal,
-so the step opens it in a Terminal window and asks for the token it shows in the secret dialog.
-The outside edges are faked: Terminal, the dialog, the Keychain and the `claude` test call. The
-assistant reads only the command's one-line JSON result, so assertions are on that result, on
-what the Keychain holds, and on every place the token must never reach."""
+so the step opens it in a terminal window and asks for the token it shows in the secret dialog.
+The outside edges are faked: the desktop's windows, the dialog, the secrets store and the
+`claude` test call. The assistant reads only the command's one-line JSON result, so assertions
+are on that result, on what the store holds, and on every place the token must never reach."""
 from __future__ import annotations
 
 import json
 import logging
-import shlex
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -19,7 +19,7 @@ import pytest
 from conftest import msg, program
 
 from family_brief import install_record
-from family_brief.system import jobs_macos
+from family_brief.system import secrets
 
 TOKEN = "sk-ant-oat01-Abc_def-123456789"
 ACCOUNT = "claude-oauth-token"
@@ -32,35 +32,17 @@ def desktop(monkeypatch):
         monkeypatch.delenv(var, raising=False)
 
 
-class Terminal:
-    """The Terminal window `claude setup-token` is opened in."""
-
-    def __init__(self) -> None:
-        self.opens = True             # False: macOS won't open Terminal
-        self.scripts: list[str] = []  # each script opened, as it read then
-
-
 @pytest.fixture
-def terminal(harness, tmp_path, monkeypatch) -> Terminal:
+def terminal(harness, tmp_path, monkeypatch):
+    """The desktop, whose terminal windows `claude setup-token` is opened in, with a `claude`
+    on the PATH."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     claude = bin_dir / "claude"
     claude.write_text("#!/bin/sh\nexit 0\n")
     claude.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
-    t = Terminal()
-    others = subprocess.run  # the harness's fakes
-
-    def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if cmd[:3] == ["open", "-a", "Terminal"]:
-            harness.commands.append(list(cmd))
-            if not t.opens:
-                return subprocess.CompletedProcess(cmd, 1, "", "Unable to find application")
-            t.scripts.append(Path(cmd[3]).read_text())
-            return subprocess.CompletedProcess(cmd, 0, "", "")
-        return others(cmd, *a, **k)
-    monkeypatch.setattr(subprocess, "run", run)
-    return t
+    return harness.desktop
 
 
 def result(capsys) -> tuple[dict[str, Any], str]:
@@ -70,12 +52,13 @@ def result(capsys) -> tuple[dict[str, Any], str]:
     return json.loads(lines[0]), out + err
 
 
-def assert_never_leaked(harness, terminal: Terminal, printed: str, caplog,
+def assert_never_leaked(harness, terminal, printed: str, caplog,
                         secret: str = TOKEN) -> None:
     assert secret not in printed
     assert secret not in caplog.text
     assert not any(secret in arg for cmd in harness.commands for arg in cmd)
-    assert not any(secret in script for script in terminal.scripts)
+    assert not any(secret in part for window in terminal.windows
+                   for part in [*window.argv, *window.env.values()])
 
 
 # ── the dialog
@@ -89,14 +72,15 @@ def test_a_token_pasted_in_the_dialog_is_tested_and_stored(harness, terminal, ca
 
     res, printed = result(capsys)
     assert res == {"result": "saved", "test_call": "ok"}
-    [script] = terminal.scripts
+    [window] = terminal.windows
+    script = window.argv[2]
     assert "setup-token" in script
     assert "\\033[3J" in script  # the window's scrollback is cleared of the token afterwards
     assert len(harness.dialog.shown) == 1 and "hidden answer" in harness.dialog.shown[0]
     [call] = harness.model_calls
     assert call.env["CLAUDE_CODE_OAUTH_TOKEN"] == TOKEN
     assert "--no-session-persistence" in call.argv
-    assert harness.keychain == {ACCOUNT: TOKEN}
+    assert harness.secrets == {ACCOUNT: TOKEN}
     assert install_record.entries("keychain") == [ACCOUNT]
     assert_never_leaked(harness, terminal, printed, caplog)
 
@@ -106,11 +90,12 @@ def test_the_window_clears_the_token_once_the_family_presses_enter(harness, term
     (tmp_path / "bin" / "claude").write_text(f"#!/bin/sh\n[ \"$1\" = setup-token ] && echo {TOKEN}\n")
     harness.dialog.typed = TOKEN
     assert harness.cli("setup", "claude") == 0
-    [opened] = [c for c in harness.commands if c[:3] == ["open", "-a", "Terminal"]]
+    [opened] = harness.desktop.windows
 
-    # Terminal runs the window's script; the family presses Enter once the token is pasted.
-    window = subprocess.Popen(["/bin/sh", opened[3]], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL, text=True)
+    # The terminal runs the window's command in the home folder; the family presses Enter once
+    # the token is pasted.
+    window = subprocess.Popen(opened.argv, cwd=harness.home, stdin=subprocess.PIPE,
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     shown, _ = window.communicate("\n", timeout=10)
 
     before, after = shown.split("\x1b[H\x1b[2J\x1b[3J")
@@ -131,8 +116,8 @@ def test_a_claude_only_the_login_shell_finds_signs_in(harness, terminal, login_s
     assert harness.cli("setup", "claude") == 0
 
     assert result(capsys)[0] == {"result": "saved", "test_call": "ok"}
-    [script] = terminal.scripts
-    assert str(claude) in script
+    [window] = terminal.windows
+    assert str(claude) in window.argv
     [call] = harness.model_calls
     assert call.argv[0] == str(claude)
 
@@ -143,7 +128,7 @@ def test_a_token_copied_across_wrapped_lines_is_put_back_together(harness, termi
 
     assert harness.cli("setup", "claude") == 0
 
-    assert harness.keychain == {ACCOUNT: TOKEN}
+    assert harness.secrets == {ACCOUNT: TOKEN}
 
 
 def test_the_test_call_ignores_an_api_key_in_the_environment(harness, terminal, monkeypatch,
@@ -168,7 +153,7 @@ def test_a_failed_test_call_stores_nothing_and_says_why(harness, terminal, capsy
     assert res["result"] == "test-call-failed"
     assert "Invalid bearer token" in res["error"]
     assert "setup claude" in res["next"]
-    assert harness.keychain == {}
+    assert harness.secrets == {}
     assert_never_leaked(harness, terminal, printed, caplog)
 
 
@@ -181,7 +166,7 @@ def test_something_that_is_not_a_claude_token_is_never_sent_to_claude(harness, t
 
     res, printed = result(capsys)
     assert res["result"] == "not-a-token" and "sk-ant-oat01-" in res["next"]
-    assert harness.model_calls == [] and harness.keychain == {}
+    assert harness.model_calls == [] and harness.secrets == {}
     assert_never_leaked(harness, terminal, printed, caplog, "my-claude-password")
 
 
@@ -191,11 +176,11 @@ def test_closing_the_dialog_stores_nothing(harness, terminal, capsys):
     assert harness.cli("setup", "claude") == 1
 
     assert result(capsys)[0]["result"] == "cancelled"
-    assert harness.model_calls == [] and harness.keychain == {}
+    assert harness.model_calls == [] and harness.secrets == {}
 
 
 def test_a_keychain_that_refuses_says_so(harness, terminal, capsys):
-    harness.keychain_refuses = -128  # errSecUserCanceled
+    harness.secrets.refuses = secrets.SecretsError("the store refused", "failed", -128)
     harness.dialog.typed = TOKEN
 
     assert harness.cli("setup", "claude") == 1
@@ -204,7 +189,7 @@ def test_a_keychain_that_refuses_says_so(harness, terminal, capsys):
 
 
 def test_another_keychain_error_says_so_with_its_code(harness, terminal, capsys):
-    harness.keychain_refuses = -25293
+    harness.secrets.refuses = secrets.SecretsError("the store refused", "failed", -25293)
     harness.dialog.typed = TOKEN
 
     assert harness.cli("setup", "claude") == 1
@@ -215,7 +200,8 @@ def test_another_keychain_error_says_so_with_its_code(harness, terminal, capsys)
 
 
 def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(harness, terminal, capsys):
-    harness.keychain_refuses = -25308  # errSecInteractionNotAllowed
+    harness.secrets.refuses = secrets.SecretsError("the store can't be reached", "not-reachable",
+                                                   -25308)
     harness.dialog.typed = TOKEN
 
     assert harness.cli("setup", "claude") == 1
@@ -231,6 +217,7 @@ def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(harness, ter
 def test_in_tmux_or_ssh_it_warns_before_the_token_is_asked_for(harness, terminal, monkeypatch,
                                                               capsys, var):
     import getpass
+    harness.secrets.reachable_here = False
     monkeypatch.setenv(var, "/private/tmp/tmux-501/default,1234,0" if var == "TMUX"
                        else "10.0.0.2 52000 10.0.0.1 22")
     prompts: list[str] = []
@@ -267,7 +254,7 @@ def test_without_the_claude_cli_it_says_how_to_install_it(harness, terminal, mon
     assert res["result"] == "not-installed" and "claude" in res["next"]
     assert "curl -fsSL https://claude.ai/install.sh | bash" in res["next"]
     assert "npm" not in res["next"]
-    assert terminal.scripts == [] and harness.dialog.shown == []
+    assert terminal.windows == [] and harness.dialog.shown == []
 
 
 def test_when_terminal_does_not_open_it_says_what_to_run(harness, terminal, capsys):
@@ -286,8 +273,8 @@ def test_no_open_only_asks_for_the_token(harness, terminal, capsys):
 
     assert harness.cli("setup", "claude", "--no-open") == 0
 
-    assert terminal.scripts == []
-    assert harness.keychain == {ACCOUNT: TOKEN}
+    assert terminal.windows == []
+    assert harness.secrets == {ACCOUNT: TOKEN}
 
 
 def test_with_neither_a_dialog_nor_a_terminal_it_says_where_to_run_it(harness, terminal,
@@ -303,35 +290,19 @@ def test_with_neither_a_dialog_nor_a_terminal_it_says_where_to_run_it(harness, t
 
     res, _ = result(capsys)
     assert res["result"] == "no-prompt" and "setup claude --no-open" in res["next"]
-    assert harness.keychain == {}
-
-
-def test_the_token_goes_to_the_keychain_on_securitys_stdin_for_it_to_read(harness, terminal,
-                                                                           capsys):
-    harness.dialog.typed = TOKEN
-
-    assert harness.cli("setup", "claude") == 0
-
-    # Stored so /usr/bin/security, which the evening job reads it with, may read it without a
-    # prompt nobody answers, and typed into security -i so no command line ever holds it (ADR 0005).
-    assert ["/usr/bin/security", "-i"] in harness.commands
-    [stdin] = harness.keychain_input
-    assert shlex.split(stdin) == ["add-generic-password", "-U", "-s", "family-brief", "-a", ACCOUNT,
-                                  "-w", TOKEN, "-T", "/usr/bin/security"]
-    assert not any(TOKEN in arg for cmd in harness.commands for arg in cmd)
-    assert harness.keychain == {ACCOUNT: TOKEN}
+    assert harness.secrets == {}
 
 
 def test_storing_the_token_again_replaces_one_the_keychain_asks_about(harness, terminal, capsys):
     # An earlier version stored it with keyring, so only that Python may read it without a prompt.
-    harness.keychain[ACCOUNT] = "sk-ant-oat01-old"
-    harness.keychain_asks.add(ACCOUNT)
+    harness.secrets[ACCOUNT] = "sk-ant-oat01-old"
+    harness.secrets.asks.add(ACCOUNT)
     harness.dialog.typed = TOKEN
 
     assert harness.cli("setup", "claude") == 0
 
     assert result(capsys)[0]["result"] == "saved"
-    assert harness.keychain == {ACCOUNT: TOKEN} and not harness.keychain_asks
+    assert harness.secrets == {ACCOUNT: TOKEN} and not harness.secrets.asks
 
 
 # ── doctor
@@ -342,7 +313,6 @@ def test_doctor_points_to_the_setup_step_when_no_token_is_stored(harness, termin
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
 
     harness.cli("doctor")
 
@@ -376,7 +346,7 @@ def test_setup_claude_finds_claude_from_the_native_installer(harness, terminal, 
 
     res, _ = result(capsys)
     assert res["result"] == "saved"
-    assert str(native_claude) in terminal.scripts[0]
+    assert str(native_claude) in terminal.windows[0].argv
     assert harness.model_calls[0].argv[0] == str(native_claude)
 
 
@@ -384,8 +354,7 @@ def test_doctor_finds_claude_from_the_native_installer(harness, native_claude, m
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
-    harness.keychain[ACCOUNT] = TOKEN
+    harness.secrets[ACCOUNT] = TOKEN
     harness.model_reply = "OK"
 
     harness.cli("doctor")
@@ -396,7 +365,7 @@ def test_doctor_finds_claude_from_the_native_installer(harness, native_claude, m
 
 
 def test_the_nightly_run_finds_claude_from_the_native_installer(harness, native_claude):
-    harness.keychain[ACCOUNT] = TOKEN
+    harness.secrets[ACCOUNT] = TOKEN
     harness.sources["gmail"] = [msg("gmail", "g-1", "2026-09-27T08:15:00+03:00",
                                     "Parents' evening is on 8.10.", sender="teacher@kilo.example.fi")]
 
@@ -409,7 +378,6 @@ def doctor_claude_line(harness, monkeypatch, capsys) -> str:
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(jobs_macos, "_loaded", lambda: set())
     harness.model_reply = "OK"
     harness.cli("doctor")
     return next(l for l in capsys.readouterr().out.splitlines() if "Claude:" in l)
@@ -418,8 +386,8 @@ def doctor_claude_line(harness, monkeypatch, capsys) -> str:
 def test_doctor_tells_a_token_the_keychain_asks_about_from_a_missing_one(harness, terminal,
                                                                          monkeypatch, capsys):
     from family_brief import ops
-    harness.keychain[ACCOUNT] = TOKEN
-    harness.keychain_asks.add(ACCOUNT)
+    harness.secrets[ACCOUNT] = TOKEN
+    harness.secrets.asks.add(ACCOUNT)
 
     line = doctor_claude_line(harness, monkeypatch, capsys)
 
@@ -429,9 +397,9 @@ def test_doctor_tells_a_token_the_keychain_asks_about_from_a_missing_one(harness
     assert "parent-recap setup claude" in line
 
 
-def test_doctor_reads_a_token_stored_for_security(harness, terminal, monkeypatch, capsys):
+def test_doctor_reads_a_stored_token(harness, terminal, monkeypatch, capsys):
     from family_brief import ops
-    harness.keychain[ACCOUNT] = TOKEN
+    harness.secrets[ACCOUNT] = TOKEN
 
     line = doctor_claude_line(harness, monkeypatch, capsys)
 
@@ -441,8 +409,8 @@ def test_doctor_reads_a_token_stored_for_security(harness, terminal, monkeypatch
 def test_the_nightly_run_says_the_keychain_asked_rather_than_that_no_token_is_stored(
         harness, caplog):
     caplog.set_level(logging.INFO)
-    harness.keychain[ACCOUNT] = TOKEN
-    harness.keychain_asks.add(ACCOUNT)
+    harness.secrets[ACCOUNT] = TOKEN
+    harness.secrets.asks.add(ACCOUNT)
     harness.sources["gmail"] = [msg("gmail", "g-1", "2026-09-27T08:15:00+03:00",
                                     "Parents' evening is on 8.10.", sender="teacher@kilo.example.fi")]
 
