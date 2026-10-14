@@ -19,7 +19,7 @@ def install_codex_skills(home: Path) -> subprocess.CompletedProcess:
     step = re.search(r'--codex" \]; then\n\s*"\$APP/.venv/bin/python" (-m [\w.]+ [\w-]+) "\$PLUGIN_ROOT"',
                      (ROOT / "install.sh").read_text()).group(1)
     return subprocess.run([sys.executable, *step.split(), str(ROOT)], capture_output=True, text=True,
-                          env={**os.environ, "HOME": str(home)})
+                          env={**os.environ, "HOME": str(home), "USERPROFILE": str(home)})
 
 
 def test_installs_parent_recap_skills_that_call_each_other_the_codex_way(tmp_path):

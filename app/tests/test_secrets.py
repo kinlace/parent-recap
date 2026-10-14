@@ -12,6 +12,9 @@ import pytest
 
 from family_brief.system import secrets, secrets_macos
 
+# The Keychain adapter.
+pytestmark = pytest.mark.macos
+
 # What `security` says for macOS's Keychain errors, by OSStatus code.
 KEYCHAIN_MESSAGES = {
     -25308: "User interaction is not allowed.",  # errSecInteractionNotAllowed

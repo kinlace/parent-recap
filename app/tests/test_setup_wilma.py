@@ -31,6 +31,9 @@ import fake_node
 from family_brief import install_record, setup_wilma
 from fake_system import Window
 
+# The Wilma window's pseudo-terminal, and the wilma CLI as shell scripts on a shell-script Node.
+pytestmark = pytest.mark.macos
+
 REAL_RUN = subprocess.run  # before the harness fakes it
 PASSWORD = "Wilma-salasana-42"
 WINDOW_SECONDS = 30  # the window closes within about a second

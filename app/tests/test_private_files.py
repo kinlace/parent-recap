@@ -80,6 +80,7 @@ def test_doctor_names_only_the_myclub_host_and_status(harness, monkeypatch, caps
     assert TOKEN not in line and "/ical/" not in line
 
 
+@pytest.mark.macos
 def test_a_link_saved_from_terminal_keeps_the_rest_of_the_config(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
@@ -118,6 +119,7 @@ def test_saving_a_link_for_an_unknown_kid_changes_nothing(tmp_path):
 
 # ── Owner-only files
 
+@pytest.mark.macos
 def test_archive_and_logs_are_owner_only(harness):
     harness.sources["gmail"] = [msg("gmail", "g1", "2026-09-27T18:00:00+03:00", "Retkipäivä huomenna",
                                     sender="teacher@kilo.example.fi", subject="Retki")]
@@ -132,6 +134,7 @@ def test_archive_and_logs_are_owner_only(harness):
         assert _mode(f) == 0o600, f.name
 
 
+@pytest.mark.macos
 def test_an_existing_install_is_tightened_on_the_next_run(harness):
     logs = harness.archive_dir / "logs"
     logs.mkdir(parents=True)
@@ -153,6 +156,7 @@ def test_an_existing_install_is_tightened_on_the_next_run(harness):
     assert _mode(backup) == 0o600
 
 
+@pytest.mark.macos
 def test_the_wilma_cli_s_sign_in_and_session_are_made_owner_only_on_the_next_run(harness):
     # The CLI writes them owner-only itself. One made open some other way is fixed.
     folder = harness.home / ".config" / "wilmai"

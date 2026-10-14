@@ -7,6 +7,13 @@ python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
 python -m pytest                     # whole suite
 ```
 
+CI runs the suite on macOS and on Windows. A test that needs macOS is marked `@pytest.mark.macos`
+(a whole module with `pytestmark = pytest.mark.macos`) and skips itself elsewhere: the macOS
+adapters, macOS-only features (WhatsApp for Mac and its Full Disk Access, the Passwords app), `install.sh` and
+the other shell scripts, permission bits, and what Windows can't do yet (finding programs by bare
+name, shell-script stand-ins, the pseudo-terminal windows). Every other test runs on Windows too.
+When a Windows ticket makes one of these work there, it drops the mark.
+
 `test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.

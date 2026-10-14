@@ -105,6 +105,7 @@ def assert_never_leaked(harness, printed: str, caplog, secret: str = TOKEN) -> N
 # ── the dialog
 
 
+@pytest.mark.macos
 def test_a_link_pasted_in_the_dialog_is_downloaded_and_saved(harness, server, capsys, caplog):
     caplog.set_level(logging.DEBUG)
     harness.dialog.typed = f"  {LINK}\n"

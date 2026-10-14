@@ -19,6 +19,9 @@ from conftest import program
 from family_brief import install_record
 from family_brief.system import jobs, jobs_macos
 
+# The launchd adapter.
+pytestmark = pytest.mark.macos
+
 
 class FakeLaunchctl:
     def __init__(self) -> None:

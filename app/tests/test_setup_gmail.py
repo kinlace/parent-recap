@@ -113,6 +113,7 @@ def test_an_app_password_typed_in_the_dialog_is_tested_and_stored(harness, gmail
     assert_never_leaked(harness, printed, caplog)
 
 
+@pytest.mark.macos
 def test_the_dialog_shows_macos_lock_icon(harness, gmail, monkeypatch, tmp_path):
     icon = tmp_path / "Lock \"icon\".icns"
     icon.write_bytes(b"icns")

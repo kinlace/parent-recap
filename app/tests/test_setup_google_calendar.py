@@ -9,8 +9,13 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "setup_google_calendar.py"
 
 
+def home(path: Path) -> dict[str, str]:
+    """The environment with `path` as the home folder, on macOS and Windows."""
+    return {**os.environ, "HOME": str(path), "USERPROFILE": str(path)}
+
+
 def test_without_a_client_file_it_stops_and_names_the_three_ways_forward(tmp_path):
-    result = subprocess.run([sys.executable, str(SCRIPT)], env={**os.environ, "HOME": str(tmp_path)},
+    result = subprocess.run([sys.executable, str(SCRIPT)], env=home(tmp_path),
                             capture_output=True, text=True, timeout=30)
 
     assert result.returncode != 0
@@ -29,7 +34,7 @@ def test_without_googles_packages_it_says_how_to_install_them(tmp_path):
     (tmp_path / ".family" / "calendar_credentials.json").write_text("{}")
     no_google = Path(__file__).with_name("no_google")
     result = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True, timeout=30,
-                            env={**os.environ, "HOME": str(tmp_path), "PYTHONPATH": str(no_google)})
+                            env={**home(tmp_path), "PYTHONPATH": str(no_google)})
 
     assert result.returncode != 0
     assert "Traceback" not in result.stderr

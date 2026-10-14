@@ -356,6 +356,7 @@ def test_myclub_feed_timing_out_once_is_fetched_again(harness, monkeypatch):
 
 # ── WhatsApp
 
+@pytest.mark.macos
 def test_whatsapp_macos_refuses_names_a_changed_python_in_the_brief_and_the_log(harness, monkeypatch,
                                                                                 caplog):
     # The evening job's Python isn't the one given Full Disk Access, as after Parent Recap's pinned

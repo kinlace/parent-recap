@@ -24,7 +24,13 @@ def test_the_workflow_parses_and_has_jobs(path: Path):
         assert job.get("steps") or job.get("uses"), f"{path.name}: job {name} has no steps"
 
 
-def test_a_hung_test_fails_the_tests_job_within_20_minutes():
+def test_a_hung_test_fails_each_tests_job_within_20_minutes():
     # Without a limit, GitHub cancels it only after 6 hours (#216).
     workflow = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())
-    assert workflow["jobs"]["test"]["timeout-minutes"] <= 20
+    for job in workflow["jobs"].values():
+        assert job["timeout-minutes"] <= 20
+
+
+def test_the_tests_run_on_macos_and_windows():
+    workflow = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())
+    assert {job["runs-on"] for job in workflow["jobs"].values()} == {"macos-latest", "windows-latest"}

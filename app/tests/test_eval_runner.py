@@ -53,6 +53,7 @@ def model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """Replies to every `claude` call with `replies[0]` (a dict, raw text, or a function making
     one from the prompt), recording prompts. Each stderr in `busy` first makes one call fail with it."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))  # Windows' Path.home()
     monkeypatch.setattr(secrets, "_adapter", FakeSecrets())
     state = {"replies": [GOOD], "prompts": [], "busy": [], "models": []}
 

@@ -20,6 +20,9 @@ from family_brief.collectors.base import Message
 from family_brief.config import Config
 from family_brief.state import State
 
+# WhatsApp for Mac's database.
+pytestmark = pytest.mark.macos
+
 # ZWAMESSAGE.ZMESSAGETYPE values the Source treats differently.
 TEXT, IMAGE, VOICE, SYSTEM, URL = 0, 1, 3, 6, 7
 NEW_TYPE = 99  # a type a later WhatsApp adds, which has no placeholder

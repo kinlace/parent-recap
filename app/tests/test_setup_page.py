@@ -623,6 +623,7 @@ def test_the_partner_s_email_and_language_are_asked_only_when_a_partner_is_added
     assert welcome(page.url, partner=None).status == 200  # only me: nothing more to ask
 
 
+@pytest.mark.macos
 def test_a_missing_claude_code_gets_its_native_installer_and_is_checked_again(harness, page, ai):
     r = check_ai(page.url, "claude")
 
@@ -636,6 +637,7 @@ def test_a_missing_claude_code_gets_its_native_installer_and_is_checked_again(ha
     assert ["auth", "status"] == harness.commands[-1][1:3]
 
 
+@pytest.mark.macos
 def test_the_install_box_shows_only_with_an_install_line_in_it(harness, page, ai):
     html = (PAGE_DIR / "index.html").read_text()
     css = (PAGE_DIR / "page.css").read_text()
@@ -649,6 +651,7 @@ def test_the_install_box_shows_only_with_an_install_line_in_it(harness, page, ai
     assert "install" not in check_ai(page.url, "claude").json()  # ready: nothing to install
 
 
+@pytest.mark.macos
 def test_a_signed_out_claude_code_is_caught_and_checked_again(harness, page, ai):
     ai("claude")
     harness.signed_in["claude"] = False
@@ -660,6 +663,7 @@ def test_a_signed_out_claude_code_is_caught_and_checked_again(harness, page, ai)
     assert not harness.model_calls  # checked with its own status, not a call to the model
 
 
+@pytest.mark.macos
 def test_a_missing_or_signed_out_codex_is_caught_and_checked_again(harness, page, ai):
     assert check_ai(page.url, "codex").json() == {"result": "not-installed", "ai": "codex"}
 
@@ -672,6 +676,7 @@ def test_a_missing_or_signed_out_codex_is_caught_and_checked_again(harness, page
     assert check_ai(page.url, "codex").json() == {"result": "ready", "ai": "codex"}
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("name", ["claude", "codex"])
 def test_an_ai_only_the_login_shell_finds_is_ready(harness, page, ai, login_shell, name):
     folder = harness.home / "tools" / "bin"  # on the family's shell's PATH, not the page's
@@ -682,6 +687,7 @@ def test_an_ai_only_the_login_shell_finds_is_ready(harness, page, ai, login_shel
     assert harness.commands[-1][0] == str(folder / name)
 
 
+@pytest.mark.macos
 def test_an_ai_check_that_cannot_run_says_so(harness, page, ai, monkeypatch):
     ai("claude")
     run = setup_server.subprocess.run
@@ -798,6 +804,7 @@ def chat_installed(url: str, name: str) -> str:
     return out["result"]
 
 
+@pytest.mark.macos
 def test_picking_claude_installs_the_claude_code_plugin_from_the_stable_marketplace(harness, page,
                                                                                     ai):
     ai("claude")
@@ -817,6 +824,7 @@ def test_picking_claude_installs_the_claude_code_plugin_from_the_stable_marketpl
     assert install_record.entries("claude-marketplace") == ["kinlace"]
 
 
+@pytest.mark.macos
 def test_a_claude_code_plugin_already_there_is_updated(harness, page, ai):
     ai("claude")
     harness.claude_marketplaces = [{"name": "kinlace", "source": "github",
@@ -833,6 +841,7 @@ def test_a_claude_code_plugin_already_there_is_updated(harness, page, ai):
     assert install_record.entries("claude-marketplace") == []
 
 
+@pytest.mark.macos
 def test_a_plugin_from_an_unzipped_release_or_its_old_name_is_switched_to_stable(harness, page, ai):
     ai("claude")
     harness.claude_marketplaces = [{"name": "family-brief"},
@@ -855,6 +864,7 @@ def test_a_plugin_from_an_unzipped_release_or_its_old_name_is_switched_to_stable
     assert install_record.entries("claude-marketplace") == []
 
 
+@pytest.mark.macos
 def test_a_plugin_install_that_fails_says_so(harness, page, ai):
     ai("claude")
     harness.claude_plugins = {"error": "not signed in"}  # type: ignore[assignment]
@@ -942,6 +952,7 @@ def save_progress(harness, progress: dict[str, Any]) -> None:
     progress_file(harness).write_text(json.dumps(progress))
 
 
+@pytest.mark.macos
 def test_the_source_list_shows_each_entry_with_its_status(harness, page):
     save_progress(harness, {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"}})
 
@@ -1403,6 +1414,7 @@ def wilma_window_result(url: str) -> dict[str, Any]:
     return out
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("query", ["Espoo", "Esbo", "espoo", "ESBO", " Esbo "])
 def test_searching_espoo_or_esbo_finds_the_espoo_entries(harness, page, wilma_cli, query):
     wilma_cli.install()
@@ -1418,6 +1430,7 @@ def test_searching_espoo_or_esbo_finds_the_espoo_entries(harness, page, wilma_cl
     assert next(t for t in found if t["url"] == ESPOO)["name"] == TENANTS["wilmat"][2]["name"]
 
 
+@pytest.mark.macos
 def test_the_town_search_finds_entries_by_name_and_without_accents(harness, page, wilma_cli):
     wilma_cli.install()
 
@@ -1431,6 +1444,7 @@ def test_the_town_search_finds_entries_by_name_and_without_accents(harness, page
         assert call(page.url, "api/towns", method="POST", body=body).status == 400, body
 
 
+@pytest.mark.macos
 def test_setup_installs_the_pinned_wilma_cli_with_its_own_node_when_it_is_missing(
         harness, page, wilma_cli):
     assert towns(page.url, "Espoo").json()["result"] == "not-installed"
@@ -1456,6 +1470,7 @@ def test_setup_installs_the_pinned_wilma_cli_with_its_own_node_when_it_is_missin
     assert install_record.entries("wilma-cli") == [prefix]  # so uninstall removes it
 
 
+@pytest.mark.macos
 def test_a_wilma_cli_and_node_the_mac_already_has_are_not_used(harness, page, wilma_cli,
                                                                 tmp_path, monkeypatch):
     # The family's own, on PATH: Parent Recap still installs and runs its own (ADR 0011).
@@ -1472,6 +1487,7 @@ def test_a_wilma_cli_and_node_the_mac_already_has_are_not_used(harness, page, wi
     assert not any(str(theirs) in arg for c in harness.commands for arg in c)
 
 
+@pytest.mark.macos
 def test_without_its_own_node_it_says_to_run_the_install_again(harness, page, wilma_cli):
     shutil.rmtree(wilma_cli.node.parents[1])
 
@@ -1489,6 +1505,7 @@ def test_no_message_suggests_homebrew_any_more():
         assert "brew" not in lang["wilma.ready.no-node"].lower()
 
 
+@pytest.mark.macos
 def test_a_cli_without_the_tenant_list_says_so(harness, page, wilma_cli):
     wilma_cli.ships_tenants = False
     wilma_cli.install()
@@ -1496,6 +1513,7 @@ def test_a_cli_without_the_tenant_list_says_so(harness, page, wilma_cli):
     assert towns(page.url, "Espoo").json()["result"] == "no-list"
 
 
+@pytest.mark.macos
 def test_a_good_login_writes_the_cli_profile_and_lists_the_kids(harness, page, wilma_cli,
                                                                  caplog, capsys):
     caplog.set_level(logging.DEBUG)
@@ -1542,6 +1560,7 @@ def test_a_good_login_writes_the_cli_profile_and_lists_the_kids(harness, page, w
     assert WILMA_PASSWORD not in install_record.path().read_text()
 
 
+@pytest.mark.macos
 def test_signing_in_keeps_the_cli_s_other_profiles(harness, page, wilma_cli):
     wilma_cli.install()
     wilma_cli.signed_in_before("https://helsinki.inschool.fi")
@@ -1554,6 +1573,7 @@ def test_signing_in_keeps_the_cli_s_other_profiles(harness, page, wilma_cli):
     assert install_record.entries("wilma-profile") == [f"{ESPOO}|mia.parent"]
 
 
+@pytest.mark.macos
 def test_a_profile_from_before_setup_is_not_recorded(harness, page, wilma_cli):
     wilma_cli.install()
     wilma_cli.signed_in_before(ESPOO, "mia.parent", "older-password")
@@ -1563,6 +1583,7 @@ def test_a_profile_from_before_setup_is_not_recorded(harness, page, wilma_cli):
     assert install_record.entries("wilma-profile") == []
 
 
+@pytest.mark.macos
 def test_a_failed_sign_in_records_no_profile(harness, page, wilma_cli):
     wilma_cli.install()
 
@@ -1571,6 +1592,7 @@ def test_a_failed_sign_in_records_no_profile(harness, page, wilma_cli):
     assert install_record.entries("wilma-profile") == []
 
 
+@pytest.mark.macos
 def test_a_wrong_password_is_found_even_when_an_earlier_sign_in_works(harness, page, wilma_cli):
     # From 2.0 the CLI's commands read every profile, so the old one would answer for the new.
     wilma_cli.accounts["https://helsinki.inschool.fi|old.parent"] = "old"
@@ -1583,6 +1605,7 @@ def test_a_wrong_password_is_found_even_when_an_earlier_sign_in_works(harness, p
     assert install_record.entries("wilma-profile") == []
 
 
+@pytest.mark.macos
 def test_signing_in_again_replaces_the_account_s_profile_in_its_place_as_the_cli_does(
         harness, page, wilma_cli):
     # As the CLI's saveLogin: the same Wilma and username in any case is one account, which keeps
@@ -1609,6 +1632,7 @@ def test_signing_in_again_replaces_the_account_s_profile_in_its_place_as_the_cli
     assert install_record.entries("wilma-profile") == []  # there before setup
 
 
+@pytest.mark.macos
 def test_school_and_class_are_saved_only_when_wilma_gives_them(harness, page, wilma_cli):
     wilma_cli.students = [{"studentNumber": "1001", "name": "Mia Virtanen", "school": "Kilo School",
                            "className": "3B"},
@@ -1622,6 +1646,7 @@ def test_school_and_class_are_saved_only_when_wilma_gives_them(harness, page, wi
     assert (leo.school, leo.class_name) == (None, None)
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("before", [False, True], ids=["first sign-in", "signed in before"])
 def test_a_wrong_password_is_reported_as_such_and_not_kept(harness, page, wilma_cli, caplog,
                                                           capsys, before):
@@ -1642,6 +1667,7 @@ def test_a_wrong_password_is_reported_as_such_and_not_kept(harness, page, wilma_
     assert_never_leaked(harness, [r], caplog, capsys, "wrong-salasana")
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("fails", [["wilma_error", "Wilma answered HTTP 503 while logging in"],
                                    ["mfa_required", "Two-step verification is on for this Wilma account."],
                                    ["network", "fetch failed (ENOTFOUND)"]],
@@ -1657,6 +1683,7 @@ def test_any_other_failure_offers_the_terminal_window(harness, page, wilma_cli, 
     assert statuses(page.url)["wilma"] == "to-do"
 
 
+@pytest.mark.macos
 def test_an_account_without_kids_is_reported_and_not_kept(harness, page, wilma_cli):
     wilma_cli.students = []
     wilma_cli.install()
@@ -1665,6 +1692,7 @@ def test_an_account_without_kids_is_reported_and_not_kept(harness, page, wilma_c
     assert not wilma_cli.profile_path.exists()
 
 
+@pytest.mark.macos
 def test_a_login_needs_an_entry_from_the_list_and_its_town(harness, page, wilma_cli):
     wilma_cli.install()
 
@@ -1685,11 +1713,13 @@ def test_a_login_needs_an_entry_from_the_list_and_its_town(harness, page, wilma_
     assert not any(Path(c[0]).name == "wilma" for c in harness.commands)
 
 
+@pytest.mark.macos
 def test_signing_in_without_the_cli_says_so(harness, page, wilma_cli):
     assert sign_in_wilma(page.url).json() == {"result": "not-installed"}
     assert not wilma_cli.profile_path.exists()
 
 
+@pytest.mark.macos
 def test_an_entry_in_several_towns_is_saved_with_the_town_picked(harness, page, wilma_cli):
     wilma_cli.accounts = {"https://omnia.inschool.fi|mia.parent": WILMA_PASSWORD}
     wilma_cli.install()
@@ -1700,6 +1730,7 @@ def test_an_entry_in_several_towns_is_saved_with_the_town_picked(harness, page, 
     assert Config.load(config_file(harness)).city == "Kirkkonummi"
 
 
+@pytest.mark.macos
 def test_the_terminal_window_signs_in_and_the_page_lists_the_kids(harness, page, wilma_cli,
                                                                   caplog, capsys):
     caplog.set_level(logging.DEBUG)
@@ -1721,6 +1752,7 @@ def test_the_terminal_window_signs_in_and_the_page_lists_the_kids(harness, page,
     assert_never_leaked(harness, [r], caplog, capsys, WILMA_PASSWORD)
 
 
+@pytest.mark.macos
 def test_without_a_town_picked_the_terminal_sign_in_takes_its_entry_s_town(harness, page,
                                                                           wilma_cli):
     wilma_cli.install()
@@ -1730,6 +1762,7 @@ def test_without_a_town_picked_the_terminal_sign_in_takes_its_entry_s_town(harne
     assert wilma_window_result(page.url)["city"] == "Espoo"  # signed in to Espoo's Wilma
 
 
+@pytest.mark.macos
 def test_a_terminal_window_without_a_sign_in_says_so(harness, page, wilma_cli, monkeypatch):
     monkeypatch.setattr(setup_server, "WILMA_WINDOW_SECONDS", 4)
     wilma_cli.signs_in_terminal = False
@@ -1746,6 +1779,7 @@ def test_checking_without_a_terminal_window_says_none_is_open(page):
         {"result": "no-window"}
 
 
+@pytest.mark.macos
 def test_a_household_without_wilma_picks_its_town_and_moves_on(harness, page, wilma_cli):
     wilma_cli.install()
 
@@ -1760,6 +1794,7 @@ def test_a_household_without_wilma_picks_its_town_and_moves_on(harness, page, wi
         assert call(page.url, "api/town", method="POST", body=body).status == 400, body
 
 
+@pytest.mark.macos
 def test_the_button_opens_the_passwords_app(harness, page):
     r = call(page.url, "api/open", method="POST", body={"site": "passwords"})
 
@@ -1856,7 +1891,7 @@ def _can_open_a_pty() -> bool:
         for fd in os.openpty():
             os.close(fd)
         return True
-    except OSError:
+    except (OSError, AttributeError):  # AttributeError: Windows has no os.openpty
         return False
 
 
@@ -1925,6 +1960,7 @@ def at_the_ai_step(harness, url: str, ai_name: str = "claude") -> None:
                             "sources": {"wilma": "done", "gmail": "done"}})
 
 
+@pytest.mark.macos
 def test_claude_s_token_is_read_tested_and_stored_with_nothing_copied(harness, page, claude,
                                                                        caplog, capsys):
     caplog.set_level(logging.DEBUG)
@@ -1946,6 +1982,7 @@ def test_claude_s_token_is_read_tested_and_stored_with_nothing_copied(harness, p
                                   call(page.url, "api/state")], caplog, capsys, CLAUDE_TOKEN)
 
 
+@pytest.mark.macos
 def test_a_token_at_the_end_of_the_screen_is_read_once_the_screen_is_still(harness, page, claude):
     claude.stays = True
     claude.install()
@@ -1956,6 +1993,7 @@ def test_a_token_at_the_end_of_the_screen_is_read_once_the_screen_is_still(harne
     assert harness.secrets == {"claude-oauth-token": CLAUDE_TOKEN}
 
 
+@pytest.mark.macos
 def test_a_claude_sign_in_already_running_is_not_started_twice(harness, page, claude):
     claude.hangs = True
     claude.install()
@@ -1967,6 +2005,7 @@ def test_a_claude_sign_in_already_running_is_not_started_twice(harness, page, cl
     assert len(claude.started) == 1
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("how, result", [("no token", "sign-in-failed"), ("hangs", "timeout")])
 def test_a_claude_sign_in_without_a_token_offers_the_terminal_window(harness, page, claude,
                                                                     monkeypatch, how, result):
@@ -1981,6 +2020,7 @@ def test_a_claude_sign_in_without_a_token_offers_the_terminal_window(harness, pa
     assert harness.secrets == {} and statuses(page.url)["ai"] == "to-do"
 
 
+@pytest.mark.macos
 def test_a_token_claude_does_not_accept_is_not_kept(harness, page, claude):
     harness.model_error = "Invalid bearer token"
     claude.install()
@@ -1991,6 +2031,7 @@ def test_a_token_claude_does_not_accept_is_not_kept(harness, page, claude):
     assert harness.secrets == {} and statuses(page.url)["ai"] == "to-do"
 
 
+@pytest.mark.macos
 def test_the_fallback_opens_the_terminal_window_and_takes_the_pasted_token(harness, page, claude,
                                                                           caplog, capsys):
     caplog.set_level(logging.DEBUG)
@@ -2016,6 +2057,7 @@ def test_the_fallback_opens_the_terminal_window_and_takes_the_pasted_token(harne
     assert_never_leaked(harness, [r], caplog, capsys, CLAUDE_TOKEN)
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("pasted, result", [("my-claude-password", "not-a-token"),
                                             (CLAUDE_TOKEN, "test-call-failed")])
 def test_a_pasted_token_that_does_not_work_is_explained_and_not_kept(harness, page, claude, caplog,
@@ -2033,6 +2075,7 @@ def test_a_pasted_token_that_does_not_work_is_explained_and_not_kept(harness, pa
     assert_never_leaked(harness, [r], caplog, capsys, pasted)
 
 
+@pytest.mark.macos
 def test_a_keychain_that_refuses_the_claude_token_says_so(harness, page, claude):
     refuse_secrets(harness, -128)  # errSecUserCanceled
     claude.install()
@@ -2043,6 +2086,7 @@ def test_a_keychain_that_refuses_the_claude_token_says_so(harness, page, claude)
     assert statuses(page.url)["ai"] == "to-do"
 
 
+@pytest.mark.macos
 def test_a_keychain_out_of_reach_of_the_claude_token_says_so_with_its_code(harness, page, claude):
     refuse_secrets(harness, -25308)  # errSecInteractionNotAllowed
     claude.install()
@@ -2097,6 +2141,7 @@ def codex_check(url: str) -> dict[str, Any]:
     return call(url, "api/codex", method="POST", body={}).json()
 
 
+@pytest.mark.macos
 def test_a_signed_in_codex_ticks_the_entry_itself(harness, page, codex):
     at_the_ai_step(harness, page.url, "codex")
 
@@ -2107,6 +2152,7 @@ def test_a_signed_in_codex_ticks_the_entry_itself(harness, page, codex):
     assert not (codex / "codex-login.ran").exists()  # no sign-in needed
 
 
+@pytest.mark.macos
 def test_a_signed_out_codex_signs_in_and_the_entry_ticks_itself(harness, page, codex):
     at_the_ai_step(harness, page.url, "codex")
     harness.signed_in["codex"] = False
@@ -2123,6 +2169,7 @@ def test_a_signed_out_codex_signs_in_and_the_entry_ticks_itself(harness, page, c
     assert statuses(page.url)["ai"] == "done"
 
 
+@pytest.mark.macos
 def test_a_codex_sign_in_that_ends_signed_out_says_so(harness, page, codex, monkeypatch):
     monkeypatch.setenv("FAKE_CODEX_LOGIN_EXIT", "1")
     harness.signed_in["codex"] = False
@@ -2218,6 +2265,7 @@ def test_the_gateway_is_ready_with_nothing_installed_and_no_chat_to_install(harn
     assert harness.plugin_calls == [] and state["chat"] == {}
 
 
+@pytest.mark.macos
 def test_a_gateway_key_pasted_on_the_page_is_tested_stored_and_ticks_the_ai(harness, page, caplog,
                                                                             capsys):
     caplog.set_level(logging.DEBUG)
@@ -2369,6 +2417,7 @@ def check_whatsapp(url: str) -> Response:
     return call(url, "api/whatsapp/check", method="POST", body={})
 
 
+@pytest.mark.macos
 def test_a_whatsapp_the_job_can_read_ticks_the_entry_and_keeps_the_groups(harness, page, mac):
     harness.config["kids"][0]["name"] = "Mia Virtanen"
     at_the_whatsapp_step(harness)
@@ -2394,6 +2443,7 @@ def test_a_whatsapp_the_job_can_read_ticks_the_entry_and_keeps_the_groups(harnes
     assert_read_only_through_bg(harness, mac)
 
 
+@pytest.mark.macos
 def test_the_button_shows_the_python_and_opens_full_disk_access(harness, page, mac):
     at_the_whatsapp_step(harness)
 
@@ -2409,6 +2459,7 @@ PYTHON_FILE_TEXTS = ("whatsapp.explain", "whatsapp.picture.drag", "whatsapp.open
                      "health.fail.whatsapp.no-access", "finish.fail.whatsapp.no-access")
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("version", ["3.13", "3.14"])
 def test_the_page_names_the_python_file_finder_selects(harness, page, monkeypatch, version):
     # A parent stopped at "the python3 file" while Finder had python3.13 selected. The name comes
@@ -2466,6 +2517,7 @@ def test_every_text_that_names_the_python_file_takes_the_name_from_the_server(pa
     assert not re.search(r'<text(?! class="python-file")[^>]*>python', whatsapp_step)
 
 
+@pytest.mark.macos
 def test_without_full_disk_access_the_entry_ticks_itself_once_it_is_given(harness, page, mac):
     at_the_whatsapp_step(harness)
     mac.install_whatsapp(WHATSAPP_CHATS)
@@ -2482,6 +2534,7 @@ def test_without_full_disk_access_the_entry_ticks_itself_once_it_is_given(harnes
     assert_read_only_through_bg(harness, mac)
 
 
+@pytest.mark.macos
 def test_a_read_that_ends_after_the_parent_moved_on_keeps_their_choice(harness, page, mac,
                                                                       monkeypatch):
     at_the_whatsapp_step(harness)
@@ -2508,6 +2561,7 @@ def test_a_read_that_ends_after_the_parent_moved_on_keeps_their_choice(harness, 
     assert statuses(page.url)["whatsapp"] == "done"
 
 
+@pytest.mark.macos
 def test_an_allow_click_cannot_tick_the_entry_without_full_disk_access(harness, page, mac):
     # On macOS 26 Allow lets one read through and macOS asks again on the next (ADR 0012).
     at_the_whatsapp_step(harness)
@@ -2521,6 +2575,7 @@ def test_an_allow_click_cannot_tick_the_entry_without_full_disk_access(harness, 
     assert statuses(page.url)["whatsapp"] == "to-do"
 
 
+@pytest.mark.macos
 def test_a_read_that_does_not_finish_is_waiting(harness, page, mac):
     at_the_whatsapp_step(harness)
     mac.install_whatsapp(WHATSAPP_CHATS)
@@ -2531,12 +2586,14 @@ def test_a_read_that_does_not_finish_is_waiting(harness, page, mac):
     assert statuses(page.url)["whatsapp"] == "to-do"
 
 
+@pytest.mark.macos
 def test_without_whatsapp_for_mac_it_says_so(harness, page, mac):
     at_the_whatsapp_step(harness)
 
     assert check_whatsapp(page.url).json() == {"result": "not-installed"}
 
 
+@pytest.mark.macos
 def test_a_read_that_fails_says_so_without_the_error(harness, page, mac, monkeypatch):
     at_the_whatsapp_step(harness)
     mac.install_whatsapp(WHATSAPP_CHATS)
@@ -2549,6 +2606,7 @@ def test_a_read_that_fails_says_so_without_the_error(harness, page, mac, monkeyp
     assert statuses(page.url)["whatsapp"] == "to-do"
 
 
+@pytest.mark.macos
 def test_system_settings_that_does_not_open_says_so(harness, page, mac, monkeypatch):
     at_the_whatsapp_step(harness)
     others = subprocess.run
@@ -3196,6 +3254,7 @@ def test_a_household_not_in_the_pilot_has_no_feedback_label_to_give(harness, pag
     assert confirm(page.url).json()["result"] == "checking"
 
 
+@pytest.mark.macos
 def test_the_health_check_runs_for_real_with_the_sources_confirmed(harness, page, ai, monkeypatch):
     ai("claude")
     harness.secrets["claude-oauth-token"] = "sk-ant-oat01-token"
@@ -3312,6 +3371,7 @@ def back_to_whatsapp(url: str, body: Any = None) -> Response:
     return call(url, "api/whatsapp/back", method="POST", body={} if body is None else body)
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("failure", WHATSAPP_FAILURES)
 def test_the_check_page_says_why_whatsapp_isn_t_ok(harness, page, mac, monkeypatch, failure):
     at_the_check_step(harness)
@@ -3372,6 +3432,7 @@ def test_the_page_shows_the_reason_s_text_and_the_button_that_fixes_it():
         script.split("function closed(", 1)[1].split("\n}\n", 1)[0]
 
 
+@pytest.mark.macos
 def test_groups_not_on_this_mac_lead_back_to_whatsapp_s_step_to_read_them_again(harness, page,
                                                                                  mac, health):
     at_the_check_step(harness)
@@ -4184,6 +4245,7 @@ def test_on_finish_a_gateway_household_can_enter_a_new_gateway_key(harness, page
     assert backend(harness) == "gateway" and harness.secrets == {"gateway-key": GATEWAY_KEY}
 
 
+@pytest.mark.macos
 def test_on_finish_a_claude_token_switches_the_household_to_claude(harness, page, claude):
     at_finish_with(harness, "gateway")
     claude.install()
@@ -4197,6 +4259,7 @@ def test_on_finish_a_claude_token_switches_the_household_to_claude(harness, page
     assert chat_installed(page.url, "claude") == "installed"
 
 
+@pytest.mark.macos
 def test_on_finish_a_claude_token_that_does_not_work_keeps_the_old_ai(harness, page, claude):
     at_finish_with(harness, "gateway")
     harness.model_error = "Your organization has disabled Claude Code"
@@ -4208,6 +4271,7 @@ def test_on_finish_a_claude_token_that_does_not_work_keeps_the_old_ai(harness, p
     assert backend(harness) == "gateway" and harness.secrets == {}
 
 
+@pytest.mark.macos
 def test_on_finish_a_signed_in_codex_that_answers_a_test_call_switches_the_household(harness, page,
                                                                                     codex):
     at_finish(harness)
@@ -4221,6 +4285,7 @@ def test_on_finish_a_signed_in_codex_that_answers_a_test_call_switches_the_house
     assert Path(test_call.argv[0]).name == "codex"
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("reply", [FailedCall("You've hit your usage limit"), {"ok": False}])
 def test_on_finish_a_codex_that_fails_its_test_call_keeps_the_old_ai(harness, page, codex, reply):
     at_finish_with(harness, "gateway")
@@ -4231,6 +4296,7 @@ def test_on_finish_a_codex_that_fails_its_test_call_keeps_the_old_ai(harness, pa
     assert backend(harness) == "gateway"
 
 
+@pytest.mark.macos
 def test_before_finish_codex_s_sign_in_makes_no_test_call(harness, page, codex):
     at_the_ai_step(harness, page.url, "codex")
 
@@ -4274,6 +4340,7 @@ def continue_in_chat(url: str, ai_name: str) -> Response:
     return call(url, "api/chat", method="POST", body={"ai": ai_name})
 
 
+@pytest.mark.macos
 def test_continue_in_the_chat_opens_claude_code_with_the_setup_skill_in_terminal(harness, page,
                                                                                  ai):
     bin_dir = harness.home / "bin"
@@ -4294,6 +4361,7 @@ def test_continue_in_the_chat_opens_claude_code_with_the_setup_skill_in_terminal
     assert setup_server.CHAT_WINDOW in harness.desktop.forgotten  # the window's folder goes
 
 
+@pytest.mark.macos
 def test_continue_in_the_chat_before_welcome_installs_the_plugin_first(harness, page, ai):
     ai("claude")
 
@@ -4320,6 +4388,7 @@ def test_continue_in_the_chat_without_claude_code_says_how_to_install_it(harness
     assert not harness.desktop.opened
 
 
+@pytest.mark.macos
 def test_continue_in_the_chat_without_terminal_says_what_to_type_there(harness, page, ai):
     ai("claude")
     harness.desktop.opens = False

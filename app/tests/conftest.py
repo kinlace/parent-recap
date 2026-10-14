@@ -99,6 +99,14 @@ def program(folder: Path, name: str, text: str = "#!/bin/sh\n") -> Path:
     return folder / name
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    # The one way a test says it needs macOS, so the Windows CI job runs every other test.
+    if sys.platform != "darwin":
+        for item in items:
+            if item.get_closest_marker("macos"):
+                item.add_marker(pytest.mark.skip(reason="needs macOS"))
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--update-goldens", action="store_true",
                      help="Rewrite golden files from the current output instead of comparing.")
@@ -318,6 +326,7 @@ class Harness:
     # Fakes
     def _install(self, mp: pytest.MonkeyPatch) -> None:
         mp.setenv("HOME", str(self.home))
+        mp.setenv("USERPROFILE", str(self.home))  # Windows' Path.home()
         # Over SSH, macOS's dialogs aren't tried, and in tmux or SSH setup warns that the Keychain
         # can't be written: a test that wants that sets these itself. The wilma CLI's config is
         # the one in the temporary HOME.

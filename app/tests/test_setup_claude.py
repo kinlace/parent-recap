@@ -64,6 +64,7 @@ def assert_never_leaked(harness, terminal, printed: str, caplog,
 # ── the dialog
 
 
+@pytest.mark.macos
 def test_a_token_pasted_in_the_dialog_is_tested_and_stored(harness, terminal, capsys, caplog):
     caplog.set_level(logging.DEBUG)
     harness.dialog.typed = f"  {TOKEN}\n"
@@ -85,6 +86,7 @@ def test_a_token_pasted_in_the_dialog_is_tested_and_stored(harness, terminal, ca
     assert_never_leaked(harness, terminal, printed, caplog)
 
 
+@pytest.mark.macos
 def test_the_window_clears_the_token_once_the_family_presses_enter(harness, terminal, tmp_path,
                                                                   capsys):
     (tmp_path / "bin" / "claude").write_text(f"#!/bin/sh\n[ \"$1\" = setup-token ] && echo {TOKEN}\n")
@@ -103,6 +105,7 @@ def test_the_window_clears_the_token_once_the_family_presses_enter(harness, term
     assert after == "You can close this window.\n"
 
 
+@pytest.mark.macos
 def test_a_claude_only_the_login_shell_finds_signs_in(harness, terminal, login_shell, monkeypatch,
                                                       capsys):
     # macOS's own Terminal: the family's shell setup puts claude's folder on their login
@@ -122,6 +125,7 @@ def test_a_claude_only_the_login_shell_finds_signs_in(harness, terminal, login_s
     assert call.argv[0] == str(claude)
 
 
+@pytest.mark.macos
 def test_a_token_copied_across_wrapped_lines_is_put_back_together(harness, terminal, capsys):
     # Claude's screen wraps the token to the window, so a copy can have line breaks in it.
     harness.dialog.typed = f"{TOKEN[:15]}\n  {TOKEN[15:]}"
@@ -131,6 +135,7 @@ def test_a_token_copied_across_wrapped_lines_is_put_back_together(harness, termi
     assert harness.secrets == {ACCOUNT: TOKEN}
 
 
+@pytest.mark.macos
 def test_the_test_call_ignores_an_api_key_in_the_environment(harness, terminal, monkeypatch,
                                                             capsys):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-other")
@@ -142,6 +147,7 @@ def test_the_test_call_ignores_an_api_key_in_the_environment(harness, terminal, 
     assert "ANTHROPIC_API_KEY" not in call.env
 
 
+@pytest.mark.macos
 def test_a_failed_test_call_stores_nothing_and_says_why(harness, terminal, capsys, caplog):
     caplog.set_level(logging.DEBUG)
     harness.model_error = "Invalid bearer token"
@@ -157,6 +163,7 @@ def test_a_failed_test_call_stores_nothing_and_says_why(harness, terminal, capsy
     assert_never_leaked(harness, terminal, printed, caplog)
 
 
+@pytest.mark.macos
 def test_something_that_is_not_a_claude_token_is_never_sent_to_claude(harness, terminal, capsys,
                                                                       caplog):
     caplog.set_level(logging.DEBUG)
@@ -170,6 +177,7 @@ def test_something_that_is_not_a_claude_token_is_never_sent_to_claude(harness, t
     assert_never_leaked(harness, terminal, printed, caplog, "my-claude-password")
 
 
+@pytest.mark.macos
 def test_closing_the_dialog_stores_nothing(harness, terminal, capsys):
     harness.dialog.button = "cancel"
 
@@ -179,6 +187,7 @@ def test_closing_the_dialog_stores_nothing(harness, terminal, capsys):
     assert harness.model_calls == [] and harness.secrets == {}
 
 
+@pytest.mark.macos
 def test_a_keychain_that_refuses_says_so(harness, terminal, capsys):
     harness.secrets.refuses = secrets.SecretsError("the store refused", "failed", -128)
     harness.dialog.typed = TOKEN
@@ -188,6 +197,7 @@ def test_a_keychain_that_refuses_says_so(harness, terminal, capsys):
     assert result(capsys)[0]["result"] == "keychain-failed"
 
 
+@pytest.mark.macos
 def test_another_keychain_error_says_so_with_its_code(harness, terminal, capsys):
     harness.secrets.refuses = secrets.SecretsError("the store refused", "failed", -25293)
     harness.dialog.typed = TOKEN
@@ -199,6 +209,7 @@ def test_another_keychain_error_says_so_with_its_code(harness, terminal, capsys)
     assert "click Allow" in res["next"]
 
 
+@pytest.mark.macos
 def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(harness, terminal, capsys):
     harness.secrets.refuses = secrets.SecretsError("the store can't be reached", "not-reachable",
                                                    -25308)
@@ -213,6 +224,7 @@ def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(harness, ter
     assert "Allow" not in res["next"]  # macOS shows no prompt there
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("var", ["TMUX", "SSH_CONNECTION"])
 def test_in_tmux_or_ssh_it_warns_before_the_token_is_asked_for(harness, terminal, monkeypatch,
                                                               capsys, var):
@@ -233,6 +245,7 @@ def test_in_tmux_or_ssh_it_warns_before_the_token_is_asked_for(harness, terminal
     assert "outside tmux or SSH" in asked
 
 
+@pytest.mark.macos
 def test_outside_tmux_and_ssh_there_is_no_warning(harness, terminal, capsys):
     harness.dialog.typed = TOKEN
 
@@ -257,6 +270,7 @@ def test_without_the_claude_cli_it_says_how_to_install_it(harness, terminal, mon
     assert terminal.windows == [] and harness.dialog.shown == []
 
 
+@pytest.mark.macos
 def test_when_terminal_does_not_open_it_says_what_to_run(harness, terminal, capsys):
     terminal.opens = False
 
@@ -268,6 +282,7 @@ def test_when_terminal_does_not_open_it_says_what_to_run(harness, terminal, caps
     assert harness.dialog.shown == []
 
 
+@pytest.mark.macos
 def test_no_open_only_asks_for_the_token(harness, terminal, capsys):
     harness.dialog.typed = TOKEN
 
@@ -277,6 +292,7 @@ def test_no_open_only_asks_for_the_token(harness, terminal, capsys):
     assert harness.secrets == {ACCOUNT: TOKEN}
 
 
+@pytest.mark.macos
 def test_with_neither_a_dialog_nor_a_terminal_it_says_where_to_run_it(harness, terminal,
                                                                      monkeypatch, capsys):
     import getpass
@@ -293,6 +309,7 @@ def test_with_neither_a_dialog_nor_a_terminal_it_says_where_to_run_it(harness, t
     assert harness.secrets == {}
 
 
+@pytest.mark.macos
 def test_storing_the_token_again_replaces_one_the_keychain_asks_about(harness, terminal, capsys):
     # An earlier version stored it with keyring, so only that Python may read it without a prompt.
     harness.secrets[ACCOUNT] = "sk-ant-oat01-old"
@@ -308,6 +325,7 @@ def test_storing_the_token_again_replaces_one_the_keychain_asks_about(harness, t
 # ── doctor
 
 
+@pytest.mark.macos
 def test_doctor_points_to_the_setup_step_when_no_token_is_stored(harness, terminal, monkeypatch,
                                                                  capsys):
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
@@ -383,6 +401,7 @@ def doctor_claude_line(harness, monkeypatch, capsys) -> str:
     return next(l for l in capsys.readouterr().out.splitlines() if "Claude:" in l)
 
 
+@pytest.mark.macos
 def test_doctor_tells_a_token_the_keychain_asks_about_from_a_missing_one(harness, terminal,
                                                                          monkeypatch, capsys):
     from family_brief import ops
@@ -397,6 +416,7 @@ def test_doctor_tells_a_token_the_keychain_asks_about_from_a_missing_one(harness
     assert "parent-recap setup claude" in line
 
 
+@pytest.mark.macos
 def test_doctor_reads_a_stored_token(harness, terminal, monkeypatch, capsys):
     from family_brief import ops
     harness.secrets[ACCOUNT] = TOKEN

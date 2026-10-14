@@ -18,6 +18,9 @@ import pytest
 
 from family_brief import install_record
 
+# get.sh, run by bash with shell-script stand-ins.
+pytestmark = pytest.mark.macos
+
 ROOT = Path(__file__).resolve().parents[2]
 NO_MARKETPLACES = "[]"
 KINLACE = json.dumps([{"name": "kinlace", "source": "github", "repo": "kinlace/parent-recap"}], indent=2)

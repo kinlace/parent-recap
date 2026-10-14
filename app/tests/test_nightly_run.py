@@ -211,7 +211,9 @@ def test_codex_backend_sends_prompt_on_stdin(harness, golden, tmp_path):
     assert {"shell_tool", "unified_exec", "apps", "plugins"} <= disabled
     assert not any(call.stdin in a for a in call.argv)
     work = call.argv[call.argv.index("-C") + 1]
-    argv = [a.replace(work, "<workdir>").replace(str(codex), "<codex>") for a in call.argv]
+    # Windows' separators, so the golden is the same on every system.
+    argv = [a.replace(work, "<workdir>").replace(str(codex), "<codex>").replace("\\", "/")
+            for a in call.argv]
     golden("codex.masked.model.txt", model_call_for_golden(argv, call.stdin))
     [email] = harness.sent
     golden("normal_night.zh.txt", email.text)  # same Brief whichever backend wrote it

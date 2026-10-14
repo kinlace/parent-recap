@@ -164,7 +164,7 @@ def uninstall(harness, *args: str) -> int:
 def leftovers(home: Path) -> list[str]:
     """Every file and folder in HOME, but the folders macOS and Codex own."""
     theirs = {".agents", ".agents/skills"}
-    return sorted(r for r in (str(p.relative_to(home)) for p in home.rglob("*")) if r not in theirs)
+    return sorted(r for r in (p.relative_to(home).as_posix() for p in home.rglob("*")) if r not in theirs)
 
 
 # ── listing
@@ -206,6 +206,7 @@ def test_says_to_remove_its_python_from_full_disk_access_by_hand(harness, mac, m
     assert not (harness.home / "ParentRecap" / "runtime").exists()  # the Node with it
 
 
+@pytest.mark.macos
 def test_stops_on_a_wilma_cli_folder_holding_something_else(harness, mac, monkeypatch, tmp_path,
                                                             capsys):
     set_up(harness, mac, monkeypatch)
@@ -411,6 +412,7 @@ def wilma_and_claude(harness, mac: FakeMac, monkeypatch, tmp_path: Path, *, by_s
     return config
 
 
+@pytest.mark.macos
 def test_lists_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness, mac, monkeypatch,
                                                                          tmp_path, capsys):
     set_up(harness, mac, monkeypatch)
@@ -429,6 +431,7 @@ def test_lists_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness,
     assert WILMA_PASSWORD not in removes
 
 
+@pytest.mark.macos
 def test_removes_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness, mac, monkeypatch,
                                                                           tmp_path, capsys):
     set_up(harness, mac, monkeypatch)
@@ -450,6 +453,7 @@ def cli_files_beside(config: Path) -> None:
     (config.parent / "version-check.json").write_text('{"latestVersion": "2.1.2", "checkedAt": 0}')
 
 
+@pytest.mark.macos
 def test_the_wilma_cli_s_sessions_go_with_setup_s_profile(harness, mac, monkeypatch, tmp_path,
                                                           capsys):
     set_up(harness, mac, monkeypatch)
@@ -462,6 +466,7 @@ def test_the_wilma_cli_s_sessions_go_with_setup_s_profile(harness, mac, monkeypa
     assert leftovers(harness.home) == [".config"]
 
 
+@pytest.mark.macos
 def test_leaves_a_wilma_cli_profile_and_plugin_that_were_there_before_setup(harness, mac,
                                                                             monkeypatch, tmp_path,
                                                                             capsys):
@@ -480,6 +485,8 @@ def test_leaves_a_wilma_cli_profile_and_plugin_that_were_there_before_setup(harn
     assert "/plugin uninstall parent-recap@kinlace" in out and "~/.config/wilmai" in out
 
 
+@pytest.mark.macos
+@pytest.mark.macos
 def test_removes_only_setup_s_profile_from_the_wilma_cli_s_config(harness, mac, monkeypatch,
                                                                   tmp_path, capsys):
     set_up(harness, mac, monkeypatch)
@@ -501,6 +508,7 @@ def test_removes_only_setup_s_profile_from_the_wilma_cli_s_config(harness, mac, 
     assert "~/.config/wilmai" in capsys.readouterr().out  # the other sign-in stays there
 
 
+@pytest.mark.macos
 def test_a_plugin_claude_code_did_not_remove_says_how_and_keeps_the_record(harness, mac,
                                                                            monkeypatch, tmp_path,
                                                                            capsys):
@@ -693,6 +701,7 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     assert "com.parentrecap.daily.plist" in doc and "pmset repeat cancel" in doc
 
 
+@pytest.mark.macos
 def test_the_record_is_owner_only(harness, mac, monkeypatch):
     set_up(harness, mac, monkeypatch)
 

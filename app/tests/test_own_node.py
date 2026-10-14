@@ -72,6 +72,7 @@ def doctor_line(capsys, check: str) -> str:
     return next(l for l in capsys.readouterr().out.splitlines() if f"{check}:" in l)
 
 
+@pytest.mark.macos
 def test_doctor_runs_the_wilma_cli_on_parent_recaps_own_node(harness, no_node, monkeypatch,
                                                               capsys):
 
@@ -84,6 +85,7 @@ def test_doctor_runs_the_wilma_cli_on_parent_recaps_own_node(harness, no_node, m
     assert no_node == [[str(node), str(cli), "kids", "list", "--json"]]
 
 
+@pytest.mark.macos
 def test_the_evening_job_runs_the_wilma_cli_on_parent_recaps_own_node(harness, no_node,
                                                                        monkeypatch):
     monkeypatch.setattr(wilma, "collect", REAL_WILMA_COLLECT)
@@ -96,6 +98,7 @@ def test_the_evening_job_runs_the_wilma_cli_on_parent_recaps_own_node(harness, n
     assert no_node and all(c[0] == node for c in no_node)
 
 
+@pytest.mark.macos
 def test_the_wilma_cli_never_checks_npm_for_a_newer_version(harness, no_node, monkeypatch, capsys):
     # Parent Recap installs the version it pins, and the CLI's "Run wilma update" would install
     # another one.
@@ -110,6 +113,7 @@ def test_the_wilma_cli_never_checks_npm_for_a_newer_version(harness, no_node, mo
     assert all("WILMAI_CONFIG_PATH" not in env for env in no_node.envs)  # the CLI's own config
 
 
+@pytest.mark.macos
 def test_a_node_and_wilma_cli_the_mac_has_are_not_used(harness, no_node, monkeypatch, tmp_path,
                                                         capsys):
     theirs = tmp_path / "their-bin"

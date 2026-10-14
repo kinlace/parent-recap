@@ -231,6 +231,7 @@ def installed(mac: dict) -> dict[str, str]:
     return {p["name"]: p["version"] for p in json.loads(listing.stdout)}
 
 
+@pytest.mark.macos
 def test_installs_the_versions_in_the_constraints_file_not_the_newest(mac):
     for version in ("1.0", "2.0"):
         wheel(mac["packages"], "pinned-dep", version)
@@ -242,6 +243,7 @@ def test_installs_the_versions_in_the_constraints_file_not_the_newest(mac):
     assert installed(mac)["pinned-dep"] == "1.0"
 
 
+@pytest.mark.macos
 def test_a_package_with_no_prebuilt_version_stops_the_install_without_compiling(mac):
     built = mac["tmp"] / "compiled"
     sdist(mac["packages"], "needs-compiling", "1.0", build_marker=built)
@@ -257,6 +259,7 @@ def test_a_package_with_no_prebuilt_version_stops_the_install_without_compiling(
 
 # --- Google's packages, only for Google Calendar ------------------------------------------
 
+@pytest.mark.macos
 def test_a_default_install_leaves_out_googles_packages(mac):
     wheel(mac["packages"], "pure-dep", "1.0")
     wheel(mac["packages"], "google-dep", "1.0")
@@ -268,6 +271,7 @@ def test_a_default_install_leaves_out_googles_packages(mac):
     assert "pure-dep" in installed(mac) and "google-dep" not in installed(mac)
 
 
+@pytest.mark.macos
 def test_a_google_calendar_household_gets_them_at_the_pinned_version(mac):
     # An update for a Household already on Google Calendar, or manage turning it on: either way
     # the config says google before install.sh runs.
@@ -282,6 +286,7 @@ def test_a_google_calendar_household_gets_them_at_the_pinned_version(mac):
     assert installed(mac)["google-dep"] == "1.0"
 
 
+@pytest.mark.macos
 def test_googles_packages_are_never_compiled_either(mac):
     built = mac["tmp"] / "compiled"
     sdist(mac["packages"], "google-dep", "1.0", build_marker=built)
@@ -298,6 +303,7 @@ def test_googles_packages_are_never_compiled_either(mac):
 
 # --- The wilma CLI -------------------------------------------------------------------------------
 
+@pytest.mark.macos
 def test_every_install_moves_the_wilma_cli_to_the_pinned_version(mac):
     # An update is how a Household that connected Wilma gets the version a release pins.
     wheel(mac["packages"], "pure-dep", "1.0")
@@ -319,6 +325,7 @@ def install_log(mac: dict) -> Path:
     return logs[0]
 
 
+@pytest.mark.macos
 def test_a_failing_pip_step_shows_a_plain_message_and_the_log_instead_of_pips_output(mac):
     sdist(mac["packages"], "needs-compiling", "1.0", build_marker=mac["tmp"] / "compiled")
     program(mac, ("needs-compiling",))
@@ -337,6 +344,7 @@ def test_a_failing_pip_step_shows_a_plain_message_and_the_log_instead_of_pips_ou
     assert any("No matching distribution found for needs-compiling" in line for line in rest)
 
 
+@pytest.mark.macos
 def test_every_install_keeps_a_dated_log_that_starts_with_the_mac_it_ran_on(mac):
     wheel(mac["packages"], "pure-dep", "1.0")
     program(mac, ("pure-dep",))
@@ -360,6 +368,7 @@ def test_every_install_keeps_a_dated_log_that_starts_with_the_mac_it_ran_on(mac)
     assert any("pure-dep" in line for line in rest)
 
 
+@pytest.mark.macos
 def test_the_log_writes_the_home_folder_as_a_tilde_so_it_names_no_account(mac):
     tools = mac["home"] / "bin"
     tools.mkdir(parents=True)
@@ -376,6 +385,7 @@ def test_the_log_writes_the_home_folder_as_a_tilde_so_it_names_no_account(mac):
     assert str(mac["home"]) not in first
 
 
+@pytest.mark.macos
 def test_an_older_prebuilt_version_is_picked_over_a_newer_one_that_would_compile(mac):
     wheel(mac["packages"], "needs-compiling", "1.0")
     built = mac["tmp"] / "compiled"
@@ -470,6 +480,7 @@ def test_the_check_fails_when_a_pin_has_no_intel_wheel(tmp_path):
     assert not (tmp_path / "compiled").exists()
 
 
+@pytest.mark.macos
 def test_install_stops_over_an_install_from_before_the_rename(mac):
     program(mac, ())
     (mac["home"] / "FamilyBrief" / "app").mkdir(parents=True)
@@ -488,6 +499,7 @@ def test_both_commands_name_the_same_entry_point():
 
 # --- Parent Recap's own Python (ADR 0011) ---------------------------------------------------
 
+@pytest.mark.macos
 def test_a_fresh_install_runs_parent_recap_on_the_pinned_python(mac):
     program(mac, ())
 
@@ -503,6 +515,7 @@ def test_a_fresh_install_runs_parent_recap_on_the_pinned_python(mac):
     assert "grant" not in result.stdout.lower()  # setup asks for the permission the first time
 
 
+@pytest.mark.macos
 def test_a_fresh_install_puts_the_pinned_node_next_to_the_pinned_python(mac):
     program(mac, ())
 
@@ -515,6 +528,7 @@ def test_a_fresh_install_puts_the_pinned_node_next_to_the_pinned_python(mac):
     assert sorted(p.name for p in runtimes(mac).iterdir()) == [f"node-v{NODE}", "python-3.13.16-20261003"]
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("kind, arch", [("arm64", "aarch64"), ("intel", "x86_64"),
                                         ("rosetta", "aarch64")])
 def test_picks_the_build_for_the_mac_s_chip_even_in_a_rosetta_terminal(mac, kind, arch):
@@ -529,6 +543,7 @@ def test_picks_the_build_for_the_mac_s_chip_even_in_a_rosetta_terminal(mac, kind
                               f"https://nodejs.org/dist/v{NODE}/{node_name(NODE, arch)}"]
 
 
+@pytest.mark.macos
 def test_running_the_install_again_reuses_the_python_already_there(mac):
     program(mac, ())
     assert install(mac).returncode == 0
@@ -542,6 +557,7 @@ def test_running_the_install_again_reuses_the_python_already_there(mac):
     assert "grant" not in result.stdout.lower()
 
 
+@pytest.mark.macos
 def test_a_venv_on_another_python_is_rebuilt_on_the_pinned_one(mac):
     # Today's installs: the venv sits on Homebrew's Python, here the one running the tests.
     program(mac, ())
@@ -558,6 +574,7 @@ def test_a_venv_on_another_python_is_rebuilt_on_the_pinned_one(mac):
                                             capture_output=True, text=True).stdout.replace("-", "_")
 
 
+@pytest.mark.macos
 def test_a_new_pinned_version_goes_into_a_new_folder_and_asks_to_grant_again(mac):
     program(mac, ())
     assert install(mac).returncode == 0
@@ -578,6 +595,7 @@ def test_a_new_pinned_version_goes_into_a_new_folder_and_asks_to_grant_again(mac
     assert again.returncode == 0 and "grant" not in again.stdout.lower()
 
 
+@pytest.mark.macos
 def test_a_new_pinned_node_replaces_the_old_one_without_asking_to_grant_again(mac):
     program(mac, ())
     assert install(mac).returncode == 0
@@ -592,6 +610,7 @@ def test_a_new_pinned_node_replaces_the_old_one_without_asking_to_grant_again(ma
     assert "grant" not in result.stdout.lower()  # WhatsApp's permission names the Python only
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("break_it, said", [
     (offline, "couldn't download its Python"),
     (lambda m: serve(m, "3.13.17", "20261101", tamper=True), "The Python Parent Recap downloaded"),
@@ -619,6 +638,7 @@ def test_a_failed_download_leaves_the_existing_install_as_it_was(mac, break_it, 
             "version": (mac["home"] / "ParentRecap" / "app" / "VERSION").read_text()} == before
 
 
+@pytest.mark.macos
 def test_a_new_pinned_version_keeps_the_old_one_when_pip_fails(mac):
     program(mac, ())
     assert install(mac).returncode == 0
@@ -634,6 +654,7 @@ def test_a_new_pinned_version_keeps_the_old_one_when_pip_fails(mac):
     assert (runtimes(mac) / "python-3.13.16-20261003" / "bin" / "python3").exists()
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("break_it", [offline, node_offline])
 def test_a_failed_first_download_creates_nothing(mac, break_it):
     program(mac, ())

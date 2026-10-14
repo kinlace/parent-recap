@@ -83,6 +83,7 @@ def result(capsys) -> tuple[dict[str, Any], str]:
 # ── answers
 
 
+@pytest.mark.macos
 def test_answers_on_a_new_mac_write_a_valid_owner_only_config(harness, capsys):
     harness.ship_pilot_form()
 
@@ -280,6 +281,7 @@ def test_a_config_it_cannot_read_is_left_alone(harness, capsys):
 # ── progress
 
 
+@pytest.mark.macos
 def test_progress_is_saved_and_read_back(harness, capsys):
     progress = {"phase": "connect", "source": "gmail",
                 "sources": {"wilma": "done", "gmail": "to-do"}}

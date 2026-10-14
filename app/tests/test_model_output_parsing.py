@@ -17,6 +17,7 @@ TEXT = json.dumps(REPLY, ensure_ascii=False)
 def tmp_home(tmp_path, monkeypatch):
     # A total failure saves the raw reply under ~/ParentRecap/logs.
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # Windows' Path.home()
     return tmp_path
 
 

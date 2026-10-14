@@ -13,6 +13,9 @@ from pathlib import Path
 
 import pytest
 
+# scripts/issue-loop.sh, run by bash with a shell-script `gh`.
+pytestmark = pytest.mark.macos
+
 ROOT = Path(__file__).resolve().parents[2]
 PR = "https://github.com/kinlace/parent-recap/pull/7"
 RULESET_REFUSAL = (

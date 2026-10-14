@@ -143,6 +143,7 @@ def test_the_extra_is_wanted_only_for_google_mode(tmp_path):
     assert not wanted(tmp_path, "kids: [\n")   # unreadable: setup or doctor says so
 
 
+@pytest.mark.macos
 def test_install_sh_asks_through_the_module_and_exits_0_for_google_mode(tmp_path):
     (tmp_path / ".family").mkdir()
     (tmp_path / ".family" / "config.yaml").write_text("google_calendar: {mode: google}\n")

@@ -15,6 +15,9 @@ import pytest
 
 from family_brief.system import desktop, desktop_macos
 
+# The macOS adapter for opening pages, files and Terminal windows.
+pytestmark = pytest.mark.macos
+
 
 class FakeMac:
     def __init__(self) -> None:

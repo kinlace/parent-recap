@@ -11,6 +11,9 @@ import pytest
 
 from family_brief.system import wake
 
+# The pmset adapter.
+pytestmark = pytest.mark.macos
+
 OUR_WAKE = "wakepoweron at 8:55PM every day"
 OTHER_WAKE = "wakepoweron at 7:00AM weekdays only"
 

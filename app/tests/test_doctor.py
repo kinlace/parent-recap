@@ -140,6 +140,7 @@ def whatsapp_lines(out: str) -> list[str]:
     return [l for l in out.splitlines() if "WhatsApp:" in l]
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("command", [["doctor", "--skip-llm"], ["bg", "doctor", "--skip-llm"]])
 def test_doctor_fails_without_full_disk_access_and_macos_never_asks(harness, mac_with_whatsapp,
                                                                     capsys, command):
@@ -155,6 +156,7 @@ def test_doctor_fails_without_full_disk_access_and_macos_never_asks(harness, mac
     assert mac.prompts == 0 and mac.reads == []
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("command", [["doctor", "--skip-llm"], ["bg", "doctor", "--skip-llm"]])
 def test_doctor_reads_whatsapp_with_full_disk_access_and_macos_never_asks(harness,
                                                                           mac_with_whatsapp,
@@ -205,6 +207,7 @@ def allowed_python_lines(out: str) -> list[str]:
     return [l for l in out.splitlines() if "WhatsApp:" in l and "evening job's Python" in l]
 
 
+@pytest.mark.macos
 def test_doctor_is_quiet_when_the_python_allowed_is_the_evening_jobs(harness, evening_job, capsys):
     python = pinned_python(harness, "3.12.7")
     evening_job.symlink_to(python)
@@ -215,6 +218,7 @@ def test_doctor_is_quiet_when_the_python_allowed_is_the_evening_jobs(harness, ev
     assert allowed_python_lines(capsys.readouterr().out) == []
 
 
+@pytest.mark.macos
 def test_doctor_says_when_the_python_allowed_is_no_longer_the_evening_jobs(harness, evening_job,
                                                                          capsys):
     whatsapp_python.record(pinned_python(harness, "3.12.6"))
@@ -231,6 +235,7 @@ def test_doctor_says_when_the_python_allowed_is_no_longer_the_evening_jobs(harne
     assert not HAN.findall(line)
 
 
+@pytest.mark.macos
 def test_doctor_fails_when_the_evening_jobs_python_points_at_nothing(harness, evening_job, capsys):
     whatsapp_python.record(pinned_python(harness, "3.12.6"))
     evening_job.symlink_to(harness.home / "ParentRecap" / "runtime" / "python-3.12.5" / "bin" / "python3.12")
@@ -245,6 +250,7 @@ def test_doctor_fails_when_the_evening_jobs_python_points_at_nothing(harness, ev
     assert f"add {os.path.realpath(sys.executable)} to Full Disk Access" in line
 
 
+@pytest.mark.macos
 def test_doctor_does_not_compare_an_install_from_before_the_record(harness, evening_job, capsys):
     evening_job.symlink_to(pinned_python(harness, "3.12.7"))
 
@@ -308,6 +314,7 @@ def whatsapp_check(harness) -> ops.Check:
     return check
 
 
+@pytest.mark.macos
 @pytest.mark.parametrize("failure", WHATSAPP_FAILURES)
 def test_the_whatsapp_check_says_why_it_isn_t_ok_and_doctor_s_words_stay(harness, mac_for_reasons,
                                                                         monkeypatch, capsys,
@@ -368,6 +375,7 @@ def test_the_skills_and_docs_never_send_the_parent_to_a_file_called_python3():
         assert not re.search(r"python3(?![.\d])", path.read_text()), path
 
 
+@pytest.mark.macos
 def test_the_whatsapp_check_is_ok_with_no_reason(harness, mac_for_reasons):
     mac_for_reasons.install_whatsapp([("3B parents", 1, False), ("Leo piano", 2, False)])
 

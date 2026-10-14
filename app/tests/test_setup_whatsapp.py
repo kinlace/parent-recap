@@ -26,6 +26,9 @@ from family_brief import ops, whatsapp_python
 from fake_system import FakeJobs
 from family_brief.collectors import whatsapp
 
+# WhatsApp for Mac and its Full Disk Access.
+pytestmark = pytest.mark.macos
+
 MESSAGE_DATE = datetime(2026, 9, 26, 18, 0).timestamp() - whatsapp.CORE_DATA_EPOCH
 
 

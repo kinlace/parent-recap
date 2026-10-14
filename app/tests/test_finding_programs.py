@@ -45,6 +45,7 @@ def the_evening_job(harness, monkeypatch) -> None:
     harness.model_calls.clear()
 
 
+@pytest.mark.macos
 def test_doctor_finds_claude_on_the_login_shells_path_and_the_evening_job_runs_it(
         harness, terminal_path, login_shell, monkeypatch, capsys):
     claude = program(terminal_path, "claude")
@@ -62,6 +63,7 @@ def test_doctor_finds_claude_on_the_login_shells_path_and_the_evening_job_runs_i
     assert [c.argv[0] for c in harness.model_calls] == [str(claude)]
 
 
+@pytest.mark.macos
 def test_doctor_finds_codex_on_the_login_shells_path_and_the_evening_job_runs_it(
         harness, terminal_path, login_shell, monkeypatch, capsys):
     harness.config["llm"]["backend"] = "codex"
@@ -89,6 +91,7 @@ def test_without_claude_anywhere_doctor_says_how_to_install_it(harness, terminal
     assert line.startswith(ops.FAIL) and "curl -fsSL https://claude.ai/install.sh | bash" in line
 
 
+@pytest.mark.macos
 def test_codex_inside_the_chatgpt_app_is_one_of_the_bundled_ones():
     """The ChatGPT app keeps its Codex in codex-cli/bin, and a Mac may have only that app (#203)."""
     assert "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex" in summarize.CODEX_BUNDLED

@@ -62,6 +62,7 @@ def zip_names(path: Path) -> list[str]:
         return z.namelist()
 
 
+@pytest.mark.macos
 def test_builds_versioned_zip_with_the_plugin_root_under_one_folder(repo):
     set_versions(repo, "1.2.0", "1.2.0")
     tag(repo, "v1.2.0")

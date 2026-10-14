@@ -228,6 +228,7 @@ def mode(p: Path) -> int:
     return stat.S_IMODE(p.stat().st_mode)
 
 
+@pytest.mark.macos
 def test_held_back_lists_every_held_back_message_in_an_owner_only_file_it_opens_in_textedit(harness, capsys):
     archive(harness)
     counts_only = report(harness, capsys)
@@ -246,6 +247,7 @@ def test_held_back_lists_every_held_back_message_in_an_owner_only_file_it_opens_
         "The list isn't printed here: it holds the messages' own text.\n")
 
 
+@pytest.mark.macos
 def test_held_back_writes_the_list_again_each_time_owner_only_over_one_others_could_read(harness, capsys):
     archive(harness, {"2026-09-21": [m for m in FINNISH if m.external_id == "g-2"]})
     list_file(harness).write_text("An older list\n" * 20)

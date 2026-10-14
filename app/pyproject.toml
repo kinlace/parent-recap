@@ -44,4 +44,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-p no:cacheprovider"
+addopts = "-p no:cacheprovider --strict-markers"
+markers = [
+    "macos: needs macOS (a macOS adapter, a macOS-only feature, or what Windows can't do yet); skipped elsewhere",
+]
