@@ -66,6 +66,8 @@ jobs:
       # Helsinki, as a Finnish family's PC is.
       - name: Helsinki time
         working-directory: .
+        # Not bash: Git Bash would turn the /s switch into a path.
+        shell: pwsh
         run: tzutil /s "FLE Standard Time"
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
