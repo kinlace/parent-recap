@@ -61,6 +61,12 @@ jobs:
       - name: Keep line endings
         working-directory: .
         run: git config --global core.autocrlf false
+      # The tests pin the local timezone to Helsinki (conftest.py's NOW) through time-machine, which
+      # can't change it on Windows, where there is no time.tzset(). So the runner itself is set to
+      # Helsinki, as a Finnish family's PC is.
+      - name: Helsinki time
+        working-directory: .
+        run: tzutil /s "FLE Standard Time"
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
       - name: Python

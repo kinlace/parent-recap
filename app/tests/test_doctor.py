@@ -110,6 +110,7 @@ def test_doctor_names_an_unreadable_config_in_english(harness, capsys):
     assert not HAN.findall(out)
 
 
+@pytest.mark.macos
 def test_doctor_in_a_bg_job_says_which_python_needs_whatsapp_access(harness, monkeypatch, capsys):
     monkeypatch.setenv(ops.BG_ENV, "1")
     monkeypatch.setattr(whatsapp, "check_access", lambda: whatsapp.NO_ACCESS)
