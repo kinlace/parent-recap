@@ -48,7 +48,9 @@ jobs:
     # Every test that doesn't need macOS, so maintainers learn on every push whether the program
     # still works on Windows (ADR 0019). Tests marked `macos` skip themselves here.
     runs-on: windows-latest
-    timeout-minutes: 20
+    # The real Task Scheduler tests alone take about 12 minutes on the runner (#313), so a green
+    # run takes about 18 and a limit of 20 cut most runs off.
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: app
