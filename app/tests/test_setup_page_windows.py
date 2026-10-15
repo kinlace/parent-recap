@@ -10,7 +10,6 @@ time in test_setup_page.py, and uninstall in test_uninstall.py."""
 from __future__ import annotations
 
 import imaplib
-import shutil
 import subprocess
 import sys
 import uuid
@@ -32,7 +31,7 @@ from test_setup_page import (APP_PASSWORD, BRIEF_TEXT, GATEWAY_KEY, TYPED, _list
                              start_reading)
 from test_setup_status import install_program
 from test_setup_steps import HeaderImap
-from test_uninstall import leftovers, uninstall
+from test_uninstall import leftovers, remove_at_once, uninstall
 
 PARENT = "parent@example.com"
 # Windows' own Task Scheduler takes minutes on CI's runner to register, list and check the tasks
@@ -192,14 +191,7 @@ def assert_finished(harness, out: dict[str, Any]) -> None:
 def uninstall_leaves_nothing(harness, monkeypatch) -> None:
     """Uninstall, confirmed with the archive removed, leaves no job, secret or file of Parent
     Recap's."""
-    def at_once(paths: list, folders: list) -> None:
-        # The test runs from another Python, so there's no waiting for this one to end.
-        for p in paths:
-            shutil.rmtree(p)
-        for f in folders:
-            if f.is_dir() and not any(f.iterdir()):
-                f.rmdir()
-    monkeypatch.setattr(windows_only, "remove_after_exit", at_once)
+    monkeypatch.setattr(windows_only, "remove_after_exit", remove_at_once)
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 

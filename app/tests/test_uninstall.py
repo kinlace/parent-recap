@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 import subprocess
 import sys
 import threading
@@ -73,6 +74,21 @@ class FakeMac:
 
 def done(cmd: list[str], out: str = "", code: int = 0, err: str = "") -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(cmd, code, out, err)
+
+
+def remove_at_once(paths: list[Path], folders: list[Path]) -> None:
+    """Windows' removal of what uninstall runs from, without waiting for it to end: the tests run
+    from another Python."""
+    for p in paths:
+        shutil.rmtree(p)
+    for f in sorted(folders, key=lambda f: len(f.parts), reverse=True):
+        if f.is_dir() and not any(f.iterdir()):
+            f.rmdir()
+
+
+@pytest.fixture(autouse=True)
+def _removed_at_once_on_windows(monkeypatch) -> None:
+    monkeypatch.setattr(windows_only, "remove_after_exit", remove_at_once)
 
 
 @pytest.fixture
@@ -163,9 +179,12 @@ def uninstall(harness, *args: str) -> int:
 
 
 def leftovers(home: Path) -> list[str]:
-    """Every file and folder in HOME, but the folders macOS and Codex own."""
-    theirs = {".agents", ".agents/skills"}
-    return sorted(r for r in (p.relative_to(home).as_posix() for p in home.rglob("*")) if r not in theirs)
+    """Every file and folder in HOME, but the folders Codex and Windows own, such as the one
+    PowerShell keeps its startup data in."""
+    theirs = {".agents", ".agents/skills", "AppData", "AppData/Local"}
+    windows = ("AppData/Local/Microsoft", "AppData/Roaming")
+    return sorted(r for r in (p.relative_to(home).as_posix() for p in home.rglob("*"))
+                  if r not in theirs and not any(r == w or r.startswith(w + "/") for w in windows))
 
 
 # ── listing
@@ -195,6 +214,7 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
     assert nothing_removed(harness, mac)
 
 
+@pytest.mark.macos
 def test_says_to_remove_its_python_from_full_disk_access_by_hand(harness, mac, monkeypatch, capsys):
     set_up(harness, mac, monkeypatch)
 
@@ -453,16 +473,33 @@ def test_on_windows_allow_wake_timers_is_the_family_s_own_and_stays(harness, mac
 def test_on_windows_the_wilma_cli_npm_installed_is_recognised(harness, mac, monkeypatch):
     set_up(harness, mac, monkeypatch)
     as_windows(harness, monkeypatch)
-    # What `npm install -g --prefix` makes on Windows: the package, and npm's three wrappers.
+    # What `npm install -g --prefix` makes on Windows: the package, and npm's three wrappers for
+    # each of the commands its package.json names.
     folder = fake_node.wilma_folder(harness.home)
-    (folder / "node_modules" / "@wilm-ai" / "wilma-cli").mkdir(parents=True)
-    for name in ("wilma", "wilma.cmd", "wilma.ps1"):
+    package = folder / "node_modules" / "@wilm-ai" / "wilma-cli"
+    package.mkdir(parents=True)
+    (package / "package.json").write_text(json.dumps(
+        {"name": "@wilm-ai/wilma-cli", "bin": {"wilma": "dist/index.js", "wilmai": "dist/index.js"}}))
+    for name in ("wilma", "wilma.cmd", "wilma.ps1", "wilmai", "wilmai.cmd", "wilmai.ps1"):
         (folder / name).write_text("")
     install_record.add("wilma-cli", str(folder))
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
     assert not folder.exists()
+
+
+def test_a_wilma_cli_folder_holding_something_else_names_it(harness, mac, monkeypatch, capsys):
+    set_up(harness, mac, monkeypatch)
+    folder = fake_node.wilma_folder(harness.home)
+    (folder / "node_modules").mkdir(parents=True)
+    (folder / "notes.txt").write_text("mine\n")
+    install_record.add("wilma-cli", str(folder))
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 1
+
+    assert "holds other files too: notes.txt" in capsys.readouterr().out
+    assert (folder / "notes.txt").exists()
 
 
 def test_on_windows_credential_manager_items_are_listed_without_a_question(harness, mac,
