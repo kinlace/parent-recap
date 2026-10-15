@@ -4,18 +4,18 @@ Parent Recap also runs on a Windows PC instead of a Mac, installed natively, wit
 
 ## What's supported
 
-| On Windows                  | Supported                                                                                                                                                                                                                |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| The PC                      | Windows 11 on an x64 PC (Intel or AMD). Not Windows 10, which Microsoft no longer supports, and not Windows on ARM, such as a PC with a Snapdragon processor                                                             |
-| Signed in at 9 pm           | The family stays signed in to Windows in the evening. Locked, asleep, or with another Windows user signed in on top is fine. Signed out or shut down is not: that night's Brief doesn't go out (ADR 0021)                |
-| Power                       | Leave the PC plugged in. Whether Windows wakes a sleeping laptop for the evening run on battery hasn't been tested yet                                                                                                   |
-| Waking up                   | The power plan's "Allow wake timers" must be on, so Windows lets the evening run wake the PC. Setup and `doctor` check it, and never change it themselves                                                                |
-| Restarts for Windows Update | After a restart nobody is signed in, and no Brief goes out until someone is. Turn on "Use my sign-in info to automatically finish setting up after an update" so Windows signs you back in by itself; `doctor` checks it |
-| Sources                     | Gmail, Wilma and MyClub. Not WhatsApp: Parent Recap reads it from WhatsApp for Mac's own data, which has no counterpart on Windows                                                                                       |
-| The AI                      | Parent Recap's gateway (invited Households) or ChatGPT, through Codex: the setup page installs the Codex CLI with OpenAI's own installer if it isn't there, and you sign in with your ChatGPT account. Not Claude yet    |
-| Calendar events and extras  | New events come as a calendar attachment in the Brief email. Weekend Picks work as on a Mac. Writing events straight into Google Calendar isn't offered on Windows yet: it's turned on in the chat                       |
-| Changes after setup         | Not in a chat yet: the Claude Code and Codex skills that change settings set up a Mac. Ask the Parent Recap team                                                                                                         |
-| Uninstalling                | Not yet. Ask the Parent Recap team                                                                                                                                                                                       |
+| On Windows                  | Supported                                                                                                                                                                                                                                     |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The PC                      | Windows 11 on an x64 PC (Intel or AMD). Not Windows 10, whose support Microsoft ended in October 2025 ([Microsoft](https://www.microsoft.com/en-us/windows/end-of-support)), and not Windows on ARM, such as a PC with a Snapdragon processor |
+| Signed in at 9 pm           | The family stays signed in to Windows in the evening. Locked, asleep, or with another Windows user signed in on top is fine. Signed out or shut down is not: that night's Brief doesn't go out (ADR 0021)                                     |
+| Power                       | Leave the PC plugged in. Whether Windows wakes a sleeping laptop for the evening run on battery hasn't been tested yet                                                                                                                        |
+| Waking up                   | The power plan's "Allow wake timers" must be on, so Windows lets the evening run wake the PC. Setup and `doctor` check it, and never change it themselves                                                                                     |
+| Restarts for Windows Update | After a restart nobody is signed in, and no Brief goes out until someone is. Turn on "Use my sign-in info to automatically finish setting up after an update" so Windows signs you back in by itself; `doctor` checks it                      |
+| Sources                     | Gmail, Wilma and MyClub. Not WhatsApp: Parent Recap reads it from WhatsApp for Mac's own data, which has no counterpart on Windows                                                                                                            |
+| The AI                      | Parent Recap's gateway (invited Households) or ChatGPT, through Codex: the setup page installs the Codex CLI with OpenAI's own installer if it isn't there, and you sign in with your ChatGPT account. Not Claude yet                         |
+| Calendar events and extras  | New events come as a calendar attachment in the Brief email. Weekend Picks work as on a Mac. Writing events straight into Google Calendar isn't offered on Windows yet: it's turned on in the chat                                            |
+| Changes after setup         | Not in a chat yet: the Claude Code and Codex skills that change settings set up a Mac. Ask the Parent Recap team                                                                                                                              |
+| Uninstalling                | Not yet. Ask the Parent Recap team                                                                                                                                                                                                            |
 
 ## What you need
 
@@ -34,7 +34,7 @@ irm https://raw.githubusercontent.com/kinlace/parent-recap/stable/install.ps1 | 
 
 It downloads the latest stable release into `%LOCALAPPDATA%\ParentRecap\plugin`, installs the program from it with its own Python and Node, and opens the setup page in your browser. Keep the PowerShell window open until setup is done: the page runs from it, on your PC only. The page then walks you through setup as on a Mac, without the WhatsApp step.
 
-The line fetches [`install.ps1`](../install.ps1) from the `stable` branch, which only ever holds a tested release. It isn't signed yet, so on some PCs Smart App Control may block the Python it downloads. Running it again is safe: it picks up where it stopped.
+The line fetches [`install.ps1`](../install.ps1) from the `stable` branch, which only ever holds a tested release. It isn't signed yet, and on a PC with Smart App Control turned on, Windows may block the Python it downloads: Smart App Control blocks an unsigned app it can't vouch for ([Microsoft](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions)). Running it again is safe: it picks up where it stopped.
 
 Before your first evening, check the two settings above:
 
