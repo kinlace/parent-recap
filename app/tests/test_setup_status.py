@@ -86,6 +86,7 @@ def test_the_program_is_installed_when_install_sh_has_put_it_in_place(harness, o
     assert "0.5.0" in installed["reason"] and "ParentRecap/app" in installed["reason"]
 
 
+@pytest.mark.macos
 def test_the_program_isnt_installed_before_install_sh_has_run(harness, offline, capsys):
     code, report = status(harness, capsys)
 

@@ -231,7 +231,7 @@ def test_the_command_opens_the_page_and_stops_after_30_idle_minutes(harness, clo
     opened, closed = capsys.readouterr().out.splitlines()
     assert json.loads(opened) == {"result": "opened", "url": url}
     # Terminal says the page has closed, so the family knows its window can be closed too.
-    assert closed == setup_server.CLOSED_LINES["en"]
+    assert closed == setup_server.closed_line("en")
 
 
 def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock, capsys,
@@ -246,7 +246,7 @@ def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock
     clock.now += 31 * 60
     thread.join(5)
 
-    assert capsys.readouterr().out.splitlines()[-1] == setup_server.CLOSED_LINES["fi"]
+    assert capsys.readouterr().out.splitlines()[-1] == setup_server.closed_line("fi")
     assert set(setup_server.CLOSED_LINES) == set(setup_server.LANGUAGES)
 
 
@@ -518,8 +518,9 @@ def ai(harness, monkeypatch):
 
 
 def welcome(url: str, **answers: Any) -> Response:
+    """Welcome's answers, with the AI the page offers first on this system unless given."""
     return call(url, "api/welcome", method="POST",
-                body={"ai": "claude", "partner": None, "feedback": False, **answers})
+                body={"ai": setup_server._ais()[0], "partner": None, "feedback": False, **answers})
 
 
 def check_ai(url: str, name: str) -> Response:
@@ -531,12 +532,13 @@ def test_each_welcome_choice_has_a_default(harness, page):
     call(page.url, "api/language", method="POST", body={"language": "zh"})
 
     assert call(page.url, "api/state").json()["welcome"] == {
-        "ai": "claude",
+        "ai": setup_server._ais()[0],  # Claude, or on Windows the gateway, for now
         "partner": {"add": True, "address": "", "language": "zh"},
         "feedback": True,
     }
 
 
+@pytest.mark.macos
 def test_the_welcome_answers_are_saved(harness, page):
     harness.ship_pilot_form()
     call(page.url, "api/language", method="POST", body={"language": "fi"})
@@ -875,6 +877,7 @@ def test_a_plugin_install_that_fails_says_so(harness, page, ai):
     assert install_record.entries("claude-plugin") == []
 
 
+@pytest.mark.macos
 def test_without_claude_code_the_plugin_is_not_installed(harness, page, ai):
     welcome(page.url, ai="claude")
 
@@ -882,6 +885,7 @@ def test_without_claude_code_the_plugin_is_not_installed(harness, page, ai):
     assert harness.plugin_calls == []
 
 
+@pytest.mark.macos
 def test_picking_chatgpt_installs_the_codex_skills_from_the_install_line_s_copy(harness, page):
     install_record.add("plugin", str(ROOT))  # what install.sh recorded, run from the line's copy
 
@@ -898,6 +902,7 @@ def test_picking_chatgpt_installs_the_codex_skills_from_the_install_line_s_copy(
     assert harness.plugin_calls == []
 
 
+@pytest.mark.macos
 def test_without_the_install_line_s_copy_the_codex_skills_are_not_installed(harness, page):
     welcome(page.url, ai="codex")
 
@@ -3087,10 +3092,11 @@ def confirm(url: str, **answers: Any) -> Response:
     return call(url, "api/check", method="POST", body=body)
 
 
-def health_result(url: str) -> dict[str, Any]:
+def health_result(url: str, seconds: float = 5) -> dict[str, Any]:
     out: dict[str, Any] = {}
     wait_for(lambda: out.update(
-        call(url, "api/check/health", method="POST", body={}).json()) or out["result"] != "checking")
+        call(url, "api/check/health", method="POST", body={}).json()) or out["result"] != "checking",
+        seconds)
     return out
 
 
@@ -3776,14 +3782,14 @@ def finish(url: str, replace_wake: bool = False) -> Response:
     return call(url, "api/finish", method="POST", body={"replace_wake": replace_wake})
 
 
-def finished(url: str) -> dict[str, Any]:
+def finished(url: str, seconds: float = 5) -> dict[str, Any]:
     out: dict[str, Any] = {}
 
     def ended() -> bool:
         out.clear()
         out.update(call(url, "api/finish/check", method="POST", body={}).json())
         return out["result"] not in ("installing", "checking")
-    wait_for(ended)
+    wait_for(ended, seconds)
     return out
 
 
@@ -4366,6 +4372,7 @@ def test_continue_in_the_chat_before_welcome_installs_the_plugin_first(harness, 
     assert call(page.url, "api/state").json()["chat"] == {"claude": "installed"}
 
 
+@pytest.mark.macos
 def test_continue_in_the_chat_tells_a_codex_family_what_to_type(harness, page, ai):
     ai("codex")
     install_record.add("plugin", str(ROOT))
@@ -4377,6 +4384,7 @@ def test_continue_in_the_chat_tells_a_codex_family_what_to_type(harness, page, a
     assert (harness.home / ".agents" / "skills" / "parent-recap-setup" / "SKILL.md").is_file()
 
 
+@pytest.mark.macos
 def test_continue_in_the_chat_without_claude_code_says_how_to_install_it(harness, page, ai):
     assert continue_in_chat(page.url, "claude").json() == {
         "result": "not-installed", "install": "curl -fsSL https://claude.ai/install.sh | bash"}
@@ -4399,6 +4407,7 @@ def test_continue_in_the_chat_takes_only_the_ai(page):
         assert r.status == 400 and r.json()["result"] == "invalid-answers", body
 
 
+@pytest.mark.macos
 def test_the_chat_reads_the_progress_and_answers_the_page_saved(harness, page, capsys,
                                                                 monkeypatch):
     call(page.url, "api/language", method="POST", body={"language": "fi"})

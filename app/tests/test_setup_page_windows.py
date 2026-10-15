@@ -32,6 +32,9 @@ from test_setup_status import install_program
 from test_setup_steps import HeaderImap
 
 PARENT = "parent@example.com"
+# Windows' own Task Scheduler takes minutes on CI's runner to register, list and check the tasks
+# (test_jobs_windows.py takes as long), so Finish and the checks around it are given that.
+SLOW = 600
 SENDERS = ["Opettaja <opettaja@edu.espoo.fi>"] * 3 + ["Coach <coach@tapiolan-seura.fi>"] * 2
 
 
@@ -150,7 +153,7 @@ def walk_to_finish(harness, url: str) -> dict[str, Any]:
                "whatsapp": None, "senders": [s["domain"] for s in offered["senders"] if s["ticked"]],
                "recipients": offered["recipients"], "evening": offered["evening"]}
     assert call(url, "api/check", method="POST", body=answers).status == 200
-    health = health_result(url)
+    health = health_result(url, SLOW)
     assert health["result"] == "ok", health
 
     assert make_brief(url).status == 200
@@ -162,7 +165,7 @@ def walk_to_finish(harness, url: str) -> dict[str, Any]:
     data["weekend_events"] = {**data.get("weekend_events", {}), "enabled": True}
     config_file(harness).write_text(yaml.safe_dump(data, allow_unicode=True))
     assert finish(url).status == 200
-    return finished(url)
+    return finished(url, SLOW)
 
 
 def assert_finished(harness, out: dict[str, Any]) -> None:
