@@ -1040,10 +1040,11 @@ class SetupServer:
         in a Terminal window, or says what to type in Codex. The skill reads the progress and the
         answers saved so far, and carries on from the same phase and Source. The plugin or the
         Codex skills are installed first if they aren't yet, since the skill comes with them."""
-        if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in CHAT_SKILLS
-                and raw["ai"] in _ais()):
+        if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in CHAT_SKILLS):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Pick Claude or ChatGPT.", errors=["ai: should be claude or codex"])
+        if raw["ai"] not in _ais():
+            return HTTPStatus.BAD_REQUEST, _not_offered()
         skill = CHAT_SKILLS[raw["ai"]]
         if self._chat_installs.get(raw["ai"]) != "installed":  # the skill must be there to start
             self._install_chat(raw["ai"]).join()
