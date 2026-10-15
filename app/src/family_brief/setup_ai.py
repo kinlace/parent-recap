@@ -6,10 +6,11 @@ enough that the token isn't wrapped, and reads the token from what it shows. The
 clicks Authorize in the browser it opens. The token stays in this process: it's never put on a
 command line, logged or returned to the page, and what the screen showed is dropped once read.
 
-`codex login` opens the browser for the ChatGPT sign-in itself and keeps the login in ~/.codex
-(on Windows %USERPROFILE%\\.codex\\auth.json, unless `cli_auth_credentials_store` in Codex's own
-config moves it to Credential Manager); the page only starts it and checks `codex login status`
-until it says signed in. On Windows the page installs the Codex CLI first if it isn't there.
+`codex login` opens the browser for the ChatGPT sign-in itself and keeps the login in auth.json
+under ~/.codex, or in the system's own credential store if `cli_auth_credentials_store` in Codex's
+own config says so (https://learn.chatgpt.com/docs/auth); the page only starts it and checks
+`codex login status` until it says signed in. On Windows the page installs the Codex CLI first if
+it isn't there.
 """
 from __future__ import annotations
 

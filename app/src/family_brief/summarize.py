@@ -618,7 +618,8 @@ CODEX_BUNDLED = tuple(os.path.join(folder, app, inside)
                       for folder in ("/Applications", os.path.expanduser("~/Applications"))
                       for inside in CODEX_IN_APP)
 # On Windows, the Codex CLI the way OpenAI installs it there: its own install.ps1, published with
-# each release, puts codex.exe under %LOCALAPPDATA% (tools.WINDOWS_CODEX_DIR), without admin.
+# each release, leads %LOCALAPPDATA%\Programs\OpenAI\Codex\bin (tools.WINDOWS_CODEX_DIR) to
+# codex.exe by default (https://github.com/openai/codex/blob/main/scripts/install/install.ps1).
 CODEX_INSTALL = "irm https://github.com/openai/codex/releases/latest/download/install.ps1 | iex"
 
 
@@ -657,7 +658,7 @@ def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int, budge
         out = Path(work) / "last_message.txt"
         # Isolated run: empty working dir, read-only sandbox, no web search, no saved session, and
         # none of the user's config (their MCP servers and tools stay out). Auth still comes from
-        # ~/.codex (%USERPROFILE%\.codex on Windows), or the system's own store if they chose it.
+        # ~/.codex, or the system's own store if they chose it (https://learn.chatgpt.com/docs/auth).
         # No shell, exec, apps or plugins either: the read-only sandbox still lets a command read
         # any file on the Mac, and approval_policy=never would run it without asking.
         cmd = [codex, "exec", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config",

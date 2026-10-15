@@ -247,7 +247,8 @@ def _check_codex(cfg: Config, add) -> None:
         return
     # On Windows the setup page installs the CLI on its own, with no Codex app to sign in from.
     sign_in = ("sign in again on the setup page, or run codex login in PowerShell; Codex keeps "
-               "the sign-in in %USERPROFILE%\\.codex" if sys.platform == "win32" else
+               "the sign-in in ~/.codex unless its own config says otherwise"
+               if sys.platform == "win32" else
                "open the Codex app and sign in again with your ChatGPT account")
     if _codex_signed_out(codex):
         add(FAIL, "Codex", f"not signed in ({sign_in})")

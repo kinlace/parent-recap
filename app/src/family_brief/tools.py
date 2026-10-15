@@ -22,7 +22,8 @@ from pathlib import Path
 HOME_DIRS = (".local/bin", ".npm-global/bin", ".nix-profile/bin")
 # What a program Windows can start ends in, in the order Windows' own PATHEXT tries them.
 WINDOWS_EXTENSIONS = (".exe", ".cmd", ".bat")
-# Under %LOCALAPPDATA%: where OpenAI's install.ps1 puts the Codex CLI.
+# Under %LOCALAPPDATA%: the folder OpenAI's install.ps1 puts the Codex CLI in by default
+# (https://github.com/openai/codex/blob/main/scripts/install/install.ps1).
 WINDOWS_CODEX_DIR = ("Programs", "OpenAI", "Codex", "bin")
 # Homebrew on Apple silicon and on Intel, and nix-darwin's per-user profile.
 SYSTEM_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", "/etc/profiles/per-user/{user}/bin")
