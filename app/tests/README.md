@@ -14,7 +14,7 @@ adapters, macOS-only features (WhatsApp for Mac and its Full Disk Access, the Pa
 programs by bare name, shell-script stand-ins, the pseudo-terminal windows). Every other test runs
 on Windows too. When a Windows ticket makes one of these work there, it drops the mark. The
 `windows_programs` fixture finds programs the way Windows does, on any system, so the setup page's
-Codex install and doctor's Codex check are tested on the Mac too. A test that needs Windows is
+Codex and Claude Code installs and doctor's Codex and Claude checks are tested on the Mac too. A test that needs Windows is
 marked `@pytest.mark.windows` the same way: the Credential Manager adapter
 (`test_secrets_windows.py`), a Brief run by hand with the Gmail App Password and the Gateway Key in
 Credential Manager (`test_brief_by_hand_windows.py`), Windows' own layout for programs and for
@@ -26,8 +26,8 @@ tasks, power plan and sign-in setting the evening run needs (`test_jobs_windows.
 Credential Manager, and the Task Scheduler tests and the last register their tasks in the real
 Task Scheduler, under a test name of their own, and delete them after. `install.ps1` itself runs in CI's
 windows-install job, for real on a clean runner: a failed download, the install that picks up from
-there, the installed program's setup page listing Wilma, Gmail, the AI and MyClub with only the
-gateway offered, a second install that downloads and installs nothing, and the pinned wilma CLI
+there, the installed program's setup page listing Wilma, Gmail, the AI and MyClub with the
+gateway, ChatGPT and Claude offered, a second install that downloads and installs nothing, and the pinned wilma CLI
 installed from npm with the program's own Node, running `--help` and shipping Wilma's town list.
 `test_install_ps1.py` checks that the line ends on the setup page when pasted, and only installs
 when run as a file.
@@ -308,8 +308,10 @@ after 30 idle minutes and Terminal then says, in the language picked, that its w
 closed, the Mac's language preselected, that the language picked is saved, that
 every page text is in all three languages, that a second run resumes at the saved phase, and that
 off macOS the page offers neither WhatsApp nor the Passwords app. With `sys.platform` set to
-Windows, it checks that the page words itself for Windows and offers the gateway and ChatGPT as the AIs,
-refusing Claude until its ticket, installing Codex with OpenAI's installer, that every text the page shows there names the PC,
+Windows, it checks that the page words itself for Windows and offers the gateway, ChatGPT and Claude
+as the AIs, installing Codex with OpenAI's installer, and Claude Code with its own Windows
+installer before opening `claude setup-token` in a PowerShell window, whose pasted token it
+tests and stores, that every text the page shows there names the PC,
 Credential Manager and PowerShell through its `.windows` twin and nothing only macOS has, that the
 window says in PowerShell's words that it can be closed, and that Finish names Windows'
 sign-in-after-update check and leaves its Wake check to the wake outcome. On
