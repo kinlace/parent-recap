@@ -28,8 +28,8 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import (ai_filter_report, chat_install, install_record, ops, run_lock, setup_save,
-               setup_wilma, summarize, tools, whatsapp_python)
+from . import (ai_filter_report, chat_install, install_record, ops, own_node, run_lock,
+               setup_save, setup_wilma, summarize, tools, whatsapp_python)
 from .collectors.gmail import keychain_account
 from .config import Config
 from .system import jobs, macos_only, secrets, wake, windows_only
@@ -37,9 +37,9 @@ from .system import jobs, macos_only, secrets, wake, windows_only
 OK, FAIL = ops.OK, ops.FAIL
 # install.sh's and install.ps1's pinned ones, and the folders they download them into.
 RUNTIMES = re.compile(r"^(python-[\w.+-]+|node-v[\w.-]+|\.incoming|\.download)$")
-# What `npm install -g --prefix` makes in the wilma CLI's folder: on Windows the package in
-# node_modules, with the CLI's wrappers beside it.
-NPM_PREFIX = {"bin", "lib", "etc", "share", "node_modules", "wilma", "wilma.cmd", "wilma.ps1"}
+# What `npm install -g --prefix` makes in the wilma CLI's folder; on Windows the package goes in
+# node_modules, with npm's wrappers for each of its commands beside it (_npm_made).
+NPM_PREFIX = {"bin", "lib", "etc", "share", "node_modules"}
 DATED = re.compile(r"^\d{4}-\d{2}-\d{2}\.(md|raw\.json)$")  # an archived Brief and its messages
 MARKETPLACE = "kinlace"
 
@@ -277,11 +277,27 @@ def _wilma(s: Survey, programs: list[Path]) -> None:
     for folder in dict.fromkeys([*recorded, *usual]):
         if not folder.is_dir() or folder.is_symlink():
             continue
-        if all(p.name in NPM_PREFIX for p in folder.iterdir()):
+        made = _npm_made(folder)
+        others = sorted(p.name for p in folder.iterdir() if p.name not in made)
+        if not others:
             s.items.append(_file("The wilma CLI", folder))
         else:
             s.stops.append(f"{_show(folder)} is where Parent Recap installs the wilma CLI, but "
-                           "it holds other files too")
+                           f"it holds other files too: {', '.join(others)}")
+
+
+def _npm_made(prefix: Path) -> set[str]:
+    """The names npm gives what it puts in `prefix`: on Windows also a wrapper of each of the
+    package's commands, without an extension, .cmd and .ps1, named in its package.json."""
+    try:
+        bins = json.loads((prefix / "node_modules" / own_node.WILMA_PACKAGE / "package.json")
+                          .read_text()).get("bin")
+    except (OSError, ValueError, AttributeError):
+        bins = None
+    if isinstance(bins, str):  # one command, named after the package
+        bins = {own_node.WILMA_PACKAGE.rsplit("/", 1)[-1]: bins}
+    commands = list(bins) if isinstance(bins, dict) else []
+    return NPM_PREFIX | {f"{c}{ext}" for c in commands for ext in ("", ".cmd", ".ps1")}
 
 
 def _claude_code(s: Survey) -> None:
