@@ -1,6 +1,6 @@
 # Security and privacy
 
-Parent Recap runs on the Household's own Mac. The program reads each Source from that Mac, sends what it read to the model the Household chose, and emails the Brief from the Household's own Gmail. The only Parent Recap server is the maintainers' gateway, and only an invited Household that chose it sends anything there (see [The maintainers' gateway](#the-maintainers-gateway)). This page lists where data goes and where every secret lives, so you can decide before installing whether to trust it with your Household's messages.
+Parent Recap runs on the Household's own Mac, or Windows PC ([On Windows](#on-windows)). The program reads each Source from that Mac, sends what it read to the model the Household chose, and emails the Brief from the Household's own Gmail. The only Parent Recap server is the maintainers' gateway, and only an invited Household that chose it sends anything there (see [The maintainers' gateway](#the-maintainers-gateway)). This page lists where data goes and where every secret lives, so you can decide before installing whether to trust it with your Household's messages.
 
 ## How data flows
 
@@ -82,11 +82,22 @@ A MyClub calendar link carries a personal token that lets anyone read the Kid's 
 
 Parent Recap writes and reads its Keychain items only with `/usr/bin/security`. It types each secret into `security -i` on stdin, never on a command line, and stores the item so that `/usr/bin/security` may read it without asking for the Keychain password (ADR 0009). Other programs, including Parent Recap's own Python, get macOS's prompt.
 
-On Windows (being built, ADR 0019), the same secrets go into Credential Manager instead, one generic credential each, named `Parent Recap/<account>` with the accounts above (Control Panel → Credential Manager → Windows Credentials). Parent Recap writes and reads them through Windows' own Credential Manager functions, never on a command line. Windows has no counterpart to the Keychain's per-program trust: any program you run as the same Windows user can read them without asking (ADR 0021).
+On Windows the secrets go into Credential Manager instead, and any program run as the same Windows user can read them: see [On Windows](#on-windows).
 
 `parent-recap uninstall` deletes every secret in this table that Parent Recap stored. Of the wilma CLI's file it removes only the sign-in setup made, and with it every Wilma session the CLI saved, as the CLI does when it removes a sign-in. It leaves the ChatGPT login (Codex's) and a Wilma sign-in that was there before setup, with the CLI's sessions if it removed no sign-in, and never touches your accounts: delete the Gmail App Password and any Google Calendar access in your Google account. What each setup step writes, and how uninstall removes it, is in [docs/setup-internals.md](docs/setup-internals.md).
 
 Keep `~/.family` and `~/.config/wilmai` out of cloud sync, dotfiles repos and backups you share. How to remove the Wilma file when you stop using Parent Recap, and what to do if it may have leaked, is in [docs/sources.md](docs/sources.md#where-the-wilma-password-is-stored).
+
+## On Windows
+
+On a Windows 11 PC ([Parent Recap on Windows](docs/windows.md), ADR 0019) data flows as above, without WhatsApp, and the setup page works the same way. What differs is where things are kept and who on the PC can read them.
+
+- **The secrets** (the Gmail App Password and the Gateway Key) go into Credential Manager, one generic credential each, named `Parent Recap/<account>` with the accounts above (Control Panel → Credential Manager → Windows Credentials). They're kept on this PC for this Windows user and never roam to another PC. Parent Recap writes and reads them through Windows' own Credential Manager functions, never on a command line, and the setup page takes them in its own fields as on a Mac.
+- **Any program you run as the same Windows user can read them without asking.** Windows has no counterpart to the Keychain's per-program trust (ADR 0009): a program you run under that account, including one you shouldn't have trusted, gets the Gmail App Password and the Gateway Key (ADR 0021).
+- **The files** are in `%LOCALAPPDATA%\ParentRecap` (the program, its own Python and Node, the install's logs), `%USERPROFILE%\ParentRecap` (the archive, the evening run's logs, the wilma CLI), `%USERPROFILE%\.family` (the config and state), `%USERPROFILE%\.config\wilmai` (the wilma CLI's sign-in, **not encrypted** as above) and Codex's `%USERPROFILE%\.codex`. The owner-only permissions above are macOS's and have no effect on Windows: these folders keep the permissions Windows gives your own user folder, so other standard accounts on the PC, such as a Kid's, can't read them, but an administrator account on the PC can.
+- **The evening run** is a Task Scheduler task that runs as you, only while you're signed in (ADR 0021). Setup never asks for your Windows password, stores none, and needs no administrator rights.
+- **The install line** runs `install.ps1` from the `stable` branch, which isn't signed yet. It checks the Python and Node it downloads against the SHA-256 checksums pinned in it. On the setup page, ChatGPT's Codex CLI is installed with OpenAI's own installer.
+- **Uninstalling** isn't on Windows yet. Until it is, delete the `Parent Recap/…` credentials in Credential Manager yourself when you stop using it, and the Gmail App Password in your Google account.
 
 ## Reporting a security problem
 

@@ -13,6 +13,8 @@ The whole program runs on your own Mac. Data only moves between this Mac, the AI
 
 ## What you need
 
+Have a Windows 11 PC instead of a Mac? [Parent Recap on Windows](docs/windows.md) says what it needs there, how to install it and what it doesn't do there yet.
+
 - A Mac that is on or asleep around 9 pm (the program wakes it up on schedule). A Mac with Apple Silicon (M1 or later) is recommended. An Intel Mac works for now, on a best-effort basis
 - Someone logged in to that Mac in the evening, even with the screen locked. The evening job only runs while you're logged in, and after a restart (a macOS update, a power cut) no Brief goes out until someone logs in again; an SSH login doesn't count. Log in once after each restart, or turn on automatic login: "No Brief after the Mac restarted" in [troubleshooting](docs/troubleshooting.md) says what that means for security
 - Either a Claude Pro or Max subscription with Claude Code installed, or ChatGPT Plus or higher with the ChatGPT desktop app installed. Install Claude Code with its [native installer](https://code.claude.com/docs/en/setup), which keeps it up to date by itself: paste `curl -fsSL https://claude.ai/install.sh | bash` into Terminal
@@ -30,6 +32,8 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/kinlace/parent-recap/sta
 It downloads the latest stable release into `~/ParentRecap/plugin`, installs the program from it and opens the setup page in your browser. Keep the Terminal window open until setup is done: the page runs from it, on your Mac only. Once you pick Claude or ChatGPT on the page, it also installs the Parent Recap plugin in Claude Code, or the two Parent Recap skills in Codex, so you can ask for changes in the chat later.
 
 The line fetches [`get.sh`](get.sh) and everything else from the `stable` branch, which only ever holds a tested release. Running it again is safe: it updates what it installed and takes you back to the step setup got to.
+
+On a Windows 11 PC, paste a PowerShell line instead: see [Install](docs/windows.md#install) in Parent Recap on Windows.
 
 ### Next
 
