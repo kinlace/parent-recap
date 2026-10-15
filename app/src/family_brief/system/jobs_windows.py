@@ -40,9 +40,14 @@ def _where(task: str) -> Path:
 
 def _powershell(script: str, **env: str) -> subprocess.CompletedProcess:
     """Runs `script` in Windows PowerShell, its values handed over as PARENT_RECAP_<NAME>
-    variables so none is ever quoted into the script. A failure's message goes to stderr."""
+    variables so none is ever quoted into the script. A failure's message goes to stderr.
+
+    Each call is a fresh PowerShell, so callers do their work in as few as they can. The
+    ScheduledTasks module is imported by name: finding a command's module by itself makes
+    PowerShell look through every module installed, which takes seconds on a PC with many."""
     script = ("$ErrorActionPreference = 'Stop'; "
               "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+              "Import-Module ScheduledTasks; "
               f"try {{ {script} }} catch {{ [Console]::Error.WriteLine($_.Exception.Message); exit 1 }}")
     return subprocess.run(
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
@@ -124,34 +129,37 @@ def task_xml(job: jobs.Job, now: datetime | None = None) -> str:
     return ET.tostring(task, encoding="unicode")
 
 
+# Our tasks in Task Scheduler's root folder, as $ours.
+_OURS = ("$ours = @(Get-ScheduledTask -TaskPath '\\' -ErrorAction SilentlyContinue | "
+         "Where-Object { $_.TaskName.StartsWith($env:PARENT_RECAP_PREFIX) }); ")
+# Unregisters each of $ours that $kept doesn't name.
+_UNREGISTER = ("foreach ($t in $ours) { if ($kept -notcontains $t.TaskName) { "
+               "try { Unregister-ScheduledTask -InputObject $t -Confirm:$false } "
+               "catch { throw \"Task Scheduler didn't remove $($t.TaskName): "
+               "$($_.Exception.Message)\" } } }")
+
+
 def install(wanted: list[jobs.Job]) -> None:
-    for job in wanted:
-        r = _powershell("Register-ScheduledTask -TaskName $env:PARENT_RECAP_TASK -TaskPath '\\' "
-                        "-Xml $env:PARENT_RECAP_XML -Force | Out-Null",
-                        task=system_name(job.name), xml=task_xml(job))
-        if r.returncode != 0:
-            raise RuntimeError(f"Task Scheduler didn't register {system_name(job.name)}: "
-                               f"{_error(r)}")
-    kept = {system_name(job.name) for job in wanted}
-    for task in _tasks():
-        if task["name"] not in kept:
-            _unregister(task["name"])
-
-
-def _unregister(task: str) -> None:
-    r = _powershell("Unregister-ScheduledTask -TaskName $env:PARENT_RECAP_TASK -TaskPath '\\' "
-                    "-Confirm:$false", task=task)
+    """Registers `wanted` and removes our other tasks, in one PowerShell."""
+    tasks = [{"name": system_name(job.name), "xml": task_xml(job)} for job in wanted]
+    # Windows PowerShell hands a JSON array on as one object, so it's assigned before the loop.
+    r = _powershell("$kept = @(); $tasks = ConvertFrom-Json $env:PARENT_RECAP_TASKS; "
+                    "foreach ($t in $tasks) { "
+                    "$kept += $t.name; "
+                    "try { Register-ScheduledTask -TaskName $t.name -TaskPath '\\' -Xml $t.xml "
+                    "-Force | Out-Null } "
+                    "catch { throw \"Task Scheduler didn't register $($t.name): "
+                    "$($_.Exception.Message)\" } }; " + _OURS + _UNREGISTER,
+                    tasks=json.dumps(tasks), prefix=PREFIX)
     if r.returncode != 0:
-        raise RuntimeError(f"Task Scheduler didn't remove {task}: {_error(r)}")
+        raise RuntimeError(_error(r))
 
 
 def _tasks() -> list[dict[str, Any]]:
     """Our tasks, each with its name, state ("Ready", "Running", "Disabled"...), and the program
     and arguments it starts."""
     r = _powershell(
-        "$ours = @(Get-ScheduledTask -TaskPath '\\' -ErrorAction SilentlyContinue | "
-        "Where-Object { $_.TaskName.StartsWith($env:PARENT_RECAP_PREFIX) }); "
-        "ConvertTo-Json -Compress -InputObject @($ours | ForEach-Object { @{ "
+        _OURS + "ConvertTo-Json -Compress -InputObject @($ours | ForEach-Object { @{ "
         "name = $_.TaskName; state = [string]$_.State; "
         "execute = [string]$_.Actions[0].Execute; arguments = [string]$_.Actions[0].Arguments } })",
         prefix=PREFIX)
@@ -161,8 +169,9 @@ def _tasks() -> list[dict[str, Any]]:
 
 
 def remove_all() -> None:
-    for task in _tasks():
-        _unregister(task["name"])
+    r = _powershell("$kept = @(); " + _OURS + _UNREGISTER, prefix=PREFIX)
+    if r.returncode != 0:
+        raise RuntimeError(_error(r))
 
 
 def installed() -> set[str]:
