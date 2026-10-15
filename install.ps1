@@ -4,9 +4,9 @@
 #
 #   irm https://raw.githubusercontent.com/kinlace/parent-recap/stable/install.ps1 | iex
 #
-# Pasted that way, it downloads the `stable` branch into %LOCALAPPDATA%\ParentRecap\plugin first
-# and installs from there. Run as a file next to `app\` (a checkout or an unzipped release), it
-# installs from that folder.
+# Pasted that way, it downloads the `stable` branch into %LOCALAPPDATA%\ParentRecap\plugin first,
+# installs from there, and opens the setup page. Run as a file next to `app\` (a checkout or an
+# unzipped release), it installs from that folder, and only installs.
 # Needs no administrator rights: it writes only under %LOCALAPPDATA%\ParentRecap and setup's
 # record (~\.family\install-record.json), so `parent-recap uninstall` can remove what it made.
 # Safe to re-run: a run that stopped partway picks up from where it got to, and a run with
@@ -281,4 +281,12 @@
   # Run as a file, a failed install exits with 1. Pasted into PowerShell, exiting would close the
   # family's window, with the message in it.
   if ($failed -and $PSCommandPath) { exit 1 }
+  # Pasted, the line goes on to the setup page (ADR 0006), as get.sh does on a Mac, served from
+  # this window until setup is done; it picks up where setup got to. Run as a file, as an update
+  # from the chat or CI runs it, it only installs, as install.sh does.
+  if (-not $failed -and -not $PSCommandPath) {
+    Write-Host 'Parent Recap is installed. The setup page opens in your browser now.'
+    Write-Host '   Keep this PowerShell window open until setup is done: the page runs from it.'
+    & (Join-Path $App '.venv\Scripts\parent-recap.exe') setup page
+  }
 }

@@ -147,6 +147,31 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the program doesn't find its own Node" }
           & $py -c "import sys; print(sys._base_executable); sys.exit('ParentRecap' not in sys._base_executable)"
           if ($LASTEXITCODE -ne 0) { throw "the venv isn't on Parent Recap's own Python" }
+      # As the pasted line ends: the installed program's setup page, served on this PC, offering
+      # what Windows has and nothing only macOS has (no WhatsApp, the gateway as the AI).
+      - name: The installed program serves the setup page, without macOS's steps
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'setup-page.txt'
+          $page = Start-Process "$env:INSTALLED\app\.venv\Scripts\parent-recap.exe" -ArgumentList 'setup', 'page' `
+            -RedirectStandardOutput $out -NoNewWindow -PassThru
+          try {
+            $url = $null
+            for ($i = 0; $i -lt 60 -and -not $url; $i++) {
+              Start-Sleep -Seconds 1
+              $line = Get-Content $out -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($line) { $url = ($line | ConvertFrom-Json).url }
+            }
+            if (-not $url) { throw 'the setup page gave no address' }
+            $state = Invoke-RestMethod -Uri "${url}api/state" -UseBasicParsing
+            $sources = @($state.connect.sources | ForEach-Object { $_.name }) -join ','
+            $ais = @($state.ais) -join ','
+            Write-Host "system $($state.system), Sources $sources, AIs $ais"
+            if ($state.system -ne 'windows') { throw "the page words itself for $($state.system)" }
+            if ($sources -ne 'wilma,gmail,ai,myclub') { throw "the page lists $sources" }
+            if ($ais -ne 'gateway') { throw "the page offers $ais" }
+          } finally {
+            Stop-Process -Id $page.Id -Force -ErrorAction SilentlyContinue
+          }
       - name: A second install downloads and installs nothing
         run: |
           $watched = @("$env:INSTALLED\runtime", "$env:INSTALLED\app\.venv\Scripts\python.exe",
