@@ -308,8 +308,8 @@ after 30 idle minutes and Terminal then says, in the language picked, that its w
 closed, the Mac's language preselected, that the language picked is saved, that
 every page text is in all three languages, that a second run resumes at the saved phase, and that
 off macOS the page offers neither WhatsApp nor the Passwords app. With `sys.platform` set to
-Windows, it checks that the page words itself for Windows and offers only the gateway as the AI,
-refusing Claude and Codex until their tickets, that every text the page shows there names the PC,
+Windows, it checks that the page words itself for Windows and offers the gateway and ChatGPT as the AIs,
+refusing Claude until its ticket, installing Codex with OpenAI's installer, that every text the page shows there names the PC,
 Credential Manager and PowerShell through its `.windows` twin and nothing only macOS has, that the
 window says in PowerShell's words that it can be closed, and that Finish names Windows'
 sign-in-after-update check and leaves its Wake check to the wake outcome. On
