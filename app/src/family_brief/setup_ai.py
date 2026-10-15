@@ -5,6 +5,8 @@ token only there. So the page runs it in a pseudo-terminal, as the Wilma window 
 enough that the token isn't wrapped, and reads the token from what it shows. The family only
 clicks Authorize in the browser it opens. The token stays in this process: it's never put on a
 command line, logged or returned to the page, and what the screen showed is dropped once read.
+Windows has no pseudo-terminal for it: there the page installs Claude Code first if it isn't
+there, and the family copies the token from a PowerShell window into the page.
 
 `codex login` opens the browser for the ChatGPT sign-in itself and keeps the login in auth.json
 under ~/.codex, or in the system's own credential store if `cli_auth_credentials_store` in Codex's
@@ -25,7 +27,7 @@ import threading
 import time
 
 from .setup_steps import CLAUDE_TOKEN
-from .summarize import CODEX_INSTALL, _sessionless_env
+from .summarize import CLAUDE_INSTALL_WINDOWS, CODEX_INSTALL, _sessionless_env
 
 if sys.platform != "win32":  # `claude setup-token`'s pseudo-terminal, which Windows doesn't have yet
     import fcntl
@@ -35,7 +37,7 @@ if sys.platform != "win32":  # `claude setup-token`'s pseudo-terminal, which Win
 COLUMNS, ROWS = 1000, 50
 READ_SECONDS = 0.2
 QUIET_SECONDS = 1.0
-# Downloading and unpacking the Codex CLI, on a slow line.
+# Downloading and unpacking the Codex CLI or Claude Code, on a slow line.
 CODEX_INSTALL_SECONDS = 10 * 60
 # Escape sequences a terminal program draws its screen with: CSI, OSC, and the two-byte ones.
 ESCAPES = re.compile(rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])")
@@ -109,9 +111,18 @@ def _token(shown: bytes, *, ended: bool) -> str | None:
 def install_codex() -> bool:
     """Installs the Codex CLI on Windows with OpenAI's own installer, as their instructions say
     to: PowerShell downloads and runs it. Whether it ran through. What it said isn't kept."""
+    return _install_in_powershell(CODEX_INSTALL)
+
+
+def install_claude() -> bool:
+    """Installs Claude Code on Windows with Anthropic's own installer, the same way."""
+    return _install_in_powershell(CLAUDE_INSTALL_WINDOWS)
+
+
+def _install_in_powershell(line: str) -> bool:
     try:
         proc = subprocess.run(["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
-                               "-Command", CODEX_INSTALL],
+                               "-Command", line],
                               capture_output=True, text=True, encoding="utf-8", errors="replace",
                               timeout=CODEX_INSTALL_SECONDS, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):

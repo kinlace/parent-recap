@@ -2097,6 +2097,7 @@ def test_a_keychain_out_of_reach_of_the_claude_token_says_so_with_its_code(harne
     assert statuses(page.url)["ai"] == "to-do"
 
 
+@pytest.mark.macos  # Windows installs it on the page, and has no sign-in read from a pty
 def test_without_claude_code_its_sign_in_says_how_to_install_it(harness, page, claude):
     for path, body in [("api/claude", {}), ("api/claude/terminal", {}),
                        ("api/claude/token", {"token": CLAUDE_TOKEN})]:
@@ -2294,6 +2295,112 @@ def test_on_windows_installing_codex_that_is_there_already_only_opens_its_sign_i
 def test_on_a_mac_the_page_doesn_t_install_codex_since_it_comes_with_the_chatgpt_app(harness,
                                                                                     page, ai):
     r = call(page.url, "api/codex/install", method="POST", body={})
+
+    assert r.status == 400
+    assert harness.commands == []
+
+
+@pytest.fixture
+def claude_installer(harness, ai, windows_programs, monkeypatch) -> dict[str, Any]:
+    """A Windows PC without Claude Code, and its own Windows installer, which PowerShell runs:
+    the fake puts claude.exe where the real one does, in %USERPROFILE%\\.local\\bin, unless
+    `fails`. The PC's PATH doesn't lead there. The test call is the harness's."""
+    installer = {"fails": False, "ran": [], "claude": harness.home / ".local" / "bin" / "claude.exe"}
+    run = subprocess.run
+
+    def powershell(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
+        if cmd[0] != "powershell.exe":
+            return run(cmd, *a, **k)
+        installer["ran"].append(cmd)
+        if installer["fails"]:
+            return subprocess.CompletedProcess(cmd, 1, "", "Invoke-RestMethod: no network")
+        program(installer["claude"].parent, installer["claude"].name)
+        return subprocess.CompletedProcess(cmd, 0, "Claude Code successfully installed!\n", "")
+    monkeypatch.setattr(subprocess, "run", powershell)
+    return installer
+
+
+def claude_installed(url: str) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+
+    def done() -> bool:
+        out.clear()
+        out.update(call(url, "api/claude/check", method="POST", body={}).json())
+        return out["result"] != "installing"
+    wait_for(done)
+    return out
+
+
+def test_on_windows_the_page_installs_claude_code_opens_its_window_and_stores_the_pasted_token(
+        harness, page, claude_installer, caplog, capsys):
+    caplog.set_level(logging.DEBUG)
+    at_the_ai_step(harness, page.url)
+    assert call(page.url, "api/claude/terminal", method="POST", body={}).json() == \
+        {"result": "not-installed"}  # the page offers to install it, not a line to paste
+
+    r = call(page.url, "api/claude/install", method="POST", body={})
+
+    assert r.status == 200 and r.json() == {"result": "installing"}
+    assert claude_installed(page.url) == {"result": "opened"}
+    [cmd] = claude_installer["ran"]
+    assert cmd[-1] == "irm https://claude.ai/install.ps1 | iex"
+    claude = str(claude_installer["claude"])
+    [window] = harness.desktop.windows  # `claude setup-token`, in a PowerShell window
+    assert window.title == setup_steps.CLAUDE_WINDOW
+    assert window.argv == setup_steps.setup_token_window(claude, "the field on the setup page")
+
+    r = call(page.url, "api/claude/token", method="POST", body={"token": CLAUDE_TOKEN})
+
+    assert r.status == 200 and r.json()["result"] == "saved"
+    assert r.json()["progress"]["sources"]["ai"] == "done"
+    assert harness.secrets == {"claude-oauth-token": CLAUDE_TOKEN}
+    [test_call] = harness.model_calls
+    assert test_call.argv[0] == claude and test_call.env["CLAUDE_CODE_OAUTH_TOKEN"] == CLAUDE_TOKEN
+    assert_never_leaked(harness, [r], caplog, capsys, CLAUDE_TOKEN)
+
+
+def test_on_windows_an_install_of_claude_code_that_fails_says_so_and_can_be_tried_again(
+        harness, page, claude_installer):
+    at_the_ai_step(harness, page.url)
+    claude_installer["fails"] = True
+
+    assert call(page.url, "api/claude/install", method="POST", body={}).json() == \
+        {"result": "installing"}
+
+    assert claude_installed(page.url) == {"result": "install-failed"}
+    assert call(page.url, "api/claude/check", method="POST", body={}).json() == \
+        {"result": "no-sign-in"}  # said once
+    assert not harness.desktop.windows
+    claude_installer["fails"] = False
+    call(page.url, "api/claude/install", method="POST", body={})
+    assert claude_installed(page.url) == {"result": "opened"}
+    assert len(claude_installer["ran"]) == 2
+
+
+def test_on_windows_installing_claude_code_that_is_there_already_only_opens_its_window(
+        harness, page, claude_installer):
+    program(claude_installer["claude"].parent, claude_installer["claude"].name)
+
+    r = call(page.url, "api/claude/install", method="POST", body={})
+
+    assert r.status == 200 and r.json() == {"result": "opened"}
+    assert claude_installer["ran"] == [] and len(harness.desktop.windows) == 1
+
+
+def test_on_windows_claude_signs_in_only_in_its_window_without_a_pseudo_terminal(
+        harness, page, claude_installer):
+    program(claude_installer["claude"].parent, claude_installer["claude"].name)
+
+    r = call(page.url, "api/claude", method="POST", body={})
+
+    assert r.status == 400
+    assert not harness.commands and page._claude is None
+
+
+@pytest.mark.macos
+def test_on_a_mac_the_page_doesn_t_install_claude_code_and_gives_the_line_instead(harness, page,
+                                                                                 ai):
+    r = call(page.url, "api/claude/install", method="POST", body={})
 
     assert r.status == 400
     assert harness.commands == []
@@ -4577,12 +4684,12 @@ MACOS_WORDS = {
     "fi": r"Mac|macOS|avainnippu|Pääte|Terminal|Järjestelmäasetukset|Salasanat-sovellu|WhatsApp",
     "zh": r"Mac|macOS|钥匙串|终端|访达|系统设置|“密码”应用|WhatsApp",
 }
-# Texts the page shows only on macOS, or only for Claude, which comes to Windows in its own ticket
-# (#317), or the chat's.
+# Texts the page shows only on macOS, such as Claude's sign-in read from its pseudo-terminal, or
+# the chat's.
 MACOS_ONLY_TEXTS = re.compile(
     r"^(whatsapp\.|health\.fail\.whatsapp|finish\.fail\.whatsapp|check\.whatsapp|working\.whatsapp"
-    r"|source\.whatsapp|health\.check\.whatsapp|claude\.|ai\.claude\.|chat\."
-    r"|keychain\.|welcome\.ai\.claude$|finish\.(ai\.current|changes|stopped)\.claude$"
+    r"|source\.whatsapp|health\.check\.whatsapp|claude\.(waiting|sign-in-failed|timeout)$|chat\."
+    r"|keychain\."
     r"|open\.app-not-opened$|wilma\.passwords$|(health|finish)\.fail\.ai$"
     r"|finish\.wake\.(set|other-schedule|cancelled|no-dialog)$|finish\.replace$)"
     r"|\.keychain-not-reachable$")
@@ -4597,26 +4704,29 @@ def test_the_state_says_which_system_and_ais_the_page_offers(page):
     state = call(page.url, "api/state").json()
 
     assert state["system"] == ("windows" if sys.platform == "win32" else "macos")
-    assert state["ais"] == (["gateway", "codex"] if sys.platform == "win32"
+    assert state["ais"] == (["gateway", "codex", "claude"] if sys.platform == "win32"
                             else ["claude", "codex", "gateway"])
 
 
-def test_on_windows_welcome_offers_the_gateway_and_chatgpt_but_not_claude_yet(harness, page,
-                                                                              monkeypatch):
+def test_on_windows_welcome_offers_the_gateway_first_then_chatgpt_and_claude(harness, page,
+                                                                             monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
 
     state = call(page.url, "api/state").json()
-    assert state["system"] == "windows" and state["ais"] == ["gateway", "codex"]
+    assert state["system"] == "windows" and state["ais"] == ["gateway", "codex", "claude"]
     assert state["welcome"]["ai"] == "gateway"  # the default, too
-    assert check_ai(page.url, "claude").status == 400
-    assert welcome(page.url, ai="claude").status == 400
-    assert call(page.url, "api/chat", method="POST", body={"ai": "claude"}).status == 400
-    assert not config_file(harness).exists()
-    assert harness.commands == []  # Claude Code wasn't looked at
-
     assert check_ai(page.url, "gateway").json() == {"result": "ready", "ai": "gateway"}
     assert welcome(page.url, ai="gateway").status == 200
     assert Config.load(config_file(harness)).llm.backend == "gateway"
+
+
+def test_on_windows_welcome_takes_claude_before_claude_code_is_installed(harness, page, ai,
+                                                                        windows_programs):
+    # No line to paste: Claude's own step installs it.
+    assert check_ai(page.url, "claude").json() == {"result": "not-installed", "ai": "claude"}
+    assert welcome(page.url, ai="claude").status == 200
+    assert Config.load(config_file(harness)).llm.backend == "claude"
+    assert call(page.url, "api/chat", method="POST", body={"ai": "claude"}).status == 400
 
 
 def test_on_windows_chatgpt_has_no_chat_to_continue_in_since_the_skills_are_macos_only(
@@ -4658,10 +4768,26 @@ def test_on_windows_chatgpt_s_step_installs_codex_and_welcome_doesn_t_wait_for_i
     assert 'getElementById("codex-download").hidden = windows ||' in script
     # Welcome goes on with ChatGPT picked before Codex is installed or signed in.
     goes_on = script.split("function welcomeGoesOn(", 1)[1].split("\n}\n", 1)[0]
-    assert 'page.system === "windows" && name === "codex"' in goes_on
+    assert 'page.system === "windows" && ["codex", "claude"].includes(name)' in goes_on
     assert '["not-installed", "signed-out"]' in goes_on
     for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
         for key in ("ai.codex.not-installed", "ai.codex.signed-out", "codex.not-installed"):
+            assert f"{key}.windows" in table, (language, key)
+
+
+def test_on_windows_claude_s_step_installs_claude_code_and_welcome_doesn_t_wait_for_it():
+    script = (PAGE_DIR / "page.js").read_text()
+
+    # Sign in to Claude, and Try again, install Claude Code if need be and open its window:
+    # Windows has no pseudo-terminal to read the token from.
+    start = script.split("function startClaude(", 1)[1].split("\n}\n", 1)[0]
+    assert 'page.system === "windows" ? installClaude() : signInClaude()' in start
+    assert 'post("api/claude/install", {})' in script
+    goes_on = script.split("function welcomeGoesOn(", 1)[1].split("\n}\n", 1)[0]
+    assert '["codex", "claude"].includes(name)' in goes_on
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        for key in ("ai.claude.not-installed", "ai.claude.signed-out", "claude.explain",
+                    "claude.window.opened"):
             assert f"{key}.windows" in table, (language, key)
 
 
@@ -4684,10 +4810,11 @@ def test_on_windows_the_steps_say_where_secrets_go_and_what_to_paste_into():
 
     store = {"en": "Credential Manager", "fi": "Windowsin tunnistetietojen hallin", "zh": "凭据管理器"}
     for language, table in text.items():
-        for key in ("gmail.saved", "gateway.saved", "gateway.explain"):
+        for key in ("gmail.saved", "gateway.saved", "gateway.explain", "claude.saved"):
             assert store[language] in on_windows(table, key), (language, key)
         for key in ("finish.missing.installed", "finish.stopped.gateway", "wilma.ready.no-node",
-                    "error.closed", "wilma.terminal"):
+                    "error.closed", "wilma.terminal", "finish.stopped.claude", "claude.paste",
+                    "claude.window.opened", "claude.terminal"):
             assert "PowerShell" in on_windows(table, key), (language, key)
         # Waking the PC is the family's own setting.
         for key in ("finish.wake.not-set", "finish.missing.wake"):

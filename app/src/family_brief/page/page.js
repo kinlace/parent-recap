@@ -172,7 +172,7 @@ function pick(name, value) {
   document.querySelector(`input[name="${name}"][value="${value}"]`).checked = true;
 }
 
-// Only the AIs the server offers on this system: on Windows, the gateway and ChatGPT for now.
+// Only the AIs the server offers on this system.
 function offerAIs(name) {
   for (const input of document.querySelectorAll(`input[name="${name}"]`)) {
     input.closest("label").hidden = !page.ais.includes(input.value);
@@ -247,10 +247,10 @@ async function checkAI() {
   }
 }
 
-// Welcome goes on once the AI picked is ready. On Windows, ChatGPT's own step after it installs
-// Codex and signs it in, so Welcome needn't wait for those.
+// Welcome goes on once the AI picked is ready. On Windows, ChatGPT's and Claude's own steps after
+// it install Codex or Claude Code and sign in, so Welcome needn't wait for those.
 function welcomeGoesOn(name, result) {
-  return result === "ready" || (page.system === "windows" && name === "codex"
+  return result === "ready" || (page.system === "windows" && ["codex", "claude"].includes(name)
     && ["not-installed", "signed-out"].includes(result));
 }
 
@@ -758,8 +758,10 @@ const aiStep = { shown: false, timer: null };
 const CLAUDE_TERMINAL = ["claude.sign-in-failed", "claude.timeout", "claude.window.no-terminal"];
 const CLAUDE_AGAIN = [
   "claude.not-installed", "claude.test-call-failed", "claude.keychain-failed",
-  "claude.window.not-installed",
+  "claude.window.not-installed", "claude.install-failed",
 ];
+// What checking Claude's install on Windows can say: still installing, or how it ended.
+const CLAUDE_INSTALL = ["installing", "install-failed", "opened", "no-terminal"];
 // Codex's results after which the page checks again by itself.
 const CODEX_AGAIN = [
   "codex.waiting", "codex.not-installed", "codex.check-failed", "codex.installing",
@@ -769,8 +771,8 @@ const CODEX_AGAIN = [
 const CODEX_INSTALL = ["codex.not-installed", "codex.install-failed"];
 
 function renderAI() {
-  document.getElementById("claude-start").addEventListener("click", signInClaude);
-  document.getElementById("claude-again").addEventListener("click", signInClaude);
+  document.getElementById("claude-start").addEventListener("click", startClaude);
+  document.getElementById("claude-again").addEventListener("click", startClaude);
   document.getElementById("claude-terminal").addEventListener("click", openClaudeWindow);
   document.getElementById("claude-form").addEventListener("submit", saveClaudeToken);
   document.getElementById("codex-login").addEventListener("click", signInCodex);
@@ -787,6 +789,12 @@ function aiDone(out, key) {
   page.progress = out.progress;
   renderSources();
   showSource(key);
+}
+
+// Windows has no pseudo-terminal to read Claude's token from: there the page installs Claude
+// Code if it isn't there, and the family copies the token from its PowerShell window.
+function startClaude() {
+  return page.system === "windows" ? installClaude() : signInClaude();
 }
 
 async function signInClaude() {
@@ -808,11 +816,13 @@ async function checkClaude() {
 }
 
 // Picks up a sign-in still running from before the page was reloaded or left, and only that:
-// how an earlier one ended is old news.
+// how an earlier one ended is old news. On Windows, an install of Claude Code, or the window it
+// opened once it was done, whose token the field takes.
 async function resumeClaude() {
   try {
     const out = await post("api/claude/check", {});
     if (out.result === "waiting") claudeResult(out);
+    if (CLAUDE_INSTALL.includes(out.result)) claudeInstallResult(out);
   } catch (e) {
     failed(e);
   }
@@ -828,12 +838,43 @@ function claudeResult(out) {
 async function openClaudeWindow() {
   clearError();
   try {
-    const out = await post("api/claude/terminal", {});
-    if (out.result === "opened") document.getElementById("claude-form").hidden = false;
-    showSource("claude.window." + out.result, { install: out.install });
+    claudeWindowResult(await post("api/claude/terminal", {}));
   } catch (e) {
     failed(e);
   }
+}
+
+function claudeWindowResult(out) {
+  if (out.result === "opened") document.getElementById("claude-form").hidden = false;
+  showSource("claude.window." + out.result, { install: out.install });
+}
+
+// On Windows: installs Claude Code if it isn't there, then opens its sign-in window by itself.
+async function installClaude() {
+  clearError();
+  clearTimeout(aiStep.timer);
+  try {
+    claudeInstallResult(await post("api/claude/install", {}));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+async function checkClaudeInstall() {
+  try {
+    claudeInstallResult(await post("api/claude/check", {}));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+function claudeInstallResult(out) {
+  clearTimeout(aiStep.timer);
+  if (out.result === "installing") aiStep.timer = setTimeout(checkClaudeInstall, AI_MS);
+  if (["installing", "install-failed"].includes(out.result)) {
+    return showSource("claude." + out.result);
+  }
+  if (out.result !== "no-sign-in") claudeWindowResult(out);
 }
 
 async function saveClaudeToken(event) {

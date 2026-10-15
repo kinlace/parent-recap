@@ -50,8 +50,8 @@ AI_CHECK_SECONDS = 20
 # the maintainers' gateway (ADR 0014), and what checking one says. The gateway needs nothing on
 # the Mac, so it's always ready, and it has no chat to carry on in.
 AIS = ("claude", "codex", "gateway")
-# Claude comes to Windows in its own ticket (#317). The gateway stays Welcome's default there.
-WINDOWS_AIS = ("gateway", "codex")
+# The gateway stays Welcome's default on Windows.
+WINDOWS_AIS = ("gateway", "codex", "claude")
 AI_RESULTS = ("ready", "not-installed", "signed-out", "check-failed")
 # The Sources a family can skip and add later through manage. Wilma too, for a school without it.
 SKIPPABLE = ("wilma", "whatsapp", "myclub")
@@ -73,9 +73,11 @@ WILMA_WINDOW_RESULTS = ("waiting", "not-signed-in", "sign-in-failed", "timeout",
 WILMA_WINDOW_SECONDS = 600
 # Claude's token for the evening Brief: while the family authorizes in the browser, and how the
 # sign-in, or the token pasted after the Terminal window, ended. `sign-in-failed` and `timeout`
-# offer the Terminal window, whose token the page takes in a field.
+# offer the Terminal window, whose token the page takes in a field. On Windows, which signs in
+# only in that window, the page installs Claude Code first: `installing`, and `install-failed` once.
 CLAUDE_RESULTS = ("waiting", "saved", "not-installed", "sign-in-failed", "timeout", "not-a-token",
-                  "test-call-failed", "keychain-not-reachable", "keychain-failed")
+                  "test-call-failed", "keychain-not-reachable", "keychain-failed", "installing",
+                  "install-failed")
 CLAUDE_WINDOW_RESULTS = ("opened", "no-terminal", "not-installed")
 CLAUDE_SIGN_IN_SECONDS = 600
 # Codex's ChatGPT sign-in: signed in, signed out, `waiting` while its sign-in is open in the
@@ -236,6 +238,9 @@ class SetupServer:
         self._ai = threading.Lock()  # one AI sign-in at a time
         self._claude: dict[str, Any] | None = None  # Claude's sign-in's, once started
         self._codex: subprocess.Popen | None = None  # Codex's sign-in, once started
+        # Claude Code's install on Windows, once started: `installing`, then `install-failed`, or
+        # how opening its sign-in window went, which the next check says once.
+        self._claude_install: str | None = None
         # The Codex CLI's install on Windows, once started: `installing`, then `installed` or
         # `install-failed`, which the next check says once.
         self._codex_install: str | None = None
@@ -340,9 +345,8 @@ class SetupServer:
             return HTTPStatus.OK, {"result": "ready", "ai": name}
         program = self._ai_program(name)
         if program is None:
-            install = summarize.CLAUDE_INSTALL if name == "claude" else None
-            return HTTPStatus.OK, {"result": "not-installed", "ai": name,
-                                   **({"install": install} if install else {})}
+            return HTTPStatus.OK, {**_claude_missing(), "ai": name} if name == "claude" else \
+                {"result": "not-installed", "ai": name}
         return HTTPStatus.OK, {"result": _ai_status(program, name), "ai": name}
 
     def _ai_program(self, name: str) -> str | None:
@@ -356,12 +360,17 @@ class SetupServer:
     def sign_in_claude(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Starts `claude setup-token` in a pseudo-terminal, which opens Anthropic's Authorize
         page in the browser, and waits for its token in the background: the page asks how it
-        went with `check_claude`. The family copies nothing."""
+        went with `check_claude`. The family copies nothing. Windows has no pseudo-terminal for
+        it, so there the family signs in in the window `open_claude_window` opens."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        if sys.platform == "win32":
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "On Windows, Claude signs in in a PowerShell window.",
+                errors=["answers: the page reads Claude's sign-in only on a Mac"])
         program = summarize.find_claude()
         if program is None:
-            return HTTPStatus.OK, {"result": "not-installed", "install": summarize.CLAUDE_INSTALL}
+            return HTTPStatus.OK, _claude_missing()
         with self._ai:
             if self._claude is not None and self._claude["result"] is None:
                 return HTTPStatus.OK, {"result": "waiting"}  # already signing in
@@ -372,9 +381,17 @@ class SetupServer:
         return HTTPStatus.OK, {"result": "waiting"}
 
     def check_claude(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
-        """How Claude's sign-in went: `waiting` while the family is still authorizing."""
+        """How Claude's sign-in went: `waiting` while the family is still authorizing. On
+        Windows, while the page installs Claude Code, `installing`, then once how it ended:
+        `install-failed`, or how opening its window went, as `open_claude_window` says it."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        with self._ai:
+            install = self._claude_install
+            if install not in (None, "installing"):
+                self._claude_install = None  # said once, and the family can start it again
+        if install is not None:
+            return HTTPStatus.OK, {"result": install}
         sign_in = self._claude
         if sign_in is None:
             return HTTPStatus.OK, {"result": "no-sign-in"}
@@ -393,16 +410,43 @@ class SetupServer:
 
     def open_claude_window(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Opens `claude setup-token` in a Terminal window, as the chat setup does, for when the
-        page's own sign-in fails: the family copies the token it shows into the page's field."""
+        page's own sign-in fails: the family copies the token it shows into the page's field.
+        On Windows, a PowerShell window, which is the only way the page signs in there."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
         program = summarize.find_claude()
         if program is None:
-            return HTTPStatus.OK, {"result": "not-installed", "install": summarize.CLAUDE_INSTALL}
-        opened = desktop.open_terminal(
-            setup_steps.setup_token_window(program, "the field on the setup page"), {},
-            setup_steps.CLAUDE_WINDOW)
-        return HTTPStatus.OK, {"result": "opened" if opened else "no-terminal"}
+            return HTTPStatus.OK, _claude_missing()
+        return HTTPStatus.OK, {"result": _open_claude_window(program)}
+
+    def install_claude(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """On Windows, installs Claude Code with its own Windows installer in the background, then
+        opens its sign-in window as `open_claude_window` does. The page checks with
+        `check_claude`. On a Mac the family pastes the install line into Terminal instead."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        if sys.platform != "win32":
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "On a Mac, Claude Code installs from Terminal.",
+                errors=["answers: the page installs Claude Code only on Windows"])
+        if summarize.find_claude() is not None:
+            return self.open_claude_window({})
+        with self._ai:
+            if self._claude_install != "installing":
+                self._claude_install = "installing"
+                threading.Thread(target=self._installing_claude, daemon=True).start()
+        return HTTPStatus.OK, {"result": "installing"}
+
+    def _installing_claude(self) -> None:
+        result = "install-failed"
+        try:
+            program = summarize.find_claude() if setup_ai.install_claude() else None
+            if program is not None:
+                result = _open_claude_window(program)
+        except Exception:  # never leave the page installing
+            pass
+        with self._ai:
+            self._claude_install = result
 
     def save_claude_token(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Tests the token pasted into the page's own field and stores it, as the chat's Claude
@@ -413,7 +457,7 @@ class SetupServer:
                 "invalid-answers", "Paste the token.", errors=["token: should be text"])
         program = summarize.find_claude()
         if program is None:
-            return HTTPStatus.OK, {"result": "not-installed", "install": summarize.CLAUDE_INSTALL}
+            return HTTPStatus.OK, _claude_missing()
         result, extra = setup_steps.claude_token_sign_in(program, raw["token"])
         if result != "saved":
             return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
@@ -1543,6 +1587,23 @@ def _label(term: str, kid: Kid) -> str | None:
     return term if term in kid.activities else None
 
 
+def _claude_missing() -> dict[str, Any]:
+    """What the page says without Claude Code: on a Mac, with the line that installs it. On
+    Windows the page installs it itself."""
+    if sys.platform == "win32":
+        return {"result": "not-installed"}
+    return {"result": "not-installed", "install": summarize.claude_install()}
+
+
+def _open_claude_window(program: str) -> str:
+    """Opens `claude setup-token` in a window, whose token the family pastes into the page:
+    `opened`, or `no-terminal`."""
+    opened = desktop.open_terminal(
+        setup_steps.setup_token_window(program, "the field on the setup page"), {},
+        setup_steps.CLAUDE_WINDOW)
+    return "opened" if opened else "no-terminal"
+
+
 def _ai_status(program: str, name: str) -> str:
     """`ready`, `signed-out` or `check-failed`, from the AI's own status check."""
     status = ["auth", "status"] if name == "claude" else ["login", "status"]
@@ -1669,6 +1730,7 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/claude/token": setup.save_claude_token,
                    "api/codex": setup.check_codex, "api/codex/login": setup.sign_in_codex,
                    "api/codex/install": setup.install_codex,
+                   "api/claude/install": setup.install_claude,
                    "api/gateway": setup.save_gateway_key,
                    "api/whatsapp/check": setup.check_whatsapp,
                    "api/whatsapp/open": setup.open_full_disk_access,
