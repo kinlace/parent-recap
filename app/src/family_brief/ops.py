@@ -281,16 +281,28 @@ def _codex_signed_out(codex: str) -> bool:
 
 
 def _check_claude(add) -> None:
-    from .summarize import CLAUDE_INSTALL, _claude_env, claude_test_call, find_claude
+    from .summarize import _claude_env, claude_install, claude_test_call, find_claude
+    windows = sys.platform == "win32"
     claude = find_claude()
+    if not claude and windows:
+        add(FAIL, "Claude", "claude command not found on PATH or in %USERPROFILE%\\.local\\bin "
+            "(install Claude Code on the setup page, or in PowerShell with: "
+            f"{claude_install()})")
+        return
     if not claude:
         add(FAIL, "Claude", "claude command not found on PATH, in ~/.local/bin or the other usual "
-            f"folders, or by your login shell (install Claude Code with: {CLAUDE_INSTALL})")
+            f"folders, or by your login shell (install Claude Code with: {claude_install()})")
         return
     from .setup_steps import PLAIN_TERMINAL
     from .system import secrets
     env, label = _claude_env()
     where = "" if secrets.reachable() else f", {PLAIN_TERMINAL}"
+    if label == "inherited" and windows:
+        # `setup claude`'s dialog is the Mac's: on Windows the token is pasted into the page.
+        add(FAIL, "Claude", "no Claude token in Credential Manager, so the evening Brief can't "
+            "call Claude (sign in to Claude on the setup page: paste the install line into "
+            "PowerShell again)")
+        return
     if label == "inherited":
         # This shell's own sign-in can work while the evening job, which has none, can't.
         add(FAIL, "Claude", "no claude-oauth-token in the Keychain, so the evening Brief can't "

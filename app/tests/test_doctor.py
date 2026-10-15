@@ -152,6 +152,52 @@ def test_on_windows_doctor_calls_a_signed_in_codex(harness, codex_on_windows, ca
         [os.path.normcase(codex_on_windows)]
 
 
+@pytest.fixture
+def claude_on_windows(harness, nothing_loaded, windows_programs) -> Path:
+    """A Household on Claude, on a PC where claude.exe would be where Claude Code's own Windows
+    installer puts it, which the test puts there or not. Returns where."""
+    harness.config["llm"]["backend"] = "claude"
+    harness.model_reply = "OK"
+    return harness.home / ".local" / "bin" / "claude.exe"
+
+
+def claude_line(capsys) -> str:
+    return next(l for l in capsys.readouterr().out.splitlines() if "Claude:" in l)
+
+
+def test_on_windows_doctor_says_claude_code_is_missing_and_how_to_install_it(
+        harness, claude_on_windows, capsys):
+    harness.cli("doctor")
+
+    line = claude_line(capsys)
+    assert line.startswith(ops.FAIL) and "the setup page" in line
+    assert "irm https://claude.ai/install.ps1 | iex" in line
+    assert "curl" not in line and "login shell" not in line
+
+
+def test_on_windows_doctor_says_the_claude_token_is_missing_and_where_to_store_it(
+        harness, claude_on_windows, capsys):
+    program(claude_on_windows.parent, claude_on_windows.name)
+
+    harness.cli("doctor")
+
+    line = claude_line(capsys)
+    assert line.startswith(ops.FAIL) and "Credential Manager" in line and "setup page" in line
+    assert "Keychain" not in line and "setup claude" not in line
+    assert not harness.model_calls  # the evening Brief has no sign-in to call Claude with
+
+
+def test_on_windows_doctor_calls_claude_with_the_stored_token(harness, claude_on_windows, capsys):
+    program(claude_on_windows.parent, claude_on_windows.name)
+    harness.secrets["claude-oauth-token"] = "sk-ant-oat01-Abc_def-123456789"
+
+    harness.cli("doctor")
+
+    assert claude_line(capsys).startswith(ops.OK)
+    assert [os.path.normcase(c.argv[0]) for c in harness.model_calls] == \
+        [os.path.normcase(claude_on_windows)]
+
+
 def test_doctor_names_an_unreadable_config_in_english(harness, capsys):
     harness.config = {"kids": "not a list"}
 

@@ -364,6 +364,14 @@ def claude_token_env(token: str) -> dict[str, str]:
 # Claude Code's native installer: it installs into ~/.local/bin and updates itself, where a
 # global npm install can leave it unable to.
 CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
+# Its Windows twin, for PowerShell, which puts claude.exe in %USERPROFILE%\.local\bin, without
+# admin (https://code.claude.com/docs/en/setup).
+CLAUDE_INSTALL_WINDOWS = "irm https://claude.ai/install.ps1 | iex"
+
+
+def claude_install() -> str:
+    """The line that installs Claude Code on this system."""
+    return CLAUDE_INSTALL_WINDOWS if sys.platform == "win32" else CLAUDE_INSTALL
 
 
 def native_claude_dir() -> Path:

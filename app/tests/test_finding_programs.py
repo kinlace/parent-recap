@@ -129,6 +129,22 @@ def test_on_windows_the_evening_job_runs_the_codex_openai_s_installer_put_in_pla
     assert json.loads(tools.remembered_path().read_text()) == {"codex": str(codex)}
 
 
+@pytest.mark.windows  # the run itself, with Windows' own run lock and Credential Manager
+def test_on_windows_the_evening_job_runs_the_claude_its_own_installer_put_in_place(
+        harness, terminal_path, windows_programs, monkeypatch):
+    claude = program(harness.home / ".local" / "bin", "claude.exe")
+    harness.secrets["claude-oauth-token"] = TOKEN
+
+    the_evening_job(harness, monkeypatch)
+    # Task Scheduler's PATH, which the installer's folder isn't on.
+    monkeypatch.setenv("PATH", str(harness.home / "Windows" / "System32"))
+    assert harness.run() == 0
+    [call] = harness.model_calls
+    assert call.argv[0] == str(claude) and call.env["CLAUDE_CODE_OAUTH_TOKEN"] == TOKEN
+    assert json.loads(tools.remembered_path().read_text()) == {"claude": str(claude)}
+
+
+@pytest.mark.macos  # Windows' own line is in test_doctor.py
 def test_without_claude_anywhere_doctor_says_how_to_install_it(harness, terminal_path,
                                                                login_shell, capsys):
     login_shell(terminal_path)  # the login shell has no claude either
