@@ -62,12 +62,13 @@ def _runnable(path: str) -> bool:
 def _in_common_folders(name: str) -> str | None:
     folders = [str(Path.home() / d) for d in HOME_DIRS]
     if sys.platform == "win32":
-        # npm's global folder, where it puts a `.cmd` for each program, and a script for Git Bash
-        # without an extension, which Windows can't run. Then where OpenAI's own installer puts
-        # codex.exe, which goes on the user's PATH only in windows opened after it ran.
+        # Where OpenAI's own installer puts codex.exe, which goes on the user's PATH only in
+        # windows opened after it ran: before an older codex npm may have installed. Then npm's
+        # global folder, where it puts a `.cmd` for each program, and a script for Git Bash
+        # without an extension, which Windows can't run.
         appdata, local = os.environ.get("APPDATA"), os.environ.get("LOCALAPPDATA")
-        folders += [os.path.join(appdata, "npm")] if appdata else []
         folders += [os.path.join(local, *WINDOWS_CODEX_DIR)] if local else []
+        folders += [os.path.join(appdata, "npm")] if appdata else []
         names = [name + ext for ext in WINDOWS_EXTENSIONS]
     else:
         user = os.environ.get("USER", "")

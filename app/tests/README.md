@@ -14,7 +14,8 @@ adapters, macOS-only features (WhatsApp for Mac and its Full Disk Access, the Pa
 programs by bare name, shell-script stand-ins, the pseudo-terminal windows). Every other test runs
 on Windows too. When a Windows ticket makes one of these work there, it drops the mark. The
 `windows_programs` fixture finds programs the way Windows does, on any system, so the setup page's
-Codex install and doctor's Codex check are tested on the Mac too. A test that needs Windows is marked `@pytest.mark.windows` the same way: the Credential Manager adapter
+Codex install and doctor's Codex check are tested on the Mac too. A test that needs Windows is
+marked `@pytest.mark.windows` the same way: the Credential Manager adapter
 (`test_secrets_windows.py`), a Brief run by hand with the Gmail App Password and the Gateway Key in
 Credential Manager (`test_brief_by_hand_windows.py`), Windows' own layout for programs and for
 Parent Recap's own Node, the desktop adapter and the Wilma sign-in window, and the Task Scheduler
