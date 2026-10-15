@@ -9,6 +9,7 @@ from .. import secret_dialog
 from . import wake  # its names are read at call time: wake imports this module first
 
 MANUAL_CANCEL = "sudo pmset repeat cancel"
+OWN_SCHEDULE = True  # a pmset repeat schedule, which uninstall cancels
 
 
 def _pmset(*args: str) -> str:

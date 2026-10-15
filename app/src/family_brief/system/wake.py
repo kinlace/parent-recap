@@ -63,6 +63,12 @@ def manual_step(hour: int, minute: int) -> str | None:
     return _adapter.manual_step(hour, minute)
 
 
+def has_own_schedule() -> bool:
+    """Whether setup's daily wake is a schedule of its own, which uninstall cancels: not on
+    Windows, where the job's task wakes the PC and "Allow wake timers" is the family's own."""
+    return _adapter.OWN_SCHEDULE
+
+
 def manual_cancel() -> str:
     """The command the family runs in a terminal to cancel the computer's repeating wakes."""
     return _adapter.MANUAL_CANCEL

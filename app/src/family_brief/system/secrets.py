@@ -47,6 +47,11 @@ def where(name: str) -> str:
     return _adapter.where(name)
 
 
+def deleting_asks() -> str:
+    """What the store asks the family when one of its secrets is deleted; empty when nothing."""
+    return _adapter.DELETING_ASKS
+
+
 def reachable() -> bool:
     """Whether the store may be written from here: False in tmux or over SSH on macOS, where
     macOS shows no prompt. Windows says so only when a secret is written."""

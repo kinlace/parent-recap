@@ -15,6 +15,7 @@ ALLOW = ("open Control Panel › Hardware and Sound › Power Options › Change
 # Nothing to cancel: the wake goes with the evening job's tasks, and Allow wake timers stays as
 # the family set it.
 MANUAL_CANCEL = "nothing: Parent Recap's wake-up goes away with its scheduled tasks"
+OWN_SCHEDULE = False
 ENABLE = 1  # Allow wake timers' Enable; 0 is Disable, 2 Important Wake Timers Only
 
 

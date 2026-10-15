@@ -16,6 +16,7 @@ from typing import Any
 from .secrets_error import SecretsError
 
 STORE = "Credential Manager"
+DELETING_ASKS = ""  # Windows deletes a credential without asking
 TARGET = "Parent Recap/{name}"
 CRED_TYPE_GENERIC = 1
 # Kept on this PC for this Windows user, across sign-ins, and never roamed to another PC.

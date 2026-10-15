@@ -27,6 +27,8 @@ from family_brief.system.secrets_error import SecretsError
 class FakeSecrets(dict):
     """The secrets store: name -> secret."""
 
+    DELETING_ASKS = "the store may ask you to allow deleting it"  # "": as on Windows
+
     def __init__(self) -> None:
         super().__init__()
         # Names whose secret the store asks the family about before it's read, as an item an
@@ -169,6 +171,11 @@ class FakeWake:
         # False: as on Windows, where only the family's own setting turns the wake on, so `set`
         # asks nobody and says not-set until it's in `wakes`.
         self.settable = True
+
+    @property
+    def OWN_SCHEDULE(self) -> bool:  # noqa: N802  the adapters' constant
+        # As on Windows, the wake rides on the job's task, with no schedule of its own.
+        return self.settable
 
     @staticmethod
     def line(hour: int, minute: int) -> str:

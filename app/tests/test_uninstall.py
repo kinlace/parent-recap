@@ -21,7 +21,7 @@ from test_codex_install import install_codex_skills
 from family_brief import install_record, run_lock, setup_wilma, tools, whatsapp_python
 from family_brief.collectors import gmail
 from family_brief.config import Config
-from family_brief.system import jobs, wake
+from family_brief.system import jobs, wake, windows_only
 from family_brief.system.secrets_error import SecretsError
 
 OTHER_WAKE = "wake every weekday at 07:00"
@@ -378,6 +378,102 @@ def test_an_archive_in_a_shared_folder_takes_only_parent_recaps_files(harness, m
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
     assert leftovers(harness.home) == ["Documents", "Documents/logs", "Documents/logs/my-diary.txt"]
+
+
+# ── on Windows
+
+
+def as_windows(harness, monkeypatch) -> list[tuple[list[Path], list[Path]]]:
+    """From here on the system is Windows, whose Credential Manager asks nobody and whose wake is
+    the family's own "Allow wake timers". Returns what uninstall hands over to go once it has
+    ended, each time: the paths, then the folders to remove if empty."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    harness.wake.settable = False
+    harness.secrets.DELETING_ASKS = ""
+    handed: list[tuple[list[Path], list[Path]]] = []
+    monkeypatch.setattr(windows_only, "remove_after_exit",
+                        lambda paths, folders: handed.append((list(paths), list(folders))))
+    return handed
+
+
+def test_on_windows_the_program_and_its_python_go_once_uninstall_has_ended(harness, mac,
+                                                                          monkeypatch, capsys):
+    set_up(harness, mac, monkeypatch)
+    handed = as_windows(harness, monkeypatch)
+    capsys.readouterr()
+    app, runtime = harness.home / "ParentRecap" / "app", harness.home / "ParentRecap" / "runtime"
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    [(paths, folders)] = handed
+    assert paths == [app, runtime]
+    assert harness.home / "ParentRecap" in folders
+    # Windows can't remove them while uninstall runs from them; all the rest is gone already.
+    assert app.exists() and runtime.exists()
+    assert [r for r in leftovers(harness.home)
+            if not r.startswith(("ParentRecap/app", "ParentRecap/runtime"))] == ["ParentRecap"]
+    assert harness.secrets == {} and harness.jobs.found() == []
+    out = capsys.readouterr().out
+    assert "The program goes once uninstall has ended: ~/ParentRecap/app" in out
+    assert "this PC" in out and "Mac" not in out
+    assert "Full Disk Access" not in out and "macOS" not in out
+
+
+def test_on_windows_a_program_that_couldn_t_be_handed_over_is_reported(harness, mac, monkeypatch,
+                                                                       capsys):
+    set_up(harness, mac, monkeypatch)
+    as_windows(harness, monkeypatch)
+
+    def refused(*_a: Any) -> None:
+        raise OSError("PowerShell didn't start")
+    monkeypatch.setattr(windows_only, "remove_after_exit", refused)
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 1
+
+    failed = capsys.readouterr().out.split("❌", 1)[1]
+    assert "~/ParentRecap/app" in failed and "PowerShell didn't start" in failed
+    assert install_record.exists()  # so the next try finds them
+
+
+def test_on_windows_allow_wake_timers_is_the_family_s_own_and_stays(harness, mac, monkeypatch,
+                                                                    capsys):
+    set_up(harness, mac, monkeypatch)
+    as_windows(harness, monkeypatch)
+    allowed = harness.wake.wakes[0]  # the wake on, as the family's power plan says it
+
+    assert uninstall(harness) == 0
+    listing = capsys.readouterr().out
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert allowed not in listing.split("Left as it is:")[0]
+    assert allowed in listing.split("Left as it is:")[1]
+    assert harness.wake.wakes == [allowed] and harness.wake.asked == []
+
+
+def test_on_windows_the_wilma_cli_npm_installed_is_recognised(harness, mac, monkeypatch):
+    set_up(harness, mac, monkeypatch)
+    as_windows(harness, monkeypatch)
+    # What `npm install -g --prefix` makes on Windows: the package, and npm's three wrappers.
+    folder = fake_node.wilma_folder(harness.home)
+    (folder / "node_modules" / "@wilm-ai" / "wilma-cli").mkdir(parents=True)
+    for name in ("wilma", "wilma.cmd", "wilma.ps1"):
+        (folder / name).write_text("")
+    install_record.add("wilma-cli", str(folder))
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert not folder.exists()
+
+
+def test_on_windows_credential_manager_items_are_listed_without_a_question(harness, mac,
+                                                                         monkeypatch, capsys):
+    set_up(harness, mac, monkeypatch)
+    as_windows(harness, monkeypatch)
+
+    assert uninstall(harness) == 0
+
+    [line] = [l for l in capsys.readouterr().out.splitlines() if "claude-oauth-token" in l]
+    assert line.endswith("claude-oauth-token")
 
 
 # ── the wilma CLI and Claude Code's plugin

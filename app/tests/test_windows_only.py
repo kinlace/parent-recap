@@ -1,13 +1,15 @@
 """What only Windows checks for the evening run (ADR 0021): that "Allow wake timers" lets the task
 wake the PC, and that Windows signs the family back in after an update restart. `doctor` reports
 both beside the tasks, and `schedule install` says how the wake stands, each with a fix in plain
-words.
+words. And uninstall's last step, which removes a program once it has stopped running.
 
 The jobs, the wake and the sign-in setting are the harness's fakes, and the system is said to be
 Windows; reading the sign-in setting is checked with its registry faked, and on Windows for real."""
 from __future__ import annotations
 
+import subprocess
 import sys
+import time
 
 import pytest
 
@@ -154,3 +156,27 @@ def test_a_policy_that_turns_it_off_for_the_pc_wins(registry):
 def test_this_pcs_own_setting_is_read():
     assert windows_only.signs_back_in_after_update() in (True, False, None)
     assert windows_only._sid().startswith("S-1-5-")
+
+
+@pytest.mark.windows
+def test_a_program_s_folder_goes_once_the_program_running_from_it_has_ended(tmp_path):
+    own = tmp_path / "ParentRecap"
+    program, runtime = own / "app", own / "runtime"
+    for folder in (program, runtime):
+        folder.mkdir(parents=True)
+    held = program / "held.txt"
+    held.write_text("")
+    # Holds a file open, as Windows holds a running program's files, for a few seconds.
+    running = subprocess.Popen([sys.executable, "-c",
+                                f"import time; f = open({str(held)!r}); time.sleep(4)"])
+    time.sleep(1)
+
+    windows_only.remove_after_exit([program, runtime], [own], pid=running.pid)
+
+    time.sleep(1)
+    assert held.exists()  # not while it runs
+    running.wait()
+    deadline = time.time() + 60
+    while own.exists() and time.time() < deadline:
+        time.sleep(1)
+    assert not own.exists()

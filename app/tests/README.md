@@ -20,15 +20,18 @@ marked `@pytest.mark.windows` the same way: the Credential Manager adapter
 Credential Manager (`test_brief_by_hand_windows.py`), Windows' own layout for programs and for
 Parent Recap's own Node, the desktop adapter and the Wilma sign-in window, and the Task Scheduler
 tasks, power plan and sign-in setting the evening run needs (`test_jobs_windows.py`,
-`test_wake_windows.py`, `test_windows_only.py`), the program installed with `install.ps1`'s venv
-(`test_setup_status.py`), and the setup page from a fresh install to Finish
-(`test_setup_page_windows.py`). The first two and the last store their secrets in the real
+`test_wake_windows.py`, `test_windows_only.py`), uninstall's removal of a program's folders once
+the program running from them has ended (`test_windows_only.py`), the program installed with
+`install.ps1`'s venv (`test_setup_status.py`), and the setup page from a fresh install to Finish,
+then uninstall leaving none of it (`test_setup_page_windows.py`). The first two and the last store their secrets in the real
 Credential Manager, and the Task Scheduler tests and the last register their tasks in the real
 Task Scheduler, under a test name of their own, and delete them after. `install.ps1` itself runs in CI's
 windows-install job, for real on a clean runner: a failed download, the install that picks up from
 there, the installed program's setup page listing Wilma, Gmail, the AI and MyClub with the
 gateway, ChatGPT and Claude offered, a second install that downloads and installs nothing, and the pinned wilma CLI
-installed from npm with the program's own Node, running `--help` and shipping Wilma's town list.
+installed from npm with the program's own Node, running `--help` and shipping Wilma's town list,
+and, after a config, a Credential Manager secret and the evening tasks, `parent-recap uninstall`
+run from the installed program leaving no task, credential or folder of Parent Recap's.
 `test_install_ps1.py` checks that the line ends on the setup page when pasted, and only installs
 when run as a file.
 

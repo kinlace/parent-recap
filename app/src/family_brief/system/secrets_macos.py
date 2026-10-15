@@ -14,6 +14,7 @@ import subprocess
 from .secrets_error import SecretsError
 
 STORE = "Keychain"
+DELETING_ASKS = "macOS may ask you to allow deleting it"
 SERVICE = "family-brief"
 SECURITY = "/usr/bin/security"
 # How long a read may take. A readable item takes a fraction of a second; one that makes macOS

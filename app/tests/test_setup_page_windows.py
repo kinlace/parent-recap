@@ -5,10 +5,12 @@ Gmail's IMAP server, the gateway, MyClub and the Brief's Sources are the harness
 system the secrets, the evening jobs and the wake are its in-memory fakes too; on Windows a second
 run stores the secrets in the real Credential Manager and registers the evening jobs in the real
 Task Scheduler, under names of the test's own, removed after, and reads the real "Allow wake
-timers". The steps themselves are tested one at a time in test_setup_page.py."""
+timers". After Finish, uninstall removes all of it again. The steps themselves are tested one at a
+time in test_setup_page.py, and uninstall in test_uninstall.py."""
 from __future__ import annotations
 
 import imaplib
+import shutil
 import subprocess
 import sys
 import uuid
@@ -21,7 +23,7 @@ from conftest import REAL_RUN, msg
 from family_brief import gateway
 from family_brief.collectors import myclub
 from family_brief.config import Config
-from family_brief.system import jobs, jobs_windows, secrets, wake, wake_windows
+from family_brief.system import jobs, jobs_windows, secrets, wake, wake_windows, windows_only
 from test_setup_myclub import CALENDAR, LINK as MYCLUB_LINK
 from test_setup_page import (APP_PASSWORD, BRIEF_TEXT, GATEWAY_KEY, TYPED, _listening,  # noqa: F401
                              add_kid, brief_made, call, check_page, clock, config_file,
@@ -30,6 +32,7 @@ from test_setup_page import (APP_PASSWORD, BRIEF_TEXT, GATEWAY_KEY, TYPED, _list
                              start_reading)
 from test_setup_status import install_program
 from test_setup_steps import HeaderImap
+from test_uninstall import leftovers, uninstall
 
 PARENT = "parent@example.com"
 # Windows' own Task Scheduler takes minutes on CI's runner to register, list and check the tasks
@@ -86,9 +89,14 @@ class TaskScheduler:
 
 @pytest.fixture
 def fresh_install(harness, monkeypatch):
-    """A PC the install line has just put Parent Recap on: the program and its record, and no
-    config yet, with the fakes the steps reach."""
+    """A PC the install line has just put Parent Recap on: the program and its record, running as
+    the program's own Python, and no config yet, with the fakes the steps reach."""
     install_program(harness)
+    venv = harness.home / "ParentRecap" / "app" / ".venv"
+    python = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    python.parent.mkdir(parents=True, exist_ok=True)
+    python.write_text("")
+    monkeypatch.setattr(sys, "executable", str(python))
     monkeypatch.setattr(imaplib, "IMAP4_SSL", Gmail(SENDERS))
     monkeypatch.setattr(myclub.requests, "get", Web().get)
     harness.sources["gmail"] = [msg("gmail", "g1", "2026-09-27T09:00:00+03:00", BRIEF_TEXT,
@@ -181,17 +189,39 @@ def assert_finished(harness, out: dict[str, Any]) -> None:
     assert [e.to for e in harness.sent] == [[PARENT]]
 
 
-def test_a_family_sets_up_with_the_gateway_gmail_and_myclub_on_the_page(fresh_install, page):
+def uninstall_leaves_nothing(harness, monkeypatch) -> None:
+    """Uninstall, confirmed with the archive removed, leaves no job, secret or file of Parent
+    Recap's."""
+    def at_once(paths: list, folders: list) -> None:
+        # The test runs from another Python, so there's no waiting for this one to end.
+        for p in paths:
+            shutil.rmtree(p)
+        for f in folders:
+            if f.is_dir() and not any(f.iterdir()):
+                f.rmdir()
+    monkeypatch.setattr(windows_only, "remove_after_exit", at_once)
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert jobs.found() == []
+    assert [n for n in (f"gmail-imap-{PARENT}", gateway.ACCOUNT) if secrets.has(n)] == []
+    assert leftovers(harness.home) == []
+
+
+def test_a_family_sets_up_with_the_gateway_gmail_and_myclub_on_the_page_and_uninstalls(
+        fresh_install, page, monkeypatch):
     out = walk_to_finish(fresh_install, page.url)
 
     assert_finished(fresh_install, out)
     assert fresh_install.secrets[f"gmail-imap-{PARENT}"] == APP_PASSWORD
     assert out["result"] == "done" and out["wake"] == "set"
+    uninstall_leaves_nothing(fresh_install, monkeypatch)
+    assert fresh_install.wake.wakes == []
 
 
 @pytest.mark.windows
 def test_on_windows_setup_stores_its_secrets_in_credential_manager_and_registers_both_tasks(
-        windows_pc, page):
+        windows_pc, page, monkeypatch):
     out = walk_to_finish(windows_pc, page.url)
 
     assert_finished(windows_pc, out)
@@ -200,3 +230,5 @@ def test_on_windows_setup_stores_its_secrets_in_credential_manager_and_registers
     # timers", and none of macOS's dialogs or apps was opened on the way.
     assert out["wake"] in ("already-set", "never-sleeps", "not-set")
     assert not any(c[0] in ("osascript", "open", "security") for c in windows_pc.commands)
+    # And uninstall takes all of it out of Credential Manager and Task Scheduler again.
+    uninstall_leaves_nothing(windows_pc, monkeypatch)

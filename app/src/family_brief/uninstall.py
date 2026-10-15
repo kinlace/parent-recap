@@ -1,4 +1,4 @@
-"""uninstall — remove what setup created on this Mac, after listing it and a confirmation.
+"""uninstall — remove what setup created on this computer, after listing it and a confirmation.
 
 It first looks in every place setup writes to (docs/setup-internals.md lists them) and lists what
 it found. Something there that isn't this install's, such as a launchd job with Parent Recap's
@@ -7,11 +7,15 @@ anything. The archive of past Briefs is kept or removed as the family chooses. T
 sign-in, and Claude Code's plugin and marketplace go only when setup's record has that setup
 installed them. The family's accounts (Gmail, Google, Wilma, WhatsApp, MyClub) are never
 touched: it says where they can take back what they gave Parent Recap.
+
+Windows doesn't let a program be removed while it runs, so there the program and its own Python,
+which uninstall runs from, go from a hidden PowerShell once uninstall has ended.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -28,12 +32,14 @@ from . import (ai_filter_report, chat_install, install_record, ops, run_lock, se
                setup_wilma, summarize, tools, whatsapp_python)
 from .collectors.gmail import keychain_account
 from .config import Config
-from .system import jobs, secrets, wake
+from .system import jobs, macos_only, secrets, wake, windows_only
 
 OK, FAIL = ops.OK, ops.FAIL
-RUNTIMES = re.compile(r"^(python-[\w.+-]+|node-v[\w.-]+|\.incoming)$")  # install.sh's pinned ones
-# What `npm install -g --prefix` makes in the wilma CLI's folder.
-NPM_PREFIX = {"bin", "lib", "etc", "share"}
+# install.sh's and install.ps1's pinned ones, and the folders they download them into.
+RUNTIMES = re.compile(r"^(python-[\w.+-]+|node-v[\w.-]+|\.incoming|\.download)$")
+# What `npm install -g --prefix` makes in the wilma CLI's folder: on Windows the package in
+# node_modules, with the CLI's wrappers beside it.
+NPM_PREFIX = {"bin", "lib", "etc", "share", "node_modules", "wilma", "wilma.cmd", "wilma.ps1"}
 DATED = re.compile(r"^\d{4}-\d{2}-\d{2}\.(md|raw\.json)$")  # an archived Brief and its messages
 MARKETPLACE = "kinlace"
 
@@ -49,9 +55,10 @@ class Item:
     remove: Callable[[], None]
     path: Path | None = None  # the file or folder it is, if it is one
     account: str | None = None  # the Keychain account it is, if it is one
-    asks: str = ""            # what macOS asks the family when it's removed
+    asks: str = ""            # what the system asks the family when it's removed
     archive: bool = False     # removed only when the family chooses not to keep the archive
     last: bool = False        # setup's record: removed only once everything else is gone
+    running: bool = False     # what uninstall runs from: on Windows it goes once uninstall ends
 
 
 def _file(what: str, p: Path, **kw) -> Item:
@@ -69,7 +76,7 @@ class Survey:
 
 
 def register(sub) -> None:
-    p = sub.add_parser("uninstall", help="Remove Parent Recap from this Mac: lists what setup "
+    p = sub.add_parser("uninstall", help="Remove Parent Recap from this computer: lists what setup "
                        "created, and removes it once you confirm")
     p.add_argument("--confirm", action="store_true", help="Remove what it lists (without it, it "
                    "only lists, or asks when run in Terminal)")
@@ -92,7 +99,7 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
             print(f"  • {stop}")
         return 1
     if not s.items:
-        print("\nParent Recap isn't installed on this Mac: there's nothing to remove.")
+        print(f"\nParent Recap isn't installed on this {_computer()}: there's nothing to remove.")
         _print_notes(s)
         return 0
     has_archive = any(i.archive for i in s.items)
@@ -123,7 +130,8 @@ def survey(config: Path) -> Survey:
     home = Path.home()
     cfg = _config(config, s)
     defaults = cfg or Config(kids=[])
-    programs = [Path(p) for p in install_record.entries("program")] or [home / "ParentRecap" / "app"]
+    usual = _usual_folders(home)
+    programs = [Path(p) for p in install_record.entries("program")] or [f / "app" for f in usual]
     archive = defaults.archive.resolved_dir()
 
     _jobs(s, programs)
@@ -132,18 +140,18 @@ def survey(config: Path) -> Survey:
     _wilma(s, programs)
     _claude_code(s)
     _codex_skills(s, home)
-    _plugin_copies(s, home)
+    _plugin_copies(s, usual)
     _archive(s, defaults)
     _config_and_state(s, config, cfg, defaults)
     logs = [*(Path(p) for p in install_record.entries("logs")), *(p.parent / "logs" for p in programs),
-            home / "ParentRecap" / "logs"]
+            *(f / "logs" for f in usual)]
     for d in dict.fromkeys(logs):
         if d.is_dir():
             s.items.append(_file("Logs", d))
     _job_logs(s, archive / "logs")
     for p in programs:
         _program(s, p)  # last of all: this command may be running from it
-    runtimes = [*(Path(p) for p in install_record.entries("runtime")), home / "ParentRecap" / "runtime"]
+    runtimes = [*(Path(p) for p in install_record.entries("runtime")), *(f / "runtime" for f in usual)]
     pythons = [python for d in dict.fromkeys(runtimes) for python in _runtime(s, d)]
     if install_record.exists():
         s.items.append(_file("Setup's record of what it created", install_record.path(), last=True))
@@ -151,13 +159,25 @@ def survey(config: Path) -> Survey:
     for folder in dict.fromkeys([*(p.parent for p in programs), archive, config.parent]):
         _left_in(s, folder, archive)
     # Only the folders setup makes: an archive in a folder like ~/Documents stays, even empty.
-    s.folders = list(dict.fromkeys([home / "ParentRecap" / "weekend_events", home / "ParentRecap",
+    s.folders = list(dict.fromkeys([home / "ParentRecap" / "weekend_events", *usual,
                                     *(p.parent for p in programs), home / ".family"]))
     if cfg and run_lock.is_busy(cfg):
         s.stops.append("A Parent Recap run is going right now. Wait a few minutes for it to "
                        "finish, then run uninstall again.")
     _notes(s, defaults, pythons)
     return s
+
+
+def _computer() -> str:
+    return "PC" if sys.platform == "win32" else "Mac"
+
+
+def _usual_folders(home: Path) -> list[Path]:
+    """Where the install puts the program, for an install whose record is gone: install.ps1's
+    %LOCALAPPDATA%\\ParentRecap on Windows, and install.sh's ~/ParentRecap."""
+    local = os.environ.get("LOCALAPPDATA") if sys.platform == "win32" else None
+    return list(dict.fromkeys([*([Path(local) / "ParentRecap"] if local else []),
+                               home / "ParentRecap"]))
 
 
 def _config(path: Path, s: Survey) -> Config | None:
@@ -199,7 +219,10 @@ def _jobs(s: Survey, programs: list[Path]) -> None:
 
 def _wake(s: Survey, cfg: Config) -> None:
     status = wake.status(cfg.schedule.daily_hour, cfg.schedule.daily_minute)
-    if status.ours and not status.others:
+    if not wake.has_own_schedule():
+        if status.ours:  # the wake goes with the jobs
+            s.left.append(f"{status.ours}: your own power setting, which setup didn't change")
+    elif status.ours and not status.others:
         s.items.append(Item("Wake schedule", status.ours, _cancel_wake,
                             asks="macOS asks for your Mac password to remove it"))
     elif status.ours:
@@ -227,7 +250,7 @@ def _keychain(s: Survey, cfg: Config) -> None:
         if secrets.has(account):  # the secret itself isn't read
             s.items.append(Item(f"{secrets.STORE} item", secrets.where(account),
                                 partial(_delete_secret, account), account=account,
-                                asks="macOS may ask you to allow deleting it"))
+                                asks=secrets.deleting_asks()))
 
 
 def _delete_secret(account: str) -> None:
@@ -310,9 +333,9 @@ def _codex_skills(s: Survey, home: Path) -> None:
                            "Parent Recap's installer didn't write it")
 
 
-def _plugin_copies(s: Survey, home: Path) -> None:
-    usual = home / "ParentRecap" / "plugin"
-    for d in dict.fromkeys([usual, *(Path(p) for p in install_record.entries("plugin"))]):
+def _plugin_copies(s: Survey, usual: list[Path]) -> None:
+    for d in dict.fromkeys([*(f / "plugin" for f in usual),
+                            *(Path(p) for p in install_record.entries("plugin"))]):
         if not d.exists():
             continue
         try:
@@ -386,7 +409,7 @@ def _program(s: Survey, program: Path) -> None:
     except OSError:
         ours = None
     if ours:
-        s.items.append(_file("The program", program))
+        s.items.append(_file("The program", program, running=True))
     else:
         s.stops.append(f"{_show(program)} is where the program goes, but it isn't Parent Recap")
 
@@ -401,7 +424,7 @@ def _runtime(s: Survey, runtime: Path) -> list[Path]:
         s.stops.append(f"{_show(runtime)} is where Parent Recap keeps its own Python and Node, "
                        "but it holds other files too")
         return []
-    s.items.append(_file("Parent Recap's own Python and Node", runtime))
+    s.items.append(_file("Parent Recap's own Python and Node", runtime, running=True))
     return [(p / "bin" / "python3").resolve() for p in inside
             if p.name.startswith("python-") and (p / "bin" / "python3").exists()]
 
@@ -431,13 +454,16 @@ def _notes(s: Survey, cfg: Config, pythons: list[Path]) -> None:
     ours = set(install_record.entries("wilma-profile"))
     if wilma_config.exists() and not (profiles and set(profiles) <= ours):
         folder = _show(wilma_config.parent)
+        remove = (f"in PowerShell: Remove-Item -Recurse -Force {folder}" if sys.platform == "win32"
+                  else f"in Terminal: rm -rf {folder}")
         s.notes.append(f"The wilma CLI keeps a Wilma password, not encrypted, in {folder}, from "
                        "a sign-in setup didn't make, so uninstall leaves it. If you only used it "
-                       f"for Parent Recap, remove it in Terminal: rm -rf {folder}")
-    python = f" ({', '.join(str(p) for p in pythons)})" if pythons else ""
-    s.notes.append(f"If you gave the program's Python{python} access to WhatsApp, remove it by "
-                   "hand from System Settings → Privacy & Security → Full Disk Access: a program "
-                   "can't change that list.")
+                       f"for Parent Recap, remove it {remove}")
+    if macos_only.offers("whatsapp"):
+        python = f" ({', '.join(str(p) for p in pythons)})" if pythons else ""
+        s.notes.append(f"If you gave the program's Python{python} access to WhatsApp, remove it by "
+                       "hand from System Settings → Privacy & Security → Full Disk Access: a "
+                       "program can't change that list.")
     if not any(i.what == "Claude Code plugin" for i in s.items):
         s.notes.append("In Claude Code, remove the plugin itself with /plugin uninstall "
                        f"parent-recap@{MARKETPLACE}, then /plugin marketplace remove {MARKETPLACE}.")
@@ -446,7 +472,7 @@ def _notes(s: Survey, cfg: Config, pythons: list[Path]) -> None:
 # ---------------------------------------------------------------- listing and removing
 
 def _print_survey(s: Survey) -> None:
-    print("Parent Recap on this Mac. Nothing has been removed yet.")
+    print(f"Parent Recap on this {_computer()}. Nothing has been removed yet.")
     if s.items and not install_record.exists():
         print("This install has no record of what setup created (it was set up with 0.4.1 or "
               "older), so these were found in the places setup uses. Check them before you confirm.")
@@ -476,7 +502,27 @@ def _remove(s: Survey, keep_archive: bool) -> int:
         if i.account:
             install_record.add("keychain", i.account)
     failed = 0
+    later: list[Item] = []  # on Windows, what goes once uninstall has ended
+
+    def hand_over() -> None:
+        nonlocal failed
+        try:
+            windows_only.remove_after_exit([i.path for i in later if i.path], s.folders)
+        except OSError as e:
+            failed += len(later)
+            for i in later:
+                print(f"{FAIL} {i.what} not removed ({i.where}): {e}", flush=True)
+        else:
+            for i in later:
+                print(f"{OK} {i.what} goes once uninstall has ended: {i.where}", flush=True)
+        later.clear()
+
     for i in s.items:
+        if i.running and sys.platform == "win32":
+            later.append(i)
+            continue
+        if later:  # before the record, which stays if it fails
+            hand_over()
         if (i.archive and keep_archive) or (i.last and failed):
             continue
         try:
@@ -485,6 +531,8 @@ def _remove(s: Survey, keep_archive: bool) -> int:
         except Exception as e:
             failed += 1
             print(f"{FAIL} {i.what} not removed ({i.where}): {e}", flush=True)
+    if later:
+        hand_over()
     if not failed:  # also when the lines above started the record
         install_record.path().unlink(missing_ok=True)
     for d in sorted(s.folders, key=lambda p: len(p.parts), reverse=True):
@@ -500,7 +548,7 @@ def _remove(s: Survey, keep_archive: bool) -> int:
         print(f"\n{failed} item{'s' if failed != 1 else ''} couldn't be removed; see {FAIL} above. "
               "Once they're done, run uninstall again to finish.")
         return 1
-    print("\nParent Recap is removed from this Mac. Setup can install it again any time.")
+    print(f"\nParent Recap is removed from this {_computer()}. Setup can install it again any time.")
     return 0
 
 
