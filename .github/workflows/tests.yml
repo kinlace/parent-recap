@@ -197,3 +197,36 @@ jobs:
           # The town list the page searches comes with the CLI.
           & $py -c "import sys; from family_brief import setup_wilma; t = setup_wilma.tenants(); print(len(t or [])); sys.exit(not t)"
           if ($LASTEXITCODE -ne 0) { throw "the wilma CLI came without Wilma's town list" }
+      # What setup leaves (a config, a secret in Credential Manager, the evening tasks in Task
+      # Scheduler, the wilma CLI above), then uninstall run from the installed program, as a family
+      # runs it: the program and its Python go once it has ended, from a hidden PowerShell.
+      - name: Uninstall leaves no task, credential or folder of Parent Recap's
+        env:
+          # The runner's output is a pipe, which Python writes in the PC's code page, without the
+          # program's ✅ and ❌, unless in UTF-8 mode. A family's PowerShell window is a console.
+          PYTHONUTF8: "1"
+        run: |
+          $pr = "$env:INSTALLED\app\.venv\Scripts\parent-recap.exe"
+          $py = "$env:INSTALLED\app\.venv\Scripts\python.exe"
+          New-Item -ItemType Directory -Force "$HOME\.family" | Out-Null
+          $config = "kids:`n- name: Mia`ngmail:`n  username: parent@example.com`nemail:`n  to: [parent@example.com]`nweekend_events:`n  enabled: true`n"
+          [IO.File]::WriteAllText("$HOME\.family\config.yaml", $config)
+          & $py -c "from family_brief import gateway, install_record; from family_brief.system import secrets; secrets.put(gateway.ACCOUNT, 'sk-ci-not-a-real-key'); install_record.add('keychain', gateway.ACCOUNT)"
+          if ($LASTEXITCODE -ne 0) { throw "the Gateway Key wasn't stored" }
+          & $pr schedule install
+          if ($LASTEXITCODE -ne 0) { throw 'schedule install failed' }
+          if (@(Get-ScheduledTask -TaskPath '\' | Where-Object { $_.TaskName -like 'Parent Recap *' }).Count -ne 2) { throw 'no tasks to remove' }
+
+          $out = & $pr uninstall --confirm --remove-archive | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $out
+          if ($code -ne 0) { throw "uninstall exited with $code" }
+          if ($out -notmatch 'The program goes once uninstall has ended') { throw 'no word that the program goes once uninstall has ended' }
+          for ($i = 0; $i -lt 90 -and (Test-Path -LiteralPath $env:INSTALLED); $i++) { Start-Sleep -Seconds 1 }
+
+          $left = @(
+            Get-ScheduledTask -TaskPath '\' | Where-Object { $_.TaskName -like 'Parent Recap *' } | ForEach-Object { "task $($_.TaskName)" }
+            cmdkey /list | Select-String 'Parent Recap/' | ForEach-Object { "credential $($_.Line.Trim())" }
+            @($env:INSTALLED, "$HOME\.family", "$HOME\ParentRecap") | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { "folder $_" }
+          )
+          if ($left.Count -ne 0) { throw "left behind: $($left -join '; ')" }
