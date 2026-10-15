@@ -2118,11 +2118,16 @@ def test_the_claude_calls_take_only_what_they_need(harness, page, claude):
     assert not claude.started and not harness.secrets
 
 
+# `login` stays open as the real one does while the sign-in is open in the browser, unless
+# FAKE_CODEX_LOGIN_EXIT ends it at once: one that ended signed out is the page's login-failed.
 FAKE_CODEX = """#!{python}
-import os, pathlib, sys
+import os, pathlib, sys, time
 if sys.argv[1:] == ["login"]:
     (pathlib.Path(os.path.realpath(__file__)).parent / "codex-login.ran").write_text("")
-    sys.exit(int(os.environ.get("FAKE_CODEX_LOGIN_EXIT", "0")))
+    if "FAKE_CODEX_LOGIN_EXIT" in os.environ:
+        sys.exit(int(os.environ["FAKE_CODEX_LOGIN_EXIT"]))
+    time.sleep(30)
+    sys.exit(0)
 sys.exit(2)
 """
 
