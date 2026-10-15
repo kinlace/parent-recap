@@ -4447,3 +4447,124 @@ def test_every_chat_result_is_explained_in_all_three_languages():
         for name, results in setup_server.CHAT_RESULTS.items():
             for result in results:
                 assert table.get(f"chat.{name}.{result}", "").strip(), (language, name, result)
+
+
+# ── Windows (ADR 0019): the same page, without what only macOS has
+
+
+# The words for what only macOS has, in each language: the Mac, its Keychain, Terminal, Finder,
+# System Settings and the Passwords app, and WhatsApp for Mac.
+MACOS_WORDS = {
+    "en": r"\bMac\b|macOS|Keychain|Terminal|Finder|System Settings|Passwords app|WhatsApp",
+    "fi": r"Mac|macOS|avainnippu|Pääte|Terminal|Järjestelmäasetukset|Salasanat-sovellu|WhatsApp",
+    "zh": r"Mac|macOS|钥匙串|终端|访达|系统设置|“密码”应用|WhatsApp",
+}
+# Texts the page shows only on macOS, or only for Claude and Codex, which come to Windows in their
+# own tickets (#316, #317).
+MACOS_ONLY_TEXTS = re.compile(
+    r"^(whatsapp\.|health\.fail\.whatsapp|finish\.fail\.whatsapp|check\.whatsapp|working\.whatsapp"
+    r"|source\.whatsapp|health\.check\.whatsapp|claude\.|codex\.|ai\.claude\.|ai\.codex\.|chat\."
+    r"|keychain\.|welcome\.ai\.(claude|codex)$|finish\.(ai\.current|changes|stopped)\.(claude|codex)$"
+    r"|open\.app-not-opened$|wilma\.passwords$|(health|finish)\.fail\.ai$"
+    r"|finish\.wake\.(set|other-schedule|cancelled|no-dialog)$|finish\.replace$)"
+    r"|\.keychain-not-reachable$")
+
+
+def on_windows(table: dict[str, str], key: str) -> str:
+    """`key`'s text as the page shows it on Windows: its `.windows` twin, where it has one."""
+    return table.get(f"{key}.windows", table[key])
+
+
+def test_the_state_says_which_system_and_ais_the_page_offers(page):
+    state = call(page.url, "api/state").json()
+
+    assert state["system"] == ("windows" if sys.platform == "win32" else "macos")
+    assert state["ais"] == (["gateway"] if sys.platform == "win32" else ["claude", "codex", "gateway"])
+
+
+def test_on_windows_welcome_offers_only_the_gateway_for_now(harness, page, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    state = call(page.url, "api/state").json()
+    assert state["system"] == "windows" and state["ais"] == ["gateway"]
+    assert state["welcome"]["ai"] == "gateway"  # the default, too
+    for name in ("claude", "codex"):
+        assert check_ai(page.url, name).status == 400, name
+        assert welcome(page.url, ai=name).status == 400, name
+        assert call(page.url, "api/chat", method="POST", body={"ai": name}).status == 400, name
+    assert not config_file(harness).exists()
+    assert harness.commands == []  # neither Claude Code nor Codex was looked at
+
+    assert check_ai(page.url, "gateway").json() == {"result": "ready", "ai": "gateway"}
+    assert welcome(page.url, ai="gateway").status == 200
+    assert Config.load(config_file(harness)).llm.backend == "gateway"
+
+
+def test_on_windows_the_page_hides_what_only_macos_or_another_ai_has():
+    script = (PAGE_DIR / "page.js").read_text()
+
+    # Each choice of AI the server doesn't offer, on Welcome and in Change the AI.
+    assert "!page.ais.includes(input.value)" in script
+    assert 'offerAIs("ai");' in script and 'offerAIs("finish-ai");' in script
+    # The Passwords app beside Wilma's fields.
+    assert 'getElementById("wilma-passwords").hidden = page.system !== "macos"' in script
+    # A text's Windows twin wherever there is one.
+    t = script.split("function t(key)", 1)[1].split("\n}\n", 1)[0]
+    assert 'page.system === "windows"' in t and "`${key}.windows`" in t
+
+
+def test_on_windows_no_text_the_page_shows_names_what_only_macos_has():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for key in table:
+            if key.endswith(".windows"):
+                assert key.removesuffix(".windows") in table, (language, key)  # a twin of a text
+                continue
+            if MACOS_ONLY_TEXTS.search(key):
+                continue
+            said = on_windows(table, key)
+            assert not re.search(MACOS_WORDS[language], said), (language, key, said)
+
+
+def test_on_windows_the_steps_say_where_secrets_go_and_what_to_paste_into():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    store = {"en": "Credential Manager", "fi": "Windowsin tunnistetietojen hallin", "zh": "凭据管理器"}
+    for language, table in text.items():
+        for key in ("gmail.saved", "gateway.saved", "gateway.explain"):
+            assert store[language] in on_windows(table, key), (language, key)
+        for key in ("finish.missing.installed", "finish.stopped.gateway", "wilma.ready.no-node",
+                    "error.closed", "wilma.terminal"):
+            assert "PowerShell" in on_windows(table, key), (language, key)
+        # Waking the PC is the family's own setting.
+        for key in ("finish.wake.not-set", "finish.missing.wake"):
+            assert re.search(r"Allow wake timers|herätysajastimet|唤醒定时器",
+                             on_windows(table, key)), (language, key)
+
+
+def test_on_windows_the_command_says_the_powershell_window_can_be_closed(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    for language in setup_server.LANGUAGES:
+        line = setup_server.closed_line(language)
+        assert "PowerShell" in line and "Terminal" not in line, language
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert setup_server.closed_line("en") == setup_server.CLOSED_LINES["en"]
+
+
+def test_finish_names_windows_sign_in_after_updates_and_leaves_wake_timers_to_its_outcome(
+        harness, page, schedule, health):
+    at_finish(harness)
+    health.results += [(ops.WARN, "Wake", "Allow wake timers is off, so the PC doesn't wake"),
+                       (ops.WARN, "Sign-in after updates", "nobody is signed in after an update")]
+
+    finish(page.url)
+    out = finished(page.url)
+
+    doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
+    # The wake outcome says what the Wake check would, so it isn't said twice.
+    assert doctor == {"outcome": "doctor", "ok": True,
+                      "checks": [{"check": "sign-in-after-update", "status": "warn"}]}
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        assert re.search(r"update|päivity|更新", table["finish.fail.sign-in-after-update"]), language

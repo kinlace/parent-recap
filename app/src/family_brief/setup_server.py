@@ -24,6 +24,7 @@ import re
 import shlex
 import socketserver
 import subprocess
+import sys
 import threading
 import time
 from http import HTTPStatus
@@ -49,6 +50,8 @@ AI_CHECK_SECONDS = 20
 # the maintainers' gateway (ADR 0014), and what checking one says. The gateway needs nothing on
 # the Mac, so it's always ready, and it has no chat to carry on in.
 AIS = ("claude", "codex", "gateway")
+# Claude and Codex come to Windows in their own tickets (#316, #317): until then it has the gateway.
+WINDOWS_AIS = ("gateway",)
 AI_RESULTS = ("ready", "not-installed", "signed-out", "check-failed")
 # The Sources a family can skip and add later through manage. Wilma too, for a school without it.
 SKIPPABLE = ("wilma", "whatsapp", "myclub")
@@ -112,8 +115,11 @@ HEALTH_CHECKS = {"Config file": "config", "Recipients": "recipients", "Language"
 # The scheduled job's checks, which aren't run before Finish installs it; Windows adds the last two.
 SCHEDULE_CHECKS = frozenset({"Schedule", "Last run", "Python path", "Wake",
                              "Sign-in after updates"})
-# Doctor's checks as Finish names them, with the scheduled job's. Python path is always OK.
-FINISH_CHECKS = {**HEALTH_CHECKS, "Schedule": "schedule", "Last run": "last-run"}
+# Doctor's checks as Finish names them, with the scheduled job's. Python path is always OK, and
+# Windows' Wake check says what the wake outcome does, so Finish leaves it out.
+FINISH_CHECKS = {**HEALTH_CHECKS, "Schedule": "schedule", "Last run": "last-run",
+                 "Sign-in after updates": "sign-in-after-update"}
+FINISH_LEAVES_OUT = frozenset({"Wake"})
 HEALTH_STATUSES = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
 # First Brief: the real Brief made through a bg job, which reads WhatsApp with the scheduled job's
 # permission, without sending it: `making` while it's made, with the Source it's reading or
@@ -128,11 +134,17 @@ SEND_RESULTS = ("sent", "send-failed", "busy")
 # every outcome is true, when the server stops, or `not-done`; `install-failed` when the jobs
 # couldn't be loaded, and `no-finish` when this server hasn't started one.
 FINISH_RESULTS = ("installing", "checking", "done", "not-done", "install-failed", "no-finish")
-# What Terminal says once the page stops, however it stopped, in the language picked on it.
+# What Terminal says once the page stops, however it stopped, in the language picked on it, and
+# what the PowerShell window the install line was pasted into says on Windows.
 CLOSED_LINES = {
     "fi": "Parent Recapin käyttöönottosivu on suljettu. Voit sulkea tämän Terminal-ikkunan.",
     "en": "Parent Recap's setup page has closed. You can close this Terminal window.",
     "zh": "Parent Recap 的设置页面已经关闭。你可以关掉这个终端窗口了。",
+}
+WINDOWS_CLOSED_LINES = {
+    "fi": "Parent Recapin käyttöönottosivu on suljettu. Voit sulkea tämän PowerShell-ikkunan.",
+    "en": "Parent Recap's setup page has closed. You can close this PowerShell window.",
+    "zh": "Parent Recap 的设置页面已经关闭。你可以关掉这个 PowerShell 窗口了。",
 }
 # "Continue in the chat": the setup skill as each AI's chat starts it, and what handing over
 # can say. Claude Code opens in a Terminal window; a Codex family is told what to type in Codex.
@@ -191,8 +203,13 @@ def cmd_page(args: argparse.Namespace) -> int:
         server.serve_until_idle()
     except KeyboardInterrupt:
         server.stop()
-    print(CLOSED_LINES[server.chosen_language() or "en"], flush=True)
+    print(closed_line(server.chosen_language() or "en"), flush=True)
     return 0
+
+
+def closed_line(language: str) -> str:
+    """What the window the page runs from says once it stops."""
+    return (WINDOWS_CLOSED_LINES if sys.platform == "win32" else CLOSED_LINES)[language]
 
 
 class SetupServer:
@@ -279,6 +296,9 @@ class SetupServer:
         return {"languages": [{"code": c, "name": n} for c, n in LANGUAGES.items()],
                 "language": self.chosen_language(),
                 "preselected": preferred_language(),
+                # Which system's words the page uses, and the AIs it offers here.
+                "system": "windows" if sys.platform == "win32" else "macos",
+                "ais": list(_ais()),
                 # In tmux or SSH, macOS won't let this server save the passwords in the Keychain.
                 "keychain": {"reachable": secrets.reachable()},
                 "progress": progress,
@@ -309,10 +329,8 @@ class SetupServer:
 
     def check_ai(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Checks that the AI picked is installed and signed in, with its own status check."""
-        if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in AIS):
-            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                "invalid-answers", "Pick Claude, ChatGPT or the gateway.",
-                errors=["ai: should be claude, codex or gateway"])
+        if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in _ais()):
+            return HTTPStatus.BAD_REQUEST, _not_offered()
         name = raw["ai"]
         if name == "gateway":
             return HTTPStatus.OK, {"result": "ready", "ai": name}
@@ -1022,7 +1040,8 @@ class SetupServer:
         in a Terminal window, or says what to type in Codex. The skill reads the progress and the
         answers saved so far, and carries on from the same phase and Source. The plugin or the
         Codex skills are installed first if they aren't yet, since the skill comes with them."""
-        if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in CHAT_SKILLS):
+        if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in CHAT_SKILLS
+                and raw["ai"] in _ais()):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Pick Claude or ChatGPT.", errors=["ai: should be claude or codex"])
         skill = CHAT_SKILLS[raw["ai"]]
@@ -1062,6 +1081,8 @@ class SetupServer:
             answer = WelcomeAnswer.model_validate(raw)
         except ValidationError as e:
             return HTTPStatus.BAD_REQUEST, setup_save.invalid(e)
+        if answer.ai not in _ais():
+            return HTTPStatus.BAD_REQUEST, _not_offered()
         partner = answer.partner and answer.partner.model_dump()
         answers: dict[str, Any] = {
             "ai": answer.ai,
@@ -1349,11 +1370,12 @@ class SetupServer:
         if isinstance(saved, dict):
             partner |= {k: v for k, v in saved.items() if k in ("address", "language")}
         backend = _section(data, "llm").get("backend")
+        offered = _ais()
         enabled = _section(data, "feedback").get("enabled")
         # None when this version ships no pilot Form: the page doesn't ask, so nothing half-set
         # is ever written.
         pilot = (enabled if isinstance(enabled, bool) else True) if feedback.pilot_form() else None
-        return {"ai": backend if backend in AIS else "claude", "partner": partner,
+        return {"ai": backend if backend in offered else offered[0], "partner": partner,
                 "feedback": pilot}
 
     def _config_data(self) -> dict[str, Any]:
@@ -1449,8 +1471,9 @@ def _finish_outcome(o: setup_status.Outcome) -> dict[str, Any]:
     """An outcome as Finish shows it, without its reason, which can name an address: whether
     it's true, and for a health check that isn't, the checks that aren't OK."""
     out: dict[str, Any] = {"outcome": o.outcome, "ok": o.ok}
-    if o.checks:
-        out["checks"] = [_health_check(c, FINISH_CHECKS) for c in o.checks]
+    checks = [c for c in o.checks if c.item not in FINISH_LEAVES_OUT]
+    if checks:
+        out["checks"] = [_health_check(c, FINISH_CHECKS) for c in checks]
     return out
 
 
@@ -1485,6 +1508,16 @@ def _ai_status(program: str, name: str) -> str:
     except (OSError, subprocess.SubprocessError):
         return "check-failed"
     return "ready" if proc.returncode == 0 else "signed-out"
+
+
+def _ais() -> tuple[str, ...]:
+    """The AIs the page offers on this system, Welcome's default first."""
+    return WINDOWS_AIS if sys.platform == "win32" else AIS
+
+
+def _not_offered() -> dict[str, Any]:
+    return setup_save.outcome("invalid-answers", "Pick one of the AIs the page offers.",
+                              errors=[f"ai: should be one of {', '.join(_ais())}"])
 
 
 def _nothing_to_give() -> dict[str, Any]:

@@ -3,14 +3,17 @@
 // The setup page. Every address here is relative, so it keeps the page's one-time code.
 const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish"];
 const page = {
-  text: null, language: "en", chosen: null, languages: [], progress: null, welcome: null,
-  connect: null, gmail: null, whatsapp: null, myclub: null, check: null, brief: null,
-  welcomeShown: false, connectShown: false, workingShown: false, checkShown: false,
-  briefShown: false, finishShown: false, finished: false,
+  text: null, language: "en", chosen: null, languages: [], system: "macos", ais: [],
+  progress: null, welcome: null, connect: null, gmail: null, whatsapp: null, myclub: null,
+  check: null, brief: null, welcomeShown: false, connectShown: false, workingShown: false,
+  checkShown: false, briefShown: false, finishShown: false, finished: false,
 };
 
+// A text in the page's language. On Windows, a text that names the Mac's own things has a twin
+// that names Windows' instead (the PC, Credential Manager, PowerShell), used in its place.
 function t(key) {
-  return page.text[page.language][key];
+  const table = page.text[page.language];
+  return (page.system === "windows" && table[`${key}.windows`]) || table[key];
 }
 
 // A text with its {placeholders} filled from `values`.
@@ -169,8 +172,16 @@ function pick(name, value) {
   document.querySelector(`input[name="${name}"][value="${value}"]`).checked = true;
 }
 
+// Only the AIs the server offers on this system: on Windows, the gateway for now.
+function offerAIs(name) {
+  for (const input of document.querySelectorAll(`input[name="${name}"]`)) {
+    input.closest("label").hidden = !page.ais.includes(input.value);
+  }
+}
+
 function renderWelcome() {
   const { ai: chosen, partner, feedback } = page.welcome;
+  offerAIs("ai");
   pick("ai", chosen);
   pick("partner", partner.add ? "add" : "only-me");
   // Asked only when this version ships the pilot Form.
@@ -547,6 +558,7 @@ function renderWilma() {
   document.getElementById("wilma-form").addEventListener("submit", signInWilma);
   document.getElementById("town-form").addEventListener("submit", saveTown);
   document.getElementById("wilma-passwords").addEventListener("click", () => openSite("passwords"));
+  document.getElementById("wilma-passwords").hidden = page.system !== "macos"; // macOS's own app
   document.getElementById("wilma-terminal").addEventListener("click", openWilmaWindow);
   document.getElementById("wilma-again").addEventListener("click", getWilmaReady);
   showWilmaUses();
@@ -1602,6 +1614,7 @@ function openFinishAI() {
   finishAI.ready = true;
   document.getElementById("finish-ai-sign-in").append(
     document.getElementById("source-ai"), document.getElementById("source-status"));
+  offerAIs("finish-ai");
   pick("finish-ai", page.welcome.ai);
   document.getElementById("finish-ai-open").hidden = true;
   document.getElementById("finish-ai-saved").hidden = true;
@@ -1875,6 +1888,8 @@ async function start() {
   const [text, state] = await Promise.all([getJSON("text.json"), getJSON("api/state")]);
   page.text = text;
   page.languages = state.languages;
+  page.system = state.system;
+  page.ais = state.ais;
   page.chosen = state.language;
   page.language = state.language || state.preselected;
   page.progress = state.progress;
