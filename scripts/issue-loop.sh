@@ -178,8 +178,10 @@ fail() {
       gh pr ready "$pr" -R "$REPO" --undo >/dev/null 2>&1 || true
       gh pr comment "$pr" -R "$REPO" --body "$body" >/dev/null || true
     else
+      # Closes, not Refs: a draft is merged only once someone has finished it, and then the issue
+      # is done (#312 and #315 stayed open, assigned, and kept blocking the next tickets).
       gh pr create -R "$REPO" --draft --base main --head "$BRANCH" --title "wip: #$ISSUE $TITLE" \
-        --body "$body"$'\n\n'"Refs #$ISSUE" >/dev/null || true
+        --body "$body"$'\n\n'"Closes #$ISSUE" >/dev/null || true
     fi
     line+=" (draft PR on $BRANCH)"
   fi
