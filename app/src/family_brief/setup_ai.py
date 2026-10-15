@@ -29,7 +29,7 @@ import time
 from .setup_steps import CLAUDE_TOKEN
 from .summarize import CLAUDE_INSTALL_WINDOWS, CODEX_INSTALL, _sessionless_env
 
-if sys.platform != "win32":  # `claude setup-token`'s pseudo-terminal, which Windows doesn't have yet
+if sys.platform != "win32":  # `claude setup-token`'s pseudo-terminal, which Windows doesn't have
     import fcntl
     import termios
 

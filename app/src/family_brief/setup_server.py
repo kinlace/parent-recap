@@ -345,8 +345,8 @@ class SetupServer:
             return HTTPStatus.OK, {"result": "ready", "ai": name}
         program = self._ai_program(name)
         if program is None:
-            return HTTPStatus.OK, {**_claude_missing(), "ai": name} if name == "claude" else \
-                {"result": "not-installed", "ai": name}
+            missing = _claude_missing() if name == "claude" else {"result": "not-installed"}
+            return HTTPStatus.OK, {**missing, "ai": name}
         return HTTPStatus.OK, {"result": _ai_status(program, name), "ai": name}
 
     def _ai_program(self, name: str) -> str | None:
@@ -429,7 +429,10 @@ class SetupServer:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "On a Mac, Claude Code installs from Terminal.",
                 errors=["answers: the page installs Claude Code only on Windows"])
-        if summarize.find_claude() is not None:
+        with self._ai:
+            installing = self._claude_install == "installing"
+        # The installer puts claude.exe in place before it's done: its own run opens the window.
+        if not installing and summarize.find_claude() is not None:
             return self.open_claude_window({})
         with self._ai:
             if self._claude_install != "installing":
