@@ -39,9 +39,10 @@ jobs:
       # This runner is an Apple Silicon Mac. The check covers Intel Macs too.
       - name: Check every pinned package has a wheel for both kinds of Mac
         run: python ../scripts/check_wheels.py
-      # Includes the version-consistency check (tests/test_version.py).
+      # Includes the version-consistency check (tests/test_version.py). The slowest tests are
+      # listed, so a run that got slower shows which test did it.
       - name: Test
-        run: python -m pytest
+        run: python -m pytest --durations=15
 
   windows:
     # Every test that doesn't need macOS, so maintainers learn on every push whether the program
@@ -80,7 +81,7 @@ jobs:
         run: |
           python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
       - name: Test
-        run: python -m pytest
+        run: python -m pytest --durations=15
 
   windows-install:
     # install.ps1 on a clean Windows PC, from this checkout, with the real downloads (ADR 0019).
