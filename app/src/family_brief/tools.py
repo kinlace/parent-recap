@@ -7,7 +7,7 @@ shell setup (fish, nix, a custom npm prefix such as ~/.npm-global/bin) can put a
 them only. So after PATH, a program is looked for in the folders installers commonly use, then
 the login shell is asked for it. Where it was found is remembered, so the evening job, which runs
 without the shell's PATH, runs the same one. On Windows a program is found by its name with
-`.exe`, `.cmd` or `.bat`, and npm's global folder is one of the common ones."""
+`.exe`, `.cmd` or `.bat`, and npm's global folder and the Codex installer's are common ones."""
 from __future__ import annotations
 
 import json
@@ -22,6 +22,8 @@ from pathlib import Path
 HOME_DIRS = (".local/bin", ".npm-global/bin", ".nix-profile/bin")
 # What a program Windows can start ends in, in the order Windows' own PATHEXT tries them.
 WINDOWS_EXTENSIONS = (".exe", ".cmd", ".bat")
+# Under %LOCALAPPDATA%: where OpenAI's install.ps1 puts the Codex CLI.
+WINDOWS_CODEX_DIR = ("Programs", "OpenAI", "Codex", "bin")
 # Homebrew on Apple silicon and on Intel, and nix-darwin's per-user profile.
 SYSTEM_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", "/etc/profiles/per-user/{user}/bin")
 # A login shell reads the family's whole shell setup, which can be slow, or wait for something.
@@ -61,9 +63,11 @@ def _in_common_folders(name: str) -> str | None:
     folders = [str(Path.home() / d) for d in HOME_DIRS]
     if sys.platform == "win32":
         # npm's global folder, where it puts a `.cmd` for each program, and a script for Git Bash
-        # without an extension, which Windows can't run.
-        appdata = os.environ.get("APPDATA")
+        # without an extension, which Windows can't run. Then where OpenAI's own installer puts
+        # codex.exe, which goes on the user's PATH only in windows opened after it ran.
+        appdata, local = os.environ.get("APPDATA"), os.environ.get("LOCALAPPDATA")
         folders += [os.path.join(appdata, "npm")] if appdata else []
+        folders += [os.path.join(local, *WINDOWS_CODEX_DIR)] if local else []
         names = [name + ext for ext in WINDOWS_EXTENSIONS]
     else:
         user = os.environ.get("USER", "")

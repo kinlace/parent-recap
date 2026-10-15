@@ -109,6 +109,26 @@ def test_on_windows_codex_installed_with_npm_is_found_off_path(harness, terminal
     assert tools.find("codex") == str(npm / "codex.cmd")
 
 
+def test_on_windows_codex_from_openai_s_installer_is_found_off_path(harness, windows_programs):
+    codex = program(windows_programs / "Programs" / "OpenAI" / "Codex" / "bin", "codex.exe")
+
+    assert tools.find("codex") == str(codex)
+
+
+@pytest.mark.windows  # the run itself, with Windows' own run lock
+def test_on_windows_the_evening_job_runs_the_codex_openai_s_installer_put_in_place(
+        harness, terminal_path, windows_programs, monkeypatch):
+    codex = program(windows_programs / "Programs" / "OpenAI" / "Codex" / "bin", "codex.exe")
+    harness.config["llm"]["backend"] = "codex"
+
+    the_evening_job(harness, monkeypatch)
+    # Task Scheduler's PATH, which the installer's folder isn't on.
+    monkeypatch.setenv("PATH", str(harness.home / "Windows" / "System32"))
+    assert harness.run() == 0
+    assert [c.argv[0] for c in harness.model_calls] == [str(codex)]
+    assert json.loads(tools.remembered_path().read_text()) == {"codex": str(codex)}
+
+
 def test_without_claude_anywhere_doctor_says_how_to_install_it(harness, terminal_path,
                                                                login_shell, capsys):
     login_shell(terminal_path)  # the login shell has no claude either

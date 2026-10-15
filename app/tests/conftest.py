@@ -93,6 +93,20 @@ def login_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[[Pa
 
 
 @pytest.fixture
+def windows_programs(harness: "Harness", monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Programs found as Windows finds them: by their Windows names, in Windows' usual folders,
+    with %LOCALAPPDATA% in the test's home, which is returned. PATH leads to none of them, and
+    off Windows, Windows' own `which` isn't tried, since it can't run there."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    if os.name != "nt":
+        monkeypatch.setattr(tools.shutil, "which", lambda *_a, **_k: None)
+    local = harness.home / "AppData" / "Local"
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setenv("PATH", str(harness.home / "Windows" / "System32"))
+    return local
+
+
+@pytest.fixture
 def credential_manager(harness: "Harness", monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
     """Windows' own Credential Manager in place of the harness's fake secrets store, under a name
     of the test's own, so no secret of the family whose PC runs the tests is touched. The test
