@@ -2190,6 +2190,11 @@ def test_without_codex_its_sign_in_says_so(harness, page, ai):
         assert call(page.url, path, method="POST", body={"x": 1}).status == 400
 
 
+def same_file(path: str | Path) -> str:
+    """`path` as the system compares it: Windows' `which` names codex.cmd codex.CMD."""
+    return os.path.normcase(str(path))
+
+
 def fake_codex(folder: Path) -> Path:
     """A `codex` the system can run, made as Windows' own installer would put it: `login` runs
     for real, and its status is the harness's. On Windows a `.cmd` runs the script."""
@@ -2248,12 +2253,13 @@ def test_on_windows_the_page_installs_codex_with_openai_s_installer_and_opens_it
     [cmd] = codex_installer["ran"]
     assert cmd[-1] == "irm https://github.com/openai/codex/releases/latest/download/install.ps1 | iex"
     codex = codex_installer["folder"] / "codex.cmd"
-    assert [str(codex), "login"] in harness.commands
+    assert [same_file(codex), "login"] in [[same_file(c[0]), *c[1:]] for c in harness.commands]
     wait_for(lambda: (codex.parent / "codex-login.ran").exists())
     harness.signed_in["codex"] = True  # the family signs in with ChatGPT in the browser
     out = codex_check(page.url)
     assert out["result"] == "signed-in" and out["progress"]["sources"]["ai"] == "done"
-    assert harness.commands[-1][:3] == [str(codex), "login", "status"]
+    status = harness.commands[-1]
+    assert [same_file(status[0]), *status[1:3]] == [same_file(codex), "login", "status"]
 
 
 def test_on_windows_an_install_of_codex_that_fails_says_so_and_can_be_tried_again(

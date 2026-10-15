@@ -135,7 +135,9 @@ def test_on_windows_doctor_says_a_signed_out_codex_is_and_how_to_sign_in(harness
     line = codex_line(capsys)
     assert line.startswith(ops.FAIL) and "not signed in" in line
     assert "codex login" in line and "PowerShell" in line and ".codex" in line
-    assert harness.commands[-1] == [str(codex_on_windows), "login", "status"]
+    status = harness.commands[-1]
+    assert [os.path.normcase(status[0]), *status[1:]] == \
+        [os.path.normcase(codex_on_windows), "login", "status"]
     assert not harness.model_calls  # no call to a Codex that can't answer
 
 
@@ -145,7 +147,9 @@ def test_on_windows_doctor_calls_a_signed_in_codex(harness, codex_on_windows, ca
     harness.cli("doctor")
 
     assert codex_line(capsys).startswith(ops.OK)
-    assert [c.argv[0] for c in harness.model_calls] == [str(codex_on_windows)]
+    # Windows' `which` names it codex.EXE, in PATHEXT's capitals, once its folder is on PATH.
+    assert [os.path.normcase(c.argv[0]) for c in harness.model_calls] == \
+        [os.path.normcase(codex_on_windows)]
 
 
 def test_doctor_names_an_unreadable_config_in_english(harness, capsys):
