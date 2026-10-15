@@ -4613,6 +4613,23 @@ def test_on_windows_welcome_offers_the_gateway_and_chatgpt_but_not_claude_yet(ha
     assert Config.load(config_file(harness)).llm.backend == "gateway"
 
 
+def test_on_windows_chatgpt_has_no_chat_to_continue_in_since_the_skills_are_macos_only(
+        harness, page, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    install_record.add("plugin", str(ROOT))  # the install line's copy, with the skills in it
+
+    assert welcome(page.url, ai="codex").status == 200
+
+    assert call(page.url, "api/chat", method="POST", body={"ai": "codex"}).status == 400
+    assert not (harness.home / ".agents" / "skills").exists()
+    assert call(page.url, "api/state").json()["chat"] == {}
+    script = (PAGE_DIR / "page.js").read_text()
+    shown = script.split("function showChat() {", 1)[1].split("\n}\n", 1)[0]
+    assert 'page.system === "windows"' in shown
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        assert "$parent-recap" not in table["finish.changes.codex.windows"], language
+
+
 def test_on_windows_the_page_hides_what_only_macos_or_another_ai_has():
     script = (PAGE_DIR / "page.js").read_text()
 

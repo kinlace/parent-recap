@@ -508,7 +508,7 @@ class SetupServer:
             if setup_ai.install_codex():
                 program = self._ai_program("codex")
         except Exception:  # never leave the page installing
-            program = None
+            pass
         with self._ai:
             if program is not None and (self._codex is None or self._codex.poll() is not None):
                 self._codex = setup_ai.start_codex_login(program)
@@ -1085,6 +1085,10 @@ class SetupServer:
                 "invalid-answers", "Pick Claude or ChatGPT.", errors=["ai: should be claude or codex"])
         if raw["ai"] not in _ais():
             return HTTPStatus.BAD_REQUEST, _not_offered()
+        if raw["ai"] not in _chats():
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "The chat sets up a Mac only.",
+                errors=["ai: has no chat to continue in on this system"])
         skill = CHAT_SKILLS[raw["ai"]]
         if self._chat_installs.get(raw["ai"]) != "installed":  # the skill must be there to start
             self._install_chat(raw["ai"]).join()
@@ -1111,7 +1115,7 @@ class SetupServer:
                 statuses = {**progress["sources"], "ai": "done"}
                 out = setup_save.save(self.config, {"progress": {
                     "sources": {"ai": "done"}, "source": _next_source(statuses)}})
-        if switch and out["result"] == "saved" and name in CHAT_SKILLS:
+        if switch and out["result"] == "saved" and name in _chats():
             self._install_chat(name)
         return out
 
@@ -1139,7 +1143,7 @@ class SetupServer:
         if out["result"] != "saved":
             return (HTTPStatus.BAD_REQUEST if out["result"] == "invalid-answers"
                     else HTTPStatus.CONFLICT), out
-        if answer.ai in CHAT_SKILLS:  # the gateway has no chat to install
+        if answer.ai in _chats():  # the gateway has no chat to install, nor Windows yet
             self._install_chat(answer.ai)
         return HTTPStatus.OK, out
 
@@ -1554,6 +1558,12 @@ def _ai_status(program: str, name: str) -> str:
 def _ais() -> tuple[str, ...]:
     """The AIs the page offers on this system, Welcome's default first."""
     return WINDOWS_AIS if sys.platform == "win32" else AIS
+
+
+def _chats() -> dict[str, str]:
+    """The AIs with a chat to continue setup in on this system, and their setup skill. The skills
+    set up a Mac, so Windows has none yet."""
+    return {} if sys.platform == "win32" else CHAT_SKILLS
 
 
 def _not_offered() -> dict[str, Any]:

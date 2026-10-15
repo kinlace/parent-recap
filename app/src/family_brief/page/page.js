@@ -1849,7 +1849,9 @@ function chatAI() {
 
 // A gateway Household has neither Claude nor ChatGPT to carry on with in a chat.
 function showChat() {
-  document.getElementById("chat").hidden = !page.chosen || page.finished || chatAI() === "gateway";
+  // The chat skills set up a Mac, so Windows has no chat to continue in yet.
+  document.getElementById("chat").hidden = !page.chosen || page.finished || chatAI() === "gateway"
+    || page.system === "windows";
 }
 
 async function continueInChat(event) {
