@@ -37,6 +37,7 @@ BG_ENV = jobs.BG_ENV  # set inside `bg` jobs so doctor doesn't recurse
 FULL_DISK_ACCESS_WHERE = ("(System Settings → Privacy & Security; parent-recap full-disk-access "
                           "shows the Python in Finder)")
 FULL_DISK_ACCESS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+CODEX_STATUS_SECONDS = 20
 
 
 class Check(NamedTuple):
@@ -238,24 +239,44 @@ def _check_gateway(cfg: Config, add) -> None:
 
 
 def _check_codex(cfg: Config, add) -> None:
-    from .summarize import call_llm_json, find_codex
+    from .summarize import call_llm_json, codex_missing, find_codex
     codex = find_codex(cfg)
     if not codex:
-        add(FAIL, "Codex", "codex command not found: install Codex or the ChatGPT desktop app and "
-            "sign in, or set llm.codex_path in the config")
+        add(FAIL, "Codex", f"codex command not found: {codex_missing()}, or set llm.codex_path in "
+            "the config")
+        return
+    # On Windows the setup page installs the CLI on its own, with no Codex app to sign in from.
+    sign_in = ("sign in again on the setup page, or run codex login in PowerShell; Codex keeps "
+               "the sign-in in %USERPROFILE%\\.codex" if sys.platform == "win32" else
+               "open the Codex app and sign in again with your ChatGPT account")
+    if _codex_signed_out(codex):
+        add(FAIL, "Codex", f"not signed in ({sign_in})")
         return
     try:
         data = call_llm_json(cfg, 'Reply with only this JSON: {"ok": true}',
                              "This is a connectivity test.", timeout=120, budget=0)
     except Exception as e:
-        add(FAIL, "Codex", f"call failed: {str(e)[:200]} (if you're signed out, open the Codex app "
-            "and sign in again with your ChatGPT account. ChatGPT Free and Go can't use the Codex "
-            "CLI; it needs Plus or higher)")
+        add(FAIL, "Codex", f"call failed: {str(e)[:200]} (if you're signed out, {sign_in}. "
+            "ChatGPT Free and Go can't use the Codex CLI; it needs Plus or higher)")
         return
     if data.get("ok") is True:
         add(OK, "Codex", f"call succeeded ({codex})")
     else:
         add(FAIL, "Codex", f"reachable, but the reply has the wrong shape: {str(data)[:80]}")
+
+
+def _codex_signed_out(codex: str) -> bool:
+    """Whether `codex login status` says signed out, which it reads wherever Codex keeps the
+    sign-in: its auth.json, or the system's own store if the family chose that. A check that
+    doesn't run leaves it to the test call. Only the exit code is read: the output names the
+    account."""
+    import subprocess
+    try:
+        proc = subprocess.run([codex, "login", "status"], capture_output=True, text=True,
+                              timeout=CODEX_STATUS_SECONDS, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode != 0
 
 
 def _check_claude(add) -> None:

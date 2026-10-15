@@ -13,9 +13,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from family_brief import __main__ as cli, ops, setup_steps, whatsapp_python
+from family_brief import __main__ as cli, ops, setup_steps, summarize, whatsapp_python
 from family_brief.collectors import whatsapp, wilma
 from family_brief.system import jobs
+from conftest import program
 from test_setup_whatsapp import fake_mac
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
@@ -98,6 +99,53 @@ def test_doctor_in_tmux_says_to_store_the_token_outside_it(harness, claude_witho
 
     line = next(l for l in capsys.readouterr().out.splitlines() if "Claude:" in l)
     assert line.startswith(ops.FAIL) and setup_steps.PLAIN_TERMINAL in line
+
+
+@pytest.fixture
+def codex_on_windows(harness, nothing_loaded, windows_programs, monkeypatch) -> Path:
+    """A Household on ChatGPT, on a PC where codex.exe would be where OpenAI's installer puts it,
+    which the test puts there or not. Returns where."""
+    monkeypatch.setattr(summarize, "CODEX_BUNDLED", ())  # not this Mac's own apps
+    harness.config["llm"]["backend"] = "codex"
+    harness.model_reply = {"ok": True}
+    return windows_programs / "Programs" / "OpenAI" / "Codex" / "bin" / "codex.exe"
+
+
+def codex_line(capsys) -> str:
+    return next(l for l in capsys.readouterr().out.splitlines() if "Codex:" in l)
+
+
+def test_on_windows_doctor_says_codex_is_missing_and_how_to_install_it(harness, codex_on_windows,
+                                                                       capsys):
+    harness.cli("doctor")
+
+    line = codex_line(capsys)
+    assert line.startswith(ops.FAIL) and "the setup page" in line
+    assert "irm https://github.com/openai/codex/releases/latest/download/install.ps1 | iex" in line
+    assert "ChatGPT desktop app" not in line
+
+
+def test_on_windows_doctor_says_a_signed_out_codex_is_and_how_to_sign_in(harness, codex_on_windows,
+                                                                        capsys):
+    program(codex_on_windows.parent, codex_on_windows.name)
+    harness.signed_in["codex"] = False
+
+    harness.cli("doctor")
+
+    line = codex_line(capsys)
+    assert line.startswith(ops.FAIL) and "not signed in" in line
+    assert "codex login" in line and "PowerShell" in line and ".codex" in line
+    assert harness.commands[-1] == [str(codex_on_windows), "login", "status"]
+    assert not harness.model_calls  # no call to a Codex that can't answer
+
+
+def test_on_windows_doctor_calls_a_signed_in_codex(harness, codex_on_windows, capsys):
+    program(codex_on_windows.parent, codex_on_windows.name)
+
+    harness.cli("doctor")
+
+    assert codex_line(capsys).startswith(ops.OK)
+    assert [c.argv[0] for c in harness.model_calls] == [str(codex_on_windows)]
 
 
 def test_doctor_names_an_unreadable_config_in_english(harness, capsys):
