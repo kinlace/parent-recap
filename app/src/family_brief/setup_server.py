@@ -50,8 +50,8 @@ AI_CHECK_SECONDS = 20
 # the maintainers' gateway (ADR 0014), and what checking one says. The gateway needs nothing on
 # the Mac, so it's always ready, and it has no chat to carry on in.
 AIS = ("claude", "codex", "gateway")
-# Claude and Codex come to Windows in their own tickets (#316, #317): until then it has the gateway.
-WINDOWS_AIS = ("gateway",)
+# Claude comes to Windows in its own ticket (#317). The gateway stays Welcome's default there.
+WINDOWS_AIS = ("gateway", "codex")
 AI_RESULTS = ("ready", "not-installed", "signed-out", "check-failed")
 # The Sources a family can skip and add later through manage. Wilma too, for a school without it.
 SKIPPABLE = ("wilma", "whatsapp", "myclub")
@@ -80,9 +80,10 @@ CLAUDE_WINDOW_RESULTS = ("opened", "no-terminal", "not-installed")
 CLAUDE_SIGN_IN_SECONDS = 600
 # Codex's ChatGPT sign-in: signed in, signed out, `waiting` while its sign-in is open in the
 # browser, and `login-failed` when that ended without signing in or didn't start. At Finish,
-# `test-call-failed` when a signed-in Codex didn't answer the test call a switch needs.
+# `test-call-failed` when a signed-in Codex didn't answer the test call a switch needs. On
+# Windows, where the page installs the Codex CLI, `installing`, and `install-failed` once.
 CODEX_RESULTS = ("signed-in", "signed-out", "waiting", "login-failed", "not-installed",
-                 "check-failed", "test-call-failed")
+                 "check-failed", "test-call-failed", "installing", "install-failed")
 # The Gateway Key pasted into the page, tested and stored as `setup gateway` does.
 GATEWAY_RESULTS = ("saved", "not-a-key", "rejected", "no-connection", "test-call-failed",
                    "keychain-not-reachable", "keychain-failed")
@@ -235,6 +236,9 @@ class SetupServer:
         self._ai = threading.Lock()  # one AI sign-in at a time
         self._claude: dict[str, Any] | None = None  # Claude's sign-in's, once started
         self._codex: subprocess.Popen | None = None  # Codex's sign-in, once started
+        # The Codex CLI's install on Windows, once started: `installing`, then `installed` or
+        # `install-failed`, which the next check says once.
+        self._codex_install: str | None = None
         self._whatsapp = threading.Lock()  # one read at a time, since each is a launchd job
         # What lets the family ask for changes in the chat later, by AI, once Welcome has saved
         # it: `installing`, `installed`, `install-failed`, `not-installed` (no Claude Code) or
@@ -423,6 +427,12 @@ class SetupServer:
         signing in switches the Household to ChatGPT, it must also answer a test call first."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        with self._ai:
+            install = self._codex_install
+            if install == "install-failed":
+                self._codex_install = None  # said once, and the family can start it again
+        if install in ("installing", "install-failed"):
+            return HTTPStatus.OK, {"result": install}
         program = self._ai_program("codex")
         if program is None:
             return HTTPStatus.OK, {"result": "not-installed"}
@@ -473,6 +483,36 @@ class SetupServer:
                 self._codex = setup_ai.start_codex_login(program)
             started = self._codex is not None
         return HTTPStatus.OK, {"result": "waiting" if started else "login-failed"}
+
+    def install_codex(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """On Windows, installs the Codex CLI with OpenAI's own installer in the background, then
+        starts its sign-in as `sign_in_codex` does. The page checks with `check_codex`. A Mac's
+        Codex comes with the ChatGPT app, which the page offers to download instead."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        if sys.platform != "win32":
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Codex comes with the ChatGPT app on a Mac.",
+                errors=["answers: the page installs Codex only on Windows"])
+        if self._ai_program("codex") is not None:
+            return self.sign_in_codex({})
+        with self._ai:
+            if self._codex_install != "installing":
+                self._codex_install = "installing"
+                threading.Thread(target=self._installing_codex, daemon=True).start()
+        return HTTPStatus.OK, {"result": "installing"}
+
+    def _installing_codex(self) -> None:
+        program = None
+        try:
+            if setup_ai.install_codex():
+                program = self._ai_program("codex")
+        except Exception:  # never leave the page installing
+            program = None
+        with self._ai:
+            if program is not None and (self._codex is None or self._codex.poll() is not None):
+                self._codex = setup_ai.start_codex_login(program)
+            self._codex_install = "installed" if program else "install-failed"
 
     def save_gateway_key(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Tests the Gateway Key pasted into the page's own field with one call to the gateway the
@@ -1618,6 +1658,7 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/claude/terminal": setup.open_claude_window,
                    "api/claude/token": setup.save_claude_token,
                    "api/codex": setup.check_codex, "api/codex/login": setup.sign_in_codex,
+                   "api/codex/install": setup.install_codex,
                    "api/gateway": setup.save_gateway_key,
                    "api/whatsapp/check": setup.check_whatsapp,
                    "api/whatsapp/open": setup.open_full_disk_access,

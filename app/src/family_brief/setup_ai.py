@@ -6,8 +6,10 @@ enough that the token isn't wrapped, and reads the token from what it shows. The
 clicks Authorize in the browser it opens. The token stays in this process: it's never put on a
 command line, logged or returned to the page, and what the screen showed is dropped once read.
 
-`codex login` opens the browser for the ChatGPT sign-in itself and keeps the login in ~/.codex;
-the page only starts it and checks `codex login status` until it says signed in.
+`codex login` opens the browser for the ChatGPT sign-in itself and keeps the login in ~/.codex
+(on Windows %USERPROFILE%\\.codex\\auth.json, unless `cli_auth_credentials_store` in Codex's own
+config moves it to Credential Manager); the page only starts it and checks `codex login status`
+until it says signed in. On Windows the page installs the Codex CLI first if it isn't there.
 """
 from __future__ import annotations
 
@@ -22,7 +24,7 @@ import threading
 import time
 
 from .setup_steps import CLAUDE_TOKEN
-from .summarize import _sessionless_env
+from .summarize import CODEX_INSTALL, _sessionless_env
 
 if sys.platform != "win32":  # `claude setup-token`'s pseudo-terminal, which Windows doesn't have yet
     import fcntl
@@ -32,6 +34,8 @@ if sys.platform != "win32":  # `claude setup-token`'s pseudo-terminal, which Win
 COLUMNS, ROWS = 1000, 50
 READ_SECONDS = 0.2
 QUIET_SECONDS = 1.0
+# Downloading and unpacking the Codex CLI, on a slow line.
+CODEX_INSTALL_SECONDS = 10 * 60
 # Escape sequences a terminal program draws its screen with: CSI, OSC, and the two-byte ones.
 ESCAPES = re.compile(rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])")
 
@@ -99,6 +103,19 @@ def _token(shown: bytes, *, ended: bool) -> str | None:
     text = ESCAPES.sub(b"", shown).decode("utf-8", "replace")
     found = [m for m in CLAUDE_TOKEN.finditer(text) if ended or m.end() < len(text)]
     return found[-1].group(0) if found else None
+
+
+def install_codex() -> bool:
+    """Installs the Codex CLI on Windows with OpenAI's own installer, as their instructions say
+    to: PowerShell downloads and runs it. Whether it ran through. What it said isn't kept."""
+    try:
+        proc = subprocess.run(["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
+                               "-Command", CODEX_INSTALL],
+                              capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              timeout=CODEX_INSTALL_SECONDS, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0
 
 
 def start_codex_login(program: str) -> subprocess.Popen | None:

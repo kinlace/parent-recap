@@ -172,7 +172,7 @@ function pick(name, value) {
   document.querySelector(`input[name="${name}"][value="${value}"]`).checked = true;
 }
 
-// Only the AIs the server offers on this system: on Windows, the gateway for now.
+// Only the AIs the server offers on this system: on Windows, the gateway and ChatGPT for now.
 function offerAIs(name) {
   for (const input of document.querySelectorAll(`input[name="${name}"]`)) {
     input.closest("label").hidden = !page.ais.includes(input.value);
@@ -247,6 +247,13 @@ async function checkAI() {
   }
 }
 
+// Welcome goes on once the AI picked is ready. On Windows, ChatGPT's own step after it installs
+// Codex and signs it in, so Welcome needn't wait for those.
+function welcomeGoesOn(name, result) {
+  return result === "ready" || (page.system === "windows" && name === "codex"
+    && ["not-installed", "signed-out"].includes(result));
+}
+
 function showAI(name, result, install) {
   ai.result = result;
   const status = document.getElementById("ai-status");
@@ -257,13 +264,13 @@ function showAI(name, result, install) {
   document.getElementById("ai-install").hidden = !install;
   document.getElementById("ai-install-line").textContent = install || "";
   document.getElementById("ai-again").hidden = result === "ready" || result === "checking";
-  document.getElementById("welcome-continue").disabled = result !== "ready";
+  document.getElementById("welcome-continue").disabled = !welcomeGoesOn(name, result);
 }
 
 async function saveWelcome(event) {
   event.preventDefault();
   clearError();
-  if (ai.result !== "ready") return;
+  if (!welcomeGoesOn(picked("ai"), ai.result)) return;
   const button = event.submitter;
   button.disabled = true;
   const add = picked("partner") === "add";
@@ -754,7 +761,12 @@ const CLAUDE_AGAIN = [
   "claude.window.not-installed",
 ];
 // Codex's results after which the page checks again by itself.
-const CODEX_AGAIN = ["codex.waiting", "codex.not-installed", "codex.check-failed"];
+const CODEX_AGAIN = [
+  "codex.waiting", "codex.not-installed", "codex.check-failed", "codex.installing",
+];
+// Codex's results after which the page offers to install it: on Windows, where it installs the
+// Codex CLI itself. A Mac gets Codex with the ChatGPT app, which the page offers to download.
+const CODEX_INSTALL = ["codex.not-installed", "codex.install-failed"];
 
 function renderAI() {
   document.getElementById("claude-start").addEventListener("click", signInClaude);
@@ -763,6 +775,7 @@ function renderAI() {
   document.getElementById("claude-form").addEventListener("submit", saveClaudeToken);
   document.getElementById("codex-login").addEventListener("click", signInCodex);
   document.getElementById("codex-download").addEventListener("click", () => openSite("codex-app"));
+  document.getElementById("codex-install").addEventListener("click", installCodex);
   document.getElementById("gateway-form").addEventListener("submit", saveGatewayKey);
 }
 
@@ -860,11 +873,24 @@ async function signInCodex() {
   }
 }
 
+// On Windows: installs the Codex CLI, then opens ChatGPT's sign-in by itself.
+async function installCodex() {
+  clearError();
+  clearTimeout(aiStep.timer);
+  try {
+    codexResult(await post("api/codex/install", {}));
+  } catch (e) {
+    failed(e);
+  }
+}
+
 function codexResult(out) {
   const key = "codex." + out.result;
+  const windows = page.system === "windows";
   document.getElementById("codex-login").hidden =
     !["codex.signed-out", "codex.login-failed"].includes(key);
-  document.getElementById("codex-download").hidden = key !== "codex.not-installed";
+  document.getElementById("codex-download").hidden = windows || key !== "codex.not-installed";
+  document.getElementById("codex-install").hidden = !windows || !CODEX_INSTALL.includes(key);
   if (out.result === "signed-in") return aiDone(out, key);
   showSource(key);
   if (CODEX_AGAIN.includes(key)) aiStep.timer = setTimeout(checkCodex, AI_MS);
@@ -1634,6 +1660,7 @@ function signInFinishAI(event) {
   document.getElementById("claude-form").hidden = true;
   document.getElementById("codex-login").hidden = true;
   document.getElementById("codex-download").hidden = true;
+  document.getElementById("codex-install").hidden = true;
   document.getElementById("source-ai").hidden = false;
   document.getElementById("ai-claude").hidden = name !== "claude";
   document.getElementById("ai-codex").hidden = name !== "codex";

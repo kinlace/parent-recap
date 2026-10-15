@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
@@ -616,6 +617,16 @@ CODEX_BUNDLED = tuple(os.path.join(folder, app, inside)
                       for app in CODEX_APPS
                       for folder in ("/Applications", os.path.expanduser("~/Applications"))
                       for inside in CODEX_IN_APP)
+# On Windows, the Codex CLI the way OpenAI installs it there: its own install.ps1, published with
+# each release, puts codex.exe under %LOCALAPPDATA% (tools.WINDOWS_CODEX_DIR), without admin.
+CODEX_INSTALL = "irm https://github.com/openai/codex/releases/latest/download/install.ps1 | iex"
+
+
+def codex_missing() -> str:
+    """What to do when codex isn't found, on this system."""
+    if sys.platform == "win32":
+        return f"install the Codex CLI on the setup page, or in PowerShell with {CODEX_INSTALL}"
+    return "install the Codex or ChatGPT desktop app and sign in"
 
 
 def find_codex(cfg: Config) -> str | None:
@@ -638,14 +649,15 @@ def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int, budge
     import tempfile
     codex = find_codex(cfg)
     if not codex:
-        raise RuntimeError("codex not found: install the Codex or ChatGPT desktop app and sign in")
+        raise RuntimeError(f"codex not found: {codex_missing()}")
     # codex exec has no separate system prompt, so the instructions go first in one message.
     text = (f"{system_prompt}\n\n---\n\n{prompt}\n\n"
             "Output only the final JSON object. Don't run any commands, and don't read or write any files.")
     with tempfile.TemporaryDirectory(prefix="parent-recap-codex-") as work:
         out = Path(work) / "last_message.txt"
         # Isolated run: empty working dir, read-only sandbox, no web search, no saved session, and
-        # none of the user's config (their MCP servers and tools stay out). Auth still comes from ~/.codex.
+        # none of the user's config (their MCP servers and tools stay out). Auth still comes from
+        # ~/.codex (%USERPROFILE%\.codex on Windows), or the system's own store if they chose it.
         # No shell, exec, apps or plugins either: the read-only sandbox still lets a command read
         # any file on the Mac, and approval_policy=never would run it without asking.
         cmd = [codex, "exec", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config",

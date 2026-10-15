@@ -2186,8 +2186,111 @@ def test_without_codex_its_sign_in_says_so(harness, page, ai):
     assert codex_check(page.url) == {"result": "not-installed"}
     assert call(page.url, "api/codex/login", method="POST", body={}).json() == \
         {"result": "not-installed"}
-    for path in ("api/codex", "api/codex/login"):
+    for path in ("api/codex", "api/codex/login", "api/codex/install"):
         assert call(page.url, path, method="POST", body={"x": 1}).status == 400
+
+
+def fake_codex(folder: Path) -> Path:
+    """A `codex` the system can run, made as Windows' own installer would put it: `login` runs
+    for real, and its status is the harness's. On Windows a `.cmd` runs the script."""
+    folder.mkdir(parents=True, exist_ok=True)
+    script = FAKE_CODEX.format(python=sys.executable)
+    if os.name != "nt":
+        return program(folder, "codex.cmd", script)  # found by its Windows name, run by its #!
+    (folder / "codex.py").write_text(script)
+    (folder / "codex.cmd").write_text(f'@"{sys.executable}" "%~dp0codex.py" %*\r\n')
+    return folder / "codex.cmd"
+
+
+@pytest.fixture
+def codex_installer(harness, ai, windows_programs, monkeypatch) -> dict[str, Any]:
+    """A Windows PC without Codex, and OpenAI's installer, which PowerShell runs: the fake puts
+    `codex` where the real one puts codex.exe, under %LOCALAPPDATA%, unless `fails`. The PC's
+    PATH doesn't lead there: the installer adds it only for windows opened after it ran."""
+    installer = {"fails": False, "ran": [],
+                 "folder": windows_programs / "Programs" / "OpenAI" / "Codex" / "bin"}
+    record_background_processes(harness, monkeypatch, [])
+    run = subprocess.run
+
+    def powershell(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
+        if cmd[0] != "powershell.exe":
+            return run(cmd, *a, **k)
+        installer["ran"].append(cmd)
+        if installer["fails"]:
+            return subprocess.CompletedProcess(cmd, 1, "", "Invoke-WebRequest: no network")
+        fake_codex(installer["folder"])
+        return subprocess.CompletedProcess(cmd, 0, "Codex CLI installed successfully.\n", "")
+    monkeypatch.setattr(subprocess, "run", powershell)
+    return installer
+
+
+def codex_installed(url: str) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+
+    def done() -> bool:
+        out.clear()
+        out.update(codex_check(url))
+        return out["result"] != "installing"
+    wait_for(done)
+    return out
+
+
+def test_on_windows_the_page_installs_codex_with_openai_s_installer_and_opens_its_sign_in(
+        harness, page, codex_installer):
+    at_the_ai_step(harness, page.url, "codex")
+    harness.signed_in["codex"] = False
+    assert codex_check(page.url) == {"result": "not-installed"}
+
+    r = call(page.url, "api/codex/install", method="POST", body={})
+
+    assert r.status == 200 and r.json() == {"result": "installing"}
+    assert codex_installed(page.url) == {"result": "waiting"}  # the sign-in is open in the browser
+    [cmd] = codex_installer["ran"]
+    assert cmd[-1] == "irm https://github.com/openai/codex/releases/latest/download/install.ps1 | iex"
+    codex = codex_installer["folder"] / "codex.cmd"
+    assert [str(codex), "login"] in harness.commands
+    wait_for(lambda: (codex.parent / "codex-login.ran").exists())
+    harness.signed_in["codex"] = True  # the family signs in with ChatGPT in the browser
+    out = codex_check(page.url)
+    assert out["result"] == "signed-in" and out["progress"]["sources"]["ai"] == "done"
+    assert harness.commands[-1][:3] == [str(codex), "login", "status"]
+
+
+def test_on_windows_an_install_of_codex_that_fails_says_so_and_can_be_tried_again(
+        harness, page, codex_installer):
+    at_the_ai_step(harness, page.url, "codex")
+    codex_installer["fails"] = True
+
+    assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
+        {"result": "installing"}
+
+    assert codex_installed(page.url) == {"result": "install-failed"}
+    assert codex_check(page.url) == {"result": "not-installed"}  # said once
+    codex_installer["fails"] = False
+    assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
+        {"result": "installing"}
+    assert codex_installed(page.url)["result"] == "signed-in"
+    assert len(codex_installer["ran"]) == 2
+
+
+def test_on_windows_installing_codex_that_is_there_already_only_opens_its_sign_in(
+        harness, page, codex_installer):
+    fake_codex(codex_installer["folder"])
+    harness.signed_in["codex"] = False
+
+    r = call(page.url, "api/codex/install", method="POST", body={})
+
+    assert r.status == 200 and r.json() == {"result": "waiting"}
+    assert codex_installer["ran"] == []
+
+
+@pytest.mark.macos
+def test_on_a_mac_the_page_doesn_t_install_codex_since_it_comes_with_the_chatgpt_app(harness,
+                                                                                    page, ai):
+    r = call(page.url, "api/codex/install", method="POST", body={})
+
+    assert r.status == 400
+    assert harness.commands == []
 
 
 def test_every_ai_sign_in_result_is_explained_in_all_three_languages():
@@ -4468,12 +4571,12 @@ MACOS_WORDS = {
     "fi": r"Mac|macOS|avainnippu|Pääte|Terminal|Järjestelmäasetukset|Salasanat-sovellu|WhatsApp",
     "zh": r"Mac|macOS|钥匙串|终端|访达|系统设置|“密码”应用|WhatsApp",
 }
-# Texts the page shows only on macOS, or only for Claude and Codex, which come to Windows in their
-# own tickets (#316, #317).
+# Texts the page shows only on macOS, or only for Claude, which comes to Windows in its own ticket
+# (#317), or the chat's.
 MACOS_ONLY_TEXTS = re.compile(
     r"^(whatsapp\.|health\.fail\.whatsapp|finish\.fail\.whatsapp|check\.whatsapp|working\.whatsapp"
-    r"|source\.whatsapp|health\.check\.whatsapp|claude\.|codex\.|ai\.claude\.|ai\.codex\.|chat\."
-    r"|keychain\.|welcome\.ai\.(claude|codex)$|finish\.(ai\.current|changes|stopped)\.(claude|codex)$"
+    r"|source\.whatsapp|health\.check\.whatsapp|claude\.|ai\.claude\.|chat\."
+    r"|keychain\.|welcome\.ai\.claude$|finish\.(ai\.current|changes|stopped)\.claude$"
     r"|open\.app-not-opened$|wilma\.passwords$|(health|finish)\.fail\.ai$"
     r"|finish\.wake\.(set|other-schedule|cancelled|no-dialog)$|finish\.replace$)"
     r"|\.keychain-not-reachable$")
@@ -4488,21 +4591,22 @@ def test_the_state_says_which_system_and_ais_the_page_offers(page):
     state = call(page.url, "api/state").json()
 
     assert state["system"] == ("windows" if sys.platform == "win32" else "macos")
-    assert state["ais"] == (["gateway"] if sys.platform == "win32" else ["claude", "codex", "gateway"])
+    assert state["ais"] == (["gateway", "codex"] if sys.platform == "win32"
+                            else ["claude", "codex", "gateway"])
 
 
-def test_on_windows_welcome_offers_only_the_gateway_for_now(harness, page, monkeypatch):
+def test_on_windows_welcome_offers_the_gateway_and_chatgpt_but_not_claude_yet(harness, page,
+                                                                              monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
 
     state = call(page.url, "api/state").json()
-    assert state["system"] == "windows" and state["ais"] == ["gateway"]
+    assert state["system"] == "windows" and state["ais"] == ["gateway", "codex"]
     assert state["welcome"]["ai"] == "gateway"  # the default, too
-    for name in ("claude", "codex"):
-        assert check_ai(page.url, name).status == 400, name
-        assert welcome(page.url, ai=name).status == 400, name
-        assert call(page.url, "api/chat", method="POST", body={"ai": name}).status == 400, name
+    assert check_ai(page.url, "claude").status == 400
+    assert welcome(page.url, ai="claude").status == 400
+    assert call(page.url, "api/chat", method="POST", body={"ai": "claude"}).status == 400
     assert not config_file(harness).exists()
-    assert harness.commands == []  # neither Claude Code nor Codex was looked at
+    assert harness.commands == []  # Claude Code wasn't looked at
 
     assert check_ai(page.url, "gateway").json() == {"result": "ready", "ai": "gateway"}
     assert welcome(page.url, ai="gateway").status == 200
@@ -4520,6 +4624,22 @@ def test_on_windows_the_page_hides_what_only_macos_or_another_ai_has():
     # A text's Windows twin wherever there is one.
     t = script.split("function t(key)", 1)[1].split("\n}\n", 1)[0]
     assert 'page.system === "windows"' in t and "`${key}.windows`" in t
+
+
+def test_on_windows_chatgpt_s_step_installs_codex_and_welcome_doesn_t_wait_for_it():
+    script = (PAGE_DIR / "page.js").read_text()
+
+    # Install Codex in place of the ChatGPT app's download, which is the Mac's.
+    assert 'post("api/codex/install", {})' in script
+    assert 'getElementById("codex-install").hidden = !windows ||' in script
+    assert 'getElementById("codex-download").hidden = windows ||' in script
+    # Welcome goes on with ChatGPT picked before Codex is installed or signed in.
+    goes_on = script.split("function welcomeGoesOn(", 1)[1].split("\n}\n", 1)[0]
+    assert 'page.system === "windows" && name === "codex"' in goes_on
+    assert '["not-installed", "signed-out"]' in goes_on
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        for key in ("ai.codex.not-installed", "ai.codex.signed-out", "codex.not-installed"):
+            assert f"{key}.windows" in table, (language, key)
 
 
 def test_on_windows_no_text_the_page_shows_names_what_only_macos_has():
