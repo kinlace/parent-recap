@@ -9,6 +9,7 @@ from __future__ import annotations
 import imaplib
 import json
 import shutil
+import sys
 from typing import Any
 
 import pytest
@@ -61,9 +62,12 @@ def outcome(report: dict[str, Any], name: str) -> dict[str, Any]:
 
 
 def install_program(harness) -> None:
+    """The program as the install leaves it: install.sh's venv on macOS, install.ps1's on Windows."""
     app = harness.home / "ParentRecap" / "app"
-    (app / ".venv" / "bin").mkdir(parents=True)
-    (app / ".venv" / "bin" / "family-brief").write_text("#!/bin/sh\n")
+    command = app / ".venv" / ("Scripts/parent-recap.exe" if sys.platform == "win32"
+                               else "bin/family-brief")
+    command.parent.mkdir(parents=True)
+    command.write_text("#!/bin/sh\n")
     (app / "pyproject.toml").write_text('[project]\nname = "family-brief"\n')
     (app / "VERSION").write_text("0.5.0\n")
     install_record.add("program", str(app))
@@ -89,6 +93,24 @@ def test_the_program_isnt_installed_before_install_sh_has_run(harness, offline, 
     assert installed["ok"] is False
     assert "install.sh" in installed["reason"]
     assert code == 1 and report["result"] == "not-done"
+
+
+@pytest.mark.windows
+def test_on_windows_the_program_is_installed_with_install_ps1_s_venv(harness, offline, capsys):
+    install_program(harness)
+
+    _, report = status(harness, capsys)
+    assert outcome(report, "installed")["ok"] is True
+
+    venv = harness.home / "ParentRecap" / "app" / ".venv"
+    shutil.rmtree(venv)
+    (venv / "bin").mkdir(parents=True)  # a Mac's venv, which doesn't run on Windows
+    (venv / "bin" / "family-brief").write_text("#!/bin/sh\n")
+
+    _, report = status(harness, capsys)
+    installed = outcome(report, "installed")
+    assert installed["ok"] is False
+    assert "install line" in installed["reason"] and "install.sh" not in installed["reason"]
 
 
 # ── 2. The health check is all OK

@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,6 +36,8 @@ TITLES = {
     "nightly": "Nightly job loaded",
     "wake": "Wake schedule set, or the Mac never sleeps",
 }
+# The command the install puts in the program's venv: install.sh's, or install.ps1's on Windows.
+_COMMAND = Path("Scripts/parent-recap.exe") if sys.platform == "win32" else Path("bin/family-brief")
 
 
 @dataclass
@@ -87,11 +90,13 @@ def _installed() -> Outcome:
                              re.M)
         except OSError:
             continue
-        if ours and (program / ".venv" / "bin" / "family-brief").exists():
+        if ours and (program / ".venv" / _COMMAND).exists():
             version = _read(program / "VERSION") or "unknown version"
             return Outcome("installed", True, f"{version} in {_show(program)}")
+    again = ("the family pastes the install line into PowerShell again" if sys.platform == "win32"
+             else "run the plugin's install.sh")
     return Outcome("installed", False, f"Parent Recap isn't installed in "
-                   f"{', '.join(_show(p) for p in programs)}: run the plugin's install.sh")
+                   f"{', '.join(_show(p) for p in programs)}: {again}")
 
 
 def _doctor(config: str | None) -> Outcome:
@@ -134,10 +139,14 @@ def _nightly(hour: int, minute: int) -> Outcome:
 def _wake(hour: int, minute: int) -> Outcome:
     status = wake.status(hour, minute)
     if status.never_sleeps:
-        return Outcome("wake", True, "this Mac never sleeps, so it needs no wake schedule")
+        return Outcome("wake", True, "this computer never sleeps, so it needs no wake schedule")
     wake_h, wake_m = wake.time(hour, minute)
     if status.ours:
-        return Outcome("wake", True, f"the Mac wakes at {wake_h:02d}:{wake_m:02d} every day")
+        return Outcome("wake", True, f"the computer wakes at {wake_h:02d}:{wake_m:02d} every day")
+    if sys.platform == "win32":  # the job's own task wakes the PC, once the family's setting lets it
+        return Outcome("wake", False, "Allow wake timers is off, so the PC doesn't wake for the "
+                       "Brief, which then only comes on evenings it's awake. Only the family can "
+                       f"turn it on: {wake.manual_step(hour, minute)}")
     install = "parent-recap schedule install"
     if status.others:  # replaced only once the family agrees
         install = (f"{install} --replace-wake once the family agrees to replace this Mac's other "
