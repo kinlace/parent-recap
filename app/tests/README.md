@@ -18,12 +18,17 @@ needs Windows is marked `@pytest.mark.windows` the same way: the Credential Mana
 Credential Manager (`test_brief_by_hand_windows.py`), Windows' own layout for programs and for
 Parent Recap's own Node, the desktop adapter and the Wilma sign-in window, and the Task Scheduler
 tasks, power plan and sign-in setting the evening run needs (`test_jobs_windows.py`,
-`test_wake_windows.py`, `test_windows_only.py`). The first two store their secrets in the real
-Credential Manager, and the Task Scheduler tests register their tasks in the real Task Scheduler,
-under a test name of their own, and delete them after. `install.ps1` itself runs in CI's
+`test_wake_windows.py`, `test_windows_only.py`), the program installed with `install.ps1`'s venv
+(`test_setup_status.py`), and the setup page from a fresh install to Finish
+(`test_setup_page_windows.py`). The first two and the last store their secrets in the real
+Credential Manager, and the Task Scheduler tests and the last register their tasks in the real
+Task Scheduler, under a test name of their own, and delete them after. `install.ps1` itself runs in CI's
 windows-install job, for real on a clean runner: a failed download, the install that picks up from
-there, a second install that downloads and installs nothing, and the pinned wilma CLI installed
-from npm with the program's own Node, running `--help` and shipping Wilma's town list.
+there, the installed program's setup page listing Wilma, Gmail, the AI and MyClub with only the
+gateway offered, a second install that downloads and installs nothing, and the pinned wilma CLI
+installed from npm with the program's own Node, running `--help` and shipping Wilma's town list.
+`test_install_ps1.py` checks that the line ends on the setup page when pasted, and only installs
+when run as a file.
 
 `test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
@@ -287,13 +292,25 @@ progress files in the temporary HOME. It checks the config it writes loads, that
 leave the config as it was, that invalid answers are refused with the reason and nothing saved,
 that a MyClub link is never repeated, and that progress is saved and read back, with the partner
 Welcome chose kept in it.
+`test_setup_page_windows.py` walks the setup page from a fresh install to Finish, as a family
+without Wilma and with a Gateway Key does: the language, Welcome, each Source the page lists (no
+WhatsApp off macOS), Working, Check, the first Brief sent to the setup parent, and Finish with
+Weekend Picks on, against the harness's IMAP server, gateway, MyClub and Sources. It checks both
+evening jobs are installed and the secrets stored where the evening run reads them; on Windows a
+second run does the same with the real Credential Manager, Task Scheduler and power settings, and
+no macOS dialog or app.
 `test_setup_page.py` starts the setup page's server in-process and drives it with HTTP calls, as
 the page makes them. It checks that a request without the code, or for another Host or from
 another Origin, is refused, that the page loads nothing from the internet, that the server stops
 after 30 idle minutes and Terminal then says, in the language picked, that its window can be
 closed, the Mac's language preselected, that the language picked is saved, that
 every page text is in all three languages, that a second run resumes at the saved phase, and that
-off macOS the page offers neither WhatsApp nor the Passwords app. On
+off macOS the page offers neither WhatsApp nor the Passwords app. With `sys.platform` set to
+Windows, it checks that the page words itself for Windows and offers only the gateway as the AI,
+refusing Claude and Codex until their tickets, that every text the page shows there names the PC,
+Credential Manager and PowerShell through its `.windows` twin and nothing only macOS has, that the
+window says in PowerShell's words that it can be closed, and that Finish names Windows'
+sign-in-after-update check and leaves its Wake check to the wake outcome. On
 Welcome, it checks each choice's default and that the answers are saved, that the partner's email
 and language are asked only with a partner, and that a missing or signed-out Claude Code or Codex
 is caught and checked again: the harness answers `claude auth status` and `codex login status`
