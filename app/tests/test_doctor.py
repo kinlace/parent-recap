@@ -81,6 +81,7 @@ def claude_without_token(harness, monkeypatch):
     harness.model_reply = "OK"
 
 
+@pytest.mark.macos  # Windows' own words are in the claude_on_windows tests below
 def test_doctor_fails_claude_without_a_token_for_the_evening_brief(harness, claude_without_token,
                                                                   capsys):
     assert harness.cli("doctor") == 1
@@ -92,6 +93,7 @@ def test_doctor_fails_claude_without_a_token_for_the_evening_brief(harness, clau
     assert "tmux" not in line
 
 
+@pytest.mark.macos  # tmux and SSH keep only macOS's Keychain out of reach
 def test_doctor_in_tmux_says_to_store_the_token_outside_it(harness, claude_without_token, capsys):
     harness.secrets.reachable_here = False
 

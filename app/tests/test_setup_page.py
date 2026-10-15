@@ -2355,7 +2355,8 @@ def test_on_windows_the_page_installs_claude_code_opens_its_window_and_stores_th
     assert r.json()["progress"]["sources"]["ai"] == "done"
     assert harness.secrets == {"claude-oauth-token": CLAUDE_TOKEN}
     [test_call] = harness.model_calls
-    assert test_call.argv[0] == claude and test_call.env["CLAUDE_CODE_OAUTH_TOKEN"] == CLAUDE_TOKEN
+    assert same_file(test_call.argv[0]) == same_file(claude)  # Windows' `which` says claude.EXE
+    assert test_call.env["CLAUDE_CODE_OAUTH_TOKEN"] == CLAUDE_TOKEN
     assert_never_leaked(harness, [r], caplog, capsys, CLAUDE_TOKEN)
 
 
