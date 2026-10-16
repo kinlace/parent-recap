@@ -9,7 +9,41 @@ on:
   workflow_call:
 
 jobs:
+  changes:
+    # A PR or push that only touches docs no test reads skips the jobs below. A skipped job counts
+    # as passed for main's ruleset, so the required `test` check still lets the PR merge. docs/*.md,
+    # README.md, CHANGELOG.md and the skills are left out of the list: tests read them. A tag
+    # (the release workflow's call) always runs everything.
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            # The PR's merge commit against its first parent, the base it merges into.
+            base="HEAD^1"
+          elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            base="$BEFORE"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          others=$(git diff --name-only "$base" HEAD | grep -v -E \
+            '^(docs/(adr|agents)/|(CONTEXT|CONTRIBUTING|CLAUDE|SECURITY|THIRD_PARTY_NOTICES)\.md$)' || true)
+          echo "Changed outside the docs no test reads:"; echo "${others:-(nothing)}"
+          echo "code=$([ -n "$others" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     # macOS is the platform Parent Recap supports, and Actions minutes are free on a
     # public repo, so every run (PRs, main, tags) is on macOS (ADR 0002). The windows
     # job below only checks the program as the Windows version is built (ADR 0019).
@@ -45,6 +79,8 @@ jobs:
         run: python -m pytest --durations=15
 
   windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     # Every test that doesn't need macOS, so maintainers learn on every push whether the program
     # still works on Windows (ADR 0019). Tests marked `macos` skip themselves here.
     runs-on: windows-latest
@@ -86,6 +122,8 @@ jobs:
         run: python -m pytest --durations=15
 
   windows-install:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     # install.ps1 on a clean Windows PC, from this checkout, with the real downloads (ADR 0019).
     # Windows PowerShell 5.1, which is what runs the line families paste.
     runs-on: windows-latest
