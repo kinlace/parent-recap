@@ -15,6 +15,7 @@ jobs:
     # README.md, CHANGELOG.md and the skills are left out of the list: tests read them. A tag
     # (the release workflow's call) always runs everything.
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       code: ${{ steps.diff.outputs.code }}
     steps:

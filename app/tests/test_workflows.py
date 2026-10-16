@@ -33,5 +33,8 @@ def test_a_hung_test_fails_each_tests_job_within_40_minutes():
 
 
 def test_the_tests_run_on_macos_and_windows():
+    # `changes` only decides whether they run, on a cheaper runner.
     workflow = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())
-    assert {job["runs-on"] for job in workflow["jobs"].values()} == {"macos-latest", "windows-latest"}
+    jobs = {name: job for name, job in workflow["jobs"].items() if name != "changes"}
+    assert {job["runs-on"] for job in jobs.values()} == {"macos-latest", "windows-latest"}
+    assert all(job["needs"] == "changes" for job in jobs.values())
