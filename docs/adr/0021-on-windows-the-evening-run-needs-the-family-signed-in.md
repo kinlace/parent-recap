@@ -1,7 +1,3 @@
----
-status: proposed
----
-
 # On Windows the evening run needs the family signed in
 
 On Windows the evening jobs run in Task Scheduler as the signed-in user ("run only when user is logged on"), with "wake the computer to run this task", and read their secrets from Credential Manager. The PC may be locked, asleep or switched to another user at 21:00, but not signed out or shut down: the same as on macOS (#16). We chose this over "run whether user is logged on or not" because its passwordless form (S4U) has no network access, which the run needs for every Source and the AI, and its stored-password form would ask for the family's Windows password at setup.
