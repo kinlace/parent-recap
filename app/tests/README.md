@@ -259,7 +259,8 @@ and otherwise ends with the CLI's own exit status. `test_desktop_windows.py` che
 pages open with the default browser, files in Notepad, and that a PowerShell window, whose command
 is run by Windows PowerShell itself, runs it in the home folder with its variables and every word
 as given, that the Claude sign-in window runs `claude setup-token` there, and that a word with a
-double quote, which Windows PowerShell would drop, is refused. The setup page's Wilma tests run on Windows too, with the fake CLI on CI's Python.
+double quote, which Windows PowerShell would drop, is refused. The setup page's Wilma tests run on
+Windows too, with the fake CLI on CI's Python.
 `test_setup_claude.py` runs `parent-recap setup claude` against a fake terminal window, macOS
 dialog, secrets and `claude` test call, and checks the token never reaches the output, the logs or a
 command line, and that the window clears the token from its screen and scrollback once the family
