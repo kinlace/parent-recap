@@ -610,34 +610,11 @@ def claude_token_sign_in(program: str, typed: str) -> tuple[str, dict[str, Any]]
     return "saved", {}
 
 
-# The window `claude setup-token` runs in, as a program for this Python, given the claude
-# program and where the family pastes the token. Once they press Enter it clears the screen and
-# the scrollback, so the token isn't left behind in the window.
-SETUP_TOKEN_WINDOW = """\
-import subprocess, sys
-program, paste_into = sys.argv[1:]
-print("Parent Recap: sign in to Claude for the nightly Brief.")
-print("Click Authorize on the page that opens in your browser. If no page opens, open the")
-print("link shown below.")
-print(f"Copy the token this window then shows and paste it in {paste_into}.")
-print()
-try:
-    subprocess.run([program, "setup-token"])
-    print()
-    print(f"When the token is in {paste_into}, press Enter here to clear it from")
-    print("this window.")
-    input()
-except (EOFError, KeyboardInterrupt):
-    pass
-print("\\033[H\\033[2J\\033[3J", end="")
-print("You can close this window.")
-"""
-
-
 def setup_token_window(program: str, paste_into: str = "the Parent Recap dialog") -> list[str]:
     """The command for the window `claude setup-token` runs in, whose token the family copies
-    into `paste_into`."""
-    return [sys.executable, "-c", SETUP_TOKEN_WINDOW, program, paste_into]
+    into `paste_into` (claude_window.py). This Python, since the window's PATH may not lead to
+    this program."""
+    return [sys.executable, "-m", "family_brief.claude_window", program, paste_into]
 
 
 # ---------------------------------------------------------------- gateway

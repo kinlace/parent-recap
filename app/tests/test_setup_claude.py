@@ -74,10 +74,7 @@ def test_a_token_pasted_in_the_dialog_is_tested_and_stored(harness, terminal, ca
 
     res, printed = result(capsys)
     assert res == {"result": "saved", "test_call": "ok"}
-    [window] = terminal.windows
-    script = window.argv[2]
-    assert "setup-token" in script
-    assert "\\033[3J" in script  # the window's scrollback is cleared of the token afterwards
+    assert len(terminal.windows) == 1  # the next test runs its command
     assert len(harness.dialog.shown) == 1 and "hidden answer" in harness.dialog.shown[0]
     [call] = harness.model_calls
     assert call.env["CLAUDE_CODE_OAUTH_TOKEN"] == TOKEN

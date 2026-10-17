@@ -17,11 +17,13 @@ import pytest
 
 from conftest import REAL_RUN
 
+from family_brief import setup_steps
 from family_brief.system import desktop, desktop_windows
 
 pytestmark = pytest.mark.windows
 
 REAL_POPEN = subprocess.Popen  # before the fixture fakes it; subprocess.run starts programs with it
+TOKEN = "sk-ant-oat01-Abc_def-123456789"
 
 
 class FakeWindows:
@@ -92,6 +94,32 @@ def test_a_powershell_window_runs_its_command_in_the_home_folder_with_its_title(
     # The title, which PowerShell without a console of its own can't show, is set first.
     assert "$Host.UI.RawUI.WindowTitle = 'Parent Recap''s test'" in desktop_windows.window_script(
         ["cmd"], title)
+
+
+def test_the_claude_sign_in_window_runs_setup_token_in_windows_powershell(harness, windows,
+                                                                           monkeypatch):
+    claude = harness.home / "claude.cmd"
+    claude.write_text(f'@echo off\r\nif "%~1"=="setup-token" echo {TOKEN}\r\n')
+
+    assert desktop.open_terminal(
+        setup_steps.setup_token_window(str(claude), "the field on the setup page"), {},
+        setup_steps.CLAUDE_WINDOW)
+
+    [(argv, kwargs)] = windows.programs
+    monkeypatch.setattr(subprocess, "Popen", REAL_POPEN)
+    # No family to press Enter: the window clears itself as it would once they had.
+    shown = REAL_RUN([a for a in argv if a != "-NoExit"], env=kwargs["env"], cwd=kwargs["cwd"],
+                     stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    assert shown.returncode == 0, shown.stderr
+    before, after = shown.stdout.split("\x1b[H\x1b[2J\x1b[3J")
+    assert TOKEN in before and "paste it in the field on the setup page" in before
+    assert after.strip() == "You can close this window."
+
+
+def test_a_word_windows_powershell_would_change_is_refused():
+    # Windows PowerShell 5.1 drops a double quote inside a word it passes to a program (#376).
+    with pytest.raises(ValueError):
+        desktop_windows.window_script(["python.exe", "-c", 'print("hello")'], "Parent Recap test")
 
 
 def test_forgetting_a_window_is_harmless(windows):

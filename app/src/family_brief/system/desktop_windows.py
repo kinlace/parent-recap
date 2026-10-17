@@ -41,7 +41,11 @@ def forget_terminal(title: str) -> None:
 
 
 def window_script(argv: list[str], title: str) -> str:
-    """The PowerShell the window runs: its title, then `argv`, each word as it is."""
+    """The PowerShell the window runs: its title, then `argv`, each word as it is. Raises
+    ValueError for a word with a double quote: Windows PowerShell 5.1 drops it on the way to the
+    program, which then runs with a word it wasn't given (#376). No Windows path has one."""
+    if any('"' in word for word in argv):
+        raise ValueError("Windows PowerShell would drop the double quotes in a window's command")
     # Without a console of its own PowerShell can't set a title, which changes nothing else.
     return (f"try {{ $Host.UI.RawUI.WindowTitle = {_quoted(title)} }} catch {{ }}\n"
             f"& {' '.join(map(_quoted, argv))}\n")
@@ -50,8 +54,7 @@ def window_script(argv: list[str], title: str) -> str:
 def _quoted(word: str) -> str:
     """`word` as a PowerShell string that expands nothing. PowerShell takes the curly single quotes
     for one too, as in a home folder named O’Brien, so each is doubled the same way. Windows
-    PowerShell passes it on to a program as one word, except that it drops a double quote inside
-    it, which no path has."""
+    PowerShell passes it on to a program as one word, without any double quote in it."""
     return "'" + "".join(c * 2 if c in SINGLE_QUOTES else c for c in word) + "'"
 
 
