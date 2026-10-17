@@ -4,18 +4,18 @@ Parent Recap also runs on a Windows PC instead of a Mac, installed natively, wit
 
 ## What's supported
 
-| On Windows                  | Supported                                                                                                                                                                                                                                     |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The PC                      | Windows 11 on an x64 PC (Intel or AMD). Not Windows 10, whose support Microsoft ended in October 2025 ([Microsoft](https://www.microsoft.com/en-us/windows/end-of-support)), and not Windows on ARM, such as a PC with a Snapdragon processor |
-| Signed in at 9 pm           | The family stays signed in to Windows in the evening. Locked, asleep, or with another Windows user signed in on top is fine. Signed out or shut down is not: that night's Brief doesn't go out (ADR 0021)                                     |
-| Power                       | Leave the PC plugged in. Whether Windows wakes a sleeping laptop for the evening run on battery hasn't been tested yet                                                                                                                        |
-| Waking up                   | The power plan's "Allow wake timers" must be on, so Windows lets the evening run wake the PC. Setup and `doctor` check it, and never change it themselves                                                                                     |
-| Restarts for Windows Update | After a restart nobody is signed in, and no Brief goes out until someone is. Turn on "Use my sign-in info to automatically finish setting up after an update" so Windows signs you back in by itself; `doctor` checks it                      |
-| Sources                     | Gmail, Wilma and MyClub. Not WhatsApp: Parent Recap reads it from WhatsApp for Mac's own data, which has no counterpart on Windows                                                                                                            |
-| The AI                      | Parent Recap's gateway (invited Households) or ChatGPT, through Codex: the setup page installs the Codex CLI with OpenAI's own installer if it isn't there, and you sign in with your ChatGPT account. Not Claude yet                         |
-| Calendar events and extras  | New events come as a calendar attachment in the Brief email. Weekend Picks work as on a Mac. Writing events straight into Google Calendar isn't offered on Windows yet: it's turned on in the chat                                            |
-| Changes after setup         | Not in a chat yet: the Claude Code and Codex skills that change settings set up a Mac. Ask the Parent Recap team                                                                                                                              |
-| Uninstalling                | Not yet. Ask the Parent Recap team                                                                                                                                                                                                            |
+| On Windows                  | Supported                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The PC                      | Windows 11 on an x64 PC (Intel or AMD). Not Windows 10, whose support Microsoft ended in October 2025 ([Microsoft](https://www.microsoft.com/en-us/windows/end-of-support)), and not Windows on ARM, such as a PC with a Snapdragon processor                                                                                                                                                                     |
+| Signed in at 9 pm           | The family stays signed in to Windows in the evening. Locked, asleep, or with another Windows user signed in on top is fine. Signed out or shut down is not: that night's Brief doesn't go out (ADR 0021)                                                                                                                                                                                                         |
+| Power                       | Leave the PC plugged in. Whether Windows wakes a sleeping laptop for the evening run on battery hasn't been tested yet                                                                                                                                                                                                                                                                                            |
+| Waking up                   | The power plan's "Allow wake timers" must be on, so Windows lets the evening run wake the PC. Setup and `doctor` check it, and never change it themselves                                                                                                                                                                                                                                                         |
+| Restarts for Windows Update | After a restart nobody is signed in, and no Brief goes out until someone is. Turn on "Use my sign-in info to automatically finish setting up after an update" so Windows signs you back in by itself; `doctor` checks it                                                                                                                                                                                          |
+| Sources                     | Gmail, Wilma and MyClub. Not WhatsApp: Parent Recap reads it from WhatsApp for Mac's own data, which has no counterpart on Windows                                                                                                                                                                                                                                                                                |
+| The AI                      | Parent Recap's gateway (invited Households) or ChatGPT, through Codex: the setup page installs the Codex CLI with OpenAI's own installer if it isn't there, and you sign in with your ChatGPT account. Or Claude, through Claude Code: the setup page installs it with Anthropic's own installer if it isn't there, opens a PowerShell window running `claude setup-token`, and you paste the token into the page |
+| Calendar events and extras  | New events come as a calendar attachment in the Brief email. Weekend Picks work as on a Mac. Writing events straight into Google Calendar isn't offered on Windows yet: it's turned on in the chat                                                                                                                                                                                                                |
+| Changes after setup         | Not in a chat yet: the Claude Code and Codex skills that change settings set up a Mac. Ask the Parent Recap team                                                                                                                                                                                                                                                                                                  |
+| Uninstalling                | See [Uninstalling](#uninstalling)                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ## What you need
 
@@ -55,12 +55,22 @@ In PowerShell, run:
 
 It checks the evening run's tasks in Task Scheduler, "Allow wake timers", signing back in after an update, and the stored passwords and AI sign-in, and says what to fix. The evening run's log is `%USERPROFILE%\ParentRecap\logs\run-stderr.log`, and the install's logs are in `%LOCALAPPDATA%\ParentRecap\logs`. Don't paste mail or message text from the logs into a chat.
 
+## Uninstalling
+
+In PowerShell, run:
+
+```powershell
+& "$env:LOCALAPPDATA\ParentRecap\app\.venv\Scripts\parent-recap.exe" uninstall
+```
+
+It lists everything setup created on the PC, asks whether to keep the archive of past Briefs, and removes the rest once you confirm: the tasks in Task Scheduler, the `Parent Recap/…` credentials in Credential Manager, and the folders below. The program itself goes last, just after uninstall ends. Your Gmail, Wilma and MyClub accounts stay as they are: delete the Gmail App Password yourself in your Google account.
+
 ## Where it keeps things
 
 - `%LOCALAPPDATA%\ParentRecap`: the program, its own Python and Node, the downloaded release and the install's logs
 - `%USERPROFILE%\ParentRecap`: every Brief and the messages it was built from, the evening run's logs, and the wilma CLI
 - `%USERPROFILE%\.family`: your configuration and what was already handled
-- Credential Manager (Control Panel › Credential Manager › Windows Credentials): the Gmail App Password and the Gateway Key, as `Parent Recap/<name>`
+- Credential Manager (Control Panel › Credential Manager › Windows Credentials): the Gmail App Password, the Gateway Key and the Claude token, as `Parent Recap/<name>`
 - The evening jobs: Task Scheduler, as tasks named `Parent Recap …`
 
 Who can read these on the PC, and how it differs from a Mac, is in [SECURITY.md](../SECURITY.md#on-windows).
