@@ -4,6 +4,26 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.6.0 · 2026-10-17
+
+Parent Recap runs on a Windows 11 PC too: one PowerShell line installs it, and the setup page connects Gmail, Wilma and MyClub with the gateway, ChatGPT or Claude (ADR 0019). On a Mac and on Windows, the Kids now reach the AI as Kid A and Kid B, and the Brief reads tighter.
+
+### Added
+- Windows 11 (x64): paste one line into PowerShell to install, then finish setup in the browser page with the gateway, ChatGPT (the page installs and signs in Codex) or Claude (the page installs Claude Code and takes its token). The evening Brief runs from Task Scheduler and wakes the PC, as long as you stay signed in to Windows (ADR 0021). `doctor` checks it, and `parent-recap uninstall` removes it, with the same choice about the archive of past Briefs as on a Mac. Not on Windows yet: WhatsApp, Google Calendar mode, and changing settings in a chat. See `docs/windows.md`.
+- When the AI that writes your Brief stops working, the setup page's Finish step can switch to Claude, ChatGPT or the gateway, or take a new Gateway Key, without a chat or Terminal.
+- The setup page's first step has a folded list of what to have ready: the Wilma login, a MyClub link per Kid, Gmail's 2-Step Verification and your phone.
+
+### Changed
+- With the AI filter on, the Kids reach the AI as Kid A and Kid B by default. The Brief still shows their names. Ask Claude or Codex to send their names as they are.
+- An English or Chinese Brief translates everyday Finnish words (eväät, vaatetus, kota), keeping the Finnish only in brackets after a form's or event's name, such as 家长会（vanhempainilta）.
+- The Brief skips sections and lines that only say there is nothing new, lists each to-do once under its heading, and says a paper to sign is in the kid's home folder or bag instead of sending you to Wilma.
+- Finnish texts read more naturally after a native review: held-back messages, the gateway's daily credit, a WhatsApp permission problem, changing the AI, a cut-off reply and a Source that couldn't be read. A translated Finnish Brief no longer repeats a Finnish word in brackets.
+- The Full Disk Access step names the exact Python file Finder selects, such as python3.13.
+- The README and troubleshooting say the evening job runs only while someone is logged in to the Mac, and what to do after a restart. `doctor` says "installed but not loaded for this login" instead of "not installed yet" then.
+
+### Fixed
+- Uninstall no longer misses something setup installed when two setup steps finished at the same moment.
+
 ## 0.5.8 · 2026-10-12
 
 A Household without a Claude or ChatGPT subscription can be invited to get its Brief through the maintainers' gateway, and setup says why the WhatsApp check failed.
