@@ -42,7 +42,7 @@ def get(key: str) -> str | None:
     # stored, which trusts only that version's Python.
     try:
         r = subprocess.run(_item("find-generic-password", key) + ["-w"], capture_output=True,
-                           text=True, timeout=READ_SECONDS)
+                           text=True, encoding="utf-8", timeout=READ_SECONDS)
     except subprocess.TimeoutExpired:
         raise SecretsError(f"macOS asks for the Keychain password before {key} can be read",
                            "needs-prompt")
@@ -129,7 +129,7 @@ def _item(verb: str, key: str) -> list[str]:
 
 def _run(cmd: list[str], input: str | None = None) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(cmd, input=input, capture_output=True, text=True,
+        return subprocess.run(cmd, input=input, capture_output=True, text=True, encoding="utf-8",
                               timeout=WRITE_SECONDS)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise _error(f"{SECURITY} didn't finish: {e}")

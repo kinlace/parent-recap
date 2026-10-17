@@ -237,7 +237,7 @@ def _parse_cli_response(stdout: str) -> tuple[dict[str, Any], bool]:
 def _save_unparsed(result: str, reason: object) -> None:
     dbg = Path.home() / "ParentRecap" / "logs" / "summarize_failed.txt"
     dbg.parent.mkdir(parents=True, exist_ok=True)
-    dbg.write_text(result)
+    dbg.write_text(result, encoding="utf-8")
     log.error("JSON parse fully failed (%s). Raw saved to %s", reason, dbg)
 
 
@@ -393,7 +393,7 @@ def claude_test_call(program: str, env: dict[str, str]) -> str | None:
         proc = subprocess.run([program, "-p", "Reply with just the two letters OK",
                                "--output-format", "json", "--setting-sources", "",
                                "--no-session-persistence"],
-                              capture_output=True, text=True, timeout=120, env=env,
+                              capture_output=True, text=True, encoding="utf-8", timeout=120, env=env,
                               stdin=subprocess.DEVNULL)
         data = json.loads(proc.stdout or "{}")
     except (OSError, ValueError, subprocess.TimeoutExpired) as e:
@@ -491,7 +491,7 @@ def _run_with_retry(cmd: list[str], timeout: int, what: str, budget: int = CALL_
                     **kwargs) -> _Ran:
     """Run an LLM CLI, retrying as _with_retry does. Both CLIs occasionally hang on start."""
     proc, waited = _with_retry(
-        lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kwargs),
+        lambda: subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout, **kwargs),
         lambda proc: _busy_reason(proc, kwargs.get("input")), timeout, what, budget)
     return _Ran(proc, waited)
 
@@ -545,7 +545,7 @@ def _save_diagnostics(name: str, proc: subprocess.CompletedProcess, cmd_desc: st
         f"PATH: {os.environ.get('PATH', '')}\n"
         f"HOME: {os.environ.get('HOME', '')}\n"
         f"USER: {os.environ.get('USER', '')}\n"
-    )
+    , encoding="utf-8")
     log.error("LLM CLI diagnostics saved to %s", dbg)
 
 
@@ -681,7 +681,7 @@ def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int, budge
         what = f"codex exec (prompt: {len(text.encode('utf-8'))} B)"
         ran = _run_with_retry(cmd, timeout, what, budget, input=text)
         proc = ran.proc
-        result = out.read_text() if out.exists() else ""
+        result = out.read_text(encoding="utf-8") if out.exists() else ""
     if proc.returncode != 0 or not result.strip():
         _save_diagnostics("codex_cli_failed.txt", proc, f"{codex} exec ... - <{len(text)} chars on stdin>")
         raise RuntimeError(f"codex exec failed ({proc.returncode}). stderr tail={proc.stderr[-500:]!r}")

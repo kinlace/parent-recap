@@ -457,7 +457,7 @@ def read_last_week_feedback(cfg: Config, weekend: tuple) -> list[dict]:
     if not picks_file.exists():
         return []
     import json as _json
-    data = _json.loads(picks_file.read_text())
+    data = _json.loads(picks_file.read_text(encoding="utf-8"))
     prev_picks = data.get("picks") or []
     prev_candidates = {c["ext_id"]: c for c in data.get("candidates") or []}
 
@@ -515,8 +515,8 @@ def _archive(cfg: Config, weekend, candidates: list[Candidate],
         "candidates_total": len(candidates),
         "candidates": [c.to_dict() for c in candidates],
         "picks": picks,
-    }, ensure_ascii=False, indent=2))
-    (d / f"{sat.isoformat()}.md").write_text(body)
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    (d / f"{sat.isoformat()}.md").write_text(body, encoding="utf-8")
 
 
 def run(cfg: Config, dry_run: bool = False) -> int:

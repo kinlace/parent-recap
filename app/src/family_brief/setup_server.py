@@ -1473,7 +1473,7 @@ class SetupServer:
     def _config_data(self) -> dict[str, Any]:
         """The config as saved so far, or empty when there's none yet."""
         try:
-            data = yaml.safe_load(self.config.read_text())
+            data = yaml.safe_load(self.config.read_text(encoding="utf-8"))
         except (OSError, yaml.YAMLError):
             return {}
         return data if isinstance(data, dict) else {}
@@ -1612,7 +1612,7 @@ def _ai_status(program: str, name: str) -> str:
     status = ["auth", "status"] if name == "claude" else ["login", "status"]
     try:
         # Only its exit code is read: the output can name the account.
-        proc = subprocess.run([program, *status], capture_output=True, text=True,
+        proc = subprocess.run([program, *status], capture_output=True, text=True, encoding="utf-8",
                               timeout=AI_CHECK_SECONDS, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return "check-failed"

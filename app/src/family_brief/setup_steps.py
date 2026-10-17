@@ -308,7 +308,7 @@ def cmd_wilma(args: argparse.Namespace) -> int:
         finally:
             if args.status is not None:
                 with suppress(OSError):  # the step stopped waiting and took its folder away
-                    args.status.write_text(f"{status}\n")
+                    args.status.write_text(f"{status}\n", encoding="utf-8")
         return status
     out = sign_in_in_terminal(args.language, args.timeout, no_open=args.no_open)
     return _report(out.pop("result"), out.pop("next", None), **out)
@@ -517,7 +517,7 @@ def _mtime(path: Path) -> int | None:
 
 def _exit_status(path: Path) -> int | None:
     try:
-        return int(path.read_text().strip())
+        return int(path.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         return None
 
@@ -525,7 +525,7 @@ def _exit_status(path: Path) -> int | None:
 def _wilma_address(config: Path) -> str | None:
     """The host of the Wilma the family signed in to last, such as espoo.inschool.fi."""
     try:
-        data = json.loads(config.read_text())
+        data = json.loads(config.read_text(encoding="utf-8"))
         profile = next(p for p in data["profiles"] if p.get("id") == data.get("lastProfileId"))
         url = str(profile["tenantUrl"])
     except (OSError, ValueError, KeyError, TypeError, StopIteration):
@@ -977,7 +977,7 @@ def _kid_with_link(path: Path, kid: str, url: str) -> str | None:
     from .collectors import myclub
 
     try:
-        kids = (yaml.safe_load(Path(path).read_text()) or {}).get("kids") or []
+        kids = (yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}).get("kids") or []
     except (OSError, yaml.YAMLError, AttributeError):
         return None
     same = myclub._normalize_url(url).rstrip("/")

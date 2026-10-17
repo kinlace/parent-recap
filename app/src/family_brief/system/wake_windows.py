@@ -25,7 +25,7 @@ def _setting(name: str) -> list[int]:
     current values are always its last two hexadecimal numbers."""
     try:
         out = subprocess.run(["powercfg", "/query", "SCHEME_CURRENT", "SUB_SLEEP", name],
-                             capture_output=True, text=True, errors="replace").stdout
+                             capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     except OSError:
         return []
     values = [int(v, 16) for v in re.findall(r"\b0x([0-9a-fA-F]+)\b", out)]

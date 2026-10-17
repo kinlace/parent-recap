@@ -123,7 +123,7 @@ def _previous(out: Path, current: Path, meta: dict[str, Any]) -> dict[str, Any] 
         if path == current:
             continue
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         if all(data.get(k) == meta[k] for k in ("backend", "model", "cases_dir")) \
@@ -289,7 +289,7 @@ def run_model(cases: list[Case], args: argparse.Namespace, backend: str, languag
     args.out.mkdir(parents=True, exist_ok=True)
     path = args.out / (f"{finished:%Y%m%d-%H%M%S-%f}-{backend}{'-' + model if model else ''}"
                        f"-{language}.json")
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return data, path
 
 
@@ -303,7 +303,7 @@ def evaluate(cases: list[Case], args: argparse.Namespace, backend: str, language
     else:
         [(data, path)] = saved
         if args.compare:
-            previous = json.loads(args.compare.read_text()) | {"_path": str(args.compare)}
+            previous = json.loads(args.compare.read_text(encoding="utf-8")) | {"_path": str(args.compare)}
         else:
             previous = _previous(args.out, path, data)
         print(report(data, previous))

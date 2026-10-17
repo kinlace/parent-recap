@@ -52,7 +52,7 @@ def installed_version(folder: Path | None = None) -> str | None:
     says, or None."""
     package = own_node.modules(folder or own_node.wilma_folder()) / PACKAGE / "package.json"
     try:
-        version = json.loads(package.read_text()).get("version")
+        version = json.loads(package.read_text(encoding="utf-8")).get("version")
     except (OSError, ValueError, AttributeError):
         return None
     return version if isinstance(version, str) else None
@@ -112,7 +112,7 @@ def _npm_install(npm: list[str]) -> bool:
             # npm runs package scripts with the `node` its PATH finds: this one, not the Mac's.
             env = {**os.environ, "npm_config_cache": cache, "npm_config_update_notifier": "false",
                    "PATH": os.pathsep.join([str(Path(npm[0]).parent), os.environ.get("PATH", "")])}
-            proc = subprocess.run([*npm, *install_args(staging)], capture_output=True, text=True,
+            proc = subprocess.run([*npm, *install_args(staging)], capture_output=True, text=True, encoding="utf-8",
                                   timeout=INSTALL_SECONDS, stdin=subprocess.DEVNULL, env=env)
         if proc.returncode != 0 or installed_version(staging) != WILMA_CLI_VERSION \
                 or own_node.wilma_cli(staging) is None:
@@ -158,7 +158,7 @@ def tenants() -> list[dict[str, Any]] | None:
     for path in (package / "node_modules" / "@wilm-ai" / "wilma-client" / "tenant_list.json",
                  package.parent / "wilma-client" / "tenant_list.json"):  # where npm hoists it
         try:
-            listed = json.loads(path.read_text())["wilmat"]
+            listed = json.loads(path.read_text(encoding="utf-8"))["wilmat"]
         except (OSError, ValueError, KeyError, TypeError):
             continue
         if isinstance(listed, list):
@@ -364,7 +364,7 @@ def remove_profile(path: Path, profile_id: str) -> None:
 
 def _read(path: Path) -> dict[str, Any]:
     try:
-        config = json.loads(path.read_text())
+        config = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         config = {}
     if not (isinstance(config, dict) and isinstance(config.get("profiles"), list)):

@@ -297,6 +297,6 @@ class Config(BaseModel):
             raise FileNotFoundError(
                 f"Config not found at {path}. Copy config.example.yaml and fill it in."
             )
-        with path.open() as f:
+        with path.open(encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return cls.model_validate(data)

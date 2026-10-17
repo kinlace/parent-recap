@@ -14,7 +14,7 @@ OWN_SCHEDULE = True  # a pmset repeat schedule, which uninstall cancels
 
 def _pmset(*args: str) -> str:
     try:
-        return subprocess.run(["pmset", *args], capture_output=True, text=True).stdout
+        return subprocess.run(["pmset", *args], capture_output=True, text=True, encoding="utf-8").stdout
     except OSError:
         return ""
 
@@ -106,7 +106,7 @@ def _as_administrator(command: str, prompt: str) -> None:
     script = (f"do shell script {secret_dialog.quote(command)} with prompt "
               f"{secret_dialog.quote(prompt)} with administrator privileges")
     try:
-        proc = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+        proc = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, encoding="utf-8")
     except OSError as e:  # no osascript: not a Mac
         raise secret_dialog.NoWayToAsk() from e
     if proc.returncode != 0:

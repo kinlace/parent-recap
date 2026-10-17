@@ -146,7 +146,7 @@ def _checked(data: Any, english_table: T) -> T:
 
 def _stored(cfg: Config, language: Language, table: Table[T]) -> T | None:
     try:
-        return _checked(json.loads(_path(cfg, language, table).read_text()), table.english)
+        return _checked(json.loads(_path(cfg, language, table).read_text(encoding="utf-8")), table.english)
     except (OSError, ValueError):
         return None
 
@@ -174,7 +174,7 @@ def prepare(cfg: Config, language: Language, table: Table = BRIEF) -> None:
     translated = _checked(reply.data, table.english)
     path = _path(cfg, language, table)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(dataclasses.asdict(translated), ensure_ascii=False, indent=2))
+    path.write_text(json.dumps(dataclasses.asdict(translated), ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 TABLES: tuple[Table, ...] = (BRIEF, WEEKEND)

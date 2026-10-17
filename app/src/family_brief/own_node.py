@@ -78,7 +78,7 @@ def wilma_cli(prefix: Path | None = None) -> Path | None:
         return cli if cli.is_file() else None
     package = modules(prefix) / WILMA_PACKAGE
     try:
-        bin_ = json.loads((package / "package.json").read_text()).get("bin")
+        bin_ = json.loads((package / "package.json").read_text(encoding="utf-8")).get("bin")
     except (OSError, ValueError, AttributeError):
         return None
     script = bin_.get("wilma") if isinstance(bin_, dict) else bin_

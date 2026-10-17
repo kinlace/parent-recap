@@ -241,7 +241,7 @@ def _config_answers(answers: Answers) -> bool:
 def _read_config(config: Path) -> dict[str, Any]:
     if not config.exists():
         return {"kids": []}
-    data = yaml.safe_load(config.read_text()) or {}
+    data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict):
         raise ValueError("the config isn't a mapping")
     Config.model_validate(data)
@@ -303,7 +303,7 @@ def _read_progress(path: Path) -> dict[str, Any]:
     start: dict[str, Any] = {"phase": "welcome", "source": None,
                              "sources": {s: "to-do" for s in SOURCES}}
     try:
-        saved = ProgressAnswer.model_validate(json.loads(path.read_text()))
+        saved = ProgressAnswer.model_validate(json.loads(path.read_text(encoding="utf-8")))
     except (OSError, ValueError, ValidationError):  # none yet, or not one this program wrote
         return start
     return _merged_progress(start, saved)
@@ -329,7 +329,7 @@ def _write_private(path: Path, text: str) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text)
     os.chmod(tmp, 0o600)
     tmp.replace(path)

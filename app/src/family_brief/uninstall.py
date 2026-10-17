@@ -184,7 +184,7 @@ def _config(path: Path, s: Survey) -> Config | None:
     if not path.exists():
         return None
     try:
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
         cfg = Config.model_validate(data)
         if isinstance(data, dict) and ("gmail" in data or "email" in data):
             return cfg
@@ -291,7 +291,7 @@ def _npm_made(prefix: Path) -> set[str]:
     package's commands, without an extension, .cmd and .ps1, named in its package.json."""
     try:
         bins = json.loads((prefix / "node_modules" / own_node.WILMA_PACKAGE / "package.json")
-                          .read_text()).get("bin")
+                          .read_text(encoding="utf-8")).get("bin")
     except (OSError, ValueError, AttributeError):
         bins = None
     if isinstance(bins, str):  # one command, named after the package
@@ -338,7 +338,7 @@ def _codex_skills(s: Survey, home: Path) -> None:
         if not d.exists():
             continue
         try:
-            text = (d / "SKILL.md").read_text()
+            text = (d / "SKILL.md").read_text(encoding="utf-8")
         except OSError:
             text = ""
         # install.sh --codex writes the skill's own name and a note saying where the plugin is.
@@ -355,7 +355,7 @@ def _plugin_copies(s: Survey, usual: list[Path]) -> None:
         if not d.exists():
             continue
         try:
-            name = json.loads((d / ".claude-plugin" / "plugin.json").read_text()).get("name")
+            name = json.loads((d / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")).get("name")
         except (OSError, ValueError, AttributeError):
             name = None
         if name == "parent-recap":
@@ -421,7 +421,7 @@ def _program(s: Survey, program: Path) -> None:
     if not program.exists():
         return
     try:
-        ours = re.search(r'^name\s*=\s*"family-brief"', (program / "pyproject.toml").read_text(), re.M)
+        ours = re.search(r'^name\s*=\s*"family-brief"', (program / "pyproject.toml").read_text(encoding="utf-8"), re.M)
     except OSError:
         ours = None
     if ours:

@@ -69,7 +69,7 @@ def _dialog(message: str, other: str | None) -> str:
         "return \"2\"\n"
     )
     try:
-        proc = subprocess.run(["osascript", "-"], input=script, capture_output=True, text=True)
+        proc = subprocess.run(["osascript", "-"], input=script, capture_output=True, text=True, encoding="utf-8")
     except OSError as e:  # no osascript: not a Mac
         raise NoWayToAsk() from e
     if proc.returncode != 0:

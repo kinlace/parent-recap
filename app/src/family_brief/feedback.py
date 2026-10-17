@@ -42,7 +42,7 @@ def pilot_form() -> dict[str, Any] | None:
     """The shipped pilot Form's `prefill_base_url` and `fields`, or None when this version ships
     none, or one that wouldn't make links."""
     try:
-        data = yaml.safe_load(PILOT_FORM.read_text())
+        data = yaml.safe_load(PILOT_FORM.read_text(encoding="utf-8"))
         block = data["feedback"]
         form = {"prefill_base_url": block["prefill_base_url"], "fields": block["fields"]}
         if FeedbackConfig.model_validate({"enabled": True, **form}).active():

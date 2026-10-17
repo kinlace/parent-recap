@@ -47,7 +47,7 @@ def send(recipients: list[str], body: str) -> None:
             )
             proc = subprocess.run(
                 ["osascript", "-e", script],
-                capture_output=True, text=True, timeout=60,
+                capture_output=True, text=True, encoding="utf-8", timeout=60,
             )
             if proc.returncode != 0:
                 log.error("iMessage to %s failed: %s", phone, proc.stderr.strip())

@@ -41,7 +41,7 @@ def _sid() -> str | None:
     """This Windows user's security identifier, which names their sign-in settings."""
     try:
         out = subprocess.run(["whoami", "/user", "/fo", "csv", "/nh"], capture_output=True,
-                             text=True, errors="replace").stdout
+                             text=True, encoding="utf-8", errors="replace").stdout
     except OSError:
         return None
     m = re.search(r"S-1-[\d-]+", out)

@@ -48,7 +48,7 @@ def save_link(config_path: Path, kid: str, url: str) -> None:
     """Set `kid`'s myclub_ical_url in the config file, leaving every other line and comment as
     it is. Used by `setup myclub` and the parent's own Terminal, so the link never goes through
     the agent chat."""
-    text = config_path.read_text()
+    text = config_path.read_text(encoding="utf-8")
     root = yaml.compose(text)
     kids = next((v for k, v in getattr(root, "value", []) if k.value == "kids"), None)
     entry = next((item for item in getattr(kids, "value", [])
@@ -75,7 +75,7 @@ def save_link(config_path: Path, kid: str, url: str) -> None:
     if saved.get("myclub_ical_url") != url:
         raise ValueError(f"couldn't place the link in {config_path}; add it to {kid!r} by hand")
     config_path.chmod(0o600)  # before the link goes in
-    config_path.write_text(text)
+    config_path.write_text(text, encoding="utf-8")
 
 
 def _as_utc(dt) -> datetime:

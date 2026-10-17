@@ -99,7 +99,7 @@ def remove_all() -> None:
 
 
 def _loaded() -> set[str]:
-    out = subprocess.run(["launchctl", "list"], capture_output=True, text=True).stdout
+    out = subprocess.run(["launchctl", "list"], capture_output=True, text=True, encoding="utf-8").stdout
     return {line.split()[-1] for line in out.splitlines() if PREFIX in line}
 
 
@@ -132,13 +132,13 @@ def program(name: str) -> list[str] | None:
 
 def run_now(name: str) -> None:
     target = f"{_domain()}/{system_name(name)}"
-    probe = subprocess.run(["launchctl", "print", target], capture_output=True, text=True)
+    probe = subprocess.run(["launchctl", "print", target], capture_output=True, text=True, encoding="utf-8")
     if probe.returncode != 0:
         raise jobs.NotInstalled()
     # Plain kickstart (no -k) leaves a running job alone, so say so instead of looking like a start.
     if re.search(r"^\tstate = running$", probe.stdout, re.M):
         raise jobs.AlreadyRunning()
-    kick = subprocess.run(["launchctl", "kickstart", target], capture_output=True, text=True)
+    kick = subprocess.run(["launchctl", "kickstart", target], capture_output=True, text=True, encoding="utf-8")
     if kick.returncode != 0:
         raise jobs.NotStarted(f"launchctl couldn't start {system_name(name)}: "
                          f"{kick.stderr.strip() or kick.returncode}")
@@ -199,7 +199,7 @@ def run_detached(args: list[str], config: str | None, timeout: int,
     before = {s: signal.signal(s, _exit_on_signal) for s in stops}
     try:
         r = subprocess.run(["launchctl", "bootstrap", domain, str(plist_path)], capture_output=True,
-                           text=True)
+                           text=True, encoding="utf-8")
         if r.returncode != 0:
             raise RuntimeError(f"launchctl bootstrap failed: {r.stderr.strip() or r.returncode}")
         deadline = time.time() + timeout
@@ -221,7 +221,7 @@ def run_detached(args: list[str], config: str | None, timeout: int,
 
 def _job_exit_code(domain: str, label: str) -> int | None:
     """The job's exit code once it has finished, None while it is starting or running."""
-    r = subprocess.run(["launchctl", "print", f"{domain}/{label}"], capture_output=True, text=True)
+    r = subprocess.run(["launchctl", "print", f"{domain}/{label}"], capture_output=True, text=True, encoding="utf-8")
     if r.returncode != 0 or re.search(r"^\tstate = running$", r.stdout, re.M):
         return None
     m = re.search(r"^\tlast exit code = (-?\d+)$", r.stdout, re.M)

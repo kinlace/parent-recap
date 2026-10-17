@@ -28,7 +28,7 @@ def open_terminal(argv: list[str], env: dict[str, str], title: str) -> bool:
     forget_terminal(title)
     folder = Path(tempfile.mkdtemp(prefix="parent-recap-window-"))
     script = folder / f"{title.replace('/', '-')}.command"
-    script.write_text(_window_script(argv, env))
+    script.write_text(_window_script(argv, env), encoding="utf-8")
     script.chmod(0o700)
     if _open(["-a", "Terminal", str(script)]):
         _windows[title] = folder
@@ -59,7 +59,7 @@ def _window_script(argv: list[str], env: dict[str, str]) -> str:
 def preferred_languages() -> list[str]:
     try:
         listed = subprocess.run(["defaults", "read", "-g", "AppleLanguages"], capture_output=True,
-                                text=True, timeout=5).stdout
+                                text=True, encoding="utf-8", timeout=5).stdout
     except (OSError, subprocess.SubprocessError):
         return []
     return re.findall(r"[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*", listed or "")

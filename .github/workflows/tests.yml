@@ -8,6 +8,12 @@ on:
   # The release workflow calls this before publishing a tag.
   workflow_call:
 
+# Python warns when a file or a program's output is opened without an encoding, and pytest makes
+# that an error in the program's own code (app/pyproject.toml): on Windows such a file is read and
+# written in the PC's code page, which can't hold a Chinese name (#321).
+env:
+  PYTHONWARNDEFAULTENCODING: "1"
+
 jobs:
   changes:
     # A PR or push that only touches docs no test reads skips the jobs below. A skipped job counts
@@ -93,8 +99,9 @@ jobs:
         working-directory: app
         shell: bash
     env:
-      # The program reads and writes its files as UTF-8 without saying so, which Python on Windows
-      # does only in UTF-8 mode.
+      # The tests read and write their own files as UTF-8 without saying so, which Python on
+      # Windows does only in UTF-8 mode. The program names UTF-8 itself, as the warning above
+      # checks, so this doesn't hide a family's code page from it.
       PYTHONUTF8: "1"
     steps:
       # The golden files and fixtures keep the repo's line endings, as on macOS.

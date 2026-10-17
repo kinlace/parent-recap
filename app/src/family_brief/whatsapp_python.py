@@ -19,7 +19,7 @@ def path() -> Path:
 
 def granted() -> str | None:
     try:
-        data = json.loads(path().read_text())
+        data = json.loads(path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     python = data.get("python") if isinstance(data, dict) else None
@@ -32,7 +32,7 @@ def record(python: str) -> None:
     try:
         file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         tmp = file.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"python": os.path.realpath(python)}, indent=2) + "\n")
+        tmp.write_text(json.dumps({"python": os.path.realpath(python)}, indent=2) + "\n", encoding="utf-8")
         tmp.chmod(0o600)
         tmp.replace(file)
     except OSError:

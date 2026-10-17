@@ -61,7 +61,7 @@ def load_credentials() -> Credentials:
             return creds
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            Path(TOKEN_PATH).write_text(creds.to_json())
+            Path(TOKEN_PATH).write_text(creds.to_json(), encoding="utf-8")
             os.chmod(TOKEN_PATH, 0o600)
             return creds
     raise CalendarNotConfigured(

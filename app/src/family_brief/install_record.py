@@ -57,14 +57,14 @@ def add(kind: str, value: str) -> None:
         # mkstemp opens it owner-only, which install.sh, running this without the program's umask,
         # relies on; its own name keeps another writer's temporary file apart.
         fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=p.name + ".", suffix=".tmp")
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         Path(tmp).replace(p)
 
 
 def _read() -> dict[str, list[str]]:
     try:
-        data = json.loads(path().read_text())
+        data = json.loads(path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}

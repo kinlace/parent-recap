@@ -87,7 +87,7 @@ def _from_login_shell(name: str) -> str | None:
         return None
     try:
         proc = subprocess.run([shell, "-l", "-c", f"command -v {shlex.quote(name)}"],
-                              capture_output=True, text=True, timeout=SHELL_SECONDS,
+                              capture_output=True, text=True, encoding="utf-8", timeout=SHELL_SECONDS,
                               stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -112,7 +112,7 @@ def _is_node_script(path: str) -> bool:
 
 def _remembered() -> dict[str, str]:
     try:
-        data = json.loads(remembered_path().read_text())
+        data = json.loads(remembered_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return {k: v for k, v in data.items() if isinstance(v, str)} if isinstance(data, dict) else {}
@@ -125,7 +125,7 @@ def _remember(name: str, path: str) -> None:
     try:
         file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         tmp = file.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2) + "\n")
+        tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         tmp.chmod(0o600)
         tmp.replace(file)
     except OSError:

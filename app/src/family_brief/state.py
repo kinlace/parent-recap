@@ -21,7 +21,7 @@ class State:
         }
         if path.exists():
             try:
-                self._data.update(json.loads(path.read_text()))
+                self._data.update(json.loads(path.read_text(encoding="utf-8")))
             except json.JSONDecodeError:
                 pass
         self._loaded_seen = copy.deepcopy(self._data["seen_message_ids"])
@@ -103,4 +103,4 @@ class State:
     def save(self) -> None:
         self._prune()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self._data, indent=2, ensure_ascii=False))
+        self.path.write_text(json.dumps(self._data, indent=2, ensure_ascii=False), encoding="utf-8")

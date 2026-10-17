@@ -45,6 +45,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-p no:cacheprovider --strict-markers"
+# Seen only when Python runs with PYTHONWARNDEFAULTENCODING=1, as CI does (.github/workflows/tests.yml).
+filterwarnings = ["error::EncodingWarning:family_brief"]
 markers = [
     "macos: needs macOS (a macOS adapter, a macOS-only feature, or what Windows can't do yet); skipped elsewhere",
     "windows: needs Windows (a Windows adapter or Windows' own layout); skipped elsewhere",

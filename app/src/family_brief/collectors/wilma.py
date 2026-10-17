@@ -42,7 +42,7 @@ def _run(args: list[str], config: Path | None = None) -> Any:
         raise WilmaError(NOT_INSTALLED)
     try:
         proc = retry_once_on_timeout(
-            lambda: subprocess.run([*command, *args, "--json"], capture_output=True, text=True,
+            lambda: subprocess.run([*command, *args, "--json"], capture_output=True, text=True, encoding="utf-8",
                                    timeout=60, env=own_node.wilma_env(config)),
             (subprocess.TimeoutExpired,), f"wilma {' '.join(args)}")
     except FileNotFoundError:

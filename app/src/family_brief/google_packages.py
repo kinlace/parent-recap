@@ -33,7 +33,7 @@ def wanted(config: Path | None = None) -> bool:
     and doctor report that, and the extra can follow once it's fixed."""
     import yaml
     try:
-        data = yaml.safe_load((config or CONFIG).expanduser().read_text())
+        data = yaml.safe_load((config or CONFIG).expanduser().read_text(encoding="utf-8"))
         return data["google_calendar"]["mode"] == "google"
     except (OSError, yaml.YAMLError, KeyError, TypeError):
         return False

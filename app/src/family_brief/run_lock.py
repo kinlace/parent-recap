@@ -37,7 +37,7 @@ def is_busy(cfg: Config) -> bool:
     path = lock_path(cfg)
     if not path.exists():
         return False
-    with path.open("a") as f:
+    with path.open("a", encoding="utf-8") as f:
         if not _lock(f):
             return True
     return False  # closing the file let go of the lock
@@ -63,7 +63,7 @@ def _take(cfg: Config) -> IO[str] | None:
     """The open lock file, now locked, or None if another run holds it."""
     path = lock_path(cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
-    f = path.open("a")
+    f = path.open("a", encoding="utf-8")
     if not _lock(f):
         f.close()
         return None

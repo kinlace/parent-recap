@@ -86,7 +86,7 @@ def remove_claude_marketplace(program: str, marketplace: str) -> None:
 
 def _claude(program: str, *args: str) -> str:
     """Runs `claude <args>` and returns what it printed; raises if it failed."""
-    proc = subprocess.run([program, *args], capture_output=True, text=True, timeout=CLAUDE_SECONDS,
+    proc = subprocess.run([program, *args], capture_output=True, text=True, encoding="utf-8", timeout=CLAUDE_SECONDS,
                           stdin=subprocess.DEVNULL, env=_sessionless_env())
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(proc.returncode, args[:3])
@@ -108,7 +108,7 @@ def install_codex_skills(root: Path) -> list[Path]:
     written = []
     for name in SKILLS:
         shutil.rmtree(skills / f"family-brief-{name}", ignore_errors=True)  # their names before 0.4.0
-        text = (root / "skills" / name / "SKILL.md").read_text()
+        text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
         text = text.replace(f"\nname: {name}\n", f"\nname: parent-recap-{name}\n", 1)
         text = re.sub(r"/parent-recap:(setup|manage)", r"$parent-recap-\1", text)
         head, sep, body = text.partition("\n# ")
@@ -116,7 +116,7 @@ def install_codex_skills(root: Path) -> list[Path]:
         note = f"\n\n> This skill is installed in Codex; PLUGIN (the plugin root folder) is `{root}`.\n"
         out = skills / f"parent-recap-{name}" / "SKILL.md"
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(head + sep + title + note + rest)
+        out.write_text(head + sep + title + note + rest, encoding="utf-8")
         install_record.add("codex-skill", str(out.parent))
         written.append(out.parent)
     return written
@@ -128,7 +128,7 @@ def plugin_copy() -> Path | None:
     for recorded in reversed(install_record.entries("plugin")):
         folder = Path(recorded)
         try:
-            name = json.loads((folder / ".claude-plugin" / "plugin.json").read_text()).get("name")
+            name = json.loads((folder / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")).get("name")
         except (OSError, ValueError, AttributeError):
             continue
         if name == "parent-recap" and (folder / "skills" / "setup" / "SKILL.md").is_file():

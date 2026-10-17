@@ -876,7 +876,7 @@ def cmd_language(args: argparse.Namespace) -> int:
 def cmd_summarize(args: argparse.Namespace) -> int:
     """Summarize messages from an archive dump."""
     cfg = Config.load(args.config)
-    raw = json.loads(Path(args.input).read_text())
+    raw = json.loads(Path(args.input).read_text(encoding="utf-8"))
     msgs = [Message(
         source=m["source"], external_id=m["external_id"],
         timestamp=__import__("datetime").datetime.fromisoformat(m["timestamp"]),

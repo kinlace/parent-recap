@@ -29,10 +29,10 @@ def write(cfg: Config, date_str: str, messages: list[Message], summary: dict[str
             "delivered": delivered,
         },
         ensure_ascii=False, indent=2,
-    ))
+    ), encoding="utf-8")
 
     md = _render_markdown(languages.text(cfg, cfg.brief_language()), date_str, summary, calendar_created, messages)
-    md_path.write_text(md)
+    md_path.write_text(md, encoding="utf-8")
     return md_path
 
 
@@ -89,7 +89,7 @@ def recent_points(cfg: Config, today: str, days: int = 3) -> list[dict[str, Any]
     for i in range(days, 0, -1):
         day = (base - timedelta(days=i)).isoformat()
         try:
-            data = json.loads((cfg.archive.resolved_dir() / f"{day}.raw.json").read_text())
+            data = json.loads((cfg.archive.resolved_dir() / f"{day}.raw.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         if data.get("delivered") is False:

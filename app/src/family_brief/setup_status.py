@@ -86,7 +86,7 @@ def _installed() -> Outcome:
         [Path.home() / "ParentRecap" / "app"]
     for program in programs:
         try:
-            ours = re.search(r'^name\s*=\s*"family-brief"', (program / "pyproject.toml").read_text(),
+            ours = re.search(r'^name\s*=\s*"family-brief"', (program / "pyproject.toml").read_text(encoding="utf-8"),
                              re.M)
         except OSError:
             continue
@@ -160,7 +160,7 @@ def _wake(hour: int, minute: int) -> Outcome:
 
 def _read(path: Path) -> str:
     try:
-        return path.read_text().strip()
+        return path.read_text(encoding="utf-8").strip()
     except OSError:
         return ""
 

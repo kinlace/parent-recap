@@ -156,7 +156,7 @@ def cmd_ai_filter_report(args: argparse.Namespace) -> int:
     report = Report()
     for path in files:
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             messages = data.get("messages") or []
         except (OSError, ValueError, AttributeError):
             report.unreadable += 1

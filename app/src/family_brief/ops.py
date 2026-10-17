@@ -273,7 +273,7 @@ def _codex_signed_out(codex: str) -> bool:
     account."""
     import subprocess
     try:
-        proc = subprocess.run([codex, "login", "status"], capture_output=True, text=True,
+        proc = subprocess.run([codex, "login", "status"], capture_output=True, text=True, encoding="utf-8",
                               timeout=CODEX_STATUS_SECONDS, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return False

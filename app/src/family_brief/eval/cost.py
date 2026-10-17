@@ -17,7 +17,7 @@ PRICES = Path(__file__).parent / "prices.yaml"
 
 @cache
 def _table() -> dict[str, Any]:
-    return yaml.safe_load(PRICES.read_text())
+    return yaml.safe_load(PRICES.read_text(encoding="utf-8"))
 
 
 def prices_read() -> str:

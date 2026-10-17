@@ -136,7 +136,7 @@ class Case:
 
 
 def _read(path: Path) -> Any:
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         return yaml.load(f, Loader=_Loader)  # noqa: S506 (a SafeLoader subclass)
 
 
