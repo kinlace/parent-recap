@@ -3075,6 +3075,27 @@ def test_the_setup_pages_preview_lists_held_back_messages_too(harness, capsys):
     assert harness.sent == []
 
 
+def test_the_setup_pages_preview_leaves_one_line_in_the_installs_log_without_message_content(harness):
+    held_back_night(harness, "en")
+    harness.sources["whatsapp"] = RuntimeError("wacli: store locked by psykologi@kilo.example.fi")
+
+    assert harness.run("--preview", "--lookback-hours", "72") == 0
+
+    log = (harness.archive_dir / "logs" / "run-stderr.log").read_text(encoding="utf-8")
+    [line] = log.splitlines()
+    assert re.fullmatch(
+        r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d INFO family_brief \| Setup preview: "
+        r"read gmail 3, myclub 1, wilma 2, whatsapp failed; 2 held back; "
+        r"Digest \d+ chars, \d+ Notices, \d+ Action Items, \d+ new events", line), line
+    assert not re.search(r"Digest 0 chars, 0 Notices, 0 Action Items, 0 new events", line)
+    for m in [*harness.sources["gmail"], *harness.sources["wilma"]]:
+        for content in (m.body, m.sender, m.subject, m.chat_name):
+            assert not content or content not in line
+    for content in ("Mia", "Leo", "psykologi", "kilo.example.fi", "Nuuksio", "Retki", "Parent Recap ·"):
+        assert content not in line
+    assert harness.sent == []
+
+
 def test_a_newsletter_listing_its_staff_and_a_camp_notice_about_medication_still_reach_the_model(harness):
     normal_night(harness)
     newsletter = ("Viikkotiedote 40\nTorstaina retki Nuuksioon.\n\nYhteystiedot:\n"

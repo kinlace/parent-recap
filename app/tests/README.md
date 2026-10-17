@@ -102,7 +102,9 @@ checks that a night with only Held-back Messages sends a Brief with no model cal
 that such a newsletter and a camp notice about medication still reach the model, that the archive
 keeps them, that the rule-based fallback doesn't list them twice, that the setup page's preview and
 `parent-recap summarize` hold them back too, and that with the AI filter off they go to the model as
-before. A night with a Wilma announcement, a city's mass email, a Wilma message to the class's 34
+before. The setup page's preview leaves one line in `run-stderr.log` with each Source's count, the
+held-back count and the size of the Digest, Notices, Action Items and new events, and no message
+text, sender, subject, Kid's name or error text. A night with a Wilma announcement, a city's mass email, a Wilma message to the class's 34
 guardians and a Wilma notification email with
 only announcements, each with a sensitive word, sends them to the model, and the Brief lists only a
 Wilma message to the Household's two guardians and a notification email that copies one. `test_eval_runner.py`

@@ -645,6 +645,30 @@ def _print_preview(cfg: Config, summary: dict, created: list[dict], coverage: di
                   feedback=wrong)
 
 
+def _log_preview(cfg: Config, coverage: dict[str, dict], held: list[Message], summary: dict,
+                 created: list[dict]) -> None:
+    """One line about the setup page's Brief in the evening job's log, which a preview otherwise
+    leaves no trace in, so a "my first Brief looks wrong" report can be looked into afterwards.
+    Counts only: no message text, names or subjects, and no error text, which can name an address."""
+    read = ", ".join(f"{s} failed" if c["error"] else f"{s} {c['count']}" for s, c in coverage.items())
+    kids = summary.get("per_kid") or []
+    line = (f"Setup preview: read {read or 'nothing'}; {len(held)} held back; "
+            f"Digest {len(summary.get('message_digest') or '')} chars, "
+            f"{sum(len(k.get('notices') or []) for k in kids)} Notices, "
+            f"{sum(len(k.get('action_items') or []) for k in kids)} Action Items, {len(created)} new events")
+    if "_llm_error" in summary:
+        line += "; the model failed, so it lists the messages"
+    log.info(line)
+    # The page's run sends its own output to the page, so the line goes to the job's log as well.
+    path = cfg.archive.resolved_dir() / "logs" / "run-stderr.log"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} INFO {log.name} | {line}\n")
+    except OSError as e:
+        log.warning("Couldn't add the preview's line to %s: %s", path, e)
+
+
 def _form_people(cfg: Config, placeholders: ai_filter.Placeholders | None, for_ai: list[Message],
                  earlier: list[dict]) -> ai_filter.Placeholders:
     """The placeholders the pilot feedback links carry for other people: tonight's, as the AI saw
@@ -783,8 +807,9 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
     if args.preview:
         _print_preview(cfg, summary, created, coverage, body, date_str, t, assistant, model_wrote,
                        listed_held_back, form)
+        _log_preview(cfg, coverage, held, summary, created)
     if args.dry_run:
-        # Dry runs leave no trace: no archive, no state, no email.
+        # Dry runs leave no trace but the preview's log line: no archive, no state, no email.
         log.info("DRY-RUN: body (%d chars):\n%s", len(body), body)
         return 0
 
