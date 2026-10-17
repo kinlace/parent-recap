@@ -677,6 +677,22 @@ def test_says_if_you_added_the_plugin_when_claude_code_can_t_list_its_plugins(ha
 
 
 @pytest.mark.macos
+def test_says_to_remove_the_plugin_setup_installed_when_claude_code_can_t_list_it(harness, mac,
+                                                                                  monkeypatch,
+                                                                                  tmp_path, capsys):
+    set_up(harness, mac, monkeypatch)
+    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
+    listing = mac.run
+    monkeypatch.setattr(subprocess, "run", lambda cmd, *a, **k: done(cmd, "not json")
+                        if "--json" in cmd else listing(cmd, *a, **k))
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    note = next(line for line in capsys.readouterr().out.splitlines() if "/plugin" in line)
+    assert "If you added" not in note and "/plugin uninstall parent-recap@kinlace" in note
+
+
+@pytest.mark.macos
 def test_removes_only_setup_s_profile_from_the_wilma_cli_s_config(harness, mac, monkeypatch,
                                                                   tmp_path, capsys):
     set_up(harness, mac, monkeypatch)

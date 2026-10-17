@@ -73,7 +73,7 @@ class Survey:
     left: list[str] = field(default_factory=list)       # not Parent Recap's: left as it is
     notes: list[str] = field(default_factory=list)      # what the family can do themselves
     folders: list[Path] = field(default_factory=list)   # removed at the end if empty
-    claude_left: str | None = None                      # the note on what Claude Code keeps
+    claude_left: str | None = None                      # how to remove the plugin in Claude Code: the last note
 
 
 def register(sub) -> None:
@@ -307,23 +307,24 @@ def _npm_made(prefix: Path) -> set[str]:
 
 def _claude_code(s: Survey) -> None:
     """Claude Code's plugin and its marketplace, when setup's record has that setup installed
-    them. Ones the family added themselves stay, and the notes say how to remove them, only
-    when Claude Code lists them: without Claude Code there's nothing to remove."""
+    them. Ones the family added themselves stay, and the note says how to remove them only when
+    Claude Code lists them, since a family without them would get an error from Claude Code."""
     plugins = install_record.entries("claude-plugin")
     marketplaces = install_record.entries("claude-marketplace")
     program = summarize.find_claude()
     if program is None:
         return
+    both = (f"/plugin uninstall {chat_install.PLUGIN}, then /plugin marketplace remove "
+            f"{MARKETPLACE}.")
     try:
         installed, listed = chat_install.claude_installed(program)
     except (OSError, subprocess.SubprocessError, ValueError):
-        s.claude_left = (f"If you added the plugin in Claude Code yourself, remove it there with "
-                         f"/plugin uninstall {chat_install.PLUGIN}, then /plugin marketplace "
-                         f"remove {MARKETPLACE}.")
+        s.claude_left = (f"In Claude Code, remove the plugin itself with {both}"
+                         if plugins or marketplaces else
+                         f"If you added the plugin in Claude Code yourself, remove it there with {both}")
         return
     if chat_install.PLUGIN in installed and chat_install.PLUGIN not in plugins:
-        s.claude_left = (f"In Claude Code, remove the plugin itself with /plugin uninstall "
-                         f"{chat_install.PLUGIN}, then /plugin marketplace remove {MARKETPLACE}.")
+        s.claude_left = f"In Claude Code, remove the plugin itself with {both}"
     elif MARKETPLACE in listed and MARKETPLACE not in marketplaces:
         s.claude_left = (f"In Claude Code, remove Parent Recap's marketplace with /plugin "
                          f"marketplace remove {MARKETPLACE}.")
