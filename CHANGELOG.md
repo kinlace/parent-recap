@@ -23,6 +23,8 @@ Parent Recap runs on a Windows 11 PC too: one PowerShell line installs it, and t
 
 ### Fixed
 - Uninstall no longer misses something setup installed when two setup steps finished at the same moment.
+- On a Windows PC whose language isn't set to UTF-8, setup no longer says it couldn't read Gmail when a sender's name has characters such as Chinese or č.
+- The setup page's last step says the evening time you chose on the Check step, not 21:00.
 
 ## 0.5.8 · 2026-10-12
 
