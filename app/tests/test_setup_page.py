@@ -1824,6 +1824,25 @@ def test_the_wilma_fields_are_standard_login_fields(page):
     assert 'id="wilma-passwords"' in form
 
 
+def test_the_town_box_says_why_it_waits_right_under_it_while_the_wilma_cli_installs(page):
+    html = call(page.url).body.decode()
+    script = (PAGE_DIR / "page.js").read_text()
+
+    # Right under the box, before its hint and well above the username, and read out with it.
+    field = re.search(r'<div class="field">\s*<label for="wilma-search".*?</div>', html,
+                      re.S).group(0)
+    box = re.search(r'<input[^>]*id="wilma-search"[^>]*>', field).group(0)
+    assert "disabled" in box and 'aria-describedby="wilma-search-wait"' in box
+    wait = re.search(r'<p id="wilma-search-wait"[^>]*>', field).group(0)
+    assert 'role="status"' in wait and "hidden" in wait
+    assert field.index(box) < field.index(wait) < field.index('data-text="wilma.search.hint"')
+    # It says so while installing, and if the install fails, and goes once the CLI is ready.
+    ready = script.split("async function getWilmaReady() {", 1)[1].split("\n}\n", 1)[0]
+    assert 'showWilmaWait("wilma.ready.installing")' in ready
+    assert 'showWilmaWait("wilma.ready." + out.result)' in ready
+    assert "showWilmaWait(null)" in ready.split("wilmaStep.ready = true", 1)[1]
+
+
 def test_every_wilma_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 

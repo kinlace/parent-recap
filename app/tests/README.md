@@ -343,7 +343,8 @@ as `npm install -g --prefix` lays out the pinned version with Wilma's tenant lis
 pinned CLI's own code does, every one of them as 2.x does, signs in to a fake Wilma that knows one
 account, saves the Kids and a session back as 2.x does, and answers in 2.x's JSON, errors too. It checks that
 "Espoo" and "Esbo" find the Espoo entries, that the pinned CLI is installed when missing, with that Node and none of the Mac's, into a new folder that then takes its place, that without
-that Node it says to run the install line again and no text suggests Homebrew, that a
+that Node it says to run the install line again and no text suggests Homebrew, that while
+the CLI installs, or if it doesn't, the greyed-out town box says why right under it, that a
 good login writes the profile in the CLI's format and the page lists the Kids from it, that the
 CLI checked it alone in a temporary config that is gone afterwards, with the session it saved, and
 never looked for a newer version, that a wrong password is reported as such, also when an earlier

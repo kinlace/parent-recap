@@ -583,24 +583,38 @@ function showWilmaUses() {
 async function getWilmaReady() {
   wilmaStep.preparing = true;
   showSource("wilma.ready.installing");
+  showWilmaWait("wilma.ready.installing");
   try {
     const out = await post("api/wilma/install", {});
     if (out.result !== "installed") {
       showSource("wilma.ready." + out.result);
+      showWilmaWait("wilma.ready." + out.result);
       return;
     }
     wilmaStep.ready = true;
     showSource(null);
+    showWilmaWait(null);
     const search = document.getElementById("wilma-search");
     search.disabled = false;
     search.focus();
     if (search.value.trim()) searchTowns();
   } catch (e) {
     showSource(null);
+    showWilmaWait(null);
     failed(e);
   } finally {
     wilmaStep.preparing = false;
   }
+}
+
+// Under the town box, which stays greyed out until the wilma CLI is ready, why it waits: the
+// town list comes with the CLI, so nothing the parent fills in opens it sooner.
+function showWilmaWait(key) {
+  const wait = document.getElementById("wilma-search-wait");
+  wait.hidden = !key;
+  wait.classList.toggle("busy", key === "wilma.ready.installing");
+  if (key) setText(wait, key);
+  else delete wait.dataset.text;
 }
 
 async function searchTowns() {

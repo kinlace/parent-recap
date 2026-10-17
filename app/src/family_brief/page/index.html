@@ -100,7 +100,8 @@
       </fieldset>
       <div class="field">
         <label for="wilma-search" data-text="wilma.search"></label>
-        <input type="search" id="wilma-search" autocomplete="off" spellcheck="false" disabled>
+        <input type="search" id="wilma-search" autocomplete="off" spellcheck="false" aria-describedby="wilma-search-wait" disabled>
+        <p id="wilma-search-wait" class="wait" role="status" hidden></p>
         <p class="hint" data-text="wilma.search.hint"></p>
       </div>
       <fieldset id="wilma-towns" class="towns"></fieldset>

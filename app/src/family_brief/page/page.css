@@ -401,6 +401,28 @@ fieldset .field label {
 
 #wilma-towns + .hint, #source-wilma .field { margin-bottom: 16px; }
 
+/* Why the town box is still greyed out, right under it, turning while the wilma CLI installs. */
+.wait { font-size: 13px; margin: 6px 0 4px; }
+
+.wait.busy::before {
+  animation: turn 0.8s linear infinite;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+  border-right-color: transparent;
+  content: "";
+  display: inline-block;
+  height: 10px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  width: 10px;
+}
+
+@keyframes turn { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .wait.busy::before { animation: none; }
+}
+
 .pictures {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
