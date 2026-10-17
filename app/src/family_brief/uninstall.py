@@ -73,6 +73,7 @@ class Survey:
     left: list[str] = field(default_factory=list)       # not Parent Recap's: left as it is
     notes: list[str] = field(default_factory=list)      # what the family can do themselves
     folders: list[Path] = field(default_factory=list)   # removed at the end if empty
+    claude_left: str | None = None                      # the note on what Claude Code keeps
 
 
 def register(sub) -> None:
@@ -306,16 +307,26 @@ def _npm_made(prefix: Path) -> set[str]:
 
 def _claude_code(s: Survey) -> None:
     """Claude Code's plugin and its marketplace, when setup's record has that setup installed
-    them. Claude Code is asked only then, since it may not be on this Mac."""
+    them. Ones the family added themselves stay, and the notes say how to remove them, only
+    when Claude Code lists them: without Claude Code there's nothing to remove."""
     plugins = install_record.entries("claude-plugin")
     marketplaces = install_record.entries("claude-marketplace")
-    program = summarize.find_claude() if plugins or marketplaces else None
+    program = summarize.find_claude()
     if program is None:
         return
     try:
         installed, listed = chat_install.claude_installed(program)
     except (OSError, subprocess.SubprocessError, ValueError):
-        return  # the note says how to remove them in Claude Code
+        s.claude_left = (f"If you added the plugin in Claude Code yourself, remove it there with "
+                         f"/plugin uninstall {chat_install.PLUGIN}, then /plugin marketplace "
+                         f"remove {MARKETPLACE}.")
+        return
+    if chat_install.PLUGIN in installed and chat_install.PLUGIN not in plugins:
+        s.claude_left = (f"In Claude Code, remove the plugin itself with /plugin uninstall "
+                         f"{chat_install.PLUGIN}, then /plugin marketplace remove {MARKETPLACE}.")
+    elif MARKETPLACE in listed and MARKETPLACE not in marketplaces:
+        s.claude_left = (f"In Claude Code, remove Parent Recap's marketplace with /plugin "
+                         f"marketplace remove {MARKETPLACE}.")
     for plugin in plugins:
         if plugin in installed:
             s.items.append(Item("Claude Code plugin", plugin,
@@ -484,9 +495,8 @@ def _notes(s: Survey, cfg: Config, pythons: list[Path]) -> None:
         s.notes.append(f"If you gave the program's Python{python} access to WhatsApp, remove it by "
                        "hand from System Settings → Privacy & Security → Full Disk Access: a "
                        "program can't change that list.")
-    if not any(i.what == "Claude Code plugin" for i in s.items):
-        s.notes.append("In Claude Code, remove the plugin itself with /plugin uninstall "
-                       f"parent-recap@{MARKETPLACE}, then /plugin marketplace remove {MARKETPLACE}.")
+    if s.claude_left:
+        s.notes.append(s.claude_left)
 
 
 # ---------------------------------------------------------------- listing and removing

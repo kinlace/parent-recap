@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -19,7 +20,7 @@ import pytest
 import fake_node
 from test_codex_install import install_codex_skills
 
-from family_brief import install_record, run_lock, setup_wilma, tools, whatsapp_python
+from family_brief import install_record, run_lock, setup_wilma, summarize, tools, whatsapp_python
 from family_brief.collectors import gmail
 from family_brief.config import Config
 from family_brief.system import jobs, wake, windows_only
@@ -43,7 +44,7 @@ class FakeMac:
     def run(self, cmd: list[str], *_a: Any, **_k: Any) -> subprocess.CompletedProcess:
         cmd = list(cmd)
         self.ran.append(cmd)
-        prog = Path(cmd[0]).name
+        prog = Path(cmd[0]).stem  # claude.cmd on Windows
         if prog == "claude":
             return self._claude(cmd)
         raise AssertionError(f"unexpected subprocess in test: {cmd[:3]}")
@@ -205,7 +206,7 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
                  ".family/install-record.json", ".family/setup-progress.json",
                  ".family/programs.json", ".family/whatsapp-python.json", "gmail-imap-parent@example.com",
                  "claude-oauth-token", ".agents/skills/parent-recap-setup",
-                 ".agents/skills/parent-recap-manage", "/plugin uninstall parent-recap@kinlace"):
+                 ".agents/skills/parent-recap-manage"):
         assert item in out, item
     assert "1 day" in out and "keep" in out.lower()  # the archive, and the question about it
     assert "--confirm" in out
@@ -408,6 +409,8 @@ def as_windows(harness, monkeypatch) -> list[tuple[list[Path], list[Path]]]:
     the family's own "Allow wake timers". Returns what uninstall hands over to go once it has
     ended, each time: the paths, then the folders to remove if empty."""
     monkeypatch.setattr(sys, "platform", "win32")
+    if os.name != "nt":  # Windows' own `which`, which asks for Claude Code, can't run here
+        monkeypatch.setattr(tools.shutil, "which", lambda *_a, **_k: None)
     harness.wake.settable = False
     harness.secrets.DELETING_ASKS = ""
     handed: list[tuple[list[Path], list[Path]]] = []
@@ -614,12 +617,65 @@ def test_leaves_a_wilma_cli_profile_and_plugin_that_were_there_before_setup(harn
     assert (tmp_path / "bin" / "wilma").exists()
     assert mac.claude_plugins == ["parent-recap@kinlace"]
     assert mac.claude_marketplaces == ["claude-plugins-official", "kinlace"]
-    assert not any(Path(c[0]).name in ("npm", "claude") for c in mac.ran)
+    assert mac.removals() == []
     out = capsys.readouterr().out  # what the family can do themselves
     assert "/plugin uninstall parent-recap@kinlace" in out and "~/.config/wilmai" in out
 
 
 @pytest.mark.macos
+def test_says_nothing_about_a_plugin_claude_code_does_not_have(harness, mac, monkeypatch, tmp_path,
+                                                                capsys):
+    set_up(harness, mac, monkeypatch)
+    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=False)
+    mac.claude_plugins = []
+    mac.claude_marketplaces = ["claude-plugins-official"]
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    out = capsys.readouterr().out
+    assert "/plugin" not in out and "Claude Code" not in out
+
+
+@pytest.mark.macos
+def test_says_how_to_remove_a_marketplace_left_without_its_plugin(harness, mac, monkeypatch,
+                                                                  tmp_path, capsys):
+    set_up(harness, mac, monkeypatch)
+    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=False)
+    mac.claude_plugins = []
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    out = capsys.readouterr().out
+    assert "/plugin marketplace remove kinlace" in out and "/plugin uninstall" not in out
+
+
+def test_says_nothing_about_claude_code_where_it_is_not_installed(harness, mac, monkeypatch,
+                                                                  capsys):
+    set_up(harness, mac, monkeypatch)
+    monkeypatch.setattr(summarize, "find_claude", lambda: None)
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    out = capsys.readouterr().out
+    assert "/plugin" not in out and "Claude Code" not in out
+
+
+@pytest.mark.macos
+def test_says_if_you_added_the_plugin_when_claude_code_can_t_list_its_plugins(harness, mac,
+                                                                              monkeypatch, tmp_path,
+                                                                              capsys):
+    set_up(harness, mac, monkeypatch)
+    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=False)
+    listing = mac.run
+    monkeypatch.setattr(subprocess, "run", lambda cmd, *a, **k: done(cmd, "not json")
+                        if "--json" in cmd else listing(cmd, *a, **k))
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    note = next(line for line in capsys.readouterr().out.splitlines() if "/plugin" in line)
+    assert "If you added" in note and "/plugin uninstall parent-recap@kinlace" in note
+
+
 @pytest.mark.macos
 def test_removes_only_setup_s_profile_from_the_wilma_cli_s_config(harness, mac, monkeypatch,
                                                                   tmp_path, capsys):
