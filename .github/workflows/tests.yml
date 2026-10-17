@@ -263,12 +263,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the wilma CLI came without Wilma's town list" }
       # What setup leaves (a config, a secret in Credential Manager, the evening tasks in Task
       # Scheduler, the wilma CLI above), then uninstall run from the installed program, as a family
-      # runs it: the program and its Python go once it has ended, from a hidden PowerShell.
+      # runs it: the program and its Python go once it has ended, from a hidden PowerShell. The
+      # runner's output is a pipe in the PC's code page, as an agent's is, with no ✅ or ❌ (#380).
       - name: Uninstall leaves no task, credential or folder of Parent Recap's
-        env:
-          # The runner's output is a pipe, which Python writes in the PC's code page, without the
-          # program's ✅ and ❌, unless in UTF-8 mode. A family's PowerShell window is a console.
-          PYTHONUTF8: "1"
         run: |
           $pr = "$env:INSTALLED\app\.venv\Scripts\parent-recap.exe"
           $py = "$env:INSTALLED\app\.venv\Scripts\python.exe"

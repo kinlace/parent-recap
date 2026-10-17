@@ -6,6 +6,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -63,6 +64,13 @@ def preferred_languages() -> list[str]:
     except (OSError, subprocess.SubprocessError):
         return []
     return re.findall(r"[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*", listed or "")
+
+
+def typing_at_terminal() -> bool:
+    try:
+        return sys.stdin is not None and sys.stdin.isatty()
+    except ValueError:  # closed
+        return False
 
 
 def show_beside(path: str, pane: str) -> list[list[str]]:

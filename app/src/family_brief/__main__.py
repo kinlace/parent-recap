@@ -977,6 +977,12 @@ def main() -> int:
     uninstall.register(sub)
     ai_filter_report.register(sub)
 
+    # Piped by an agent, without the PYTHONUTF8 the program's own tasks get (task_run.UTF8),
+    # Windows' stdout writes the code page (cp1252), which has no ✅: one status line would end
+    # the command, as #380's uninstall did after its first item.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     args = p.parse_args()
     private_files.restrict_new_files()  # archives, logs and diagnostics hold the Household's messages
     return args.func(args)

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import base64
 import ctypes
+import msvcrt
 import os
 import subprocess
+import sys
 from ctypes import wintypes
 from pathlib import Path
 
@@ -72,6 +74,19 @@ def preferred_languages() -> list[str]:
     except (OSError, AttributeError):
         return []
     return [tag for tag in listed[:size.value].split("\0") if tag]  # each ends in \0
+
+
+def typing_at_terminal() -> bool:
+    """`isatty()` alone is also True for the null device, a character device, which is what an
+    agent's stdin is: only a console has a console mode."""
+    try:
+        if sys.stdin is None or not sys.stdin.isatty():
+            return False
+        kernel32 = ctypes.WinDLL("kernel32")  # type: ignore[attr-defined]
+        handle = wintypes.HANDLE(msvcrt.get_osfhandle(sys.stdin.fileno()))
+        return bool(kernel32.GetConsoleMode(handle, ctypes.byref(wintypes.DWORD())))
+    except (OSError, ValueError, AttributeError):  # closed, or not a real file
+        return False
 
 
 def _start(argv: list[str], **kwargs) -> bool:

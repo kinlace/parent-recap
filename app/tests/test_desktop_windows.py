@@ -130,3 +130,14 @@ def test_the_windows_display_languages_are_read():
     languages = desktop_windows.preferred_languages()
 
     assert languages and all(re.fullmatch(r"[A-Za-z]{2,3}(-[A-Za-z0-9]+)*", t) for t in languages)
+
+
+def test_the_null_device_is_no_terminal_though_isatty_says_it_is():
+    # An agent's stdin on Windows is NUL, a character device: isatty() alone took it for a
+    # Terminal and uninstall waited for an answer (#372).
+    probe = ("import sys; from family_brief.system import desktop_windows; "
+             "print(sys.stdin.isatty(), desktop_windows.typing_at_terminal())")
+    out = REAL_RUN([sys.executable, "-c", probe], stdin=subprocess.DEVNULL, capture_output=True,
+                   text=True, encoding="utf-8", check=True).stdout.split()
+
+    assert out == ["True", "False"]

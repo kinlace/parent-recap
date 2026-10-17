@@ -40,3 +40,9 @@ def preferred_languages() -> list[str]:
     """The computer's preferred languages as tags such as en-FI, first first; empty when they
     can't be read."""
     return _adapter.preferred_languages()
+
+
+def typing_at_terminal() -> bool:
+    """Whether stdin is a terminal someone types in, so a question can wait for an answer. False
+    when an agent runs the program: its stdin is then a pipe, closed, or the null device."""
+    return _adapter.typing_at_terminal()

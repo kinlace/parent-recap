@@ -787,7 +787,7 @@ def test_in_terminal_it_asks_about_the_archive_and_for_confirmation(harness, mac
                                                                     capsys):
     set_up(harness, mac, monkeypatch)
     answers = iter(["n", "yes"])  # don't keep the archive, then confirm
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    harness.desktop.terminal = True
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
 
     assert uninstall(harness) == 0
@@ -799,13 +799,58 @@ def test_in_terminal_anything_but_yes_removes_nothing(harness, mac, monkeypatch,
     set_up(harness, mac, monkeypatch)
     before = leftovers(harness.home)
     answers = iter(["", "no"])
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    harness.desktop.terminal = True
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
 
     assert uninstall(harness) == 1
 
     assert leftovers(harness.home) == before
     assert "nothing" in capsys.readouterr().out.lower()
+
+
+def test_in_terminal_closed_input_removes_nothing_without_a_traceback(harness, mac, monkeypatch,
+                                                                     capsys):
+    set_up(harness, mac, monkeypatch)
+    before = leftovers(harness.home)
+    harness.desktop.terminal = True
+
+    def closed(_prompt: str = "") -> str:
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", closed)
+
+    assert uninstall(harness) == 1
+
+    assert leftovers(harness.home) == before
+    assert "Nothing was removed." in capsys.readouterr().out
+
+
+def test_run_by_an_agent_it_lists_and_says_how_to_confirm(harness, mac, monkeypatch, capsys):
+    # On Windows an agent's stdin is NUL, which isatty() takes for a Terminal (#372).
+    set_up(harness, mac, monkeypatch)
+    before = leftovers(harness.home)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    harness.desktop.terminal = False
+
+    assert uninstall(harness) == 0
+
+    assert leftovers(harness.home) == before
+    assert "--confirm" in capsys.readouterr().out
+
+
+def test_output_in_a_code_page_without_its_symbols_still_removes_everything(harness, mac,
+                                                                            monkeypatch):
+    # Piped by an agent on Windows, stdout writes cp1252, which has no ✅ (#380).
+    set_up(harness, mac, monkeypatch)
+    raw = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1252"))
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    sys.stdout.flush()
+    assert leftovers(harness.home) == ["ParentRecap", "ParentRecap/2026-09-26.md",
+                                       "ParentRecap/2026-09-26.raw.json"]
+    assert "✅" in raw.getvalue().decode("utf-8") and "❌" not in raw.getvalue().decode("utf-8")
 
 
 def test_the_setup_internals_document_names_everything_uninstall_removes(harness, mac,

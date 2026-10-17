@@ -236,6 +236,7 @@ class FakeDesktop:
         self.forgotten: list[str] = []   # each window's title, once what it ran with is removed
         self.opens = True                # False: nothing opens, as in a sandbox or over SSH
         self.languages: list[str] = ["en-FI"]  # preferred, first first
+        self.terminal = False            # True: someone types at stdin's terminal
         # Runs in each window as it opens, as the family would there; a test sets it.
         self.in_window: Callable[[Window], None] | None = None
 
@@ -261,3 +262,6 @@ class FakeDesktop:
 
     def preferred_languages(self) -> list[str]:
         return list(self.languages)
+
+    def typing_at_terminal(self) -> bool:
+        return self.terminal

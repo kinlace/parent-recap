@@ -32,7 +32,7 @@ from . import (ai_filter_report, chat_install, install_record, ops, own_node, ru
                setup_save, setup_wilma, summarize, tools, whatsapp_python)
 from .collectors.gmail import keychain_account
 from .config import Config
-from .system import jobs, macos_only, secrets, wake, windows_only
+from .system import desktop, jobs, macos_only, secrets, wake, windows_only
 
 OK, FAIL = ops.OK, ops.FAIL
 # install.sh's and install.ps1's pinned ones, and the folders they download them into.
@@ -109,11 +109,15 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
                   "--confirm --keep-archive, or --confirm --remove-archive. Nothing was removed.")
             return 2
         keep = args.archive != "remove"
-    elif sys.stdin.isatty():
-        keep = not has_archive or not input(
-            "\nKeep the archive of past Briefs? [Y/n] ").strip().lower().startswith("n")
-        if input("Remove everything listed above? Type yes to remove: ").strip().lower() != "yes":
-            print("Nothing was removed.")
+    elif desktop.typing_at_terminal():
+        try:
+            keep = not has_archive or not input(
+                "\nKeep the archive of past Briefs? [Y/n] ").strip().lower().startswith("n")
+            sure = input("Remove everything listed above? Type yes to remove: ").strip().lower()
+        except EOFError:  # the terminal closed its input, such as with Ctrl+D or Ctrl+Z
+            sure = ""
+        if sure != "yes":
+            print("\nNothing was removed.")
             return 1
     else:
         print("\nNothing has been removed yet. To remove it, run this again with --confirm and "
@@ -543,10 +547,11 @@ def _remove(s: Survey, keep_archive: bool) -> int:
             continue
         try:
             i.remove()
-            print(f"{OK} {i.what} removed: {i.where}", flush=True)
         except Exception as e:
             failed += 1
             print(f"{FAIL} {i.what} not removed ({i.where}): {e}", flush=True)
+        else:  # a line that can't be printed is no failed removal
+            print(f"{OK} {i.what} removed: {i.where}", flush=True)
     if later:
         hand_over()
     if not failed:  # also when the lines above started the record
