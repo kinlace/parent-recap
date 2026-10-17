@@ -412,6 +412,21 @@ def _digest_html(digest: str) -> str:
     return "".join(out)
 
 
+def _shown_digest(summary: dict, t: BriefText) -> str:
+    """The Digest the Brief shows. When the model wrote Notices but no Digest, the Notices stand in
+    for it, as the Digest's Markdown grouped by Kid, so a night whose only news is Notices doesn't
+    send an empty Brief (#365). On other nights the Notices reach only the archive."""
+    digest = digest_of(summary)
+    if digest:
+        return digest
+    sections = []
+    for kid in summary.get("per_kid") or []:
+        notices = [f"- {n['text']}" for n in kid.get("notices") or [] if n.get("text")]
+        if notices:
+            sections.append("\n".join([f"**{kid.get('kid') or t.household}**", *notices]))
+    return "\n\n".join(sections)
+
+
 def _daily_brief_html(summary: dict, calendar_created: list[dict],
                       date_str: str, t: BriefText, tz: str, note: str = "", ics_attached: bool = False,
                       coverage: str = "", footer: str = "",
@@ -434,12 +449,13 @@ def _daily_brief_html(summary: dict, calendar_created: list[dict],
     if top_note:
         warnings = _h.escape(top_note).replace("\n", "<br>")
         parts.append(f"<p style='color:#a33'>{warnings}</p>")
-    digest = digest_of(summary)
+    digest = _shown_digest(summary, t)
     if digest:
         parts.append(_digest_html(digest))
         if feedback_link:
+            as_written = _shown_digest(original, t)
             parts.append("<p><small>"
-                         f"{form_link(feedback.DIGEST_WRONG, t.feedback_digest_wrong, digest_of(original))}"
+                         f"{form_link(feedback.DIGEST_WRONG, t.feedback_digest_wrong, as_written)}"
                          "</small></p>")
     if held_back:
         parts.append(f"<h3>{_h.escape(t.held_back)}</h3><p style='color:#666'>"
@@ -494,7 +510,7 @@ def _format_imessage_body(summary: dict, calendar_created: list[dict], date_str:
     parts = [f"👨‍👩‍👧‍👦 {PRODUCT_NAME} {_header_date(date_str, t)}"]
     if top_note:
         parts += ["", top_note]
-    digest = digest_of(summary)
+    digest = _shown_digest(summary, t)
     if digest:
         parts += ["", digest]
     if held_back:
@@ -624,7 +640,7 @@ def _print_preview(cfg: Config, summary: dict, created: list[dict], coverage: di
                              footer=t.written_by.format(assistant=assistant) if model_wrote else "",
                              feedback_link=form.link if form and model_wrote else None,
                              top_note=_top_note(summary, t, assistant), held_back=held_back, assistant=assistant)
-    wrong = form.link(feedback.DIGEST_WRONG, digest_of(summary) if model_wrote else "") if form else None
+    wrong = form.link(feedback.DIGEST_WRONG, _shown_digest(summary, t) if model_wrote else "") if form else None
     _preview_step("made", subject=f"{PRODUCT_NAME} · {date_str}", text=body, html=html,
                   feedback=wrong)
 

@@ -379,6 +379,51 @@ def test_message_text_in_the_digest_cannot_inject_html(harness):
             "<h4>&lt;b&gt;Mia&lt;/b&gt;</h4><p>&lt;a href=&#x27;x&#x27;&gt;link&lt;/a&gt;</p>") in email.html
 
 
+# ── A night whose only news is Notices (#365)
+
+def test_notices_stand_in_for_an_empty_digest(harness):
+    normal_night(harness)
+    harness.model_reply["message_digest"] = ""
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert ("**Mia**\n- 周四 10/1 班级去 Nuuksio 远足（retki），带 eväät 和雨衣\n- 周一 10/5 数学考试，范围乘法表 2–5\n\n"
+            "**Leo**\n- 周三 9/30 上午拍班级照") in email.text
+    assert ("<h4>Mia</h4><ul><li>周四 10/1 班级去 Nuuksio 远足（retki），带 eväät 和雨衣</li>"
+            "<li>周一 10/5 数学考试，范围乘法表 2–5</li></ul>"
+            "<h4>Leo</h4><ul><li>周三 9/30 上午拍班级照</li></ul>") in email.html
+    assert archived_summary(harness)["message_digest"] == ""  # tomorrow's prompt sees what the model wrote
+
+
+def test_notices_standing_in_for_the_digest_are_in_each_recipients_language(harness):
+    two_languages(harness)
+    harness.model_reply[0]["message_digest"] = ""
+    harness.model_reply[1]["message_digest"] = ""
+    harness.model_reply[0]["per_kid"][1]["kid"] = harness.model_reply[1]["per_kid"][1]["kid"] = "全家"
+
+    assert harness.run() == 0
+
+    zh, en = harness.sent
+    assert "**全家**\n- 周三 9/30 上午拍班级照" in zh.text
+    assert ("**Mia**\n- Thu 10/1 class retki to Nuuksio; pack eväät and rain gear\n"
+            "- Mon 10/5 maths test on times tables 2–5\n\n"
+            "**Household**\n- Wed 9/30 class photos in the morning") in en.text
+    assert "<h4>Household</h4><ul><li>Wed 9/30 class photos in the morning</li></ul>" in en.html
+    assert "周三 9/30" not in en.text
+
+
+def test_a_night_with_a_digest_keeps_the_notices_to_the_archive(harness):
+    normal_night(harness)
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "- 周四远足，周二前在 Wilma 签同意书" in email.text
+    for notice in ("周四 10/1 班级去 Nuuksio 远足", "周一 10/5 数学考试", "周三 9/30 上午拍班级照"):
+        assert notice not in email.text and notice not in email.html
+
+
 def test_stray_string_in_per_kid_keeps_every_kids_items(harness):
     normal_night(harness)
     harness.model_reply["per_kid"].insert(1, "Leo: nothing today")
