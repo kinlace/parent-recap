@@ -104,8 +104,8 @@ keeps them, that the rule-based fallback doesn't list them twice, that the setup
 `parent-recap summarize` hold them back too, and that with the AI filter off they go to the model as
 before. The setup page's preview leaves one line in `run-stderr.log` with each Source's count, the
 held-back count and the size of the Digest, Notices, Action Items and new events, and no message
-text, sender, subject, Kid's name or error text. A night with a Wilma announcement, a city's mass email, a Wilma message to the class's 34
-guardians and a Wilma notification email with
+text, sender, subject, Kid's name or error text. A night with a Wilma announcement, a city's mass
+email, a Wilma message to the class's 34 guardians and a Wilma notification email with
 only announcements, each with a sensitive word, sends them to the model, and the Brief lists only a
 Wilma message to the Household's two guardians and a notification email that copies one. `test_eval_runner.py`
 checks that the eval's Brief call and its judge never get one either.

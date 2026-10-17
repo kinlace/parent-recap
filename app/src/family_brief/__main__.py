@@ -659,10 +659,13 @@ def _log_preview(cfg: Config, coverage: dict[str, dict], held: list[Message], su
     if "_llm_error" in summary:
         line += "; the model failed, so it lists the messages"
     log.info(line)
-    # The page's run sends its own output to the page, so the line goes to the job's log as well.
+    # The page's run sends its own output to the page, which drops it, so the line goes to the
+    # evening job's log as well (`jobs.Job`'s <subcommand>-stderr.log), dated, to be read days later.
     path = cfg.archive.resolved_dir() / "logs" / "run-stderr.log"
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.parent.is_dir():  # before the evening job is installed
+            path.parent.mkdir(parents=True, exist_ok=True)
+            private_files.tighten(cfg)
         with path.open("a", encoding="utf-8") as f:
             f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} INFO {log.name} | {line}\n")
     except OSError as e:
@@ -809,7 +812,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
                        listed_held_back, form)
         _log_preview(cfg, coverage, held, summary, created)
     if args.dry_run:
-        # Dry runs leave no trace but the preview's log line: no archive, no state, no email.
+        # Dry runs leave no trace but a preview's log line: no archive, no state, no email.
         log.info("DRY-RUN: body (%d chars):\n%s", len(body), body)
         return 0
 

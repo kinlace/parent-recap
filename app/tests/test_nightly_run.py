@@ -6,6 +6,7 @@ import copy
 import dataclasses
 import json
 import logging
+import os
 import re
 from datetime import timedelta
 from html import escape, unescape
@@ -3086,14 +3087,26 @@ def test_the_setup_pages_preview_leaves_one_line_in_the_installs_log_without_mes
     assert re.fullmatch(
         r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d INFO family_brief \| Setup preview: "
         r"read gmail 3, myclub 1, wilma 2, whatsapp failed; 2 held back; "
-        r"Digest \d+ chars, \d+ Notices, \d+ Action Items, \d+ new events", line), line
-    assert not re.search(r"Digest 0 chars, 0 Notices, 0 Action Items, 0 new events", line)
+        r"Digest 161 chars, 3 Notices, 3 Action Items, 1 new events", line), line
     for m in [*harness.sources["gmail"], *harness.sources["wilma"]]:
         for content in (m.body, m.sender, m.subject, m.chat_name):
             assert not content or content not in line
     for content in ("Mia", "Leo", "psykologi", "kilo.example.fi", "Nuuksio", "Retki", "Parent Recap ·"):
         assert content not in line
+    if os.name != "nt":  # made by the preview, before any evening job: still owner-only
+        assert (harness.archive_dir / "logs").stat().st_mode & 0o077 == 0
     assert harness.sent == []
+
+
+def test_the_setup_pages_preview_logs_that_the_model_failed_without_its_error(harness):
+    normal_night(harness, "en")
+    harness.model_error = "Error: quota exceeded for teacher.3b@kilo.example.fi"
+
+    assert harness.run("--preview") == 0
+
+    [line] = (harness.archive_dir / "logs" / "run-stderr.log").read_text(encoding="utf-8").splitlines()
+    assert line.endswith("; the model failed, so it lists the messages"), line
+    assert "quota" not in line and "kilo.example.fi" not in line
 
 
 def test_a_newsletter_listing_its_staff_and_a_camp_notice_about_medication_still_reach_the_model(harness):
