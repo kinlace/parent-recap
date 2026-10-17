@@ -1828,13 +1828,14 @@ def test_the_town_box_says_why_it_waits_right_under_it_while_the_wilma_cli_insta
     html = call(page.url).body.decode()
     script = (PAGE_DIR / "page.js").read_text()
 
-    # Right under the box, before its hint and well above the username, and read out with it.
+    # Right under the box, before its hint and well above the username, and read out with it,
+    # but not announced: the status area further down already is.
     field = re.search(r'<div class="field">\s*<label for="wilma-search".*?</div>', html,
                       re.S).group(0)
     box = re.search(r'<input[^>]*id="wilma-search"[^>]*>', field).group(0)
     assert "disabled" in box and 'aria-describedby="wilma-search-wait"' in box
     wait = re.search(r'<p id="wilma-search-wait"[^>]*>', field).group(0)
-    assert 'role="status"' in wait and "hidden" in wait
+    assert "hidden" in wait and 'role="status"' not in wait
     assert field.index(box) < field.index(wait) < field.index('data-text="wilma.search.hint"')
     # It says so while installing, and if the install fails, and goes once the CLI is ready.
     ready = script.split("async function getWilmaReady() {", 1)[1].split("\n}\n", 1)[0]
