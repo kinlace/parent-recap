@@ -26,10 +26,10 @@ the program running from them has ended (`test_windows_only.py`), the program in
 then uninstall leaving none of it (`test_setup_page_windows.py`). The first two and the last store their secrets in the real
 Credential Manager, and the Task Scheduler tests and the last register their tasks in the real
 Task Scheduler, under a test name of their own, and delete them after. `install.ps1` itself runs in CI's
-windows-install job, for real on a clean runner: a failed download, every type it names being
-.NET's own with PSReadLine loaded, as in a family's PowerShell window, the install that picks up
-from there in such a PowerShell, the installed program's setup page listing Wilma, Gmail, the AI and MyClub with the
-gateway, ChatGPT and Claude offered, a second install that downloads and installs nothing, and the pinned wilma CLI
+windows-install job, for real on a clean runner: a failed download; with PSReadLine loaded, as in
+a family's PowerShell window, every type it names resolving to .NET's own and the install that
+picks up from there; the installed program's setup page listing Wilma, Gmail, the AI and MyClub
+with the gateway, ChatGPT and Claude offered, a second install that downloads and installs nothing, and the pinned wilma CLI
 installed from npm with the program's own Node, running `--help` and shipping Wilma's town list,
 and, after a config, a Credential Manager secret and the evening tasks, `parent-recap uninstall`
 run from the installed program leaving no task, credential or folder of Parent Recap's.

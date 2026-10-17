@@ -177,9 +177,10 @@
     if ([Environment]::OSVersion.Platform -ne 'Win32NT') {
       Stop-Install 'This install line is for Windows.' 'On a Mac, paste the line in the README into Terminal.'
     }
-    # The processor's own, which 9 is x64: x64 PowerShell on an ARM PC says AMD64 in
-    # PROCESSOR_ARCHITECTURE. Not RuntimeInformation, which in a PowerShell window resolves to
-    # PSReadLine's own type of that name, without OSArchitecture (#374).
+    # Asked of the processor itself, which Windows numbers 9 for x64. Not RuntimeInformation: in a
+    # PowerShell window that resolves to PSReadLine's own type of that name, without
+    # OSArchitecture (#374). Nor PROCESSOR_ARCHITECTURE, which x64 PowerShell on an ARM PC gives
+    # as AMD64. A PC with more than one processor lists each, all the same kind.
     if (@(Get-CimInstance Win32_Processor)[0].Architecture -ne 9) {
       Stop-Install 'Parent Recap runs only on Windows PCs with an Intel or AMD processor (x64), for now.' `
         'Tell the Parent Recap team which PC you have.'
