@@ -4,6 +4,16 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.6.1 · 2026-10-17
+
+On Windows, the install line pasted into PowerShell works again, and choosing Claude on the setup page signs in.
+
+### Fixed
+- The install line pasted into a Windows PowerShell window installs Parent Recap instead of stopping with "'OSArchitecture' cannot be found".
+- On Windows, the setup page's Claude sign-in window runs `claude setup-token` instead of stopping with a Python SyntaxError.
+- On a night when the AI writes only things to know and no Digest, the Brief lists them by Kid instead of arriving empty.
+- When the first Brief on the setup page looks wrong, the log now shows how many messages each Source read and how much the Brief held, so we can look into it afterwards.
+
 ## 0.6.0 · 2026-10-17
 
 Parent Recap runs on a Windows 11 PC too: one PowerShell line installs it, and the setup page connects Gmail, Wilma and MyClub with the gateway, ChatGPT or Claude (ADR 0019). On a Mac and on Windows, the Kids now reach the AI as Kid A and Kid B, and the Brief reads tighter.
