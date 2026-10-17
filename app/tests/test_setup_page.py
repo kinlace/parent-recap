@@ -3536,6 +3536,18 @@ def test_the_check_page_has_all_options_and_lets_kids_be_added(page):
         assert element in html, element
 
 
+def test_finish_says_the_evening_confirmed_on_the_check_page():
+    # #362: page.check is loaded before Check, so Finish said the default 21:00 after 16:05 was saved.
+    script = (PAGE_DIR / "page.js").read_text(encoding="utf-8")
+
+    confirm_check = script.split("async function confirmCheck(", 1)[1].split("\n}\n", 1)[0]
+    saved = confirm_check.index("page.check.evening = answers.evening;")
+    assert confirm_check.index('throw new Error(out.result)') < saved < \
+        confirm_check.index("healthResult(out)")
+    assert "{ evening: page.check.evening }" in \
+        script.split("function finishResult(", 1)[1].split("\n}\n", 1)[0]
+
+
 def test_every_check_and_health_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
