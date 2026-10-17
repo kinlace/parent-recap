@@ -181,9 +181,27 @@ jobs:
           if (Get-ChildItem "$env:INSTALLED\runtime" -Filter 'python-*') { throw 'a Python was left behind' }
           Remove-Item install-offline.ps1
           exit 0  # the install's own exit code of 1 was the one expected
-      - name: The install picks up from there
+      # A family's PowerShell window has PSReadLine loaded, which CI's shell and -File don't, and
+      # its own internal types can stand in for .NET's of the same name (#374).
+      - name: Every type install.ps1 names is .NET's own, with PSReadLine loaded
         run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File $env:PARENT_RECAP
+          Import-Module PSReadLine
+          function Test-NetOwn([string]$Name) { $t = $Name -as [type]; [bool]($t -and $t.Assembly.GlobalAssemblyCache) }
+          # The type that broke the pasted line in 0.6.0, so this check is known to tell.
+          if (Test-NetOwn 'System.Runtime.InteropServices.RuntimeInformation') {
+            throw "PSReadLine's RuntimeInformation doesn't stand in for .NET's here, so this check can't tell"
+          }
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile($env:PARENT_RECAP, [ref]$null, [ref]$null)
+          $names = $ast.FindAll({ param($n)
+              $n -is [System.Management.Automation.Language.TypeExpressionAst] -or
+              $n -is [System.Management.Automation.Language.TypeConstraintAst] }, $true) |
+            ForEach-Object { $_.TypeName.FullName } | Sort-Object -Unique
+          Write-Host "install.ps1 names: $($names -join ', ')"
+          $shadowed = @($names | Where-Object { -not (Test-NetOwn $_) })
+          if ($shadowed) { throw "not .NET's own type with PSReadLine loaded: $($shadowed -join ', ')" }
+      - name: The install picks up from there, in a PowerShell with PSReadLine loaded
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -Command 'Import-Module PSReadLine; & $env:PARENT_RECAP; exit $LASTEXITCODE'
           if ($LASTEXITCODE -ne 0) { throw "exited with $LASTEXITCODE" }
           Get-Content "$env:INSTALLED\logs\*.log" -Tail 20
       - name: The installed program runs on its own Python and Node

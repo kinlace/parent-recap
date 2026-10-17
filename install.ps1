@@ -177,7 +177,10 @@
     if ([Environment]::OSVersion.Platform -ne 'Win32NT') {
       Stop-Install 'This install line is for Windows.' 'On a Mac, paste the line in the README into Terminal.'
     }
-    if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne 'X64') {
+    # The processor's own, which 9 is x64: x64 PowerShell on an ARM PC says AMD64 in
+    # PROCESSOR_ARCHITECTURE. Not RuntimeInformation, which in a PowerShell window resolves to
+    # PSReadLine's own type of that name, without OSArchitecture (#374).
+    if (@(Get-CimInstance Win32_Processor)[0].Architecture -ne 9) {
       Stop-Install 'Parent Recap runs only on Windows PCs with an Intel or AMD processor (x64), for now.' `
         'Tell the Parent Recap team which PC you have.'
     }
@@ -278,9 +281,10 @@
     Write-Host "Parent Recap wasn't installed. $($_.Exception.Message)" -ForegroundColor Red
     $failed = $true
   }
-  # Run as a file, a failed install exits with 1. Pasted into PowerShell, exiting would close the
-  # family's window, with the message in it.
-  if ($failed -and $PSCommandPath) { exit 1 }
+  # Run as a file, a failed install exits with 1, and one that worked with 0, whatever the last
+  # program it ran exited with. Pasted into PowerShell, exiting would close the family's window,
+  # with the message in it.
+  if ($PSCommandPath) { exit [int]$failed }
   # Pasted, the line goes on to the setup page (ADR 0006), as get.sh does on a Mac, served from
   # this window until setup is done; it picks up where setup got to. Run as a file, as an update
   # from the chat or CI runs it, it only installs, as install.sh does.

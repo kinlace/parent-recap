@@ -29,6 +29,9 @@ def test_the_pasted_line_ends_on_the_setup_page_and_a_file_run_only_installs():
     assert opened, "the page opens only after an install that worked, pasted"
     assert "& (Join-Path $App '.venv\\Scripts\\parent-recap.exe') setup page" in opened.group(1)
     assert "Keep this PowerShell window open" in opened.group(1)
+    # Run as a file, it exits with the install's result, not the last program it ran: CI runs it
+    # with `&` in a PowerShell with PSReadLine loaded, as a family's window has (#374).
+    assert "if ($PSCommandPath) { exit [int]$failed }" in end
 
 
 def test_install_ps1_is_ascii_only():
