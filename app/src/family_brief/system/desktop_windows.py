@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import ctypes
-import msvcrt
 import os
 import subprocess
 import sys
@@ -79,6 +78,8 @@ def preferred_languages() -> list[str]:
 def typing_at_terminal() -> bool:
     """`isatty()` alone is also True for the null device, a character device, which is what an
     agent's stdin is: only a console has a console mode."""
+    import msvcrt  # Windows only, and the tests import this module on a Mac too
+
     try:
         if sys.stdin is None or not sys.stdin.isatty():
             return False
