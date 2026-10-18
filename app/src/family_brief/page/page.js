@@ -263,7 +263,8 @@ function showAI(name, result, install) {
   message.textContent = t(message.dataset.text);
   document.getElementById("ai-install").hidden = !install;
   document.getElementById("ai-install-line").textContent = install || "";
-  document.getElementById("ai-again").hidden = result === "ready" || result === "checking";
+  // Nothing the family does before the AI step changes a result Welcome goes on with.
+  document.getElementById("ai-again").hidden = welcomeGoesOn(name, result) || result === "checking";
   document.getElementById("welcome-continue").disabled = !welcomeGoesOn(name, result);
 }
 

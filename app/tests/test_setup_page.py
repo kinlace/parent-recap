@@ -4813,6 +4813,16 @@ def test_on_windows_chatgpt_s_step_installs_codex_and_welcome_doesn_t_wait_for_i
             assert f"{key}.windows" in table, (language, key)
 
 
+def test_welcome_shows_check_again_only_while_it_can_t_go_on():
+    script = (PAGE_DIR / "page.js").read_text()
+
+    # On Windows, Codex or Claude not installed or signed out goes on, so nothing waits on a
+    # recheck; on a Mac, and for the gateway, welcomeGoesOn holds only for ready.
+    shown = script.split("function showAI(", 1)[1].split("\n}\n", 1)[0]
+    assert ('getElementById("ai-again").hidden = welcomeGoesOn(name, result)'
+            ' || result === "checking"') in shown
+
+
 def test_on_windows_claude_s_step_installs_claude_code_and_welcome_doesn_t_wait_for_it():
     script = (PAGE_DIR / "page.js").read_text()
 
