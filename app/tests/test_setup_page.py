@@ -4819,8 +4819,8 @@ def test_welcome_shows_check_again_only_while_it_can_t_go_on():
     # On Windows, Codex or Claude not installed or signed out goes on, so nothing waits on a
     # recheck; on a Mac, and for the gateway, welcomeGoesOn holds only for ready.
     shown = script.split("function showAI(", 1)[1].split("\n}\n", 1)[0]
-    assert ('getElementById("ai-again").hidden = welcomeGoesOn(name, result)'
-            ' || result === "checking"') in shown
+    assert "const goesOn = welcomeGoesOn(name, result);" in shown
+    assert 'getElementById("ai-again").hidden = goesOn || result === "checking"' in shown
 
 
 def test_on_windows_claude_s_step_installs_claude_code_and_welcome_doesn_t_wait_for_it():

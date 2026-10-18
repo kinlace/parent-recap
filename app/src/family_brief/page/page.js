@@ -263,9 +263,10 @@ function showAI(name, result, install) {
   message.textContent = t(message.dataset.text);
   document.getElementById("ai-install").hidden = !install;
   document.getElementById("ai-install-line").textContent = install || "";
-  // Nothing the family does before the AI step changes a result Welcome goes on with.
-  document.getElementById("ai-again").hidden = welcomeGoesOn(name, result) || result === "checking";
-  document.getElementById("welcome-continue").disabled = !welcomeGoesOn(name, result);
+  // A recheck can't change a result Welcome already goes on with.
+  const goesOn = welcomeGoesOn(name, result);
+  document.getElementById("ai-again").hidden = goesOn || result === "checking";
+  document.getElementById("welcome-continue").disabled = !goesOn;
 }
 
 async function saveWelcome(event) {
