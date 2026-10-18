@@ -578,14 +578,25 @@ function showWilmaUses() {
   const uses = picked("wilma-uses") === "yes";
   document.getElementById("wilma-form").hidden = !uses;
   document.getElementById("town-form").hidden = uses;
+  if (wilmaStep.preparing) {
+    showSource(wilmaInstalling());
+    showWilmaWait(wilmaInstalling());
+  }
   renderTowns();
+}
+
+// What the install gets ready: a family without Wilma, who just said so, waits only for the
+// town list, so the page doesn't say it's getting Wilma ready.
+const INSTALLING = ["wilma.ready.installing", "wilma.ready.installing.town"];
+function wilmaInstalling() {
+  return picked("wilma-uses") === "no" ? "wilma.ready.installing.town" : "wilma.ready.installing";
 }
 
 // Gets the pinned wilma CLI ready, installing it if it isn't: the town list comes with it.
 async function getWilmaReady() {
   wilmaStep.preparing = true;
-  showSource("wilma.ready.installing");
-  showWilmaWait("wilma.ready.installing");
+  showSource(wilmaInstalling());
+  showWilmaWait(wilmaInstalling());
   try {
     const out = await post("api/wilma/install", {});
     if (out.result !== "installed") {
@@ -614,7 +625,7 @@ async function getWilmaReady() {
 function showWilmaWait(key) {
   const wait = document.getElementById("wilma-search-wait");
   wait.hidden = !key;
-  wait.classList.toggle("busy", key === "wilma.ready.installing");
+  wait.classList.toggle("busy", INSTALLING.includes(key));
   if (key) setText(wait, key);
   else delete wait.dataset.text;
 }
