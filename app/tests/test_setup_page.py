@@ -1849,7 +1849,10 @@ def test_the_town_box_says_why_it_waits_right_under_it_while_the_wilma_cli_insta
             ': "wilma.ready.installing"') in installing
     uses = script.split("function showWilmaUses() {", 1)[1].split("\n}\n", 1)[0]
     shown = uses.split("if (wilmaStep.preparing) {", 1)[1]
-    assert "showSource(wilmaInstalling())" in shown and "showWilmaWait(wilmaInstalling())" in shown
+    assert "showWilmaWait(wilmaInstalling())" in shown
+    # The status area too, unless it says something the parent caused meanwhile.
+    assert ("if (INSTALLING.includes(status.dataset.result)) showSource(wilmaInstalling())"
+            in shown)
     # Both keep the box's busy look.
     wait = script.split("function showWilmaWait(key) {", 1)[1].split("\n}\n", 1)[0]
     assert 'wait.classList.toggle("busy", INSTALLING.includes(key))' in wait
@@ -1866,7 +1869,8 @@ def test_every_wilma_result_is_explained_in_all_three_languages():
         for result in setup_server.WILMA_READY_RESULTS:
             assert table.get(f"wilma.ready.{result}", "").strip(), (language, result)
         # Without Wilma, the install gets the town list ready, on a Mac and a PC alike.
-        assert table.get("wilma.ready.installing.town", "").strip(), language
+        town = table.get("wilma.ready.installing.town", "")
+        assert town.strip() and "wilma" not in town.lower(), language
         assert "wilma.ready.installing.town.windows" not in table, language
         for result in setup_server.WILMA_WINDOW_RESULTS:
             assert table.get(f"wilma.window.{result}", "").strip(), (language, result)

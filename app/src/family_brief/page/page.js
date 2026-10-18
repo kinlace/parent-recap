@@ -578,8 +578,10 @@ function showWilmaUses() {
   const uses = picked("wilma-uses") === "yes";
   document.getElementById("wilma-form").hidden = !uses;
   document.getElementById("town-form").hidden = uses;
+  // A status the parent caused meanwhile, such as "pick your town", stays.
   if (wilmaStep.preparing) {
-    showSource(wilmaInstalling());
+    const status = document.getElementById("source-status");
+    if (INSTALLING.includes(status.dataset.result)) showSource(wilmaInstalling());
     showWilmaWait(wilmaInstalling());
   }
   renderTowns();
