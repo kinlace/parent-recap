@@ -3413,6 +3413,25 @@ def test_without_whatsapp_there_are_no_groups_to_tick(harness, page):
     assert check_page(page.url)["whatsapp"] is None
 
 
+def test_with_another_source_the_check_page_doesnt_say_the_briefs_come_out_empty(harness, page):
+    # With Wilma's or a WhatsApp group's news, a Gmail with no sender only sends the Brief (#361).
+    at_the_check_step(harness)
+    assert check_page(page.url)["other_sources"] is True
+
+    harness.config["wilma"]["enabled"] = False
+    at_the_check_step(harness)
+    assert check_page(page.url)["other_sources"] is True  # the WhatsApp groups ticked
+
+    more_progress(harness, sources={"whatsapp": "skipped"}, whatsapp_chats=None)
+    assert check_page(page.url)["other_sources"] is False
+
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+    for table in text.values():
+        assert table["check.senders.none.other"].strip()
+    assert "empty" in text["en"]["check.senders.none"]
+    assert "empty" not in text["en"]["check.senders.none.other"]
+
+
 def test_school_city_and_club_senders_come_ticked_and_public_mail_is_left_out(harness, page):
     at_the_check_step(harness)
 

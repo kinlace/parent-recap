@@ -1288,9 +1288,11 @@ function renderCheck() {
     tickRow(sender.domain, sender.ticked, sender.count
       ? { key: "check.sender.mails", values: { count: sender.count, example: sender.example } }
       : { key: "check.sender.no-mail" })));
-  // Without school mail among what came in, the Briefs come out empty.
-  document.getElementById("check-senders-none").hidden =
-    senders.some((s) => s.ticked && s.count > 0);
+  // Without school mail among what came in, the Briefs come out empty, unless another Source
+  // brings the news and Gmail only sends the Brief.
+  const none = document.getElementById("check-senders-none");
+  none.hidden = senders.some((s) => s.ticked && s.count > 0);
+  setText(none, page.check.other_sources ? "check.senders.none.other" : "check.senders.none");
   document.getElementById("check-recipients").replaceChildren(...recipients.map(recipientRow));
   document.getElementById("check-evening").value = evening;
   // A pilot Household's feedback goes under this name in the team's sheet.

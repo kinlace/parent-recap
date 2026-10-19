@@ -786,13 +786,19 @@ class SetupServer:
         their everyday names; the WhatsApp groups, those linked to a Kid ticked (none without
         WhatsApp); the Gmail senders that look like school, city or club mail ticked, and never
         a public one; each Recipient with their language; the evening time; and for a pilot
-        Household, the label its feedback goes under (None for any other)."""
+        Household, the label its feedback goes under (None for any other). `other_sources` is
+        whether a Source besides Gmail brings news, so that a Gmail with no sender ticked only
+        sends the Brief (#361)."""
         cfg = self._config()
         hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
+        groups = self._groups(cfg, progress) if progress["sources"]["whatsapp"] == "done" else None
+        # The WhatsApp groups are picked on this page, so it's the ticked ones that count.
+        others = any(s != "whatsapp" for s in cfg.other_sources()) \
+            or any(g["ticked"] for g in groups or [])
         return {"kids": [{"name": k.name, "everyday_name": everyday_name(k)} for k in cfg.kids],
-                "whatsapp": self._groups(cfg, progress)
-                if progress["sources"]["whatsapp"] == "done" else None,
+                "whatsapp": groups,
                 "senders": self._senders(cfg, progress),
+                "other_sources": others,
                 "recipients": [{"address": r.address, "language": cfg.language_of(r)}
                                for r in cfg.email.to],
                 "evening": f"{hour:02d}:{minute:02d}",
