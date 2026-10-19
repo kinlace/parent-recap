@@ -1323,6 +1323,19 @@ def test_night_when_no_source_could_be_read_speaks_each_recipients_language(harn
     assert "No Source could be read tonight" in en.text
 
 
+def test_night_when_no_source_could_be_read_says_so_even_if_the_model_finds_nothing_to_say(harness):
+    # A near deadline asks the model, which drops it: silence would still look like a quiet night.
+    harness.write_archive("2026-09-26", {"summary": {"per_kid": [
+        {"kid": "Leo", "action_items": [{"what": "交图书馆的书", "by": "2026-09-28", "who": "爸爸"}]}]}})
+    every_source_fails(harness)
+
+    assert harness.run() == 0
+
+    assert len(harness.model_calls) == 1
+    [email] = harness.sent
+    assert "Gmail" in email.text and "WhatsApp" in email.text
+
+
 def test_dry_run_when_no_source_could_be_read_sends_nothing(harness):
     every_source_fails(harness)
 

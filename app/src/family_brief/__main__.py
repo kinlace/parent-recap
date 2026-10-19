@@ -717,6 +717,12 @@ def _form_people(cfg: Config, placeholders: ai_filter.Placeholders | None, for_a
     return people
 
 
+def _nothing_could_be_read(cfg: Config, coverage: dict[str, dict]) -> bool:
+    """Whether every Source was tried tonight and failed. A run of some Sources by hand didn't try
+    the others, so it can't say."""
+    return set(cfg.default_sources()) <= set(coverage) and all(c["error"] for c in coverage.values())
+
+
 def _quiet_night(state: State, coverage: dict[str, dict], dry_run: bool) -> int:
     """The end of a night that sends no Brief: it still ran, and read what it read."""
     state.mark_run_now()
@@ -752,7 +758,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
     assistant = "Codex" if cfg.llm.backend == "codex" else "Claude"
     # A preview shows a quiet night's Brief too, so the family sees what one looks like.
     if not messages and not direct_events and not due_soon and not args.preview:
-        if set(cfg.default_sources()) <= set(coverage) and all(c["error"] for c in coverage.values()):
+        if _nothing_could_be_read(cfg, coverage):
             # Silence would look like a quiet night, so the parents hear that nothing could be read.
             log.warning("No Source could be read; sending a short Brief that says so")
             if args.dry_run:
@@ -841,8 +847,10 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
     # A Source's events carry the Kid's configured name, which their calendar identity keeps.
     created = [{**c, "kid": cfg.kid_called(c.get("kid"))} for c in created]
     # A night the model finds nothing worth saying about, such as an ordinary timetable alone, is
-    # as quiet as one with nothing new (#385). Its Messages still count as read.
-    if not args.preview and _nothing_to_show(summary, created, listed_held_back, t, assistant):
+    # as quiet as one with nothing new (#385). Its Messages still count as read. When nothing could
+    # be read, the Brief's notes say so.
+    if not args.preview and not _nothing_could_be_read(cfg, coverage) \
+            and _nothing_to_show(summary, created, listed_held_back, t, assistant):
         log.info("Nothing to tell the family tonight; no Brief sent.")
         return _quiet_night(state, coverage, args.dry_run)
     date_str = today_str(cfg.timezone)
