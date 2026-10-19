@@ -568,11 +568,11 @@ def _check_sign_in_after_update(add) -> None:
             "evening run still happens")
     elif on is False:
         add(WARN, item, "after Windows restarts for an update nobody is signed in, so that "
-            f"night's Brief doesn't come. Turn on {setting}")
+            f"night's Brief waits until someone signs in. Turn on {setting}")
     else:
         add(WARN, item, "couldn't tell whether Windows signs you back in after it restarts for an "
-            "update. If it doesn't, that night's Brief doesn't come: check that this is on: "
-            f"{setting}")
+            "update. If it doesn't, that night's Brief waits until someone signs in: check that "
+            f"this is on: {setting}")
 
 
 # ---------------------------------------------------------------- discover

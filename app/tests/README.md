@@ -39,6 +39,7 @@ exiting with its result, when run as a file.
 `test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.
+Its `run --if-missed` tests sign in after an evening run that was missed, ran, or never ran yet.
 `test_ai_filter.py` calls the AI filter on its own with a list of messages, as another tool could.
 In `test_nightly_run.py`, a night with phone numbers, email addresses and links in every part of the
 payload checks that none reaches the Brief or translation prompt, only placeholders, the same one for
@@ -210,7 +211,7 @@ that a Mac sleeping on battery still needs the wake, and that with no dialog to 
 SSH, it isn't set.
 `test_jobs_windows.py` checks on any system the Task Scheduler task each job becomes (its time, a
 missed start caught up, the PC woken, run only while signed in, also on battery, and started through
-pythonw with its log files) and that `bg` runs as a hidden child process; on Windows it registers,
+pythonw with its log files), the evening job's sign-in task that runs `run --if-missed`, and that `bg` runs as a hidden child process; on Windows it registers,
 lists, starts and removes real tasks. A runner can't show that a task wakes a sleeping PC.
 `test_wake_windows.py` reads "Allow wake timers" and the sleep timeouts from a fake `powercfg`
 worded in Finnish, and never changes them. `test_windows_only.py` checks that `doctor` on Windows

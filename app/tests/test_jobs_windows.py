@@ -88,6 +88,29 @@ def test_a_task_runs_the_job_without_a_window_and_with_its_log_files(tmp_path, m
     assert args.endswith(f"{python} -m family_brief run")
 
 
+def test_the_evening_jobs_sign_in_task_catches_up_a_run_missed_while_signed_out(tmp_path,
+                                                                                monkeypatch):
+    # Task Scheduler doesn't start a run missed while nobody was signed in (#386).
+    monkeypatch.setenv("USERDOMAIN", "KITCHEN-PC")
+    monkeypatch.setenv("USERNAME", "family")
+    python = tmp_path / "python.exe"
+    python.touch()
+    monkeypatch.setattr(sys, "executable", str(python))
+
+    catch_up = ET.fromstring(jobs_windows.catch_up_xml(both(tmp_path)[0]))
+
+    [trigger] = catch_up.find("t:Triggers", NS)
+    assert trigger.tag == f"{{{jobs_windows.TASK_NS}}}LogonTrigger"
+    # Only the family's own sign-in, which a task without administrator rights may wait for.
+    assert text(trigger, "t:UserId") == "KITCHEN-PC\\family"
+    assert text(catch_up, "t:Principals/t:Principal/t:LogonType") == "InteractiveToken"
+    assert text(catch_up, "t:Settings/t:WakeToRun") == "false"
+    assert text(catch_up, "t:Settings/t:DisallowStartIfOnBatteries") == "false"
+    args = text(catch_up, "t:Actions/t:Exec/t:Arguments")
+    assert str(tmp_path / "run-stdout.log") in args  # the evening job's own log files
+    assert args.endswith(f"{python} -m family_brief run --if-missed")
+
+
 def test_the_runner_appends_the_jobs_output_to_its_log_files_and_gives_its_exit_code(tmp_path):
     out, err = tmp_path / "run-stdout.log", tmp_path / "run-stderr.log"
     out.write_text("yesterday\n")
@@ -138,15 +161,18 @@ def task_scheduler(monkeypatch):
 @pytest.mark.windows
 def test_installing_registers_both_tasks_and_without_weekend_picks_removes_theirs(task_scheduler,
                                                                                   tmp_path):
+    catch_up = jobs_windows.CATCH_UP
     jobs.install(both(tmp_path))
-    assert jobs.installed() == {jobs.DAILY, jobs.WEEKEND}
+    assert jobs.installed() == {jobs.DAILY, catch_up, jobs.WEEKEND}
     assert jobs.program(jobs.DAILY) == [sys.executable, "-m", "family_brief", "run"]
+    assert jobs.program(catch_up) == [sys.executable, "-m", "family_brief", "run", "--if-missed"]
     assert {j.system_name for j in jobs.found()} == {jobs.system_name(jobs.DAILY),
+                                                     jobs.system_name(catch_up),
                                                      jobs.system_name(jobs.WEEKEND)}
 
     jobs.install(both(tmp_path)[:1])
 
-    assert jobs.installed() == {jobs.DAILY}
+    assert jobs.installed() == {jobs.DAILY, catch_up}
     assert jobs.program(jobs.WEEKEND) is None
     assert jobs.waiting_for_login() == set()
 

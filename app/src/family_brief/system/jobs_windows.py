@@ -3,7 +3,8 @@ started through PowerShell's ScheduledTasks commands, none of which needs admini
 
 A task runs only while the family is signed in ("run only when user is logged on"), locked or
 asleep, wakes the PC to run ("wake the computer to run this task"), and runs as soon as it can
-after a start it missed (ADR 0021). It starts pythonw.exe with `task_run`, which gives the job its
+after a start it missed (ADR 0021). A start missed because nobody was signed in isn't caught up
+that way, so the evening job has a second task, at sign-in, that runs it if it was missed. It starts pythonw.exe with `task_run`, which gives the job its
 log files without opening a window on the family's desktop."""
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ from typing import Any, Callable
 from . import jobs, task_run  # jobs' names are read at call time: jobs imports this module first
 
 PREFIX = "Parent Recap "
+CATCH_UP = "daily catch-up"  # the evening job's sign-in task (`catch_up_xml`)
 TASK_NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 DAYS = ("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
 RUNNER = "family_brief.system.task_run"
@@ -73,60 +75,92 @@ def _next(hour: int, minute: int, now: datetime) -> datetime:
     return at if at > now else at + timedelta(days=1)
 
 
-def task_xml(job: jobs.Job, now: datetime | None = None) -> str:
-    """The task for `job`, in Task Scheduler's XML. Its times are the PC's own local time."""
-    ET.register_namespace("", TASK_NS)
+def _add(parent: ET.Element, tag: str, text: str | None = None) -> ET.Element:
+    e = ET.SubElement(parent, f"{{{TASK_NS}}}{tag}")
+    e.text = text
+    return e
 
-    def add(parent: ET.Element, tag: str, text: str | None = None) -> ET.Element:
-        e = ET.SubElement(parent, f"{{{TASK_NS}}}{tag}")
-        e.text = text
-        return e
 
-    task = ET.Element(f"{{{TASK_NS}}}Task", version="1.2")
-    what = "the evening Brief" if job.name == jobs.DAILY else "Weekend Picks"
-    add(add(task, "RegistrationInfo"), "Description", f"Parent Recap: {what}")
-
-    trigger = add(add(task, "Triggers"), "CalendarTrigger")
-    start = _next(job.hour, job.minute, now or datetime.now())
-    add(trigger, "StartBoundary", start.strftime("%Y-%m-%dT%H:%M:%S"))
-    add(trigger, "Enabled", "true")
-    if job.weekday is None:
-        add(add(trigger, "ScheduleByDay"), "DaysInterval", "1")
-    else:
-        weekly = add(trigger, "ScheduleByWeek")
-        add(add(weekly, "DaysOfWeek"), DAYS[job.weekday % 7])
-        add(weekly, "WeeksInterval", "1")
-
-    principal = add(add(task, "Principals"), "Principal")
-    principal.set("id", "Author")
+def _user() -> str | None:
+    """The signed-in Windows account, as Task Scheduler names it."""
     user, domain = os.environ.get("USERNAME"), os.environ.get("USERDOMAIN")
-    if user:
-        add(principal, "UserId", f"{domain}\\{user}" if domain else user)
+    return (f"{domain}\\{user}" if domain else user) if user else None
+
+
+def _task(job: jobs.Job, description: str, trigger: Callable[[ET.Element], None],
+          wake: bool, *more_args: str) -> str:
+    """A task that runs `job`'s command and `more_args` when `trigger` (handed the Triggers
+    element) says, in Task Scheduler's XML; `wake` wakes the PC for it and catches up a missed
+    start."""
+    ET.register_namespace("", TASK_NS)
+    task = ET.Element(f"{{{TASK_NS}}}Task", version="1.2")
+    _add(_add(task, "RegistrationInfo"), "Description", description)
+    trigger(_add(task, "Triggers"))
+
+    principal = _add(_add(task, "Principals"), "Principal")
+    principal.set("id", "Author")
+    if user := _user():
+        _add(principal, "UserId", user)
     # Only while the family is signed in: the passwordless way of running signed out has no
     # network, and the other one would need the family's Windows password (ADR 0021).
-    add(principal, "LogonType", "InteractiveToken")
-    add(principal, "RunLevel", "LeastPrivilege")
+    _add(principal, "LogonType", "InteractiveToken")
+    _add(principal, "RunLevel", "LeastPrivilege")
 
-    settings = add(task, "Settings")
-    add(settings, "MultipleInstancesPolicy", "IgnoreNew")
+    settings = _add(task, "Settings")
+    _add(settings, "MultipleInstancesPolicy", "IgnoreNew")
     # Task Scheduler's defaults would skip a laptop's evening run on battery.
-    add(settings, "DisallowStartIfOnBatteries", "false")
-    add(settings, "StopIfGoingOnBatteries", "false")
-    add(settings, "StartWhenAvailable", "true")
-    add(settings, "WakeToRun", "true")
-    add(settings, "Enabled", "true")
+    _add(settings, "DisallowStartIfOnBatteries", "false")
+    _add(settings, "StopIfGoingOnBatteries", "false")
+    _add(settings, "StartWhenAvailable", str(wake).lower())
+    _add(settings, "WakeToRun", str(wake).lower())
+    _add(settings, "Enabled", "true")
 
-    actions = add(task, "Actions")
+    actions = _add(task, "Actions")
     actions.set("Context", "Author")
-    run = add(actions, "Exec")
-    add(run, "Command", _pythonw())
-    add(run, "Arguments", subprocess.list2cmdline([
+    run = _add(actions, "Exec")
+    _add(run, "Command", _pythonw())
+    _add(run, "Arguments", subprocess.list2cmdline([
         "-m", RUNNER,
         str(job.log_dir / f"{job.subcommand}-stdout.log"),
         str(job.log_dir / f"{job.subcommand}-stderr.log"),
-        sys.executable, "-m", "family_brief", job.subcommand]))
-    add(run, "WorkingDirectory", str(Path.home()))
+        sys.executable, "-m", "family_brief", job.subcommand, *more_args]))
+    _add(run, "WorkingDirectory", str(Path.home()))
     return ET.tostring(task, encoding="unicode")
+
+
+def task_xml(job: jobs.Job, now: datetime | None = None) -> str:
+    """The task for `job`, in Task Scheduler's XML. Its times are the PC's own local time."""
+    def at_its_time(triggers: ET.Element) -> None:
+        trigger = _add(triggers, "CalendarTrigger")
+        start = _next(job.hour, job.minute, now or datetime.now())
+        _add(trigger, "StartBoundary", start.strftime("%Y-%m-%dT%H:%M:%S"))
+        _add(trigger, "Enabled", "true")
+        if job.weekday is None:
+            _add(_add(trigger, "ScheduleByDay"), "DaysInterval", "1")
+        else:
+            weekly = _add(trigger, "ScheduleByWeek")
+            _add(_add(weekly, "DaysOfWeek"), DAYS[job.weekday % 7])
+            _add(weekly, "WeeksInterval", "1")
+
+    what = "the evening Brief" if job.name == jobs.DAILY else "Weekend Picks"
+    return _task(job, f"Parent Recap: {what}", at_its_time, True)
+
+
+def catch_up_xml(job: jobs.Job) -> str:
+    """The evening job's second task, which runs it at the family's sign-in if its evening run
+    was missed. StartWhenAvailable doesn't catch up a start missed because nobody was signed in,
+    and the run itself tells whether one was (`run --if-missed`, #386)."""
+    def at_sign_in(triggers: ET.Element) -> None:
+        trigger = _add(triggers, "LogonTrigger")
+        _add(trigger, "Enabled", "true")
+        # Anyone's sign-in would need administrator rights to wait for.
+        if user := _user():
+            _add(trigger, "UserId", user)
+        # The run waits for the network too, but Wi-Fi can take a while after signing in.
+        _add(trigger, "Delay", "PT1M")
+
+    return _task(job, "Parent Recap: the evening Brief, if it was missed", at_sign_in, False,
+                 "--if-missed")
 
 
 # Our tasks in Task Scheduler's root folder, as $ours.
@@ -142,6 +176,8 @@ _UNREGISTER = ("foreach ($t in $ours) { if ($kept -notcontains $t.TaskName) { "
 def install(wanted: list[jobs.Job]) -> None:
     """Registers `wanted` and removes our other tasks, in one PowerShell."""
     tasks = [{"name": system_name(job.name), "xml": task_xml(job)} for job in wanted]
+    tasks += [{"name": system_name(CATCH_UP), "xml": catch_up_xml(job)} for job in wanted
+              if job.name == jobs.DAILY]
     # Windows PowerShell hands a JSON array on as one object, so it's assigned before the loop.
     r = _powershell("$kept = @(); $tasks = ConvertFrom-Json $env:PARENT_RECAP_TASKS; "
                     "foreach ($t in $tasks) { "

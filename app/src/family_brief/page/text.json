@@ -290,7 +290,7 @@
     "check.evening": "Milloin kooste tulee",
     "check.evening.label": "Joka ilta kello",
     "check.evening.note": "Macin pitää olla tähän aikaan päällä tai herätä sitä varten. Herätys asetetaan käyttöönoton lopussa.",
-    "check.evening.note.windows": "Tietokoneen pitää olla tähän aikaan päällä ja sinun kirjautuneena siihen. Lepotila tai lukittu näyttö ei haittaa: se herää koostetta varten.",
+    "check.evening.note.windows": "Tietokoneen pitää olla tähän aikaan päällä ja sinun kirjautuneena siihen, muuten kooste tulee vasta, kun joku seuraavan kerran kirjautuu. Lepotila tai lukittu näyttö ei haittaa: se herää koostetta varten.",
     "check.feedback": "Pilottipalaute",
     "check.feedback.label": "Perheenne nimi palautetta varten",
     "check.feedback.note": "Nimi pysyy tällä Macilla. Parent Recap -tiimi näkee palautteenne tästä nimestä muodostetulla tunnuksella, esimerkiksi ”Household 3f9a2c”.",
@@ -368,7 +368,7 @@
     "finish.replace": "Korvaa se",
     "finish.checklist": "Mitä on otettu käyttöön",
     "finish.restart": "Jätä Mac iltaisin lepotilaan tai lukitse se, älä sammuta: lepotilassa oleva Mac herää koostetta varten, mutta sammutettu Mac ei tee koostetta. Jos Mac käynnistyy uudelleen, kirjaudu siihen kerran sen jälkeen. Illan kooste tehdään vain, kun olet kirjautuneena, vaikka näyttö olisi lukittu.",
-    "finish.restart.windows": "Jätä tietokone iltaisin lepotilaan tai lukitse se, ja pysy kirjautuneena Windowsiin: lepotilassa oleva tietokone herää koostetta varten, mutta sammutettu tai uloskirjautunut ei tee koostetta. Pidä kannettava kiinni laturissa. Jos tietokone käynnistyy uudelleen, kirjaudu siihen kerran sen jälkeen. Päivityksen jälkeen Windows voi tehdä sen puolestasi: laita päälle Windowsin asetusten tilien kirjautumisasetuksista asetus, jolla Windows käyttää kirjautumistietojasi asetusten viimeistelyyn päivityksen jälkeen.",
+    "finish.restart.windows": "Jätä tietokone iltaisin lepotilaan tai lukitse se, ja pysy kirjautuneena Windowsiin: lepotilassa oleva tietokone herää koostetta varten, mutta jos tietokone on sammutettu tai kukaan ei ole kirjautuneena, kooste tulee vasta, kun joku seuraavan kerran kirjautuu, usein seuraavana aamuna. Pidä kannettava kiinni laturissa. Jos tietokone käynnistyy uudelleen, kirjaudu siihen kerran sen jälkeen. Päivityksen jälkeen Windows voi tehdä sen puolestasi: laita päälle Windowsin asetusten tilien kirjautumisasetuksista asetus, jolla Windows käyttää kirjautumistietojasi asetusten viimeistelyyn päivityksen jälkeen.",
     "finish.changes.claude": "Jos haluat myöhemmin muuttaa jotain, esimerkiksi kuka saa koosteen tai milloin, kysy Claudelta Claude Codessa: kirjoita /parent-recap:manage tai kerro vain, mitä haluat.",
     "finish.changes.claude.windows": "Jos haluat myöhemmin muuttaa jotain, esimerkiksi kuka saa koosteen tai milloin, kysy Parent Recapin tiimiltä.",
     "finish.changes.gateway": "Jos haluat myöhemmin muuttaa jotain, esimerkiksi kuka saa koosteen tai milloin, kysy Parent Recapin tiimiltä, joka lähetti sinulle yhdyskäytävän avaimen.",
@@ -444,7 +444,7 @@
     "finish.fail.schedule": "Illan ajoa ei ole ladattu. Paina Laita päälle yrittääksesi uudelleen.",
     "finish.fail.last-run": "Koostetta ei ole ajettu yli vuorokauteen, ehkä koska Mac oli sammutettuna tai sille ei ollut asetettu heräystä. Tämä korjautuu, kun seuraava illan kooste on ajettu.",
     "finish.fail.last-run.windows": "Koostetta ei ole ajettu yli vuorokauteen, ehkä koska tietokone oli sammutettuna, et ollut kirjautuneena tai se ei herännyt. Tämä korjautuu, kun seuraava illan kooste on ajettu.",
-    "finish.fail.sign-in-after-update": "Kun Windows käynnistyy uudelleen päivityksen takia, kukaan ei ole kirjautuneena, joten sen illan koostetta ei tule. Laita päälle Windowsin asetusten tilien kirjautumisasetuksista asetus, jolla Windows käyttää kirjautumistietojasi asetusten viimeistelyyn päivityksen jälkeen ja paina sitten Tarkista uudelleen.",
+    "finish.fail.sign-in-after-update": "Kun Windows käynnistyy uudelleen päivityksen takia, kukaan ei ole kirjautuneena, joten sen illan kooste tulee vasta, kun joku kirjautuu. Laita päälle Windowsin asetusten tilien kirjautumisasetuksista asetus, jolla Windows käyttää kirjautumistietojasi asetusten viimeistelyyn päivityksen jälkeen ja paina sitten Tarkista uudelleen.",
     "finish.fail.other": "Jokin tarkistus epäonnistui. Paina Tarkista uudelleen tai jatka keskustelussa nähdäksesi syyn."
   },
   "en": {
@@ -738,7 +738,7 @@
     "check.evening": "When the Brief comes",
     "check.evening.label": "Every evening at",
     "check.evening.note": "The Mac needs to be on at this time, or wake up for it. Setup sets the wake-up at the end.",
-    "check.evening.note.windows": "The PC needs to be on and signed in at this time. Asleep or locked is fine: it wakes up for it.",
+    "check.evening.note.windows": "The PC needs to be on and signed in at this time, or the Brief comes when someone next signs in. Asleep or locked is fine: it wakes up for it.",
     "check.feedback": "Pilot feedback",
     "check.feedback.label": "Your family's name for feedback",
     "check.feedback.note": "The name stays on this Mac. The Parent Recap team sees your feedback under a code made from it, such as \"Household 3f9a2c\".",
@@ -816,7 +816,7 @@
     "finish.replace": "Replace it",
     "finish.checklist": "What's set up",
     "finish.restart": "In the evening, leave the Mac asleep or locked, not shut down: a sleeping Mac wakes for the Brief, but a Mac that's shut down doesn't make one. If the Mac restarts, log in to it once afterwards. The evening Brief only runs while you're logged in, even with the screen locked.",
-    "finish.restart.windows": "In the evening, leave the PC asleep or locked and stay signed in to Windows: a sleeping PC wakes for the Brief, but one that's shut down or signed out doesn't make one. Keep a laptop plugged in. If the PC restarts, sign in to it once afterwards. After an update, Windows can do that for you: turn on Settings › Accounts › Sign-in options › Use my sign-in info to automatically finish setting up after an update.",
+    "finish.restart.windows": "In the evening, leave the PC asleep or locked and stay signed in to Windows: a sleeping PC wakes for the Brief, but if it's shut down or signed out, the Brief comes when someone next signs in, often the next morning. Keep a laptop plugged in. If the PC restarts, sign in to it once afterwards. After an update, Windows can do that for you: turn on Settings › Accounts › Sign-in options › Use my sign-in info to automatically finish setting up after an update.",
     "finish.changes.claude": "To change something later, such as who gets the Brief or when, ask Claude in Claude Code: type /parent-recap:manage, or just say what you want.",
     "finish.changes.claude.windows": "To change something later, such as who gets the Brief or when, ask the Parent Recap team.",
     "finish.changes.gateway": "To change something later, such as who gets the Brief or when, ask the Parent Recap team who sent you the Gateway Key.",
@@ -892,7 +892,7 @@
     "finish.fail.schedule": "The evening job isn't loaded. Press Turn it on to try again.",
     "finish.fail.last-run": "No Brief has run for over a day, maybe because the Mac was shut down or had no wake-up set. This clears once the next evening Brief has run.",
     "finish.fail.last-run.windows": "No Brief has run for over a day, maybe because the PC was shut down, signed out or couldn't wake. This clears once the next evening Brief has run.",
-    "finish.fail.sign-in-after-update": "After Windows restarts for an update, nobody is signed in, so that night's Brief doesn't come. Turn on Settings › Accounts › Sign-in options › Use my sign-in info to automatically finish setting up after an update, then press Check again.",
+    "finish.fail.sign-in-after-update": "After Windows restarts for an update, nobody is signed in, so that night's Brief waits until someone signs in. Turn on Settings › Accounts › Sign-in options › Use my sign-in info to automatically finish setting up after an update, then press Check again.",
     "finish.fail.other": "A check failed. Press Check again, or continue in the chat to see why."
   },
   "zh": {
@@ -1186,7 +1186,7 @@
     "check.evening": "日报什么时候到",
     "check.evening.label": "每天晚上",
     "check.evening.note": "这个时间 Mac 需要开着，或者到时自动唤醒。设置的最后一步会设好唤醒。",
-    "check.evening.note.windows": "这个时间电脑需要开着，并且你要保持登录。睡眠或锁屏都没关系：它会为日报醒来。",
+    "check.evening.note.windows": "这个时间电脑需要开着，并且你要保持登录，否则日报要等有人下次登录时才来。睡眠或锁屏都没关系：它会为日报醒来。",
     "check.feedback": "试用反馈",
     "check.feedback.label": "反馈用的家庭名称",
     "check.feedback.note": "这个名称只留在这台 Mac 上。Parent Recap 团队看到的是由它生成的代号，比如“Household 3f9a2c”。",
@@ -1264,7 +1264,7 @@
     "finish.replace": "替换它",
     "finish.checklist": "已经设置好的内容",
     "finish.restart": "晚上请让 Mac 睡眠或锁屏，不要关机：睡眠中的 Mac 会醒来做日报，关机的 Mac 不会。如果 Mac 重启了，请在重启后登录一次。只有在你登录的状态下，每晚的日报才会运行，锁屏也没关系。",
-    "finish.restart.windows": "晚上请让电脑睡眠或锁屏，并保持登录 Windows：睡眠中的电脑会醒来做日报，关机或注销了的电脑不会。笔记本请一直插着电源。如果电脑重启了，请在重启后登录一次。Windows 更新后可以自动帮你登录：请打开Windows 设置里帐户的登录选项中，让 Windows 在更新后用你的登录信息自动完成设置的那一项。",
+    "finish.restart.windows": "晚上请让电脑睡眠或锁屏，并保持登录 Windows：睡眠中的电脑会醒来做日报；如果关机或注销了，日报要等有人下次登录时才来，常常是第二天早上。笔记本请一直插着电源。如果电脑重启了，请在重启后登录一次。Windows 更新后可以自动帮你登录：请打开Windows 设置里帐户的登录选项中，让 Windows 在更新后用你的登录信息自动完成设置的那一项。",
     "finish.changes.claude": "以后想改什么，比如谁收日报、几点收，请在 Claude Code 里问 Claude：输入 /parent-recap:manage，或者直接说你想改什么。",
     "finish.changes.claude.windows": "以后想改什么，比如谁收日报、几点收，请联系 Parent Recap 团队。",
     "finish.changes.gateway": "以后想改什么，比如谁收日报、几点收，请联系发给你网关密钥的 Parent Recap 团队。",
@@ -1340,7 +1340,7 @@
     "finish.fail.schedule": "每晚的任务还没加载。点“开启”再试一次。",
     "finish.fail.last-run": "已经超过一天没有运行日报了，可能是 Mac 关机了，或者还没设置唤醒。下一次晚上的日报运行后，这一项就会正常。",
     "finish.fail.last-run.windows": "已经超过一天没有运行日报了，可能是电脑关机了、注销了，或者没能醒来。下一次晚上的日报运行后，这一项就会正常。",
-    "finish.fail.sign-in-after-update": "Windows 为更新重启后没有人登录，那天晚上就没有日报。请打开Windows 设置里帐户的登录选项中，让 Windows 在更新后用你的登录信息自动完成设置的那一项，然后点“再检查一次”。",
+    "finish.fail.sign-in-after-update": "Windows 为更新重启后没有人登录，那天晚上的日报要等有人登录后才来。请打开Windows 设置里帐户的登录选项中，让 Windows 在更新后用你的登录信息自动完成设置的那一项，然后点“再检查一次”。",
     "finish.fail.other": "有一项检查没通过。点“再检查一次”，或者在对话里继续看看原因。"
   }
 }
