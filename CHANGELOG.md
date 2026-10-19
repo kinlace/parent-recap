@@ -4,6 +4,18 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.6.2 · 2026-10-19
+
+The setup page reads more clearly on Windows, and a notice from a parent group both Kids share goes under the Kid it's about.
+
+### Fixed
+- A notice from a parent group shared by both Kids, such as "Chinese class is cancelled", goes under the Kid who takes that activity, not under both.
+- A Windows family who picks ChatGPT or Claude before it's installed or signed in no longer sees a Check again button that suggests they should fix something first.
+- On the Wilma step, the greyed-out town box now says right under it that Wilma is being got ready, or why that failed, so nobody thinks they must fill in the username first.
+- A family who says their school doesn't use Wilma reads that the setup page is getting the list of towns ready, not Wilma.
+- When Claude or Codex uninstalls Parent Recap on Windows, it lists what it would remove instead of crashing, and with --confirm removes everything instead of stopping after the first item.
+- Uninstall no longer tells you to remove a Claude Code plugin you don't have.
+
 ## 0.6.1 · 2026-10-17
 
 On Windows, the install line pasted into PowerShell works again, and choosing Claude on the setup page signs in.
