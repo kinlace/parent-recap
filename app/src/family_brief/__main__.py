@@ -8,7 +8,7 @@ import re
 import sys
 import traceback
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Literal
 from zoneinfo import ZoneInfo
@@ -620,8 +620,34 @@ def cmd_run(args: argparse.Namespace) -> int:
     cfg = Config.load(args.config)
     args.dry_run = args.dry_run or args.preview
     if args.dry_run:  # writes nothing, so it can't clash with a run that is going
-        return _run(cfg, args)
-    return run_lock.run_alone(cfg, "Brief", lambda: _run(cfg, args))
+        return _run_unless_caught_up(cfg, args)
+    return run_lock.run_alone(cfg, "Brief", lambda: _run_unless_caught_up(cfg, args))
+
+
+def _evening_missed(cfg: Config, state: State) -> bool:
+    """Whether the evening run's latest time has gone by with no run since, on the PC's own clock,
+    which the scheduler keeps. Before the first run none was missed: setup registers the evening
+    job with its first start still to come."""
+    last = state.last_run_at
+    if last is None:
+        return False
+    now = datetime.now().astimezone()
+    evening = now.replace(hour=cfg.schedule.daily_hour, minute=cfg.schedule.daily_minute,
+                          second=0, microsecond=0)
+    if evening > now:
+        evening -= timedelta(days=1)
+    return last < evening
+
+
+def _run_unless_caught_up(cfg: Config, args: argparse.Namespace) -> int:
+    """`run`, or with --if-missed only when the evening run was missed (#386). Checked under the
+    run lock, so a catch-up started beside the evening run sees the state that run left."""
+    if args.if_missed:
+        if not _evening_missed(cfg, State(cfg.resolved_state_path())):
+            log.info("The evening run has run since its last time, so there is nothing to catch up")
+            return 0
+        log.info("The evening run was missed, so it runs now")
+    return _run(cfg, args)
 
 
 def _preview_step(step: str, **more: object) -> None:
@@ -947,6 +973,9 @@ def main() -> int:
                       help="Comma-separated: gmail,wilma,whatsapp,myclub (default: all)")
     prun.add_argument("--lookback-hours", type=int, default=None,
                       help="Override the Gmail / WhatsApp / Wilma lookback window (default: per-source config)")
+    prun.add_argument("--if-missed", action="store_true",
+                      help="Run only if the evening run's latest time went by with no run since "
+                           "(the Windows sign-in task's)")
     prun.set_defaults(func=cmd_run)
 
     pcol = sub.add_parser("collect", help="Debug only: print raw collected messages (includes bodies)")

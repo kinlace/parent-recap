@@ -1366,6 +1366,58 @@ def test_broken_archive_is_skipped(harness):
     assert len(harness.sent) == 1
 
 
+# ── Catching up at sign-in: Windows' sign-in task runs `run --if-missed` (#386)
+
+def signing_in_ten_hours_after_the_brief_time(h, last_run_hours_ago: float | None) -> None:
+    """NOW is the family signing in, ten hours after the Brief's time on the PC's own clock, which
+    Task Scheduler keeps; the last run ended, caught up, `last_run_hours_ago`, if there was one."""
+    normal_night(h, "en")
+    evening = (NOW - timedelta(hours=10)).astimezone()
+    h.config["schedule"] = {"daily_hour": evening.hour, "daily_minute": evening.minute}
+    if last_run_hours_ago is not None:
+        at = (NOW - timedelta(hours=last_run_hours_ago)).isoformat()
+        h.state_path.parent.mkdir(parents=True, exist_ok=True)
+        h.state_path.write_text(json.dumps({"last_run_at": at, "caught_up_at": at}))
+
+
+def test_signing_in_after_the_evening_run_was_missed_sends_that_evenings_brief(harness):
+    signing_in_ten_hours_after_the_brief_time(harness, last_run_hours_ago=34)
+
+    assert harness.run("--if-missed") == 0
+
+    [email] = harness.sent
+    assert email.subject == "Parent Recap · 2026-09-27"
+    assert harness.state()["last_run_at"] == "2026-09-27T18:00:00+00:00"
+
+
+def test_one_catch_up_covers_several_missed_evenings(harness):
+    signing_in_ten_hours_after_the_brief_time(harness, last_run_hours_ago=82)
+
+    assert harness.run("--if-missed") == 0
+
+    assert len(harness.sent) == 1
+    assert harness.lookback_hours["gmail"] == [84]  # back to the last run, with its 2 hours' slack
+
+
+def test_signing_in_after_the_evening_run_ran_sends_nothing(harness):
+    signing_in_ten_hours_after_the_brief_time(harness, last_run_hours_ago=9.9)
+    before = harness.state_path.read_text()
+
+    assert harness.run("--if-missed") == 0
+
+    assert harness.sent == [] and harness.model_calls == []
+    assert harness.state_path.read_text() == before
+
+
+def test_signing_in_before_any_run_sends_nothing(harness):
+    # Setup registers the task with its first start still to come, so none was missed yet.
+    signing_in_ten_hours_after_the_brief_time(harness, last_run_hours_ago=None)
+
+    assert harness.run("--if-missed") == 0
+
+    assert harness.sent == [] and not harness.state_path.exists()
+
+
 # ── Citations
 
 def archived_summary(h, day: str = "2026-09-27") -> dict:
