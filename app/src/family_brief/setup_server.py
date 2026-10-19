@@ -639,10 +639,10 @@ class SetupServer:
             "answers: should be {}, at Check or Finish with a Source skipped")
 
     def _back_to_connect(self, raw: Any, source: str | None,
-                         can: Callable[[dict[str, Any]], bool], refusal: str,
+                         allowed: Callable[[dict[str, Any]], bool], refusal: str,
                          error: str) -> tuple[HTTPStatus, dict[str, Any]]:
         """Takes setup from Check or Finish back to Connect at `source`, or at its list for None,
-        when `can` says setup's progress allows it, and never while a check runs."""
+        when `allowed` says setup's progress allows it, and never while a check runs."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
         with self._working:
@@ -651,7 +651,7 @@ class SetupServer:
                 return HTTPStatus.CONFLICT, {"result": "busy"}
             with self._saving:
                 progress = setup_save.read(self.config)["progress"]
-                if progress["phase"] not in ("check", "finish") or not can(progress):
+                if progress["phase"] not in ("check", "finish") or not allowed(progress):
                     return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                         "invalid-answers", refusal, errors=[error])
                 out = setup_save.save(self.config, {"progress": {"phase": "connect",
