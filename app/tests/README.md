@@ -46,6 +46,9 @@ say about, sends no Brief, by email or iMessage, and its Messages aren't sent to
 next night (#385). It still sends one with tonight's events, still says when no Source could be
 read, and still shows in the setup page's preview. The harness's model says nothing by default, so a
 test that needs the night's Brief to go out has the model reply `SAYS_SOMETHING` (`conftest.py`).
+A Gmail with no sender ticked, beside another Source, is never read and isn't in the Brief's
+coverage line; with no other Source it's still read and fails as the real collector does, so the
+night says no Source could be read (#361).
 `test_ai_filter.py` calls the AI filter on its own with a list of messages, as another tool could.
 In `test_nightly_run.py`, a night with phone numbers, email addresses and links in every part of the
 payload checks that none reaches the Brief or translation prompt, only placeholders, the same one for
@@ -190,6 +193,8 @@ hangs or doesn't start, a ticked group with a new name, and groups that can't be
 reason, with the group's old name, comes back from the `bg` job as a line of JSON, doctor's own
 line stays as it was, and the setup skill's advice for each reason quotes doctor's words. No skill
 or doc sends the parent to a file called python3, since Finder selects one such as python3.13.
+A Gmail with no sender ticked is OK beside another Source, signed in without a search, and fails
+with no other Source (#361).
 Off macOS, doctor has no WhatsApp check and never reads WhatsApp.
 The OS services in `family_brief.system` (secrets, the evening jobs, the daily wake, the desktop)
 are in-memory fakes in every test that runs the program (`fake_system.py`, in place of each
@@ -398,7 +403,8 @@ are kept in setup's progress and setup moves on to Check by itself, and that a G
 read says so without the error and can be tried again.
 Check checks that the Kids come all ticked with their first name as the everyday name, that
 WhatsApp groups and Gmail senders come ticked by best guess and a public mail service is never
-offered, that each Recipient comes with their language and the evening at 21:00, and that
+offered, that a connected Wilma's or MyClub's own mail isn't ticked (a skipped one's is), that the
+no-sender note doesn't say the Briefs come out empty when another Source brings the news, that each Recipient comes with their language and the evening at 21:00, and that
 confirming saves it all through `setup save` and runs the health check, faked so it can be seen
 running, except in one test that runs doctor's real checks against the harness's fakes. It checks
 that a failing check keeps the page and names only the check, that warnings alone move setup on,

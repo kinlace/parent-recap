@@ -4,19 +4,20 @@ Each section is written for the agent (Claude or Codex) guiding the user. The ag
 
 `FB=~/ParentRecap/app/.venv/bin/parent-recap`, `PY=~/ParentRecap/app/.venv/bin/python`
 
-## Gmail (required)
+## Gmail
 
-Gmail is used both to **receive** (scanning mail from schools and clubs) and to **send** (mailing the Brief). It uses an App Password; no Google Cloud project is needed.
+Gmail **sends** the Brief, so every Household connects it. It also **receives**: it reads the mail of the senders ticked, for news no other Source brings (a school's or the city's own mail, a club that emails). It uses an App Password; no Google Cloud project is needed.
 
 1. Tell the user they never give Parent Recap their Google password. An App Password is a separate 16-letter password that only Parent Recap uses, and they can delete it in their Google account. Google may ask them to sign in on its own page first
 2. `$FB setup gmail --address you@gmail.com` opens https://myaccount.google.com/apppasswords and a dialog. The user enters `Parent Recap` as the app name (only a label, for finding it later), clicks "Create", and pastes the 16 letters into the dialog. The command tests the sign-in and, if it works, saves the password in the Keychain. If the page isn't available, the user clicks that choice in the dialog, and the command links to 2-Step Verification (https://myaccount.google.com/signinoptions/two-step-verification)
-3. `$FB discover gmail-senders` lists the sender domains of the past 60 days (senders only, no message bodies); pick the school, class, club and music school domains together with the user
+3. `$FB discover gmail-senders` lists the sender domains of the past 60 days (senders only, no message bodies); pick the school, class, club and music school domains together with the user. Leave out `myclub.fi` when MyClub is connected and `inschool.fi` when Wilma is: that mail is the news the Source already brings, so the Brief would have it twice
 
 Notes:
 
 - If the App Password page can't be found, two-step verification is usually off. Google Workspace accounts managed by an employer or school may have App Passwords disabled by the admin; use a personal Gmail instead
 - **Never put public domains in the allowlist** (gmail.com, outlook.com, icloud.com). For teachers or coaches using a personal address, put the full address in `allowlist_senders`
 - The program already skips mail the user sent to themselves, drafts, Sent, Promotions and Social
+- With no sender ticked and another Source connected (Wilma, MyClub or WhatsApp), Gmail only sends the Brief: the evening run doesn't read it, and the health check only signs in. With no other Source, a Gmail with no sender fails the health check, since the Brief would be empty
 
 ### School mail at another address
 
