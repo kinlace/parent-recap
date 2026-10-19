@@ -4,8 +4,9 @@ started through PowerShell's ScheduledTasks commands, none of which needs admini
 A task runs only while the family is signed in ("run only when user is logged on"), locked or
 asleep, wakes the PC to run ("wake the computer to run this task"), and runs as soon as it can
 after a start it missed (ADR 0021). A start missed because nobody was signed in isn't caught up
-that way, so the evening job has a second task, at sign-in, that runs it if it was missed. It starts pythonw.exe with `task_run`, which gives the job its
-log files without opening a window on the family's desktop."""
+that way, so the evening job has a second task, at sign-in, that runs it if it was missed. Each
+starts pythonw.exe with `task_run`, which gives the job its log files without opening a window on
+the family's desktop."""
 from __future__ import annotations
 
 import ctypes
@@ -87,8 +88,8 @@ def _user() -> str | None:
     return (f"{domain}\\{user}" if domain else user) if user else None
 
 
-def _task(job: jobs.Job, description: str, trigger: Callable[[ET.Element], None],
-          wake: bool, *more_args: str) -> str:
+def _task(job: jobs.Job, description: str, trigger: Callable[[ET.Element], None], *,
+          wake: bool, more_args: tuple[str, ...] = ()) -> str:
     """A task that runs `job`'s command and `more_args` when `trigger` (handed the Triggers
     element) says, in Task Scheduler's XML; `wake` wakes the PC for it and catches up a missed
     start."""
@@ -143,7 +144,7 @@ def task_xml(job: jobs.Job, now: datetime | None = None) -> str:
             _add(weekly, "WeeksInterval", "1")
 
     what = "the evening Brief" if job.name == jobs.DAILY else "Weekend Picks"
-    return _task(job, f"Parent Recap: {what}", at_its_time, True)
+    return _task(job, f"Parent Recap: {what}", at_its_time, wake=True)
 
 
 def catch_up_xml(job: jobs.Job) -> str:
@@ -159,8 +160,8 @@ def catch_up_xml(job: jobs.Job) -> str:
         # The run waits for the network too, but Wi-Fi can take a while after signing in.
         _add(trigger, "Delay", "PT1M")
 
-    return _task(job, "Parent Recap: the evening Brief, if it was missed", at_sign_in, False,
-                 "--if-missed")
+    return _task(job, "Parent Recap: the evening Brief, if it was missed", at_sign_in,
+                 wake=False, more_args=("--if-missed",))
 
 
 # Our tasks in Task Scheduler's root folder, as $ours.
@@ -211,8 +212,13 @@ def remove_all() -> None:
 
 
 def installed() -> set[str]:
-    return {task["name"].removeprefix(PREFIX) for task in _tasks()
-            if task["state"] != "Disabled"}
+    names = {task["name"].removeprefix(PREFIX) for task in _tasks()
+             if task["state"] != "Disabled"}
+    # The evening job is both its tasks, so doctor asks for `schedule install` when one is gone,
+    # such as after an upgrade from a version without the sign-in task.
+    if CATCH_UP not in names:
+        names.discard(jobs.DAILY)
+    return names - {CATCH_UP}
 
 
 def waiting_for_login() -> set[str]:

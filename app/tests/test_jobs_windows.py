@@ -163,7 +163,7 @@ def test_installing_registers_both_tasks_and_without_weekend_picks_removes_their
                                                                                   tmp_path):
     catch_up = jobs_windows.CATCH_UP
     jobs.install(both(tmp_path))
-    assert jobs.installed() == {jobs.DAILY, catch_up, jobs.WEEKEND}
+    assert jobs.installed() == {jobs.DAILY, jobs.WEEKEND}
     assert jobs.program(jobs.DAILY) == [sys.executable, "-m", "family_brief", "run"]
     assert jobs.program(catch_up) == [sys.executable, "-m", "family_brief", "run", "--if-missed"]
     assert {j.system_name for j in jobs.found()} == {jobs.system_name(jobs.DAILY),
@@ -172,9 +172,21 @@ def test_installing_registers_both_tasks_and_without_weekend_picks_removes_their
 
     jobs.install(both(tmp_path)[:1])
 
-    assert jobs.installed() == {jobs.DAILY, catch_up}
+    assert jobs.installed() == {jobs.DAILY}
     assert jobs.program(jobs.WEEKEND) is None
     assert jobs.waiting_for_login() == set()
+
+
+@pytest.mark.windows
+def test_the_evening_job_without_its_sign_in_task_is_not_installed(task_scheduler, tmp_path):
+    # As after an upgrade from 0.6.2, so doctor asks for `schedule install` (#386).
+    jobs.install(both(tmp_path))
+    r = jobs_windows._powershell(
+        "Unregister-ScheduledTask -TaskName $env:PARENT_RECAP_TASK -TaskPath '\\' -Confirm:$false",
+        task=jobs.system_name(jobs_windows.CATCH_UP))
+    assert r.returncode == 0, r.stderr
+
+    assert jobs.installed() == {jobs.WEEKEND}
 
 
 @pytest.mark.windows
