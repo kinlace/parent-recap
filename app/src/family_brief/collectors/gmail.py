@@ -253,6 +253,12 @@ def _login(cfg: Config) -> tuple[imaplib.IMAP4_SSL, str]:
     return imap, username
 
 
+def sign_in(cfg: Config) -> None:
+    """Signs in to Gmail and out again, reading nothing; raises if it can't."""
+    imap, _ = _login(cfg)
+    imap.logout()
+
+
 def count_matching(cfg: Config) -> int:
     """How many allowlisted messages fall in the lookback window (no bodies fetched)."""
     imap, _ = _login(cfg)

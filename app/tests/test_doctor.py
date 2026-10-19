@@ -1,6 +1,7 @@
 """`parent-recap doctor` and `discover` speak English, whatever language the Brief is in."""
 from __future__ import annotations
 
+import imaplib
 import json
 import os
 import re
@@ -529,3 +530,65 @@ def test_discover_wilma_students_says_when_not_signed_in(tmp_path, monkeypatch, 
     assert cli.main() == 1
 
     assert "not signed in to wilma" in capsys.readouterr().out
+
+
+# ── A Gmail with no sender ticked (#361)
+
+
+class GmailImap:
+    """Gmail's IMAP server: a sign-in, and each search doctor makes."""
+
+    def __init__(self) -> None:
+        self.searches: list[tuple] = []
+
+    def __call__(self, *_a, **_k) -> "GmailImap":
+        return self
+
+    def login(self, *_a) -> None:
+        pass
+
+    def select(self, *_a, **_k) -> None:
+        pass
+
+    def search(self, *args) -> tuple[str, list[bytes]]:
+        self.searches.append(args)
+        return "OK", [b"1 2 3"]
+
+    def logout(self) -> None:
+        pass
+
+
+@pytest.fixture
+def gmail_with_no_sender(harness, nothing_loaded, monkeypatch) -> GmailImap:
+    harness.config["gmail"]["allowlist_domains"] = []
+    harness.secrets["gmail-imap-parent@example.com"] = "abcdabcdabcdabcd"
+    imap = GmailImap()
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", imap)
+    return imap
+
+
+def gmail_line(out: str) -> str:
+    [line] = [l for l in out.splitlines() if "Gmail:" in l]
+    return line
+
+
+def test_doctor_is_ok_with_a_gmail_that_only_sends_the_brief_beside_another_source(
+        harness, gmail_with_no_sender, monkeypatch, capsys):
+    harness.config["wilma"]["enabled"] = True
+    monkeypatch.setattr(wilma, "_run_or_log", lambda args: {"kids": [{"name": "Mia"}]})
+
+    harness.cli("doctor", "--skip-llm")
+
+    line = gmail_line(capsys.readouterr().out)
+    assert line.startswith(ops.OK.strip())
+    assert "parent@example.com signed in" in line and "only sends the Brief" in line
+    assert gmail_with_no_sender.searches == []  # never the whole inbox
+
+
+def test_doctor_fails_a_gmail_with_no_sender_and_no_other_source(harness, gmail_with_no_sender,
+                                                                 capsys):
+    harness.cli("doctor", "--skip-llm")
+
+    line = gmail_line(capsys.readouterr().out)
+    assert line.startswith(ops.FAIL.strip()) and "the sender allowlist is empty" in line
+    assert gmail_with_no_sender.searches == []

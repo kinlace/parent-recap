@@ -185,10 +185,15 @@ def _check_gmail(cfg: Config, add) -> None:
         add(FAIL, "Gmail", f"No App Password in the Keychain for {username} "
             "(store one with parent-recap setup gmail)")
         return
-    if not (cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders):
-        add(FAIL, "Gmail", "the sender allowlist is empty (allowlist_domains / allowlist_senders)")
-        return
     try:
+        if cfg.gmail_only_sends():
+            gmail.sign_in(cfg)
+            add(OK, "Gmail", f"{username} signed in; no sender is ticked, so Gmail only sends the "
+                "Brief, and the other Sources bring the news")
+            return
+        if not (cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders):
+            add(FAIL, "Gmail", "the sender allowlist is empty (allowlist_domains / allowlist_senders)")
+            return
         n = gmail.count_matching(cfg)
         # Gmail's search only filters by whole days; run() trims to lookback_hours afterwards.
         days = -(-cfg.gmail.lookback_hours // 24)
