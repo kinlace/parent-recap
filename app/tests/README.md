@@ -41,6 +41,11 @@ exiting with its result, when run as a file.
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.
 Its `run --if-missed` tests sign in after an evening run that was missed or ran, and before or
 after the first evening since `schedule install`.
+A night whose only new Message is the next school day's timetable, and that the model finds nothing to
+say about, sends no Brief, by email or iMessage, and its Messages aren't sent to the model again the
+next night (#385). It still sends one with tonight's events, still says when no Source could be
+read, and still shows in the setup page's preview. The harness's model says nothing by default, so a
+test that needs the night's Brief to go out has the model reply `SAYS_SOMETHING` (`conftest.py`).
 `test_ai_filter.py` calls the AI filter on its own with a list of messages, as another tool could.
 In `test_nightly_run.py`, a night with phone numbers, email addresses and links in every part of the
 payload checks that none reaches the Brief or translation prompt, only placeholders, the same one for
