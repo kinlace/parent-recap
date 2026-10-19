@@ -276,7 +276,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the Gateway Key wasn't stored" }
           & $pr schedule install
           if ($LASTEXITCODE -ne 0) { throw 'schedule install failed' }
-          if (@(Get-ScheduledTask -TaskPath '\' | Where-Object { $_.TaskName -like 'Parent Recap *' }).Count -ne 2) { throw 'no tasks to remove' }
+          # The evening Brief, its sign-in catch-up (#386) and Weekend Picks.
+          if (@(Get-ScheduledTask -TaskPath '\' | Where-Object { $_.TaskName -like 'Parent Recap *' }).Count -ne 3) { throw 'no tasks to remove' }
 
           $out = & $pr uninstall --confirm --remove-archive | Out-String
           $code = $LASTEXITCODE
