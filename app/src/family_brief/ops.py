@@ -636,6 +636,9 @@ PUBLIC_DOMAINS = frozenset({
 # Senders families get school and club mail from wherever they live: MyClub's own mail, Wilma's,
 # and Espoo's music institute, which docs/config.md names.
 KNOWN_SENDERS = ("myclub.fi", "inschool.fi", "emo.fi")
+# The mail a Source sends of its own news. Once that Source is connected, reading its mail too
+# would put the same news in the Brief twice (#361).
+SOURCE_SENDERS = {"myclub": "myclub.fi", "wilma": "inschool.fi"}
 # Words in a domain that make it a school's or a club's: koulu and skola are school, lukio upper
 # secondary, opisto an institute such as a music school, kerho a club and seura a sports club.
 SCHOOL_AND_CLUB_WORDS = ("koulu", "school", "skola", "lukio", "opisto", "kerho", "seura", "club")
@@ -650,20 +653,28 @@ def gmail_senders(cfg: Config, days: int, progress=None) -> list[dict]:
     for domain, count, example in gmail.sender_domains(cfg, days=days, progress=progress):
         public = domain in PUBLIC_DOMAINS
         out.append({"domain": domain, "count": count, "example": example,
-                    "likely": not public and likely_sender(domain, cfg.city),
+                    "likely": not public and likely_sender(domain, cfg),
                     **({"public": True} if public else {})})
     return out
 
 
-def likely_sender(domain: str, city: str | None) -> bool:
-    """Whether mail from `domain` looks like the Kids' school's, the city's or a club's."""
+def likely_sender(domain: str, cfg: Config) -> bool:
+    """Whether mail from `domain` looks like the Kids' school's, the city's or a club's, and
+    isn't the mail of a Source that's connected."""
     if domain in PUBLIC_DOMAINS:
         return False
-    town = city_domain(city)
+    connected = [SOURCE_SENDERS[s] for s in cfg.other_sources() if s in SOURCE_SENDERS]
+    if any(_within(domain, d) for d in connected):
+        return False
+    town = city_domain(cfg.city)
     ours = [*KNOWN_SENDERS, *([town] if town else [])]
-    if any(domain == d or domain.endswith("." + d) for d in ours):
+    if any(_within(domain, d) for d in ours):
         return True
     return any(word in domain.rsplit(".", 1)[0] for word in SCHOOL_AND_CLUB_WORDS)
+
+
+def _within(domain: str, parent: str) -> bool:
+    return domain == parent or domain.endswith("." + parent)
 
 
 def city_domain(city: str | None) -> str | None:

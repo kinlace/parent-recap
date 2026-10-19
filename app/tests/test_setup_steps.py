@@ -69,6 +69,8 @@ def test_discover_gmail_senders_as_json_ticks_school_city_and_club_senders(harne
                                                                           capsys):
     harness.secrets["gmail-imap-parent@example.com"] = "app-password"
     harness.config["city"] = "Espoo"
+    # Without MyClub as a Source, MyClub's own mail is the family's club news.
+    del harness.config["kids"][0]["myclub_ical_url"]
     senders = (["Opettaja <opettaja@edu.espoo.fi>"] * 5 + ["MyClub <noreply@myclub.fi>"] * 4
                + ["Coach <coach@tapiolan-seura.fi>"] * 3 + ["Kilo <office@kilokoulu.fi>"] * 2
                + ["Friend <friend@gmail.com>"] * 6 + ["Shop <news@shop.example.com>"] * 7
@@ -91,6 +93,24 @@ def test_discover_gmail_senders_as_json_ticks_school_city_and_club_senders(harne
         {"domain": "hel.fi", "count": 1, "example": "Helsinki", "likely": False},
     ]
     assert "28 of 28" in captured.err  # the count still goes up as it reads
+
+
+@pytest.mark.parametrize("connected", [True, False])
+def test_discover_gmail_senders_as_json_leaves_out_the_mail_of_a_connected_source(
+        harness, monkeypatch, capsys, connected):
+    # Reading it too would put the news MyClub or Wilma already brings in the Brief twice.
+    harness.secrets["gmail-imap-parent@example.com"] = "app-password"
+    harness.config["wilma"]["enabled"] = connected
+    if not connected:
+        del harness.config["kids"][0]["myclub_ical_url"]
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", HeaderImap(
+        ["MyClub <noreply@myclub.fi>"] * 2 + ["Wilma <noreply@kilo.inschool.fi>"]))
+
+    assert harness.cli("discover", "gmail-senders", "--json") == 0
+
+    out = json.loads(capsys.readouterr().out)
+    assert [(s["domain"], s["likely"]) for s in out["senders"]] == [
+        ("myclub.fi", not connected), ("kilo.inschool.fi", not connected)]
 
 
 def test_the_city_presets_match_docs_config():

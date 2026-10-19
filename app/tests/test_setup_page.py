@@ -3249,6 +3249,22 @@ def test_once_every_source_is_done_the_page_reads_them_and_shows_how_far_it_is(h
     assert setup_save.read(config_file(harness))["progress"]["phase"] == "check"
 
 
+def test_the_mail_of_a_connected_source_isnt_ticked_as_it_would_be_read_twice(harness, page,
+                                                                               monkeypatch):
+    # Wilma is connected and MyClub skipped: Wilma's own mail is the news Wilma already brings.
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", HeaderImap(
+        ["Wilma <noreply@kilo.inschool.fi>"] * 3 + ["MyClub <noreply@myclub.fi>"] * 2))
+    harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
+    connect_done(harness)
+
+    start_reading(page.url)
+    assert read_to_the_end(page.url)["result"] == "read"
+
+    ticked = {s["domain"]: s["ticked"] for s in check_page(page.url)["senders"]}
+    assert ticked["kilo.inschool.fi"] is False
+    assert ticked["myclub.fi"] is True
+
+
 def test_reading_waits_until_every_source_is_done_or_skipped(harness, page, senders):
     connect_done(harness)
     save_progress(harness, {"phase": "connect", "source": "ai", "sources": {"ai": "to-do"}})
