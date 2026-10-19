@@ -34,6 +34,16 @@ class State:
     def mark_run_now(self) -> None:
         self._data["last_run_at"] = datetime.now(timezone.utc).isoformat()
 
+    @property
+    def scheduled_at(self) -> datetime | None:
+        """When the evening job was last installed, so a first evening missed before any run can be
+        told from one still to come."""
+        v = self._data.get("scheduled_at")
+        return datetime.fromisoformat(v) if v else None
+
+    def mark_scheduled_now(self) -> None:
+        self._data["scheduled_at"] = datetime.now(timezone.utc).isoformat()
+
     def caught_up_at(self, source: str) -> datetime | None:
         """When a run last left nothing of `source` undelivered: its Brief went out, or there was
         nothing new, and that Source was read without errors."""

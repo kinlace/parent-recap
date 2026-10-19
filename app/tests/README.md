@@ -39,7 +39,8 @@ exiting with its result, when run as a file.
 `test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.
-Its `run --if-missed` tests sign in after an evening run that was missed, ran, or never ran yet.
+Its `run --if-missed` tests sign in after an evening run that was missed or ran, and before or
+after the first evening since `schedule install`.
 `test_ai_filter.py` calls the AI filter on its own with a list of messages, as another tool could.
 In `test_nightly_run.py`, a night with phone numbers, email addresses and links in every part of the
 payload checks that none reaches the Brief or translation prompt, only placeholders, the same one for

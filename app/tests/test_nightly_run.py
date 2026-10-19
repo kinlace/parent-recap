@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import sys
 from datetime import timedelta
 from html import escape, unescape
 from pathlib import Path
@@ -1409,13 +1410,32 @@ def test_signing_in_after_the_evening_run_ran_sends_nothing(harness):
     assert harness.state_path.read_text() == before
 
 
-def test_signing_in_before_any_run_sends_nothing(harness):
-    # Setup registers the task with its first start still to come, so none was missed yet.
+def scheduled_on_windows(h, hours_ago: float) -> None:
+    """Setup's Finish, or `schedule install`, on a Windows PC `hours_ago`, with no run since."""
+    h.wake.settable = False
+    with pytest.MonkeyPatch.context() as mp, time_machine.travel(NOW - timedelta(hours=hours_ago),
+                                                                 tick=False):
+        mp.setattr(sys, "platform", "win32")  # only for the install
+        assert h.cli("schedule", "install") == 0
+
+
+def test_signing_in_after_missing_the_first_evening_since_setup_sends_its_brief(harness):
     signing_in_ten_hours_after_the_brief_time(harness, last_run_hours_ago=None)
+    scheduled_on_windows(harness, hours_ago=12)
 
     assert harness.run("--if-missed") == 0
 
-    assert harness.sent == [] and not harness.state_path.exists()
+    [email] = harness.sent
+    assert email.subject == "Parent Recap · 2026-09-27"
+
+
+def test_signing_in_before_the_first_evening_since_setup_sends_nothing(harness):
+    signing_in_ten_hours_after_the_brief_time(harness, last_run_hours_ago=None)
+    scheduled_on_windows(harness, hours_ago=8)
+
+    assert harness.run("--if-missed") == 0
+
+    assert harness.sent == [] and harness.model_calls == []
 
 
 # ── Citations

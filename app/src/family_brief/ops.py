@@ -804,6 +804,16 @@ def install_jobs(cfg: Config) -> None:
         wanted.append(jobs.Job(jobs.WEEKEND, "weekend-events", sc.weekend_weekday, sc.weekend_hour,
                                0, log_dir))
     jobs.install(wanted)
+    # So a first evening missed before any run is caught up at sign-in on Windows (#386).
+    from . import run_lock
+    from .state import State
+    try:
+        with run_lock.exclusive(cfg):
+            state = State(cfg.resolved_state_path())
+            state.mark_scheduled_now()
+            state.save()
+    except run_lock.Busy:  # the run that is going notes its own time
+        pass
 
 
 def _run_now(name: str, log_dir: Path) -> int:

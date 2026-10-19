@@ -626,10 +626,10 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def _evening_missed(cfg: Config, state: State) -> bool:
     """Whether the evening run's latest time has gone by with no run since, on the PC's own clock,
-    which the scheduler keeps. Before the first run none was missed: setup registers the evening
-    job with its first start still to come."""
-    last = state.last_run_at
-    if last is None:
+    which the scheduler keeps. Before the first run, since the evening job was installed: it is
+    installed with its first start still to come."""
+    last = state.last_run_at or state.scheduled_at
+    if last is None:  # installed by a version that didn't note when
         return False
     now = datetime.now().astimezone()
     evening = now.replace(hour=cfg.schedule.daily_hour, minute=cfg.schedule.daily_minute,

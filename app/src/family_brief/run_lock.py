@@ -14,7 +14,9 @@ from typing import IO, Callable, Iterator
 
 from .config import Config
 
-if sys.platform == "win32":
+# Chosen once, with the import it needs: tests that call the program a Windows one keep this lock.
+WINDOWS = sys.platform == "win32"
+if WINDOWS:
     import msvcrt
 else:
     import fcntl
@@ -45,7 +47,7 @@ def is_busy(cfg: Config) -> bool:
 
 def _lock(f: IO[str]) -> bool:
     """Locks the open lock file without waiting; False if another run holds it."""
-    if sys.platform == "win32":
+    if WINDOWS:
         f.seek(0)  # Windows locks a byte range from here; the file stays empty
         try:
             msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
