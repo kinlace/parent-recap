@@ -1390,6 +1390,41 @@ def test_quiet_source_beside_a_failed_one_sends_nothing(harness):
     assert harness.sent == []
 
 
+# ── A Gmail with no sender ticked (#361)
+
+# What the real Gmail collector says when it has no sender to search for, rather than read the
+# whole inbox.
+NO_SENDER = RuntimeError("gmail.allowlist_domains or gmail.allowlist_senders is empty — "
+                         "refusing to scan all inbox.")
+
+
+def test_gmail_with_no_sender_beside_another_source_only_sends_the_brief(harness):
+    normal_night(harness, "en")
+    harness.config["gmail"]["allowlist_domains"] = []
+    harness.sources["gmail"] = NO_SENDER
+
+    assert harness.run() == 0
+
+    assert "gmail" not in harness.lookback_hours  # never read
+    [email] = harness.sent
+    coverage = "📥 Read tonight: MyClub 1 event · Wilma 1 message · WhatsApp 2 messages"
+    assert email.text.endswith("\n\n" + coverage)
+
+
+def test_gmail_with_no_sender_and_no_other_source_still_fails(harness):
+    harness.config["summary_language"] = "en"
+    harness.config["gmail"]["allowlist_domains"] = []
+    harness.config["wilma"]["enabled"] = False
+    harness.config["whatsapp"]["enabled"] = False
+    del harness.config["kids"][0]["myclub_ical_url"]
+    harness.sources["gmail"] = NO_SENDER
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "No Source could be read tonight" in email.text and "Gmail" in email.text
+
+
 def test_old_shape_archives_feed_continuity(harness):
     # Briefs archived by earlier versions, or on nights the model failed, have looser shapes.
     harness.write_archive("2026-09-24", {  # 0.2-era: no _coverage, message_digest key, odd action items

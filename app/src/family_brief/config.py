@@ -281,7 +281,19 @@ class Config(BaseModel):
         return name
 
     def default_sources(self) -> list[str]:
-        sources = ["gmail"]
+        """The Sources the evening run reads. A Gmail with no sender ticked only sends the Brief
+        when another Source brings the news (#361), and is never read: reading it would search
+        the whole inbox."""
+        return [*([] if self.gmail_only_sends() else ["gmail"]), *self.other_sources()]
+
+    def gmail_only_sends(self) -> bool:
+        """Whether Gmail has no sender ticked and another Source is connected."""
+        return not (self.gmail.allowlist_domains or self.gmail.allowlist_senders) \
+            and bool(self.other_sources())
+
+    def other_sources(self) -> list[str]:
+        """The Sources connected besides Gmail."""
+        sources = []
         if any(k.myclub_ical_url for k in self.kids):
             sources.append("myclub")
         if self.wilma.enabled:
