@@ -101,7 +101,7 @@ def test_the_evening_jobs_sign_in_task_catches_up_a_run_missed_while_signed_out(
 
     [trigger] = catch_up.find("t:Triggers", NS)
     assert trigger.tag == f"{{{jobs_windows.TASK_NS}}}LogonTrigger"
-    # Only the family's own sign-in, which a task without administrator rights may wait for.
+    # Only the family's own sign-in, not anyone's.
     assert text(trigger, "t:UserId") == "KITCHEN-PC\\family"
     assert text(catch_up, "t:Principals/t:Principal/t:LogonType") == "InteractiveToken"
     assert text(catch_up, "t:Settings/t:WakeToRun") == "false"

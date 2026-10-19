@@ -154,7 +154,8 @@ def catch_up_xml(job: jobs.Job) -> str:
     def at_sign_in(triggers: ET.Element) -> None:
         trigger = _add(triggers, "LogonTrigger")
         _add(trigger, "Enabled", "true")
-        # Anyone's sign-in would need administrator rights to wait for.
+        # Without one it starts at anyone's sign-in:
+        # https://learn.microsoft.com/en-us/windows/win32/taskschd/logontrigger-userid
         if user := _user():
             _add(trigger, "UserId", user)
         # The run waits for the network too, but Wi-Fi can take a while after signing in.
