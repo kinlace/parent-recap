@@ -27,6 +27,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -264,6 +265,8 @@ class SetupServer:
         # Every outcome is true, or the family finished for now: the server stops once that's
         # been said.
         self.closing = False
+        # Opened again once setup was at Finish: the family came back to change something.
+        self._opened_at_finish = setup_save.read(config)["progress"]["phase"] == "finish"
 
     def serve_until_idle(self) -> None:
         """Serves until `stop`, or until IDLE_SECONDS pass without a request."""
@@ -620,6 +623,26 @@ class SetupServer:
         """Takes setup from Check or Finish back to WhatsApp's step in Connect, for ticked groups
         the health check didn't find on this Mac. The step reads the groups again, so a group's
         new name is there to tick in Check, and setup goes on from there as before."""
+        return self._back_to_connect(
+            raw, "whatsapp", lambda progress: progress["sources"]["whatsapp"] == "done",
+            "Only Check and Finish go back to WhatsApp.",
+            "answers: should be {}, at Check or Finish with WhatsApp done")
+
+    def back_to_connect(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Takes setup from Check or Finish back to Connect's Source list, for a Source the family
+        skipped and wants after all: they open it from the list, which brings it back, and setup
+        goes on from there as before. A page opened again after setup is at Finish, so this is
+        also how a Source is added later."""
+        return self._back_to_connect(
+            raw, None, lambda progress: _skipped(progress["sources"]),
+            "Only Check and Finish go back to Connect, for a Source that was skipped.",
+            "answers: should be {}, at Check or Finish with a Source skipped")
+
+    def _back_to_connect(self, raw: Any, source: str | None,
+                         can: Callable[[dict[str, Any]], bool], refusal: str,
+                         error: str) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Takes setup from Check or Finish back to Connect at `source`, or at its list for None,
+        when `can` says setup's progress allows it, and never while a check runs."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
         with self._working:
@@ -628,16 +651,14 @@ class SetupServer:
                 return HTTPStatus.CONFLICT, {"result": "busy"}
             with self._saving:
                 progress = setup_save.read(self.config)["progress"]
-                if progress["phase"] not in ("check", "finish") or \
-                        progress["sources"]["whatsapp"] != "done":
+                if progress["phase"] not in ("check", "finish") or not can(progress):
                     return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                        "invalid-answers", "Only Check and Finish go back to WhatsApp.",
-                        errors=["answers: should be {}, at Check or Finish with WhatsApp done"])
+                        "invalid-answers", refusal, errors=[error])
                 out = setup_save.save(self.config, {"progress": {"phase": "connect",
-                                                                 "source": "whatsapp"}})
+                                                                 "source": source}})
             if out["result"] != "saved":
                 return HTTPStatus.CONFLICT, out
-            # How the health check and Finish went was about the groups as they were.
+            # How the health check and Finish went was about the Sources as they were.
             self._health = None
             self._finish = None
         return HTTPStatus.OK, out
@@ -1053,13 +1074,17 @@ class SetupServer:
     def check_finish(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """How Finish went: each outcome and whether it's true, without its reason, which can name
         an address, and how setting the wake-up went. Once every outcome is true, the server stops
-        after saying so."""
+        after saying so, unless the page was opened again after setup with a Source skipped: then
+        it `stays`, for the way back to Connect to add it, until 30 minutes without a request."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
         finish = self._finish
         if finish is None:
             return HTTPStatus.OK, {"result": "no-finish"}
         if finish["result"] == "done":
+            if self._opened_at_finish and \
+                    _skipped(setup_save.read(self.config)["progress"]["sources"]):
+                return HTTPStatus.OK, {**finish, "stays": True}
             self.closing = True
         return HTTPStatus.OK, finish
 
@@ -1663,6 +1688,11 @@ def _sources() -> list[str]:
     return [s for s in setup_save.SOURCES if macos_only.offers(s)]
 
 
+def _skipped(statuses: dict[str, str]) -> bool:
+    """Whether a Source this system offers was skipped, so it can be added from Connect's list."""
+    return any(statuses.get(s) == "skipped" for s in _sources())
+
+
 def _section(data: dict[str, Any], key: str) -> dict[str, Any]:
     section = data.get(key)
     return section if isinstance(section, dict) else {}
@@ -1738,6 +1768,7 @@ class _Handler(BaseHTTPRequestHandler):
                    "api/whatsapp/check": setup.check_whatsapp,
                    "api/whatsapp/open": setup.open_full_disk_access,
                    "api/whatsapp/back": setup.back_to_whatsapp,
+                   "api/connect/back": setup.back_to_connect,
                    "api/myclub": setup.save_myclub_link, "api/myclub/kid": setup.add_kid,
                    "api/myclub/done": setup.myclub_done,
                    "api/working": setup.start_reading, "api/working/check": setup.check_reading,

@@ -1273,6 +1273,7 @@ function enterCheck() {
   });
   allOption("check-whatsapp-all", "check-groups");
   allOption("check-senders-all", "check-senders");
+  showBackToConnect("check-back");
   renderCheck();
   resumeHealth();
 }
@@ -1549,6 +1550,29 @@ async function backToWhatsApp(event) {
   }
 }
 
+// On Check and Finish, while a Source the list offers is skipped, the one link back to Connect's
+// list, where it can be opened after all. A page opened again after setup is at Finish, so the
+// same link adds a Source later.
+function showBackToConnect(id) {
+  const link = document.getElementById(id);
+  link.hidden = !page.connect.sources.some(({ name }) => page.progress.sources[name] === "skipped");
+  link.querySelector("button").addEventListener("click", backToConnect);
+}
+
+// As backToWhatsApp, to the list instead of one Source's step.
+async function backToConnect(event) {
+  clearError();
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await post("api/connect/back", {});
+    window.location.reload();
+  } catch (e) {
+    failed(e);
+    button.disabled = false;
+  }
+}
+
 // ── First Brief: the real Brief, made from the Sources without sending it and shown as it
 // will look in the inbox, then sent to the setup parent only.
 
@@ -1683,6 +1707,7 @@ function enterFinish() {
   document.getElementById("finish-stop").addEventListener("click", stopForNow);
   document.getElementById("finish-ai-open").addEventListener("click", openFinishAI);
   document.getElementById("finish-ai-form").addEventListener("submit", signInFinishAI);
+  showBackToConnect("finish-back");
   showHouseholdAI();
   checkFinish();
 }
@@ -1821,7 +1846,8 @@ function finishResult(out) {
   document.getElementById("finish-again").hidden = out.result !== "not-done";
   document.getElementById("finish-stop").hidden = !tried;
   if (out.outcomes) renderChecklist(out.outcomes, tried);
-  if (done) closed();
+  // Opened again after setup with a Source skipped, the server stays, for the link back.
+  if (done && !out.stays) closed();
   if (running) finishStep.timer = setTimeout(checkFinish, FINISH_MS);
 }
 
@@ -1898,7 +1924,7 @@ function closed() {
   document.getElementById("chat").hidden = true;
   for (const button of document.querySelectorAll("#finish-checklist button")) button.hidden = true;
   clearTimeout(aiStep.timer);
-  for (const id of ["finish-ai-open", "finish-ai-form", "finish-ai-sign-in"]) {
+  for (const id of ["finish-ai-open", "finish-ai-form", "finish-ai-sign-in", "finish-back"]) {
     document.getElementById(id).hidden = true;
   }
   document.getElementById("finish-closed").hidden = false;

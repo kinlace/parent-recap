@@ -400,7 +400,9 @@ WhatsApp check gives on `test_setup_whatsapp.py`'s fake Mac, run for real throug
 it checks that the page gets the reason, and the groups not found, with no path or error, and has
 its own text in all three languages: Full Disk Access with the button that opens it, saying only
 the parent can turn it on, or the groups named with the way back to WhatsApp's step, which reads
-the groups again for Check. A reason the page doesn't know gets the general text.
+the groups again for Check. A reason the page doesn't know gets the general text. With a Source
+skipped, the check page offers one link back to Connect's list, where it can be opened, never
+while the health check runs.
 First Brief makes the real Brief through `run --preview` in a `bg` job on `test_setup_whatsapp.py`'s
 fake Mac, with the harness's Sources and model, and one test fakes the job to see its progress.
 It checks that the preview returns the email's HTML and sends or records nothing, that the frame
@@ -413,7 +415,9 @@ it go, with doctor's checks faked as on the check page. It checks that the
 evening job is loaded and the wake-up set through macOS's dialog only, that the API takes no
 password, that each outcome comes back true or false without its reason, that a health check that
 isn't OK names only its checks, with why WhatsApp isn't and its own text in all three languages,
-that Finish leads back to WhatsApp's step while the page is open, that another wake schedule
+that Finish leads back to WhatsApp's step, or to Connect's list for a skipped Source, while the
+page is open, that a page opened again after setup with a Source skipped stays open for that
+once every outcome is true, and one with none skipped stops, that another wake schedule
 is replaced only once the family agrees, that a closed dialog or jobs that can't be loaded say so
 and can be tried again, that a finished Household is only checked, with nothing installed again,
 that the server stops once every outcome is true, and that "Finish for now" stops it only at

@@ -3749,6 +3749,66 @@ def test_only_check_and_finish_go_back_to_whatsapp_and_never_while_checking(harn
     assert setup_save.read(config_file(harness))["progress"]["phase"] == "check"
 
 
+def back_to_connect(url: str, body: Any = None) -> Response:
+    return call(url, "api/connect/back", method="POST", body={} if body is None else body)
+
+
+def test_check_leads_back_to_connect_s_list_where_a_skipped_source_can_be_opened(harness, page,
+                                                                                health):
+    at_the_check_step(harness)  # MyClub skipped
+    confirm(page.url)
+    assert health_result(page.url)["result"] == "ok"
+    more_progress(harness, phase="check")
+
+    r = back_to_connect(page.url)
+
+    assert r.status == 200
+    progress = r.json()["progress"]
+    assert (progress["phase"], progress["source"]) == ("connect", None)
+    assert progress["sources"]["myclub"] == "skipped"  # until it's opened from the list
+    assert call(page.url, "api/check/health", method="POST", body={}).json() == \
+        {"result": "no-check"}
+    assert source(page.url, "myclub", "open").json()["progress"]["source"] == "myclub"
+    assert statuses(page.url)["myclub"] == "to-do"
+
+
+def test_only_check_and_finish_go_back_to_connect_with_a_skipped_source_never_while_checking(
+        harness, page, health):
+    at_the_check_step(harness)
+    assert back_to_connect(page.url, {"x": 1}).status == 400
+    health.go.clear()
+    confirm(page.url)
+    assert back_to_connect(page.url).status == 409  # the health check is running
+    health.go.set()
+    health_result(page.url)
+
+    more_progress(harness, phase="first-brief")
+    assert back_to_connect(page.url).status == 400
+    more_progress(harness, phase="check", sources={"myclub": "done"})
+    assert back_to_connect(page.url).status == 400  # nothing skipped to add
+    assert setup_save.read(config_file(harness))["progress"]["phase"] == "check"
+
+
+def test_the_page_offers_the_way_back_to_connect_on_check_and_finish_only_with_a_skipped_source():
+    script = (PAGE_DIR / "page.js").read_text()
+    html_text = (PAGE_DIR / "index.html").read_text()
+
+    for section, link in (("check", "check-back"), ("finish", "finish-back")):
+        part = html_text.split(f'<section id="{section}"', 1)[1].split("</section>", 1)[0]
+        assert f'id="{link}"' in part and 'data-text="connect.back"' in part, section
+        assert f'showBackToConnect("{link}")' in script, section
+    shown = script.split("function showBackToConnect(", 1)[1].split("\n}\n", 1)[0]
+    assert '"skipped"' in shown and "page.connect.sources" in shown
+    back = script.split("async function backToConnect(", 1)[1].split("\n}\n", 1)[0]
+    assert 'post("api/connect/back", {})' in back and "location.reload()" in back
+    # Once the page has closed, the link is gone with the rest.
+    assert '"finish-back"' in script.split("function closed(", 1)[1].split("\n}\n", 1)[0]
+    # A page that stays open at Done keeps it.
+    assert "if (done && !out.stays) closed();" in script
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        assert table.get("connect.back", "").strip(), language
+
+
 # ── First Brief: the real Brief in the page, then sent to the setup parent only
 
 
@@ -4193,6 +4253,65 @@ def test_finish_leads_back_to_whatsapp_s_step_while_the_page_is_open(harness, pa
     # Finish checks again once setup is back there.
     assert call(page.url, "api/finish/check", method="POST", body={}).json() == \
         {"result": "no-finish"}
+
+
+def test_finish_leads_back_to_connect_s_list_for_a_skipped_source(harness, page, schedule):
+    at_finish(harness, delivered=False)  # so the page stays open; MyClub skipped
+    finish(page.url)
+    assert finished(page.url)["result"] == "not-done"
+
+    r = back_to_connect(page.url)
+
+    assert r.status == 200
+    assert (r.json()["progress"]["phase"], r.json()["progress"]["source"]) == ("connect", None)
+    assert call(page.url, "api/finish/check", method="POST", body={}).json() == \
+        {"result": "no-finish"}
+
+
+@pytest.fixture
+def opened_again(harness, clock):
+    """Starts the page again, as the install line does once setup has got as far as it has."""
+    servers: list[tuple[setup_server.SetupServer, threading.Thread]] = []
+
+    def start() -> setup_server.SetupServer:
+        server = setup_server.SetupServer(config_file(harness))
+        thread = threading.Thread(target=server.serve_until_idle, daemon=True)
+        thread.start()
+        servers.append((server, thread))
+        return server
+    yield start
+    for server, thread in servers:
+        server.stop()
+        thread.join(5)
+
+
+def test_a_page_opened_again_after_setup_stays_open_to_add_a_skipped_source(harness, page,
+                                                                          schedule, opened_again):
+    at_finish(harness)  # MyClub skipped
+    finish(page.url)
+    assert finished(page.url)["result"] == "done"
+    wait_for(lambda: refused(page.url))
+
+    again = opened_again()
+    call(again.url, "api/finish/outcomes", method="POST", body={})
+    out = finished(again.url)
+
+    assert out["result"] == "done" and out["stays"] is True
+    assert call(again.url, "api/state").status == 200  # still serving, for the way back
+    r = back_to_connect(again.url)
+    assert r.status == 200 and r.json()["progress"]["phase"] == "connect"
+
+
+def test_a_page_opened_again_after_setup_with_nothing_skipped_stops_once_all_is_true(
+        harness, schedule, opened_again):
+    at_finish(harness)
+    more_progress(harness, sources={"myclub": "done"})
+    page = opened_again()
+    finish(page.url)
+    out = finished(page.url)
+
+    assert out["result"] == "done" and "stays" not in out
+    wait_for(lambda: refused(page.url))
 
 
 def test_finish_for_now_stops_the_page_once_a_try_has_ended(harness, page, schedule):
