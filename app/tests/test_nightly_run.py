@@ -661,6 +661,10 @@ def test_lookback_after_failed_nights_is_capped_at_a_week(harness):
     normal_night(harness)
     assert harness.run() == 0
 
+    # A new Message, so the next nights have a Brief to fail to send.
+    harness.sources["gmail"] = harness.sources["gmail"] + [
+        msg("gmail", "g-201", "2026-10-06T09:00:00+03:00", "Vanhempainilta on 8.10.",
+            sender="office@kilo.example.fi", subject="Vanhempainilta")]
     harness.email_error = OSError("SMTP connection refused")
     with time_machine.travel(NOW + timedelta(days=9), tick=False):
         assert harness.run() == 0
@@ -1210,6 +1214,62 @@ def test_nothing_new_and_nothing_due_sends_nothing(harness):
     assert harness.state()["last_run_at"] is not None
 
 
+def only_the_timetable(h) -> None:
+    """A school evening whose only new Message is the next school day's ordinary timetable."""
+    h.sources = {"wilma": [
+        msg("wilma", "schedule:20260928", "2026-09-27T21:00:00+03:00",
+            "[2026-09-28 Mon · tomorrow]\n— Mia —\n  08:15–09:45  Historia  @ 204",
+            subject="Timetable for the next school day (from 2026-09-28)", chat="schedule"),
+    ]}
+
+
+def test_night_the_model_finds_nothing_to_say_about_sends_nothing(harness):
+    # #385: the model returns no Digest, Notices, Action Items or events, so it counts as quiet.
+    only_the_timetable(harness)
+    harness.config["imessage"] = {"enabled": True, "recipients": ["+358401234567"]}
+
+    assert harness.run() == 0
+
+    assert len(harness.model_calls) == 1
+    assert harness.sent == []
+    assert harness.imessages == []
+    assert harness.state()["last_run_at"] is not None
+    # Its Messages still count as read, so the next evening doesn't send them to the model again.
+    with time_machine.travel(NOW + timedelta(days=1), tick=False):
+        assert harness.run() == 0
+    assert len(harness.model_calls) == 1
+    assert harness.sent == []
+
+
+def test_dry_run_of_a_night_the_model_finds_nothing_to_say_about_sends_nothing(harness):
+    only_the_timetable(harness)
+
+    assert harness.run("--dry-run") == 0
+
+    assert harness.sent == []
+    assert not harness.state_path.exists()
+
+
+def test_night_the_model_finds_nothing_to_say_about_still_sends_its_events(harness):
+    only_the_timetable(harness)
+    harness.sources["myclub"] = ([myclub_event("mc-1", "FC Kilo P2017 vs HJK", "2026-10-03T07:00:00+00:00",
+                                               "2026-10-03T08:30:00+00:00")], [])
+    harness.config["google_calendar"] = {"mode": "ics", "ics_include_myclub": True}
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "FC Kilo P2017 vs HJK" in email.text
+
+
+def test_setup_preview_shows_a_night_the_model_finds_nothing_to_say_about(harness, capsys):
+    only_the_timetable(harness)
+
+    assert harness.run("--preview") == 0
+
+    assert '"preview": "made"' in capsys.readouterr().out
+
+
 def every_source_fails(h) -> None:
     h.sources = {
         "gmail": RuntimeError("b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'"),
@@ -1341,6 +1401,9 @@ def test_old_shape_archives_feed_continuity(harness):
         ]},
     })
     harness.write_archive("2026-09-23", "{not json")  # outside the window, and broken anyway
+    harness.model_reply = {"per_kid": [{"kid": "Leo", "notices": [], "action_items": [
+        {"what": "$reminder 交图书馆的书", "by": "2026-09-28", "who": "爸爸", "refs": []}]}],
+        "calendar_events": [], "message_digest": ""}
 
     assert harness.run() == 0  # no new messages: the near deadline alone triggers a Brief
 

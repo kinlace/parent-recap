@@ -533,6 +533,14 @@ def _top_note(summary: dict, t: BriefText, assistant: str, translation_note: str
     return "\n".join(note for note in (translation_note, cut_off) if note)
 
 
+def _nothing_to_show(summary: dict, created: list[dict], held_back: list[_HeldBack], t: BriefText,
+                     assistant: str) -> bool:
+    """Whether tonight's Brief would have only its header and the notes under it: no Digest, or
+    Notices standing in for one, no Action Items, events or Held-back Messages, and no warning."""
+    return not (_shown_digest(summary, t) or _action_items(summary) or created or held_back
+                or _top_note(summary, t, assistant))
+
+
 def _brief_text(summary: dict, created: list[dict], date_str: str, t: BriefText, tz: str,
                 coverage: str, calendar_note: str, top_note: str = "",
                 held_back: list[_HeldBack] | None = None, assistant: str = "") -> str:
@@ -709,6 +717,15 @@ def _form_people(cfg: Config, placeholders: ai_filter.Placeholders | None, for_a
     return people
 
 
+def _quiet_night(state: State, coverage: dict[str, dict], dry_run: bool) -> int:
+    """The end of a night that sends no Brief: it still ran, and read what it read."""
+    state.mark_run_now()
+    state.mark_caught_up_now(read=coverage, behind=_behind(coverage))
+    if not dry_run:
+        state.save()
+    return 0
+
+
 def _run(cfg: Config, args: argparse.Namespace) -> int:
     if args.lookback_hours is not None:
         cfg.gmail.lookback_hours = args.lookback_hours
@@ -746,11 +763,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
                 _send_nothing_read(cfg, coverage, today_str(cfg.timezone), assistant)
         else:
             log.info("Nothing new; exiting.")
-        state.mark_run_now()
-        state.mark_caught_up_now(read=coverage, behind=_behind(coverage))
-        if not args.dry_run:
-            state.save()
-        return 0
+        return _quiet_night(state, coverage, args.dry_run)
 
     if not args.dry_run:  # a dry run leaves no trace, so it uses what is already there
         languages.prepare_each(cfg, cfg.brief_languages())
@@ -827,6 +840,11 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
 
     # A Source's events carry the Kid's configured name, which their calendar identity keeps.
     created = [{**c, "kid": cfg.kid_called(c.get("kid"))} for c in created]
+    # A night the model finds nothing worth saying about, such as an ordinary timetable alone, is
+    # as quiet as one with nothing new (#385). Its Messages still count as read.
+    if not args.preview and _nothing_to_show(summary, created, listed_held_back, t, assistant):
+        log.info("Nothing to tell the family tonight; no Brief sent.")
+        return _quiet_night(state, coverage, args.dry_run)
     date_str = today_str(cfg.timezone)
     form = feedback.Links(cfg, date_str, _form_people(cfg, placeholders, for_ai, earlier)) \
         if cfg.feedback.active() else None

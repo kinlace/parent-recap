@@ -19,7 +19,7 @@ import requests
 import time_machine
 
 import fake_node
-from conftest import NOW, msg
+from conftest import NOW, SAYS_SOMETHING, msg
 from test_setup_whatsapp import fake_mac
 
 from family_brief.collectors import gmail, myclub, whatsapp, wilma
@@ -28,6 +28,12 @@ REAL_GMAIL_COLLECT = gmail.collect  # captured before the harness fakes it
 REAL_WILMA_COLLECT = wilma.collect
 REAL_MYCLUB_COLLECT_EVENTS = myclub.collect_events
 REAL_WHATSAPP_COLLECT = whatsapp.collect
+
+
+@pytest.fixture(autouse=True)
+def the_model_says_something(harness):
+    """So a night with new Messages sends its Brief, which these tests read the coverage line from."""
+    harness.model_reply = SAYS_SOMETHING
 
 
 def payload_ids(h, source: str) -> list[str]:

@@ -11,7 +11,7 @@ import pytest
 import requests
 import yaml
 
-from conftest import msg
+from conftest import SAYS_SOMETHING, msg
 from family_brief.collectors import myclub
 from family_brief.collectors.myclub import collect_events as real_collect_events  # before the harness fakes it
 
@@ -51,6 +51,7 @@ def test_a_failed_myclub_fetch_leaves_the_token_out_of_logs_and_archive(harness,
     _real_myclub(harness, monkeypatch, kind)
     harness.sources["gmail"] = [msg("gmail", "g1", "2026-09-27T18:00:00+03:00", "Retkipäivä huomenna",
                                     sender="teacher@kilo.example.fi", subject="Retki")]
+    harness.model_reply = SAYS_SOMETHING
     caplog.set_level(logging.INFO)
 
     assert harness.run() == 0

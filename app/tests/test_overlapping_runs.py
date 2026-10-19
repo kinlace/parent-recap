@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 
-from conftest import msg
+from conftest import SAYS_SOMETHING, msg
 
 from family_brief import run_lock
 from family_brief.config import Config
@@ -18,6 +18,7 @@ def one_message(h) -> None:
     h.sources = {"gmail": [msg("gmail", "g-1", "2026-09-27T08:15:00+03:00",
                                "Class photos for 1A are on Wednesday morning.",
                                sender="office@kilo.example.fi", subject="Valokuvaus ke 30.9.")]}
+    h.model_reply = SAYS_SOMETHING
 
 
 def another_run_is_going(h):

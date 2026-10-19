@@ -589,6 +589,11 @@ def harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 # ── Fixture builders
 
+# A model reply with something to say, for tests that need the night's Brief to go out: a night
+# the model finds nothing to say about sends none (#385).
+SAYS_SOMETHING = {"per_kid": [], "calendar_events": [], "message_digest": "- Something new tonight"}
+
+
 def msg(source: str, ext_id: str, when: str, body: str, *, sender: str | None = None,
         subject: str | None = None, chat: str | None = None, kid: str | None = None,
         url: str | None = None, metadata: dict[str, Any] | None = None) -> Message:

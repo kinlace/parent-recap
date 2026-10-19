@@ -18,7 +18,7 @@ import time_machine
 import fake_node
 from conftest import NOW
 from test_source_failures import (REAL_WILMA_COLLECT, caught_up_last_night, one_whatsapp_message,
-                                  payload_ids, seen)
+                                  payload_ids, seen, the_model_says_something)  # noqa: F401 (autouse)
 
 from family_brief import ops, setup_wilma
 from family_brief.collectors import wilma
