@@ -404,7 +404,8 @@ read says so without the error and can be tried again.
 Check checks that the Kids come all ticked with their first name as the everyday name, that
 WhatsApp groups and Gmail senders come ticked by best guess and a public mail service is never
 offered, that a connected Wilma's or MyClub's own mail isn't ticked (a skipped one's is), that the
-no-sender note doesn't say the Briefs come out empty when another Source brings the news, that each Recipient comes with their language and the evening at 21:00, and that
+no-sender note doesn't say the Briefs come out empty when another Source brings the news, that
+each Recipient comes with their language and the evening at 21:00, and that
 confirming saves it all through `setup save` and runs the health check, faked so it can be seen
 running, except in one test that runs doctor's real checks against the harness's fakes. It checks
 that a failing check keeps the page and names only the check, that warnings alone move setup on,

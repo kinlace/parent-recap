@@ -158,7 +158,7 @@ Then install the program with `bash "PLUGIN/install.sh"`. It takes a few minutes
 **The Source list.** Keep a status for each Source (to do, done, skipped), save it in `progress` with `$FB setup save` each time it changes (with `source` set to the Source the parent goes on to), and show the list, with the statuses, when a sub-flow changes one. Go down it in order, from the least to the most sensitive:
 
 1. **Wilma**: the Kids' names, and the school's messages and timetable
-2. **Gmail** (required): school and club mail, and the Brief is sent from it
+2. **Gmail** (needed to send the Brief): school and club mail, and the Brief is sent from it
 3. **AI login** (required for Claude; for ChatGPT, only a check)
 4. **WhatsApp** (can be skipped): the class and club parent groups
 5. **MyClub** (can be skipped): the club calendars
@@ -246,7 +246,7 @@ Wilma's Kids and WhatsApp's chats came back from their sub-flows; read them agai
 Show **one page**, with everything already ticked as you think it should be, and have the parent untick what isn't about the Kids:
 
 - **Kids**: each Kid with the everyday name the Brief will call them, guessed from the first name. The parent corrects it and adds any other names used in chats and mail (`aliases`). A Kid who shouldn't be in the Brief is unticked.
-- **Gmail senders**: the domains from `discover gmail-senders --json` with `likely`, and any others that look like the school, the teachers, clubs, hobbies and the music school, ticked; the starting allowlist ticked. **Never tick public domains** (those with `public`) like gmail.com or outlook.com, or private mail gets read; a teacher or coach writing from one goes in `allowlist_senders` as the full address. If no school senders turned up, say so on the page: school mail may arrive at another address, and it has to be forwarded to this Gmail ("School mail at another address" in `PLUGIN/docs/sources.md`), or the Briefs come out empty.
+- **Gmail senders**: the domains from `discover gmail-senders --json` with `likely`, and any others that look like the school, the teachers, clubs, hobbies and the music school, ticked; the starting allowlist ticked. **Never tick public domains** (those with `public`) like gmail.com or outlook.com, or private mail gets read; a teacher or coach writing from one goes in `allowlist_senders` as the full address. If no school senders turned up, say so on the page: school mail may arrive at another address, and it has to be forwarded to this Gmail ("School mail at another address" in `PLUGIN/docs/sources.md`). Say the Briefs come out empty only when no other Source (Wilma, MyClub or a ticked WhatsApp group) brings the news; with one, Gmail can just send the Brief.
 - **WhatsApp groups**: the chats from `setup whatsapp`, those with a `hint` ticked and marked with the Kids it names (or `both`), and a type (class / football / piano …). The rest listed unticked.
 
 Give each list an "all" line the parent can tick instead of going through it. The lists are too long for AskUserQuestion's few options, so in both Claude Code and Codex write the page as text with ☑ and ☐, and end it with the one thing to do: reply "ok" to keep it as ticked, "all" with a list's name (such as "all groups") to tick that whole list, or name what to change. Ask nothing else on the page; an everyday name or alias they want changed goes in the same reply.
