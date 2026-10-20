@@ -15,4 +15,4 @@ Each pinned version lives in its own versioned folder. When Parent Recap bumps a
 ## Consequences
 
 - We own security updates of both runtimes, and a download of tens of megabytes (not measured). A failed or offline download needs a clear message and a way to retry, and the install tests use a fake tarball.
-- Open: whether macOS keeps the permission (Full Disk Access since ADR 0012) when a binary is replaced at the same path. Xiao xi expects it doesn't, which is why a bump goes into a new folder. This is to be checked on the Mac mini under a LaunchAgent, since a Terminal test says nothing about a launchd child.
+- macOS doesn't keep the permission (Full Disk Access since ADR 0012) when the Python is replaced by another patch version at the same path, so a bump keeps going into a new folder. Tested on the Mac mini under a LaunchAgent (macOS 26.3.1, 3.13.16 and 3.13.7, #168, results on #20): WhatsApp stops being readable with no question from macOS, and System Settings still shows the entry switched on until the first failed read switches it off. Granting the venv's `python` symlink stores the file it points to, so it doesn't help.
