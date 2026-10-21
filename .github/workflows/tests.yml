@@ -91,12 +91,27 @@ jobs:
       - name: Integration tests
         run: python -m pytest -m integration --durations=15 --cov --cov-append --cov-report=
       - name: End-to-end tests
-        run: python -m pytest -m e2e --durations=15 --cov --cov-append --cov-report=
+        run: python -m pytest -m "e2e and not browser" --durations=15 --cov --cov-append --cov-report=
       - name: Adapter tests
         run: python -m pytest -m adapters --durations=15 --cov --cov-append --cov-report=
       # Includes the version-consistency check (tests/scripts/test_version.py).
       - name: Script tests
-        run: python -m pytest -m scripts --durations=15 --cov --cov-append --cov-report=term --cov-report=html
+        run: python -m pytest -m scripts --durations=15 --cov --cov-append --cov-report=
+      # The setup page in a real browser (ADR 0024), the slowest layer, last. Playwright's Chromium
+      # is cached per Playwright version, which constraints.txt pins.
+      - name: Playwright's version
+        id: playwright
+        run: echo "version=$(python -c 'from importlib.metadata import version; print(version("playwright"))')" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright's Chromium
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+      - name: Install Playwright's Chromium
+        run: python -m playwright install --only-shell chromium
+      # -rs prints why a test skipped, so a run that skipped them all says so.
+      - name: Browser tests
+        run: python -m pytest -m browser -rs --durations=15 --cov --cov-append --cov-report=term --cov-report=html
       - name: Upload the coverage report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
