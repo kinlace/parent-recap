@@ -379,10 +379,10 @@ class Harness:
                 if isinstance(v, Exception):
                     raise v
                 v = v() if callable(v) else v
+                # Events aren't marked seen: a feed supplies every event again each night.
                 new = [m for m in v if isinstance(m, Message) and not state.has_seen_message(name, m.external_id)]
                 for m in new:
                     state.mark_message_seen(name, m.external_id)
-                # A feed supplies every event again each night.
                 return Collected(messages=new, events=[e for e in v if isinstance(e, CalendarEvent)])
             return collect
 

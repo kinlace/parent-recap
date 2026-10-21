@@ -124,9 +124,3 @@ class Collected:
     the run loop puts them in the family's zone."""
     messages: list[Message] = field(default_factory=list)
     events: list[CalendarEvent] = field(default_factory=list)
-
-    @property
-    def count(self) -> int:
-        """What the Brief's coverage line counts for the Source: all it read, so the events of an
-        event feed such as MyClub and the Messages of the rest, with no list of which is which."""
-        return len(self.messages) + len(self.events)

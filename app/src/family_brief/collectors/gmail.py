@@ -21,6 +21,8 @@ from .base import Collected, Message, retry_once_on_timeout, unreadable
 
 log = logging.getLogger(__name__)
 
+EVENT_FEED = False  # the Brief's coverage line counts its Messages
+
 IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = 993
 IMAP_TIMEOUT = 60  # seconds per network step; without one a stalled connection hangs the night's run

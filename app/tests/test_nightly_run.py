@@ -967,7 +967,8 @@ def test_myclub_times_are_shown_in_local_time(harness, mode):
 
 def test_any_source_can_bring_events_beside_its_messages(harness):
     # Collecting doesn't single out MyClub: a Source returning both has both reach the model,
-    # its events in local time, and the coverage line counts what it read.
+    # its events in local time, and the coverage line counts the Messages of a Source that isn't
+    # an event feed.
     normal_night(harness)
     exam = dataclasses.replace(myclub_event("w-exam", "Matematiikan koe", "2026-10-05T06:00:00+00:00",
                                             "2026-10-05T07:00:00+00:00"), source="wilma")
@@ -981,7 +982,7 @@ def test_any_source_can_bring_events_beside_its_messages(harness):
     [queued] = payload["already_queued_for_calendar"]
     assert (queued["title"], queued["start"]) == ("Matematiikan koe", "2026-10-05T09:00:00+03:00")
     archived = json.loads((harness.archive_dir / "2026-09-27.raw.json").read_text())
-    assert archived["summary"]["_coverage"]["wilma"] == {"count": 2, "error": None}
+    assert archived["summary"]["_coverage"]["wilma"] == {"count": 1, "error": None}
 
 
 ICS_FALLBACK = "这些新事件已打包在邮件附件的 .ics 里，点开附件即可加入日历。"

@@ -83,12 +83,13 @@ def _run_collectors(cfg: Config, state: State, sources: list[str],
                 reading(source)
             count, error = 0, None
             try:
-                got = _COLLECTORS[source].collect(cfg, state, kid_terms)
+                collector = _COLLECTORS[source]
+                got = collector.collect(cfg, state, kid_terms)
                 log.info("%s: collected %d messages, %d events", source, len(got.messages), len(got.events))
                 messages.extend(got.messages)
                 # A feed gives UTC; the Brief and the model's already-queued list use local time.
                 direct_events.extend(e.in_zone(cfg.timezone) for e in got.events)
-                count = got.count
+                count = len(got.events if collector.EVENT_FEED else got.messages)
             except Exception as e:
                 log.error("%s collector failed: %s\n%s", source, e, traceback.format_exc())
                 error = str(e)
@@ -132,7 +133,7 @@ def _coverage_note(coverage: dict[str, dict], t: BriefText) -> str:
     read, missed = [], []
     for source, c in coverage.items():
         name = _SOURCE_NAMES.get(source, source)
-        read.append(f"{name} {(t.events if source == 'myclub' else t.messages)(c['count'])}")
+        read.append(f"{name} {(t.events if _COLLECTORS[source].EVENT_FEED else t.messages)(c['count'])}")
         if c["error"]:
             missed.append((t.partly_read if c["count"] else t.not_read)
                           .format(source=name, reason=_short_reason(source, c["error"], t)))
