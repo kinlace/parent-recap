@@ -52,6 +52,7 @@ def test_allows_raw_control_characters_in_strings():
                  id="truncated-in-fence"),
     pytest.param('结果如下 {"per_kid": [{"kid": "Leo", "notices": ["a",]}]} 完',
                  {"per_kid": [{"kid": "Leo", "notices": ["a"]}]}, id="repair-with-prose"),
+    pytest.param(f"好的，以下是结果：\n```json\n{TEXT[:-1]},}}\n```\n希望有帮助。", REPLY, id="every-tier"),
 ])
 def test_repairs_near_json(reply, expected):
     # Flagged as repaired: a cut-off reply is repaired too, and may have lost what came after the cut.
