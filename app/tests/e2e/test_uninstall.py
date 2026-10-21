@@ -22,8 +22,8 @@ from test_codex_install import install_codex_skills
 
 from family_brief import install_record, run_lock, setup_wilma, tools, whatsapp_python
 from family_brief.collectors import gmail
-from family_brief.llm import claude as claude_backend
 from family_brief.config import Config
+from family_brief.llm import claude as claude_backend
 from family_brief.system import jobs, wake, windows_only
 from family_brief.system.secrets_error import SecretsError
 
