@@ -112,7 +112,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_own_node.py`                                      | The wilma CLI on Parent Recap's own Node (ADR 0011)                    |
 | `test_uninstall.py`                                     | `uninstall` removes what setup made, and nothing else                  |
 | `test_new_source_doctor_uninstall.py`                   | A Source added only to the registry in `doctor` and `uninstall`        |
-| `test_setup_page_browser.py`                            | The page's main paths in a real browser (ADR 0024)                     |
+| `test_setup_page_browser.py`                            | Main paths and each step's own, in a real browser (ADR 0024)           |
 
 The page's server, its calls and the steps more than one file walks through are in
 `e2e/setup_page.py`.

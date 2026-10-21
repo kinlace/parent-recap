@@ -520,9 +520,6 @@ def test_on_windows_chatgpt_has_no_chat_to_continue_in_since_the_skills_are_maco
         assert "$parent-recap" not in table["finish.changes.codex.windows"], language
 
 
-# What the page shows on Windows is in the browser tests; here, that it has the texts to say it.
-
-
 def test_on_windows_chatgpt_s_texts_say_the_page_installs_codex_in_all_three_languages():
     for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
         for key in ("ai.codex.not-installed", "ai.codex.signed-out", "codex.not-installed"):
