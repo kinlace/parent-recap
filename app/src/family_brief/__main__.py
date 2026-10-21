@@ -240,7 +240,7 @@ def _as_created(events: list) -> list[dict]:
 
 
 # How long `run --preview` tries a busy model for: the setup page gives up on the whole preview
-# after 15 minutes (setup_server.BRIEF_SECONDS), reading the Sources included.
+# after 15 minutes (setup_server.Timeouts.brief), reading the Sources included.
 PREVIEW_BUDGET = 10 * 60
 
 

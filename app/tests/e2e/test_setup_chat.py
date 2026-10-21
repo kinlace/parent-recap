@@ -152,14 +152,14 @@ def test_continue_in_the_chat_opens_claude_code_with_the_setup_skill_in_terminal
 
     assert r.status == 200 and r.json() == {"result": "opened"}
     [window] = harness.desktop.windows
-    assert window.title == setup_server.CHAT_WINDOW
+    assert window.title == setup_server.chat.CHAT_WINDOW
     # The window runs Claude Code at the setup skill, in the family's home folder.
     subprocess.Popen(window.argv, cwd=harness.home, env={**os.environ, **window.env},
                      stdout=subprocess.DEVNULL).wait(10)
     assert (bin_dir / "claude-chat.ran").read_text().splitlines() == \
         [str(harness.home), "/parent-recap:setup"]
     page.stop()
-    assert setup_server.CHAT_WINDOW in harness.desktop.forgotten  # the window's folder goes
+    assert setup_server.chat.CHAT_WINDOW in harness.desktop.forgotten  # the window's folder goes
 
 
 @pytest.mark.macos
@@ -253,6 +253,6 @@ def test_every_chat_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for name, results in setup_server.CHAT_RESULTS.items():
+        for name, results in setup_server.chat.CHAT_RESULTS.items():
             for result in results:
                 assert table.get(f"chat.{name}.{result}", "").strip(), (language, name, result)

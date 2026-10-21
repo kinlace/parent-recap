@@ -152,7 +152,7 @@ def test_every_working_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for result in setup_server.WORKING_RESULTS:
+        for result in setup_server.check.WORKING_RESULTS:
             assert table.get(f"working.{result}", "").strip(), (language, result)
 
 
@@ -410,9 +410,9 @@ def test_every_check_and_health_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for result in setup_server.HEALTH_RESULTS:
+        for result in setup_server.health.HEALTH_RESULTS:
             assert table.get(f"health.{result}", "").strip(), (language, result)
-        for check in {*setup_server.HEALTH_CHECKS.values(), "other"}:
+        for check in {*setup_server.health.HEALTH_CHECKS.values(), "other"}:
             assert table.get(f"health.check.{check}", "").strip(), (language, check)
             assert table.get(f"health.fail.{check}", "").strip(), (language, check)
 
@@ -423,7 +423,7 @@ def test_every_health_check_doctor_runs_has_a_name_on_the_page():
     added = set(re.findall(r'\badd\([^,]+, "([^"]+)"', Path(ops.__file__).read_text()))
 
     assert added and added <= keys, added - keys
-    assert keys - setup_server.SCHEDULE_CHECKS == set(setup_server.HEALTH_CHECKS)
+    assert keys - setup_server.health.SCHEDULE_CHECKS == set(setup_server.health.HEALTH_CHECKS)
     # Python path is always OK, so Finish never names it.
-    assert setup_server.SCHEDULE_CHECKS - setup_server.FINISH_LEAVES_OUT - {"python-path"} <= \
-        set(setup_server.FINISH_CHECKS)
+    assert setup_server.health.SCHEDULE_CHECKS - setup_server.health.FINISH_LEAVES_OUT - {"python-path"} <= \
+        set(setup_server.health.FINISH_CHECKS)

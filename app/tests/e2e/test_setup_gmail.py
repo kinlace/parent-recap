@@ -495,7 +495,7 @@ def test_every_gmail_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for result in setup_server.GMAIL_RESULTS:
+        for result in setup_server.gmail.GMAIL_RESULTS:
             assert table.get(f"gmail.{result}", "").strip(), (language, result)
         assert "Parent Recap" in table["gmail.explain"], language
         for name in setup_save.SOURCES:

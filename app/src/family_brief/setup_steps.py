@@ -15,7 +15,7 @@ setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, d
                save it in the owner-only config
 setup save — save the Household's answers into the config, and setup's progress (in setup_save.py)
 setup status — whether setup is done (in setup_status.py)
-setup page — serve the setup page on this Mac and open it in the browser (in setup_server.py)
+setup page — serve the setup page on this Mac and open it in the browser (in setup_server/)
 
 This module is the chat's side only: the arguments, the dialogs and what each command prints. What
 a step does, which the setup page does too, is in its own module: setup_gmail, setup_wilma,

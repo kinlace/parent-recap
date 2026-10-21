@@ -14,6 +14,7 @@ import socket
 import sys
 import threading
 import time
+from http import HTTPStatus
 from urllib.parse import urlparse
 
 import pytest
@@ -21,8 +22,9 @@ import yaml
 
 from family_brief import __main__ as cli, install_record, ops, setup_server
 from family_brief.config import Config
-from setup_page import (PAGE_DIR, ROOT, at_finish, call, check_ai, config_file, finish, finished,
-                        progress_file, refused, save_progress, source, statuses, wait_for, welcome)
+from setup_page import (PAGE_DIR, ROOT, at_finish, call, check_ai, config_file, context, finish,
+                        finished, new_server, progress_file, refused, save_progress, source,
+                        statuses, wait_for, welcome)
 from setup_page import _listening, ai, clock, health, page, schedule  # noqa: F401
 from test_setup_whatsapp import mac  # noqa: F401
 
@@ -73,7 +75,7 @@ def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock
     thread.join(5)
 
     assert capsys.readouterr().out.splitlines()[-1] == setup_server.closed_line("fi")
-    assert set(setup_server.CLOSED_LINES) == set(setup_server.LANGUAGES)
+    assert set(setup_server.server.CLOSED_LINES) == set(setup_server.context.LANGUAGES)
 
 
 def test_in_tmux_or_ssh_the_command_warns_the_keychain_cannot_be_reached(harness, clock, capsys,
@@ -101,7 +103,7 @@ def test_outside_tmux_and_ssh_the_keychain_is_reachable(page):
 
 
 def test_each_run_has_its_own_code_and_port(harness, clock):
-    first, second = (setup_server.SetupServer(config_file(harness)) for _ in range(2))
+    first, second = (new_server(harness, clock) for _ in range(2))
     try:
         assert first.url != second.url
         codes = [urlparse(s.url).path.strip("/") for s in (first, second)]
@@ -116,7 +118,40 @@ def test_the_page_starts_without_looking_up_the_host_name(harness, monkeypatch):
     def look_up(*_):
         raise AssertionError("looked up the host name")
     monkeypatch.setattr(socket, "getfqdn", look_up)
-    setup_server.SetupServer(config_file(harness)).stop()
+    setup_server.SetupServer(setup_server.Context(config_file(harness))).stop()
+
+
+class _Echo(setup_server.Phase):
+    """A phase the server isn't shipped with: one call, and its part of the page's state."""
+
+    def routes(self) -> dict[str, setup_server.Action]:
+        return {"api/echo": lambda raw: (HTTPStatus.OK, {"echo": raw})}
+
+    def state(self, progress: dict) -> dict:
+        return {"echo": {"phase": progress["phase"]}}
+
+
+def test_a_phase_given_to_the_server_serves_its_calls_and_its_state(harness, clock):
+    server = setup_server.SetupServer(context(config_file(harness), clock),
+                                      phases=(*setup_server.PHASES, _Echo))
+    thread = threading.Thread(target=server.serve_until_idle, daemon=True)
+    thread.start()
+    try:
+        echoed = call(server.url, "api/echo", method="POST", body={"a": 1})
+        state = call(server.url, "api/state").json()
+    finally:
+        server.stop()
+        thread.join(5)
+
+    assert echoed.status == 200 and echoed.json() == {"echo": {"a": 1}}
+    assert state["echo"] == {"phase": "welcome"}
+    assert state["progress"]["phase"] == "welcome"  # the shipped phases' state is all still there
+    assert "welcome" in state and "check" in state and "chat" in state
+
+
+def test_two_phases_with_the_same_call_are_refused(harness, clock):
+    with pytest.raises(ValueError, match="api/echo"):
+        setup_server.SetupServer(context(config_file(harness), clock), phases=(_Echo, _Echo))
 
 
 # ── the safeguards
@@ -173,7 +208,7 @@ def test_it_listens_only_on_this_mac(page):
 
 
 def test_it_serves_only_the_page_s_own_files(page):
-    for path in ["../setup_server.py", "%2e%2e/setup_server.py", "nothing.js", "page/index.html",
+    for path in ["../setup_server/server.py", "%2e%2e/setup_server/server.py", "nothing.js", "page/index.html",
                  "api/nothing"]:
         assert call(page.url, path).status == 404, path
     for path in ["", "page.js", "page.css", "text.json"]:
@@ -329,7 +364,7 @@ def test_every_page_text_exists_in_all_three_languages():
 
 
 def test_running_it_again_resumes_at_the_saved_phase(harness, clock):
-    first = setup_server.SetupServer(config_file(harness))
+    first = new_server(harness, clock)
     thread = threading.Thread(target=first.serve_until_idle, daemon=True)
     thread.start()
     try:
@@ -341,7 +376,7 @@ def test_running_it_again_resumes_at_the_saved_phase(harness, clock):
     progress_file(harness).write_text(json.dumps({"phase": "connect", "source": "gmail",
                                                   "sources": {"wilma": "done"}}))
 
-    second = setup_server.SetupServer(config_file(harness))
+    second = new_server(harness, clock)
     thread = threading.Thread(target=second.serve_until_idle, daemon=True)
     thread.start()
     try:
@@ -625,11 +660,11 @@ def test_on_windows_the_steps_say_where_secrets_go_and_what_to_paste_into():
 def test_on_windows_the_command_says_the_powershell_window_can_be_closed(monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
 
-    for language in setup_server.LANGUAGES:
+    for language in setup_server.context.LANGUAGES:
         line = setup_server.closed_line(language)
         assert "PowerShell" in line and "Terminal" not in line, language
     monkeypatch.setattr(sys, "platform", "darwin")
-    assert setup_server.closed_line("en") == setup_server.CLOSED_LINES["en"]
+    assert setup_server.closed_line("en") == setup_server.server.CLOSED_LINES["en"]
 
 
 def test_finish_names_windows_sign_in_after_updates_and_leaves_wake_timers_to_its_outcome(

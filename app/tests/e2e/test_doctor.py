@@ -517,7 +517,7 @@ def test_renaming_a_check_in_doctor_s_words_leaves_what_the_setup_page_shows(har
 
     out = capsys.readouterr().out
     assert "Email inbox:" in out and "Brief text in zh:" in out
-    shown = [setup_server._health_check(c) for c in results]
+    shown = [setup_server.health.health_check(c) for c in results]
     assert {"check": "gmail", "status": "fail"} in shown
     assert {"check": "language", "status": "ok", "language": "zh"} in shown
     assert not [s for s in shown if s["check"] == "other"]

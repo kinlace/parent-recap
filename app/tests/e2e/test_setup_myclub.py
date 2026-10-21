@@ -577,5 +577,5 @@ def test_every_myclub_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for result in (*setup_server.MYCLUB_RESULTS, *setup_server.MYCLUB_KID_RESULTS):
+        for result in (*setup_server.myclub.MYCLUB_RESULTS, *setup_server.myclub.MYCLUB_KID_RESULTS):
             assert table.get(f"myclub.{result}", "").strip(), (language, result)

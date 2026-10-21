@@ -1177,8 +1177,8 @@ def test_without_a_town_picked_the_terminal_sign_in_takes_its_entry_s_town(harne
     assert wilma_window_result(page.url)["city"] == "Espoo"  # signed in to Espoo's Wilma
 
 
-def test_a_terminal_window_without_a_sign_in_says_so(harness, page, wilma_cli, monkeypatch):
-    monkeypatch.setattr(setup_server, "WILMA_WINDOW_SECONDS", 4)
+def test_a_terminal_window_without_a_sign_in_says_so(harness, page, wilma_cli):
+    page.context.timeouts.wilma_window = 4
     wilma_cli.signs_in_terminal = False
     wilma_cli.install()
 
@@ -1277,15 +1277,15 @@ def test_every_wilma_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for result in (*setup_server.WILMA_RESULTS, *setup_server.TOWN_RESULTS):
+        for result in (*setup_server.wilma.WILMA_RESULTS, *setup_server.wilma.TOWN_RESULTS):
             assert table.get(f"wilma.{result}", "").strip(), (language, result)
-        for result in setup_server.WILMA_READY_RESULTS:
+        for result in setup_server.wilma.WILMA_READY_RESULTS:
             assert table.get(f"wilma.ready.{result}", "").strip(), (language, result)
         # Without Wilma, the install gets the town list ready, on a Mac and a PC alike.
         town = table.get("wilma.ready.installing.town", "")
         assert town.strip() and "wilma" not in town.lower(), language
         assert "wilma.ready.installing.town.windows" not in table, language
-        for result in setup_server.WILMA_WINDOW_RESULTS:
+        for result in setup_server.wilma.WILMA_WINDOW_RESULTS:
             assert table.get(f"wilma.window.{result}", "").strip(), (language, result)
 
 

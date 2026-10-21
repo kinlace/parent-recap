@@ -24,10 +24,11 @@ import yaml
 
 from family_brief import install_record, ops, setup_ai, setup_server, setup_steps
 from family_brief.config import Config
+from family_brief.setup_server.ai import AISignIn
 from conftest import FailedCall, HTTPReply, program
 from setup_page import (PAGE_DIR, Response, assert_never_leaked, at_finish, call, chat_installed, check_ai,
-                        config_file, inside, progress_file, refuse_secrets, save_progress, statuses, wait_for,
-                        welcome)
+                        config_file, inside, phase, progress_file, refuse_secrets, save_progress, statuses,
+                        wait_for, welcome)
 from setup_page import _listening, ai, clock, page  # noqa: F401
 
 
@@ -195,9 +196,9 @@ def test_a_claude_sign_in_already_running_is_not_started_twice(harness, page, cl
 
 @pytest.mark.macos
 @pytest.mark.parametrize("how, result", [("no token", "sign-in-failed"), ("hangs", "timeout")])
-def test_a_claude_sign_in_without_a_token_offers_the_terminal_window(harness, page, claude,
-                                                                    monkeypatch, how, result):
-    monkeypatch.setattr(setup_server, "CLAUDE_SIGN_IN_SECONDS", 1)
+def test_a_claude_sign_in_without_a_token_offers_the_terminal_window(harness, page, claude, how,
+                                                                    result):
+    page.context.timeouts.claude_sign_in = 1
     claude.token = None
     claude.hangs = how == "hangs"
     claude.install()
@@ -370,7 +371,7 @@ def test_a_codex_sign_in_that_ends_signed_out_says_so(harness, page, codex, monk
 
     assert call(page.url, "api/codex/login", method="POST", body={}).json() == {"result": "waiting"}
 
-    wait_for(lambda: page._codex.poll() is not None)
+    wait_for(lambda: phase(page, AISignIn)._codex.poll() is not None)
     assert codex_check(page.url) == {"result": "login-failed"}
     assert codex_check(page.url) == {"result": "signed-out"}  # said once; it can be started again
     assert statuses(page.url)["ai"] == "to-do"
@@ -588,7 +589,7 @@ def test_on_windows_claude_signs_in_only_in_its_window_without_a_pseudo_terminal
     r = call(page.url, "api/claude", method="POST", body={})
 
     assert r.status == 400
-    assert not harness.commands and page._claude is None
+    assert not harness.commands and phase(page, AISignIn)._claude is None
 
 
 @pytest.mark.macos
@@ -604,11 +605,11 @@ def test_every_ai_sign_in_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for result in setup_server.CLAUDE_RESULTS:
+        for result in setup_server.ai.CLAUDE_RESULTS:
             assert table.get(f"claude.{result}", "").strip(), (language, result)
-        for result in setup_server.CLAUDE_WINDOW_RESULTS:
+        for result in setup_server.ai.CLAUDE_WINDOW_RESULTS:
             assert table.get(f"claude.window.{result}", "").strip(), (language, result)
-        for result in setup_server.CODEX_RESULTS:
+        for result in setup_server.ai.CODEX_RESULTS:
             assert table.get(f"codex.{result}", "").strip(), (language, result)
 
 
@@ -743,7 +744,7 @@ def test_every_gateway_result_is_explained_in_all_three_languages():
 
     for language, table in text.items():
         assert table.get("ai.gateway.ready", "").strip(), language
-        for result in setup_server.GATEWAY_RESULTS:
+        for result in setup_server.ai.GATEWAY_RESULTS:
             assert table.get(f"gateway.{result}", "").strip(), (language, result)
 
 
@@ -786,8 +787,8 @@ def test_the_gateway_key_field_is_the_page_s_own(page):
 def test_the_check_page_names_the_gateway_s_own_checks():
     for key, item in ops.CHECK_ITEMS:
         if key in ("gateway", "gateway-key"):
-            assert setup_server._health_check(ops.Check(ops.FAIL, key, item, ""))["check"] == "gateway"
-    assert setup_server._health_check(ops.Check(ops.FAIL, "claude", "Claude", ""))["check"] == "ai"
+            assert setup_server.health.health_check(ops.Check(ops.FAIL, key, item, ""))["check"] == "gateway"
+    assert setup_server.health.health_check(ops.Check(ops.FAIL, "claude", "Claude", ""))["check"] == "ai"
 
 
 # ── Finish: switching the AI, or a new Gateway Key, once setup is done (ADR 0017)
@@ -906,7 +907,7 @@ def test_finish_offers_the_three_ais_and_their_sign_ins():
     page_html = (PAGE_DIR / "index.html").read_text()
     panel = inside(page_html, "finish-ai")
 
-    for name in setup_server.AIS:
+    for name in setup_server.context.AIS:
         assert f'name="finish-ai" value="{name}"' in panel, name
         assert f'data-text="welcome.ai.{name}"' in panel, name
     # The sign-ins are Connect's own, with the gateway's privacy text, moved in when it's opened.
@@ -919,7 +920,7 @@ def test_the_ai_check_s_failure_texts_on_finish_point_to_changing_the_ai():
 
     for language, table in text.items():
         for key in ("finish.ai.title", "finish.ai.open", "finish.ai.continue", "finish.ai.note",
-                    "finish.ai.saved", *(f"finish.ai.current.{a}" for a in setup_server.AIS)):
+                    "finish.ai.saved", *(f"finish.ai.current.{a}" for a in setup_server.context.AIS)):
             assert table.get(key, "").strip(), (language, key)
         for key in ("finish.fail.ai", "finish.fail.gateway"):
             assert table["finish.ai.open"] in table[key], (language, key)

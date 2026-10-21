@@ -268,7 +268,7 @@ def test_every_first_brief_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for result in setup_server.BRIEF_RESULTS:
+        for result in setup_server.first_brief.BRIEF_RESULTS:
             assert table.get(f"brief.{result}", "").strip(), (language, result)
-        for result in setup_server.SEND_RESULTS:
+        for result in setup_server.first_brief.SEND_RESULTS:
             assert table.get(f"brief.send.{result}", "").strip(), (language, result)

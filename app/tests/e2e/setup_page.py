@@ -15,8 +15,9 @@ import re
 import socket
 import threading
 import time
+from http.server import ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import urlparse
 
 import pytest
@@ -25,13 +26,14 @@ import yaml
 from family_brief import ops, setup_save, setup_server
 from family_brief.config import Config
 from family_brief.llm import codex as codex_backend
+from family_brief.setup_server import Context, Timeouts, server as shell
 from family_brief.state import State
 from family_brief.system import jobs
 from family_brief.system.secrets_error import SecretsError
 from test_setup_status import install_program
 
 
-PAGE_DIR = Path(setup_server.__file__).parent / "page"
+PAGE_DIR = shell.PAGE_DIR
 
 
 class Clock:
@@ -66,7 +68,7 @@ def _can_listen() -> bool:
 CAN_LISTEN = _can_listen()
 
 
-class _PairedServer(setup_server.ThreadingHTTPServer):
+class _PairedServer(ThreadingHTTPServer):
     """Where no port can be listened on (a sandbox, for one), the server takes each connection
     through a socket pair instead, which the test's client rings in. It serves them the same way."""
     servers: dict[int, "_PairedServer"] = {}
@@ -97,7 +99,7 @@ class _PairedServer(setup_server.ThreadingHTTPServer):
 @pytest.fixture(autouse=True)
 def _listening(monkeypatch: pytest.MonkeyPatch) -> None:
     if not CAN_LISTEN:
-        monkeypatch.setattr(setup_server, "_HTTPServer", _PairedServer)
+        monkeypatch.setattr(shell, "_HTTPServer", _PairedServer)
 
 
 class _Connection(http.client.HTTPConnection):
@@ -134,12 +136,30 @@ def call(url: str, path: str = "", *, method: str = "GET", body: Any = None,
         conn.close()
 
 
+def context(config: Path, clock: Clock) -> Context:
+    """The context a test's server is given: the test's clock, looked at every 10 ms."""
+    return Context(config, clock=clock, timeouts=Timeouts(poll=0.01))
+
+
 @pytest.fixture
 def clock(monkeypatch: pytest.MonkeyPatch) -> Clock:
     c = Clock()
-    monkeypatch.setattr(setup_server, "clock", c)
-    monkeypatch.setattr(setup_server, "POLL_SECONDS", 0.01)
+    # `setup page` makes its own context: with the test's clock too.
+    monkeypatch.setattr(shell, "Context", lambda config: context(config, c))
     return c
+
+
+def new_server(harness, clock: Clock) -> setup_server.SetupServer:
+    """A setup page's server for the harness's config, not serving yet."""
+    return setup_server.SetupServer(context(config_file(harness), clock))
+
+
+P = TypeVar("P", bound=setup_server.Phase)
+
+
+def phase(server: setup_server.SetupServer, kind: type[P]) -> P:
+    """The server's phase of `kind`, for a test that waits on what it has under way."""
+    return next(p for p in server.phases if isinstance(p, kind))
 
 
 def config_file(harness) -> Path:
@@ -153,7 +173,7 @@ def progress_file(harness) -> Path:
 @pytest.fixture
 def page(harness, clock):
     """The setup page's server, serving in the background until the test ends."""
-    server = setup_server.SetupServer(config_file(harness))
+    server = new_server(harness, clock)
     thread = threading.Thread(target=server.serve_until_idle, daemon=True)
     thread.start()
     yield server
@@ -200,7 +220,7 @@ def ai(harness, monkeypatch):
 def welcome(url: str, **answers: Any) -> Response:
     """Welcome's answers, with the AI the page offers first on this system unless given."""
     return call(url, "api/welcome", method="POST",
-                body={"ai": setup_server._ais()[0], "partner": None, "feedback": False, **answers})
+                body={"ai": setup_server.context.ais()[0], "partner": None, "feedback": False, **answers})
 
 
 def check_ai(url: str, name: str) -> Response:

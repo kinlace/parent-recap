@@ -17,7 +17,7 @@ import pytest
 from family_brief import ops, setup_server, setup_status
 from family_brief.system import jobs, wake
 from fake_system import FakeWake
-from setup_page import (PAGE_DIR, Response, at_finish, call, config_file, finish, finished, more_progress,
+from setup_page import (PAGE_DIR, Response, at_finish, call, finish, finished, more_progress, new_server,
                         refused, wait_for)
 from setup_page import _listening, clock, health, page, schedule  # noqa: F401
 from test_setup_whatsapp import (WHATSAPP_FAILURES, WHATSAPP_PYTHON, assert_says_why, back_to_connect,
@@ -156,7 +156,7 @@ def test_finish_says_why_whatsapp_isn_t_ok(harness, page, schedule, health, fail
     out = finished(page.url)
 
     doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
-    check = {"check": "whatsapp", "status": setup_server.HEALTH_STATUSES[status], "reason": reason,
+    check = {"check": "whatsapp", "status": setup_server.health.HEALTH_STATUSES[status], "reason": reason,
              **({"groups": list(groups)} if groups else {})}
     assert doctor == {"outcome": "doctor", "ok": status == ops.WARN, "checks": [check]}
     assert WHATSAPP_PYTHON not in json.dumps(out)
@@ -198,7 +198,7 @@ def opened_again(harness, clock):
     servers: list[tuple[setup_server.SetupServer, threading.Thread]] = []
 
     def start() -> setup_server.SetupServer:
-        server = setup_server.SetupServer(config_file(harness))
+        server = new_server(harness, clock)
         thread = threading.Thread(target=server.serve_until_idle, daemon=True)
         thread.start()
         servers.append((server, thread))
@@ -488,14 +488,14 @@ def test_every_finish_text_is_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        keys = [*(f"finish.{r}" for r in setup_server.FINISH_RESULTS),
+        keys = [*(f"finish.{r}" for r in setup_server.finish.FINISH_RESULTS),
                 *(f"finish.wake.{r}" for r in wake.RESULTS),
                 *(f"finish.outcome.{o}" for o in setup_status.TITLES),
                 *(f"finish.missing.{o}" for o in setup_status.TITLES),
-                *(f"finish.changes.{a}" for a in setup_server.AIS),
-                *(f"finish.stopped.{a}" for a in setup_server.AIS),
-                *(f"health.check.{c}" for c in {*setup_server.FINISH_CHECKS.values(), "other"}),
-                *(f"finish.fail.{c}" for c in {*setup_server.FINISH_CHECKS.values(), "other"}),
+                *(f"finish.changes.{a}" for a in setup_server.context.AIS),
+                *(f"finish.stopped.{a}" for a in setup_server.context.AIS),
+                *(f"health.check.{c}" for c in {*setup_server.health.FINISH_CHECKS.values(), "other"}),
+                *(f"finish.fail.{c}" for c in {*setup_server.health.FINISH_CHECKS.values(), "other"}),
                 "finish.title", "finish.intro", "finish.start", "finish.replace", "finish.restart",
                 "finish.checklist", "finish.closed", "finish.stop", "finish.warnings",
                 "finish.again"]

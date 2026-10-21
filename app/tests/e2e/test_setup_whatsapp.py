@@ -650,9 +650,9 @@ def test_every_whatsapp_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for result in setup_server.WHATSAPP_RESULTS:
+        for result in setup_server.whatsapp.WHATSAPP_RESULTS:
             assert table.get(f"whatsapp.{result}", "").strip(), (language, result)
-        for result in setup_server.WHATSAPP_OPEN_RESULTS:
+        for result in setup_server.whatsapp.WHATSAPP_OPEN_RESULTS:
             assert table.get(f"whatsapp.open.{result}", "").strip(), (language, result)
 
 
@@ -754,7 +754,7 @@ def test_the_check_page_says_why_whatsapp_isn_t_ok(harness, page, mac, monkeypat
     out = health_result(page.url)
 
     status, reason = WHATSAPP_FAILURES[failure]
-    check = {"check": "whatsapp", "status": setup_server.HEALTH_STATUSES[status], "reason": reason,
+    check = {"check": "whatsapp", "status": setup_server.health.HEALTH_STATUSES[status], "reason": reason,
              **({"groups": ["Leo piano"]} if reason == "missing-groups" else {})}
     assert out["checks"] == [check]
     # Only the reason, and the groups the check page lists anyway: no path and no error.

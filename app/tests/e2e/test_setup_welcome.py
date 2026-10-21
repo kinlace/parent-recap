@@ -27,7 +27,7 @@ def test_each_welcome_choice_has_a_default(harness, page):
     call(page.url, "api/language", method="POST", body={"language": "zh"})
 
     assert call(page.url, "api/state").json()["welcome"] == {
-        "ai": setup_server._ais()[0],  # Claude, or on Windows the gateway, for now
+        "ai": setup_server.context.ais()[0],  # Claude, or on Windows the gateway, for now
         "partner": {"add": True, "address": "", "language": "zh"},
         "feedback": True,
     }
@@ -187,13 +187,13 @@ def test_an_ai_only_the_login_shell_finds_is_ready(harness, page, ai, login_shel
 @pytest.mark.macos
 def test_an_ai_check_that_cannot_run_says_so(harness, page, ai, monkeypatch):
     ai("claude")
-    run = setup_server.subprocess.run
+    run = setup_server.ai.subprocess.run
 
     def fails(cmd, *a, **k):
         if cmd[1:3] == ["auth", "status"]:
-            raise setup_server.subprocess.TimeoutExpired(cmd, 20)
+            raise setup_server.ai.subprocess.TimeoutExpired(cmd, 20)
         return run(cmd, *a, **k)
-    monkeypatch.setattr(setup_server.subprocess, "run", fails)
+    monkeypatch.setattr(setup_server.ai.subprocess, "run", fails)
 
     assert check_ai(page.url, "claude").json() == {"result": "check-failed", "ai": "claude"}
 
@@ -207,9 +207,9 @@ def test_every_ai_result_says_what_to_do_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for name in setup_server.AIS:
+        for name in setup_server.context.AIS:
             # The gateway has nothing to install or sign in to on the Mac: it's always ready.
-            for result in ("ready",) if name == "gateway" else setup_server.AI_RESULTS:
+            for result in ("ready",) if name == "gateway" else setup_server.welcome.AI_RESULTS:
                 assert table.get(f"ai.{name}.{result}", "").strip(), (language, name, result)
 
 
