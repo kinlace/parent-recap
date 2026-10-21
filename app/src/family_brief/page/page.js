@@ -317,6 +317,65 @@ async function post(path, body) {
   return out;
 }
 
+// Connect's steps, which the list shows in the order the server sends (page.connect.sources). A
+// step's panel is the element `source-<name>`, shown while it's the current step; the rest of the
+// step is its entry here, each part optional:
+//   setUp   — once, as Connect is first shown: its buttons and the texts that don't change
+//   first   — as it becomes the current step, the first time since a step was opened or skipped
+//   again   — each time the list is drawn again while it stays the current step
+//   leave   — as any step is opened or skipped: what was typed into it and what it waits on
+//   ownSkip — its panel asks whether to skip it, in place of the skip button
+//   working — Working's line for it once it's done: a text key and its values
+//   label   — what the first Brief's progress calls it while it's read
+const STEPS = {
+  wilma: {
+    setUp: renderWilma, first: prepareWilma, again: prepareWilma, ownSkip: true,
+    leave: () => {
+      document.getElementById("wilma-password").value = "";
+      clearTimeout(wilmaStep.timer);
+    },
+    working: () => ["working.wilma",
+      { kids: page.check.kids.map((k) => k.everyday_name).join(", ") }],
+    label: "Wilma",
+  },
+  gmail: {
+    setUp: setUpGmail,
+    leave: () => { document.getElementById("gmail-password").value = ""; },
+    label: "Gmail",
+  },
+  ai: {
+    setUp: renderAI, first: showAISignIn,
+    leave: () => {
+      document.getElementById("claude-token").value = "";
+      document.getElementById("gateway-key").value = "";
+      clearTimeout(aiStep.timer);
+    },
+  },
+  whatsapp: {
+    setUp: renderWhatsApp,
+    first: () => {
+      showSource("whatsapp.checking");
+      checkWhatsApp();
+    },
+    leave: leaveWhatsApp,
+    working: () => ["working.whatsapp", { count: (page.progress.whatsapp_chats || []).length }],
+    label: "WhatsApp",
+  },
+  myclub: {
+    setUp: setUpMyClub, first: refreshMyClub, again: renderMyClub,
+    leave: () => { document.getElementById("myclub-link").value = ""; },
+    working: () => ["working.myclub", null],
+    label: "MyClub",
+  },
+};
+
+// The steps the server offers on this system, in its order, each with its name and whether the
+// family can skip it.
+function connectSteps() {
+  return page.connect.sources.filter(({ name }) => name in STEPS)
+    .map(({ name, skippable }) => ({ name, skippable, ...STEPS[name] }));
+}
+
 function renderConnect() {
   document.getElementById("source-skip").addEventListener("click", () => {
     chooseSource(currentSource(), "skip");
@@ -324,13 +383,11 @@ function renderConnect() {
   document.getElementById("source-copy").addEventListener("click", () => {
     navigator.clipboard.writeText(document.getElementById("source-install-line").textContent);
   });
-  renderWilma();
-  renderAI();
-  renderWhatsApp();
-  document.getElementById("myclub-open").addEventListener("click", () => openSite("myclub"));
-  document.getElementById("myclub-form").addEventListener("submit", saveMyClubLink);
-  document.getElementById("myclub-kid-form").addEventListener("submit", addKid);
-  document.getElementById("myclub-continue").addEventListener("click", leaveMyClub);
+  for (const step of connectSteps()) step.setUp?.();
+  document.getElementById("connect-continue").addEventListener("click", startReading);
+}
+
+function setUpGmail() {
   document.getElementById("gmail-open").addEventListener("click", () => openSite("app-passwords"));
   document.getElementById("gmail-two-step").addEventListener("click", () => openSite("two-step"));
   document.getElementById("gmail-unavailable").addEventListener("click", () => {
@@ -338,7 +395,6 @@ function renderConnect() {
   });
   document.getElementById("gmail-form").addEventListener("submit", connectGmail);
   document.getElementById("gmail-address").value = page.gmail.address || "";
-  document.getElementById("connect-continue").addEventListener("click", startReading);
 }
 
 // The Source the parent is on: the one saved, else the first still to do (null once none is).
@@ -348,9 +404,10 @@ function currentSource() {
     page.connect.sources.map((s) => s.name).find((name) => statuses[name] === "to-do") ?? null;
 }
 
-// The Source the list last showed as current, and the hand-off once one was connected: the
-// Source just done and the next one (null after the last).
-const connectStep = { current: undefined, handoff: null };
+// The Source the list last showed as current, the hand-off once one was connected (the Source
+// just done and the next one, null after the last), and the steps whose `first` has run since a
+// step was last opened or skipped.
+const connectStep = { current: undefined, handoff: null, shown: new Set() };
 
 function renderSources() {
   const current = currentSource();
@@ -383,40 +440,18 @@ function renderSources() {
     item.append(button);
     list.append(item);
   }
-  // Wilma's own step asks whether the school uses it, in place of the skip button.
-  const skippable = page.connect.sources.find((s) => s.name === current)?.skippable;
+  const step = connectSteps().find((s) => s.name === current);
   document.getElementById("source-skip").hidden =
-    !skippable || statuses[current] !== "to-do" || current === "wilma";
-  document.getElementById("source-wilma").hidden = current !== "wilma";
-  document.getElementById("source-gmail").hidden = current !== "gmail";
-  document.getElementById("source-ai").hidden = current !== "ai";
-  document.getElementById("ai-claude").hidden = page.welcome.ai !== "claude";
-  document.getElementById("ai-codex").hidden = page.welcome.ai !== "codex";
-  document.getElementById("ai-gateway").hidden = page.welcome.ai !== "gateway";
-  document.getElementById("source-whatsapp").hidden = current !== "whatsapp";
-  document.getElementById("source-myclub").hidden = current !== "myclub";
+    !step?.skippable || statuses[current] !== "to-do" || Boolean(step.ownSkip);
+  for (const name of Object.keys(STEPS)) {
+    document.getElementById("source-" + name).hidden = name !== current;
+  }
   document.getElementById("connect-done").hidden = Boolean(current);
   renderHandoff(moved);
-  if (current === "wilma" && !wilmaStep.ready && !wilmaStep.preparing) getWilmaReady();
-  if (current === "ai" && !aiStep.shown) {
-    aiStep.shown = true;
-    if (page.welcome.ai === "codex" && statuses.ai === "to-do") {
-      showSource("codex.checking");
-      checkCodex();
-    }
-    if (page.welcome.ai === "claude") resumeClaude();
-  }
-  if (current === "whatsapp" && !whatsappStep.shown) {
-    whatsappStep.shown = true;
-    showSource("whatsapp.checking");
-    checkWhatsApp();
-  }
-  if (current === "myclub" && !myclubStep.shown) {
-    myclubStep.shown = true;
-    refreshMyClub();
-  } else if (current === "myclub") {
-    renderMyClub();
-  }
+  if (!step) return;
+  if (connectStep.shown.has(current)) return step.again?.();
+  connectStep.shown.add(current);
+  step.first?.();
 }
 
 // Once a Source is connected, says so and which Source is next, and scrolls to it in the list,
@@ -443,17 +478,9 @@ async function chooseSource(name, action) {
   try {
     const out = await post("api/source", { source: name, action });
     page.progress = out.progress;
-    // Not kept once the parent moves on.
-    document.getElementById("gmail-password").value = "";
-    document.getElementById("wilma-password").value = "";
-    document.getElementById("claude-token").value = "";
-    document.getElementById("gateway-key").value = "";
-    document.getElementById("myclub-link").value = "";
-    clearTimeout(wilmaStep.timer);
-    clearTimeout(aiStep.timer);
-    aiStep.shown = false;
-    myclubStep.shown = false;
-    leaveWhatsApp();
+    // What was typed isn't kept once the parent moves on, and each step starts again.
+    for (const step of Object.values(STEPS)) step.leave?.();
+    connectStep.shown.clear();
     showSource(null);
     renderSources();
   } catch (e) {
@@ -592,6 +619,11 @@ function showWilmaUses() {
 const INSTALLING = ["wilma.ready.installing", "wilma.ready.installing.town"];
 function wilmaInstalling() {
   return picked("wilma-uses") === "no" ? "wilma.ready.installing.town" : "wilma.ready.installing";
+}
+
+// Wilma's step, each time it's drawn: the CLI made ready, unless it is or is being made so.
+function prepareWilma() {
+  if (!wilmaStep.ready && !wilmaStep.preparing) getWilmaReady();
 }
 
 // Gets the pinned wilma CLI ready, installing it if it isn't: the town list comes with it.
@@ -782,7 +814,7 @@ function windowResult(out) {
 // ticks itself once it's done.
 
 const AI_MS = 3000;
-const aiStep = { shown: false, timer: null };
+const aiStep = { timer: null };
 // After these the page offers Claude's Terminal window, or to sign in again.
 const CLAUDE_TERMINAL = ["claude.sign-in-failed", "claude.timeout", "claude.window.no-terminal"];
 const CLAUDE_AGAIN = [
@@ -808,6 +840,19 @@ function renderAI() {
   document.getElementById("codex-download").addEventListener("click", () => openSite("codex-app"));
   document.getElementById("codex-install").addEventListener("click", installCodex);
   document.getElementById("gateway-form").addEventListener("submit", saveGatewayKey);
+}
+
+// The sign-in of the Household's AI, as its step opens: Codex's checks by itself, and Claude's
+// picks up a sign-in still running.
+function showAISignIn() {
+  document.getElementById("ai-claude").hidden = page.welcome.ai !== "claude";
+  document.getElementById("ai-codex").hidden = page.welcome.ai !== "codex";
+  document.getElementById("ai-gateway").hidden = page.welcome.ai !== "gateway";
+  if (page.welcome.ai === "codex" && page.progress.sources.ai === "to-do") {
+    showSource("codex.checking");
+    checkCodex();
+  }
+  if (page.welcome.ai === "claude") resumeClaude();
 }
 
 // Once the AI sign-in is done, setup moves on to the next Source. On Finish, the AI picked there
@@ -991,7 +1036,7 @@ async function saveGatewayKey(event) {
 // few seconds, so the entry ticks itself once the parent has given the permission.
 
 const WHATSAPP_MS = 5000;
-const whatsappStep = { shown: false, opened: false, checking: 0, timer: null };
+const whatsappStep = { opened: false, checking: 0, timer: null };
 
 // The Python file Finder selects, by the name it has on this Mac, such as python3.13: in the
 // step's texts, its pictures and the texts that send the parent back to Full Disk Access.
@@ -1011,7 +1056,6 @@ function renderWhatsApp() {
 function leaveWhatsApp() {
   clearTimeout(whatsappStep.timer);
   whatsappStep.checking++; // a read still on its way is old news
-  whatsappStep.shown = false;
   whatsappStep.opened = false;
 }
 
@@ -1052,7 +1096,14 @@ async function checkWhatsApp() {
 // ── Connect: MyClub. Each Kid's calendar link, pasted into the page's own field. A Household
 // without Wilma adds its Kids here first, by the names it calls them.
 
-const myclubStep = { shown: false, kid: null };
+const myclubStep = { kid: null };
+
+function setUpMyClub() {
+  document.getElementById("myclub-open").addEventListener("click", () => openSite("myclub"));
+  document.getElementById("myclub-form").addEventListener("submit", saveMyClubLink);
+  document.getElementById("myclub-kid-form").addEventListener("submit", addKid);
+  document.getElementById("myclub-continue").addEventListener("click", leaveMyClub);
+}
 
 // The Kids as they are now: Wilma may have listed them since the page opened.
 async function refreshMyClub() {
@@ -1225,18 +1276,13 @@ async function checkReading() {
   if (out.result === "reading") workingStep.timer = setTimeout(checkReading, READING_MS);
 }
 
-// What's been read: the Sources Connect read, then Gmail's senders, as far as they've got.
+// What's been read: the Sources Connect read, in its list's order, then Gmail's senders, as far
+// as they've got.
 function renderWorking() {
   const statuses = page.progress.sources;
   const reading = workingStep.reading || { result: "reading", read: 0, total: null };
-  const items = [];
-  if (statuses.wilma === "done") {
-    items.push(["working.wilma", { kids: page.check.kids.map((k) => k.everyday_name).join(", ") }]);
-  }
-  if (statuses.whatsapp === "done") {
-    items.push(["working.whatsapp", { count: (page.progress.whatsapp_chats || []).length }]);
-  }
-  if (statuses.myclub === "done") items.push(["working.myclub", null]);
+  const items = connectSteps().filter((step) => step.working && statuses[step.name] === "done")
+    .map((step) => step.working());
   items.push(reading.total ? ["working.gmail", { read: reading.read, total: reading.total }, true]
     : ["working.gmail.start", null, true]);
   document.getElementById("working-list").replaceChildren(...items.map(([key, values, now]) => {
@@ -1580,7 +1626,6 @@ async function backToConnect(event) {
 
 const BRIEF_MS = 2000;
 const briefStep = { timer: null };
-const SOURCE_NAMES = { gmail: "Gmail", myclub: "MyClub", wilma: "Wilma", whatsapp: "WhatsApp" };
 
 function enterBrief() {
   document.getElementById("brief-again").addEventListener("click", makeBrief);
@@ -1643,7 +1688,7 @@ function renderBriefList(making) {
     if (i === at) item.setAttribute("aria-current", "step");
     const line = document.createElement("span");
     if (step === "writing") setText(line, "brief.writing");
-    else setText(line, "brief.reading", { source: SOURCE_NAMES[step] || step });
+    else setText(line, "brief.reading", { source: STEPS[step]?.label || step });
     item.append(line);
     return item;
   }));
