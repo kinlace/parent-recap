@@ -4,7 +4,7 @@ The wilma CLI signs in on screens of its own, but every command reads its saved 
 one JSON file. So the page asks for the town and the Wilma username and password
 itself, this writes that profile the way the CLI does after its own sign-in, and the CLI's Kid
 list checks that it works. The format isn't documented, so setup installs the CLI version below,
-install.sh moves an installed one to it (update()), and tests/test_setup_page.py checks the
+install.sh moves an installed one to it (update()), and tests/e2e/test_setup_page.py checks the
 profile written against that version's way of reading it.
 
 The CLI is installed and run with Parent Recap's own Node, in its own folder (`own_node`, ADR 0011).

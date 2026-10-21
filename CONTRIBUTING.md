@@ -75,7 +75,7 @@ curl -fsSL https://github.com/astral-sh/python-build-standalone/releases/downloa
   | grep -E 'cpython-<version>\+<build>-(aarch64|x86_64)-apple-darwin-install_only\.tar\.gz$'
 ```
 
-`install.ps1`, the Windows install, pins the same Python: change `$PythonVersion` and `$PythonBuild` there too, and `$PythonSha256` to the checksum of `cpython-<version>+<build>-x86_64-pc-windows-msvc-install_only.tar.gz` from the same `SHA256SUMS`. CI's windows-install job checks the pinned checksums against the published lists and prints the published line when one doesn't match; `tests/test_install_ps1.py` checks both scripts pin the same versions.
+`install.ps1`, the Windows install, pins the same Python: change `$PythonVersion` and `$PythonBuild` there too, and `$PythonSha256` to the checksum of `cpython-<version>+<build>-x86_64-pc-windows-msvc-install_only.tar.gz` from the same `SHA256SUMS`. CI's windows-install job checks the pinned checksums against the published lists and prints the published line when one doesn't match; `tests/scripts/test_install_ps1.py` checks both scripts pin the same versions.
 
 A new minor Python also goes into `PYTHONS` in `scripts/check_wheels.py`. Each version goes into its own folder, so every family has to grant WhatsApp's permission again: `install.sh` says so and prints the new path, and the release's changelog should say it too.
 

@@ -12,7 +12,7 @@ from fake_system import FakeSecrets
 
 from family_brief.system import secrets
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "setup_claude_token.py"
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "setup_claude_token.py"
 TOKEN = "sk-ant-oat01-secret-token"
 
 

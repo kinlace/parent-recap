@@ -49,6 +49,12 @@ addopts = "-p no:cacheprovider --strict-markers"
 # Seen only when Python runs with PYTHONWARNDEFAULTENCODING=1, as CI does (.github/workflows/tests.yml).
 filterwarnings = ["error::EncodingWarning:family_brief"]
 markers = [
+    # The layers (tests/README.md), set from a test's folder by conftest.py, not by hand.
+    "unit: a pure function, nothing faked",
+    "integration: one module through its interface, with in-memory fakes",
+    "e2e: main() or the setup page over HTTP, faked only at the OS and network edge",
+    "adapters: an OS adapter against the real OS, the _windows twins among them",
+    "scripts: install.sh, install.ps1, release.py, issue-loop.sh and the workflows",
     "macos: needs macOS (a macOS adapter, a macOS-only feature, or what Windows can't do yet); skipped elsewhere",
     "windows: needs Windows (a Windows adapter or Windows' own layout); skipped elsewhere",
 ]

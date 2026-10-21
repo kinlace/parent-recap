@@ -792,7 +792,7 @@ def test_the_ready_list_names_what_setup_needs_in_each_language():
 
 # ── Welcome: what lets the family ask for changes in the chat later (#98)
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def chat_installed(url: str, name: str) -> str:
@@ -1877,7 +1877,7 @@ def test_every_wilma_result_is_explained_in_all_three_languages():
 
 
 def test_the_chat_setup_installs_the_same_pinned_cli():
-    skill = (Path(__file__).resolve().parents[2] / "skills" / "setup" / "SKILL.md").read_text()
+    skill = (Path(__file__).resolve().parents[3] / "skills" / "setup" / "SKILL.md").read_text()
 
     # `setup wilma` installs it, as the page does, so it's in setup's record for uninstall.
     assert "wilma-cli" not in skill and "`setup wilma` installs" in skill
@@ -4885,7 +4885,7 @@ def test_the_chat_reads_the_progress_and_answers_the_page_saved(harness, page, c
 
 
 def test_the_setup_skill_carries_on_from_the_page_s_step():
-    skill = (Path(__file__).resolve().parents[2] / "skills" / "setup" / "SKILL.md").read_text()
+    skill = (Path(__file__).resolve().parents[3] / "skills" / "setup" / "SKILL.md").read_text()
     [section] = re.findall(r"\n## Coming from the setup page\n(.*?)\n## ", skill, re.S)
 
     for needed in ("Continue in the chat", "setup save --read", "`phase`", "`source`",

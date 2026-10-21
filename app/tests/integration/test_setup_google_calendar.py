@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "setup_google_calendar.py"
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "setup_google_calendar.py"
 
 
 def home(path: Path) -> dict[str, str]:
@@ -32,7 +32,7 @@ def test_without_googles_packages_it_says_how_to_install_them(tmp_path):
     # Google's packages are the `google` extra, which install.sh adds only for google mode.
     (tmp_path / ".family").mkdir()
     (tmp_path / ".family" / "calendar_credentials.json").write_text("{}")
-    no_google = Path(__file__).with_name("no_google")
+    no_google = Path(__file__).parents[1] / "no_google"
     result = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True, timeout=30,
                             env={**home(tmp_path), "PYTHONPATH": str(no_google)})
 

@@ -934,7 +934,7 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     for name in ("calendar_credentials.json", "calendar_token.json"):
         (harness.home / ".family" / name).write_text("{}")
     harness.secrets["anthropic-api-key"] = "sk-ant-api-secret"
-    doc = (Path(__file__).resolve().parents[2] / "docs" / "setup-internals.md").read_text()
+    doc = (Path(__file__).resolve().parents[3] / "docs" / "setup-internals.md").read_text()
 
     assert uninstall(harness) == 0
 

@@ -28,7 +28,7 @@ CALENDAR = ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
             "BEGIN:VEVENT\r\nUID:mc-1\r\nSUMMARY:Training\r\nDTSTART:20261005T150000Z\r\nEND:VEVENT\r\n"
             "BEGIN:VEVENT\r\nUID:mc-2\r\nSUMMARY:Match\r\nDTSTART:20261010T080000Z\r\nEND:VEVENT\r\n"
             "END:VCALENDAR\r\n")
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "setup_myclub.py"
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "setup_myclub.py"
 
 
 @pytest.fixture(autouse=True)

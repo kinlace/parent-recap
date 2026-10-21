@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-WORKFLOW_DIR = Path(__file__).resolve().parents[2] / ".github" / "workflows"
+WORKFLOW_DIR = Path(__file__).resolve().parents[3] / ".github" / "workflows"
 WORKFLOWS = sorted(WORKFLOW_DIR.glob("*.yml"))
 
 

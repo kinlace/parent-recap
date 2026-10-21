@@ -24,7 +24,7 @@ APP_PASSWORD = "abcdefghijklmnop"
 TYPED = "abcd efgh ijkl mnop"  # how Google shows it, and how it's copied
 ACCOUNT = "gmail-imap-parent@example.com"
 TWO_STEP = "https://myaccount.google.com/signinoptions/two-step-verification"
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "setup_gmail_imap.py"
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "setup_gmail_imap.py"
 
 
 class GmailServer:

@@ -37,8 +37,8 @@ pytestmark = pytest.mark.macos
 REAL_RUN = subprocess.run  # before the harness fakes it
 PASSWORD = "Wilma-salasana-42"
 WINDOW_SECONDS = 30  # the window closes within about a second
-CONFIG_MD = Path(__file__).resolve().parents[2] / "docs" / "config.md"
-NO_PTY = Path(__file__).with_name("no_pty")
+CONFIG_MD = Path(__file__).resolve().parents[3] / "docs" / "config.md"
+NO_PTY = Path(__file__).parents[1] / "no_pty"
 STUDENTS = [{"studentNumber": "1001", "name": "Mia Virtanen", "href": "/!1001/"},
             {"studentNumber": "1002", "name": "Leo Virtanen", "href": "/!1002/"}]
 

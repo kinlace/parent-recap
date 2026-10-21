@@ -26,7 +26,7 @@ import pytest
 
 from fake_packages import project, sdist, wheel
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 
 
 PINNED = ("3.13.16", "20261003")

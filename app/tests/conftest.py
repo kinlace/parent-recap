@@ -50,6 +50,10 @@ from family_brief.llm import retry
 from family_brief.system import desktop, jobs, secrets, wake, windows_only
 from fake_system import FakeDesktop, FakeJobs, FakeSecrets, FakeWake
 
+# The test layers, one folder each (README.md). Tests import helpers from tests in other layers
+# (`from test_nightly_run import ...`), so every layer's folder is on the path, whichever runs.
+LAYERS = ("unit", "integration", "e2e", "adapters", "scripts")
+sys.path += [str(Path(__file__).parent / layer) for layer in LAYERS]
 TZ = "Europe/Helsinki"
 # A Sunday evening in autumn, after the nightly launchd slot.
 NOW = datetime(2026, 9, 27, 21, 0, tzinfo=ZoneInfo(TZ))
@@ -131,8 +135,13 @@ def program(folder: Path, name: str, text: str = "#!/bin/sh\n") -> Path:
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    # The one way a test says it needs macOS, or Windows, so each CI job runs every other test.
     for item in items:
+        # A test's layer is the folder it's in, so `-m unit` and the others select by folder.
+        layer = item.path.relative_to(Path(__file__).parent).parts[0]
+        if layer not in LAYERS:
+            raise pytest.UsageError(f"{item.path.name} is in no layer's folder: {', '.join(LAYERS)}")
+        item.add_marker(getattr(pytest.mark, layer))
+        # The one way a test says it needs macOS, or Windows, so each CI job runs every other test.
         if sys.platform != "darwin" and item.get_closest_marker("macos"):
             item.add_marker(pytest.mark.skip(reason="needs macOS"))
         if sys.platform != "win32" and item.get_closest_marker("windows"):

@@ -453,7 +453,7 @@ SKILL_WORDS = {"no-access": "can't read WhatsApp: add it to Full Disk Access",
                "not-started": "the background check didn't start",
                "missing-groups": "these group names aren't on this Mac",
                "list-failed": "couldn't list the groups"}
-SKILLS = Path(__file__).resolve().parents[2] / "skills"
+SKILLS = Path(__file__).resolve().parents[3] / "skills"
 
 
 def skill_whatsapp_section() -> str:
@@ -473,7 +473,7 @@ def test_the_chat_skills_say_only_the_parent_can_turn_on_full_disk_access():
 
 def test_the_skills_and_docs_never_send_the_parent_to_a_file_called_python3():
     # Finder selects the pinned Python's own file, such as python3.13 (#297).
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     for path in [*SKILLS.glob("*/SKILL.md"), *(root / "docs").glob("*.md"), root / "README.md"]:
         assert not re.search(r"python3(?![.\d])", path.read_text()), path
 

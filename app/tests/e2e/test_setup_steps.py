@@ -117,7 +117,7 @@ def test_the_city_presets_match_docs_config():
     from pathlib import Path
 
     from family_brief import setup_steps
-    docs = (Path(__file__).parents[2] / "docs" / "config.md").read_text()
+    docs = (Path(__file__).parents[3] / "docs" / "config.md").read_text()
     table = docs.split("## City presets", 1)[1].split("\n\n", 2)[1]
     rows = [[c.strip() for c in line.strip("|").split("|")] for line in table.splitlines()[2:]]
     addresses = {address: city.split(" (")[0] for city, address, *_ in rows}

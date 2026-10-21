@@ -174,6 +174,6 @@ def test_the_wilma_cli_s_sign_in_and_session_are_made_owner_only_on_the_next_run
 
 
 def test_installer_makes_the_install_folder_owner_only():
-    installer = (Path(__file__).parents[2] / "install.sh").read_text()
+    installer = (Path(__file__).parents[3] / "install.sh").read_text()
     assert 'chmod 700 "$TARGET"' in installer
     assert 'chmod -R go-rwx "$TARGET"' in installer

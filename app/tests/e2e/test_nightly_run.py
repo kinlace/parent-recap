@@ -1826,14 +1826,14 @@ def test_footer_names_the_codex_backend(harness, tmp_path):
 
 
 def test_feedback_verdicts_match_the_forms_choices():
-    script = (Path(__file__).resolve().parents[2] / "ops" / "feedback-form" / "create_feedback_form.gs").read_text()
+    script = (Path(__file__).resolve().parents[3] / "ops" / "feedback-form" / "create_feedback_form.gs").read_text()
     [choices] = re.findall(r"const VERDICTS = \[(.*?)\];", script, re.S)
     assert re.findall(r"'([^']+)'", choices) == [feedback.SAVED, feedback.WRONG, feedback.DIGEST_WRONG]
 
 
 def test_the_pilot_form_keeps_its_fields_in_their_order():
     # The Household's pseudonym and Kid A go in the Form's own Household and Kid fields (#195).
-    script = (Path(__file__).resolve().parents[2] / "ops" / "feedback-form" / "create_feedback_form.gs").read_text()
+    script = (Path(__file__).resolve().parents[3] / "ops" / "feedback-form" / "create_feedback_form.gs").read_text()
     [fields] = re.findall(r"const PREFILL_FIELDS = \[(.*?)\];", script, re.S)
     titles = re.findall(r"key: '([^']+)', title: '([^']+)'", fields)
     assert titles == [("verdict", "Feedback"), ("item_text", "Item"), ("source", "Source"), ("backend", "AI (backend)"),

@@ -21,7 +21,7 @@ from test_setup_save import ANSWERS, save, saved
 from test_setup_status import offline, outcome, status  # noqa: F401 (offline is a fixture)
 from test_weekend_picks import candidate
 
-NO_GOOGLE = Path(__file__).with_name("no_google")
+NO_GOOGLE = Path(__file__).parents[1] / "no_google"
 _spec = importlib.util.spec_from_file_location("no_google", NO_GOOGLE / "sitecustomize.py")
 blocker = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(blocker)

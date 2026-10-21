@@ -5,7 +5,7 @@
 # REVIEW: a native speaker reviewed the Finnish list on 2026-10-12 (#10) and kept holding back on the
 # keyword alone, diabete, epilep and poliisi included. The Swedish, English and Chinese lists wait
 # for review by the maintainers. Changing a word here changes which messages the AI never sees, so
-# tests/test_held_back.py lists the cases that must and must not be held back.
+# tests/unit/test_held_back.py lists the cases that must and must not be held back.
 #
 # What the lists aim at: a message about one person's sensitive situation, such as a diagnosis, a
 # meeting with a psychologist or a school social worker (kuraattori), special or intensified
