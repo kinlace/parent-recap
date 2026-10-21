@@ -8,9 +8,12 @@ import sys
 
 from .. import sources
 
-STEPS = frozenset({*(s.name for s in sources.ALL if s.macos_only), "passwords"})
+OTHER_STEPS = frozenset({"passwords"})  # the Sources' own are in their records
 
 
 def offers(name: str) -> bool:
-    """Whether the setup page and doctor offer the step or check `name` on this system."""
-    return name not in STEPS or sys.platform == "darwin"
+    """Whether the setup page and doctor offer the step or check `name` on this system. The
+    registry is asked each time, so a Source registered later is offered as its record says."""
+    source = sources.named(name)
+    only_macos = source.macos_only if source else name in OTHER_STEPS
+    return not only_macos or sys.platform == "darwin"

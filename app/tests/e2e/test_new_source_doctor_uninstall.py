@@ -3,6 +3,7 @@ lists and removes what setup made for it (#408)."""
 from __future__ import annotations
 
 import shutil
+import sys
 from functools import partial
 from pathlib import Path
 
@@ -23,7 +24,7 @@ def program_folder(programs: list[Path]) -> Path:
     return programs[0].parent / "schoolapp"
 
 
-def school_app(monkeypatch: pytest.MonkeyPatch) -> None:
+def school_app(monkeypatch: pytest.MonkeyPatch, macos_only: bool = False) -> None:
     """Registers a fifth Source, SchoolApp, with a sign-in token in the secret store and a cached
     program of its own."""
     def check(cfg, add, config) -> None:
@@ -36,7 +37,7 @@ def school_app(monkeypatch: pytest.MonkeyPatch) -> None:
                                              partial(shutil.rmtree, folder), path=folder))
 
     record = sources.Source("schoolapp", {"en": "SchoolApp", "fi": "SchoolApp", "zh": "SchoolApp"},
-                            lambda cfg: True, skippable=True, connect_rank=9,
+                            lambda cfg: True, skippable=True, connect_rank=9, macos_only=macos_only,
                             collect=lambda cfg, state, kid_terms: Collected(), check=check,
                             secrets=lambda cfg: [TOKEN], survey=survey,
                             notes=lambda cfg, pythons: [NOTE])
@@ -56,6 +57,16 @@ def test_doctor_checks_a_source_added_to_the_registry(harness, nothing_loaded, m
     at = lines.index(line)
     assert [i for i, l in enumerate(lines) if "Gmail:" in l][0] < at
     assert [i for i, l in enumerate(lines) if "Calendar:" in l][0] > at
+
+
+def test_off_macos_doctor_leaves_out_a_macos_only_source_added_to_the_registry(
+        harness, nothing_loaded, monkeypatch, capsys):  # noqa: F811
+    school_app(monkeypatch, macos_only=True)
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    harness.cli("doctor", "--skip-llm")
+
+    assert "SchoolApp:" not in capsys.readouterr().out
 
 
 def test_uninstall_lists_and_removes_what_setup_made_for_a_source_added_to_the_registry(
