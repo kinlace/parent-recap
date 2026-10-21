@@ -427,6 +427,30 @@ def test_gmail_and_the_ai_sign_in_cannot_be_skipped(harness, page):
     assert set(statuses(page.url).values()) == {"to-do"}
 
 
+# Every call that completes, skips or reopens a Source step.
+SOURCE_STEPS = ("api/source", "api/gmail", "api/wilma", "api/town", "api/claude/token",
+                "api/gateway", "api/codex", "api/whatsapp/check", "api/whatsapp/back",
+                "api/connect/back", "api/myclub", "api/myclub/kid", "api/myclub/done")
+
+
+def test_a_malformed_answer_gets_the_same_refusal_from_every_source_step(harness, page):
+    save_progress(harness, {"phase": "connect", "source": "gmail"})
+    before = statuses(page.url)
+
+    shapeless = [call(page.url, path, method="POST", body=["sekret"]) for path in SOURCE_STEPS]
+    extra = [call(page.url, path, method="POST", body={"sekret": 1}) for path in SOURCE_STEPS]
+
+    assert {r.status for r in shapeless + extra} == {400}
+    assert len({r.body for r in shapeless}) == 1  # the same answer, byte for byte
+    answer = shapeless[0].json()
+    assert answer["result"] == "invalid-answers" and answer["errors"] == ["answers: should be an object"]
+    for path, r in zip(SOURCE_STEPS, extra):
+        assert {k: v for k, v in r.json().items() if k != "errors"} == \
+            {k: v for k, v in answer.items() if k != "errors"}, path
+        assert "sekret: Extra inputs are not permitted" in r.json()["errors"], path
+    assert statuses(page.url) == before
+
+
 def test_any_source_can_be_opened_from_the_list(harness, page):
     r = source(page.url, "gmail", "open")
 

@@ -38,12 +38,13 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import (chat_install, feedback, ops, run_lock, setup_ai, setup_gmail, setup_myclub,
-               setup_report, setup_save, setup_status, setup_steps, setup_whatsapp, setup_wilma,
-               summarize)
+from . import (chat_install, feedback, ops, run_lock, setup_ai, setup_connect, setup_gmail,
+               setup_myclub, setup_report, setup_save, setup_status, setup_steps, setup_whatsapp,
+               setup_wilma, summarize)
 from . import sources as source_registry
 from .actions import email as email_action
 from .config import Config, Kid, LLMConfig
+from .setup_connect import Nothing, Reply, Strict, parse
 from .state import State
 from .system import desktop, desktop_macos, jobs, macos_only, secrets, wake
 
@@ -236,7 +237,7 @@ class SetupServer:
         self._stopped = threading.Event()
         self._serving = False
         self._state = threading.Lock()
-        self._saving = threading.Lock()  # one save at a time
+        self.connect = setup_connect.ConnectSteps(config)  # with the one saving lock
         self._wilma = threading.Lock()  # one Wilma sign-in at a time, since each writes its profile
         self._window: dict[str, Any] | None = None  # the Terminal sign-in window's, once opened
         self._ai = threading.Lock()  # one AI sign-in at a time
@@ -319,7 +320,7 @@ class SetupServer:
                 "progress": progress,
                 "welcome": self._welcome(progress),
                 "connect": {"sources": [{"name": s, "skippable": s in SKIPPABLE}
-                                        for s in _sources()]},
+                                        for s in setup_connect.sources()]},
                 "gmail": {"address": self._gmail_address()},
                 # The name of the Python file Finder selects for Full Disk Access, such as
                 # python3.13, for every text that names it. Not its path: that names the Mac's user.
@@ -336,7 +337,7 @@ class SetupServer:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Pick one of the page's languages.",
                 errors=[f"language: should be one of {', '.join(LANGUAGES)}"])
-        with self._saving:
+        with self.connect.lock:
             out = setup_save.save(self.config, {"language": raw["language"]})
         if out["result"] != "saved":
             return HTTPStatus.CONFLICT, out
@@ -409,7 +410,7 @@ class SetupServer:
             extra: dict[str, Any] = {}
             if token is not None:
                 result, extra = setup_ai.claude_token_sign_in(program, token)
-            sign_in["result"] = self._ai_signed_in("claude") if result == "saved" \
+            sign_in["result"] = self._ai_signed_in("claude")[1] if result == "saved" \
                 else {"result": result, **_keychain_code(extra)}
         except Exception:  # never leave the page waiting
             sign_in["result"] = {"result": "sign-in-failed"}
@@ -457,34 +458,26 @@ class SetupServer:
         with self._ai:
             self._claude_install = result
 
-    def save_claude_token(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def save_claude_token(self, raw: Any) -> Reply:
         """Tests the token pasted into the page's own field and stores it, as the chat's Claude
         step does with the dialog's. The token is never returned, logged or put on a command line."""
-        if not (isinstance(raw, dict) and set(raw) == {"token"} and isinstance(raw["token"], str)):
-            # Names the field only: the answers carry the token.
-            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                "invalid-answers", "Paste the token.", errors=["token: should be text"])
+        answer = parse(ClaudeToken, raw)
         program = summarize.find_claude()
         if program is None:
             return HTTPStatus.OK, _claude_missing()
-        result, extra = setup_ai.claude_token_sign_in(program, raw["token"])
+        result, extra = setup_ai.claude_token_sign_in(program, answer.token)
         if result != "saved":
             return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
         desktop.forget_terminal(setup_ai.CLAUDE_WINDOW)  # the window has done its work
-        out = self._ai_signed_in("claude")
-        return (HTTPStatus.OK if out["result"] == "saved" else HTTPStatus.CONFLICT), out
+        return self._ai_signed_in("claude")
 
-    def check_codex(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def check_codex(self, raw: Any) -> Reply:
         """Whether Codex is signed in, with its own status check. Once it is, the AI sign-in is
         done. While its sign-in is open in the browser, signed out is `waiting`. At Finish, where
         signing in switches the Household to ChatGPT, it must also answer a test call first."""
-        if raw != {}:
-            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
-        with self._ai:
-            install = self._codex_install
-            if install == "install-failed":
-                self._codex_install = None  # said once, and the family can start it again
-        if install in ("installing", "install-failed"):
+        parse(Nothing, raw)
+        install = self._codex_installing()
+        if install is not None:
             return HTTPStatus.OK, {"result": install}
         program = self._ai_program("codex")
         if program is None:
@@ -494,22 +487,35 @@ class SetupServer:
             ended = login is not None and login.poll() is not None
         status = _ai_status(program, "codex")
         if status == "ready":
-            if setup_save.read(self.config)["progress"]["phase"] == "finish" and \
-                    not self._codex_answers():
-                return HTTPStatus.OK, {"result": "test-call-failed"}
-            out = self._ai_signed_in("codex")
-            return (HTTPStatus.OK, {**out, "result": "signed-in"}) if out["result"] == "saved" \
-                else (HTTPStatus.CONFLICT, out)
-        if status != "signed-out":
-            return HTTPStatus.OK, {"result": status}
+            return self._codex_signed_in()
+        return HTTPStatus.OK, {"result": status if status != "signed-out"
+                               else self._codex_login(login, ended)}
+
+    def _codex_installing(self) -> str | None:
+        """`installing` while the page installs the Codex CLI, then `install-failed` once."""
+        with self._ai:
+            install = self._codex_install
+            if install == "install-failed":
+                self._codex_install = None  # said once, and the family can start it again
+        return install if install in ("installing", "install-failed") else None
+
+    def _codex_signed_in(self) -> Reply:
+        """Saves the AI sign-in as done with Codex, which at Finish must answer a test call."""
+        if self.connect.progress()["phase"] == "finish" and not self._codex_answers():
+            return HTTPStatus.OK, {"result": "test-call-failed"}
+        return self._ai_signed_in("codex", reply={"result": "signed-in"})
+
+    def _codex_login(self, login: subprocess.Popen | None, ended: bool) -> str:
+        """How a signed-out Codex's sign-in is going: none started, `waiting` while it's open in
+        the browser, or `login-failed` once, when it ended without signing in."""
         if login is None:
-            return HTTPStatus.OK, {"result": "signed-out"}
-        if ended:
-            with self._ai:
-                if self._codex is login:
-                    self._codex = None  # said once, and the family can start it again
-            return HTTPStatus.OK, {"result": "login-failed"}
-        return HTTPStatus.OK, {"result": "waiting"}
+            return "signed-out"
+        if not ended:
+            return "waiting"
+        with self._ai:
+            if self._codex is login:
+                self._codex = None  # said once, and the family can start it again
+        return "login-failed"
 
     def _codex_answers(self) -> bool:
         """Whether Codex answers the test call doctor makes, with the Household's config as the
@@ -567,53 +573,38 @@ class SetupServer:
                 self._codex = setup_ai.start_codex_login(program)
             self._codex_install = "installed" if program else "install-failed"
 
-    def save_gateway_key(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def save_gateway_key(self, raw: Any) -> Reply:
         """Tests the Gateway Key pasted into the page's own field with one call to the gateway the
         config names, and stores it, as `setup gateway` does with the dialog's (ADR 0007). The
         key, and what the gateway said, are never returned, logged or put on a command line."""
-        if not (isinstance(raw, dict) and set(raw) == {"key"} and isinstance(raw["key"], str)):
-            # Names the field only: the answers carry the key.
-            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                "invalid-answers", "Paste the Gateway Key.", errors=["key: should be text"])
+        answer = parse(GatewayKey, raw)
         url = _section(self._config_data(), "llm").get("gateway_url")
         result, extra = setup_ai.gateway_sign_in(
-            url if isinstance(url, str) and url else LLMConfig().gateway_url, raw["key"])
+            url if isinstance(url, str) and url else LLMConfig().gateway_url, answer.key)
         if result != "saved":
             return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
-        out = self._ai_signed_in("gateway")
-        return (HTTPStatus.OK if out["result"] == "saved" else HTTPStatus.CONFLICT), out
+        return self._ai_signed_in("gateway")
 
     # ── WhatsApp
 
-    def check_whatsapp(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def check_whatsapp(self, raw: Any) -> Reply:
         """Reads WhatsApp once through a `bg` job, with the scheduled job's permission, as `setup
         whatsapp` does. The page checks again every few seconds, so once the family has given
         the permission, WhatsApp is done by itself, and the groups found are kept in setup's
         progress for the check page. Errors aren't returned: they can name the Mac's files."""
-        if raw != {}:
-            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        parse(Nothing, raw)
         with self._whatsapp:
             # setup_whatsapp.read_through_bg, by the name its tests replace until #423.
             read = setup_steps.read_whatsapp_through_bg(
                 str(self.config), setup_whatsapp.WHATSAPP_DAYS, WHATSAPP_READ_SECONDS)
         if read["result"] != "readable":
             return HTTPStatus.OK, {"result": read["result"]}
-        with self._saving:
-            # A read takes a while, and the family may have skipped WhatsApp or opened another
-            # Source meanwhile: their choice stands.
-            progress = setup_save.read(self.config)["progress"]
-            if progress["sources"]["whatsapp"] == "skipped":
-                return HTTPStatus.OK, {"result": "readable", "chats": read["chats"],
-                                       "progress": progress}
-            statuses = {**progress["sources"], "whatsapp": "done"}
-            here = progress["source"] == "whatsapp"
-            out = setup_save.save(self.config, {"progress": {
-                "sources": {"whatsapp": "done"},
-                "source": _next_source(statuses) if here else progress["source"],
-                "whatsapp_chats": read["chats"]}})
-        if out["result"] != "saved":
-            return HTTPStatus.CONFLICT, out
-        return HTTPStatus.OK, {**out, "result": "readable", "chats": read["chats"]}
+        # A read takes a while, and the family may have skipped WhatsApp or opened another Source
+        # meanwhile: their choice stands.
+        return self.connect.complete(
+            "whatsapp", {"progress": {"whatsapp_chats": read["chats"]}}, keep_skipped=True,
+            move_on=lambda progress: progress["source"] == "whatsapp",
+            reply={"result": "readable", "chats": read["chats"]})
 
     def open_full_disk_access(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Selects the scheduled job's Python in Finder and opens Full Disk Access next to it, as
@@ -623,7 +614,7 @@ class SetupServer:
         _, failed = ops.show_python_for_full_disk_access()
         return HTTPStatus.OK, {"result": "not-opened" if failed else "opened"}
 
-    def back_to_whatsapp(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def back_to_whatsapp(self, raw: Any) -> Reply:
         """Takes setup from Check or Finish back to WhatsApp's step in Connect, for ticked groups
         the health check didn't find on this Mac. The step reads the groups again, so a group's
         new name is there to tick in Check, and setup goes on from there as before."""
@@ -632,102 +623,80 @@ class SetupServer:
             "Only Check and Finish go back to WhatsApp.",
             "answers: should be {}, at Check or Finish with WhatsApp done")
 
-    def back_to_connect(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def back_to_connect(self, raw: Any) -> Reply:
         """Takes setup from Check or Finish back to Connect's Source list, for a Source the family
         skipped and wants after all: they open it from the list, which brings it back, and setup
         goes on from there as before. A page opened again after setup is at Finish, so this is
         also how a Source is added later."""
         return self._back_to_connect(
-            raw, None, lambda progress: _skipped(progress["sources"]),
+            raw, None, lambda progress: setup_connect.skipped(progress["sources"]),
             "Only Check and Finish go back to Connect, for a Source that was skipped.",
             "answers: should be {}, at Check or Finish with a Source skipped")
 
     def _back_to_connect(self, raw: Any, source: str | None,
                          allowed: Callable[[dict[str, Any]], bool], refusal: str,
-                         error: str) -> tuple[HTTPStatus, dict[str, Any]]:
+                         error: str) -> Reply:
         """Takes setup from Check or Finish back to Connect at `source`, or at its list for None,
         when `allowed` says setup's progress allows it, and never while a check runs."""
-        if raw != {}:
-            return HTTPStatus.BAD_REQUEST, _nothing_to_give()
+        parse(Nothing, raw)
         with self._working:
             if (self._health or {}).get("result") == "checking" or \
                     (self._finish or {}).get("result") in ("installing", "checking"):
                 return HTTPStatus.CONFLICT, {"result": "busy"}
-            with self._saving:
-                progress = setup_save.read(self.config)["progress"]
-                if progress["phase"] not in ("check", "finish") or not allowed(progress):
-                    return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                        "invalid-answers", refusal, errors=[error])
-                out = setup_save.save(self.config, {"progress": {"phase": "connect",
-                                                                 "source": source}})
-            if out["result"] != "saved":
-                return HTTPStatus.CONFLICT, out
-            # How the health check and Finish went was about the Sources as they were.
-            self._health = None
-            self._finish = None
-        return HTTPStatus.OK, out
+            status, out = self.connect.reopen(
+                source, allowed, setup_save.outcome("invalid-answers", refusal, errors=[error]))
+            if status == HTTPStatus.OK:
+                # How the health check and Finish went was about the Sources as they were.
+                self._health = None
+                self._finish = None
+        return status, out
 
     # ── MyClub
 
-    def save_myclub_link(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def save_myclub_link(self, raw: Any) -> Reply:
         """Checks the calendar link pasted into the page's own field for one of the Household's
         Kids and saves it, through the chat's MyClub step. Once a link is saved, MyClub is done,
         and setup moves on once every Kid has one; until then the parent can add the next Kid's.
         The link is a secret (ADR 0007): it's never returned, logged or put on a command line."""
-        if not (isinstance(raw, dict) and set(raw) == {"kid", "link"}
-                and isinstance(raw["link"], str) and raw["kid"] in self._kid_names()):
-            # Names the fields only: the answers carry the link.
+        answer = parse(MyClubLink, raw)
+        if answer.kid not in self._kid_names():  # named only: the answers carry the link
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                "invalid-answers", "Pick one of the Kids and paste their calendar link.",
-                errors=["answers: should be one of the Kids' names and the link, as text"])
+                "invalid-answers", "Pick one of the Kids.", errors=["kid: should be a Kid's name"])
         # Downloaded before the lock, so a slow MyClub holds up no other save.
-        result, extra = setup_myclub.save_link(self.config, raw["kid"], raw["link"], self._saving)
+        result, extra = setup_myclub.save_link(self.config, answer.kid, answer.link,
+                                               self.connect.lock)
         if result != "saved":
             return HTTPStatus.OK, {"result": result}  # without the error, which can name files
-        with self._saving:
-            progress = setup_save.read(self.config)["progress"]
-            statuses = {**progress["sources"], "myclub": "done"}
-            here = progress["source"] == "myclub"
-            linked = all(k["linked"] for k in self._myclub()["kids"])
-            out = setup_save.save(self.config, {"progress": {
-                "sources": {"myclub": "done"},
-                "source": _next_source(statuses) if here and linked else progress["source"]}})
-        if out["result"] != "saved":
-            return HTTPStatus.CONFLICT, out
-        return HTTPStatus.OK, {**out, "kid": raw["kid"], "events": extra["events"],
-                               "kids": self._myclub()["kids"]}
+        # Setup moves on by itself once every Kid has their link.
+        return self.connect.complete(
+            "myclub", move_on=lambda progress: progress["source"] == "myclub"
+            and all(k["linked"] for k in self._myclub()["kids"]),
+            reply={"kid": answer.kid, "events": extra["events"], "kids": self._myclub()["kids"]})
 
-    def add_kid(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def add_kid(self, raw: Any) -> Reply:
         """For a Household without Wilma: adds a Kid by the name the family calls them, so their
         MyClub link can be saved. With Wilma, the Kids are the ones Wilma lists."""
-        name = raw.get("name") if isinstance(raw, dict) and set(raw) == {"name"} else None
-        if not (isinstance(name, str) and name.strip() and self._myclub()["add"]):
+        name = parse(KidName, raw).name.strip()
+        if not (name and self._myclub()["add"]):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Type the Kid's name. A Household with Wilma has its Kids from "
                 "there.", errors=["name: should be text, for a Household without Wilma"])
-        name = name.strip()
-        with self._saving:
+        with self.connect.lock:
             names = self._kid_names()
             if name.casefold() in (n.casefold() for n in names):
                 return HTTPStatus.OK, {"result": "kid-exists"}
             # Only the names: each Kid already there keeps the rest, such as their link.
-            out = setup_save.save(self.config, {"kids": [{"name": n} for n in [*names, name]]})
-        if out["result"] != "saved":
-            return HTTPStatus.CONFLICT, out
-        return HTTPStatus.OK, {**out, "result": "added", "kids": self._myclub()["kids"]}
+            status, out = self.connect.save({"kids": [{"name": n} for n in [*names, name]]})
+        if status != HTTPStatus.OK:
+            return status, out
+        return status, {**out, "result": "added", "kids": self._myclub()["kids"]}
 
-    def myclub_done(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def myclub_done(self, raw: Any) -> Reply:
         """Moves setup on from MyClub once a link is saved, leaving the other Kids without one."""
-        with self._saving:
-            statuses = setup_save.read(self.config)["progress"]["sources"]
-            if raw != {} or statuses["myclub"] != "done":
-                return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                    "invalid-answers", "Save a Kid's link first, or skip MyClub.",
-                    errors=["answers: should be {}, once a link is saved"])
-            out = setup_save.save(self.config, {"progress": {"source": _next_source(statuses)}})
-        if out["result"] != "saved":
-            return HTTPStatus.CONFLICT, out
-        return HTTPStatus.OK, out
+        parse(Nothing, raw)
+        return self.connect.move_on("myclub", setup_save.outcome(
+            "invalid-answers", "Save a Kid's link first, or skip MyClub.",
+            errors=["answers: should be {}, once a link is saved"]))
 
     def _myclub(self) -> dict[str, Any]:
         """The Kids known so far, each with whether their link is saved but never the link, and
@@ -748,10 +717,10 @@ class SetupServer:
         """Once every Source is done or skipped, moves setup on to Working and reads the Gmail
         senders in the background, as `discover gmail-senders --json` does: the page asks how far
         it is with `check_reading`, and once they're read setup moves on to Check by itself."""
-        with self._saving:
+        with self.connect.lock:
             progress = setup_save.read(self.config)["progress"]
             if raw != {} or progress["phase"] not in ("connect", "working") \
-                    or _next_source(progress["sources"]) is not None:
+                    or setup_connect.next_source(progress["sources"]) is not None:
                 return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                     "invalid-answers", "Connect each Source, or skip it, first.",
                     errors=["answers: should be {}, once every Source is done or skipped"])
@@ -775,7 +744,7 @@ class SetupServer:
             self._reading = {"result": "reading", "read": done, "total": total}
         try:
             senders = ops.gmail_senders(Config.load(self.config), SENDER_DAYS, progress=read)
-            with self._saving:
+            with self.connect.lock:
                 out = setup_save.save(self.config, {"progress": {
                     "phase": "check", "gmail_senders": senders}})
         except Exception:  # its error can name the address: never leave the page reading
@@ -854,7 +823,7 @@ class SetupServer:
         with self._working:
             if self._health is not None and self._health["result"] == "checking":
                 return HTTPStatus.CONFLICT, {"result": "checking"}
-            with self._saving:
+            with self.connect.lock:
                 progress = setup_save.read(self.config)["progress"]
                 cfg = self._config()
                 offered = self._check(progress)
@@ -884,7 +853,7 @@ class SetupServer:
             if any(c["status"] == "fail" for c in checks):
                 done = {"result": "not-ok", "checks": checks}
             else:
-                with self._saving:
+                with self.connect.lock:
                     out = setup_save.save(self.config, {"progress": {"phase": "first-brief"}})
                 done = {"result": "ok", "checks": checks, "progress": out["progress"]} \
                     if out["result"] == "saved" else {"result": "not-ok", "checks": checks}
@@ -1017,7 +986,7 @@ class SetupServer:
 
     def brief_done(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Moves setup on to Finish once the first Brief has reached the setup parent."""
-        with self._saving:
+        with self.connect.lock:
             phase = setup_save.read(self.config)["progress"]["phase"]
             if raw != {} or phase != "first-brief" or not self._brief_sent():
                 return HTTPStatus.BAD_REQUEST, setup_save.outcome(
@@ -1093,7 +1062,7 @@ class SetupServer:
             return HTTPStatus.OK, {"result": "no-finish"}
         if finish["result"] == "done":
             if self._opened_at_finish and \
-                    _skipped(setup_save.read(self.config)["progress"]["sources"]):
+                    setup_connect.skipped(self.connect.progress()["sources"]):
                 return HTTPStatus.OK, {**finish, "stays": True}
             self.closing = True
         return HTTPStatus.OK, finish
@@ -1184,22 +1153,17 @@ class SetupServer:
             return HTTPStatus.OK, {"result": "opened"}
         return HTTPStatus.OK, {"result": "no-terminal", "type": shlex.join([program, skill])}
 
-    def _ai_signed_in(self, name: str) -> dict[str, Any]:
+    def _ai_signed_in(self, name: str, reply: dict[str, Any] | None = None) -> Reply:
         """Saves the AI sign-in as done, moving setup on to the next Source. Once setup is at
         Finish, it's a switch: `name`, whose test call has just passed, becomes the Household's
         one AI (ADR 0017), and its chat is installed as when Welcome picks it."""
-        with self._saving:
-            progress = setup_save.read(self.config)["progress"]
-            switch = progress["phase"] == "finish"
-            if switch:
-                out = setup_save.save(self.config, {"ai": name})
-            else:
-                statuses = {**progress["sources"], "ai": "done"}
-                out = setup_save.save(self.config, {"progress": {
-                    "sources": {"ai": "done"}, "source": _next_source(statuses)}})
-        if switch and out["result"] == "saved" and name in _chats():
+        with self.connect.lock:
+            switch = self.connect.progress()["phase"] == "finish"
+            status, out = self.connect.save({"ai": name}) if switch \
+                else self.connect.complete("ai")
+        if switch and status == HTTPStatus.OK and name in _chats():
             self._install_chat(name)
-        return out
+        return status, ({**out, **(reply or {})} if status == HTTPStatus.OK else out)
 
     def save_welcome(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Saves Welcome's choices: the AI, the partner or only me, and pilot feedback, and moves
@@ -1220,7 +1184,7 @@ class SetupServer:
         parent = self._gmail_address()
         if parent:
             answers["recipients"] = self._recipients(parent, partner)
-        with self._saving:
+        with self.connect.lock:
             out = setup_save.save(self.config, answers)
         if out["result"] != "saved":
             return (HTTPStatus.BAD_REQUEST if out["result"] == "invalid-answers"
@@ -1259,32 +1223,17 @@ class SetupServer:
             result = "install-failed"
         self._chat_installs[name] = result
 
-    def choose_source(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def choose_source(self, raw: Any) -> Reply:
         """Skips a Source, moving setup on to the next one to do, or opens one from the list,
         which brings a skipped one back."""
-        if not (isinstance(raw, dict) and set(raw) == {"source", "action"}
-                and raw["source"] in setup_save.SOURCES
-                and (raw["action"] == "open" or raw["action"] == "skip" and raw["source"] in SKIPPABLE)):
+        answer = parse(SourceChoice, raw)
+        if answer.action == "open":
+            return self.connect.open(answer.source)
+        if answer.source not in SKIPPABLE:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Open a Source, or skip one that can be skipped.",
-                errors=[f"source: open one of {', '.join(setup_save.SOURCES)}, or skip one of "
-                        f"{', '.join(SKIPPABLE)}"])
-        name, skip = raw["source"], raw["action"] == "skip"
-        with self._saving:
-            statuses = setup_save.read(self.config)["progress"]["sources"]
-            if skip:
-                statuses[name] = "skipped"
-            elif statuses[name] == "skipped":
-                statuses[name] = "to-do"
-            answers: dict[str, Any] = {"progress": {
-                "sources": {name: statuses[name]},
-                "source": _next_source(statuses) if skip else name}}
-            if skip and name == "wilma":  # the Household's school doesn't use it
-                answers["sources"] = {"wilma": {"enabled": False}}
-            out = setup_save.save(self.config, answers)
-        if out["result"] != "saved":
-            return HTTPStatus.CONFLICT, out
-        return HTTPStatus.OK, out
+                errors=[f"source: skip one of {', '.join(SKIPPABLE)}"])
+        return self.connect.skip(answer.source)
 
     def open_site(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Opens one of the sites the page sends the family to, in the default browser, or one of
@@ -1322,49 +1271,35 @@ class SetupServer:
             return HTTPStatus.OK, {"result": "no-list"}
         return HTTPStatus.OK, {"result": "found", "towns": setup_wilma.search(listed, raw["query"])}
 
-    def sign_in_wilma(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def sign_in_wilma(self, raw: Any) -> Reply:
         """Signs in to the Wilma picked from the list with the username and the password typed
         into the page's own fields, by writing the CLI's profile and reading the Kids with it.
         Once signed in, Wilma is done, and the Kids, as Wilma spells them, and the town are the
         Household's. The password is never returned, logged or put on a command line."""
-        fields = {"url", "town", "username", "password"}
-        if not (isinstance(raw, dict) and set(raw) == fields
-                and all(isinstance(raw[k], str) for k in ("url", "username", "password"))
-                and (raw["town"] is None or isinstance(raw["town"], str))
-                and raw["username"].strip() and raw["password"]):
-            return HTTPStatus.BAD_REQUEST, _wilma_invalid()
+        answer = parse(WilmaSignIn, raw)
         if not setup_wilma.installed():
             return HTTPStatus.OK, {"result": "not-installed"}
         listed = setup_wilma.tenants()
         if listed is None:
             return HTTPStatus.OK, {"result": "no-list"}
-        tenant = setup_wilma.entry(listed, raw["url"])
-        towns = setup_wilma.towns_of(tenant) if tenant else []
-        if tenant is None or (raw["town"] not in towns if towns else raw["town"] is not None):
+        tenant = _listed_tenant(listed, answer.url, answer.town)
+        if tenant is None:
             return HTTPStatus.BAD_REQUEST, _wilma_invalid()
         with self._wilma:
-            result, kids = setup_wilma.sign_in(tenant, raw["username"].strip(), raw["password"])
+            result, kids = setup_wilma.sign_in(tenant, answer.username.strip(), answer.password)
         if result != "signed-in":
             return HTTPStatus.OK, {"result": result}
-        return self._signed_in(kids, raw["town"])
+        return self._signed_in(kids, answer.town)
 
-    def save_town(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def save_town(self, raw: Any) -> Reply:
         """For a Household whose school doesn't use Wilma: saves the town picked from Wilma's list
         as its city, and moves setup on with Wilma skipped."""
-        listed = setup_wilma.tenants() or []
-        if not (isinstance(raw, dict) and set(raw) == {"town"} and isinstance(raw["town"], str)
-                and any(raw["town"] in setup_wilma.towns_of(t) for t in listed)):
+        town = parse(TownPick, raw).town
+        if not any(town in setup_wilma.towns_of(t) for t in setup_wilma.tenants() or []):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Pick your town from the list.",
                 errors=["town: should be a town in Wilma's list"])
-        with self._saving:
-            statuses = {**setup_save.read(self.config)["progress"]["sources"], "wilma": "skipped"}
-            out = setup_save.save(self.config, {
-                "city": raw["town"], "sources": {"wilma": {"enabled": False}},
-                "progress": {"sources": {"wilma": "skipped"}, "source": _next_source(statuses)}})
-        if out["result"] != "saved":
-            return HTTPStatus.CONFLICT, out
-        return HTTPStatus.OK, out
+        return self.connect.skip("wilma", {"city": town})
 
     def open_wilma_window(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Opens the Terminal sign-in window (#74), for when the page's own sign-in fails for any
@@ -1406,25 +1341,17 @@ class SetupServer:
             done = {"result": "sign-in-failed"}
         window["result"] = done
 
-    def _signed_in(self, kids: list[dict[str, Any]],
-                   city: str | None) -> tuple[HTTPStatus, dict[str, Any]]:
+    def _signed_in(self, kids: list[dict[str, Any]], city: str | None) -> Reply:
         """Saves the Kids Wilma lists and the town, with Wilma on and done."""
-        with self._saving:
-            statuses = {**setup_save.read(self.config)["progress"]["sources"], "wilma": "done"}
-            answers: dict[str, Any] = {
-                "kids": [{"name": k["name"],
-                          **({"school": k["school"]} if k.get("school") else {}),
-                          **({"class_name": k["class"]} if k.get("class") else {})} for k in kids],
-                "sources": {"wilma": {"enabled": True}},
-                "progress": {"sources": {"wilma": "done"}, "source": _next_source(statuses)},
-            }
-            if city:
-                answers["city"] = city
-            out = setup_save.save(self.config, answers)
-        if out["result"] != "saved":
-            return HTTPStatus.CONFLICT, out
-        return HTTPStatus.OK, {"result": "signed-in", "kids": [k["name"] for k in kids],
-                               "city": city, "progress": out["progress"]}
+        answers: dict[str, Any] = {
+            "kids": [{"name": k["name"],
+                      **({"school": k["school"]} if k.get("school") else {}),
+                      **({"class_name": k["class"]} if k.get("class") else {})} for k in kids],
+            "sources": {"wilma": {"enabled": True}},
+            **({"city": city} if city else {}),
+        }
+        return self.connect.complete("wilma", answers, reply={
+            "result": "signed-in", "kids": [k["name"] for k in kids], "city": city})
 
     @staticmethod
     def _city(address: str | None, town: str | None) -> str | None:
@@ -1437,37 +1364,29 @@ class SetupServer:
             return town if town in towns else towns[0]
         return setup_wilma.WILMA_CITIES.get(address or "")
 
-    def connect_gmail(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    def connect_gmail(self, raw: Any) -> Reply:
         """Tests the App Password pasted into the page's own field with Gmail and stores it in
         the Keychain, through the chat's Gmail step (ADR 0007). Once it's saved, Gmail is done,
         the address is the Household's Gmail and the setup parent's, first among the Recipients.
         The App Password is never returned, logged, saved anywhere else or put on a command line."""
-        if not (isinstance(raw, dict) and set(raw) == {"address", "password"}
-                and isinstance(raw["address"], str) and isinstance(raw["password"], str)):
-            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                "invalid-answers", "Give the Gmail address and the App Password.",
-                errors=["answers: should be the address and the password, as text"])
-        address = raw["address"].strip().lower()
+        answer = parse(GmailSignIn, raw)
+        address = answer.address.strip().lower()
         if not ADDRESS.match(address):
             return HTTPStatus.OK, {"result": "no-address"}
-        result, _, extra = setup_gmail.sign_in(address, raw["password"])
+        result, _, extra = setup_gmail.sign_in(address, answer.password)
         if result != "saved":
             return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
-        with self._saving:
-            progress = setup_save.read(self.config)["progress"]
-            statuses = {**progress["sources"], "gmail": "done"}
-            answers: dict[str, Any] = {
-                "sources": {"gmail": {"address": address}},
-                "progress": {"sources": {"gmail": "done"}, "source": _next_source(statuses)},
-            }
-            if "partner" in progress:  # Welcome's choice, waiting for the parent's address
-                answers["recipients"] = self._recipients(address, progress["partner"])
-            elif not _section(self._config_data(), "email").get("to"):
-                answers["recipients"] = [{"address": address}]
-            out = setup_save.save(self.config, answers)
-        if out["result"] != "saved":
-            return HTTPStatus.CONFLICT, out
-        return HTTPStatus.OK, {**out, "address": address}
+        return self.connect.complete("gmail", lambda progress: self._gmail_answers(address, progress),
+                                     reply={"address": address})
+
+    def _gmail_answers(self, address: str, progress: dict[str, Any]) -> dict[str, Any]:
+        """Gmail's address, and the setup parent first among the Recipients."""
+        answers: dict[str, Any] = {"sources": {"gmail": {"address": address}}}
+        if "partner" in progress:  # Welcome's choice, waiting for the parent's address
+            answers["recipients"] = self._recipients(address, progress["partner"])
+        elif not _section(self._config_data(), "email").get("to"):
+            answers["recipients"] = [{"address": address}]
+        return answers
 
     def _recipients(self, parent: str, partner: dict[str, Any] | None) -> list[dict[str, Any]]:
         """The setup parent first, keeping the language saved for them, then the partner."""
@@ -1517,6 +1436,47 @@ class SetupServer:
         """The language already picked, from the config: None until there's one the page offers."""
         language = self._config_data().get("summary_language")
         return language if language in LANGUAGES else None
+
+
+# What each Connect step's call takes. A secret's field is named in a refusal, never its value.
+
+
+class SourceChoice(Strict):
+    source: setup_save.SourceName
+    action: Literal["open", "skip"]
+
+
+class GmailSignIn(Strict):
+    address: str
+    password: str  # the App Password
+
+
+class WilmaSignIn(Strict):
+    url: str
+    town: str | None  # None for a Wilma whose list entry names no town
+    username: str = Field(pattern=r"\S")
+    password: str = Field(min_length=1)
+
+
+class TownPick(Strict):
+    town: str
+
+
+class ClaudeToken(Strict):
+    token: str
+
+
+class GatewayKey(Strict):
+    key: str
+
+
+class MyClubLink(Strict):
+    kid: str
+    link: str  # a secret (ADR 0007)
+
+
+class KidName(Strict):
+    name: str
 
 
 class PartnerAnswer(BaseModel):
@@ -1678,27 +1638,23 @@ def _keychain_code(extra: dict[str, Any]) -> dict[str, Any]:
     return {"code": extra["code"]} if "code" in extra else {}
 
 
+def _listed_tenant(listed: list[dict[str, Any]], url: str,
+                   town: str | None) -> dict[str, Any] | None:
+    """The entry of Wilma's list at `url` when `town` is one of its towns, or is None for an entry
+    without any; else None."""
+    tenant = setup_wilma.entry(listed, url)
+    towns = setup_wilma.towns_of(tenant) if tenant else []
+    if tenant is None or (town not in towns if towns else town is not None):
+        return None
+    return tenant
+
+
 def _wilma_invalid() -> dict[str, Any]:
     # Names the fields only: the answers carry the password.
     return setup_save.outcome(
         "invalid-answers", "Pick your town's Wilma from the list and give the username and the "
         "password.", errors=["answers: should be the url and town picked from the list, and the "
                              "username and the password, as text"])
-
-
-def _next_source(statuses: dict[str, str]) -> str | None:
-    """The first Source in the list still to do, or None once each is done or skipped."""
-    return next((s for s in _sources() if statuses.get(s) == "to-do"), None)
-
-
-def _sources() -> list[str]:
-    """The Sources this system offers, in the list's order."""
-    return [s for s in setup_save.SOURCES if macos_only.offers(s)]
-
-
-def _skipped(statuses: dict[str, str]) -> bool:
-    """Whether a Source this system offers was skipped, so it can be added from Connect's list."""
-    return any(statuses.get(s) == "skipped" for s in _sources())
 
 
 def _section(data: dict[str, Any], key: str) -> dict[str, Any]:
@@ -1792,7 +1748,11 @@ class _Handler(BaseHTTPRequestHandler):
             if raw is _NOT_JSON:
                 return self._json(HTTPStatus.BAD_REQUEST, setup_save.outcome(
                     "invalid-answers", "The answers aren't JSON.", errors=["not JSON"]))
-            self._json(*actions[path](raw))
+            try:
+                reply = actions[path](raw)
+            except setup_connect.Malformed as e:  # the same refusal from every call
+                reply = HTTPStatus.BAD_REQUEST, e.answer
+            self._json(*reply)
             if setup.closing:  # setup is done, and the page has been told
                 setup.stop()
             return None
