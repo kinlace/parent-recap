@@ -14,7 +14,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Source:
-    name: str                           # in the config, the state, Message.source and the page's steps
+    """One Source as the program knows it everywhere but its collector and its setup panel."""
+    name: str                          # in the config, the state, Message.source and the page's steps
     labels: Mapping[str, str]           # what each reviewed language (brief_text.TEXT) calls it
     connected: Callable[[Config], bool]  # whether the Household's config has it read
     skippable: bool                     # whether the setup page lets a family skip it, to add later

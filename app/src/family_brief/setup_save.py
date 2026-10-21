@@ -54,12 +54,12 @@ from .brief_text import Language
 from .config import Config, WhatsAppChat
 
 Phase = Literal["welcome", "connect", "working", "check", "first-brief", "finish"]
-# The setup page's Source list: the Sources in the registry's connect order, and the AI's step
-# among them, after Gmail.
-_AI_RANK = 2
-SOURCES: tuple[str, ...] = tuple(name for _, name in sorted(
-    [*((s.connect_rank, s.name) for s in source_registry.ALL), (_AI_RANK, "ai")]))
-SourceName = Literal[SOURCES]  # in the Source list's order
+# The setup page's Source list: the Sources in the registry's connect order, with the AI's step
+# right after Gmail's.
+_CONNECT = [s.name for s in source_registry.in_connect_order()]
+_AI_AT = _CONNECT.index(source_registry.GMAIL.name) + 1
+SOURCES: tuple[str, ...] = (*_CONNECT[:_AI_AT], "ai", *_CONNECT[_AI_AT:])
+SourceName = Literal[SOURCES]
 Status = Literal["to-do", "done", "skipped"]
 
 

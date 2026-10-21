@@ -563,8 +563,8 @@ def likely_sender(domain: str, cfg: Config) -> bool:
     if domain in PUBLIC_DOMAINS:
         return False
     # A connected Source's own mail: reading it too would put the same news in the Brief twice (#361).
-    connected = [s.sender_domain for s in sources.ALL if s.sender_domain and s.connected(cfg)]
-    if any(_within(domain, d) for d in connected):
+    own_mail = [s.sender_domain for s in sources.ALL if s.sender_domain and s.connected(cfg)]
+    if any(_within(domain, d) for d in own_mail):
         return False
     town = city_domain(cfg.city)
     ours = [*KNOWN_SENDERS, *([town] if town else [])]

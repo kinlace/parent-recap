@@ -27,7 +27,7 @@ def test_the_connect_list_puts_wilma_first_and_myclub_last():
     assert [s.name for s in sources.in_connect_order()] == ["wilma", "gmail", "whatsapp", "myclub"]
 
 
-def test_a_name_no_source_has_is_its_own_label():
+def test_a_source_is_found_by_its_name_and_any_other_name_is_its_own_label():
     assert sources.named("wilma") is sources.WILMA
     assert sources.named("calendar") is None
     assert sources.label_of("myclub") == "MyClub"
