@@ -5,14 +5,35 @@ From `app/`:
 ```bash
 python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'   # once, in an isolated env
 python -m pytest                     # whole suite
+python -m pytest -m unit             # one layer (or: python -m pytest tests/unit)
 ```
 
-CI runs the suite on macOS and on Windows. A test that needs macOS is marked `@pytest.mark.macos`
+## Layers
+
+Every test file lives in the folder of its layer, and `conftest.py` marks each test with its
+folder's name, so `-m <layer>` runs one layer. A file outside these folders stops the run.
+
+| Layer         | Folder               | What it may fake                                                                                                                                                           |
+| ------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unit`        | `tests/unit/`        | Nothing: pure functions, table-driven.                                                                                                                                     |
+| `integration` | `tests/integration/` | In-memory fakes around one module, which is called through its interface.                                                                                                  |
+| `e2e`         | `tests/e2e/`         | Only the OS and network edge (`conftest.py`'s harness); drives `main()` or the setup page over HTTP.                                                                       |
+| `adapters`    | `tests/adapters/`    | The command an OS adapter calls (`launchctl`, `security`, `pmset`), or nothing where the real OS runs (Credential Manager, Task Scheduler); the `_windows` twins are here. |
+| `scripts`     | `tests/scripts/`     | The downloads and programs `install.sh`, `install.ps1`, `release.py` and `issue-loop.sh` call; the workflows are read as written.                                          |
+
+The shared fakes (`conftest.py`, `fake_system.py`, `fake_node.py`, `fake_packages.py`), the golden
+files and `no_google/` and `no_pty/` stay in `tests/`. Every layer's folder is on the import path,
+so a test may import a helper from a test in another layer. CI runs the layers as separate steps,
+fastest first (unit, integration, e2e, adapters, scripts), so a failure in the fast layers shows
+in a minute.
+
+CI runs the suite on macOS and on Windows. Windows runs the unit, integration and adapter layers,
+and the end-to-end tests marked `windows`. A test that needs macOS is marked `@pytest.mark.macos`
 (a whole module with `pytestmark = pytest.mark.macos`) and skips itself elsewhere: the macOS
 adapters, macOS-only features (WhatsApp for Mac and its Full Disk Access, the Passwords app),
 `install.sh` and the other shell scripts, permission bits, and what Windows can't do yet (finding
-programs by bare name, shell-script stand-ins, the pseudo-terminal windows). Every other test runs
-on Windows too. When a Windows ticket makes one of these work there, it drops the mark. The
+programs by bare name, shell-script stand-ins, the pseudo-terminal windows). Every other test in
+the layers Windows runs runs there too. When a Windows ticket makes one of these work there, it drops the mark. The
 `windows_programs` fixture finds programs the way Windows does, on any system, so the setup page's
 Codex and Claude Code installs and doctor's Codex and Claude checks are tested on the Mac too. A test that needs Windows is
 marked `@pytest.mark.windows` the same way: the Credential Manager adapter
@@ -37,8 +58,9 @@ run from the installed program leaving no task, credential or folder of Parent R
 exiting with its result, when run as a file.
 
 `unit/` holds table-driven tests of pure modules, which fake nothing: the Brief's own text, the
-Kids' placeholders, citations, the pure parts of Weekend Picks, and how summarize parses and
-normalises the model's reply. A branch a unit test covers gets no end-to-end test of its own (#427).
+Kids' placeholders, citations, the pure parts of Weekend Picks, how summarize parses and
+normalises the model's reply, the AI filter and the held-back check on their own, the eval's
+scoring and the llm package's in-memory adapter. A branch a unit test covers gets no end-to-end test of its own (#427).
 
 `test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
