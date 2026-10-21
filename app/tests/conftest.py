@@ -42,10 +42,11 @@ import requests
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli, feedback, gateway, summarize, tools
+from family_brief import __main__ as cli, feedback, gateway, tools
 from family_brief.actions import calendar as calendar_action, email as email_action
 from family_brief.collectors import gmail, myclub, whatsapp, wilma
 from family_brief.collectors.base import CalendarEvent, Collected, Message
+from family_brief.llm import retry
 from family_brief.system import desktop, jobs, secrets, wake, windows_only
 from fake_system import FakeDesktop, FakeJobs, FakeSecrets, FakeWake
 
@@ -408,8 +409,8 @@ class Harness:
             self.pauses.append(seconds)
             self.clock += seconds
 
-        mp.setattr(summarize, "_sleep", pause)
-        mp.setattr(summarize, "_clock", lambda: self.clock)
+        mp.setattr(retry, "_sleep", pause)
+        mp.setattr(retry, "_clock", lambda: self.clock)
 
         def send(subject: str, body_text: str, from_addr: str, to_addrs: list[str],
                  body_html: str | None = None,

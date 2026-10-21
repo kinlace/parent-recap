@@ -13,7 +13,8 @@ from pathlib import Path
 import pytest
 from conftest import msg, program
 
-from family_brief import ops, summarize, tools
+from family_brief import ops, tools
+from family_brief.llm import codex as codex_backend
 
 TOKEN = "sk-ant-oat01-Abc_def-123456789"
 
@@ -25,7 +26,7 @@ def terminal_path(harness, monkeypatch) -> Path:
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(summarize, "CODEX_BUNDLED", ())  # not this Mac's own apps
+    monkeypatch.setattr(codex_backend, "CODEX_BUNDLED", ())  # not this Mac's own apps
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
     return harness.home / "tools" / "bin"
 
@@ -158,15 +159,15 @@ def test_without_claude_anywhere_doctor_says_how_to_install_it(harness, terminal
 @pytest.mark.macos
 def test_codex_inside_the_chatgpt_app_is_one_of_the_bundled_ones():
     """The ChatGPT app keeps its Codex in codex-cli/bin, and a Mac may have only that app (#203)."""
-    assert "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex" in summarize.CODEX_BUNDLED
-    assert summarize.CODEX_BUNDLED.index("/Applications/Codex.app/Contents/Resources/codex") < \
-        summarize.CODEX_BUNDLED.index("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex")
+    assert "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex" in codex_backend.CODEX_BUNDLED
+    assert codex_backend.CODEX_BUNDLED.index("/Applications/Codex.app/Contents/Resources/codex") < \
+        codex_backend.CODEX_BUNDLED.index("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex")
 
 
 def test_the_evening_job_runs_the_codex_inside_the_chatgpt_app(harness, terminal_path, monkeypatch):
     app = harness.home / "Applications" / "ChatGPT.app"
     codex = program(app / "Contents" / "Resources" / "codex-cli" / "bin", "codex")
-    monkeypatch.setattr(summarize, "CODEX_BUNDLED", (str(codex),))
+    monkeypatch.setattr(codex_backend, "CODEX_BUNDLED", (str(codex),))
     harness.config["llm"]["backend"] = "codex"
 
     the_evening_job(harness, monkeypatch)

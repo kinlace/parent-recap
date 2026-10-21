@@ -32,10 +32,10 @@ import requests
 import yaml
 
 from family_brief import (__main__ as cli, feedback, install_record, ops, run_lock, setup_ai,
-                          setup_save, setup_server, setup_status, setup_steps, setup_wilma,
-                          summarize)
+                          setup_save, setup_server, setup_status, setup_steps, setup_wilma)
 from family_brief.collectors import myclub, whatsapp
 from family_brief.config import Config
+from family_brief.llm import codex as codex_backend
 from family_brief.state import State
 from family_brief.system import jobs, wake
 from family_brief.system.secrets_error import SecretsError
@@ -508,7 +508,7 @@ def ai(harness, monkeypatch):
     bin_dir = harness.home / "bin"
     bin_dir.mkdir()
     monkeypatch.setenv("PATH", str(bin_dir))
-    monkeypatch.setattr(summarize, "CODEX_BUNDLED", ())  # not this Mac's own apps
+    monkeypatch.setattr(codex_backend, "CODEX_BUNDLED", ())  # not this Mac's own apps
 
     def install(name: str, where: Path = bin_dir) -> None:
         where.mkdir(parents=True, exist_ok=True)

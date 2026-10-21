@@ -14,7 +14,7 @@ import yaml
 
 from fake_system import FakeSecrets
 
-from family_brief import summarize
+from family_brief.llm import retry
 from family_brief.eval import __main__ as runner
 from family_brief.eval.cases import BUNDLED, load_cases
 from family_brief.system import secrets
@@ -288,7 +288,7 @@ def test_a_busy_model_is_tried_again_and_its_pauses_are_not_counted_as_its_time(
         paused.append(seconds)
         clock[0] += seconds
 
-    monkeypatch.setattr(summarize, "_sleep", pause)
+    monkeypatch.setattr(retry, "_sleep", pause)
     monkeypatch.setattr(runner.time, "monotonic", lambda: clock[0])
     codex = tmp_path / "codex"
     codex.write_text("")

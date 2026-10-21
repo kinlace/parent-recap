@@ -168,36 +168,6 @@ def test_normal_night_matches_golden(harness, golden, language):
     assert sorted(v["google_event_id"] for v in state["created_event_hashes"].values()) == ["ics", "ics"]
 
 
-def test_claude_runs_without_tools_from_an_empty_dir(harness):
-    normal_night(harness)
-
-    assert harness.run() == 0
-
-    [call] = harness.model_calls
-    assert_isolated_claude(call)
-
-
-def test_claude_does_not_inherit_the_callers_claude_code_session(harness, monkeypatch):
-    # e.g. the setup skill's preview run, started from inside a Claude Code session
-    normal_night(harness)
-    for var in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_HOST_SESSION_ID",
-                "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_AGENT_SDK_VERSION"):
-        monkeypatch.setenv(var, "from-the-parent")
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "parent-token")
-    harness.secrets["claude-oauth-token"] = "keychain-token"
-
-    assert harness.run() == 0
-
-    [call] = harness.model_calls
-    assert call.env is not None
-    leaked = sorted(k for k in call.env
-                    if k == "CLAUDECODE" or k.startswith(("CLAUDE_CODE_", "CLAUDE_AGENT_SDK_")))
-    assert leaked == ["CLAUDE_CODE_OAUTH_TOKEN"]
-    assert call.env["CLAUDE_CODE_OAUTH_TOKEN"] == "keychain-token"
-    assert call.env["HOME"] == str(harness.home)
-    assert call.stdin_source is None  # stdin carries our prompt, not the caller's terminal
-
-
 def test_codex_backend_sends_prompt_on_stdin(harness, golden, tmp_path):
     normal_night(harness)
     codex = tmp_path / "codex"

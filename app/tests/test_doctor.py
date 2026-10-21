@@ -14,8 +14,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from family_brief import __main__ as cli, ops, setup_steps, summarize, whatsapp_python
+from family_brief import __main__ as cli, ops, setup_steps, whatsapp_python
 from family_brief.collectors import whatsapp, wilma
+from family_brief.llm import codex as codex_backend
 from family_brief.system import jobs
 from conftest import program
 from test_setup_whatsapp import fake_mac
@@ -108,7 +109,7 @@ def test_doctor_in_tmux_says_to_store_the_token_outside_it(harness, claude_witho
 def codex_on_windows(harness, nothing_loaded, windows_programs, monkeypatch) -> Path:
     """A Household on ChatGPT, on a PC where codex.exe would be where OpenAI's installer puts it,
     which the test puts there or not. Returns where."""
-    monkeypatch.setattr(summarize, "CODEX_BUNDLED", ())  # not this Mac's own apps
+    monkeypatch.setattr(codex_backend, "CODEX_BUNDLED", ())  # not this Mac's own apps
     harness.config["llm"]["backend"] = "codex"
     harness.model_reply = {"ok": True}
     return windows_programs / "Programs" / "OpenAI" / "Codex" / "bin" / "codex.exe"

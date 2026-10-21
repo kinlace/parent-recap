@@ -2,29 +2,20 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
-import shutil
-import subprocess
-import sys
-import time
 from collections.abc import Callable, Collection, Mapping
-from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parseaddr
-from pathlib import Path
 from string import Template
-from typing import Any, TypeVar
+from typing import Any
 from zoneinfo import ZoneInfo
 
-import requests
-
-from . import ai_filter, citations, gateway, held_back, kid_placeholders, languages, tools
+from . import ai_filter, citations, held_back, kid_placeholders, languages, llm
 from .brief_text import TEXT, BriefText
 from .languages import FINNISH_TERMS, is_finnish
 from .collectors.base import CalendarEvent, Message
 from .config import Config
-from .system import secrets
+from .llm import claude, codex, parse, retry
 
 _ = CalendarEvent  # re-export-friendly
 
@@ -186,98 +177,31 @@ def add_the_nights_people(cfg: Config, placeholders: ai_filter.Placeholders, mes
     placeholders.add_people([*third_parties(cfg, messages), *earlier], keep_names=household_names(cfg))
 
 
-def _strip_code_fence(text: str) -> str:
-    m = re.search(r"```(?:json)?\s*(.+?)\s*```", text, re.DOTALL)
-    return m.group(1) if m else text
+# The backend helpers as they were named here before the llm package (ADR 0023), for the callers
+# that still use them until they ask the package.
+LLMReply = llm.LLMReply
+CALL_BUDGET, BUSY_PAUSES = llm.CALL_BUDGET, llm.BUSY_PAUSES
+_strip_code_fence = parse.strip_code_fence
+_parse_cli_response = parse.cli_response
+_parse_model_json = parse.model_json
+_busy_reason = retry.busy_reason
+_sessionless_env = claude.sessionless_env
+_claude_env = claude.signed_in_env
+_claude_reply = claude.reply_of
+claude_token_env = claude.token_env
+claude_test_call = claude.test_call
+claude_install = claude.install_line
+native_claude_dir = claude.native_dir
+find_claude = claude.find
+CLAUDE_INSTALL, CLAUDE_INSTALL_WINDOWS = claude.CLAUDE_INSTALL, claude.CLAUDE_INSTALL_WINDOWS
+CODEX_APPS, CODEX_IN_APP, CODEX_INSTALL = codex.CODEX_APPS, codex.CODEX_IN_APP, codex.CODEX_INSTALL
+codex_missing = codex.missing
+find_codex_at = codex.find_at
 
 
-def _extract_json_object(text: str) -> str:
-    """Find the largest balanced JSON object substring."""
-    depth = 0
-    start = -1
-    best: tuple[int, int] | None = None
-    in_str = False
-    escape = False
-    for i, ch in enumerate(text):
-        if in_str:
-            if escape:
-                escape = False
-            elif ch == "\\":
-                escape = True
-            elif ch == '"':
-                in_str = False
-            continue
-        if ch == '"':
-            in_str = True
-            continue
-        if ch == "{":
-            if depth == 0:
-                start = i
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0 and start >= 0:
-                if best is None or (i - start) > (best[1] - best[0]):
-                    best = (start, i + 1)
-    return text[best[0]:best[1]] if best else text
-
-
-def _parse_cli_response(stdout: str) -> tuple[dict[str, Any], bool]:
-    """Claude CLI returns a JSON envelope with a 'result' field containing the model output.
-    Returns the object and whether it needed json-repair, like _parse_model_json."""
-    envelope = json.loads(stdout)
-    result = envelope.get("result", "")
-    if isinstance(result, dict):
-        return result, False
-    if not isinstance(result, str):
-        raise ValueError(f"Claude result is a {type(result).__name__}, not text or an object")
-    return _parse_model_json(result)
-
-
-def _save_unparsed(result: str, reason: object) -> None:
-    dbg = Path.home() / "ParentRecap" / "logs" / "summarize_failed.txt"
-    dbg.parent.mkdir(parents=True, exist_ok=True)
-    dbg.write_text(result, encoding="utf-8")
-    log.error("JSON parse fully failed (%s). Raw saved to %s", reason, dbg)
-
-
-def _parse_model_json(result: str) -> tuple[dict[str, Any], bool]:
-    """Parse the model's reply as one JSON object, tolerating fences and small syntax slips, and
-    say whether it needed json-repair: a cut-off reply is repaired too, minus what came after the cut.
-    Anything that does not yield an object raises ValueError, so the caller falls back."""
-    result = _strip_code_fence(result.strip())
-    # Attempt 1: direct, strict=False (allows control chars inside strings)
-    try:
-        parsed = json.loads(result, strict=False)
-    except json.JSONDecodeError as e1:
-        log.warning("First JSON parse failed (%s), trying bracket extraction", e1)
-    else:
-        if isinstance(parsed, dict):
-            return parsed, False
-        # Well-formed JSON of the wrong shape, e.g. a list of per-kid entries. Digging an
-        # object out of it would silently give a wrong Brief, so treat it as a model failure.
-        reason = f"reply is a JSON {type(parsed).__name__}, not an object"
-        _save_unparsed(result, reason)
-        raise ValueError(reason)
-    # Attempt 2: extract largest balanced {...}
-    extracted = _extract_json_object(result)
-    try:
-        parsed = json.loads(extracted, strict=False)
-        if isinstance(parsed, dict):
-            return parsed, False
-        log.warning("Bracket extraction gave a %s, trying json-repair", type(parsed).__name__)
-    except json.JSONDecodeError as e2:
-        log.warning("Bracket-extracted parse failed (%s), trying json-repair", e2)
-    # Attempt 3: json-repair (lenient — handles unescaped quotes, trailing commas, etc.)
-    try:
-        from json_repair import repair_json
-        fixed = repair_json(extracted, return_objects=True)
-        if isinstance(fixed, dict):
-            return fixed, True
-        raise ValueError(f"json-repair returned non-dict: {type(fixed)}")
-    except Exception as e3:
-        _save_unparsed(result, e3)
-        raise
+def find_codex(cfg: Config) -> str | None:
+    """The codex binary to run, as the config's llm section leads to it."""
+    return codex.find_at(cfg.llm.codex_path)
 
 
 # Identifiers the model doesn't need: Gmail's link back to a message, which holds its Message-ID,
@@ -342,392 +266,12 @@ def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[di
     ), payload
 
 
-def _sessionless_env() -> dict[str, str]:
-    # Started from inside a Claude Code session (setup preview, doctor), the parent's session
-    # variables would make the child think it is part of that session. Only auth is kept.
-    return {k: v for k, v in os.environ.items()
-            if k == "CLAUDE_CODE_OAUTH_TOKEN"
-            or not (k == "CLAUDECODE" or k.startswith(("CLAUDE_CODE_", "CLAUDE_AGENT_SDK_")))}
-
-
-def claude_token_env(token: str) -> dict[str, str]:
-    """Env for the `claude` CLI that signs in with the subscription token and nothing else."""
-    env = _sessionless_env()
-    env["CLAUDE_CODE_OAUTH_TOKEN"] = token
-    # Make sure no conflicting auth wins
-    env.pop("ANTHROPIC_API_KEY", None)
-    env.pop("ANTHROPIC_AUTH_TOKEN", None)
-    env.pop("ANTHROPIC_BASE_URL", None)
-    return env
-
-
-# Claude Code's native installer: it installs into ~/.local/bin and updates itself, where a
-# global npm install can leave it unable to.
-CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
-# Its Windows twin, for PowerShell, which puts claude.exe in %USERPROFILE%\.local\bin, without
-# admin (https://code.claude.com/docs/en/setup).
-CLAUDE_INSTALL_WINDOWS = "irm https://claude.ai/install.ps1 | iex"
-
-
-def claude_install() -> str:
-    """The line that installs Claude Code on this system."""
-    return CLAUDE_INSTALL_WINDOWS if sys.platform == "win32" else CLAUDE_INSTALL
-
-
-def native_claude_dir() -> Path:
-    """Where Claude Code's native installer (https://claude.ai/install.sh) puts `claude`."""
-    return Path.home() / ".local" / "bin"
-
-
-def find_claude() -> str | None:
-    """The claude binary to run. The native installer adds its folder to the shell's PATH, which
-    a shell started before it, or the nightly job, may not have, so tools.find looks there too."""
-    return tools.find("claude")
-
-
-def claude_test_call(program: str, env: dict[str, str]) -> str | None:
-    """Makes one small call with `claude`, as doctor and setup check it. Returns None when it
-    worked, otherwise what went wrong."""
-    try:
-        # Skip user settings like the nightly call does, so the check sees what the nightly run sees.
-        proc = subprocess.run([program, "-p", "Reply with just the two letters OK",
-                               "--output-format", "json", "--setting-sources", "",
-                               "--no-session-persistence"],
-                              capture_output=True, text=True, encoding="utf-8", timeout=120, env=env,
-                              stdin=subprocess.DEVNULL)
-        data = json.loads(proc.stdout or "{}")
-    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
-        return str(e)
-    if data.get("is_error") or proc.returncode != 0:
-        return str(data.get("result") or proc.stderr)
-    return None
-
-
-def _claude_env() -> tuple[dict[str, str], str]:
-    """Build env for `claude` CLI. Prefer subscription OAuth over API key.
-
-    Returns (env_dict, auth_label) where label is one of:
-      - "keychain-oauth"   → CLAUDE_CODE_OAUTH_TOKEN (subscription, free)
-      - "keychain-api-key" → ANTHROPIC_API_KEY (paid API)
-      - "keychain-needs-prompt" → one is stored, but macOS asks for the Keychain password
-                             before it can be read, so whatever the parent process set is used
-      - "inherited"        → fall through to whatever the parent process set
-    """
-    needs_prompt = False
-
-    def read(account: str) -> str | None:
-        nonlocal needs_prompt
-        try:
-            return (secrets.get(account) or "").strip() or None
-        except secrets.SecretsError:  # there, or maybe there, but not read: never "missing"
-            needs_prompt = True
-        return None
-
-    oauth = read("claude-oauth-token")
-    if oauth:
-        return claude_token_env(oauth), "keychain-oauth"
-    env = _sessionless_env()
-    api_key = read("anthropic-api-key")
-    if api_key:
-        env["ANTHROPIC_API_KEY"] = api_key
-        env.pop("ANTHROPIC_BASE_URL", None)
-        env.pop("ANTHROPIC_AUTH_TOKEN", None)
-        return env, "keychain-api-key"
-    return env, "keychain-needs-prompt" if needs_prompt else "inherited"
-
-
-# The pauses before each new try while the model is busy: at capacity, rate-limited, overloaded.
-BUSY_PAUSES = (60, 180, 600)
-# How long one model call may take, its tries and pauses together, before the night gives up on
-# it and sends the Brief without a Digest. The budget is per call: the evening run makes one for
-# the Brief and one per Recipient's translation, though a busy model rarely stays busy that long.
-CALL_BUDGET = 30 * 60
-
-# The errors waiting won't fix win over those it will: signed out, an expired token or key, or a
-# plan's usage limit, which lasts hours, or API credit run out, which lasts until someone pays
-# (OpenAI says so with a 429).
-# A status number counts only as a status ("status: 429", "API Error: 529", "HTTP 503"), so
-# that a token count or a time in the output isn't taken for one.
-_STATUS = r"(?:status|error|http)\W{0,3}"
-_WONT_PASS = re.compile(r"not logged in|log ?in again|sign in again|/login|unauthori[sz]ed|forbidden|"
-                        rf"{_STATUS}40[13]\b|authentication|invalid (?:api key|credentials)|expired|"
-                        r"usage limit|limit reached|quota|credit.balance", re.I)
-_BUSY = re.compile(r"at capacity|overloaded|rate.?limit|too many requests|"
-                   rf"{_STATUS}(?:429|5(?:00|02|03|04|29))\b|"
-                   r"service unavailable|bad gateway|temporarily unavailable", re.I)
-
-# Seams for the tests, which record the pauses on a fake clock.
-_sleep = time.sleep
-_clock = time.monotonic
-
-
-def _busy_reason(proc: subprocess.CompletedProcess, prompt: str | None) -> str | None:
-    """What says the model is busy in a failed call's output, or None when it isn't busy or
-    waiting won't help. codex echoes the prompt on stderr, and the Household's messages in it are
-    left out: they can say "at capacity" too."""
-    if proc.returncode == 0:
-        return None
-    said = f"{proc.stdout}\n{proc.stderr}"
-    if prompt:
-        said = said.replace(prompt, "")
-    if _WONT_PASS.search(said):
-        return None
-    busy = _BUSY.search(said)
-    return busy.group(0) if busy else None
-
-
-def _minutes(seconds: float) -> str:
-    return f"{seconds / 60:g} min"
-
-
-@dataclass
-class _Ran:
-    """A finished CLI call and how long it paused for a busy model before it."""
-    proc: subprocess.CompletedProcess
-    waited: float
-
-
-def _run_with_retry(cmd: list[str], timeout: int, what: str, budget: int = CALL_BUDGET,
-                    **kwargs) -> _Ran:
-    """Run an LLM CLI, retrying as _with_retry does. Both CLIs occasionally hang on start."""
-    proc, waited = _with_retry(
-        lambda: subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout, **kwargs),
-        lambda proc: _busy_reason(proc, kwargs.get("input")), timeout, what, budget)
-    return _Ran(proc, waited)
-
-
-_R = TypeVar("_R")
-
-
-def _with_retry(call: Callable[[], _R], busy_reason: Callable[[_R], str | None], timeout: int,
-                what: str, budget: int) -> tuple[_R, float]:
-    """Make one model `call`, retrying once on timeout, and after each of BUSY_PAUSES while
-    `busy_reason` says the model is busy, as long as the next try could still end within `budget`
-    seconds of the first. Errors waiting won't fix, such as being signed out, come back at once.
-    Returns the last answer and the seconds paused for a busy model."""
-    started = _clock()
-    pauses = iter(BUSY_PAUSES)
-    waited = 0.0
-    timed_out = False
-    attempt = 0
-    while True:
-        attempt += 1
-        log.info("Calling %s (attempt %d)", what, attempt)
-        try:
-            answer = call()
-        except (subprocess.TimeoutExpired, TimeoutError) as e:
-            log.warning("%s timeout on attempt %d (%ds)", what, attempt, timeout)
-            if timed_out:
-                raise RuntimeError(f"{what} timed out twice after {timeout}s each") from e
-            timed_out = True
-            _sleep(5)
-            continue
-        busy = busy_reason(answer)
-        if not busy:
-            return answer, waited
-        pause = next(pauses, None)
-        if pause is None or _clock() - started + pause + timeout > budget:
-            log.error("%s still busy after %d attempts (%s); giving up on it tonight", what, attempt, busy)
-            return answer, waited
-        log.warning("%s busy on attempt %d (%s); trying again in %s", what, attempt, busy, _minutes(pause))
-        _sleep(pause)
-        waited += pause
-
-
-def _save_diagnostics(name: str, proc: subprocess.CompletedProcess, cmd_desc: str) -> None:
-    dbg = Path.home() / "ParentRecap" / "logs" / name
-    dbg.parent.mkdir(parents=True, exist_ok=True)
-    dbg.write_text(
-        f"returncode: {proc.returncode}\n"
-        f"stderr:\n{proc.stderr}\n\n"
-        f"stdout:\n{proc.stdout}\n\n"
-        f"cmd (truncated): {cmd_desc}\n"
-        f"PATH: {os.environ.get('PATH', '')}\n"
-        f"HOME: {os.environ.get('HOME', '')}\n"
-        f"USER: {os.environ.get('USER', '')}\n"
-    , encoding="utf-8")
-    log.error("LLM CLI diagnostics saved to %s", dbg)
-
-
-@dataclass
-class LLMReply:
-    """One backend call: the parsed object, the model's reply text as given, the tokens it used
-    by kind ({"input", "cache_write", "cached_input", "output"}, each priced apart; None where
-    the backend does not report them), whether the object needed json-repair, the seconds it
-    paused for a busy model, and the model the backend says answered, if it says."""
-    data: dict[str, Any]
-    text: str
-    usage: dict[str, int] | None = None
-    repaired: bool = False
-    waited: float = 0.0
-    model: str | None = None
-
-
-# The claude CLI's usage fields, by the kind of token LLMReply.usage calls them.
-_CLAUDE_USAGE = {"input": "input_tokens", "cache_write": "cache_creation_input_tokens",
-                 "cached_input": "cache_read_input_tokens", "output": "output_tokens"}
-
-
-def _claude_reply(stdout: str) -> tuple[str, dict[str, int] | None, str | None]:
-    """The reply text, the tokens by kind and the model that wrote most of the reply."""
-    envelope = json.loads(stdout)
-    result = envelope.get("result", "")
-    usage = envelope.get("usage") or {}
-    by_model = envelope.get("modelUsage") or {}
-    model = max(by_model, key=lambda m: (by_model[m] or {}).get("outputTokens") or 0) if by_model else None
-    text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
-    return text, ({kind: usage.get(k) or 0 for kind, k in _CLAUDE_USAGE.items()} if usage else None), model
-
-
-def _run_claude(cfg: Config, prompt: str, system_prompt: str, timeout: int, budget: int) -> LLMReply:
-    import tempfile
-    # Isolated run, like codex: no built-in tools, none of the user's MCP servers, and an empty
-    # working dir so no project CLAUDE.md or settings get picked up. The model only reads the prompt.
-    # --strict-mcp-config still lets managed (admin) servers load, so deny every MCP tool too.
-    # An empty --setting-sources skips user settings, so the user's ~/.claude/CLAUDE.md, hooks
-    # and plugins stay out too (--bare would as well, but it rejects subscription OAuth).
-    # --system-prompt replaces Claude Code's own coding-agent prompt: it costs tokens every night
-    # and can pull the model toward coding behaviour.
-    # --no-session-persistence: otherwise every night leaves the prompt and reply in ~/.claude/projects.
-    # The prompt goes on stdin: a catch-up night can pass macOS's 1 MiB argv cap, and argv shows in `ps`.
-    # By name when PATH has it, as before; the full path only for one PATH doesn't lead to.
-    program = "claude" if shutil.which("claude") else find_claude() or "claude"
-    cmd = [program, "-p", "--output-format", "json",
-           "--system-prompt", system_prompt, "--tools", "", "--strict-mcp-config",
-           "--disallowedTools", "mcp__*", "--setting-sources", "", "--no-session-persistence"]
-    if cfg.llm.model:
-        cmd += ["--model", cfg.llm.model]
-    env, auth_label = _claude_env()
-    what = f"claude CLI (prompt: {len(prompt.encode('utf-8'))} B, auth: {auth_label})"
-    with tempfile.TemporaryDirectory(prefix="parent-recap-claude-") as work:
-        ran = _run_with_retry(cmd, timeout, what, budget, env=env, cwd=work, input=prompt)
-    proc = ran.proc
-    if proc.returncode != 0:
-        _save_diagnostics("claude_cli_failed.txt", proc,
-                          f"claude -p --output-format json --system-prompt <{len(system_prompt)} chars> "
-                          "--tools '' --strict-mcp-config --disallowedTools 'mcp__*' --setting-sources '' "
-                          f"--no-session-persistence <{len(prompt)} chars on stdin>")
-        raise RuntimeError(
-            f"claude CLI failed ({proc.returncode}). "
-            f"stderr={proc.stderr!r} stdout[:500]={proc.stdout[:500]!r}"
-        )
-    text, usage, model = _claude_reply(proc.stdout)
-    data, repaired = _parse_cli_response(proc.stdout)
-    return LLMReply(data, text, usage, repaired, ran.waited, model)
-
-
-# The desktop apps that ship codex, in the order they're tried, in /Applications or ~/Applications.
-CODEX_APPS = ("Codex.app", "ChatGPT.app")
-# Where codex sits inside one of them: the ChatGPT app keeps its Codex in codex-cli/bin since
-# its own Codex arrived (#203); the older place is kept for older versions of both apps.
-CODEX_IN_APP = ("Contents/Resources/codex-cli/bin/codex", "Contents/Resources/codex")
-CODEX_BUNDLED = tuple(os.path.join(folder, app, inside)
-                      for app in CODEX_APPS
-                      for folder in ("/Applications", os.path.expanduser("~/Applications"))
-                      for inside in CODEX_IN_APP)
-# On Windows, the Codex CLI the way OpenAI installs it there: its own install.ps1, published with
-# each release, leads %LOCALAPPDATA%\Programs\OpenAI\Codex\bin (tools.WINDOWS_CODEX_DIR) to
-# codex.exe by default (https://github.com/openai/codex/blob/main/scripts/install/install.ps1).
-CODEX_INSTALL = "irm https://github.com/openai/codex/releases/latest/download/install.ps1 | iex"
-
-
-def codex_missing() -> str:
-    """What to do when codex isn't found, on this system."""
-    if sys.platform == "win32":
-        return f"install the Codex CLI on the setup page, or in PowerShell with {CODEX_INSTALL}"
-    return "install the Codex or ChatGPT desktop app and sign in"
-
-
-def find_codex(cfg: Config) -> str | None:
-    """The codex binary to run. The Codex and ChatGPT desktop apps each ship one that updates
-    with the app, so prefer those over whatever npm or brew put on PATH."""
-    return find_codex_at(cfg.llm.codex_path)
-
-
-def find_codex_at(codex_path: str | None) -> str | None:
-    """find_codex, with the config's llm.codex_path given on its own."""
-    candidates = [os.path.expanduser(codex_path)] if codex_path else []
-    candidates += CODEX_BUNDLED
-    for c in candidates:
-        if os.path.isfile(c) and os.access(c, os.X_OK):
-            return c
-    return tools.find("codex")
-
-
-def _run_codex(cfg: Config, prompt: str, system_prompt: str, timeout: int, budget: int) -> LLMReply:
-    import tempfile
-    codex = find_codex(cfg)
-    if not codex:
-        raise RuntimeError(f"codex not found: {codex_missing()}")
-    # codex exec has no separate system prompt, so the instructions go first in one message.
-    text = (f"{system_prompt}\n\n---\n\n{prompt}\n\n"
-            "Output only the final JSON object. Don't run any commands, and don't read or write any files.")
-    with tempfile.TemporaryDirectory(prefix="parent-recap-codex-") as work:
-        out = Path(work) / "last_message.txt"
-        # Isolated run: empty working dir, read-only sandbox, no web search, no saved session, and
-        # none of the user's config (their MCP servers and tools stay out). Auth still comes from
-        # ~/.codex, or the system's own store if they chose it (https://learn.chatgpt.com/docs/auth).
-        # No shell, exec, apps or plugins either: the read-only sandbox still lets a command read
-        # any file on the Mac, and approval_policy=never would run it without asking.
-        cmd = [codex, "exec", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config",
-               "--sandbox", "read-only", "-c", 'approval_policy="never"',
-               "-c", 'web_search="disabled"',
-               "--disable", "shell_tool", "--disable", "unified_exec",
-               "--disable", "apps", "--disable", "plugins", "--color", "never",
-               "-C", work, "-o", str(out)]
-        if cfg.llm.model:
-            cmd += ["-m", cfg.llm.model]
-        cmd.append("-")  # prompt on stdin: it is far too long for argv on busy days
-        what = f"codex exec (prompt: {len(text.encode('utf-8'))} B)"
-        ran = _run_with_retry(cmd, timeout, what, budget, input=text)
-        proc = ran.proc
-        result = out.read_text(encoding="utf-8") if out.exists() else ""
-    if proc.returncode != 0 or not result.strip():
-        _save_diagnostics("codex_cli_failed.txt", proc, f"{codex} exec ... - <{len(text)} chars on stdin>")
-        raise RuntimeError(f"codex exec failed ({proc.returncode}). stderr tail={proc.stderr[-500:]!r}")
-    # No token count: -o holds only the last message, and the "tokens used" line in stderr gave
-    # 3–16 per night on Codex 0.145. The --json event stream carries real usage if we need it.
-    data, repaired = _parse_model_json(result)
-    return LLMReply(data, result, None, repaired, ran.waited)
-
-
-def _gateway_busy(response: requests.Response) -> str | None:
-    """What says the model behind the gateway is busy, from the reply's HTTP status, or None. A
-    busy status whose error waiting won't fix, such as the gateway's own credit or the key's
-    budget for the day run out, isn't."""
-    if response.status_code not in gateway.BUSY or gateway.out_of_budget(response):
-        return None
-    said = gateway.said(response)
-    return None if _WONT_PASS.search(said) else said[:120]
-
-
-def _run_gateway(cfg: Config, prompt: str, system_prompt: str, timeout: int, budget: int) -> LLMReply:
-    # Its own HTTP call with the Gateway Key (ADR 0014): no CLI, so nothing of the Mac's own
-    # Claude Code or Codex setup reaches it, and the key is only ever in the request's header.
-    key = gateway.key()
-    url = cfg.llm.gateway_url
-    what = f"gateway {gateway.host(url)} (prompt: {len(prompt.encode('utf-8'))} B)"
-    # An error that echoes the key back goes no further than here, to the log or the Brief.
-    response, waited = _with_retry(
-        lambda: gateway.post(url, key, system_prompt, prompt, timeout),
-        lambda r: (_gateway_busy(r) or "").replace(key, "<key>") or None, timeout, what, budget)
-    try:
-        reply = gateway.read(response)
-    except gateway.GatewayError as e:
-        raise gateway.GatewayError(str(e).replace(key, "<key>"), e.status) from None
-    data, repaired = _parse_model_json(reply.text)
-    return LLMReply(data, reply.text, reply.usage, repaired, waited, reply.model)
-
-
-_BACKENDS = {"claude": _run_claude, "codex": _run_codex, "gateway": _run_gateway}
-
 
 def call_llm(cfg: Config, prompt: str, system_prompt: str, timeout: int | None = None,
              budget: int = CALL_BUDGET) -> LLMReply:
     """Send one prompt to the configured backend and parse the JSON object it returns. While the
     model is busy it is tried again for up to `budget` seconds (0 for none)."""
-    run = _BACKENDS[cfg.llm.backend]
-    return run(cfg, prompt, system_prompt, timeout or cfg.llm.timeout_seconds, budget)
+    return llm.backend(cfg).run(prompt, system_prompt, timeout or cfg.llm.timeout_seconds, budget)
 
 
 def call_llm_filtered(cfg: Config, intro: str, payload: Any, system_prompt: Callable[[bool, bool], str],

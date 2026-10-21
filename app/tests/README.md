@@ -157,6 +157,11 @@ has used up its plan or its API credit fails at once with the usual Brief withou
 a Household's own message echoed back by `codex` isn't taken for a busy model, that the pauses stop
 inside the call's time budget, and that doctor and the setup page's preview wait less or not at
 all. `test_eval_runner.py` checks the eval runner tries a busy model again the same way.
+`test_llm_claude.py`, `test_llm_codex.py`, `test_llm_gateway.py` and `test_llm_memory.py` test each
+adapter of the `llm` package through its Backend interface (ADR 0023), the first three at the
+harness's fake `claude`, `codex` and gateway. The Claude adapter's tests are where Claude is shown to
+run isolated: no tools, MCP or user settings, an empty working dir, and none of the family's own
+Claude Code session in its environment.
 `test_source_failures.py` runs the real Gmail, Wilma and MyClub Sources against a fake IMAP server,
 wilma CLI and MyClub feed, for a Source that fails partway through a night or times out, and the
 real WhatsApp Source against `test_setup_whatsapp.py`'s fake Mac without the permission, checking
