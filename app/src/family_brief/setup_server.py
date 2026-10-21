@@ -1159,11 +1159,11 @@ class SetupServer:
         one AI (ADR 0017), and its chat is installed as when Welcome picks it."""
         with self.connect.lock:
             switch = self.connect.progress()["phase"] == "finish"
-            status, out = self.connect.save({"ai": name}) if switch \
-                else self.connect.complete("ai")
+            status, out = self.connect.save({"ai": name}, reply) if switch \
+                else self.connect.complete("ai", reply=reply)
         if switch and status == HTTPStatus.OK and name in _chats():
             self._install_chat(name)
-        return status, ({**out, **(reply or {})} if status == HTTPStatus.OK else out)
+        return status, out
 
     def save_welcome(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Saves Welcome's choices: the AI, the partner or only me, and pilot feedback, and moves

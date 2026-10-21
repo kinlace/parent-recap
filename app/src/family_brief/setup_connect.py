@@ -1,6 +1,6 @@
 """The setup page's Connect steps: completing, skipping and opening a Source (ADR 0006).
 
-Every call of the page's that completes, skips or reopens a Source goes through `ConnectSteps`,
+Every page call that completes, skips or reopens a Source goes through `ConnectSteps`,
 which holds the page's one saving lock, merges the step into setup's progress, works out the next
 Source to do, and answers a save that didn't go through with 409 Conflict. A call's answers are
 read with a typed model through `parse`, so a malformed one gets the same 400 from every step.
@@ -81,16 +81,21 @@ class ConnectSteps:
 
     def __init__(self, config: Path) -> None:
         self.config = config
-        self.lock = threading.RLock()  # one save at a time
+        # One save at a time. Reentrant, so that a caller that decides from the progress which
+        # step to save, such as the AI sign-in at Finish, holds it across both.
+        self.lock = threading.RLock()
 
     def progress(self) -> Progress:
         return setup_save.read(self.config)["progress"]
 
-    def save(self, answers: dict[str, Any]) -> Reply:
-        """Saves `answers` through `setup save`: 200 with what it says, or 409 if not saved."""
+    def save(self, answers: dict[str, Any], reply: dict[str, Any] | None = None) -> Reply:
+        """Saves `answers` through `setup save`: 200 with what it says and `reply`, or 409 with
+        what it says if not saved."""
         with self.lock:
             out = setup_save.save(self.config, answers)
-        return (HTTPStatus.OK if out["result"] == "saved" else HTTPStatus.CONFLICT), out
+        if out["result"] != "saved":
+            return HTTPStatus.CONFLICT, out
+        return HTTPStatus.OK, {**out, **(reply or {})}
 
     def complete(self, name: str, answers: Answers | None = None, *,
                  move_on: bool | Callable[[Progress], bool] = True, keep_skipped: bool = False,
@@ -104,9 +109,8 @@ class ConnectSteps:
                 return HTTPStatus.OK, {"progress": progress, **(reply or {})}
             on = move_on(progress) if callable(move_on) else move_on
             statuses = {**progress["sources"], name: "done"}
-            status, out = self._step(progress, answers, {name: "done"},
-                                     {"source": next_source(statuses)} if on else {})
-        return status, ({**out, **(reply or {})} if status == HTTPStatus.OK else out)
+            return self._step(progress, answers, {name: "done"},
+                              {"source": next_source(statuses)} if on else {}, reply)
 
     def move_on(self, name: str, refusal: dict[str, Any]) -> Reply:
         """Moves setup on from the Source `name` once it's done, or refuses with `refusal`."""
@@ -142,7 +146,7 @@ class ConnectSteps:
             return self.save({"progress": {"phase": "connect", "source": source}})
 
     def _step(self, progress: Progress, answers: Answers | None, statuses: dict[str, str],
-              source: dict[str, Any]) -> Reply:
+              source: dict[str, Any], reply: dict[str, Any] | None = None) -> Reply:
         given = (answers(progress) if callable(answers) else answers) or {}
         return self.save({**given, "progress": {**given.get("progress", {}),
-                                                "sources": statuses, **source}})
+                                                "sources": statuses, **source}}, reply)
