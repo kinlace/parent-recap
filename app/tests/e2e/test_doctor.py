@@ -9,12 +9,13 @@ import shutil
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 
 from family_brief import __main__ as cli, ops, setup_steps, whatsapp_python
-from family_brief.collectors import whatsapp, wilma
+from family_brief.collectors import whatsapp
 from family_brief.llm import codex as codex_backend
 from family_brief.system import jobs
 from conftest import program
@@ -534,10 +535,17 @@ def test_discover_without_whatsapp_access_points_to_bg(harness, monkeypatch, cap
     assert not HAN.findall(out)
 
 
-def test_discover_wilma_students_runs_before_any_config_exists(tmp_path, monkeypatch, capsys):
+def wilma_cli_listing(harness, kids: Any) -> None:
+    """The wilma CLI, installed, printing `kids` for `kids list`."""
+    wilma_cli = harness.source_fakes["wilma"]
+    wilma_cli.set_up()
+    wilma_cli.answers[("kids", "list")] = kids
+
+
+def test_discover_wilma_students_runs_before_any_config_exists(harness, monkeypatch, capsys):
     # Setup signs in to Wilma before the household step, to prefill the Kids from what Wilma lists.
-    monkeypatch.setattr(wilma, "_run_or_log", lambda args: {"kids": [{"name": "Aino Virtanen"}]})
-    monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(tmp_path / "missing.yaml"),
+    wilma_cli_listing(harness, {"kids": [{"name": "Aino Virtanen"}]})
+    monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(harness.home / "missing.yaml"),
                                       "discover", "wilma-students"])
 
     assert cli.main() == 0
@@ -545,9 +553,9 @@ def test_discover_wilma_students_runs_before_any_config_exists(tmp_path, monkeyp
     assert "Aino Virtanen" in capsys.readouterr().out
 
 
-def test_discover_wilma_students_says_when_not_signed_in(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(wilma, "_run_or_log", lambda args: None)
-    monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(tmp_path / "missing.yaml"),
+def test_discover_wilma_students_says_when_not_signed_in(harness, monkeypatch, capsys):
+    wilma_cli_listing(harness, (1, {"status": "error", "code": "not_logged_in", "message": "Not signed in."}))
+    monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(harness.home / "missing.yaml"),
                                       "discover", "wilma-students"])
 
     assert cli.main() == 1
@@ -598,7 +606,7 @@ def gmail_line(out: str) -> str:
 def test_doctor_is_ok_with_a_gmail_that_only_sends_the_brief_beside_another_source(
         harness, gmail_with_no_sender, monkeypatch, capsys):
     harness.config["wilma"]["enabled"] = True
-    monkeypatch.setattr(wilma, "_run_or_log", lambda args: {"kids": [{"name": "Mia"}]})
+    wilma_cli_listing(harness, {"kids": [{"name": "Mia"}]})
 
     harness.cli("doctor", "--skip-llm")
 

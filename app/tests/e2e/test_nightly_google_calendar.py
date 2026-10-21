@@ -2,16 +2,19 @@
 leaves the system: the email (text, HTML, attachments), the model command line, and persisted state."""
 from __future__ import annotations
 
-import dataclasses
+import hashlib
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 import time_machine
 
-from conftest import NOW, myclub_event
+from conftest import NOW, TZ, msg, myclub_event
 
-from nights import archived_summary, normal_night
+from family_brief import sources
+from family_brief.collectors.base import CalendarEvent, Collected
+from nights import archived_summary, caught_up_last_night, normal_night
 
 
 # ── Google Calendar mode
@@ -28,7 +31,7 @@ def test_google_mode_writes_events_and_links_them(harness):
 
     # Two model events plus the MyClub match, each inviting the partner.
     titles = [e["summary"] for e in harness.calendar.inserted]
-    assert titles == ["3B 远足 Nuuksio", "钢琴课（改期）", "FC Kilo P2017 vs HJK"]
+    assert titles == ["3B 远足 Nuuksio", "钢琴课（改期）", "⚽ FC Kilo P2017 vs HJK"]
     assert all(e["attendees"] == [{"email": "partner@example.com"}] for e in harness.calendar.inserted)
     assert harness.calendar.inserted[0]["start"] == {"dateTime": "2026-10-01T09:00:00+03:00",
                                                      "timeZone": "Europe/Helsinki"}
@@ -122,7 +125,7 @@ def test_a_clash_with_a_busy_block_is_cited_without_the_events_own_id(harness):
         [busy] = json.loads(prompt[prompt.index("\n{") + 1:])["upcoming_calendar_events_next_7d"]
         return {"per_kid": [{"kid": "Mia", "action_items": [], "notices": [
             {"text": "The trip on Thu 1 Oct clashes with something in the calendar at 9:00",
-             "refs": [busy["id"], "g-101"]}]}],
+             "refs": [busy["id"], "1101"]}]}],
             "calendar_events": [], "message_digest": ""}
 
     harness.model_reply = clash
@@ -151,9 +154,12 @@ def test_google_mode_undelivered_night_reworded_is_not_written_twice(harness):
 
 def test_google_mode_upgrade_does_not_rewrite_events_from_before_0_4_0(harness):
     google_mode(harness)
-    # Tonight's three events as written before 0.4.0, whose hashes had the title in them.
-    old_hashes = ["157d8c04a7e75478d93e", "706ef145ec439b5d6883",
-                  "8c9308bd46d0dfb1852b"]  # sha1 of "myclub|mc-1|2026-10-03T07:00:00+00:00|FC Kilo P2017 vs HJK"
+    # Tonight's three events as written before 0.4.0, whose hashes had the title in them (and a
+    # MyClub start in UTC).
+    old_hashes = [hashlib.sha1(key.encode()).hexdigest()[:20] for key in (
+        "gmail|1101|2026-10-01T09:00:00+03:00|3B 远足 Nuuksio",
+        "whatsapp|2:1|2026-09-30T17:30:00+03:00|钢琴课（改期）",
+        "myclub|mc-1|2026-10-03T07:00:00+00:00|⚽ FC Kilo P2017 vs HJK")]
     harness.state_path.parent.mkdir(parents=True, exist_ok=True)
     harness.state_path.write_text(json.dumps({"created_event_hashes": {
         h: {"google_event_id": "old", "created_at": "2026-09-26T18:00:00+00:00"} for h in old_hashes}}))
@@ -165,24 +171,28 @@ def test_google_mode_upgrade_does_not_rewrite_events_from_before_0_4_0(harness):
 
 def test_google_mode_writes_one_event_per_kid_from_the_same_message(harness):
     google_mode(harness)
-    meeting = {"title": "Parents' evening", "start": "2026-10-06T18:00:00", "refs": ["g-102"]}
+    meeting = {"title": "Parents' evening", "start": "2026-10-06T18:00:00", "refs": ["1102"]}
     harness.model_reply["calendar_events"] = [{**meeting, "kid": "Mia"}, {**meeting, "kid": "Leo"}]
 
     assert harness.run() == 0
 
     assert [e["summary"] for e in harness.calendar.inserted] \
-        == ["Parents' evening", "Parents' evening", "FC Kilo P2017 vs HJK"]
+        == ["Parents' evening", "Parents' evening", "⚽ FC Kilo P2017 vs HJK"]
 
 
 @pytest.mark.parametrize("mode", ["google", "ics"])
 def test_myclub_times_are_shown_in_local_time(harness, mode):
-    # The MyClub feed gives times in UTC; a winter match at 10:00 in Helsinki is 08:00 UTC.
+    # The MyClub feed gives times in UTC; a winter match at 10:00 in Helsinki is 08:00 UTC. The
+    # feed is read a week before it, after the clocks went back.
     google_mode(harness)
     harness.config["google_calendar"] = {"mode": mode, "ics_include_myclub": True}
+    harness.sources["gmail"] = [msg("gmail", "1301", "2026-11-01T09:00:00+02:00", "Kuvauspäivä siirtyy.",
+                                    sender="office@kilo.example.fi", subject="Kuvauspäivä")]
     harness.sources["myclub"] = [myclub_event("mc-2", "FC Kilo P2017 vs PK-35", "2026-11-07T08:00:00+00:00",
                                               "2026-11-07T09:30:00+00:00")]
 
-    assert harness.run() == 0
+    with time_machine.travel(datetime(2026, 11, 1, 21, 0, tzinfo=ZoneInfo(TZ)), tick=False):
+        assert harness.run() == 0
 
     [queued] = harness.model_payload()["already_queued_for_calendar"]
     assert (queued["start"], queued["end"]) == ("2026-11-07T10:00:00+02:00", "2026-11-07T11:30:00+02:00")
@@ -191,24 +201,31 @@ def test_myclub_times_are_shown_in_local_time(harness, mode):
     assert "11月7日 周六 10:00" in email.html
 
 
-def test_any_source_can_bring_events_beside_its_messages(harness):
+def test_any_source_can_bring_events_beside_its_messages(harness, monkeypatch):
     # Collecting doesn't single out MyClub: a Source returning both has both reach the model,
     # its events in local time, and the coverage line counts the Messages of a Source that isn't
     # an event feed.
     normal_night(harness)
-    exam = dataclasses.replace(myclub_event("w-exam", "Matematiikan koe", "2026-10-05T06:00:00+00:00",
-                                            "2026-10-05T07:00:00+00:00"), source="wilma")
-    harness.sources["wilma"] = [*harness.sources["wilma"], exam]
     del harness.sources["myclub"]
+
+    def collect(cfg, state, kid_terms) -> Collected:
+        return Collected(
+            messages=[msg("schoolapp", "sa-1", "2026-09-27T09:00:00+03:00", "Matematiikan koe maanantaina.",
+                          sender="Opettaja Virtanen")],
+            events=[CalendarEvent(source="schoolapp", external_id="sa-exam", title="Matematiikan koe",
+                                  start=datetime.fromisoformat("2026-10-05T06:00:00+00:00"),
+                                  end=datetime.fromisoformat("2026-10-05T07:00:00+00:00"), kid="Mia")])
+    monkeypatch.setattr(sources, "ALL", (*sources.ALL, sources.Source(
+        "schoolapp", {"en": "SchoolApp"}, lambda cfg: True, skippable=True, connect_rank=9, collect=collect)))
 
     assert harness.run() == 0
 
     payload = harness.model_payload()
-    assert "w-55" in {m["external_id"] for m in payload["messages"]}
+    assert "sa-1" in {m["external_id"] for m in payload["messages"]}
     [queued] = payload["already_queued_for_calendar"]
     assert (queued["title"], queued["start"]) == ("Matematiikan koe", "2026-10-05T09:00:00+03:00")
     archived = json.loads((harness.archive_dir / "2026-09-27.raw.json").read_text())
-    assert archived["summary"]["_coverage"]["wilma"] == {"count": 1, "error": None}
+    assert archived["summary"]["_coverage"]["schoolapp"] == {"count": 1, "error": None}
 
 
 ICS_FALLBACK = "这些新事件已打包在邮件附件的 .ics 里，点开附件即可加入日历。"
@@ -304,7 +321,7 @@ def test_google_mode_partial_write_attaches_only_the_rest(harness):
     harness.calendar.error = None
     with time_machine.travel(NOW + timedelta(days=1), tick=False):
         assert harness.run() == 0
-    assert [e["summary"] for e in harness.calendar.inserted] == ["3B 远足 Nuuksio", "FC Kilo P2017 vs HJK"]
+    assert [e["summary"] for e in harness.calendar.inserted] == ["3B 远足 Nuuksio", "⚽ FC Kilo P2017 vs HJK"]
 
 
 def test_google_mode_fallback_includes_myclub_when_configured(harness):
@@ -319,6 +336,7 @@ def test_google_mode_fallback_includes_myclub_when_configured(harness):
 
 def test_google_mode_fallback_retries_after_failed_email(harness):
     google_mode(harness, authorized=False)
+    caught_up_last_night(harness)
     harness.email_error = OSError("SMTP connection refused")
 
     assert harness.run() == 0
@@ -347,5 +365,5 @@ def test_google_mode_does_not_recreate_events_sent_by_fallback(harness):
     harness.calendar.error = None
     with time_machine.travel(NOW + timedelta(days=2), tick=False):
         assert harness.run() == 0
-    assert [e["summary"] for e in harness.calendar.inserted] == ["FC Kilo P2017 vs HJK"]
+    assert [e["summary"] for e in harness.calendar.inserted] == ["⚽ FC Kilo P2017 vs HJK"]
     assert harness.sent[2].attachments == []

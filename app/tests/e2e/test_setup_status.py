@@ -122,7 +122,6 @@ def healthy(harness, offline, monkeypatch) -> None:
     """Everything doctor checks works: Gmail signs in, Claude answers, the nightly job is loaded."""
     harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
     harness.secrets["claude-oauth-token"] = CLAUDE_TOKEN
-    monkeypatch.setattr(imaplib, "IMAP4_SSL", CountingImap())
     which = shutil.which
     monkeypatch.setattr(shutil, "which", lambda cmd, *a, **k: f"/usr/local/bin/{cmd}"
                         if cmd == "claude" else which(cmd, *a, **k))
@@ -177,7 +176,7 @@ MESSAGE_TEXT = "Bring the signed trip form to school on Tuesday"
 
 
 def send_a_brief(harness) -> None:
-    harness.sources["gmail"] = [msg("gmail", "g1", "2026-09-27T09:00:00+03:00", MESSAGE_TEXT,
+    harness.sources["gmail"] = [msg("gmail", "1001", "2026-09-27T09:00:00+03:00", MESSAGE_TEXT,
                                     sender="teacher@kilo.example.fi", subject="Trip")]
     harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": MESSAGE_TEXT}
     assert harness.run() == 0

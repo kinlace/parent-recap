@@ -34,7 +34,7 @@ def at_the_first_brief(harness, **config: Any) -> None:
     """Check confirmed, with three days of school mail for the Brief."""
     connect_done(harness, **config)
     more_progress(harness, phase="first-brief")
-    harness.sources["gmail"] = [msg("gmail", "g1", "2026-09-27T09:00:00+03:00", BRIEF_TEXT,
+    harness.sources["gmail"] = [msg("gmail", "1001", "2026-09-27T09:00:00+03:00", BRIEF_TEXT,
                                     sender="teacher@edu.espoo.fi", subject="Trip")]
     harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": BRIEF_TEXT}
     harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD

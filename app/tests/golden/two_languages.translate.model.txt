@@ -23,13 +23,13 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
         {
           "text": "周四 10/1 班级去 Nuuksio 远足（retki），带 eväät 和雨衣",
           "refs": [
-            "g-101"
+            "1101"
           ]
         },
         {
           "text": "周一 10/5 数学考试，范围乘法表 2–5",
           "refs": [
-            "w-55"
+            "message:55"
           ]
         }
       ],
@@ -38,14 +38,14 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
           "what": "在 Wilma 签远足同意书",
           "by": "2026-09-29",
           "refs": [
-            "g-101"
+            "1101"
           ]
         },
         {
           "what": "签 reissuvihko",
           "by": "2026-09-28",
           "refs": [
-            "wa-2"
+            "1:2"
           ]
         }
       ]
@@ -56,7 +56,7 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
         {
           "text": "周三 9/30 上午拍班级照",
           "refs": [
-            "g-102"
+            "1102"
           ]
         }
       ],
@@ -65,7 +65,7 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
           "what": "给 Leo 准备拍照穿的衣服 <整洁>",
           "by": "2026-09-30",
           "refs": [
-            "g-102"
+            "1102"
           ]
         }
       ]

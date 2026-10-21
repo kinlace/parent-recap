@@ -15,7 +15,7 @@ from family_brief.system import jobs
 
 
 def one_message(h) -> None:
-    h.sources = {"gmail": [msg("gmail", "g-1", "2026-09-27T08:15:00+03:00",
+    h.sources = {"gmail": [msg("gmail", "1001", "2026-09-27T08:15:00+03:00",
                                "Class photos for 1A are on Wednesday morning.",
                                sender="office@kilo.example.fi", subject="Valokuvaus ke 30.9.")]}
     h.model_reply = SAYS_SOMETHING

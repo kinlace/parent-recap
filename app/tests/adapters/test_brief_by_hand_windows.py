@@ -1,17 +1,17 @@
 """A Brief started by hand on a Windows PC (ADR 0019): `parent-recap run` on the gateway, with the
 Gmail App Password and the Gateway Key in Windows' own Credential Manager.
 
-The real Gmail Source reads a fake IMAP server, and the gateway's /v1/messages and the email are
-the harness's fakes; the secrets are stored and read for real (conftest's `credential_manager`)."""
+The real Gmail Source reads the harness's IMAP server, and the gateway's /v1/messages and the email
+are the harness's fakes; the secrets are stored and read for real (conftest's `credential_manager`)."""
 from __future__ import annotations
 
-import imaplib
 import logging
 
 import pytest
 
+from nights import caught_up_last_night
 from test_gateway import KEY, URL, assert_key_never_leaked
-from test_source_failures import REAL_GMAIL_COLLECT, FakeImap, caught_up_last_night, email_bytes
+from test_source_failures import gmail_messages
 
 from family_brief import gateway
 from family_brief.collectors import gmail
@@ -20,14 +20,14 @@ from family_brief.system import secrets
 pytestmark = pytest.mark.windows
 
 APP_PASSWORD = "abcd efgh ijkl mnop"
-# The fake IMAP server's message 1 has Gmail's id 101.
+# Tonight's Gmail message 1 has Gmail's id 101.
 REPLY = {"per_kid": [{"kid": "Mia", "notices": [{"text": "Retki to Nuuksio on Thu 1 Oct",
                                                  "refs": ["101"]}], "action_items": []}],
          "calendar_events": [], "message_digest": "**Mia**\n- Retki to Nuuksio on Thu 1 Oct"}
 
 
 @pytest.fixture
-def windows_pc(harness, credential_manager, monkeypatch):
+def windows_pc(harness, credential_manager):
     """A Household on the gateway whose Gmail has one message tonight, with both secrets stored
     in Credential Manager."""
     harness.config["summary_language"] = "en"
@@ -40,8 +40,7 @@ def windows_pc(harness, credential_manager, monkeypatch):
     credential_manager.extend([account, gateway.ACCOUNT])
     secrets.put(account, APP_PASSWORD)
     secrets.put(gateway.ACCOUNT, KEY)
-    monkeypatch.setattr(gmail, "collect", REAL_GMAIL_COLLECT)
-    monkeypatch.setattr(imaplib, "IMAP4_SSL", FakeImap({1: email_bytes(1)}))
+    harness.sources["gmail"] = gmail_messages(1)
     harness.model_reply = REPLY
     return harness
 

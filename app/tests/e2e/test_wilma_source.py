@@ -7,18 +7,17 @@ made up."""
 from __future__ import annotations
 
 import json
-import subprocess
 from datetime import timedelta
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 import time_machine
 
-import fake_node
+import fake_sources
 from conftest import NOW
-from test_source_failures import (REAL_WILMA_COLLECT, caught_up_last_night, one_whatsapp_message,
-                                  payload_ids, seen, the_model_says_something)  # noqa: F401 (autouse)
+from nights import caught_up_last_night
+from test_source_failures import (one_whatsapp_message, payload_ids, seen,  # noqa: F401 (autouse)
+                                  the_model_says_something)
 
 from family_brief import ops, setup_wilma
 from family_brief.collectors import wilma
@@ -52,29 +51,15 @@ def failed(code: str, message: str, status: int = 1) -> tuple[int, dict[str, Any
 
 
 @pytest.fixture
-def cli(harness, monkeypatch) -> SimpleNamespace:
-    """The real Wilma Source against a fake wilma CLI on Parent Recap's own Node. `answers` maps the
-    start of a command (without node, the CLI and --json) to what the CLI prints, or to its exit
-    status and what it prints; any other command lists nothing. `ran` is each command run."""
-    harness.config["gmail"]["allowlist_domains"] = []  # Gmail fails fast; this is about Wilma
+def cli(harness) -> fake_sources.Wilma:
+    """The wilma CLI on Parent Recap's own Node, which the tests here have print what 2.x prints, in
+    its `answers` (fake_sources.py), for a household whose Gmail has no sender ticked and so isn't
+    read."""
+    harness.config["gmail"]["allowlist_domains"] = []
     one_whatsapp_message(harness)
     caught_up_last_night(harness)
-    monkeypatch.setattr(wilma, "collect", REAL_WILMA_COLLECT)
-    fake_node.pinned_node(harness.home)
-    fake_node.install_wilma(harness.home, "#!/bin/sh\n")
-    others = subprocess.run
-    fake = SimpleNamespace(answers={}, ran=[])
-
-    def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if not fake_node.is_wilma(cmd):
-            return others(cmd, *a, **k)
-        args = cmd[2:-1]
-        fake.ran.append(args)
-        answer = next((v for start, v in fake.answers.items() if tuple(args[:len(start)]) == start),
-                      {"students": []})
-        status, out = answer if isinstance(answer, tuple) else (0, answer)
-        return subprocess.CompletedProcess(cmd, status, json.dumps(out), "")
-    monkeypatch.setattr(subprocess, "run", run)
+    fake = harness.source_fakes["wilma"]
+    fake.set_up()  # installed, for the tests that run its commands outside the evening run
     return fake
 
 

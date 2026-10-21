@@ -53,19 +53,19 @@ the import path, so a test may import a helper from a test in another layer.
 
 ## Integration tests
 
-| File                            | What it covers                                                       |
-| ------------------------------- | -------------------------------------------------------------------- |
-| `test_collector_labels.py`      | The labels Sources add to Messages are English                       |
-| `test_email.py`                 | The Brief email as sent to a fake SMTP server                        |
-| `test_eval_runner.py`           | The eval runner end to end, only the model process faked             |
-| `test_goldens.py`               | The golden files' check and `--update-goldens`                       |
-| `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code   |
-| `test_llm_codex.py`             | The Codex adapter                                                    |
-| `test_llm_gateway.py`           | The gateway adapter                                                  |
-| `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token               |
-| `test_setup_google_calendar.py` | The Google Calendar authorization script                             |
-| `test_weekend_picks.py`         | Weekend Picks through the same model process as the Brief            |
-| `test_whatsapp_source.py`       | The WhatsApp Source against a `ChatStorage.sqlite` built in the test |
+| File                            | What it covers                                                     |
+| ------------------------------- | ------------------------------------------------------------------ |
+| `test_collector_labels.py`      | The labels Sources add to Messages are English                     |
+| `test_email.py`                 | The Brief email as sent to a fake SMTP server                      |
+| `test_eval_runner.py`           | The eval runner end to end, only the model process faked           |
+| `test_goldens.py`               | The golden files' check and `--update-goldens`                     |
+| `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code |
+| `test_llm_codex.py`             | The Codex adapter                                                  |
+| `test_llm_gateway.py`           | The gateway adapter                                                |
+| `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token             |
+| `test_setup_google_calendar.py` | The Google Calendar authorization script                           |
+| `test_weekend_picks.py`         | Weekend Picks through the same model process as the Brief          |
+| `test_whatsapp_source.py`       | The WhatsApp Source against a `ChatStorage.sqlite` its fake builds |
 
 ## End-to-end tests: the evening run
 
@@ -81,7 +81,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_any_language.py`            | A Recipient in a language without reviewed program text (ADR 0004) |
 | `test_busy_model.py`              | A busy model tried again after pauses on a fake clock              |
 | `test_gateway.py`                 | The gateway backend (ADR 0014): Brief, doctor and `setup gateway`  |
-| `test_source_failures.py`         | Real Gmail, Wilma and MyClub Sources failing partway or timing out |
+| `test_source_failures.py`         | A Source's transport failing partway or timing out                 |
 | `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON      |
 | `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish           |
 | `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                  |
@@ -164,6 +164,11 @@ The shared fakes stay in `tests/`, beside the golden files:
   default, so a test that needs the night's Brief to go out has it reply `SAYS_SOMETHING` (#385).
   Also `golden`, `login_shell`, `windows_programs` (programs found as Windows finds them, on any
   system), `credential_manager`, and the builders `msg` and `myclub_event`.
+- `fake_sources.py`: each Source's fake at its transport (Gmail's IMAP server, the MyClub feed,
+  the wilma CLI, WhatsApp's database), as `harness.source_fakes[name]`, serving what
+  `harness.sources[name]` holds to the real collector. The harness installs one for each Source
+  in the registry (ADR 0022), so a new Source adds its fake to `FAKES`. A test gives each Message
+  the id its Source makes of it, and only the fields its transport carries.
 - `fake_system.py`: in-memory secrets, jobs, wake and desktop, as `harness.secrets`, `.jobs`,
   `.wake` and `.desktop`. Only the adapter tests meet these services' commands.
 - `fake_node.py`: Parent Recap's own Node and a fake wilma CLI in the test's `~/ParentRecap`.

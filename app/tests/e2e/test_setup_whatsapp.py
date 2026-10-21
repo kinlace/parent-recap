@@ -119,6 +119,7 @@ def fake_mac(harness, monkeypatch) -> Mac:
     """The family's Mac, with WhatsApp's database faked, and the real clock. Its `bg` jobs run
     in the harness's FakeJobs, with the permissions the Mac gives them."""
     m = Mac(harness.home)
+    harness.source_fakes["whatsapp"].installed = False  # this Mac installs WhatsApp itself
     m.jobs = harness.jobs
     harness.jobs.inside = m.job
     monkeypatch.setattr(whatsapp, "DB_DIR", m.db_dir)

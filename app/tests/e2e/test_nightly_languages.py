@@ -65,11 +65,11 @@ def test_translation_shares_calendar_archive_and_feedback_text_with_the_original
 
     # Each event is written to the shared calendar once, in the first Recipient's language.
     assert [e["summary"] for e in harness.calendar.inserted] == \
-        ["3B 远足 Nuuksio", "钢琴课（改期）", "FC Kilo P2017 vs HJK"]
+        ["3B 远足 Nuuksio", "钢琴课（改期）", "⚽ FC Kilo P2017 vs HJK"]
     zh, en = harness.sent
     assert '<a href="https://calendar.google.com/event?eid=gev1">3B 远足 Nuuksio</a>' in zh.html
     assert '<a href="https://calendar.google.com/event?eid=gev1">3B retki to Nuuksio</a>' in en.html
-    assert '<a href="https://calendar.google.com/event?eid=gev3">FC Kilo P2017 vs HJK</a>' in en.html
+    assert '<a href="https://calendar.google.com/event?eid=gev3">⚽ FC Kilo P2017 vs HJK</a>' in en.html
     assert en.attachments == []
     # The archive, which feeds tomorrow's prompt, keeps only the original.
     summary = archived_summary(harness)
@@ -119,7 +119,7 @@ def edited_translation(edit) -> dict:
     edited_translation(lambda r: r["per_kid"][0]["action_items"].pop(1)),
     edited_translation(lambda r: r["per_kid"][1]["action_items"][0].update(by="2026-10-01")),
     edited_translation(lambda r: r["per_kid"][1].update(kid="Mia")),
-    edited_translation(lambda r: r["per_kid"][0]["notices"][1].update(refs=["g-101"])),
+    edited_translation(lambda r: r["per_kid"][0]["notices"][1].update(refs=["1101"])),
     edited_translation(lambda r: r["calendar_events"][1].update(start="2026-10-01T17:30:00+03:00")),
 ], ids=["model fails", "no json", "drops an action item", "changes a due date", "changes a kid",
         "changes a ref", "moves an event"])
@@ -154,7 +154,7 @@ def test_failed_translation_leaves_the_shared_calendar_and_feedback_text_alone(h
     assert harness.run() == 0
 
     assert [e["summary"] for e in harness.calendar.inserted] == \
-        ["3B 远足 Nuuksio", "钢琴课（改期）", "FC Kilo P2017 vs HJK"]
+        ["3B 远足 Nuuksio", "钢琴课（改期）", "⚽ FC Kilo P2017 vs HJK"]
     zh, en = harness.sent
     assert (en.text, en.html) == with_note(zh, FAILED_EN)  # feedback links and Google links included
     assert FAILED_EN not in zh.text

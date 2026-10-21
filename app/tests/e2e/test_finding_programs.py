@@ -41,7 +41,7 @@ def the_evening_job(harness, monkeypatch) -> None:
     without the login shell."""
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
     monkeypatch.delenv("SHELL", raising=False)
-    harness.sources = {"gmail": [msg("gmail", "g-1", "2026-09-27T09:00:00+03:00",
+    harness.sources = {"gmail": [msg("gmail", "1001", "2026-09-27T09:00:00+03:00",
                                      "Vanhempainilta on 8.10.", sender="office@kilo.example.fi",
                                      subject="Vanhempainilta")]}
     harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": ""}

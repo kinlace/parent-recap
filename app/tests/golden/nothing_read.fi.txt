@@ -2,6 +2,6 @@
 
 ⚠️ Yhtäkään lähdettä ei voitu lukea tänä iltana, joten yhteenvetoa ei ole. Lähteiden viestit tulevat mukaan ensimmäiseen koosteeseen, kun lähteet saadaan taas luettua.
 • Gmail: kirjautuminen epäonnistui. Voit korjata tämän kirjoittamalla Claude-avustajalle ”valtuuta Gmail uudelleen”.
-• MyClub: [Errno 8] nodename nor servname provided, or not known. Jos Macissa ei ollut verkkoyhteyttä, tämä korjaantuu itsestään. Jos ongelma toistuu, kirjoita Claude-avustajalle ”tarkista Parent Recap”.
+• MyClub: MyClub fetch failed for Mia: example.myclub.fi: OSError. Jos Macissa ei ollut verkkoyhteyttä, tämä korjaantuu itsestään. Jos ongelma toistuu, kirjoita Claude-avustajalle ”tarkista Parent Recap”.
 • Wilma: wilma: request timed out. Jos Macissa ei ollut verkkoyhteyttä, tämä korjaantuu itsestään. Jos ongelma toistuu, kirjoita Claude-avustajalle ”tarkista Parent Recap”.
 • WhatsApp: macOS ei antanut lupaa lukea viestejä, ehkä koska Parent Recapin Python päivittyi. Voit korjata tämän kirjoittamalla Claude-avustajalle ”Parent Recap ei pysty lukemaan lähdettä WhatsApp”.

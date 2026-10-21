@@ -1,10 +1,9 @@
 """End-to-end harness: runs the real `parent-recap run` in-process with fakes at the outside edges.
 
 Fakes sit at exactly four boundaries, so internals can be refactored without touching tests:
-  1. Sources: each Source's collect entry point returns fixtures or raises. Like the real
-     collectors, it skips Messages already marked seen in state and marks the rest seen.
-     (test_source_failures.py puts the real Gmail and Wilma Sources back, and fakes their IMAP
-     server and `wilma` CLI instead.)
+  1. Sources: each Source in the registry is faked at its transport (fake_sources.py: Gmail's
+     IMAP server, the MyClub feed's HTTP, the wilma CLI, WhatsApp's database), serving what
+     `harness.sources` holds for it, and its real collector reads it.
   2. Model process: `subprocess.run` for `claude` / `codex` records argv + stdin, returns a canned reply
      (the same for every call, or one per call from a list, where FailedCall makes that call fail
      and a function makes the reply, or the FailedCall, from the prompt it is given). The
@@ -43,12 +42,12 @@ import requests
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli, feedback, gateway, tools
+from family_brief import __main__ as cli, feedback, gateway, sources, tools
 from family_brief.actions import calendar as calendar_action, email as email_action
-from family_brief.collectors import gmail, myclub, whatsapp, wilma
 from family_brief.collectors.base import CalendarEvent, Collected, Message
 from family_brief.llm import retry
 from family_brief.system import desktop, jobs, secrets, wake, windows_only
+from fake_sources import FAKES
 from fake_system import FakeDesktop, FakeJobs, FakeSecrets, FakeWake
 from goldens import Goldens
 
@@ -312,7 +311,9 @@ class Harness:
     def __init__(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         self.home = home
         self.config: dict[str, Any] = default_config()
-        self.sources: dict[str, Any] = {}          # source -> list of Messages and events | Exception | callable
+        # source -> its Messages and events tonight | the Exception its transport raises | a
+        # function returning either; each Source's fake (fake_sources.py) serves it
+        self.sources: dict[str, Any] = {}
         # One reply for every call, or a list with one entry per call, in the order they are made.
         self.model_reply: str | dict | list[str | dict | FailedCall | Callable[[str], dict]] = \
             {"per_kid": [], "calendar_events": [], "message_digest": ""}
@@ -369,7 +370,15 @@ class Harness:
 
     # Run
     def run(self, *args: str) -> int:
+        self.set_up_sources()
         return self.cli("run", *args)
+
+    def set_up_sources(self) -> None:
+        """What each Source's setup leaves on the family's computer (fake_sources.py), where the
+        test hasn't put it itself. `run` does this; a test reading the Sources another way, such
+        as the setup page's preview, calls it."""
+        for fake in self.source_fakes.values():
+            fake.set_up()
 
     def cli(self, *args: str) -> int:
         cfg_path = self.home / ".family" / "config.yaml"
@@ -394,26 +403,11 @@ class Harness:
                     "WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
             mp.delenv(var, raising=False)
 
-        def source(name: str) -> Callable[..., Any]:
-            def collect(cfg: Any, state: Any, *_a: Any, **_k: Any) -> Collected:
-                lookback = getattr(getattr(cfg, name), "lookback_hours", None)
-                if lookback is not None:
-                    self.lookback_hours.setdefault(name, []).append(lookback)
-                v = self.sources.get(name, [])
-                if isinstance(v, Exception):
-                    raise v
-                v = v() if callable(v) else v
-                # Events aren't marked seen: a feed supplies every event again each night.
-                new = [m for m in v if isinstance(m, Message) and not state.has_seen_message(name, m.external_id)]
-                for m in new:
-                    state.mark_message_seen(name, m.external_id)
-                return Collected(messages=new, events=[e for e in v if isinstance(e, CalendarEvent)])
-            return collect
-
-        for module in (gmail, myclub, wilma, whatsapp):
-            mp.setattr(module, "collect", source(module.__name__.rsplit(".", 1)[-1]))
-
         mp.setattr(secrets, "_adapter", self.secrets)
+        self.source_fakes = {s.name: FAKES[s.name](self, mp) for s in sources.ALL}
+        for s in sources.ALL:
+            if s.lookback:
+                self._spy_on_lookback(mp, s)
         mp.setattr(jobs, "_adapter", self.jobs)
         mp.setattr(wake, "_adapter", self.wake)
         mp.setattr(desktop, "_adapter", self.desktop)
@@ -452,6 +446,16 @@ class Harness:
         mp.setattr(calendar_action, "TOKEN_PATH", str(token))
         mp.setattr(calendar_action, "_build_service", lambda: self.calendar)
 
+    def _spy_on_lookback(self, mp: pytest.MonkeyPatch, source: sources.Source) -> None:
+        """Records the lookback each collection of `source` runs with, then collects as its record
+        does. The record is frozen, so the spy goes in its __dict__, the same record everywhere."""
+        collect = source.collect
+
+        def spy(cfg: Any, *a: Any, **k: Any) -> Collected:
+            self.lookback_hours.setdefault(source.name, []).append(source.lookback(cfg).lookback_hours)
+            return collect(cfg, *a, **k)
+        mp.setitem(vars(source), "collect", spy)
+
     def ship_pilot_form(self) -> None:
         """This version ships the pilot Form's block, as ops/feedback-form's log prints it."""
         feedback.PILOT_FORM.write_text(yaml.safe_dump({"feedback": {
@@ -481,6 +485,10 @@ class Harness:
             to = script.split('to buddy "', 1)[1].split('"', 1)[0]
             self.imessages.append((to, script.split('send "', 1)[1].rsplit('" to buddy', 1)[0]))
             return subprocess.CompletedProcess(cmd, 0, "", "")
+        for fake in self.source_fakes.values():  # a Source's own program, such as the wilma CLI
+            answer = fake.run(cmd, input=input, cwd=cwd, env=env, **_k)
+            if answer is not None:
+                return answer
         if prog not in ("claude", "codex"):
             raise AssertionError(f"unexpected subprocess in test: {cmd[:3]}")
         # Their own sign-in checks, answered the way each one does.
@@ -626,6 +634,7 @@ def msg(source: str, ext_id: str, when: str, body: str, *, sender: str | None = 
 
 
 def myclub_event(ext_id: str, title: str, start: str, end: str, kid: str = "Mia") -> CalendarEvent:
-    return CalendarEvent(source="myclub", external_id=ext_id, title=title,
+    """An event of `kid`'s MyClub feed, titled `title` there, as the MyClub Source gives it."""
+    return CalendarEvent(source="myclub", external_id=ext_id, title=f"⚽ {title}",
                          start=datetime.fromisoformat(start), end=datetime.fromisoformat(end),
                          location="Leppävaara field", description="MyClub", kid=kid)

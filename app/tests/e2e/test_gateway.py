@@ -22,7 +22,7 @@ from family_brief.system import secrets
 KEY = "sk-bf-fake-gateway-key"
 ACCOUNT = "gateway-key"
 URL = "https://gateway.example.test"
-GOOD = {"per_kid": [{"kid": "Mia", "notices": [{"text": "Retki to Nuuksio on Thu 1 Oct", "refs": ["g-1"]}],
+GOOD = {"per_kid": [{"kid": "Mia", "notices": [{"text": "Retki to Nuuksio on Thu 1 Oct", "refs": ["1001"]}],
                      "action_items": []}],
         "calendar_events": [], "message_digest": "**Mia**\n- Retki to Nuuksio on Thu 1 Oct"}
 FAILED = "Tonight's Digest could not be written"
@@ -41,9 +41,9 @@ def night(harness):
     harness.config["summary_language"] = "en"
     harness.config["llm"] = {"backend": "gateway", "gateway_url": URL}
     harness.secrets[ACCOUNT] = KEY
-    harness.sources = {"gmail": [msg("gmail", "g-1", "2026-09-27T08:15:00+03:00",
+    harness.sources = {"gmail": [msg("gmail", "1001", "2026-09-27T08:15:00+03:00",
                                      "3B goes on a retki to Nuuksio on Thursday 1.10.",
-                                     sender="teacher.3b@kilo.example.fi", subject="Retki", kid="Mia")]}
+                                     sender="teacher.3b@kilo.example.fi", subject="Retki")]}
     return harness
 
 

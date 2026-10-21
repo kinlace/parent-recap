@@ -19,7 +19,8 @@ from conftest import NOW, html_for_golden, ics_for_golden, msg, system_prompt_of
 
 from family_brief import feedback
 from nights import (ENGLISH_REPLY, FEEDBACK, FORM, NORMAL_NIGHT_IDS, PARTNER_EN, archived_summary,
-                    feedback_links, model_call_for_golden, normal_night, payload_message_ids, two_languages)
+                    caught_up_last_night, feedback_links, model_call_for_golden, normal_night,
+                    payload_message_ids, two_languages)
 
 
 # ── Normal night
@@ -77,13 +78,8 @@ def test_codex_backend_sends_prompt_on_stdin(harness, golden, tmp_path):
 def test_failing_source_adds_coverage_warning(harness):
     normal_night(harness)
     harness.sources["gmail"] = RuntimeError("b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'")
-
-    def whatsapp_without_permission():
-        # Collectors often log an error and return nothing rather than raise.
-        logging.getLogger("family_brief.collectors.whatsapp").error(
-            "Cannot open ChatStorage.sqlite: [Errno 1] Operation not permitted")
-        return []
-    harness.sources["whatsapp"] = whatsapp_without_permission
+    # The WhatsApp Source logs the error and returns nothing rather than raise.
+    harness.sources["whatsapp"] = PermissionError(1, "Operation not permitted")
 
     assert harness.run() == 0
 
@@ -103,7 +99,8 @@ def test_failing_source_adds_coverage_warning_in_english(harness):
 
     [email] = harness.sent
     coverage = ("📥 Read tonight: Gmail 0 messages · MyClub 0 events · Wilma 1 message · WhatsApp 2 messages\n"
-                "⚠️ Gmail not read (login failed), MyClub not read (HTTP 500 from MyClub). "
+                "⚠️ Gmail not read (login failed), MyClub not read (MyClub fetch failed for Mia: "
+                "example.myclub.fi: RuntimeError). "
                 "Tonight's Brief may be incomplete.")
     assert email.text.endswith("\n\n" + coverage)
     assert escape(coverage).replace("\n", "<br>") in email.html
@@ -278,7 +275,7 @@ def test_cut_off_reply_note_is_in_each_recipients_language(harness):
     two_languages(harness)
     original, _ = harness.model_reply
     # Every Action Item arrived; the calendar events and the Digest didn't.
-    harness.model_reply = [cut_off(original, '"g-102"]}]}]'), {"per_kid": ENGLISH_REPLY["per_kid"]}]
+    harness.model_reply = [cut_off(original, '"1102"]}]}]'), {"per_kid": ENGLISH_REPLY["per_kid"]}]
 
     assert harness.run() == 0
 
@@ -293,6 +290,7 @@ def test_cut_off_reply_note_is_in_each_recipients_language(harness):
 
 def test_failed_email_brings_the_whole_night_back_tomorrow(harness):
     normal_night(harness)
+    caught_up_last_night(harness)
     harness.email_error = OSError("SMTP connection refused")
 
     assert harness.run() == 0
@@ -339,6 +337,7 @@ def test_imessage_alone_counts_as_delivered(harness):
 
 def test_failed_imessage_and_email_is_not_delivered(harness):
     normal_night(harness)
+    caught_up_last_night(harness)
     harness.config["imessage"] = {"enabled": True, "recipients": ["+358401234567"]}
     harness.email_error = OSError("SMTP connection refused")
     harness.imessage_error = "Messages got an error"
@@ -408,7 +407,7 @@ def test_lookback_after_failed_nights_is_capped_at_a_week(harness):
 
     # A new Message, so the next nights have a Brief to fail to send.
     harness.sources["gmail"] = harness.sources["gmail"] + [
-        msg("gmail", "g-201", "2026-10-06T09:00:00+03:00", "Vanhempainilta on 8.10.",
+        msg("gmail", "1201", "2026-10-06T09:00:00+03:00", "Vanhempainilta on 8.10.",
             sender="office@kilo.example.fi", subject="Vanhempainilta")]
     harness.email_error = OSError("SMTP connection refused")
     with time_machine.travel(NOW + timedelta(days=9), tick=False):
@@ -454,11 +453,10 @@ def dated_wilma_night(h) -> None:
             "Perjantaina 9.10. vietämme ulkoilupäivää kodalla. Koulupäivä päättyy klo 13.00. "
             "Ulkovaatteet ja juomapullo mukaan.",
             sender="Laine Maija", subject="Ulkoilupäivä pe 9.10.", kid="Mia"),
-        msg("wilma", "schedule:20260927", "2026-09-27T21:00:00+03:00",
-            "[2026-09-28 Mon · tomorrow]\n— Mia —\n  08:15–09:45  Historia  @ 204\n"
-            "  10:00–11:30  Liikunta  @ sali",
-            subject="Timetable for the next school day (from 2026-09-28)", chat="schedule"),
     ]}
+    h.source_fakes["wilma"].answers[("schedule", "list")] = {"students": [{"student": {"name": "Mia"}, "lessons": [
+        {"date": "2026-09-28", "start": "08:15", "end": "09:45", "subject": "Historia", "room": "204"},
+        {"date": "2026-09-28", "start": "10:00", "end": "11:30", "subject": "Liikunta", "room": "sali"}]}]}
     h.model_reply = {
         "per_kid": [{"kid": "Mia",
                      "notices": [{"text": "10/7 周三历史考试（koe），范围第 3–5 章", "refs": ["message:701"]}],
@@ -639,7 +637,7 @@ def test_action_item_citing_a_message_shows_its_source(harness):
     normal_night(harness)
     harness.model_reply["per_kid"] = [
         {"kid": "Mia", "notices": [],
-         "action_items": [{"what": "签 reissuvihko", "by": "2026-09-28", "who": "妈妈", "refs": ["wa-2"]}]},
+         "action_items": [{"what": "签 reissuvihko", "by": "2026-09-28", "who": "妈妈", "refs": ["1:2"]}]},
     ]
 
     assert harness.run() == 0
@@ -655,7 +653,7 @@ def test_uncited_and_unknown_citations_are_unverified(harness):
     normal_night(harness)
     harness.model_reply["per_kid"] = [
         {"kid": "Mia",
-         "notices": [{"text": "周一 10/5 数学考试", "refs": ["w-55"]},
+         "notices": [{"text": "周一 10/5 数学考试", "refs": ["message:55"]},
                      {"text": "周五家长会", "refs": ["w-999"]}],
          "action_items": [{"what": "交班费 20€", "by": "2026-09-29", "who": "任一", "refs": ["g-404"]},
                           {"what": "带手工材料", "by": "2026-09-30", "who": "爸爸"}]},
@@ -682,7 +680,7 @@ def test_conflict_notice_citing_calendar_events_is_verified(harness):
     harness.authorize_google_calendar()
     harness.model_reply["per_kid"] = [
         {"kid": "Mia", "action_items": [],
-         "notices": [{"text": "日历上周二 8:00 看牙，和远足同意书截止同一天", "refs": ["x1", "g-101"]},
+         "notices": [{"text": "日历上周二 8:00 看牙，和远足同意书截止同一天", "refs": ["x1", "1101"]},
                      {"text": "周六比赛 10:00，日历上也是 10:00", "refs": ["mc-1"]}]},
     ]
 
@@ -735,7 +733,7 @@ def injected_night(h) -> None:
     normal_night(h)
     h.config["google_calendar"] = {"mode": "google", "invite_attendees": ["partner@example.com"]}
     h.authorize_google_calendar()
-    h.sources["whatsapp"].append(msg("whatsapp", "wa-3", "2026-09-27T20:10:00+03:00", INJECTION,
+    h.sources["whatsapp"].append(msg("whatsapp", "1:3", "2026-09-27T20:10:00+03:00", INJECTION,
                                      sender="+358 40 000 0000", chat="3B parents", kid="Mia"))
 
 
@@ -757,14 +755,14 @@ def test_calendar_event_citing_no_real_message_is_dropped(harness, caplog):
          "description": "Pay here: https://pay-kilo.example.com/login", "source": "wilma",
          "external_id": "w-invented", "refs": ["w-invented"]},
         {"kid": "Mia", "title": "Payment meeting (again)", "start": "2026-10-01T18:00:00",
-         "source": "wilma", "external_id": "w-55"},
+         "source": "wilma", "external_id": "message:55"},
     ]
 
     with caplog.at_level(logging.WARNING):
         assert harness.run() == 0
 
     assert [e["summary"] for e in harness.calendar.inserted] == \
-        ["3B 远足 Nuuksio", "钢琴课（改期）", "FC Kilo P2017 vs HJK"]
+        ["3B 远足 Nuuksio", "钢琴课（改期）", "⚽ FC Kilo P2017 vs HJK"]
     [email] = harness.sent
     assert "payment meeting" not in email.text.lower() and "pay-kilo" not in email.html
     assert "payment meeting" not in json.dumps(archived_summary(harness)["calendar_events"]).lower()
@@ -775,7 +773,7 @@ def test_calendar_event_citing_no_real_message_is_dropped(harness, caplog):
 def test_calendar_event_source_comes_from_its_refs(harness):
     injected_night(harness)
     harness.model_reply["calendar_events"] = [
-        {"kid": "Mia", "title": "Koe", "start": "2026-10-05T09:00:00", "refs": ["w-55", "w-invented"],
+        {"kid": "Mia", "title": "Koe", "start": "2026-10-05T09:00:00", "refs": ["message:55", "w-invented"],
          "source": "gmail", "external_id": "made-up"},
     ]
 
@@ -783,10 +781,10 @@ def test_calendar_event_source_comes_from_its_refs(harness):
 
     [koe, _myclub] = harness.calendar.inserted
     assert koe["extendedProperties"]["private"]["source"] == "wilma"
-    assert koe["extendedProperties"]["private"]["external_id"] == "w-55"
+    assert koe["extendedProperties"]["private"]["external_id"] == "message:55"
     assert koe["description"].endswith("[Parent Recap • wilma • Mia]")
     [event] = archived_summary(harness)["calendar_events"]
-    assert (event["source"], event["ref_sources"]) == ("wilma", {"w-55": ["wilma"]})
+    assert (event["source"], event["ref_sources"]) == ("wilma", {"message:55": ["wilma"]})
 
 
 def test_injected_link_is_kept_out_of_an_event_citing_another_message(harness):
@@ -809,20 +807,21 @@ def test_injected_link_is_kept_out_of_an_event_citing_another_message(harness):
 
 def test_event_citing_one_more_message_on_a_rerun_is_not_written_twice(harness):
     injected_night(harness)
-    harness.sources["gmail"].append(msg("gmail", "g-100", "2026-09-27T20:00:00+03:00",
+    caught_up_last_night(harness)
+    harness.sources["gmail"].append(msg("gmail", "1100", "2026-09-27T20:00:00+03:00",
                                         "Reminder: the retki is on Thursday.", subject="Retki"))
     harness.email_error = OSError("SMTP connection refused")
-    harness.model_reply["calendar_events"][0]["refs"] = ["g-101"]
+    harness.model_reply["calendar_events"][0]["refs"] = ["1101"]
     assert harness.run() == 0
 
     # The same Messages come round again, and this time the model also cites the later reminder.
     harness.email_error = None
-    harness.model_reply["calendar_events"][0]["refs"] = ["g-100", "g-101"]
+    harness.model_reply["calendar_events"][0]["refs"] = ["1100", "1101"]
     with time_machine.travel(NOW + timedelta(days=1), tick=False):
         assert harness.run() == 0
 
     assert [e["summary"] for e in harness.calendar.inserted] == \
-        ["3B 远足 Nuuksio", "钢琴课（改期）", "FC Kilo P2017 vs HJK"]
+        ["3B 远足 Nuuksio", "钢琴课（改期）", "⚽ FC Kilo P2017 vs HJK"]
 
 
 def test_event_obeying_an_injected_message_brings_nothing_its_cited_messages_dont_support(harness):
@@ -834,7 +833,7 @@ def test_event_obeying_an_injected_message_brings_nothing_its_cited_messages_don
         {"kid": "Mia", "title": "Mandatory parents' payment meeting", "start": "2026-10-01T18:00:00",
          "description": "https://pay-kilo.example.com/login", "refs": ["wilma-4711"]},
         {"kid": "Mia", "title": "Parents' meeting", "start": "2026-10-01T18:00:00",
-         "description": "Log in first: https://pay-kilo.example.com/login", "refs": ["g-101"]},
+         "description": "Log in first: https://pay-kilo.example.com/login", "refs": ["1101"]},
     ]
 
     assert harness.run() == 0
@@ -852,7 +851,7 @@ def test_event_obeying_an_injected_message_brings_nothing_its_cited_messages_don
 ])
 def test_archive_markdown_follows_summary_language(harness, language, headings):
     normal_night(harness, language)
-    harness.model_reply["per_kid"][0]["notices"] = [{"text": "Thursday hike, bring eväät", "refs": ["g-101"]}]
+    harness.model_reply["per_kid"][0]["notices"] = [{"text": "Thursday hike, bring eväät", "refs": ["1101"]}]
 
     assert harness.run() == 0
 
@@ -907,7 +906,7 @@ def test_feedback_links_carry_only_the_derived_source(harness):
     harness.config["feedback"] = FEEDBACK
     harness.model_reply["per_kid"] = [
         {"kid": "Mia", "notices": [],
-         "action_items": [{"what": "签 reissuvihko 和远足同意书", "by": "2026-09-28", "refs": ["wa-2", "g-101"],
+         "action_items": [{"what": "签 reissuvihko 和远足同意书", "by": "2026-09-28", "refs": ["1:2", "1101"],
                            "source": "wilma"},  # a model-written Source is ignored
                           {"what": "交班费 20€", "by": "2026-09-29", "refs": ["g-404"]},
                           {"what": "带手工材料", "by": "2026-09-30"}]},

@@ -1,7 +1,8 @@
 """The setup page from a fresh install to Finish with the gateway, Gmail and MyClub, driven with
 HTTP calls as the page makes them (ADR 0006, ADR 0019).
 
-Gmail's IMAP server, the gateway, MyClub and the Brief's Sources are the harness's fakes. On any
+Gmail's IMAP server, the gateway and the Brief's Sources are the harness's fakes, and MyClub's
+calendar the web's here. On any
 system the secrets, the evening jobs and the wake are its in-memory fakes too; on Windows a second
 run stores the secrets in the real Credential Manager and registers the evening jobs in the real
 Task Scheduler, under names of the test's own, removed after, and reads the real "Allow wake
@@ -9,7 +10,6 @@ timers". After Finish, uninstall removes all of it again. The steps themselves a
 time in the e2e test_setup_*.py files, and uninstall in test_uninstall.py."""
 from __future__ import annotations
 
-import imaplib
 import subprocess
 import sys
 import uuid
@@ -31,7 +31,6 @@ from test_setup_first_brief import BRIEF_TEXT, brief_made, make_brief, send_it_t
 from test_setup_gmail import TYPED, connect_gmail
 from test_setup_myclub import CALENDAR, LINK as MYCLUB_LINK, add_kid, save_link
 from test_setup_status import install_program
-from test_setup_steps import HeaderImap
 from test_uninstall import leftovers, remove_at_once, uninstall
 
 PARENT = "parent@example.com"
@@ -41,21 +40,15 @@ SLOW = 600
 SENDERS = ["Opettaja <opettaja@edu.espoo.fi>"] * 3 + ["Coach <coach@tapiolan-seura.fi>"] * 2
 
 
-class Gmail(HeaderImap):
-    """Gmail's IMAP server: takes only the App Password, then lists the senders' headers."""
-
-    def __call__(self, *_a: Any, **_k: Any) -> "Gmail":
-        return self
-
-    def __enter__(self) -> "Gmail":
-        return self
-
-    def __exit__(self, *_a: Any) -> None:
-        pass
-
-    def login(self, user: str, password: str) -> None:
-        if password != APP_PASSWORD:
-            raise imaplib.IMAP4.error(b"[AUTHENTICATIONFAILED] Invalid credentials (Failure)")
+def school_mail(harness) -> None:
+    """Gmail, taking only the App Password, with the school's and the club's mail, whose senders
+    the page lists: the school's first message is the trip the first Brief has to say."""
+    harness.source_fakes["gmail"].password = APP_PASSWORD
+    harness.sources["gmail"] = [msg("gmail", f"100{n}", "2026-09-27T09:00:00+03:00",
+                                    BRIEF_TEXT if n == 1 else "Hei!", sender=sender,
+                                    subject="Trip" if n == 1 else "Viesti")
+                                for n, sender in enumerate(SENDERS, 1)]
+    harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": BRIEF_TEXT}
 
 
 class Web:
@@ -97,11 +90,8 @@ def fresh_install(harness, monkeypatch):
     python.parent.mkdir(parents=True, exist_ok=True)
     python.write_text("")
     monkeypatch.setattr(sys, "executable", str(python))
-    monkeypatch.setattr(imaplib, "IMAP4_SSL", Gmail(SENDERS))
     monkeypatch.setattr(myclub.requests, "get", Web().get)
-    harness.sources["gmail"] = [msg("gmail", "g1", "2026-09-27T09:00:00+03:00", BRIEF_TEXT,
-                                    sender="opettaja@edu.espoo.fi", subject="Trip")]
-    harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": BRIEF_TEXT}
+    school_mail(harness)
     return harness
 
 

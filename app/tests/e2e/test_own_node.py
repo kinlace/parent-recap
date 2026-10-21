@@ -16,10 +16,10 @@ import pytest
 
 import fake_node
 from conftest import REAL_RUN, program
-from test_source_failures import REAL_WILMA_COLLECT, caught_up_last_night, payload_ids
+from nights import caught_up_last_night
+from test_source_failures import payload_ids
 
 from family_brief import ops, own_node
-from family_brief.collectors import wilma
 
 STUDENT = {"studentNumber": "7", "name": "Virtanen Mia"}
 LISTED = {"students": [{"student": STUDENT, "messages": [
@@ -88,9 +88,7 @@ def test_doctor_runs_the_wilma_cli_on_parent_recaps_own_node(harness, no_node, m
 
 
 @pytest.mark.macos
-def test_the_evening_job_runs_the_wilma_cli_on_parent_recaps_own_node(harness, no_node,
-                                                                       monkeypatch):
-    monkeypatch.setattr(wilma, "collect", REAL_WILMA_COLLECT)
+def test_the_evening_job_runs_the_wilma_cli_on_parent_recaps_own_node(harness, no_node):
     caught_up_last_night(harness)
 
     assert harness.run() == 0
@@ -101,10 +99,9 @@ def test_the_evening_job_runs_the_wilma_cli_on_parent_recaps_own_node(harness, n
 
 
 @pytest.mark.macos
-def test_the_wilma_cli_never_checks_npm_for_a_newer_version(harness, no_node, monkeypatch, capsys):
+def test_the_wilma_cli_never_checks_npm_for_a_newer_version(harness, no_node, capsys):
     # Parent Recap installs the version it pins, and the CLI's "Run wilma update" would install
     # another one.
-    monkeypatch.setattr(wilma, "collect", REAL_WILMA_COLLECT)
     caught_up_last_night(harness)
 
     harness.cli("doctor", "--skip-llm")

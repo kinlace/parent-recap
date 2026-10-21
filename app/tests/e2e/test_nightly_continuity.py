@@ -5,7 +5,6 @@ persisted state."""
 from __future__ import annotations
 
 import json
-import logging
 import sys
 from datetime import timedelta
 
@@ -29,11 +28,9 @@ def test_nothing_new_and_nothing_due_sends_nothing(harness):
 
 def only_the_timetable(h) -> None:
     """A school evening whose only new Message is the next school day's ordinary timetable."""
-    h.sources = {"wilma": [
-        msg("wilma", "schedule:20260928", "2026-09-27T21:00:00+03:00",
-            "[2026-09-28 Mon · tomorrow]\n— Mia —\n  08:15–09:45  Historia  @ 204",
-            subject="Timetable for the next school day (from 2026-09-28)", chat="schedule"),
-    ]}
+    h.sources = {}
+    h.source_fakes["wilma"].answers[("schedule", "list")] = {"students": [{"student": {"name": "Mia"}, "lessons": [
+        {"date": "2026-09-28", "start": "08:15", "end": "09:45", "subject": "Historia", "room": "204"}]}]}
 
 
 def test_night_the_model_finds_nothing_to_say_about_sends_nothing(harness):
@@ -47,8 +44,9 @@ def test_night_the_model_finds_nothing_to_say_about_sends_nothing(harness):
     assert harness.sent == []
     assert harness.imessages == []
     assert harness.state()["last_run_at"] is not None
-    # Its Messages still count as read, so the next evening doesn't send them to the model again.
-    with time_machine.travel(NOW + timedelta(days=1), tick=False):
+    # Its Messages still count as read, so a run later that evening doesn't send them to the model
+    # again (the next evening has the next day's timetable).
+    with time_machine.travel(NOW + timedelta(hours=1), tick=False):
         assert harness.run() == 0
     assert len(harness.model_calls) == 1
     assert harness.sent == []
@@ -88,13 +86,8 @@ def every_source_fails(h) -> None:
         "gmail": RuntimeError("b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'"),
         "myclub": OSError("[Errno 8] nodename nor servname provided, or not known"),
         "wilma": RuntimeError("wilma: request timed out"),
+        "whatsapp": PermissionError(1, "Operation not permitted"),
     }
-
-    def whatsapp_without_permission():
-        logging.getLogger("family_brief.collectors.whatsapp").error(
-            "Cannot open ChatStorage.sqlite: [Errno 1] Operation not permitted")
-        return []
-    h.sources["whatsapp"] = whatsapp_without_permission
 
 
 @pytest.mark.parametrize("language", ["en", "zh", "fi"])
@@ -174,7 +167,7 @@ def test_outage_over_three_nights_is_told_each_night_and_caught_up_after(harness
     assert all("今晚所有信息源都没读到" in e.text for e in harness.sent[1:])
 
     harness.sources = {**night_0, "gmail": night_0["gmail"] + [
-        msg("gmail", "g-201", "2026-09-29T09:00:00+03:00", "Vanhempainilta on 8.10.",
+        msg("gmail", "1201", "2026-09-29T09:00:00+03:00", "Vanhempainilta on 8.10.",
             sender="office@kilo.example.fi", subject="Vanhempainilta")]}
     with time_machine.travel(NOW + timedelta(days=4), tick=False):
         assert harness.run() == 0
@@ -182,7 +175,7 @@ def test_outage_over_three_nights_is_told_each_night_and_caught_up_after(harness
     for source in ("gmail", "wilma", "whatsapp"):
         # Each outage night keeps reaching back to night 0, the last one every Source was read.
         assert harness.lookback_hours[source] == [26, 26, 50, 74, 98]
-    assert payload_message_ids(harness) == ["g-201"]
+    assert payload_message_ids(harness) == ["1201"]
 
 
 def test_run_of_some_sources_that_all_fail_sends_nothing(harness):
@@ -205,16 +198,9 @@ def test_quiet_source_beside_a_failed_one_sends_nothing(harness):
 
 # ── A Gmail with no sender ticked (#361)
 
-# What the real Gmail collector says when it has no sender to search for, rather than read the
-# whole inbox.
-NO_SENDER = RuntimeError("gmail.allowlist_domains or gmail.allowlist_senders is empty — "
-                         "refusing to scan all inbox.")
-
-
 def test_gmail_with_no_sender_beside_another_source_only_sends_the_brief(harness):
     normal_night(harness, "en")
     harness.config["gmail"]["allowlist_domains"] = []
-    harness.sources["gmail"] = NO_SENDER
 
     assert harness.run() == 0
 
@@ -230,7 +216,6 @@ def test_gmail_with_no_sender_and_no_other_source_still_fails(harness):
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
     del harness.config["kids"][0]["myclub_ical_url"]
-    harness.sources["gmail"] = NO_SENDER
 
     assert harness.run() == 0
 

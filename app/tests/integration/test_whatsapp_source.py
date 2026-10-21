@@ -1,12 +1,11 @@
 """The WhatsApp Source reads tonight's messages from WhatsApp for Mac's database, run for real
-against a small ChatStorage.sqlite in the temporary HOME. It has the tables and columns WhatsApp's
-Core Data store uses for chats, messages, group members and push names, with only the columns the
-Source reads or that show it skips something; real rows have many more. The Mac has given the
+against a small ChatStorage.sqlite in the temporary HOME, built by the WhatsApp Source's fake
+(fake_sources.py) with the tables and columns WhatsApp's Core Data store uses. The Mac has given the
 Source's Python Full Disk Access. All names, chats and messages are made up."""
 from __future__ import annotations
 
 import logging
-import sqlite3
+import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -14,6 +13,7 @@ import pytest
 import time_machine
 
 from conftest import NOW
+from fake_sources import TEXT, WhatsAppDb
 
 from family_brief.collectors import whatsapp
 from family_brief.collectors.base import Message
@@ -24,74 +24,8 @@ from family_brief.state import State
 pytestmark = pytest.mark.macos
 
 # ZWAMESSAGE.ZMESSAGETYPE values the Source treats differently.
-TEXT, IMAGE, VOICE, SYSTEM, URL = 0, 1, 3, 6, 7
+IMAGE, VOICE, SYSTEM, URL = 1, 3, 6, 7
 NEW_TYPE = 99  # a type a later WhatsApp adds, which has no placeholder
-
-SCHEMA = """
-CREATE TABLE ZWACHATSESSION (
-    Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, Z_OPT INTEGER, ZARCHIVED INTEGER, ZREMOVED INTEGER,
-    ZSESSIONTYPE INTEGER, ZUNREADCOUNT INTEGER, ZLASTMESSAGE INTEGER, ZLASTMESSAGEDATE TIMESTAMP,
-    ZCONTACTJID VARCHAR, ZPARTNERNAME VARCHAR);
-CREATE TABLE ZWAGROUPMEMBER (
-    Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, Z_OPT INTEGER, ZISACTIVE INTEGER, ZISADMIN INTEGER,
-    ZCHATSESSION INTEGER, ZCONTACTNAME VARCHAR, ZFIRSTNAME VARCHAR, ZMEMBERJID VARCHAR);
-CREATE TABLE ZWAPROFILEPUSHNAME (
-    Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, Z_OPT INTEGER, ZJID VARCHAR, ZPUSHNAME VARCHAR);
-CREATE TABLE ZWAMESSAGE (
-    Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, Z_OPT INTEGER, ZISFROMME INTEGER,
-    ZMESSAGESTATUS INTEGER, ZMESSAGETYPE INTEGER, ZCHATSESSION INTEGER, ZGROUPMEMBER INTEGER,
-    ZMEDIAITEM INTEGER, ZMESSAGEDATE TIMESTAMP, ZSENTDATE TIMESTAMP, ZFROMJID VARCHAR,
-    ZPUSHNAME VARCHAR, ZSTANZAID VARCHAR, ZTEXT VARCHAR, ZTOJID VARCHAR);
-"""
-
-
-class WhatsAppDb:
-    """WhatsApp's ChatStorage.sqlite in the temporary HOME, where the Source looks for it."""
-
-    def __init__(self, db_dir: Path) -> None:
-        db_dir.mkdir(parents=True)
-        self.conn = sqlite3.connect(db_dir / "ChatStorage.sqlite")
-        self.conn.executescript(SCHEMA)
-        self._pk = 0
-
-    def _next(self) -> int:
-        self._pk += 1
-        return self._pk
-
-    def chat(self, name: str) -> int:
-        pk = self._next()
-        self.conn.execute("INSERT INTO ZWACHATSESSION (Z_PK, ZSESSIONTYPE, ZCONTACTJID, ZPARTNERNAME, "
-                          "ZLASTMESSAGEDATE) VALUES (?, 1, ?, ?, ?)",
-                          (pk, f"1203630{pk}@g.us", name, core_data(NOW)))
-        return pk
-
-    def member(self, chat: int, jid: str, contact: str | None = None, first: str | None = None) -> int:
-        pk = self._next()
-        self.conn.execute("INSERT INTO ZWAGROUPMEMBER (Z_PK, ZCHATSESSION, ZMEMBERJID, ZCONTACTNAME, "
-                          "ZFIRSTNAME) VALUES (?, ?, ?, ?, ?)", (pk, chat, jid, contact, first))
-        return pk
-
-    def push_name(self, jid: str, name: str) -> None:
-        self.conn.execute("INSERT INTO ZWAPROFILEPUSHNAME (Z_PK, ZJID, ZPUSHNAME) VALUES (?, ?, ?)",
-                          (self._next(), jid, name))
-
-    def message(self, chat: int, when: datetime, text: str | None, *, msg_type: int | None = TEXT,
-                member: int | None = None, from_jid: str | None = None, from_me: bool = False) -> str:
-        """A message in `chat`; returns the external id the Source gives it. ZPUSHNAME holds binary
-        in newer WhatsApp builds, so every row has some for the Source to ignore."""
-        pk = self._next()
-        self.conn.execute(
-            "INSERT INTO ZWAMESSAGE (Z_PK, ZCHATSESSION, ZMESSAGEDATE, ZSENTDATE, ZTEXT, ZMESSAGETYPE, "
-            "ZGROUPMEMBER, ZFROMJID, ZISFROMME, ZPUSHNAME, ZSTANZAID) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (pk, chat, core_data(when), core_data(when), text, msg_type, member, from_jid,
-             int(from_me), b"\x0a\x07\xff\x00binary", f"3EB0{pk:016X}"))
-        self.conn.commit()
-        return f"{chat}:{pk}"
-
-
-def core_data(when: datetime) -> float:
-    """`when` as WhatsApp stores dates: seconds since 2001-01-01 UTC."""
-    return (when - datetime(2001, 1, 1, tzinfo=timezone.utc)).total_seconds()
 
 
 @pytest.fixture
@@ -105,10 +39,10 @@ def mac(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> WhatsAppDb:
     db_dir = home / "Library" / "Group Containers" / "group.net.whatsapp.WhatsApp.shared"
     monkeypatch.setattr(whatsapp, "DB_DIR", db_dir)
     monkeypatch.setattr(whatsapp, "DB_FILE", db_dir / "ChatStorage.sqlite")
-    db = WhatsAppDb(db_dir)
+    db = WhatsAppDb(db_dir / "ChatStorage.sqlite")
     with time_machine.travel(NOW, tick=False):
         yield db
-    db.conn.close()
+    db.close()
 
 
 def config(*chats: dict, lookback_hours: int = 26) -> Config:
@@ -291,17 +225,17 @@ def test_a_chat_without_a_kid_has_no_kid_hint(mac, tmp_path):
 
 def test_the_snapshot_is_removed_and_the_live_database_is_untouched(mac, tmp_path, monkeypatch):
     mac.message(mac.chat(CLASS["name"]), NOW - timedelta(hours=1), "Tonight")
-    snapshots: list[Path] = []
-    real = whatsapp._snapshot_db
+    copied_to: list[Path] = []
+    copy = shutil.copy2
 
-    def snapshot_db() -> Path:
-        snapshots.append(real())
-        return snapshots[-1]
-    monkeypatch.setattr(whatsapp, "_snapshot_db", snapshot_db)
+    def copy2(src: Path, dst: Path, **k) -> Path:
+        copied_to.append(Path(dst))
+        return copy(src, dst, **k)
+    monkeypatch.setattr(shutil, "copy2", copy2)
     before = whatsapp.DB_FILE.read_bytes()
 
     assert bodies(collect(config(CLASS), State(tmp_path / "state.json"))) == ["Tonight"]
 
-    [snapshot] = snapshots
-    assert snapshot != whatsapp.DB_FILE and not snapshot.parent.exists()
+    [snapshot] = copied_to
+    assert snapshot.parent != whatsapp.DB_DIR and not snapshot.parent.exists()
     assert whatsapp.DB_FILE.read_bytes() == before

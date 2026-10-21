@@ -383,7 +383,7 @@ def test_doctor_finds_claude_from_the_native_installer(harness, native_claude, m
 
 def test_the_nightly_run_finds_claude_from_the_native_installer(harness, native_claude):
     harness.secrets[ACCOUNT] = TOKEN
-    harness.sources["gmail"] = [msg("gmail", "g-1", "2026-09-27T08:15:00+03:00",
+    harness.sources["gmail"] = [msg("gmail", "1001", "2026-09-27T08:15:00+03:00",
                                     "Parents' evening is on 8.10.", sender="teacher@kilo.example.fi")]
 
     assert harness.run() == 0
@@ -430,7 +430,7 @@ def test_the_nightly_run_says_the_keychain_asked_rather_than_that_no_token_is_st
     caplog.set_level(logging.INFO)
     harness.secrets[ACCOUNT] = TOKEN
     harness.secrets.asks.add(ACCOUNT)
-    harness.sources["gmail"] = [msg("gmail", "g-1", "2026-09-27T08:15:00+03:00",
+    harness.sources["gmail"] = [msg("gmail", "1001", "2026-09-27T08:15:00+03:00",
                                     "Parents' evening is on 8.10.", sender="teacher@kilo.example.fi")]
 
     harness.run()

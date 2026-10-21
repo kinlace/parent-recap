@@ -8,7 +8,6 @@ Playwright or its Chromium, or where no port can be listened on, these tests ski
 `-m "e2e and not browser"` runs the rest of the layer."""
 from __future__ import annotations
 
-import imaplib
 import json
 import re
 import sys
@@ -21,14 +20,12 @@ try:
 except ImportError:  # the browser fixture skips the tests and says why
     sync_playwright = None
 
-from conftest import msg
 from family_brief.collectors import myclub
 from setup_page import CAN_LISTEN, PAGE_DIR, _listening, clock, page  # noqa: F401
 from test_setup_ai import GATEWAY_KEY
-from test_setup_first_brief import BRIEF_TEXT
 from test_setup_gmail import TYPED
 from test_setup_myclub import LINK as MYCLUB_LINK
-from test_setup_page_windows import SENDERS, Gmail, Web
+from test_setup_page_windows import Web, school_mail
 from test_setup_status import install_program
 from test_setup_wilma import wilma_cli  # noqa: F401
 
@@ -75,11 +72,8 @@ def family(harness, wilma_cli, monkeypatch):  # noqa: F811
     install_program(harness)
     for var in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY", "TMUX"):
         monkeypatch.delenv(var, raising=False)
-    monkeypatch.setattr(imaplib, "IMAP4_SSL", Gmail(SENDERS))
     monkeypatch.setattr(myclub.requests, "get", Web().get)
-    harness.sources["gmail"] = [msg("gmail", "g1", "2026-09-27T09:00:00+03:00", BRIEF_TEXT,
-                                    sender="opettaja@edu.espoo.fi", subject="Trip")]
-    harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": BRIEF_TEXT}
+    school_mail(harness)
     return harness
 
 

@@ -4,6 +4,7 @@ the email (text, HTML, attachments), the model command line, and persisted state
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import re
@@ -20,25 +21,25 @@ from nights import ENGLISH_REPLY, NORMAL_NIGHT_IDS, PARTNER_EN, normal_night, pa
 
 # A message with a word from each category in each language: (id, Source, sender, subject, body).
 SENSITIVE = [
-    ("s-fi-health", "wilma", "Opettaja Virtanen", "Lääkärin lausunto", "Mialla todettiin epilepsia."),
-    ("s-fi-support", "wilma", "Erityisopettaja Laine", "Leon koulunkäynti",
+    ("message:901", "wilma", "Opettaja Virtanen", "Lääkärin lausunto", "Mialla todettiin epilepsia."),
+    ("message:902", "wilma", "Erityisopettaja Laine", "Leon koulunkäynti",
      "Leolle on tehty pedagoginen selvitys, ja aloitamme tehostetun tuen."),
-    ("s-fi-bullying", "gmail", "Rehtori <rehtori@kilo.example.fi>", "Välituntitilanne",
+    ("1901", "gmail", "Rehtori <rehtori@kilo.example.fi>", "Välituntitilanne",
      "Leoa kiusattiin taas välitunnilla."),
-    ("s-fi-welfare", "wilma", "Kuraattori", "Tapaaminen ensi viikolla", "Olemme tehneet lastensuojeluilmoituksen."),
-    ("s-sv-health", "gmail", "Skolan <skolan@kilo.example.fi>", "Möte om Mia", "Skolpsykologen vill träffa er om Mia."),
-    ("s-sv-support", "gmail", "Läraren <larare@kilo.example.fi>", "Från nästa vecka", "Leo får särskilt stöd från nästa vecka."),
-    ("s-sv-bullying", "whatsapp", "Eva", None, "Mia har blivit mobbad på rasterna."),
-    ("s-sv-welfare", "whatsapp", "Eva", None, "Vi har gjort en barnskyddsanmälan."),
-    ("s-en-health", "gmail", "Nurse <nurse@kilo.example.fi>", "After the visit", "The doctor diagnosed Leo with epilepsy."),
-    ("s-en-support", "gmail", "Teacher <teacher@kilo.example.fi>", "Signature needed",
+    ("message:903", "wilma", "Kuraattori", "Tapaaminen ensi viikolla", "Olemme tehneet lastensuojeluilmoituksen."),
+    ("1902", "gmail", "Skolan <skolan@kilo.example.fi>", "Möte om Mia", "Skolpsykologen vill träffa er om Mia."),
+    ("1903", "gmail", "Läraren <larare@kilo.example.fi>", "Från nästa vecka", "Leo får särskilt stöd från nästa vecka."),
+    ("1:901", "whatsapp", "Eva", None, "Mia har blivit mobbad på rasterna."),
+    ("1:902", "whatsapp", "Eva", None, "Vi har gjort en barnskyddsanmälan."),
+    ("1904", "gmail", "Nurse <nurse@kilo.example.fi>", "After the visit", "The doctor diagnosed Leo with epilepsy."),
+    ("1905", "gmail", "Teacher <teacher@kilo.example.fi>", "Signature needed",
      "Mia's individual learning plan is ready to sign."),
-    ("s-en-bullying", "whatsapp", "Sam", None, "Two older boys keep bullying Leo on the bus."),
-    ("s-en-welfare", "whatsapp", "Sam", None, "The police came to school about Mia today."),
-    ("s-zh-health", "whatsapp", "王老师", None, "米娅确诊了多动症，可能会犯困"),
-    ("s-zh-support", "whatsapp", "王老师", None, "老师建议给小狮申请特殊教育支持"),
-    ("s-zh-bullying", "whatsapp", "李妈妈", None, "米娅在学校被欺负了"),
-    ("s-zh-welfare", "whatsapp", "李妈妈", None, "社工下周要来家访"),
+    ("1:903", "whatsapp", "Sam", None, "Two older boys keep bullying Leo on the bus."),
+    ("1:904", "whatsapp", "Sam", None, "The police came to school about Mia today."),
+    ("1:905", "whatsapp", "王老师", None, "米娅确诊了多动症，可能会犯困"),
+    ("1:906", "whatsapp", "王老师", None, "老师建议给小狮申请特殊教育支持"),
+    ("1:907", "whatsapp", "李妈妈", None, "米娅在学校被欺负了"),
+    ("1:908", "whatsapp", "李妈妈", None, "社工下周要来家访"),
 ]
 
 
@@ -48,7 +49,7 @@ def sensitive_night(h) -> None:
     for ext_id, source, sender, subject, body in SENSITIVE:
         h.sources[source].append(msg(source, ext_id, "2026-09-27T16:00:00+03:00", body, sender=sender,
                                      subject=subject, chat="3B parents" if source == "whatsapp" else None,
-                                     kid="Mia"))
+                                     kid=None if source == "gmail" else "Mia"))
 
 
 def test_a_sensitive_message_in_any_language_reaches_no_model_call(harness):
@@ -76,6 +77,9 @@ def test_a_sensitive_message_in_any_language_reaches_no_model_call(harness):
 
 
 WILMA_TENANT = "https://espoo.inschool.fi"
+# What the Wilma Source puts in its ids once the family has signed in to WILMA_TENANT, so that
+# two Wilmas' ids stay apart: the start of the address's SHA-256.
+WILMA_TAG = hashlib.sha256(WILMA_TENANT.encode()).hexdigest()[:8]
 SELVITYS_LINK = "https://mail.google.com/mail/u/0/#search/rfc822msgid:selvitys-12@kilo.example.fi"
 
 
@@ -94,16 +98,15 @@ def held_back_night(h, language: str = "zh") -> None:
     Sources give with what each has to find it again: Gmail its link, Wilma its ids."""
     normal_night(h, language)
     h.sources["gmail"].append(msg(
-        "gmail", "g-103", "2026-09-27T11:00:00+03:00",
+        "gmail", "1103", "2026-09-27T11:00:00+03:00",
         "Leon pedagoginen selvitys on valmis. Käydäänkö se läpi tiistaina?",
-        sender="Koulupsykologi Laine <psykologi@kilo.example.fi>", subject="Leon koulunkäynti", kid="Leo",
+        sender="Koulupsykologi Laine <psykologi@kilo.example.fi>", subject="Leon koulunkäynti",
         url=SELVITYS_LINK))
     h.sources["wilma"].append(msg(
         "wilma", "message:812", "2026-09-27T13:00:00+03:00", "Miaa on kiusattu välitunneilla. Soitattehan minulle.",
-        sender="Opettaja Virtanen", subject="Välituntitilanne", kid="Mia",
-        metadata={"wilma_kind": "message", "raw_id": 812, "student_number": "7731905"}))
+        sender="Opettaja Virtanen", subject="Välituntitilanne", kid="Mia", metadata={"student_number": "7731905"}))
     h.sources["whatsapp"].append(msg(
-        "whatsapp", "wa-3", "2026-09-27T20:10:00+03:00", "米娅最近在学校被欺负了，老师说要找心理老师谈谈",
+        "whatsapp", "1:3", "2026-09-27T20:10:00+03:00", "米娅最近在学校被欺负了，老师说要找心理老师谈谈",
         sender="李妈妈", chat="3B parents", kid="Mia"))
 
 
@@ -140,9 +143,8 @@ def test_a_night_with_only_held_back_messages_still_sends_a_brief_that_lists_the
     harness.config["summary_language"] = "en"
     signed_in_to_wilma(harness)
     harness.sources = {"wilma": [msg(
-        "wilma", "message:812", "2026-09-27T13:00:00+03:00", "Miaa on kiusattu välitunneilla.",
-        sender="Opettaja Virtanen", subject="Välituntitilanne", kid="Mia",
-        metadata={"wilma_kind": "message", "raw_id": 812, "student_number": "7731905"})]}
+        "wilma", f"message:{WILMA_TAG}:812", "2026-09-27T13:00:00+03:00", "Miaa on kiusattu välitunneilla.",
+        sender="Opettaja Virtanen", subject="Välituntitilanne", kid="Mia", metadata={"student_number": "7731905"})]}
 
     assert harness.run() == 0
 
@@ -155,7 +157,7 @@ def test_a_night_with_only_held_back_messages_still_sends_a_brief_that_lists_the
         "not sent to Claude. Read them where they came from.\n"
         f"• Wilma · Opettaja Virtanen · Välituntitilanne · {WILMA_TENANT}/!7731905/messages/812\n\n"
         "📥 Read tonight: Gmail 0 messages · MyClub 0 events · Wilma 1 message · WhatsApp 0 messages")
-    assert "message:812" in harness.state()["seen_message_ids"]["wilma"]  # not listed again tomorrow
+    assert f"message:{WILMA_TAG}:812" in harness.state()["seen_message_ids"]["wilma"]  # not listed again tomorrow
     assert "Written by" not in email.html  # no model wrote any of it
 
 
@@ -166,9 +168,9 @@ def test_held_back_messages_are_kept_in_the_archive_like_the_others(harness):
 
     raw = json.loads((harness.archive_dir / "2026-09-27.raw.json").read_text())
     archived = {m["external_id"]: m["body"] for m in raw["messages"]}
-    assert sorted(archived) == sorted([*NORMAL_NIGHT_IDS, "g-103", "message:812", "wa-3"])
+    assert sorted(archived) == sorted([*NORMAL_NIGHT_IDS, "1103", "message:812", "1:3"])
     assert "Miaa on kiusattu välitunneilla" in archived["message:812"]
-    assert raw["summary"]["_held_back"] == ["g-103", "message:812", "wa-3"]  # what the AI never saw
+    assert raw["summary"]["_held_back"] == ["1103", "message:812", "1:3"]  # what the AI never saw
     assert "Välituntitilanne" in (harness.archive_dir / "2026-09-27.md").read_text()
 
 
@@ -196,7 +198,7 @@ def test_with_the_ai_filter_off_sensitive_messages_go_to_the_model_as_before(har
     prompt = harness.model_prompt()
     for body in HELD_BACK_BODIES:
         assert body in prompt
-    assert payload_message_ids(harness) == sorted([*NORMAL_NIGHT_IDS, "g-103", "message:812", "wa-3"])
+    assert payload_message_ids(harness) == sorted([*NORMAL_NIGHT_IDS, "1103", "message:812", "1:3"])
     [email] = harness.sent
     assert "🔒" not in email.text and "🔒" not in email.html
 
@@ -219,18 +221,13 @@ def test_a_held_back_message_without_a_link_says_where_to_read_it_and_cannot_inj
     harness.sources = {
         "wilma": [msg("wilma", "message:813", "2026-09-27T13:00:00+03:00", "Leon HOJKS päivitetään.",
                       sender="Opettaja Virtanen", subject="<b>HOJKS</b>", kid="Leo",
-                      metadata={"wilma_kind": "message", "raw_id": 813, "student_number": "7731906"})],
-        "gmail": [msg("gmail", "g-104", "2026-09-27T11:00:00+03:00", "Leo was bullied on the bus.",
-                      sender="Bus company <info@bus.example.fi>", kid="Leo",
-                      url="javascript:alert(1)")]}
+                      metadata={"student_number": "7731906"})]}
 
     assert harness.run() == 0
 
     [email] = harness.sent
-    assert "• Gmail · Bus company · (no subject) · read it in Gmail" in email.text
     assert "• Wilma · Opettaja Virtanen · <b>HOJKS</b> · read it in Wilma" in email.text
     assert "<li>Wilma · Opettaja Virtanen · &lt;b&gt;HOJKS&lt;/b&gt; · read it in Wilma</li>" in email.html
-    assert "javascript" not in email.html
 
 
 def test_the_setup_pages_preview_lists_held_back_messages_too(harness, capsys):
@@ -285,15 +282,15 @@ def test_a_newsletter_listing_its_staff_and_a_camp_notice_about_medication_still
                   "Kuraattori Maija Laine, 040 123 4567\nKoulupsykologi Pekka Virtanen, pekka.virtanen@kilo.example.fi")
     harness.sources["wilma"].append(msg(
         "wilma", "news:41", "2026-09-27T09:00:00+03:00", newsletter, sender="Rehtori", subject="Viikkotiedote 40",
-        metadata={"wilma_kind": "news", "raw_id": 41, "student_number": "7731905"}))
+        metadata={"student_number": "7731905"}))
     harness.sources["gmail"].append(msg(
-        "gmail", "g-104", "2026-09-27T09:30:00+03:00",
+        "gmail", "1104", "2026-09-27T09:30:00+03:00",
         "Leirikoulu: ilmoitattehan opettajalle lapsen lääkityksestä ja allergioista perjantaihin mennessä.",
-        sender="teacher.3b@kilo.example.fi", subject="Leirikoulu", kid="Mia"))
+        sender="teacher.3b@kilo.example.fi", subject="Leirikoulu"))
 
     assert harness.run() == 0
 
-    assert payload_message_ids(harness) == sorted([*NORMAL_NIGHT_IDS, "g-104", "news:41"])
+    assert payload_message_ids(harness) == sorted([*NORMAL_NIGHT_IDS, "1104", "news:41"])
     [email] = harness.sent
     assert "🔒" not in email.text and "🔒" not in email.html
 
@@ -311,33 +308,32 @@ def test_announcements_and_mass_email_reach_the_model_and_a_message_to_the_house
     normal_night(harness, "en")
     signed_in_to_wilma(harness)
     harness.sources["wilma"] += [
-        msg("wilma", "news:41", "2026-09-27T09:00:00+03:00",
+        msg("wilma", f"news:{WILMA_TAG}:41", "2026-09-27T09:00:00+03:00",
             "Poliisi muistuttaa: koulun takana oleva aidattu alue on suljettu.", sender="Rehtori Saarinen",
-            subject="Poliisin tiedote", metadata={"wilma_kind": "news", "raw_id": 41, "student_number": "7731905"}),
-        msg("wilma", "message:812", "2026-09-27T13:00:00+03:00", "Miaa on kiusattu välitunneilla.",
+            subject="Poliisin tiedote", metadata={"student_number": "7731905"}),
+        msg("wilma", f"message:{WILMA_TAG}:812", "2026-09-27T13:00:00+03:00", "Miaa on kiusattu välitunneilla.",
             sender="Opettaja Virtanen", subject="Välituntitilanne", kid="Mia",
-            metadata={"wilma_kind": "message", "raw_id": 812, "student_number": "7731905",
-                      "addressee_count": 2}),
+            metadata={"student_number": "7731905", "addressee_count": 2}),
         # The wilma CLI names its 34 addressees: every guardian of the class.
-        msg("wilma", "message:813", "2026-09-27T15:00:00+03:00",
+        msg("wilma", f"message:{WILMA_TAG}:813", "2026-09-27T15:00:00+03:00",
             "Huoltajakysely on auki 9.10. asti. Kiusaamiseen puututaan aina.", sender="Opettaja Virtanen",
-            subject="Huoltajakysely", kid="Mia",
-            metadata={"wilma_kind": "message", "raw_id": 813, "student_number": "7731905",
-                      "addressee_count": 34})]
+            subject="Huoltajakysely", kid="Mia", metadata={"student_number": "7731905", "addressee_count": 34})]
     harness.sources["gmail"] += [
-        msg("gmail", "g-103", "2026-09-27T09:30:00+03:00",
+        msg("gmail", "1103", "2026-09-27T09:30:00+03:00",
             "Iltapäivätoiminnan haku päättyy perjantaina 2.10. Erityisen tuen oppilaat hakevat samalla lomakkeella.",
             sender="Kilon kaupunki <info@kilo.example.fi>", subject="Iltapäivätoiminnan haku",
             metadata={"mailing_list": True}),
-        msg("gmail", "g-104", "2026-09-27T10:00:00+03:00", WILMA_ANNOUNCEMENTS,
+        msg("gmail", "1104", "2026-09-27T10:00:00+03:00", WILMA_ANNOUNCEMENTS,
             sender="Wilma <noreply@kilo.example.fi>", subject="Viesti Wilmasta"),
-        msg("gmail", "g-105", "2026-09-27T14:00:00+03:00", WILMA_MESSAGE_COPY,
+        msg("gmail", "1105", "2026-09-27T14:00:00+03:00", WILMA_MESSAGE_COPY,
             sender="Wilma <noreply@kilo.example.fi>", subject="Viesti Wilmasta")]
 
     assert harness.run() == 0
 
-    assert payload_message_ids(harness) == sorted([*NORMAL_NIGHT_IDS, "g-103", "g-104", "message:813",
-                                                   "news:41"])
+    # Signed in to, the Wilma's tag is in the normal night's Wilma id too.
+    normal_ids = [f"message:{WILMA_TAG}:55" if i == "message:55" else i for i in NORMAL_NIGHT_IDS]
+    assert payload_message_ids(harness) == sorted([*normal_ids, "1103", "1104", f"message:{WILMA_TAG}:813",
+                                                   f"news:{WILMA_TAG}:41"])
     prompt = harness.model_prompt()
     for text in ("aidattu alue", "Erityisen tuen oppilaat", "Kiusaamisen vastainen viikko",
                  "Kiusaamiseen puututaan"):
@@ -345,5 +341,6 @@ def test_announcements_and_mass_email_reach_the_model_and_a_message_to_the_house
     assert "Miaa on kiusattu" not in prompt
     [email] = harness.sent
     listed = email.text.split("\n🔒 Held-back messages\n", 1)[1].split("\n\n", 1)[0].splitlines()[1:]
-    assert listed == ["• Gmail · Wilma · Viesti Wilmasta · read it in Gmail",
+    assert listed == ["• Gmail · Wilma · Viesti Wilmasta · "
+                      "https://mail.google.com/mail/u/0/#search/rfc822msgid:1105@mail.gmail.com",
                       f"• Wilma · Opettaja Virtanen · Välituntitilanne · {WILMA_TENANT}/!7731905/messages/812"]

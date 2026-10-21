@@ -13,7 +13,6 @@ import yaml
 
 from conftest import SAYS_SOMETHING, msg
 from family_brief.collectors import myclub
-from family_brief.collectors.myclub import collect as real_collect  # before the harness fakes it
 
 TOKEN = "s3cr3t-t0ken"
 LINK = f"https://example.myclub.fi/ical/{TOKEN}?key={TOKEN}"
@@ -23,33 +22,22 @@ def _mode(p: Path) -> int:
     return stat.S_IMODE(p.stat().st_mode)
 
 
-class _Response:
-    def __init__(self, status: int) -> None:
-        self.status_code, self.text, self.url = status, "", LINK
-
-
-def _failing_get(kind: str):
-    def get(url: str, **_k):
-        if kind == "refused":
-            raise requests.ConnectionError(
-                f"HTTPSConnectionPool(host='example.myclub.fi', port=443): Max retries exceeded "
-                f"with url: /ical/{TOKEN}?key={TOKEN} (Caused by NewConnectionError('refused'))")
-        return _Response(404)
-    return get
-
-
-def _real_myclub(harness, monkeypatch, kind: str) -> None:
+def _failing_myclub(harness, kind: str) -> None:
+    """Mia's MyClub link, which the server refuses, quoting the link as requests does, or answers
+    with a 404."""
     harness.config["kids"][0]["myclub_ical_url"] = LINK
-    monkeypatch.setattr(myclub, "collect", real_collect)
-    monkeypatch.setattr(myclub.requests, "get", _failing_get(kind))
+    harness.source_fakes["myclub"].failures = [requests.ConnectionError(
+        f"HTTPSConnectionPool(host='example.myclub.fi', port=443): Max retries exceeded "
+        f"with url: /ical/{TOKEN}?key={TOKEN} (Caused by NewConnectionError('refused'))")
+        if kind == "refused" else 404]
 
 
 # ── MyClub token
 
 @pytest.mark.parametrize("kind", ["refused", "404"])
-def test_a_failed_myclub_fetch_leaves_the_token_out_of_logs_and_archive(harness, monkeypatch, caplog, kind):
-    _real_myclub(harness, monkeypatch, kind)
-    harness.sources["gmail"] = [msg("gmail", "g1", "2026-09-27T18:00:00+03:00", "Retkipäivä huomenna",
+def test_a_failed_myclub_fetch_leaves_the_token_out_of_logs_and_archive(harness, caplog, kind):
+    _failing_myclub(harness, kind)
+    harness.sources["gmail"] = [msg("gmail", "1001", "2026-09-27T18:00:00+03:00", "Retkipäivä huomenna",
                                     sender="teacher@kilo.example.fi", subject="Retki")]
     harness.model_reply = SAYS_SOMETHING
     caplog.set_level(logging.INFO)
@@ -66,8 +54,8 @@ def test_a_failed_myclub_fetch_leaves_the_token_out_of_logs_and_archive(harness,
 
 
 @pytest.mark.parametrize("kind", ["refused", "404"])
-def test_doctor_names_only_the_myclub_host_and_status(harness, monkeypatch, capsys, kind):
-    _real_myclub(harness, monkeypatch, kind)
+def test_doctor_names_only_the_myclub_host_and_status(harness, capsys, kind):
+    _failing_myclub(harness, kind)
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
 
@@ -122,7 +110,7 @@ def test_saving_a_link_for_an_unknown_kid_changes_nothing(tmp_path):
 
 @pytest.mark.macos
 def test_archive_and_logs_are_owner_only(harness):
-    harness.sources["gmail"] = [msg("gmail", "g1", "2026-09-27T18:00:00+03:00", "Retkipäivä huomenna",
+    harness.sources["gmail"] = [msg("gmail", "1001", "2026-09-27T18:00:00+03:00", "Retkipäivä huomenna",
                                     sender="teacher@kilo.example.fi", subject="Retki")]
     harness.model_error = "boom"  # the model fails, so its diagnostics are saved too
 
