@@ -224,7 +224,7 @@ def _parse(raw: bytes, ext_id: str, cutoff: datetime) -> Message | None:
         return None
     metadata = {"sender_email": sender_email, "thread_id": msg.get("X-GM-THRID") or ""}
     if _to_a_mailing_list(msg):
-        metadata["mailing_list"] = True  # sent to everyone, so never held back from the AI (held_back.py)
+        metadata["mailing_list"] = True  # sent to everyone, so never held back from the AI (sent_to_everyone)
     return Message(
         source="gmail",
         external_id=ext_id,
@@ -243,6 +243,52 @@ def _to_a_mailing_list(msg: EmailMessage) -> bool:
     message the collector reads anyway."""
     return bool(msg.get("List-Id") or msg.get("List-Unsubscribe")) or \
         str(msg.get("Precedence") or "").strip().casefold() in ("bulk", "list")
+
+
+# ── Held-back Messages (ADR 0013), as the Gmail record in sources.py hooks them in. Wilma's
+# notification emails, by their subject in Finnish, English and Swedish. One can gather several kinds
+# of new items, each under its own heading: announcements (Tiedotteet), which go to everyone, and
+# messages, lesson notes, exams and exam grades, which go to the Household. A heading is a line with
+# the kind alone, maybe after New and with a count or a colon: "Uudet tiedotteet (2):". The
+# announcements run to the next heading or the end. Any other kind's heading ends them, so the list
+# of those can be long: a word too many only checks more.
+_WILMA_EMAIL = re.compile(r"\s*(?:viesti wilmasta|message from wilma|meddelande från wilma)\b", re.IGNORECASE)
+_ANNOUNCEMENTS = r"tiedotte\w*|announcements|news|bulletins|nyheter"
+_OTHER_KINDS = (r"viest\w*|messages?|meddelanden?|tuntimerkin\w*|lesson\s+notes|koearvosan\w*|exam\s+grades"
+                r"|koke\w*|exams?|läks\w*|homework")
+_HEADING = re.compile(rf"[^\w\n]*(?:(?:uudet|uusia|new|nya)\s+)?(?:(?P<announcements>{_ANNOUNCEMENTS})"
+                      rf"|{_OTHER_KINDS})[^\w\n]*(?:\d+[^\w\n]*)?", re.IGNORECASE)
+
+
+def _wilma_email(message: Message) -> bool:
+    """Whether `message` is one of Wilma's notification emails, by its subject."""
+    return bool(_WILMA_EMAIL.match(message.subject or ""))
+
+
+def _without_announcements(body: str) -> str:
+    """A Wilma notification email's `body` without its announcements, each from its heading to the
+    next heading. With no announcements heading, the whole body."""
+    kept, announcements = [], False
+    for line in body.splitlines():
+        if heading := _HEADING.fullmatch(line):
+            announcements = heading["announcements"] is not None
+        if not announcements:
+            kept.append(line)
+    return "\n".join(kept)
+
+
+def sent_to_everyone(message: Message) -> bool:
+    """Whether the email `message` went to everyone, so it is never held back: one the collector found
+    a mailing list's headers on. Not a Wilma notification email, which is checked outside its
+    announcements (checked_body())."""
+    return bool(message.metadata.get("mailing_list")) and not _wilma_email(message)
+
+
+def checked_body(message: Message) -> str:
+    """The part of the email `message`'s body held_back checks: of a Wilma notification email, the
+    part outside its announcements, and of any other, the whole body."""
+    body = message.body or ""
+    return _without_announcements(body) if _wilma_email(message) else body
 
 
 def _login(cfg: Config) -> tuple[imaplib.IMAP4_SSL, str]:

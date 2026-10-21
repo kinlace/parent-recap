@@ -281,7 +281,7 @@ def _collect_list(state: State, source_tag: str,
             metadata = {"wilma_kind": source_tag, "raw_id": wilma_id,
                         "student_number": student_number, "wilma_url": address}
             if source_tag == "message":
-                metadata["addressee_count"] = addressees  # held_back.sent_to_everyone reads it
+                metadata["addressee_count"] = addressees  # sent_to_everyone reads it
             results.append(Message(
                 source="wilma",
                 external_id=dedup_key,
@@ -378,6 +378,25 @@ def _collect_schedule(state: State, wilmas: _Wilmas | None = None) -> list[Messa
         metadata={"wilma_kind": "schedule_next_school_day",
                   "first_date": first_iso},
     )]
+
+
+# How many people a Wilma message must be addressed to, by the names Wilma lists, to count as sent
+# to everyone (ADR 0013). A message about one child goes to its guardians (usually two, rarely
+# four), its teachers and the school's student welfare staff (principal, school social worker,
+# psychologist and nurse): about 10 at most, and about 12 for two children. One to the guardians of
+# a teaching group names 15 or more even for a small group of 10 pupils, and a class of 20 to 25
+# pupils has 30 to 45. A list Wilma hides, or a group's name in place of its people, gives fewer.
+EVERYONE_MIN_ADDRESSEES = 15
+
+
+def sent_to_everyone(m: Message) -> bool:
+    """Whether the Wilma item `m` went to everyone, so it is never held back (ADR 0013): an
+    announcement from the news list, or a message with EVERYONE_MIN_ADDRESSEES addressees or more.
+    A message to fewer, or whose addressees Wilma hides or the wilma CLI doesn't give (before 2.0),
+    is checked."""
+    kind, count = m.metadata.get("wilma_kind"), m.metadata.get("addressee_count")
+    return kind == "news" or (kind == "message" and isinstance(count, int) and
+                              not isinstance(count, bool) and count >= EVERYONE_MIN_ADDRESSEES)
 
 
 def link(m: Message) -> str | None:

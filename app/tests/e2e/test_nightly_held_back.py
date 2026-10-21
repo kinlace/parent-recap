@@ -13,6 +13,8 @@ from html import escape
 import pytest
 
 from conftest import html_for_golden, msg
+from family_brief import sources
+from family_brief.collectors.base import Collected
 
 from nights import ENGLISH_REPLY, NORMAL_NIGHT_IDS, PARTNER_EN, normal_night, payload_message_ids
 
@@ -228,6 +230,29 @@ def test_a_held_back_message_without_a_link_says_where_to_read_it_and_cannot_inj
     [email] = harness.sent
     assert "• Wilma · Opettaja Virtanen · <b>HOJKS</b> · read it in Wilma" in email.text
     assert "<li>Wilma · Opettaja Virtanen · &lt;b&gt;HOJKS&lt;/b&gt; · read it in Wilma</li>" in email.html
+
+
+def test_a_source_without_held_back_hooks_holds_back_when_in_doubt_and_lists_by_sender_and_subject(
+        harness, monkeypatch):
+    # A new Source whose record says nothing about who its messages went to or where to read them,
+    # though its message looks like a Wilma announcement to a mailing list with a link.
+    looks_sent_to_everyone = msg(
+        "school_app", "sa-1", "2026-09-27T13:00:00+03:00", "Miaa on kiusattu välitunneilla.",
+        sender="Rehtori Saarinen <rehtori@kilo.example.fi>", subject="Tiedote", kid="Mia",
+        url="https://app.example.fi/messages/1",
+        metadata={"wilma_kind": "news", "addressee_count": 40, "mailing_list": True})
+    school_app = sources.Source("school_app", {"en": "School app", "fi": "Kouluappi", "zh": "学校应用"},
+                                lambda cfg: True, skippable=True, connect_rank=9,
+                                collect=lambda *_a: Collected(messages=[looks_sent_to_everyone]))
+    monkeypatch.setattr(sources, "ALL", (*sources.ALL, school_app))
+    harness.config["summary_language"] = "en"
+
+    assert harness.run() == 0
+
+    assert harness.model_calls == []
+    [email] = harness.sent
+    assert "• School app · Rehtori Saarinen · Tiedote · read it in School app" in email.text
+    assert "app.example.fi" not in email.text and "app.example.fi" not in email.html
 
 
 def test_the_setup_pages_preview_lists_held_back_messages_too(harness, capsys):

@@ -14,7 +14,6 @@ from typing import Callable, Literal
 from zoneinfo import ZoneInfo
 
 from .actions import archive, calendar as calendar_action, email as email_action, ics as ics_action, imessage
-from .collectors import wilma as wilma_collector
 from . import ai_filter, feedback, gateway, languages, llm, private_files, run_lock
 from . import sources as source_registry
 from .brief_text import PRODUCT_NAME, BriefText
@@ -227,10 +226,10 @@ def _wait_for_network(timeout_seconds: int = 60, probe_host: str = "api.anthropi
 
 
 def _ics_candidates(cfg: Config, state: State, events: list) -> list:
-    """Events that would go into tonight's .ics attachment. MyClub is usually subscribed to
-    directly in the calendar app, so it is skipped unless asked for."""
+    """Events that would go into tonight's .ics attachment: those of a Source whose record lets
+    them in (MyClub's only when asked for) and the model's."""
     return [e for e in events
-            if (e.source != "myclub" or cfg.google_calendar.ics_include_myclub)
+            if ((source := source_registry.named(e.source)) is None or source.in_ics(cfg))
             and not calendar_action.already_created(state, e)]
 
 
@@ -291,15 +290,17 @@ def _action_meta(a: dict, t: BriefText) -> str:
 @dataclass(frozen=True)
 class _HeldBack:
     """A Held-back Message as the Brief lists it, without the AI (ADR 0013): its Source, sender and
-    subject (for WhatsApp, which has none, its group), and the link to read it at its Source."""
+    subject (for a Source whose messages have none, such as WhatsApp, its group, listed first), and
+    the link to read it at its Source."""
     source: str
     sender: str
     subject: str | None
     link: str | None
+    group_first: bool = False
 
     def label(self, t: BriefText) -> str:
         subject = self.subject or t.no_subject
-        about = [subject, self.sender] if self.source == "whatsapp" else [self.sender, subject]
+        about = [subject, self.sender] if self.group_first else [self.sender, subject]
         return " · ".join(x for x in [self.source_name, *about] if x)
 
     @property
@@ -317,14 +318,15 @@ def _sender_name(sender: str | None) -> str:
 
 
 def _held_back(held: list[Message]) -> list[_HeldBack]:
-    """Tonight's Held-back Messages as the Brief lists them: Gmail's with the link the Source gives,
-    Wilma's with their page in Wilma, and WhatsApp's with none."""
+    """Tonight's Held-back Messages as the Brief lists them, each with the link and the group its
+    Source's record gives. With no record, by sender and subject and with no link."""
     out = []
     for m in held:
-        link = wilma_collector.link(m) if m.source == "wilma" else m.url
-        out.append(_HeldBack(m.source, _sender_name(m.sender),
-                             m.chat_name if m.source == "whatsapp" else m.subject,
-                             link if link and link.startswith("https://") else None))
+        source = source_registry.named(m.source)
+        link = source.held_back_link(m) if source else None
+        group = source.group if source else None
+        out.append(_HeldBack(m.source, _sender_name(m.sender), group(m) if group else m.subject,
+                             link if link and link.startswith("https://") else None, group_first=bool(group)))
     return out
 
 

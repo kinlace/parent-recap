@@ -14,7 +14,7 @@ import pytest
 import yaml
 
 from family_brief import held_back
-from family_brief.collectors import gmail
+from family_brief.collectors import gmail, wilma as wilma_source
 from family_brief.collectors.base import Message
 
 # A message about one person's sensitive situation, written as parents and schools write it:
@@ -230,7 +230,7 @@ def test_a_wilma_message_to_every_guardian_of_a_class_is_never_held_back():
 
 
 @pytest.mark.parametrize("addressees", [
-    held_back.EVERYONE_MIN_ADDRESSEES - 1,  # the most that is still checked
+    wilma_source.EVERYONE_MIN_ADDRESSEES - 1,  # the most that is still checked
     2,                       # the Household's two guardians
     12,                      # two children's guardians, their teachers and the student welfare staff
     None,                    # Wilma hides who it went to, or a wilma CLI before 2.0

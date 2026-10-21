@@ -7,7 +7,7 @@ from datetime import timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .. import google_packages
+from .. import google_packages, sources
 from ..brief_text import PRODUCT_NAME
 from ..collectors.base import CalendarEvent
 from ..config import Config
@@ -32,8 +32,10 @@ def event_hash(ev: CalendarEvent) -> str:
 
 
 def _legacy_event_hash(ev: CalendarEvent) -> str:
-    """The hash before 0.4.0, which had the title in it and MyClub starts in UTC."""
-    start = ev.start.astimezone(timezone.utc) if ev.source == "myclub" else ev.start
+    """The hash before 0.4.0, which had the title in it and, for a Source whose record says so
+    (MyClub), the start in UTC."""
+    source = sources.named(ev.source)
+    start = ev.start.astimezone(timezone.utc) if source and source.utc_hash_before_0_4 else ev.start
     return _hash(f"{ev.source}|{ev.external_id}|{start.isoformat()}|{ev.title}")
 
 

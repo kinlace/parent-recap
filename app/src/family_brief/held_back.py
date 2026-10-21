@@ -8,8 +8,9 @@ splits a night's messages into those that may go to the AI and those held back, 
 lists itself.
 
 A message sent to everyone is never held back, whatever words it has: the word lists can't tell a
-notice to the whole school from a message about one child, but the Sources can (sent_to_everyone()).
-match_message() holds that rule, so the evening run and ai-filter-report both follow it.
+notice to the whole school from a message about one child, but the Sources can, each in its record
+(sources.py). One whose record can't tell is checked. match_message() holds that rule, so the
+evening run and ai-filter-report both follow it.
 
 The module knows nothing of the Brief, so other tools can check text with it too."""
 from __future__ import annotations
@@ -23,7 +24,7 @@ from pathlib import Path
 
 import yaml
 
-from . import ai_filter
+from . import ai_filter, sources
 from .collectors.base import Message
 
 log = logging.getLogger(__name__)
@@ -156,68 +157,21 @@ def sensitive(text: str | None) -> str | None:
 
 _ADDRESS = re.compile(r"<[^<>]*>")
 
-# ── Sent to everyone (ADR 0013). Wilma's notification emails, by their subject in Finnish, English
-# and Swedish. One can gather several kinds of new items, each under its own heading: announcements
-# (Tiedotteet), which go to everyone, and messages, lesson notes, exams and exam grades, which go to
-# the Household. A heading is a line with the kind alone, maybe after New and with a count or a
-# colon: "Uudet tiedotteet (2):". The announcements run to the next heading or the end. Any other
-# kind's heading ends them, so the list of those can be long: a word too many only checks more.
-_WILMA_EMAIL = re.compile(r"\s*(?:viesti wilmasta|message from wilma|meddelande från wilma)\b", re.IGNORECASE)
-_ANNOUNCEMENTS = r"tiedotte\w*|announcements|news|bulletins|nyheter"
-_OTHER_KINDS = (r"viest\w*|messages?|meddelanden?|tuntimerkin\w*|lesson\s+notes|koearvosan\w*|exam\s+grades"
-                r"|koke\w*|exams?|läks\w*|homework")
-_HEADING = re.compile(rf"[^\w\n]*(?:(?:uudet|uusia|new|nya)\s+)?(?:(?P<announcements>{_ANNOUNCEMENTS})"
-                      rf"|{_OTHER_KINDS})[^\w\n]*(?:\d+[^\w\n]*)?", re.IGNORECASE)
-
-
-def _wilma_email(message: Message) -> bool:
-    """Whether `message` is one of Wilma's notification emails, by its subject."""
-    return message.source == "gmail" and bool(_WILMA_EMAIL.match(message.subject or ""))
-
-
-def _without_announcements(body: str) -> str:
-    """A Wilma notification email's `body` without its announcements, each from its heading to the
-    next heading. With no announcements heading, the whole body."""
-    kept, announcements = [], False
-    for line in body.splitlines():
-        if heading := _HEADING.fullmatch(line):
-            announcements = heading["announcements"] is not None
-        if not announcements:
-            kept.append(line)
-    return "\n".join(kept)
-
-
-# How many people a Wilma message must be addressed to, by the names Wilma lists, to count as sent
-# to everyone (ADR 0013). A message about one child goes to its guardians (usually two, rarely
-# four), its teachers and the school's student welfare staff (principal, school social worker,
-# psychologist and nurse): about 10 at most, and about 12 for two children. One to the guardians of
-# a teaching group names 15 or more even for a small group of 10 pupils, and a class of 20 to 25
-# pupils has 30 to 45. A list Wilma hides, or a group's name in place of its people, gives fewer.
-EVERYONE_MIN_ADDRESSEES = 15
-
-
 def sent_to_everyone(message: Message) -> bool:
-    """Whether `message` went to everyone, so it is never held back: an announcement the Wilma Source
-    reads from the news list, a Wilma message with EVERYONE_MIN_ADDRESSEES addressees or more, or
-    an email the Gmail Source found a mailing list's headers on. A Wilma message to fewer, or whose
-    addressees Wilma hides or the wilma CLI doesn't give (before 2.0), is checked. So is a post in
-    a WhatsApp group, where incidents get discussed. Wilma's notification emails are checked
-    outside their announcements (fields())."""
-    if message.source == "wilma":
-        kind, count = message.metadata.get("wilma_kind"), message.metadata.get("addressee_count")
-        return kind == "news" or (kind == "message" and isinstance(count, int) and
-                                  not isinstance(count, bool) and count >= EVERYONE_MIN_ADDRESSEES)
-    return message.source == "gmail" and bool(message.metadata.get("mailing_list")) and \
-        not _wilma_email(message)
+    """Whether `message` went to everyone, so it is never held back, as its Source's record says. A
+    message of a Source that can't tell, or of no Source, is checked."""
+    source = sources.named(message.source)
+    return bool(source and source.sent_to_everyone(message))
 
 
 def fields(message: Message) -> dict[str, str]:
     """The texts of a message the check reads: its subject, its body and its sender. The sender's
-    name counts, as in Koulupsykologi Laine <laine@school.fi>, and its address doesn't. Of a Wilma
-    notification email's body, only the part outside its announcements counts."""
-    body = message.body or ""
+    name counts, as in Koulupsykologi Laine <laine@school.fi>, and its address doesn't. Of the body,
+    the part its Source's record says counts, such as a Wilma notification email's outside its
+    announcements."""
+    source = sources.named(message.source)
     return {"subject": message.subject or "",
-            "body": _without_announcements(body) if _wilma_email(message) else body,
+            "body": source.checked_body(message) if source else message.body or "",
             "sender": _ADDRESS.sub(" ", message.sender or "")}
 
 
