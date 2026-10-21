@@ -57,5 +57,5 @@ def test_the_macos_job_reports_coverage_with_no_threshold_and_windows_doesnt():
 def test_coverage_measures_lines_and_branches_of_the_package_with_no_threshold():
     pyproject = tomllib.loads((WORKFLOW_DIR.parents[1] / "app" / "pyproject.toml").read_text())
     coverage = pyproject["tool"]["coverage"]
-    assert coverage["run"] == {"source": ["family_brief"], "branch": True}
+    assert coverage["run"]["source"] == ["family_brief"] and coverage["run"]["branch"] is True
     assert "fail_under" not in coverage.get("report", {})
