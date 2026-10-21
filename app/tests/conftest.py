@@ -19,9 +19,10 @@ macOS's secret dialog (`osascript`), and the macOS-only steps' `open` (Finder be
 Access, the Passwords app), faked at the command.
 
 Everything else (config, state, archive) is real and lives in a temporary HOME.
-"Now" and the local timezone are pinned. Regenerate golden files with:
+"Now" and the local timezone are pinned. Regenerate golden files, all or one night's, with:
 
     pytest --update-goldens
+    pytest --update-goldens=normal_night
 """
 from __future__ import annotations
 
@@ -49,6 +50,7 @@ from family_brief.collectors.base import CalendarEvent, Collected, Message
 from family_brief.llm import retry
 from family_brief.system import desktop, jobs, secrets, wake, windows_only
 from fake_system import FakeDesktop, FakeJobs, FakeSecrets, FakeWake
+from goldens import Goldens
 
 # The test layers, one folder each (README.md). Tests import helpers from tests in other layers
 # (`from test_source_failures import ...`), so every layer's folder is on the path, whichever runs.
@@ -149,26 +151,38 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption("--update-goldens", action="store_true",
-                     help="Rewrite golden files from the current output instead of comparing.")
+    parser.addoption("--update-goldens", nargs="?", const="*", default=None, metavar="PATTERN",
+                     help="Rewrite the golden files whose names match PATTERN (a glob, or a name "
+                          "up to a dot such as normal_night; all without one) from the current "
+                          "output instead of comparing.")
 
 
 # ── Golden files
 
+_GOLDENS = pytest.StashKey[Goldens]()
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    pattern = config.getoption("--update-goldens")
+    # `--update-goldens tests/e2e` would take the folder for its pattern and rewrite nothing.
+    if pattern and ("/" in pattern or os.sep in pattern or pattern.endswith(".py")):
+        raise pytest.UsageError(f"--update-goldens takes a golden file name pattern, not a path "
+                                f"({pattern}); write it as --update-goldens=PATTERN")
+    config.stash[_GOLDENS] = Goldens(GOLDEN_DIR, pattern)
+
+
+def pytest_terminal_summary(terminalreporter: Any, config: pytest.Config) -> None:
+    goldens = config.stash.get(_GOLDENS, None)
+    if goldens is None or goldens.update is None:
+        return
+    terminalreporter.section("golden files rewritten")
+    for line in goldens.summary() or [f"none: every golden matching {goldens.update} is unchanged"]:
+        terminalreporter.write_line(line)
+
+
 @pytest.fixture
 def golden(request: pytest.FixtureRequest) -> Callable[[str, str], None]:
-    update = request.config.getoption("--update-goldens")
-
-    def check(name: str, actual: str) -> None:
-        path = GOLDEN_DIR / name
-        if update:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(actual)
-            return
-        assert path.exists(), f"missing golden {path.name}; run: pytest --update-goldens"
-        assert actual == path.read_text(), f"{path.name} differs; if intended, run: pytest --update-goldens"
-
-    return check
+    return request.config.stash[_GOLDENS].check
 
 
 def html_for_golden(html: str) -> str:
