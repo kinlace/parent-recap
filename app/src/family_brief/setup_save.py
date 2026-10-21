@@ -52,6 +52,7 @@ from . import feedback
 from . import sources as source_registry
 from .brief_text import Language
 from .config import Config, WhatsAppChat
+from .setup_report import outcome, report
 
 Phase = Literal["welcome", "connect", "working", "check", "first-brief", "finish"]
 # The setup page's Source list: the Sources in the registry's connect order, with the AI's step
@@ -348,12 +349,6 @@ def invalid(e: ValidationError) -> dict[str, Any]:
                 "save again.", errors=errors)
 
 
-def outcome(result: str, next_: str | None = None, **extra: Any) -> dict[str, Any]:
-    """A step's outcome as `setup save` prints it, for the setup page to return too."""
-    return {"result": result, **extra, **({"next": next_} if next_ else {})}
-
-
 def _print(out: dict[str, Any]) -> int:
-    from .setup_steps import _report
     extra = dict(out)
-    return _report(extra.pop("result"), extra.pop("next", None), **extra)
+    return report(extra.pop("result"), extra.pop("next", None), **extra)

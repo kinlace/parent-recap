@@ -580,7 +580,7 @@ def _within(domain: str, parent: str) -> bool:
 def city_domain(city: str | None) -> str | None:
     """The domain the Household's town's schools likely write from: its preset's, else the town's
     own .fi domain, such as jarvenpaa.fi for Järvenpää."""
-    from .setup_steps import CITY_DOMAINS
+    from .setup_gmail import CITY_DOMAINS
     if not city:
         return None
     return CITY_DOMAINS.get(city) or f"{_slug(city)}.fi"
@@ -596,14 +596,14 @@ def _slug(city: str) -> str:
 def _discover_senders_json(config: str | None, days: int) -> int:
     """`discover gmail-senders --json`: one line of JSON on stdout, the count as it reads on
     stderr, so the line stays the only output a caller reads."""
-    from .setup_steps import _report
+    from .setup_report import report
     try:
         senders = gmail_senders(Config.load(config), days, progress=lambda done, total: print(
             f"  read {done} of {total} senders", file=sys.stderr, flush=True))
     except Exception:  # its error can name the address or the config: doctor says what's wrong
-        return _report("read-failed", "Gmail's senders couldn't be read. Run parent-recap doctor, "
-                       "fix what it names for Gmail, then run this again.")
-    return _report("read", days=days, senders=senders)
+        return report("read-failed", "Gmail's senders couldn't be read. Run parent-recap doctor, "
+                      "fix what it names for Gmail, then run this again.")
+    return report("read", days=days, senders=senders)
 
 
 # ---------------------------------------------------------------- full-disk-access

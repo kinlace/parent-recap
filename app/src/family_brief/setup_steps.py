@@ -17,6 +17,10 @@ setup save — save the Household's answers into the config, and setup's progres
 setup status — whether setup is done (in setup_status.py)
 setup page — serve the setup page on this Mac and open it in the browser (in setup_server.py)
 
+This module is the chat's side only: the arguments, the dialogs and what each command prints. What
+a step does, which the setup page does too, is in its own module: setup_gmail, setup_wilma,
+setup_ai, setup_whatsapp and setup_myclub.
+
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
 it (ADR 0005).
@@ -24,117 +28,25 @@ it (ADR 0005).
 from __future__ import annotations
 
 import argparse
-import imaplib
 import json
-import math
 import os
-import re
-import select
 import shlex
-import signal
-import subprocess
 import sys
-import tempfile
-import time
-from contextlib import AbstractContextManager, nullcontext, suppress
 from pathlib import Path
-from typing import Any
-from urllib.parse import urlparse
 
-from . import install_record, own_node, secret_dialog, setup_wilma, whatsapp_python
-from .config import Config, Kid, LLMConfig
+from . import secret_dialog, setup_ai, setup_gmail, setup_myclub, setup_whatsapp, setup_wilma
+from .config import Config, LLMConfig
+from .setup_ai import CLAUDE_WINDOW, setup_token_window
+from .setup_report import KEYCHAIN_WARNING, PLAIN_TERMINAL, program, report
 from .system import desktop, jobs, secrets
 
-if sys.platform != "win32":  # the Wilma window's pseudo-terminal, which Windows doesn't have yet
-    import fcntl
-    import pty
-    import termios
-    import tty
+# Still found here by the tests, and by the setup page for its WhatsApp read, whose tests replace
+# it here, until they use the Sources' own modules (#423).
+from .setup_gmail import CITY_DOMAINS
+from .setup_whatsapp import read_through_bg as read_whatsapp_through_bg
+from .setup_wilma import WILMA_CITIES, WILMA_WINDOW
 
-APP_PASSWORDS_URL = "https://myaccount.google.com/apppasswords"
-TWO_STEP_URL = "https://myaccount.google.com/signinoptions/two-step-verification"
 PAGE_UNAVAILABLE = "The page isn't available"
-
-# The Wilma address of each city in "City presets" in docs/config.md.
-WILMA_CITIES = {
-    "espoo.inschool.fi": "Espoo",
-    "helsinki.inschool.fi": "Helsinki",
-    "yvkoulut.inschool.fi": "Helsinki",
-    "vantaa.inschool.fi": "Vantaa",
-    "kauniainen.inschool.fi": "Kauniainen",
-}
-# The starting Gmail allowlist of each city in "City presets" in docs/config.md: the domain the
-# city's schools and teachers write from, which also covers its subdomains, such as edu.espoo.fi.
-CITY_DOMAINS = {
-    "Espoo": "espoo.fi",
-    "Helsinki": "hel.fi",
-    "Vantaa": "vantaa.fi",
-    "Kauniainen": "kauniainen.fi",
-}
-WILMA_POLL_SECONDS = 2
-WILMA_PAGE_POLL_SECONDS = 0.2  # in the window, so it ends the CLI as soon as it has signed in
-# The Wilma window's own text, in the reviewed languages; any other language gets the English.
-# Wilma comes before the AI login in setup, so there's no AI yet to translate it.
-WILMA_WINDOW = {
-    "en": {
-        "guide": ["Parent Recap: sign in to Wilma",
-                  "1. Type your town in Finnish, for example Espoo, Helsinki or Vantaa, and pick "
-                  "it from the list.",
-                  "2. Sign in with the same username and password as on the Wilma website or "
-                  "app. If you don't remember them, look in your browser's saved passwords."],
-        # In place of the guide's first step on Windows, where Wilma's own page signs in.
-        "page": "1. Wilma's sign-in page opens in your browser. Type your town there in Finnish, "
-                "for example Espoo, Helsinki or Vantaa, and pick it from the list.",
-        "signed_in": "You're signed in to Wilma.",
-        "close": "You can close this window.",
-    },
-    "zh": {
-        "guide": ["Parent Recap：登录 Wilma",
-                  "1. 用芬兰语输入你所在的城市，例如 Espoo、Helsinki 或 Vantaa，然后在列表里选中它。",
-                  "2. 用你在 Wilma 网站或 App 上的用户名和密码登录。如果记不清，可以在浏览器保存的密码里找到。"],
-        "page": "1. 浏览器会打开 Wilma 的登录页面。在那里用芬兰语输入你所在的城市，例如 Espoo、Helsinki 或 "
-                "Vantaa，然后在列表里选中它。",
-        "signed_in": "已登录 Wilma。",
-        "close": "可以关闭这个窗口了。",
-    },
-    "fi": {
-        "guide": ["Parent Recap: kirjaudu Wilmaan",
-                  "1. Kirjoita kuntasi nimi suomeksi, esimerkiksi Espoo, Helsinki tai Vantaa, ja "
-                  "valitse se listasta.",
-                  "2. Kirjaudu samalla käyttäjätunnuksella ja salasanalla kuin Wilman "
-                  "verkkosivulla tai sovelluksessa. Jos et muista niitä, katso ne selaimesi "
-                  "tallennetuista salasanoista."],
-        "page": "1. Wilman kirjautumissivu aukeaa selaimeesi. Kirjoita siellä kuntasi nimi "
-                "suomeksi, esimerkiksi Espoo, Helsinki tai Vantaa, ja valitse se listasta.",
-        "signed_in": "Olet kirjautunut Wilmaan.",
-        "close": "Voit sulkea tämän ikkunan.",
-    },
-}
-# Node's console.clear(), which the wilma CLI calls before each of its questions.
-NODE_CLEAR = b"\x1b[1;1H\x1b[0J"
-# What the wilma CLI asks once the sign-in has worked. Setup reads every Kid, so the family never
-# sees either: the window answers the first itself and ends the CLI before the second.
-WILMA_STUDENT_PICKER = b"Select student"
-WILMA_MENU = b"What do you want to view?"
-CLAUDE_TOKEN_ACCOUNT = "claude-oauth-token"
-CLAUDE_WINDOW = "Claude sign-in"  # the title of the window `claude setup-token` runs in
-# Loose on purpose, like scripts/setup_claude_token.py: the test call decides whether it works.
-CLAUDE_TOKEN = re.compile(r"sk-ant-[A-Za-z0-9_-]+")
-WHATSAPP_POLL_SECONDS = 5
-# Each read gets at least this long, for the background job to start and copy a large database.
-WHATSAPP_READ_SECONDS = 60
-WHATSAPP_DAYS = 180  # the groups listed are those with messages in this many days
-MYCLUB_URL = "https://id.myclub.fi"
-# OpenAI's page for the ChatGPT desktop app, with Codex in it, and its download for macOS.
-CODEX_APP_URL = "https://developers.openai.com/codex/app"
-_OK = ("saved", "signed-in", "readable", "read")
-# Where macOS lets setup save a password in the Keychain: a Terminal window in the family's own
-# desktop session. Shell → New Command… starts a command outside tmux, even when each new window
-# starts tmux.
-PLAIN_TERMINAL = ("in a plain Terminal window outside tmux or SSH (in Terminal, Shell → New "
-                  "Command… works)")
-KEYCHAIN_WARNING = ("This is running inside tmux or SSH, where macOS doesn't let Parent Recap "
-                    f"save passwords in the Keychain and shows no prompt. Run it {PLAIN_TERMINAL}.")
 
 
 def register(sub) -> None:
@@ -178,9 +90,9 @@ def register(sub) -> None:
                                  "report the chats")
     pwhatsapp.add_argument("--timeout", type=int, default=600,
                            help="Seconds to wait for Full Disk Access (default: 600)")
-    pwhatsapp.add_argument("--days", type=int, default=WHATSAPP_DAYS,
+    pwhatsapp.add_argument("--days", type=int, default=setup_whatsapp.WHATSAPP_DAYS,
                            help="List chats with messages in this many days "
-                           f"(default: {WHATSAPP_DAYS})")
+                           f"(default: {setup_whatsapp.WHATSAPP_DAYS})")
     pwhatsapp.add_argument("--no-open", action="store_true",
                            help="Don't open Finder and Full Disk Access again, only wait and read")
     pwhatsapp.add_argument("--read", action="store_true", help=argparse.SUPPRESS)  # inside the bg job
@@ -200,14 +112,6 @@ def register(sub) -> None:
     setup_server.register(steps)
 
 
-def _keychain_failure(e: secrets.SecretsError) -> tuple[str, dict[str, Any]]:
-    """A step's result when macOS refused to save a secret in the Keychain, with macOS's code
-    when there is one: `keychain-not-reachable` when it can't even ask here, as in tmux or over
-    SSH, otherwise `keychain-failed`."""
-    result = "keychain-not-reachable" if e.reason == "not-reachable" else "keychain-failed"
-    return result, ({"code": e.code} if e.code is not None else {})
-
-
 def _warn_if_unreachable() -> str:
     """At a Keychain step's start, says once that saving the secret in the Keychain will fail
     here, and returns the same warning to put on top of the dialog, or "" where it won't fail."""
@@ -217,320 +121,50 @@ def _warn_if_unreachable() -> str:
     return f"{KEYCHAIN_WARNING}\n\n"
 
 
-def _report(result: str, next_: str | None = None, **extra: Any) -> int:
-    out = {"result": result, **extra}
-    if next_:
-        out["next"] = next_
-    print(json.dumps(out, ensure_ascii=False))
-    return 0 if result in _OK else 1
-
-
 # ---------------------------------------------------------------- gmail
-
-TURN_ON_TWO_STEP = (f"Turn on 2-Step Verification at {TWO_STEP_URL}, then create the App "
-                    "Password again and run this again. A work or school Google account may not "
-                    "allow App Passwords at all; then use a personal Gmail.")
-
 
 def cmd_gmail(args: argparse.Namespace) -> int:
     address = (args.address or _configured_address(args.config) or "").strip().lower()
     if "@" not in address:
-        return _report("no-address", "Run it again with --address and the family's Gmail "
-                       "address: parent-recap setup gmail --address name@gmail.com")
+        return report("no-address", "Run it again with --address and the family's Gmail "
+                      "address: parent-recap setup gmail --address name@gmail.com")
     warning = _warn_if_unreachable()
     if not args.no_open:
-        desktop.open_url(APP_PASSWORDS_URL)
+        desktop.open_url(setup_gmail.APP_PASSWORDS_URL)
 
     try:
         password = secret_dialog.ask(
             f"{warning}Paste the App Password for {address}.\n\nCreate it on Google's App "
-            f"passwords page, which is open in your browser ({APP_PASSWORDS_URL}), with the name "
-            "Parent Recap, then copy the 16 letters Google shows.", other=PAGE_UNAVAILABLE)
+            f"passwords page, which is open in your browser ({setup_gmail.APP_PASSWORDS_URL}), "
+            "with the name Parent Recap, then copy the 16 letters Google shows.",
+            other=PAGE_UNAVAILABLE)
     except secret_dialog.Cancelled:
-        return _report("cancelled", "The family closed the dialog. Run this again when they're ready.")
+        return report("cancelled", "The family closed the dialog. Run this again when they're ready.")
     except secret_dialog.OtherChosen:
-        return _report("app-passwords-unavailable", TURN_ON_TWO_STEP)
+        return report("app-passwords-unavailable", setup_gmail.TURN_ON_TWO_STEP)
     except secret_dialog.NoWayToAsk:
-        return _report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
-                       f"runs this in Terminal: {_program()} setup gmail --address {address}")
+        return report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
+                      f"runs this in Terminal: {program()} setup gmail --address {address}")
 
-    result, next_, extra = gmail_sign_in(address, password)
-    return _report(result, next_, **({"address": address} if result == "saved" else extra))
+    result, next_, extra = setup_gmail.sign_in(address, password)
+    return report(result, next_, **({"address": address} if result == "saved" else extra))
 
 
-def gmail_sign_in(address: str, password: str) -> tuple[str, str | None, dict[str, Any]]:
-    """Tests the App Password `password` for `address` with Gmail and stores it in the Keychain,
-    and returns the step's result, what to do next when it went wrong, and what else it reports:
-    macOS's `code` when the Keychain refused it. The setup page's own field calls this too (ADR
-    0007), so both give the same results."""
-    from .collectors import gmail
-
-    password = password.replace(" ", "")
-    if len(password) != 16 or not password.isalpha():
-        # Not sent to Google: it's most likely the family's own Google password.
-        return "not-an-app-password", ("That wasn't a 16-letter App Password. Copy the App "
-                                       "Password Google showed (not the Google password) and run "
-                                       "this again."), {}
-
+def _configured_address(config: str | None) -> str | None:
     try:
-        with imaplib.IMAP4_SSL(gmail.IMAP_HOST, gmail.IMAP_PORT, timeout=gmail.IMAP_TIMEOUT) as imap:
-            imap.login(address, password)
-            imap.logout()
-    except imaplib.IMAP4.error:
-        return "rejected", (f"Gmail didn't accept that App Password for {address}. Check the "
-                            "address, create a new App Password and run this again. If it still "
-                            f"fails: {TURN_ON_TWO_STEP}"), {}
-    except OSError:
-        return "no-connection", ("Couldn't reach Gmail. Check the Mac is online and run this "
-                                 "again."), {}
-
-    try:
-        gmail.store_app_password(address, password)
-    except secrets.SecretsError as e:
-        result, extra = _keychain_failure(e)
-        if result == "keychain-not-reachable":
-            return result, ("Gmail accepted it, but macOS doesn't let Parent Recap save it in the "
-                            "Keychain from inside tmux or SSH, and shows no prompt there. Run "
-                            f"this again {PLAIN_TERMINAL}: {_program()} setup gmail --address "
-                            f"{shlex.quote(address)}"), extra
-        return result, ("Gmail accepted it, but macOS didn't let Parent Recap save it in the "
-                        "Keychain. Run this again and click Allow if macOS asks."), extra
-    return "saved", None, {}
+        cfg = Config.load(config)
+    except Exception:  # no config yet: setup can connect Gmail before writing it
+        return None
+    return cfg.gmail.username
 
 
 # ---------------------------------------------------------------- wilma
 
 def cmd_wilma(args: argparse.Namespace) -> int:
     if args.screen:
-        status = 1
-        try:
-            status = _sign_in_screen(args.language)
-        finally:
-            if args.status is not None:
-                with suppress(OSError):  # the step stopped waiting and took its folder away
-                    args.status.write_text(f"{status}\n", encoding="utf-8")
-        return status
-    out = sign_in_in_terminal(args.language, args.timeout, no_open=args.no_open)
-    return _report(out.pop("result"), out.pop("next", None), **out)
-
-
-def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -> dict[str, Any]:
-    """The wilma CLI signs in only on its own interactive screen, so this runs that screen in a
-    Terminal window and waits for its result: the CLI saves its config once the sign-in has
-    worked, and the window's script records the screen's exit status when it closes. The
-    password stays between the family and the CLI; this reads only the Wilma address from the
-    CLI's config. Returns the step's outcome as `setup wilma` prints it; the setup page offers
-    this window when its own sign-in fails for any reason but a wrong password (ADR 0008).
-    Without the CLI it installs the pinned one first, as the page does. The CLI it installed
-    and a profile new to the CLI go in setup's record."""
-    from .collectors import wilma
-
-    def outcome(result: str, next_: str | None = None, **extra: Any) -> dict[str, Any]:
-        return {"result": result, **extra, **({"next": next_} if next_ else {})}
-
-    again = f"{_program()} setup wilma"
-    installed = setup_wilma.install()
-    if installed == "no-node":
-        return outcome("not-installed", "Parent Recap's own Node, which the wilma CLI runs on, "
-                       "is missing. The family pastes the Parent Recap install line into "
-                       f"Terminal again, then run: {again}")
-    if installed != "installed":
-        return outcome("not-installed", "The wilma CLI didn't install. The family checks that "
-                       f"the Mac is online, then run: {again}")
-    config = setup_wilma.config_path()
-    profiles_before = setup_wilma.profile_ids(config)
-    with tempfile.TemporaryDirectory(prefix="parent-recap-wilma-") as tmp:
-        status = Path(tmp) / "exit-status"
-        seen = _mtime(config)
-        if not no_open:
-            if not desktop.open_terminal(sign_in_window(language, status), {}, "Wilma sign-in"):
-                return outcome("no-terminal", "Terminal didn't open. The family runs wilma in "
-                               f"Terminal and signs in there, then run: {again} --no-open")
-
-        polls = max(1, math.ceil(timeout / WILMA_POLL_SECONDS))
-        check_now = no_open  # already signed in, perhaps
-        for poll in range(polls + 1):
-            exit_status = _exit_status(status)
-            config_mtime = _mtime(config)
-            if check_now or config_mtime != seen or exit_status is not None:
-                check_now, seen = False, config_mtime
-                try:
-                    kids = wilma.list_kids()
-                except wilma.WilmaError:
-                    kids = None
-                if kids is not None:
-                    setup_wilma.record_profile(setup_wilma.last_profile_id(config), profiles_before)
-                    address = _wilma_address(config)
-                    return outcome("signed-in", city=WILMA_CITIES.get(address or ""),
-                                   wilma_address=address, kids=kids)
-                if exit_status == 0:
-                    return outcome("not-signed-in", "The Wilma screen was closed before signing "
-                                   f"in. Run this again when the family is ready: {again}")
-                if exit_status is not None:
-                    return outcome("sign-in-failed", "Wilma didn't sign in. The family checks "
-                                   "the city and the parent account's username and password, "
-                                   f"then signs in again: {again}")
-            if poll < polls:
-                time.sleep(WILMA_POLL_SECONDS)
-    return outcome("timeout", f"The family didn't sign in to Wilma within {timeout} "
-                   "seconds. If the Wilma window is still open, they finish there, then run: "
-                   f"{again} --no-open. Otherwise run: {again}")
-
-
-def sign_in_window(language: str, status: Path) -> list[str]:
-    """The Wilma window's command, which records at `status` how its screen ended. This Python,
-    since the window's PATH may not lead to this program."""
-    return [sys.executable, "-m", "family_brief", "setup", "wilma", "--screen",
-            "--language", language, "--status", str(status)]
-
-
-def _sign_in_screen(language: str) -> int:
-    if sys.platform == "win32":
-        return _sign_in_page(language)
-    return _sign_in_terminal_screen(language)
-
-
-def _sign_in_page(language: str) -> int:
-    """On Windows, which has no pseudo-terminal for the CLI's own screens: runs the wilma CLI's
-    sign-in page (`wilma login`, from 2.1), which the CLI opens in the browser, on Parent Recap's
-    own Node under the guide in this window. Once the CLI has saved its profile it's ended, before
-    it waits for more Wilmas. Ctrl+C ends it too. Returns 0 once signed in, otherwise the CLI's
-    exit status."""
-    text = WILMA_WINDOW.get(language.lower(), WILMA_WINDOW["en"])
-    guide = [text["guide"][0], text["page"], *text["guide"][2:]]
-    print("\n".join(guide) + "\n", flush=True)
-    config = setup_wilma.config_path()
-    seen = _mtime(config)
-    command = own_node.wilma()
-    if command is None:
-        return 127
-
-    def saved() -> bool:  # the CLI renames its config into place, so it reads whole
-        return _mtime(config) != seen and _wilma_address(config) is not None
-    cli = subprocess.Popen([*command, "login"], env=own_node.wilma_env())
-    try:
-        while not saved() and cli.poll() is None:
-            time.sleep(WILMA_PAGE_POLL_SECONDS)
-    except KeyboardInterrupt:  # the CLI has it too, and ends
-        pass
-    signed_in = saved()
-    if cli.poll() is None:
-        cli.terminate()
-    exit_status = cli.wait()
-    print(f"\n{text['signed_in']} {text['close']}" if signed_in else f"\n{text['close']}",
-          flush=True)
-    return 0 if signed_in else exit_status
-
-
-def _sign_in_terminal_screen(language: str) -> int:
-    """Runs the wilma CLI's sign-in on Parent Recap's own Node in this window, through a
-    pseudo-terminal so this sees what it shows: the guide stays on top of each question the CLI
-    clears the screen for, the student picker is answered (setup reads every Kid, so which one
-    doesn't matter) and hidden, and once the CLI has saved its profile it's ended, before its
-    menu, whose default choice fails with a 403 for some accounts. Returns 0 once signed in,
-    otherwise the CLI's exit status."""
-    text = WILMA_WINDOW.get(language.lower(), WILMA_WINDOW["en"])
-    guide = "\r\n".join(text["guide"]).encode() + b"\r\n\r\n"
-    out = sys.stdout.buffer
-    out.write(guide)
-    out.flush()
-    config = setup_wilma.config_path()
-    seen = _mtime(config)
-    command = own_node.wilma()
-    if command is None:
-        return 127
-    env = own_node.wilma_env()  # before the fork: the child only runs the CLI
-    pid, fd = pty.fork()
-    if pid == 0:
-        try:
-            os.execve(command[0], command, env)
-        finally:
-            os._exit(127)
-    # The CLI truncates its config before writing it, so a new one counts once it reads whole.
-    signed_in = _show_sign_in(
-        fd, guide, lambda: _mtime(config) != seen and _wilma_address(config) is not None)
-    if signed_in:
-        os.kill(pid, signal.SIGTERM)
-    # Closed before the wait, since nothing reads the CLI any more: macOS may not let it finish
-    # exiting while its terminal holds output nobody has read, such as the menu it shows just as
-    # it's ended (#216).
-    os.close(fd)
-    status = os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1])
-    if signed_in:
-        out.write(b"\x1b[H\x1b[2J\x1b[3J")  # the screen and the scrollback
-        out.write(f"{text['signed_in']} {text['close']}\n".encode())
-    else:
-        out.write(f"\n{text['close']}\n".encode())
-    out.flush()
-    return 0 if signed_in else status
-
-
-def _show_sign_in(fd: int, guide: bytes, saved) -> bool:
-    """Passes the family's typing to the CLI on `fd` and what it shows to the window, until the
-    CLI has saved its profile (True) or has ended without (False)."""
-    stdin, out = sys.stdin.fileno(), sys.stdout.buffer
-    terminal = os.isatty(stdin)
-    if terminal:
-        def same_size(*_a: Any) -> None:
-            fcntl.ioctl(fd, termios.TIOCSWINSZ, fcntl.ioctl(stdin, termios.TIOCGWINSZ, b"\0" * 8))
-        same_size()
-        signal.signal(signal.SIGWINCH, same_size)
-        before = termios.tcgetattr(stdin)
-        tty.setraw(stdin)
-    reading, hidden, last = [fd, stdin], False, b""
-    try:
-        while not saved():
-            ready = select.select(reading, [], [], 0.1)[0]
-            if stdin in ready:
-                typed = os.read(stdin, 1024)
-                if typed:
-                    os.write(fd, typed)
-                else:
-                    reading.remove(stdin)
-            if fd in ready:
-                try:
-                    shown = os.read(fd, 65536)
-                except OSError:  # the CLI has ended
-                    shown = b""
-                if not shown:
-                    return saved()
-                recent, last = last[-len(WILMA_MENU):] + shown, shown  # a question split in two
-                if not hidden and WILMA_STUDENT_PICKER in recent:
-                    os.write(fd, b"\r")  # once: the CLI shows the question again with the answer
-                hidden = hidden or WILMA_STUDENT_PICKER in recent or WILMA_MENU in recent
-                if not hidden:
-                    out.write(shown.replace(NODE_CLEAR, NODE_CLEAR + guide))
-                    out.flush()
-        return True
-    finally:
-        if terminal:
-            termios.tcsetattr(stdin, termios.TCSAFLUSH, before)
-            signal.signal(signal.SIGWINCH, signal.SIG_DFL)
-
-
-def _mtime(path: Path) -> int | None:
-    try:
-        return path.stat().st_mtime_ns
-    except OSError:
-        return None
-
-
-def _exit_status(path: Path) -> int | None:
-    try:
-        return int(path.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
-        return None
-
-
-def _wilma_address(config: Path) -> str | None:
-    """The host of the Wilma the family signed in to last, such as espoo.inschool.fi."""
-    try:
-        data = json.loads(config.read_text(encoding="utf-8"))
-        profile = next(p for p in data["profiles"] if p.get("id") == data.get("lastProfileId"))
-        url = str(profile["tenantUrl"])
-    except (OSError, ValueError, KeyError, TypeError, StopIteration):
-        return None
-    return urlparse(url if "//" in url else f"//{url}").hostname
+        return setup_wilma.sign_in_screen(args.language, args.status)
+    out = setup_wilma.sign_in_in_terminal(args.language, args.timeout, no_open=args.no_open)
+    return report(out.pop("result"), out.pop("next", None), **out)
 
 
 # ---------------------------------------------------------------- claude
@@ -542,79 +176,46 @@ def cmd_claude(args: argparse.Namespace) -> int:
     the secret dialog."""
     from .summarize import CLAUDE_INSTALL, find_claude
 
-    program = find_claude()
-    if not program:
-        return _report("not-installed", f"Install Claude Code's claude command in Terminal with "
-                       f"{CLAUDE_INSTALL}, then run this again.")
-    again = f"{_program()} setup claude"
+    claude = find_claude()
+    if not claude:
+        return report("not-installed", f"Install Claude Code's claude command in Terminal with "
+                      f"{CLAUDE_INSTALL}, then run this again.")
+    again = f"{program()} setup claude"
     warning = _warn_if_unreachable()
-    if not args.no_open and not desktop.open_terminal(setup_token_window(program), {},
+    if not args.no_open and not desktop.open_terminal(setup_token_window(claude), {},
                                                       CLAUDE_WINDOW):
-        return _report("no-terminal", "Terminal didn't open. The family runs claude "
-                       f"setup-token in Terminal and signs in there, then run: {again} --no-open")
+        return report("no-terminal", "Terminal didn't open. The family runs claude "
+                      f"setup-token in Terminal and signs in there, then run: {again} --no-open")
     try:
         typed = secret_dialog.ask(
             f"{warning}Paste the Claude token for the nightly Brief.\n\nClick Authorize on "
             "Claude's page in your browser. The Terminal window that opened then shows a "
             "token starting with sk-ant-oat01-. Copy all of it and paste it here.")
     except secret_dialog.Cancelled:
-        return _report("cancelled", "The family closed the dialog. Run this again when "
-                       f"they're ready: {again}")
+        return report("cancelled", "The family closed the dialog. Run this again when "
+                      f"they're ready: {again}")
     except secret_dialog.NoWayToAsk:
-        return _report("no-prompt", "No dialog or Terminal prompt could be shown here. The "
-                       "family runs claude setup-token in Terminal, then this in Terminal: "
-                       f"{again} --no-open")
+        return report("no-prompt", "No dialog or Terminal prompt could be shown here. The "
+                      "family runs claude setup-token in Terminal, then this in Terminal: "
+                      f"{again} --no-open")
 
-    result, extra = claude_token_sign_in(program, typed)
+    result, extra = setup_ai.claude_token_sign_in(claude, typed)
     if result == "not-a-token":
-        return _report("not-a-token", "That wasn't a Claude token. Copy the whole token Terminal "
-                       f"showed, starting with sk-ant-oat01-, and run this again: {again} --no-open")
+        return report("not-a-token", "That wasn't a Claude token. Copy the whole token Terminal "
+                      f"showed, starting with sk-ant-oat01-, and run this again: {again} --no-open")
     if result == "test-call-failed":
-        return _report("test-call-failed", "Claude didn't accept the token, so it wasn't kept. "
-                       "Check the plan is Claude Pro or Max, then run this again to make a new "
-                       f"token: {again}", **extra)
+        return report("test-call-failed", "Claude didn't accept the token, so it wasn't kept. "
+                      "Check the plan is Claude Pro or Max, then run this again to make a new "
+                      f"token: {again}", **extra)
     if result == "keychain-not-reachable":
-        return _report(result, "The test call worked, but macOS doesn't let Parent Recap save "
-                       "the token in the Keychain from inside tmux or SSH, and shows no prompt "
-                       f"there. Run this again {PLAIN_TERMINAL}: {again} --no-open", **extra)
+        return report(result, "The test call worked, but macOS doesn't let Parent Recap save "
+                      "the token in the Keychain from inside tmux or SSH, and shows no prompt "
+                      f"there. Run this again {PLAIN_TERMINAL}: {again} --no-open", **extra)
     if result == "keychain-failed":
-        return _report(result, "The test call worked, but macOS didn't let Parent Recap save the "
-                       "token in the Keychain. Run this again and click Allow if macOS asks: "
-                       f"{again} --no-open", **extra)
-    return _report("saved", test_call="ok")
-
-
-def claude_token_sign_in(program: str, typed: str) -> tuple[str, dict[str, Any]]:
-    """Makes one test call with the Claude token `typed` and stores it in the Keychain. Returns
-    the step's result, `saved`, `not-a-token`, `test-call-failed`, `keychain-not-reachable` or
-    `keychain-failed`, and what else it reports: for a failed test call what Claude said as
-    `error`, with the token taken out, and when the Keychain refused it macOS's `code`. The setup
-    page's sign-in and its own field call this too, so all three give the same results."""
-    from .summarize import claude_test_call, claude_token_env
-
-    # The token has no spaces, so any are from copying it across the lines Terminal wrapped it on.
-    token = "".join(typed.split())
-    if not CLAUDE_TOKEN.fullmatch(token):
-        # Not sent to Claude: it's most likely the family's own password, or only part of the token.
-        return "not-a-token", {}
-
-    error = claude_test_call(program, claude_token_env(token))
-    if error is not None:
-        return "test-call-failed", {"error": error.replace(token, "<token>").strip()[:200]}
-
-    try:
-        secrets.put(CLAUDE_TOKEN_ACCOUNT, token)
-    except secrets.SecretsError as e:
-        return _keychain_failure(e)
-    install_record.add("keychain", CLAUDE_TOKEN_ACCOUNT)
-    return "saved", {}
-
-
-def setup_token_window(program: str, paste_into: str = "the Parent Recap dialog") -> list[str]:
-    """The command for the window `claude setup-token` runs in, whose token the family copies
-    into `paste_into` (claude_window.py). This Python, since the window's PATH may not lead to
-    this program."""
-    return [sys.executable, "-m", "family_brief.claude_window", program, paste_into]
+        return report(result, "The test call worked, but macOS didn't let Parent Recap save the "
+                      "token in the Keychain. Run this again and click Allow if macOS asks: "
+                      f"{again} --no-open", **extra)
+    return report("saved", test_call="ok")
 
 
 # ---------------------------------------------------------------- gateway
@@ -622,20 +223,20 @@ def setup_token_window(program: str, paste_into: str = "the Parent Recap dialog"
 def cmd_gateway(args: argparse.Namespace) -> int:
     """The maintainers send an invited Household its Gateway Key (ADR 0014). The family pastes it
     in the secret dialog, and it goes from there to one test call and the Keychain only."""
-    again = f"{_program()} setup gateway"
+    again = f"{program()} setup gateway"
     warning = _warn_if_unreachable()
     try:
         typed = secret_dialog.ask(
             f"{warning}Paste the Gateway Key for the nightly Brief.\n\nIt's the key starting with "
             "sk- that the Parent Recap maintainers sent you. Copy all of it and paste it here.")
     except secret_dialog.Cancelled:
-        return _report("cancelled", "The family closed the dialog. Run this again when they're "
-                       f"ready: {again}")
+        return report("cancelled", "The family closed the dialog. Run this again when they're "
+                      f"ready: {again}")
     except secret_dialog.NoWayToAsk:
-        return _report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
-                       f"runs this in Terminal: {again}")
+        return report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
+                      f"runs this in Terminal: {again}")
 
-    result, extra = gateway_sign_in(_gateway_url(args.config), typed)
+    result, extra = setup_ai.gateway_sign_in(_gateway_url(args.config), typed)
     next_ = {
         "not-a-key": "That wasn't a Gateway Key. Copy the whole key the maintainers sent, starting "
                      f"with sk-, and run this again: {again}",
@@ -653,38 +254,8 @@ def cmd_gateway(args: argparse.Namespace) -> int:
                            f"in the Keychain. Run this again and click Allow if macOS asks: {again}",
     }.get(result)
     if result == "saved":
-        return _report("saved", test_call="ok")
-    return _report(result, next_, **extra)
-
-
-# Loose on purpose, like CLAUDE_TOKEN: the test call decides whether it works. A Gateway Key is
-# sk-bf-…, and an Anthropic-compatible endpoint used in its place takes sk-ant-….
-GATEWAY_KEY = re.compile(r"sk-[A-Za-z0-9_-]{8,}")
-
-
-def gateway_sign_in(url: str, typed: str) -> tuple[str, dict[str, Any]]:
-    """Makes one test call through the gateway at `url` with the Gateway Key `typed` and stores
-    it in the Keychain. Returns the step's result, `saved`, `not-a-key`, `rejected`,
-    `no-connection`, `test-call-failed`, `keychain-not-reachable` or `keychain-failed`, and what
-    else it reports: for a failed test call what the gateway said as `error`, with the key taken
-    out, and when the Keychain refused it macOS's `code`. A key that has used today's budget
-    works, so it's stored."""
-    from . import gateway
-
-    key = "".join(typed.split())  # spaces and line breaks are from copying it
-    if not GATEWAY_KEY.fullmatch(key):
-        return "not-a-key", {}  # not sent: most likely a password, or part of the key
-    outcome, detail = gateway.test_call(url, key)
-    if outcome in (gateway.UNKNOWN, gateway.NO_ANSWER, gateway.FAILED):
-        result = {gateway.UNKNOWN: "rejected", gateway.NO_ANSWER: "no-connection",
-                  gateway.FAILED: "test-call-failed"}[outcome]
-        return result, {"error": (detail or "")[:200]}
-    try:
-        secrets.put(gateway.ACCOUNT, key)
-    except secrets.SecretsError as e:
-        return _keychain_failure(e)
-    install_record.add("keychain", gateway.ACCOUNT)
-    return "saved", {}
+        return report("saved", test_call="ok")
+    return report(result, next_, **extra)
 
 
 def _gateway_url(config: str | None) -> str:
@@ -697,169 +268,48 @@ def _gateway_url(config: str | None) -> str:
 # ---------------------------------------------------------------- whatsapp
 
 def cmd_whatsapp(args: argparse.Namespace) -> int:
-    """macOS grants WhatsApp access per responsible process, so every read goes through a `bg`
-    job, which reads with exactly the scheduled job's permission. This process never reads
-    WhatsApp itself, so macOS never asks for Terminal, Claude Code or Codex to get access. The job
-    reads WhatsApp only once its Python has Full Disk Access, so an Allow on macOS's question about
-    data from other apps, which lasts one read on macOS 26, can't make this pass (ADR 0012)."""
-    from . import ops
-
+    """Every read goes through a `bg` job, with the scheduled job's permission (ADR 0012); with
+    --read this is that job."""
     if args.read:
         if not os.environ.get(jobs.BG_ENV):
-            print(f"Run it through bg: {_program()} setup whatsapp, which does that itself.")
+            print(f"Run it through bg: {program()} setup whatsapp, which does that itself.")
             return 2
-        return _read_whatsapp(args.days)
+        read = setup_whatsapp.read(args.days)
+        print(json.dumps(read, ensure_ascii=False))
+        return 0 if read["permission"] == "readable" else 1
 
-    python = ops.full_disk_access_python()
-    again = f"{_program()} setup whatsapp --no-open"
+    read = setup_whatsapp.wait_until_readable(args.config, args.days, args.timeout,
+                                              no_open=args.no_open)
+    python = read["python"]
+    again = f"{program()} setup whatsapp --no-open"
     grant = (f"In Finder the Python file {os.path.basename(python)} is selected. The family drags "
              "it into the list in System Settings → Privacy & Security → Full Disk Access and "
              f"turns its switch on, then run: {again}")
-    deadline = time.time() + max(0, args.timeout)
-    opened = args.no_open
-    while True:
-        read = read_whatsapp_through_bg(args.config, args.days,
-                             max(WHATSAPP_READ_SECONDS, deadline - time.time()))
-        if read["result"] == "bg-failed":
-            return _report("bg-failed", "The background job that reads WhatsApp didn't start. "
-                           f"Run this again; if it fails again, run: {_program()} bg doctor",
-                           python=python, error=read["error"])
-        if read["result"] == "waiting":
-            return _report("waiting", "Reading WhatsApp didn't finish in time. Check that WhatsApp "
-                           f"for Mac opens and shows the chats, then run: {again}", python=python)
-        if read["result"] == "readable":
-            return _report("readable", python=python, chats=read["chats"])
-        if read["result"] == "not-installed":
-            return _report("not-installed", "WhatsApp for Mac isn't on this Mac, or has never been "
-                           "signed in. The family installs it from the App Store (not the older "
-                           "version from WhatsApp's website), links it to their phone and lets "
-                           f"the chats sync, then run: {_program()} setup whatsapp")
-        if read["result"] == "unreadable":
-            return _report("unreadable", "Reading WhatsApp failed (see error). Run this again; if "
-                           "it fails again, check that WhatsApp for Mac opens and shows the chats, "
-                           f"and run: {_program()} bg doctor", python=python, error=read["error"])
-        if not opened:
-            opened = True
-            _, failed = ops.show_python_for_full_disk_access()
-            if failed:
-                return _report("no-permission", "Finder or System Settings didn't open from "
-                               "here. The family runs these in Terminal: "
-                               f"{'; '.join(shlex.join(c) for c in failed)}. {grant}",
-                               python=python)
-        if time.time() + WHATSAPP_POLL_SECONDS > deadline:
-            return _report("no-permission", "The scheduled job's Python doesn't have Full Disk "
-                           f"Access yet. {grant}", python=python)
-        time.sleep(WHATSAPP_POLL_SECONDS)
-
-
-def read_whatsapp_through_bg(config: str | None, days: int, timeout: float) -> dict[str, Any]:
-    """Reads WhatsApp once through a `bg` job, with the scheduled job's permission. `result` is
-    `readable`, with the chats, each with its Kid hint; `no-permission`, without Full Disk Access;
-    `waiting`, when the read didn't finish in time; `not-installed`; or `unreadable` or
-    `bg-failed`, with the error. The setup page reads through this too."""
-    try:
-        read = _read_through_bg(config, days, timeout)
-    except RuntimeError as e:  # the system wouldn't start the job
-        return {"result": "bg-failed", "error": str(e)[:200]}
-    if read is None:
-        return {"result": "waiting"}
-    permission = read.get("permission")
-    if permission == "readable":
-        return {"result": "readable",
-                "chats": _with_hints(read.get("chats") or [], _configured_kids(config))}
-    if permission == "not-installed":
-        return {"result": "not-installed"}
-    if permission != "none":
-        return {"result": "unreadable", "error": str(read.get("error"))[:200]}
-    return {"result": "no-permission"}
-
-
-def _read_through_bg(config: str | None, days: int, timeout: float) -> dict[str, Any] | None:
-    """What the bg job read, or None if it didn't finish in time."""
-    code, out = jobs.run_detached(["setup", "whatsapp", "--read", "--days", str(days)],
-                                  math.ceil(timeout), config=config, echo=False)
-    for line in reversed(out.splitlines()):
-        if line.startswith("{"):
-            try:
-                return json.loads(line)
-            except ValueError:
-                break
-    if code == jobs.TIMED_OUT:
-        return None
-    return {"permission": "error", "error": f"exit code {code}: {out.strip()[-200:]}"}
-
-
-def _read_whatsapp(days: int) -> int:
-    """Inside the bg job: one JSON line saying whether WhatsApp could be read, and its chats."""
-    from .collectors import whatsapp
-
-    # Full Disk Access is checked before anything of WhatsApp's is touched, even to see whether
-    # it's installed, so macOS never asks.
-    try:
-        if not whatsapp.has_full_disk_access():
-            print(json.dumps({"permission": "none"}))
-            return 1
-    except OSError as e:
-        print(json.dumps({"permission": "error", "error": f"Couldn't check for Full Disk Access: "
-                          f"{e}"}, ensure_ascii=False))
-        return 1
-    if not whatsapp.DB_FILE.exists():
-        print(json.dumps({"permission": "not-installed"}))
-        return 1
-    error = whatsapp.check_access()
-    if error is None:
-        try:
-            chats = whatsapp.list_groups(days=days)
-        except Exception as e:
-            error = str(e)
-        else:
-            # This bg job reads with the evening job's Python: the one with Full Disk Access.
-            whatsapp_python.record(sys.executable)
-            print(json.dumps({"permission": "readable", "chats": chats}, ensure_ascii=False))
-            return 0
-    print(json.dumps({"permission": "error", "error": error}, ensure_ascii=False))
-    return 1
-
-
-def _configured_kids(config: str | None) -> list[Kid]:
-    try:
-        return Config.load(config).kids
-    except Exception:  # no config yet: the chats are listed without hints
-        return []
-
-
-def _with_hints(chats: list[dict[str, Any]], kids: list[Kid]) -> list[dict[str, Any]]:
-    """Adds a hint to each chat whose name mentions a Kid's name, class, school or club, naming
-    the Kids by their name in the config, which is what whatsapp.chats[].kid takes."""
-    out = []
-    for chat in chats:
-        matched_kids: list[str] = []
-        matched: list[str] = []
-        for kid in kids:
-            hits = [t for t in kid.chat_hint_terms() if _mentions(chat["name"], t)]
-            if hits:
-                matched_kids.append(kid.name)
-                matched += [t for t in hits if t not in matched]
-        out.append({**chat, "hint": {"kids": matched_kids, "matched": matched}} if matched_kids
-                   else chat)
-    return out
-
-
-def _mentions(text: str, term: str) -> bool:
-    """Whether `term` is in `text` as a word of its own: Leo isn't in Leonardo, nor 3B in 13B.
-    Chinese and Japanese aren't written with spaces, so next to their characters any term counts."""
-    text, term = text.casefold(), term.strip().casefold()
-    if len(term) < 2:
-        return False
-
-    def apart(c: str) -> bool:
-        return not c.isalnum() or ord(c) >= 0x2E80
-    for m in re.finditer(re.escape(term), text):
-        before = text[m.start() - 1] if m.start() else " "
-        after = text[m.end()] if m.end() < len(text) else " "
-        if (apart(before) or apart(term[0])) and (apart(after) or apart(term[-1])):
-            return True
-    return False
+    if read["result"] == "bg-failed":
+        return report("bg-failed", "The background job that reads WhatsApp didn't start. "
+                      f"Run this again; if it fails again, run: {program()} bg doctor",
+                      python=python, error=read["error"])
+    if read["result"] == "waiting":
+        return report("waiting", "Reading WhatsApp didn't finish in time. Check that WhatsApp "
+                      f"for Mac opens and shows the chats, then run: {again}", python=python)
+    if read["result"] == "readable":
+        return report("readable", python=python, chats=read["chats"])
+    if read["result"] == "not-installed":
+        return report("not-installed", "WhatsApp for Mac isn't on this Mac, or has never been "
+                      "signed in. The family installs it from the App Store (not the older "
+                      "version from WhatsApp's website), links it to their phone and lets "
+                      f"the chats sync, then run: {program()} setup whatsapp")
+    if read["result"] == "unreadable":
+        return report("unreadable", "Reading WhatsApp failed (see error). Run this again; if "
+                      "it fails again, check that WhatsApp for Mac opens and shows the chats, "
+                      f"and run: {program()} bg doctor", python=python, error=read["error"])
+    if read.get("failed"):
+        return report("no-permission", "Finder or System Settings didn't open from here. The "
+                      "family runs these in Terminal: "
+                      f"{'; '.join(shlex.join(c) for c in read['failed'])}. {grant}",
+                      python=python)
+    return report("no-permission", "The scheduled job's Python doesn't have Full Disk Access "
+                  f"yet. {grant}", python=python)
 
 
 # ---------------------------------------------------------------- myclub
@@ -871,33 +321,33 @@ def cmd_myclub(args: argparse.Namespace) -> int:
     try:
         kids = [k.name for k in Config.load(path).kids]
     except FileNotFoundError:
-        return _report("no-config", "The config isn't written yet. Write it with the Kids first, "
-                       "then run this again.")
+        return report("no-config", "The config isn't written yet. Write it with the Kids first, "
+                      "then run this again.")
     except Exception:  # not its error: a config check quotes values, which can be other links
-        return _report("bad-config", f"The config at {path} can't be read. Run {_program()} "
-                       "doctor, fix what it names, then run this again.")
+        return report("bad-config", f"The config at {path} can't be read. Run {program()} "
+                      "doctor, fix what it names, then run this again.")
     if args.kid not in kids:
-        return _report("no-kid" if args.kid is None else "no-such-kid", "Run it again with --kid "
-                       f"and one of the Kids' names: {_program()} setup myclub --kid NAME",
-                       kids=kids)
-    again = f"{_program()} setup myclub --kid {shlex.quote(args.kid)}"
+        return report("no-kid" if args.kid is None else "no-such-kid", "Run it again with --kid "
+                      f"and one of the Kids' names: {program()} setup myclub --kid NAME",
+                      kids=kids)
+    again = f"{program()} setup myclub --kid {shlex.quote(args.kid)}"
     if not args.no_open:
-        desktop.open_url(MYCLUB_URL)
+        desktop.open_url(setup_myclub.MYCLUB_URL)
 
     try:
         url = secret_dialog.ask(
             f"Paste {args.kid}'s MyClub calendar link.\n\nSign in to MyClub in your browser "
-            f"({MYCLUB_URL}), open {args.kid}'s calendar, choose Calendar subscription (Tilaa "
-            f"kalenteri), choose Valitut jäsenet with only {args.kid} ticked, save, and copy the "
-            "link starting with webcal://.")
+            f"({setup_myclub.MYCLUB_URL}), open {args.kid}'s calendar, choose Calendar subscription "
+            f"(Tilaa kalenteri), choose Valitut jäsenet with only {args.kid} ticked, save, and "
+            "copy the link starting with webcal://.")
     except secret_dialog.Cancelled:
-        return _report("cancelled", "The family closed the dialog. Run this again when they're "
-                       f"ready: {again}")
+        return report("cancelled", "The family closed the dialog. Run this again when they're "
+                      f"ready: {again}")
     except secret_dialog.NoWayToAsk:
-        return _report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
-                       f"runs this in Terminal: {again} --no-open")
+        return report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
+                      f"runs this in Terminal: {again} --no-open")
 
-    result, extra = myclub_link(path, args.kid, url)
+    result, extra = setup_myclub.save_link(path, args.kid, url)
     next_ = {
         "not-a-myclub-link": "That wasn't a MyClub calendar link. Copy the link from Calendar "
                              "subscription (Tilaa kalenteri) on the Kid's MyClub calendar, starting "
@@ -913,75 +363,4 @@ def cmd_myclub(args: argparse.Namespace) -> int:
                      f"choose Valitut jäsenet, tick only {args.kid}, save, and copy that link: "
                      f"{again} --no-open",
     }.get(result)
-    return _report(result, next_, **({"kid": args.kid} if result == "saved" else {}), **extra)
-
-
-def myclub_link(path: Path, kid: str, url: str,
-                saving: AbstractContextManager[Any] = nullcontext()) -> tuple[str, dict[str, Any]]:
-    """Checks the MyClub calendar link `url` by downloading it once and saves it as `kid`'s in
-    the config at `path`, holding `saving` only while it writes, and returns the step's result
-    with what else it reports: the events found, or an error that names only MyClub's server,
-    the HTTP status or the config, never the link. The setup page's own field calls this too
-    (ADR 0007), so both give the same results."""
-    from .collectors import myclub
-
-    url = "".join(url.split())
-    if not _is_myclub_link(url):
-        # Not downloaded: it's most likely the family's MyClub password, or another page's address.
-        return "not-a-myclub-link", {}
-    other = _kid_with_link(path, kid, url)
-    if other is not None:
-        # One link for two Kids would write every event twice, under both names (#209).
-        return "same-link", {"other_kid": other}
-    try:
-        text = myclub.download(url)
-    except myclub.FetchError as e:  # names only the server and the HTTP status
-        return "link-failed", {"error": str(e)}
-    if "BEGIN:VCALENDAR" not in text:
-        return "not-a-calendar", {}
-    try:
-        with saving:
-            myclub.save_link(path, kid, url)
-    except (OSError, ValueError) as e:  # names the Kid and the config, never the link
-        return "save-failed", {"error": str(e)[:300]}
-    return "saved", {"events": text.count("BEGIN:VEVENT")}
-
-
-def _kid_with_link(path: Path, kid: str, url: str) -> str | None:
-    """The other Kid `url` is already saved for, if any. A link made with several members ticked
-    is the same link for each of them (#207)."""
-    import yaml
-    from .collectors import myclub
-
-    try:
-        kids = (yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}).get("kids") or []
-    except (OSError, yaml.YAMLError, AttributeError):
-        return None
-    same = myclub._normalize_url(url).rstrip("/")
-    return next((k["name"] for k in kids
-                 if isinstance(k, dict) and k.get("name") != kid
-                 and isinstance(k.get("myclub_ical_url"), str)
-                 and myclub._normalize_url("".join(k["myclub_ical_url"].split())).rstrip("/") == same),
-                None)
-
-
-def _is_myclub_link(url: str) -> bool:
-    parts = urlparse(url)
-    host = parts.hostname or ""
-    return (parts.scheme in ("webcal", "https") and (host == "myclub.fi" or host.endswith(".myclub.fi"))
-            and bool(parts.path.strip("/")))
-
-
-def _program() -> str:
-    """How to run this program again from Terminal, where it isn't on the PATH."""
-    if sys.argv[0].endswith("__main__.py"):
-        return f"{shlex.quote(sys.executable)} -m family_brief"
-    return shlex.quote(sys.argv[0]) if "/" in sys.argv[0] else "parent-recap"
-
-
-def _configured_address(config: str | None) -> str | None:
-    try:
-        cfg = Config.load(config)
-    except Exception:  # no config yet: setup can connect Gmail before writing it
-        return None
-    return cfg.gmail.username
+    return report(result, next_, **({"kid": args.kid} if result == "saved" else {}), **extra)

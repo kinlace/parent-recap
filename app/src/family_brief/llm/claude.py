@@ -185,7 +185,7 @@ class Claude:
             return [Finding("fail", "claude", "claude command not found on PATH, in ~/.local/bin "
                             "or the other usual folders, or by your login shell (install Claude "
                             f"Code with: {install_line()})")]
-        from ..setup_steps import PLAIN_TERMINAL
+        from ..setup_report import PLAIN_TERMINAL
         env, label = signed_in_env()
         where = "" if secrets.reachable() else f", {PLAIN_TERMINAL}"
         if label == "inherited" and windows:

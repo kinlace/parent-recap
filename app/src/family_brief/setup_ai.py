@@ -1,4 +1,6 @@
-"""The setup page's AI sign-ins: Claude's token for the evening Brief, and Codex's ChatGPT login.
+"""Setup's AI sign-ins: Claude's token for the evening Brief, Codex's ChatGPT login, and the
+Gateway Key. The chat setup's `setup claude` and `setup gateway` test and store a token or key
+through the same calls as the setup page, so both give the same results.
 
 `claude setup-token` signs in on Ink's interactive screen, which needs a terminal, and shows the
 token only there. So the page runs it in a pseudo-terminal, as the Wilma window does (#74), wide
@@ -25,13 +27,26 @@ import subprocess
 import sys
 import threading
 import time
+from typing import Any
 
-from .setup_steps import CLAUDE_TOKEN
+from . import install_record
+from .setup_report import keychain_failure
 from .summarize import CLAUDE_INSTALL_WINDOWS, CODEX_INSTALL, _sessionless_env
+from .system import secrets
 
 if sys.platform != "win32":  # `claude setup-token`'s pseudo-terminal, which Windows doesn't have
     import fcntl
     import termios
+
+CLAUDE_TOKEN_ACCOUNT = "claude-oauth-token"
+CLAUDE_WINDOW = "Claude sign-in"  # the title of the window `claude setup-token` runs in
+# Loose on purpose, like scripts/setup_claude_token.py: the test call decides whether it works.
+CLAUDE_TOKEN = re.compile(r"sk-ant-[A-Za-z0-9_-]+")
+# Loose on purpose, like CLAUDE_TOKEN: the test call decides whether it works. A Gateway Key is
+# sk-bf-…, and an Anthropic-compatible endpoint used in its place takes sk-ant-….
+GATEWAY_KEY = re.compile(r"sk-[A-Za-z0-9_-]{8,}")
+# OpenAI's page for the ChatGPT desktop app, with Codex in it, and its download for macOS.
+CODEX_APP_URL = "https://developers.openai.com/codex/app"
 
 # Wide enough that Ink never wraps the token, which it would break across lines.
 COLUMNS, ROWS = 1000, 50
@@ -139,3 +154,62 @@ def start_codex_login(program: str) -> subprocess.Popen | None:
                                 start_new_session=True)
     except OSError:
         return None
+
+
+def claude_token_sign_in(program: str, typed: str) -> tuple[str, dict[str, Any]]:
+    """Makes one test call with the Claude token `typed` and stores it in the Keychain. Returns
+    the step's result, `saved`, `not-a-token`, `test-call-failed`, `keychain-not-reachable` or
+    `keychain-failed`, and what else it reports: for a failed test call what Claude said as
+    `error`, with the token taken out, and when the Keychain refused it macOS's `code`. The setup
+    page's sign-in, its own field and `setup claude` call this, so all three give the same
+    results."""
+    from .summarize import claude_test_call, claude_token_env
+
+    # The token has no spaces, so any are from copying it across the lines Terminal wrapped it on.
+    token = "".join(typed.split())
+    if not CLAUDE_TOKEN.fullmatch(token):
+        # Not sent to Claude: it's most likely the family's own password, or only part of the token.
+        return "not-a-token", {}
+
+    error = claude_test_call(program, claude_token_env(token))
+    if error is not None:
+        return "test-call-failed", {"error": error.replace(token, "<token>").strip()[:200]}
+
+    try:
+        secrets.put(CLAUDE_TOKEN_ACCOUNT, token)
+    except secrets.SecretsError as e:
+        return keychain_failure(e)
+    install_record.add("keychain", CLAUDE_TOKEN_ACCOUNT)
+    return "saved", {}
+
+
+def setup_token_window(program: str, paste_into: str = "the Parent Recap dialog") -> list[str]:
+    """The command for the window `claude setup-token` runs in, whose token the family copies
+    into `paste_into` (claude_window.py). This Python, since the window's PATH may not lead to
+    this program."""
+    return [sys.executable, "-m", "family_brief.claude_window", program, paste_into]
+
+
+def gateway_sign_in(url: str, typed: str) -> tuple[str, dict[str, Any]]:
+    """Makes one test call through the gateway at `url` with the Gateway Key `typed` and stores
+    it in the Keychain. Returns the step's result, `saved`, `not-a-key`, `rejected`,
+    `no-connection`, `test-call-failed`, `keychain-not-reachable` or `keychain-failed`, and what
+    else it reports: for a failed test call what the gateway said as `error`, with the key taken
+    out, and when the Keychain refused it macOS's `code`. A key that has used today's budget
+    works, so it's stored."""
+    from . import gateway
+
+    key = "".join(typed.split())  # spaces and line breaks are from copying it
+    if not GATEWAY_KEY.fullmatch(key):
+        return "not-a-key", {}  # not sent: most likely a password, or part of the key
+    outcome, detail = gateway.test_call(url, key)
+    if outcome in (gateway.UNKNOWN, gateway.NO_ANSWER, gateway.FAILED):
+        result = {gateway.UNKNOWN: "rejected", gateway.NO_ANSWER: "no-connection",
+                  gateway.FAILED: "test-call-failed"}[outcome]
+        return result, {"error": (detail or "")[:200]}
+    try:
+        secrets.put(gateway.ACCOUNT, key)
+    except secrets.SecretsError as e:
+        return keychain_failure(e)
+    install_record.add("keychain", gateway.ACCOUNT)
+    return "saved", {}

@@ -38,8 +38,9 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import (chat_install, feedback, ops, run_lock, setup_ai, setup_save, setup_status,
-               setup_steps, setup_wilma, summarize)
+from . import (chat_install, feedback, ops, run_lock, setup_ai, setup_gmail, setup_myclub,
+               setup_report, setup_save, setup_status, setup_steps, setup_whatsapp, setup_wilma,
+               summarize)
 from . import sources as source_registry
 from .actions import email as email_action
 from .config import Config, Kid, LLMConfig
@@ -96,7 +97,7 @@ GATEWAY_RESULTS = ("saved", "not-a-key", "rejected", "no-connection", "test-call
 WHATSAPP_RESULTS = ("readable", "no-permission", "waiting", "not-installed", "unreadable",
                     "bg-failed")
 WHATSAPP_OPEN_RESULTS = ("opened", "not-opened")
-WHATSAPP_READ_SECONDS = setup_steps.WHATSAPP_READ_SECONDS
+WHATSAPP_READ_SECONDS = setup_whatsapp.WHATSAPP_READ_SECONDS
 # What saving a Kid's MyClub calendar link can say, as `setup myclub` does, and adding a Kid by
 # the name the family calls them, for a Household without Wilma.
 MYCLUB_RESULTS = ("saved", "not-a-myclub-link", "link-failed", "not-a-calendar", "save-failed",
@@ -158,8 +159,8 @@ CHAT_SKILLS = {"claude": "/parent-recap:setup", "codex": "$parent-recap-setup"}
 CHAT_RESULTS = {"claude": ("opened", "no-terminal", "not-installed"), "codex": ("open-codex",)}
 CHAT_WINDOW = "Parent Recap setup"
 # The sites the page's buttons open, by name: the page itself names none.
-SITES = {"app-passwords": setup_steps.APP_PASSWORDS_URL, "two-step": setup_steps.TWO_STEP_URL,
-         "myclub": setup_steps.MYCLUB_URL, "codex-app": setup_steps.CODEX_APP_URL}
+SITES = {"app-passwords": setup_gmail.APP_PASSWORDS_URL, "two-step": setup_gmail.TWO_STEP_URL,
+         "myclub": setup_myclub.MYCLUB_URL, "codex-app": setup_ai.CODEX_APP_URL}
 # The apps they open, by name.
 APPS = {"passwords": desktop_macos.open_passwords}
 ADDRESS = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -203,7 +204,7 @@ def cmd_page(args: argparse.Namespace) -> int:
         out = {"result": "not-opened", "url": server.url,
                "next": f"The browser didn't open. Open this address in it: {server.url}"}
     if not secrets.reachable():  # the page says so too
-        out["warning"] = setup_steps.KEYCHAIN_WARNING
+        out["warning"] = setup_report.KEYCHAIN_WARNING
     print(json.dumps(out, ensure_ascii=False), flush=True)
     try:
         server.serve_until_idle()
@@ -297,7 +298,7 @@ class SetupServer:
             if self._codex is not None and self._codex.poll() is None:
                 self._codex.kill()
                 self._codex.wait()
-            for window in (setup_steps.CLAUDE_WINDOW, CHAT_WINDOW):
+            for window in (setup_ai.CLAUDE_WINDOW, CHAT_WINDOW):
                 desktop.forget_terminal(window)
             threads = list(self._chat_threads.values())
         for thread in threads:  # an install isn't cut off halfway
@@ -407,7 +408,7 @@ class SetupServer:
             result, token = setup_ai.read_setup_token(program, CLAUDE_SIGN_IN_SECONDS, self._stopped)
             extra: dict[str, Any] = {}
             if token is not None:
-                result, extra = setup_steps.claude_token_sign_in(program, token)
+                result, extra = setup_ai.claude_token_sign_in(program, token)
             sign_in["result"] = self._ai_signed_in("claude") if result == "saved" \
                 else {"result": result, **_keychain_code(extra)}
         except Exception:  # never leave the page waiting
@@ -466,10 +467,10 @@ class SetupServer:
         program = summarize.find_claude()
         if program is None:
             return HTTPStatus.OK, _claude_missing()
-        result, extra = setup_steps.claude_token_sign_in(program, raw["token"])
+        result, extra = setup_ai.claude_token_sign_in(program, raw["token"])
         if result != "saved":
             return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
-        desktop.forget_terminal(setup_steps.CLAUDE_WINDOW)  # the window has done its work
+        desktop.forget_terminal(setup_ai.CLAUDE_WINDOW)  # the window has done its work
         out = self._ai_signed_in("claude")
         return (HTTPStatus.OK if out["result"] == "saved" else HTTPStatus.CONFLICT), out
 
@@ -575,7 +576,7 @@ class SetupServer:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Paste the Gateway Key.", errors=["key: should be text"])
         url = _section(self._config_data(), "llm").get("gateway_url")
-        result, extra = setup_steps.gateway_sign_in(
+        result, extra = setup_ai.gateway_sign_in(
             url if isinstance(url, str) and url else LLMConfig().gateway_url, raw["key"])
         if result != "saved":
             return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
@@ -592,8 +593,9 @@ class SetupServer:
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
         with self._whatsapp:
+            # setup_whatsapp.read_through_bg, by the name its tests replace until #423.
             read = setup_steps.read_whatsapp_through_bg(
-                str(self.config), setup_steps.WHATSAPP_DAYS, WHATSAPP_READ_SECONDS)
+                str(self.config), setup_whatsapp.WHATSAPP_DAYS, WHATSAPP_READ_SECONDS)
         if read["result"] != "readable":
             return HTTPStatus.OK, {"result": read["result"]}
         with self._saving:
@@ -679,7 +681,7 @@ class SetupServer:
                 "invalid-answers", "Pick one of the Kids and paste their calendar link.",
                 errors=["answers: should be one of the Kids' names and the link, as text"])
         # Downloaded before the lock, so a slow MyClub holds up no other save.
-        result, extra = setup_steps.myclub_link(self.config, raw["kid"], raw["link"], self._saving)
+        result, extra = setup_myclub.save_link(self.config, raw["kid"], raw["link"], self._saving)
         if result != "saved":
             return HTTPStatus.OK, {"result": result}  # without the error, which can name files
         with self._saving:
@@ -835,7 +837,7 @@ class SetupServer:
                     "ticked": s["likely"] or s["domain"] in allowed}
                    for s in progress.get("gmail_senders") or [] if not s.get("public")]
         # Only a preset's: a town's guessed domain is ticked only once mail came from it.
-        city = setup_steps.CITY_DOMAINS.get(cfg.city or "")
+        city = setup_gmail.CITY_DOMAINS.get(cfg.city or "")
         for domain in [*([city] if city else []), *allowed]:
             if domain not in (s["domain"] for s in senders):
                 senders.append({"domain": domain, "count": 0, "example": "", "ticked": True})
@@ -1394,7 +1396,7 @@ class SetupServer:
 
     def _wait_for_window(self, window: dict[str, Any], language: str, town: str | None) -> None:
         try:
-            out = setup_steps.sign_in_in_terminal(language, WILMA_WINDOW_SECONDS)
+            out = setup_wilma.sign_in_in_terminal(language, WILMA_WINDOW_SECONDS)
             if out["result"] == "signed-in":
                 kids = [k for k in out["kids"] if isinstance(k.get("name"), str) and k["name"]]
                 _, done = self._signed_in(kids, self._city(out.get("wilma_address"), town))
@@ -1433,7 +1435,7 @@ class SetupServer:
         towns = setup_wilma.towns_of(tenant) if tenant else []
         if towns:
             return town if town in towns else towns[0]
-        return setup_steps.WILMA_CITIES.get(address or "")
+        return setup_wilma.WILMA_CITIES.get(address or "")
 
     def connect_gmail(self, raw: Any) -> tuple[HTTPStatus, dict[str, Any]]:
         """Tests the App Password pasted into the page's own field with Gmail and stores it in
@@ -1448,7 +1450,7 @@ class SetupServer:
         address = raw["address"].strip().lower()
         if not ADDRESS.match(address):
             return HTTPStatus.OK, {"result": "no-address"}
-        result, _, extra = setup_steps.gmail_sign_in(address, raw["password"])
+        result, _, extra = setup_gmail.sign_in(address, raw["password"])
         if result != "saved":
             return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
         with self._saving:
@@ -1633,8 +1635,8 @@ def _open_claude_window(program: str) -> str:
     """Opens `claude setup-token` in a window, whose token the family pastes into the page:
     `opened`, or `no-terminal`."""
     opened = desktop.open_terminal(
-        setup_steps.setup_token_window(program, "the field on the setup page"), {},
-        setup_steps.CLAUDE_WINDOW)
+        setup_ai.setup_token_window(program, "the field on the setup page"), {},
+        setup_ai.CLAUDE_WINDOW)
     return "opened" if opened else "no-terminal"
 
 
