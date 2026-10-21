@@ -68,8 +68,8 @@ Each holds one topic, which its name says: the Brief a night makes (`test_nightl
 Calendar mode, nights in a row, Recipients' languages, the AI filter's placeholders and held-back
 messages. The nights and helpers more than one of them uses are in `e2e/nights.py`.
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.
-`test_nightly_continuity.py`'s `run --if-missed` tests sign in after an evening run that was missed or ran, and before or
-after the first evening since `schedule install`.
+`test_nightly_continuity.py`'s `run --if-missed` tests sign in after an evening run that was missed
+or ran, and before or after the first evening since `schedule install`.
 A night whose only new Message is the next school day's timetable, and that the model finds nothing to
 say about, sends no Brief, by email or iMessage, and its Messages aren't sent to the model again the
 next night (#385). It still sends one with tonight's events, still says when no Source could be
@@ -79,8 +79,8 @@ A Gmail with no sender ticked, beside another Source, is never read and isn't in
 coverage line; with no other Source it's still read and fails as the real collector does, so the
 night says no Source could be read (#361).
 `test_ai_filter.py` calls the AI filter on its own with a list of messages, as another tool could.
-In `test_nightly_placeholders.py`, a night with phone numbers, email addresses and links in every part of the
-payload checks that none reaches the Brief or translation prompt, only placeholders, the same one for
+In `test_nightly_placeholders.py`, a night with phone numbers, email addresses and links in every
+part of the payload checks that none reaches the Brief or translation prompt, only placeholders, the same one for
 a value in both, with no Gmail message link or Wilma student number. A Chinese night has them inside
 Chinese text with no space around them, and its Chinese reply writes the placeholders the same way:
 the text around them stays, and the translation prompt has none of the night's values. It checks that

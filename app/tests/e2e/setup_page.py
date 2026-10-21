@@ -1,6 +1,10 @@
 """What the setup page's tests (`test_setup_*.py`) share: the page's server, started in-process on a
 free port inside the harness (or through socket pairs where no port can be listened on), the HTTP
-calls the page's own script makes, its idle clock, and the steps more than one file walks through."""
+calls the page's own script makes, its idle clock, and the steps more than one file walks through.
+
+Not a conftest.py: one in e2e/ would replace tests/conftest.py as the `conftest` module and break
+every `from conftest import`. So a file with the page's tests imports `page`, `clock` and the
+autouse `_listening` from here itself."""
 from __future__ import annotations
 
 import http.client

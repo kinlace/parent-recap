@@ -1,6 +1,9 @@
 """The nights and helpers the nightly-run tests (`test_nightly_*.py`) share: the normal night and
 the model's reply to it in each language, the night in two languages, the payload's message ids, the
-archived summary and the feedback links."""
+archived summary and the feedback links.
+
+Not a conftest.py: one in e2e/ would replace tests/conftest.py as the `conftest` module and break
+every `from conftest import`."""
 from __future__ import annotations
 
 import copy
