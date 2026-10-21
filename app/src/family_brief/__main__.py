@@ -20,7 +20,7 @@ from .collectors import (
     whatsapp as whatsapp_collector,
     wilma as wilma_collector,
 )
-from . import ai_filter, feedback, gateway, languages, private_files, run_lock
+from . import ai_filter, feedback, gateway, languages, llm, private_files, run_lock
 from .brief_text import PRODUCT_NAME, BriefText
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, Message
 from .config import Config
@@ -242,12 +242,6 @@ def _as_created(events: list) -> list[dict]:
 # How long `run --preview` tries a busy model for: the setup page gives up on the whole preview
 # after 15 minutes (setup_server.BRIEF_SECONDS), reading the Sources included.
 PREVIEW_BUDGET = 10 * 60
-
-
-def _llm_host(cfg: Config) -> str:
-    if cfg.llm.backend == "gateway":
-        return gateway.host(cfg.llm.gateway_url)
-    return "chatgpt.com" if cfg.llm.backend == "codex" else "api.anthropic.com"
 
 
 def _fallback_summary(messages: list[Message], err: str, t: BriefText, cfg: Config) -> dict:
@@ -741,7 +735,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
 
     sources = args.sources.split(",") if args.sources else cfg.default_sources()
     log.info("Running collectors: %s (dry_run=%s)", sources, args.dry_run)
-    _wait_for_network(probe_host=_llm_host(cfg))
+    _wait_for_network(probe_host=llm.backend(cfg).probe_host)
 
     coverage: dict[str, dict] = {}
     if args.preview:
@@ -751,7 +745,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
         reading=(lambda source: _preview_step("reading", source=source)) if args.preview else None)
     earlier = archive.recent_points(cfg, today_str(cfg.timezone))
     due_soon = archive.has_due_soon(earlier, today_str(cfg.timezone))
-    assistant = "Codex" if cfg.llm.backend == "codex" else "Claude"
+    assistant = llm.backend(cfg).display_name
     # A preview shows a quiet night's Brief too, so the family sees what one looks like.
     if not messages and not direct_events and not due_soon and not args.preview:
         if _nothing_could_be_read(cfg, coverage):
@@ -947,7 +941,7 @@ def cmd_weekend_events(args: argparse.Namespace) -> int:
     private_files.tighten(cfg)
 
     def run() -> int:
-        _wait_for_network(probe_host=_llm_host(cfg))
+        _wait_for_network(probe_host=llm.backend(cfg).probe_host)
         return weekend_pipeline.run(cfg, dry_run=args.dry_run)
     return run() if args.dry_run else run_lock.run_alone(cfg, "Weekend Picks", run)
 

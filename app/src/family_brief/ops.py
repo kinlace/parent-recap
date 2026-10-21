@@ -37,7 +37,6 @@ BG_ENV = jobs.BG_ENV  # set inside `bg` jobs so doctor doesn't recurse
 FULL_DISK_ACCESS_WHERE = ("(System Settings → Privacy & Security; parent-recap full-disk-access "
                           "shows the Python in Finder)")
 FULL_DISK_ACCESS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
-CODEX_STATUS_SECONDS = 20
 
 
 # Each of doctor's checks: its key, which the setup page goes by and stays the same whatever the
@@ -223,125 +222,10 @@ def _check_gmail(cfg: Config, add) -> None:
 
 
 def _check_llm(cfg: Config, add) -> None:
-    if cfg.llm.backend == "codex":
-        _check_codex(cfg, add)
-    elif cfg.llm.backend == "gateway":
-        _check_gateway(cfg, add)
-    else:
-        _check_claude(add)
-
-
-def _check_gateway(cfg: Config, add) -> None:
-    """Whether the gateway answers at its configured address, and whether the Gateway Key works,
-    from one small call. Without a readable key the call goes with none, which a gateway that
-    answers refuses."""
-    from . import gateway
-    url = cfg.llm.gateway_url
-    try:
-        key, missing = gateway.key(), None
-    except gateway.NoKey as e:
-        key, missing = "", str(e)
-    outcome, detail = gateway.test_call(url, key, timeout=120)
-    if outcome == gateway.NO_ANSWER:
-        add(FAIL, "gateway", f"no answer from {url}: {detail} (check the Mac is online and "
-            "llm.gateway_url in the config)")
-    else:
-        add(OK, "gateway", f"answers at {url}")
-    if missing:
-        add(FAIL, "gateway-key", f"{missing}, so the evening Brief can't call the gateway")
-    elif outcome == gateway.WORKS:
-        add(OK, "gateway-key", "works, test call succeeded")
-    elif outcome == gateway.UNKNOWN:
-        add(FAIL, "gateway-key", "the gateway doesn't know this Gateway Key, or it was revoked "
-            f"(ask the Parent Recap maintainers for a new one and store it with {gateway.SETUP})")
-    elif outcome == gateway.SPENT:
-        add(WARN, "gateway-key", "works, but has used up today's budget, so the gateway takes no "
-            "more calls with it until tomorrow")
-    elif outcome == gateway.FAILED:
-        add(FAIL, "gateway-key", f"test call failed: {detail}")
-
-
-def _check_codex(cfg: Config, add) -> None:
-    from .summarize import call_llm_json, codex_missing, find_codex
-    codex = find_codex(cfg)
-    if not codex:
-        add(FAIL, "codex", f"codex command not found: {codex_missing()}, or set llm.codex_path in "
-            "the config")
-        return
-    # On Windows the setup page installs the CLI on its own, with no Codex app to sign in from.
-    sign_in = ("sign in again on the setup page, or run codex login in PowerShell; Codex keeps "
-               "the sign-in in ~/.codex unless its own config says otherwise"
-               if sys.platform == "win32" else
-               "open the Codex app and sign in again with your ChatGPT account")
-    if _codex_signed_out(codex):
-        add(FAIL, "codex", f"not signed in ({sign_in})")
-        return
-    try:
-        data = call_llm_json(cfg, 'Reply with only this JSON: {"ok": true}',
-                             "This is a connectivity test.", timeout=120, budget=0)
-    except Exception as e:
-        add(FAIL, "codex", f"call failed: {str(e)[:200]} (if you're signed out, {sign_in}. "
-            "ChatGPT Free and Go can't use the Codex CLI; it needs Plus or higher)")
-        return
-    if data.get("ok") is True:
-        add(OK, "codex", f"call succeeded ({codex})")
-    else:
-        add(FAIL, "codex", f"reachable, but the reply has the wrong shape: {str(data)[:80]}")
-
-
-def _codex_signed_out(codex: str) -> bool:
-    """Whether `codex login status` says signed out, which it reads wherever Codex keeps the
-    sign-in: its auth.json, or the system's own store if the family chose that. A check that
-    doesn't run leaves it to the test call. Only the exit code is read: the output names the
-    account."""
-    import subprocess
-    try:
-        proc = subprocess.run([codex, "login", "status"], capture_output=True, text=True, encoding="utf-8",
-                              timeout=CODEX_STATUS_SECONDS, stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return proc.returncode != 0
-
-
-def _check_claude(add) -> None:
-    from .summarize import _claude_env, claude_install, claude_test_call, find_claude
-    windows = sys.platform == "win32"
-    claude = find_claude()
-    if not claude and windows:
-        add(FAIL, "claude", "claude command not found on PATH or in %USERPROFILE%\\.local\\bin "
-            "(install Claude Code on the setup page, or in PowerShell with: "
-            f"{claude_install()})")
-        return
-    if not claude:
-        add(FAIL, "claude", "claude command not found on PATH, in ~/.local/bin or the other usual "
-            f"folders, or by your login shell (install Claude Code with: {claude_install()})")
-        return
-    from .setup_steps import PLAIN_TERMINAL
-    from .system import secrets
-    env, label = _claude_env()
-    where = "" if secrets.reachable() else f", {PLAIN_TERMINAL}"
-    if label == "inherited" and windows:
-        # `setup claude`'s dialog is the Mac's: on Windows the token is pasted into the page.
-        add(FAIL, "claude", "no Claude token in Credential Manager, so the evening Brief can't "
-            "call Claude (sign in to Claude on the setup page: paste the install line into "
-            "PowerShell again)")
-        return
-    if label == "inherited":
-        # This shell's own sign-in can work while the evening job, which has none, can't.
-        add(FAIL, "claude", "no claude-oauth-token in the Keychain, so the evening Brief can't "
-            f"call Claude (store one with parent-recap setup claude{where})")
-        return
-    if label == "keychain-needs-prompt":
-        # Stored by an earlier version, so it trusts that version's Python and not security.
-        add(FAIL, "claude", "the Claude token is in the Keychain, but macOS asks for the Keychain "
-            "password before reading it, which the evening Brief can't answer (store it again "
-            f"with parent-recap setup claude{where})")
-        return
-    error = claude_test_call(claude, env)
-    if error is not None:
-        add(FAIL, "claude", f"call failed (auth: {label}): {error[:120]}")
-    else:
-        add(OK, "claude", f"call succeeded (auth: {label})")
+    from . import llm
+    levels = {"ok": OK, "warn": WARN, "fail": FAIL}
+    for finding in llm.backend(cfg).check():
+        add(levels[finding.level], finding.key, finding.detail)
 
 
 def _check_wilma(cfg: Config, add) -> None:
