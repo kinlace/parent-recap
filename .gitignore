@@ -9,6 +9,9 @@ calendar_credentials.json
 calendar_token.json
 dist/
 .scratch/
+# pytest --cov's data and HTML report
+.coverage
+htmlcov/
 .env
 # scripts/issue-loop.sh's hand-off files between the agent and the script
 .loop/

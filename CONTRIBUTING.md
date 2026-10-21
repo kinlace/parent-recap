@@ -30,6 +30,7 @@ Unsure what comes next? Ask `/ask-matt`; it knows the whole flow and stays curre
 
 - Conventional commits: `type: concise description` (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`).
 - Tests and golden regeneration: see [`app/tests/README.md`](app/tests/README.md).
+- Coverage, as CI's macOS job reports it (lines and branches per module, no threshold): from `app/`, `python -m pytest --cov --cov-report=term`.
 
 ## Reviews
 

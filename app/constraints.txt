@@ -6,6 +6,7 @@ beautifulsoup4==4.15.0
 certifi==2026.7.22
 cffi==2.1.1
 charset-normalizer==3.5.2
+coverage==7.16.2
 cryptography==48.0.1
 google-api-core==2.40.0
 google-api-python-client==2.201.0
@@ -32,6 +33,7 @@ pydantic_core==2.46.5
 Pygments==2.21.0
 pyparsing==3.3.3
 pytest==9.1.1
+pytest-cov==7.1.0
 python-dateutil==2.9.0.post0
 PyYAML==6.0.3
 requests==2.34.2

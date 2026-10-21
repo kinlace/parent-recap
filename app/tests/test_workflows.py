@@ -3,6 +3,7 @@ no jobs. A tests workflow that doesn't parse reports no check at all, and PRs th
 other checks alone (#128)."""
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -38,3 +39,23 @@ def test_the_tests_run_on_macos_and_windows():
     jobs = {name: job for name, job in workflow["jobs"].items() if name != "changes"}
     assert {job["runs-on"] for job in jobs.values()} == {"macos-latest", "windows-latest"}
     assert all(job["needs"] == "changes" for job in jobs.values())
+
+
+def test_the_macos_job_reports_coverage_with_no_threshold_and_windows_doesnt():
+    # Numbers to go on when end-to-end tests give way to unit tests (#403), not a gate.
+    jobs = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]
+    macos_runs = " ".join(step.get("run", "") for step in jobs["test"]["steps"])
+    windows_runs = " ".join(step.get("run", "") for step in jobs["windows"]["steps"])
+
+    assert "--cov" in macos_runs and "--cov-report=term" in macos_runs
+    assert "fail-under" not in macos_runs
+    assert any(step.get("uses", "").startswith("actions/upload-artifact@")
+               and step["with"]["path"] == "app/htmlcov" for step in jobs["test"]["steps"])
+    assert "--cov" not in windows_runs
+
+
+def test_coverage_measures_lines_and_branches_of_the_package_with_no_threshold():
+    pyproject = tomllib.loads((WORKFLOW_DIR.parents[1] / "app" / "pyproject.toml").read_text())
+    coverage = pyproject["tool"]["coverage"]
+    assert coverage["run"] == {"source": ["family_brief"], "branch": True}
+    assert "fail_under" not in coverage.get("report", {})

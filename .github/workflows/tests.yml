@@ -81,9 +81,17 @@ jobs:
       - name: Check every pinned package has a wheel for both kinds of Mac
         run: python ../scripts/check_wheels.py
       # Includes the version-consistency check (tests/test_version.py). The slowest tests are
-      # listed, so a run that got slower shows which test did it.
+      # listed, so a run that got slower shows which test did it. The coverage table (lines and
+      # branches per module, pyproject.toml's [tool.coverage]) shows what the suite reaches, with
+      # no threshold: numbers for tickets that trade end-to-end tests for unit tests (#403).
       - name: Test
-        run: python -m pytest --durations=15
+        run: python -m pytest --durations=15 --cov --cov-report=term --cov-report=html
+      - name: Upload the coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage
+          path: app/htmlcov
 
   windows:
     needs: changes

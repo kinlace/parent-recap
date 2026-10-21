@@ -24,6 +24,7 @@ google = [
 ]
 test = [
     "pytest>=8",
+    "pytest-cov>=7",
     "time-machine>=2.14",
 ]
 
@@ -51,3 +52,9 @@ markers = [
     "macos: needs macOS (a macOS adapter, a macOS-only feature, or what Windows can't do yet); skipped elsewhere",
     "windows: needs Windows (a Windows adapter or Windows' own layout); skipped elsewhere",
 ]
+
+# Used only with `pytest --cov`, as CI's macOS job runs it. No fail_under: the numbers inform, they
+# don't gate (#403).
+[tool.coverage.run]
+source = ["family_brief"]
+branch = true
