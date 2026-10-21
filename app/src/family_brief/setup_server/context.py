@@ -21,8 +21,8 @@ from pydantic import ValidationError
 
 from .. import chat_install, llm, setup_connect, setup_save, setup_whatsapp
 from ..config import Config
+from ..setup_connect import Reply
 
-Reply = tuple[HTTPStatus, dict[str, Any]]
 # A call the page makes: its answers, as parsed from JSON, to the reply.
 Action = Callable[[Any], Reply]
 # A file a phase serves besides the page's own: its body, type and headers, or None for not found.

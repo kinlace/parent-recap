@@ -20,7 +20,7 @@ import os
 import socketserver
 import sys
 import threading
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Set
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -100,7 +100,7 @@ class SetupServer:
     def __init__(self, context: Context, phases: Iterable[type[Phase]] = PHASES) -> None:
         self.context = context
         self.phases = [phase(context) for phase in phases]
-        reserved = {path: None for path in [*FILES, STATE]}
+        reserved = {*FILES, STATE}
         self.actions: dict[str, Action] = _routes(reserved, (p.routes() for p in self.phases))
         self.pages: dict[str, Page] = _routes(reserved, (p.pages() for p in self.phases))
         self.code = token_urlsafe(32)
@@ -151,7 +151,7 @@ class SetupServer:
         return out
 
 
-def _routes(reserved: Mapping[str, None], tables: Iterable[Mapping[str, T]]) -> dict[str, T]:
+def _routes(reserved: Set[str], tables: Iterable[Mapping[str, T]]) -> dict[str, T]:
     """The phases' routes as one table, refusing a path two phases, or a phase and the shell,
     both answer."""
     routes: dict[str, T] = {}

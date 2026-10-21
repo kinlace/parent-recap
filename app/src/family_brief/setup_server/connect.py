@@ -10,6 +10,7 @@ from .. import setup_ai, setup_connect, setup_gmail, setup_myclub, setup_save
 from .. import sources as source_registry
 from ..setup_connect import Nothing, Reply, Strict, parse
 from ..system import desktop, desktop_macos, macos_only
+from . import finish
 from .context import Action, Phase
 
 # The Sources a family can skip and add later through manage, in the page's order.
@@ -92,7 +93,7 @@ class Connect(Phase):
         with context.working:
             runs = context.runs
             if runs.get("health", {}).get("result") == "checking" or \
-                    runs.get("finish", {}).get("result") in ("installing", "checking"):
+                    runs.get("finish", {}).get("result") in finish.UNDER_WAY:
                 return HTTPStatus.CONFLICT, {"result": "busy"}
             status, out = context.connect.reopen(
                 source, allowed, setup_save.outcome("invalid-answers", refusal, errors=[error]))

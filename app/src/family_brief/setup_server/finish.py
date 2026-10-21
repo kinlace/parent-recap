@@ -17,7 +17,7 @@ from .health import FINISH_CHECKS, FINISH_LEAVES_OUT, health_check
 # every outcome is true, when the server stops, or `not-done`; `install-failed` when the jobs
 # couldn't be loaded, and `no-finish` when this server hasn't started one.
 FINISH_RESULTS = ("installing", "checking", "done", "not-done", "install-failed", "no-finish")
-_UNDER_WAY = ("installing", "checking")
+UNDER_WAY = ("installing", "checking")  # which nothing may cut off or start again
 
 
 class Finish(Phase):
@@ -91,7 +91,7 @@ class Finish(Phase):
                 errors=["answers: should be given once setup is at Finish"])
         with self.context.working:
             finish = self.context.runs.get("finish")
-            if finish is not None and finish["result"] in _UNDER_WAY:
+            if finish is not None and finish["result"] in UNDER_WAY:
                 return HTTPStatus.OK, {"result": finish["result"]}
             self.context.closing = True
         return HTTPStatus.OK, {"result": "stopped"}
@@ -104,7 +104,7 @@ class Finish(Phase):
                 errors=["answers: should be given once setup is at Finish"])
         runs = self.context.runs
         with self.context.working:
-            if runs.get("finish", {}).get("result") in _UNDER_WAY:
+            if runs.get("finish", {}).get("result") in UNDER_WAY:
                 return HTTPStatus.OK, {"result": runs["finish"]["result"]}  # never asked twice
             started = {"result": "checking" if replace is None else "installing"}
             runs["finish"] = started

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 
 import pytest
 import yaml
@@ -187,13 +188,13 @@ def test_an_ai_only_the_login_shell_finds_is_ready(harness, page, ai, login_shel
 @pytest.mark.macos
 def test_an_ai_check_that_cannot_run_says_so(harness, page, ai, monkeypatch):
     ai("claude")
-    run = setup_server.ai.subprocess.run
+    run = subprocess.run
 
     def fails(cmd, *a, **k):
         if cmd[1:3] == ["auth", "status"]:
-            raise setup_server.ai.subprocess.TimeoutExpired(cmd, 20)
+            raise subprocess.TimeoutExpired(cmd, 20)
         return run(cmd, *a, **k)
-    monkeypatch.setattr(setup_server.ai.subprocess, "run", fails)
+    monkeypatch.setattr(subprocess, "run", fails)
 
     assert check_ai(page.url, "claude").json() == {"result": "check-failed", "ai": "claude"}
 
