@@ -77,6 +77,45 @@ def test_claude_finds_its_program_on_path(claude):
     assert claude.program() == "/usr/local/bin/claude"
 
 
+def test_claude_by_name_is_the_adapter_setup_asks(claude):
+    assert llm.named("claude").program() == claude.program() == "/usr/local/bin/claude"
+
+
+@pytest.mark.parametrize("platform, installer", [("darwin", "install.sh"), ("win32", "install.ps1")])
+def test_claude_installs_with_its_own_installer_for_the_system(claude, monkeypatch, platform,
+                                                               installer):
+    monkeypatch.setattr("sys.platform", platform)
+
+    assert installer in claude.install_line() and claude.install_line() == claude.install_hint()
+
+
+def test_claude_runs_setups_commands_outside_the_familys_claude_code_session(claude, monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "from-the-parent")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "parent-token")
+
+    env = claude.program_env()
+
+    assert "CLAUDECODE" not in env and "CLAUDE_CODE_SESSION_ID" not in env
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "parent-token"  # auth is kept
+
+
+def test_claude_tests_a_pasted_token_instead_of_the_stored_one(claude, harness, monkeypatch):
+    harness.secrets["claude-oauth-token"] = "keychain-token"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "an-api-key")  # no other sign-in wins
+    harness.model_reply = "OK"
+
+    assert claude.test_token("pasted-token") is None
+    [call] = harness.model_calls
+    assert call.env["CLAUDE_CODE_OAUTH_TOKEN"] == "pasted-token" and "ANTHROPIC_API_KEY" not in call.env
+
+
+def test_a_pasted_token_claude_refuses_says_what_it_said(claude, harness):
+    harness.model_reply = FailedCall("Invalid API key")
+
+    assert "Invalid API key" in claude.test_token("pasted-token")
+
+
 def test_claude_check_calls_it_with_the_keychain_token(claude, harness):
     harness.secrets["claude-oauth-token"] = "keychain-token"
     harness.model_reply = "OK"

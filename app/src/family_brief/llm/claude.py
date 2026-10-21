@@ -139,6 +139,16 @@ class Claude:
     def install_hint(self) -> str:
         return install_line()
 
+    def install_line(self) -> str | None:
+        return install_line()
+
+    def program_env(self) -> dict[str, str]:
+        return sessionless_env()
+
+    def test_token(self, token: str) -> str | None:
+        program = find()
+        return "claude command not found" if program is None else test_call(program, token_env(token))
+
     def run(self, prompt: str, system_prompt: str, timeout: int, budget: int) -> LLMReply:
         # Isolated run, like codex: no built-in tools, none of the user's MCP servers, and an empty
         # working dir so no project CLAUDE.md or settings get picked up. The model only reads the prompt.

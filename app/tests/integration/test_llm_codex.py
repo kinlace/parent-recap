@@ -73,6 +73,23 @@ def test_codex_that_isnt_there_says_how_to_get_it(harness, monkeypatch):
     assert codex.install_hint() in finding.detail and "llm.codex_path" in finding.detail
 
 
+def test_codex_by_name_is_found_at_the_configured_path(codex_path):
+    assert llm.named("codex", codex_path).program() == codex_path
+
+
+@pytest.mark.parametrize("platform, line", [("darwin", None), ("win32", codex_backend.CODEX_INSTALL)])
+def test_codex_installs_with_a_line_only_on_windows(codex, monkeypatch, platform, line):
+    # On a Mac it comes with the Codex or ChatGPT desktop app.
+    monkeypatch.setattr("sys.platform", platform)
+
+    assert codex.install_line() == line
+
+
+def test_codex_takes_no_pasted_token(codex, harness):
+    assert codex.test_token("sk-ant-oat01-pasted") is not None
+    assert not harness.model_calls
+
+
 def test_codex_check_calls_a_signed_in_codex(codex, codex_path, harness):
     harness.model_reply = {"ok": True}
 

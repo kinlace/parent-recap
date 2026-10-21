@@ -171,7 +171,7 @@ def is_clean(s: dict[str, Any]) -> bool:
             and s.get("valid_json", True))
 
 
-# A night's tokens by kind, as summarize.LLMReply.usage keeps them, and their metric names.
+# A night's tokens by kind, as llm.LLMReply.usage keeps them, and their metric names.
 TOKEN_KINDS = {"input": "input_tokens", "cache_write": "cache_write_tokens",
                "cached_input": "cached_tokens", "output": "output_tokens"}
 NIGHTS_PER_MONTH = 30

@@ -47,6 +47,21 @@ class Backend(Protocol):
         """What the family does to get it, on this system."""
         ...
 
+    def install_line(self) -> str | None:
+        """The one line that installs its program on this system, which the family pastes or the
+        setup page runs, or None when there is none."""
+        ...
+
+    def program_env(self) -> dict[str, str]:
+        """The environment setup runs its program in for anything but a prompt, such as signing
+        in or installing its plugin."""
+        ...
+
+    def test_token(self, token: str) -> str | None:
+        """One small call signed in with `token`, pasted into setup, instead of what is stored:
+        None when it worked, otherwise what went wrong."""
+        ...
+
     def check(self) -> list[Finding]:
         """doctor's checks: whether it is there and signed in, from one small call."""
         ...

@@ -266,7 +266,7 @@ def test_one_command_scores_both_backends(case_dir, model, tmp_path, capsys):
     out = tmp_path / "results"
     codex = tmp_path / "codex"
     codex.write_text("")
-    codex.chmod(0o755)  # find_codex only takes an executable file
+    codex.chmod(0o755)  # the Codex adapter only takes an executable file
     runner.main(["--cases", str(case_dir), "--out", str(out), "--backend", "claude,codex",
                  "--codex-path", str(codex), "--language", "en"])
     card = capsys.readouterr().out

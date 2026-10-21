@@ -38,9 +38,9 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from . import (chat_install, feedback, ops, run_lock, setup_ai, setup_connect, setup_gmail,
+from . import (chat_install, feedback, llm, ops, run_lock, setup_ai, setup_connect, setup_gmail,
                setup_myclub, setup_report, setup_save, setup_status, setup_steps, setup_whatsapp,
-               setup_wilma, summarize)
+               setup_wilma)
 from . import sources as source_registry
 from .actions import email as email_action
 from .config import Config, Kid, LLMConfig
@@ -357,10 +357,8 @@ class SetupServer:
         return HTTPStatus.OK, {"result": _ai_status(program, name), "ai": name}
 
     def _ai_program(self, name: str) -> str | None:
-        if name == "claude":
-            return summarize.find_claude()
         codex_path = _section(self._config_data(), "llm").get("codex_path")
-        return summarize.find_codex_at(codex_path if isinstance(codex_path, str) else None)
+        return llm.named(name, codex_path if isinstance(codex_path, str) else None).program()
 
     # ── the AI sign-in for the evening Brief
 
@@ -375,7 +373,7 @@ class SetupServer:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "On Windows, Claude signs in in a PowerShell window.",
                 errors=["answers: the page reads Claude's sign-in only on a Mac"])
-        program = summarize.find_claude()
+        program = _claude().program()
         if program is None:
             return HTTPStatus.OK, _claude_missing()
         with self._ai:
@@ -409,7 +407,7 @@ class SetupServer:
             result, token = setup_ai.read_setup_token(program, CLAUDE_SIGN_IN_SECONDS, self._stopped)
             extra: dict[str, Any] = {}
             if token is not None:
-                result, extra = setup_ai.claude_token_sign_in(program, token)
+                result, extra = setup_ai.claude_token_sign_in(token)
             sign_in["result"] = self._ai_signed_in("claude")[1] if result == "saved" \
                 else {"result": result, **_keychain_code(extra)}
         except Exception:  # never leave the page waiting
@@ -421,7 +419,7 @@ class SetupServer:
         On Windows, a PowerShell window, which is the only way the page signs in there."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, _nothing_to_give()
-        program = summarize.find_claude()
+        program = _claude().program()
         if program is None:
             return HTTPStatus.OK, _claude_missing()
         return HTTPStatus.OK, {"result": _open_claude_window(program)}
@@ -439,7 +437,7 @@ class SetupServer:
         with self._ai:
             installing = self._claude_install == "installing"
         # The installer puts claude.exe in place before it's done: its own run opens the window.
-        if not installing and summarize.find_claude() is not None:
+        if not installing and _claude().program() is not None:
             return self.open_claude_window({})
         with self._ai:
             if self._claude_install != "installing":
@@ -450,7 +448,7 @@ class SetupServer:
     def _installing_claude(self) -> None:
         result = "install-failed"
         try:
-            program = summarize.find_claude() if setup_ai.install_claude() else None
+            program = _claude().program() if setup_ai.install_claude() else None
             if program is not None:
                 result = _open_claude_window(program)
         except Exception:  # never leave the page installing
@@ -462,10 +460,10 @@ class SetupServer:
         """Tests the token pasted into the page's own field and stores it, as the chat's Claude
         step does with the dialog's. The token is never returned, logged or put on a command line."""
         answer = parse(ClaudeToken, raw)
-        program = summarize.find_claude()
+        program = _claude().program()
         if program is None:
             return HTTPStatus.OK, _claude_missing()
-        result, extra = setup_ai.claude_token_sign_in(program, answer.token)
+        result, extra = setup_ai.claude_token_sign_in(answer.token)
         if result != "saved":
             return HTTPStatus.OK, {"result": result, **_keychain_code(extra)}
         desktop.forget_terminal(setup_ai.CLAUDE_WINDOW)  # the window has done its work
@@ -520,11 +518,10 @@ class SetupServer:
     def _codex_answers(self) -> bool:
         """Whether Codex answers the test call doctor makes, with the Household's config as the
         evening Brief would call it. What it said isn't kept: it can name the Mac's files."""
-        cfg = self._config()
-        cfg.llm = cfg.llm.model_copy(update={"backend": "codex"})
+        codex = llm.for_llm(self._config().llm.model_copy(update={"backend": "codex"}))
         try:
-            data = summarize.call_llm_json(cfg, 'Reply with only this JSON: {"ok": true}',
-                                           "This is a connectivity test.", timeout=120, budget=0)
+            data = codex.run('Reply with only this JSON: {"ok": true}',
+                             "This is a connectivity test.", timeout=120, budget=0).data
         except Exception:
             return False
         return data.get("ok") is True
@@ -1145,9 +1142,9 @@ class SetupServer:
             self._install_chat(raw["ai"]).join()
         if raw["ai"] == "codex":
             return HTTPStatus.OK, {"result": "open-codex", "type": skill}
-        program = summarize.find_claude()
+        program = _claude().program()
         if program is None:
-            return HTTPStatus.OK, {"result": "not-installed", "install": summarize.CLAUDE_INSTALL}
+            return HTTPStatus.OK, {"result": "not-installed", "install": _claude().install_line()}
         # Claude Code in the family's home folder, at the setup skill.
         if desktop.open_terminal([program, skill], {}, CHAT_WINDOW):
             return HTTPStatus.OK, {"result": "opened"}
@@ -1209,7 +1206,7 @@ class SetupServer:
     def _installing_chat(self, name: str) -> None:
         try:
             if name == "claude":
-                program = summarize.find_claude()
+                program = _claude().program()
                 result = "not-installed" if program is None \
                     else chat_install.install_claude_plugin(program)
             else:
@@ -1583,12 +1580,17 @@ def _label(term: str, kid: Kid) -> str | None:
     return term if term in kid.activities else None
 
 
+def _claude() -> llm.Backend:
+    """Claude, which the page signs in, installs and opens the chat setup in on its own steps."""
+    return llm.named("claude")
+
+
 def _claude_missing() -> dict[str, Any]:
     """What the page says without Claude Code: on a Mac, with the line that installs it. On
     Windows the page installs it itself."""
     if sys.platform == "win32":
         return {"result": "not-installed"}
-    return {"result": "not-installed", "install": summarize.claude_install()}
+    return {"result": "not-installed", "install": _claude().install_line()}
 
 
 def _open_claude_window(program: str) -> str:

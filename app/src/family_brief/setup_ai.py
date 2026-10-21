@@ -29,9 +29,8 @@ import threading
 import time
 from typing import Any
 
-from . import install_record
+from . import install_record, llm
 from .setup_report import keychain_failure
-from .summarize import CLAUDE_INSTALL_WINDOWS, CODEX_INSTALL, _sessionless_env
 from .system import secrets
 
 if sys.platform != "win32":  # `claude setup-token`'s pseudo-terminal, which Windows doesn't have
@@ -76,7 +75,8 @@ def read_setup_token(program: str, timeout: float,
         return "sign-in-failed", None
     try:
         proc = subprocess.Popen([program, "setup-token"], stdin=theirs, stdout=theirs,
-                                stderr=theirs, env=_sessionless_env(), start_new_session=True)
+                                stderr=theirs, env=llm.named("claude").program_env(),
+                                start_new_session=True)
     except OSError:
         os.close(ours)
         return "sign-in-failed", None
@@ -126,15 +126,17 @@ def _token(shown: bytes, *, ended: bool) -> str | None:
 def install_codex() -> bool:
     """Installs the Codex CLI on Windows with OpenAI's own installer, as their instructions say
     to: PowerShell downloads and runs it. Whether it ran through. What it said isn't kept."""
-    return _install_in_powershell(CODEX_INSTALL)
+    return _install_in_powershell(llm.named("codex").install_line())
 
 
 def install_claude() -> bool:
     """Installs Claude Code on Windows with Anthropic's own installer, the same way."""
-    return _install_in_powershell(CLAUDE_INSTALL_WINDOWS)
+    return _install_in_powershell(llm.named("claude").install_line())
 
 
-def _install_in_powershell(line: str) -> bool:
+def _install_in_powershell(line: str | None) -> bool:
+    if line is None:  # nothing installs it on this system
+        return False
     try:
         proc = subprocess.run(["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
                                "-Command", line],
@@ -156,22 +158,20 @@ def start_codex_login(program: str) -> subprocess.Popen | None:
         return None
 
 
-def claude_token_sign_in(program: str, typed: str) -> tuple[str, dict[str, Any]]:
+def claude_token_sign_in(typed: str) -> tuple[str, dict[str, Any]]:
     """Makes one test call with the Claude token `typed` and stores it in the Keychain. Returns
     the step's result, `saved`, `not-a-token`, `test-call-failed`, `keychain-not-reachable` or
     `keychain-failed`, and what else it reports: for a failed test call what Claude said as
     `error`, with the token taken out, and when the Keychain refused it macOS's `code`. The setup
     page's sign-in, its own field and `setup claude` call this, so all three give the same
     results."""
-    from .summarize import claude_test_call, claude_token_env
-
     # The token has no spaces, so any are from copying it across the lines Terminal wrapped it on.
     token = "".join(typed.split())
     if not CLAUDE_TOKEN.fullmatch(token):
         # Not sent to Claude: it's most likely the family's own password, or only part of the token.
         return "not-a-token", {}
 
-    error = claude_test_call(program, claude_token_env(token))
+    error = llm.named("claude").test_token(token)
     if error is not None:
         return "test-call-failed", {"error": error.replace(token, "<token>").strip()[:200]}
 

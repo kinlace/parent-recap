@@ -28,8 +28,8 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import (ai_filter_report, chat_install, install_record, ops, own_node, run_lock,
-               setup_save, setup_wilma, sources, summarize, tools, whatsapp_python)
+from . import (ai_filter_report, chat_install, install_record, llm, ops, own_node, run_lock,
+               setup_save, setup_wilma, sources, tools, whatsapp_python)
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
 from .system import desktop, jobs, macos_only, secrets, wake, windows_only
@@ -325,7 +325,7 @@ def _claude_code(s: Survey) -> None:
     Claude Code lists them, since a family without them would get an error from Claude Code."""
     plugins = install_record.entries("claude-plugin")
     marketplaces = install_record.entries("claude-marketplace")
-    program = summarize.find_claude()
+    program = llm.named("claude").program()
     if program is None:
         return
     both = (f"/plugin uninstall {chat_install.PLUGIN}, then /plugin marketplace remove "

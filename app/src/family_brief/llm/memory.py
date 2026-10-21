@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Union
@@ -53,6 +54,15 @@ class Memory:
 
     def install_hint(self) -> str:
         return "nothing to install"
+
+    def install_line(self) -> str | None:
+        return None
+
+    def program_env(self) -> dict[str, str]:
+        return dict(os.environ)
+
+    def test_token(self, token: str) -> str | None:
+        return None
 
     def check(self) -> list[Finding]:
         return list(self.findings)

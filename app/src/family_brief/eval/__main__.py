@@ -24,7 +24,8 @@ from typing import Any
 from ..config import LLMConfig
 from ..brief_text import TEXT
 from ..collectors.base import Message
-from ..summarize import (_strip_code_fence, call_llm_json, digest_of, for_the_ai, kids_for, placeholders_for,
+from ..llm.parse import strip_code_fence
+from ..summarize import (call_llm_json, digest_of, for_the_ai, kids_for, placeholders_for,
                          summarize_reply, system_prompt)
 from . import cost
 from .cases import BUNDLED, Case, load_cases
@@ -51,7 +52,7 @@ def _kids_note(data: dict[str, Any]) -> str:
 def _strictly_valid(text: str) -> bool:
     """Whether the reply parses as one JSON object without the parser's repairs."""
     try:
-        return isinstance(json.loads(_strip_code_fence(text.strip()), strict=False), dict)
+        return isinstance(json.loads(strip_code_fence(text.strip()), strict=False), dict)
     except json.JSONDecodeError:
         return False
 

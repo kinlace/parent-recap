@@ -21,7 +21,7 @@ from .brief_text import PRODUCT_NAME, BriefText
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, Message
 from .config import Config
 from .state import State
-from .summarize import (CALL_BUDGET, add_the_nights_people, digest_of, extract_calendar_events, for_the_ai,
+from .summarize import (add_the_nights_people, digest_of, extract_calendar_events, for_the_ai,
                         placeholders_for, summarize)
 from .translate import translate
 from .utils.dates import to_local, today_str
@@ -786,7 +786,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
             # Pass direct_events so the LLM doesn't duplicate them into calendar_events.
             already_captured = [e.to_dict() for e in direct_events]
             summary = summarize(cfg, for_ai, upcoming, already_captured, earlier,
-                                budget=PREVIEW_BUDGET if args.preview else CALL_BUDGET,
+                                budget=PREVIEW_BUDGET if args.preview else llm.CALL_BUDGET,
                                 placeholders=placeholders)
         except Exception as e:
             log.error("Summarizer failed: %s (falling back to rule-based digest)", e)

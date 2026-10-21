@@ -76,6 +76,16 @@ class Codex:
     def install_hint(self) -> str:
         return missing()
 
+    def install_line(self) -> str | None:
+        # On a Mac it comes with the Codex or ChatGPT desktop app.
+        return CODEX_INSTALL if sys.platform == "win32" else None
+
+    def program_env(self) -> dict[str, str]:
+        return dict(os.environ)
+
+    def test_token(self, token: str) -> str | None:
+        return "Codex signs in with codex login, not a pasted token"
+
     def run(self, prompt: str, system_prompt: str, timeout: int, budget: int) -> LLMReply:
         codex = self.program()
         if not codex:

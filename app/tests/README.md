@@ -46,9 +46,9 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_held_back.py`           | Which texts look sensitive, against `sensitive_words.yaml`       |
 | `test_kid_placeholders.py`    | Each Kid as Kid A, Kid B and back                                |
 | `test_llm_memory.py`          | The llm package's in-memory adapter (ADR 0023)                   |
+| `test_llm_parse.py`           | The model's reply parsed, tier by tier, and the CLI's envelope   |
 | `test_sources.py`             | The Source registry's records, and the Sources a Household uses  |
 | `test_summarize_normalise.py` | The model's reply put in the schema's shape                      |
-| `test_summarize_parsing.py`   | The model's reply parsed, tier by tier                           |
 | `test_weekend_pipeline.py`    | The pure parts of Weekend Picks                                  |
 
 ## Integration tests

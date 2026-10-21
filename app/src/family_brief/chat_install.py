@@ -21,8 +21,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import install_record
-from .summarize import _sessionless_env
+from . import install_record, llm
 
 REPO = "kinlace/parent-recap"
 MARKETPLACE = "kinlace"
@@ -87,7 +86,7 @@ def remove_claude_marketplace(program: str, marketplace: str) -> None:
 def _claude(program: str, *args: str) -> str:
     """Runs `claude <args>` and returns what it printed; raises if it failed."""
     proc = subprocess.run([program, *args], capture_output=True, text=True, encoding="utf-8", timeout=CLAUDE_SECONDS,
-                          stdin=subprocess.DEVNULL, env=_sessionless_env())
+                          stdin=subprocess.DEVNULL, env=llm.named("claude").program_env())
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(proc.returncode, args[:3])
     return proc.stdout

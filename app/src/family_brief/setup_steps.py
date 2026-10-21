@@ -174,12 +174,13 @@ def cmd_claude(args: argparse.Namespace) -> int:
     (without one it stops with "Raw mode is not supported"), and it shows the token only on that
     screen, wrapped to the window. So this opens it in a Terminal window and asks for the token in
     the secret dialog."""
-    from .summarize import CLAUDE_INSTALL, find_claude
+    from . import llm
 
-    claude = find_claude()
+    backend = llm.named("claude")
+    claude = backend.program()
     if not claude:
         return report("not-installed", f"Install Claude Code's claude command in Terminal with "
-                      f"{CLAUDE_INSTALL}, then run this again.")
+                      f"{backend.install_line()}, then run this again.")
     again = f"{program()} setup claude"
     warning = _warn_if_unreachable()
     if not args.no_open and not desktop.open_terminal(setup_token_window(claude), {},
@@ -199,7 +200,7 @@ def cmd_claude(args: argparse.Namespace) -> int:
                       "family runs claude setup-token in Terminal, then this in Terminal: "
                       f"{again} --no-open")
 
-    result, extra = setup_ai.claude_token_sign_in(claude, typed)
+    result, extra = setup_ai.claude_token_sign_in(typed)
     if result == "not-a-token":
         return report("not-a-token", "That wasn't a Claude token. Copy the whole token Terminal "
                       f"showed, starting with sk-ant-oat01-, and run this again: {again} --no-open")

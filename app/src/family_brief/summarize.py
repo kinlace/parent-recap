@@ -15,7 +15,7 @@ from .brief_text import TEXT, BriefText
 from .languages import FINNISH_TERMS, is_finnish
 from .collectors.base import CalendarEvent, Message
 from .config import Config
-from .llm import claude, codex, parse, retry
+from .llm import CALL_BUDGET, LLMReply
 
 _ = CalendarEvent  # re-export-friendly
 
@@ -175,33 +175,6 @@ def add_the_nights_people(cfg: Config, placeholders: ai_filter.Placeholders, mes
     of the earlier Briefs' nights, keeping the Household's own names."""
     earlier = [name for day in earlier_briefs for name in day.get("third_parties") or []]
     placeholders.add_people([*third_parties(cfg, messages), *earlier], keep_names=household_names(cfg))
-
-
-# The backend helpers as they were named here before the llm package (ADR 0023), for the callers
-# that still use them until they ask the package.
-LLMReply = llm.LLMReply
-CALL_BUDGET, BUSY_PAUSES = llm.CALL_BUDGET, llm.BUSY_PAUSES
-_strip_code_fence = parse.strip_code_fence
-_parse_cli_response = parse.cli_response
-_parse_model_json = parse.model_json
-_busy_reason = retry.busy_reason
-_sessionless_env = claude.sessionless_env
-_claude_env = claude.signed_in_env
-_claude_reply = claude.reply_of
-claude_token_env = claude.token_env
-claude_test_call = claude.test_call
-claude_install = claude.install_line
-native_claude_dir = claude.native_dir
-find_claude = claude.find
-CLAUDE_INSTALL, CLAUDE_INSTALL_WINDOWS = claude.CLAUDE_INSTALL, claude.CLAUDE_INSTALL_WINDOWS
-CODEX_APPS, CODEX_IN_APP, CODEX_INSTALL = codex.CODEX_APPS, codex.CODEX_IN_APP, codex.CODEX_INSTALL
-codex_missing = codex.missing
-find_codex_at = codex.find_at
-
-
-def find_codex(cfg: Config) -> str | None:
-    """The codex binary to run, as the config's llm section leads to it."""
-    return codex.find_at(cfg.llm.codex_path)
 
 
 # Identifiers the model doesn't need: Gmail's link back to a message, which holds its Message-ID,

@@ -1,9 +1,7 @@
 """The model's reply put in the schema's shape (summarize.normalise), its calendar events read
-(summarize.extract_calendar_events), and the rest of what summarize reads from a backend's output."""
+(summarize.extract_calendar_events), and the instructions it is written to."""
 from __future__ import annotations
 
-import json
-import subprocess
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -12,7 +10,7 @@ import pytest
 from family_brief import ai_filter, kid_placeholders
 from family_brief.brief_text import TEXT
 from family_brief.languages import FINNISH_TERMS
-from family_brief.summarize import _busy_reason, _claude_reply, extract_calendar_events, normalise, system_prompt
+from family_brief.summarize import extract_calendar_events, normalise, system_prompt
 
 HELSINKI = ZoneInfo("Europe/Helsinki")
 COMPLETE = {"per_kid": [], "calendar_events": [], "message_digest": "ok"}
@@ -146,35 +144,6 @@ def test_an_event_with_a_bad_date_is_skipped(bad):
 
 def test_no_calendar_events_are_none():
     assert extract_calendar_events({"calendar_events": None}, "Europe/Helsinki", "") == []
-
-
-# ── What a backend's output says
-
-def test_claude_reply_gives_the_text_the_tokens_and_the_model_that_wrote_most():
-    envelope = {"result": "{}", "usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": None},
-                "modelUsage": {"haiku": {"outputTokens": 1}, "opus": {"outputTokens": 4}, "sonnet": None}}
-
-    assert _claude_reply(json.dumps(envelope)) == \
-        ("{}", {"input": 10, "cache_write": 0, "cached_input": 0, "output": 5}, "opus")
-
-
-def test_claude_reply_without_usage_has_none_and_an_object_result_is_its_json():
-    assert _claude_reply(json.dumps({"result": {"a": "好"}})) == ('{"a": "好"}', None, None)
-
-
-@pytest.mark.parametrize("returncode, stdout, stderr, prompt, busy", [
-    pytest.param(0, "overloaded", "", None, None, id="succeeded"),
-    pytest.param(1, "", "Overloaded, try again", None, "Overloaded", id="overloaded"),
-    pytest.param(1, "", "error: 503 Service Unavailable", None, "error: 503", id="status"),
-    pytest.param(1, "Rate limit hit; usage limit reached", "", None, None, id="wont-pass"),
-    pytest.param(1, "", "prompt: we are at capacity tonight", "we are at capacity tonight", None,
-                 id="the-prompt-echoed"),
-    pytest.param(1, "", "Something else", None, None, id="other-failure"),
-])
-def test_busy_reason_says_when_waiting_may_help(returncode, stdout, stderr, prompt, busy):
-    proc = subprocess.CompletedProcess([], returncode, stdout, stderr)
-
-    assert _busy_reason(proc, prompt) == busy
 
 
 # ── The instructions

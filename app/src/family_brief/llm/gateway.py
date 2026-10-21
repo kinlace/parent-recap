@@ -1,6 +1,8 @@
 """The maintainers' gateway, called with the Household's Gateway Key (ADR 0014)."""
 from __future__ import annotations
 
+import os
+
 import requests
 
 from .. import gateway as api
@@ -36,6 +38,16 @@ class Gateway:
 
     def install_hint(self) -> str:
         return f"ask the Parent Recap maintainers for a Gateway Key and store it with {api.SETUP}"
+
+    def install_line(self) -> str | None:
+        return None
+
+    def program_env(self) -> dict[str, str]:
+        return dict(os.environ)
+
+    def test_token(self, token: str) -> str | None:
+        # Its key has a sign-in of its own, which tells a refused key from no answer.
+        return f"a Gateway Key is stored with {api.SETUP}"
 
     def run(self, prompt: str, system_prompt: str, timeout: int, budget: int) -> LLMReply:
         # Its own HTTP call with the Gateway Key (ADR 0014): no CLI, so nothing of the Mac's own

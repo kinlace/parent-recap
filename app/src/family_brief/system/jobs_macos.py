@@ -145,16 +145,13 @@ def run_now(name: str) -> None:
 
 
 def _path_env() -> str:
-    from ..summarize import native_claude_dir
-    dirs: list[str] = []
+    from .. import llm
+    dirs = llm.program_dirs()
     # Node for a claude installed with npm; the wilma CLI runs on Parent Recap's own (ADR 0011).
-    for tool in ("claude", "node"):
-        found = tools.find(tool)
-        if found:
-            dirs.append(str(Path(found).resolve().parent))
-            dirs.append(str(Path(found).parent))
-    # Claude Code's native installer puts claude there, and the shell running this may not have it.
-    dirs += [str(native_claude_dir()), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
+    found = tools.find("node")
+    if found:
+        dirs += [str(Path(found).resolve().parent), str(Path(found).parent)]
+    dirs += ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
     seen: list[str] = []
     for d in dirs:
         if d not in seen:
