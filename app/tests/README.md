@@ -33,7 +33,7 @@ and the end-to-end tests marked `windows`. A test that needs macOS is marked `@p
 adapters, macOS-only features (WhatsApp for Mac and its Full Disk Access, the Passwords app),
 `install.sh` and the other shell scripts, permission bits, and what Windows can't do yet (finding
 programs by bare name, shell-script stand-ins, the pseudo-terminal windows). Every other test in
-the layers Windows runs runs there too. When a Windows ticket makes one of these work there, it drops the mark. The
+those layers runs on Windows too. When a Windows ticket makes one of these work there, it drops the mark. The
 `windows_programs` fixture finds programs the way Windows does, on any system, so the setup page's
 Codex and Claude Code installs and doctor's Codex and Claude checks are tested on the Mac too. A test that needs Windows is
 marked `@pytest.mark.windows` the same way: the Credential Manager adapter
