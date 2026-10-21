@@ -13,7 +13,7 @@ from icalendar import Calendar
 
 from ..config import Config
 from ..state import State
-from .base import CalendarEvent, Message, retry_once_on_timeout
+from .base import CalendarEvent, Collected, retry_once_on_timeout
 
 log = logging.getLogger(__name__)
 
@@ -87,14 +87,10 @@ def _as_utc(dt) -> datetime:
     return datetime.combine(dt, datetime.min.time()).replace(tzinfo=timezone.utc)
 
 
-def collect_events(cfg: Config, state: State) -> tuple[list[CalendarEvent], list[Message]]:
-    """Fetch upcoming events from each kid's MyClub iCal feed.
-
-    Returns:
-      (events to create in Google Calendar, informational messages to include in summary)
-    """
+def collect(cfg: Config, state: State, kid_terms: list[str]) -> Collected:
+    """The upcoming events of each kid's MyClub iCal feed, to add to the calendar; MyClub has no
+    Messages. The feed gives every event again each night, so none is marked seen."""
     events: list[CalendarEvent] = []
-    messages: list[Message] = []
     now = datetime.now(timezone.utc)
     horizon = now + timedelta(days=LOOKAHEAD_DAYS)
 
@@ -151,9 +147,4 @@ def collect_events(cfg: Config, state: State) -> tuple[list[CalendarEvent], list
 
         log.info("MyClub: %d upcoming events for %s (next %dd)", kid_events, kid.name, LOOKAHEAD_DAYS)
 
-    return events, messages
-
-
-def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
-    """Collector protocol — MyClub surfaces events (side channel), no chat messages."""
-    return []
+    return Collected(events=events)

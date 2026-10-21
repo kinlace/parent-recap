@@ -11,7 +11,7 @@ from typing import Any
 from .. import own_node
 from ..config import Config
 from ..state import State
-from .base import Message, retry_once_on_timeout, unreadable
+from .base import Collected, Message, retry_once_on_timeout, unreadable
 
 log = logging.getLogger(__name__)
 
@@ -401,7 +401,7 @@ def link(m: Message) -> str | None:
     return f"{tenant.rstrip('/')}{role}/{kind}/{raw_id}"
 
 
-def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
+def collect(cfg: Config, state: State, kid_terms: list[str]) -> Collected:
     from datetime import timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=cfg.wilma.lookback_hours)
     wilmas = _Wilmas({k.name.casefold() for k in cfg.kids})
@@ -422,4 +422,4 @@ def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
         wilmas=wilmas,
     )
     schedule = _collect_schedule(state, wilmas)
-    return [*msgs, *news, *schedule]
+    return Collected(messages=[*msgs, *news, *schedule])

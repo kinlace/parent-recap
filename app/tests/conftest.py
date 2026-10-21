@@ -45,7 +45,7 @@ import yaml
 from family_brief import __main__ as cli, feedback, gateway, summarize, tools
 from family_brief.actions import calendar as calendar_action, email as email_action
 from family_brief.collectors import gmail, myclub, whatsapp, wilma
-from family_brief.collectors.base import CalendarEvent, Message
+from family_brief.collectors.base import CalendarEvent, Collected, Message
 from family_brief.system import desktop, jobs, secrets, wake, windows_only
 from fake_system import FakeDesktop, FakeJobs, FakeSecrets, FakeWake
 
@@ -288,7 +288,7 @@ class Harness:
     def __init__(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         self.home = home
         self.config: dict[str, Any] = default_config()
-        self.sources: dict[str, Any] = {}          # source -> list | (events, msgs) | Exception | callable
+        self.sources: dict[str, Any] = {}          # source -> list of Messages and events | Exception | callable
         # One reply for every call, or a list with one entry per call, in the order they are made.
         self.model_reply: str | dict | list[str | dict | FailedCall | Callable[[str], dict]] = \
             {"per_kid": [], "calendar_events": [], "message_digest": ""}
@@ -371,25 +371,23 @@ class Harness:
             mp.delenv(var, raising=False)
 
         def source(name: str) -> Callable[..., Any]:
-            def collect(cfg: Any, state: Any, *_a: Any, **_k: Any) -> Any:
-                if name != "myclub":
-                    self.lookback_hours.setdefault(name, []).append(getattr(cfg, name).lookback_hours)
-                v = self.sources.get(name, ([], []) if name == "myclub" else [])
+            def collect(cfg: Any, state: Any, *_a: Any, **_k: Any) -> Collected:
+                lookback = getattr(getattr(cfg, name), "lookback_hours", None)
+                if lookback is not None:
+                    self.lookback_hours.setdefault(name, []).append(lookback)
+                v = self.sources.get(name, [])
                 if isinstance(v, Exception):
                     raise v
                 v = v() if callable(v) else v
-                if name == "myclub":  # the feed supplies every event again each night
-                    return v
-                new = [m for m in v if not state.has_seen_message(name, m.external_id)]
+                new = [m for m in v if isinstance(m, Message) and not state.has_seen_message(name, m.external_id)]
                 for m in new:
                     state.mark_message_seen(name, m.external_id)
-                return new
+                # A feed supplies every event again each night.
+                return Collected(messages=new, events=[e for e in v if isinstance(e, CalendarEvent)])
             return collect
 
-        mp.setattr(gmail, "collect", source("gmail"))
-        mp.setattr(wilma, "collect", source("wilma"))
-        mp.setattr(whatsapp, "collect", source("whatsapp"))
-        mp.setattr(myclub, "collect_events", source("myclub"))
+        for module in (gmail, myclub, wilma, whatsapp):
+            mp.setattr(module, "collect", source(module.__name__.rsplit(".", 1)[-1]))
 
         mp.setattr(secrets, "_adapter", self.secrets)
         mp.setattr(jobs, "_adapter", self.jobs)

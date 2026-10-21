@@ -115,3 +115,18 @@ class CalendarEvent:
             "description": self.description,
             "kid": self.kid,
         }
+
+
+@dataclass
+class Collected:
+    """What a Source's `collect(cfg, state, kid_terms)` read in one run: its Messages and the
+    CalendarEvents of its feed, either list possibly empty. The feed's times are as it gives them;
+    the run loop puts them in the family's zone."""
+    messages: list[Message] = field(default_factory=list)
+    events: list[CalendarEvent] = field(default_factory=list)
+
+    @property
+    def count(self) -> int:
+        """What the Brief's coverage line counts for the Source: all it read, so the events of an
+        event feed such as MyClub and the Messages of the rest, with no list of which is which."""
+        return len(self.messages) + len(self.events)

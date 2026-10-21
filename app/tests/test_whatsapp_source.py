@@ -124,7 +124,7 @@ BOTH = {"name": "Kilo School parents", "kid": "both"}
 
 
 def collect(cfg: Config, state: State) -> list[Message]:
-    return whatsapp.collect(cfg, state, [])
+    return whatsapp.collect(cfg, state, []).messages
 
 
 def bodies(messages: list[Message]) -> list[str]:

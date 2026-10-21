@@ -36,8 +36,8 @@ def normal_night(h, language: str = "zh") -> None:
                 "Class photos for 1A are on Wednesday morning.",
                 sender="office@kilo.example.fi", subject="Valokuvaus ke 30.9."),
         ],
-        "myclub": ([myclub_event("mc-1", "FC Kilo P2017 vs HJK", "2026-10-03T07:00:00+00:00",
-                                 "2026-10-03T08:30:00+00:00")], []),
+        "myclub": [myclub_event("mc-1", "FC Kilo P2017 vs HJK", "2026-10-03T07:00:00+00:00",
+                                "2026-10-03T08:30:00+00:00")],
         "wilma": [
             msg("wilma", "w-55", "2026-09-27T12:00:00+03:00",
                 "Matematiikan koe maanantaina 5.10. Kertotaulut 2-5.",
@@ -763,7 +763,7 @@ def test_a_kid_has_one_name_across_the_brief(harness):
     mia = harness.config["kids"][0]
     mia.update(name="Virtanen Mia Sofia", everyday_name="Mia")  # name as Wilma spells it
     harness.config["ai_filter"] = {"mask_kids": False}  # the Kids' names reach the model
-    harness.sources["myclub"][0][0].kid = "Virtanen Mia Sofia"
+    harness.sources["myclub"][0].kid = "Virtanen Mia Sofia"
     reply = harness.model_reply
     reply["per_kid"][0]["kid"] = "Virtanen Mia Sofia"
     reply["calendar_events"][0]["kid"] = "virtanen mia sofia"
@@ -953,8 +953,8 @@ def test_myclub_times_are_shown_in_local_time(harness, mode):
     # The MyClub feed gives times in UTC; a winter match at 10:00 in Helsinki is 08:00 UTC.
     google_mode(harness)
     harness.config["google_calendar"] = {"mode": mode, "ics_include_myclub": True}
-    harness.sources["myclub"] = ([myclub_event("mc-2", "FC Kilo P2017 vs PK-35", "2026-11-07T08:00:00+00:00",
-                                               "2026-11-07T09:30:00+00:00")], [])
+    harness.sources["myclub"] = [myclub_event("mc-2", "FC Kilo P2017 vs PK-35", "2026-11-07T08:00:00+00:00",
+                                              "2026-11-07T09:30:00+00:00")]
 
     assert harness.run() == 0
 
@@ -963,6 +963,25 @@ def test_myclub_times_are_shown_in_local_time(harness, mode):
     [email] = harness.sent
     assert "FC Kilo P2017 vs PK-35 — 11月7日 周六 10:00" in email.text
     assert "11月7日 周六 10:00" in email.html
+
+
+def test_any_source_can_bring_events_beside_its_messages(harness):
+    # Collecting doesn't single out MyClub: a Source returning both has both reach the model,
+    # its events in local time, and the coverage line counts what it read.
+    normal_night(harness)
+    exam = dataclasses.replace(myclub_event("w-exam", "Matematiikan koe", "2026-10-05T06:00:00+00:00",
+                                            "2026-10-05T07:00:00+00:00"), source="wilma")
+    harness.sources["wilma"] = [*harness.sources["wilma"], exam]
+    del harness.sources["myclub"]
+
+    assert harness.run() == 0
+
+    payload = harness.model_payload()
+    assert "w-55" in {m["external_id"] for m in payload["messages"]}
+    [queued] = payload["already_queued_for_calendar"]
+    assert (queued["title"], queued["start"]) == ("Matematiikan koe", "2026-10-05T09:00:00+03:00")
+    archived = json.loads((harness.archive_dir / "2026-09-27.raw.json").read_text())
+    assert archived["summary"]["_coverage"]["wilma"] == {"count": 2, "error": None}
 
 
 ICS_FALLBACK = "这些新事件已打包在邮件附件的 .ics 里，点开附件即可加入日历。"
@@ -1153,8 +1172,8 @@ def test_dry_run_of_a_night_the_model_finds_nothing_to_say_about_sends_nothing(h
 
 def test_night_the_model_finds_nothing_to_say_about_still_sends_its_events(harness):
     only_the_timetable(harness)
-    harness.sources["myclub"] = ([myclub_event("mc-1", "FC Kilo P2017 vs HJK", "2026-10-03T07:00:00+00:00",
-                                               "2026-10-03T08:30:00+00:00")], [])
+    harness.sources["myclub"] = [myclub_event("mc-1", "FC Kilo P2017 vs HJK", "2026-10-03T07:00:00+00:00",
+                                              "2026-10-03T08:30:00+00:00")]
     harness.config["google_calendar"] = {"mode": "ics", "ics_include_myclub": True}
 
     assert harness.run() == 0
@@ -2137,9 +2156,9 @@ def contact_night(h) -> None:
         "whatsapp": [msg("whatsapp", "wa-401", "2026-09-27T19:00:00+03:00",
                          f"Football sign-up is at {SIGNUP}, or text me on 050-765 4321",
                          sender="Anna", chat="3B parents", kid="Mia")],
-        "myclub": ([dataclasses.replace(myclub_event("mc-1", "FC Kilo P2017 vs HJK", "2026-10-03T07:00:00+00:00",
-                                                     "2026-10-03T08:30:00+00:00"),
-                                        description=f"Kit list: {KIT_LIST}")], []),
+        "myclub": [dataclasses.replace(myclub_event("mc-1", "FC Kilo P2017 vs HJK", "2026-10-03T07:00:00+00:00",
+                                                    "2026-10-03T08:30:00+00:00"),
+                                       description=f"Kit list: {KIT_LIST}")],
     }
     h.write_archive("2026-09-26", {"delivered": True, "summary": {"per_kid": [{"kid": "Mia", "notices": [
         {"text": f"The lost-property box is at the office, {OFFICE}", "refs": ["g-200"]}], "action_items": []}]}})

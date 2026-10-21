@@ -17,7 +17,7 @@ from .. import install_record
 from ..config import Config
 from ..state import State
 from ..system import secrets
-from .base import Message, retry_once_on_timeout, unreadable
+from .base import Collected, Message, retry_once_on_timeout, unreadable
 
 log = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ def _gmail_query(cfg: Config, kid_terms: list[str]) -> str:
     return " ".join(parts)
 
 
-def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
+def collect(cfg: Config, state: State, kid_terms: list[str]) -> Collected:
     username = cfg.gmail.username or cfg.kids[0].wilma_username
     if not username:
         raise RuntimeError("No Gmail username configured (set gmail.username in config.yaml)")
@@ -151,9 +151,9 @@ def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
 
     cutoff = datetime.now(timezone.utc) - timedelta(hours=cfg.gmail.lookback_hours)
     # A timeout gets one fresh connection, which reads again what the first one marked seen.
-    return retry_once_on_timeout(
+    return Collected(messages=retry_once_on_timeout(
         lambda: _read_matching(state, username, password, query, cutoff), (TimeoutError,), "Gmail",
-        before_retry=lambda: state.forget_new_seen_messages("gmail"))
+        before_retry=lambda: state.forget_new_seen_messages("gmail")))
 
 
 def _read_matching(state: State, username: str, password: str, query: str,

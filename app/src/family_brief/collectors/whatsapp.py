@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ..config import Config
 from ..state import State
-from .base import Message
+from .base import Collected, Message
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +78,11 @@ def _sender_name(conn: sqlite3.Connection, msg_pk: int,
     return "(group member)"
 
 
-def collect(cfg: Config, state: State, kid_terms: list[str]) -> list[Message]:
+def collect(cfg: Config, state: State, kid_terms: list[str]) -> Collected:
+    return Collected(messages=_read_chats(cfg, state))
+
+
+def _read_chats(cfg: Config, state: State) -> list[Message]:
     if not cfg.whatsapp.enabled:
         return []
     if not cfg.whatsapp.chats:

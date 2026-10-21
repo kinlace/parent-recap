@@ -58,7 +58,9 @@ class _CollectorErrors(logging.Handler):
         self.first.setdefault(record.name.rsplit(".", 1)[-1], record.getMessage())
 
 
-_COLLECTED = ("gmail", "myclub", "wilma", "whatsapp")  # the order the collectors run in
+# Each Source's collector, in the order they run.
+_COLLECTORS = {"gmail": gmail_collector, "myclub": myclub_collector, "wilma": wilma_collector,
+               "whatsapp": whatsapp_collector}
 
 
 def _run_collectors(cfg: Config, state: State, sources: list[str],
@@ -74,26 +76,19 @@ def _run_collectors(cfg: Config, state: State, sources: list[str],
     collectors_log = logging.getLogger("family_brief.collectors")
     collectors_log.addHandler(errors)
     try:
-        for source in _COLLECTED:
+        for source in _COLLECTORS:
             if source not in sources:
                 continue
             if reading:
                 reading(source)
             count, error = 0, None
             try:
-                if source == "myclub":
-                    evs, msgs = myclub_collector.collect_events(cfg, state)
-                    log.info("myclub: %d events, %d messages", len(evs), len(msgs))
-                    # The feed gives UTC; the Brief and the model's already-queued list use local time.
-                    direct_events.extend(e.in_zone(cfg.timezone) for e in evs)
-                    count = len(evs)
-                else:
-                    collector = {"gmail": gmail_collector, "wilma": wilma_collector,
-                                 "whatsapp": whatsapp_collector}[source]
-                    msgs = collector.collect(cfg, state, kid_terms)
-                    log.info("%s: collected %d messages", source, len(msgs))
-                    count = len(msgs)
-                messages.extend(msgs)
+                got = _COLLECTORS[source].collect(cfg, state, kid_terms)
+                log.info("%s: collected %d messages, %d events", source, len(got.messages), len(got.events))
+                messages.extend(got.messages)
+                # A feed gives UTC; the Brief and the model's already-queued list use local time.
+                direct_events.extend(e.in_zone(cfg.timezone) for e in got.events)
+                count = got.count
             except Exception as e:
                 log.error("%s collector failed: %s\n%s", source, e, traceback.format_exc())
                 error = str(e)
@@ -749,7 +744,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
 
     coverage: dict[str, dict] = {}
     if args.preview:
-        _preview_step("reading", sources=[s for s in _COLLECTED if s in sources])
+        _preview_step("reading", sources=[s for s in _COLLECTORS if s in sources])
     messages, direct_events = _run_collectors(
         cfg, state, sources, coverage,
         reading=(lambda source: _preview_step("reading", source=source)) if args.preview else None)

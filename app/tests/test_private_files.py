@@ -13,7 +13,7 @@ import yaml
 
 from conftest import SAYS_SOMETHING, msg
 from family_brief.collectors import myclub
-from family_brief.collectors.myclub import collect_events as real_collect_events  # before the harness fakes it
+from family_brief.collectors.myclub import collect as real_collect  # before the harness fakes it
 
 TOKEN = "s3cr3t-t0ken"
 LINK = f"https://example.myclub.fi/ical/{TOKEN}?key={TOKEN}"
@@ -40,7 +40,7 @@ def _failing_get(kind: str):
 
 def _real_myclub(harness, monkeypatch, kind: str) -> None:
     harness.config["kids"][0]["myclub_ical_url"] = LINK
-    monkeypatch.setattr(myclub, "collect_events", real_collect_events)
+    monkeypatch.setattr(myclub, "collect", real_collect)
     monkeypatch.setattr(myclub.requests, "get", _failing_get(kind))
 
 

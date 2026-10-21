@@ -26,7 +26,7 @@ from family_brief.collectors import gmail, myclub, whatsapp, wilma
 
 REAL_GMAIL_COLLECT = gmail.collect  # captured before the harness fakes it
 REAL_WILMA_COLLECT = wilma.collect
-REAL_MYCLUB_COLLECT_EVENTS = myclub.collect_events
+REAL_MYCLUB_COLLECT = myclub.collect
 REAL_WHATSAPP_COLLECT = whatsapp.collect
 
 
@@ -343,7 +343,7 @@ class IcsResponse:
 
 def test_myclub_feed_timing_out_once_is_fetched_again(harness, monkeypatch):
     one_whatsapp_message(harness)
-    monkeypatch.setattr(myclub, "collect_events", REAL_MYCLUB_COLLECT_EVENTS)
+    monkeypatch.setattr(myclub, "collect", REAL_MYCLUB_COLLECT)
     gets: list[str] = []
 
     def get(url: str, **_k: Any) -> IcsResponse:
