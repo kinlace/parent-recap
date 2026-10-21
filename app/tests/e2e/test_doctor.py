@@ -6,7 +6,6 @@ import json
 import os
 import re
 import shutil
-import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -19,7 +18,7 @@ from family_brief.collectors import whatsapp, wilma
 from family_brief.llm import codex as codex_backend
 from family_brief.system import jobs
 from conftest import program
-from test_setup_whatsapp import fake_mac
+from test_setup_whatsapp import WHATSAPP_FAILURES, break_whatsapp, fake_mac
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
 
@@ -364,33 +363,6 @@ def test_doctor_does_not_compare_an_install_from_before_the_record(harness, even
 
 
 # ── why WhatsApp isn't OK, carried through the bg job for the setup page and the chat skills
-
-
-# Each way the WhatsApp check fails on the fake Mac: its status and the reason it carries.
-WHATSAPP_FAILURES = {
-    "no-access": (ops.FAIL, "no-access"),
-    "hangs": (ops.FAIL, "not-finished"),
-    "not-started": (ops.WARN, "not-finished"),
-    "missing-groups": (ops.WARN, "missing-groups"),
-    "list-failed": (ops.FAIL, "list-failed"),
-}
-
-
-def break_whatsapp(mac, monkeypatch, failure: str) -> None:
-    """The fake Mac as it is when the WhatsApp check fails in one of WHATSAPP_FAILURES' ways.
-    For missing-groups, Leo's piano group has a new name on it."""
-    piano = "Leo piano autumn" if failure == "missing-groups" else "Leo piano"
-    mac.install_whatsapp([("3B parents", 1, False), (piano, 2, False)])
-    if failure == "no-access":
-        mac.full_disk_access_after = 10_000
-    elif failure == "hangs":
-        mac.jobs.hangs = True
-    elif failure == "not-started":
-        mac.jobs.detached_fails = "Bootstrap failed: 5: Input/output error"
-    elif failure == "list-failed":
-        def malformed(days: int = 180) -> list[dict]:
-            raise sqlite3.DatabaseError("database disk image is malformed")
-        monkeypatch.setattr(whatsapp, "list_groups", malformed)
 
 
 @pytest.fixture

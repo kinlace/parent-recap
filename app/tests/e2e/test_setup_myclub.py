@@ -4,15 +4,20 @@ macOS's dialog to one download and the owner-only config, and nowhere else (ADR 
 The link carries a personal token, so it's a secret like the others. The outside edges are faked:
 the dialog, the desktop that opens MyClub's page, Terminal's hidden prompt and MyClub's server.
 The assistant reads only the command's one-line JSON result, so assertions are on that result, on
-the config file, and on every place the link must never reach."""
+the config file, and on every place the link must never reach.
+
+The setup page's MyClub step is at the end, driven with HTTP calls as the page makes them
+(`setup_page.py`), against the same fake MyClub server."""
 from __future__ import annotations
 
 import getpass
 import importlib.util
 import json
 import logging
+import re
 import stat
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +25,12 @@ import pytest
 import requests
 import yaml
 
+from family_brief import setup_server
 from family_brief.collectors import myclub
+from family_brief.config import Config
+from setup_page import PAGE_DIR, call, progress_file, save_progress, source, statuses
+from setup_page import _listening, clock, page  # noqa: F401
+from setup_page import assert_never_leaked as assert_never_leaked_by_page
 
 TOKEN = "s3cr3t-t0ken"
 LINK = f"webcal://example.myclub.fi/ical/{TOKEN}?key={TOKEN}"
@@ -329,3 +339,243 @@ def test_the_terminal_script_still_saves_the_link(harness, server, terminal, mon
     assert saved_links(harness)["Mia"] == LINK
     out, err = capsys.readouterr()
     assert TOKEN not in out + err
+
+
+# ── Connect: MyClub, on the setup page
+
+MYCLUB_LINK, MYCLUB_TOKEN = LINK, TOKEN
+
+
+@pytest.fixture
+def myclub_server(harness, monkeypatch) -> MyClubServer:
+    """MyClub's server, as test_setup_myclub.py fakes it, with no Kid's link saved yet."""
+    s = MyClubServer()
+    monkeypatch.setattr(myclub.requests, "get", s.get)
+    for kid in harness.config["kids"]:
+        kid.pop("myclub_ical_url", None)
+    return s
+
+
+def at_the_myclub_step(harness) -> None:
+    config_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+    save_progress(harness, {"phase": "connect", "source": "myclub", "sources": {
+        "wilma": "done", "gmail": "done", "ai": "done", "whatsapp": "done"}})
+
+
+def save_link(url: str, kid: str, link: str = MYCLUB_LINK) -> Response:
+    return call(url, "api/myclub", method="POST", body={"kid": kid, "link": link})
+
+
+def add_kid(url: str, name: str) -> Response:
+    return call(url, "api/myclub/kid", method="POST", body={"name": name})
+
+
+def myclub_links(harness) -> dict[str, str | None]:
+    return {k["name"]: k.get("myclub_ical_url")
+            for k in yaml.safe_load(config_file(harness).read_text())["kids"]}
+
+
+def test_the_button_opens_the_page_to_download_the_chatgpt_app(harness, page):
+    r = call(page.url, "api/open", method="POST", body={"site": "codex-app"})
+
+    assert r.status == 200 and r.json()["result"] == "opened"
+    assert harness.desktop.opened == ["https://developers.openai.com/codex/app"]
+
+
+def test_the_button_opens_myclub_s_site(harness, page):
+    r = call(page.url, "api/open", method="POST", body={"site": "myclub"})
+
+    assert r.status == 200 and r.json()["result"] == "opened"
+    assert harness.desktop.opened == ["https://id.myclub.fi"]
+
+
+def test_each_kid_known_so_far_is_listed_without_its_link(harness, page, myclub_server):
+    harness.config["kids"][0]["myclub_ical_url"] = MYCLUB_LINK
+    at_the_myclub_step(harness)
+
+    r = call(page.url, "api/state")
+
+    assert r.json()["myclub"] == {"kids": [{"name": "Mia", "linked": True},
+                                           {"name": "Leo", "linked": False}], "add": False}
+    assert MYCLUB_TOKEN.encode() not in r.body
+
+
+def test_the_link_saved_for_one_kid_is_refused_for_the_next(harness, page, myclub_server):
+    at_the_myclub_step(harness)
+    assert save_link(page.url, "Mia").json()["result"] == "saved"
+
+    r = save_link(page.url, "Leo", MYCLUB_LINK.replace("webcal://", "https://"))
+
+    assert r.status == 200 and r.json() == {"result": "same-link"}
+    assert myclub_links(harness) == {"Mia": MYCLUB_LINK, "Leo": None}
+
+
+def test_a_good_link_is_checked_and_saved_for_the_right_kid(harness, page, myclub_server, caplog,
+                                                           capsys):
+    caplog.set_level(logging.DEBUG)
+    harness.config["kids"][0]["myclub_ical_url"] = "https://example.myclub.fi/ical/mia-old"
+    at_the_myclub_step(harness)
+
+    r = save_link(page.url, "Leo", f"  {MYCLUB_LINK}\n")
+
+    assert r.status == 200
+    out = r.json()
+    assert out["result"] == "saved" and out["kid"] == "Leo" and out["events"] == 2
+    assert out["kids"] == [{"name": "Mia", "linked": True}, {"name": "Leo", "linked": True}]
+    assert myclub_server.downloads == [MYCLUB_LINK.replace("webcal://", "https://")]
+    assert myclub_links(harness) == {"Mia": "https://example.myclub.fi/ical/mia-old",
+                                     "Leo": MYCLUB_LINK}
+    # Every Kid has a link now, so MyClub is done and setup moves on.
+    assert out["progress"]["sources"]["myclub"] == "done" and out["progress"]["source"] is None
+    # The config is where the link is kept, and only there.
+    printed = "".join(capsys.readouterr())
+    for shown in [r.body.decode(), call(page.url, "api/state").body.decode(), printed, caplog.text,
+                  progress_file(harness).read_text(), *(a for c in harness.commands for a in c)]:
+        assert MYCLUB_TOKEN not in shown
+
+
+def test_with_a_kid_still_without_a_link_the_step_stays_until_continue(harness, page,
+                                                                       myclub_server):
+    at_the_myclub_step(harness)
+
+    out = save_link(page.url, "Mia").json()
+
+    assert out["progress"]["sources"]["myclub"] == "done"
+    assert out["progress"]["source"] == "myclub"  # Leo's link can come next
+    r = call(page.url, "api/myclub/done", method="POST", body={})
+    assert r.status == 200 and r.json()["progress"]["source"] is None
+    assert myclub_links(harness) == {"Mia": MYCLUB_LINK, "Leo": None}
+
+
+def test_continue_needs_a_link_saved_first(harness, page, myclub_server):
+    at_the_myclub_step(harness)
+
+    for body in [{}, {"x": 1}]:
+        assert call(page.url, "api/myclub/done", method="POST", body=body).status == 400
+    assert call(page.url, "api/state").json()["progress"]["source"] == "myclub"
+
+
+@pytest.mark.parametrize("pasted, answer, result", [
+    ("my-myclub-password", None, "not-a-myclub-link"),
+    ("https://example.com/ical/x", None, "not-a-myclub-link"),
+    (MYCLUB_LINK, (404, ""), "link-failed"),
+    (MYCLUB_LINK, (200, "<html>Sign in</html>"), "not-a-calendar"),
+])
+def test_a_link_that_does_not_work_is_explained_and_not_saved(harness, page, myclub_server,
+                                                              caplog, capsys, pasted, answer,
+                                                              result):
+    caplog.set_level(logging.DEBUG)
+    at_the_myclub_step(harness)
+    if answer:
+        myclub_server.status, myclub_server.text = answer
+
+    r = save_link(page.url, "Mia", pasted)
+
+    assert r.status == 200 and r.json() == {"result": result}
+    if answer is None:
+        assert myclub_server.downloads == []  # never sent anywhere
+    assert myclub_links(harness) == {"Mia": None, "Leo": None}
+    assert statuses(page.url)["myclub"] == "to-do"
+    assert_never_leaked_by_page(harness, [r], caplog, capsys, MYCLUB_TOKEN)
+    assert_never_leaked_by_page(harness, [r], caplog, capsys, "my-myclub-password")
+
+
+def test_a_slow_myclub_holds_up_no_other_save(harness, page, myclub_server, monkeypatch):
+    at_the_myclub_step(harness)
+    downloading, answer = threading.Event(), threading.Event()
+    get = myclub_server.get
+
+    def slow(url: str, **k: Any):
+        downloading.set()
+        answer.wait(5)
+        return get(url, **k)
+    monkeypatch.setattr(myclub.requests, "get", slow)
+    saved: list[Response] = []
+    thread = threading.Thread(target=lambda: saved.append(save_link(page.url, "Mia")))
+    thread.start()
+    downloading.wait(5)
+
+    assert call(page.url, "api/language", method="POST", body={"language": "fi"}).status == 200
+
+    answer.set()
+    thread.join(5)
+    assert saved[0].json()["result"] == "saved"
+    assert myclub_links(harness)["Mia"] == MYCLUB_LINK
+    assert Config.load(config_file(harness)).summary_language == "fi"
+
+
+def test_a_link_that_cannot_be_reached_says_so(harness, page, myclub_server):
+    at_the_myclub_step(harness)
+    myclub_server.error = requests.ConnectionError(f"no route to {MYCLUB_LINK}")
+
+    assert save_link(page.url, "Mia").json() == {"result": "link-failed"}
+
+
+def test_a_link_is_saved_only_for_a_kid_the_household_has(harness, page, myclub_server):
+    at_the_myclub_step(harness)
+
+    for body in [{"kid": "Ada", "link": MYCLUB_LINK}, {"kid": "Mia"}, {"link": MYCLUB_LINK},
+                 {"kid": "Mia", "link": 1}, {"kid": "Mia", "link": MYCLUB_LINK, "x": 1}]:
+        r = call(page.url, "api/myclub", method="POST", body=body)
+        assert r.status == 400 and r.json()["result"] == "invalid-answers", body
+        assert MYCLUB_TOKEN not in r.body.decode()
+    assert myclub_server.downloads == []
+
+
+def test_a_household_without_wilma_adds_its_kids_here(harness, page, myclub_server):
+    harness.config |= {"kids": [], "wilma": {"enabled": False}}
+    at_the_myclub_step(harness)
+    assert call(page.url, "api/state").json()["myclub"] == {"kids": [], "add": True}
+
+    r = add_kid(page.url, "  Mia ")
+
+    assert r.status == 200
+    assert r.json()["result"] == "added"
+    assert r.json()["kids"] == [{"name": "Mia", "linked": False}]
+    assert add_kid(page.url, "小狮").json()["kids"] == [{"name": "Mia", "linked": False},
+                                                        {"name": "小狮", "linked": False}]
+    assert add_kid(page.url, "mia").json() == {"result": "kid-exists"}
+    assert [k.name for k in Config.load(config_file(harness)).kids] == ["Mia", "小狮"]
+    assert save_link(page.url, "小狮").json()["result"] == "saved"
+    assert myclub_links(harness) == {"Mia": None, "小狮": MYCLUB_LINK}
+
+
+def test_a_household_with_wilma_gets_its_kids_from_wilma(harness, page, myclub_server):
+    at_the_myclub_step(harness)
+
+    for body in [{"name": "Ada"}, {"name": "  "}, {}, {"name": 1}]:
+        assert call(page.url, "api/myclub/kid", method="POST", body=body).status == 400, body
+    assert myclub_links(harness) == {"Mia": None, "Leo": None}
+
+
+def test_skipping_myclub_saves_no_link_and_moves_on(harness, page, myclub_server):
+    at_the_myclub_step(harness)
+
+    out = source(page.url, "myclub", "skip").json()
+
+    assert out["progress"]["sources"]["myclub"] == "skipped" and out["progress"]["source"] is None
+    assert myclub_links(harness) == {"Mia": None, "Leo": None}
+    assert myclub_server.downloads == []
+
+
+def test_the_myclub_step_shows_where_the_link_is_and_takes_it_in_the_page_s_own_field(page):
+    html = call(page.url).body.decode()
+
+    step = re.search(r'<div id="source-myclub".*?\n    </div>\n', html, re.S).group(0)
+    figures = re.findall(r"<figure>.*?</figure>", step, re.S)
+    assert 2 <= len(figures) <= 3
+    for figure in figures:
+        assert "<svg" in figure and re.search(r'<figcaption data-text="[\w.-]+">', figure)
+    assert 'id="myclub-open"' in step
+    field = re.search(r'<input[^>]*id="myclub-link"[^>]*>', step).group(0)
+    # A text field, so the parent can check what they pasted (#209): it's their own screen.
+    assert 'type="text"' in field and 'autocomplete="off"' in field
+
+
+def test_every_myclub_result_is_explained_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for result in (*setup_server.MYCLUB_RESULTS, *setup_server.MYCLUB_KID_RESULTS):
+            assert table.get(f"myclub.{result}", "").strip(), (language, result)

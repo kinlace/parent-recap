@@ -355,8 +355,16 @@ Weekend Picks on, against the harness's IMAP server, gateway, MyClub and Sources
 evening jobs are installed and the secrets stored where the evening run reads them; on Windows a
 second run does the same with the real Credential Manager, Task Scheduler and power settings, and
 no macOS dialog or app.
-`test_setup_page.py` starts the setup page's server in-process and drives it with HTTP calls, as
-the page makes them. It checks that a request without the code, or for another Host or from
+The setup page's tests start its server in-process and drive it with HTTP calls, as the page makes
+them. They are split by step, each file named for it: the command, its safeguards, the language,
+resuming, the Source list and the page on Windows in `test_setup_page.py`, then
+`test_setup_welcome.py`, `test_setup_ai.py` (with the gateway and changing the AI on Finish),
+`test_setup_check.py` (Working and Check), `test_setup_first_brief.py`, `test_setup_finish.py` and
+`test_setup_chat.py` (the chat Welcome sets up, and "Continue in the chat"). Each Source's step is in
+that Source's one file, after the tests of its `setup` command: `test_setup_gmail.py`,
+`test_setup_wilma.py`, `test_setup_whatsapp.py` (with why WhatsApp isn't OK on Check and Finish) and
+`test_setup_myclub.py`. The server, the calls and the steps more than one file walks through are in
+`e2e/setup_page.py`. They check that a request without the code, or for another Host or from
 another Origin, is refused, that the page loads nothing from the internet, that the server stops
 after 30 idle minutes and Terminal then says, in the language picked, that its window can be
 closed, the Mac's language preselected, that the language picked is saved, that
@@ -491,7 +499,7 @@ page with. It checks a first install, a second run updating, and that nothing it
 changes nothing over an install from before the rename (`~/FamilyBrief/app`, or an old
 `com.family.*` job that runs `family_brief`), and that a kept archive in `~/FamilyBrief` alone
 doesn't stop it. The setup page's install of the Claude Code plugin or the
-Codex skills, once Welcome is saved, is in `test_setup_page.py`, with the harness answering
+Codex skills, once Welcome is saved, is in `test_setup_chat.py`, with the harness answering
 `claude plugin`.
 `test_install.py` runs the real `install.sh` and pip offline, against packages `fake_packages.py`
 makes in a folder, for a stand-in program. Its pinned Python comes from a fake `curl` serving a

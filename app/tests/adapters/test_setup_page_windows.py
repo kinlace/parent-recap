@@ -6,7 +6,7 @@ system the secrets, the evening jobs and the wake are its in-memory fakes too; o
 run stores the secrets in the real Credential Manager and registers the evening jobs in the real
 Task Scheduler, under names of the test's own, removed after, and reads the real "Allow wake
 timers". After Finish, uninstall removes all of it again. The steps themselves are tested one at a
-time in test_setup_page.py, and uninstall in test_uninstall.py."""
+time in the e2e test_setup_*.py files, and uninstall in test_uninstall.py."""
 from __future__ import annotations
 
 import imaplib
@@ -23,12 +23,13 @@ from family_brief import gateway
 from family_brief.collectors import myclub
 from family_brief.config import Config
 from family_brief.system import jobs, jobs_windows, secrets, wake, wake_windows, windows_only
-from test_setup_myclub import CALENDAR, LINK as MYCLUB_LINK
-from test_setup_page import (APP_PASSWORD, BRIEF_TEXT, GATEWAY_KEY, TYPED, _listening,  # noqa: F401
-                             add_kid, brief_made, call, check_page, clock, config_file,
-                             connect_gmail, finish, finished, health_result, make_brief, page,
-                             read_to_the_end, save_gateway_key, save_link, send_it_to_me, source,
-                             start_reading)
+from setup_page import (APP_PASSWORD, _listening, call, check_page, clock, config_file,  # noqa: F401
+                        finish, finished, health_result, page, source)
+from test_setup_ai import GATEWAY_KEY, save_gateway_key
+from test_setup_check import read_to_the_end, start_reading
+from test_setup_first_brief import BRIEF_TEXT, brief_made, make_brief, send_it_to_me
+from test_setup_gmail import TYPED, connect_gmail
+from test_setup_myclub import CALENDAR, LINK as MYCLUB_LINK, add_kid, save_link
 from test_setup_status import install_program
 from test_setup_steps import HeaderImap
 from test_uninstall import leftovers, remove_at_once, uninstall

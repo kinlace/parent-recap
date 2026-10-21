@@ -5,7 +5,7 @@ browser, under a short guide, and ends the CLI once it has saved its profile.
 The CLI is faked where it's started: it saves its profile, as after the family signed in on its
 page, on its third check, unless the family never does, and then waits for more Wilmas until it's
 ended. Waiting takes no time: `time.sleep` returns at once. The window's step that waits for
-the result, and the setup page around it, are tested in test_setup_page.py."""
+the result, and the setup page around it, are tested in test_setup_wilma.py."""
 from __future__ import annotations
 
 import json
