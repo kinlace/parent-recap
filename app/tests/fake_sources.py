@@ -5,11 +5,13 @@ collectors run in every test of the evening run; FAKES is the list it reads.
 
 A fake serves what `harness.sources[name]` holds when the collector reaches it: tonight's Messages
 and events, an exception its transport raises, or a function returning either. A Message is
-written the way its transport carries it and read back by the real collector, so a test gives it
-the id the collector makes of it (Gmail's X-GM-MSGID, Wilma's `message:<id>` or `news:<id>`, with
-its Wilma's tag before the id once one is signed in to, WhatsApp's `<chat>:<message>`; a MyClub
-event's id is its UID) and only the fields its transport
-carries. A Message older than the Source's lookback is skipped, as the collector skips it.
+written the way its transport carries it and read back by the real collector. So a test gives it
+only the fields its transport carries, and the id the collector makes of it:
+  - Gmail: its X-GM-MSGID, digits only;
+  - Wilma: `message:<id>` or `news:<id>`, or `message:<tag>:<id>` once a Wilma is signed in to;
+  - WhatsApp: `<chat>:<message>`;
+  - MyClub: the event's UID.
+A Message older than the Source's lookback is skipped, as the collector skips it.
 """
 from __future__ import annotations
 
@@ -297,6 +299,8 @@ class Wilma(SourceFake):
 
 
 def _wilma_kind(m: Message) -> str:
+    """Whether `m` is a Wilma message or news item, failing the test when the CLI couldn't print
+    it as given."""
     _carries(m, "wilma", {"sender", "subject", "kid_hint", "chat_name"}, {"student_number", "addressee_count"})
     kind = m.external_id.split(":", 1)[0]
     assert kind in ("message", "news") and re.fullmatch(r"[a-z]+:([0-9a-f]{8}:)?\d+", m.external_id), \
@@ -358,8 +362,11 @@ class WhatsAppDb:
         self._pk = 0
 
     def _next(self, pk: int | None = None) -> int:
-        self._pk = max(self._pk, pk or 0) if pk else self._pk + 1
-        return pk or self._pk
+        """`pk` when given, else the next free one."""
+        if pk is None:
+            pk = self._pk + 1
+        self._pk = max(self._pk, pk)
+        return pk
 
     def chat(self, name: str, pk: int | None = None, last: datetime | None = None) -> int:
         pk = self._next(pk)

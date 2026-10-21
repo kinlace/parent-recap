@@ -404,6 +404,8 @@ class Harness:
             mp.delenv(var, raising=False)
 
         mp.setattr(secrets, "_adapter", self.secrets)
+        missing = [s.name for s in sources.ALL if s.name not in FAKES]
+        assert not missing, f"no fake in fake_sources.FAKES for {missing}"
         self.source_fakes = {s.name: FAKES[s.name](self, mp) for s in sources.ALL}
         for s in sources.ALL:
             if s.lookback:

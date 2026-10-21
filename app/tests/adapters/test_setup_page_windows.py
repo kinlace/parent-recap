@@ -1,10 +1,9 @@
 """The setup page from a fresh install to Finish with the gateway, Gmail and MyClub, driven with
 HTTP calls as the page makes them (ADR 0006, ADR 0019).
 
-Gmail's IMAP server, the gateway and the Brief's Sources are the harness's fakes, and MyClub's
-calendar the web's here. On any
-system the secrets, the evening jobs and the wake are its in-memory fakes too; on Windows a second
-run stores the secrets in the real Credential Manager and registers the evening jobs in the real
+Gmail's IMAP server, the gateway and the Brief's Sources are the harness's fakes; MyClub's
+calendar comes from this file's fake web. On any system the secrets, the evening jobs and the wake
+are its in-memory fakes too; on Windows a second run stores the secrets in the real Credential Manager and registers the evening jobs in the real
 Task Scheduler, under names of the test's own, removed after, and reads the real "Allow wake
 timers". After Finish, uninstall removes all of it again. The steps themselves are tested one at a
 time in the e2e test_setup_*.py files, and uninstall in test_uninstall.py."""
