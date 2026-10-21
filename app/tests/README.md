@@ -77,6 +77,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_nightly_languages.py`       | Recipients in their own languages                                  |
 | `test_nightly_placeholders.py`    | The AI filter's placeholders, end to end (ADR 0013)                |
 | `test_nightly_held_back.py`       | Held-back Messages, end to end (ADR 0013)                          |
+| `test_nightly_new_source.py`      | A Source added only to the registry is read, counted, caught up    |
 | `test_any_language.py`            | A Recipient in a language without reviewed program text (ADR 0004) |
 | `test_busy_model.py`              | A busy model tried again after pauses on a fake clock              |
 | `test_gateway.py`                 | The gateway backend (ADR 0014): Brief, doctor and `setup gateway`  |

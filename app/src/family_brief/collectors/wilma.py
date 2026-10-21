@@ -15,8 +15,6 @@ from .base import Collected, Message, retry_once_on_timeout, unreadable
 
 log = logging.getLogger(__name__)
 
-EVENT_FEED = False  # the Brief's coverage line counts its Messages
-
 MAX_BODY_CHARS = 8000
 NOT_INSTALLED = "the wilma CLI isn't installed (connect Wilma again: parent-recap setup wilma)"
 

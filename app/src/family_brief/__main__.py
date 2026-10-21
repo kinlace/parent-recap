@@ -14,12 +14,7 @@ from typing import Callable, Literal
 from zoneinfo import ZoneInfo
 
 from .actions import archive, calendar as calendar_action, email as email_action, ics as ics_action, imessage
-from .collectors import (
-    gmail as gmail_collector,
-    myclub as myclub_collector,
-    whatsapp as whatsapp_collector,
-    wilma as wilma_collector,
-)
+from .collectors import wilma as wilma_collector
 from . import ai_filter, feedback, gateway, languages, llm, private_files, run_lock
 from . import sources as source_registry
 from .brief_text import PRODUCT_NAME, BriefText
@@ -59,11 +54,6 @@ class _CollectorErrors(logging.Handler):
         self.first.setdefault(record.name.rsplit(".", 1)[-1], record.getMessage())
 
 
-# Each Source's collector, in the order they run.
-_COLLECTORS = {"gmail": gmail_collector, "myclub": myclub_collector, "wilma": wilma_collector,
-               "whatsapp": whatsapp_collector}
-
-
 def _run_collectors(cfg: Config, state: State, sources: list[str],
                     coverage: dict[str, dict] | None = None,
                     reading: Callable[[str], None] | None = None) -> tuple[list[Message], list[CalendarEvent]]:
@@ -77,20 +67,20 @@ def _run_collectors(cfg: Config, state: State, sources: list[str],
     collectors_log = logging.getLogger("family_brief.collectors")
     collectors_log.addHandler(errors)
     try:
-        for source in _COLLECTORS:
+        for record in source_registry.ALL:
+            source = record.name
             if source not in sources:
                 continue
             if reading:
                 reading(source)
             count, error = 0, None
             try:
-                collector = _COLLECTORS[source]
-                got = collector.collect(cfg, state, kid_terms)
+                got = record.collect(cfg, state, kid_terms)
                 log.info("%s: collected %d messages, %d events", source, len(got.messages), len(got.events))
                 messages.extend(got.messages)
                 # A feed gives UTC; the Brief and the model's already-queued list use local time.
                 direct_events.extend(e.in_zone(cfg.timezone) for e in got.events)
-                count = len(got.events if collector.EVENT_FEED else got.messages)
+                count = len(got.events if record.counts_events else got.messages)
             except Exception as e:
                 log.error("%s collector failed: %s\n%s", source, e, traceback.format_exc())
                 error = str(e)
@@ -122,8 +112,8 @@ def _problem(err: str) -> Literal["unreadable", "permission", "login", "other"]:
 
 
 def _short_reason(source: str, err: str, t: BriefText) -> str:
-    # WhatsApp's permission is lost when Parent Recap's own Python changes (ADR 0011).
-    permission = t.whatsapp_permission_denied if source == "whatsapp" else t.permission_denied
+    record = source_registry.named(source)
+    permission = getattr(t, record.permission_text if record else "permission_denied")
     return {"unreadable": t.message_unreadable,  # without the Message's id and the error, which are for the log
             "permission": permission,
             "login": t.login_failed}.get(_problem(err)) or err.splitlines()[0][:60]
@@ -136,7 +126,8 @@ def _coverage_note(coverage: dict[str, dict], t: BriefText) -> str:
     read, missed = [], []
     for source, c in coverage.items():
         name = _source_name(source)
-        read.append(f"{name} {(t.events if _COLLECTORS[source].EVENT_FEED else t.messages)(c['count'])}")
+        counts_events = source_registry.named(source).counts_events
+        read.append(f"{name} {(t.events if counts_events else t.messages)(c['count'])}")
         if c["error"]:
             missed.append((t.partly_read if c["count"] else t.not_read)
                           .format(source=name, reason=_short_reason(source, c["error"], t)))
@@ -195,11 +186,17 @@ def _behind(coverage: dict[str, dict]) -> list[str]:
     return [source for source, c in coverage.items() if c["error"]]
 
 
+def _windows(cfg: Config) -> list[tuple[str, source_registry.Window]]:
+    """Each Source that reads back a number of hours, by name, with the config section that says
+    how many."""
+    return [(s.name, s.lookback(cfg)) for s in source_registry.ALL if s.lookback]
+
+
 def _catch_up_lookback(cfg: Config, state: State) -> None:
     """After undelivered nights, or nights a Source failed, widen each Source's lookback to reach
     back to the last run that was caught up for it, so its Messages fall inside the window again.
     Capped at a week."""
-    for source, source_cfg in (("gmail", cfg.gmail), ("whatsapp", cfg.whatsapp), ("wilma", cfg.wilma)):
+    for source, source_cfg in _windows(cfg):
         caught_up_at = state.caught_up_at(source)
         if caught_up_at is None:
             continue
@@ -727,9 +724,8 @@ def _quiet_night(state: State, coverage: dict[str, dict], dry_run: bool) -> int:
 
 def _run(cfg: Config, args: argparse.Namespace) -> int:
     if args.lookback_hours is not None:
-        cfg.gmail.lookback_hours = args.lookback_hours
-        cfg.whatsapp.lookback_hours = args.lookback_hours
-        cfg.wilma.lookback_hours = args.lookback_hours
+        for _, source_cfg in _windows(cfg):
+            source_cfg.lookback_hours = args.lookback_hours
         log.info("Lookback overridden to %d hours (all sources)", args.lookback_hours)
     private_files.tighten(cfg)
     state = State(cfg.resolved_state_path())
@@ -742,7 +738,7 @@ def _run(cfg: Config, args: argparse.Namespace) -> int:
 
     coverage: dict[str, dict] = {}
     if args.preview:
-        _preview_step("reading", sources=[s for s in _COLLECTORS if s in sources])
+        _preview_step("reading", sources=[s.name for s in source_registry.ALL if s.name in sources])
     messages, direct_events = _run_collectors(
         cfg, state, sources, coverage,
         reading=(lambda source: _preview_step("reading", source=source)) if args.preview else None)
@@ -989,9 +985,11 @@ def main() -> int:
                       help="A dry run that prints, as JSON lines, how far it is and then the "
                            "first Recipient's email, even on a quiet night (the setup page's)")
     prun.add_argument("--sources", default=None,
-                      help="Comma-separated: gmail,wilma,whatsapp,myclub (default: all)")
+                      help=f"Comma-separated: {','.join(s.name for s in source_registry.ALL)} "
+                           "(default: the connected ones)")
     prun.add_argument("--lookback-hours", type=int, default=None,
-                      help="Override the Gmail / WhatsApp / Wilma lookback window (default: per-source config)")
+                      help=f"Override the {' / '.join(s.label() for s in source_registry.ALL if s.lookback)} "
+                           "lookback window (default: per-source config)")
     prun.add_argument("--if-missed", action="store_true",
                       help="Run only if the evening run's latest time went by with no run since "
                            "(the Windows sign-in task's)")

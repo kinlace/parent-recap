@@ -17,8 +17,6 @@ from .base import CalendarEvent, Collected, retry_once_on_timeout
 
 log = logging.getLogger(__name__)
 
-EVENT_FEED = True  # the Brief's coverage line counts its events
-
 LOOKAHEAD_DAYS = 14
 
 def _normalize_url(url: str) -> str:

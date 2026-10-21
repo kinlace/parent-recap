@@ -15,8 +15,6 @@ from .base import Collected, Message
 
 log = logging.getLogger(__name__)
 
-EVENT_FEED = False  # the Brief's coverage line counts its Messages
-
 # macOS WhatsApp Desktop (stable) container
 DB_DIR = Path.home() / "Library" / "Group Containers" / "group.net.whatsapp.WhatsApp.shared"
 DB_FILE = DB_DIR / "ChatStorage.sqlite"
