@@ -97,21 +97,26 @@ def tab(browser, family, page):  # noqa: F811
 
 
 def button(tab, key: str, **values: Any):
+    """The button showing `key`'s text, among those the page shows."""
     return tab.get_by_role("button", name=text(key, **values), exact=True)
 
 
 def in_english_with_the_gateway(tab) -> None:
+    """The language, then Welcome with the Gateway Key's AI and the Brief only for the parent."""
     tab.get_by_role("radio", name="English").check()
     button(tab, "continue").click()
     expect(tab.get_by_role("heading", name=text("welcome.title"))).to_be_visible()
     tab.get_by_role("radio", name=text("welcome.ai.gateway")).check()
     expect(tab.get_by_text(text("ai.gateway.ready"))).to_be_visible()
+    # Welcome offers to add a partner first, whose address it then needs.
+    tab.get_by_role("radio", name=text("welcome.partner.only-me")).check()
     expect(button(tab, "continue")).to_be_enabled()
     button(tab, "continue").click()
     expect(tab.get_by_role("heading", name=text("connect.title"))).to_be_visible()
 
 
 def without_wilma_in_espoo(tab) -> None:
+    """Wilma's step for a school without it: only the town."""
     tab.get_by_role("radio", name=text("wilma.uses.no")).check()
     town = tab.get_by_label(text("wilma.search"))
     expect(town).to_be_enabled()  # once the town list is ready
@@ -121,28 +126,32 @@ def without_wilma_in_espoo(tab) -> None:
     expect(tab.get_by_text(text("wilma.town-saved"))).to_be_visible()
 
 
-def gmail(tab, password: str) -> None:
+def sign_in_to_gmail(tab, password: str) -> None:
+    """Gmail's step: the parent's address and an App Password, tested and saved."""
     tab.get_by_label(text("gmail.address")).fill(PARENT)
     tab.get_by_label(text("gmail.password")).fill(password)
     button(tab, "gmail.save").click()
 
 
 def source_listed(tab, source: str, status: str):
+    """The Source's entry in Connect's list, named with the status it shows."""
     return tab.get_by_role("button", name=text("sources.button", source=text(f"source.{source}"),
                                                status=text(f"status.{status}")), exact=True)
 
 
 def connect_up_to_myclub(tab) -> None:
-    """Without Wilma, Gmail and the Gateway Key, and WhatsApp skipped where the page lists it."""
+    """Without Wilma, Gmail and the Gateway Key, and on macOS, the only system whose page lists
+    WhatsApp, WhatsApp skipped."""
     in_english_with_the_gateway(tab)
     without_wilma_in_espoo(tab)
-    gmail(tab, TYPED)
+    sign_in_to_gmail(tab, TYPED)
     expect(tab.get_by_text(text("gmail.saved"))).to_be_visible()
     expect(tab.get_by_text(text("connect.handoff", done=text("source.gmail"),
                                 next=text("source.ai")))).to_be_visible()
     tab.get_by_label(text("gateway.key")).fill(GATEWAY_KEY)
     button(tab, "gateway.save").click()
-    expect(tab.get_by_text(text("gateway.saved"))).to_be_visible()
+    # Not the step's own result: on macOS, WhatsApp's step checks at once and says so in its place.
+    expect(source_listed(tab, "ai", "done")).to_be_visible()
     if sys.platform == "darwin":  # WhatsApp for Mac, only on macOS
         button(tab, "source.skip").click()
         expect(source_listed(tab, "whatsapp", "skipped")).to_be_visible()
@@ -204,11 +213,11 @@ def test_a_skipped_source_is_listed_as_skipped_and_can_be_opened_again(tab):
     expect(tab.get_by_text(text("connect.done"))).to_be_hidden()
 
 
-def test_a_gmail_sign_in_gmail_rejects_shows_why_and_the_way_to_fix_it(tab):
+def test_an_app_password_gmail_rejects_shows_why_and_the_way_to_fix_it(tab):
     in_english_with_the_gateway(tab)
     without_wilma_in_espoo(tab)
 
-    gmail(tab, "zyxw vuts rqpo nmlk")  # an App Password, but not this address's
+    sign_in_to_gmail(tab, "zyxw vuts rqpo nmlk")  # an App Password, but not this address's
 
     expect(tab.get_by_text(text("gmail.rejected"))).to_be_visible()
     expect(button(tab, "gmail.two-step")).to_be_visible()
