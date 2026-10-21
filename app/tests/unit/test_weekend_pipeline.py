@@ -83,7 +83,7 @@ def test_picks_are_ordered_by_rank_whether_written_as_numbers_or_text():
 
 
 @pytest.mark.parametrize("picks", [None, {"ext_id": "le-1", "rank": 1}, "le-1"])
-def test_picks_that_arent_a_list_are_none(picks):
+def test_picks_that_arent_a_list_give_no_picks(picks):
     assert _ranked_picks(picks, set(BY_ID)) == []
 
 

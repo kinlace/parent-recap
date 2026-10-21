@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from family_brief import ai_filter, kid_placeholders
+from family_brief.brief_text import TEXT
 from family_brief.languages import FINNISH_TERMS
 from family_brief.summarize import _busy_reason, _claude_reply, extract_calendar_events, normalise, system_prompt
 
@@ -140,7 +141,7 @@ def test_a_date_alone_is_an_all_day_event_ending_on_its_last_day(end, last):
                                  {"start": "2026-10-09T09:00", "end": "soon"}])
 def test_an_event_with_a_bad_date_is_skipped(bad):
     assert events(bad, {"start": "2026-10-09"})[0].all_day
-    assert len(events(bad)) == 0
+    assert events(bad) == []
 
 
 def test_no_calendar_events_are_none():
@@ -182,7 +183,7 @@ def test_busy_reason_says_when_waiting_may_help(returncode, stdout, stderr, prom
 def test_the_instructions_ask_for_the_brief_in_its_language(language, keeps_finnish):
     prompt = system_prompt(language)
 
-    assert "Write every text value in the JSON in " in prompt
+    assert f"Write every text value in the JSON in {TEXT[language].language_name}" in prompt
     assert (FINNISH_TERMS in prompt) is keeps_finnish
     assert ai_filter.INSTRUCTION not in prompt
 
