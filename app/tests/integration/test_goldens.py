@@ -16,7 +16,7 @@ def folder(tmp_path):
 
 
 def test_without_update_a_golden_that_differs_fails_and_nothing_is_written(folder):
-    goldens = Goldens(folder, update=None)
+    goldens = Goldens(folder, None)
 
     goldens.check("normal_night.en.txt", "a\nb\nc\n")
     with pytest.raises(AssertionError, match="normal_night.en.txt differs"):
@@ -29,7 +29,7 @@ def test_without_update_a_golden_that_differs_fails_and_nothing_is_written(folde
 
 
 def test_a_pattern_rewrites_only_the_goldens_of_that_night(folder):
-    goldens = Goldens(folder, update="normal_night")
+    goldens = Goldens(folder, "normal_night")
 
     goldens.check("normal_night.en.txt", "a\nB\nc\nd\n")
     goldens.check("normal_night.zh.txt", "乙\n")
@@ -41,11 +41,11 @@ def test_a_pattern_rewrites_only_the_goldens_of_that_night(folder):
     assert (folder / "held_back.en.txt").read_text() == "x\n"
 
 
-def test_a_pattern_is_a_glob_or_a_name_up_to_a_dot():
+def test_a_pattern_is_a_glob_or_a_name_up_to_a_dot(folder):
     def matched(pattern: str) -> list[str]:
         names = ["normal_night.en.txt", "normal_night.en.ics", "normal_night_2.en.txt",
                  "codex.masked.model.txt", "held_back.fi.html"]
-        return [n for n in names if Goldens(None, update=pattern).matches(n)]
+        return [n for n in names if Goldens(folder, pattern).matches(n)]
 
     assert matched("normal_night") == ["normal_night.en.txt", "normal_night.en.ics"]
     assert matched("normal_night.en") == ["normal_night.en.txt", "normal_night.en.ics"]
@@ -56,7 +56,7 @@ def test_a_pattern_is_a_glob_or_a_name_up_to_a_dot():
 
 
 def test_each_golden_rewritten_gets_one_line_saying_what_changed(folder):
-    goldens = Goldens(folder, update="*")
+    goldens = Goldens(folder, "*")
 
     goldens.check("normal_night.en.txt", "a\nB\nc\nd\n")
     goldens.check("normal_night.zh.txt", "甲\n")  # unchanged: not rewritten, not listed
@@ -71,9 +71,20 @@ def test_each_golden_rewritten_gets_one_line_saying_what_changed(folder):
 
 
 def test_a_golden_checked_twice_in_one_run_is_listed_once(folder):
-    goldens = Goldens(folder, update="*")
+    goldens = Goldens(folder, "*")
 
     goldens.check("normal_night.zh.txt", "乙\n")
     goldens.check("normal_night.zh.txt", "乙\n")
 
     assert goldens.summary() == ["normal_night.zh.txt: +1 -1 lines"]
+
+
+def test_the_summary_says_when_nothing_matched_or_nothing_changed(folder):
+    typo = Goldens(folder, "normal_nigth")
+    typo.check("held_back.en.txt", "x\n")
+    unchanged = Goldens(folder, "normal_night")
+    unchanged.check("normal_night.en.txt", "a\nb\nc\n")
+    unchanged.check("normal_night.zh.txt", "甲\n")
+
+    assert typo.summary() == ["none: no golden checked in this run matches normal_nigth"]
+    assert unchanged.summary() == ["none: the 2 goldens matching normal_night are unchanged"]

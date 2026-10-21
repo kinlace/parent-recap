@@ -173,10 +173,10 @@ def pytest_configure(config: pytest.Config) -> None:
 
 def pytest_terminal_summary(terminalreporter: Any, config: pytest.Config) -> None:
     goldens = config.stash.get(_GOLDENS, None)
-    if goldens is None or goldens.update is None:
+    if goldens is None or goldens.pattern is None:
         return
     terminalreporter.section("golden files rewritten")
-    for line in goldens.summary() or [f"none: every golden matching {goldens.update} is unchanged"]:
+    for line in goldens.summary():
         terminalreporter.write_line(line)
 
 

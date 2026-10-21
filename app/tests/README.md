@@ -160,7 +160,7 @@ The shared fakes stay in `tests/`, beside the golden files:
 - `no_google/`: Google's packages blocked from import. `no_pty/`: the Wilma window's
   pseudo-terminal as a socket pair, where none can be opened (a sandbox).
 - `e2e/nights.py` and `e2e/setup_page.py` (`page`, `clock`, `ai`, `health`, `schedule`) are shared
-  by their files; `test_setup_whatsapp.py`'s `mac` is the fake Mac other WhatsApp tests use.
+  by their files; `test_setup_whatsapp.py`'s `fake_mac` is the fake Mac other WhatsApp tests import.
 
 Config, state and the archive are real files in a temporary HOME; "now" and the timezone are pinned.
 
