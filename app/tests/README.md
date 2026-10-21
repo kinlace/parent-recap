@@ -12,10 +12,12 @@ python -m pytest                                # whole suite
 python -m pytest -m unit                        # one layer (or: python -m pytest tests/unit)
 python -m pytest tests/e2e/test_nightly_brief.py  # one file
 python -m pytest --update-goldens=normal_night  # rewrite one night's goldens (see Golden files)
+python -m playwright install --only-shell chromium  # once, for the browser tests
+python -m pytest -m "e2e and not browser"       # the e2e layer without them
 ```
 
 CI runs the layers as separate steps, fastest first (unit, integration, e2e, adapters, scripts),
-so a failure in the fast layers shows in a minute.
+so a failure in the fast layers shows in a minute. The browser tests run last.
 
 ## Layers
 
@@ -107,9 +109,16 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_finding_programs.py`                              | Claude, Codex and Node found off PATH                                  |
 | `test_own_node.py`                                      | The wilma CLI on Parent Recap's own Node (ADR 0011)                    |
 | `test_uninstall.py`                                     | `uninstall` removes what setup made, and nothing else                  |
+| `test_setup_page_browser.py`                            | The page's main paths in a real browser (ADR 0024)                     |
 
 The page's server, its calls and the steps more than one file walks through are in
 `e2e/setup_page.py`.
+
+A setup step's answers, results and files get an HTTP test, as the page's script calls the server.
+What only the page does gets a browser test: a step it shows or hides, a button it enables, the
+text it picks for a result, or a path a family clicks through. These are marked `browser`, run
+headless Chromium through Playwright and skip, saying why, where it isn't installed. They are the
+slowest tests, so add one for a main path, not for each result.
 
 ## Adapter tests
 
@@ -177,6 +186,9 @@ a test needs, and skip it elsewhere, so each CI job runs every other test:
 - `@pytest.mark.windows`: the Windows adapters and Windows' own layout. The Credential Manager and
   Task Scheduler tests use the real ones, under a test name of their own, and delete what they
   made.
+
+`browser` marks the tests that drive the setup page in a real browser; CI's macOS job runs them in
+a step of their own, after Chromium is installed.
 
 CI runs the suite on macOS, and on Windows the unit, integration and adapter layers and the
 end-to-end tests marked `windows`. `install.ps1` itself runs for real in CI's windows-install job.

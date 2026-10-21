@@ -26,6 +26,9 @@ test = [
     "pytest>=8",
     "pytest-cov>=7",
     "time-machine>=2.14",
+    # Drives the setup page in a real browser (ADR 0024). Its Chromium is a separate download:
+    # python -m playwright install --only-shell chromium
+    "playwright>=1.50",
 ]
 
 [project.scripts]
@@ -57,6 +60,7 @@ markers = [
     "scripts: install.sh, install.ps1, release.py, issue-loop.sh and the workflows",
     "macos: needs macOS (a macOS adapter, a macOS-only feature, or what Windows can't do yet); skipped elsewhere",
     "windows: needs Windows (a Windows adapter or Windows' own layout); skipped elsewhere",
+    "browser: drives the setup page in a real browser with Playwright; skipped without its Chromium",
 ]
 
 # Used only with `pytest --cov`, as CI's macOS job runs it. No fail_under: the numbers inform, they
