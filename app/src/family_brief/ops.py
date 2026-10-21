@@ -198,7 +198,7 @@ def _check_source(source: sources.Source, cfg: Config, add, config: str | None) 
 def check_gmail(cfg: Config, add, config: str | None = None) -> None:
     """Gmail, which sends the Brief, so is checked whether or not it's read."""
     from .collectors import gmail
-    username = cfg.gmail.username or (cfg.kids[0].wilma_username if cfg.kids else None)
+    username = gmail.username_of(cfg)
     if not username:
         add(FAIL, "gmail", "no gmail.username in the config")
         return
@@ -375,6 +375,7 @@ def _evening_job_python() -> str:
 
 
 def check_myclub(cfg: Config, add, config: str | None = None) -> None:
+    """Each Kid's subscription link, since each Kid can have a club of their own."""
     for kid in cfg.kids:
         if kid.myclub_ical_url:
             _check_myclub(kid.name, kid.myclub_ical_url, add)

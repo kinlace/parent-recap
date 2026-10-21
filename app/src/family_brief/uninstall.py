@@ -30,7 +30,7 @@ from pydantic import ValidationError
 
 from . import (ai_filter_report, chat_install, install_record, ops, own_node, run_lock,
                setup_save, setup_wilma, sources, summarize, tools, whatsapp_python)
-from .collectors.gmail import keychain_account
+from .collectors.gmail import keychain_account, username_of
 from .config import Config
 from .system import desktop, jobs, macos_only, secrets, wake, windows_only
 
@@ -261,7 +261,7 @@ def _keychain(s: Survey, cfg: Config) -> None:
 
 def gmail_secrets(cfg: Config) -> list[str]:
     """The App Password of the config's Gmail, also when setup's record of it is gone."""
-    username = cfg.gmail.username or (cfg.kids[0].wilma_username if cfg.kids else None)
+    username = username_of(cfg)
     return [keychain_account(username)] if username else []
 
 
@@ -299,6 +299,7 @@ def survey_wilma(s: Survey, programs: list[Path]) -> None:
 
 
 def survey_whatsapp(s: Survey, programs: list[Path]) -> None:
+    """The record of which Python setup's WhatsApp step gave Full Disk Access (ADR 0012)."""
     p = whatsapp_python.path()
     if p.exists():
         s.items.append(_file("Which Python reads WhatsApp", p))
@@ -501,6 +502,7 @@ def gmail_notes(cfg: Config, pythons: list[Path]) -> list[str]:
 
 
 def wilma_notes(cfg: Config, pythons: list[Path]) -> list[str]:
+    """A wilma CLI sign-in setup didn't make keeps its password, which uninstall doesn't remove."""
     wilma_config = setup_wilma.config_path()
     profiles = setup_wilma.profile_ids(wilma_config)
     # Each recorded profile still there is listed for removal above.
@@ -516,6 +518,7 @@ def wilma_notes(cfg: Config, pythons: list[Path]) -> list[str]:
 
 
 def whatsapp_notes(cfg: Config, pythons: list[Path]) -> list[str]:
+    """Full Disk Access, which only the family can take back from a Python."""
     if not macos_only.offers("whatsapp"):
         return []
     python = f" ({', '.join(str(p) for p in pythons)})" if pythons else ""

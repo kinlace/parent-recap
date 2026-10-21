@@ -27,6 +27,12 @@ IMAP_TIMEOUT = 60  # seconds per network step; without one a stalled connection 
 MAX_BODY_CHARS = 8000
 
 
+def username_of(cfg: Config) -> str | None:
+    """The Gmail address doctor and uninstall look for: gmail.username, or else the first Kid's
+    wilma_username."""
+    return cfg.gmail.username or (cfg.kids[0].wilma_username if cfg.kids else None)
+
+
 def keychain_account(username: str) -> str:
     return f"gmail-imap-{username}"
 
