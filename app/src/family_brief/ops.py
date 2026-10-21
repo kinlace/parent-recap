@@ -40,18 +40,33 @@ FULL_DISK_ACCESS_WHERE = ("(System Settings → Privacy & Security; parent-recap
 FULL_DISK_ACCESS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
 
 
+def _sources_after_the_ai() -> list[sources.Source]:
+    """doctor checks Gmail first, since it sends the Brief, then the AI, then the other Sources in
+    the setup page's order."""
+    return [s for s in sources.in_connect_order() if s is not sources.GMAIL]
+
+
 # Each of doctor's checks: its key, which the setup page goes by and stays the same whatever the
-# check's words, and the item doctor prints, with `{}` for the subject it's about.
+# check's words, and the item doctor prints, with `{}` for the subject it's about. A Source's are
+# in its record.
 CHECK_ITEMS = (
     ("config", "Config file"), ("recipients", "Recipients"), ("language", "Language {}"),
-    ("gmail", "Gmail"), ("claude", "Claude"), ("codex", "Codex"), ("gateway", "AI gateway"),
-    ("gateway-key", "Gateway Key"), ("wilma", "Wilma"), ("whatsapp", "WhatsApp"),
-    ("whatsapp-python", "WhatsApp"), ("myclub", "MyClub ({})"), ("calendar", "Calendar"),
-    ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"), ("schedule", "Schedule"),
-    ("last-run", "Last run"), ("python-path", "Python path"), ("wake", "Wake"),
-    ("sign-in-after-update", "Sign-in after updates"),
+    *sources.GMAIL.doctor_items().items(), ("claude", "Claude"), ("codex", "Codex"),
+    ("gateway", "AI gateway"), ("gateway-key", "Gateway Key"),
+    *(item for s in _sources_after_the_ai() for item in s.doctor_items().items()),
+    ("calendar", "Calendar"), ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"),
+    ("schedule", "Schedule"), ("last-run", "Last run"), ("python-path", "Python path"),
+    ("wake", "Wake"), ("sign-in-after-update", "Sign-in after updates"),
 )
 _ITEMS = dict(CHECK_ITEMS)
+
+
+def _item(key: str) -> str:
+    """The item doctor prints for the check `key`, also of a Source registered after this module
+    was imported."""
+    if key in _ITEMS:
+        return _ITEMS[key]
+    return next(items[key] for s in sources.ALL if key in (items := s.doctor_items()))
 
 
 class Check(NamedTuple):
@@ -133,7 +148,7 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
 
     def add(status: str, key: str, detail: str, reason: str | None = None,
             groups: list[str] | tuple[str, ...] = (), subject: str | None = None) -> None:
-        item = _ITEMS[key].format(subject)
+        item = _item(key).format(subject)
         results.append(Check(status, key, item, detail, reason, tuple(groups), subject))
         if show:
             print(f"{status} {item}: {detail}", flush=True)
@@ -156,17 +171,11 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
         ready, detail = languages.describe(cfg, language, languages.TABLES if weekend else (languages.BRIEF,))
         add(OK if ready else WARN, "language", detail, subject=language)
 
-    _check_gmail(cfg, add)
+    _check_source(sources.GMAIL, cfg, add, config)
     if not skip_llm:
         _check_llm(cfg, add)
-    if cfg.wilma.enabled:
-        _check_wilma(cfg, add)
-    if cfg.whatsapp.enabled and macos_only.offers("whatsapp"):
-        _check_whatsapp_python(add)
-        _check_whatsapp(cfg, add, config)
-    for kid in cfg.kids:
-        if kid.myclub_ical_url:
-            _check_myclub(kid.name, kid.myclub_ical_url, add)
+    for source in _sources_after_the_ai():
+        _check_source(source, cfg, add, config)
     _check_calendar(cfg, add)
     if cfg.feedback.enabled:
         _check_feedback(cfg, add)
@@ -181,7 +190,13 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
     return results
 
 
-def _check_gmail(cfg: Config, add) -> None:
+def _check_source(source: sources.Source, cfg: Config, add, config: str | None) -> None:
+    if source.check and macos_only.offers(source.name):
+        source.check(cfg, add, config)
+
+
+def check_gmail(cfg: Config, add, config: str | None = None) -> None:
+    """Gmail, which sends the Brief, so is checked whether or not it's read."""
     from .collectors import gmail
     username = cfg.gmail.username or (cfg.kids[0].wilma_username if cfg.kids else None)
     if not username:
@@ -228,7 +243,9 @@ def _check_llm(cfg: Config, add) -> None:
         add(_STATUS_OF[finding.level], finding.key, finding.detail)
 
 
-def _check_wilma(cfg: Config, add) -> None:
+def check_wilma(cfg: Config, add, config: str | None = None) -> None:
+    if not cfg.wilma.enabled:
+        return
     from .collectors.wilma import NOT_INSTALLED, _run_or_log
     if own_node.wilma() is None:
         add(FAIL, "wilma", NOT_INSTALLED)
@@ -259,6 +276,14 @@ def _check_wilma(cfg: Config, add) -> None:
                 f"{p.get('tenantName') or p.get('tenantUrl')} every evening, a sign-in setup didn't "
                 "make, for none of the Kids, so the Brief doesn't say when it fails. If it's no "
                 f"longer used, remove it: wilma accounts remove {p.get('username')}")
+
+
+def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:
+    """Whether the evening job's Python is still the one allowed to read WhatsApp, then whether
+    WhatsApp reads, for a WhatsApp turned on even before a group is ticked."""
+    if cfg.whatsapp.enabled:
+        _check_whatsapp_python(add)
+        _check_whatsapp(cfg, add, config)
 
 
 def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
@@ -347,6 +372,12 @@ def _evening_job_python() -> str:
     """The Python the installed evening job starts, or this one before it's installed."""
     program = jobs.program(jobs.DAILY)
     return program[0] if program else sys.executable
+
+
+def check_myclub(cfg: Config, add, config: str | None = None) -> None:
+    for kid in cfg.kids:
+        if kid.myclub_ical_url:
+            _check_myclub(kid.name, kid.myclub_ical_url, add)
 
 
 def _check_myclub(kid: str, url: str, add) -> None:

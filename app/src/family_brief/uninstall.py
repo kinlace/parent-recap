@@ -29,7 +29,7 @@ import yaml
 from pydantic import ValidationError
 
 from . import (ai_filter_report, chat_install, install_record, ops, own_node, run_lock,
-               setup_save, setup_wilma, summarize, tools, whatsapp_python)
+               setup_save, setup_wilma, sources, summarize, tools, whatsapp_python)
 from .collectors.gmail import keychain_account
 from .config import Config
 from .system import desktop, jobs, macos_only, secrets, wake, windows_only
@@ -142,7 +142,9 @@ def survey(config: Path) -> Survey:
     _jobs(s, programs)
     _wake(s, defaults)
     _keychain(s, defaults)
-    _wilma(s, programs)
+    for source in sources.ALL:
+        if source.survey:
+            source.survey(s, programs)
     _claude_code(s)
     _codex_skills(s, home)
     _plugin_copies(s, usual)
@@ -247,15 +249,20 @@ def _cancel_wake() -> None:
 
 
 def _keychain(s: Survey, cfg: Config) -> None:
-    username = cfg.gmail.username or (cfg.kids[0].wilma_username if cfg.kids else None)
     accounts = [*install_record.entries("keychain"),
-                *([keychain_account(username)] if username else []),
+                *(account for source in sources.ALL for account in source.secrets(cfg)),
                 "claude-oauth-token", "anthropic-api-key"]
     for account in dict.fromkeys(accounts):
         if secrets.has(account):  # the secret itself isn't read
             s.items.append(Item(f"{secrets.STORE} item", secrets.where(account),
                                 partial(_delete_secret, account), account=account,
                                 asks=secrets.deleting_asks()))
+
+
+def gmail_secrets(cfg: Config) -> list[str]:
+    """The App Password of the config's Gmail, also when setup's record of it is gone."""
+    username = cfg.gmail.username or (cfg.kids[0].wilma_username if cfg.kids else None)
+    return [keychain_account(username)] if username else []
 
 
 def _delete_secret(account: str) -> None:
@@ -265,7 +272,7 @@ def _delete_secret(account: str) -> None:
         raise NotRemoved(str(e))
 
 
-def _wilma(s: Survey, programs: list[Path]) -> None:
+def survey_wilma(s: Survey, programs: list[Path]) -> None:
     """The profile, with the Wilma password, that setup's record has, since one that was there
     before setup isn't Parent Recap's to remove, and the wilma CLI setup installed in Parent
     Recap's folder (ADR 0011). A wilma CLI of the Mac's own isn't touched."""
@@ -289,6 +296,12 @@ def _wilma(s: Survey, programs: list[Path]) -> None:
         else:
             s.stops.append(f"{_show(folder)} is where Parent Recap installs the wilma CLI, but "
                            f"it holds other files too: {', '.join(others)}")
+
+
+def survey_whatsapp(s: Survey, programs: list[Path]) -> None:
+    p = whatsapp_python.path()
+    if p.exists():
+        s.items.append(_file("Which Python reads WhatsApp", p))
 
 
 def _npm_made(prefix: Path) -> set[str]:
@@ -425,7 +438,6 @@ def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Con
               ("State", state), ("Run lock", run_lock.lock_path(defaults)),
               ("The program's text in other languages", state.parent / "languages"),
               ("Where Claude, Codex and Node were found", tools.remembered_path()),
-              ("Which Python reads WhatsApp", whatsapp_python.path()),
               ("Google Calendar app file", family / "calendar_credentials.json"),
               ("Google Calendar authorization", family / "calendar_token.json")]
     for what, p in dict.fromkeys(found):
@@ -472,32 +484,44 @@ def _left_in(s: Survey, folder: Path, archive: Path) -> None:
 
 
 def _notes(s: Survey, cfg: Config, pythons: list[Path]) -> None:
-    s.notes.append("Your accounts aren't touched: Gmail, Google, Wilma, WhatsApp and MyClub stay "
-                   "as they are.")
-    s.notes.append("The Gmail App Password keeps working until you delete it in your Google "
-                   "account: https://myaccount.google.com/apppasswords (it's named Parent Recap).")
+    accounts = ", ".join(source.label() for source in sources.ALL)
+    s.notes.append(f"Your accounts aren't touched: {accounts} and Google stay as they are.")
+    s.notes += [note for source in sources.ALL for note in source.notes(cfg, pythons)]
     if cfg.google_calendar.mode == "google" or any(i.what == "Google Calendar authorization"
                                                    for i in s.items):
         s.notes.append("Parent Recap's access to Google Calendar stays until you remove it in your "
                        "Google account: https://myaccount.google.com/connections")
+    if s.claude_left:
+        s.notes.append(s.claude_left)
+
+
+def gmail_notes(cfg: Config, pythons: list[Path]) -> list[str]:
+    return ["The Gmail App Password keeps working until you delete it in your Google account: "
+            "https://myaccount.google.com/apppasswords (it's named Parent Recap)."]
+
+
+def wilma_notes(cfg: Config, pythons: list[Path]) -> list[str]:
     wilma_config = setup_wilma.config_path()
     profiles = setup_wilma.profile_ids(wilma_config)
     # Each recorded profile still there is listed for removal above.
     ours = set(install_record.entries("wilma-profile"))
-    if wilma_config.exists() and not (profiles and set(profiles) <= ours):
-        folder = _show(wilma_config.parent)
-        remove = (f"in PowerShell: Remove-Item -Recurse -Force {folder}" if sys.platform == "win32"
-                  else f"in Terminal: rm -rf {folder}")
-        s.notes.append(f"The wilma CLI keeps a Wilma password, not encrypted, in {folder}, from "
-                       "a sign-in setup didn't make, so uninstall leaves it. If you only used it "
-                       f"for Parent Recap, remove it {remove}")
-    if macos_only.offers("whatsapp"):
-        python = f" ({', '.join(str(p) for p in pythons)})" if pythons else ""
-        s.notes.append(f"If you gave the program's Python{python} access to WhatsApp, remove it by "
-                       "hand from System Settings → Privacy & Security → Full Disk Access: a "
-                       "program can't change that list.")
-    if s.claude_left:
-        s.notes.append(s.claude_left)
+    if not wilma_config.exists() or (profiles and set(profiles) <= ours):
+        return []
+    folder = _show(wilma_config.parent)
+    remove = (f"in PowerShell: Remove-Item -Recurse -Force {folder}" if sys.platform == "win32"
+              else f"in Terminal: rm -rf {folder}")
+    return [f"The wilma CLI keeps a Wilma password, not encrypted, in {folder}, from a sign-in "
+            "setup didn't make, so uninstall leaves it. If you only used it for Parent Recap, "
+            f"remove it {remove}"]
+
+
+def whatsapp_notes(cfg: Config, pythons: list[Path]) -> list[str]:
+    if not macos_only.offers("whatsapp"):
+        return []
+    python = f" ({', '.join(str(p) for p in pythons)})" if pythons else ""
+    return [f"If you gave the program's Python{python} access to WhatsApp, remove it by hand from "
+            "System Settings → Privacy & Security → Full Disk Access: a program can't change that "
+            "list."]
 
 
 # ---------------------------------------------------------------- listing and removing

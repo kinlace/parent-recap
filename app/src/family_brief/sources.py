@@ -1,25 +1,36 @@
 """The Sources, one record each, in the order the evening run reads them (ADR 0022). Code that
 would name the Sources asks this registry instead: what a Source is called, whether a Household's
 config connects it, how the evening run reads it and widens its lookback, what the Brief's coverage
-line counts of it, whether the setup page lets a family skip it, and the mail it sends of its own
-news. A new Source is its collector module, its config model and its record here."""
+line counts of it, whether the setup page lets a family skip it, the mail it sends of its own
+news, what `doctor` checks of it and what uninstall removes for it. A new Source is its collector
+module, its config model and its record here."""
 from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from .brief_text import BriefText
     from .collectors.base import Collected
     from .config import Config
     from .state import State
+    from .uninstall import Survey
+
+# doctor's `add`, given a check's status, key and detail (ops.health_checks).
+Add = Callable[..., None]
 
 
 class Window(Protocol):
     """A Source's config section, whose lookback the run widens after nights it missed."""
     lookback_hours: int
+
+
+def _nothing(*_args: Any) -> list[str]:
+    return []
 
 
 @dataclass(frozen=True)
@@ -36,18 +47,37 @@ class Source:
     permission_lacked: Callable[[BriefText], str] = lambda t: t.permission_denied  # the Brief's reason
     macos_only: bool = False            # read only on macOS (system/macos_only.py, ADR 0020)
     sender_domain: str | None = None    # the domain of the mail it sends of its own news (#361)
+    # doctor's checks of it, given the config, `add` and the config's path; each does nothing for
+    # a Source the Household hasn't set up
+    check: Callable[[Config, Add, str | None], None] | None = None
+    check_items: Mapping[str, str] | None = None  # each check's key and item; its name and label if None
+    secrets: Callable[[Config], list[str]] = _nothing  # the secret store's accounts setup made for it
+    # anything else uninstall removes for it, such as a sign-in profile or its own program, given
+    # where Parent Recap's program is
+    survey: Callable[[Survey, list[Path]], None] | None = None
+    # what uninstall leaves the family to do for it, given Parent Recap's own Pythons
+    notes: Callable[[Config, list[Path]], list[str]] = _nothing
 
     def label(self, language: str = "en") -> str:
         """What `language` calls this Source; English for a language without reviewed text."""
         return self.labels.get(language) or self.labels["en"]
 
+    def doctor_items(self) -> Mapping[str, str]:
+        """The key of each of doctor's checks of it, and the item doctor prints for it."""
+        return self.check_items if self.check_items is not None else {self.name: self.label()}
+
+
+def _in(module: str, function: str) -> Callable[..., Any]:
+    """`function` of `module`, imported when called: those modules import the config, which asks
+    this registry."""
+    def call(*args: Any) -> Any:
+        return getattr(importlib.import_module(f"{__package__}.{module}"), function)(*args)
+    return call
+
 
 def _collector(module: str) -> Callable[[Config, State, list[str]], Collected]:
-    """The `collect` of collectors/`module`, imported when called: a collector imports the config,
-    which asks this registry."""
-    def collect(cfg: Config, state: State, kid_terms: list[str]) -> Collected:
-        return importlib.import_module(f"{__package__}.collectors.{module}").collect(cfg, state, kid_terms)
-    return collect
+    """The `collect` of collectors/`module`."""
+    return _in(f"collectors.{module}", "collect")
 
 
 def _same_everywhere(label: str) -> dict[str, str]:
@@ -60,22 +90,28 @@ def _same_everywhere(label: str) -> dict[str, str]:
 GMAIL = Source("gmail", _same_everywhere("Gmail"),
                lambda cfg: bool(cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders),
                skippable=False, connect_rank=1, collect=_collector("gmail"),
-               lookback=lambda cfg: cfg.gmail)
+               lookback=lambda cfg: cfg.gmail, check=_in("ops", "check_gmail"),
+               secrets=_in("uninstall", "gmail_secrets"), notes=_in("uninstall", "gmail_notes"))
+# Checked once for each Kid with a subscription link.
 MYCLUB = Source("myclub", _same_everywhere("MyClub"),
                 lambda cfg: any(k.myclub_ical_url for k in cfg.kids),
                 skippable=True, connect_rank=4, collect=_collector("myclub"), counts_events=True,
-                sender_domain="myclub.fi")
+                sender_domain="myclub.fi", check=_in("ops", "check_myclub"),
+                check_items={"myclub": "MyClub ({})"})
 # Skippable for a school that doesn't use it.
 WILMA = Source("wilma", _same_everywhere("Wilma"), lambda cfg: cfg.wilma.enabled,
                skippable=True, connect_rank=0, collect=_collector("wilma"), lookback=lambda cfg: cfg.wilma,
-               sender_domain="inschool.fi")
+               sender_domain="inschool.fi", check=_in("ops", "check_wilma"),
+               survey=_in("uninstall", "survey_wilma"), notes=_in("uninstall", "wilma_notes"))
 # WhatsApp for Mac's own database (ADR 0012). Its permission is lost when Parent Recap's own Python
-# changes (ADR 0011), which its permission line says.
+# changes (ADR 0011), which its permission line and doctor's whatsapp-python check say.
 WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"),
                   lambda cfg: cfg.whatsapp.enabled and bool(cfg.whatsapp.chats),
                   skippable=True, connect_rank=3, collect=_collector("whatsapp"),
                   lookback=lambda cfg: cfg.whatsapp, permission_lacked=lambda t: t.whatsapp_permission_denied,
-                  macos_only=True)
+                  macos_only=True, check=_in("ops", "check_whatsapp"),
+                  check_items={"whatsapp": "WhatsApp", "whatsapp-python": "WhatsApp"},
+                  survey=_in("uninstall", "survey_whatsapp"), notes=_in("uninstall", "whatsapp_notes"))
 
 ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP)
 
