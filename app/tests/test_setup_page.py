@@ -2648,9 +2648,10 @@ def test_the_gateway_key_field_is_the_page_s_own(page):
 
 
 def test_the_check_page_names_the_gateway_s_own_checks():
-    for item in ("AI gateway", "Gateway Key"):
-        assert setup_server._health_check(ops.Check(ops.FAIL, item, ""))["check"] == "gateway"
-    assert setup_server._health_check(ops.Check(ops.FAIL, "Claude", ""))["check"] == "ai"
+    for key, item in ops.CHECK_ITEMS:
+        if key in ("gateway", "gateway-key"):
+            assert setup_server._health_check(ops.Check(ops.FAIL, key, item, ""))["check"] == "gateway"
+    assert setup_server._health_check(ops.Check(ops.FAIL, "claude", "Claude", ""))["check"] == "ai"
 
 
 # ── Connect: WhatsApp
@@ -3334,14 +3335,14 @@ def check_page(url: str) -> dict[str, Any]:
 
 
 class Health:
-    """Doctor's checks, as the server runs them: each (status, item, detail), with why it isn't
-    OK where doctor says, held until the test lets them go, so the page can be seen while they
-    run."""
+    """Doctor's checks, as the server runs them: each (status, key, item, detail), with why it
+    isn't OK where doctor says, or an ops.Check with the subject it's about, held until the test
+    lets them go, so the page can be seen while they run."""
 
     def __init__(self) -> None:
-        self.results = [(ops.OK, "Config file", "~/.family/config.yaml, 2 kids"),
-                        (ops.OK, "Gmail", "parent@example.com signed in, 3 allowlisted emails"),
-                        (ops.OK, "Claude", "call succeeded (auth: keychain-oauth)")]
+        self.results = [(ops.OK, "config", "Config file", "~/.family/config.yaml, 2 kids"),
+                        (ops.OK, "gmail", "Gmail", "parent@example.com signed in, 3 allowlisted emails"),
+                        (ops.OK, "claude", "Claude", "call succeeded (auth: keychain-oauth)")]
         self.runs: list[tuple[str | None, bool]] = []
         self.go = threading.Event()
         self.go.set()
@@ -3350,7 +3351,7 @@ class Health:
                  show: bool = False, schedule: bool = True) -> list[ops.Check]:
         self.runs.append((config, schedule))
         assert self.go.wait(5)
-        return [ops.Check(*c) for c in self.results]
+        return [c if isinstance(c, ops.Check) else ops.Check(*c) for c in self.results]
 
 
 @pytest.fixture
@@ -3504,10 +3505,12 @@ def test_confirming_saves_everything_through_setup_save_and_runs_the_health_chec
 def test_a_health_check_that_fails_keeps_the_page_and_says_which_check(harness, page, health):
     at_the_check_step(harness)
     health.results = [
-        (ops.OK, "Config file", "~/.family/config.yaml, 2 kids"),
-        (ops.FAIL, "Gmail", "IMAP login failed: parent@example.com rejected"),
-        (ops.WARN, "Pilot feedback", "feedback is on but prefill_base_url or fields is missing"),
-        (ops.FAIL, "MyClub (Mia)", "subscription link doesn't open: https://x.myclub.fi/secret")]
+        (ops.OK, "config", "Config file", "~/.family/config.yaml, 2 kids"),
+        (ops.FAIL, "gmail", "Gmail", "IMAP login failed: parent@example.com rejected"),
+        (ops.WARN, "feedback", "Pilot feedback", "feedback is on but prefill_base_url or fields is "
+         "missing"),
+        ops.Check(ops.FAIL, "myclub", "MyClub (Mia)",
+                  "subscription link doesn't open: https://x.myclub.fi/secret", subject="Mia")]
 
     assert confirm(page.url).json()["result"] == "checking"
     out = health_result(page.url)
@@ -3526,7 +3529,7 @@ def test_a_health_check_that_fails_keeps_the_page_and_says_which_check(harness, 
 
 def test_warnings_alone_let_setup_move_on(harness, page, health):
     at_the_check_step(harness)
-    health.results.append((ops.WARN, "Pilot feedback", "feedback.household_label is empty"))
+    health.results.append((ops.WARN, "feedback", "Pilot feedback", "feedback.household_label is empty"))
 
     confirm(page.url)
 
@@ -3635,12 +3638,15 @@ def test_every_check_and_health_result_is_explained_in_all_three_languages():
 
 
 def test_every_health_check_doctor_runs_has_a_name_on_the_page():
-    source = Path(ops.__file__).read_text()
-    items = {re.split(r" ?[{(]", item)[0]
-             for item in re.findall(r'\badd\([^,]+, f?"([^"]+)"', source)}
-    items -= setup_server.SCHEDULE_CHECKS
+    keys = {key for key, _ in ops.CHECK_ITEMS}
+    # Every add() names one of them: a key that isn't would fail only when its check runs.
+    added = set(re.findall(r'\badd\([^,]+, "([^"]+)"', Path(ops.__file__).read_text()))
 
-    assert items and items <= set(setup_server.HEALTH_CHECKS), items - set(setup_server.HEALTH_CHECKS)
+    assert added and added <= keys, added - keys
+    assert keys - setup_server.SCHEDULE_CHECKS == set(setup_server.HEALTH_CHECKS)
+    # Python path is always OK, so Finish never names it.
+    assert setup_server.SCHEDULE_CHECKS - setup_server.FINISH_LEAVES_OUT - {"python-path"} <= \
+        set(setup_server.FINISH_CHECKS)
 
 
 # ── Check and Finish: why WhatsApp isn't OK, and the step that fixes it
@@ -3746,8 +3752,9 @@ def test_the_page_shows_the_reason_s_text_and_the_button_that_fixes_it():
 def test_groups_not_on_this_mac_lead_back_to_whatsapp_s_step_to_read_them_again(harness, page,
                                                                                  mac, health):
     at_the_check_step(harness)
-    health.results = [(ops.FAIL, "Gmail", "IMAP login failed"),
-                      (ops.WARN, "WhatsApp", "not on this Mac", "missing-groups", ("3B parents",))]
+    health.results = [(ops.FAIL, "gmail", "Gmail", "IMAP login failed"),
+                      (ops.WARN, "whatsapp", "WhatsApp", "not on this Mac", "missing-groups",
+                       ("3B parents",))]
     confirm(page.url)
     assert health_result(page.url)["result"] == "not-ok"
 
@@ -4222,10 +4229,11 @@ def test_an_outcome_still_false_keeps_the_page_and_says_which(harness, page, sch
 
 def test_a_failed_health_check_names_the_checks_that_aren_t_ok(harness, page, schedule, health):
     at_finish(harness)
-    health.results += [(ops.FAIL, "Gmail", "IMAP login failed for parent@example.com"),
-                       (ops.WARN, "Last run", "40 hours ago"),
-                       (ops.FAIL, "MyClub (Mia)", "subscription link doesn't open: secret"),
-                       (ops.WARN, "Something new", "a check the page doesn't know")]
+    health.results += [(ops.FAIL, "gmail", "Gmail", "IMAP login failed for parent@example.com"),
+                       (ops.WARN, "last-run", "Last run", "40 hours ago"),
+                       ops.Check(ops.FAIL, "myclub", "MyClub (Mia)",
+                                 "subscription link doesn't open: secret", subject="Mia"),
+                       (ops.WARN, "something-new", "Something new", "a check the page doesn't know")]
 
     finish(page.url)
     out = finished(page.url)
@@ -4243,8 +4251,9 @@ def test_a_failed_health_check_names_the_checks_that_aren_t_ok(harness, page, sc
 
 def test_warnings_alone_dont_hold_finish_up_and_are_listed(harness, page, schedule, health):
     at_finish(harness)
-    health.results += [(ops.WARN, "Pilot feedback", "feedback.household_label is empty"),
-                       (ops.WARN, "Language sv", "the Brief's own text in sv isn't ready yet")]
+    health.results += [(ops.WARN, "feedback", "Pilot feedback", "feedback.household_label is empty"),
+                       ops.Check(ops.WARN, "language", "Language sv",
+                                 "the Brief's own text in sv isn't ready yet", subject="sv")]
 
     finish(page.url)
     out = finished(page.url)
@@ -4256,12 +4265,31 @@ def test_warnings_alone_dont_hold_finish_up_and_are_listed(harness, page, schedu
         {"check": "language", "status": "warn", "language": "sv"}]}
 
 
+def test_finish_names_a_check_by_its_key_whatever_doctor_calls_it(harness, page, schedule, health):
+    # #414: a check renamed in doctor's words still shows as itself, not as `other`.
+    at_finish(harness)
+    health.results += [(ops.FAIL, "gmail", "Email inbox", "IMAP login failed"),
+                       ops.Check(ops.WARN, "language", "Brief text in sv", "not ready yet",
+                                 subject="sv"),
+                       ops.Check(ops.FAIL, "myclub", "Club calendar for Mia", "doesn't open",
+                                 subject="Mia")]
+
+    finish(page.url)
+    out = finished(page.url)
+
+    doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
+    assert doctor["checks"] == [{"check": "gmail", "status": "fail"},
+                                {"check": "language", "status": "warn", "language": "sv"},
+                                {"check": "myclub", "status": "fail", "kid": "Mia"}]
+
+
 @pytest.mark.parametrize("failure", WHATSAPP_FAILURES)
 def test_finish_says_why_whatsapp_isn_t_ok(harness, page, schedule, health, failure):
     at_finish(harness)
     status, reason = WHATSAPP_FAILURES[failure]
     groups = ("Leo piano",) if reason == "missing-groups" else ()
-    health.results.append((status, "WhatsApp", f"{WHATSAPP_PYTHON} can't", reason, groups))
+    health.results.append((status, "whatsapp", "WhatsApp", f"{WHATSAPP_PYTHON} can't", reason,
+                           groups))
 
     finish(page.url)
     out = finished(page.url)
@@ -4277,7 +4305,7 @@ def test_finish_says_why_whatsapp_isn_t_ok(harness, page, schedule, health, fail
 def test_finish_leads_back_to_whatsapp_s_step_while_the_page_is_open(harness, page, schedule,
                                                                       health):
     at_finish(harness, delivered=False)  # so the page stays open
-    health.results.append((ops.WARN, "WhatsApp", "", "missing-groups", ("3B parents",)))
+    health.results.append((ops.WARN, "whatsapp", "WhatsApp", "", "missing-groups", ("3B parents",)))
     finish(page.url)
     assert finished(page.url)["result"] == "not-done"
 
@@ -4509,7 +4537,7 @@ def check_again(url: str) -> Response:
 def test_check_again_rechecks_without_installing_or_touching_the_wake_up(harness, page, schedule,
                                                                          health):
     at_finish(harness)
-    health.results += [(ops.FAIL, "Claude", "call failed")]
+    health.results += [(ops.FAIL, "claude", "Claude", "call failed")]
     finish(page.url)
     assert finished(page.url)["result"] == "not-done"
     loads, dialogs = list(schedule.loads), list(schedule.dialogs)
@@ -4529,7 +4557,7 @@ def test_check_again_rechecks_without_installing_or_touching_the_wake_up(harness
 
 def test_check_again_keeps_saying_what_s_still_missing(harness, page, schedule, health):
     at_finish(harness)
-    health.results += [(ops.FAIL, "Claude", "call failed")]
+    health.results += [(ops.FAIL, "claude", "Claude", "call failed")]
     finish(page.url)
     finished(page.url)
 
@@ -5057,8 +5085,9 @@ def test_on_windows_the_command_says_the_powershell_window_can_be_closed(monkeyp
 def test_finish_names_windows_sign_in_after_updates_and_leaves_wake_timers_to_its_outcome(
         harness, page, schedule, health):
     at_finish(harness)
-    health.results += [(ops.WARN, "Wake", "Allow wake timers is off, so the PC doesn't wake"),
-                       (ops.WARN, "Sign-in after updates", "nobody is signed in after an update")]
+    health.results += [(ops.WARN, "wake", "Wake", "Allow wake timers is off, so the PC doesn't wake"),
+                       (ops.WARN, "sign-in-after-update", "Sign-in after updates",
+                        "nobody is signed in after an update")]
 
     finish(page.url)
     out = finished(page.url)

@@ -412,7 +412,7 @@ def whatsapp_check(harness) -> ops.Check:
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text(yaml.safe_dump(harness.config, allow_unicode=True))
     results = ops.health_checks(str(config), skip_llm=True, show=True, schedule=False)
-    [check] = [c for c in results if c.item == "WhatsApp"]
+    [check] = [c for c in results if c.key == "whatsapp"]
     return check
 
 
@@ -495,9 +495,39 @@ def test_the_bg_job_sends_each_whatsapp_check_as_one_line_of_json(harness, monke
 
     [line] = capsys.readouterr().out.splitlines()
     assert json.loads(line) == {
-        "status": ops.WARN, "item": "WhatsApp", "reason": "missing-groups", "groups": ["Leo piano"],
+        "status": ops.WARN, "key": "whatsapp", "item": "WhatsApp", "reason": "missing-groups",
+        "groups": ["Leo piano"], "subject": None,
         "detail": "readable, but these group names aren't on this Mac (renamed, or a new group for "
                   'the new school year?): ["Leo piano"]'}
+
+
+# ── Each check's key, which the setup page goes by instead of doctor's words (#414)
+
+
+def test_no_two_checks_share_a_key():
+    keys = [key for key, _ in ops.CHECK_ITEMS]
+
+    assert len(keys) == len(set(keys))
+
+
+def test_a_check_keeps_its_key_whatever_language_or_kid_it_is_about(harness, nothing_loaded,
+                                                                     monkeypatch):
+    from family_brief.collectors import myclub
+    harness.config["email"]["to"] = [{"address": "parent@example.com", "language": "zh"},
+                                     {"address": "partner@example.com", "language": "fi"}]
+    for kid in harness.config["kids"]:
+        kid["myclub_ical_url"] = f"https://example.myclub.fi/ical/{kid['name']}.ics"
+    monkeypatch.setattr(myclub, "download", lambda url: "BEGIN:VEVENT")
+    config = harness.home / ".family" / "config.yaml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+
+    results = ops.health_checks(str(config), skip_llm=True)
+
+    about = [(c.key, c.subject, c.item) for c in results if c.subject is not None]
+    assert about == [("language", "zh", "Language zh"), ("language", "fi", "Language fi"),
+                     ("myclub", "Mia", "MyClub (Mia)"), ("myclub", "Leo", "MyClub (Leo)")]
+    assert {c.key for c in results} <= dict(ops.CHECK_ITEMS).keys()
 
 
 def test_discover_without_whatsapp_access_points_to_bg(harness, monkeypatch, capsys):

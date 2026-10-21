@@ -109,21 +109,22 @@ SENDER_DAYS = 60
 # Check: the health check run once the check page is confirmed, and how it ended. Warnings alone
 # don't hold setup up.
 HEALTH_RESULTS = ("checking", "ok", "not-ok", "no-check")
-# Doctor's checks as the check page names them, by the name doctor gives each. A language's and
-# a Kid's MyClub check carry the language or the Kid too. Any other is `other`.
-HEALTH_CHECKS = {"Config file": "config", "Recipients": "recipients", "Language": "language",
-                 "Gmail": "gmail", "Claude": "ai", "Codex": "ai", "AI gateway": "gateway",
-                 "Gateway Key": "gateway", "Wilma": "wilma",
-                 "WhatsApp": "whatsapp", "MyClub": "myclub", "Calendar": "calendar",
-                 "Pilot feedback": "feedback", "Weekend Picks": "weekend"}
+# Doctor's checks as the check page names them, by the key doctor gives each, never its words.
+# Any other is `other`.
+HEALTH_CHECKS = {"config": "config", "recipients": "recipients", "language": "language",
+                 "gmail": "gmail", "claude": "ai", "codex": "ai", "gateway": "gateway",
+                 "gateway-key": "gateway", "wilma": "wilma", "whatsapp": "whatsapp",
+                 "whatsapp-python": "whatsapp", "myclub": "myclub", "calendar": "calendar",
+                 "feedback": "feedback", "weekend": "weekend"}
+# A language's and a Kid's MyClub check carry the language or the Kid too, from their subject.
+HEALTH_SUBJECTS = {"language": "language", "myclub": "kid"}
 # The scheduled job's checks, which aren't run before Finish installs it; Windows adds the last two.
-SCHEDULE_CHECKS = frozenset({"Schedule", "Last run", "Python path", "Wake",
-                             "Sign-in after updates"})
+SCHEDULE_CHECKS = frozenset({"schedule", "last-run", "python-path", "wake", "sign-in-after-update"})
 # Doctor's checks as Finish names them, with the scheduled job's. Python path is always OK, and
 # Windows' Wake check says what the wake outcome does, so Finish leaves it out.
-FINISH_CHECKS = {**HEALTH_CHECKS, "Schedule": "schedule", "Last run": "last-run",
-                 "Sign-in after updates": "sign-in-after-update"}
-FINISH_LEAVES_OUT = frozenset({"Wake"})
+FINISH_CHECKS = {**HEALTH_CHECKS, "schedule": "schedule", "last-run": "last-run",
+                 "sign-in-after-update": "sign-in-after-update"}
+FINISH_LEAVES_OUT = frozenset({"wake"})
 HEALTH_STATUSES = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
 # First Brief: the real Brief made through a bg job, which reads WhatsApp with the scheduled job's
 # permission, without sending it: `making` while it's made, with the Source it's reading or
@@ -876,7 +877,7 @@ class SetupServer:
     def _run_health_check(self) -> None:
         try:
             results = ops.health_checks(str(self.config), schedule=False)
-            checks = [_health_check(c) for c in results if c.item not in SCHEDULE_CHECKS]
+            checks = [_health_check(c) for c in results if c.key not in SCHEDULE_CHECKS]
             if any(c["status"] == "fail" for c in checks):
                 done = {"result": "not-ok", "checks": checks}
             else:
@@ -1577,24 +1578,22 @@ def _health_check(check: ops.Check, names: dict[str, str] = HEALTH_CHECKS) -> di
     """One of doctor's checks as the check page shows it, or Finish with its own `names`,
     without its details: with why it isn't OK, where doctor says, and the groups that's about,
     whose names the check page shows anyway."""
-    out: dict[str, Any] = {"status": HEALTH_STATUSES.get(check.status, "warn")}
-    name, _, rest = check.item.partition(" ")
-    if name == "Language" and rest:
-        return {"check": "language", **out, "language": rest}
-    if name == "MyClub" and rest.startswith("(") and rest.endswith(")"):
-        return {"check": "myclub", **out, "kid": rest[1:-1]}
+    out: dict[str, Any] = {"check": names.get(check.key, "other"),
+                           "status": HEALTH_STATUSES.get(check.status, "warn")}
+    if check.key in HEALTH_SUBJECTS and check.subject is not None:
+        out[HEALTH_SUBJECTS[check.key]] = check.subject
     if check.reason:
         out["reason"] = check.reason
     if check.groups:
         out["groups"] = list(check.groups)
-    return {"check": names.get(check.item, "other"), **out}
+    return out
 
 
 def _finish_outcome(o: setup_status.Outcome) -> dict[str, Any]:
     """An outcome as Finish shows it, without its reason, which can name an address: whether
     it's true, and for a health check that isn't, the checks that aren't OK."""
     out: dict[str, Any] = {"outcome": o.outcome, "ok": o.ok}
-    checks = [c for c in o.checks if c.item not in FINISH_LEAVES_OUT]
+    checks = [c for c in o.checks if c.key not in FINISH_LEAVES_OUT]
     if checks:
         out["checks"] = [_health_check(c, FINISH_CHECKS) for c in checks]
     return out

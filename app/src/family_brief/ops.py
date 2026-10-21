@@ -40,15 +40,32 @@ FULL_DISK_ACCESS_URL = "x-apple.systempreferences:com.apple.preference.security?
 CODEX_STATUS_SECONDS = 20
 
 
+# Each of doctor's checks: its key, which the setup page goes by and stays the same whatever the
+# check's words, and the item doctor prints, with `{}` for the subject it's about.
+CHECK_ITEMS = (
+    ("config", "Config file"), ("recipients", "Recipients"), ("language", "Language {}"),
+    ("gmail", "Gmail"), ("claude", "Claude"), ("codex", "Codex"), ("gateway", "AI gateway"),
+    ("gateway-key", "Gateway Key"), ("wilma", "Wilma"), ("whatsapp", "WhatsApp"),
+    ("whatsapp-python", "WhatsApp"), ("myclub", "MyClub ({})"), ("calendar", "Calendar"),
+    ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"), ("schedule", "Schedule"),
+    ("last-run", "Last run"), ("python-path", "Python path"), ("wake", "Wake"),
+    ("sign-in-after-update", "Sign-in after updates"),
+)
+_ITEMS = dict(CHECK_ITEMS)
+
+
 class Check(NamedTuple):
-    """One of doctor's checks. doctor prints its status, item and detail. A WhatsApp check that
-    isn't OK can also have a `reason` from WHATSAPP_REASONS, and `groups` names the groups a
-    missing-groups reason is about."""
+    """One of doctor's checks. doctor prints its status, item and detail; `key` names the check
+    and `subject` what it's about, such as a language or a Kid. A WhatsApp check that isn't OK can
+    also have a `reason` from WHATSAPP_REASONS, and `groups` names the groups a missing-groups
+    reason is about."""
     status: str
+    key: str
     item: str
     detail: str
     reason: str | None = None
     groups: tuple[str, ...] = ()
+    subject: str | None = None
 
 
 def register(sub) -> None:
@@ -114,9 +131,10 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
     scheduled job's checks are left out, for before it's installed."""
     results: list[Check] = []
 
-    def add(status: str, item: str, detail: str, reason: str | None = None,
-            groups: list[str] | tuple[str, ...] = ()) -> None:
-        results.append(Check(status, item, detail, reason, tuple(groups)))
+    def add(status: str, key: str, detail: str, reason: str | None = None,
+            groups: list[str] | tuple[str, ...] = (), subject: str | None = None) -> None:
+        item = _ITEMS[key].format(subject)
+        results.append(Check(status, key, item, detail, reason, tuple(groups), subject))
         if show:
             print(f"{status} {item}: {detail}", flush=True)
 
@@ -124,19 +142,19 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
     try:
         cfg = Config.load(config)
     except Exception as e:
-        add(FAIL, "Config file", f"couldn't read {cfg_path}: {e}")
+        add(FAIL, "config", f"couldn't read {cfg_path}: {e}")
         return results
     if whatsapp_only:
         _check_whatsapp(cfg, add, config)
         return results
-    add(OK, "Config file", f"{cfg_path}, {len(cfg.kids)} kids, "
+    add(OK, "config", f"{cfg_path}, {len(cfg.kids)} kids, "
         f"Brief goes to {', '.join(r.address for r in cfg.email.to) or '(no recipients set)'}")
     if not cfg.email.to:
-        add(FAIL, "Recipients", "email.to is empty, so nobody gets the Brief")
+        add(FAIL, "recipients", "email.to is empty, so nobody gets the Brief")
     weekend = cfg.weekend_events.enabled
     for language in dict.fromkeys([*cfg.brief_languages(), *(cfg.weekend_languages() if weekend else [])]):
         ready, detail = languages.describe(cfg, language, languages.TABLES if weekend else (languages.BRIEF,))
-        add(OK if ready else WARN, f"Language {language}", detail)
+        add(OK if ready else WARN, "language", detail, subject=language)
 
     _check_gmail(cfg, add)
     if not skip_llm:
@@ -167,40 +185,40 @@ def _check_gmail(cfg: Config, add) -> None:
     from .collectors import gmail
     username = cfg.gmail.username or (cfg.kids[0].wilma_username if cfg.kids else None)
     if not username:
-        add(FAIL, "Gmail", "no gmail.username in the config")
+        add(FAIL, "gmail", "no gmail.username in the config")
         return
     from .system import secrets
     try:
         password = gmail.get_app_password(username)
     except secrets.SecretsError as e:
         if e.reason == "needs-prompt":
-            add(FAIL, "Gmail", f"the App Password for {username} is in the Keychain, but macOS "
+            add(FAIL, "gmail", f"the App Password for {username} is in the Keychain, but macOS "
                 f"asks for the Keychain password before reading it, which the evening Brief can't "
                 "answer (store it again with parent-recap setup gmail, or the setup page's Gmail "
                 "step)")
         else:
-            add(FAIL, "Gmail", f"couldn't read the App Password for {username} from the Keychain: {e}")
+            add(FAIL, "gmail", f"couldn't read the App Password for {username} from the Keychain: {e}")
         return
     if not password:
-        add(FAIL, "Gmail", f"No App Password in the Keychain for {username} "
+        add(FAIL, "gmail", f"No App Password in the Keychain for {username} "
             "(store one with parent-recap setup gmail)")
         return
     try:
         if cfg.gmail_only_sends():
             gmail.sign_in(cfg)
-            add(OK, "Gmail", f"{username} signed in; no sender is ticked, so Gmail only sends the "
+            add(OK, "gmail", f"{username} signed in; no sender is ticked, so Gmail only sends the "
                 "Brief, and the other Sources bring the news")
             return
         if not (cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders):
-            add(FAIL, "Gmail", "the sender allowlist is empty (allowlist_domains / allowlist_senders)")
+            add(FAIL, "gmail", "the sender allowlist is empty (allowlist_domains / allowlist_senders)")
             return
         n = gmail.count_matching(cfg)
         # Gmail's search only filters by whole days; run() trims to lookback_hours afterwards.
         days = -(-cfg.gmail.lookback_hours // 24)
-        add(OK, "Gmail", f"{username} signed in, {n} allowlisted emails in the last {days} days"
+        add(OK, "gmail", f"{username} signed in, {n} allowlisted emails in the last {days} days"
             f" (the Brief only takes the last {cfg.gmail.lookback_hours} hours of them)")
     except Exception as e:
-        add(FAIL, "Gmail", f"IMAP login failed: {e} "
+        add(FAIL, "gmail", f"IMAP login failed: {e} "
             "(the App Password may have been revoked; create a new one and store it again)")
 
 
@@ -225,29 +243,29 @@ def _check_gateway(cfg: Config, add) -> None:
         key, missing = "", str(e)
     outcome, detail = gateway.test_call(url, key, timeout=120)
     if outcome == gateway.NO_ANSWER:
-        add(FAIL, "AI gateway", f"no answer from {url}: {detail} (check the Mac is online and "
+        add(FAIL, "gateway", f"no answer from {url}: {detail} (check the Mac is online and "
             "llm.gateway_url in the config)")
     else:
-        add(OK, "AI gateway", f"answers at {url}")
+        add(OK, "gateway", f"answers at {url}")
     if missing:
-        add(FAIL, "Gateway Key", f"{missing}, so the evening Brief can't call the gateway")
+        add(FAIL, "gateway-key", f"{missing}, so the evening Brief can't call the gateway")
     elif outcome == gateway.WORKS:
-        add(OK, "Gateway Key", "works, test call succeeded")
+        add(OK, "gateway-key", "works, test call succeeded")
     elif outcome == gateway.UNKNOWN:
-        add(FAIL, "Gateway Key", "the gateway doesn't know this Gateway Key, or it was revoked "
+        add(FAIL, "gateway-key", "the gateway doesn't know this Gateway Key, or it was revoked "
             f"(ask the Parent Recap maintainers for a new one and store it with {gateway.SETUP})")
     elif outcome == gateway.SPENT:
-        add(WARN, "Gateway Key", "works, but has used up today's budget, so the gateway takes no "
+        add(WARN, "gateway-key", "works, but has used up today's budget, so the gateway takes no "
             "more calls with it until tomorrow")
     elif outcome == gateway.FAILED:
-        add(FAIL, "Gateway Key", f"test call failed: {detail}")
+        add(FAIL, "gateway-key", f"test call failed: {detail}")
 
 
 def _check_codex(cfg: Config, add) -> None:
     from .summarize import call_llm_json, codex_missing, find_codex
     codex = find_codex(cfg)
     if not codex:
-        add(FAIL, "Codex", f"codex command not found: {codex_missing()}, or set llm.codex_path in "
+        add(FAIL, "codex", f"codex command not found: {codex_missing()}, or set llm.codex_path in "
             "the config")
         return
     # On Windows the setup page installs the CLI on its own, with no Codex app to sign in from.
@@ -256,19 +274,19 @@ def _check_codex(cfg: Config, add) -> None:
                if sys.platform == "win32" else
                "open the Codex app and sign in again with your ChatGPT account")
     if _codex_signed_out(codex):
-        add(FAIL, "Codex", f"not signed in ({sign_in})")
+        add(FAIL, "codex", f"not signed in ({sign_in})")
         return
     try:
         data = call_llm_json(cfg, 'Reply with only this JSON: {"ok": true}',
                              "This is a connectivity test.", timeout=120, budget=0)
     except Exception as e:
-        add(FAIL, "Codex", f"call failed: {str(e)[:200]} (if you're signed out, {sign_in}. "
+        add(FAIL, "codex", f"call failed: {str(e)[:200]} (if you're signed out, {sign_in}. "
             "ChatGPT Free and Go can't use the Codex CLI; it needs Plus or higher)")
         return
     if data.get("ok") is True:
-        add(OK, "Codex", f"call succeeded ({codex})")
+        add(OK, "codex", f"call succeeded ({codex})")
     else:
-        add(FAIL, "Codex", f"reachable, but the reply has the wrong shape: {str(data)[:80]}")
+        add(FAIL, "codex", f"reachable, but the reply has the wrong shape: {str(data)[:80]}")
 
 
 def _codex_signed_out(codex: str) -> bool:
@@ -290,12 +308,12 @@ def _check_claude(add) -> None:
     windows = sys.platform == "win32"
     claude = find_claude()
     if not claude and windows:
-        add(FAIL, "Claude", "claude command not found on PATH or in %USERPROFILE%\\.local\\bin "
+        add(FAIL, "claude", "claude command not found on PATH or in %USERPROFILE%\\.local\\bin "
             "(install Claude Code on the setup page, or in PowerShell with: "
             f"{claude_install()})")
         return
     if not claude:
-        add(FAIL, "Claude", "claude command not found on PATH, in ~/.local/bin or the other usual "
+        add(FAIL, "claude", "claude command not found on PATH, in ~/.local/bin or the other usual "
             f"folders, or by your login shell (install Claude Code with: {claude_install()})")
         return
     from .setup_steps import PLAIN_TERMINAL
@@ -304,36 +322,36 @@ def _check_claude(add) -> None:
     where = "" if secrets.reachable() else f", {PLAIN_TERMINAL}"
     if label == "inherited" and windows:
         # `setup claude`'s dialog is the Mac's: on Windows the token is pasted into the page.
-        add(FAIL, "Claude", "no Claude token in Credential Manager, so the evening Brief can't "
+        add(FAIL, "claude", "no Claude token in Credential Manager, so the evening Brief can't "
             "call Claude (sign in to Claude on the setup page: paste the install line into "
             "PowerShell again)")
         return
     if label == "inherited":
         # This shell's own sign-in can work while the evening job, which has none, can't.
-        add(FAIL, "Claude", "no claude-oauth-token in the Keychain, so the evening Brief can't "
+        add(FAIL, "claude", "no claude-oauth-token in the Keychain, so the evening Brief can't "
             f"call Claude (store one with parent-recap setup claude{where})")
         return
     if label == "keychain-needs-prompt":
         # Stored by an earlier version, so it trusts that version's Python and not security.
-        add(FAIL, "Claude", "the Claude token is in the Keychain, but macOS asks for the Keychain "
+        add(FAIL, "claude", "the Claude token is in the Keychain, but macOS asks for the Keychain "
             "password before reading it, which the evening Brief can't answer (store it again "
             f"with parent-recap setup claude{where})")
         return
     error = claude_test_call(claude, env)
     if error is not None:
-        add(FAIL, "Claude", f"call failed (auth: {label}): {error[:120]}")
+        add(FAIL, "claude", f"call failed (auth: {label}): {error[:120]}")
     else:
-        add(OK, "Claude", f"call succeeded (auth: {label})")
+        add(OK, "claude", f"call succeeded (auth: {label})")
 
 
 def _check_wilma(cfg: Config, add) -> None:
     from .collectors.wilma import NOT_INSTALLED, _run_or_log
     if own_node.wilma() is None:
-        add(FAIL, "Wilma", NOT_INSTALLED)
+        add(FAIL, "wilma", NOT_INSTALLED)
         return
     data = _run_or_log(["kids", "list"])
     if data is None:
-        add(FAIL, "Wilma", "wilma kids list failed: not signed in yet, or the password changed "
+        add(FAIL, "wilma", "wilma kids list failed: not signed in yet, or the password changed "
             "(sign in again: parent-recap setup wilma)")
         return
     items = data if isinstance(data, list) else (data.get("kids") or data.get("students") or [])
@@ -342,10 +360,10 @@ def _check_wilma(cfg: Config, add) -> None:
     missing = [n for n in names if n not in configured]
     detail = f"signed in, students in Wilma: {', '.join(names) or '(none)'}"
     if missing:
-        add(WARN, "Wilma", detail + f"; {', '.join(missing)} don't match any Kid name in the config, "
+        add(WARN, "wilma", detail + f"; {', '.join(missing)} don't match any Kid name in the config, "
             "so their messages may go to the wrong Kid")
     else:
-        add(OK, "Wilma", detail)
+        add(OK, "wilma", detail)
     # From 2.0 the CLI signs in with every saved profile, so a stale one fails every evening. The
     # evening run doesn't put that in the Brief when the profile is for none of the Kids.
     from . import setup_wilma
@@ -353,7 +371,7 @@ def _check_wilma(cfg: Config, add) -> None:
     kids = {k.name.casefold() for k in cfg.kids}
     for p in signins if len(signins) > 1 else []:
         if not setup_wilma.for_the_household(p, kids):
-            add(WARN, "Wilma", f"the wilma CLI also signs in as {p.get('username')} at "
+            add(WARN, "wilma", f"the wilma CLI also signs in as {p.get('username')} at "
                 f"{p.get('tenantName') or p.get('tenantUrl')} every evening, a sign-in setup didn't "
                 "make, for none of the Kids, so the Brief doesn't say when it fails. If it's no "
                 f"longer used, remove it: wilma accounts remove {p.get('username')}")
@@ -369,43 +387,43 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
             code, out = jobs.run_detached(["doctor", "--whatsapp-only"], 180, config=config,
                                           echo=False)
         except Exception as e:
-            add(WARN, "WhatsApp", f"this process can't read WhatsApp, and the background check "
+            add(WARN, "whatsapp", f"this process can't read WhatsApp, and the background check "
                 f"didn't start ({e}). Run parent-recap bg doctor to confirm", "not-finished")
             return
-        checks = [c for c in _job_checks(out) if c.item == "WhatsApp"]
+        checks = [c for c in _job_checks(out) if c.key == "whatsapp"]
         if not checks and code == jobs.TIMED_OUT:
-            add(FAIL, "WhatsApp", "the background check didn't finish within 180 seconds and was "
+            add(FAIL, "whatsapp", "the background check didn't finish within 180 seconds and was "
                 "stopped (check that WhatsApp for Mac opens and shows the chats, then run doctor "
                 "again)", "not-finished")
             return
         if not checks:
-            add(FAIL, "WhatsApp", f"the background check gave no result (exit code {code}): "
+            add(FAIL, "whatsapp", f"the background check gave no result (exit code {code}): "
                 f"{out.strip()[-200:]}", "not-finished")
             return
         for c in checks:
-            add(c.status, "WhatsApp", c.detail + " (checked with the scheduled job's Python)",
+            add(c.status, "whatsapp", c.detail + " (checked with the scheduled job's Python)",
                 c.reason, c.groups)
         return
     if err == whatsapp.NO_ACCESS:
         python = os.path.realpath(sys.executable)
-        add(FAIL, "WhatsApp", f"the scheduled job's Python {python} can't read WhatsApp: add it "
+        add(FAIL, "whatsapp", f"the scheduled job's Python {python} can't read WhatsApp: add it "
             f"to Full Disk Access {FULL_DISK_ACCESS_WHERE}", "no-access")
         return
     if err:
-        add(FAIL, "WhatsApp", err)
+        add(FAIL, "whatsapp", err)
         return
     try:
         known = {g["name"] for g in whatsapp.list_groups(days=3650)}
     except Exception as e:
-        add(FAIL, "WhatsApp", f"couldn't list the groups: {e}", "list-failed")
+        add(FAIL, "whatsapp", f"couldn't list the groups: {e}", "list-failed")
         return
     missing = [c.name for c in cfg.whatsapp.chats if c.name not in known]
     if missing:
-        add(WARN, "WhatsApp", "readable, but these group names aren't on this Mac (renamed, or a "
+        add(WARN, "whatsapp", "readable, but these group names aren't on this Mac (renamed, or a "
             f"new group for the new school year?): {json.dumps(missing, ensure_ascii=False)}",
             "missing-groups", missing)
     else:
-        add(OK, "WhatsApp", f"readable, all {len(cfg.whatsapp.chats)} configured groups found")
+        add(OK, "whatsapp", f"readable, all {len(cfg.whatsapp.chats)} configured groups found")
 
 
 def _job_checks(out: str) -> list[Check]:
@@ -415,8 +433,8 @@ def _job_checks(out: str) -> list[Check]:
     for line in out.splitlines():
         try:
             c = json.loads(line)
-            checks.append(Check(c["status"], c["item"], c["detail"], c.get("reason"),
-                                tuple(c.get("groups") or ())))
+            checks.append(Check(c["status"], c["key"], c["item"], c["detail"], c.get("reason"),
+                                tuple(c.get("groups") or ()), c.get("subject")))
         except (ValueError, KeyError, TypeError):
             continue
     return checks
@@ -429,16 +447,16 @@ def _check_whatsapp_python(add) -> None:
     job = _evening_job_python()
     if not os.path.exists(job):
         here = os.path.realpath(sys.executable)
-        add(FAIL, "WhatsApp", f"the evening job's Python {job} points at nothing, so the "
+        add(FAIL, "whatsapp-python", f"the evening job's Python {job} points at nothing, so the "
             "evening job can't start and the Python given Full Disk Access to read WhatsApp is no "
             "longer the evening job's Python: run parent-recap schedule install to give it this "
             f"Python, then add {here} to Full Disk Access {FULL_DISK_ACCESS_WHERE}")
         return
     granted, real = whatsapp_python.granted(), os.path.realpath(job)
     if granted and granted != real:
-        add(WARN, "WhatsApp", f"the Python given Full Disk Access to read WhatsApp, {granted}, is "
-            f"no longer the evening job's Python, which is now {real}: add {real} to Full Disk "
-            f"Access {FULL_DISK_ACCESS_WHERE}")
+        add(WARN, "whatsapp-python", "the Python given Full Disk Access to read WhatsApp, "
+            f"{granted}, is no longer the evening job's Python, which is now {real}: add {real} "
+            f"to Full Disk Access {FULL_DISK_ACCESS_WHERE}")
 
 
 def _evening_job_python() -> str:
@@ -452,55 +470,55 @@ def _check_myclub(kid: str, url: str, add) -> None:
     try:
         text = myclub.download(url)
         n = text.count("BEGIN:VEVENT")
-        add(OK, f"MyClub ({kid})", f"subscription link works, {n} events in the calendar")
+        add(OK, "myclub", f"subscription link works, {n} events in the calendar", subject=kid)
     except Exception as e:
-        add(FAIL, f"MyClub ({kid})", f"subscription link doesn't open: {e} (save a new one with "
-            f"parent-recap setup myclub --kid {shlex.quote(kid)})")
+        add(FAIL, "myclub", f"subscription link doesn't open: {e} (save a new one with "
+            f"parent-recap setup myclub --kid {shlex.quote(kid)})", subject=kid)
 
 
 def _check_calendar(cfg: Config, add) -> None:
     from .actions import calendar as cal
     mode = cfg.google_calendar.mode
     if mode == "off":
-        add(OK, "Calendar", "off, email only")
+        add(OK, "calendar", "off, email only")
     elif mode == "ics":
-        add(OK, "Calendar", "ics mode: new events come as an .ics attachment on the Brief email, "
+        add(OK, "calendar", "ics mode: new events come as an .ics attachment on the Brief email, "
             "one tap adds them to your calendar")
     else:
         if not google_packages.installed():
-            add(FAIL, "Calendar", "google mode, but Google's packages for it aren't installed "
+            add(FAIL, "calendar", "google mode, but Google's packages for it aren't installed "
                 "(run the plugin's install.sh again, which installs them for google mode)")
             return
         if not cal.is_configured():
-            add(FAIL, "Calendar", "google mode, but not authorized yet "
+            add(FAIL, "calendar", "google mode, but not authorized yet "
                 "(run scripts/setup_google_calendar.py)")
             return
         try:
             n = len(cal.get_upcoming_events(cfg, 7))
             invite = cfg.google_calendar.invite_attendees
-            add(OK, "Calendar", f"Google Calendar authorization works, {n} events in the next 7 days"
+            add(OK, "calendar", f"Google Calendar authorization works, {n} events in the next 7 days"
                 + (f"; new events invite {', '.join(invite)}" if invite else ""))
         except Exception as e:
             msg = str(e)
             if "invalid_grant" in msg or "expired" in msg or "revoked" in msg:
-                add(FAIL, "Calendar", "Google Calendar authorization expired or was revoked; "
+                add(FAIL, "calendar", "Google Calendar authorization expired or was revoked; "
                     "run scripts/setup_google_calendar.py again")
             else:
-                add(FAIL, "Calendar", f"Google Calendar call failed: {msg[:120]}")
+                add(FAIL, "calendar", f"Google Calendar call failed: {msg[:120]}")
 
 
 def _check_feedback(cfg: Config, add) -> None:
     fb = cfg.feedback
     if not fb.active():
-        add(WARN, "Pilot feedback", "feedback is on but prefill_base_url or fields is missing, so the "
+        add(WARN, "feedback", "feedback is on but prefill_base_url or fields is missing, so the "
             "Brief has no ⭐/❌ links (turn it on again with parent-recap setup save <<< "
             "'{\"feedback\": {\"enabled\": true}}', which writes the pilot form this version ships)")
     elif not fb.household_label:
         # One Form serves every pilot Household; without a label their rows can't be told apart.
-        add(WARN, "Pilot feedback", "feedback.household_label is empty, so the feedback sheet "
+        add(WARN, "feedback", "feedback.household_label is empty, so the feedback sheet "
             "can't tell which Household a row came from (set one with parent-recap setup save)")
     else:
-        add(OK, "Pilot feedback", f"the Brief has ⭐/❌ links, Household label {fb.household_label}")
+        add(OK, "feedback", f"the Brief has ⭐/❌ links, Household label {fb.household_label}")
 
 
 def _check_weekend(add) -> None:
@@ -508,9 +526,9 @@ def _check_weekend(add) -> None:
     try:
         r = requests.get("https://api.hel.fi/linkedevents/v1/event/?page_size=1", timeout=15)
         r.raise_for_status()
-        add(OK, "Weekend Picks", "Linked Events API is reachable")
+        add(OK, "weekend", "Linked Events API is reachable")
     except Exception as e:
-        add(FAIL, "Weekend Picks", f"Linked Events API isn't reachable: {e}")
+        add(FAIL, "weekend", f"Linked Events API isn't reachable: {e}")
 
 
 def _check_schedule(cfg: Config, add) -> None:
@@ -521,15 +539,15 @@ def _check_schedule(cfg: Config, add) -> None:
     unloaded = [jobs.system_name(j) for j in missing if j in waiting]
     uninstalled = [jobs.system_name(j) for j in missing if j not in waiting]
     if uninstalled:
-        add(WARN, "Schedule", f"not installed yet: {', '.join(uninstalled)} "
+        add(WARN, "schedule", f"not installed yet: {', '.join(uninstalled)} "
             "(run parent-recap schedule install)")
     if unloaded:
-        add(WARN, "Schedule", f"installed but not loaded for this login: {', '.join(unloaded)}. "
+        add(WARN, "schedule", f"installed but not loaded for this login: {', '.join(unloaded)}. "
             "The evening job only runs while you're logged in to the Mac (an SSH login doesn't "
             "count, so over SSH this is expected): after a restart, log in once or turn on "
             "automatic login, see \"No Brief after the Mac restarted\" in docs/troubleshooting.md")
     if not missing:
-        add(OK, "Schedule", f"runs every day at {cfg.schedule.daily_hour:02d}:{cfg.schedule.daily_minute:02d}"
+        add(OK, "schedule", f"runs every day at {cfg.schedule.daily_hour:02d}:{cfg.schedule.daily_minute:02d}"
             + (", Weekend Picks once every Friday" if cfg.weekend_events.enabled else ""))
     last = State(cfg.resolved_state_path()).last_run_at
     if last:
@@ -537,10 +555,10 @@ def _check_schedule(cfg: Config, add) -> None:
         status = OK if hours < 30 else WARN
         why = ("the Mac may be asleep, consider a pmset wake-up" if sys.platform == "darwin" else
                "the PC may have been asleep, signed out or off")
-        add(status, "Last run", f"{hours:.0f} hours ago" + ("" if hours < 30 else
+        add(status, "last-run", f"{hours:.0f} hours ago" + ("" if hours < 30 else
             f" (no run for over a day; {why})"))
     if macos_only.offers("whatsapp"):
-        add(OK, "Python path", f"{os.path.realpath(sys.executable)} "
+        add(OK, "python-path", f"{os.path.realpath(sys.executable)} "
             "(this is the path WhatsApp needs under Full Disk Access)")
 
 
@@ -560,22 +578,22 @@ def _check_wake_timers(cfg: Config, add) -> None:
     hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
     # On Windows `set` only reads the family's own setting, and changes nothing.
     status, words = _wake_timers(wake.set(hour, minute, False), hour, minute)
-    add(status, "Wake", words)
+    add(status, "wake", words)
 
 
 def _check_sign_in_after_update(add) -> None:
     """The evening job runs only while the family is signed in (ADR 0021), and nobody is after
     Windows restarts for an update unless it signs them back in."""
-    item, setting = "Sign-in after updates", windows_only.SIGN_IN_SETTING
+    key, setting = "sign-in-after-update", windows_only.SIGN_IN_SETTING
     on = windows_only.signs_back_in_after_update()
     if on:
-        add(OK, item, "Windows signs you back in after it restarts for an update, so the "
+        add(OK, key, "Windows signs you back in after it restarts for an update, so the "
             "evening run still happens")
     elif on is False:
-        add(WARN, item, "after Windows restarts for an update nobody is signed in, so that "
+        add(WARN, key, "after Windows restarts for an update nobody is signed in, so that "
             f"night's Brief waits until someone signs in. Turn on {setting}")
     else:
-        add(WARN, item, "couldn't tell whether Windows signs you back in after it restarts for an "
+        add(WARN, key, "couldn't tell whether Windows signs you back in after it restarts for an "
             "update. If it doesn't, that night's Brief waits until someone signs in: check that "
             f"this is on: {setting}")
 
