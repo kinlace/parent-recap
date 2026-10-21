@@ -14,7 +14,7 @@ from family_brief import sources
 from family_brief.collectors.base import CalendarEvent, Collected
 
 
-def school_app(h, monkeypatch: pytest.MonkeyPatch, counts_events: bool) -> list[int]:
+def school_app(monkeypatch: pytest.MonkeyPatch, counts_events: bool) -> list[int]:
     """Registers a fifth Source, SchoolApp, whose config section is its own; returns the lookback
     each of its collections ran with."""
     window = SimpleNamespace(lookback_hours=26)
@@ -48,7 +48,7 @@ def caught_up_hours_ago(h, source: str, hours: int) -> None:
                          ids=["messages", "events"])
 def test_a_source_added_to_the_registry_is_read_counted_and_caught_up(harness, monkeypatch,
                                                                      counts_events, counted):
-    looked_back = school_app(harness, monkeypatch, counts_events)
+    looked_back = school_app(monkeypatch, counts_events)
     normal_night(harness, "en")
     caught_up_hours_ago(harness, "schoolapp", 50)  # it failed two nights ago
 
@@ -62,7 +62,7 @@ def test_a_source_added_to_the_registry_is_read_counted_and_caught_up(harness, m
 
 
 def test_the_lookback_override_reaches_a_source_added_to_the_registry(harness, monkeypatch):
-    looked_back = school_app(harness, monkeypatch, counts_events=False)
+    looked_back = school_app(monkeypatch, counts_events=False)
     normal_night(harness, "en")
 
     assert harness.run("--lookback-hours", "72") == 0

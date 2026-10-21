@@ -113,7 +113,7 @@ def _problem(err: str) -> Literal["unreadable", "permission", "login", "other"]:
 
 def _short_reason(source: str, err: str, t: BriefText) -> str:
     record = source_registry.named(source)
-    permission = getattr(t, record.permission_text if record else "permission_denied")
+    permission = record.permission_lacked(t) if record else t.permission_denied
     return {"unreadable": t.message_unreadable,  # without the Message's id and the error, which are for the log
             "permission": permission,
             "login": t.login_failed}.get(_problem(err)) or err.splitlines()[0][:60]

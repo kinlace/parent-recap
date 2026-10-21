@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from .brief_text import BriefText
     from .collectors.base import Collected
     from .config import Config
     from .state import State
@@ -32,7 +33,7 @@ class Source:
     collect: Callable[[Config, State, list[str]], Collected]  # reads it, given the Kids' terms
     counts_events: bool = False         # the coverage line counts its events rather than its Messages
     lookback: Callable[[Config], Window] | None = None  # its section with lookback_hours, if any
-    permission_text: str = "permission_denied"  # the BriefText line for a permission it lacks
+    permission_lacked: Callable[[BriefText], str] = lambda t: t.permission_denied  # the Brief's reason
     macos_only: bool = False            # read only on macOS (system/macos_only.py, ADR 0020)
     sender_domain: str | None = None    # the domain of the mail it sends of its own news (#361)
 
@@ -73,7 +74,7 @@ WILMA = Source("wilma", _same_everywhere("Wilma"), lambda cfg: cfg.wilma.enabled
 WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"),
                   lambda cfg: cfg.whatsapp.enabled and bool(cfg.whatsapp.chats),
                   skippable=True, connect_rank=3, collect=_collector("whatsapp"),
-                  lookback=lambda cfg: cfg.whatsapp, permission_text="whatsapp_permission_denied",
+                  lookback=lambda cfg: cfg.whatsapp, permission_lacked=lambda t: t.whatsapp_permission_denied,
                   macos_only=True)
 
 ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP)
