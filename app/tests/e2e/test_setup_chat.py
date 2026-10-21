@@ -240,13 +240,10 @@ def test_the_setup_skill_carries_on_from_the_page_s_step():
 
 def test_every_step_of_the_page_has_continue_in_the_chat():
     html = (PAGE_DIR / "index.html").read_text()
-    script = (PAGE_DIR / "page.js").read_text()
 
-    # Outside every step's own section, so it's under each of them, and shown once a language is.
+    # Outside every step's own section, so it's under each of them.
     after = html.rsplit("</section>", 1)[1]
     assert 'id="chat-continue"' in after and 'data-text="chat.continue"' in after
-    assert 'getElementById("chat").hidden = !page.chosen' in script
-    assert '|| chatAI() === "gateway"' in script  # nothing to chat with on the gateway
 
 
 def test_every_chat_result_is_explained_in_all_three_languages():

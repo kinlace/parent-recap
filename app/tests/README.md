@@ -196,7 +196,9 @@ a test needs, and skip it elsewhere, so each CI job runs every other test:
   made.
 
 `browser` marks the tests that drive the setup page in a real browser; CI's macOS job runs them in
-a step of their own, after Chromium is installed.
+a step of their own, after Chromium is installed. They are the page script's tests: no test reads
+`page.js`, and what the page does on Windows is tested by changing the `system` the Mac's server
+sends the page (`as_on` in `test_setup_page_browser.py`).
 
 CI runs the suite on macOS, and on Windows the unit, integration and adapter layers and the
 end-to-end tests marked `windows`. `install.ps1` itself runs for real in CI's windows-install job.

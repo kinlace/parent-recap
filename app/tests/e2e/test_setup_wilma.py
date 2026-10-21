@@ -1239,7 +1239,6 @@ def test_the_wilma_fields_are_standard_login_fields(page):
 
 def test_the_town_box_says_why_it_waits_right_under_it_while_the_wilma_cli_installs(page):
     html = call(page.url).body.decode()
-    script = (PAGE_DIR / "page.js").read_text()
 
     # Right under the box, before its hint and well above the username, and read out with it,
     # but not announced: the status area further down already is.
@@ -1250,27 +1249,6 @@ def test_the_town_box_says_why_it_waits_right_under_it_while_the_wilma_cli_insta
     wait = re.search(r'<p id="wilma-search-wait"[^>]*>', field).group(0)
     assert "hidden" in wait and 'role="status"' not in wait
     assert field.index(box) < field.index(wait) < field.index('data-text="wilma.search.hint"')
-    # It says so while installing, and if the install fails, and goes once the CLI is ready.
-    ready = script.split("async function getWilmaReady() {", 1)[1].split("\n}\n", 1)[0]
-    assert "showSource(wilmaInstalling())" in ready and "showWilmaWait(wilmaInstalling())" in ready
-    assert 'showWilmaWait("wilma.ready." + out.result)' in ready
-    assert "showWilmaWait(null)" in ready.split("wilmaStep.ready = true", 1)[1]
-    # Without Wilma it's the town list that's being got ready, not Wilma, and with "yes" or no
-    # answer yet, Wilma; changing the answer while it installs changes both texts.
-    installing = script.split("function wilmaInstalling() {", 1)[1].split("\n}\n", 1)[0]
-    assert ('picked("wilma-uses") === "no" ? "wilma.ready.installing.town" '
-            ': "wilma.ready.installing"') in installing
-    uses = script.split("function showWilmaUses() {", 1)[1].split("\n}\n", 1)[0]
-    shown = uses.split("if (wilmaStep.preparing) {", 1)[1]
-    assert "showWilmaWait(wilmaInstalling())" in shown
-    # The status area too, unless it says something the parent caused meanwhile.
-    assert ("if (INSTALLING.includes(status.dataset.result)) showSource(wilmaInstalling())"
-            in shown)
-    # Both keep the box's busy look.
-    wait = script.split("function showWilmaWait(key) {", 1)[1].split("\n}\n", 1)[0]
-    assert 'wait.classList.toggle("busy", INSTALLING.includes(key))' in wait
-    assert ('const INSTALLING = ["wilma.ready.installing", "wilma.ready.installing.town"];'
-            in script)
 
 
 def test_every_wilma_result_is_explained_in_all_three_languages():

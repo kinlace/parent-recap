@@ -911,7 +911,6 @@ def test_finish_offers_the_three_ais_and_their_sign_ins():
         assert f'data-text="welcome.ai.{name}"' in panel, name
     # The sign-ins are Connect's own, with the gateway's privacy text, moved in when it's opened.
     assert 'id="finish-ai-sign-in"' in panel
-    assert "finish-ai-sign-in" in (PAGE_DIR / "page.js").read_text()
 
 
 def test_the_ai_check_s_failure_texts_on_finish_point_to_changing_the_ai():

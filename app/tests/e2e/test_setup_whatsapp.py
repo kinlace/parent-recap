@@ -503,21 +503,7 @@ def test_every_text_that_names_the_python_file_takes_the_name_from_the_server(pa
         # No text names a file of its own, such as python3, that Finder may not show.
         assert not [k for k, v in table.items() if "python3" in v.lower()], language
 
-    script = (PAGE_DIR / "page.js").read_text()
-    assert "page.whatsapp = state.whatsapp;" in script
-    assert "return { python: page.whatsapp.python };" in \
-        script.split("function pythonFile()", 1)[1].split("\n}\n", 1)[0]
-    step = script.split("function renderWhatsApp()", 1)[1].split("\n}\n", 1)[0]
-    assert '"whatsapp.explain", pythonFile()' in step
-    assert '"whatsapp.picture.drag", pythonFile()' in step
-    assert 'showSource("whatsapp.open." + out.result, { values: pythonFile() })' in \
-        script.split("async function openFullDiskAccess(", 1)[1].split("\n}\n", 1)[0]
-    assert "...pythonFile()" in script.split("function nextStep(", 1)[1].split("\n}\n", 1)[0]
-    assert "setText(message, key, values)" in \
-        script.split("function showSource(", 1)[1].split("\n}\n", 1)[0]
-    # The pictures show the same name.
-    assert 'querySelectorAll("#source-whatsapp .python-file")' in step
-    assert "name.textContent = page.whatsapp.python" in step
+    # The pictures show the same name, which the page puts in (the browser tests).
     html = call(page.url).body.decode()
     whatsapp_step = re.search(r'<div id="source-whatsapp".*?\n    </div>\n', html, re.S).group(0)
     assert 'id="whatsapp-explain" data-text="whatsapp.explain"' in whatsapp_step
@@ -785,25 +771,6 @@ def test_every_reason_whatsapp_isn_t_ok_has_its_own_text_in_all_three_languages(
             assert "{groups}" in table[f"{prefix}.fail.whatsapp.missing-groups"], language
 
 
-def test_the_page_shows_the_reason_s_text_and_the_button_that_fixes_it():
-    script = (PAGE_DIR / "page.js").read_text()
-
-    step = script.split("function nextStep(", 1)[1].split("\n}\n", 1)[0]
-    assert "`${general}.${check.reason}`" in step and "own in page.text[page.language]" in step
-    for prefix in ("health", "finish"):  # the check page's list and Finish's
-        assert f'nextStep("{prefix}", check, values)' in script
-    buttons = script.split("const WHATSAPP_STEPS = {", 1)[1].split("};", 1)[0]
-    assert '"no-access": ["whatsapp.open", openFullDiskAccessForCheck]' in buttons
-    assert '"missing-groups": ["whatsapp.back", backToWhatsApp]' in buttons
-    opens = script.split("async function openFullDiskAccessForCheck(", 1)[1].split("\n}\n", 1)[0]
-    assert 'post("api/whatsapp/open", {})' in opens
-    back = script.split("async function backToWhatsApp(", 1)[1].split("\n}\n", 1)[0]
-    assert 'post("api/whatsapp/back", {})' in back and "location.reload()" in back
-    # Once the page has closed, nothing on it can be pressed.
-    assert 'querySelectorAll("#finish-checklist button")' in \
-        script.split("function closed(", 1)[1].split("\n}\n", 1)[0]
-
-
 @pytest.mark.macos
 def test_groups_not_on_this_mac_lead_back_to_whatsapp_s_step_to_read_them_again(harness, page,
                                                                                  mac, health):
@@ -884,20 +851,10 @@ def test_only_check_and_finish_go_back_to_connect_with_a_skipped_source_never_wh
 
 
 def test_the_page_offers_the_way_back_to_connect_on_check_and_finish_only_with_a_skipped_source():
-    script = (PAGE_DIR / "page.js").read_text()
     html_text = (PAGE_DIR / "index.html").read_text()
 
     for section, link in (("check", "check-back"), ("finish", "finish-back")):
         part = html_text.split(f'<section id="{section}"', 1)[1].split("</section>", 1)[0]
         assert f'id="{link}"' in part and 'data-text="connect.back"' in part, section
-        assert f'showBackToConnect("{link}")' in script, section
-    shown = script.split("function showBackToConnect(", 1)[1].split("\n}\n", 1)[0]
-    assert '"skipped"' in shown and "page.connect.sources" in shown
-    back = script.split("async function backToConnect(", 1)[1].split("\n}\n", 1)[0]
-    assert 'post("api/connect/back", {})' in back and "location.reload()" in back
-    # Once the page has closed, the link is gone with the rest.
-    assert '"finish-back"' in script.split("function closed(", 1)[1].split("\n}\n", 1)[0]
-    # A page that stays open at Done keeps it.
-    assert "if (done && !out.stays) closed();" in script
     for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
         assert table.get("connect.back", "").strip(), language
