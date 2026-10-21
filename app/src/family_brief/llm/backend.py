@@ -1,3 +1,4 @@
+"""The interface every adapter implements, and what a call and a check give back."""
 from __future__ import annotations
 
 from dataclasses import dataclass

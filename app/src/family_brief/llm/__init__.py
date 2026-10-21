@@ -5,15 +5,16 @@ and never falls back to another (ADR 0017)."""
 from __future__ import annotations
 
 from ..config import Config, LLMConfig
+from . import claude, codex, gateway
 from .backend import Backend, Finding, LLMReply  # noqa: F401  the package's interface
 from .retry import BUSY_PAUSES, CALL_BUDGET  # noqa: F401
+
+_ADAPTERS = {"claude": claude.Claude, "codex": codex.Codex, "gateway": gateway.Gateway}
 
 
 def for_llm(llm: LLMConfig) -> Backend:
     """The backend the config's `llm` section names."""
-    from . import claude, codex, gateway
-    adapters = {"claude": claude.Claude, "codex": codex.Codex, "gateway": gateway.Gateway}
-    return adapters[llm.backend](llm)
+    return _ADAPTERS[llm.backend](llm)
 
 
 def backend(cfg: Config) -> Backend:

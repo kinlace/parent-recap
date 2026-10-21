@@ -26,6 +26,7 @@ from .config import Config
 from .system import desktop_macos, jobs, macos_only, wake, windows_only
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
+_STATUS_OF = {"ok": OK, "warn": WARN, "fail": FAIL}  # by llm.Finding's level
 # Why the WhatsApp check isn't OK, for the setup page and the chat skills to say what fixes it:
 # the scheduled job's Python has no Full Disk Access, the background check didn't start, gave no
 # result or timed out, a ticked group's name isn't on this Mac, or listing the groups failed. Any
@@ -223,9 +224,8 @@ def _check_gmail(cfg: Config, add) -> None:
 
 def _check_llm(cfg: Config, add) -> None:
     from . import llm
-    levels = {"ok": OK, "warn": WARN, "fail": FAIL}
     for finding in llm.backend(cfg).check():
-        add(levels[finding.level], finding.key, finding.detail)
+        add(_STATUS_OF[finding.level], finding.key, finding.detail)
 
 
 def _check_wilma(cfg: Config, add) -> None:
