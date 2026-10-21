@@ -90,7 +90,7 @@ def _read_in_bg_job(config: str | None, days: int, timeout: float) -> dict[str, 
     return {"permission": "error", "error": f"exit code {code}: {out.strip()[-200:]}"}
 
 
-def read(days: int) -> dict[str, Any]:
+def read_in_job(days: int) -> dict[str, Any]:
     """Inside the bg job: whether WhatsApp could be read as `permission`, and its chats."""
     from .collectors import whatsapp
 

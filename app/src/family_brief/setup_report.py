@@ -30,10 +30,7 @@ def outcome(result: str, next_: str | None = None, **extra: Any) -> dict[str, An
 
 def report(result: str, next_: str | None = None, **extra: Any) -> int:
     """Prints a step's outcome as its one line of JSON, and returns the command's exit status."""
-    out = {"result": result, **extra}
-    if next_:
-        out["next"] = next_
-    print(json.dumps(out, ensure_ascii=False))
+    print(json.dumps(outcome(result, next_, **extra), ensure_ascii=False))
     return 0 if result in OK else 1
 
 

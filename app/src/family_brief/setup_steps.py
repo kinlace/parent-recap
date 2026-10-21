@@ -274,9 +274,9 @@ def cmd_whatsapp(args: argparse.Namespace) -> int:
         if not os.environ.get(jobs.BG_ENV):
             print(f"Run it through bg: {program()} setup whatsapp, which does that itself.")
             return 2
-        read = setup_whatsapp.read(args.days)
-        print(json.dumps(read, ensure_ascii=False))
-        return 0 if read["permission"] == "readable" else 1
+        found = setup_whatsapp.read_in_job(args.days)
+        print(json.dumps(found, ensure_ascii=False))
+        return 0 if found["permission"] == "readable" else 1
 
     read = setup_whatsapp.wait_until_readable(args.config, args.days, args.timeout,
                                               no_open=args.no_open)
