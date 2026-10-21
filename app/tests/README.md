@@ -36,6 +36,10 @@ run from the installed program leaving no task, credential or folder of Parent R
 `test_install_ps1.py` checks that the line ends on the setup page when pasted, and only installs,
 exiting with its result, when run as a file.
 
+`unit/` holds table-driven tests of pure modules, which fake nothing: the Brief's own text, the
+Kids' placeholders, citations, the pure parts of Weekend Picks, and how summarize parses and
+normalises the model's reply. A branch a unit test covers gets no end-to-end test of its own (#427).
+
 `test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.
