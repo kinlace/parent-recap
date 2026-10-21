@@ -227,7 +227,7 @@ def _wait_for_network(timeout_seconds: int = 60, probe_host: str = "api.anthropi
 
 def _ics_candidates(cfg: Config, state: State, events: list) -> list:
     """Events that would go into tonight's .ics attachment: those of a Source whose record lets
-    them in (MyClub's only when asked for) and the model's."""
+    them in (MyClub's only when asked for), and those the model found in the messages."""
     return [e for e in events
             if ((source := source_registry.named(e.source)) is None or source.in_ics(cfg))
             and not calendar_action.already_created(state, e)]
