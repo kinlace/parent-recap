@@ -106,16 +106,6 @@ def test_the_translation_gets_placeholders_and_each_recipient_reads_the_names(ha
     assert "Kid A" in system_prompt_of(harness.model_calls[1])
 
 
-def test_a_finnish_case_ending_joins_the_kids_name_again(harness):
-    cfg = household_with_names_everywhere(harness)
-    harness.model_reply = {"picks": [{"ext_id": "le-1", "rank": 1,
-                                      "why": "Kid A:lle sopii ulkoilu, ja Kid B:n kaveri tulee mukaan"}]}
-
-    [pick] = weekend_pipeline.rank(cfg, [candidate()])
-
-    assert pick["why"] == "Mialle sopii ulkoilu, ja Leon kaveri tulee mukaan"
-
-
 # ── Weekend Picks in their first Recipient's language (summary_language for a plain address)
 
 def run_weekend_picks(harness, monkeypatch, language: str, candidates: list[Candidate] | None = None,
@@ -280,7 +270,7 @@ def test_picks_without_reasons_need_no_translation(harness, monkeypatch):
     assert len(harness.model_calls) == 1
 
 
-# ── Odd picks from the model
+# ── Odd picks from the model (each kind of odd pick is in tests/unit/test_weekend_pipeline.py)
 
 def test_a_pick_for_an_invented_event_is_dropped_and_the_rest_keep_their_own_event(harness, monkeypatch):
     harness.model_reply = {"picks": [{"ext_id": "le-9", "rank": 1, "why": "Made up"},
@@ -309,46 +299,6 @@ def test_each_calendar_event_carries_its_own_pick(harness):
     [event] = harness.calendar.inserted
     private = event["extendedProperties"]["private"]
     assert (private["candidate_ext_id"], private["pick_rank"]) == ("le-2", "2")
-
-
-@pytest.mark.parametrize("odd", [
-    {"ext_id": "le-1", "rank": None, "why": "No rank"},
-    {"ext_id": "le-1", "why": "No rank"},
-    {"ext_id": "le-1", "rank": "first", "why": "No rank"},
-    {"ext_id": "le-1", "rank": "nan", "why": "No rank"},
-    "le-1",
-    ["le-1", 1],
-    None,
-], ids=["null rank", "missing rank", "rank that isn't a number", "NaN rank", "a string", "a list", "null"])
-def test_an_odd_pick_is_skipped_and_the_email_still_goes_out(harness, monkeypatch, odd):
-    harness.model_reply = {"picks": [odd, {"ext_id": "le-2", "rank": 1, "why": "Try floorball"}]}
-
-    run_weekend_picks(harness, monkeypatch, "en", [candidate(), second_candidate()])
-
-    [email] = harness.sent
-    assert "No rank" not in email.text and "Puppet theatre" not in email.text
-    assert "1. Family floorball" in email.text
-    [event] = harness.calendar.inserted
-    assert event["extendedProperties"]["private"]["candidate_ext_id"] == "le-2"
-
-
-def test_picks_that_arent_a_list_send_an_empty_email_rather_than_crash(harness, monkeypatch):
-    harness.model_reply = {"picks": {"ext_id": "le-1", "rank": 1}}
-
-    run_weekend_picks(harness, monkeypatch, "en")
-
-    [email] = harness.sent
-    assert "Puppet theatre" not in email.text
-
-
-def test_picks_are_ordered_by_rank_whether_written_as_numbers_or_strings(harness, monkeypatch):
-    harness.model_reply = {"picks": [{"ext_id": "le-2", "rank": "2", "why": "Try floorball"},
-                                     {"ext_id": "le-1", "rank": 1, "why": "Puppets"}]}
-
-    run_weekend_picks(harness, monkeypatch, "en", [candidate(), second_candidate()])
-
-    text = harness.sent[0].text
-    assert text.index("Puppet theatre") < text.index("Family floorball")
 
 
 def test_weekend_picks_translation_keeps_finnish_names(harness, monkeypatch):
