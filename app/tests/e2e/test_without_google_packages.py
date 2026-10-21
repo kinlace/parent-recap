@@ -16,7 +16,8 @@ from pathlib import Path
 import pytest
 
 from family_brief import google_packages
-from test_nightly_run import ICS_FALLBACK, normal_night
+from nights import normal_night
+from test_nightly_google_calendar import ICS_FALLBACK
 from test_setup_save import ANSWERS, save, saved
 from test_setup_status import offline, outcome, status  # noqa: F401 (offline is a fixture)
 from test_weekend_picks import candidate

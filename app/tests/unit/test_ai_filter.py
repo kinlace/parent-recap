@@ -1,6 +1,6 @@
 """The AI filter on its own, as another tool could call it: a list of messages in, the masked
 messages and their placeholders out, and a separate step that puts the real values back in a reply.
-The evening run's use of it is in test_nightly_run.py."""
+The evening run's use of it is in test_nightly_placeholders.py."""
 from __future__ import annotations
 
 import copy

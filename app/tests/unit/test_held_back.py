@@ -4,7 +4,7 @@ the AI and those held back. Messages sent to everyone are never held back: Wilma
 Wilma messages to 15 or more addressees, mailing-list email and the announcements in Wilma's
 notification emails.
 The evening run's use of it (nothing held back reaches a prompt, and the Brief lists it) is in
-test_nightly_run.py. The words are in src/family_brief/sensitive_words.yaml."""
+test_nightly_held_back.py. The words are in src/family_brief/sensitive_words.yaml."""
 from __future__ import annotations
 
 from datetime import datetime, timezone

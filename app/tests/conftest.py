@@ -51,7 +51,7 @@ from family_brief.system import desktop, jobs, secrets, wake, windows_only
 from fake_system import FakeDesktop, FakeJobs, FakeSecrets, FakeWake
 
 # The test layers, one folder each (README.md). Tests import helpers from tests in other layers
-# (`from test_nightly_run import ...`), so every layer's folder is on the path, whichever runs.
+# (`from test_source_failures import ...`), so every layer's folder is on the path, whichever runs.
 LAYERS = ("unit", "integration", "e2e", "adapters", "scripts")
 sys.path += [str(Path(__file__).parent / layer) for layer in LAYERS]
 TZ = "Europe/Helsinki"

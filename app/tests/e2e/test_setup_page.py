@@ -43,7 +43,7 @@ import fake_node
 from fake_system import FakeWake
 from conftest import FailedCall, HTTPReply, PILOT_FORM_FIELDS, PILOT_FORM_URL, msg, program
 from test_doctor import WHATSAPP_FAILURES, break_whatsapp
-from test_nightly_run import FEEDBACK, FORM, feedback_links
+from nights import FEEDBACK, FORM, feedback_links
 from test_setup_status import install_program
 from test_setup_steps import HeaderImap
 from test_setup_myclub import LINK as MYCLUB_LINK, TOKEN as MYCLUB_TOKEN, MyClubServer

@@ -62,10 +62,13 @@ Kids' placeholders, citations, the pure parts of Weekend Picks, how summarize pa
 normalises the model's reply, the AI filter and the held-back check on their own, the eval's
 scoring and the llm package's in-memory adapter. A branch a unit test covers gets no end-to-end test of its own (#427).
 
-`test_nightly_run.py` runs the real `parent-recap run` with fakes only at the outside edges
+The `test_nightly_*.py` files run the real `parent-recap run` with fakes only at the outside edges
 (Sources, the `claude`/`codex` process, email, iMessage and Google Calendar); see `conftest.py`.
+Each holds one topic, which its name says: the Brief a night makes (`test_nightly_brief.py`), Google
+Calendar mode, nights in a row, Recipients' languages, the AI filter's placeholders and held-back
+messages. The nights and helpers more than one of them uses are in `e2e/nights.py`.
 The fake Sources honor seen-state like the real ones, so multi-night tests see only new Messages.
-Its `run --if-missed` tests sign in after an evening run that was missed or ran, and before or
+`test_nightly_continuity.py`'s `run --if-missed` tests sign in after an evening run that was missed or ran, and before or
 after the first evening since `schedule install`.
 A night whose only new Message is the next school day's timetable, and that the model finds nothing to
 say about, sends no Brief, by email or iMessage, and its Messages aren't sent to the model again the
@@ -76,7 +79,7 @@ A Gmail with no sender ticked, beside another Source, is never read and isn't in
 coverage line; with no other Source it's still read and fails as the real collector does, so the
 night says no Source could be read (#361).
 `test_ai_filter.py` calls the AI filter on its own with a list of messages, as another tool could.
-In `test_nightly_run.py`, a night with phone numbers, email addresses and links in every part of the
+In `test_nightly_placeholders.py`, a night with phone numbers, email addresses and links in every part of the
 payload checks that none reaches the Brief or translation prompt, only placeholders, the same one for
 a value in both, with no Gmail message link or Wilma student number. A Chinese night has them inside
 Chinese text with no space around them, and its Chinese reply writes the placeholders the same way:
@@ -131,7 +134,7 @@ reads with a `List-Id`, `List-Unsubscribe` or `Precedence: bulk` or `list` heade
 announcements in made-up Wilma notification emails in Finnish and English. The message such an email
 copies is held back, and the match points into it. A Wilma email with no announcements heading, or
 with a mailing list's headers, is checked whole. In
-`test_nightly_run.py`, a night with a sensitive message from each category in each language checks
+`test_nightly_held_back.py`, a night with a sensitive message from each category in each language checks
 that none of them reaches the Brief's or the translation's prompt, and the `held_back.*` goldens show
 the Brief listing each Held-back Message by Source, sender and subject, with its Gmail link, its page
 in the Wilma the CLI's profile in the temporary HOME names, or a note to read it in WhatsApp. It also

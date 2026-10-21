@@ -12,7 +12,7 @@ import time_machine
 from pydantic import ValidationError
 
 from conftest import NOW, FailedCall, system_prompt_of
-from test_nightly_run import ENGLISH_REPLY, FINNISH_REPLY, model_call_for_golden, normal_night
+from nights import ENGLISH_REPLY, FINNISH_REPLY, model_call_for_golden, normal_night
 from test_weekend_picks import run_weekend_picks
 
 from family_brief.brief_text import EN, WEEKEND_TEXT

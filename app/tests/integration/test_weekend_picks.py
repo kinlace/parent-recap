@@ -8,7 +8,7 @@ from html import escape
 import pytest
 
 from conftest import NOW, FailedCall, assert_isolated_claude, system_prompt_of
-from test_nightly_run import model_call_for_golden
+from nights import model_call_for_golden
 
 from family_brief import weekend_pipeline
 from family_brief.collectors.weekend_events import Candidate
