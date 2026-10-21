@@ -530,6 +530,26 @@ def test_a_check_keeps_its_key_whatever_language_or_kid_it_is_about(harness, not
     assert {c.key for c in results} <= dict(ops.CHECK_ITEMS).keys()
 
 
+def test_renaming_a_check_in_doctor_s_words_leaves_what_the_setup_page_shows(harness,
+                                                                              nothing_loaded,
+                                                                              monkeypatch, capsys):
+    from family_brief import setup_server
+    monkeypatch.setitem(ops._ITEMS, "gmail", "Email inbox")
+    monkeypatch.setitem(ops._ITEMS, "language", "Brief text in {}")
+    config = harness.home / ".family" / "config.yaml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+
+    results = ops.health_checks(str(config), skip_llm=True, show=True, schedule=False)
+
+    out = capsys.readouterr().out
+    assert "Email inbox:" in out and "Brief text in zh:" in out
+    shown = [setup_server._health_check(c) for c in results]
+    assert {"check": "gmail", "status": "fail"} in shown
+    assert {"check": "language", "status": "ok", "language": "zh"} in shown
+    assert not [s for s in shown if s["check"] == "other"]
+
+
 def test_discover_without_whatsapp_access_points_to_bg(harness, monkeypatch, capsys):
     monkeypatch.delenv(ops.BG_ENV, raising=False)
     monkeypatch.setattr(whatsapp, "check_access", lambda: whatsapp.NO_ACCESS)
