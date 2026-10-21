@@ -40,6 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
 from . import (chat_install, feedback, ops, run_lock, setup_ai, setup_save, setup_status,
                setup_steps, setup_wilma, summarize)
+from . import sources as source_registry
 from .actions import email as email_action
 from .config import Config, Kid, LLMConfig
 from .state import State
@@ -54,8 +55,8 @@ AIS = ("claude", "codex", "gateway")
 # The gateway stays Welcome's default on Windows.
 WINDOWS_AIS = ("gateway", "codex", "claude")
 AI_RESULTS = ("ready", "not-installed", "signed-out", "check-failed")
-# The Sources a family can skip and add later through manage. Wilma too, for a school without it.
-SKIPPABLE = ("wilma", "whatsapp", "myclub")
+# The Sources a family can skip and add later through manage, in the page's order.
+SKIPPABLE = tuple(s.name for s in source_registry.in_connect_order() if s.skippable)
 # What connecting Gmail on the page can say: the chat's `setup gmail` results, `no-address` for
 # an address that isn't one, and `app-passwords-unavailable`, which the page's own button gives.
 GMAIL_RESULTS = ("saved", "no-address", "not-an-app-password", "rejected", "no-connection",

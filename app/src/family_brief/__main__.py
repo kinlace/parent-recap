@@ -21,6 +21,7 @@ from .collectors import (
     wilma as wilma_collector,
 )
 from . import ai_filter, feedback, gateway, languages, llm, private_files, run_lock
+from . import sources as source_registry
 from .brief_text import PRODUCT_NAME, BriefText
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, Message
 from .config import Config
@@ -102,8 +103,10 @@ def _run_collectors(cfg: Config, state: State, sources: list[str],
     return messages, direct_events
 
 
-_SOURCE_NAMES = {"gmail": "Gmail", "wilma": "Wilma", "whatsapp": "WhatsApp", "myclub": "MyClub",
-                 "calendar": "Calendar"}
+def _source_name(source: str) -> str:
+    """What the Brief calls `source`: a Source, a brand written the same in every language, or the
+    Google Calendar a conflict Notice cites (citations.py)."""
+    return "Calendar" if source == "calendar" else source_registry.label_of(source)
 
 
 def _problem(err: str) -> Literal["unreadable", "permission", "login", "other"]:
@@ -132,7 +135,7 @@ def _coverage_note(coverage: dict[str, dict], t: BriefText) -> str:
         return ""
     read, missed = [], []
     for source, c in coverage.items():
-        name = _SOURCE_NAMES.get(source, source)
+        name = _source_name(source)
         read.append(f"{name} {(t.events if _COLLECTORS[source].EVENT_FEED else t.messages)(c['count'])}")
         if c["error"]:
             missed.append((t.partly_read if c["count"] else t.not_read)
@@ -147,7 +150,7 @@ def _nothing_read(coverage: dict[str, dict], t: BriefText, assistant: str) -> st
     """The short Brief of a night when no Source could be read: each Source's problem and its fix."""
     lines = [t.nothing_read]
     for source, c in coverage.items():
-        name = _SOURCE_NAMES.get(source, source)
+        name = _source_name(source)
         fix = {"login": t.fix_login, "permission": t.fix_permission}.get(_problem(c["error"]), t.fix_other)
         lines.append(t.source_problem.format(source=name, reason=_short_reason(source, c["error"], t).rstrip(".。 "),
                                              fix=fix.format(assistant=assistant, source=name)))
@@ -283,7 +286,7 @@ def _action_meta(a: dict, t: BriefText) -> str:
     """What the Brief says after an Action Item: its Kid, due date, assignee and Sources."""
     by = _due(str(a.get("by", "")), t)
     kid = str(a.get("kid", ""))
-    source = " · ".join(_SOURCE_NAMES.get(s, s) for s in a.get("source") or [])
+    source = " · ".join(_source_name(s) for s in a.get("source") or [])
     return " · ".join(x for x in [f"({kid})" if kid else "", t.due.format(date=by) if by else "",
                                   str(a.get("who", "")), source] if x)
 
@@ -304,7 +307,7 @@ class _HeldBack:
 
     @property
     def source_name(self) -> str:
-        return _SOURCE_NAMES.get(self.source, self.source)
+        return _source_name(self.source)
 
 
 _ADDRESS = re.compile(r"\s*<[^<>]*>$")

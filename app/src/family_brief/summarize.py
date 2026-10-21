@@ -10,7 +10,7 @@ from string import Template
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from . import ai_filter, citations, held_back, kid_placeholders, languages, llm
+from . import ai_filter, citations, held_back, kid_placeholders, languages, llm, sources
 from .brief_text import TEXT, BriefText
 from .languages import FINNISH_TERMS, is_finnish
 from .collectors.base import CalendarEvent, Message
@@ -139,8 +139,8 @@ def for_the_ai(cfg: Config, messages: list[Message]) -> tuple[list[Message], lis
     return held_back.hold_back(messages)
 
 
-# The Sources' own names, which a person may share (Wilma is a first name too).
-_SOURCE_NAMES = ("Wilma", "Gmail", "WhatsApp", "MyClub")
+# The Sources' own names in every language, which a person may share (Wilma is a first name too).
+_SOURCE_NAMES = tuple(dict.fromkeys(label for s in sources.ALL for label in s.labels.values()))
 
 
 def third_parties(cfg: Config, messages: list[dict[str, Any]]) -> list[str]:

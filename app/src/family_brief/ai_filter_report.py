@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from . import ai_filter, held_back, private_files, summarize
+from . import ai_filter, held_back, private_files, sources, summarize
 from .actions import archive
 from .collectors.base import Message
 from .config import Config
@@ -205,7 +205,6 @@ def _print(report: Report, folder: Path, first: str, last: str, on: bool) -> Non
 
 # ── --held-back: one line per Held-back Message, in a file that opens in TextEdit.
 _AROUND = 40  # characters of the text shown on each side of the word that matched
-_SOURCES = {"gmail": "Gmail", "wilma": "Wilma", "whatsapp": "WhatsApp", "myclub": "MyClub"}
 # Runs of characters, each as the pattern of a run starting at a position and of one ending there.
 # A match's word is the run of letters and digits around it, and an excerpt doesn't cut in two a run
 # without spaces, a word with its punctuation. Neither takes in Chinese characters: Chinese has no
@@ -255,7 +254,7 @@ def _held_back_line(m: Message, found: held_back.Match, zone: ZoneInfo) -> str:
     sender = _one_line(held_back.fields(m)["sender"]) or _one_line(m.sender or "")
     subject = _one_line((m.chat_name if m.source == "whatsapp" else m.subject) or "") or "(no subject)"
     day = m.timestamp.astimezone(zone).date().isoformat()
-    return (f"  {day}  {_SOURCES.get(m.source, m.source):<8}  {found.category:<8}  "
+    return (f"  {day}  {sources.label_of(m.source):<8}  {found.category:<8}  "
             f"[{_one_line(text[start:end])}]  {sender or '(no sender)'} · {subject} · \"{excerpt}\"")
 
 

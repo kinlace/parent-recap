@@ -43,19 +43,24 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Literal, get_args
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from . import feedback
+from . import sources as source_registry
 from .brief_text import Language
 from .config import Config, WhatsAppChat
 
 Phase = Literal["welcome", "connect", "working", "check", "first-brief", "finish"]
-SourceName = Literal["wilma", "gmail", "ai", "whatsapp", "myclub"]  # in the Source list's order
+# The setup page's Source list: the Sources in the registry's connect order, and the AI's step
+# among them, after Gmail.
+_AI_RANK = 2
+SOURCES: tuple[str, ...] = tuple(name for _, name in sorted(
+    [*((s.connect_rank, s.name) for s in source_registry.ALL), (_AI_RANK, "ai")]))
+SourceName = Literal[SOURCES]  # in the Source list's order
 Status = Literal["to-do", "done", "skipped"]
-SOURCES: tuple[str, ...] = get_args(SourceName)
 
 
 class _Strict(BaseModel):

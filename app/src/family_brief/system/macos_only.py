@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import sys
 
-STEPS = frozenset({"whatsapp", "passwords"})
+from .. import sources
+
+STEPS = frozenset({*(s.name for s in sources.ALL if s.macos_only), "passwords"})
 
 
 def offers(name: str) -> bool:

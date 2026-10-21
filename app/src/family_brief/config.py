@@ -7,6 +7,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from . import sources
 from .brief_text import Language
 
 
@@ -284,23 +285,15 @@ class Config(BaseModel):
         """The Sources the evening run reads. A Gmail with no sender ticked only sends the Brief
         when another Source brings the news (#361), and is never read: reading it would search
         the whole inbox."""
-        return [*([] if self.gmail_only_sends() else ["gmail"]), *self.other_sources()]
+        return [s.name for s in sources.used(self)]
 
     def gmail_only_sends(self) -> bool:
         """Whether Gmail has no sender ticked and another Source is connected."""
-        return not (self.gmail.allowlist_domains or self.gmail.allowlist_senders) \
-            and bool(self.other_sources())
+        return not sources.GMAIL.connected(self) and bool(self.other_sources())
 
     def other_sources(self) -> list[str]:
         """The Sources connected besides Gmail."""
-        sources = []
-        if any(k.myclub_ical_url for k in self.kids):
-            sources.append("myclub")
-        if self.wilma.enabled:
-            sources.append("wilma")
-        if self.whatsapp.enabled and self.whatsapp.chats:
-            sources.append("whatsapp")
-        return sources
+        return [s.name for s in sources.ALL if s is not sources.GMAIL and s.connected(self)]
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> "Config":
