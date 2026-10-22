@@ -63,10 +63,11 @@ class Mac:
         self.jobs: FakeJobs | None = None  # the scheduler its `bg` jobs run in
 
     def install_whatsapp(self, chats: list[tuple[str, int, bool]]) -> None:
-        """(name, days before the last message, archived) for each group chat."""
+        """(name, days before the last message, archived) for each group chat. Installed again,
+        it has the chats WhatsApp has synced by then."""
         self.db_dir.mkdir(parents=True, exist_ok=True)
         db = self.db_dir / "ChatStorage.sqlite"
-        db.unlink(missing_ok=True)  # installed again: the chats WhatsApp has synced by now
+        db.unlink(missing_ok=True)
         conn = sqlite3.connect(db)
         conn.execute("CREATE TABLE ZWACHATSESSION (Z_PK INTEGER PRIMARY KEY, ZPARTNERNAME TEXT, "
                      "ZCONTACTJID TEXT, ZLASTMESSAGEDATE REAL, ZARCHIVED INTEGER, ZREMOVED INTEGER)")
