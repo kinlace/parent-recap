@@ -98,6 +98,7 @@ def test_on_macos_without_a_dialog_the_family_types_at_the_terminal_prompt(harne
     assert len(osascript.scripts) == 1 and prompt[0].startswith("Paste the token")
 
 
+@pytest.mark.macos  # the icon's name has a quote in it, which Windows' file names can't
 def test_the_dialog_shows_macos_lock_icon(harness, osascript, monkeypatch, tmp_path):
     icon = tmp_path / "Lock \"icon\".icns"
     icon.write_bytes(b"icns")
