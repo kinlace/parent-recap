@@ -61,11 +61,11 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_eval_runner.py`           | The eval runner end to end, only the model process faked           |
 | `test_goldens.py`               | The golden files' check and `--update-goldens`                     |
 | `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code |
-| `test_llm_codex.py`             | The Codex adapter                                                  |
-| `test_llm_gateway.py`           | The gateway adapter                                                |
+| `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses       |
+| `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks  |
 | `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token             |
 | `test_setup_google_calendar.py` | The Google Calendar authorization script                           |
-| `test_weekend_picks.py`         | Weekend Picks through the same model process as the Brief          |
+| `test_weekend_picks.py`         | Weekend Picks through the same backend as the Brief                |
 | `test_whatsapp_source.py`       | The WhatsApp Source against a `ChatStorage.sqlite` its fake builds |
 
 ## End-to-end tests: the evening run
@@ -80,7 +80,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_nightly_held_back.py`       | Held-back Messages, end to end (ADR 0013)                          |
 | `test_nightly_new_source.py`      | A Source added only to the registry is read, counted, caught up    |
 | `test_any_language.py`            | A Recipient in a language without reviewed program text (ADR 0004) |
-| `test_busy_model.py`              | A busy model tried again after pauses on a fake clock              |
+| `test_busy_model.py`              | How long each model call may wait for a busy model                 |
 | `test_gateway.py`                 | The gateway backend (ADR 0014): Brief, doctor and `setup gateway`  |
 | `test_source_failures.py`         | A Source's transport failing partway or timing out                 |
 | `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON      |
@@ -156,25 +156,43 @@ slowest tests, so add one for a main path, not for each result.
 | `test_issue_loop.py`       | `issue-loop.sh`'s merge step and its checker                 |
 | `test_tests_readme.py`     | This page lists every test file, in short sections           |
 
-## Fakes and fixtures
+## Fixtures
 
-The shared fakes stay in `tests/`, beside the golden files:
+The shared fakes stay in `tests/`, beside the golden files. `conftest.py` has four fixtures, one
+per outside edge of the program, each with its fakes in a module of its own:
 
-- `conftest.py`: the `harness` fixture, which runs the real program with fakes only at the
-  outside edges (Sources, the `claude`/`codex` process and the gateway, email, iMessage, Google
-  Calendar, the pauses between model calls); its docstring lists them. Its model says nothing by
-  default, so a test that needs the night's Brief to go out has it reply `SAYS_SOMETHING` (#385).
-  Also `golden`, `login_shell`, `windows_programs` (programs found as Windows finds them, on any
-  system), `credential_manager`, and the builders `msg` and `myclub_event`.
-- `fake_sources.py`: each Source's fake at its transport (Gmail's IMAP server, the MyClub feed,
-  the wilma CLI, WhatsApp's database), as `harness.source_fakes[name]`, serving what
-  `harness.sources[name]` holds to the real collector. The harness installs one for each Source
-  in the registry (ADR 0022), so a new Source adds its fake to `FAKES`. A test gives each Message
-  the id its Source makes of it, and only the fields its transport carries.
-- `fake_system.py`: in-memory secrets, jobs, wake, desktop and secret dialog, as
-  `harness.secrets`, `.jobs`, `.wake`, `.desktop` and `.dialog`. Only the adapter tests meet these
-  services' commands. `harness.system` is the profile the program sees, this system's until a
+- `sources` (`fake_sources.py`): each Source's fake at its transport (Gmail's IMAP server, the
+  MyClub feed, the wilma CLI, WhatsApp's database), as `sources.fakes[name]`, serving what
+  `sources.tonight[name]` holds to the real collector. One is installed for each Source in the
+  registry (ADR 0022), so a new Source adds its fake to `FAKES`. A test gives each Message the id
+  its Source makes of it, and only the fields its transport carries.
+- `model` (`fake_model.py`): every backend's model calls go to the llm package's in-memory
+  Backend (ADR 0023), whose `calls` record each prompt, system prompt and budget. The backend is
+  otherwise its real adapter, so it finds its program and checks its sign-in; `model.reached` is
+  the program it found for each call, or the gateway's host. A failed call is the exception the
+  adapter raises. The model says nothing by default, so a test that needs the night's Brief to
+  go out has it reply `SAYS_SOMETHING` (#385). The adapters' own tests (`test_llm_*.py`) meet the
+  model's program or the gateway's HTTP instead, through `ModelProcess` and `GatewayServer`.
+- `outbox` (`fake_outbox.py`): email, iMessage and the Google Calendar API, recording what goes
+  out, or failing.
+- `system` (`fake_system.py`): in-memory secrets, jobs, wake, desktop and secret dialog, as
+  `system.secrets`, `.jobs`, `.wake`, `.desktop` and `.dialog`. Only the adapter tests meet these
+  services' commands. `system.profile` is the profile the program sees, this system's until a
   test sets `MACOS` or `WINDOWS`, so a Mac runs the Windows paths too.
+
+An integration test asks for the one fixture it uses. `harness` composes all four and runs the
+real `parent-recap` in-process in a temporary HOME, with "now" pinned: the end-to-end tests use
+it, and reach each fixture's fakes by its attributes (`harness.sources`, `.model_calls`, `.sent`,
+`.secrets`, `.system`, ...). What has no interface of its own still meets its command through
+the harness's one `subprocess.run` fake (`Processes`): the macOS-only features ADR 0020 leaves
+out (iMessage, `open` beside Full Disk Access), the Sources' own programs, and Claude Code's and
+Codex's sign-in and plugin commands. A model call never does. `conftest.py` also has `pauses`
+(a busy model's pauses, on a fake clock), `golden`, `login_shell`, `windows_programs` (programs
+found as Windows finds them, on any system), `credential_manager`, and the builders `msg` and
+`myclub_event`.
+
+## Other fakes and helpers
+
 - `fake_node.py`: Parent Recap's own Node and a fake wilma CLI in the test's `~/ParentRecap`.
 - `fake_packages.py`: packages for tests that run the real pip offline.
 - `goldens.py`: the golden files' check.
@@ -212,7 +230,7 @@ end-to-end tests marked `windows`. `install.ps1` itself runs for real in CI's wi
 
 ## Golden files
 
-The Brief's text, HTML, `.ics` and the exact model command line are compared against `golden/`.
+The Brief's text, HTML, `.ics` and the model's prompts are compared against `golden/`.
 When a change to the Brief or the prompt is intended, regenerate the goldens and review the diff:
 
 ```bash

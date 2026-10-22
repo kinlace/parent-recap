@@ -185,7 +185,7 @@ Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declare
 
    A hook in another module goes through `_in`, which imports it when called
 
-4. **Its transport fake**: a `SourceFake` in the tests' `fake_sources`, listed in `FAKES` under the Source's name; the harness refuses to start without one. It serves what a test puts in `harness.sources[name]` the way the transport carries it, so the real collector runs in every test of the evening run
+4. **Its transport fake**: a `SourceFake` in the tests' `fake_sources`, listed in `FAKES` under the Source's name; the tests' `sources` fixture refuses to start without one. It serves what a test puts in `sources.tonight[name]` (`harness.sources[name]` in an end-to-end test) the way the transport carries it, so the real collector runs in every test of the evening run
 5. **Its setup answers**: a field of `SourcesAnswer` in `family_brief.setup_save`, and the lines there that write it into its config section. The chat and the setup page both save through `setup save`, so they write the same config. A Source that only saves a secret, or a link per Kid as MyClub does, saves it in its own setup module instead
 6. **Its setup page panel**, which ADR 0022 leaves out of the registry: each Source's panel differs, so it is written by hand. The page's Source list, its order and its skip button come from the record; the panel is:
    - a phase in `family_brief.setup_server`, listed in its `PHASES`, which answers the panel's calls and saves the Source as done with `context.connect.complete`. A site a panel's button opens is named in `SITES` of `family_brief.setup_server.connect`, since the page names none
