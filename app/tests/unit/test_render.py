@@ -13,6 +13,7 @@ from conftest import NOW, TZ, html_for_golden, ics_for_golden
 from nights import ENGLISH_REPLY, normal_night
 
 from family_brief import render
+from family_brief.brief import Brief, parse
 from family_brief.brief_text import TEXT, BriefText
 from family_brief.collectors.base import Message
 from family_brief.summarize import extract_calendar_events
@@ -24,15 +25,16 @@ COVERAGE = {"gmail": {"count": 2, "error": None}, "myclub": {"count": 1, "error"
             "wilma": {"count": 1, "error": None}, "whatsapp": {"count": 2, "error": None}}
 
 
-def written(reply: dict, sources: dict[str, str]) -> dict:
+def written(reply: dict, sources: dict[str, str]) -> Brief:
     """`reply` as the run hands it on: each Action Item and event with the Sources its refs cite."""
-    summary = copy.deepcopy(reply)
-    for kid in summary["per_kid"]:
-        for a in kid["action_items"]:
-            a["source"] = sorted({sources[r] for r in a["refs"]})
-    for ev in summary["calendar_events"]:
-        ev["external_id"], ev["source"] = ev["refs"][0], sources[ev["refs"][0]]
-    return summary
+    brief = parse(copy.deepcopy(reply))
+    for kid in brief.kids:
+        for a in kid.action_items:
+            a.source = sorted({sources[r] for r in a.refs or []})
+    for ev in brief.events:
+        assert ev.refs
+        ev.external_id, ev.source = ev.refs[0], sources[ev.refs[0]]
+    return brief
 
 
 def the_normal_night(language: str) -> tuple[dict, dict[str, str]]:
@@ -43,11 +45,11 @@ def the_normal_night(language: str) -> tuple[dict, dict[str, str]]:
     return night.model_reply, sources
 
 
-def brief_of(summary: dict, t: BriefText, **more) -> render.Night:
-    """Tonight's Night for `summary`, its model-written events attached as .ics, as in ics mode."""
-    events = extract_calendar_events(summary, TZ, t.untitled)
+def brief_of(brief: Brief, t: BriefText, **more) -> render.Night:
+    """Tonight's Night for `brief`, its model-written events attached as .ics, as in ics mode."""
+    events = extract_calendar_events(brief, TZ, t.untitled)
     created = [{"title": e.title, "start": e.start_iso(), "kid": e.kid} for e in events]
-    return render.Night(**{"date": DATE, "tz": TZ, "t": t, "assistant": "Claude", "summary": summary,
+    return render.Night(**{"date": DATE, "tz": TZ, "t": t, "assistant": "Claude", "brief": brief,
                            "coverage": COVERAGE, "created": created, "ics_events": events, "stamp": STAMP,
                            **more})
 
@@ -72,7 +74,7 @@ def test_normal_night(golden, language):
     t = TEXT[language]
     night = brief_of(written(reply, sources), t)
 
-    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.summary)], PARENT, []))
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.brief)], PARENT, []))
 
     assert (mail.subject, mail.from_addr, mail.to) == ("Parent Recap · 2026-09-27", PARENT, [PARENT, PARTNER])
     check(golden, f"normal_night.{language}", mail, ics=True)
@@ -95,12 +97,12 @@ def test_held_back_night(golden, language):
                 "whatsapp": {"count": 3, "error": None}}
     night = brief_of(written(reply, sources), t, coverage=coverage, held_back=HELD_BACK)
 
-    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.summary)], PARENT, []))
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.brief)], PARENT, []))
 
     check(golden, f"held_back.{language}", mail)
 
 
-def fallback(t: BriefText) -> dict:
+def fallback(t: BriefText) -> Brief:
     """The rule-based Brief the run writes when the model fails: the normal night's Messages."""
     def at(month: int, day: int, hour: int, minute: int) -> str:
         return t.message_time.format(month=month, day=day, hour=hour, minute=minute)
@@ -114,8 +116,7 @@ def fallback(t: BriefText) -> dict:
               *group("Mia", "wilma", f"{at(9, 27, 12, 0)} Opettaja Virtanen: Koe 5.10."),
               *group(t.unsorted, "gmail", f"{at(9, 27, 8, 15)} teacher.3b@kilo.example.fi: Retki Nuuksioon to 1.10.",
                      f"{at(9, 27, 10, 40)} office@kilo.example.fi: Valokuvaus ke 30.9.")]
-    return {"per_kid": [], "calendar_events": [], "message_digest": "\n".join(digest),
-            "_llm_error": "Error: authentication_error: OAuth token has expired"}
+    return Brief("\n".join(digest))
 
 
 @pytest.mark.parametrize("language", ["en", "zh", "fi"])
@@ -123,7 +124,7 @@ def test_night_the_model_failed(golden, language):
     t = TEXT[language]
     night = brief_of(fallback(t), t, model_wrote=False)
 
-    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.summary)], PARENT, []))
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.brief)], PARENT, []))
 
     check(golden, f"model_failed.{language}", mail)
     assert not mail.attachments
@@ -166,7 +167,7 @@ def test_night_in_two_languages(golden):
     events = {(e.title, e.start_iso()): te for e, te in
               zip(night.ics_events, extract_calendar_events(translated, TZ, en.untitled))}
 
-    first, partner = mails(render.brief(night, [render.Version(zh, [PARENT], night.summary),
+    first, partner = mails(render.brief(night, [render.Version(zh, [PARENT], night.brief),
                                                 render.Version(en, [PARTNER], translated, events)], PARENT, []))
 
     assert (first.to, partner.to) == ([PARENT], [PARTNER])
@@ -178,9 +179,9 @@ def test_night_its_translation_failed(golden):
     reply, sources = the_normal_night("zh")
     zh = TEXT["zh"]
     night = brief_of(written(reply, sources), zh)
-    failed = render.Version(zh, [PARTNER], night.summary, translation_note=TEXT["en"].translation_failed)
+    failed = render.Version(zh, [PARTNER], night.brief, translation_note=TEXT["en"].translation_failed)
 
-    first, partner = mails(render.brief(night, [render.Version(zh, [PARENT], night.summary), failed], PARENT, []))
+    first, partner = mails(render.brief(night, [render.Version(zh, [PARENT], night.brief), failed], PARENT, []))
 
     check(golden, "normal_night.zh", first)
     check(golden, "failed_translation.en", partner)

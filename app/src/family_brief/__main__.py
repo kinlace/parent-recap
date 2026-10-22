@@ -13,6 +13,7 @@ from . import sources as source_registry
 from .collectors.base import Message
 from .config import Config
 from .state import State
+from .brief import to_archive
 from .summarize import for_the_ai, summarize
 
 
@@ -89,8 +90,8 @@ def cmd_summarize(args: argparse.Namespace) -> int:
         chat_name=m.get("chat_name"), kid_hint=m.get("kid_hint"), url=m.get("url"),
         metadata=m.get("metadata", {}),
     ) for m in raw.get("messages", [])]
-    summary = summarize(cfg, for_the_ai(cfg, msgs)[0], [])
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    brief, notes = summarize(cfg, for_the_ai(cfg, msgs)[0], [])
+    print(json.dumps(to_archive(brief, notes), ensure_ascii=False, indent=2))
     return 0
 
 

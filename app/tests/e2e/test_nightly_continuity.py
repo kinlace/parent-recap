@@ -253,10 +253,11 @@ def test_old_shape_archives_feed_continuity(harness):
 
     assert harness.run() == 0  # no new messages: the near deadline alone triggers a Brief
 
+    # The model gets them in today's shape: a bare string is an entry with that text.
     assert harness.model_payload()["earlier_briefs"] == [
         {"date": "2026-09-24", "per_kid": [
-            {"kid": "Kid A", "notices": ["足球训练改到周五"],
-             "action_items": [{"what": "交班费", "by": "本周"}, "带手工材料"]}]},
+            {"kid": "Kid A", "notices": [{"text": "足球训练改到周五"}],
+             "action_items": [{"what": "交班费", "by": "本周"}, {"what": "带手工材料"}]}]},
         {"date": "2026-09-26", "per_kid": [
             {"kid": "Kid B", "notices": [],
              "action_items": [{"what": "交图书馆的书", "by": "2026-09-28T00:00:00", "who": "爸爸"},

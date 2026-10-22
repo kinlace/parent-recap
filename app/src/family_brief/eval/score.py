@@ -10,9 +10,10 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from statistics import mean
-from typing import Any
+from typing import Any, Callable, TypeVar
 
-from ..summarize import _localize, digest_of
+from ..brief import Brief, Citations, Event
+from ..summarize import _localize
 from .cases import Spec
 
 
@@ -31,19 +32,23 @@ def _kid_ok(expected: str | list[str] | None, kid: object) -> bool:
     return str(kid).casefold() in {str(o).casefold() for o in options}
 
 
-def _pair(expected: list[dict], predicted: list[dict], key: str, text_of,
-          starts_then=lambda exp, got: True) -> tuple[list, int]:
-    """Greedily pair each expected entry with an unused predicted one whose text matches, trying
-    the right Kid first. An optional entry only takes a predicted one that is also `starts_then`.
-    Returns the (expected, predicted) pairs of required entries, and the count of predicted
-    entries that are neither paired nor an optional entry."""
+_T = TypeVar("_T")
+
+
+def _pair(expected: list[dict], predicted: list[tuple[str | None, _T]], key: str, text_of: Callable[[_T], str],
+          starts_then: Callable[[dict, _T], bool] = lambda exp, got: True,
+          ) -> tuple[list[tuple[dict, tuple[str | None, _T]]], int]:
+    """Greedily pair each expected entry with an unused predicted one (each with the Kid it sits
+    under) whose text matches, trying the right Kid first. An optional entry only takes a
+    predicted one that is also `starts_then`. Returns the (expected, predicted) pairs of required
+    entries, and the count of predicted entries that are neither paired nor an optional entry."""
     free = list(range(len(predicted)))
-    pairs: list[tuple[dict, dict]] = []
+    pairs: list[tuple[dict, tuple[str | None, _T]]] = []
     ordered = [e for e in expected if not e.get("optional")] + [e for e in expected if e.get("optional")]
     for exp in ordered:
-        hits = [i for i in free if matches(exp[key], text_of(predicted[i]))
-                and (not exp.get("optional") or starts_then(exp, predicted[i]))]
-        hits.sort(key=lambda i: not _kid_ok(exp.get("kid"), predicted[i].get("_kid")))
+        hits = [i for i in free if matches(exp[key], text_of(predicted[i][1]))
+                and (not exp.get("optional") or starts_then(exp, predicted[i][1]))]
+        hits.sort(key=lambda i: not _kid_ok(exp.get("kid"), predicted[i][0]))
         if not hits:
             continue
         free.remove(hits[0])
@@ -52,20 +57,19 @@ def _pair(expected: list[dict], predicted: list[dict], key: str, text_of,
     return pairs, len(free)
 
 
-def _entries(summary: dict, key: str) -> list[dict]:
-    """A summary's Notices or Action Items across Kids, each tagged with the Kid it sits under."""
-    return [{**e, "_kid": k.get("kid")} for k in summary.get("per_kid") or []
-            for e in k.get(key) or [] if isinstance(e, dict)]
-
-
 _ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 
 
-def _date_counts(summary: dict, notices: list[dict], actions: list[dict]) -> dict[str, int]:
-    """How many of the Brief's texts (each Digest line, Notice and Action Item) there are, and how
-    many write a date as YYYY-MM-DD rather than the way the Brief's language writes one."""
-    texts = [line for line in digest_of(summary).splitlines() if line.strip()]
-    texts += [str(n.get("text", "")) for n in notices] + [str(a.get("what", "")) for a in actions]
+def _texts(brief: Brief) -> list[str]:
+    """The Brief's texts: each Digest line, Notice and Action Item."""
+    return ([line for line in brief.digest.splitlines() if line.strip()]
+            + [n.text for k in brief.kids for n in k.notices] + [a.what for k in brief.kids for a in k.action_items])
+
+
+def _date_counts(brief: Brief) -> dict[str, int]:
+    """How many of the Brief's texts there are, and how many write a date as YYYY-MM-DD rather
+    than the way the Brief's language writes one."""
+    texts = _texts(brief)
     return {"texts": len(texts), "iso": sum(1 for text in texts if _ISO_DATE.search(text))}
 
 
@@ -73,73 +77,67 @@ def _date_counts(summary: dict, notices: list[dict], actions: list[dict]) -> dic
 _PLACEHOLDER = re.compile(r"[⟦⟧〚〛]")
 
 
-def _placeholders_shown(summary: dict, notices: list[dict], actions: list[dict]) -> int:
-    """How many of the Brief's texts (Digest lines, Notices, Action Items, Calendar Events) still
-    show a placeholder that didn't go back to its value."""
-    texts = digest_of(summary).splitlines()
-    texts += [str(n.get("text", "")) for n in notices] + [str(a.get("what", "")) for a in actions]
-    texts += [f"{ev.get('title', '')} {ev.get('description', '')} {ev.get('location', '')}"
-              for ev in summary.get("calendar_events") or [] if isinstance(ev, dict)]
+def _placeholders_shown(brief: Brief) -> int:
+    """How many of the Brief's texts and Calendar Events still show a placeholder that didn't go
+    back to its value."""
+    texts = _texts(brief) + [f"{ev.title or ''} {ev.description or ''} {ev.location or ''}" for ev in brief.events]
     return sum(1 for text in texts if _PLACEHOLDER.search(text))
 
 
-def _local_start(ev: dict, tz: str) -> str | None:
+def _local_start(ev: Event, tz: str) -> str | None:
     try:
-        return _localize(datetime.fromisoformat(str(ev.get("start"))), tz).strftime("%Y-%m-%dT%H:%M")
+        return _localize(datetime.fromisoformat(str(ev.start)), tz).strftime("%Y-%m-%dT%H:%M")
     except ValueError:
         return None
 
 
-def score_case(expect: dict[str, Any], summary: dict[str, Any] | None, tz: str,
-               lost_placeholders: int = 0, language: str | None = None) -> dict[str, Any]:
-    """Counts for one night. A `None` summary (the model call failed) misses everything expected.
+def score_case(expect: dict[str, Any], brief: Brief | None, tz: str,
+               lost_placeholders: int = 0, language: str | None = None,
+               citations: Citations | None = None) -> dict[str, Any]:
+    """Counts for one night. A `None` Brief (the model call failed) misses everything expected.
     `lost_placeholders` is how many the model changed beyond repair, so the Brief has their kind's
     words ("someone", "a link") where the night's text had the real value. A notice rule limited to
-    other `languages` than the Brief's `language` is skipped."""
-    summary = summary or {}
+    other `languages` than the Brief's `language` is skipped. `citations` are the night's counts."""
+    brief = brief or Brief()
     required = lambda items: sum(1 for e in items if not e.get("optional"))  # noqa: E731
 
     exp_actions = expect.get("action_items") or []
-    actions = _entries(summary, "action_items")
-    pairs, extra = _pair(exp_actions, actions, "what", lambda a: str(a.get("what", "")))
+    actions = [(k.kid, a) for k in brief.kids for a in k.action_items]
+    pairs, extra = _pair(exp_actions, actions, "what", lambda a: a.what)
     action_counts = {
         "expected": required(exp_actions),
         "predicted": len(pairs) + extra,
         "matched": len(pairs),
-        "due_ok": sum(1 for e, a in pairs if "by" not in e or str(a.get("by", ""))[:10] == str(e["by"])),
-        "kid_ok": sum(1 for e, a in pairs if _kid_ok(e.get("kid"), a["_kid"])),
+        "due_ok": sum(1 for e, (_, a) in pairs if "by" not in e or (a.by or "")[:10] == str(e["by"])),
+        "kid_ok": sum(1 for e, (kid, _) in pairs if _kid_ok(e.get("kid"), kid)),
     }
 
     exp_events = expect.get("calendar_events") or []
-    events = [ev for ev in summary.get("calendar_events") or [] if isinstance(ev, dict)]
     starts_then = lambda e, ev: "start" not in e or (_local_start(ev, tz) or "").startswith(str(e["start"]))  # noqa: E731
-    ev_pairs, ev_extra = _pair(exp_events, events, "title",
-                               lambda ev: f"{ev.get('title', '')} {ev.get('description', '')}", starts_then)
+    # An event sits under no Kid's section, so none is tried first for its Kid.
+    ev_pairs, ev_extra = _pair(exp_events, [(None, ev) for ev in brief.events], "title",
+                               lambda ev: f"{ev.title or ''} {ev.description or ''}", starts_then)
     event_counts = {
         "expected": required(exp_events),
         "predicted": len(ev_pairs) + ev_extra,
         "matched": len(ev_pairs),
-        "start_ok": sum(1 for e, ev in ev_pairs if starts_then(e, ev)),
+        "start_ok": sum(1 for e, (_, ev) in ev_pairs if starts_then(e, ev)),
     }
 
-    notices = _entries(summary, "notices")
     rules = expect.get("notices") or {}
     applies = lambda r: language is None or "languages" not in r or language in r["languages"]  # noqa: E731
     must = [r for r in rules.get("must") or [] if applies(r)]
     must_not = [r for r in rules.get("must_not") or [] if applies(r)]
 
-    def found(rule: dict, entries: list[dict], text_of) -> bool:
-        return any(matches(rule["text"], text_of(e)) and _kid_ok(rule.get("kid"), e["_kid"]) for e in entries)
-
-    # Digest lines sit under no Kid, so a rule with a `kid` never matches one.
-    digest = [{"text": line, "_kid": None} for line in digest_of(summary).splitlines() if line.strip()]
-    where = {"notices": [(notices, lambda n: str(n.get("text", "")))],
-             "action_items": [(actions, lambda a: str(a.get("what", "")))],
-             "digest": [(digest, lambda d: d["text"])]}
-    where["both"] = where["notices"] + where["action_items"]
-    where["anywhere"] = where["both"] + where["digest"]
-    said = lambda r: any(found(r, entries, text_of)  # noqa: E731
-                         for entries, text_of in where[r.get("where", "notices")])
+    # Each text the rules may look for, with the Kid it sits under. Digest lines sit under no Kid,
+    # so a rule with a `kid` never matches one.
+    notices = [(k.kid, n.text) for k in brief.kids for n in k.notices]
+    action_texts = [(kid, a.what) for kid, a in actions]
+    digest = [(None, line) for line in brief.digest.splitlines() if line.strip()]
+    where = {"notices": notices, "action_items": action_texts, "digest": digest,
+             "both": notices + action_texts, "anywhere": notices + action_texts + digest}
+    said = lambda r: any(matches(r["text"], text) and _kid_ok(r.get("kid"), kid)  # noqa: E731
+                         for kid, text in where[r.get("where", "notices")])
     notice_counts = {
         "required": len(must),
         "found": sum(1 for r in must if said(r)),
@@ -147,15 +145,14 @@ def score_case(expect: dict[str, Any], summary: dict[str, Any] | None, tz: str,
         "hits": sum(1 for r in must_not if said(r)),
     }
 
-    cites = summary.get("_citations") or {}
+    cites = citations or Citations()
     return {
         "actions": action_counts,
         "events": event_counts,
         "notices": notice_counts,
-        "dates": _date_counts(summary, notices, actions),
-        "placeholders": {"shown": _placeholders_shown(summary, notices, actions), "lost": lost_placeholders},
-        "citations": {"entries": cites.get("entries", 0),
-                      "verified": cites.get("entries", 0) - cites.get("unverified", 0) - cites.get("legacy", 0)},
+        "dates": _date_counts(brief),
+        "placeholders": {"shown": _placeholders_shown(brief), "lost": lost_placeholders},
+        "citations": {"entries": cites.entries, "verified": cites.entries - cites.unverified - cites.legacy},
     }
 
 

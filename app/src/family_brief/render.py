@@ -13,9 +13,9 @@ from zoneinfo import ZoneInfo
 from . import feedback
 from . import sources as source_registry
 from .actions import ics as ics_action
+from .brief import ActionItem, Brief
 from .brief_text import PRODUCT_NAME, BriefText
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent
-from .summarize import digest_of
 from .utils.dates import to_local
 
 
@@ -121,19 +121,17 @@ def nothing_read(coverage: dict[str, dict], date_str: str, assistant: str, t: Br
 
 # ── The pieces of a Brief
 
-def _action_items(summary: dict) -> list[dict]:
+def _action_items(brief: Brief) -> list[tuple[str, ActionItem]]:
     """Every Action Item in the Brief, each with its Kid."""
-    return [{**a, "kid": k.get("kid", "")}
-            for k in summary.get("per_kid", []) or [] for a in k.get("action_items") or []]
+    return [(k.kid or "", a) for k in brief.kids for a in k.action_items]
 
 
-def _action_meta(a: dict, t: BriefText) -> str:
+def _action_meta(kid: str, a: ActionItem, t: BriefText) -> str:
     """What the Brief says after an Action Item: its Kid, due date, assignee and Sources."""
-    by = _due(str(a.get("by", "")), t)
-    kid = str(a.get("kid", ""))
-    source = " · ".join(source_name(s) for s in a.get("source") or [])
+    by = _due(a.by or "", t)
+    source = " · ".join(source_name(s) for s in a.source or [])
     return " · ".join(x for x in [f"({kid})" if kid else "", t.due.format(date=by) if by else "",
-                                  str(a.get("who", "")), source] if x)
+                                  a.who or "", source] if x)
 
 
 @dataclass(frozen=True)
@@ -229,33 +227,32 @@ def _digest_html(digest: str) -> str:
     return "".join(out)
 
 
-def _shown_digest(summary: dict, t: BriefText) -> str:
+def _shown_digest(brief: Brief, t: BriefText) -> str:
     """The Digest the Brief shows. When the model wrote Notices but no Digest, the Notices stand in
     for it, as the Digest's Markdown grouped by Kid, so a night whose only news is Notices doesn't
     send an empty Brief (#365). On other nights the Notices reach only the archive."""
-    digest = digest_of(summary)
-    if digest:
-        return digest
+    if brief.digest:
+        return brief.digest
     sections = []
-    for kid in summary.get("per_kid") or []:
-        notices = [f"- {n['text']}" for n in kid.get("notices") or [] if n.get("text")]
+    for kid in brief.kids:
+        notices = [f"- {n.text}" for n in kid.notices if n.text]
         if notices:
-            sections.append("\n".join([f"**{kid.get('kid') or t.household}**", *notices]))
+            sections.append("\n".join([f"**{kid.kid or t.household}**", *notices]))
     return "\n\n".join(sections)
 
 
-def _daily_brief_html(summary: dict, calendar_created: list[dict],
+def _daily_brief_html(brief: Brief, calendar_created: list[dict],
                       date_str: str, t: BriefText, tz: str, note: str = "", ics_attached: bool = False,
                       coverage: str = "", footer: str = "",
                       feedback_link: Callable[..., str] | None = None,
-                      original: dict | None = None, top_note: str = "",
+                      original: Brief | None = None, top_note: str = "",
                       held_back: list[HeldBack] | None = None, assistant: str = "") -> str:
-    """Simple HTML rendering of the Brief, safe for Gmail. `summary` is translated from
+    """Simple HTML rendering of the Brief, safe for Gmail. `brief` is translated from
     `original` for a Recipient in another language; feedback links carry the original's text, so
     the Form gets the same words from every language version (ADR 0004). `top_note` holds the
     warnings shown above the Digest (see _top_note), and `held_back` the Held-back Messages, which
     were not sent to the `assistant`."""
-    original = original or summary
+    original = original or brief
 
     def form_link(verdict: str, label: str, text: str, **kw) -> str:
         assert feedback_link is not None
@@ -265,7 +262,7 @@ def _daily_brief_html(summary: dict, calendar_created: list[dict],
     if top_note:
         warnings = _h.escape(top_note).replace("\n", "<br>")
         parts.append(f"<p style='color:#a33'>{warnings}</p>")
-    digest = _shown_digest(summary, t)
+    digest = _shown_digest(brief, t)
     if digest:
         parts.append(_digest_html(digest))
         if feedback_link:
@@ -281,16 +278,16 @@ def _daily_brief_html(summary: dict, calendar_created: list[dict],
                      else _h.escape(t.held_back_read_in.format(source=h.source_name)))
             parts.append(f"<li>{_h.escape(h.label(t))} · {where}</li>")
         parts.append("</ul>")
-    all_actions = _action_items(summary)
+    all_actions = _action_items(brief)
     if all_actions:
         parts.append(f"<h3>{t.action_items}</h3><ul>")
-        for a, as_written in zip(all_actions, _action_items(original)):
-            what = _h.escape(str(a.get("what", "")))
-            meta = _h.escape(_action_meta(a, t))
+        for (kid, a), (kid_as_written, as_written) in zip(all_actions, _action_items(original)):
+            what = _h.escape(a.what)
+            meta = _h.escape(_action_meta(kid, a, t))
             links = ""
             if feedback_link:
-                kw = {"kid": str(as_written.get("kid", "")), "source": as_written.get("source") or []}
-                what_text = str(as_written.get("what", ""))
+                kw = {"kid": kid_as_written, "source": as_written.source or []}
+                what_text = as_written.what
                 links = (f" <small>{form_link(feedback.SAVED, t.feedback_saved, what_text, **kw)}"
                          f" · {form_link(feedback.WRONG, t.feedback_wrong, what_text, **kw)}</small>")
             parts.append(f"<li>{what}<small style='color:#666'> {meta}</small>{links}</li>")
@@ -319,21 +316,21 @@ def _daily_brief_html(summary: dict, calendar_created: list[dict],
     return _HTML_PAGE + "".join(parts) + "</body></html>"
 
 
-def _format_imessage_body(summary: dict, calendar_created: list[dict], date_str: str,
+def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: str,
                           t: BriefText, tz: str, top_note: str = "",
                           held_back: list[str] | None = None) -> str:
     parts = [f"👨‍👩‍👧‍👦 {PRODUCT_NAME} {_header_date(date_str, t)}"]
     if top_note:
         parts += ["", top_note]
-    digest = _shown_digest(summary, t)
+    digest = _shown_digest(brief, t)
     if digest:
         parts += ["", digest]
     if held_back:
         parts += ["", *held_back]
-    actions = _action_items(summary)
+    actions = _action_items(brief)
     if actions:
         parts += ["", t.action_items]
-        parts += [f"• {a.get('what', '')} {_action_meta(a, t)}".rstrip() for a in actions]
+        parts += [f"• {a.what} {_action_meta(kid, a, t)}".rstrip() for kid, a in actions]
     if calendar_created:
         parts += ["", t.new_events_line]
         for ev in calendar_created[:10]:
@@ -342,18 +339,18 @@ def _format_imessage_body(summary: dict, calendar_created: list[dict], date_str:
     return "\n".join(parts)
 
 
-def _top_note(summary: dict, t: BriefText, assistant: str, translation_note: str = "") -> str:
+def _top_note(incomplete: bool, t: BriefText, assistant: str, translation_note: str = "") -> str:
     """The warnings at the top of the Brief: its translation failed, or the model's reply was cut off."""
-    cut_off = t.reply_incomplete.format(assistant=assistant) if summary.get("_incomplete") else ""
+    cut_off = t.reply_incomplete.format(assistant=assistant) if incomplete else ""
     return "\n".join(note for note in (translation_note, cut_off) if note)
 
 
-def _brief_text(summary: dict, created: list[dict], date_str: str, t: BriefText, tz: str,
+def _brief_text(brief: Brief, created: list[dict], date_str: str, t: BriefText, tz: str,
                 coverage: str, calendar_note: str, top_note: str = "",
                 held_back: list[HeldBack] | None = None, assistant: str = "") -> str:
     """The plain-text Brief: the email's text part, and the iMessage. `held_back` are the
     Held-back Messages, which were not sent to the `assistant`."""
-    body = _format_imessage_body(summary, created, date_str, t, tz, top_note,
+    body = _format_imessage_body(brief, created, date_str, t, tz, top_note,
                                  _held_back_lines(held_back or [], t, assistant))
     for note in (coverage, calendar_note):
         if note:
@@ -387,14 +384,14 @@ def _calendar_note(problem: CalendarProblem | None, ics_fallback: bool, t: Brief
 class Night:
     """Tonight's Brief as written, in the Brief's language `t`, and what the run found around it:
     what was read (`coverage`), the Held-back Messages, the calendar events listed (`created`)
-    and those attached as .ics, and why Google Calendar did not take them. The model wrote the
-    summary unless it failed or wasn't asked (`model_wrote`); then the Brief has no feedback
-    links and doesn't credit the `assistant`."""
+    and those attached as .ics, why Google Calendar did not take them, and whether the model's
+    reply looked cut off (`incomplete`). The model wrote the Brief unless it failed or wasn't
+    asked (`model_wrote`); then the Brief has no feedback links and doesn't credit the `assistant`."""
     date: str
     tz: str
     t: BriefText
     assistant: str
-    summary: dict
+    brief: Brief
     coverage: dict[str, dict]
     stamp: datetime  # when the .ics is made
     created: list[dict] = field(default_factory=list)
@@ -403,6 +400,7 @@ class Night:
     ics_events: list[CalendarEvent] = field(default_factory=list)
     model_wrote: bool = True
     form: feedback.Links | None = None
+    incomplete: bool = False
 
     @property
     def subject(self) -> str:
@@ -410,10 +408,10 @@ class Night:
 
     def text(self) -> str:
         """The plain-text Brief in the Brief's language: the iMessage, and what a dry run logs."""
-        return _brief_text(self.summary, self.created, self.date, self.t, self.tz,
+        return _brief_text(self.brief, self.created, self.date, self.t, self.tz,
                            _coverage_note(self.coverage, self.t),
                            _calendar_note(self.calendar_problem, bool(self.ics_events), self.t, self.assistant),
-                           _top_note(self.summary, self.t, self.assistant), self.held_back, self.assistant)
+                           _top_note(self.incomplete, self.t, self.assistant), self.held_back, self.assistant)
 
 
 @dataclass(frozen=True)
@@ -421,7 +419,7 @@ class Version:
     """Tonight's Brief as the Recipients who read one language get it."""
     t: BriefText
     to: list[str]
-    summary: dict
+    brief: Brief
     # Tonight's model-written calendar events in this language, by the original's (title, start).
     events: dict[tuple[str, str], CalendarEvent] = field(default_factory=dict)
     translation_note: str = ""  # at the top of the original when the translation failed
@@ -444,18 +442,18 @@ def mail(night: Night, v: Version, from_addr: str) -> Mail:
     listed = v.translated_list(night.created)
     coverage_note = _coverage_note(night.coverage, t)
     calendar_note = _calendar_note(night.calendar_problem, bool(night.ics_events), t, assistant)
-    top_note = _top_note(v.summary, t, assistant, v.translation_note)
+    top_note = _top_note(night.incomplete, t, assistant, v.translation_note)
     attachments = [(f"parent-recap-{night.date}.ics",
                     ics_action.build(night.ics_events, night.tz, night.stamp, v.translated_event),
                     "text/calendar")] if night.ics_events else []
     links = night.form.link if night.form and night.model_wrote else None
-    html = _daily_brief_html(v.summary, listed, night.date, t, night.tz, calendar_note,
+    html = _daily_brief_html(v.brief, listed, night.date, t, night.tz, calendar_note,
                              ics_attached=bool(attachments), coverage=coverage_note,
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
-                             feedback_link=links, original=night.summary, top_note=top_note,
+                             feedback_link=links, original=night.brief, top_note=top_note,
                              held_back=night.held_back, assistant=assistant)
     return Mail(to=v.to, subject=night.subject,
-                text=_brief_text(v.summary, listed, night.date, t, night.tz, coverage_note,
+                text=_brief_text(v.brief, listed, night.date, t, night.tz, coverage_note,
                                  calendar_note, top_note, night.held_back, assistant),
                 html=html, from_addr=from_addr, attachments=attachments)
 
@@ -480,20 +478,19 @@ def preview(night: Night) -> dict[str, str | None]:
     subject, text and HTML, and for a pilot Household (with its Form links) the Digest's
     feedback link."""
     t, assistant, form = night.t, night.assistant, night.form
-    html = _daily_brief_html(night.summary, night.created, night.date, t, night.tz,
+    html = _daily_brief_html(night.brief, night.created, night.date, t, night.tz,
                              coverage=_coverage_note(night.coverage, t),
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
                              feedback_link=form.link if form and night.model_wrote else None,
-                             top_note=_top_note(night.summary, t, assistant), held_back=night.held_back,
+                             top_note=_top_note(night.incomplete, t, assistant), held_back=night.held_back,
                              assistant=assistant)
-    wrong = form.link(feedback.DIGEST_WRONG, _shown_digest(night.summary, t) if night.model_wrote else "") \
+    wrong = form.link(feedback.DIGEST_WRONG, _shown_digest(night.brief, t) if night.model_wrote else "") \
         if form else None
     return {"subject": night.subject, "text": night.text(), "html": html, "feedback": wrong}
 
 
-def nothing_to_show(summary: dict, created: list[dict], held_back: list[HeldBack], t: BriefText,
-                    assistant: str) -> bool:
+def nothing_to_show(night: Night) -> bool:
     """Whether tonight's Brief would have only its header and the notes under it: no Digest, or
     Notices standing in for one, no Action Items, events or Held-back Messages, and no warning."""
-    return not (_shown_digest(summary, t) or _action_items(summary) or created or held_back
-                or _top_note(summary, t, assistant))
+    return not (_shown_digest(night.brief, night.t) or _action_items(night.brief) or night.created
+                or night.held_back or _top_note(night.incomplete, night.t, night.assistant))

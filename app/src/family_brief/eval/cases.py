@@ -12,7 +12,7 @@ A folder holds `household.yaml` (the Config fields the prompt uses: `timezone`, 
          chat: ..., kid_hint: ..., body: ...}   # WhatsApp kid_hint defaults to the chat map
     calendar: [{id, summary, start, end, location}]   # existing Google Calendar, next 7 days
     queued: [{external_id, source, title, start, end, kid}]  # added from a Source, e.g. MyClub
-    earlier_briefs: [{date, per_kid: [...]}]  # as archive.recent_points returns them
+    earlier_briefs: [{date, per_kid: [...]}]  # as the archive keeps them (brief.EarlierBrief.from_json)
     expect:
       action_items: [{what: [keywords], kid: Aino, by: 2026-10-06, optional: false}]
       calendar_events: [{title: [keywords], start: 2026-10-08T09:00}]   # local wall clock
@@ -35,6 +35,7 @@ from zoneinfo import ZoneInfo
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from ..brief import EarlierBrief
 from ..collectors.base import Message
 from ..config import Config
 
@@ -131,7 +132,7 @@ class Case:
     messages: list[Message]
     calendar: list[dict[str, Any]] = field(default_factory=list)
     queued: list[dict[str, Any]] = field(default_factory=list)
-    earlier_briefs: list[dict[str, Any]] = field(default_factory=list)
+    earlier_briefs: list[EarlierBrief] = field(default_factory=list)
     expect: dict[str, Any] = field(default_factory=dict)
 
 
@@ -168,5 +169,6 @@ def _case(name: str, raw: CaseFile, cfg: Config) -> Case:
         kid_hint=m.kid_hint or (cfg.whatsapp.kid_for(m.chat) if m.source == "whatsapp" and m.chat else None),
     ) for m in raw.messages]
     return Case(name=name, covers=raw.covers, now=aware(raw.now), household=cfg, messages=messages,
-                calendar=raw.calendar, queued=raw.queued, earlier_briefs=raw.earlier_briefs,
+                calendar=raw.calendar, queued=raw.queued,
+                earlier_briefs=[EarlierBrief.from_json(day) for day in raw.earlier_briefs],
                 expect=raw.expect.model_dump(mode="json", exclude_none=True))

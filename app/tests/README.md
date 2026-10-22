@@ -40,6 +40,7 @@ the import path, so a test may import a helper from a test in another layer.
 | File                          | What it covers                                                   |
 | ----------------------------- | ---------------------------------------------------------------- |
 | `test_ai_filter.py`           | The AI filter on its own: messages in, masked text and names out |
+| `test_brief.py`               | The Brief read from the archive and written back; old archives   |
 | `test_brief_text.py`          | The program's own Brief and Weekend Picks text                   |
 | `test_citations.py`           | The model's citations checked against what the program supplied  |
 | `test_eval_scoring.py`        | The eval's deterministic scoring                                 |
@@ -247,6 +248,11 @@ git diff tests/golden
 The pattern is a glob, or a name up to a dot. Only goldens that match and changed are rewritten,
 each with one line at the end of the run saying how many lines it gained and lost; the rest are
 still compared. Write the pattern with `=`: `--update-goldens tests/e2e` is refused.
+
+The `archive_*` goldens render archives checked in as an earlier version wrote them
+(`unit/data/archive-*.raw.json`), so an old archive still loads and renders as it did. Regenerate
+them only for a change meant to make every Brief look different, never for a change to how the
+archive is read; when the archive's shape changes, check in an archive of the new shape beside them.
 
 ## Brief quality eval
 

@@ -1,9 +1,20 @@
-"""The eval's deterministic scoring: a model summary checked against a case's expectations."""
+"""The eval's deterministic scoring: a model's Brief checked against a case's expectations. The
+nights are written as the eval's run files keep them, an archive's `summary`."""
 from __future__ import annotations
 
-from family_brief.eval.score import aggregate, is_clean, score_case
+from family_brief.brief import from_archive
+from family_brief.eval import score
 
 TZ = "Europe/Helsinki"
+aggregate, is_clean = score.aggregate, score.is_clean
+
+
+def score_case(expect, summary, tz, **kw):
+    """score.score_case on the Brief and citation counts `summary` keeps, or on None."""
+    if summary is None:
+        return score.score_case(expect, None, tz, **kw)
+    brief, notes = from_archive(summary)
+    return score.score_case(expect, brief, tz, citations=notes.citations, **kw)
 
 
 def summary(per_kid=(), events=(), verified=None):

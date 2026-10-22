@@ -11,6 +11,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from . import ai_filter, citations, held_back, kid_placeholders, languages, llm, sources
+from .brief import Brief, EarlierBrief, RunNotes, looks_cut_off, parse
 from .brief_text import TEXT, BriefText
 from .languages import FINNISH_TERMS, is_finnish
 from .collectors.base import CalendarEvent, Message
@@ -170,10 +171,10 @@ def household_names(cfg: Config) -> list[str]:
 
 
 def add_the_nights_people(cfg: Config, placeholders: ai_filter.Placeholders, messages: list[dict[str, Any]],
-                          earlier_briefs: list[dict[str, Any]]) -> None:
+                          earlier_briefs: list[EarlierBrief]) -> None:
     """Mask from here on the people `messages` (as Message.to_dict gives them) come from, and those
     of the earlier Briefs' nights, keeping the Household's own names."""
-    earlier = [name for day in earlier_briefs for name in day.get("third_parties") or []]
+    earlier = [name for day in earlier_briefs for name in day.third_parties]
     placeholders.add_people([*third_parties(cfg, messages), *earlier], keep_names=household_names(cfg))
 
 
@@ -184,7 +185,7 @@ NOT_FOR_THE_MODEL = ("url", "student_number", "wilma_url")
 
 def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[dict],
                   already_captured: list[dict], now: datetime,
-                  earlier_briefs: list[dict] | None = None) -> tuple[str, dict[str, Any]]:
+                  earlier_briefs: list[EarlierBrief] | None = None) -> tuple[str, dict[str, Any]]:
     """The Brief prompt's instructions and the payload that follows them as JSON."""
     from datetime import timedelta as _td
     t = languages.text(cfg, cfg.brief_language())
@@ -215,7 +216,7 @@ def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[di
         "whatsapp_chat_map": chat_map,
         "upcoming_calendar_events_next_7d": upcoming_events,
         "already_queued_for_calendar": already_captured,
-        "earlier_briefs": citations.for_prompt(earlier_briefs or []),
+        "earlier_briefs": [day.for_prompt() for day in earlier_briefs or []],
         "messages": [m.to_dict() for m in messages],
     }
     return (
@@ -278,11 +279,12 @@ def call_llm_json(cfg: Config, prompt: str, system_prompt: str,
 
 def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[dict],
                     already_captured: list[dict] | None = None,
-                    earlier_briefs: list[dict] | None = None,
+                    earlier_briefs: list[EarlierBrief] | None = None,
                     now: datetime | None = None,
                     budget: int = CALL_BUDGET,
-                    placeholders: ai_filter.Placeholders | None = None) -> tuple[dict[str, Any], LLMReply]:
-    """The night's summary with its citations resolved, plus the backend call it came from.
+                    placeholders: ai_filter.Placeholders | None = None) -> tuple[Brief, RunNotes, LLMReply]:
+    """The night's Brief with its citations resolved, the run notes the reply gave (cut off, the
+    citation counts), plus the backend call it came from.
     `now` pins the night the prompt is written for; the eval replays past nights with it.
     `budget` is how long a busy model is tried for, as call_llm takes it. The call goes through the
     AI filter with the run's `placeholders`, if given, so citations check the real links. The people
@@ -301,124 +303,28 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
     t = languages.text(cfg, language)
     reply = call_llm_filtered(cfg, intro, payload, lambda masked, kids: system_prompt(language, t, masked, kids),
                               t.placeholder_words(), placeholders, drop=NOT_FOR_THE_MODEL, budget=budget)
-    summary = normalise(reply.data, reply.repaired)
-    _call_kids(summary, cfg)
-    citations.resolve(summary, messages, upcoming_events, already_captured, earlier_briefs or [])
-    return summary, reply
+    brief = parse(reply.data)
+    _call_kids(brief, cfg)
+    cites = citations.resolve(brief, messages, upcoming_events, already_captured, earlier_briefs or [])
+    return brief, RunNotes(incomplete=looks_cut_off(reply.data, reply.repaired), citations=cites), reply
 
 
-def digest_of(summary: dict[str, Any]) -> str:
-    """The summary's Digest. Archives from before the Brief had a language call it message_digest_cn."""
-    return summary.get("message_digest") or summary.get("message_digest_cn") or ""
-
-
-_TOP_LEVEL = ("per_kid", "calendar_events", "message_digest")
-
-
-def normalise(summary: dict[str, Any], repaired: bool) -> dict[str, Any]:
-    """The model's reply in the schema's shape, in place, so the rest of the night can trust it:
-    lists where the schema has lists, text where it has text, and no entry that isn't an object
-    or has nothing to say. A reply that needed json-repair and lacks a top-level key was probably
-    cut off, so it is marked `_incomplete` and the Brief says so."""
-    missing = [k for k in _TOP_LEVEL if k not in summary
-               and not (k == "message_digest" and "message_digest_cn" in summary)]
-    if repaired and missing:
-        log.warning("The model's reply looks cut off (no %s); the Brief will say so", ", ".join(missing))
-        summary["_incomplete"] = True
-    summary["message_digest"] = _text(digest_of(summary))
-    summary["per_kid"] = [_kid(k) for k in _kid_entries(summary.get("per_kid"))]
-    summary["calendar_events"] = [_scalars(ev, ("kid", "title", "start", "end", "location", "description"))
-                                  for ev in _objects(summary.get("calendar_events"), "calendar event")]
-    return summary
-
-
-def _call_kids(summary: dict[str, Any], cfg: Config) -> None:
+def _call_kids(brief: Brief, cfg: Config) -> None:
     """Each Kid under the one name the Brief calls them by, whichever of their names the model wrote."""
-    for entry in [*summary["per_kid"], *summary["calendar_events"]]:
-        if "kid" in entry:
-            entry["kid"] = cfg.kid_called(entry["kid"])
-
-
-def _as_list(value: Any) -> list[Any]:
-    """A list where the schema has one: a lone entry stands for a list of it, null for none."""
-    if isinstance(value, list):
-        return value
-    return [] if value is None else [value]
-
-
-def _objects(value: Any, what: str) -> list[dict[str, Any]]:
-    out = []
-    for entry in _as_list(value):
-        if isinstance(entry, dict):
-            out.append(entry)
-        else:
-            log.warning("Skipped a %s that isn't an object: %r", what, entry)
-    return out
-
-
-def _text(value: Any) -> str:
-    """A text field as text: empty for null, and a list's or a dict's sections joined, a dict's
-    under their keys (a Digest written as one section per Kid)."""
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        return "\n\n".join(f"**{key}**\n{text}" for key, v in value.items() if (text := _text(v).strip()))
-    if isinstance(value, list):
-        parts = [text for v in value if (text := _text(v).strip())]
-        return ("\n\n" if any("\n" in p for p in parts) else "\n").join(parts)
-    return str(value)
-
-
-def _scalars(entry: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
-    """`entry` with each of `keys` as text, or left out when it has none (a null title reads
-    as untitled, not "None")."""
-    for key in keys:
-        if key in entry:
-            text = _text(entry[key])
-            if text.strip():
-                entry[key] = text
-            else:
-                del entry[key]
-    return entry
-
-
-def _kid_entries(value: Any) -> list[dict[str, Any]]:
-    """per_kid as a list of objects, also when the model wrote it as an object keyed by Kid."""
-    if isinstance(value, dict) and not {"kid", "notices", "action_items"} & value.keys():
-        value = [{"kid": kid, **entry} if isinstance(entry, dict) else entry for kid, entry in value.items()]
-    return _objects(value, "per_kid entry")
-
-
-def _kid(kid: dict[str, Any]) -> dict[str, Any]:
-    _scalars(kid, ("kid",))
-    kid["notices"] = _items(kid.get("notices"), "text", ())
-    kid["action_items"] = _items(kid.get("action_items"), "what", ("by", "who"))
-    return kid
-
-
-def _items(value: Any, text_key: str, keys: tuple[str, ...]) -> list[dict[str, Any]]:
-    """Notices or Action Items as objects with text. A bare string still makes an entry, though
-    it cites nothing; one with no text, such as the last of a cut-off reply, is dropped."""
-    out = []
-    for item in _as_list(value):
-        item = _scalars(item if isinstance(item, dict) else {text_key: item}, (text_key, *keys))
-        if text_key in item:
-            out.append(item)
-        else:
-            log.warning("Dropped an entry with no %s: %r", text_key, item)
-    return out
+    for entry in [*brief.kids, *brief.events]:
+        if entry.kid is not None:
+            entry.kid = cfg.kid_called(entry.kid)
 
 
 def summarize(cfg: Config, messages: list[Message],
               upcoming_events: list[dict],
               already_captured: list[dict] | None = None,
-              earlier_briefs: list[dict] | None = None,
+              earlier_briefs: list[EarlierBrief] | None = None,
               budget: int = CALL_BUDGET,
-              placeholders: ai_filter.Placeholders | None = None) -> dict[str, Any]:
-    return summarize_reply(cfg, messages, upcoming_events, already_captured, earlier_briefs,
-                           budget=budget, placeholders=placeholders)[0]
+              placeholders: ai_filter.Placeholders | None = None) -> tuple[Brief, RunNotes]:
+    brief, notes, _ = summarize_reply(cfg, messages, upcoming_events, already_captured, earlier_briefs,
+                                      budget=budget, placeholders=placeholders)
+    return brief, notes
 
 
 def _localize(dt: datetime, tz: str) -> datetime:
@@ -449,31 +355,33 @@ def _all_day_end(end: str | None, start: datetime) -> datetime | None:
     return datetime.combine(last, start.timetz()) if last > start.date() else None
 
 
-def extract_calendar_events(summary: dict[str, Any], tz: str, untitled: str) -> list[CalendarEvent]:
+def extract_calendar_events(brief: Brief, tz: str, untitled: str) -> list[CalendarEvent]:
     out: list[CalendarEvent] = []
-    for ev in summary.get("calendar_events") or []:
+    for ev in brief.events:
         try:
+            if ev.start is None:
+                raise ValueError("no start")
             # A date alone (an exam, an outdoor day) is an all-day event, not one at midnight.
-            start_text = str(ev["start"]).strip()
+            start_text = ev.start.strip()
             all_day = bool(_DATE_ONLY.fullmatch(start_text))
             start = _localize(datetime.fromisoformat(start_text), tz)
             if all_day:
-                end = _all_day_end(ev.get("end"), start)
+                end = _all_day_end(ev.end, start)
             else:
-                end = _localize(datetime.fromisoformat(ev["end"]), tz) if ev.get("end") else None
+                end = _localize(datetime.fromisoformat(ev.end), tz) if ev.end else None
         except Exception:
             log.warning("Skip event with bad date: %r", ev)
             continue
         out.append(CalendarEvent(
-            source=ev.get("source", "llm"),
+            source=ev.source or "llm",
             # Without one, the event is known by its start and kid alone, never its (rewordable) title.
-            external_id=str(ev.get("external_id") or ""),
-            title=ev.get("title", untitled),
+            external_id=ev.external_id or "",
+            title=untitled if ev.title is None else ev.title,
             start=start,
             end=end,
-            location=ev.get("location"),
-            description=ev.get("description", ""),
-            kid=ev.get("kid"),
+            location=ev.location,
+            description=ev.description or "",
+            kid=ev.kid,
             all_day=all_day,
         ))
     return out

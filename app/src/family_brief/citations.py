@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
 
 from .ai_filter import LINK, LINK_CHARS
+from .brief import ActionItem, Brief, Citations, EarlierBrief
 from .brief_text import TEXT
 from .collectors.base import Message
 
@@ -20,9 +20,6 @@ log = logging.getLogger(__name__)
 
 # The prefixes the system prompt asks for on re-reminded Action Items, in any Brief language.
 RE_REMINDER = tuple(t.re_reminder for t in TEXT.values())
-
-# Written by the program, not the model, so kept out of what the model sees of earlier Briefs.
-DERIVED = ("source", "ref_sources", "verified", "legacy")
 
 
 # A web or mail link: the AI filter's, so a link it masks is the link checked here (see ai_filter).
@@ -40,27 +37,10 @@ def keep_links(text: str, allowed: str) -> str:
     return _LINK.sub(check, text)
 
 
-def _entries(day: dict[str, Any]):
-    for kid in day.get("per_kid") or []:
-        yield from kid.get("notices") or []
-        yield from kid.get("action_items") or []
-
-
-def for_prompt(earlier_briefs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Earlier Briefs as the model wrote them, without the people their nights' Messages came from."""
-    def strip(entry: Any) -> Any:
-        return {k: v for k, v in entry.items() if k not in DERIVED} if isinstance(entry, dict) else entry
-    return [{**{k: v for k, v in day.items() if k != "third_parties"},
-             "per_kid": [{**kid, "notices": [strip(n) for n in kid.get("notices") or []],
-                          "action_items": [strip(a) for a in kid.get("action_items") or []]}
-                         for kid in day.get("per_kid") or []]}
-            for day in earlier_briefs]
-
-
-def resolve(summary: dict[str, Any], messages: list[Message], upcoming_events: list[dict],
-            already_captured: list[dict], earlier_briefs: list[dict[str, Any]]) -> None:
-    """Annotate every entry of a model-written summary in place, once summarize.normalise has put
-    it in the schema's shape. The inputs are exactly what tonight's prompt showed the model."""
+def resolve(brief: Brief, messages: list[Message], upcoming_events: list[dict],
+            already_captured: list[dict], earlier_briefs: list[EarlierBrief]) -> Citations:
+    """Annotate every entry of a model-written Brief in place, and count them. The inputs are
+    exactly what tonight's prompt showed the model."""
     known: dict[str, set[str]] = {}
 
     def supply(ref: object, source: str) -> None:
@@ -77,45 +57,41 @@ def resolve(summary: dict[str, Any], messages: list[Message], upcoming_events: l
     # lent, each with its own Sources, so a carried-over ref cannot turn verified or pick up
     # the Source of another ref it sat next to.
     for day in earlier_briefs:
-        for entry in _entries(day):
-            ref_sources = entry.get("ref_sources") if isinstance(entry, dict) else None
-            for ref, sources in (ref_sources if isinstance(ref_sources, dict) else {}).items():
-                for source in sources or []:
-                    supply(ref, source)
+        for kid in day.kids:
+            for entry in [*kid.notices, *kid.action_items]:
+                for ref, sources in (entry.ref_sources or {}).items():
+                    for source in sources:
+                        supply(ref, source)
 
     # Briefs archived before citations existed have no refs to carry over, so their re-reminders
     # cannot verify. Counting them as unverified would inflate the rate for the first nights.
     # Deliberately loose: while any old-shape item is fed in, every unverified re-reminder counts
     # as legacy, so a made-up one is miscounted too. Matching the earlier item's text instead would
     # miscount genuine carry-overs the model rewords. Either way it ends 3 nights after upgrading.
-    has_legacy = any(not isinstance(a, dict) or "refs" not in a
-                     for day in earlier_briefs for kid in day.get("per_kid") or []
-                     for a in kid.get("action_items") or [])
+    has_legacy = any(a.refs is None for day in earlier_briefs for kid in day.kids for a in kid.action_items)
 
-    _resolve_events(summary, messages)
+    _resolve_events(brief, messages)
 
-    counts = {"entries": 0, "unverified": 0, "legacy": 0}
-    for kid in summary["per_kid"]:
-        for entry in kid["notices"] + kid["action_items"]:
-            refs = entry.get("refs")
-            # Stored even when empty: an entry without the key reads as pre-citations tomorrow.
-            entry["refs"] = refs = refs if isinstance(refs, list) else []
-            entry["ref_sources"] = {str(r): sorted(known[str(r)]) for r in refs if str(r) in known}
-            sources = set().union(*entry["ref_sources"].values())
-            entry["source"] = sorted(sources)
-            entry["verified"] = bool(sources)
-            counts["entries"] += 1
-            if sources:
-                continue
-            if has_legacy and str(entry.get("what", "")).startswith(RE_REMINDER):
-                entry["legacy"] = True
-                counts["legacy"] += 1
-            else:
-                counts["unverified"] += 1
-    summary["_citations"] = counts
+    counts = Citations()
+    for entry in brief.entries():
+        # Stored even when empty: an entry without refs reads as pre-citations tomorrow.
+        refs = entry.refs = entry.refs or []
+        entry.ref_sources = {r: sorted(known[r]) for r in refs if r in known}
+        sources = set().union(*entry.ref_sources.values())
+        entry.source = sorted(sources)
+        entry.verified = bool(sources)
+        counts.entries += 1
+        if sources:
+            continue
+        if has_legacy and isinstance(entry, ActionItem) and entry.what.startswith(RE_REMINDER):
+            entry.legacy = True
+            counts.legacy += 1
+        else:
+            counts.unverified += 1
+    return counts
 
 
-def _resolve_events(summary: dict[str, Any], messages: list[Message]) -> None:
+def _resolve_events(brief: Brief, messages: list[Message]) -> None:
     """Keep only the calendar events that cite one of tonight's Messages. Each takes its `source`
     and `external_id` from the earliest of those, and loses any link none of them has. The
     earliest, since they make the event's identity: a rerun that also cites a later reminder
@@ -124,20 +100,22 @@ def _resolve_events(summary: dict[str, Any], messages: list[Message]) -> None:
     for m in messages:
         by_id.setdefault(str(m.external_id), []).append(m)
     kept = []
-    for ev in summary["calendar_events"]:
-        refs = ev.get("refs")
-        ev["refs"] = refs = refs if isinstance(refs, list) else []
-        cited = sorted({str(r) for r in refs} & by_id.keys())
+    for ev in brief.events:
+        refs = ev.refs = ev.refs or []
+        cited = sorted(set(refs) & by_id.keys())
         if not cited:
             log.warning("Dropped calendar event %r at %s: no message it cites was read tonight (refs %s)",
-                        ev.get("title"), ev.get("start"), refs)
+                        ev.title, ev.start, refs)
             continue
-        ev["ref_sources"] = {r: sorted({m.source for m in by_id[r]}) for r in cited}
+        ev.ref_sources = {r: sorted({m.source for m in by_id[r]}) for r in cited}
         first = min((m for r in cited for m in by_id[r]), key=lambda m: (m.timestamp, m.source, str(m.external_id)))
-        ev["external_id"], ev["source"] = str(first.external_id), first.source
+        ev.external_id, ev.source = str(first.external_id), first.source
         allowed = "\n".join(f"{m.subject or ''}\n{m.body}\n{m.url or ''}" for r in cited for m in by_id[r])
-        for key in ("title", "location", "description"):
-            if isinstance(ev.get(key), str):
-                ev[key] = keep_links(ev[key], allowed)
+        if ev.title is not None:
+            ev.title = keep_links(ev.title, allowed)
+        if ev.location is not None:
+            ev.location = keep_links(ev.location, allowed)
+        if ev.description is not None:
+            ev.description = keep_links(ev.description, allowed)
         kept.append(ev)
-    summary["calendar_events"] = kept
+    brief.events = kept

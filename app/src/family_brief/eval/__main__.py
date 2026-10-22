@@ -25,7 +25,8 @@ from ..config import LLMConfig
 from ..brief_text import TEXT
 from ..collectors.base import Message
 from ..llm.parse import strip_code_fence
-from ..summarize import (call_llm_json, digest_of, for_the_ai, kids_for, placeholders_for,
+from ..brief import to_archive
+from ..summarize import (call_llm_json, for_the_ai, kids_for, placeholders_for,
                          summarize_reply, system_prompt)
 from . import cost
 from .cases import BUNDLED, Case, load_cases
@@ -70,18 +71,18 @@ def _judge(case: Case, messages: list[Message], digest: str) -> dict[str, Any] |
 
 def run_case(case: Case, judge: bool) -> dict[str, Any]:
     started = time.monotonic()
-    summary, reply, error = None, None, None
+    brief, notes, reply, error = None, None, None, None
     # A message that looks sensitive reaches neither the Brief's call nor the judge's, as on an evening.
     messages, _held_back = for_the_ai(case.household, case.messages)
     placeholders = placeholders_for(case.household)
     try:
-        summary, reply = summarize_reply(case.household, messages, case.calendar, case.queued,
-                                         case.earlier_briefs, now=case.now, placeholders=placeholders)
+        brief, notes, reply = summarize_reply(case.household, messages, case.calendar, case.queued,
+                                              case.earlier_briefs, now=case.now, placeholders=placeholders)
     except Exception as e:
         error = str(e)
-    result = score_case(case.expect, summary, case.household.timezone,
+    result = score_case(case.expect, brief, case.household.timezone,
                         lost_placeholders=placeholders.lost if placeholders else 0,
-                        language=case.household.brief_language())
+                        language=case.household.brief_language(), citations=notes.citations if notes else None)
     # Priced as the model the backend says answered, which also names the one a default stands for.
     model = (reply.model if reply else None) or case.household.llm.model
     usage = reply.usage if reply else None
@@ -93,11 +94,11 @@ def run_case(case: Case, judge: bool) -> dict[str, Any]:
         usd=cost.night_usd(model, usage),
         valid_json=bool(reply) and _strictly_valid(reply.text),
         error=error,
-        summary=summary,
+        summary=to_archive(brief, notes) if brief and notes else None,
     )
     result["clean"] = is_clean(result)
-    if judge and summary and (digest := digest_of(summary)):
-        result["judge"] = _judge(case, messages, digest)
+    if judge and brief and brief.digest:
+        result["judge"] = _judge(case, messages, brief.digest)
     return result
 
 

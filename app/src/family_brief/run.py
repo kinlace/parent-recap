@@ -16,6 +16,7 @@ from typing import Callable, Literal
 from . import ai_filter, feedback, gateway, languages, llm, private_files, render
 from . import sources as source_registry
 from .actions import archive, calendar as calendar_action, email as email_action, imessage
+from .brief import Brief, EarlierBrief, RunNotes
 from .brief_text import BriefText, Language
 from .collectors.base import CalendarEvent, Message
 from .config import Config
@@ -48,8 +49,8 @@ class IO:
     calendar_ready: Callable[[], bool]
     upcoming_events: Callable[[Config, int], list[dict]]
     create_events: Callable[[Config, State, list[CalendarEvent], list[dict]], None]
-    recent_points: Callable[[Config, str], list[dict]]
-    write_archive: Callable[[Config, str, list[Message], dict, list[dict], bool], Path]
+    recent_points: Callable[[Config, str], list[EarlierBrief]]
+    write_archive: Callable[[Config, str, list[Message], Brief, RunNotes, list[dict], bool], Path]
     load_state: Callable[[Path], State]
     wait_for_network: Callable[[str], None]
 
@@ -222,7 +223,7 @@ class _Read:
     messages: list[Message]
     direct_events: list[CalendarEvent]
     coverage: dict[str, dict]
-    earlier: list[dict]
+    earlier: list[EarlierBrief]
     due_soon: bool
 
     @property
@@ -252,7 +253,7 @@ def _read(cfg: Config, options: Options, io: IO, state: State) -> _Read:
 PREVIEW_BUDGET = 10 * 60
 
 
-def _fallback_summary(messages: list[Message], err: str, t: BriefText, cfg: Config) -> dict:
+def _fallback_summary(messages: list[Message], err: str, t: BriefText, cfg: Config) -> Brief:
     """Rule-based digest when the LLM call fails. Never leaks the raw error to iMessage."""
     # Group by (kid_hint or 'unknown', source)
     buckets: dict[tuple[str, str], list[Message]] = {}
@@ -273,12 +274,7 @@ def _fallback_summary(messages: list[Message], err: str, t: BriefText, cfg: Conf
         if len(msgs) > 15:
             lines.append(t.fallback_more.format(n=len(msgs) - 15))
         lines.append("")
-    return {
-        "per_kid": [],
-        "calendar_events": [],
-        "message_digest": "\n".join(lines),
-        "_llm_error": err,
-    }
+    return Brief(digest="\n".join(lines))
 
 
 _ADDRESS = re.compile(r"\s*<[^<>]*>$")
@@ -363,8 +359,9 @@ def _write_calendar(cfg: Config, io: IO, state: State, events: list[CalendarEven
 
 @dataclass
 class _Written:
-    """Tonight's Brief as the model wrote it, with what the run needs to send it."""
+    """Tonight's Brief as the model wrote it, with what the run needs to send and archive it."""
     night: render.Night
+    notes: RunNotes
     for_ai: list[Message]
     held: list[Message]
     model_events: list[CalendarEvent]
@@ -396,36 +393,36 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         try:
             # Pass direct_events so the LLM doesn't duplicate them into calendar_events.
             already_captured = [e.to_dict() for e in read.direct_events]
-            summary = summarize(cfg, for_ai, upcoming, already_captured, read.earlier,
-                                budget=PREVIEW_BUDGET if options.preview else llm.CALL_BUDGET,
-                                placeholders=placeholders)
+            brief, notes = summarize(cfg, for_ai, upcoming, already_captured, read.earlier,
+                                     budget=PREVIEW_BUDGET if options.preview else llm.CALL_BUDGET,
+                                     placeholders=placeholders)
         except Exception as e:
             log.error("Summarizer failed: %s (falling back to rule-based digest)", e)
-            summary = _fallback_summary(for_ai, str(e), t, cfg)
+            brief, notes = _fallback_summary(for_ai, str(e), t, cfg), RunNotes(error=str(e))
     else:
-        summary = {"per_kid": [], "calendar_events": [], "message_digest": ""}
+        brief, notes = Brief(), RunNotes()
 
-    summary["_coverage"] = read.coverage  # kept in the archive for later checks
+    notes.coverage = read.coverage  # kept in the archive for later checks
     if held:  # the messages in the archive that the AI never saw
-        summary["_held_back"] = [m.external_id for m in held]
-    model_events = extract_calendar_events(summary, cfg.timezone, t.untitled)
+        notes.held_back = [m.external_id for m in held]
+    model_events = extract_calendar_events(brief, cfg.timezone, t.untitled)
     calendar = _write_calendar(cfg, io, state, model_events + read.direct_events, sends, google_ready)
     date_str = today_str(cfg.timezone)
     form = feedback.Links(cfg, date_str, _form_people(cfg, placeholders, for_ai, read.earlier)) \
         if cfg.feedback.active() else None
     night = render.Night(
-        date=date_str, tz=cfg.timezone, t=t, assistant=llm.backend(cfg).display_name, summary=summary,
+        date=date_str, tz=cfg.timezone, t=t, assistant=llm.backend(cfg).display_name, brief=brief,
         coverage=read.coverage, created=calendar.created, held_back=_held_back(held),
         calendar_problem=calendar.problem, ics_events=calendar.ics_events,
         # The rule-based fallback is a raw message list the model never wrote, and a night with only
         # MyClub events or Held-back Messages asks no model: nothing to judge and no model to credit.
-        model_wrote=bool(for_ai or read.due_soon) and "_llm_error" not in summary, form=form,
-        stamp=datetime.now(timezone.utc))
-    return _Written(night, for_ai, held, model_events, placeholders)
+        model_wrote=bool(for_ai or read.due_soon) and notes.error is None, form=form,
+        stamp=datetime.now(timezone.utc), incomplete=notes.incomplete)
+    return _Written(night, notes, for_ai, held, model_events, placeholders)
 
 
 def _form_people(cfg: Config, placeholders: ai_filter.Placeholders | None, for_ai: list[Message],
-                 earlier: list[dict]) -> ai_filter.Placeholders:
+                 earlier: list[EarlierBrief]) -> ai_filter.Placeholders:
     """The placeholders the pilot feedback links carry for other people: tonight's, as the AI saw
     them. With the AI filter off, new ones for the same people, since the links go to the team."""
     if placeholders is not None:
@@ -439,26 +436,25 @@ def _versions(cfg: Config, written: _Written) -> list[render.Version]:
     """One version of tonight's Brief per language among the Recipients, the original first.
     Everything the Household shares (Google Calendar, the archive, feedback text) stays the
     original's (ADR 0004). Translations use tonight's placeholders."""
-    summary = written.night.summary
+    brief, error = written.night.brief, written.notes.error
     original = cfg.brief_language()
 
-    model_down = "_llm_error" in summary
+    def translate_into(language: Language) -> Brief | None:
+        return None if error is not None else translate(cfg, brief, original, language, written.placeholders)
 
-    def translate_into(language: Language) -> dict | None:
-        return None if model_down else translate(cfg, summary, original, language, written.placeholders)
-
-    def in_language(language: Language, to: list[str], translated: dict | None) -> render.Version:
+    def in_language(language: Language, to: list[str], translated: Brief | None) -> render.Version:
         t = languages.text(cfg, language)
         if translated is None:
             # The model is down, so there is nothing to translate; the raw list comes in their words.
-            return render.Version(t, to, _fallback_summary(written.for_ai, summary["_llm_error"], t, cfg))
+            assert error is not None
+            return render.Version(t, to, _fallback_summary(written.for_ai, error, t, cfg))
         events = extract_calendar_events(translated, cfg.timezone, t.untitled)
         return render.Version(t, to, translated, {
             (ev.title, ev.start_iso()): tev for ev, tev in zip(written.model_events, events)})
 
     return per_language(
         "the Brief", original, cfg.brief_recipients_by_language(), translate_into, in_language,
-        lambda to, note: render.Version(languages.text(cfg, original), to, summary, translation_note=note),
+        lambda to, note: render.Version(languages.text(cfg, original), to, brief, translation_note=note),
         lambda language: languages.text(cfg, language).translation_failed)
 
 
@@ -469,18 +465,17 @@ def _preview_step(step: str, **more: object) -> None:
     print(json.dumps({"preview": step, **more}, ensure_ascii=False), flush=True)
 
 
-def _log_preview(cfg: Config, coverage: dict[str, dict], held: list[Message], summary: dict,
-                 created: list[dict]) -> None:
+def _log_preview(cfg: Config, coverage: dict[str, dict], held: list[Message], written: _Written) -> None:
     """One line about the setup page's Brief in the evening job's log, which a preview otherwise
     leaves no trace in, so a "my first Brief looks wrong" report can be looked into afterwards.
     Counts only: no message text, names or subjects, and no error text, which can name an address."""
     read = ", ".join(f"{s} failed" if c["error"] else f"{s} {c['count']}" for s, c in coverage.items())
-    kids = summary.get("per_kid") or []
+    brief, created = written.night.brief, written.night.created
     line = (f"Setup preview: read {read or 'nothing'}; {len(held)} held back; "
-            f"Digest {len(summary.get('message_digest') or '')} chars, "
-            f"{sum(len(k.get('notices') or []) for k in kids)} Notices, "
-            f"{sum(len(k.get('action_items') or []) for k in kids)} Action Items, {len(created)} new events")
-    if "_llm_error" in summary:
+            f"Digest {len(brief.digest)} chars, "
+            f"{sum(len(k.notices) for k in brief.kids)} Notices, "
+            f"{sum(len(k.action_items) for k in brief.kids)} Action Items, {len(created)} new events")
+    if written.notes.error is not None:
         line += "; the model failed, so it lists the messages"
     log.info(line)
     # The page's run sends its own output to the page, which drops it, so the line goes to the
@@ -588,14 +583,13 @@ def run(cfg: Config, options: Options, io: IO) -> int:
     written = _write(cfg, options, io, state, read, tonight.sends)
     night = written.night
     tonight = plan(options, anything_new=True, nothing_could_be_read=_nothing_could_be_read(cfg, read.coverage),
-                   nothing_to_show=render.nothing_to_show(night.summary, night.created, night.held_back,
-                                                          night.t, night.assistant))
+                   nothing_to_show=render.nothing_to_show(night))
     if tonight.ending == "quiet":
         log.info("Nothing to tell the family tonight; no Brief sent.")
         return _quiet_night(state, read.coverage, tonight.sends)
     if tonight.shows:
         _preview_step("made", **render.preview(night))
-        _log_preview(cfg, read.coverage, written.held, night.summary, night.created)
+        _log_preview(cfg, read.coverage, written.held, written)
     if not tonight.sends:
         # Dry runs leave no trace but a preview's log line: no archive, no state, no email.
         body = night.text()
@@ -603,7 +597,7 @@ def run(cfg: Config, options: Options, io: IO) -> int:
         return 0
 
     email_sent, delivered = _deliver(cfg, io, state, written)
-    md_path = io.write_archive(cfg, night.date, read.messages, night.summary, night.created, delivered)
+    md_path = io.write_archive(cfg, night.date, read.messages, night.brief, written.notes, night.created, delivered)
     log.info("Archive written to %s", md_path)
 
     # Only mark .ics events as sent once the email actually went out, so a failed send retries tomorrow.

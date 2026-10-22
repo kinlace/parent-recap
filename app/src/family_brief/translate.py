@@ -14,13 +14,14 @@ import copy
 import logging
 from datetime import date, timedelta
 from string import Template
-from typing import Any, Callable, TypeVar
+from typing import Callable, TypeVar
 
 from . import ai_filter, citations, kid_placeholders, languages
+from .brief import Brief, Event, KidSection, for_translation, parse
 from .brief_text import BriefText, Language
 from .languages import FINNISH_TERMS, is_finnish
 from .config import Config
-from .summarize import call_llm_filtered, digest_of
+from .summarize import call_llm_filtered
 from .utils.dates import today_str
 
 log = logging.getLogger(__name__)
@@ -84,109 +85,83 @@ def _unprefixed(what: str, t: BriefText) -> str:
     return what.removeprefix(t.re_reminder)
 
 
-def _payload(summary: dict[str, Any], t: BriefText) -> dict[str, Any]:
-    return {
-        "message_digest": digest_of(summary),
-        "per_kid": [{
-            "kid": kid.get("kid"),
-            "notices": [{"text": n.get("text", ""), "refs": n.get("refs", [])}
-                        for n in kid.get("notices") or []],
-            "action_items": [{"what": _unprefixed(str(a.get("what", "")), t), "by": a.get("by"),
-                              "refs": a.get("refs", [])}
-                             for a in kid.get("action_items") or []],
-        } for kid in summary.get("per_kid") or []],
-        "calendar_events": [{k: ev[k] for k in ("kid", "title", "start", "description") if ev.get(k)}
-                            for ev in summary.get("calendar_events") or []],
-    }
+def _has_text(brief: Brief) -> bool:
+    return bool(brief.digest or brief.events or any(brief.entries()))
 
 
-def _has_text(summary: dict[str, Any]) -> bool:
-    return bool(digest_of(summary) or summary.get("calendar_events")
-                or any(kid.get("notices") or kid.get("action_items") for kid in summary.get("per_kid") or []))
-
-
-def _skeleton(brief: dict[str, Any], label: Callable[[Any], Any] = lambda kid: kid) -> dict[str, Any]:
+def _skeleton(brief: Brief, label: Callable[[str | None], str | None] = lambda kid: kid) -> tuple:
     """The Brief without its text: everything a translation has to leave exactly as it was.
     `label` reads each Kid, so a translated Household label can count as the original's."""
-    return {
-        "per_kid": [{"kid": label(kid.get("kid")),
-                     "notices": [n.get("refs") or [] for n in kid.get("notices") or []],
-                     "action_items": [(a.get("by"), a.get("refs") or []) for a in kid.get("action_items") or []]}
-                    for kid in brief.get("per_kid") or []],
-        "calendar_events": [(label(ev.get("kid")), ev.get("start")) for ev in brief.get("calendar_events") or []],
-    }
+    return ([(label(kid.kid), [n.refs or [] for n in kid.notices],
+              [(a.by, a.refs or []) for a in kid.action_items]) for kid in brief.kids],
+            [(label(ev.kid), ev.start) for ev in brief.events])
 
 
-def _check(sent: dict[str, Any], reply: dict[str, Any], src: BriefText, dst: BriefText) -> None:
-    """Raise unless the reply carries the same Brief as the payload it translates. No model call.
+def _check(original: Brief, reply: Brief, src: BriefText, dst: BriefText) -> None:
+    """Raise unless the reply carries the same Brief as the original it translates. No model call.
     The Household label is the program's word, so a model that translated it anyway lost nothing."""
-    def label(kid: Any) -> Any:
+    def label(kid: str | None) -> str | None:
         return src.household if kid == dst.household else kid
-    try:
-        matches = _skeleton(reply, label) == _skeleton(sent)
-    except (AttributeError, TypeError):  # e.g. a list where an object belongs
-        matches = False
-    if not matches:
+    if _skeleton(reply, label) != _skeleton(original):
         raise ValueError("the translation doesn't carry the same Kids, Notices, Action Items, "
                          "calendar events, due dates or refs as the Brief")
 
 
-def _text(obj: Any, key: str) -> str:
-    value = obj.get(key) if isinstance(obj, dict) else None
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"the translation has no {key} text")
+def _text(value: str | None, what: str) -> str:
+    # The reply has been parsed, so a text it lacks is None and one it has is not blank.
+    if value is None:
+        raise ValueError(f"the translation has no {what} text")
     return value
 
 
-def _merge(original: dict[str, Any], reply: dict[str, Any], src: BriefText, dst: BriefText) -> dict[str, Any]:
+def _merge(original: Brief, reply: Brief, src: BriefText, dst: BriefText) -> Brief:
     """The original with the reply's text in place of its own. The Household's label and the
     assignees are the program's own words, so they are swapped for the target's, not translated."""
     out = copy.deepcopy(original)
 
-    def relabel(entry: dict[str, Any]) -> None:
-        if entry.get("kid") == src.household:
-            entry["kid"] = dst.household
+    def relabel(entry: KidSection | Event) -> None:
+        if entry.kid == src.household:
+            entry.kid = dst.household
 
-    if digest_of(original):
-        out["message_digest"] = _text(reply, "message_digest")
+    if original.digest:
+        out.digest = _text(reply.digest if reply.digest.strip() else None, "message_digest")
     # _check made sure the reply's lists line up with the original's; strict in case it didn't run.
-    for kid, translated in zip(out.get("per_kid") or [], reply.get("per_kid") or [], strict=True):
+    for kid, translated in zip(out.kids, reply.kids, strict=True):
         relabel(kid)
-        for n, tn in zip(kid.get("notices") or [], translated.get("notices") or [], strict=True):
-            if n.get("text"):
-                n["text"] = _text(tn, "text")
-        for a, ta in zip(kid.get("action_items") or [], translated.get("action_items") or [], strict=True):
-            if a.get("what"):
-                prefix = dst.re_reminder if str(a["what"]).startswith(src.re_reminder) else ""
-                a["what"] = prefix + _text(ta, "what")
-            if a.get("who") in src.who:
-                a["who"] = dst.who[src.who.index(a["who"])]
-    for ev, te in zip(out.get("calendar_events") or [], reply.get("calendar_events") or [], strict=True):
+        for n, tn in zip(kid.notices, translated.notices, strict=True):
+            n.text = _text(tn.text, "text")
+        for a, ta in zip(kid.action_items, translated.action_items, strict=True):
+            prefix = dst.re_reminder if a.what.startswith(src.re_reminder) else ""
+            a.what = prefix + _text(ta.what, "what")
+            if a.who in src.who:
+                a.who = dst.who[src.who.index(a.who)]
+    for ev, te in zip(out.events, reply.events, strict=True):
         relabel(ev)
-        for key in ("title", "description"):
-            if ev.get(key):
-                # A link the original didn't have would reach the calendar unchecked (#89).
-                ev[key] = citations.keep_links(_text(te, key), ev[key])
+        # A link the original didn't have would reach the calendar unchecked (#89).
+        if ev.title:
+            ev.title = citations.keep_links(_text(te.title, "title"), ev.title)
+        if ev.description:
+            ev.description = citations.keep_links(_text(te.description, "description"), ev.description)
     return out
 
 
-def translate(cfg: Config, summary: dict[str, Any], original: Language, target: Language,
-              placeholders: ai_filter.Placeholders | None = None) -> dict[str, Any]:
-    """`summary`, written in `original`, as a Recipient reading `target` gets it. Raises when the
+def translate(cfg: Config, brief: Brief, original: Language, target: Language,
+              placeholders: ai_filter.Placeholders | None = None) -> Brief:
+    """`brief`, written in `original`, as a Recipient reading `target` gets it. Raises when the
     model call fails or its reply doesn't carry the same Brief; the caller then sends the original.
     `placeholders` are the run's, so the model sees each value as the Brief's call did."""
-    if not _has_text(summary):  # e.g. a night with only MyClub events: nothing for the model to do
-        return summary
+    if not _has_text(brief):  # e.g. a night with only MyClub events: nothing for the model to do
+        return brief
     src, dst = languages.text(cfg, original), languages.text(cfg, target)
     log.info("Translating the Brief from %s into %s", original, target)
-    payload = _payload(summary, src)
     tomorrow = date.fromisoformat(today_str(cfg.timezone)) + timedelta(days=1)
     # Restored before the checks, which compare links with the original's.
-    reply = call_llm_filtered(cfg, "", payload,
-                              lambda masked, kids: system_prompt(src, dst, target, tomorrow, masked, kids),
-                              dst.placeholder_words(), placeholders).data
-    _check(payload, reply, src, dst)
-    return _merge(summary, reply, src, dst)
+    payload = for_translation(brief, lambda what: _unprefixed(what, src))
+    reply = parse(call_llm_filtered(cfg, "", payload,
+                                    lambda masked, kids: system_prompt(src, dst, target, tomorrow, masked, kids),
+                                    dst.placeholder_words(), placeholders).data)
+    _check(brief, reply, src, dst)
+    return _merge(brief, reply, src, dst)
 
 
 def per_language(what: str, original: Language, by_language: dict[Language, list[str]],

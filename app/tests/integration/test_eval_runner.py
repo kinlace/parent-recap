@@ -320,7 +320,7 @@ def test_bundled_cases_cover_the_hard_parts():
             "calendar-disagrees", "noise", "empty-night", "prompt-injection", "wilma-events"} <= covered
     for case in cases:
         assert all(m.timestamp <= case.now for m in case.messages), case.name
-        assert all(day["date"] < case.now.date().isoformat() for day in case.earlier_briefs), case.name
+        assert all(day.date < case.now.date().isoformat() for day in case.earlier_briefs), case.name
 
 
 def test_every_bundled_case_runs_and_an_empty_brief_only_passes_the_quiet_nights(model, tmp_path, capsys):
