@@ -181,12 +181,37 @@ def test_a_typed_secret_is_asked_for_by_security_itself_and_replaces_one_stored_
 
 
 @pytest.mark.parametrize("var", ["TMUX", "SSH_CONNECTION"])
-def test_in_tmux_or_over_ssh_the_keychain_is_out_of_reach(keychain, monkeypatch, var):
-    assert secrets.reachable()
-
+def test_in_tmux_or_over_ssh_a_keychain_that_refuses_to_ask_is_out_of_reach(keychain, monkeypatch,
+                                                                             var):
     monkeypatch.setenv(var, "1")
+    keychain.refuses = -25308
 
     assert not secrets.reachable()
+    assert keychain.items == {}
+
+
+@pytest.mark.parametrize("var", ["TMUX", "SSH_CONNECTION"])
+def test_in_tmux_or_over_ssh_a_keychain_that_saves_is_in_reach_and_keeps_nothing(keychain,
+                                                                                monkeypatch, var):
+    # #461: a tmux started in the desktop session may write the Keychain all the same.
+    monkeypatch.setenv(var, "1")
+
+    assert secrets.reachable()
+    assert keychain.items == {}
+
+
+def test_a_keychain_that_refuses_for_another_reason_is_still_in_reach(keychain, monkeypatch):
+    # Only -25308 means macOS can't ask from here; anything else a real save reports itself.
+    monkeypatch.setenv("TMUX", "1")
+    keychain.refuses = -25293
+
+    assert secrets.reachable()
+
+
+def test_outside_tmux_and_ssh_the_keychain_is_in_reach_without_touching_it(keychain):
+    # In the desktop session a locked Keychain would ask for its password just for the probe.
+    assert secrets.reachable()
+    assert keychain.commands == []
 
 
 def test_a_refused_deletion_says_where_to_delete_it_by_hand(keychain):

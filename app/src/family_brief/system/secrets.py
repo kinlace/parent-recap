@@ -53,6 +53,7 @@ def deleting_asks() -> str:
 
 
 def reachable() -> bool:
-    """Whether the store may be written from here: False in tmux or over SSH on macOS, where
-    macOS shows no prompt. Windows says so only when a secret is written."""
+    """Whether the store may be written from here: False in tmux or over SSH on macOS when a
+    throwaway item can't be written there, as macOS shows no prompt. Windows says so only when a
+    secret is written."""
     return _adapter.reachable()

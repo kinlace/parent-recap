@@ -17,6 +17,7 @@ STORE = "Keychain"
 DELETING_ASKS = "macOS may ask you to allow deleting it"
 SERVICE = "family-brief"
 SECURITY = "/usr/bin/security"
+PROBE = "reachable-probe"  # the throwaway item `reachable` writes and deletes again
 # How long a read may take. A readable item takes a fraction of a second; one that makes macOS
 # ask for the Keychain password would wait for the answer.
 READ_SECONDS = 5
@@ -109,7 +110,23 @@ def where(key: str) -> str:
 
 
 def reachable() -> bool:
-    return not (os.environ.get("TMUX") or os.environ.get("SSH_CONNECTION"))
+    # Only tmux and SSH can be cut off from the desktop session, and only some are (#461): a tmux
+    # started in it may write the Keychain all the same. So there a throwaway item is written to
+    # find out. Elsewhere nothing is written: a locked Keychain would ask for its password.
+    if not (os.environ.get("TMUX") or os.environ.get("SSH_CONNECTION")):
+        return True
+    try:
+        # Not a secret, so on the command line is fine.
+        r = _run([*_item("add-generic-password", PROBE), "-U", "-w", PROBE, "-T", SECURITY])
+    except SecretsError as e:
+        return e.reason != "not-reachable"
+    finally:
+        # Deleted however the add went, so the probe leaves nothing for uninstall to remove.
+        try:
+            _run(_item("delete-generic-password", PROBE))
+        except SecretsError:
+            pass
+    return r.returncode == 0 or _code(_said(r)) != INTERACTION_NOT_ALLOWED
 
 
 def _error(message: str, code: int | None = None) -> SecretsError:

@@ -44,7 +44,7 @@ class Welcome(Phase):
                 # Which system's words the page uses, and the AIs it offers here.
                 "system": profile.current().system,
                 "ais": list(ais()),
-                # In tmux or SSH, macOS won't let this server save the passwords in the Keychain.
+                # In tmux or SSH, macOS may not let this server save the passwords in the Keychain.
                 "keychain": {"reachable": secrets.reachable()},
                 "welcome": self._welcome(progress)}
 
