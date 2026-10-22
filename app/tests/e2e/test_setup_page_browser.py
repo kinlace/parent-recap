@@ -38,6 +38,7 @@ from test_setup_gmail import TYPED
 from test_setup_myclub import LINK as MYCLUB_LINK
 from test_setup_page_windows import Web, school_mail
 from test_setup_status import install_program
+from test_setup_whatsapp import WHATSAPP_CHATS, fake_mac
 from test_setup_wilma import wilma_cli  # noqa: F401
 
 pytestmark = pytest.mark.browser
@@ -487,6 +488,24 @@ def test_whatsapp_s_step_names_the_python_file_finder_selects(tab):
     expect(tab.locator("#whatsapp-explain")).to_have_text(text("whatsapp.explain", python=python))
     expect(tab.locator("#whatsapp-drag")).to_have_text(text("whatsapp.picture.drag", python=python))
     expect(tab.locator("#source-whatsapp .python-file")).to_have_text([python, python])
+
+
+@pytest.mark.macos
+def test_whatsapp_s_step_waits_for_the_chats_to_sync_and_offers_to_skip_meanwhile(
+        tab, family, monkeypatch):
+    # Signed in to WhatsApp for Mac during the step: readable, but no group yet (#460). The
+    # real clock, as the page checks again every few seconds.
+    mac = fake_mac(family, monkeypatch)
+    mac.install_whatsapp([])
+
+    connect_up_to_whatsapp(tab)
+
+    expect(tab.get_by_text(text("whatsapp.syncing"))).to_be_visible()
+    expect(button(tab, "source.skip")).to_be_visible()
+    expect(source_listed(tab, "whatsapp", "to-do")).to_be_visible()
+    mac.install_whatsapp(WHATSAPP_CHATS)  # the chats have synced, and the page checks again
+    expect(tab.get_by_text(text("whatsapp.readable"))).to_be_visible()
+    expect(source_listed(tab, "whatsapp", "done")).to_be_visible()
 
 
 @pytest.mark.macos

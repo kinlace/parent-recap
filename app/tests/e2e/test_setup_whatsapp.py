@@ -64,8 +64,9 @@ class Mac:
 
     def install_whatsapp(self, chats: list[tuple[str, int, bool]]) -> None:
         """(name, days before the last message, archived) for each group chat."""
-        self.db_dir.mkdir(parents=True)
+        self.db_dir.mkdir(parents=True, exist_ok=True)
         db = self.db_dir / "ChatStorage.sqlite"
+        db.unlink(missing_ok=True)  # installed again: the chats WhatsApp has synced by now
         conn = sqlite3.connect(db)
         conn.execute("CREATE TABLE ZWACHATSESSION (Z_PK INTEGER PRIMARY KEY, ZPARTNERNAME TEXT, "
                      "ZCONTACTJID TEXT, ZLASTMESSAGEDATE REAL, ZARCHIVED INTEGER, ZREMOVED INTEGER)")
@@ -568,6 +569,26 @@ def test_an_allow_click_cannot_tick_the_entry_without_full_disk_access(harness, 
     assert check_whatsapp(page.url).json() == {"result": "no-permission"}
     assert mac.prompts == 0 and mac.reads == []  # macOS never asked
     assert statuses(page.url)["whatsapp"] == "to-do"
+
+
+@pytest.mark.macos
+def test_a_whatsapp_with_no_groups_yet_is_still_syncing_until_they_show(harness, page, mac):
+    # Right after signing in, WhatsApp's database is readable before the chats have synced
+    # (#460): the step waits for the groups instead of ticking with none for the check page.
+    at_the_whatsapp_step(harness)
+    mac.install_whatsapp([])
+
+    assert check_whatsapp(page.url).json() == {"result": "syncing"}
+    assert check_whatsapp(page.url).json() == {"result": "syncing"}
+    assert statuses(page.url)["whatsapp"] == "to-do"
+    assert "whatsapp_chats" not in call(page.url, "api/state").json()["progress"]
+
+    mac.install_whatsapp(WHATSAPP_CHATS)  # the chats have synced
+    out = check_whatsapp(page.url).json()
+
+    assert out["result"] == "readable" and len(out["chats"]) == 3
+    assert statuses(page.url)["whatsapp"] == "done"
+    assert call(page.url, "api/state").json()["progress"]["whatsapp_chats"] == out["chats"]
 
 
 @pytest.mark.macos

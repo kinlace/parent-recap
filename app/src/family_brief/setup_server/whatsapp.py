@@ -13,8 +13,8 @@ from .context import Action, Context, Phase, nothing_to_give
 
 # What one read of WhatsApp can say, as `setup whatsapp` does, and whether the button opened
 # Finder, with the Python to allow, and Full Disk Access.
-WHATSAPP_RESULTS = ("readable", "no-permission", "waiting", "not-installed", "unreadable",
-                    "bg-failed")
+WHATSAPP_RESULTS = ("readable", "syncing", "no-permission", "waiting", "not-installed",
+                    "unreadable", "bg-failed")
 WHATSAPP_OPEN_RESULTS = ("opened", "not-opened")
 
 
@@ -45,6 +45,10 @@ class WhatsApp(Phase):
                 self.context.timeouts.whatsapp_read)
         if read["result"] != "readable":
             return HTTPStatus.OK, {"result": read["result"]}
+        # Right after signing in, WhatsApp's database is readable before the chats have synced
+        # (#460): the page checks again until a group shows, and a family with none skips.
+        if not read["chats"]:
+            return HTTPStatus.OK, {"result": "syncing"}
         # A read takes a while, and the family may have skipped WhatsApp or opened another Source
         # meanwhile: their choice stands.
         return self.context.connect.complete(
