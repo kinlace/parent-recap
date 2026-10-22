@@ -31,11 +31,13 @@ from typing import Any
 
 from . import install_record, llm
 from .setup_report import keychain_failure
-from .system import secrets
+from .system import profile, secrets, windows_only
 
-if sys.platform != "win32":  # `claude setup-token`'s pseudo-terminal, which Windows doesn't have
+try:  # `claude setup-token`'s pseudo-terminal, which Windows doesn't have
     import fcntl
     import termios
+except ImportError:
+    pass
 
 CLAUDE_TOKEN_ACCOUNT = "claude-oauth-token"
 CLAUDE_WINDOW = "Claude sign-in"  # the title of the window `claude setup-token` runs in
@@ -126,25 +128,19 @@ def _token(shown: bytes, *, ended: bool) -> str | None:
 def install_codex() -> bool:
     """Installs the Codex CLI on Windows with OpenAI's own installer, as their instructions say
     to: PowerShell downloads and runs it. Whether it ran through. What it said isn't kept."""
-    return _install_in_powershell(llm.named("codex").install_line())
+    return _install("codex")
 
 
 def install_claude() -> bool:
     """Installs Claude Code on Windows with Anthropic's own installer, the same way."""
-    return _install_in_powershell(llm.named("claude").install_line())
+    return _install("claude")
 
 
-def _install_in_powershell(line: str | None) -> bool:
-    if line is None:  # nothing installs it on this system
+def _install(name: str) -> bool:
+    line = llm.named(name).install_line()
+    if name not in profile.current().page_installs or line is None:  # the family installs it
         return False
-    try:
-        proc = subprocess.run(["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
-                               "-Command", line],
-                              capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              timeout=CODEX_INSTALL_SECONDS, stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return proc.returncode == 0
+    return windows_only.install(line, CODEX_INSTALL_SECONDS)
 
 
 def start_codex_login(program: str) -> subprocess.Popen | None:

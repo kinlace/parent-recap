@@ -49,6 +49,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_llm_parse.py`           | The model's reply parsed, tier by tier, and the CLI's envelope   |
 | `test_sources.py`             | The Source registry's records, and the Sources a Household uses  |
 | `test_summarize_normalise.py` | The model's reply put in the schema's shape                      |
+| `test_system_profile.py`      | The systems' profiles; only `system/` checks the system          |
 | `test_weekend_pipeline.py`    | The pure parts of Weekend Picks                                  |
 
 ## Integration tests
@@ -128,6 +129,7 @@ slowest tests, so add one for a main path, not for each result.
 | File                            | What it covers                                            |
 | ------------------------------- | --------------------------------------------------------- |
 | `test_desktop.py`               | macOS desktop: `open`, Terminal, `defaults`               |
+| `test_dialog.py`                | The secret dialog: `osascript` on macOS, none on Windows  |
 | `test_jobs.py`                  | macOS jobs: LaunchAgents and `launchctl`                  |
 | `test_secrets.py`               | macOS secrets: the Keychain through `/usr/bin/security`   |
 | `test_wake.py`                  | macOS wake: `pmset`                                       |
@@ -169,8 +171,10 @@ The shared fakes stay in `tests/`, beside the golden files:
   `harness.sources[name]` holds to the real collector. The harness installs one for each Source
   in the registry (ADR 0022), so a new Source adds its fake to `FAKES`. A test gives each Message
   the id its Source makes of it, and only the fields its transport carries.
-- `fake_system.py`: in-memory secrets, jobs, wake and desktop, as `harness.secrets`, `.jobs`,
-  `.wake` and `.desktop`. Only the adapter tests meet these services' commands.
+- `fake_system.py`: in-memory secrets, jobs, wake, desktop and secret dialog, as
+  `harness.secrets`, `.jobs`, `.wake`, `.desktop` and `.dialog`. Only the adapter tests meet these
+  services' commands. `harness.system` is the profile the program sees, this system's until a
+  test sets `MACOS` or `WINDOWS`, so a Mac runs the Windows paths too.
 - `fake_node.py`: Parent Recap's own Node and a fake wilma CLI in the test's `~/ParentRecap`.
 - `fake_packages.py`: packages for tests that run the real pip offline.
 - `goldens.py`: the golden files' check.

@@ -8,6 +8,7 @@ import shutil
 import pytest
 
 from conftest import FailedCall, assert_isolated_claude
+from fake_system import MACOS, WINDOWS
 from family_brief import llm
 from family_brief.config import LLMConfig
 
@@ -81,10 +82,9 @@ def test_claude_by_name_is_the_adapter_setup_asks(claude):
     assert llm.named("claude").program() == claude.program() == "/usr/local/bin/claude"
 
 
-@pytest.mark.parametrize("platform, installer", [("darwin", "install.sh"), ("win32", "install.ps1")])
-def test_claude_installs_with_its_own_installer_for_the_system(claude, monkeypatch, platform,
-                                                               installer):
-    monkeypatch.setattr("sys.platform", platform)
+@pytest.mark.parametrize("system, installer", [(MACOS, "install.sh"), (WINDOWS, "install.ps1")])
+def test_claude_installs_with_its_own_installer_for_the_system(claude, harness, system, installer):
+    harness.system = system
 
     assert installer in claude.install_line() and claude.install_line() == claude.install_hint()
 

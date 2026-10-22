@@ -22,6 +22,7 @@ import yaml
 
 from family_brief import __main__ as cli, install_record, ops, setup_server
 from family_brief.config import Config
+from fake_system import MACOS, WINDOWS
 from setup_page import (CAN_LISTEN, PAGE_DIR, ROOT, at_finish, call, check_ai, config_file, finish,
                         finished, new_server, progress_file, refused, save_progress, source,
                         statuses, wait_for, welcome)
@@ -95,7 +96,6 @@ def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock
     thread.join(5)
 
     assert capsys.readouterr().out.splitlines()[-1] == setup_server.closed_line("fi")
-    assert set(setup_server.server.CLOSED_LINES) == set(setup_server.context.LANGUAGES)
 
 
 def test_in_tmux_or_ssh_the_command_warns_the_keychain_cannot_be_reached(harness, clock, capsys):
@@ -537,9 +537,8 @@ def test_the_state_says_which_system_and_ais_the_page_offers(page):
                             else ["claude", "codex", "gateway"])
 
 
-def test_on_windows_welcome_offers_the_gateway_first_then_chatgpt_and_claude(harness, page,
-                                                                             monkeypatch):
-    monkeypatch.setattr(sys, "platform", "win32")
+def test_on_windows_welcome_offers_the_gateway_first_then_chatgpt_and_claude(harness, page):
+    harness.system = WINDOWS
 
     state = call(page.url, "api/state").json()
     assert state["system"] == "windows" and state["ais"] == ["gateway", "codex", "claude"]
@@ -559,8 +558,8 @@ def test_on_windows_welcome_takes_claude_before_claude_code_is_installed(harness
 
 
 def test_on_windows_chatgpt_has_no_chat_to_continue_in_since_the_skills_are_macos_only(
-        harness, page, monkeypatch):
-    monkeypatch.setattr(sys, "platform", "win32")
+        harness, page):
+    harness.system = WINDOWS
     install_record.add("plugin", str(ROOT))  # the install line's copy, with the skills in it
 
     assert welcome(page.url, ai="codex").status == 200
@@ -616,14 +615,14 @@ def test_on_windows_the_steps_say_where_secrets_go_and_what_to_paste_into():
                              on_windows(table, key)), (language, key)
 
 
-def test_on_windows_the_command_says_the_powershell_window_can_be_closed(monkeypatch):
-    monkeypatch.setattr(sys, "platform", "win32")
+def test_on_windows_the_command_says_the_powershell_window_can_be_closed(harness):
+    harness.system = WINDOWS
 
     for language in setup_server.context.LANGUAGES:
         line = setup_server.closed_line(language)
         assert "PowerShell" in line and "Terminal" not in line, language
-    monkeypatch.setattr(sys, "platform", "darwin")
-    assert setup_server.closed_line("en") == setup_server.server.CLOSED_LINES["en"]
+    harness.system = MACOS
+    assert "Terminal window" in setup_server.closed_line("en")
 
 
 def test_finish_names_windows_sign_in_after_updates_and_leaves_wake_timers_to_its_outcome(

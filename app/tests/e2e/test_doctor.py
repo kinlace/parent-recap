@@ -19,6 +19,7 @@ from family_brief.collectors import whatsapp
 from family_brief.llm import codex as codex_backend
 from family_brief.system import jobs
 from conftest import program
+from fake_system import WINDOWS
 from test_setup_whatsapp import WHATSAPP_FAILURES, break_whatsapp, fake_mac
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
@@ -273,9 +274,9 @@ def test_doctor_reads_whatsapp_with_full_disk_access_and_macos_never_asks(harnes
     assert mac.prompts == 0 and mac.reads and all(mac.reads)
 
 
-def test_off_macos_doctor_has_no_whatsapp_check(harness, mac_with_whatsapp, monkeypatch, capsys):
+def test_off_macos_doctor_has_no_whatsapp_check(harness, mac_with_whatsapp, capsys):
     # WhatsApp for Mac's database and Full Disk Access exist only on macOS (ADR 0020).
-    monkeypatch.setattr(sys, "platform", "win32")
+    harness.system = WINDOWS
 
     harness.cli("doctor", "--skip-llm")
 

@@ -4,9 +4,8 @@ Python (ADR 0012), and the Passwords app. They aren't interfaces with an adapter
 code stays macOS code."""
 from __future__ import annotations
 
-import sys
-
 from .. import sources
+from . import profile
 
 OTHER_STEPS = frozenset({"passwords"})  # the Sources' own are in their records
 
@@ -16,4 +15,4 @@ def offers(name: str) -> bool:
     registry is asked each time, so a Source registered later is offered as its record says."""
     source = sources.named(name)
     only_macos = source.macos_only if source else name in OTHER_STEPS
-    return not only_macos or sys.platform == "darwin"
+    return not only_macos or profile.current().system == "macos"

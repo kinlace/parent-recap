@@ -16,17 +16,17 @@ import pytest
 from family_brief import ops
 from family_brief.system import jobs, windows_only
 
-from fake_system import FakeWake
+from fake_system import MACOS, WINDOWS, FakeWake
 
 
 @pytest.fixture
-def windows(harness, monkeypatch):
+def windows(harness):
     """A Windows PC that doesn't sign the family back in after an update restart, with doctor's
     network checks off."""
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    monkeypatch.setattr(sys, "platform", "win32")
+    harness.system = WINDOWS
     harness.wake.settable = False
     harness.signs_in_after_update = False
 
@@ -82,8 +82,8 @@ def test_a_pc_that_never_sleeps_needs_no_wake_timers(harness, windows, capsys):
     assert "never sleeps" in line(capsys.readouterr().out, "Wake")
 
 
-def test_doctor_on_macos_has_neither_windows_check(harness, windows, monkeypatch, capsys):
-    monkeypatch.setattr(sys, "platform", "darwin")
+def test_doctor_on_macos_has_neither_windows_check(harness, windows, capsys):
+    harness.system = MACOS
 
     harness.cli("doctor", "--skip-llm")
 

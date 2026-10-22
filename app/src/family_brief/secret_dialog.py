@@ -1,13 +1,12 @@
-"""Asks the family for a secret in a macOS dialog with hidden input (ADR 0005).
+"""Asks the family for a secret in a dialog with hidden input (ADR 0005).
 
 Every setup step that needs a secret (the Gmail App Password, the Claude token, a MyClub link)
 asks through `ask`, so the value goes from the family straight to the step and never through
 the chat. The value is returned to the caller only: it's never printed, logged, or put on a
-command line, where `ps` would show it. The dialog's script goes to `osascript` on standard
-input and the typed text comes back on its standard output, which is captured.
+command line, where `ps` would show it. The dialog is the system's own (`system.dialog`).
 
-Without a desktop session (over SSH, or when macOS won't show the dialog) it asks at a hidden
-prompt in Terminal instead.
+Without a desktop session (over SSH, or when the system shows no dialog) it asks at a hidden
+prompt in the terminal instead.
 
 A command that needs the Mac password, setting or cancelling the wake schedule, runs through
 macOS's own administrator dialog in `system.wake_macos`, so it never reaches the program either.
@@ -15,25 +14,10 @@ macOS's own administrator dialog in `system.wake_macos`, so it never reaches the
 from __future__ import annotations
 
 import getpass
-import os
-import subprocess
 
-TITLE = "Parent Recap"
-# macOS's own lock icon, so the password dialog doesn't show osascript's generic folder icon.
-LOCK_ICON = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/LockedIcon.icns"
-_SAVE, _CANCEL = "Save", "Cancel"
-
-
-class Cancelled(Exception):
-    """The family closed the dialog, or pressed Ctrl-C at the Terminal prompt."""
-
-
-class OtherChosen(Exception):
-    """The family pressed the dialog's second choice (`other`), instead of entering a secret."""
-
-
-class NoWayToAsk(Exception):
-    """Neither a dialog nor a Terminal prompt can be shown, such as from inside an agent's sandbox."""
+from .system import dialog
+# Callers catch these as secret_dialog's.
+from .system.dialog import Cancelled, NoWayToAsk, OtherChosen, over_ssh  # noqa: F401
 
 
 def ask(message: str, *, other: str | None = None) -> str:
@@ -41,45 +25,10 @@ def ask(message: str, *, other: str | None = None) -> str:
     button, for when the family can't get the secret; pressing it raises OtherChosen."""
     if not over_ssh():
         try:
-            return _dialog(message, other)
+            return dialog.ask(message, other).strip()
         except NoWayToAsk:
             pass
     return _terminal(message, other)
-
-
-def over_ssh() -> bool:
-    return any(os.environ.get(v) for v in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"))
-
-
-def quote(s: str) -> str:
-    """`s` as an AppleScript string."""
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
-
-
-def _dialog(message: str, other: str | None) -> str:
-    buttons = [b for b in (other, _CANCEL, _SAVE) if b]
-    icon = f"((POSIX file {quote(LOCK_ICON)}) as alias)" if os.path.isfile(LOCK_ICON) else "note"
-    # Returns "1" and the typed text for Save, "2" for the other button; Cancel exits with -128.
-    script = (
-        f"set r to display dialog {quote(message)} default answer \"\" with hidden answer "
-        f"with title {quote(TITLE)} with icon {icon} "
-        f"buttons {{{', '.join(quote(b) for b in buttons)}}} "
-        f"default button {quote(_SAVE)} cancel button {quote(_CANCEL)}\n"
-        f"if button returned of r is {quote(_SAVE)} then return \"1\" & text returned of r\n"
-        "return \"2\"\n"
-    )
-    try:
-        proc = subprocess.run(["osascript", "-"], input=script, capture_output=True, text=True, encoding="utf-8")
-    except OSError as e:  # no osascript: not a Mac
-        raise NoWayToAsk() from e
-    if proc.returncode != 0:
-        if "(-128)" in proc.stderr:
-            raise Cancelled()
-        raise NoWayToAsk()
-    answer = proc.stdout.removesuffix("\n")
-    if answer.startswith("1"):
-        return answer[1:].strip()
-    raise OtherChosen()
 
 
 def _terminal(message: str, other: str | None) -> str:

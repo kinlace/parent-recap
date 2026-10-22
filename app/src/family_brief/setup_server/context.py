@@ -7,7 +7,6 @@ clock or a timeout on the context instead of patching a module.
 """
 from __future__ import annotations
 
-import sys
 import threading
 import time
 from collections.abc import Callable
@@ -22,6 +21,7 @@ from pydantic import ValidationError
 from .. import chat_install, llm, setup_connect, setup_save, setup_whatsapp
 from ..config import Config
 from ..setup_connect import Reply
+from ..system import profile
 
 # A call the page makes: its answers, as parsed from JSON, to the reply.
 Action = Callable[[Any], Reply]
@@ -30,10 +30,9 @@ Served = tuple[bytes, str, dict[str, str]]
 Page = Callable[[], "Served | None"]
 # The page's languages, in the order it offers them, each named in itself.
 LANGUAGES = {"fi": "Suomi", "en": "English", "zh": "中文"}
-# The AIs Welcome offers, Claude in Claude Code, ChatGPT in Codex and, for an invited Household,
-# the maintainers' gateway (ADR 0014). The gateway stays Welcome's default on Windows.
+# The AIs Welcome knows, Claude in Claude Code, ChatGPT in Codex and, for an invited Household,
+# the maintainers' gateway (ADR 0014). Which it offers, in which order, is the system profile's.
 AIS = ("claude", "codex", "gateway")
-WINDOWS_AIS = ("gateway", "codex", "claude")
 # The setup skill as each AI's chat starts it. Claude Code opens in a Terminal window; a Codex
 # family is told what to type in Codex.
 CHAT_SKILLS = {"claude": "/parent-recap:setup", "codex": "$parent-recap-setup"}
@@ -182,13 +181,13 @@ def section(data: dict[str, Any], key: str) -> dict[str, Any]:
 
 def ais() -> tuple[str, ...]:
     """The AIs the page offers on this system, Welcome's default first."""
-    return WINDOWS_AIS if sys.platform == "win32" else AIS
+    return profile.current().ais
 
 
 def chats() -> dict[str, str]:
     """The AIs with a chat to continue setup in on this system, and their setup skill. The skills
     set up a Mac, so Windows has none yet."""
-    return {} if sys.platform == "win32" else CHAT_SKILLS
+    return {ai: skill for ai, skill in CHAT_SKILLS.items() if ai in profile.current().chats}
 
 
 def claude() -> llm.Backend:
@@ -199,7 +198,7 @@ def claude() -> llm.Backend:
 def claude_missing() -> dict[str, Any]:
     """What the page says without Claude Code: on a Mac, with the line that installs it. On
     Windows the page installs it itself."""
-    if sys.platform == "win32":
+    if "claude" in profile.current().page_installs:
         return {"result": "not-installed"}
     return {"result": "not-installed", "install": claude().install_line()}
 

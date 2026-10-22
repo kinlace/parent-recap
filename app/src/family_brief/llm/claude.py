@@ -5,22 +5,14 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 from .. import tools
 from ..config import LLMConfig
-from ..system import secrets
+from ..system import profile, secrets
 from . import parse, retry
 from .backend import Finding, LLMReply
-
-# Claude Code's native installer: it installs into ~/.local/bin and updates itself, where a
-# global npm install can leave it unable to.
-CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
-# Its Windows twin, for PowerShell, which puts claude.exe in %USERPROFILE%\.local\bin, without
-# admin (https://code.claude.com/docs/en/setup).
-CLAUDE_INSTALL_WINDOWS = "irm https://claude.ai/install.ps1 | iex"
 
 
 def sessionless_env() -> dict[str, str]:
@@ -43,8 +35,9 @@ def token_env(token: str) -> dict[str, str]:
 
 
 def install_line() -> str:
-    """The line that installs Claude Code on this system."""
-    return CLAUDE_INSTALL_WINDOWS if sys.platform == "win32" else CLAUDE_INSTALL
+    """The line that installs Claude Code on this system, with its native installer: it installs
+    into ~/.local/bin and updates itself, where a global npm install can leave it unable to."""
+    return profile.current().install_lines["claude"]
 
 
 def native_dir() -> Path:
@@ -185,12 +178,14 @@ class Claude:
         return LLMReply(data, text, usage, repaired, ran.waited, model)
 
     def check(self) -> list[Finding]:
-        windows = sys.platform == "win32"
+        # Where the setup page installs Claude Code (Windows), it signs in there too.
+        system = profile.current()
+        on_page = "claude" in system.page_installs
         claude = find()
-        if not claude and windows:
+        if not claude and on_page:
             return [Finding("fail", "claude", "claude command not found on PATH or in "
                             "%USERPROFILE%\\.local\\bin (install Claude Code on the setup page, or "
-                            f"in PowerShell with: {install_line()})")]
+                            f"in {system.terminal} with: {install_line()})")]
         if not claude:
             return [Finding("fail", "claude", "claude command not found on PATH, in ~/.local/bin "
                             "or the other usual folders, or by your login shell (install Claude "
@@ -198,11 +193,11 @@ class Claude:
         from ..setup_report import PLAIN_TERMINAL
         env, label = signed_in_env()
         where = "" if secrets.reachable() else f", {PLAIN_TERMINAL}"
-        if label == "inherited" and windows:
+        if label == "inherited" and on_page:
             # `setup claude`'s dialog is the Mac's: on Windows the token is pasted into the page.
             return [Finding("fail", "claude", "no Claude token in Credential Manager, so the "
                             "evening Brief can't call Claude (sign in to Claude on the setup page: "
-                            "paste the install line into PowerShell again)")]
+                            f"paste the install line into {system.terminal} again)")]
         if label == "inherited":
             # This shell's own sign-in can work while the evening job, which has none, can't.
             return [Finding("fail", "claude", "no claude-oauth-token in the Keychain, so the "

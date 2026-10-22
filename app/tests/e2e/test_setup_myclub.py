@@ -125,7 +125,7 @@ def test_a_link_pasted_in_the_dialog_is_downloaded_and_saved(harness, server, ca
     res, printed = result(capsys)
     assert res == {"result": "saved", "kid": "Mia", "events": 2}
     assert harness.desktop.opened == ["https://id.myclub.fi"]
-    assert len(harness.dialog.shown) == 1 and "hidden answer" in harness.dialog.shown[0]
+    assert len(harness.dialog.shown) == 1
     assert "Mia" in harness.dialog.shown[0]
     assert server.downloads == [LINK.replace("webcal://", "https://")]
     assert saved_links(harness) == {"Mia": LINK, "Leo": None}

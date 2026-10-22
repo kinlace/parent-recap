@@ -15,16 +15,12 @@ from __future__ import annotations
 import json
 import os
 import re
-import sys
 from pathlib import Path
 
 from . import install_record
+from .system import profile
 
 WILMA_PACKAGE = "@wilm-ai/wilma-cli"
-
-
-def _windows() -> bool:
-    return sys.platform == "win32"
 
 
 def home() -> Path:
@@ -36,7 +32,7 @@ def home() -> Path:
 
 def _program(folder: Path) -> Path:
     """The `node` in a folder Node was unpacked into."""
-    return folder / "node.exe" if _windows() else folder / "bin" / "node"
+    return folder / profile.current().node
 
 
 def node() -> Path | None:
@@ -51,7 +47,7 @@ def node() -> Path | None:
 
 def modules(prefix: Path) -> Path:
     """The folder npm puts packages in, in a Node folder or for `npm install -g --prefix`."""
-    return prefix / "node_modules" if _windows() else prefix / "lib" / "node_modules"
+    return prefix / profile.current().node_modules
 
 
 def npm() -> list[str] | None:
@@ -59,7 +55,7 @@ def npm() -> list[str] | None:
     program = node()
     if program is None:
         return None
-    folder = program.parent if _windows() else program.parents[1]
+    folder = program.parents[len(profile.current().node.parts) - 1]  # the Node folder
     cli = modules(folder) / "npm" / "bin" / "npm-cli.js"
     return [str(program), str(cli)] if cli.is_file() else None
 
@@ -73,7 +69,7 @@ def wilma_cli(prefix: Path | None = None) -> Path | None:
     """The wilma CLI's script npm installed in `prefix` (Parent Recap's own unless given), which
     Node runs, or None when it isn't there."""
     prefix = prefix or wilma_folder()
-    if not _windows():
+    if profile.current().npm_links_programs:
         cli = prefix / "bin" / "wilma"
         return cli if cli.is_file() else None
     package = modules(prefix) / WILMA_PACKAGE

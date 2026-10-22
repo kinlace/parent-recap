@@ -7,9 +7,11 @@ from pathlib import Path
 import pytest
 
 from conftest import FailedCall, program
+from fake_system import MACOS, WINDOWS
 from family_brief import llm
 from family_brief.config import LLMConfig
 from family_brief.llm import codex as codex_backend
+from family_brief.system import profile_windows
 
 REPLY = {"per_kid": [], "calendar_events": [], "message_digest": "Swimming on Thursday"}
 
@@ -77,10 +79,10 @@ def test_codex_by_name_is_found_at_the_configured_path(codex_path):
     assert llm.named("codex", codex_path).program() == codex_path
 
 
-@pytest.mark.parametrize("platform, line", [("darwin", None), ("win32", codex_backend.CODEX_INSTALL)])
-def test_codex_installs_with_a_line_only_on_windows(codex, monkeypatch, platform, line):
+@pytest.mark.parametrize("system, line", [(MACOS, None), (WINDOWS, profile_windows.CODEX_INSTALL)])
+def test_codex_installs_with_a_line_only_on_windows(codex, harness, system, line):
     # On a Mac it comes with the Codex or ChatGPT desktop app.
-    monkeypatch.setattr("sys.platform", platform)
+    harness.system = system
 
     assert codex.install_line() == line
 

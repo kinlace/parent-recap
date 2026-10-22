@@ -5,13 +5,13 @@ persisted state."""
 from __future__ import annotations
 
 import json
-import sys
 from datetime import timedelta
 
 import pytest
 import time_machine
 
 from conftest import NOW, html_for_golden, msg, myclub_event
+from fake_system import WINDOWS
 
 from nights import normal_night, payload_message_ids
 
@@ -324,7 +324,7 @@ def scheduled_on_windows(h, hours_ago: float) -> None:
     h.wake.settable = False
     with pytest.MonkeyPatch.context() as mp, time_machine.travel(NOW - timedelta(hours=hours_ago),
                                                                  tick=False):
-        mp.setattr(sys, "platform", "win32")  # only for the install
+        mp.setattr(h, "system", WINDOWS)  # only for the install
         assert h.cli("schedule", "install") == 0
 
 

@@ -24,6 +24,7 @@ from family_brief.collectors import gmail
 from family_brief.config import Config
 from family_brief.system import jobs, wake, windows_only
 from family_brief.system.secrets_error import SecretsError
+from fake_system import WINDOWS
 
 OTHER_WAKE = "wake every weekday at 07:00"
 APP_PASSWORD = "abcdabcdabcdabcd"
@@ -374,7 +375,7 @@ def test_an_archive_in_a_shared_folder_takes_only_parent_recaps_files(harness, m
 def as_windows(harness, monkeypatch) -> None:
     """From here on the system is Windows, whose Credential Manager asks nobody and whose wake is
     the family's own "Allow wake timers"."""
-    monkeypatch.setattr(sys, "platform", "win32")
+    harness.system = WINDOWS
     if os.name != "nt":  # Windows' own `which`, which asks for Claude Code, can't run here
         monkeypatch.setattr(tools.shutil, "which", lambda *_a, **_k: None)
     harness.wake.settable = False

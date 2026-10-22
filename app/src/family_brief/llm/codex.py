@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 from .. import tools
 from ..config import LLMConfig
+from ..system import profile
 from . import parse, retry
 from .backend import Finding, LLMReply
 
@@ -21,18 +21,22 @@ CODEX_BUNDLED = tuple(os.path.join(folder, app, inside)
                       for app in CODEX_APPS
                       for folder in ("/Applications", os.path.expanduser("~/Applications"))
                       for inside in CODEX_IN_APP)
-# On Windows, the Codex CLI the way OpenAI installs it there: its own install.ps1, published with
-# each release, leads %LOCALAPPDATA%\Programs\OpenAI\Codex\bin (tools.WINDOWS_CODEX_DIR) to
-# codex.exe by default (https://github.com/openai/codex/blob/main/scripts/install/install.ps1).
-CODEX_INSTALL = "irm https://github.com/openai/codex/releases/latest/download/install.ps1 | iex"
 # How long doctor waits for `codex login status`.
 STATUS_SECONDS = 20
 
 
+def _page_installs() -> bool:
+    """Whether the setup page installs the Codex CLI on this system, with no Codex app to sign in
+    from (Windows); elsewhere it comes with the Codex or ChatGPT desktop app."""
+    return "codex" in profile.current().page_installs
+
+
 def missing() -> str:
     """What to do when codex isn't found, on this system."""
-    if sys.platform == "win32":
-        return f"install the Codex CLI on the setup page, or in PowerShell with {CODEX_INSTALL}"
+    system = profile.current()
+    if _page_installs():
+        return (f"install the Codex CLI on the setup page, or in {system.terminal} with "
+                f"{system.install_lines['codex']}")
     return "install the Codex or ChatGPT desktop app and sign in"
 
 
@@ -78,7 +82,7 @@ class Codex:
 
     def install_line(self) -> str | None:
         # On a Mac it comes with the Codex or ChatGPT desktop app.
-        return CODEX_INSTALL if sys.platform == "win32" else None
+        return profile.current().install_lines.get("codex")
 
     def program_env(self) -> dict[str, str]:
         return dict(os.environ)
@@ -126,10 +130,10 @@ class Codex:
         if not codex:
             return [Finding("fail", "codex", f"codex command not found: {missing()}, or set "
                             "llm.codex_path in the config")]
-        # On Windows the setup page installs the CLI on its own, with no Codex app to sign in from.
-        sign_in = ("sign in again on the setup page, or run codex login in PowerShell; Codex keeps "
-                   "the sign-in in ~/.codex unless its own config says otherwise"
-                   if sys.platform == "win32" else
+        sign_in = (f"sign in again on the setup page, or run codex login in "
+                   f"{profile.current().terminal}; Codex keeps the sign-in in ~/.codex unless its "
+                   "own config says otherwise"
+                   if _page_installs() else
                    "open the Codex app and sign in again with your ChatGPT account")
         if _signed_out(codex):
             return [Finding("fail", "codex", f"not signed in ({sign_in})")]

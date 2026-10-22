@@ -23,7 +23,7 @@ from typing import NamedTuple
 from . import (google_packages, languages, own_node, private_files, secret_dialog, sources,
                whatsapp_python)
 from .config import Config
-from .system import desktop_macos, jobs, macos_only, wake, windows_only
+from .system import desktop_macos, jobs, macos_only, profile, wake, windows_only
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
 _STATUS_OF = {"ok": OK, "warn": WARN, "fail": FAIL}  # by llm.Finding's level
@@ -469,8 +469,7 @@ def _check_schedule(cfg: Config, add) -> None:
     if last:
         hours = (datetime.now(timezone.utc) - last).total_seconds() / 3600
         status = OK if hours < 30 else WARN
-        why = ("the Mac may be asleep, consider a pmset wake-up" if sys.platform == "darwin" else
-               "the PC may have been asleep, signed out or off")
+        why = profile.current().missed_run
         add(status, "last-run", f"{hours:.0f} hours ago" + ("" if hours < 30 else
             f" (no run for over a day; {why})"))
     if macos_only.offers("whatsapp"):

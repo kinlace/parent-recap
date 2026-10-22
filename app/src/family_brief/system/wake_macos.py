@@ -5,8 +5,9 @@ from __future__ import annotations
 import re
 import subprocess
 
-from .. import secret_dialog
 from . import wake  # its names are read at call time: wake imports this module first
+from .dialog import Cancelled, NoWayToAsk, over_ssh
+from .dialog_macos import quote
 
 MANUAL_CANCEL = "sudo pmset repeat cancel"
 OWN_SCHEDULE = True  # a pmset repeat schedule, which uninstall cancels
@@ -79,9 +80,9 @@ def set(hour: int, minute: int, replace: bool) -> str:
             f"/usr/bin/{_pmset_wake(hour, minute)}",
             f"Parent Recap wants to wake your Mac at {wake_h:02d}:{wake_m:02d} every day, 5 "
             "minutes before the Brief. Enter your Mac password to allow this.")
-    except secret_dialog.Cancelled:
+    except Cancelled:
         return "cancelled"
-    except secret_dialog.NoWayToAsk:
+    except NoWayToAsk:
         return "no-dialog"
     return "set" if _wakes(hour, minute)[0] else "not-set"
 
@@ -90,7 +91,7 @@ def cancel() -> None:
     try:
         _as_administrator("/usr/bin/pmset repeat cancel", "Parent Recap wants to remove the wake "
                           "schedule it set. Enter your Mac password to allow this.")
-    except (secret_dialog.Cancelled, secret_dialog.NoWayToAsk):
+    except (Cancelled, NoWayToAsk):
         raise wake.NotCancelled("the administrator dialog was cancelled or couldn't open. Run this "
                                 "in Terminal instead (it asks for your Mac password): "
                                 f"{MANUAL_CANCEL}")
@@ -101,15 +102,15 @@ def _as_administrator(command: str, prompt: str) -> None:
     administrator dialog, which shows `prompt`. Raises Cancelled when they cancel it, and
     NoWayToAsk without a desktop session or when the dialog or the command fails; there is no
     Terminal fallback here, since `sudo` asks for the password itself."""
-    if secret_dialog.over_ssh():
-        raise secret_dialog.NoWayToAsk()
-    script = (f"do shell script {secret_dialog.quote(command)} with prompt "
-              f"{secret_dialog.quote(prompt)} with administrator privileges")
+    if over_ssh():
+        raise NoWayToAsk()
+    script = (f"do shell script {quote(command)} with prompt "
+              f"{quote(prompt)} with administrator privileges")
     try:
         proc = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, encoding="utf-8")
     except OSError as e:  # no osascript: not a Mac
-        raise secret_dialog.NoWayToAsk() from e
+        raise NoWayToAsk() from e
     if proc.returncode != 0:
         if "(-128)" in proc.stderr:
-            raise secret_dialog.Cancelled()
-        raise secret_dialog.NoWayToAsk()
+            raise Cancelled()
+        raise NoWayToAsk()

@@ -15,11 +15,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -32,7 +30,7 @@ from . import (ai_filter_report, chat_install, install_record, llm, ops, own_nod
                setup_save, setup_wilma, sources, tools, whatsapp_python)
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
-from .system import desktop, jobs, macos_only, secrets, wake, windows_only
+from .system import desktop, jobs, macos_only, profile, secrets, wake, windows_only
 
 OK, FAIL = ops.OK, ops.FAIL
 # install.sh's and install.ps1's pinned ones, and the folders they download them into.
@@ -176,15 +174,12 @@ def survey(config: Path) -> Survey:
 
 
 def _computer() -> str:
-    return "PC" if sys.platform == "win32" else "Mac"
+    return profile.current().computer
 
 
 def _usual_folders(home: Path) -> list[Path]:
-    """Where the install puts the program, for an install whose record is gone: install.ps1's
-    %LOCALAPPDATA%\\ParentRecap on Windows, and install.sh's ~/ParentRecap."""
-    local = os.environ.get("LOCALAPPDATA") if sys.platform == "win32" else None
-    return list(dict.fromkeys([*([Path(local) / "ParentRecap"] if local else []),
-                               home / "ParentRecap"]))
+    """Where the install puts the program, for an install whose record is gone."""
+    return profile.current().install_folders(home)
 
 
 def _config(path: Path, s: Survey) -> Config | None:
@@ -510,8 +505,8 @@ def wilma_notes(cfg: Config, pythons: list[Path]) -> list[str]:
     if not wilma_config.exists() or (profiles and set(profiles) <= ours):
         return []
     folder = _show(wilma_config.parent)
-    remove = (f"in PowerShell: Remove-Item -Recurse -Force {folder}" if sys.platform == "win32"
-              else f"in Terminal: rm -rf {folder}")
+    system = profile.current()
+    remove = f"in {system.terminal}: {system.remove_folder.format(folder=folder)}"
     return [f"The wilma CLI keeps a Wilma password, not encrypted, in {folder}, from a sign-in "
             "setup didn't make, so uninstall leaves it. If you only used it for Parent Recap, "
             f"remove it {remove}"]
@@ -576,7 +571,7 @@ def _remove(s: Survey, keep_archive: bool) -> int:
         later.clear()
 
     for i in s.items:
-        if i.running and sys.platform == "win32":
+        if i.running and not profile.current().removes_running:
             later.append(i)
             continue
         if later:  # before the record, which stays if it fails

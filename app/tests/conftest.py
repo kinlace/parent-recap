@@ -12,10 +12,10 @@ Fakes sit at exactly four boundaries, so internals can be refactored without tou
   3. Delivery: email sending, iMessage (`osascript`) and the Google Calendar API record what
      they are given, or fail.
   4. The pauses between model calls are recorded and move a fake clock on, instead of being slept.
-The OS services in `family_brief.system` (secrets, the evening jobs, the daily wake, the desktop)
-are in-memory fakes from fake_system.py, in place of their adapters. Setup commands also meet
-macOS's secret dialog (`osascript`), and the macOS-only steps' `open` (Finder beside Full Disk
-Access, the Passwords app), faked at the command.
+The OS services in `family_brief.system` (secrets, the evening jobs, the daily wake, the desktop,
+the secret dialog) are in-memory fakes from fake_system.py, in place of their adapters, and the
+system's profile is the harness's `system`. Setup commands also meet the macOS-only steps' `open`
+(Finder beside Full Disk Access, the Passwords app), faked at the command.
 
 Everything else (config, state, archive) is real and lives in a temporary HOME.
 "Now" and the local timezone are pinned. Regenerate golden files, all or one night's, with:
@@ -46,9 +46,10 @@ from family_brief import __main__ as cli, feedback, gateway, sources, tools
 from family_brief.actions import calendar as calendar_action, email as email_action
 from family_brief.collectors.base import CalendarEvent, Collected, Message
 from family_brief.llm import retry
-from family_brief.system import desktop, jobs, secrets, wake, windows_only
+from family_brief.system import (desktop, dialog, jobs, profile, profile_macos, secrets, wake,
+                                 windows_only)
 from fake_sources import FAKES
-from fake_system import FakeDesktop, FakeJobs, FakeSecrets, FakeWake
+from fake_system import WINDOWS, FakeDesktop, FakeDialog, FakeJobs, FakeSecrets, FakeWake
 from goldens import Goldens
 
 # The test layers, one folder each (README.md). Tests import helpers from tests in other layers
@@ -73,7 +74,7 @@ REAL_RUN = subprocess.run  # before the harness fakes it
 def _programs_only_where_the_test_puts_them(monkeypatch: pytest.MonkeyPatch) -> None:
     """Not in this Mac's Homebrew or nix folders, and not where its login shell finds them.
     tools.find adds to PATH, which is put back after each test."""
-    monkeypatch.setattr(tools, "SYSTEM_DIRS", ())
+    monkeypatch.setattr(profile_macos, "SYSTEM_DIRS", ())
     monkeypatch.delenv("SHELL", raising=False)
     monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
 
@@ -102,8 +103,9 @@ def login_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[[Pa
 def windows_programs(harness: "Harness", monkeypatch: pytest.MonkeyPatch) -> Path:
     """Programs found as Windows finds them: by their Windows names, in Windows' usual folders,
     with %LOCALAPPDATA% in the test's home, which is returned. PATH leads to none of them, and
-    off Windows, Windows' own `which` isn't tried, since it can't run there."""
-    monkeypatch.setattr(sys, "platform", "win32")
+    off Windows, Windows' own `which` isn't tried, since it can't run there. The program sees
+    Windows' profile."""
+    harness.system = WINDOWS
     if os.name != "nt":
         monkeypatch.setattr(tools.shutil, "which", lambda *_a, **_k: None)
     local = harness.home / "AppData" / "Local"
@@ -259,16 +261,6 @@ class HTTPReply:
 
 
 @dataclass
-class Dialog:
-    """The macOS secret dialog: what the family types and which button they press.
-    `button` is "save", "other" (the dialog's second choice), "cancel", or "fails" (no desktop
-    session to show it on)."""
-    typed: str = ""
-    button: str = "save"
-    shown: list[str] = field(default_factory=list)  # each dialog's AppleScript
-
-
-@dataclass
 class FakeCalendarService:
     """Stands in for googleapiclient's Calendar v3 service: events().list/insert(...).execute()."""
     existing: list[dict] = field(default_factory=list)
@@ -331,7 +323,9 @@ class Harness:
         # Whether Windows signs the family back in after an update restart; None: never set.
         self.signs_in_after_update: bool | None = True
         self.desktop = FakeDesktop()
-        self.dialog = Dialog()
+        self.dialog = FakeDialog()
+        # The profile the program sees: this system's, until a test makes it another's.
+        self.system: profile.Profile = profile.current()
         self.opened: list[str] = []                 # what the macOS-only steps' `open` opened
         self.commands: list[list[str]] = []         # every process started, model calls included
         self.signed_in: dict[str, bool] = {"claude": True, "codex": True}  # what their status says
@@ -415,6 +409,8 @@ class Harness:
         mp.setattr(jobs, "_adapter", self.jobs)
         mp.setattr(wake, "_adapter", self.wake)
         mp.setattr(desktop, "_adapter", self.desktop)
+        mp.setattr(dialog, "_adapter", self.dialog)
+        mp.setattr(profile, "current", lambda: self.system)
         mp.setattr(windows_only, "signs_back_in_after_update", lambda: self.signs_in_after_update)
 
         mp.setattr(subprocess, "run", self._fake_subprocess_run)
@@ -477,8 +473,6 @@ class Harness:
         prog, ext = os.path.splitext(Path(cmd[0]).name)
         prog = prog if ext.lower() in (".exe", ".cmd") else prog + ext
         self.commands.append(list(cmd))
-        if prog == "osascript" and input and "display dialog" in input:  # the secret dialog
-            return self._show_dialog(cmd, input)
         if prog == "open":  # Finder and System Settings beside Full Disk Access, and Passwords
             self.opened.append(cmd[-1])
             return subprocess.CompletedProcess(cmd, 0, "", "")
@@ -573,19 +567,6 @@ class Harness:
             "content": [{"type": "text", "text": text}], "stop_reason": "end_turn",
             "usage": {"input_tokens": 1200, "output_tokens": 300, "cache_creation_input_tokens": 0,
                       "cache_read_input_tokens": 0}})
-
-    def _show_dialog(self, cmd: list[str], script: str) -> subprocess.CompletedProcess:
-        # Replies the way osascript does for the dialog's AppleScript, which returns "1" and the
-        # typed text for Save and "2" for the second choice.
-        self.dialog.shown.append(script)
-        button = self.dialog.button
-        if button == "cancel":
-            return subprocess.CompletedProcess(cmd, 1, "", "execution error: User canceled. (-128)")
-        if button == "fails":
-            return subprocess.CompletedProcess(
-                cmd, 1, "", "execution error: No user interaction allowed. (-1713)")
-        out = "2\n" if button == "other" else f"1{self.dialog.typed}\n"
-        return subprocess.CompletedProcess(cmd, 0, out, "")
 
 
 class _FakeSocket:

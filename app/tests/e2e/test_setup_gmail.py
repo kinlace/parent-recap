@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from family_brief import install_record, secret_dialog, setup_save, setup_server
+from family_brief import install_record, setup_save, setup_server
 from family_brief.config import Config
 from family_brief.system import secrets
 from setup_page import (APP_PASSWORD, PAGE_DIR, Response, call, config_file, refuse_secrets, source,
@@ -116,36 +116,11 @@ def test_an_app_password_typed_in_the_dialog_is_tested_and_stored(harness, gmail
     res, printed = result(capsys)
     assert res["result"] == "saved"
     assert harness.desktop.opened == ["https://myaccount.google.com/apppasswords"]
-    assert len(harness.dialog.shown) == 1 and "hidden answer" in harness.dialog.shown[0]
+    assert len(harness.dialog.shown) == 1
     assert gmail.logins == [("parent@example.com", APP_PASSWORD)]
     assert harness.secrets == {ACCOUNT: APP_PASSWORD}
     assert install_record.entries("keychain") == [ACCOUNT]
     assert_never_leaked(harness, printed, caplog)
-
-
-@pytest.mark.macos
-def test_the_dialog_shows_macos_lock_icon(harness, gmail, monkeypatch, tmp_path):
-    icon = tmp_path / "Lock \"icon\".icns"
-    icon.write_bytes(b"icns")
-    monkeypatch.setattr(secret_dialog, "LOCK_ICON", str(icon))
-    harness.dialog.typed = TYPED
-
-    assert harness.cli("setup", "gmail") == 0
-
-    script = harness.dialog.shown[0]
-    assert 'with icon ((POSIX file "' + str(icon).replace('"', '\\"') + '") as alias)' in script
-    assert "with icon note" not in script
-
-
-def test_without_the_lock_icon_the_dialog_shows_the_note_icon(harness, gmail, monkeypatch,
-                                                              tmp_path):
-    monkeypatch.setattr(secret_dialog, "LOCK_ICON", str(tmp_path / "missing.icns"))
-    harness.dialog.typed = TYPED
-
-    assert harness.cli("setup", "gmail") == 0
-
-    script = harness.dialog.shown[0]
-    assert "with icon note" in script and "POSIX file" not in script
 
 
 def test_the_address_can_be_given_when_the_config_has_none_yet(harness, gmail, capsys):

@@ -18,7 +18,6 @@ import hmac
 import json
 import os
 import socketserver
-import sys
 import threading
 from collections.abc import Iterable, Mapping, Set
 from http import HTTPStatus
@@ -28,22 +27,10 @@ from secrets import token_urlsafe
 from typing import Any, TypeVar
 
 from .. import setup_connect, setup_report, setup_save
-from ..system import desktop, secrets
+from ..system import desktop, profile, secrets
 from .context import Action, Context, Page, Phase
 from .phases import PHASES
 
-# What Terminal says once the page stops, however it stopped, in the language picked on it, and
-# what the PowerShell window the install line was pasted into says on Windows.
-CLOSED_LINES = {
-    "fi": "Parent Recapin käyttöönottosivu on suljettu. Voit sulkea tämän Terminal-ikkunan.",
-    "en": "Parent Recap's setup page has closed. You can close this Terminal window.",
-    "zh": "Parent Recap 的设置页面已经关闭。你可以关掉这个终端窗口了。",
-}
-WINDOWS_CLOSED_LINES = {
-    "fi": "Parent Recapin käyttöönottosivu on suljettu. Voit sulkea tämän PowerShell-ikkunan.",
-    "en": "Parent Recap's setup page has closed. You can close this PowerShell window.",
-    "zh": "Parent Recap 的设置页面已经关闭。你可以关掉这个 PowerShell 窗口了。",
-}
 PAGE_DIR = Path(__file__).parent.parent / "page"
 FILES = {  # what the page is made of, by the path under its address
     "": ("index.html", "text/html; charset=utf-8"),
@@ -94,8 +81,10 @@ def serve(server: SetupServer) -> int:
 
 
 def closed_line(language: str) -> str:
-    """What the window the page runs from says once it stops."""
-    return (WINDOWS_CLOSED_LINES if sys.platform == "win32" else CLOSED_LINES)[language]
+    """What the window the page runs from says once it stops, however it stopped, in the language
+    picked on it: Terminal on a Mac, the PowerShell window the install line was pasted into on
+    Windows."""
+    return profile.current().closed_lines[language]
 
 
 class SetupServer:

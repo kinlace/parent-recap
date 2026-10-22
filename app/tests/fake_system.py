@@ -1,14 +1,19 @@
 """In-memory fakes of the OS services in `family_brief.system` (ADR 0020): secrets, the evening
-jobs, the daily wake and the desktop. The harness puts one in place of each interface's adapter,
-so the program reaches it through the same interface it uses on any system, and the tests of
-its callers fake none of these services' commands. Only the adapters' own tests (test_secrets.py,
-test_jobs.py, test_wake.py, test_desktop.py and their _windows twins) meet the system instead.
+jobs, the daily wake, the desktop and the secret dialog. The harness puts one in place of each
+interface's adapter, so the program reaches it through the same interface it uses on any system,
+and the tests of its callers fake none of these services' commands. Only the adapters' own tests
+(test_secrets.py, test_jobs.py, test_wake.py, test_desktop.py, test_dialog.py and their _windows
+twins) meet the system instead.
 
 Each fake keeps what the system would keep, for a test to set up and check, and has its own
 names for what the family reads (where a secret is, a job's name, the wake's line), so a test
 asks the interface for them rather than spelling out macOS's. Only macOS-only features, which
-have no interface (ADR 0020), still meet their commands in callers' tests: the secret dialog,
-iMessage, and Finder and the Passwords app beside them."""
+have no interface (ADR 0020), still meet their commands in callers' tests: iMessage, and Finder
+and the Passwords app beside them.
+
+The system's profile is data, so its fake is the harness's `system`: the profile the program
+sees, the one of the system the tests run on until a test makes it MACOS's or WINDOWS's, so
+a Mac runs the Windows paths too."""
 from __future__ import annotations
 
 import contextlib
@@ -20,8 +25,10 @@ from typing import Callable, ContextManager
 
 import pytest
 
-from family_brief.system import jobs, wake
+from family_brief.system import dialog, jobs, profile_macos, profile_windows, wake
 from family_brief.system.secrets_error import SecretsError
+
+MACOS, WINDOWS = profile_macos.PROFILE, profile_windows.PROFILE
 
 
 class FakeSecrets(dict):
@@ -265,3 +272,24 @@ class FakeDesktop:
 
     def typing_at_terminal(self) -> bool:
         return self.terminal
+
+
+class FakeDialog:
+    """The secret dialog: what the family types and which button they press. `button` is "save",
+    "other" (the dialog's second choice), "cancel", or "fails" (no desktop session to show it
+    on)."""
+
+    def __init__(self) -> None:
+        self.typed = ""
+        self.button = "save"
+        self.shown: list[str] = []  # each dialog's message
+
+    def ask(self, message: str, other: str | None) -> str:
+        self.shown.append(message)
+        if self.button == "cancel":
+            raise dialog.Cancelled()
+        if self.button == "fails":
+            raise dialog.NoWayToAsk()
+        if self.button == "other":
+            raise dialog.OtherChosen()
+        return self.typed

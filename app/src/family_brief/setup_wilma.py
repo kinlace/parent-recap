@@ -41,12 +41,15 @@ from . import install_record, own_node, private_files
 from .collectors import wilma
 from .setup_report import outcome, program
 from .system import desktop
+from .system import profile as system_profile  # `profile` is the wilma CLI's here
 
-if sys.platform != "win32":  # the Wilma window's pseudo-terminal, which Windows doesn't have yet
+try:  # the Wilma window's pseudo-terminal, which Windows doesn't have yet
     import fcntl
     import pty
     import termios
     import tty
+except ImportError:
+    pass
 
 WILMA_CLI_VERSION = "2.1.2"
 PACKAGE = own_node.WILMA_PACKAGE
@@ -537,10 +540,10 @@ def sign_in_screen(language: str, status: Path | None) -> int:
     otherwise the CLI's exit status, and records it at `status` for the step waiting on it."""
     exit_status = 1
     try:
-        if sys.platform == "win32":
-            exit_status = _sign_in_page(language)
-        else:
+        if system_profile.current().pseudo_terminal:
             exit_status = _sign_in_terminal_screen(language)
+        else:
+            exit_status = _sign_in_page(language)
     finally:
         if status is not None:
             with suppress(OSError):  # the step stopped waiting and took its folder away

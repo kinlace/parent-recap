@@ -15,18 +15,13 @@ import os
 import shlex
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
+from .system import profile
+
 # Under the home folder: Claude Code's native installer (on Windows too), a custom npm prefix, nix.
+# The system's own folders, such as Homebrew's, are in its profile.
 HOME_DIRS = (".local/bin", ".npm-global/bin", ".nix-profile/bin")
-# What a program Windows can start ends in, in the order Windows' own PATHEXT tries them.
-WINDOWS_EXTENSIONS = (".exe", ".cmd", ".bat")
-# Under %LOCALAPPDATA%: the folder OpenAI's install.ps1 puts the Codex CLI in by default
-# (https://github.com/openai/codex/blob/main/scripts/install/install.ps1).
-WINDOWS_CODEX_DIR = ("Programs", "OpenAI", "Codex", "bin")
-# Homebrew on Apple silicon and on Intel, and nix-darwin's per-user profile.
-SYSTEM_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", "/etc/profiles/per-user/{user}/bin")
 # A login shell reads the family's whole shell setup, which can be slow, or wait for something.
 SHELL_SECONDS = 5
 
@@ -61,20 +56,9 @@ def _runnable(path: str) -> bool:
 
 
 def _in_common_folders(name: str) -> str | None:
-    folders = [str(Path.home() / d) for d in HOME_DIRS]
-    if sys.platform == "win32":
-        # Where OpenAI's own installer puts codex.exe, which goes on the user's PATH only in
-        # windows opened after it ran: before an older codex npm may have installed. Then npm's
-        # global folder, where it puts a `.cmd` for each program, and a script for Git Bash
-        # without an extension, which Windows can't run.
-        appdata, local = os.environ.get("APPDATA"), os.environ.get("LOCALAPPDATA")
-        folders += [os.path.join(local, *WINDOWS_CODEX_DIR)] if local else []
-        folders += [os.path.join(appdata, "npm")] if appdata else []
-        names = [name + ext for ext in WINDOWS_EXTENSIONS]
-    else:
-        user = os.environ.get("USER", "")
-        folders += [d.format(user=user) for d in SYSTEM_DIRS if user or "{user}" not in d]
-        names = [name]
+    system = profile.current()
+    folders = [str(Path.home() / d) for d in HOME_DIRS] + system.program_folders()
+    names = [name + ending for ending in system.program_endings]
     return next((p for d in folders for n in names if _runnable(p := os.path.join(d, n))), None)
 
 
@@ -83,7 +67,7 @@ def _from_login_shell(name: str) -> str | None:
     and fish. A login shell can print its own greeting first, so only a path counts. Windows has
     no login shell to ask."""
     shell = os.environ.get("SHELL")
-    if sys.platform == "win32" or not shell or not os.path.isabs(shell):
+    if not profile.current().login_shell or not shell or not os.path.isabs(shell):
         return None
     try:
         proc = subprocess.run([shell, "-l", "-c", f"command -v {shlex.quote(name)}"],

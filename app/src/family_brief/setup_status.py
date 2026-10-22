@@ -19,14 +19,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import install_record, ops
 from .config import Config
 from .state import State
-from .system import jobs, wake
+from .system import jobs, profile, wake
 
 
 TITLES = {
@@ -36,8 +35,6 @@ TITLES = {
     "nightly": "Nightly job loaded",
     "wake": "Wake schedule set, or the Mac never sleeps",
 }
-# The command the install puts in the program's venv: install.sh's, or install.ps1's on Windows.
-_COMMAND = Path("Scripts/parent-recap.exe") if sys.platform == "win32" else Path("bin/family-brief")
 
 
 @dataclass
@@ -90,13 +87,11 @@ def _installed() -> Outcome:
                              re.M)
         except OSError:
             continue
-        if ours and (program / ".venv" / _COMMAND).exists():
+        if ours and (program / ".venv" / profile.current().command).exists():
             version = _read(program / "VERSION") or "unknown version"
             return Outcome("installed", True, f"{version} in {_show(program)}")
-    again = ("the family pastes the install line into PowerShell again" if sys.platform == "win32"
-             else "run the plugin's install.sh")
     return Outcome("installed", False, f"Parent Recap isn't installed in "
-                   f"{', '.join(_show(p) for p in programs)}: {again}")
+                   f"{', '.join(_show(p) for p in programs)}: {profile.current().reinstall}")
 
 
 def _doctor(config: str | None) -> Outcome:
@@ -143,7 +138,7 @@ def _wake(hour: int, minute: int) -> Outcome:
     wake_h, wake_m = wake.time(hour, minute)
     if status.ours:
         return Outcome("wake", True, f"the computer wakes at {wake_h:02d}:{wake_m:02d} every day")
-    if sys.platform == "win32":  # the job's own task wakes the PC, once the family's setting lets it
+    if not wake.has_own_schedule():  # the job's task wakes the PC, once the family's setting lets it
         return Outcome("wake", False, "Allow wake timers is off, so the PC doesn't wake for the "
                        "Brief, which then only comes on evenings it's awake. Only the family can "
                        f"turn it on: {wake.manual_step(hour, minute)}")

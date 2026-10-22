@@ -7,19 +7,20 @@ stuck."""
 from __future__ import annotations
 
 import logging
-import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, Callable, Iterator
 
 from .config import Config
 
-# Chosen once, with the import it needs: tests that call the program a Windows one keep this lock.
-WINDOWS = sys.platform == "win32"
-if WINDOWS:
-    import msvcrt
-else:
+# Chosen once, by the module the system has: tests that call the program a Windows one keep this
+# lock.
+try:
     import fcntl
+    WINDOWS = False
+except ImportError:
+    import msvcrt
+    WINDOWS = True
 
 BUSY = 75  # EX_TEMPFAIL: the exit code of a run that found another one going
 

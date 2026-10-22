@@ -4,7 +4,6 @@ another AI switches the Household to it (ADR 0017)."""
 from __future__ import annotations
 
 import subprocess
-import sys
 import threading
 from http import HTTPStatus
 from typing import Any
@@ -12,7 +11,7 @@ from typing import Any
 from .. import llm, setup_ai, setup_save
 from ..config import LLMConfig
 from ..setup_connect import Nothing, Reply, Strict, parse
-from ..system import desktop
+from ..system import desktop, profile
 from .context import (Action, Context, Phase, chats, claude, claude_missing, keychain_code,
                       nothing_to_give)
 
@@ -81,7 +80,7 @@ class AISignIn(Phase):
         it, so there the family signs in in the window `open_claude_window` opens."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
-        if sys.platform == "win32":
+        if not profile.current().pseudo_terminal:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "On Windows, Claude signs in in a PowerShell window.",
                 errors=["answers: the page reads Claude's sign-in only on a Mac"])
@@ -143,7 +142,7 @@ class AISignIn(Phase):
         `check_claude`. On a Mac the family pastes the install line into Terminal instead."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
-        if sys.platform != "win32":
+        if "claude" not in profile.current().page_installs:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "On a Mac, Claude Code installs from Terminal.",
                 errors=["answers: the page installs Claude Code only on Windows"])
@@ -261,7 +260,7 @@ class AISignIn(Phase):
         Codex comes with the ChatGPT app, which the page offers to download instead."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
-        if sys.platform != "win32":
+        if "codex" not in profile.current().page_installs:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Codex comes with the ChatGPT app on a Mac.",
                 errors=["answers: the page installs Codex only on Windows"])

@@ -3,14 +3,13 @@ and pilot feedback."""
 from __future__ import annotations
 
 import re
-import sys
 from http import HTTPStatus
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
 from .. import feedback, setup_save
-from ..system import desktop, secrets
+from ..system import desktop, profile, secrets
 from . import ai, gmail
 from .context import (LANGUAGES, Action, Phase, Reply, ais, chats, claude_missing, not_offered,
                       section)
@@ -43,7 +42,7 @@ class Welcome(Phase):
                 "language": self.context.chosen_language(),
                 "preselected": preferred_language(),
                 # Which system's words the page uses, and the AIs it offers here.
-                "system": "windows" if sys.platform == "win32" else "macos",
+                "system": profile.current().system,
                 "ais": list(ais()),
                 # In tmux or SSH, macOS won't let this server save the passwords in the Keychain.
                 "keychain": {"reachable": secrets.reachable()},

@@ -3,7 +3,6 @@ lists and removes what setup made for it (#408)."""
 from __future__ import annotations
 
 import shutil
-import sys
 from functools import partial
 from pathlib import Path
 
@@ -14,6 +13,7 @@ from test_uninstall import set_up, uninstall
 from family_brief import ops, sources
 from family_brief import uninstall as uninstalling
 from family_brief.collectors.base import Collected
+from fake_system import WINDOWS
 
 TOKEN = "schoolapp-token"
 NOTE = "SchoolApp keeps its own sign-in until you remove it at https://schoolapp.example/account."
@@ -62,7 +62,7 @@ def test_doctor_checks_a_source_added_to_the_registry(harness, nothing_loaded, m
 def test_off_macos_doctor_leaves_out_a_macos_only_source_added_to_the_registry(
         harness, nothing_loaded, monkeypatch, capsys):  # noqa: F811
     school_app(monkeypatch, macos_only=True)
-    monkeypatch.setattr(sys, "platform", "win32")
+    harness.system = WINDOWS
 
     harness.cli("doctor", "--skip-llm")
 

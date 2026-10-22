@@ -395,7 +395,7 @@ def test_a_key_pasted_in_the_dialog_is_tested_and_stored(desktop, capsys, caplog
 
     res, printed = result(capsys)
     assert res == {"result": "saved", "test_call": "ok"}
-    assert len(desktop.dialog.shown) == 1 and "hidden answer" in desktop.dialog.shown[0]
+    assert len(desktop.dialog.shown) == 1
     [call] = desktop.model_calls
     assert call.argv == ["POST", f"{URL}/v1/messages"] and call.headers["x-api-key"] == KEY
     assert desktop.secrets == {ACCOUNT: KEY}

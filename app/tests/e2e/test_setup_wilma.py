@@ -34,7 +34,7 @@ import pytest
 import fake_node
 from family_brief import install_record, setup_server, setup_wilma
 from family_brief.config import Config
-from fake_system import Window
+from fake_system import WINDOWS, Window
 from conftest import program
 from setup_page import (PAGE_DIR, Response, assert_never_leaked, call, config_file, statuses, towns,
                         wait_for, welcome)
@@ -1215,10 +1215,9 @@ def test_the_button_opens_the_passwords_app(harness, page):
     assert ["open", "-a", "Passwords"] in harness.commands
 
 
-def test_off_macos_the_page_offers_neither_whatsapp_nor_the_passwords_app(harness, page,
-                                                                          monkeypatch):
+def test_off_macos_the_page_offers_neither_whatsapp_nor_the_passwords_app(harness, page):
     # Reading WhatsApp for Mac and the Passwords app exist only on macOS (ADR 0020).
-    monkeypatch.setattr(sys, "platform", "win32")
+    harness.system = WINDOWS
 
     sources = [s["name"] for s in call(page.url, "api/state").json()["connect"]["sources"]]
     assert sources == ["wilma", "gmail", "ai", "myclub"]

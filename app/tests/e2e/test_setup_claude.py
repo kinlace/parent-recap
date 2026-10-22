@@ -75,7 +75,7 @@ def test_a_token_pasted_in_the_dialog_is_tested_and_stored(harness, terminal, ca
     res, printed = result(capsys)
     assert res == {"result": "saved", "test_call": "ok"}
     assert len(terminal.windows) == 1  # what it shows, the next test
-    assert len(harness.dialog.shown) == 1 and "hidden answer" in harness.dialog.shown[0]
+    assert len(harness.dialog.shown) == 1
     [call] = harness.model_calls
     assert call.env["CLAUDE_CODE_OAUTH_TOKEN"] == TOKEN
     assert "--no-session-persistence" in call.argv

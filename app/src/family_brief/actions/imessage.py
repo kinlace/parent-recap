@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import logging
-import subprocess
+
+from ..system import imessage_macos
 
 log = logging.getLogger(__name__)
 
 MAX_CHARS = 3500  # practical split size for iMessage
-
-
-def _escape(text: str) -> str:
-    """Escape text for AppleScript double-quoted string."""
-    return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _chunk(text: str, limit: int = MAX_CHARS) -> list[str]:
@@ -36,21 +32,10 @@ def send(recipients: list[str], body: str) -> None:
         raise RuntimeError("no iMessage recipients configured")
     failed: set[str] = set()
     for chunk in _chunk(body):
-        escaped = _escape(chunk)
         for phone in recipients:
-            # Simplified form: no service lookup (macOS Tahoe+ deprecated that).
-            # Messages.app picks the iMessage-capable route automatically.
-            script = (
-                'tell application "Messages"\n'
-                f'  send "{escaped}" to buddy "{phone}"\n'
-                'end tell'
-            )
-            proc = subprocess.run(
-                ["osascript", "-e", script],
-                capture_output=True, text=True, encoding="utf-8", timeout=60,
-            )
-            if proc.returncode != 0:
-                log.error("iMessage to %s failed: %s", phone, proc.stderr.strip())
+            error = imessage_macos.send(phone, chunk)
+            if error is not None:
+                log.error("iMessage to %s failed: %s", phone, error)
                 failed.add(phone)
             else:
                 log.info("iMessage sent to %s (%d chars)", phone, len(chunk))
