@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from test_doctor import nothing_loaded  # noqa: F401  (a fixture)
-from test_uninstall import mac, set_up, uninstall  # noqa: F401  (mac is a fixture)
+from test_uninstall import set_up, uninstall
 
 from family_brief import ops, sources
 from family_brief import uninstall as uninstalling
@@ -70,8 +70,8 @@ def test_off_macos_doctor_leaves_out_a_macos_only_source_added_to_the_registry(
 
 
 def test_uninstall_lists_and_removes_what_setup_made_for_a_source_added_to_the_registry(
-        harness, mac, monkeypatch, capsys):  # noqa: F811
-    set_up(harness, mac, monkeypatch)
+        harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     school_app(monkeypatch)
     folder = program_folder([harness.home / "ParentRecap" / "app"])
     folder.mkdir()

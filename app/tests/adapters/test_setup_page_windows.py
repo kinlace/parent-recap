@@ -30,7 +30,7 @@ from test_setup_first_brief import BRIEF_TEXT, brief_made, make_brief, send_it_t
 from test_setup_gmail import TYPED, connect_gmail
 from test_setup_myclub import CALENDAR, LINK as MYCLUB_LINK, add_kid, save_link
 from test_setup_status import install_program
-from test_uninstall import leftovers, remove_at_once, uninstall
+from test_uninstall import Handover, leftovers, uninstall
 
 PARENT = "parent@example.com"
 # Windows' own Task Scheduler takes minutes on CI's runner to register, list and check the tasks
@@ -181,7 +181,7 @@ def assert_finished(harness, out: dict[str, Any]) -> None:
 def uninstall_leaves_nothing(harness, monkeypatch) -> None:
     """Uninstall, confirmed with the archive removed, leaves no job, secret or file of Parent
     Recap's."""
-    monkeypatch.setattr(windows_only, "remove_after_exit", remove_at_once)
+    monkeypatch.setattr(windows_only, "remove_after_exit", Handover())
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 

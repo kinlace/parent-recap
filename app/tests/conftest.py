@@ -336,10 +336,12 @@ class Harness:
         self.commands: list[list[str]] = []         # every process started, model calls included
         self.signed_in: dict[str, bool] = {"claude": True, "codex": True}  # what their status says
         # Claude Code's plugins and marketplaces, as `claude plugin ... list --json` gives them,
-        # and each `claude plugin` command run, without the program.
+        # and each `claude plugin` command run, without the program. Removing one takes it off
+        # its list, unless Claude Code refuses to remove.
         self.claude_plugins: list[dict[str, Any]] = []
         self.claude_marketplaces: list[dict[str, Any]] = []
         self.plugin_calls: list[list[str]] = []
+        self.claude_removes = True
         self.pauses: list[float] = []               # seconds each pause between model calls lasted
         self.clock = 0.0                            # what the run's monotonic clock reads
         self._install(monkeypatch)
@@ -500,9 +502,7 @@ class Harness:
             return subprocess.CompletedProcess(cmd, 0 if signed_in else 1, json.dumps(out), "")
         if prog == "claude" and cmd[1:2] == ["plugin"]:  # Claude Code's plugins, as JSON lists
             self.plugin_calls.append(cmd[1:])
-            listed = {("list", "--json"): self.claude_plugins,
-                      ("marketplace", "list", "--json"): self.claude_marketplaces}.get(tuple(cmd[2:]))
-            return subprocess.CompletedProcess(cmd, 0, json.dumps(listed or []), "")
+            return self._plugin_command(cmd)
         if prog == "codex" and cmd[1:3] == ["login", "status"]:
             if self.signed_in["codex"]:
                 return subprocess.CompletedProcess(cmd, 0, "", "Logged in using ChatGPT\n")
@@ -522,6 +522,24 @@ class Harness:
             return subprocess.CompletedProcess(cmd, 0, "", "")
         envelope = {"type": "result", "subtype": "success", "is_error": False, "result": reply}
         return subprocess.CompletedProcess(cmd, 0, json.dumps(envelope, ensure_ascii=False), "")
+
+    def _plugin_command(self, cmd: list[str]) -> subprocess.CompletedProcess:
+        args = cmd[2:]
+        listed = {("list", "--json"): self.claude_plugins,
+                  ("marketplace", "list", "--json"): self.claude_marketplaces}.get(tuple(args))
+        if listed is not None:
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(listed), "")
+        removed = {"uninstall": (self.claude_plugins, "id"),
+                   "marketplace remove": (self.claude_marketplaces, "name")}.get(" ".join(args[:-1]))
+        if removed is not None and isinstance(removed[0], list):  # not a list: Claude Code can't say
+            if not self.claude_removes:
+                return subprocess.CompletedProcess(cmd, 1, "", "Failed to uninstall")
+            entries, key = removed
+            if key == "name":
+                assert not any(str(p.get("id")).endswith("@" + args[-1]) for p in self.claude_plugins), \
+                    "the plugin goes before its marketplace"
+            entries[:] = [e for e in entries if e.get(key) != args[-1]]
+        return subprocess.CompletedProcess(cmd, 0, "[]", "")
 
     def _next_reply(self, prompt: str | None) -> Any:
         reply = self.model_reply

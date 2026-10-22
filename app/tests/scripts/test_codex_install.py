@@ -12,14 +12,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+from conftest import REAL_RUN
+
 ROOT = Path(__file__).resolve().parents[3]
 
 
 def install_codex_skills(home: Path) -> subprocess.CompletedProcess:
     step = re.search(r'--codex" \]; then\n\s*"\$APP/.venv/bin/python" (-m [\w.]+ [\w-]+) "\$PLUGIN_ROOT"',
                      (ROOT / "install.sh").read_text()).group(1)
-    return subprocess.run([sys.executable, *step.split(), str(ROOT)], capture_output=True, text=True,
-                          env={**os.environ, "HOME": str(home), "USERPROFILE": str(home)})
+    # Run for real even where the harness fakes processes, as uninstall's tests set up with it.
+    return REAL_RUN([sys.executable, *step.split(), str(ROOT)], capture_output=True, text=True,
+                    env={**os.environ, "HOME": str(home), "USERPROFILE": str(home)})
 
 
 def test_installs_parent_recap_skills_that_call_each_other_the_codex_way(tmp_path):

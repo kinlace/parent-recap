@@ -1,103 +1,64 @@
 """`parent-recap uninstall` removes what setup created on this Mac, and nothing else.
 
-The OS services (secrets, the evening jobs, the wake schedule) are the harness's in-memory
-fakes, and Claude Code's plugin commands are faked here. Everything setup writes is real files
-in a temporary HOME. Assertions are on what the family reads and on what is left on the Mac
-afterwards."""
+The OS services (secrets, the evening jobs, the wake schedule) and Claude Code's plugin commands
+are the harness's fakes. Everything setup writes is real files in a temporary HOME. Assertions are
+on what the family reads and on what is left on the Mac afterwards."""
 from __future__ import annotations
 
 import io
 import json
 import os
 import shutil
-import subprocess
 import sys
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 import pytest
 import fake_node
 from test_codex_install import install_codex_skills
 
-from family_brief import install_record, run_lock, setup_wilma, tools, whatsapp_python
+from family_brief import __main__ as cli, install_record, run_lock, setup_save, setup_wilma, tools
+from family_brief import whatsapp_python
 from family_brief.collectors import gmail
 from family_brief.config import Config
-from family_brief.llm import claude as claude_backend
 from family_brief.system import jobs, wake, windows_only
 from family_brief.system.secrets_error import SecretsError
 
 OTHER_WAKE = "wake every weekday at 07:00"
 APP_PASSWORD = "abcdabcdabcdabcd"
 CLAUDE_TOKEN = "sk-ant-oat01-secret"
-REAL_RUN = subprocess.run
 
 
-class FakeMac:
-    """Claude Code's plugins, as uninstall sees them."""
+class Handover:
+    """What uninstall hands over to Windows to remove once it has ended: each time, the paths,
+    then the folders to remove if empty. They go at once, since the tests run from another
+    Python, unless the test `keeps` them, as Windows does while uninstall runs, or it `refuses`."""
 
     def __init__(self) -> None:
-        self.claude_plugins: list[str] = []  # by id
-        self.claude_marketplaces: list[str] = []  # by name
-        self.claude_removes = True          # False: `claude plugin uninstall` fails
-        self.ran: list[list[str]] = []
+        self.handed: list[tuple[list[Path], list[Path]]] = []
+        self.keeps = False
+        self.refuses: Exception | None = None
 
-    def run(self, cmd: list[str], *_a: Any, **_k: Any) -> subprocess.CompletedProcess:
-        cmd = list(cmd)
-        self.ran.append(cmd)
-        prog = Path(cmd[0]).stem  # claude.cmd on Windows
-        if prog == "claude":
-            return self._claude(cmd)
-        raise AssertionError(f"unexpected subprocess in test: {cmd[:3]}")
-
-    def _claude(self, cmd: list[str]) -> subprocess.CompletedProcess:
-        args = cmd[1:]
-        if args == ["plugin", "list", "--json"]:
-            return done(cmd, json.dumps([{"id": p, "scope": "user"} for p in self.claude_plugins]))
-        if args == ["plugin", "marketplace", "list", "--json"]:
-            return done(cmd, json.dumps([{"name": m, "source": "github"}
-                                         for m in self.claude_marketplaces]))
-        if not self.claude_removes:
-            return done(cmd, code=1, err="Failed to uninstall")
-        if args[:2] == ["plugin", "uninstall"]:
-            self.claude_plugins.remove(args[2])
-            return done(cmd)
-        if args[:3] == ["plugin", "marketplace", "remove"]:
-            assert not any(p.endswith("@" + args[3]) for p in self.claude_plugins), \
-                "the plugin goes before its marketplace"
-            self.claude_marketplaces.remove(args[3])
-            return done(cmd)
-        raise AssertionError(f"unexpected claude command in test: {args}")
-
-    def removals(self) -> list[list[str]]:
-        return [c for c in self.ran if Path(c[0]).name == "npm"
-                or (Path(c[0]).name == "claude" and "--json" not in c)]
-
-
-def done(cmd: list[str], out: str = "", code: int = 0, err: str = "") -> subprocess.CompletedProcess:
-    return subprocess.CompletedProcess(cmd, code, out, err)
-
-
-def remove_at_once(paths: list[Path], folders: list[Path]) -> None:
-    """Windows' removal of what uninstall runs from, without waiting for it to end: the tests run
-    from another Python."""
-    for p in paths:
-        shutil.rmtree(p)
-    for f in sorted(folders, key=lambda f: len(f.parts), reverse=True):
-        if f.is_dir() and not any(f.iterdir()):
-            f.rmdir()
+    def __call__(self, paths: list[Path], folders: list[Path]) -> None:
+        if self.refuses is not None:
+            raise self.refuses
+        self.handed.append((list(paths), list(folders)))
+        if self.keeps:
+            return
+        for p in paths:
+            shutil.rmtree(p)
+        for f in sorted(folders, key=lambda f: len(f.parts), reverse=True):
+            if f.is_dir() and not any(f.iterdir()):
+                f.rmdir()
 
 
 @pytest.fixture(autouse=True)
-def _removed_at_once_on_windows(monkeypatch) -> None:
-    monkeypatch.setattr(windows_only, "remove_after_exit", remove_at_once)
-
-
-@pytest.fixture
-def mac(harness, monkeypatch) -> FakeMac:
-    fake = FakeMac()
-    monkeypatch.setattr(subprocess, "run", fake.run)
-    return fake
+def handover(monkeypatch) -> Handover:
+    # Windows' own removal starts a process that outlives uninstall, which a test can't wait for.
+    h = Handover()
+    monkeypatch.setattr(windows_only, "remove_after_exit", h)
+    return h
 
 
 def store_app_password(harness, address: str, password: str) -> None:
@@ -123,6 +84,7 @@ def make_program(home: Path, monkeypatch) -> Path:
     (app / "pyproject.toml").write_text('[project]\nname = "family-brief"\n')
     (app / "VERSION").write_text("0.5.0\n")
     (home / "ParentRecap" / "logs").mkdir()
+    # Uninstall finds the program it runs from by its own Python.
     monkeypatch.setattr(sys, "executable", str(app / ".venv" / "bin" / "python"))
     return app
 
@@ -132,19 +94,27 @@ def our_wake(harness) -> str:
     return harness.wake.line(21, 0)
 
 
-def nothing_removed(harness, mac: FakeMac) -> bool:
+def claude_code_removals(harness) -> list[list[str]]:
+    """Each `claude plugin` command that removed something, or tried to."""
+    return [c for c in harness.plugin_calls if "--json" not in c]
+
+
+def claude_code_has(harness) -> tuple[list[str], list[str]]:
+    """The plugins (by id) and the marketplaces (by name) Claude Code has."""
+    return [p["id"] for p in harness.claude_plugins], [m["name"] for m in harness.claude_marketplaces]
+
+
+def nothing_removed(harness) -> bool:
     """Everything setup stored, scheduled and set is still there, and nothing was asked to go."""
     return bool(harness.secrets) and harness.jobs.installed() == {jobs.DAILY} \
         and harness.wake.wakes == [our_wake(harness)] and harness.wake.asked == [] \
-        and mac.removals() == []
+        and claude_code_removals(harness) == []
 
 
-def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
+def set_up(harness, monkeypatch, *, record: bool = True) -> None:
     """Everything a Claude setup with Codex skills, Wilma and a wake schedule leaves on the Mac."""
     home = harness.home
-    with monkeypatch.context() as real:  # install.sh's own Codex step, run for real
-        real.setattr(subprocess, "run", REAL_RUN)
-        assert install_codex_skills(home).returncode == 0
+    assert install_codex_skills(home).returncode == 0  # install.sh's own Codex step, run for real
     app = make_program(home, monkeypatch)
     if record:  # what install.sh records
         install_record.main(["program", str(app), "logs", str(home / "ParentRecap" / "logs"),
@@ -162,9 +132,9 @@ def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
     (home / ".family" / "config.yaml.bak-202609011200").write_text("old: config\n")
     tools.remembered_path().write_text('{"node": "/nix/store/node/bin/node"}\n')  # found off PATH
     whatsapp_python.record(str(home / PINNED_PYTHON))  # setup's WhatsApp step
-    with monkeypatch.context() as mp:  # the progress the setup page and the chat share
-        mp.setattr(sys, "stdin", io.StringIO('{"progress": {"phase": "finish"}}'))
-        assert harness.cli("setup", "save") == 0
+    # The progress the setup page and the chat share.
+    saved = setup_save.save(home / ".family" / "config.yaml", {"progress": {"phase": "finish"}})
+    assert saved["result"] == "saved"
     harness.write_archive("2026-09-26", {"messages": []})
     (harness.archive_dir / "2026-09-26.md").write_text("# Brief\n")
     if not record:
@@ -174,9 +144,8 @@ def set_up(harness, mac: FakeMac, monkeypatch, *, record: bool = True) -> None:
 def uninstall(harness, *args: str) -> int:
     # harness.cli rewrites the config first, so call main directly once it may be gone.
     cfg_path = harness.home / ".family" / "config.yaml"
-    with pytest.MonkeyPatch.context() as mp:
+    with pytest.MonkeyPatch.context() as mp:  # the command line, which names the program too
         mp.setattr(sys, "argv", ["family-brief", "-c", str(cfg_path), "uninstall", *args])
-        from family_brief import __main__ as cli
         return cli.main()
 
 
@@ -192,10 +161,9 @@ def leftovers(home: Path) -> list[str]:
 # ── listing
 
 
-def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_lists_everything_setup_created_and_removes_nothing(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     before = leftovers(harness.home)
-    mac.ran.clear()
 
     assert uninstall(harness) == 0
 
@@ -213,12 +181,12 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, mac, monkey
     assert "--confirm" in out
     assert APP_PASSWORD not in out and CLAUDE_TOKEN not in out
     assert leftovers(harness.home) == before
-    assert nothing_removed(harness, mac)
+    assert nothing_removed(harness)
 
 
 @pytest.mark.macos
-def test_says_to_remove_its_python_from_full_disk_access_by_hand(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_says_to_remove_its_python_from_full_disk_access_by_hand(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
@@ -230,10 +198,10 @@ def test_says_to_remove_its_python_from_full_disk_access_by_hand(harness, mac, m
 
 
 @pytest.mark.macos
-def test_stops_on_a_wilma_cli_folder_holding_something_else(harness, mac, monkeypatch, tmp_path,
+def test_stops_on_a_wilma_cli_folder_holding_something_else(harness, monkeypatch, tmp_path,
                                                             capsys):
-    set_up(harness, mac, monkeypatch)
-    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
+    set_up(harness, monkeypatch)
+    wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=True)
     (fake_node.wilma_folder(harness.home) / "notes.txt").write_text("mine\n")
 
     assert uninstall(harness, "--confirm", "--remove-archive") != 0
@@ -242,8 +210,8 @@ def test_stops_on_a_wilma_cli_folder_holding_something_else(harness, mac, monkey
     assert (fake_node.wilma_folder(harness.home) / "notes.txt").exists()
 
 
-def test_names_the_family_accounts_it_leaves_alone(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_names_the_family_accounts_it_leaves_alone(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
 
     assert uninstall(harness) == 0
 
@@ -255,9 +223,9 @@ def test_names_the_family_accounts_it_leaves_alone(harness, mac, monkeypatch, ca
 # ── removing
 
 
-def test_confirmed_with_the_archive_kept_removes_all_but_the_archive(harness, mac, monkeypatch,
+def test_confirmed_with_the_archive_kept_removes_all_but_the_archive(harness, monkeypatch,
                                                                     capsys):
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
@@ -270,8 +238,8 @@ def test_confirmed_with_the_archive_kept_removes_all_but_the_archive(harness, ma
     assert APP_PASSWORD not in out and CLAUDE_TOKEN not in out
 
 
-def test_the_list_of_held_back_messages_goes_also_when_the_archive_stays(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_the_list_of_held_back_messages_goes_also_when_the_archive_stays(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     (harness.archive_dir / "held-back-list.txt").write_text("1 message held back from the AI, by date\n")
 
     assert uninstall(harness) == 0
@@ -285,9 +253,9 @@ def test_the_list_of_held_back_messages_goes_also_when_the_archive_stays(harness
                                        "ParentRecap/2026-09-26.raw.json"]
 
 
-def test_confirmed_with_the_archive_removed_leaves_nothing_of_parent_recap(harness, mac,
+def test_confirmed_with_the_archive_removed_leaves_nothing_of_parent_recap(harness,
                                                                           monkeypatch):
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     weekend = harness.archive_dir / "weekend_events"
     weekend.mkdir()
     (weekend / "2026-09-26.md").write_text("picks\n")
@@ -297,19 +265,18 @@ def test_confirmed_with_the_archive_removed_leaves_nothing_of_parent_recap(harne
     assert leftovers(harness.home) == []
 
 
-def test_confirming_needs_a_choice_about_the_archive(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_confirming_needs_a_choice_about_the_archive(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     before = leftovers(harness.home)
-    mac.ran.clear()
 
     assert uninstall(harness, "--confirm") == 2
 
     assert "--keep-archive" in capsys.readouterr().out
-    assert leftovers(harness.home) == before and nothing_removed(harness, mac)
+    assert leftovers(harness.home) == before and nothing_removed(harness)
 
 
-def test_leaves_files_it_did_not_create_in_its_folders(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_leaves_files_it_did_not_create_in_its_folders(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     (harness.archive_dir / "notes.txt").write_text("mine\n")
     (harness.home / ".family" / "other-tool.yaml").write_text("a: 1\n")
 
@@ -321,9 +288,9 @@ def test_leaves_files_it_did_not_create_in_its_folders(harness, mac, monkeypatch
     assert "notes.txt" in out and "other-tool.yaml" in out
 
 
-def test_a_denied_keychain_deletion_is_reported_and_the_rest_still_removed(harness, mac,
+def test_a_denied_keychain_deletion_is_reported_and_the_rest_still_removed(harness,
                                                                          monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     harness.secrets.refuses = SecretsError("macOS didn't allow it. Delete it in the Keychain "
                                            "Access app instead.", "failed", -128)
 
@@ -335,9 +302,9 @@ def test_a_denied_keychain_deletion_is_reported_and_the_rest_still_removed(harne
     assert not (harness.home / "ParentRecap" / "app").exists()
 
 
-def test_a_cancelled_administrator_dialog_leaves_the_wake_schedule_and_says_how(harness, mac,
+def test_a_cancelled_administrator_dialog_leaves_the_wake_schedule_and_says_how(harness,
                                                                               monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     harness.wake.dialog = "cancel"
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 1
@@ -346,10 +313,9 @@ def test_a_cancelled_administrator_dialog_leaves_the_wake_schedule_and_says_how(
     assert wake.manual_cancel() in capsys.readouterr().out
 
 
-def test_leaves_a_wake_schedule_setup_did_not_set(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_leaves_a_wake_schedule_setup_did_not_set(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     harness.wake.wakes = [OTHER_WAKE]
-    mac.ran.clear()
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
@@ -358,9 +324,9 @@ def test_leaves_a_wake_schedule_setup_did_not_set(harness, mac, monkeypatch, cap
     assert OTHER_WAKE in capsys.readouterr().out
 
 
-def test_removes_a_gmail_app_password_stored_for_an_earlier_address(harness, mac, monkeypatch,
+def test_removes_a_gmail_app_password_stored_for_an_earlier_address(harness, monkeypatch,
                                                                     capsys):
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     store_app_password(harness, "old@example.com", "oldoldoldoldoldo")
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
@@ -369,10 +335,10 @@ def test_removes_a_gmail_app_password_stored_for_an_earlier_address(harness, mac
     assert "gmail-imap-old@example.com" in capsys.readouterr().out
 
 
-def test_a_keychain_item_macos_refused_to_delete_is_found_again_on_the_next_try(harness, mac,
+def test_a_keychain_item_macos_refused_to_delete_is_found_again_on_the_next_try(harness,
                                                                               monkeypatch, capsys):
     # Without a record, the Gmail account comes from the config, which the first try removes.
-    set_up(harness, mac, monkeypatch, record=False)
+    set_up(harness, monkeypatch, record=False)
     harness.secrets.refuses = SecretsError("macOS didn't allow it", "failed", -128)
     assert uninstall(harness, "--confirm", "--keep-archive") == 1
     capsys.readouterr()
@@ -385,11 +351,11 @@ def test_a_keychain_item_macos_refused_to_delete_is_found_again_on_the_next_try(
     assert not (harness.home / ".family").exists()
 
 
-def test_an_archive_in_a_shared_folder_takes_only_parent_recaps_files(harness, mac, monkeypatch,
+def test_an_archive_in_a_shared_folder_takes_only_parent_recaps_files(harness, monkeypatch,
                                                                      capsys):
     harness.config["archive"] = {"dir": "~/Documents"}
     harness.config["weekend_events"] = {"dir": "~/Documents"}
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     for p in harness.archive_dir.glob("2026-*"):  # set_up's archive goes to the usual folder
         p.unlink()
     docs = harness.home / "Documents"
@@ -405,31 +371,27 @@ def test_an_archive_in_a_shared_folder_takes_only_parent_recaps_files(harness, m
 # ── on Windows
 
 
-def as_windows(harness, monkeypatch) -> list[tuple[list[Path], list[Path]]]:
+def as_windows(harness, monkeypatch) -> None:
     """From here on the system is Windows, whose Credential Manager asks nobody and whose wake is
-    the family's own "Allow wake timers". Returns what uninstall hands over to go once it has
-    ended, each time: the paths, then the folders to remove if empty."""
+    the family's own "Allow wake timers"."""
     monkeypatch.setattr(sys, "platform", "win32")
     if os.name != "nt":  # Windows' own `which`, which asks for Claude Code, can't run here
         monkeypatch.setattr(tools.shutil, "which", lambda *_a, **_k: None)
     harness.wake.settable = False
     harness.secrets.DELETING_ASKS = ""
-    handed: list[tuple[list[Path], list[Path]]] = []
-    monkeypatch.setattr(windows_only, "remove_after_exit",
-                        lambda paths, folders: handed.append((list(paths), list(folders))))
-    return handed
 
 
-def test_on_windows_the_program_and_its_python_go_once_uninstall_has_ended(harness, mac,
+def test_on_windows_the_program_and_its_python_go_once_uninstall_has_ended(harness, handover,
                                                                           monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
-    handed = as_windows(harness, monkeypatch)
+    set_up(harness, monkeypatch)
+    as_windows(harness, monkeypatch)
+    handover.keeps = True
     capsys.readouterr()
     app, runtime = harness.home / "ParentRecap" / "app", harness.home / "ParentRecap" / "runtime"
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
-    [(paths, folders)] = handed
+    [(paths, folders)] = handover.handed
     assert paths == [app, runtime]
     assert harness.home / "ParentRecap" in folders
     # Windows can't remove them while uninstall runs from them; all the rest is gone already.
@@ -443,14 +405,11 @@ def test_on_windows_the_program_and_its_python_go_once_uninstall_has_ended(harne
     assert "Full Disk Access" not in out and "macOS" not in out
 
 
-def test_on_windows_a_program_that_couldn_t_be_handed_over_is_reported(harness, mac, monkeypatch,
-                                                                       capsys):
-    set_up(harness, mac, monkeypatch)
+def test_on_windows_a_program_that_couldn_t_be_handed_over_is_reported(harness, handover,
+                                                                       monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     as_windows(harness, monkeypatch)
-
-    def refused(*_a: Any) -> None:
-        raise OSError("PowerShell didn't start")
-    monkeypatch.setattr(windows_only, "remove_after_exit", refused)
+    handover.refuses = OSError("PowerShell didn't start")
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 1
 
@@ -459,9 +418,9 @@ def test_on_windows_a_program_that_couldn_t_be_handed_over_is_reported(harness, 
     assert install_record.exists()  # so the next try finds them
 
 
-def test_on_windows_allow_wake_timers_is_the_family_s_own_and_stays(harness, mac, monkeypatch,
+def test_on_windows_allow_wake_timers_is_the_family_s_own_and_stays(harness, monkeypatch,
                                                                     capsys):
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     as_windows(harness, monkeypatch)
     allowed = harness.wake.wakes[0]  # the wake on, as the family's power plan says it
 
@@ -474,8 +433,8 @@ def test_on_windows_allow_wake_timers_is_the_family_s_own_and_stays(harness, mac
     assert harness.wake.wakes == [allowed] and harness.wake.asked == []
 
 
-def test_on_windows_the_wilma_cli_npm_installed_is_recognised(harness, mac, monkeypatch):
-    set_up(harness, mac, monkeypatch)
+def test_on_windows_the_wilma_cli_npm_installed_is_recognised(harness, monkeypatch):
+    set_up(harness, monkeypatch)
     as_windows(harness, monkeypatch)
     # What `npm install -g --prefix` makes on Windows: the package, and npm's three wrappers for
     # each of the commands its package.json names.
@@ -493,8 +452,8 @@ def test_on_windows_the_wilma_cli_npm_installed_is_recognised(harness, mac, monk
     assert not folder.exists()
 
 
-def test_a_wilma_cli_folder_holding_something_else_names_it(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_a_wilma_cli_folder_holding_something_else_names_it(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     folder = fake_node.wilma_folder(harness.home)
     (folder / "node_modules").mkdir(parents=True)
     (folder / "notes.txt").write_text("mine\n")
@@ -506,9 +465,9 @@ def test_a_wilma_cli_folder_holding_something_else_names_it(harness, mac, monkey
     assert (folder / "notes.txt").exists()
 
 
-def test_on_windows_credential_manager_items_are_listed_without_a_question(harness, mac,
+def test_on_windows_credential_manager_items_are_listed_without_a_question(harness,
                                                                          monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     as_windows(harness, monkeypatch)
 
     assert uninstall(harness) == 0
@@ -524,7 +483,7 @@ OUR_PROFILE = "https://espoo.inschool.fi|mia.parent"
 WILMA_PASSWORD = "fake-wilma-password"  # no real Wilma password, ever
 
 
-def wilma_and_claude(harness, mac: FakeMac, monkeypatch, tmp_path: Path, *, by_setup: bool) -> Path:
+def wilma_and_claude(harness, monkeypatch, tmp_path: Path, *, by_setup: bool) -> Path:
     """A wilma CLI with a profile, and Claude Code with Parent Recap's plugin and marketplace,
     installed by setup (and in its record) or there before it. Setup's CLI is in Parent Recap's
     folder; the Mac's own is on PATH. Returns the CLI's config."""
@@ -534,14 +493,13 @@ def wilma_and_claude(harness, mac: FakeMac, monkeypatch, tmp_path: Path, *, by_s
         (bin_dir / name).write_text("#!/bin/sh\n")
         (bin_dir / name).chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
-    for var in ("WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
-        monkeypatch.delenv(var, raising=False)
     if by_setup:
         fake_node.install_wilma(harness.home, "#!/bin/sh\n")
     config = setup_wilma.config_path()
     setup_wilma.write_profile(config, ESPOO, "mia.parent", WILMA_PASSWORD)
-    mac.claude_plugins = ["parent-recap@kinlace"]
-    mac.claude_marketplaces = ["claude-plugins-official", "kinlace"]
+    harness.claude_plugins = [{"id": "parent-recap@kinlace", "scope": "user"}]
+    harness.claude_marketplaces = [{"name": "claude-plugins-official", "source": "github"},
+                                   {"name": "kinlace", "source": "github"}]
     if by_setup:
         install_record.main(["wilma-cli", str(fake_node.wilma_folder(harness.home)),
                              "wilma-profile", OUR_PROFILE,
@@ -551,11 +509,10 @@ def wilma_and_claude(harness, mac: FakeMac, monkeypatch, tmp_path: Path, *, by_s
 
 
 @pytest.mark.macos
-def test_lists_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness, mac, monkeypatch,
+def test_lists_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness, monkeypatch,
                                                                          tmp_path, capsys):
-    set_up(harness, mac, monkeypatch)
-    config = wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
-    mac.ran.clear()
+    set_up(harness, monkeypatch)
+    config = wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=True)
 
     assert uninstall(harness) == 0
 
@@ -565,20 +522,20 @@ def test_lists_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness,
                  "Claude Code marketplace: kinlace"):
         assert item in removes, item
     assert "claude-plugins-official" not in removes
-    assert nothing_removed(harness, mac) and config.exists()
+    assert nothing_removed(harness) and config.exists()
     assert WILMA_PASSWORD not in removes
 
 
 @pytest.mark.macos
-def test_removes_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness, mac, monkeypatch,
+def test_removes_the_wilma_cli_its_profile_and_the_plugin_setup_installed(harness, monkeypatch,
                                                                           tmp_path, capsys):
-    set_up(harness, mac, monkeypatch)
-    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
+    set_up(harness, monkeypatch)
+    wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=True)
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
     assert not fake_node.wilma_folder(harness.home).exists()
-    assert mac.claude_plugins == [] and mac.claude_marketplaces == ["claude-plugins-official"]
+    assert claude_code_has(harness) == ([], ["claude-plugins-official"])
     assert leftovers(harness.home) == [".config"]  # the folder other programs share
     out = capsys.readouterr().out
     assert "/plugin uninstall" not in out and "rm -rf ~/.config/wilmai" not in out
@@ -592,10 +549,10 @@ def cli_files_beside(config: Path) -> None:
 
 
 @pytest.mark.macos
-def test_the_wilma_cli_s_sessions_go_with_setup_s_profile(harness, mac, monkeypatch, tmp_path,
+def test_the_wilma_cli_s_sessions_go_with_setup_s_profile(harness, monkeypatch, tmp_path,
                                                           capsys):
-    set_up(harness, mac, monkeypatch)
-    config = wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
+    set_up(harness, monkeypatch)
+    config = wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=True)
     cli_files_beside(config)
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
@@ -605,31 +562,30 @@ def test_the_wilma_cli_s_sessions_go_with_setup_s_profile(harness, mac, monkeypa
 
 
 @pytest.mark.macos
-def test_leaves_a_wilma_cli_profile_and_plugin_that_were_there_before_setup(harness, mac,
+def test_leaves_a_wilma_cli_profile_and_plugin_that_were_there_before_setup(harness,
                                                                             monkeypatch, tmp_path,
                                                                             capsys):
-    set_up(harness, mac, monkeypatch)
-    config = wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=False)
+    set_up(harness, monkeypatch)
+    config = wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=False)
     before = config.read_text()
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
     assert config.read_text() == before
     assert (tmp_path / "bin" / "wilma").exists()
-    assert mac.claude_plugins == ["parent-recap@kinlace"]
-    assert mac.claude_marketplaces == ["claude-plugins-official", "kinlace"]
-    assert mac.removals() == []
+    assert claude_code_has(harness) == (["parent-recap@kinlace"], ["claude-plugins-official", "kinlace"])
+    assert claude_code_removals(harness) == []
     out = capsys.readouterr().out  # what the family can do themselves
     assert "/plugin uninstall parent-recap@kinlace" in out and "~/.config/wilmai" in out
 
 
 @pytest.mark.macos
-def test_says_nothing_about_a_plugin_claude_code_does_not_have(harness, mac, monkeypatch, tmp_path,
+def test_says_nothing_about_a_plugin_claude_code_does_not_have(harness, monkeypatch, tmp_path,
                                                                 capsys):
-    set_up(harness, mac, monkeypatch)
-    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=False)
-    mac.claude_plugins = []
-    mac.claude_marketplaces = ["claude-plugins-official"]
+    set_up(harness, monkeypatch)
+    wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=False)
+    harness.claude_plugins = []
+    harness.claude_marketplaces = harness.claude_marketplaces[:1]  # claude-plugins-official
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
@@ -638,11 +594,11 @@ def test_says_nothing_about_a_plugin_claude_code_does_not_have(harness, mac, mon
 
 
 @pytest.mark.macos
-def test_says_how_to_remove_a_marketplace_left_without_its_plugin(harness, mac, monkeypatch,
+def test_says_how_to_remove_a_marketplace_left_without_its_plugin(harness, monkeypatch,
                                                                   tmp_path, capsys):
-    set_up(harness, mac, monkeypatch)
-    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=False)
-    mac.claude_plugins = []
+    set_up(harness, monkeypatch)
+    wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=False)
+    harness.claude_plugins = []
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
@@ -650,10 +606,10 @@ def test_says_how_to_remove_a_marketplace_left_without_its_plugin(harness, mac, 
     assert "/plugin marketplace remove kinlace" in out and "/plugin uninstall" not in out
 
 
-def test_says_nothing_about_claude_code_where_it_is_not_installed(harness, mac, monkeypatch,
+def test_says_nothing_about_claude_code_where_it_is_not_installed(harness, monkeypatch,
                                                                   capsys):
-    set_up(harness, mac, monkeypatch)
-    monkeypatch.setattr(claude_backend, "find", lambda: None)
+    set_up(harness, monkeypatch)
+    monkeypatch.setenv("PATH", str(harness.home / "no-programs"))  # not this Mac's own Claude Code
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
@@ -662,14 +618,12 @@ def test_says_nothing_about_claude_code_where_it_is_not_installed(harness, mac, 
 
 
 @pytest.mark.macos
-def test_says_if_you_added_the_plugin_when_claude_code_can_t_list_its_plugins(harness, mac,
+def test_says_if_you_added_the_plugin_when_claude_code_can_t_list_its_plugins(harness,
                                                                               monkeypatch, tmp_path,
                                                                               capsys):
-    set_up(harness, mac, monkeypatch)
-    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=False)
-    listing = mac.run
-    monkeypatch.setattr(subprocess, "run", lambda cmd, *a, **k: done(cmd, "not json")
-                        if "--json" in cmd else listing(cmd, *a, **k))
+    set_up(harness, monkeypatch)
+    wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=False)
+    harness.claude_plugins = {"error": "not signed in"}  # type: ignore[assignment]
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
@@ -678,14 +632,12 @@ def test_says_if_you_added_the_plugin_when_claude_code_can_t_list_its_plugins(ha
 
 
 @pytest.mark.macos
-def test_says_to_remove_the_plugin_setup_installed_when_claude_code_can_t_list_it(harness, mac,
+def test_says_to_remove_the_plugin_setup_installed_when_claude_code_can_t_list_it(harness,
                                                                                   monkeypatch,
                                                                                   tmp_path, capsys):
-    set_up(harness, mac, monkeypatch)
-    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
-    listing = mac.run
-    monkeypatch.setattr(subprocess, "run", lambda cmd, *a, **k: done(cmd, "not json")
-                        if "--json" in cmd else listing(cmd, *a, **k))
+    set_up(harness, monkeypatch)
+    wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=True)
+    harness.claude_plugins = {"error": "not signed in"}  # type: ignore[assignment]
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
@@ -694,10 +646,10 @@ def test_says_to_remove_the_plugin_setup_installed_when_claude_code_can_t_list_i
 
 
 @pytest.mark.macos
-def test_removes_only_setup_s_profile_from_the_wilma_cli_s_config(harness, mac, monkeypatch,
+def test_removes_only_setup_s_profile_from_the_wilma_cli_s_config(harness, monkeypatch,
                                                                   tmp_path, capsys):
-    set_up(harness, mac, monkeypatch)
-    config = wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
+    set_up(harness, monkeypatch)
+    config = wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=True)
     helsinki = {"url": "https://helsinki.inschool.fi", "name": "Helsinki"}
     setup_wilma.write_profile(config, helsinki, "dad", "another-fake-password")
     setup_wilma.write_profile(config, ESPOO, "mia.parent", WILMA_PASSWORD)  # the last used
@@ -716,12 +668,12 @@ def test_removes_only_setup_s_profile_from_the_wilma_cli_s_config(harness, mac, 
 
 
 @pytest.mark.macos
-def test_a_plugin_claude_code_did_not_remove_says_how_and_keeps_the_record(harness, mac,
+def test_a_plugin_claude_code_did_not_remove_says_how_and_keeps_the_record(harness,
                                                                            monkeypatch, tmp_path,
                                                                            capsys):
-    set_up(harness, mac, monkeypatch)
-    wilma_and_claude(harness, mac, monkeypatch, tmp_path, by_setup=True)
-    mac.claude_removes = False
+    set_up(harness, monkeypatch)
+    wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=True)
+    harness.claude_removes = False
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 1
 
@@ -733,9 +685,9 @@ def test_a_plugin_claude_code_did_not_remove_says_how_and_keeps_the_record(harne
 # ── installs from before the record
 
 
-def test_an_install_without_a_record_is_recognised_and_listed_for_confirmation(harness, mac,
+def test_an_install_without_a_record_is_recognised_and_listed_for_confirmation(harness,
                                                                              monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch, record=False)
+    set_up(harness, monkeypatch, record=False)
 
     assert uninstall(harness) == 0
 
@@ -753,82 +705,76 @@ def test_an_install_without_a_record_is_recognised_and_listed_for_confirmation(h
 # ── stopping on what isn't this install's
 
 
-def assert_stopped(harness, mac: FakeMac, before: list[str], capsys) -> str:
+def assert_stopped(harness, before: list[str], capsys) -> str:
     assert uninstall(harness, "--confirm", "--remove-archive") == 1
     out = capsys.readouterr().out
     assert "❌" in out and "nothing" in out.lower()
     assert leftovers(harness.home) == before
-    assert nothing_removed(harness, mac)
+    assert nothing_removed(harness)
     return out
 
 
-def test_stops_on_a_scheduled_job_with_its_name_that_runs_another_program(harness, mac,
+def test_stops_on_a_scheduled_job_with_its_name_that_runs_another_program(harness,
                                                                         monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     harness.jobs.programs[jobs.DAILY][0] = "/Users/maintainer/family-brief/.venv/bin/python"
     before = leftovers(harness.home)
-    mac.ran.clear()
 
-    out = assert_stopped(harness, mac, before, capsys)
+    out = assert_stopped(harness, before, capsys)
 
     assert "/Users/maintainer/family-brief/.venv/bin/python" in out
     assert jobs.system_name(jobs.DAILY) in out
 
 
-def test_stops_on_a_config_parent_recap_did_not_write(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_stops_on_a_config_parent_recap_did_not_write(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     (harness.home / ".family" / "config.yaml").write_text("theme: dark\nfont_size: 12\n")
     before = leftovers(harness.home)
-    mac.ran.clear()
 
-    out = assert_stopped(harness, mac, before, capsys)
+    out = assert_stopped(harness, before, capsys)
 
     assert ".family/config.yaml" in out
 
 
-def test_stops_on_a_program_folder_that_is_not_parent_recap(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_stops_on_a_program_folder_that_is_not_parent_recap(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     (harness.home / "ParentRecap" / "app" / "pyproject.toml").write_text(
         '[project]\nname = "something-else"\n')
     before = leftovers(harness.home)
-    mac.ran.clear()
 
-    out = assert_stopped(harness, mac, before, capsys)
+    out = assert_stopped(harness, before, capsys)
 
     assert "ParentRecap/app" in out
 
 
-def test_stops_on_a_runtime_folder_holding_something_else(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_stops_on_a_runtime_folder_holding_something_else(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     (harness.home / "ParentRecap" / "runtime" / "notes.txt").write_text("mine\n")
     before = leftovers(harness.home)
-    mac.ran.clear()
 
-    out = assert_stopped(harness, mac, before, capsys)
+    out = assert_stopped(harness, before, capsys)
 
     assert "ParentRecap/runtime" in out
 
 
-def test_stops_on_a_codex_skill_with_its_name_that_it_did_not_install(harness, mac, monkeypatch,
+def test_stops_on_a_codex_skill_with_its_name_that_it_did_not_install(harness, monkeypatch,
                                                                       capsys):
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     (harness.home / ".agents/skills/parent-recap-manage/SKILL.md").write_text("my own skill\n")
     before = leftovers(harness.home)
-    mac.ran.clear()
 
-    out = assert_stopped(harness, mac, before, capsys)
+    out = assert_stopped(harness, before, capsys)
 
     assert "parent-recap-manage" in out
 
 
-def test_stops_while_a_run_is_going(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_stops_while_a_run_is_going(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     cfg = Config.load(harness.home / ".family" / "config.yaml")
 
     with run_lock.exclusive(cfg):
         before = leftovers(harness.home)
-        mac.ran.clear()
-        out = assert_stopped(harness, mac, before, capsys)
+        out = assert_stopped(harness, before, capsys)
 
     assert "run" in out.lower()
 
@@ -836,8 +782,8 @@ def test_stops_while_a_run_is_going(harness, mac, monkeypatch, capsys):
 # ── installing again
 
 
-def test_a_fresh_setup_works_after_uninstall(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_a_fresh_setup_works_after_uninstall(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
     assert not (harness.home / ".family").exists()
@@ -856,24 +802,30 @@ def test_a_fresh_setup_works_after_uninstall(harness, mac, monkeypatch, capsys):
 # ── one command in Terminal
 
 
-def test_in_terminal_it_asks_about_the_archive_and_for_confirmation(harness, mac, monkeypatch,
+@pytest.fixture
+def typed(harness, monkeypatch) -> Callable[..., None]:
+    """Uninstall run in Terminal, where the family types each of the lines given, and then the
+    input closes."""
+    def typing(*lines: str) -> None:
+        harness.desktop.terminal = True
+        monkeypatch.setattr(sys, "stdin", io.StringIO("".join(f"{line}\n" for line in lines)))
+    return typing
+
+
+def test_in_terminal_it_asks_about_the_archive_and_for_confirmation(harness, typed, monkeypatch,
                                                                     capsys):
-    set_up(harness, mac, monkeypatch)
-    answers = iter(["n", "yes"])  # don't keep the archive, then confirm
-    harness.desktop.terminal = True
-    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+    set_up(harness, monkeypatch)
+    typed("n", "yes")  # don't keep the archive, then confirm
 
     assert uninstall(harness) == 0
 
     assert leftovers(harness.home) == []
 
 
-def test_in_terminal_anything_but_yes_removes_nothing(harness, mac, monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+def test_in_terminal_anything_but_yes_removes_nothing(harness, typed, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
     before = leftovers(harness.home)
-    answers = iter(["", "no"])
-    harness.desktop.terminal = True
-    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+    typed("", "no")
 
     assert uninstall(harness) == 1
 
@@ -881,16 +833,11 @@ def test_in_terminal_anything_but_yes_removes_nothing(harness, mac, monkeypatch,
     assert "nothing" in capsys.readouterr().out.lower()
 
 
-def test_in_terminal_closed_input_removes_nothing_without_a_traceback(harness, mac, monkeypatch,
+def test_in_terminal_closed_input_removes_nothing_without_a_traceback(harness, typed, monkeypatch,
                                                                      capsys):
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     before = leftovers(harness.home)
-    harness.desktop.terminal = True
-
-    def closed(_prompt: str = "") -> str:
-        raise EOFError
-
-    monkeypatch.setattr("builtins.input", closed)
+    typed()
 
     assert uninstall(harness) == 1
 
@@ -898,9 +845,9 @@ def test_in_terminal_closed_input_removes_nothing_without_a_traceback(harness, m
     assert "Nothing was removed." in capsys.readouterr().out
 
 
-def test_run_by_an_agent_it_lists_and_says_how_to_confirm(harness, mac, monkeypatch, capsys):
+def test_run_by_an_agent_it_lists_and_says_how_to_confirm(harness, monkeypatch, capsys):
     # On Windows an agent's stdin is NUL, which isatty() takes for a Terminal (#372).
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     before = leftovers(harness.home)
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
     harness.desktop.terminal = False
@@ -911,10 +858,10 @@ def test_run_by_an_agent_it_lists_and_says_how_to_confirm(harness, mac, monkeypa
     assert "--confirm" in capsys.readouterr().out
 
 
-def test_output_in_a_code_page_without_its_symbols_still_removes_everything(harness, mac,
+def test_output_in_a_code_page_without_its_symbols_still_removes_everything(harness,
                                                                             monkeypatch):
     # Piped by an agent on Windows, stdout writes cp1252, which has no ✅ (#380).
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     raw = io.BytesIO()
     monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1252"))
 
@@ -926,9 +873,9 @@ def test_output_in_a_code_page_without_its_symbols_still_removes_everything(harn
     assert "✅" in raw.getvalue().decode("utf-8") and "❌" not in raw.getvalue().decode("utf-8")
 
 
-def test_the_setup_internals_document_names_everything_uninstall_removes(harness, mac,
+def test_the_setup_internals_document_names_everything_uninstall_removes(harness,
                                                                          monkeypatch, capsys):
-    set_up(harness, mac, monkeypatch)
+    set_up(harness, monkeypatch)
     weekend = harness.archive_dir / "weekend_events"
     weekend.mkdir()
     (weekend / "2026-09-26.md").write_text("picks\n")
@@ -954,8 +901,8 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
 
 
 @pytest.mark.macos
-def test_the_record_is_owner_only(harness, mac, monkeypatch):
-    set_up(harness, mac, monkeypatch)
+def test_the_record_is_owner_only(harness, monkeypatch):
+    set_up(harness, monkeypatch)
 
     assert install_record.path().stat().st_mode & 0o077 == 0
 
