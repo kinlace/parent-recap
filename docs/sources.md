@@ -1,6 +1,6 @@
 # Setting up the Sources
 
-Each section is written for the agent (Claude or Codex) guiding the user. The agent runs the `$FB setup` commands itself: each asks for a secret in a macOS dialog with hidden input, or opens what the user signs in to, checks the result and prints one line of JSON, so a secret never reaches the chat. Every command marked **Terminal** must be run by the user in their own Terminal app.
+Each section but the last is written for the agent (Claude or Codex) guiding the user; [Adding a Source](#adding-a-source) is for developers. The agent runs the `$FB setup` commands itself: each asks for a secret in a macOS dialog with hidden input, or opens what the user signs in to, checks the result and prints one line of JSON, so a secret never reaches the chat. Every command marked **Terminal** must be run by the user in their own Terminal app.
 
 `FB=~/ParentRecap/app/.venv/bin/parent-recap`, `PY=~/ParentRecap/app/.venv/bin/python`
 
@@ -167,3 +167,30 @@ Ask the user:
 - Who the picks go to (`email.weekend_to`)
 
 In google calendar mode, the picks are written to the calendar as tentative events. When the user deletes the ones they won't go to, the program reads that the following week and adjusts its picks.
+
+## Adding a Source
+
+Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declared-in-one-registry.md)). The evening run, the catch-up lookback, the Brief's coverage line, `doctor` and uninstall go through the records and name no Source themselves. The e2e test modules `test_nightly_new_source` and `test_new_source_doctor_uninstall` register a made-up Source and nothing else, and show what each part of its record reaches. A new Source needs:
+
+1. **Its collector**: a module in `family_brief.collectors` with one function, `collect(cfg, state, kid_terms)`, returning a `Collected` (`family_brief.collectors.base`) with the Source's Messages, its events or both. It reads only its own transport (IMAP, HTTP, a command-line program, a local database) and skips what is older than its lookback
+2. **Its config model**: a section of `Config` in `family_brief.config` for what setup saves, or a field on `Kid` when each Kid has their own, as MyClub's link. A section with `lookback_hours` lets the run widen the lookback after nights the Source missed
+3. **Its record** in `family_brief.sources`, added to `ALL` at its place in the run's order. Every record has a name, a label in each reviewed language (en, fi, zh), `connected` (whether the Household's config has it read), `skippable` (on the setup page), `connect_rank` (its place on the setup page's list, one of its own) and `collect`. The other fields are optional hooks, each with a default, as `Source` describes them:
+   - the run and the Brief: `lookback`, `counts_events` (the coverage line counts its events), `permission_lacked`
+   - `macos_only`: off macOS, `doctor` and the setup page leave it out
+   - `sender_domain`: the domain of the mail it sends of its own news, which Gmail's sender suggestions leave out once it is connected
+   - `doctor`: `check`, and `check_items` when it makes more than one check. Without `check`, `doctor` says nothing of the Source
+   - uninstall: `secrets`, `survey` and `notes`, for what setup made for it and what the family removes themselves
+   - Held-back Messages ([ADR 0013](adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md)): `sent_to_everyone`, `checked_body`, `group` and `held_back_link`. Without them, a message is held back when in doubt and listed by sender and subject, with no link
+   - the calendar: `in_ics`
+
+   A hook in another module goes through `_in`, which imports it when called
+
+4. **Its transport fake**: a `SourceFake` in the tests' `fake_sources`, listed in `FAKES` under the Source's name; the harness refuses to start without one. It serves what a test puts in `harness.sources[name]` the way the transport carries it, so the real collector runs in every test of the evening run
+5. **Its setup answers**: a field of `SourcesAnswer` in `family_brief.setup_save`, and the lines there that write it into its config section. The chat and the setup page both save through `setup save`, so they write the same config. A Source that only saves a secret, or a link per Kid as MyClub does, saves it in its own setup module instead
+6. **Its setup page panel**, which ADR 0022 leaves out of the registry: each Source's panel differs, so it is written by hand. The page's Source list, its order and its skip button come from the record; the panel is:
+   - a phase in `family_brief.setup_server`, listed in its `PHASES`, which answers the panel's calls and saves the Source as done with `context.connect.complete`. A site a panel's button opens is named in `SITES` of `family_brief.setup_server.connect`, since the page names none
+   - its `doctor` keys in `HEALTH_CHECKS` of `family_brief.setup_server.health`, so that the check page and Finish name its checks, which they otherwise show as "other"
+   - the panel in the page's `index.html`, an element with the id `source-<name>`
+   - its entry in the `STEPS` table of the page's `page.js`: what runs as its panel is first shown, drawn again and left, its line on the Working step after Connect, and what the first Brief's progress calls it. Without one the page never shows the Source's panel, and setup can't get past it
+   - its text in the page's `text.json`, `source.<name>`, `health.check.<name>` and the panel's own keys, in each of en, fi and zh
+7. **Its chat setup**: a `setup <name>` command for the agent, and a section above saying how to guide the user through it
