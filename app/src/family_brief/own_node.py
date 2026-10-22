@@ -35,14 +35,18 @@ def _program(folder: Path) -> Path:
     return folder / profile.current().node
 
 
-def node() -> Path | None:
-    """The pinned Node, or None when it isn't there. A newly pinned Node is unpacked before the
-    old one is removed, so the newest one counts."""
-    found = [(folder, program) for folder in (home() / "runtime").glob("node-v*")
+def _folder() -> Path | None:
+    """The folder the pinned Node was unpacked into, or None when it isn't there. A newly pinned
+    Node is unpacked before the old one is removed, so the newest one counts."""
+    found = [folder for folder in (home() / "runtime").glob("node-v*")
              if (program := _program(folder)).is_file() and os.access(program, os.X_OK)]
-    newest = max(found, key=lambda f: [int(n) for n in re.findall(r"\d+", f[0].name)],
-                 default=None)
-    return newest[1] if newest else None
+    return max(found, key=lambda f: [int(n) for n in re.findall(r"\d+", f.name)], default=None)
+
+
+def node() -> Path | None:
+    """The pinned Node, or None when it isn't there."""
+    folder = _folder()
+    return _program(folder) if folder else None
 
 
 def modules(prefix: Path) -> Path:
@@ -52,12 +56,11 @@ def modules(prefix: Path) -> Path:
 
 def npm() -> list[str] | None:
     """The command that runs the npm that comes with the pinned Node, on that Node."""
-    program = node()
-    if program is None:
+    folder = _folder()
+    if folder is None:
         return None
-    folder = program.parents[len(profile.current().node.parts) - 1]  # the Node folder
     cli = modules(folder) / "npm" / "bin" / "npm-cli.js"
-    return [str(program), str(cli)] if cli.is_file() else None
+    return [str(_program(folder)), str(cli)] if cli.is_file() else None
 
 
 def wilma_folder() -> Path:
