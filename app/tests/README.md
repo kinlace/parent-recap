@@ -47,6 +47,8 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_kid_placeholders.py`    | Each Kid as Kid A, Kid B and back                                |
 | `test_llm_memory.py`          | The llm package's in-memory adapter (ADR 0023)                   |
 | `test_llm_parse.py`           | The model's reply parsed, tier by tier, and the CLI's envelope   |
+| `test_render.py`              | Each golden night's Brief rendered, against its golden files     |
+| `test_run_plan.py`            | Quiet nights, dry runs and the preview: what tonight's run does  |
 | `test_sources.py`             | The Source registry's records, and the Sources a Household uses  |
 | `test_summarize_normalise.py` | The model's reply put in the schema's shape                      |
 | `test_system_profile.py`      | The systems' profiles; only `system/` checks the system          |
@@ -59,6 +61,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                     |
 | `test_email.py`                 | The Brief email as sent to a fake SMTP server                      |
 | `test_eval_runner.py`           | The eval runner end to end, only the model process faked           |
+| `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was    |
 | `test_goldens.py`               | The golden files' check and `--update-goldens`                     |
 | `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code |
 | `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses       |
