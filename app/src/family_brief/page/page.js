@@ -1906,15 +1906,15 @@ const TURN_ON_DOES = { outcomes: ["nightly", "wake"], checks: ["schedule"] };
 // what to do, and a health check that isn't OK names its checks, as the check page does. A
 // health check with only warnings is true, and always lists them with what to do. Before a try,
 // what Turn it on does is only still to do.
-function renderChecklist(outcomes, explain) {
+function renderChecklist(outcomes, tried) {
   document.getElementById("finish-checklist").replaceChildren(...outcomes.map((o) => {
     const item = document.createElement("li");
-    const toDo = !o.ok && !explain && TURN_ON_DOES.outcomes.includes(o.outcome);
+    const toDo = !o.ok && !tried && TURN_ON_DOES.outcomes.includes(o.outcome);
     item.dataset.status = o.ok ? "ok" : toDo ? "to-do" : "fail";
     const line = document.createElement("span");
     setText(line, "finish.outcome." + o.outcome);
     item.append(line);
-    const checks = explain ? o.checks
+    const checks = tried ? o.checks
       : (o.checks || []).filter((c) => !TURN_ON_DOES.checks.includes(c.check));
     if (toDo) {
       const later = document.createElement("p");
@@ -1928,7 +1928,7 @@ function renderChecklist(outcomes, explain) {
       setText(warnings, "finish.warnings");
       item.append(warnings, failedChecks(checks));
     }
-    if (o.ok || !explain) return item;
+    if (o.ok || !tried) return item;
     const missing = document.createElement("p");
     missing.className = "hint";
     setText(missing, "finish.missing." + o.outcome);

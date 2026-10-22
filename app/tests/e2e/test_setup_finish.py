@@ -498,7 +498,8 @@ def test_every_finish_text_is_in_all_three_languages():
                 *(f"finish.fail.{c}" for c in {*setup_server.health.FINISH_CHECKS.values(), "other"}),
                 "finish.title", "finish.intro", "finish.start", "finish.replace", "finish.restart",
                 "finish.checklist", "finish.closed", "finish.stop", "finish.warnings",
-                "finish.again", "finish.to-do.nightly", "finish.to-do.wake", "finish.later"]
+                "finish.again", "finish.to-do.nightly", "finish.to-do.wake",
+                "finish.to-do.wake.windows", "finish.later"]
         for key in keys:
             assert table.get(key, "").strip(), (language, key)
 
