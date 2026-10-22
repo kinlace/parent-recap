@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-09-24T21:03:11",
+  "messages": [],
+  "summary": {
+    "per_kid": [
+      {
+        "kid": "Mia",
+        "notices": ["足球训练改到周五"],
+        "action_items": [{ "what": "交班费", "by": "本周" }]
+      },
+      {
+        "notices": [],
+        "action_items": [
+          { "what": "交图书馆的书", "by": "2026-09-28T00:00:00", "who": "爸爸" }
+        ]
+      }
+    ],
+    "message_digest_cn": "**Mia**\n- 足球训练改到周五"
+  },
+  "calendar_created": []
+}

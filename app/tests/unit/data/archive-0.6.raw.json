@@ -1,0 +1,285 @@
+{
+  "generated_at": "2026-09-27T21:00:00",
+  "messages": [
+    {
+      "source": "gmail",
+      "external_id": "1101",
+      "timestamp": "2026-09-27T05:15:00+00:00",
+      "sender": "teacher.3b@kilo.example.fi",
+      "recipient": null,
+      "subject": "Retki Nuuksioon to 1.10.",
+      "body": "Hei! 3B goes on a retki to Nuuksio on Thursday 1.10. Please sign the permission slip in Wilma by Tuesday. Eväät and vaatetus for rain.",
+      "chat_name": null,
+      "kid_hint": null,
+      "url": "https://mail.google.com/mail/u/0/#search/rfc822msgid:1101@mail.gmail.com",
+      "metadata": {
+        "sender_email": "teacher.3b@kilo.example.fi",
+        "thread_id": ""
+      }
+    },
+    {
+      "source": "gmail",
+      "external_id": "1102",
+      "timestamp": "2026-09-27T07:40:00+00:00",
+      "sender": "office@kilo.example.fi",
+      "recipient": null,
+      "subject": "Valokuvaus ke 30.9.",
+      "body": "Class photos for 1A are on Wednesday morning.",
+      "chat_name": null,
+      "kid_hint": null,
+      "url": "https://mail.google.com/mail/u/0/#search/rfc822msgid:1102@mail.gmail.com",
+      "metadata": {
+        "sender_email": "office@kilo.example.fi",
+        "thread_id": ""
+      }
+    },
+    {
+      "source": "gmail",
+      "external_id": "1103",
+      "timestamp": "2026-09-27T08:00:00+00:00",
+      "sender": "Koulupsykologi Laine <psykologi@kilo.example.fi>",
+      "recipient": null,
+      "subject": "Leon koulunkäynti",
+      "body": "Leon pedagoginen selvitys on valmis. Käydäänkö se läpi tiistaina?",
+      "chat_name": null,
+      "kid_hint": null,
+      "url": "https://mail.google.com/mail/u/0/#search/rfc822msgid:selvitys-12@kilo.example.fi",
+      "metadata": {
+        "sender_email": "psykologi@kilo.example.fi",
+        "thread_id": ""
+      }
+    },
+    {
+      "source": "wilma",
+      "external_id": "message:55",
+      "timestamp": "2026-09-27T09:00:00+00:00",
+      "sender": "Opettaja Virtanen",
+      "recipient": null,
+      "subject": "Koe 5.10.",
+      "body": "Matematiikan koe maanantaina 5.10. Kertotaulut 2-5.",
+      "chat_name": "message",
+      "kid_hint": "Mia",
+      "url": null,
+      "metadata": {
+        "wilma_kind": "message",
+        "raw_id": 55,
+        "student_number": "7731905",
+        "wilma_url": null,
+        "addressee_count": null
+      }
+    },
+    {
+      "source": "wilma",
+      "external_id": "message:812",
+      "timestamp": "2026-09-27T10:00:00+00:00",
+      "sender": "Opettaja Virtanen",
+      "recipient": null,
+      "subject": "Välituntitilanne",
+      "body": "Miaa on kiusattu välitunneilla. Soitattehan minulle.",
+      "chat_name": "message",
+      "kid_hint": "Mia",
+      "url": null,
+      "metadata": {
+        "wilma_kind": "message",
+        "raw_id": 812,
+        "student_number": "7731905",
+        "wilma_url": null,
+        "addressee_count": null
+      }
+    },
+    {
+      "source": "whatsapp",
+      "external_id": "1:2",
+      "timestamp": "2026-09-27T16:45:00+00:00",
+      "sender": "Parent rep",
+      "recipient": null,
+      "subject": null,
+      "body": "Remember reissuvihko signatures 🙏",
+      "chat_name": "3B parents",
+      "kid_hint": "Mia",
+      "url": null,
+      "metadata": {
+        "from_me": false,
+        "msg_type": 0
+      }
+    },
+    {
+      "source": "whatsapp",
+      "external_id": "1:3",
+      "timestamp": "2026-09-27T17:10:00+00:00",
+      "sender": "李妈妈",
+      "recipient": null,
+      "subject": null,
+      "body": "米娅最近在学校被欺负了，老师说要找心理老师谈谈",
+      "chat_name": "3B parents",
+      "kid_hint": "Mia",
+      "url": null,
+      "metadata": {
+        "from_me": false,
+        "msg_type": 0
+      }
+    },
+    {
+      "source": "whatsapp",
+      "external_id": "2:1",
+      "timestamp": "2026-09-27T15:02:00+00:00",
+      "sender": "Anna (piano)",
+      "recipient": null,
+      "subject": null,
+      "body": "Piano lesson moves to Wednesday 17:30 this week",
+      "chat_name": "Leo piano",
+      "kid_hint": "Leo",
+      "url": null,
+      "metadata": {
+        "from_me": false,
+        "msg_type": 0
+      }
+    }
+  ],
+  "summary": {
+    "per_kid": [
+      {
+        "kid": "Mia",
+        "notices": [
+          {
+            "text": "周四 10/1 班级去 Nuuksio 远足（retki），带 eväät 和雨衣",
+            "refs": ["1101"],
+            "ref_sources": {
+              "1101": ["gmail"]
+            },
+            "source": ["gmail"],
+            "verified": true
+          },
+          {
+            "text": "周一 10/5 数学考试，范围乘法表 2–5",
+            "refs": ["message:55"],
+            "ref_sources": {
+              "message:55": ["wilma"]
+            },
+            "source": ["wilma"],
+            "verified": true
+          }
+        ],
+        "action_items": [
+          {
+            "what": "在 Wilma 签远足同意书",
+            "by": "2026-09-29",
+            "who": "任一",
+            "refs": ["1101"],
+            "ref_sources": {
+              "1101": ["gmail"]
+            },
+            "source": ["gmail"],
+            "verified": true
+          },
+          {
+            "what": "签 reissuvihko",
+            "by": "2026-09-28",
+            "who": "妈妈",
+            "refs": ["1:2"],
+            "ref_sources": {
+              "1:2": ["whatsapp"]
+            },
+            "source": ["whatsapp"],
+            "verified": true
+          }
+        ]
+      },
+      {
+        "kid": "Leo",
+        "notices": [
+          {
+            "text": "周三 9/30 上午拍班级照",
+            "refs": ["1102"],
+            "ref_sources": {
+              "1102": ["gmail"]
+            },
+            "source": ["gmail"],
+            "verified": true
+          }
+        ],
+        "action_items": [
+          {
+            "what": "给 Leo 准备拍照穿的衣服 <整洁>",
+            "by": "2026-09-30",
+            "who": "爸爸",
+            "refs": ["1102"],
+            "ref_sources": {
+              "1102": ["gmail"]
+            },
+            "source": ["gmail"],
+            "verified": true
+          }
+        ]
+      }
+    ],
+    "calendar_events": [
+      {
+        "kid": "Mia",
+        "title": "3B 远足 Nuuksio",
+        "start": "2026-10-01T09:00:00",
+        "end": "2026-10-01T14:00:00",
+        "location": "Nuuksio",
+        "description": "班级远足，带午餐和雨衣（gmail）",
+        "refs": ["1101"],
+        "ref_sources": {
+          "1101": ["gmail"]
+        },
+        "external_id": "1101",
+        "source": "gmail"
+      },
+      {
+        "kid": "Leo",
+        "title": "钢琴课（改期）",
+        "start": "2026-09-30T17:30:00+03:00",
+        "location": "Music school",
+        "description": "本周改到周三",
+        "refs": ["2:1"],
+        "ref_sources": {
+          "2:1": ["whatsapp"]
+        },
+        "external_id": "2:1",
+        "source": "whatsapp"
+      }
+    ],
+    "message_digest": "**Mia**\n- 周四远足，周二前在 Wilma 签同意书\n- 下周一数学考试\n\n**Leo**\n- 周三拍班级照\n- 钢琴课本周改到周三 17:30",
+    "_incomplete": true,
+    "_citations": {
+      "entries": 6,
+      "unverified": 0,
+      "legacy": 0
+    },
+    "_coverage": {
+      "gmail": {
+        "count": 3,
+        "error": null
+      },
+      "myclub": {
+        "count": 1,
+        "error": null
+      },
+      "wilma": {
+        "count": 2,
+        "error": null
+      },
+      "whatsapp": {
+        "count": 3,
+        "error": null
+      }
+    },
+    "_held_back": ["1103", "message:812", "1:3"]
+  },
+  "calendar_created": [
+    {
+      "title": "3B 远足 Nuuksio",
+      "start": "2026-10-01T09:00:00+03:00",
+      "kid": "Mia"
+    },
+    {
+      "title": "钢琴课（改期）",
+      "start": "2026-09-30T17:30:00+03:00",
+      "kid": "Leo"
+    }
+  ],
+  "delivered": true
+}
