@@ -4,6 +4,35 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.7.0 · 2026-10-22
+
+Setup is harder to get wrong: the WhatsApp step waits for the chats to sync, the last step asks for one thing, Windows refuses an administrator install, and the Mac Keychain warning shows only when it's real. Under the hood, the Sources, the AI backends and the setup page were reorganised (ADRs 0022–0024) with no change to what families see.
+
+### Changed
+- On the last setup step, the page asks for one thing, Turn it on, and no longer shows a ✗ or a warning for what Turn it on hasn't done yet; once it has worked, it says plainly that setup is complete.
+- A family without a paid ChatGPT plan reads that ChatGPT works on any plan, Free included; only Claude still needs a paid plan.
+- Uninstall's closing notes list the untouched accounts as "Gmail, MyClub, Wilma, WhatsApp and Google" and put the Google Calendar note after the Source notes.
+
+### Fixed
+- A family who signs in to WhatsApp for Mac during setup now waits for its chats to sync, so its groups show up on the Check page instead of an empty list.
+- On Windows, installing or setting up from a PowerShell window opened with "Run as administrator" stops at once and says to open PowerShell the normal way, instead of finishing a setup that can never send a Brief.
+- Setup started inside tmux or over SSH warns that passwords can't be saved in the Keychain only when macOS really refuses them there, not on every step of a Mac where saving works.
+- The setup page no longer logs a red error in the browser console on every load.
+
+## 0.6.3 · 2026-10-22
+
+No more header-only emails on quiet evenings, a skipped Source can be added later from the setup page, and on Windows a Brief missed while signed out comes at the next sign-in.
+
+### Changed
+- On an evening with nothing worth telling, such as one with only an ordinary timetable for the next school day, the family gets no email instead of one that's empty apart from the header.
+- A family whose school and club news comes through Wilma, MyClub or WhatsApp can leave Gmail to only send the Brief, with no sender ticked, and gets no failed check or failed Source for it.
+
+### Added
+- A family who skipped a Source such as Wilma or MyClub can add it from the setup page's Check or Finish step, or later by opening the page again, without asking the Parent Recap team.
+
+### Fixed
+- On Windows, if nobody is signed in at Brief time, that evening's Brief now comes when someone next signs in, often the next morning, and the setup page and docs say so.
+
 ## 0.6.2 · 2026-10-19
 
 The setup page reads more clearly on Windows, and a notice from a parent group both Kids share goes under the Kid it's about.
