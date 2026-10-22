@@ -67,7 +67,9 @@ def reading(url: str) -> dict[str, Any]:
 
 def read_to_the_end(url: str) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    wait_for(lambda: out.update(reading(url)) or out["result"] != "reading")
+    # Cleared before each poll: a reply that doesn't carry `read`/`total` must not inherit them
+    # from the earlier "reading" one, or read-failed still names a count (a CI flake).
+    wait_for(lambda: out.clear() or out.update(reading(url)) or out["result"] != "reading")
     return out
 
 
