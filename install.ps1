@@ -7,7 +7,7 @@
 # Pasted that way, it downloads the `stable` branch into %LOCALAPPDATA%\ParentRecap\plugin first,
 # installs from there, and opens the setup page. Run as a file next to `app\` (a checkout or an
 # unzipped release), it installs from that folder, and only installs.
-# Needs no administrator rights: it writes only under %LOCALAPPDATA%\ParentRecap and setup's
+# Needs no administrator rights, and refuses to run as administrator (#464): it writes only under %LOCALAPPDATA%\ParentRecap and setup's
 # record (~\.family\install-record.json), so `parent-recap uninstall` can remove what it made.
 # Safe to re-run: a run that stopped partway picks up from where it got to, and a run with
 # nothing new to do downloads and installs nothing. It never touches the config or the secrets.
@@ -60,6 +60,31 @@
 
   function Stop-Install([string]$Message, [string]$Next = $TryAgain) {
     throw [System.InvalidOperationException]::new("$Message`n   $Next")
+  }
+
+  # Whether this PowerShell runs as administrator, as a window opened with "Run as administrator"
+  # does: on the full token UAC splits off the user's own (TokenElevationTypeFull, 2). What it makes
+  # then belongs to the Administrators group, and the owner-only folders setup makes shut out the
+  # evening task, which runs as the user without it (#464). On a PC with UAC off, as CI's runner
+  # is, every window runs as administrator, the task too (TokenElevationTypeDefault, 1): that's fine.
+  function Test-Elevated {
+    if (-not ('ParentRecap.Token' -as [type])) {
+      Add-Type -Namespace ParentRecap -Name Token -MemberDefinition @'
+[DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
+[DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle);
+[DllImport("advapi32.dll")] public static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+[DllImport("advapi32.dll")] public static extern bool GetTokenInformation(IntPtr token, int kind, out int value, int size, out int returned);
+'@
+    }
+    $token = [IntPtr]::Zero
+    if (-not [ParentRecap.Token]::OpenProcessToken([ParentRecap.Token]::GetCurrentProcess(), 8, [ref]$token)) { return $false }
+    try {
+      $kind = 0
+      $size = 0
+      return [ParentRecap.Token]::GetTokenInformation($token, 18, [ref]$kind, 4, [ref]$size) -and $kind -eq 2
+    } finally {
+      [void][ParentRecap.Token]::CloseHandle($token)
+    }
   }
 
   # Runs a program with its output going to the install log, and returns its exit code. Not
@@ -184,6 +209,11 @@
     if (@(Get-CimInstance Win32_Processor)[0].Architecture -ne 9) {
       Stop-Install 'Parent Recap runs only on Windows PCs with an Intel or AMD processor (x64), for now.' `
         'Tell the Parent Recap team which PC you have.'
+    }
+    if (Test-Elevated) {
+      Stop-Install ('This PowerShell window runs as administrator. Installed from it, Parent Recap could never send ' +
+        'a Brief: the evening job, which runs as you, couldn''t open its own files.') `
+        'Close this window, open PowerShell from the Start menu the normal way (not "Run as administrator"), and run the install again there.'
     }
     New-Item -ItemType Directory -Path $Target, $Logs, $Runtimes -Force | Out-Null
     $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue

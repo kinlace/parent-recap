@@ -32,13 +32,14 @@ import json
 import os
 import shlex
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from . import secret_dialog, setup_ai, setup_gmail, setup_myclub, setup_whatsapp, setup_wilma
 from .config import Config, LLMConfig
 from .setup_ai import CLAUDE_WINDOW, setup_token_window
 from .setup_report import KEYCHAIN_WARNING, PLAIN_TERMINAL, program, report
-from .system import desktop, jobs, secrets
+from .system import desktop, jobs, profile, secrets, windows_only
 
 # Still found here by the tests, and by the setup page for its WhatsApp read, whose tests replace
 # it here, until they use the Sources' own modules (#423).
@@ -46,7 +47,12 @@ from .setup_gmail import CITY_DOMAINS
 from .setup_whatsapp import read_through_bg as read_whatsapp_through_bg
 from .setup_wilma import WILMA_CITIES, WILMA_WINDOW
 
+Step = Callable[[argparse.Namespace], int]
 PAGE_UNAVAILABLE = "The page isn't available"
+AS_ADMINISTRATOR = ("This PowerShell window runs as administrator. Set up from it, Parent Recap "
+                    "could never send a Brief: the evening job, which runs as you, couldn't open "
+                    "its own files. Close this window, open PowerShell from the Start menu the "
+                    "normal way (not \"Run as administrator\"), and run it again there.")
 
 
 def register(sub) -> None:
@@ -110,6 +116,21 @@ def register(sub) -> None:
     setup_save.register(steps)
     setup_status.register(steps)
     setup_server.register(steps)
+
+    # Every step but `status`, which only reads, writes what the evening Brief reads.
+    for name, step in steps.choices.items():
+        if name != "status":
+            step.set_defaults(func=_not_as_administrator(step.get_default("func")))
+
+
+def _not_as_administrator(func: Step) -> Step:
+    """`func`, refused in a Windows PowerShell opened with "Run as administrator", before it
+    writes anything: the evening task couldn't open what it would write there (#464)."""
+    def step(args: argparse.Namespace) -> int:
+        if profile.current().system == "windows" and windows_only.elevated():
+            return report("run-as-administrator", AS_ADMINISTRATOR)
+        return func(args)
+    return step
 
 
 def _warn_if_unreachable() -> str:

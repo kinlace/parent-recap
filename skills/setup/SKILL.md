@@ -67,6 +67,8 @@ A `result` of `no-prompt` means no dialog could open here (for example from insi
 
 A `result` of `keychain-not-reachable` (from `setup gmail` or `setup claude`, with macOS's `code`) means macOS won't let the command save in the Keychain here, because it runs inside tmux or over SSH, and no prompt will come. Running it again from here fails the same way: give the parent the command in `next` to run in a plain Terminal window outside tmux or SSH (Shell → New Command… in Terminal works). `keychain-failed` carries macOS's `code` too, when there is one.
 
+A `result` of `run-as-administrator` (any command but `setup status`, on Windows) means you were started from a PowerShell window opened with "Run as administrator", and the command did nothing: set up from there, the evening Brief could never open its files. Running it again from here fails the same way. Tell the parent to close this session, open PowerShell from the Start menu the normal way, start you again from that window, and carry on with setup there.
+
 ## Saving answers and progress
 
 `$FB setup save` writes the parent's answers into `~/.family/config.yaml` (owner-only), and records how far setup has got, so the setup page and this chat can each pick up where the other stopped. It comes with the program, so the first save is right after `install.sh` in Connect, with the card's answers and `"progress": {"phase": "connect"}`. Give it the answers as JSON on stdin, with only the keys you're saving; whatever you leave out stays as it was:

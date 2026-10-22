@@ -34,6 +34,14 @@ def test_the_pasted_line_ends_on_the_setup_page_and_a_file_run_only_installs():
     assert "if ($PSCommandPath) { exit [int]$failed }" in end
 
 
+def test_run_as_administrator_it_stops_before_it_makes_anything():
+    # What it would make there, the evening task couldn't open (#464).
+    body = (ROOT / "install.ps1").read_text().split("function Install-ParentRecap {", 1)[1]
+
+    assert body.index("if (Test-Elevated) {") < body.index("New-Item")
+    assert "Run as administrator" in body.split("if (Test-Elevated) {", 1)[1].split("}", 1)[0]
+
+
 def test_install_ps1_is_ascii_only():
     # Windows PowerShell 5.1 reads a script file without a byte order mark in the PC's own code
     # page, so anything else would come out garbled.

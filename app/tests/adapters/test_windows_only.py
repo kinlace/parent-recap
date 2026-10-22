@@ -1,19 +1,21 @@
 """What only Windows checks for the evening run (ADR 0021): that "Allow wake timers" lets the task
 wake the PC, and that Windows signs the family back in after an update restart. `doctor` reports
 both beside the tasks, and `schedule install` says how the wake stands, each with a fix in plain
-words. And uninstall's last step, which removes a program once it has stopped running.
+words. And uninstall's last step, which removes a program once it has stopped running, and setup
+refusing to run as administrator, which would shut the evening task out of its files (#464).
 
 The jobs, the wake and the sign-in setting are the harness's fakes, and the system is said to be
 Windows; reading the sign-in setting is checked with its registry faked, and on Windows for real."""
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import time
 
 import pytest
 
-from family_brief import ops
+from family_brief import ops, setup_steps
 from family_brief.system import jobs, windows_only
 
 from fake_system import MACOS, WINDOWS, FakeWake
@@ -119,6 +121,54 @@ def test_schedule_uninstall_removes_the_tasks(harness, windows):
     assert harness.cli("schedule", "uninstall") == 0
 
     assert harness.jobs.installed() == set()
+
+
+# ── setup run as administrator (#464)
+
+
+@pytest.mark.parametrize("step", [["page"], ["gmail", "--address", "parent@example.com"],
+                                  ["wilma"], ["save"]])
+def test_setup_run_as_administrator_says_to_open_powershell_normally_and_does_nothing(
+        harness, windows, capsys, step):
+    harness.elevated = True
+
+    assert harness.cli("setup", *step) == 1
+
+    assert json.loads(capsys.readouterr().out) == {"result": "run-as-administrator",
+                                                   "next": setup_steps.AS_ADMINISTRATOR}
+    assert harness.desktop.opened == [] and harness.desktop.windows == []
+    assert harness.dialog.shown == [] and dict(harness.secrets) == {}
+    assert not (harness.home / ".family" / "setup-progress.json").exists()
+
+
+def test_setup_status_only_reads_so_it_runs_as_administrator_too(harness, windows, capsys):
+    harness.elevated = True
+
+    harness.cli("setup", "status")
+
+    assert "run-as-administrator" not in capsys.readouterr().out
+
+
+def test_setup_on_macos_never_asks_whether_it_runs_as_administrator(harness, windows, capsys):
+    harness.system = MACOS
+    harness.elevated = True  # what it would say, were it asked
+
+    harness.cli("setup", "save", "--read")
+
+    assert "run-as-administrator" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("kind, elevated", [(2, True), (1, False), (3, False), (None, False)])
+def test_only_the_full_half_of_a_split_token_is_run_as_administrator(monkeypatch, kind, elevated):
+    # 1 is a PC with UAC off, as CI's Windows runner is, where the evening task runs so too.
+    monkeypatch.setattr(windows_only, "_elevation_type", lambda: kind)
+
+    assert windows_only.elevated() is elevated
+
+
+@pytest.mark.windows
+def test_this_processs_own_token_is_read():
+    assert windows_only._elevation_type() in (1, 2, 3)
 
 
 # ── reading Windows' sign-in after an update

@@ -4,8 +4,8 @@ whether Windows signs the family back in after it restarts for an update ("Use m
 automatically finish setting up after an update"), without which that night's run doesn't happen.
 And uninstall's last step, which only Windows needs: removing the program and its Python once
 uninstall, which runs from them, has ended, and the setup page's install of Claude Code and the
-Codex CLI, whose own installers run in PowerShell. They aren't interfaces with an adapter per system;
-their code stays Windows code."""
+Codex CLI, whose own installers run in PowerShell. And whether setup runs as administrator, which it
+refuses. They aren't interfaces with an adapter per system; their code stays Windows code."""
 from __future__ import annotations
 
 import os
@@ -21,6 +21,7 @@ SIGN_IN_SETTING = ("Settings › Accounts › Sign-in options › Use my sign-in
                    "finish setting up after an update")
 POLICY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
 USER_ARSO = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\UserARSO"
+TOKEN_QUERY, TOKEN_ELEVATION_TYPE, ELEVATION_FULL = 0x0008, 18, 2  # winnt.h
 
 
 def offers(name: str) -> bool:
@@ -72,6 +73,42 @@ def signs_back_in_after_update() -> bool | None:
     sid = _sid()
     opt_out = _dword(f"{USER_ARSO}\\{sid}", "OptOut") if sid else None
     return None if opt_out is None else opt_out == 0
+
+
+def elevated() -> bool:
+    """Whether this program runs as administrator, as a PowerShell window opened with "Run as
+    administrator" runs it: on the full token UAC splits off the user's own. What it makes then
+    belongs to the Administrators group, and the owner-only folders setup makes shut out the
+    evening task, which runs as the user without it (#464). On a PC with UAC off every program
+    runs as administrator, the task too, so that one isn't."""
+    return _elevation_type() == ELEVATION_FULL
+
+
+def _elevation_type() -> int | None:
+    """This process's TOKEN_ELEVATION_TYPE: 1 without a split token, 2 its full half, 3 its
+    limited half; None when Windows doesn't say."""
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32")
+    kernel32 = ctypes.WinDLL("kernel32")
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    advapi32.OpenProcessToken.argtypes = (wintypes.HANDLE, wintypes.DWORD,
+                                          ctypes.POINTER(wintypes.HANDLE))
+    advapi32.GetTokenInformation.argtypes = (wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                             wintypes.DWORD, ctypes.POINTER(wintypes.DWORD))
+    token = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(token)):
+        return None
+    try:
+        kind, size = wintypes.DWORD(), wintypes.DWORD()
+        if not advapi32.GetTokenInformation(token, TOKEN_ELEVATION_TYPE, ctypes.byref(kind),
+                                            ctypes.sizeof(kind), ctypes.byref(size)):
+            return None
+        return kind.value
+    finally:
+        kernel32.CloseHandle(token)
 
 
 # Waits for the process, then removes each path, trying again for a minute while the launchers

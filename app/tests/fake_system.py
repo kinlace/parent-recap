@@ -311,12 +311,14 @@ class FakeSystem:
         self.profile: profile.Profile = profile.current()
         # Whether Windows signs the family back in after an update restart; None: never set.
         self.signs_in_after_update: bool | None = True
+        self.elevated = False  # whether it runs as administrator on Windows
         self.opened: list[str] = []  # what the macOS-only steps' `open` opened
         for module, fake in ((secrets, self.secrets), (jobs, self.jobs), (wake, self.wake),
                              (desktop, self.desktop), (dialog, self.dialog)):
             mp.setattr(module, "_adapter", fake)
         mp.setattr(profile, "current", lambda: self.profile)
         mp.setattr(windows_only, "signs_back_in_after_update", lambda: self.signs_in_after_update)
+        mp.setattr(windows_only, "elevated", lambda: self.elevated)
 
     def open_command(self, cmd: list[str], prog: str, **_k: Any) -> subprocess.CompletedProcess | None:
         """`open`, which the macOS-only steps beside Full Disk Access run for Finder and System

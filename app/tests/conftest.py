@@ -329,6 +329,7 @@ class Harness:
     dialog = _to("_system", "dialog")
     system = _to("_system", "profile")  # the profile the program sees
     signs_in_after_update = _to("_system", "signs_in_after_update")
+    elevated = _to("_system", "elevated")
     opened = _to("_system", "opened")
     commands = _to("processes", "commands")  # every process started
 
