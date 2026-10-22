@@ -53,6 +53,7 @@ case "$*" in
     rm -f "{tmp_path}/pending_now"
     [ "$left" -gt 0 ] && {{ echo $((left - 1)) > "{tmp_path}/pending_watches"; touch "{tmp_path}/pending_now"; exit 1; }}
     grep -q '"fail"' "$checks" && exit 1; exit 0 ;;
+  "pr view"*mergeable*) cat "{tmp_path}/mergeable" 2>/dev/null || echo MERGEABLE ;;
   "pr view"*headRefOid*)
     late=$(cat "{tmp_path}/head_late_by" 2>/dev/null || echo 0)
     if [ "$late" -gt 0 ]; then echo $((late - 1)) > "{tmp_path}/head_late_by"; echo old; else git rev-parse HEAD; fi ;;
@@ -119,6 +120,18 @@ def test_a_pr_with_only_gitleaks_is_not_merged_and_the_missing_test_check_is_nam
     assert not merged(gh)
     assert "stopped at #5" in result.stderr
     assert "test check" in result.stderr and "gitleaks" in result.stderr
+
+
+def test_a_pr_that_conflicts_with_main_stops_at_once_and_says_so(gh):
+    # GitHub runs no pull_request workflow on a PR it can't merge, so test never shows up (#449).
+    report(gh, gitleaks="pass")
+    (gh["tmp"] / "test_late_by").write_text("19")
+    (gh["tmp"] / "mergeable").write_text("CONFLICTING")
+    result = merge_pr(gh)
+    assert result.returncode != 0
+    assert not merged(gh)
+    assert "conflicts with main" in result.stderr
+    assert sum(c.startswith("gh pr checks") for c in calls(gh)) == 1
 
 
 def test_a_pr_with_no_checks_at_all_is_not_merged(gh):

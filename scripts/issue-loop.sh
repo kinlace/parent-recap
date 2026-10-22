@@ -334,15 +334,22 @@ has_test_check() {
   case ", $1" in *", $TEST_CHECK (${2:-}"*) return 0 ;; *) return 1 ;; esac
 }
 
+# Whether GitHub found that the PR conflicts with its base; UNKNOWN while it's still checking.
+pr_conflicts() {
+  [ "$(gh pr view "$1" -R "$REPO" --json mergeable --jq .mergeable 2>/dev/null)" = CONFLICTING ]
+}
+
 # Waits for the PR's CI to end. Returns 0 when it passed and 1 when a check failed; stops the job
 # when the test check never shows up or ends other than passed or failed. Checks take a few
-# seconds to show up on a new PR or commit.
+# seconds to show up on a new PR or commit; on a PR that conflicts with main they never do, as
+# GitHub runs no pull_request workflow on a PR it can't merge (#449).
 ci_passes() {
   local pr=$1 i checks=
   log "waiting for CI on PR #${pr##*/}"  # called with a number or a PR URL
   for i in $(seq 20); do
     checks=$(pr_checks "$pr")
     has_test_check "$checks" && break
+    pr_conflicts "$pr" && fail "the PR conflicts with main, so GitHub runs no $TEST_CHECK check; rebase it on main"
     [ "$i" = 20 ] || sleep "$CI_POLL"
   done
   has_test_check "$checks" ||
