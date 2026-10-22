@@ -282,17 +282,22 @@ def _versions(cfg: Config, picks: list[dict]) -> list[_Version]:
     and the archive keep the original only (ADR 0004)."""
     original = cfg.weekend_language()
 
-    def in_language(language: Language, to: list[str]) -> _Version:
-        if all(p.get("_ranking_failed") for p in picks):
+    model_down = all(p.get("_ranking_failed") for p in picks)
+
+    def translate_into(language: Language) -> list[dict] | None:
+        return None if model_down else _translated(cfg, picks, original, language)
+
+    def in_language(language: Language, to: list[str], translated: list[dict] | None) -> _Version:
+        if translated is None:
             # The model is down, so there are no reasons to translate; the fallback's comes in their words.
             reason = _text(cfg, language).ranking_failed
             return _Version.written_in(cfg, language, to, [{**p, "why": reason} for p in picks])
-        return _Version.written_in(cfg, language, to, _translated(cfg, picks, original, language))
+        return _Version.written_in(cfg, language, to, translated)
 
     return translate.per_language(
-        "Weekend Picks", original, cfg.weekend_recipients_by_language(),
+        "Weekend Picks", original, cfg.weekend_recipients_by_language(), translate_into, in_language,
         lambda to, note: _Version.written_in(cfg, original, to, picks, translation_note=note),
-        in_language, lambda language: _text(cfg, language).translation_failed)
+        lambda language: _text(cfg, language).translation_failed)
 
 
 def _format_body(candidates_by_id: dict[str, Candidate], weekend: tuple[Any, Any], v: _Version) -> str:

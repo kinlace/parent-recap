@@ -442,20 +442,24 @@ def _versions(cfg: Config, written: _Written) -> list[render.Version]:
     summary = written.night.summary
     original = cfg.brief_language()
 
-    def in_language(language: Language, to: list[str]) -> render.Version:
+    model_down = "_llm_error" in summary
+
+    def translate_into(language: Language) -> dict | None:
+        return None if model_down else translate(cfg, summary, original, language, written.placeholders)
+
+    def in_language(language: Language, to: list[str], translated: dict | None) -> render.Version:
         t = languages.text(cfg, language)
-        if "_llm_error" in summary:
+        if translated is None:
             # The model is down, so there is nothing to translate; the raw list comes in their words.
             return render.Version(t, to, _fallback_summary(written.for_ai, summary["_llm_error"], t, cfg))
-        translated = translate(cfg, summary, original, language, written.placeholders)
         events = extract_calendar_events(translated, cfg.timezone, t.untitled)
         return render.Version(t, to, translated, {
             (ev.title, ev.start_iso()): tev for ev, tev in zip(written.model_events, events)})
 
     return per_language(
-        "the Brief", original, cfg.brief_recipients_by_language(),
+        "the Brief", original, cfg.brief_recipients_by_language(), translate_into, in_language,
         lambda to, note: render.Version(languages.text(cfg, original), to, summary, translation_note=note),
-        in_language, lambda language: languages.text(cfg, language).translation_failed)
+        lambda language: languages.text(cfg, language).translation_failed)
 
 
 # ── The setup page's preview

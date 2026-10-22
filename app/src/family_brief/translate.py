@@ -25,7 +25,8 @@ from .utils.dates import today_str
 
 log = logging.getLogger(__name__)
 
-V = TypeVar("V")
+_T = TypeVar("_T")
+_V = TypeVar("_V")
 
 
 _INTRO = Template("""You translate a Household's daily Brief about their kids' school and hobbies from $original into $target. It goes to parents whose kids go to school in Finland.
@@ -189,20 +190,23 @@ def translate(cfg: Config, summary: dict[str, Any], original: Language, target: 
 
 
 def per_language(what: str, original: Language, by_language: dict[Language, list[str]],
-                 as_written: Callable[[list[str], str], V], in_language: Callable[[Language, list[str]], V],
-                 translation_failed: Callable[[Language], str]) -> list[V]:
+                 translated: Callable[[Language], _T], in_language: Callable[[Language, list[str], _T], _V],
+                 as_written: Callable[[list[str], str], _V], translation_failed: Callable[[Language], str]) -> list[_V]:
     """One version of `what` (the Brief, Weekend Picks) per language among the Recipients, the
-    original first: `as_written(to, note)` for those reading `original`, `in_language(language, to)`
-    for each other language. When that raises, its readers get the original after all, with
-    `translation_failed(language)` as its note. With no Recipients, the original alone, to nobody."""
+    original first: `as_written(to, note)` for those reading `original`, and for each other
+    language `in_language(language, to, translated(language))`. When the translation raises, its
+    readers get the original after all, with `translation_failed(language)` as its note. With no
+    Recipients, the original alone, to nobody."""
     versions = []
     for language, to in (by_language or {original: []}).items():
         if language == original:
             versions.append(as_written(to, ""))
             continue
         try:
-            versions.append(in_language(language, to))
+            text = translated(language)
         except Exception as e:
             log.error("Translating %s into %s failed: %s (sending the original)", what, language, e)
             versions.append(as_written(to, translation_failed(language)))
+            continue
+        versions.append(in_language(language, to, text))
     return versions
