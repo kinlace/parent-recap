@@ -1,24 +1,18 @@
-"""End-to-end harness: runs the real `parent-recap run` in-process with fakes at the outside edges.
-
-Fakes sit at exactly four boundaries, so internals can be refactored without touching tests:
-  1. Sources: each Source in the registry is faked at its transport (fake_sources.py: Gmail's
-     IMAP server, the MyClub feed's HTTP, the wilma CLI, WhatsApp's database), serving what
-     `harness.sources` holds for it, and its real collector reads it.
-  2. Model process: `subprocess.run` for `claude` / `codex` records argv + stdin, returns a canned reply
-     (the same for every call, or one per call from a list, where FailedCall makes that call fail
-     and a function makes the reply, or the FailedCall, from the prompt it is given). The
-     gateway backend's `requests.post` to /v1/messages is recorded and answered from the same
-     replies, where an HTTPReply sets its status and an exception is raised.
-  3. Delivery: email sending, iMessage (`osascript`) and the Google Calendar API record what
-     they are given, or fail.
-  4. The pauses between model calls are recorded and move a fake clock on, instead of being slept.
-The OS services in `family_brief.system` (secrets, the evening jobs, the daily wake, the desktop,
-the secret dialog) are in-memory fakes from fake_system.py, in place of their adapters, and the
-system's profile is the harness's `system`. Setup commands also meet the macOS-only steps' `open`
-(Finder beside Full Disk Access, the Passwords app), faked at the command.
-
-Everything else (config, state, archive) is real and lives in a temporary HOME.
-"Now" and the local timezone are pinned. Regenerate golden files, all or one night's, with:
+"""The fixtures that fake the program's outside edges, so internals can be refactored without
+touching tests. Each fakes one edge, and an integration test asks only for the one it uses:
+  1. `sources`: each Source in the registry faked at its transport (fake_sources.py: Gmail's IMAP
+     server, the MyClub feed's HTTP, the wilma CLI, WhatsApp's database), serving what
+     `sources.tonight` holds for it to its real collector.
+  2. `model`: every backend's model calls made to the llm package's in-memory Backend, which
+     records each and answers from the replies it is given (fake_model.py, ADR 0023).
+  3. `outbox`: email sending, iMessage and the Google Calendar API record what they are given,
+     or fail (fake_outbox.py).
+  4. `system`: the OS services in `family_brief.system` (secrets, the evening jobs, the daily wake,
+     the desktop, the secret dialog) as in-memory fakes in place of their adapters, and the
+     system's profile (fake_system.py, ADR 0020).
+`harness` composes them and runs the real `parent-recap` in-process, for the end-to-end tests.
+Everything else (config, state, archive) is real and lives in a temporary HOME. "Now" and the
+local timezone are pinned. Regenerate golden files, all or one night's, with:
 
     pytest --update-goldens
     pytest --update-goldens=normal_night
@@ -31,25 +25,23 @@ import socket
 import subprocess
 import sys
 import uuid
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo
 
 import pytest
-import requests
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli, feedback, gateway, sources, tools
-from family_brief.actions import calendar as calendar_action, email as email_action
-from family_brief.collectors.base import CalendarEvent, Collected, Message
+from family_brief import __main__ as cli, feedback, tools
+from family_brief.collectors.base import CalendarEvent, Message
 from family_brief.llm import retry
-from family_brief.system import (desktop, dialog, jobs, profile, profile_macos, secrets, wake,
-                                 windows_only)
-from fake_sources import FAKES
-from fake_system import WINDOWS, FakeDesktop, FakeDialog, FakeJobs, FakeSecrets, FakeWake
+from family_brief.system import profile_macos, secrets
+from fake_model import FakeModel
+from fake_outbox import FakeOutbox
+from fake_sources import FakeSources
+from fake_system import WINDOWS, FakeSystem
 from goldens import Goldens
 
 # The test layers, one folder each (README.md). Tests import helpers from tests in other layers
@@ -195,150 +187,150 @@ def ics_for_golden(payload: bytes) -> str:
     return payload.decode("utf-8").replace("\r\n", "\n")
 
 
-# ── Recorded outbound traffic
+# ── The fixtures the harness is composed of
 
-@dataclass
-class SentEmail:
-    subject: str
-    text: str
-    html: str | None
-    from_addr: str
-    to: list[str]
-    attachments: list[tuple[str, bytes, str]]
+class Processes:
+    """`subprocess.run` for the program under test: each command it starts is recorded in
+    `commands` and answered by the first of `answers` that knows it, and any other fails the test.
+    What is left here has no interface of its own, so it meets its command: ADR 0020's gap, the
+    macOS-only features (iMessage's osascript, `open` beside Full Disk Access and for the
+    Passwords app), the Sources' own programs, and Claude Code's and Codex's sign-in and plugin
+    commands. A model call never is one: the model is the in-memory Backend (fake_model.py)."""
 
-    def attachment(self, suffix: str) -> tuple[str, bytes, str] | None:
-        return next((a for a in self.attachments if a[0].endswith(suffix)), None)
+    def __init__(self, mp: pytest.MonkeyPatch) -> None:
+        self.commands: list[list[str]] = []
+        # Each takes the command, its program's name and run's arguments, and gives its result,
+        # or None for a command it doesn't know.
+        self.answers: list[Callable[..., subprocess.CompletedProcess | None]] = []
+        mp.setattr(subprocess, "run", self.run)
 
-
-@dataclass
-class ModelCall:
-    """A model process started, or a call to the gateway: then `argv` is ["POST", its URL],
-    `stdin` the user message, and `headers` and `body` the request's."""
-    argv: list[str]
-    stdin: str | None
-    cwd: str | None
-    cwd_contents: list[str] | None  # what was in cwd when the process started
-    env: dict[str, str] | None
-    stdin_source: Any  # the `stdin=` argument, e.g. subprocess.DEVNULL
-    headers: dict[str, str] | None = None
-    body: dict[str, Any] | None = None
-
-
-def system_prompt_of(call: ModelCall) -> str:
-    return call.argv[call.argv.index("--system-prompt") + 1]
+    def run(self, cmd: list[str], *_a: Any, **kwargs: Any) -> subprocess.CompletedProcess:
+        # Windows' claude.exe, or codex.CMD as `which` names it, in PATHEXT's capitals.
+        prog, ext = os.path.splitext(Path(cmd[0]).name)
+        prog = prog if ext.lower() in (".exe", ".cmd") else prog + ext
+        self.commands.append(list(cmd))
+        for answer in self.answers:
+            result = answer(cmd, prog, **kwargs)
+            if result is not None:
+                return result
+        raise AssertionError(f"unexpected subprocess in test: {cmd[:3]}")
 
 
-def assert_isolated_claude(call: ModelCall) -> None:
-    """Only our system prompt (not Claude Code's own), no tools, no MCP, no user-level settings,
-    no saved session, the prompt on stdin rather than in argv (argv is size-capped and shows in
-    `ps`), and an empty working dir that is gone once the run ends."""
-    argv = call.argv
-    assert "--system-prompt" in argv and "--append-system-prompt" not in argv
-    assert argv[argv.index("--tools") + 1] == ""
-    assert "--strict-mcp-config" in argv and "--mcp-config" not in argv
-    assert argv[argv.index("--disallowedTools") + 1] == "mcp__*"
-    assert argv[argv.index("--setting-sources") + 1] == ""
-    assert "--no-session-persistence" in argv
-    assert call.stdin and call.stdin_source is None
-    assert not any(call.stdin in a for a in argv)
-    assert call.cwd_contents == []
-    assert call.cwd is not None and not Path(call.cwd).exists()
+@pytest.fixture
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The family's home folder, empty, as HOME, with none of this computer's sign-ins or
+    sessions in the environment."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))  # Windows' Path.home()
+    # Where install.ps1 puts Parent Recap, so uninstall never finds the PC's own install.
+    monkeypatch.setenv("LOCALAPPDATA", str(home / "AppData" / "Local"))
+    # Over SSH, macOS's dialogs aren't tried, and in tmux or SSH setup warns that the Keychain
+    # can't be written: a test that wants that sets these itself. The wilma CLI's config is
+    # the one in the temporary HOME.
+    for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+                "CLAUDE_CODE_OAUTH_TOKEN", "SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY", "TMUX",
+                "WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
+        monkeypatch.delenv(var, raising=False)
+    return home
 
 
-@dataclass
-class FailedCall:
-    """In a list of model replies: this call's process exits non-zero with `stderr`. The
-    gateway answers it with HTTP 500 and `stderr` as the error's message."""
-    stderr: str
+@pytest.fixture
+def processes(monkeypatch: pytest.MonkeyPatch) -> Processes:
+    return Processes(monkeypatch)
 
 
-@dataclass
-class HTTPReply:
-    """In a list of model replies: the gateway answers this call with HTTP `status` and `body`
-    (JSON for a dict). The model processes never get one."""
-    status: int
-    body: str | dict[str, Any]
+@pytest.fixture
+def system(processes: Processes, monkeypatch: pytest.MonkeyPatch) -> FakeSystem:
+    """The OS services' in-memory fakes and the system's profile (fake_system.py)."""
+    fake = FakeSystem(monkeypatch)
+    processes.answers.append(fake.open_command)
+    return fake
 
 
-@dataclass
-class FakeCalendarService:
-    """Stands in for googleapiclient's Calendar v3 service: events().list/insert(...).execute()."""
-    existing: list[dict] = field(default_factory=list)
-    inserted: list[dict] = field(default_factory=list)
-    error: Exception | None = None
-    fail_after: int = 0  # inserts that succeed before `error` is raised
-
-    def events(self) -> "FakeCalendarService":
-        return self
-
-    def list(self, **kw: Any) -> "_Call":
-        if "privateExtendedProperty" in kw:
-            h = kw["privateExtendedProperty"].split("=", 1)[1]
-            return _Call(lambda: {"items": [e for e in self.inserted
-                                            if e["extendedProperties"]["private"]["family_brief_hash"] == h]})
-        return _Call(lambda: {"items": self.existing})
-
-    def insert(self, calendarId: str, body: dict, sendUpdates: str) -> "_Call":
-        def run() -> dict:
-            if self.error and len(self.inserted) >= self.fail_after:
-                raise self.error
-            ev = {**body, "id": f"gev{len(self.inserted) + 1}",
-                  "htmlLink": f"https://calendar.google.com/event?eid=gev{len(self.inserted) + 1}"}
-            self.inserted.append(ev)
-            return ev
-        return _Call(run)
+@pytest.fixture
+def sources(home: Path, system: FakeSystem, processes: Processes,
+            monkeypatch: pytest.MonkeyPatch) -> FakeSources:
+    """Each Source in the registry faked at its transport (fake_sources.py), read with
+    default_config()."""
+    fake = FakeSources(home, default_config(), system.secrets, monkeypatch)
+    processes.answers.append(fake.program)
+    return fake
 
 
-@dataclass
-class _Call:
-    fn: Callable[[], dict]
+@pytest.fixture
+def model(processes: Processes, monkeypatch: pytest.MonkeyPatch) -> FakeModel:
+    """The model, as the in-memory Backend every adapter calls (fake_model.py)."""
+    fake = FakeModel(monkeypatch)
+    processes.answers.append(fake.program_command)
+    return fake
 
-    def execute(self) -> dict:
-        return self.fn()
+
+@pytest.fixture
+def outbox(home: Path, processes: Processes, monkeypatch: pytest.MonkeyPatch) -> FakeOutbox:
+    """Email, iMessage and Google Calendar, recording what goes out (fake_outbox.py)."""
+    fake = FakeOutbox(home, monkeypatch)
+    processes.answers.append(fake.osascript)
+    return fake
+
+
+@pytest.fixture
+def pauses(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The pauses between tries of a busy model, in seconds: each moves the run's monotonic clock
+    on instead of being slept."""
+    paused: list[float] = []
+    monkeypatch.setattr(retry, "_sleep", paused.append)
+    monkeypatch.setattr(retry, "_clock", lambda: sum(paused))
+    return paused
 
 
 # ── Harness
 
+def _to(part: str, name: str) -> property:
+    """The harness's `name`, which is `name` of its fixture `part`."""
+    return property(lambda h: getattr(getattr(h, part), name),
+                    lambda h, value: setattr(getattr(h, part), name, value))
+
+
 class Harness:
-    def __init__(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The four fixtures together, for a test that runs the program end to end: `run` and `cli`
+    write the config and call main(). Each fixture's attributes are the harness's too, by the
+    names the tests use."""
+
+    def __init__(self, home: Path, sources: FakeSources, model: FakeModel, outbox: FakeOutbox,
+                 system: FakeSystem, processes: Processes, monkeypatch: pytest.MonkeyPatch) -> None:
         self.home = home
-        self.config: dict[str, Any] = default_config()
-        # source -> its Messages and events tonight | the Exception its transport raises | a
-        # function returning either; each Source's fake (fake_sources.py) serves it
-        self.sources: dict[str, Any] = {}
-        # One reply for every call, or a list with one entry per call, in the order they are made.
-        self.model_reply: str | dict | list[str | dict | FailedCall | Callable[[str], dict]] = \
-            {"per_kid": [], "calendar_events": [], "message_digest": ""}
-        self.model_error: str | None = None        # stderr of a failing model process
-        self.email_error: Exception | None = None
-        self.imessages: list[tuple[str, str]] = []  # (recipient, text) actually sent
-        self.imessage_error: str | None = None      # stderr of a failing osascript
-        self.lookback_hours: dict[str, list[int]] = {}  # source -> lookback each run collected with
-        self.calendar = FakeCalendarService()
-        self.sent: list[SentEmail] = []
-        self.model_calls: list[ModelCall] = []
-        self.secrets = FakeSecrets()
-        self.jobs = FakeJobs()
-        self.wake = FakeWake()
-        # Whether Windows signs the family back in after an update restart; None: never set.
-        self.signs_in_after_update: bool | None = True
-        self.desktop = FakeDesktop()
-        self.dialog = FakeDialog()
-        # The profile the program sees: this system's, until a test makes it another's.
-        self.system: profile.Profile = profile.current()
-        self.opened: list[str] = []                 # what the macOS-only steps' `open` opened
-        self.commands: list[list[str]] = []         # every process started, model calls included
-        self.signed_in: dict[str, bool] = {"claude": True, "codex": True}  # what their status says
-        # Claude Code's plugins and marketplaces, as `claude plugin ... list --json` gives them,
-        # and each `claude plugin` command run, without the program. Removing one takes it off
-        # its list, unless Claude Code refuses to remove.
-        self.claude_plugins: list[dict[str, Any]] = []
-        self.claude_marketplaces: list[dict[str, Any]] = []
-        self.plugin_calls: list[list[str]] = []
-        self.claude_removes = True
-        self.pauses: list[float] = []               # seconds each pause between model calls lasted
-        self.clock = 0.0                            # what the run's monotonic clock reads
+        self._sources, self.model, self.outbox, self._system = sources, model, outbox, system
+        self.processes = processes
         self._install(monkeypatch)
+
+    config = _to("_sources", "config")
+    sources = _to("_sources", "tonight")
+    source_fakes = _to("_sources", "fakes")
+    lookback_hours = _to("_sources", "lookback_hours")
+    model_reply = _to("model", "reply")
+    model_error = _to("model", "error")
+    model_calls = _to("model", "calls")
+    signed_in = _to("model", "signed_in")
+    claude_plugins = _to("model", "claude_plugins")
+    claude_marketplaces = _to("model", "claude_marketplaces")
+    plugin_calls = _to("model", "plugin_calls")
+    claude_removes = _to("model", "claude_removes")
+    sent = _to("outbox", "sent")
+    email_error = _to("outbox", "email_error")
+    imessages = _to("outbox", "imessages")
+    imessage_error = _to("outbox", "imessage_error")
+    calendar = _to("outbox", "calendar")
+    secrets = _to("_system", "secrets")
+    jobs = _to("_system", "jobs")
+    wake = _to("_system", "wake")
+    desktop = _to("_system", "desktop")
+    dialog = _to("_system", "dialog")
+    system = _to("_system", "profile")  # the profile the program sees
+    signs_in_after_update = _to("_system", "signs_in_after_update")
+    opened = _to("_system", "opened")
+    commands = _to("processes", "commands")  # every process started
 
     # Paths
     @property
@@ -358,11 +350,10 @@ class Harness:
         (self.archive_dir / f"{day}.raw.json").write_text(text)
 
     def model_prompt(self, i: int = -1) -> str:
-        return self.model_calls[i].stdin
+        return self.model.prompt(i)
 
     def model_payload(self, i: int = -1) -> dict[str, Any]:
-        prompt = self.model_prompt(i)
-        return json.loads(prompt[prompt.index("\n{") + 1:])
+        return self.model.payload(i)
 
     # Run
     def run(self, *args: str) -> int:
@@ -373,8 +364,7 @@ class Harness:
         """What each Source's setup leaves on the family's computer (fake_sources.py), where the
         test hasn't put it itself. `run` does this; a test reading the Sources another way, such
         as the setup page's preview, calls it."""
-        for fake in self.source_fakes.values():
-            fake.set_up()
+        self._sources.set_up()
 
     def cli(self, *args: str) -> int:
         cfg_path = self.home / ".family" / "config.yaml"
@@ -385,36 +375,8 @@ class Harness:
             mp.setattr(sys, "argv", argv)
             return cli.main()
 
-    # Fakes
+    # What no fixture fakes: the network the run waits for, and the pilot Form
     def _install(self, mp: pytest.MonkeyPatch) -> None:
-        mp.setenv("HOME", str(self.home))
-        mp.setenv("USERPROFILE", str(self.home))  # Windows' Path.home()
-        # Where install.ps1 puts Parent Recap, so uninstall never finds the PC's own install.
-        mp.setenv("LOCALAPPDATA", str(self.home / "AppData" / "Local"))
-        # Over SSH, macOS's dialogs aren't tried, and in tmux or SSH setup warns that the Keychain
-        # can't be written: a test that wants that sets these itself. The wilma CLI's config is
-        # the one in the temporary HOME.
-        for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
-                    "CLAUDE_CODE_OAUTH_TOKEN", "SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY", "TMUX",
-                    "WILMAI_CONFIG_PATH", "XDG_CONFIG_HOME"):
-            mp.delenv(var, raising=False)
-
-        mp.setattr(secrets, "_adapter", self.secrets)
-        missing = [s.name for s in sources.ALL if s.name not in FAKES]
-        assert not missing, f"no fake in fake_sources.FAKES for {missing}"
-        self.source_fakes = {s.name: FAKES[s.name](self, mp) for s in sources.ALL}
-        for s in sources.ALL:
-            if s.lookback:
-                self._spy_on_lookback(mp, s)
-        mp.setattr(jobs, "_adapter", self.jobs)
-        mp.setattr(wake, "_adapter", self.wake)
-        mp.setattr(desktop, "_adapter", self.desktop)
-        mp.setattr(dialog, "_adapter", self.dialog)
-        mp.setattr(profile, "current", lambda: self.system)
-        mp.setattr(windows_only, "signs_back_in_after_update", lambda: self.signs_in_after_update)
-
-        mp.setattr(subprocess, "run", self._fake_subprocess_run)
-        mp.setattr(gateway.requests, "post", self._fake_gateway_post)
         self.probed: list[str] = []  # each host the run waited for the network on
 
         def connect(address: tuple[str, int], *_a: Any, **_k: Any) -> _FakeSocket:
@@ -422,39 +384,8 @@ class Harness:
             return _FakeSocket()
         mp.setattr(socket, "create_connection", connect)
 
-        def pause(seconds: float) -> None:
-            self.pauses.append(seconds)
-            self.clock += seconds
-
-        mp.setattr(retry, "_sleep", pause)
-        mp.setattr(retry, "_clock", lambda: self.clock)
-
-        def send(subject: str, body_text: str, from_addr: str, to_addrs: list[str],
-                 body_html: str | None = None,
-                 attachments: list[tuple[str, bytes, str]] | None = None) -> None:
-            if self.email_error:
-                raise self.email_error
-            self.sent.append(SentEmail(subject, body_text, body_html, from_addr, list(to_addrs),
-                                       list(attachments or [])))
-
-        mp.setattr(email_action, "send", send)
-
         # Whether this version ships the pilot Form is each test's to say, with ship_pilot_form.
         mp.setattr(feedback, "PILOT_FORM", self.home / "pilot_feedback.yaml")
-
-        token = self.home / ".family" / "calendar_token.json"
-        mp.setattr(calendar_action, "TOKEN_PATH", str(token))
-        mp.setattr(calendar_action, "_build_service", lambda: self.calendar)
-
-    def _spy_on_lookback(self, mp: pytest.MonkeyPatch, source: sources.Source) -> None:
-        """Records the lookback each collection of `source` runs with, then collects as its record
-        does. The record is frozen, so the spy goes in its __dict__, the same record everywhere."""
-        collect = source.collect
-
-        def spy(cfg: Any, *a: Any, **k: Any) -> Collected:
-            self.lookback_hours.setdefault(source.name, []).append(source.lookback(cfg).lookback_hours)
-            return collect(cfg, *a, **k)
-        mp.setitem(vars(source), "collect", spy)
 
     def ship_pilot_form(self) -> None:
         """This version ships the pilot Form's block, as ops/feedback-form's log prints it."""
@@ -462,124 +393,12 @@ class Harness:
             "prefill_base_url": PILOT_FORM_URL, "fields": PILOT_FORM_FIELDS}}))
 
     def authorize_google_calendar(self) -> None:
-        token = Path(calendar_action.TOKEN_PATH)
-        token.parent.mkdir(parents=True, exist_ok=True)
-        token.write_text("{}")
-
-    def _fake_subprocess_run(self, cmd: list[str], *_a: Any, input: str | None = None,
-                             cwd: str | None = None, env: dict[str, str] | None = None,
-                             stdin: Any = None, **_k: Any) -> subprocess.CompletedProcess:
-        # Windows' claude.exe, or codex.CMD as `which` names it, in PATHEXT's capitals.
-        prog, ext = os.path.splitext(Path(cmd[0]).name)
-        prog = prog if ext.lower() in (".exe", ".cmd") else prog + ext
-        self.commands.append(list(cmd))
-        if prog == "open":  # Finder and System Settings beside Full Disk Access, and Passwords
-            self.opened.append(cmd[-1])
-            return subprocess.CompletedProcess(cmd, 0, "", "")
-        if prog == "osascript":  # iMessage via Messages.app
-            if self.imessage_error is not None:
-                return subprocess.CompletedProcess(cmd, 1, "", self.imessage_error)
-            script = cmd[cmd.index("-e") + 1]
-            to = script.split('to buddy "', 1)[1].split('"', 1)[0]
-            self.imessages.append((to, script.split('send "', 1)[1].rsplit('" to buddy', 1)[0]))
-            return subprocess.CompletedProcess(cmd, 0, "", "")
-        for fake in self.source_fakes.values():  # a Source's own program, such as the wilma CLI
-            answer = fake.run(cmd, input=input, cwd=cwd, env=env, **_k)
-            if answer is not None:
-                return answer
-        if prog not in ("claude", "codex"):
-            raise AssertionError(f"unexpected subprocess in test: {cmd[:3]}")
-        # Their own sign-in checks, answered the way each one does.
-        if prog == "claude" and cmd[1:3] == ["auth", "status"]:
-            signed_in = self.signed_in["claude"]
-            out = {"loggedIn": signed_in, **({"authMethod": "claude.ai"} if signed_in else {})}
-            return subprocess.CompletedProcess(cmd, 0 if signed_in else 1, json.dumps(out), "")
-        if prog == "claude" and cmd[1:2] == ["plugin"]:  # Claude Code's plugins, as JSON lists
-            self.plugin_calls.append(cmd[1:])
-            return self._plugin_command(cmd)
-        if prog == "codex" and cmd[1:3] == ["login", "status"]:
-            if self.signed_in["codex"]:
-                return subprocess.CompletedProcess(cmd, 0, "", "Logged in using ChatGPT\n")
-            return subprocess.CompletedProcess(cmd, 1, "", "Not logged in\n")
-        contents = sorted(p.name for p in Path(cwd).iterdir()) if cwd else None
-        self.model_calls.append(ModelCall(list(cmd), input, cwd, contents,
-                                          dict(env) if env is not None else None, stdin))
-        if self.model_error is not None:
-            return subprocess.CompletedProcess(cmd, 1, "", self.model_error)
-        reply = self._next_reply(input)
-        assert not isinstance(reply, (HTTPReply, Exception)), "only the gateway answers with these"
-        if isinstance(reply, FailedCall):
-            return subprocess.CompletedProcess(cmd, 1, "", reply.stderr)
-        reply = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
-        if prog == "codex":
-            Path(cmd[cmd.index("-o") + 1]).write_text(reply)
-            return subprocess.CompletedProcess(cmd, 0, "", "")
-        envelope = {"type": "result", "subtype": "success", "is_error": False, "result": reply}
-        return subprocess.CompletedProcess(cmd, 0, json.dumps(envelope, ensure_ascii=False), "")
-
-    def _plugin_command(self, cmd: list[str]) -> subprocess.CompletedProcess:
-        args = cmd[2:]
-        listed = {("list", "--json"): self.claude_plugins,
-                  ("marketplace", "list", "--json"): self.claude_marketplaces}.get(tuple(args))
-        if listed is not None:
-            return subprocess.CompletedProcess(cmd, 0, json.dumps(listed), "")
-        removing = args[:1] == ["uninstall"] or args[:2] == ["marketplace", "remove"]
-        if removing and not self.claude_removes:
-            return subprocess.CompletedProcess(cmd, 1, "", "Failed to uninstall")
-        name = args[-1]
-        # A list that isn't one (a test's {"error": ...}) is Claude Code unable to say what it has.
-        if args[:1] == ["uninstall"] and isinstance(self.claude_plugins, list):
-            self.claude_plugins = [p for p in self.claude_plugins if p.get("id") != name]
-        elif args[:2] == ["marketplace", "remove"] and isinstance(self.claude_marketplaces, list):
-            assert not any(str(p.get("id")).endswith("@" + name) for p in self.claude_plugins), \
-                "the plugin goes before its marketplace"
-            self.claude_marketplaces = [m for m in self.claude_marketplaces if m.get("name") != name]
-        return subprocess.CompletedProcess(cmd, 0, "[]", "")
-
-    def _next_reply(self, prompt: str | None) -> Any:
-        reply = self.model_reply
-        if isinstance(reply, list):
-            assert reply, "more model calls than replies"
-            reply = reply.pop(0)
-        return reply(prompt) if callable(reply) else reply
-
-    def _fake_gateway_post(self, url: str, **kwargs: Any) -> requests.Response:
-        """The gateway's /v1/messages, answering as an Anthropic-format endpoint does. A reply
-        that is an exception is raised, as requests raises a timeout or a refused connection."""
-        body = kwargs["json"]
-        [message] = body["messages"]
-        self.model_calls.append(ModelCall(["POST", url], message["content"], None, None, None, None,
-                                          dict(kwargs["headers"]), body))
-        if self.model_error is not None:
-            return _response(500, {"type": "error", "error": {"type": "api_error",
-                                                              "message": self.model_error}})
-        reply = self._next_reply(message["content"])
-        if isinstance(reply, Exception):
-            raise reply
-        if isinstance(reply, HTTPReply):
-            return _response(reply.status, reply.body)
-        if isinstance(reply, FailedCall):
-            return _response(500, {"type": "error", "error": {"type": "api_error",
-                                                              "message": reply.stderr}})
-        text = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
-        return _response(200, {
-            "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-haiku-5-5",
-            "content": [{"type": "text", "text": text}], "stop_reason": "end_turn",
-            "usage": {"input_tokens": 1200, "output_tokens": 300, "cache_creation_input_tokens": 0,
-                      "cache_read_input_tokens": 0}})
+        self.outbox.authorize_google_calendar()
 
 
 class _FakeSocket:
     def close(self) -> None:
         pass
-
-
-def _response(status: int, body: str | dict[str, Any]) -> requests.Response:
-    r = requests.Response()
-    r.status_code = status
-    r._content = (body if isinstance(body, str) else json.dumps(body)).encode()
-    r.encoding = "utf-8"
-    return r
 
 
 def default_config() -> dict[str, Any]:
@@ -610,10 +429,11 @@ def default_config() -> dict[str, Any]:
 
 
 @pytest.fixture
-def harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    home = tmp_path / "home"
-    home.mkdir()
-    h = Harness(home, monkeypatch)
+def harness(home: Path, sources: FakeSources, model: FakeModel, outbox: FakeOutbox,
+            system: FakeSystem, processes: Processes, monkeypatch: pytest.MonkeyPatch):
+    """The four fixtures composed, for the end-to-end tests: an integration test asks only for
+    the one it uses."""
+    h = Harness(home, sources, model, outbox, system, processes, monkeypatch)
     # tick=False: every datetime.now() in the run sees exactly NOW, so output is byte-stable.
     with time_machine.travel(NOW, tick=False):
         yield h
@@ -622,7 +442,7 @@ def harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 # ── Fixture builders
 
 # A model reply with something to say, for tests that need the night's Brief to go out: a night
-# the model finds nothing to say about sends none (#385).
+# the model finds nothing to say about, as fake_model.QUIET, sends none (#385).
 SAYS_SOMETHING = {"per_kid": [], "calendar_events": [], "message_digest": "- Something new tonight"}
 
 

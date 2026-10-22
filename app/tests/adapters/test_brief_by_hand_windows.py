@@ -1,8 +1,8 @@
 """A Brief started by hand on a Windows PC (ADR 0019): `parent-recap run` on the gateway, with the
 Gmail App Password and the Gateway Key in Windows' own Credential Manager.
 
-The real Gmail Source reads the harness's IMAP server, and the gateway's /v1/messages and the email
-are the harness's fakes; the secrets are stored and read for real (conftest's `credential_manager`)."""
+The real Gmail Source reads the harness's IMAP server, and the model and the email are the
+harness's fakes; the secrets are stored and read for real (conftest's `credential_manager`)."""
 from __future__ import annotations
 
 import logging
@@ -54,8 +54,9 @@ def test_a_brief_started_by_hand_is_written_through_the_gateway_and_sent(windows
     [email] = windows_pc.sent
     assert "Retki to Nuuksio on Thu 1 Oct" in email.text
     [call] = windows_pc.model_calls
-    assert call.headers["x-api-key"] == KEY
-    assert "Message number 1." in call.stdin
+    assert windows_pc.model.served_by == ["gateway"]
+    assert gateway.key() == KEY  # what the gateway adapter sends, read back from Credential Manager
+    assert "Message number 1." in call.prompt
     assert list(windows_pc.state()["seen_message_ids"]["gmail"]) == ["101"]
     printed = capsys.readouterr()
     assert APP_PASSWORD not in printed.out + printed.err + caplog.text

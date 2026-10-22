@@ -61,7 +61,7 @@ def test_a_parents_own_appointment_reaches_the_ai_as_a_busy_block(harness):
         {"summary": "busy", "start": "2026-09-29T08:00:00+03:00", "end": "2026-09-29T09:00:00+03:00"},
         {"summary": "busy", "start": "2026-10-01", "end": "2026-10-03"},
     ]
-    sent = harness.model_prompt() + " ".join(harness.model_calls[-1].argv)
+    sent = harness.model_prompt() + harness.model_calls[-1].system_prompt
     for private in ("Salo", "back pain", "Kilo Health Centre", "Work trip", "Tampere"):
         assert private not in sent
 

@@ -1,5 +1,5 @@
 """The Brief email as a Recipient receives it. The real email action runs here, with fakes one step
-further out: the SMTP server and the secrets store. Assertions are on
+further out: the SMTP server and the `system` fixture's secrets store. Assertions are on
 the message handed to the server, parsed back the way a mail client reads it."""
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import pytest
 from family_brief.actions import email as email_action
 from family_brief.collectors.gmail import keychain_account
 
-REAL_SEND = email_action.send  # captured before the harness fakes it
+REAL_SEND = email_action.send  # captured before any test's outbox fixture fakes it
 
 SENDER = "parent@example.com"
 APP_PASSWORD = "abcdabcdabcdabcd"
@@ -58,10 +58,10 @@ class FakeSMTP:
 
 
 @pytest.fixture
-def smtp(harness, monkeypatch: pytest.MonkeyPatch) -> type[FakeSMTP]:
+def smtp(system, monkeypatch: pytest.MonkeyPatch) -> type[FakeSMTP]:
     FakeSMTP.connections = []
     monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
-    harness.secrets[keychain_account(SENDER)] = APP_PASSWORD
+    system.secrets[keychain_account(SENDER)] = APP_PASSWORD
     return FakeSMTP
 
 
@@ -142,8 +142,8 @@ def test_subject_from_and_to_name_every_recipient_and_the_send_logs_in_with_the_
     assert msg["Date"]
 
 
-def test_with_no_app_password_in_the_keychain_it_fails_clearly_and_sends_nothing(smtp, harness):
-    harness.secrets.clear()
+def test_with_no_app_password_in_the_keychain_it_fails_clearly_and_sends_nothing(smtp, system):
+    system.secrets.clear()
 
     with pytest.raises(RuntimeError, match=re.escape(f"No Gmail App Password in Keychain for {SENDER}")):
         send()
@@ -151,10 +151,10 @@ def test_with_no_app_password_in_the_keychain_it_fails_clearly_and_sends_nothing
     assert smtp.connections == []
 
 
-def test_with_no_recipients_nothing_is_sent(smtp, harness, monkeypatch):
+def test_with_no_recipients_nothing_is_sent(smtp, system, monkeypatch):
     def read(name, default=None):
         raise AssertionError("the secrets store was read")
-    monkeypatch.setattr(harness.secrets, "get", read)  # not even a read of the App Password
+    monkeypatch.setattr(system.secrets, "get", read)  # not even a read of the App Password
 
     send(to_addrs=[])
 

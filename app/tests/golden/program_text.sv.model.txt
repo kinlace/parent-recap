@@ -1,5 +1,3 @@
-argv: ["claude", "-p", "--output-format", "json", "--system-prompt", "<system prompt>", "--tools", "", "--strict-mcp-config", "--disallowedTools", "mcp__*", "--setting-sources", "", "--no-session-persistence"]
-
 --- system prompt ---
 You translate the fixed text of a program that emails a Household a daily Brief about their kids' school and hobbies in Finland. Translate every value of the JSON object from English into the language whose code is sv.
 
@@ -14,7 +12,7 @@ You translate the fixed text of a program that emails a Household a daily Brief 
 9. No markdown fences, no explanations
 
 
---- stdin ---
+--- prompt ---
 {
   "language_name": "English",
   "quotes": "‘single quotes’",

@@ -3,7 +3,9 @@ language; the summarize prompt explains them (see summarize._build_prompt)."""
 from __future__ import annotations
 
 import pytest
+import time_machine
 
+from conftest import NOW
 from family_brief.collectors import whatsapp, wilma
 from family_brief.config import Config
 from family_brief.state import State
@@ -15,14 +17,15 @@ from family_brief.state import State
     ("2026-09-29", "Tue · day after tomorrow"),
     ("2026-10-01", "Thu · in 4 days"),
 ])
-def test_wilma_timetable_is_headed_with_its_date(harness, day, label):
-    cli = harness.source_fakes["wilma"]
+@time_machine.travel(NOW, tick=False)
+def test_wilma_timetable_is_headed_with_its_date(sources, day, label):
+    cli = sources.fakes["wilma"]
     cli.set_up()
     cli.answers[("schedule", "list")] = {"when": "tomorrow", "date": day, "students": [
         {"student": {"name": "Virtanen Aino"}, "lessons": [
             {"date": day, "start": "08:15", "end": "09:45", "subject": "Liikunta", "room": "ulkokenttä"}]}]}
 
-    [msg] = wilma.collect(Config.model_validate(harness.config), State(harness.home / "state.json"), []).messages
+    [msg] = wilma.collect(Config.model_validate(sources.config), State(sources.home / "state.json"), []).messages
 
     assert msg.subject == f"Timetable for the next school day (from {day})"
     assert msg.body.splitlines()[:3] == [

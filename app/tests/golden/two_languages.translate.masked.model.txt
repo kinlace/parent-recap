@@ -1,5 +1,3 @@
-argv: ["claude", "-p", "--output-format", "json", "--system-prompt", "<system prompt>", "--tools", "", "--strict-mcp-config", "--disallowedTools", "mcp__*", "--setting-sources", "", "--no-session-persistence"]
-
 --- system prompt ---
 You translate a Household's daily Brief about their kids' school and hobbies from Simplified Chinese into English. It goes to parents whose kids go to school in Finland.
 
@@ -15,7 +13,7 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
 8. **JSON format**: every `"` inside a string value must be escaped as `\"`; don't stand in full-width or curly quotes for it. To quote something inside a text value, use ‘single quotes’ instead of straight double quotes, so the JSON doesn't break
 
 
---- stdin ---
+--- prompt ---
 {
   "message_digest": "**Kid A**\n- 周四远足，周二前在 Wilma 签同意书\n- 下周一数学考试\n\n**Kid B**\n- 周三拍班级照\n- 钢琴课本周改到周三 17:30",
   "per_kid": [

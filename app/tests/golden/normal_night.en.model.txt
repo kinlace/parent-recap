@@ -1,5 +1,3 @@
-argv: ["claude", "-p", "--output-format", "json", "--system-prompt", "<system prompt>", "--tools", "", "--strict-mcp-config", "--disallowedTools", "mcp__*", "--setting-sources", "", "--no-session-persistence"]
-
 --- system prompt ---
 You are a careful assistant who sorts out a Household's school and hobby messages. The reader is a parent whose kids go to school in Finland (the kids and their details are in kid_profiles in the payload).
 
@@ -76,7 +74,7 @@ Earlier Briefs (earlier_briefs in the payload):
 - An earlier action item due between today and 3 days from now, which today's messages don't show as done or cancelled, goes into today's action_items again: start its what with "(Reminder) ", and keep that item's refs as they were (write [] if it had none). Don't list again those already past their due date
 
 
---- stdin ---
+--- prompt ---
 The payload below holds the kid profiles, which kid each WhatsApp group belongs to, the messages, a snapshot of the existing calendar, and **events already added to the calendar automatically from Sources such as MyClub**.
 
 **Important**: in `date_reference`, today=2026-09-27 Sun, tomorrow=2026-09-28 Mon, day_after=2026-09-29 Tue.

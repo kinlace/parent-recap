@@ -63,7 +63,7 @@ def test_a_sensitive_message_in_any_language_reaches_no_model_call(harness):
 
     summarize_call, translate_call = harness.model_calls
     for call in (summarize_call, translate_call):
-        sent = call.stdin + json.dumps(call.argv, ensure_ascii=False)
+        sent = call.prompt + call.system_prompt
         for ext_id, _source, _sender, subject, body in SENSITIVE:
             assert ext_id not in sent and body not in sent
             assert subject is None or subject not in sent

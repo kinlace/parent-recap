@@ -1,22 +1,20 @@
 """The gateway backend (ADR 0014): a Household with a Gateway Key and no Claude or ChatGPT
 subscription gets its Brief from the maintainers' gateway, which the program calls itself.
 
-The outside edges are faked: the gateway's /v1/messages (`requests.post`, answered from the
-harness's model replies) and the secret dialog. Assertions are on the email, the
-requests the gateway got, the pauses between them, doctor's lines, the setup step's JSON, and
-every place the Gateway Key must never reach (ADR 0005)."""
+The model is the harness's in-memory Backend, and a failed call is the error the gateway adapter
+raises for it; what the gateway's HTTP answers mean is the adapter's own test's
+(integration/test_llm_gateway.py). Assertions are on the email, the model calls, doctor's lines,
+the setup step's JSON, and every place the Gateway Key must never reach (ADR 0005)."""
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
 import pytest
-import requests
 
-from conftest import FailedCall, HTTPReply, msg
+from conftest import msg
 
-from family_brief import install_record, ops
+from family_brief import gateway as api, install_record, ops
 from family_brief.system import secrets
 
 KEY = "sk-bf-fake-gateway-key"
@@ -26,13 +24,12 @@ GOOD = {"per_kid": [{"kid": "Mia", "notices": [{"text": "Retki to Nuuksio on Thu
                      "action_items": []}],
         "calendar_events": [], "message_digest": "**Mia**\n- Retki to Nuuksio on Thu 1 Oct"}
 FAILED = "Tonight's Digest could not be written"
-OVERLOADED = HTTPReply(529, {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}})
-BUDGET_EXCEEDED = HTTPReply(402, {"type": "error", "error": {
-    "type": "api_error", "message": "Budget exceeded: VK budget exceeded: 0.1766 >= 0.1000 dollars"}})
-UNKNOWN_KEY = HTTPReply(401, {"type": "error", "error": {"type": "authentication_error",
-                                                         "message": "virtual key not found"}})
-REFUSAL = HTTPReply(200, {"type": "message", "role": "assistant", "content": [],
-                          "stop_reason": "refusal", "usage": {"input_tokens": 900, "output_tokens": 0}})
+# What the gateway adapter raises for each answer of the gateway's.
+OVERLOADED = api.GatewayError("the gateway answered HTTP 529: Overloaded", 529)
+BUDGET_EXCEEDED = api.GatewayError(f"{api.SPENT_MESSAGE} (the gateway answered HTTP 402: Budget "
+                                   "exceeded: VK budget exceeded: 0.1766 >= 0.1000 dollars)", 402)
+UNKNOWN_KEY = api.GatewayError("the gateway answered HTTP 401: virtual key not found", 401)
+NO_ANSWER = api.GatewayError("couldn't reach the gateway at gateway.example.test (ConnectionError)")
 
 
 @pytest.fixture
@@ -57,13 +54,14 @@ def assert_key_never_leaked(harness, printed: str, caplog) -> None:
     assert KEY not in caplog.text
     assert not any(KEY in arg for cmd in harness.commands for arg in cmd)
     assert not any(KEY in str(email.__dict__) for email in harness.sent)
+    assert not any(KEY in call.prompt + call.system_prompt for call in harness.model_calls)
     assert KEY not in everything_written(harness)
 
 
 # ── the evening run
 
 
-def test_the_brief_is_written_through_the_gateway_with_the_key(night, capsys, caplog):
+def test_the_brief_is_written_through_the_gateway(night, capsys, caplog):
     caplog.set_level(logging.DEBUG)
     night.model_reply = GOOD
 
@@ -72,11 +70,9 @@ def test_the_brief_is_written_through_the_gateway_with_the_key(night, capsys, ca
     [email] = night.sent
     assert "Retki to Nuuksio on Thu 1 Oct" in email.text and FAILED not in email.text
     [call] = night.model_calls
-    assert call.argv == ["POST", f"{URL}/v1/messages"]
-    assert call.headers == {"x-api-key": KEY, "anthropic-version": "2023-06-01"}
-    assert call.body["model"] == "parent-recap"
-    assert "sorts out a Household's school and hobby messages" in call.body["system"]
-    assert "Retki" not in call.body["system"] and "\"messages\"" in call.stdin
+    assert night.model.served_by == ["gateway"]
+    assert "sorts out a Household's school and hobby messages" in call.system_prompt
+    assert "Retki" not in call.system_prompt and "\"messages\"" in call.prompt
     # No Claude Code or Codex: the program makes the call itself.
     assert not any(cmd[0].endswith(("claude", "codex")) for cmd in night.commands)
     assert night.probed and set(night.probed) == {"gateway.example.test"}
@@ -91,17 +87,7 @@ def test_a_translation_goes_through_the_gateway_too(night):
 
     assert night.run() == 0
 
-    assert len(night.model_calls) == 2
-    assert all(call.argv == ["POST", f"{URL}/v1/messages"] for call in night.model_calls)
-
-
-def test_a_model_left_from_another_backend_is_not_asked_of_the_gateway(night):
-    night.config["llm"]["model"] = "sonnet"
-    night.model_reply = GOOD
-
-    night.run()
-
-    assert night.model_calls[0].body["model"] == "parent-recap"
+    assert night.model.served_by == ["gateway", "gateway"]
 
 
 def test_the_gateway_address_defaults_to_the_maintainers_gateway(night):
@@ -110,84 +96,34 @@ def test_the_gateway_address_defaults_to_the_maintainers_gateway(night):
 
     night.run()
 
-    assert night.model_calls[0].argv == ["POST", "https://gateway.parentrecap.com/v1/messages"]
     assert set(night.probed) == {"gateway.parentrecap.com"}
 
 
-def test_a_model_overloaded_twice_then_free_writes_the_brief(night, caplog):
-    night.model_reply = [OVERLOADED, HTTPReply(503, "Service Unavailable"), GOOD]
-
-    with caplog.at_level(logging.INFO):
-        assert night.run() == 0
-
-    [email] = night.sent
-    assert "Retki to Nuuksio" in email.text
-    assert len(night.model_calls) == 3 and night.pauses == [60, 180]
-    busy = [r.getMessage() for r in caplog.records if "busy on attempt" in r.getMessage()]
-    assert "HTTP 529" in busy[0] and "1 min" in busy[0]
-
-
-def test_rate_limited_is_tried_again(night):
-    night.model_reply = [HTTPReply(429, {"type": "error", "error": {"type": "rate_limit_error",
-                                                                    "message": "Rate limited"}}), GOOD]
-
-    night.run()
-
-    assert night.pauses == [60] and "Retki to Nuuksio" in night.sent[0].text
-
-
-@pytest.mark.parametrize("reply", [
-    UNKNOWN_KEY,
-    BUDGET_EXCEEDED,
-    HTTPReply(403, "Forbidden"),
-    HTTPReply(400, {"type": "error", "error": {"type": "invalid_request_error",
-                                               "message": "prompt is too long"}}),
-    # The gateway's own credit run out, said with a busy status: waiting won't fix it.
-    HTTPReply(500, {"type": "error", "error": {"type": "api_error", "message":
-                    "Your credit balance is too low to access the Anthropic API."}}),
-    REFUSAL,
-    HTTPReply(200, "<html>not the gateway</html>"),
-])
-def test_a_reply_waiting_wont_fix_fails_at_once_with_the_usual_brief(night, reply):
-    night.model_reply = [reply]
+@pytest.mark.parametrize("error", [UNKNOWN_KEY, OVERLOADED, NO_ANSWER,
+                                   api.GatewayError("the model refused to answer", 200)])
+def test_a_failed_call_gives_the_usual_brief(night, error):
+    night.model_reply = [error]
 
     assert night.run() == 0
 
     [email] = night.sent
     assert FAILED in email.text
-    assert len(night.model_calls) == 1 and night.pauses == []
 
 
 SPENT = "the Gateway Key has used up today's credit. It comes back within a day"
 
 
-@pytest.mark.parametrize("reply", [
-    BUDGET_EXCEEDED,
-    # Said with a busy status instead, it still won't pass by waiting minutes.
-    HTTPReply(429, {"type": "error", "error": {"type": "rate_limit_error", "message":
-                    "Budget exceeded: VK budget exceeded: 0.1766 >= 0.1000 dollars"}}),
-])
-def test_a_key_out_of_credit_for_the_day_fails_at_once_and_says_so(night, reply):
+def test_a_key_out_of_credit_for_the_day_says_so(night):
     night.config["email"]["to"] = ["parent@example.com", {"address": "partner@example.com", "language": "zh"}]
-    night.model_reply = [reply]
+    night.model_reply = [BUDGET_EXCEEDED]
 
     assert night.run() == 0
 
-    assert len(night.model_calls) == 1 and night.pauses == []
+    assert len(night.model_calls) == 1
     en, zh = sorted(night.sent, key=lambda email: "今日" in email.text)
     assert SPENT in en.text and "tomorrow evening's Brief" in en.text
     assert "Retki" in en.text  # the raw messages still follow
     assert "Gateway Key 今天的额度已用完" in zh.text
-
-
-def test_a_brief_that_mentions_a_budget_exceeded_is_not_taken_for_one(night):
-    digest = "**Mia**\n- Budget exceeded: the class trip costs more this year"
-    night.model_reply = [HTTPReply(200, {"content": [{"type": "text", "text": json.dumps(
-        {"message_digest": digest, "per_kid": [], "calendar_events": []})}], "stop_reason": "end_turn"})]
-
-    night.run()
-
-    assert "the class trip costs more" in night.sent[0].text and FAILED not in night.sent[0].text
 
 
 def test_any_other_failure_does_not_say_the_credit_ran_out(night):
@@ -198,87 +134,15 @@ def test_any_other_failure_does_not_say_the_credit_ran_out(night):
     assert FAILED in night.sent[0].text and "credit" not in night.sent[0].text
 
 
-def test_a_refusal_is_a_failed_call_not_an_empty_brief(night, caplog):
-    night.model_reply = [REFUSAL]
-
-    with caplog.at_level(logging.INFO):
-        night.run()
-
-    assert FAILED in night.sent[0].text
-    assert "refused" in caplog.text
-
-
-def test_a_call_that_times_out_once_is_tried_again(night):
-    night.model_reply = [requests.ReadTimeout("read timed out"), GOOD]
-
-    night.run()
-
-    assert len(night.model_calls) == 2
-    assert "Retki to Nuuksio" in night.sent[0].text
-
-
-def test_a_call_that_times_out_twice_gives_the_usual_brief(night, caplog):
-    night.model_reply = [requests.ConnectTimeout("timed out")] * 2
-
-    with caplog.at_level(logging.INFO):
-        night.run()
-
-    assert len(night.model_calls) == 2
-    assert FAILED in night.sent[0].text
-    assert "timed out twice" in caplog.text
-
-
-def test_a_gateway_that_cannot_be_reached_gives_the_usual_brief(night, caplog):
-    night.model_reply = [requests.ConnectionError("Failed to resolve gateway.example.test")]
-
-    with caplog.at_level(logging.INFO):
-        night.run()
-
-    assert len(night.model_calls) == 1 and night.pauses == []
-    assert FAILED in night.sent[0].text
-    assert "couldn't reach the gateway at gateway.example.test" in caplog.text
-
-
-def test_a_model_busy_all_evening_stops_inside_the_budget(night):
-    night.model_reply = [OVERLOADED] * 4
-
-    night.run()
-
-    assert FAILED in night.sent[0].text
-    assert len(night.model_calls) == 4 and night.pauses == [60, 180, 600]
-
-
-def test_without_a_key_no_call_is_made_and_the_log_says_how_to_store_one(night, caplog):
+def test_without_a_key_the_log_says_how_to_store_one(night, caplog):
     del night.secrets[ACCOUNT]
+    night.model_reply = [api.NoKey(f"no Gateway Key in the Keychain (store one with {api.SETUP})")]
 
     with caplog.at_level(logging.INFO):
         night.run()
 
-    assert night.model_calls == []
     assert FAILED in night.sent[0].text
     assert "parent-recap setup gateway" in caplog.text
-
-
-def test_a_key_the_keychain_asks_about_is_said_so(night, caplog):
-    night.secrets.asks.add(ACCOUNT)
-
-    with caplog.at_level(logging.INFO):
-        night.run()
-
-    assert night.model_calls == []
-    assert "asks for the Keychain password" in caplog.text
-
-
-def test_the_key_never_reaches_the_output_logs_or_files_when_the_call_fails(night, capsys, caplog):
-    caplog.set_level(logging.DEBUG)
-    night.model_reply = [HTTPReply(401, {"type": "error", "error": {
-        "type": "authentication_error", "message": f"invalid x-api-key {KEY}"}})]
-
-    night.run()
-
-    assert FAILED in night.sent[0].text
-    printed = "".join(capsys.readouterr())
-    assert_key_never_leaked(night, printed, caplog)
 
 
 def test_the_claude_backend_still_runs_claude(night):
@@ -288,8 +152,7 @@ def test_the_claude_backend_still_runs_claude(night):
 
     night.run()
 
-    [call] = night.model_calls
-    assert call.argv[0] == "claude" and call.headers is None
+    assert night.model.served_by == ["claude"]
     assert set(night.probed) == {"api.anthropic.com"}
 
 
@@ -308,19 +171,16 @@ def doctor_lines(harness, monkeypatch, capsys) -> dict[str, str]:
 
 
 def test_doctor_says_the_gateway_answers_and_the_key_works(night, monkeypatch, capsys):
-    night.model_reply = "OK"
-
     lines = doctor_lines(night, monkeypatch, capsys)
 
     assert lines["AI gateway"].startswith(ops.OK) and URL in lines["AI gateway"]
     assert lines["Gateway Key"].startswith(ops.OK) and "works" in lines["Gateway Key"]
-    [call] = night.model_calls
-    assert call.headers["x-api-key"] == KEY and call.argv == ["POST", f"{URL}/v1/messages"]
+    assert night.model.served_by == ["gateway"] and night.model_calls[0].budget == 0
     assert not any(cmd[0].endswith(("claude", "codex")) for cmd in night.commands)
 
 
 def test_doctor_says_when_the_gateway_does_not_answer(night, monkeypatch, capsys):
-    night.model_reply = [requests.ConnectionError("Connection refused")]
+    night.model_reply = [NO_ANSWER]
 
     lines = doctor_lines(night, monkeypatch, capsys)
 
@@ -354,17 +214,15 @@ def test_doctor_without_a_key_still_checks_the_gateway_answers(night, monkeypatc
 
     assert lines["AI gateway"].startswith(ops.OK)
     assert lines["Gateway Key"].startswith(ops.FAIL) and "parent-recap setup gateway" in lines["Gateway Key"]
-    [call] = night.model_calls
-    assert call.headers["x-api-key"] == ""
+    assert len(night.model_calls) == 1
 
 
-def test_doctor_does_not_wait_for_a_busy_gateway(night, monkeypatch, capsys):
+def test_doctor_says_what_a_busy_gateway_said(night, monkeypatch, capsys):
     night.model_reply = [OVERLOADED]
 
     lines = doctor_lines(night, monkeypatch, capsys)
 
     assert lines["Gateway Key"].startswith(ops.FAIL) and "529" in lines["Gateway Key"]
-    assert len(night.model_calls) == 1 and night.pauses == []
 
 
 # ── setup gateway
@@ -389,15 +247,13 @@ def result(capsys) -> tuple[dict, str]:
 def test_a_key_pasted_in_the_dialog_is_tested_and_stored(desktop, capsys, caplog):
     caplog.set_level(logging.DEBUG)
     desktop.dialog.typed = f"  {KEY}\n"
-    desktop.model_reply = "OK"
 
     assert desktop.cli("setup", "gateway") == 0
 
     res, printed = result(capsys)
     assert res == {"result": "saved", "test_call": "ok"}
     assert len(desktop.dialog.shown) == 1
-    [call] = desktop.model_calls
-    assert call.argv == ["POST", f"{URL}/v1/messages"] and call.headers["x-api-key"] == KEY
+    assert desktop.model.served_by == ["gateway"]
     assert desktop.secrets == {ACCOUNT: KEY}
     assert install_record.entries("keychain") == [ACCOUNT]
     # No command line ever holds the key (ADR 0005, 0009).
@@ -430,7 +286,7 @@ def test_a_key_past_todays_budget_works_and_is_stored(desktop, capsys):
 
 def test_a_gateway_that_does_not_answer_stores_nothing(desktop, capsys):
     desktop.dialog.typed = KEY
-    desktop.model_reply = [requests.ConnectionError("Connection refused")]
+    desktop.model_reply = [NO_ANSWER]
 
     assert desktop.cli("setup", "gateway") == 1
 
@@ -439,18 +295,15 @@ def test_a_gateway_that_does_not_answer_stores_nothing(desktop, capsys):
     assert desktop.secrets == {}
 
 
-def test_a_failed_test_call_says_what_the_gateway_said_without_the_key(desktop, capsys, caplog):
-    caplog.set_level(logging.DEBUG)
+def test_a_failed_test_call_says_what_the_gateway_said(desktop, capsys):
     desktop.dialog.typed = KEY
-    desktop.model_reply = [FailedCall(f"upstream error for {KEY}")]
+    desktop.model_reply = [api.GatewayError("the gateway answered HTTP 500: upstream error", 500)]
 
     assert desktop.cli("setup", "gateway") == 1
 
-    res, printed = result(capsys)
-    assert res["result"] == "test-call-failed" and "HTTP 500" in res["error"]
-    assert "<key>" in res["error"]
+    res, _ = result(capsys)
+    assert res["result"] == "test-call-failed" and "HTTP 500: upstream error" in res["error"]
     assert desktop.secrets == {}
-    assert_key_never_leaked(desktop, printed, caplog)
 
 
 def test_something_that_is_not_a_key_is_never_sent(desktop, capsys, caplog):
@@ -477,7 +330,6 @@ def test_closing_the_dialog_stores_nothing(desktop, capsys):
 def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(desktop, capsys):
     desktop.secrets.refuses = secrets.SecretsError("not reachable", "not-reachable", -25308)
     desktop.dialog.typed = KEY
-    desktop.model_reply = "OK"
 
     assert desktop.cli("setup", "gateway") == 1
 
@@ -486,17 +338,15 @@ def test_a_keychain_out_of_reach_says_to_run_it_outside_tmux_or_ssh(desktop, cap
     assert "outside tmux or SSH" in res["next"]
 
 
-def test_without_a_config_the_key_is_tested_against_the_maintainers_gateway(desktop, capsys, tmp_path,
-                                                                            monkeypatch):
+def test_without_a_config_the_key_is_tested_and_stored(desktop, capsys, tmp_path, monkeypatch):
     import sys
     from family_brief import __main__ as cli
     desktop.dialog.typed = KEY
-    desktop.model_reply = "OK"
     monkeypatch.setattr(sys, "argv", ["parent-recap", "-c", str(tmp_path / "none.yaml"), "setup", "gateway"])
 
     assert cli.main() == 0
 
-    assert desktop.model_calls[0].argv == ["POST", "https://gateway.parentrecap.com/v1/messages"]
+    assert desktop.model.served_by == ["gateway"] and desktop.secrets == {ACCOUNT: KEY}
 
 
 def test_setup_save_takes_the_gateway_as_the_ai(desktop, monkeypatch, capsys):

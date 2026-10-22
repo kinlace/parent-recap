@@ -1,4 +1,4 @@
-"""Weekend Picks: the ranking call goes through the same model process as the Brief."""
+"""Weekend Picks: the ranking call goes through the same backend as the Brief."""
 from __future__ import annotations
 
 import json
@@ -7,7 +7,7 @@ from html import escape
 
 import pytest
 
-from conftest import NOW, FailedCall, assert_isolated_claude, system_prompt_of
+from conftest import NOW
 from nights import model_call_for_golden
 
 from family_brief import weekend_pipeline
@@ -24,14 +24,13 @@ def candidate() -> Candidate:
                      url="https://example.fi/le-1")
 
 
-def test_rank_runs_claude_without_tools_from_an_empty_dir(harness):
+def test_rank_calls_the_households_backend(harness):
     harness.model_reply = {"picks": [{"ext_id": "le-1", "rank": 1, "why": "free"}]}
 
     picks = weekend_pipeline.rank(Config.model_validate(harness.config), [candidate()])
 
     assert [p["ext_id"] for p in picks] == ["le-1"]
-    [call] = harness.model_calls
-    assert_isolated_claude(call)
+    assert harness.model.served_by == ["claude"]
 
 
 # ── The ranking call gets no Kid names (ADR 0013)
@@ -67,7 +66,7 @@ def test_ranking_sends_each_kid_as_a_placeholder_and_no_name(harness, golden):
     assert payload["last_week_feedback"][0]["why_shown"] == "Kid A plays football, and Kid B can watch"
     assert payload["candidates"][0]["title"] == "Puppet theatre"
     [call] = harness.model_calls
-    golden("weekend_picks.en.model.txt", model_call_for_golden(call.argv, call.stdin))
+    golden("weekend_picks.en.model.txt", model_call_for_golden(call))
 
 
 def test_a_reason_names_the_kid_by_their_everyday_name_in_the_message_and_the_calendar(harness, monkeypatch):
@@ -103,7 +102,7 @@ def test_the_translation_gets_placeholders_and_each_recipient_reads_the_names(ha
     sent = harness.model_prompt(1)
     assert json.loads(sent)["picks"][0]["why"] == "Kid B喜欢木偶，Kid A也可以一起去"
     assert [n for n in KID_NAMES if n in sent] == []
-    assert "Kid A" in system_prompt_of(harness.model_calls[1])
+    assert "Kid A" in harness.model_calls[1].system_prompt
 
 
 # ── Weekend Picks in their first Recipient's language (summary_language for a plain address)
@@ -139,7 +138,7 @@ def test_weekend_picks_follow_summary_language(harness, monkeypatch, language, s
     [event] = harness.calendar.inserted
     assert note in event["description"]
     [call] = harness.model_calls
-    system = system_prompt_of(call)
+    system = call.system_prompt
     name = {"en": "English", "zh": "Simplified Chinese", "fi": "Finnish"}[language]
     assert f"one-sentence reason, in {name}" in system
 
@@ -179,8 +178,8 @@ def test_each_weekend_picks_recipient_gets_them_in_their_language(harness, monke
     assert "Sat 10/03 21:00" in en.text and "💰 Free" in en.html
     assert "💡 A free puppet show for the younger one" in en.text and "A free puppet show" in en.html
     rank, translate = harness.model_calls
-    assert "one-sentence reason, in Simplified Chinese" in system_prompt_of(rank)
-    assert "from Simplified Chinese into English" in system_prompt_of(translate)
+    assert "one-sentence reason, in Simplified Chinese" in rank.system_prompt
+    assert "from Simplified Chinese into English" in translate.system_prompt
     assert json.loads(harness.model_prompt(1)) == PICKS_ZH
     # The shared calendar and the archive get the picks once, as written.
     [event] = harness.calendar.inserted
@@ -219,7 +218,7 @@ def two_language_weekend(h, monkeypatch, translation) -> None:
 
 
 @pytest.mark.parametrize("translation", [
-    FailedCall("Error: stream disconnected before completion"),
+    RuntimeError("Error: stream disconnected before completion"),
     {"picks": [{"ext_id": "le-1", "rank": 1, "why": "A free puppet show"}]},  # drops a pick
     {"picks": [{"ext_id": "le-2", "rank": 1, "why": "Try floorball"},
                {"ext_id": "le-1", "rank": 2, "why": "A free puppet show"}]},  # reorders them
@@ -307,6 +306,6 @@ def test_weekend_picks_translation_keeps_finnish_names(harness, monkeypatch):
 
     run_weekend_picks(harness, monkeypatch, "zh")
 
-    instructions = system_prompt_of(harness.model_calls[1])
+    instructions = harness.model_calls[1].system_prompt
     assert "2. Keep Finnish event, venue and place names as written" in instructions
     assert "Brief" not in instructions

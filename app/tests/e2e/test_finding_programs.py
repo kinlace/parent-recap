@@ -2,8 +2,9 @@
 
 macOS's own Terminal, and the evening job, may not have a folder the family's own shell setup
 (fish, nix, a custom npm prefix) puts on their login shell's PATH. Doctor finds the program there,
-and the evening job runs the same one, without the login shell. The login shell is a fake that
-adds one folder to PATH; the programs in it are the harness's fakes, or small scripts."""
+and the evening job runs the same one, without the login shell: the one its backend finds for
+each model call (the harness model's `reached`). The login shell is a fake that adds one folder
+to PATH; the programs in it are small scripts."""
 from __future__ import annotations
 
 import json
@@ -14,7 +15,7 @@ import pytest
 from conftest import msg, program
 
 from family_brief import ops, tools
-from family_brief.llm import codex as codex_backend
+from family_brief.llm import claude as claude_backend, codex as codex_backend
 
 TOKEN = "sk-ant-oat01-Abc_def-123456789"
 
@@ -44,8 +45,6 @@ def the_evening_job(harness, monkeypatch) -> None:
     harness.sources = {"gmail": [msg("gmail", "1001", "2026-09-27T09:00:00+03:00",
                                      "Vanhempainilta on 8.10.", sender="office@kilo.example.fi",
                                      subject="Vanhempainilta")]}
-    harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": ""}
-    harness.model_calls.clear()
 
 
 @pytest.mark.macos
@@ -54,16 +53,15 @@ def test_doctor_finds_claude_on_the_login_shells_path_and_the_evening_job_runs_i
     claude = program(terminal_path, "claude")
     login_shell(terminal_path)
     harness.secrets["claude-oauth-token"] = TOKEN
-    harness.model_reply = "OK"
 
     harness.cli("doctor")
 
     assert doctor_line(capsys, "Claude").startswith(ops.OK)
-    assert harness.model_calls[-1].argv[0] == str(claude)
+    assert harness.model.reached == [str(claude)]
 
     the_evening_job(harness, monkeypatch)
     assert harness.run() == 0
-    assert [c.argv[0] for c in harness.model_calls] == [str(claude)]
+    assert harness.model.reached == [str(claude)] * 2
 
 
 @pytest.mark.macos
@@ -72,16 +70,16 @@ def test_doctor_finds_codex_on_the_login_shells_path_and_the_evening_job_runs_it
     harness.config["llm"]["backend"] = "codex"
     codex = program(terminal_path, "codex")
     login_shell(terminal_path)
-    harness.model_reply = {"ok": True}
+    harness.model_reply = [{"ok": True}, {"per_kid": [], "calendar_events": [], "message_digest": ""}]
 
     harness.cli("doctor")
 
     assert doctor_line(capsys, "Codex").startswith(ops.OK)
-    assert harness.model_calls[-1].argv[0] == str(codex)
+    assert harness.model.reached == [str(codex)]
 
     the_evening_job(harness, monkeypatch)
     assert harness.run() == 0
-    assert [c.argv[0] for c in harness.model_calls] == [str(codex)]
+    assert harness.model.reached == [str(codex)] * 2
 
 
 @pytest.mark.windows
@@ -126,7 +124,7 @@ def test_on_windows_the_evening_job_runs_the_codex_openai_s_installer_put_in_pla
     # Task Scheduler's PATH, which the installer's folder isn't on.
     monkeypatch.setenv("PATH", str(harness.home / "Windows" / "System32"))
     assert harness.run() == 0
-    assert [c.argv[0] for c in harness.model_calls] == [str(codex)]
+    assert harness.model.reached == [str(codex)]
     assert json.loads(tools.remembered_path().read_text()) == {"codex": str(codex)}
 
 
@@ -140,8 +138,9 @@ def test_on_windows_the_evening_job_runs_the_claude_its_own_installer_put_in_pla
     # Task Scheduler's PATH, which the installer's folder isn't on.
     monkeypatch.setenv("PATH", str(harness.home / "Windows" / "System32"))
     assert harness.run() == 0
-    [call] = harness.model_calls
-    assert call.argv[0] == str(claude) and call.env["CLAUDE_CODE_OAUTH_TOKEN"] == TOKEN
+    assert harness.model.reached == [str(claude)]
+    # The token the run signs in with, read from Credential Manager.
+    assert claude_backend.signed_in_env()[0]["CLAUDE_CODE_OAUTH_TOKEN"] == TOKEN
     assert json.loads(tools.remembered_path().read_text()) == {"claude": str(claude)}
 
 
@@ -172,5 +171,5 @@ def test_the_evening_job_runs_the_codex_inside_the_chatgpt_app(harness, terminal
 
     the_evening_job(harness, monkeypatch)
     assert harness.run() == 0
-    assert [c.argv[0] for c in harness.model_calls] == [str(codex)]
+    assert harness.model.reached == [str(codex)]
 

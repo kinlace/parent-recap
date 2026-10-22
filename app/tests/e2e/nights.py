@@ -125,12 +125,9 @@ FINNISH_REPLY = {
 }
 
 
-def model_call_for_golden(argv: list[str], stdin: str | None) -> str:
-    shown = ["<system prompt>" if i and argv[i - 1] == "--system-prompt" else a for i, a in enumerate(argv)]
-    out = "argv: " + json.dumps(shown, ensure_ascii=False) + "\n"
-    if "--system-prompt" in argv:
-        out += "\n--- system prompt ---\n" + argv[argv.index("--system-prompt") + 1] + "\n"
-    return out + "\n--- stdin ---\n" + str(stdin) + "\n"
+def model_call_for_golden(call) -> str:
+    """A call to the in-memory Backend as its golden file shows it: what every backend is given."""
+    return f"--- system prompt ---\n{call.system_prompt}\n\n--- prompt ---\n{call.prompt}\n"
 
 
 def caught_up_last_night(h) -> None:

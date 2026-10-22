@@ -11,7 +11,7 @@ import pytest
 import time_machine
 from pydantic import ValidationError
 
-from conftest import NOW, FailedCall, system_prompt_of
+from conftest import NOW
 from nights import ENGLISH_REPLY, FINNISH_REPLY, model_call_for_golden, normal_night
 from test_weekend_picks import run_weekend_picks
 
@@ -61,8 +61,8 @@ def test_recipient_without_a_reviewed_language_gets_program_text_in_it(harness, 
     assert "Parent Recap sv:sv:Sun 27 sv:Sep" in sv.text and "sv:sv:Thu 1 sv:Oct 09:00" in sv.text
     assert "✅ 待办\n• " in zh.text
     program_text, _, translate = harness.model_calls
-    golden("program_text.sv.model.txt", model_call_for_golden(program_text.argv, program_text.stdin))
-    assert "from Simplified Chinese into Swedish" in system_prompt_of(translate)
+    golden("program_text.sv.model.txt", model_call_for_golden(program_text))
+    assert "from Simplified Chinese into Swedish" in translate.system_prompt
     assert (harness.home / ".family" / "languages" / "sv.json").exists()
 
 
@@ -111,7 +111,7 @@ def dropped_time(prompt: str) -> dict:
     return {**swedish(prompt), "date_time": "{day}/{month}"}  # an event's start without its time
 
 
-@pytest.mark.parametrize("program_text", [FailedCall("Error: stream disconnected before completion"), dropped_placeholder,
+@pytest.mark.parametrize("program_text", [RuntimeError("Error: stream disconnected before completion"), dropped_placeholder,
                                           unfillable_placeholder, dropped_time],
                          ids=["model fails", "loses a placeholder", "can't be filled in", "loses the time"])
 def test_failed_program_text_translation_is_english_tonight_and_tried_again(harness, program_text):
@@ -126,7 +126,7 @@ def test_failed_program_text_translation_is_english_tonight_and_tried_again(harn
     assert "Parent Recap Sun 27 Sep" in sv.text and "by Mon 28 Sep" in sv.html  # English dates too
     assert not (harness.home / ".family" / "languages" / "sv.json").exists()
     # The translation still asks for Swedish, by its code.
-    assert "from Simplified Chinese into the language whose code is sv" in system_prompt_of(harness.model_calls[2])
+    assert "from Simplified Chinese into the language whose code is sv" in harness.model_calls[2].system_prompt
 
     harness.model_reply = [swedish, *next_night(chinese_reply)]
     with time_machine.travel(NOW + timedelta(days=1), tick=False):
@@ -164,8 +164,8 @@ def test_brief_text_stored_under_the_old_name_is_translated_again(harness):
     assert harness.run() == 0
 
     assert len(harness.model_calls) == 3  # the program text again, then the Brief and its translation
-    assert "keep the emoji, the Markdown (## and **) and the names Gmail" in system_prompt_of(harness.model_calls[0])
-    assert "Parent Recap" in system_prompt_of(harness.model_calls[0])
+    assert "keep the emoji, the Markdown (## and **) and the names Gmail" in harness.model_calls[0].system_prompt
+    assert "Parent Recap" in harness.model_calls[0].system_prompt
     again = json.loads(stored.read_text())
     assert again["fix_permission"] == "sv:Tell {assistant} “Parent Recap can't read {source}” to fix it."
     assert "FamilyBrief can't" not in stored.read_text() and "check FamilyBrief" not in stored.read_text()
@@ -179,9 +179,9 @@ def test_the_model_writes_the_brief_in_a_first_recipient_language_without_a_revi
     assert harness.run() == 0
 
     _, summarize, translate = harness.model_calls
-    assert "Write every text value in the JSON in Swedish. Translate Finnish words too" in system_prompt_of(summarize)
+    assert "Write every text value in the JSON in Swedish. Translate Finnish words too" in summarize.system_prompt
     assert "sv:Mon" in harness.model_prompt(1)  # the date reference uses its weekdays
-    assert "from Swedish into Simplified Chinese" in system_prompt_of(translate)
+    assert "from Swedish into Simplified Chinese" in translate.system_prompt
     sv, zh = harness.sent
     assert "sv:📥 Read tonight" in sv.text and "📥 今晚读取" in zh.text
     assert "sv:## Digest" in (harness.archive_dir / "2026-09-27.md").read_text().splitlines()
@@ -210,8 +210,8 @@ def test_a_finnish_brief_has_no_finnish_words_to_keep(harness):
     assert harness.run() == 0
 
     summarize, translate = harness.model_calls
-    assert "Write every text value in the JSON in Finnish\n" in system_prompt_of(summarize)
-    assert "Translate Finnish words too" in system_prompt_of(translate)  # the Chinese translation needs it
+    assert "Write every text value in the JSON in Finnish\n" in summarize.system_prompt
+    assert "Translate Finnish words too" in translate.system_prompt  # the Chinese translation needs it
 
 
 def test_a_translation_into_finnish_isnt_told_to_translate_finnish_words(harness):
@@ -222,8 +222,8 @@ def test_a_translation_into_finnish_isnt_told_to_translate_finnish_words(harness
     assert harness.run() == 0
 
     summarize, translate = harness.model_calls
-    assert "Translate Finnish words too" in system_prompt_of(summarize)  # the Chinese Brief needs it
-    instructions = system_prompt_of(translate)
+    assert "Translate Finnish words too" in summarize.system_prompt  # the Chinese Brief needs it
+    instructions = translate.system_prompt
     assert "into Finnish" in instructions and "Translate Finnish words too" not in instructions
     assert "\n3. Keep names, times" in instructions
 
@@ -239,8 +239,8 @@ def test_a_translation_into_finnish_writes_the_finnish_the_original_glossed_only
     assert harness.run() == 0
 
     _, translate = harness.model_calls
-    assert "syysloma（秋假）" in translate.stdin and "koe/kokeita" in translate.stdin
-    instructions = system_prompt_of(translate)
+    assert "syysloma（秋假）" in translate.prompt and "koe/kokeita" in translate.prompt
+    instructions = translate.system_prompt
     assert ("2. The original may pair a Finnish word with its translation in brackets, either way round (such as "
             "syysloma（秋假） or 秋假（syysloma）): write that Finnish word once, with nothing in brackets after "
             "it") in instructions
@@ -262,7 +262,7 @@ def test_language_command_translates_the_program_text_once(harness, capsys):
 
 
 def test_language_command_fails_when_the_translation_does(harness):
-    harness.model_reply = [FailedCall("Error: stream disconnected before completion")]
+    harness.model_reply = [RuntimeError("Error: stream disconnected before completion")]
 
     assert harness.cli("language", "sv") == 1
     assert not (harness.home / ".family" / "languages" / "sv.json").exists()
@@ -328,8 +328,8 @@ def test_weekend_picks_come_in_a_language_without_a_review(harness, monkeypatch,
     assert email.subject == "sv:Weekend Picks · 2026-09-26 ~ 2026-09-27"
     assert "sv:Sat 10/03 21:00" in email.text and "💡 dockteater" in email.text
     _, weekend_text, rank = harness.model_calls
-    golden("program_text.sv.weekend.model.txt", model_call_for_golden(weekend_text.argv, weekend_text.stdin))
-    assert "one-sentence reason, in Swedish" in system_prompt_of(rank)
+    golden("program_text.sv.weekend.model.txt", model_call_for_golden(weekend_text))
+    assert "one-sentence reason, in Swedish" in rank.system_prompt
     assert (harness.home / ".family" / "languages" / "sv.weekend.json").exists()
 
 

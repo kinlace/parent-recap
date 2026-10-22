@@ -1,5 +1,5 @@
 """The nightly `parent-recap run` for Recipients in their own language, end to end. Assertions are
-only on what leaves the system: the email (text, HTML, attachments), the model command line, and
+only on what leaves the system: the email (text, HTML, attachments), what the model is given, and
 persisted state."""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from html import escape
 
 import pytest
 
-from conftest import FailedCall, assert_isolated_claude, html_for_golden, ics_for_golden
+from conftest import html_for_golden, ics_for_golden
 
 from nights import (ENGLISH_REPLY, FEEDBACK, PARTNER_EN, archived_summary, feedback_links,
                     model_call_for_golden, normal_night, two_languages)
@@ -50,9 +50,8 @@ def test_second_recipient_gets_the_brief_translated_into_their_language(harness,
     golden("two_languages.en.ics", ics_for_golden(payload))
 
     summarize, translate = harness.model_calls
-    golden("normal_night.zh.masked.model.txt", model_call_for_golden(summarize.argv, summarize.stdin))
-    golden("two_languages.translate.masked.model.txt", model_call_for_golden(translate.argv, translate.stdin))
-    assert_isolated_claude(translate)
+    golden("normal_night.zh.masked.model.txt", model_call_for_golden(summarize))
+    golden("two_languages.translate.masked.model.txt", model_call_for_golden(translate))
 
 
 def test_translation_shares_calendar_archive_and_feedback_text_with_the_original(harness):
@@ -114,7 +113,7 @@ def edited_translation(edit) -> dict:
 
 
 @pytest.mark.parametrize("translation", [
-    FailedCall("Error: stream disconnected before completion"),
+    RuntimeError("Error: stream disconnected before completion"),
     "Sorry, I can't translate this.",
     edited_translation(lambda r: r["per_kid"][0]["action_items"].pop(1)),
     edited_translation(lambda r: r["per_kid"][1]["action_items"][0].update(by="2026-10-01")),
@@ -163,7 +162,7 @@ def test_failed_translation_leaves_the_shared_calendar_and_feedback_text_alone(h
 def test_failed_translation_note_is_in_the_recipients_language(harness):
     normal_night(harness)
     harness.config["email"]["to"] = [PARTNER_EN, "parent@example.com"]
-    harness.model_reply = [copy.deepcopy(ENGLISH_REPLY), FailedCall("Error: stream disconnected before completion")]
+    harness.model_reply = [copy.deepcopy(ENGLISH_REPLY), RuntimeError("Error: stream disconnected before completion")]
 
     assert harness.run() == 0
 
@@ -182,10 +181,10 @@ def test_the_model_writes_in_the_first_recipients_language(harness, golden):
     en, zh = harness.sent
     assert (en.to, zh.to) == (["partner@example.com"], ["parent@example.com"])
     summarize, translate = harness.model_calls
-    golden("normal_night.en.masked.model.txt", model_call_for_golden(summarize.argv, summarize.stdin))
+    golden("normal_night.en.masked.model.txt", model_call_for_golden(summarize))
     golden("normal_night.en.txt", en.text)
     golden("normal_night.en.html", html_for_golden(en.html))
-    assert "from English into Simplified Chinese" in translate.argv[translate.argv.index("--system-prompt") + 1]
+    assert "from English into Simplified Chinese" in translate.system_prompt
     # Translated back, it reads as the Chinese Brief the model would have written.
     golden("normal_night.zh.txt", zh.text)
     golden("normal_night.zh.html", html_for_golden(zh.html))
@@ -218,7 +217,7 @@ def test_translation_translates_finnish_words_but_keeps_terms_in_brackets(harnes
     assert harness.run() == 0
 
     translate = harness.model_calls[1]
-    instructions = translate.argv[translate.argv.index("--system-prompt") + 1]
+    instructions = translate.system_prompt
     assert "write an everyday one (such as eväät, vaatetus, retki, kota) only in translation" in instructions
     assert "such as reissuvihko or vanhempainilta), keeps its Finnish in brackets" in instructions
     zh, en = harness.sent
@@ -227,7 +226,7 @@ def test_translation_translates_finnish_words_but_keeps_terms_in_brackets(harnes
 
 def test_without_the_model_each_recipient_gets_the_raw_list_in_their_language(harness):
     two_languages(harness)
-    harness.model_reply = [FailedCall("Error: authentication_error: OAuth token has expired")]
+    harness.model_reply = [RuntimeError("Error: authentication_error: OAuth token has expired")]
 
     assert harness.run() == 0
 

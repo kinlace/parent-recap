@@ -1,9 +1,9 @@
 """Each Source's fake, at its transport, where the real thing varies (ADR 0022): Gmail's IMAP
 server, the MyClub feed over HTTP, the wilma CLI on Parent Recap's own Node, and WhatsApp for
-Mac's database. The harness installs the fake of each Source in the registry, so the real
-collectors run in every test of the evening run; FAKES is the list it reads.
+Mac's database. FakeSources, the `sources` fixture, installs the fake of each Source in the
+registry, so the real collectors run in every test of the evening run; FAKES is the list it reads.
 
-A fake serves what `harness.sources[name]` holds when the collector reaches it: tonight's Messages
+A fake serves what `sources.tonight[name]` holds when the collector reaches it: tonight's Messages
 and events, an exception its transport raises, or a function returning either. A Message is
 written the way its transport carries it and read back by the real collector. So a test gives it
 only the fields its transport carries, and the id the collector makes of it:
@@ -25,19 +25,17 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import format_datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any, Callable
 
 import icalendar
 import pytest
 import requests
 
 import fake_node
-from family_brief import own_node
+from family_brief import own_node, sources as registry
 from family_brief.collectors import gmail, myclub, whatsapp
-from family_brief.collectors.base import CalendarEvent, Message
-
-if TYPE_CHECKING:
-    from conftest import Harness
+from family_brief.collectors.base import CalendarEvent, Collected, Message
+from fake_system import FakeSecrets
 
 # Where a Gmail Message's url points: Gmail's search for its Message-ID header.
 GMAIL_LINK = "https://mail.google.com/mail/u/0/#search/rfc822msgid:"
@@ -60,8 +58,8 @@ class SourceFake:
     family's computer, and the commands it answers."""
     name: str
 
-    def __init__(self, harness: Harness) -> None:
-        self.harness = harness
+    def __init__(self, sources: FakeSources) -> None:
+        self.sources = sources
 
     def set_up(self) -> None:
         """Puts in place what the Source's setup leaves, if the test hasn't: a secret, a program,
@@ -70,7 +68,7 @@ class SourceFake:
 
     def tonight(self) -> list[Any]:
         """What the Source has when it is read: raises the exception it holds, if it does."""
-        v = self.harness.sources.get(self.name, [])
+        v = self.sources.tonight.get(self.name, [])
         v = v() if callable(v) else v
         if isinstance(v, BaseException):
             raise v
@@ -92,17 +90,17 @@ class Gmail(SourceFake):
     an exception it raises, as a dropped connection does)."""
     name = "gmail"
 
-    def __init__(self, harness: Harness, mp: pytest.MonkeyPatch) -> None:
-        super().__init__(harness)
+    def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
+        super().__init__(sources)
         self.password: str | None = None
         self.connections: list[BaseException | dict[str, bytes | BaseException]] = []
         self.searches: list[str] = []
         mp.setattr(imaplib, "IMAP4_SSL", self.connect)
 
     def set_up(self) -> None:
-        username = self.harness.config.get("gmail", {}).get("username")
+        username = self.sources.config.get("gmail", {}).get("username")
         if username:
-            self.harness.secrets.setdefault(gmail.keychain_account(username), APP_PASSWORD)
+            self.sources.secrets.setdefault(gmail.keychain_account(username), APP_PASSWORD)
 
     def connect(self, *_a: Any, **_k: Any) -> _Imap:
         instead = self.connections.pop(0) if self.connections else {}
@@ -188,8 +186,8 @@ class MyClub(SourceFake):
     downloaded. Any other address goes to whatever requests.get was before."""
     name = "myclub"
 
-    def __init__(self, harness: Harness, mp: pytest.MonkeyPatch) -> None:
-        super().__init__(harness)
+    def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
+        super().__init__(sources)
         self.failures: list[BaseException | int] = []
         self.gets: list[str] = []
         self._other = requests.get
@@ -197,7 +195,7 @@ class MyClub(SourceFake):
 
     def get(self, url: str, *a: Any, **k: Any) -> Any:
         # A webcal:// link is downloaded over https://.
-        kid = next((kid["name"] for kid in self.harness.config.get("kids", [])
+        kid = next((kid["name"] for kid in self.sources.config.get("kids", [])
                     if kid.get("myclub_ical_url")
                     and url == re.sub(r"^webcal://", "https://", kid["myclub_ical_url"])), None)
         if kid is None:
@@ -252,15 +250,15 @@ class Wilma(SourceFake):
     run. Any other command lists nothing."""
     name = "wilma"
 
-    def __init__(self, harness: Harness, mp: pytest.MonkeyPatch) -> None:
-        super().__init__(harness)
+    def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
+        super().__init__(sources)
         self.answers: dict[tuple[str, ...], Any] = {}
         self.ran: list[list[str]] = []
 
     def set_up(self) -> None:
         if own_node.wilma() is None:
-            fake_node.pinned_node(self.harness.home)
-            fake_node.install_wilma(self.harness.home, "#!/bin/sh\n")
+            fake_node.pinned_node(self.sources.home)
+            fake_node.install_wilma(self.sources.home, "#!/bin/sh\n")
 
     def run(self, cmd: list[str], **_k: Any) -> subprocess.CompletedProcess | None:
         if not fake_node.is_wilma(cmd):
@@ -413,9 +411,9 @@ class WhatsApp(SourceFake):
     installs WhatsApp itself (test_setup_whatsapp.py's fake Mac) sets `installed` to False."""
     name = "whatsapp"
 
-    def __init__(self, harness: Harness, mp: pytest.MonkeyPatch) -> None:
-        super().__init__(harness)
-        self.db_dir = harness.home / "Library" / "Group Containers" / "group.net.whatsapp.WhatsApp.shared"
+    def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
+        super().__init__(sources)
+        self.db_dir = sources.home / "Library" / "Group Containers" / "group.net.whatsapp.WhatsApp.shared"
         mp.setattr(whatsapp, "DB_DIR", self.db_dir)
         mp.setattr(whatsapp, "DB_FILE", self.db_dir / "ChatStorage.sqlite")
         self.installed = True
@@ -461,5 +459,51 @@ class WhatsApp(SourceFake):
 
 
 # The fake of each Source, by its name in the registry.
-FAKES: dict[str, Callable[[Harness, pytest.MonkeyPatch], SourceFake]] = {
+FAKES: dict[str, Callable[[FakeSources, pytest.MonkeyPatch], SourceFake]] = {
     f.name: f for f in (Gmail, MyClub, Wilma, WhatsApp)}
+
+
+class FakeSources:
+    """Every Source in the registry (ADR 0022), each faked at its transport, as `fakes[name]`,
+    serving `tonight[name]` to its real collector: what the family's computer in `home` gets,
+    with its `secrets`, when Parent Recap reads them with `config`. `lookback_hours` records the
+    lookback each collection of a Source ran with."""
+
+    def __init__(self, home: Path, config: dict[str, Any], secrets: FakeSecrets,
+                 mp: pytest.MonkeyPatch) -> None:
+        self.home, self.config, self.secrets = home, config, secrets
+        # source -> its Messages and events tonight | the Exception its transport raises | a
+        # function returning either
+        self.tonight: dict[str, Any] = {}
+        self.lookback_hours: dict[str, list[int]] = {}
+        missing = [s.name for s in registry.ALL if s.name not in FAKES]
+        assert not missing, f"no fake in fake_sources.FAKES for {missing}"
+        self.fakes = {s.name: FAKES[s.name](self, mp) for s in registry.ALL}
+        for s in registry.ALL:
+            if s.lookback:
+                self._spy_on_lookback(mp, s)
+
+    def set_up(self) -> None:
+        """What each Source's setup leaves on the family's computer, where the test hasn't put it
+        itself. The evening run does this; a test reading the Sources another way, such as the
+        setup page's preview, calls it."""
+        for fake in self.fakes.values():
+            fake.set_up()
+
+    def program(self, cmd: list[str], prog: str, **kwargs: Any) -> subprocess.CompletedProcess | None:
+        """A Source's own program, such as the wilma CLI."""
+        for fake in self.fakes.values():
+            answer = fake.run(cmd, **kwargs)
+            if answer is not None:
+                return answer
+        return None
+
+    def _spy_on_lookback(self, mp: pytest.MonkeyPatch, source: registry.Source) -> None:
+        """Records the lookback each collection of `source` runs with, then collects as its record
+        does. The record is frozen, so the spy goes in its __dict__, the same record everywhere."""
+        collect = source.collect
+
+        def spy(cfg: Any, *a: Any, **k: Any) -> Collected:
+            self.lookback_hours.setdefault(source.name, []).append(source.lookback(cfg).lookback_hours)
+            return collect(cfg, *a, **k)
+        mp.setitem(vars(source), "collect", spy)

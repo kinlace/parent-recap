@@ -380,14 +380,14 @@ def test_the_town_box_says_why_it_still_waits_when_the_wilma_cli_doesn_t_install
     expect(button(tab, "wilma.again")).to_be_visible()
 
 
-@pytest.mark.parametrize("system", ["macos", "windows"])
-def test_the_wilma_step_offers_the_passwords_app_only_on_a_mac(tab, system):
-    as_on(tab, system)
+@pytest.mark.parametrize("on", ["macos", "windows"])
+def test_the_wilma_step_offers_the_passwords_app_only_on_a_mac(tab, on):
+    as_on(tab, on)
     in_english_with_the_gateway(tab)
 
     expect(tab.get_by_label(text("wilma.username"))).to_be_visible()
-    passwords = button(tab, "wilma.passwords", system=system)
-    if system == "macos":
+    passwords = button(tab, "wilma.passwords", system=on)
+    if on == "macos":
         expect(passwords).to_be_visible()
     else:
         expect(passwords).to_be_hidden()
@@ -418,39 +418,39 @@ def test_continue_in_the_chat_is_offered_once_a_language_is_picked_but_not_for_t
     expect(button(tab, "chat.continue")).to_be_hidden()
 
 
-@pytest.mark.parametrize("system", ["macos", "windows"])
+@pytest.mark.parametrize("on", ["macos", "windows"])
 @pytest.mark.parametrize("name", ["claude", "codex"])
-def test_welcome_offers_to_check_again_only_while_it_can_t_go_on(tab, ai, system, name):
-    as_on(tab, system)
+def test_welcome_offers_to_check_again_only_while_it_can_t_go_on(tab, ai, on, name):
+    as_on(tab, on)
     in_english(tab)
-    again = button(tab, "welcome.ai.again", system=system)
-    go_on = button(tab, "continue", system=system)
+    again = button(tab, "welcome.ai.again", system=on)
+    go_on = button(tab, "continue", system=on)
 
     # Not installed: on Windows, Claude's or ChatGPT's own step installs it, so Welcome goes on.
-    tab.get_by_role("radio", name=text(f"welcome.ai.{name}", system=system)).check()
+    tab.get_by_role("radio", name=text(f"welcome.ai.{name}", system=on)).check()
 
-    expect(tab.get_by_text(text(f"ai.{name}.not-installed", system=system))).to_be_visible()
-    if system == "windows":
+    expect(tab.get_by_text(text(f"ai.{name}.not-installed", system=on))).to_be_visible()
+    if on == "windows":
         expect(again).to_be_hidden()
         expect(go_on).to_be_enabled()
     else:
         expect(again).to_be_visible()
         expect(go_on).to_be_disabled()
-    tab.get_by_role("radio", name=text("welcome.ai.gateway", system=system)).check()
-    expect(tab.get_by_text(text("ai.gateway.ready", system=system))).to_be_visible()
+    tab.get_by_role("radio", name=text("welcome.ai.gateway", system=on)).check()
+    expect(tab.get_by_text(text("ai.gateway.ready", system=on))).to_be_visible()
     expect(again).to_be_hidden()
     expect(go_on).to_be_enabled()
 
 
-@pytest.mark.parametrize("system", ["macos", "windows"])
+@pytest.mark.parametrize("on", ["macos", "windows"])
 def test_chatgpt_s_step_installs_codex_on_windows_and_offers_the_chatgpt_app_on_a_mac(
-        tab, family, ai, system):
-    at_the_ai_step(tab, family, "codex", system)
+        tab, family, ai, on):
+    at_the_ai_step(tab, family, "codex", on)
 
-    expect(tab.get_by_text(text("codex.not-installed", system=system))).to_be_visible()
-    install = button(tab, "codex.install", system=system)
-    download = button(tab, "codex.download", system=system)
-    if system == "windows":
+    expect(tab.get_by_text(text("codex.not-installed", system=on))).to_be_visible()
+    install = button(tab, "codex.install", system=on)
+    download = button(tab, "codex.download", system=on)
+    if on == "windows":
         expect(install).to_be_visible()
         expect(download).to_be_hidden()
     else:
@@ -458,14 +458,14 @@ def test_chatgpt_s_step_installs_codex_on_windows_and_offers_the_chatgpt_app_on_
         expect(install).to_be_hidden()
 
 
-@pytest.mark.parametrize("system, asks", [("macos", "api/claude"),
-                                          ("windows", "api/claude/install")])
+@pytest.mark.parametrize("on, asks", [("macos", "api/claude"),
+                                      ("windows", "api/claude/install")])
 def test_claude_s_step_installs_claude_code_on_windows_and_signs_in_on_a_mac(
-        tab, family, ai, system, asks):
-    at_the_ai_step(tab, family, "claude", system)
+        tab, family, ai, on, asks):
+    at_the_ai_step(tab, family, "claude", on)
 
     with tab.expect_request(lambda r: r.method == "POST" and r.url.endswith(asks)):
-        button(tab, "claude.start", system=system).click()
+        button(tab, "claude.start", system=on).click()
 
 
 @pytest.mark.macos

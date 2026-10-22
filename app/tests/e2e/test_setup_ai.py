@@ -19,12 +19,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import requests
 import yaml
 
-from family_brief import install_record, ops, setup_ai, setup_server, setup_steps
+from family_brief import gateway, install_record, ops, setup_ai, setup_server, setup_steps
 from family_brief.config import Config
-from conftest import FailedCall, HTTPReply, program
+from conftest import program
 from setup_page import (PAGE_DIR, Response, assert_never_leaked, at_finish, at_the_check_step, call,
                         chat_installed, check_ai, config_file, confirm, health_result, inside,
                         progress_file, refuse_secrets, save_progress, statuses, wait_for, welcome)
@@ -162,8 +161,7 @@ def test_claude_s_token_is_read_tested_and_stored_with_nothing_copied(harness, p
     assert out["result"] == "saved"
     assert claude.ran and claude.started == [[str(claude.bin_dir / "claude"), "setup-token"]]
     assert harness.secrets == {"claude-oauth-token": CLAUDE_TOKEN}
-    [test_call] = harness.model_calls  # with the token in its environment
-    assert test_call.env["CLAUDE_CODE_OAUTH_TOKEN"] == CLAUDE_TOKEN
+    assert harness.model.reached == [str(claude.bin_dir / "claude")]  # the token's test call
     assert out["progress"]["sources"]["ai"] == "done" and out["progress"]["source"] == "whatsapp"
     assert not harness.desktop.windows
     assert_never_leaked(harness, [r, call(page.url, "api/claude/check", method="POST", body={}),
@@ -548,9 +546,8 @@ def test_on_windows_the_page_installs_claude_code_opens_its_window_and_stores_th
     assert r.status == 200 and r.json()["result"] == "saved"
     assert r.json()["progress"]["sources"]["ai"] == "done"
     assert harness.secrets == {"claude-oauth-token": CLAUDE_TOKEN}
-    [test_call] = harness.model_calls
-    assert same_file(test_call.argv[0]) == same_file(claude)  # Windows' `which` says claude.EXE
-    assert test_call.env["CLAUDE_CODE_OAUTH_TOKEN"] == CLAUDE_TOKEN
+    [tested_with] = harness.model.reached
+    assert same_file(tested_with) == same_file(claude)  # Windows' `which` says claude.EXE
     assert_never_leaked(harness, [r], caplog, capsys, CLAUDE_TOKEN)
 
 
@@ -644,8 +641,10 @@ def test_the_claude_token_field_is_the_page_s_own(page):
 
 
 GATEWAY_KEY = "sk-bf-fake-gateway-key"
-GATEWAY_UNKNOWN_KEY = HTTPReply(401, {"type": "error", "error": {
-    "type": "authentication_error", "message": "virtual key not found"}})
+# What the gateway adapter raises when the gateway refuses the key, and when it doesn't answer.
+GATEWAY_UNKNOWN_KEY = gateway.GatewayError("the gateway answered HTTP 401: virtual key not found", 401)
+GATEWAY_NO_ANSWER = gateway.GatewayError("couldn't reach the gateway at gateway.parentrecap.com "
+                                         "(ConnectionError)")
 
 
 def save_gateway_key(url: str, key: str) -> Response:
@@ -670,16 +669,13 @@ def test_a_gateway_key_pasted_on_the_page_is_tested_stored_and_ticks_the_ai(harn
                                                                             capsys):
     caplog.set_level(logging.DEBUG)
     at_the_ai_step(harness, page.url, "gateway")
-    harness.model_reply = "OK"
 
     r = save_gateway_key(page.url, f" {GATEWAY_KEY}\n")  # as copied from a message
 
     assert r.status == 200 and r.json()["result"] == "saved"
     assert r.json()["progress"]["sources"]["ai"] == "done"
     assert r.json()["progress"]["source"] == "whatsapp"
-    [test_call] = harness.model_calls
-    assert test_call.argv == ["POST", "https://gateway.parentrecap.com/v1/messages"]
-    assert test_call.headers["x-api-key"] == GATEWAY_KEY
+    assert harness.model.reached == ["gateway.parentrecap.com"]  # the key's test call
     assert harness.secrets == {"gateway-key": GATEWAY_KEY}
     assert install_record.entries("keychain") == ["gateway-key"]  # so uninstall removes it
     assert Config.load(config_file(harness)).llm.backend == "gateway"
@@ -691,18 +687,18 @@ def test_the_key_is_tested_with_the_gateway_the_config_names(harness, page):
     data = yaml.safe_load(config_file(harness).read_text())
     data["llm"]["gateway_url"] = "https://gateway.example.test"
     config_file(harness).write_text(yaml.safe_dump(data))
-    harness.model_reply = "OK"
 
     assert save_gateway_key(page.url, GATEWAY_KEY).json()["result"] == "saved"
 
-    assert harness.model_calls[0].argv == ["POST", "https://gateway.example.test/v1/messages"]
+    assert harness.model.reached == ["gateway.example.test"]
 
 
 @pytest.mark.parametrize("pasted, reply, result", [
     ("my-mac-password", None, "not-a-key"),
     (GATEWAY_KEY, GATEWAY_UNKNOWN_KEY, "rejected"),
-    (GATEWAY_KEY, requests.ConnectionError("Connection refused"), "no-connection"),
-    (GATEWAY_KEY, FailedCall(f"upstream error for {GATEWAY_KEY} in /Users/mum"), "test-call-failed"),
+    (GATEWAY_KEY, GATEWAY_NO_ANSWER, "no-connection"),
+    (GATEWAY_KEY, gateway.GatewayError("the gateway answered HTTP 500: upstream error in /Users/mum",
+                                       500), "test-call-failed"),
 ])
 def test_a_gateway_key_that_does_not_work_is_explained_and_not_kept(harness, page, caplog, capsys,
                                                                     pasted, reply, result):
@@ -725,7 +721,6 @@ def test_a_gateway_key_that_does_not_work_is_explained_and_not_kept(harness, pag
 def test_a_keychain_that_refuses_the_gateway_key_says_so_with_its_code(harness, page, code, result):
     at_the_ai_step(harness, page.url, "gateway")
     refuse_secrets(harness, code)
-    harness.model_reply = "OK"
 
     r = save_gateway_key(page.url, GATEWAY_KEY)
 
@@ -814,7 +809,6 @@ def test_on_finish_a_gateway_key_switches_the_household_to_the_gateway(harness, 
                                                                        capsys):
     caplog.set_level(logging.DEBUG)
     at_finish(harness)
-    harness.model_reply = "OK"
 
     r = save_gateway_key(page.url, GATEWAY_KEY)
 
@@ -827,7 +821,7 @@ def test_on_finish_a_gateway_key_switches_the_household_to_the_gateway(harness, 
 
 @pytest.mark.parametrize("reply, result", [
     (GATEWAY_UNKNOWN_KEY, "rejected"),
-    (requests.ConnectionError("Connection refused"), "no-connection"),
+    (GATEWAY_NO_ANSWER, "no-connection"),
 ])
 def test_on_finish_a_gateway_key_that_does_not_work_keeps_the_old_ai(harness, page, reply, result):
     at_finish(harness)
@@ -841,7 +835,6 @@ def test_on_finish_a_gateway_key_that_does_not_work_keeps_the_old_ai(harness, pa
 def test_on_finish_a_gateway_household_can_enter_a_new_gateway_key(harness, page):
     at_finish_with(harness, "gateway")
     harness.secrets["gateway-key"] = "sk-bf-old-key-turned-off"
-    harness.model_reply = "OK"
 
     assert save_gateway_key(page.url, GATEWAY_KEY).json()["result"] == "saved"
 
@@ -884,12 +877,13 @@ def test_on_finish_a_signed_in_codex_that_answers_a_test_call_switches_the_house
 
     assert out["result"] == "signed-in"
     assert backend(harness) == "codex"
-    [test_call] = harness.model_calls
-    assert Path(test_call.argv[0]).name == "codex"
+    [tested_with] = harness.model.reached
+    assert Path(tested_with).name == "codex"
 
 
 @pytest.mark.macos
-@pytest.mark.parametrize("reply", [FailedCall("You've hit your usage limit"), {"ok": False}])
+@pytest.mark.parametrize("reply", [RuntimeError("codex exec failed (1). stderr tail='You've hit your "
+                                                "usage limit'"), {"ok": False}])
 def test_on_finish_a_codex_that_fails_its_test_call_keeps_the_old_ai(harness, page, codex, reply):
     at_finish_with(harness, "gateway")
     harness.model_reply = [reply]

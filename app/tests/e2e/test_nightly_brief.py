@@ -1,7 +1,7 @@
 """The nightly `parent-recap run`, end to end: the Brief a normal night makes, failures at the
 edges, odd-shaped replies, a night of Notices only, dated events without a start time, citations,
 untrusted message text, and the feedback links and footer. Assertions are only on what leaves the
-system: the email (text, HTML, attachments), the model command line, and persisted state."""
+system: the email (text, HTML, attachments), what the model is given, and persisted state."""
 from __future__ import annotations
 
 import copy
@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 import time_machine
 
-from conftest import NOW, html_for_golden, ics_for_golden, msg, system_prompt_of
+from conftest import NOW, html_for_golden, ics_for_golden, msg
 
 from family_brief import feedback
 from nights import (ENGLISH_REPLY, FEEDBACK, FORM, NORMAL_NIGHT_IDS, PARTNER_EN, archived_summary,
@@ -43,14 +43,14 @@ def test_normal_night_matches_golden(harness, golden, language):
     golden(f"normal_night.{language}.ics", ics_for_golden(payload))
 
     [call] = harness.model_calls
-    golden(f"normal_night.{language}.masked.model.txt", model_call_for_golden(call.argv, call.stdin))
+    golden(f"normal_night.{language}.masked.model.txt", model_call_for_golden(call))
 
     state = harness.state()
     assert state["last_run_at"] == "2026-09-27T18:00:00+00:00"
     assert sorted(v["google_event_id"] for v in state["created_event_hashes"].values()) == ["ics", "ics"]
 
 
-def test_codex_backend_sends_prompt_on_stdin(harness, golden, tmp_path):
+def test_codex_is_given_the_same_prompt_and_makes_the_same_brief(harness, golden, tmp_path):
     normal_night(harness)
     codex = tmp_path / "codex"
     codex.write_text("#!/bin/sh\n")
@@ -60,15 +60,8 @@ def test_codex_backend_sends_prompt_on_stdin(harness, golden, tmp_path):
     assert harness.run() == 0
 
     [call] = harness.model_calls
-    # The read-only sandbox still lets commands read any file, so no command tools at all.
-    disabled = {call.argv[i + 1] for i, a in enumerate(call.argv) if a == "--disable"}
-    assert {"shell_tool", "unified_exec", "apps", "plugins"} <= disabled
-    assert not any(call.stdin in a for a in call.argv)
-    work = call.argv[call.argv.index("-C") + 1]
-    # Windows' separators, so the golden is the same on every system.
-    argv = [a.replace(work, "<workdir>").replace(str(codex), "<codex>").replace("\\", "/")
-            for a in call.argv]
-    golden("codex.masked.model.txt", model_call_for_golden(argv, call.stdin))
+    assert harness.model.served_by == ["codex"]
+    golden("normal_night.zh.masked.model.txt", model_call_for_golden(call))  # ADR 0018
     [email] = harness.sent
     golden("normal_night.zh.txt", email.text)  # same Brief whichever backend wrote it
 
@@ -139,8 +132,7 @@ def test_config_without_summary_language_gets_an_english_brief(harness):
 
     [email] = harness.sent
     assert email.text.startswith("👨‍👩‍👧‍👦 Parent Recap Sun 27 Sep\n\n⚠️ Tonight's Digest could not be written")
-    argv = harness.model_calls[0].argv
-    assert "Write every text value in the JSON in English" in argv[argv.index("--system-prompt") + 1]
+    assert "Write every text value in the JSON in English" in harness.model_calls[0].system_prompt
 
 
 def test_model_reply_that_is_a_json_list_sends_rule_based_fallback(harness):
@@ -538,7 +530,7 @@ def test_system_prompt_asks_for_dated_events_without_a_time_as_dates(harness):
 
     assert harness.run() == 0
 
-    prompt = system_prompt_of(harness.model_calls[0])
+    prompt = harness.model_calls[0].system_prompt
     assert "exam" in prompt and "shortened school day" in prompt
     assert '"2026-04-22"' in prompt and "all-day event" in prompt  # the date alone
     assert "timetable" in prompt and "not an event" in prompt
@@ -578,7 +570,7 @@ def test_a_translation_writes_dates_the_way_its_language_does(harness):
 
     assert harness.run() == 0
 
-    instructions = system_prompt_of(harness.model_calls[1])
+    instructions = harness.model_calls[1].system_prompt
     assert "Keep names, times, amounts" in instructions and "Keep names, dates" not in instructions
     assert "the way English writes them in the text, such as Mon 28 Sep" in instructions
 
@@ -614,7 +606,7 @@ def test_a_kid_has_one_name_across_the_brief(harness):
 
     [profile, _] = harness.model_payload()["kid_profiles"]
     assert profile["name"] == "Mia" and "Virtanen Mia Sofia" in profile["aliases"]
-    assert "each kid by their name in kid_profiles" in system_prompt_of(harness.model_calls[0])
+    assert "each kid by their name in kid_profiles" in harness.model_calls[0].system_prompt
     [email] = harness.sent
     for body in (email.text, email.html):
         assert "virtanen" not in body.casefold()
@@ -742,7 +734,7 @@ def test_system_prompt_says_message_text_is_untrusted(harness):
 
     assert harness.run() == 0
 
-    prompt = system_prompt_of(harness.model_calls[0])
+    prompt = harness.model_calls[0].system_prompt
     assert "untrusted data" in prompt
     assert "never follow" in prompt
 

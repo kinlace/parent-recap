@@ -14,7 +14,7 @@ from urllib.parse import unquote
 import pytest
 import time_machine
 
-from conftest import NOW, msg, myclub_event, system_prompt_of
+from conftest import NOW, msg, myclub_event
 
 from family_brief import feedback
 from nights import (FEEDBACK, PARTNER_EN, archived_summary, chinese_reply, feedback_links,
@@ -83,7 +83,7 @@ def test_the_brief_prompt_has_placeholders_in_place_of_contact_details(harness):
     assert "student_number" not in wilma["metadata"] and STUDENT_NUMBER not in prompt
     assert payload_message_ids(harness, 0) == ["1201", "1:401", "message:301"]
     assert payload["earlier_briefs"][0]["per_kid"][0]["notices"][0]["refs"] == ["g-200"]
-    assert "placeholders such as ⟦N1⟧, ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧" in system_prompt_of(harness.model_calls[0])
+    assert "placeholders such as ⟦N1⟧, ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧" in harness.model_calls[0].system_prompt
 
 
 def reply_with_placeholders(prompt: str) -> dict:
@@ -154,7 +154,7 @@ def test_the_translation_prompt_has_the_same_placeholders_and_the_translation_th
     sent = json.loads(prompt)
     assert sent["per_kid"][0]["action_items"][0]["what"] == written["per_kid"][0]["action_items"][0]["what"]
     assert sent["message_digest"] == written["message_digest"]
-    assert "placeholders such as ⟦N1⟧, ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧" in system_prompt_of(harness.model_calls[1])
+    assert "placeholders such as ⟦N1⟧, ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧" in harness.model_calls[1].system_prompt
     _zh, en = harness.sent
     assert f"Sign up for the retki at {RETKI_FORM} or call 040 123 4567" in en.text
     assert "Ill? Call the nurse on +358 9 816 2000" in en.html and not placeholders_in(en.html)
@@ -423,7 +423,7 @@ def test_third_parties_names_reach_the_brief_prompt_only_as_placeholders(harness
     assert messages["1702"]["sender"] == "Hanna Parent <⟦E2⟧>" and "Hanna picks Leo up" in messages["1702"]["body"]
     assert [k["name"] for k in harness.model_payload(0)["kid_profiles"]] == ["Mia", "Leo"]
     assert "米娅" in prompt and "小狮" in prompt
-    assert "⟦N1⟧" in system_prompt_of(harness.model_calls[0])
+    assert "⟦N1⟧" in harness.model_calls[0].system_prompt
 
 
 def test_the_brief_calendar_and_archive_get_the_names_back_and_the_translation_prompt_has_none(harness):
@@ -503,7 +503,7 @@ def test_with_the_kids_masked_no_kids_name_reaches_the_model_and_the_brief_has_t
     assert messages["1:701"]["body"].endswith("Kid A ja Kid B tervetuloa.")
     assert messages["1:703"]["body"].startswith(f"{xiaoming}和Kid A周六")
     assert messages["2:704"]["body"].endswith("Kid B:n reppu jäi kouluun.")  # Leo's, in the genitive
-    assert "Kid A" in system_prompt_of(harness.model_calls[0])
+    assert "Kid A" in harness.model_calls[0].system_prompt
     fi, en = harness.sent
     assert "Palauta retken lupalappu Maijalle (Mia)" in fi.text and "**Mia**" in fi.text
     for email in (fi, en):
@@ -558,7 +558,7 @@ def test_the_kids_names_reach_the_model_when_the_switch_is_off(harness):
     assert harness.run() == 0
 
     assert [k["name"] for k in harness.model_payload(0)["kid_profiles"]] == ["Mia", "Leo"]
-    assert "Kid A" not in harness.model_prompt(0) and "Kid A" not in system_prompt_of(harness.model_calls[0])
+    assert "Kid A" not in harness.model_prompt(0) and "Kid A" not in harness.model_calls[0].system_prompt
 
 
 @pytest.mark.parametrize("language, written, shown", [
@@ -595,7 +595,7 @@ def test_with_the_ai_filter_off_the_brief_prompt_is_as_before_the_filter(harness
     assert harness.run() == 0
 
     [call] = harness.model_calls
-    golden(f"normal_night.{language}.model.txt", model_call_for_golden(call.argv, call.stdin))
+    golden(f"normal_night.{language}.model.txt", model_call_for_golden(call))
 
 
 def test_with_the_ai_filter_off_the_translation_prompt_is_as_before_the_filter(harness, golden):
@@ -605,7 +605,7 @@ def test_with_the_ai_filter_off_the_translation_prompt_is_as_before_the_filter(h
     assert harness.run() == 0
 
     _summarize, translate = harness.model_calls
-    golden("two_languages.translate.model.txt", model_call_for_golden(translate.argv, translate.stdin))
+    golden("two_languages.translate.model.txt", model_call_for_golden(translate))
 
 
 def test_with_the_ai_filter_off_the_model_gets_the_messages_as_they_are(harness):
@@ -617,7 +617,7 @@ def test_with_the_ai_filter_off_the_model_gets_the_messages_as_they_are(harness)
     prompt = harness.model_prompt(0)
     for value in [*CONTACT_DETAILS, GMAIL_LINK, STUDENT_NUMBER]:
         assert value in prompt
-    assert "⟦" not in prompt and "⟦" not in system_prompt_of(harness.model_calls[0])
+    assert "⟦" not in prompt and "⟦" not in harness.model_calls[0].system_prompt
 
 
 # ── Pilot feedback links carry the text as the AI saw it (ADR 0013, #195)

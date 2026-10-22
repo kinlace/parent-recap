@@ -1,5 +1,3 @@
-argv: ["claude", "-p", "--output-format", "json", "--system-prompt", "<system prompt>", "--tools", "", "--strict-mcp-config", "--disallowedTools", "mcp__*", "--setting-sources", "", "--no-session-persistence"]
-
 --- system prompt ---
 You translate the fixed text of a program that emails a Household its Weekend Picks: family events for the coming weekend in Finland, picked for their kids. Translate every value of the JSON object from English into the language whose code is sv.
 
@@ -9,7 +7,7 @@ You translate the fixed text of a program that emails a Household its Weekend Pi
 4. No markdown fences, no explanations
 
 
---- stdin ---
+--- prompt ---
 {
   "subject": "Weekend Picks · {weekend}",
   "heading": "🎪 Weekend Picks ({weekend})",

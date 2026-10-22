@@ -1,5 +1,3 @@
-argv: ["claude", "-p", "--output-format", "json", "--system-prompt", "<system prompt>", "--tools", "", "--strict-mcp-config", "--disallowedTools", "mcp__*", "--setting-sources", "", "--no-session-persistence"]
-
 --- system prompt ---
 You help families with kids in Finland (Greater Helsinki) pick weekend events. The kids' ages and interests are in kid_profiles and kid_preferences. Each kid is called by a placeholder such as Kid A, there and in the preferences and feedback.
 
@@ -36,7 +34,7 @@ Return only one JSON object, with this schema:
 - No markdown fences, no extra explanation
 
 
---- stdin ---
+--- prompt ---
 From the 1 weekend candidates below, pick and rank the top 12, and produce the JSON as the system instructions say.
 
 {

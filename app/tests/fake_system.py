@@ -11,21 +11,23 @@ asks the interface for them rather than spelling out macOS's. Only macOS-only fe
 have no interface (ADR 0020), still meet their commands in callers' tests: iMessage, and Finder
 and the Passwords app beside them.
 
-The system's profile is data, so its fake is the harness's `system`: the profile the program
+The system's profile is data, so its fake is FakeSystem's `profile`: the profile the program
 sees, the one of the system the tests run on until a test makes it MACOS's or WINDOWS's, so
-a Mac runs the Windows paths too."""
+a Mac runs the Windows paths too. FakeSystem, the `system` fixture, puts all of them in place."""
 from __future__ import annotations
 
 import contextlib
 import io
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, ContextManager
+from typing import Any, Callable, ContextManager
 
 import pytest
 
-from family_brief.system import dialog, jobs, profile_macos, profile_windows, wake
+from family_brief.system import (desktop, dialog, jobs, profile, profile_macos, profile_windows,
+                                 secrets, wake, windows_only)
 from family_brief.system.secrets_error import SecretsError
 
 MACOS, WINDOWS = profile_macos.PROFILE, profile_windows.PROFILE
@@ -293,3 +295,33 @@ class FakeDialog:
         if self.button == "other":
             raise dialog.OtherChosen()
         return self.typed
+
+
+class FakeSystem:
+    """The fake of each OS service, in place of its adapter, as `secrets`, `jobs`, `wake`, `desktop`
+    and `dialog`, and `profile`, the system's profile the program sees."""
+
+    def __init__(self, mp: pytest.MonkeyPatch) -> None:
+        self.secrets = FakeSecrets()
+        self.jobs = FakeJobs()
+        self.wake = FakeWake()
+        self.desktop = FakeDesktop()
+        self.dialog = FakeDialog()
+        # This system's, until a test makes it another's.
+        self.profile: profile.Profile = profile.current()
+        # Whether Windows signs the family back in after an update restart; None: never set.
+        self.signs_in_after_update: bool | None = True
+        self.opened: list[str] = []  # what the macOS-only steps' `open` opened
+        for module, fake in ((secrets, self.secrets), (jobs, self.jobs), (wake, self.wake),
+                             (desktop, self.desktop), (dialog, self.dialog)):
+            mp.setattr(module, "_adapter", fake)
+        mp.setattr(profile, "current", lambda: self.profile)
+        mp.setattr(windows_only, "signs_back_in_after_update", lambda: self.signs_in_after_update)
+
+    def open_command(self, cmd: list[str], prog: str, **_k: Any) -> subprocess.CompletedProcess | None:
+        """`open`, which the macOS-only steps beside Full Disk Access run for Finder and System
+        Settings, and for the Passwords app: macOS-only, so behind no interface (ADR 0020)."""
+        if prog != "open":
+            return None
+        self.opened.append(cmd[-1])
+        return subprocess.CompletedProcess(cmd, 0, "", "")

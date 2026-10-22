@@ -112,13 +112,13 @@ def test_saving_a_link_for_an_unknown_kid_changes_nothing(tmp_path):
 def test_archive_and_logs_are_owner_only(harness):
     harness.sources["gmail"] = [msg("gmail", "1001", "2026-09-27T18:00:00+03:00", "Retkipäivä huomenna",
                                     sender="teacher@kilo.example.fi", subject="Retki")]
-    harness.model_error = "boom"  # the model fails, so its diagnostics are saved too
+    harness.model_reply = "no JSON here"  # the reply can't be read, so it is saved to the logs too
 
     assert harness.run() == 0
 
     logs = harness.archive_dir / "logs"
     assert _mode(harness.archive_dir) == 0o700 and _mode(logs) == 0o700
-    assert list(logs.glob("claude_cli_failed.txt"))
+    assert list(logs.glob("summarize_failed.txt"))
     for f in [*harness.archive_dir.glob("2026-09-27.*"), *logs.iterdir()]:
         assert _mode(f) == 0o600, f.name
 

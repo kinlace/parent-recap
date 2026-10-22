@@ -5,7 +5,7 @@ else (ADR 0005).
 `claude setup-token` draws its sign-in on Ink's interactive screen, which needs a real terminal,
 so the step opens it in a terminal window and asks for the token it shows in the secret dialog.
 The outside edges are faked: the desktop's windows, the dialog, the secrets store and the
-`claude` test call. The assistant reads only the command's one-line JSON result, so assertions
+model that answers the test call. The assistant reads only the command's one-line JSON result, so assertions
 are on that result, on what the store holds, and on every place the token must never reach."""
 from __future__ import annotations
 
@@ -76,9 +76,7 @@ def test_a_token_pasted_in_the_dialog_is_tested_and_stored(harness, terminal, ca
     assert res == {"result": "saved", "test_call": "ok"}
     assert len(terminal.windows) == 1  # what it shows, the next test
     assert len(harness.dialog.shown) == 1
-    [call] = harness.model_calls
-    assert call.env["CLAUDE_CODE_OAUTH_TOKEN"] == TOKEN
-    assert "--no-session-persistence" in call.argv
+    assert len(harness.model_calls) == 1  # how it signs in with the token: test_llm_claude.py
     assert harness.secrets == {ACCOUNT: TOKEN}
     assert install_record.entries("keychain") == [ACCOUNT]
     assert_never_leaked(harness, terminal, printed, caplog)
@@ -119,8 +117,7 @@ def test_a_claude_only_the_login_shell_finds_signs_in(harness, terminal, login_s
     assert result(capsys)[0] == {"result": "saved", "test_call": "ok"}
     [window] = terminal.windows
     assert str(claude) in window.argv
-    [call] = harness.model_calls
-    assert call.argv[0] == str(claude)
+    assert harness.model.reached == [str(claude)]
 
 
 @pytest.mark.macos
@@ -131,18 +128,6 @@ def test_a_token_copied_across_wrapped_lines_is_put_back_together(harness, termi
     assert harness.cli("setup", "claude") == 0
 
     assert harness.secrets == {ACCOUNT: TOKEN}
-
-
-@pytest.mark.macos
-def test_the_test_call_ignores_an_api_key_in_the_environment(harness, terminal, monkeypatch,
-                                                            capsys):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-other")
-    harness.dialog.typed = TOKEN
-
-    assert harness.cli("setup", "claude") == 0
-
-    [call] = harness.model_calls
-    assert "ANTHROPIC_API_KEY" not in call.env
 
 
 @pytest.mark.macos
@@ -364,7 +349,7 @@ def test_setup_claude_finds_claude_from_the_native_installer(harness, terminal, 
     res, _ = result(capsys)
     assert res["result"] == "saved"
     assert str(native_claude) in terminal.windows[0].argv
-    assert harness.model_calls[0].argv[0] == str(native_claude)
+    assert harness.model.reached == [str(native_claude)]
 
 
 def test_doctor_finds_claude_from_the_native_installer(harness, native_claude, monkeypatch, capsys):
@@ -372,13 +357,12 @@ def test_doctor_finds_claude_from_the_native_installer(harness, native_claude, m
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
     harness.secrets[ACCOUNT] = TOKEN
-    harness.model_reply = "OK"
 
     harness.cli("doctor")
 
     out = capsys.readouterr().out
     assert "Claude: call succeeded" in out and "not found" not in out
-    assert harness.model_calls[0].argv[0] == str(native_claude)
+    assert harness.model.reached == [str(native_claude)]
 
 
 def test_the_nightly_run_finds_claude_from_the_native_installer(harness, native_claude):
@@ -388,14 +372,13 @@ def test_the_nightly_run_finds_claude_from_the_native_installer(harness, native_
 
     assert harness.run() == 0
 
-    assert harness.model_calls and harness.model_calls[0].argv[0] == str(native_claude)
+    assert harness.model.reached == [str(native_claude)]
 
 
 def doctor_claude_line(harness, monkeypatch, capsys) -> str:
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.config["whatsapp"]["enabled"] = False
-    harness.model_reply = "OK"
     harness.cli("doctor")
     return next(l for l in capsys.readouterr().out.splitlines() if "Claude:" in l)
 
@@ -423,18 +406,3 @@ def test_doctor_reads_a_stored_token(harness, terminal, monkeypatch, capsys):
     line = doctor_claude_line(harness, monkeypatch, capsys)
 
     assert line.startswith(ops.OK) and "auth: keychain-oauth" in line
-
-
-def test_the_nightly_run_says_the_keychain_asked_rather_than_that_no_token_is_stored(
-        harness, caplog):
-    caplog.set_level(logging.INFO)
-    harness.secrets[ACCOUNT] = TOKEN
-    harness.secrets.asks.add(ACCOUNT)
-    harness.sources["gmail"] = [msg("gmail", "1001", "2026-09-27T08:15:00+03:00",
-                                    "Parents' evening is on 8.10.", sender="teacher@kilo.example.fi")]
-
-    harness.run()
-
-    assert harness.model_calls
-    assert "CLAUDE_CODE_OAUTH_TOKEN" not in (harness.model_calls[0].env or {})
-    assert "auth: keychain-needs-prompt" in caplog.text

@@ -81,7 +81,6 @@ def claude_without_token(harness, monkeypatch):
     which = shutil.which
     monkeypatch.setattr(shutil, "which", lambda cmd, *a, **k: f"/usr/local/bin/{cmd}"
                         if cmd == "claude" else which(cmd, *a, **k))
-    harness.model_reply = "OK"
 
 
 @pytest.mark.macos  # Windows' own words are in the claude_on_windows tests below
@@ -153,7 +152,7 @@ def test_on_windows_doctor_calls_a_signed_in_codex(harness, codex_on_windows, ca
 
     assert codex_line(capsys).startswith(ops.OK)
     # Windows' `which` names it codex.EXE, in PATHEXT's capitals, once its folder is on PATH.
-    assert [os.path.normcase(c.argv[0]) for c in harness.model_calls] == \
+    assert [os.path.normcase(p) for p in harness.model.reached] == \
         [os.path.normcase(codex_on_windows)]
 
 
@@ -162,7 +161,6 @@ def claude_on_windows(harness, nothing_loaded, windows_programs) -> Path:
     """A Household on Claude, on a PC where claude.exe would be where Claude Code's own Windows
     installer puts it, which the test puts there or not. Returns where."""
     harness.config["llm"]["backend"] = "claude"
-    harness.model_reply = "OK"
     return harness.home / ".local" / "bin" / "claude.exe"
 
 
@@ -199,7 +197,7 @@ def test_on_windows_doctor_calls_claude_with_the_stored_token(harness, claude_on
     harness.cli("doctor")
 
     assert claude_line(capsys).startswith(ops.OK)
-    assert [os.path.normcase(c.argv[0]) for c in harness.model_calls] == \
+    assert [os.path.normcase(p) for p in harness.model.reached] == \
         [os.path.normcase(claude_on_windows)]
 
 

@@ -125,7 +125,6 @@ def healthy(harness, offline, monkeypatch) -> None:
     which = shutil.which
     monkeypatch.setattr(shutil, "which", lambda cmd, *a, **k: f"/usr/local/bin/{cmd}"
                         if cmd == "claude" else which(cmd, *a, **k))
-    harness.model_reply = "OK"
     harness.jobs.add(jobs.DAILY)
     harness.wake.wakes = [FakeWake.line(21, 0)]  # Windows' doctor checks the wake too
 
@@ -328,7 +327,7 @@ def set_up(harness, healthy) -> None:
     install_program(harness)
     harness.wake.wakes = [harness.wake.line(21, 0)]
     send_a_brief(harness)
-    harness.model_reply = "OK"  # for doctor's test call
+    harness.model_reply = {}  # for doctor's test call
 
 
 def test_setup_is_done_when_all_five_outcomes_are_true(harness, set_up, capsys):
