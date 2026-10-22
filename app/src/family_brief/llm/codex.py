@@ -142,8 +142,8 @@ class Codex:
                             timeout=120, budget=0).data
         except Exception as e:
             return [Finding("fail", "codex", f"call failed: {str(e)[:200]} (if you're signed out, "
-                            f"{sign_in}. ChatGPT Free and Go can't use the Codex CLI; it needs Plus "
-                            "or higher)")]
+                            f"{sign_in}. On ChatGPT Free or Go, the usage limit may be used up for "
+                            "now: try again later)")]
         if data.get("ok") is True:
             return [Finding("ok", "codex", f"call succeeded ({codex})")]
         return [Finding("fail", "codex", f"reachable, but the reply has the wrong shape: {str(data)[:80]}")]

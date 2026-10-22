@@ -109,7 +109,7 @@ Every step of the setup page has a **Continue in the chat** button, for a family
 
 - What a Brief looks like: the link to the demo in the invite the Parent Recap team sent them. If they don't have it, describe a Brief in a sentence: grouped by Kid, with Notices and Action Items with due dates
 - Where the data goes: it's read on this Mac. Only that night's messages from the Kids' Sources go to the AI the family already uses, to write the Brief, and the Brief goes out from their own Gmail. Nothing goes to the Parent Recap team, except the ⭐ / ❌ feedback a pilot family chooses to send.
-- What it costs: it runs on the paid plan the family already has, Claude Pro or Max, or ChatGPT Plus or above (ChatGPT's Free and Go plans can't run Codex's command line). Nothing else costs money.
+- What it costs: Claude needs the paid plan the family already has, Claude Pro or Max. ChatGPT works on any plan, Free included. Nothing else costs money.
 - That it needs a Mac that is on in the evening, and Gmail.
 
 **The defaults card.** End the introduction with the defaults, as choices the parent only changes where they're wrong:
@@ -117,7 +117,7 @@ Every step of the setup page has a **Continue in the chat** button, for a family
 | Default            | How you pick it                                                                                                                                         |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Language           | The one they write in. It's setup's language and their Brief's                                                                                          |
-| AI                 | Claude in Claude Code; **ChatGPT** ("runs through Codex") in Codex. Say a paid plan is needed                                                            |
+| AI                 | Claude in Claude Code; **ChatGPT** ("runs through Codex") in Codex. Say Claude needs a paid plan; ChatGPT works on any plan                              |
 | Recipients         | The parent and their partner ("Add my partner"), or "Only me"                                                                                           |
 | Pilot family       | Yes. Only when `PLUGIN/app/src/family_brief/pilot_feedback.yaml` exists; without it, leave this line and every pilot question out                       |
 

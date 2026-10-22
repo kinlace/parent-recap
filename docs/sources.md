@@ -32,7 +32,7 @@ The program reads and sends with the one Gmail account above, and can't read a s
 
 ### ChatGPT (`llm.backend: codex`)
 
-1. Install the Codex or ChatGPT desktop app, open it and log in to Codex with a ChatGPT account. This needs **ChatGPT Plus or higher**: the Free and Go plans only include Codex in the desktop app, not the command line, and the nightly job uses the command line (`codex exec`). For what each plan includes, see [OpenAI's pricing page](https://learn.chatgpt.com/docs/pricing)
+1. Install the Codex or ChatGPT desktop app, open it and log in to Codex with a ChatGPT account. Any ChatGPT plan works, Free and Go included: OpenAI includes Codex, its command line too, in every plan ([Using Codex with your ChatGPT plan](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan)). Free and Go have lower usage limits; one Brief a night fits in them
 2. No extra token is needed. The scheduled job uses the codex bundled with the app and its saved login (`~/.codex`)
 3. `$FB doctor` makes a test call; once the Codex line shows ✅ you're done
 
