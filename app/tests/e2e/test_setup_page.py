@@ -186,6 +186,16 @@ def test_requests_without_the_code_are_refused(harness, page):
     assert not config_file(harness).exists()
 
 
+def test_the_browser_s_favicon_request_gets_an_empty_answer_without_the_code(page):
+    # The browser asks for it at the root on every page load, and a refusal is a console error.
+    parts = urlparse(page.url)
+    root = f"http://{parts.netloc}/"
+    r = call(root, "favicon.ico")
+    assert (r.status, r.body) == (204, b"")
+    assert call(root, "favicon.ico", headers={"Host": "evil.example"}).status == 403
+    assert call(root, "favicon.ico", method="POST", body={}).status == 403
+
+
 def test_requests_for_another_host_or_from_another_origin_are_refused(harness, page):
     port = urlparse(page.url).port
     for host in ["evil.example", f"localhost:{port}", f"127.0.0.1:{port + 1}", "127.0.0.1"]:

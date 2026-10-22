@@ -4,7 +4,8 @@ call to the phase that answers it.
 Safeguards, since anything on the Mac can reach a local port:
   - it listens on 127.0.0.1 only, on a free port
   - the address carries a one-time random code as its first path segment, and every request must
-    have it; the page's own links are relative, so they carry it too
+    have it; the page's own links are relative, so they carry it too. The one exception is the
+    browser's own ask for /favicon.ico, answered with nothing, since a refusal is a console error
   - a request whose Host or Origin isn't the page's own address is refused, which stops other
     sites and DNS rebinding; an answer must also come from the page's own script, as JSON
   - it serves only the files in `page/`, by name, and they load nothing from the internet
@@ -38,6 +39,7 @@ FILES = {  # what the page is made of, by the path under its address
     "page.css": ("page.css", "text/css; charset=utf-8"),
     "text.json": ("text.json", "application/json; charset=utf-8"),
 }
+FAVICON = "/favicon.ico"  # which the browser asks for at the root, outside the code, on every load
 STATE = "api/state"  # the page's state, which every phase adds its part to
 MAX_BODY = 64 * 1024
 HEADERS = {
@@ -186,6 +188,9 @@ class _Handler(BaseHTTPRequestHandler):
         # Read all of what was sent before any answer: answering and closing while the body is
         # still coming in resets the connection, and the sender never sees the answer.
         body = self._read_body()
+        if (method == "GET" and self.path.partition("?")[0] == FAVICON
+                and self.headers.get("Host") == setup.host):
+            return self._send(HTTPStatus.NO_CONTENT, b"", "text/plain; charset=utf-8")
         path = self._own_path(setup, method)
         if path is None:
             return self._send(HTTPStatus.FORBIDDEN, b"Forbidden\n", "text/plain; charset=utf-8")
