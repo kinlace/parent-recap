@@ -529,16 +529,17 @@ class Harness:
                   ("marketplace", "list", "--json"): self.claude_marketplaces}.get(tuple(args))
         if listed is not None:
             return subprocess.CompletedProcess(cmd, 0, json.dumps(listed), "")
-        removed = {"uninstall": (self.claude_plugins, "id"),
-                   "marketplace remove": (self.claude_marketplaces, "name")}.get(" ".join(args[:-1]))
-        if removed is not None and isinstance(removed[0], list):  # not a list: Claude Code can't say
-            if not self.claude_removes:
-                return subprocess.CompletedProcess(cmd, 1, "", "Failed to uninstall")
-            entries, key = removed
-            if key == "name":
-                assert not any(str(p.get("id")).endswith("@" + args[-1]) for p in self.claude_plugins), \
-                    "the plugin goes before its marketplace"
-            entries[:] = [e for e in entries if e.get(key) != args[-1]]
+        removing = args[:1] == ["uninstall"] or args[:2] == ["marketplace", "remove"]
+        if removing and not self.claude_removes:
+            return subprocess.CompletedProcess(cmd, 1, "", "Failed to uninstall")
+        name = args[-1]
+        # A list that isn't one (a test's {"error": ...}) is Claude Code unable to say what it has.
+        if args[:1] == ["uninstall"] and isinstance(self.claude_plugins, list):
+            self.claude_plugins = [p for p in self.claude_plugins if p.get("id") != name]
+        elif args[:2] == ["marketplace", "remove"] and isinstance(self.claude_marketplaces, list):
+            assert not any(str(p.get("id")).endswith("@" + name) for p in self.claude_plugins), \
+                "the plugin goes before its marketplace"
+            self.claude_marketplaces = [m for m in self.claude_marketplaces if m.get("name") != name]
         return subprocess.CompletedProcess(cmd, 0, "[]", "")
 
     def _next_reply(self, prompt: str | None) -> Any:

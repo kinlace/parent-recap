@@ -179,8 +179,8 @@ The shared fakes stay in `tests/`, beside the golden files:
 - `e2e/nights.py` and `e2e/setup_page.py` (`page`, `clock`, `ai`, `health`, `schedule`) are shared
   by their files; `test_setup_whatsapp.py`'s `fake_mac` is the fake Mac other WhatsApp tests import.
   The page's server gets the test's clock and timeouts on its `Context`, and socket pairs for a
-  listener where no port can be listened on; a test meets it through its HTTP calls, never its
-  private parts or module constants.
+  listener where no port can be listened on; a test meets it through its HTTP calls, and never
+  reaches its private parts or patches its modules.
 
 Config, state and the archive are real files in a temporary HOME; "now" and the timezone are pinned.
 
