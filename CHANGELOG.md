@@ -4,6 +4,20 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.6.3 · 2026-10-22
+
+No more header-only emails on quiet evenings, a skipped Source can be added later from the setup page, and on Windows a Brief missed while signed out comes at the next sign-in.
+
+### Changed
+- On an evening with nothing worth telling, such as one with only an ordinary timetable for the next school day, the family gets no email instead of one that's empty apart from the header.
+- A family whose school and club news comes through Wilma, MyClub or WhatsApp can leave Gmail to only send the Brief, with no sender ticked, and gets no failed check or failed Source for it.
+
+### Added
+- A family who skipped a Source such as Wilma or MyClub can add it from the setup page's Check or Finish step, or later by opening the page again, without asking the Parent Recap team.
+
+### Fixed
+- On Windows, if nobody is signed in at Brief time, that evening's Brief now comes when someone next signs in, often the next morning, and the setup page and docs say so.
+
 ## 0.6.2 · 2026-10-19
 
 The setup page reads more clearly on Windows, and a notice from a parent group both Kids share goes under the Kid it's about.
