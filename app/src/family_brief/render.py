@@ -104,18 +104,18 @@ def nothing_read(coverage: dict[str, dict], date_str: str, assistant: str, t: Br
                  imessage_to: list[str]) -> list[Outgoing]:
     """What goes out on a night when no Source could be read: a mail to the Recipients of each
     language among the `readers` saying so in it, and the iMessage in the Brief's language `t`."""
-    def text(t: BriefText) -> str:
+    def whole(t: BriefText) -> str:
         return f"👨‍👩‍👧‍👦 {PRODUCT_NAME} {_header_date(date_str, t)}\n\n" + nothing_read_text(coverage, t, assistant)
     out: list[Outgoing] = []
     for reader_t, to in readers:
         note = _h.escape(nothing_read_text(coverage, reader_t, assistant)).replace("\n", "<br>")
-        out.append(Mail(to=to, subject=f"{PRODUCT_NAME} · {date_str}", text=text(reader_t),
+        out.append(Mail(to=to, subject=f"{PRODUCT_NAME} · {date_str}", text=whole(reader_t),
                         html=_HTML_PAGE
                         + f"<h2>👨‍👩‍👧‍👦 {PRODUCT_NAME} · {_h.escape(_header_date(date_str, reader_t))}</h2>"
                           f"<p style='color:#a33'>{note}</p></body></html>",
                         from_addr=from_addr))
     if imessage_to:
-        out.append(IMessage(imessage_to, text(t)))
+        out.append(IMessage(imessage_to, whole(t)))
     return out
 
 
@@ -396,13 +396,13 @@ class Night:
     assistant: str
     summary: dict
     coverage: dict[str, dict]
+    stamp: datetime  # when the .ics is made
     created: list[dict] = field(default_factory=list)
     held_back: list[HeldBack] = field(default_factory=list)
     calendar_problem: CalendarProblem | None = None
     ics_events: list[CalendarEvent] = field(default_factory=list)
     model_wrote: bool = True
     form: feedback.Links | None = None
-    stamp: datetime | None = None  # when the .ics is made; now when not given
 
     @property
     def subject(self) -> str:
@@ -438,14 +438,15 @@ class Version:
         return out
 
 
-def _mail(night: Night, v: Version, from_addr: str) -> Mail:
+def mail(night: Night, v: Version, from_addr: str) -> Mail:
+    """Tonight's mail to the Recipients of version `v`."""
     t, assistant = v.t, night.assistant
     listed = v.translated_list(night.created)
     coverage_note = _coverage_note(night.coverage, t)
     calendar_note = _calendar_note(night.calendar_problem, bool(night.ics_events), t, assistant)
     top_note = _top_note(v.summary, t, assistant, v.translation_note)
     attachments = [(f"parent-recap-{night.date}.ics",
-                    ics_action.build(night.ics_events, night.tz, v.translated_event, night.stamp),
+                    ics_action.build(night.ics_events, night.tz, night.stamp, v.translated_event),
                     "text/calendar")] if night.ics_events else []
     links = night.form.link if night.form and night.model_wrote else None
     html = _daily_brief_html(v.summary, listed, night.date, t, night.tz, calendar_note,
@@ -459,12 +460,18 @@ def _mail(night: Night, v: Version, from_addr: str) -> Mail:
                 html=html, from_addr=from_addr, attachments=attachments)
 
 
+def imessage(night: Night, to: list[str]) -> IMessage:
+    """Tonight's iMessage: the plain-text Brief in the Brief's language."""
+    return IMessage(to, night.text())
+
+
 def brief(night: Night, versions: list[Version], from_addr: str, imessage_to: list[str]) -> list[Outgoing]:
     """What goes out tonight: a mail per version, each to the Recipients who read its language,
-    and the plain-text Brief to the iMessage Recipients."""
-    out: list[Outgoing] = [_mail(night, v, from_addr) for v in versions]
+    and the plain-text Brief to the iMessage Recipients. The run makes each with mail() and
+    imessage() as it sends it, so one that fails leaves the others to go out."""
+    out: list[Outgoing] = [mail(night, v, from_addr) for v in versions]
     if imessage_to:
-        out.append(IMessage(imessage_to, night.text()))
+        out.append(imessage(night, imessage_to))
     return out
 
 
