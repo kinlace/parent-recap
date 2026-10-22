@@ -89,7 +89,8 @@ def recent_points(cfg: Config, today: str, days: int = 3) -> list[EarlierBrief]:
             continue
         if data.get("delivered") is False:
             continue
-        kids = [k for k in from_archive(data.get("summary"))[0].kids if k.notices or k.action_items]
+        brief, _ = from_archive(data.get("summary"))
+        kids = [k for k in brief.kids if k.notices or k.action_items]
         if kids:
             out.append(EarlierBrief(day, kids, third_parties(cfg, data.get("messages") or [])))
     return out

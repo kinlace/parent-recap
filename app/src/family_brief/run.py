@@ -253,7 +253,7 @@ def _read(cfg: Config, options: Options, io: IO, state: State) -> _Read:
 PREVIEW_BUDGET = 10 * 60
 
 
-def _fallback_summary(messages: list[Message], err: str, t: BriefText, cfg: Config) -> Brief:
+def _fallback_brief(messages: list[Message], err: str, t: BriefText, cfg: Config) -> Brief:
     """Rule-based digest when the LLM call fails. Never leaks the raw error to iMessage."""
     # Group by (kid_hint or 'unknown', source)
     buckets: dict[tuple[str, str], list[Message]] = {}
@@ -398,7 +398,7 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
                                      placeholders=placeholders)
         except Exception as e:
             log.error("Summarizer failed: %s (falling back to rule-based digest)", e)
-            brief, notes = _fallback_summary(for_ai, str(e), t, cfg), RunNotes(error=str(e))
+            brief, notes = _fallback_brief(for_ai, str(e), t, cfg), RunNotes(error=str(e))
     else:
         brief, notes = Brief(), RunNotes()
 
@@ -447,7 +447,7 @@ def _versions(cfg: Config, written: _Written) -> list[render.Version]:
         if translated is None:
             # The model is down, so there is nothing to translate; the raw list comes in their words.
             assert error is not None
-            return render.Version(t, to, _fallback_summary(written.for_ai, error, t, cfg))
+            return render.Version(t, to, _fallback_brief(written.for_ai, error, t, cfg))
         events = extract_calendar_events(translated, cfg.timezone, t.untitled)
         return render.Version(t, to, translated, {
             (ev.title, ev.start_iso()): tev for ev, tev in zip(written.model_events, events)})

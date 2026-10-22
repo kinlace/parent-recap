@@ -10,10 +10,10 @@ from .actions import calendar as calendar_action
 from . import languages, llm, private_files, run_lock
 from . import run as evening
 from . import sources as source_registry
+from .brief import to_archive
 from .collectors.base import Message
 from .config import Config
 from .state import State
-from .brief import to_archive
 from .summarize import for_the_ai, summarize
 
 
