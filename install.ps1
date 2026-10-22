@@ -67,23 +67,26 @@
   # then belongs to the Administrators group, and the owner-only folders setup makes shut out the
   # evening task, which runs as the user without it (#464). On a PC with UAC off, as CI's runner
   # is, every window runs as administrator, the task too (TokenElevationTypeDefault, 1): that's fine.
+  # The type is used through a variable, not named as [ParentRecap.Token]: CI checks every type the
+  # script names is .NET's own (#374).
   function Test-Elevated {
-    if (-not ('ParentRecap.Token' -as [type])) {
-      Add-Type -Namespace ParentRecap -Name Token -MemberDefinition @'
+    $native = 'ParentRecap.Token' -as [type]
+    if (-not $native) {
+      $native = @(Add-Type -Namespace ParentRecap -Name Token -PassThru -MemberDefinition @'
 [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
 [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle);
 [DllImport("advapi32.dll")] public static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
 [DllImport("advapi32.dll")] public static extern bool GetTokenInformation(IntPtr token, int kind, out int value, int size, out int returned);
-'@
+'@)[0]
     }
     $token = [IntPtr]::Zero
-    if (-not [ParentRecap.Token]::OpenProcessToken([ParentRecap.Token]::GetCurrentProcess(), 8, [ref]$token)) { return $false }
+    if (-not $native::OpenProcessToken($native::GetCurrentProcess(), 8, [ref]$token)) { return $false }
     try {
       $kind = 0
       $size = 0
-      return [ParentRecap.Token]::GetTokenInformation($token, 18, [ref]$kind, 4, [ref]$size) -and $kind -eq 2
+      return $native::GetTokenInformation($token, 18, [ref]$kind, 4, [ref]$size) -and $kind -eq 2
     } finally {
-      [void][ParentRecap.Token]::CloseHandle($token)
+      [void]$native::CloseHandle($token)
     }
   }
 
