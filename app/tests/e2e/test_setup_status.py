@@ -66,7 +66,7 @@ def install_program(harness) -> None:
     app = harness.home / "ParentRecap" / "app"
     command = app / ".venv" / ("Scripts/parent-recap.exe" if sys.platform == "win32"
                                else "bin/family-brief")
-    command.parent.mkdir(parents=True)
+    command.parent.mkdir(parents=True, exist_ok=True)  # a test may start further on, at Finish
     command.write_text("#!/bin/sh\n")
     (app / "pyproject.toml").write_text('[project]\nname = "family-brief"\n')
     (app / "VERSION").write_text("0.5.0\n")

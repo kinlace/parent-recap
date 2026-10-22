@@ -269,8 +269,8 @@ def test_the_steps_are_in_the_order_the_server_sends_them(tab, monkeypatch):
     expect(tab.locator("#sources li button > span:first-child")).to_have_text(
         [text(f"source.{s}") for s in reordered])
     without_wilma_in_espoo(tab)
-    expect(tab.get_by_text(text("connect.handoff", done=text("source.wilma"),
-                                next=text("source.myclub")))).to_be_visible()
+    # Without Wilma, saving the town skips it, and MyClub's step is next, not Gmail's.
+    expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_visible()
     expect(button(tab, "source.skip")).to_be_visible()
     expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
