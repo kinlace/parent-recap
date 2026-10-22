@@ -538,7 +538,9 @@ def test_finish_offers_only_turn_it_on_and_no_failure_for_what_it_turns_on(tab, 
     tab.reload()
     expect(heading(tab, "finish.title")).to_be_visible()
 
-    expect(tab.get_by_text(text("finish.to-do.nightly"))).to_be_visible()
+    # The nightly and the wake to-do say the same thing, so the hint is found by its key.
+    expect(tab.locator('[data-text="finish.to-do.nightly"]')).to_be_visible()
+    expect(tab.locator('[data-text="finish.to-do.nightly"]')).to_have_text(text("finish.to-do.nightly"))
     expect(button(tab, "finish.start")).to_be_visible()
     expect(button(tab, "finish.again")).to_be_hidden()
     expect(button(tab, "finish.stop")).to_be_hidden()
