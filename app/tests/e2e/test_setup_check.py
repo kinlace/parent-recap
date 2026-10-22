@@ -23,7 +23,7 @@ from nights import FEEDBACK
 from test_setup_steps import HeaderImap
 from setup_page import (APP_PASSWORD, PAGE_DIR, Response, at_the_check_step, call, check_page, config_file,
                         confirm, connect_done, health_result, more_progress, save_progress, wait_for)
-from setup_page import _listening, ai, clock, health, page  # noqa: F401
+from setup_page import ai, clock, health, page  # noqa: F401
 
 
 # ── Working: Parent Recap reads the Sources, with progress shown

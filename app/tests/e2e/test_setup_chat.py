@@ -19,7 +19,7 @@ import pytest
 from family_brief import __main__ as cli, install_record, setup_server
 from family_brief.config import Config
 from setup_page import PAGE_DIR, ROOT, Response, call, chat_installed, config_file, source, welcome
-from setup_page import _listening, ai, clock, page  # noqa: F401
+from setup_page import ai, clock, page  # noqa: F401
 
 
 # ── Welcome: what lets the family ask for changes in the chat later (#98)

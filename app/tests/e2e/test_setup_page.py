@@ -22,18 +22,26 @@ import yaml
 
 from family_brief import __main__ as cli, install_record, ops, setup_server
 from family_brief.config import Config
-from setup_page import (PAGE_DIR, ROOT, at_finish, call, check_ai, config_file, context, finish,
+from setup_page import (CAN_LISTEN, PAGE_DIR, ROOT, at_finish, call, check_ai, config_file, finish,
                         finished, new_server, progress_file, refused, save_progress, source,
                         statuses, wait_for, welcome)
-from setup_page import _listening, ai, clock, health, page, schedule  # noqa: F401
+from setup_page import ai, clock, health, page, schedule  # noqa: F401
 from test_setup_whatsapp import mac  # noqa: F401
 
 
 # ── the command
 
 
-def test_the_command_opens_the_page_and_stops_after_30_idle_minutes(harness, clock, capsys,
-                                                                    monkeypatch):
+def serving(server: setup_server.SetupServer, codes: list[int]) -> threading.Thread:
+    """`server` serving as `setup page` serves it, in the background, its exit code put in `codes`."""
+    thread = threading.Thread(target=lambda: codes.append(setup_server.serve(server)), daemon=True)
+    thread.start()
+    return thread
+
+
+@pytest.mark.skipif(not CAN_LISTEN, reason="the command listens on a port of its own")
+def test_the_command_serves_the_page_for_its_config_until_it_stops(harness, capsys, monkeypatch):
+    at_finish(harness)
     monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(config_file(harness)), "setup", "page"])
     codes: list[int] = []
     thread = threading.Thread(target=lambda: codes.append(cli.main()), daemon=True)
@@ -45,6 +53,24 @@ def test_the_command_opens_the_page_and_stops_after_30_idle_minutes(harness, clo
     assert parts.scheme == "http" and parts.hostname == "127.0.0.1" and parts.port
     page = call(url)
     assert page.status == 200 and "text/html" in page.headers["content-type"]
+    # Setup at Finish is the config's own, so "Finish for now" stops the page.
+    assert call(url, "api/finish/stop", method="POST", body={}).json() == {"result": "stopped"}
+    thread.join(5)
+
+    assert not thread.is_alive() and codes == [0]
+    assert refused(url)
+    opened, closed = capsys.readouterr().out.splitlines()
+    assert json.loads(opened) == {"result": "opened", "url": url}
+    # Terminal says the page has closed, so the family knows its window can be closed too: in the
+    # config's language.
+    assert closed == setup_server.closed_line("zh")
+
+
+def test_the_page_stops_after_30_idle_minutes(harness, clock, capsys):
+    codes: list[int] = []
+    thread = serving(new_server(harness, clock), codes)
+    wait_for(lambda: harness.desktop.opened)
+    url = harness.desktop.opened[0]
 
     clock.now += 29 * 60
     assert call(url, "api/state").status == 200  # a request starts the 30 minutes again
@@ -56,17 +82,11 @@ def test_the_command_opens_the_page_and_stops_after_30_idle_minutes(harness, clo
 
     assert not thread.is_alive() and codes == [0]
     assert refused(url)
-    opened, closed = capsys.readouterr().out.splitlines()
-    assert json.loads(opened) == {"result": "opened", "url": url}
-    # Terminal says the page has closed, so the family knows its window can be closed too.
-    assert closed == setup_server.closed_line("en")
+    assert capsys.readouterr().out.splitlines()[-1] == setup_server.closed_line("en")
 
 
-def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock, capsys,
-                                                                  monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(config_file(harness)), "setup", "page"])
-    thread = threading.Thread(target=cli.main, daemon=True)
-    thread.start()
+def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock, capsys):
+    thread = serving(new_server(harness, clock), [])
     wait_for(lambda: harness.desktop.opened)
     url = harness.desktop.opened[0]
     assert call(url, "api/language", method="POST", body={"language": "fi"}).status == 200
@@ -78,12 +98,9 @@ def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock
     assert set(setup_server.server.CLOSED_LINES) == set(setup_server.context.LANGUAGES)
 
 
-def test_in_tmux_or_ssh_the_command_warns_the_keychain_cannot_be_reached(harness, clock, capsys,
-                                                                       monkeypatch):
+def test_in_tmux_or_ssh_the_command_warns_the_keychain_cannot_be_reached(harness, clock, capsys):
     harness.secrets.reachable_here = False
-    monkeypatch.setattr(sys, "argv", ["family-brief", "-c", str(config_file(harness)), "setup", "page"])
-    thread = threading.Thread(target=cli.main, daemon=True)
-    thread.start()
+    thread = serving(new_server(harness, clock), [])
     wait_for(lambda: harness.desktop.opened)
     url = harness.desktop.opened[0]
 
@@ -113,6 +130,7 @@ def test_each_run_has_its_own_code_and_port(harness, clock):
         second.stop()
 
 
+@pytest.mark.skipif(not CAN_LISTEN, reason="the page's own listener needs a port")
 def test_the_page_starts_without_looking_up_the_host_name(harness, monkeypatch):
     # http.server's own bind looks up the host name, which took over 5 seconds on CI's Mac.
     def look_up(*_):
@@ -132,8 +150,7 @@ class _Echo(setup_server.Phase):
 
 
 def test_a_phase_given_to_the_server_serves_its_calls_and_its_state(harness, clock):
-    server = setup_server.SetupServer(context(config_file(harness), clock),
-                                      phases=(*setup_server.PHASES, _Echo))
+    server = new_server(harness, clock, phases=(*setup_server.PHASES, _Echo))
     thread = threading.Thread(target=server.serve_until_idle, daemon=True)
     thread.start()
     try:
@@ -151,7 +168,7 @@ def test_a_phase_given_to_the_server_serves_its_calls_and_its_state(harness, clo
 
 def test_two_phases_with_the_same_call_are_refused(harness, clock):
     with pytest.raises(ValueError, match="api/echo"):
-        setup_server.SetupServer(context(config_file(harness), clock), phases=(_Echo, _Echo))
+        new_server(harness, clock, phases=(_Echo, _Echo))
 
 
 # ── the safeguards

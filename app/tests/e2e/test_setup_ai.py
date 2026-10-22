@@ -24,12 +24,11 @@ import yaml
 
 from family_brief import install_record, ops, setup_ai, setup_server, setup_steps
 from family_brief.config import Config
-from family_brief.setup_server.ai import AISignIn
 from conftest import FailedCall, HTTPReply, program
-from setup_page import (PAGE_DIR, Response, assert_never_leaked, at_finish, call, chat_installed, check_ai,
-                        config_file, inside, phase, progress_file, refuse_secrets, save_progress, statuses,
-                        wait_for, welcome)
-from setup_page import _listening, ai, clock, page  # noqa: F401
+from setup_page import (PAGE_DIR, Response, assert_never_leaked, at_finish, at_the_check_step, call,
+                        chat_installed, check_ai, config_file, confirm, health_result, inside,
+                        progress_file, refuse_secrets, save_progress, statuses, wait_for, welcome)
+from setup_page import ai, clock, health, page  # noqa: F401
 
 
 # ── Connect: the AI sign-in for the evening Brief
@@ -371,8 +370,9 @@ def test_a_codex_sign_in_that_ends_signed_out_says_so(harness, page, codex, monk
 
     assert call(page.url, "api/codex/login", method="POST", body={}).json() == {"result": "waiting"}
 
-    wait_for(lambda: phase(page, AISignIn)._codex.poll() is not None)
-    assert codex_check(page.url) == {"result": "login-failed"}
+    checked: dict[str, Any] = {}
+    wait_for(lambda: checked.update(codex_check(page.url)) or checked["result"] != "waiting")
+    assert checked == {"result": "login-failed"}
     assert codex_check(page.url) == {"result": "signed-out"}  # said once; it can be started again
     assert statuses(page.url)["ai"] == "to-do"
 
@@ -588,8 +588,9 @@ def test_on_windows_claude_signs_in_only_in_its_window_without_a_pseudo_terminal
 
     r = call(page.url, "api/claude", method="POST", body={})
 
-    assert r.status == 400
-    assert not harness.commands and phase(page, AISignIn)._claude is None
+    assert r.status == 400 and not harness.commands
+    assert call(page.url, "api/claude/check", method="POST", body={}).json() == \
+        {"result": "no-sign-in"}
 
 
 @pytest.mark.macos
@@ -784,11 +785,15 @@ def test_the_gateway_key_field_is_the_page_s_own(page):
     assert 'name="ai" value="gateway"' in html
 
 
-def test_the_check_page_names_the_gateway_s_own_checks():
-    for key, item in ops.CHECK_ITEMS:
-        if key in ("gateway", "gateway-key"):
-            assert setup_server.health.health_check(ops.Check(ops.FAIL, key, item, ""))["check"] == "gateway"
-    assert setup_server.health.health_check(ops.Check(ops.FAIL, "claude", "Claude", ""))["check"] == "ai"
+def test_the_check_page_names_the_gateway_s_own_checks(harness, page, health):
+    at_the_check_step(harness)
+    health.results = [(ops.FAIL, key, item, "") for key, item in ops.CHECK_ITEMS
+                      if key in ("gateway", "gateway-key", "claude")]
+
+    confirm(page.url)
+
+    assert sorted(c["check"] for c in health_result(page.url)["checks"]) == \
+        ["ai", "gateway", "gateway"]
 
 
 # ── Finish: switching the AI, or a new Gateway Key, once setup is done (ADR 0017)

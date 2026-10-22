@@ -38,7 +38,7 @@ from fake_system import Window
 from conftest import program
 from setup_page import (PAGE_DIR, Response, assert_never_leaked, call, config_file, statuses, towns,
                         wait_for, welcome)
-from setup_page import _listening, clock, page  # noqa: F401
+from setup_page import clock, page  # noqa: F401
 
 # The tests of `parent-recap setup wilma` are each marked macos: the Wilma window's pseudo-terminal,
 # and the wilma CLI as shell scripts on a shell-script Node.

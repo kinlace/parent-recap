@@ -10,7 +10,7 @@ setup is a module of its own, answering its calls, and `phases` lists them; what
 """
 from .context import Action, Context, Phase, Timeouts
 from .phases import PHASES
-from .server import SetupServer, closed_line, register
+from .server import SetupServer, closed_line, register, serve
 
 __all__ = ["PHASES", "Action", "Context", "Phase", "SetupServer", "Timeouts", "closed_line",
-           "register"]
+           "register", "serve"]

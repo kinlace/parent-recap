@@ -25,7 +25,7 @@ from family_brief.config import Config
 from family_brief.system import secrets
 from setup_page import (APP_PASSWORD, PAGE_DIR, Response, call, config_file, refuse_secrets, source,
                         statuses, welcome)
-from setup_page import _listening, clock, page  # noqa: F401
+from setup_page import clock, page  # noqa: F401
 from setup_page import assert_never_leaked as assert_never_leaked_by_page
 
 TYPED = "abcd efgh ijkl mnop"  # how Google shows it, and how it's copied

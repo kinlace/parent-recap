@@ -32,7 +32,7 @@ from family_brief import ops, setup_connect
 from family_brief.collectors import myclub
 from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, progress_file,
                         save_progress)
-from setup_page import _listening, ai, clock, health, page  # noqa: F401
+from setup_page import ai, clock, health, page  # noqa: F401
 from test_setup_ai import GATEWAY_KEY
 from test_setup_gmail import TYPED
 from test_setup_myclub import LINK as MYCLUB_LINK

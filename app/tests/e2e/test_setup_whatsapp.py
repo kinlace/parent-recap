@@ -33,7 +33,7 @@ from fake_system import FakeJobs
 from family_brief.collectors import whatsapp
 from setup_page import (PAGE_DIR, Response, at_the_check_step, call, check_page, config_file, confirm,
                         health_result, more_progress, progress_file, save_progress, source, statuses)
-from setup_page import _listening, clock, health, page  # noqa: F401
+from setup_page import clock, health, page  # noqa: F401
 
 # The tests of `parent-recap setup whatsapp` are each marked macos: WhatsApp for Mac and its Full
 # Disk Access.

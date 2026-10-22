@@ -17,7 +17,7 @@ from family_brief import setup_server
 from family_brief.config import Config
 from conftest import PILOT_FORM_FIELDS, PILOT_FORM_URL
 from setup_page import PAGE_DIR, call, check_ai, config_file, inside, welcome
-from setup_page import _listening, ai, clock, page  # noqa: F401
+from setup_page import ai, clock, page  # noqa: F401
 
 
 # ── Welcome
@@ -27,8 +27,9 @@ def test_each_welcome_choice_has_a_default(harness, page):
     harness.ship_pilot_form()
     call(page.url, "api/language", method="POST", body={"language": "zh"})
 
-    assert call(page.url, "api/state").json()["welcome"] == {
-        "ai": setup_server.context.ais()[0],  # Claude, or on Windows the gateway, for now
+    state = call(page.url, "api/state").json()
+    assert state["welcome"] == {
+        "ai": state["ais"][0],  # Claude, or on Windows the gateway, for now
         "partner": {"add": True, "address": "", "language": "zh"},
         "feedback": True,
     }

@@ -20,7 +20,7 @@ from conftest import msg
 from nights import FEEDBACK, FORM, feedback_links
 from setup_page import (APP_PASSWORD, PAGE_DIR, Response, at_the_check_step, call, config_file, connect_done,
                         more_progress, wait_for)
-from setup_page import _listening, clock, page  # noqa: F401
+from setup_page import clock, page  # noqa: F401
 from test_setup_whatsapp import mac  # noqa: F401
 
 
@@ -182,7 +182,7 @@ def test_send_it_to_me_reaches_only_the_setup_parent(harness, page, mac):
     state = harness.state()
     assert list(state["brief_delivered_at"]) == ["parent@example.com"]
     assert not state["seen_message_ids"]  # the evening Brief still reads these three days
-    assert setup_status._brief(Config.load(config_file(harness))).ok
+    assert next(o for o in setup_status.check(str(config_file(harness))) if o.outcome == "brief").ok
 
 
 def test_after_the_first_brief_setup_moves_on_to_finish(harness, page, mac):

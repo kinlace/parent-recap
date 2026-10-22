@@ -22,7 +22,7 @@ from family_brief import gateway
 from family_brief.collectors import myclub
 from family_brief.config import Config
 from family_brief.system import jobs, jobs_windows, secrets, wake, wake_windows, windows_only
-from setup_page import (APP_PASSWORD, _listening, call, check_page, clock, config_file,  # noqa: F401
+from setup_page import (APP_PASSWORD, call, check_page, clock, config_file,  # noqa: F401
                         finish, finished, health_result, page, source)
 from test_setup_ai import GATEWAY_KEY, save_gateway_key
 from test_setup_check import read_to_the_end, start_reading

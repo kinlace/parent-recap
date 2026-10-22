@@ -72,7 +72,12 @@ def register(steps) -> None:
 
 def cmd_page(args: argparse.Namespace) -> int:
     config = Path(os.path.expanduser(os.path.expandvars(args.config or "~/.family/config.yaml")))
-    server = SetupServer(Context(config))
+    return serve(SetupServer(Context(config)))
+
+
+def serve(server: SetupServer) -> int:
+    """Opens `server`'s page in the browser and serves it until it stops, saying so in the window
+    the page runs from."""
     out: dict[str, Any] = {"result": "opened", "url": server.url}
     if not desktop.open_url(server.url):
         out = {"result": "not-opened", "url": server.url,
@@ -95,16 +100,17 @@ def closed_line(language: str) -> str:
 
 class SetupServer:
     """The setup page's server for `context`'s config, listening from when it's made, answering
-    the calls of each of `phases`."""
+    the calls of each of `phases`, through `listener` on 127.0.0.1's free port."""
 
-    def __init__(self, context: Context, phases: Iterable[type[Phase]] = PHASES) -> None:
+    def __init__(self, context: Context, phases: Iterable[type[Phase]] = PHASES,
+                 listener: type[ThreadingHTTPServer] | None = None) -> None:
         self.context = context
         self.phases = [phase(context) for phase in phases]
         reserved = {*FILES, STATE}
         self.actions: dict[str, Action] = _routes(reserved, (p.routes() for p in self.phases))
         self.pages: dict[str, Page] = _routes(reserved, (p.pages() for p in self.phases))
         self.code = token_urlsafe(32)
-        self._httpd = _HTTPServer(("127.0.0.1", 0), _Handler)
+        self._httpd = (listener or _HTTPServer)(("127.0.0.1", 0), _Handler)
         self._httpd.setup = self  # type: ignore[attr-defined]
         host, port = self._httpd.server_address[:2]
         self.address = (str(host), int(port))

@@ -19,7 +19,7 @@ from family_brief.system import jobs, wake
 from fake_system import FakeWake
 from setup_page import (PAGE_DIR, Response, at_finish, call, finish, finished, more_progress, new_server,
                         refused, wait_for)
-from setup_page import _listening, clock, health, page, schedule  # noqa: F401
+from setup_page import clock, health, page, schedule  # noqa: F401
 from test_setup_whatsapp import (WHATSAPP_FAILURES, WHATSAPP_PYTHON, assert_says_why, back_to_connect,
                                  back_to_whatsapp)
 

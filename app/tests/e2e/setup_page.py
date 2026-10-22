@@ -3,8 +3,8 @@ free port inside the harness (or through socket pairs where no port can be liste
 calls the page's own script makes, its idle clock, and the steps more than one file walks through.
 
 Not a conftest.py: one in e2e/ would replace tests/conftest.py as the `conftest` module and break
-every `from conftest import`. So a file with the page's tests imports `page`, `clock` and the
-autouse `_listening` from here itself."""
+every `from conftest import`. So a file with the page's tests imports `page` and `clock` from here
+itself."""
 from __future__ import annotations
 
 import http.client
@@ -15,9 +15,10 @@ import re
 import socket
 import threading
 import time
+from collections.abc import Iterable
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 from urllib.parse import urlparse
 
 import pytest
@@ -96,12 +97,6 @@ class _PairedServer(ThreadingHTTPServer):
         return ours
 
 
-@pytest.fixture(autouse=True)
-def _listening(monkeypatch: pytest.MonkeyPatch) -> None:
-    if not CAN_LISTEN:
-        monkeypatch.setattr(shell, "_HTTPServer", _PairedServer)
-
-
 class _Connection(http.client.HTTPConnection):
     # The harness fakes socket.create_connection for the Sources; this one talks to the real server.
     def connect(self) -> None:
@@ -142,24 +137,16 @@ def context(config: Path, clock: Clock) -> Context:
 
 
 @pytest.fixture
-def clock(monkeypatch: pytest.MonkeyPatch) -> Clock:
-    c = Clock()
-    # `setup page` makes its own context: with the test's clock too.
-    monkeypatch.setattr(shell, "Context", lambda config: context(config, c))
-    return c
+def clock() -> Clock:
+    return Clock()
 
 
-def new_server(harness, clock: Clock) -> setup_server.SetupServer:
-    """A setup page's server for the harness's config, not serving yet."""
-    return setup_server.SetupServer(context(config_file(harness), clock))
-
-
-P = TypeVar("P", bound=setup_server.Phase)
-
-
-def phase(server: setup_server.SetupServer, kind: type[P]) -> P:
-    """The server's phase of `kind`, for a test that waits on what it has under way."""
-    return next(p for p in server.phases if isinstance(p, kind))
+def new_server(harness, clock: Clock, phases: Iterable[type[setup_server.Phase]] = setup_server.PHASES
+               ) -> setup_server.SetupServer:
+    """A setup page's server for the harness's config, not serving yet: through socket pairs
+    where no port can be listened on."""
+    return setup_server.SetupServer(context(config_file(harness), clock), phases,
+                                    listener=None if CAN_LISTEN else _PairedServer)
 
 
 def config_file(harness) -> Path:
@@ -217,10 +204,15 @@ def ai(harness, monkeypatch):
     return install
 
 
+def offered_ais(url: str) -> list[str]:
+    """The AIs the page offers on this system, Welcome's default first."""
+    return call(url, "api/state").json()["ais"]
+
+
 def welcome(url: str, **answers: Any) -> Response:
     """Welcome's answers, with the AI the page offers first on this system unless given."""
     return call(url, "api/welcome", method="POST",
-                body={"ai": setup_server.context.ais()[0], "partner": None, "feedback": False, **answers})
+                body={"ai": offered_ais(url)[0], "partner": None, "feedback": False, **answers})
 
 
 def check_ai(url: str, name: str) -> Response:

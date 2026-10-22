@@ -29,7 +29,7 @@ from family_brief import setup_server
 from family_brief.collectors import myclub
 from family_brief.config import Config
 from setup_page import PAGE_DIR, call, progress_file, save_progress, source, statuses
-from setup_page import _listening, clock, page  # noqa: F401
+from setup_page import clock, page  # noqa: F401
 from setup_page import assert_never_leaked as assert_never_leaked_by_page
 
 TOKEN = "s3cr3t-t0ken"
