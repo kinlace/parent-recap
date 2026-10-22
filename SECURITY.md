@@ -53,7 +53,7 @@ Everything Parent Recap writes is owner-only: files `600`, folders `700`, so oth
 
 ### The setup page
 
-`parent-recap setup page` serves the setup page from the Mac itself, only while setup needs it. It listens on 127.0.0.1, so no other computer can reach it, on a free port. Its address carries a one-time random code that every request must have, and it refuses a request whose Host or Origin isn't its own address, so a website open in the browser can't use it. It serves only the program's own page files, which load nothing from the internet, and it logs nothing about requests. It stops after 30 minutes without a request.
+`parent-recap setup page` serves the setup page from the Mac itself, only while setup needs it. It listens on 127.0.0.1, so no other computer can reach it, on a free port. Its address carries a one-time random code that every request must have, except the browser's own request for its tab icon, which gets an empty answer, and it refuses a request whose Host or Origin isn't its own address, so a website open in the browser can't use it. It serves only the program's own page files, which load nothing from the internet, and it logs nothing about requests. It stops after 30 minutes without a request.
 
 To build the check page, it reads only the senders of the last 60 days of Gmail (their domains and one sender name each), never the mail, and keeps them in setup's progress, `~/.family/setup-progress.json`, which is owner-only. It never offers a public mail service such as gmail.com for the allowlist, so private mail isn't read. The health check it runs returns only each check's name and status to the page, never the details, which can quote an address or an error.
 

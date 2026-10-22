@@ -257,6 +257,16 @@ def test_a_family_goes_from_the_language_to_finish_in_the_browser(tab):
     expect(button(tab, "connect.back")).to_be_hidden()
 
 
+def test_loading_the_page_logs_no_error_in_the_console(tab):
+    # Such as a refused /favicon.ico, which the browser asks for at the root, outside the code.
+    errors: list[str] = []
+    tab.on("console", lambda message: message.type == "error" and errors.append(message.text))
+    tab.reload()
+    expect(tab.get_by_role("radio", name="English")).to_be_visible()
+    tab.wait_for_load_state("networkidle")
+    assert not errors
+
+
 def test_the_steps_are_in_the_order_the_server_sends_them(tab, monkeypatch):
     offered = setup_connect.sources()
     reordered = [offered[0], "myclub", *[s for s in offered[1:] if s != "myclub"]]
