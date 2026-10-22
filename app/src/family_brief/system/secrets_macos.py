@@ -7,6 +7,7 @@ Python instead would stop trusting it whenever Homebrew or uv moves Python (#20)
 /usr/bin/security never moves."""
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import subprocess
@@ -122,10 +123,8 @@ def reachable() -> bool:
         return e.reason != "not-reachable"
     finally:
         # Deleted however the add went, so the probe leaves nothing for uninstall to remove.
-        try:
-            _run(_item("delete-generic-password", PROBE))
-        except SecretsError:
-            pass
+        with contextlib.suppress(SecretsError):
+            delete(PROBE)
     return r.returncode == 0 or _code(_said(r)) != INTERACTION_NOT_ALLOWED
 
 
