@@ -545,7 +545,15 @@ iframe.brief {
 /* A health check that isn't OK: its checks, each with what to do, under it. */
 #finish-checklist .checks { margin: 8px 0 0 1.2em; }
 
-#finish-stopped { margin-bottom: 14px; }
+#finish-stopped, #finish-closed { margin-bottom: 14px; }
+
+/* What Turn it on is about to do: not done yet, and no failure. */
+#finish-checklist li[data-status="to-do"]::before { content: "○ "; color: var(--muted); }
+
+/* What the family may come back for later, set apart from setting up. */
+#finish-later { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px; }
+
+#finish-later h3 { font-size: 15px; margin: 12px 0 6px; }
 
 /* ── Continue in the chat */
 

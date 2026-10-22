@@ -1890,7 +1890,8 @@ function finishResult(out) {
   other.hidden = !out.other;
   document.getElementById("finish-replace").hidden = out.wake !== "other-schedule" || running;
   document.getElementById("finish-install").hidden = running || done;
-  document.getElementById("finish-again").hidden = out.result !== "not-done";
+  // Only once a try has left something failing: before Turn it on, it's the one thing to press.
+  document.getElementById("finish-again").hidden = out.result !== "not-done" || !tried;
   document.getElementById("finish-stop").hidden = !tried;
   if (out.outcomes) renderChecklist(out.outcomes, tried);
   // Opened again after setup with a Source skipped, the server stays, for the link back.
@@ -1898,21 +1899,34 @@ function finishResult(out) {
   if (running) finishStep.timer = setTimeout(checkFinish, FINISH_MS);
 }
 
+// What Turn it on does: until it's been pressed, these aren't true yet, and that's no failure.
+const TURN_ON_DOES = { outcomes: ["nightly", "wake"], checks: ["schedule"] };
+
 // Each outcome, ticked once it's true. After a try, each that isn't says what's missing and
 // what to do, and a health check that isn't OK names its checks, as the check page does. A
-// health check with only warnings is true, and always lists them with what to do.
+// health check with only warnings is true, and always lists them with what to do. Before a try,
+// what Turn it on does is only still to do.
 function renderChecklist(outcomes, explain) {
   document.getElementById("finish-checklist").replaceChildren(...outcomes.map((o) => {
     const item = document.createElement("li");
-    item.dataset.status = o.ok ? "ok" : "fail";
+    const toDo = !o.ok && !explain && TURN_ON_DOES.outcomes.includes(o.outcome);
+    item.dataset.status = o.ok ? "ok" : toDo ? "to-do" : "fail";
     const line = document.createElement("span");
     setText(line, "finish.outcome." + o.outcome);
     item.append(line);
-    if (o.ok && o.checks) {
+    const checks = explain ? o.checks
+      : (o.checks || []).filter((c) => !TURN_ON_DOES.checks.includes(c.check));
+    if (toDo) {
+      const later = document.createElement("p");
+      later.className = "hint";
+      setText(later, "finish.to-do." + o.outcome);
+      item.append(later);
+    }
+    if (o.ok && checks && checks.length) {
       const warnings = document.createElement("p");
       warnings.className = "hint";
       setText(warnings, "finish.warnings");
-      item.append(warnings, failedChecks(o.checks));
+      item.append(warnings, failedChecks(checks));
     }
     if (o.ok || !explain) return item;
     const missing = document.createElement("p");

@@ -255,6 +255,7 @@ def test_a_family_goes_from_the_language_to_finish_in_the_browser(tab):
     expect(tab.get_by_text(text("finish.done", evening="16:05"))).to_be_visible()
     expect(tab.get_by_text(text("finish.closed"))).to_be_visible()
     expect(button(tab, "finish.start")).to_be_hidden()
+    expect(button(tab, "finish.again")).to_be_hidden()
     expect(button(tab, "connect.back")).to_be_hidden()
 
 
@@ -528,6 +529,43 @@ def test_the_check_page_says_why_whatsapp_isn_t_ok_and_offers_the_button_that_fi
     if reason == "missing-groups":  # back to WhatsApp's step, to read the groups again
         button(tab, fix).click()
         expect(heading(tab, "connect.title")).to_be_visible()
+
+
+def test_finish_offers_only_turn_it_on_and_no_failure_for_what_it_turns_on(tab, family, health):
+    # #463: the evening job, not loaded before Turn it on, is no failure and no warning yet.
+    at_finish(family)
+    health.results.append((ops.WARN, "schedule", "Schedule", "not installed yet"))
+    tab.reload()
+    expect(heading(tab, "finish.title")).to_be_visible()
+
+    expect(tab.get_by_text(text("finish.to-do.nightly"))).to_be_visible()
+    expect(button(tab, "finish.start")).to_be_visible()
+    expect(button(tab, "finish.again")).to_be_hidden()
+    expect(button(tab, "finish.stop")).to_be_hidden()
+    checklist = tab.locator("#finish-checklist")
+    expect(checklist.locator('li[data-status="fail"], li[data-status="warn"]')).to_have_count(0)
+    expect(checklist.get_by_text(text("health.check.schedule"))).to_be_hidden()
+
+
+def test_check_again_is_offered_only_once_turn_it_on_left_something_failing(tab, family, health):
+    at_finish(family)
+    health.results.append((ops.FAIL, "claude", "Claude", "call failed"))
+    tab.reload()
+    expect(button(tab, "finish.start")).to_be_visible()
+    expect(button(tab, "finish.again")).to_be_hidden()
+
+    button(tab, "finish.start").click()
+
+    expect(tab.get_by_text(text("finish.not-done"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.fail.ai"))).to_be_visible()
+    again = tab.locator("#finish-status").get_by_role("button", name=text("finish.again"))
+    expect(again).to_be_visible()
+
+    health.results.pop()  # the parent has fixed it
+    again.click()
+
+    expect(tab.locator("#finish-status")).to_have_attribute("data-result", "finish.done")
+    expect(button(tab, "finish.again")).to_be_hidden()
 
 
 def test_finish_moves_connect_s_sign_ins_into_changing_the_ai(tab, family, health):
