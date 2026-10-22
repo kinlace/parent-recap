@@ -28,7 +28,7 @@ folder's name, so `-m <layer>` runs one layer. A file outside these folders stop
 | ------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `unit`        | `tests/unit/`        | Nothing: pure functions, table-driven.                                                                                                                                     |
 | `integration` | `tests/integration/` | In-memory fakes around one module, which is called through its interface.                                                                                                  |
-| `e2e`         | `tests/e2e/`         | Only the OS and network edge (`conftest.py`'s harness); drives `main()` or the setup page over HTTP.                                                                       |
+| `e2e`         | `tests/e2e/`         | Only the OS and network edge and the model (`conftest.py`'s harness); drives `main()` or the setup page over HTTP.                                                         |
 | `adapters`    | `tests/adapters/`    | The command an OS adapter calls (`launchctl`, `security`, `pmset`), or nothing where the real OS runs (Credential Manager, Task Scheduler); the `_windows` twins are here. |
 | `scripts`     | `tests/scripts/`     | The downloads and programs `install.sh`, `install.ps1`, `release.py` and `issue-loop.sh` call; the workflows are read as written.                                          |
 
