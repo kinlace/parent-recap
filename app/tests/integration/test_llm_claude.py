@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -129,9 +130,10 @@ def test_claude_finds_its_program_on_path(claude):
 
 
 def test_claude_off_path_runs_by_the_full_path_it_is_found_at(process, home, monkeypatch):
-    native = home / ".local" / "bin" / "claude"
+    # claude.exe on Windows, where a program without its extension can't be run.
+    native = home / ".local" / "bin" / ("claude.exe" if sys.platform == "win32" else "claude")
     native.parent.mkdir(parents=True)
-    native.write_text("#!/bin/sh\n")
+    native.write_text("#!/bin/sh\n", encoding="utf-8")
     native.chmod(0o755)
     monkeypatch.setattr(shutil, "which", lambda *_a, **_k: None)
 
