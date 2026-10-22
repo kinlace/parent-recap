@@ -19,17 +19,19 @@ def _utc(dt: datetime, tz: str) -> datetime:
 
 
 def build(events: list[CalendarEvent], tz: str,
-          translated: Callable[[CalendarEvent], CalendarEvent] | None = None) -> bytes:
+          translated: Callable[[CalendarEvent], CalendarEvent] | None = None,
+          stamp: datetime | None = None) -> bytes:
     """One .ics file with a VEVENT per event. Stable UIDs mean re-importing updates
     the existing entry instead of duplicating it in most calendar apps. `translated` gives an
     event in a Recipient's language; its UID stays the original's, so both parents' .ics
-    imported into one shared calendar still make one entry."""
+    imported into one shared calendar still make one entry. `stamp` is when the file was made,
+    now unless given."""
     cal = Calendar()
     cal.add("prodid", "-//FamilyBrief//family-brief//ZH")
     cal.add("version", "2.0")
     cal.add("calscale", "GREGORIAN")
     cal.add("method", "PUBLISH")
-    stamp = datetime.now(timezone.utc)
+    stamp = stamp or datetime.now(timezone.utc)
     for ev in events:
         uid = f"{event_hash(ev)}@family-brief"
         ev = translated(ev) if translated else ev

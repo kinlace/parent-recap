@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from conftest import msg
-from family_brief import __main__ as main, llm
+from family_brief import __main__ as main, llm, run as evening
 
 GOOD = {"per_kid": [{"kid": "Mia", "notices": [{"text": "Retki to Nuuksio on Thu 1 Oct", "refs": ["1001"]}],
                      "action_items": []}],
@@ -57,7 +57,7 @@ def test_the_setup_page_preview_waits_less_than_the_evening_run(night, capsys):
     assert night.run("--preview") == 0
 
     [call] = night.model_calls
-    assert call.budget == main.PREVIEW_BUDGET < llm.CALL_BUDGET
+    assert call.budget == evening.PREVIEW_BUDGET < llm.CALL_BUDGET
     assert "could not be written" in capsys.readouterr().out
 
 
