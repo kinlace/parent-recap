@@ -16,12 +16,12 @@ from typing import Callable, Literal
 from . import ai_filter, feedback, gateway, languages, llm, private_files, render
 from . import sources as source_registry
 from .actions import archive, calendar as calendar_action, email as email_action, imessage
-from .brief_text import BriefText
+from .brief_text import BriefText, Language
 from .collectors.base import CalendarEvent, Message
 from .config import Config
 from .state import State
 from .summarize import add_the_nights_people, extract_calendar_events, for_the_ai, placeholders_for, summarize
-from .translate import translate
+from .translate import per_language, translate
 from .utils.dates import today_str
 
 log = logging.getLogger("family_brief")
@@ -441,26 +441,21 @@ def _versions(cfg: Config, written: _Written) -> list[render.Version]:
     original's (ADR 0004). Translations use tonight's placeholders."""
     summary = written.night.summary
     original = cfg.brief_language()
-    versions = []
-    for language, to in (cfg.brief_recipients_by_language() or {original: []}).items():
+
+    def in_language(language: Language, to: list[str]) -> render.Version:
         t = languages.text(cfg, language)
-        if language == original:
-            versions.append(render.Version(t, to, summary))
-        elif "_llm_error" in summary:
+        if "_llm_error" in summary:
             # The model is down, so there is nothing to translate; the raw list comes in their words.
-            versions.append(render.Version(t, to, _fallback_summary(written.for_ai, summary["_llm_error"], t, cfg)))
-        else:
-            try:
-                translated = translate(cfg, summary, original, language, written.placeholders)
-            except Exception as e:
-                log.error("Translating the Brief into %s failed: %s (sending the original)", language, e)
-                versions.append(render.Version(languages.text(cfg, original), to, summary,
-                                               translation_note=t.translation_failed))
-                continue
-            in_language = extract_calendar_events(translated, cfg.timezone, t.untitled)
-            versions.append(render.Version(t, to, translated, {
-                (ev.title, ev.start_iso()): tev for ev, tev in zip(written.model_events, in_language)}))
-    return versions
+            return render.Version(t, to, _fallback_summary(written.for_ai, summary["_llm_error"], t, cfg))
+        translated = translate(cfg, summary, original, language, written.placeholders)
+        events = extract_calendar_events(translated, cfg.timezone, t.untitled)
+        return render.Version(t, to, translated, {
+            (ev.title, ev.start_iso()): tev for ev, tev in zip(written.model_events, events)})
+
+    return per_language(
+        "the Brief", original, cfg.brief_recipients_by_language(),
+        lambda to, note: render.Version(languages.text(cfg, original), to, summary, translation_note=note),
+        in_language, lambda language: languages.text(cfg, language).translation_failed)
 
 
 # ── The setup page's preview

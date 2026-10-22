@@ -281,22 +281,18 @@ def _versions(cfg: Config, picks: list[dict]) -> list[_Version]:
     """One version per language among the Weekend Picks Recipients, the original first. The calendar
     and the archive keep the original only (ADR 0004)."""
     original = cfg.weekend_language()
-    versions = []
-    for language, to in (cfg.weekend_recipients_by_language() or {original: []}).items():
-        if language == original:
-            versions.append(_Version.written_in(cfg, language, to, picks))
-        elif all(p.get("_ranking_failed") for p in picks):
+
+    def in_language(language: Language, to: list[str]) -> _Version:
+        if all(p.get("_ranking_failed") for p in picks):
             # The model is down, so there are no reasons to translate; the fallback's comes in their words.
             reason = _text(cfg, language).ranking_failed
-            versions.append(_Version.written_in(cfg, language, to, [{**p, "why": reason} for p in picks]))
-        else:
-            try:
-                versions.append(_Version.written_in(cfg, language, to, _translated(cfg, picks, original, language)))
-            except Exception as e:
-                log.error("Translating Weekend Picks into %s failed: %s (sending the original)", language, e)
-                versions.append(_Version.written_in(cfg, original, to, picks,
-                                                    translation_note=_text(cfg, language).translation_failed))
-    return versions
+            return _Version.written_in(cfg, language, to, [{**p, "why": reason} for p in picks])
+        return _Version.written_in(cfg, language, to, _translated(cfg, picks, original, language))
+
+    return translate.per_language(
+        "Weekend Picks", original, cfg.weekend_recipients_by_language(),
+        lambda to, note: _Version.written_in(cfg, original, to, picks, translation_note=note),
+        in_language, lambda language: _text(cfg, language).translation_failed)
 
 
 def _format_body(candidates_by_id: dict[str, Candidate], weekend: tuple[Any, Any], v: _Version) -> str:

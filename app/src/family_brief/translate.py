@@ -6,14 +6,15 @@ calendar events, with the same due dates, times and refs) counts as a failed tra
 text is taken from it: the translation is a copy of the original with its Digest, Notices, Action
 Items and calendar event titles and descriptions replaced, so its Sources are the original's too.
 While the AI filter is on, the model gets the Brief with the night's placeholders (ADR 0013) and
-the reply gets the real values back before it is checked."""
+the reply gets the real values back before it is checked. `per_language` fans the Brief and
+Weekend Picks out to each language's Recipients."""
 from __future__ import annotations
 
 import copy
 import logging
 from datetime import date, timedelta
 from string import Template
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 from . import ai_filter, citations, kid_placeholders, languages
 from .brief_text import BriefText, Language
@@ -23,6 +24,8 @@ from .summarize import call_llm_filtered, digest_of
 from .utils.dates import today_str
 
 log = logging.getLogger(__name__)
+
+V = TypeVar("V")
 
 
 _INTRO = Template("""You translate a Household's daily Brief about their kids' school and hobbies from $original into $target. It goes to parents whose kids go to school in Finland.
@@ -183,3 +186,23 @@ def translate(cfg: Config, summary: dict[str, Any], original: Language, target: 
                               dst.placeholder_words(), placeholders).data
     _check(payload, reply, src, dst)
     return _merge(summary, reply, src, dst)
+
+
+def per_language(what: str, original: Language, by_language: dict[Language, list[str]],
+                 as_written: Callable[[list[str], str], V], in_language: Callable[[Language, list[str]], V],
+                 translation_failed: Callable[[Language], str]) -> list[V]:
+    """One version of `what` (the Brief, Weekend Picks) per language among the Recipients, the
+    original first: `as_written(to, note)` for those reading `original`, `in_language(language, to)`
+    for each other language. When that raises, its readers get the original after all, with
+    `translation_failed(language)` as its note. With no Recipients, the original alone, to nobody."""
+    versions = []
+    for language, to in (by_language or {original: []}).items():
+        if language == original:
+            versions.append(as_written(to, ""))
+            continue
+        try:
+            versions.append(in_language(language, to))
+        except Exception as e:
+            log.error("Translating %s into %s failed: %s (sending the original)", what, language, e)
+            versions.append(as_written(to, translation_failed(language)))
+    return versions

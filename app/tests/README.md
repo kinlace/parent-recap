@@ -47,6 +47,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_kid_placeholders.py`    | Each Kid as Kid A, Kid B and back                                |
 | `test_llm_memory.py`          | The llm package's in-memory adapter (ADR 0023)                   |
 | `test_llm_parse.py`           | The model's reply parsed, tier by tier, and the CLI's envelope   |
+| `test_per_language.py`        | The Brief's and Weekend Picks' versions, one per language        |
 | `test_render.py`              | Each golden night's Brief rendered, against its golden files     |
 | `test_run_plan.py`            | Quiet nights, dry runs and the preview: what tonight's run does  |
 | `test_sources.py`             | The Source registry's records, and the Sources a Household uses  |
