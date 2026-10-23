@@ -6,7 +6,7 @@
     {
       "name": "parent-recap",
       "source": "./",
-      "description": "Every evening, summarizes your kids' school mail, Wilma, WhatsApp parent groups and MyClub into a Brief in your language sent to your inbox, with optional Weekend Picks. macOS only."
+      "description": "Every evening, summarizes your kids' school mail, Wilma, WhatsApp parent groups and MyClub into a Brief in your language sent to your inbox, with optional Weekend Picks. Supports macOS and Windows 11 (x64). WhatsApp, direct Google Calendar updates, and in-chat settings changes are Mac-only."
     }
   ]
 }

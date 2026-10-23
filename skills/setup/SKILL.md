@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Install and configure Parent Recap, which every evening reads the kids' school mail, Wilma, WhatsApp parent groups and MyClub club calendar, and has Claude or ChatGPT (Codex) write a Brief sent to each parent's inbox in their own language. Use when the user says "install / set up parent recap", "install / set up family brief", "parent recap onboarding", "安装 / 设置 family brief", "家庭日报 onboarding", or has just installed this plugin and wants to start. macOS only.
+description: Install and configure Parent Recap, which every evening reads the kids' school mail, Wilma, WhatsApp parent groups and MyClub club calendar, and has Claude or ChatGPT (Codex) write a Brief sent to each parent's inbox in their own language. Use when the user says "install / set up parent recap", "install / set up family brief", "parent recap onboarding", "安装 / 设置 family brief", "家庭日报 onboarding", or has just installed this plugin and wants to start. Supports macOS and Windows 11 (x64). WhatsApp, direct Google Calendar updates, and in-chat settings changes are Mac-only.
 ---
 
 # Parent Recap setup
