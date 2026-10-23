@@ -9,6 +9,7 @@ What changes for families in each release, collected from the `What changes for 
 On a Mac, the setup page installs Codex itself when it's missing, as it already did on Windows.
 
 ### Changed
+
 - A family that picks ChatGPT on a Mac without Codex presses Install Codex on the setup page, and the page installs it and goes on to the ChatGPT sign-in, instead of being sent to download the ChatGPT app and waiting.
 
 ## 0.7.0 · 2026-10-22
@@ -16,11 +17,13 @@ On a Mac, the setup page installs Codex itself when it's missing, as it already 
 Setup is harder to get wrong: the WhatsApp step waits for the chats to sync, the last step asks for one thing, Windows refuses an administrator install, and the Mac Keychain warning shows only when it's real. Under the hood, the Sources, the AI backends and the setup page were reorganised (ADRs 0022–0024) with no change to what families see.
 
 ### Changed
+
 - On the last setup step, the page asks for one thing, Turn it on, and no longer shows a ✗ or a warning for what Turn it on hasn't done yet; once it has worked, it says plainly that setup is complete.
 - A family without a paid ChatGPT plan reads that ChatGPT works on any plan, Free included; only Claude still needs a paid plan.
 - Uninstall's closing notes list the untouched accounts as "Gmail, MyClub, Wilma, WhatsApp and Google" and put the Google Calendar note after the Source notes.
 
 ### Fixed
+
 - A family who signs in to WhatsApp for Mac during setup now waits for its chats to sync, so its groups show up on the Check page instead of an empty list.
 - On Windows, installing or setting up from a PowerShell window opened with "Run as administrator" stops at once and says to open PowerShell the normal way, instead of finishing a setup that can never send a Brief.
 - Setup started inside tmux or over SSH warns that passwords can't be saved in the Keychain only when macOS really refuses them there, not on every step of a Mac where saving works.
@@ -31,13 +34,16 @@ Setup is harder to get wrong: the WhatsApp step waits for the chats to sync, the
 No more header-only emails on quiet evenings, a skipped Source can be added later from the setup page, and on Windows a Brief missed while signed out comes at the next sign-in.
 
 ### Changed
+
 - On an evening with nothing worth telling, such as one with only an ordinary timetable for the next school day, the family gets no email instead of one that's empty apart from the header.
 - A family whose school and club news comes through Wilma, MyClub or WhatsApp can leave Gmail to only send the Brief, with no sender ticked, and gets no failed check or failed Source for it.
 
 ### Added
+
 - A family who skipped a Source such as Wilma or MyClub can add it from the setup page's Check or Finish step, or later by opening the page again, without asking the Parent Recap team.
 
 ### Fixed
+
 - On Windows, if nobody is signed in at Brief time, that evening's Brief now comes when someone next signs in, often the next morning, and the setup page and docs say so.
 
 ## 0.6.2 · 2026-10-19
@@ -45,6 +51,7 @@ No more header-only emails on quiet evenings, a skipped Source can be added late
 The setup page reads more clearly on Windows, and a notice from a parent group both Kids share goes under the Kid it's about.
 
 ### Fixed
+
 - A notice from a parent group shared by both Kids, such as "Chinese class is cancelled", goes under the Kid who takes that activity, not under both.
 - A Windows family who picks ChatGPT or Claude before it's installed or signed in no longer sees a Check again button that suggests they should fix something first.
 - On the Wilma step, the greyed-out town box now says right under it that Wilma is being got ready, or why that failed, so nobody thinks they must fill in the username first.
@@ -57,6 +64,7 @@ The setup page reads more clearly on Windows, and a notice from a parent group b
 On Windows, the install line pasted into PowerShell works again, and choosing Claude on the setup page signs in.
 
 ### Fixed
+
 - The install line pasted into a Windows PowerShell window installs Parent Recap instead of stopping with "'OSArchitecture' cannot be found".
 - On Windows, the setup page's Claude sign-in window runs `claude setup-token` instead of stopping with a Python SyntaxError.
 - On a night when the AI writes only things to know and no Digest, the Brief lists them by Kid instead of arriving empty.
@@ -67,11 +75,13 @@ On Windows, the install line pasted into PowerShell works again, and choosing Cl
 Parent Recap runs on a Windows 11 PC too: one PowerShell line installs it, and the setup page connects Gmail, Wilma and MyClub with the gateway, ChatGPT or Claude (ADR 0019). On a Mac and on Windows, the Kids now reach the AI as Kid A and Kid B, and the Brief reads tighter.
 
 ### Added
+
 - Windows 11 (x64): paste one line into PowerShell to install, then finish setup in the browser page with the gateway, ChatGPT (the page installs and signs in Codex) or Claude (the page installs Claude Code and takes its token). The evening Brief runs from Task Scheduler and wakes the PC, as long as you stay signed in to Windows (ADR 0021). `doctor` checks it, and `parent-recap uninstall` removes it, with the same choice about the archive of past Briefs as on a Mac. Not on Windows yet: WhatsApp, Google Calendar mode, and changing settings in a chat. See `docs/windows.md`.
 - When the AI that writes your Brief stops working, the setup page's Finish step can switch to Claude, ChatGPT or the gateway, or take a new Gateway Key, without a chat or Terminal.
 - The setup page's first step has a folded list of what to have ready: the Wilma login, a MyClub link per Kid, Gmail's 2-Step Verification and your phone.
 
 ### Changed
+
 - With the AI filter on, the Kids reach the AI as Kid A and Kid B by default. The Brief still shows their names. Ask Claude or Codex to send their names as they are.
 - An English or Chinese Brief translates everyday Finnish words (eväät, vaatetus, kota), keeping the Finnish only in brackets after a form's or event's name, such as 家长会（vanhempainilta）.
 - The Brief skips sections and lines that only say there is nothing new, lists each to-do once under its heading, and says a paper to sign is in the kid's home folder or bag instead of sending you to Wilma.
@@ -80,6 +90,7 @@ Parent Recap runs on a Windows 11 PC too: one PowerShell line installs it, and t
 - The README and troubleshooting say the evening job runs only while someone is logged in to the Mac, and what to do after a restart. `doctor` says "installed but not loaded for this login" instead of "not installed yet" then.
 
 ### Fixed
+
 - Uninstall no longer misses something setup installed when two setup steps finished at the same moment.
 - On a Windows PC whose language isn't set to UTF-8, setup no longer says it couldn't read Gmail when a sender's name has characters such as Chinese or č.
 - The setup page's last step says the evening time you chose on the Check step, not 21:00.
@@ -89,12 +100,14 @@ Parent Recap runs on a Windows 11 PC too: one PowerShell line installs it, and t
 A Household without a Claude or ChatGPT subscription can be invited to get its Brief through the maintainers' gateway, and setup says why the WhatsApp check failed.
 
 ### Added
+
 - An invited Household can pick "Provided by Parent Recap" on the setup page and paste its Gateway Key there. The Brief is then written through the maintainers' gateway, without Claude Code or Codex installed. What passes through the gateway, what it keeps and where it runs is in `SECURITY.md`.
 - Each Gateway Key has a credit for the day. When it's used up, the Brief says so at once, instead of waiting as if the model were busy, and the credit comes back in time for the next evening's Brief.
 - `manage` switches between Claude, ChatGPT and the gateway, and can replace a Gateway Key.
 - parentrecap.com has a homepage in Finnish, English and Chinese.
 
 ### Changed
+
 - When the WhatsApp check fails during setup, the page says why and offers the step that fixes it: turning on Full Disk Access yourself, ticking a group again, or waiting for WhatsApp for Mac to show your chats.
 - The setup page says your messages are filtered before they reach the gateway only when the AI filter is on.
 
@@ -103,9 +116,11 @@ A Household without a Claude or ChatGPT subscription can be invited to get its B
 Much less of your messages reaches the AI: other people's names, phone numbers, email addresses and links go as placeholders, and messages about a child's health, support, bullying or welfare stay on your Mac (ADR 0013).
 
 ### Upgrading
+
 - Updating installs the new Wilma program (wilma CLI 2.1.2) into `~/ParentRecap/wilma`. If the download fails, the old one keeps working and the next update tries again. The evening Brief now signs in to Wilma once, not once for every message, so Wilma signs you out in your browser less often.
 
 ### Added
+
 - The AI filter, on by default. Ask Claude or Codex to turn it off if you want the AI to get your messages as they are.
   - Phone numbers, email addresses and links reach the AI only as placeholders. The Brief still shows them.
   - The names of the teachers, other pupils and other parents who send the evening's messages reach the AI only as placeholders. The Brief shows each name as the message wrote it.
@@ -115,11 +130,13 @@ Much less of your messages reaches the AI: other people's names, phone numbers, 
 - `parent-recap ai-filter-report` shows, as counts only, what the AI filter catches in your own archive of past evenings. With `--held-back` it opens the list of held-back messages in TextEdit and never prints it, so Claude or Codex can run it for you without the messages reaching the chat.
 
 ### Changed
+
 - The setup page's AI sign-in step says that Claude and ChatGPT may train on your chats by default, and where to turn that off. The README explains what reaches the AI and what doesn't.
 - In a pilot family's Brief, the ⭐ / ❌ feedback links send the team the item as the AI saw it, the Kids as Kid A and Kid B, and a code made from your family's name instead of the name.
 - The MyClub step says to tick only one Kid in MyClub's calendar subscription and make one link per Kid. It shows the link you pasted, starts empty for each Kid, shows the result where you pressed Check and save, and won't save the same link for two Kids.
 
 ### Fixed
+
 - With only the ChatGPT app installed, setup and the evening Brief now find its Codex. When Codex is missing, the page says where to get it and offers a download button.
 - A Household whose model is billed per use and runs out of API credit gets its fallback Brief at the usual time, not 30 minutes late.
 
@@ -128,6 +145,7 @@ Much less of your messages reaches the AI: other people's names, phone numbers, 
 The Wilma step of setup asks for your town, not your school.
 
 ### Changed
+
 - The setup page's Wilma search asks for your town, and says that all of a town's schools sign in through the town's Wilma, so the school's name isn't needed. Before, it said "town or school", and a school's name never matched, because Wilma's list has one entry for each town's schools. The few independent schools with their own Wilma can still be found by name.
 
 ## 0.5.5 · 2026-10-07
@@ -135,11 +153,13 @@ The Wilma step of setup asks for your town, not your school.
 Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010), brings its own Python and Node, and reads WhatsApp with Full Disk Access.
 
 ### Upgrading
+
 - Parent Recap now installs its own Python into `~/ParentRecap/runtime` and no longer needs Homebrew's, so a `brew upgrade` can't stop the evening Brief any more (ADR 0011). The install rebuilds the program's Python packages on it. Since the Python is new, macOS no longer lets Parent Recap read WhatsApp: if it reads your WhatsApp groups, add the Python path the install prints to System Settings → Privacy & Security → Full Disk Access.
 - Parent Recap also installs its own Node, and setup installs the Wilma program into `~/ParentRecap/wilma` and runs it on that Node, so Wilma works on a Mac without Node and you don't need Homebrew any more (ADR 0011). Setup installs the Wilma program again the first time you connect Wilma; a Node or Wilma program the Mac already has isn't used or touched. The install downloads about 230 MB.
 - This version does not move an earlier install. If `~/FamilyBrief` holds a program, or the jobs `com.family.brief` or `com.family.weekend-events` are loaded, `get.sh` and `install.sh` stop and say so: run `~/FamilyBrief/app/.venv/bin/family-brief uninstall` first, then install again. An archive you kept in `~/FamilyBrief` doesn't block the install.
 
 ### Changed
+
 - The program lives in `~/ParentRecap`, the jobs are `com.parentrecap.daily` and `com.parentrecap.weekend-events`, and the variables are `PARENT_RECAP_HOME` and `PARENT_RECAP_BG`.
 - The command is `parent-recap`; `family-brief` still works. The Brief's own text, hints, logs and docs say Parent Recap and `~/ParentRecap`.
 - Unchanged: the Keychain service, the Google Calendar event properties, the `.ics` UID and `~/.family`.
@@ -152,6 +172,7 @@ Parent Recap replaces FamilyBrief in text, folders and jobs (ADR 0010), brings i
 The pilot feedback Form ships with the program.
 
 ### Setup
+
 - Setup asks whether you're a pilot family. If you say yes, the evening Brief has ⭐ / ❌ links that open the pilot feedback Form already filled in, so you only press Submit.
 
 ## 0.5.3 · 2026-10-05
@@ -159,10 +180,12 @@ The pilot feedback Form ships with the program.
 Fixes from setting up on Xiao xi's Mac mini.
 
 ### The evening Brief
+
 - The evening Brief reads the Claude token and the Gmail App Password without a hidden Keychain popup. If doctor says macOS asks for the Keychain password, storing the token or App Password again once fixes it.
 - Setup and the evening Brief find Claude Code, Codex, Node and the Wilma CLI even when macOS's own Terminal doesn't have them on its PATH, as with fish, nix or a custom npm folder.
 
 ### Setup
+
 - The setup page finishes with "All done" when only warnings are left, and stops you if the evening Brief can't sign in to Claude.
 - A "Check again" button on the last step runs the checks again after you fix something, without turning anything on again.
 - Run inside tmux or over SSH, setup warns at the start that passwords can't be saved there, and if saving fails it says to run it again in a plain Terminal window, instead of asking you to click Allow on a prompt that never comes.
@@ -173,6 +196,7 @@ Fixes from setting up on Xiao xi's Mac mini.
 Setup page fixes from the first web setup on an Intel Mac.
 
 ### Setup
+
 - The setup page's last step says which check failed and what to do, and always ends: with "All done", or with "Finish for now" and how to come back later. The Terminal window then says it can be closed.
 - After each Source is connected, the page says which Source comes next and moves to it.
 - The page explains that a sleeping Mac wakes for the evening Brief, but a Mac that's shut down makes no Brief, so leave it asleep or locked in the evening.
@@ -182,12 +206,14 @@ Setup page fixes from the first web setup on an Intel Mac.
 Install and uninstall fixes from the first tries on an Intel Mac and a Mac mini, and retries when the AI is busy.
 
 ### Install and uninstall
+
 - The install line installs only ready-made packages, at the versions we tested, so it works on Intel Macs again and never tries to compile anything on your Mac. Apple Silicon Macs are recommended, and Intel Macs work for now on a best-effort basis.
 - If the install can't set up its Python packages, you see a short message saying where its log is and what to do next, instead of pages of build output. Every install keeps a dated log in `~/FamilyBrief/logs`.
 - The install leaves out Google's packages, which only Google Calendar uses. They're installed when you turn Google Calendar on, and on every update while you use it.
 - Uninstall also removes the wilma CLI, the Wilma sign-in with its password, and the Claude Code plugin when setup installed them, and leaves the ones you had before setup.
 
 ### The Brief
+
 - When Claude or ChatGPT is too busy in the evening, Parent Recap tries again a few minutes later instead of sending a Brief without its Digest.
 
 ## 0.5.0 · 2026-10-04
@@ -195,6 +221,7 @@ Install and uninstall fixes from the first tries on an Intel Mac and a Mac mini,
 Setup moves into a page in your browser (#84).
 
 ### Install and setup
+
 - Every family installs with the same line in Terminal. It opens a setup page in your browser, in Suomi, English or 中文, and you click through it instead of chatting. Setup in Claude Code or Codex is still there if you prefer it.
 - Welcome asks a few choices with defaults: Claude or ChatGPT, whether your partner gets the Brief too, and pilot feedback. It checks that Claude Code or Codex is installed and signed in.
 - You connect your Sources from one list and can skip the ones you don't need:
@@ -216,6 +243,7 @@ Passwords typed into the page go only to Parent Recap on your Mac. The page can 
 Fixes from the first setup rehearsal on a fresh Mac (#56).
 
 ### Install and setup
+
 - Setup asks one thing at a time, mostly as choices you tap, and no longer asks for your Kids' school or class.
 - The Wilma sign-in window explains in your language what to type, and closes Wilma by itself once you're signed in, so you no longer see the student picker or an error.
 - Setup no longer asks about Google Calendar, so new events always come as an attachment on the Brief. The assistant never searches your folders or opens your files.
@@ -227,6 +255,7 @@ Fixes from the first setup rehearsal on a fresh Mac (#56).
 A new setup: fewer questions, one list of things to connect, and no Terminal windows for passwords (#43).
 
 ### Install and setup
+
 - Install by pasting one line into Terminal, one for Claude Code and one for Codex. Pasting it again later updates Parent Recap.
 - Setup asks fewer questions. You check a card of defaults, connect each Source from one list (WhatsApp and MyClub can be skipped and added later), confirm one page of what was found, and see a preview of your first Brief before it's sent.
 - Passwords and links go into macOS dialogs with a lock icon, never the chat: the Gmail App Password, the Claude token and each Kid's MyClub calendar link. Setup checks each one before saving it.
@@ -237,6 +266,7 @@ A new setup: fewer questions, one list of things to connect, and no Terminal win
 - Weekend Picks are no longer asked in setup. Turn them on any time by asking.
 
 ### Uninstall
+
 - Remove Parent Recap by telling Claude or Codex "uninstall Parent Recap". It lists everything first, asks whether to keep your past Briefs, and leaves your accounts as they are.
 
 ## 0.4.1 · 2026-10-02
@@ -244,6 +274,7 @@ A new setup: fewer questions, one list of things to connect, and no Terminal win
 Fixes from the first fresh-install rehearsal (#2).
 
 ### The Brief
+
 - The emailed Brief shows each Kid's name as a heading with their points as a bulleted list, instead of raw `##`, `**` and `-` marks.
 - Dates in the Digest, Notices and Action Items are written the way your language writes them, never as 2026-10-07.
 - Each Kid is called by the same everyday name throughout the Brief. A household set up before 0.4.1 can ask the assistant to add each Kid's everyday name.
@@ -251,16 +282,19 @@ Fixes from the first fresh-install rehearsal (#2).
 - The problem lines in the Brief, the notes on calendar events and Weekend Picks, and the calendar attachment's name say Parent Recap instead of FamilyBrief.
 
 ### Calendar
+
 - An exam, outdoor day, shortened school day or other school event that a message gives a date for but no start time now arrives in the calendar as an all-day event.
 - The calendar no longer gets an entry for an Action Item's due date, or for a regular training that just carries on, such as after a holiday.
 
 ### Setup
+
 - Setup asks your city, where school mail arrives and about WhatsApp groups first, and fills in your Kids from Wilma instead of asking.
 - Weekend Picks are offered only where they have events nearby: Helsinki, Espoo, Vantaa and Kauniainen.
 - The Gmail sender scan shows its progress, the WhatsApp permission step is a single drag from Finder, and the wake-up command warns before it replaces a wake schedule the Mac already has.
 - The setup guides say Parent Recap instead of FamilyBrief.
 
 ### Reliability
+
 - When Gmail, Wilma or MyClub is slow to answer, Parent Recap tries once more instead of sending the Brief without it.
 
 ## 0.4.0 · 2026-10-01
@@ -268,6 +302,7 @@ Fixes from the first fresh-install rehearsal (#2).
 The first public release, now called **Kinlace Parent Recap**.
 
 ### Install and setup
+
 - The product is now called Kinlace Parent Recap. Install it with `/plugin install parent-recap@kinlace` from the public `kinlace/parent-recap` repository, or from the latest release zip, with no GitHub account. Start it with `/parent-recap:setup`. Families who installed an earlier version in Claude Code remove the old `family-brief` marketplace first (see the README).
 - The README, setup docs, example config and installer messages are in English. Setup and manage reply in the language the parent writes in, and `doctor` and the setup scripts speak English.
 - Setup asks each parent's language, and a parent can change theirs or add a Recipient later just by asking.
@@ -276,6 +311,7 @@ The first public release, now called **Kinlace Parent Recap**.
 - The README and install zip say how data flows, where each password lives, and that Parent Recap isn't affiliated with the services it reads (SECURITY.md, MIT licence).
 
 ### Languages
+
 - Each family chooses the Brief's language, and the whole Brief follows it, the program's own lines included. A config without `summary_language` now gets an English Brief. Configs copied from the old example already say `zh` and stay Chinese.
 - Each parent can get the Brief in their own language, with the same content. The Brief is written once and translated, so a second language costs one extra model call a night.
 - A parent never gets a translated Brief that quietly dropped an item or changed its date or Kid. On a night the translation goes wrong, they get the original with a short note at the top.
@@ -284,6 +320,7 @@ The first public release, now called **Kinlace Parent Recap**.
 - Dates and times read the way people write them in each language ("Thu 1 Oct 09:00", "10月1日 周四 09:00", "to 1.10. klo 9.00").
 
 ### A more reliable nightly Brief
+
 - If a night's Brief fails to send, the next night's Brief includes everything from the failed night.
 - A hiccup while reading Gmail, Wilma or WhatsApp no longer makes messages disappear. They show up in the next Brief.
 - On a night when no Source could be read, the parents get a short Brief that says which Sources failed and how to fix each one.
@@ -295,10 +332,12 @@ The first public release, now called **Kinlace Parent Recap**.
 - A setup preview that gets cut off no longer leaves a hidden job running, and two runs can't happen at once.
 
 ### Safety and privacy
+
 - A message in a parent group or an email can no longer get Parent Recap to add a made-up event or link to the family calendar. Calendar events must cite a real message, and the model is told that message text is data, not instructions.
 - The AI call can't run commands or read other files on the parents' Mac. The prompt goes over stdin, Claude sessions aren't saved, and the Claude token stays off the command line.
 - Other accounts on the family Mac can't read the archive or logs: `~/FamilyBrief` and everything Parent Recap writes is owner-only. The MyClub calendar link stays out of logs and chat, and parents add it in their own Terminal.
 
 ### For operators
+
 - The pilot feedback form is in English for every Household. Re-run `ops/feedback-form/create_feedback_form.gs` and hand out the new `feedback` section, since links from this version pre-fill the English options.
 - Releases are tagged builds: pushing `vX.Y.Z` runs the tests on macOS, publishes the zip as a GitHub Release and moves `stable`.
