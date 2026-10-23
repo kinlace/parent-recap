@@ -545,6 +545,8 @@ def test_the_state_says_which_system_and_ais_the_page_offers(page):
     assert state["system"] == ("windows" if sys.platform == "win32" else "macos")
     assert state["ais"] == (["gateway", "codex", "claude"] if sys.platform == "win32"
                             else ["claude", "codex", "gateway"])
+    # The AIs the page installs itself, so Welcome goes on without them (#387, #473).
+    assert state["installs"] == (["claude", "codex"] if sys.platform == "win32" else ["codex"])
 
 
 def test_on_windows_welcome_offers_the_gateway_first_then_chatgpt_and_claude(harness, page):
@@ -552,6 +554,7 @@ def test_on_windows_welcome_offers_the_gateway_first_then_chatgpt_and_claude(har
 
     state = call(page.url, "api/state").json()
     assert state["system"] == "windows" and state["ais"] == ["gateway", "codex", "claude"]
+    assert state["installs"] == ["claude", "codex"]
     assert state["welcome"]["ai"] == "gateway"  # the default, too
     assert check_ai(page.url, "gateway").json() == {"result": "ready", "ai": "gateway"}
     assert welcome(page.url, ai="gateway").status == 200
@@ -583,8 +586,23 @@ def test_on_windows_chatgpt_has_no_chat_to_continue_in_since_the_skills_are_maco
 
 def test_on_windows_chatgpt_s_texts_say_the_page_installs_codex_in_all_three_languages():
     for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
-        for key in ("ai.codex.not-installed", "ai.codex.signed-out", "codex.not-installed"):
+        for key in ("ai.codex.not-installed", "ai.codex.signed-out", "codex.not-installed",
+                    "codex.install-failed"):
             assert f"{key}.windows" in table, (language, key)
+
+
+def test_on_a_mac_chatgpt_s_texts_say_the_page_installs_codex_and_offer_no_download(
+        ):
+    """A Mac without Codex gets Install Codex, as Windows does (#473): the texts for a missing
+    Codex name the button, still say the ChatGPT app brings a Codex, and the button that opened
+    the app's download is gone."""
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        assert "codex.download" not in table, language
+        for key in ("ai.codex.not-installed", "codex.not-installed"):
+            assert "ChatGPT" in table[key], (language, key)
+        for key in ("codex.not-installed", "codex.install-failed"):
+            for shown in (table[key], table[f"{key}.windows"]):  # on a Mac, and on Windows
+                assert table["codex.install"] in shown, (language, key)
 
 
 def test_on_windows_claude_s_texts_say_the_page_installs_claude_code_in_all_three_languages():

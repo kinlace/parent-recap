@@ -1,5 +1,5 @@
 """The AI sign-in for the evening Brief: Claude's token, Codex's ChatGPT sign-in and the Gateway
-Key, and on Windows installing Claude Code or the Codex CLI first. At Finish, signing in to
+Key, and installing the Codex CLI first, or on Windows Claude Code too. At Finish, signing in to
 another AI switches the Household to it (ADR 0017)."""
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ CLAUDE_RESULTS = ("waiting", "saved", "not-installed", "sign-in-failed", "timeou
 CLAUDE_WINDOW_RESULTS = ("opened", "no-terminal", "not-installed")
 # Codex's ChatGPT sign-in: signed in, signed out, `waiting` while its sign-in is open in the
 # browser, and `login-failed` when that ended without signing in or didn't start. At Finish,
-# `test-call-failed` when a signed-in Codex didn't answer the test call a switch needs. On
-# Windows, where the page installs the Codex CLI, `installing`, and `install-failed` once.
+# `test-call-failed` when a signed-in Codex didn't answer the test call a switch needs. While the
+# page installs the Codex CLI, `installing`, and `install-failed` once.
 CODEX_RESULTS = ("signed-in", "signed-out", "waiting", "login-failed", "not-installed",
                  "check-failed", "test-call-failed", "installing", "install-failed")
 # The Gateway Key pasted into the page, tested and stored as `setup gateway` does.
@@ -51,7 +51,7 @@ class AISignIn(Phase):
         # Claude Code's install on Windows, once started: `installing`, then `install-failed`, or
         # how opening its sign-in window went, which the next check says once.
         self._claude_install: str | None = None
-        # The Codex CLI's install on Windows, once started: `installing`, then `installed` or
+        # The Codex CLI's install, once started: `installing`, then `installed` or
         # `install-failed`, which the next check says once.
         self._codex_install: str | None = None
 
@@ -255,15 +255,15 @@ class AISignIn(Phase):
         return HTTPStatus.OK, {"result": "waiting" if started else "login-failed"}
 
     def install_codex(self, raw: Any) -> Reply:
-        """On Windows, installs the Codex CLI with OpenAI's own installer in the background, then
-        starts its sign-in as `sign_in_codex` does. The page checks with `check_codex`. A Mac's
-        Codex comes with the ChatGPT app, which the page offers to download instead."""
+        """Installs the Codex CLI with OpenAI's own installer in the background, then starts its
+        sign-in as `sign_in_codex` does. The page checks with `check_codex`. A Mac whose Codex or
+        ChatGPT desktop app brought a Codex has one already: only its sign-in starts."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
         if "codex" not in profile.current().page_installs:
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                "invalid-answers", "Codex comes with the ChatGPT app on a Mac.",
-                errors=["answers: the page installs Codex only on Windows"])
+                "invalid-answers", "The setup page doesn't install Codex on this system.",
+                errors=["answers: the page installs Codex only where its profile says so"])
         if program(self.context, "codex") is not None:
             return self.sign_in_codex({})
         with self._lock:

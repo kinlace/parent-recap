@@ -153,7 +153,7 @@ sw_vers -productVersion; command -v claude || echo "claude (missing)"; ls ~/.loc
 - Python and Node need nothing, and neither does Homebrew: `install.sh` downloads Parent Recap's own Python and Node, and the wilma CLI runs on that Node.
 - Claude: the nightly job uses the `claude` command. If `claude` is missing and there's no `~/.local/bin/claude` either, give the user Claude Code's native installer to run in Terminal: `curl -fsSL https://claude.ai/install.sh | bash`. It installs into their own folder (`~/.local/bin`) and keeps Claude Code up to date by itself. A `~/.local/bin/claude` counts as installed even when `command -v` says missing: the program finds it there. So does one that `$SHELL -l -c 'command -v claude'` finds, as with the parent's own shell setup (fish, nix, a custom npm prefix); the same goes for `codex`. Don't suggest `npm install -g @anthropic-ai/claude-code`: a global npm install can leave Claude Code unable to update itself.
 - If the parent sees Claude Code's red notice "Auto-update failed" (often "no write permission to npm prefix"), or `claude` isn't in `~/.local/bin` and `npm ls -g @anthropic-ai/claude-code` lists it (an npm install), tell them the notice comes from Claude Code itself and doesn't affect Parent Recap. Setup carries on. If they want the notice gone, they can install Claude Code again with the native installer above, after setup.
-- ChatGPT: Codex or the ChatGPT desktop app must be installed and signed in to Codex with their ChatGPT account. The program uses the codex bundled in the app.
+- ChatGPT: a `codex` signed in with their ChatGPT account. The program uses the codex bundled in the Codex or ChatGPT desktop app when there is one, else `~/.local/bin/codex`, which the setup page installs with OpenAI's own installer when none is found; in a chat, give the user that line to run in Terminal: `curl -fsSL https://github.com/openai/codex/releases/latest/download/install.sh | sh`, then `codex login`.
 
 Then install the program with `bash "PLUGIN/install.sh"`. It takes a few minutes. Once it's done, save the card's answers with `$FB setup save`: `language`, `ai`, `recipients`, `sources.gmail.address`, and `"progress": {"phase": "connect", "source": "wilma"}`.
 
@@ -210,7 +210,7 @@ Then run `$FB setup gmail --address <address>`. It opens the App passwords page 
 
 **Claude** (`llm.backend: claude`). Why: the nightly job runs in the background, where it can't use Claude Code's login, so it needs its own token, valid for a year. Tell the parent a Terminal window and Claude's sign-in page will open: they click Authorize, copy the token the Terminal window shows (it starts with `sk-ant-oat01-`), paste it into the Parent Recap dialog, and then press Enter in the Terminal window to clear it. Run `$FB setup claude`. On `saved`, it has made a test call. On `test-call-failed`, check the plan is Claude Pro or Max.
 
-**ChatGPT** (`llm.backend: codex`). There's no token step: the nightly job reuses the login Codex already has. Tell the parent so; the test call happens in Working. If Codex isn't signed in with a ChatGPT account, have them sign in in the Codex app first.
+**ChatGPT** (`llm.backend: codex`). There's no token step: the nightly job reuses the login Codex already has. Tell the parent so; the test call happens in Working. If Codex isn't signed in with a ChatGPT account, have them sign in in the Codex app first, or with `codex login` for a Codex the setup page or the install line above put in `~/.local/bin`.
 
 ### WhatsApp
 

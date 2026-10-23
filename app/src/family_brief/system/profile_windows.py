@@ -50,6 +50,10 @@ PROFILE = profile.Profile(
     ais=("gateway", "codex", "claude"),  # the gateway stays Welcome's default on Windows
     page_installs=frozenset({"claude", "codex"}),
     install_lines={"claude": CLAUDE_INSTALL, "codex": CODEX_INSTALL},
+    # As the installers' instructions say to run their lines: PowerShell downloads and runs them,
+    # here without the family's profile or any prompt.
+    installer=("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command"),
+    codex_apps=False,  # the Windows apps bring no codex the program finds
     chats=frozenset(),
     pseudo_terminal=False,
     login_shell=False,

@@ -13,8 +13,9 @@ there, and the family copies the token from a PowerShell window into the page.
 `codex login` opens the browser for the ChatGPT sign-in itself and keeps the login in auth.json
 under ~/.codex, or in the system's own credential store if `cli_auth_credentials_store` in Codex's
 own config says so (https://learn.chatgpt.com/docs/auth); the page only starts it and checks
-`codex login status` until it says signed in. On Windows the page installs the Codex CLI first if
-it isn't there.
+`codex login status` until it says signed in. The page installs the Codex CLI first if it isn't
+there (on a Mac, when no Codex or ChatGPT desktop app brought one), with OpenAI's own installer
+run the way its instructions say: in sh on a Mac, in PowerShell on Windows (#473).
 """
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ from typing import Any
 
 from . import install_record, llm
 from .setup_report import keychain_failure
-from .system import profile, secrets, windows_only
+from .system import profile, secrets
 
 try:  # `claude setup-token`'s pseudo-terminal, which Windows doesn't have
     import fcntl
@@ -46,9 +47,6 @@ CLAUDE_TOKEN = re.compile(r"sk-ant-[A-Za-z0-9_-]+")
 # Loose on purpose, like CLAUDE_TOKEN: the test call decides whether it works. A Gateway Key is
 # sk-bf-…, and an Anthropic-compatible endpoint used in its place takes sk-ant-….
 GATEWAY_KEY = re.compile(r"sk-[A-Za-z0-9_-]{8,}")
-# OpenAI's page for the ChatGPT desktop app, with Codex in it, and its download for macOS.
-CODEX_APP_URL = "https://developers.openai.com/codex/app"
-
 # Wide enough that Ink never wraps the token, which it would break across lines.
 COLUMNS, ROWS = 1000, 50
 READ_SECONDS = 0.2
@@ -126,21 +124,32 @@ def _token(shown: bytes, *, ended: bool) -> str | None:
 
 
 def install_codex() -> bool:
-    """Installs the Codex CLI on Windows with OpenAI's own installer, as their instructions say
-    to: PowerShell downloads and runs it. Whether it ran through. What it said isn't kept."""
-    return _install("codex")
+    """Installs the Codex CLI with OpenAI's own installer, as their instructions say to: the
+    system's shell downloads and runs it. Whether it ran through. What it said isn't kept."""
+    # Out of the Terminal the setup page runs in, where the installer would otherwise ask on
+    # the tty whether to start Codex, and wait for an answer.
+    return _install("codex", {"CODEX_NON_INTERACTIVE": "1"})
 
 
 def install_claude() -> bool:
-    """Installs Claude Code on Windows with Anthropic's own installer, the same way."""
-    return _install("claude")
+    """Installs Claude Code with Anthropic's own installer, the same way, where the page installs
+    it (Windows): on a Mac the family pastes its line into Terminal."""
+    return _install("claude", {})
 
 
-def _install(name: str) -> bool:
+def _install(name: str, env: dict[str, str]) -> bool:
+    system = profile.current()
     line = llm.named(name).install_line()
-    if name not in profile.current().page_installs or line is None:  # the family installs it
+    if name not in system.page_installs or line is None:  # the family installs it
         return False
-    return windows_only.install(line, CODEX_INSTALL_SECONDS)
+    try:
+        proc = subprocess.run([*system.installer, line], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=CODEX_INSTALL_SECONDS,
+                              stdin=subprocess.DEVNULL, env={**os.environ, **env},
+                              start_new_session=True)  # no tty of the Terminal's to ask on
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0
 
 
 def start_codex_login(program: str) -> subprocess.Popen | None:

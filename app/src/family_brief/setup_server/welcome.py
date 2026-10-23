@@ -41,9 +41,11 @@ class Welcome(Phase):
         return {"languages": [{"code": c, "name": n} for c, n in LANGUAGES.items()],
                 "language": self.context.chosen_language(),
                 "preselected": preferred_language(),
-                # Which system's words the page uses, and the AIs it offers here.
+                # Which system's words the page uses, the AIs it offers here, and those it
+                # installs itself, so Welcome needn't wait for them.
                 "system": profile.current().system,
                 "ais": list(ais()),
+                "installs": sorted(profile.current().page_installs),
                 # In tmux or SSH, macOS may not let this server save the passwords in the Keychain.
                 "keychain": {"reachable": secrets.reachable()},
                 "welcome": self._welcome(progress)}

@@ -15,7 +15,7 @@ from fake_system import MACOS, WINDOWS
 from family_brief import llm
 from family_brief.config import LLMConfig
 from family_brief.llm import codex as codex_backend
-from family_brief.system import profile_windows
+from family_brief.system import profile_macos, profile_windows
 
 REPLY = {"per_kid": [], "calendar_events": [], "message_digest": "Swimming on Thursday"}
 AT_CAPACITY = "ERROR: Selected model is at capacity. Please try a different model.\n"
@@ -110,12 +110,24 @@ def test_codex_inside_the_chatgpt_app_is_preferred(process, home, monkeypatch):
     assert call.argv[0] == str(bundled)
 
 
-@pytest.mark.parametrize("on, line", [(MACOS, None), (WINDOWS, profile_windows.CODEX_INSTALL)])
-def test_codex_installs_with_a_line_only_on_windows(codex, system, on, line):
-    # On a Mac it comes with the Codex or ChatGPT desktop app.
+@pytest.mark.parametrize("on, line", [(MACOS, profile_macos.CODEX_INSTALL),
+                                      (WINDOWS, profile_windows.CODEX_INSTALL)])
+def test_codex_installs_with_openai_s_own_line_for_the_system(codex, system, on, line):
     system.profile = on
 
     assert codex.install_line() == line
+    assert "https://github.com/openai/codex/releases/latest/download/install." in line
+
+
+@pytest.mark.parametrize("on, terminal, apps", [(MACOS, "Terminal", True), (WINDOWS, "PowerShell", False)])
+def test_a_missing_codex_says_the_setup_page_installs_it_and_on_a_mac_the_apps_have_one(
+        codex, system, on, terminal, apps):
+    system.profile = on
+
+    hint = codex.install_hint()
+
+    assert "the setup page" in hint and f"in {terminal} with {on.install_lines['codex']}" in hint
+    assert ("ChatGPT desktop app" in hint) is apps
 
 
 def test_codex_takes_no_pasted_token(codex, process):

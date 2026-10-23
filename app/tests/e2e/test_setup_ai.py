@@ -23,6 +23,7 @@ import yaml
 
 from family_brief import gateway, install_record, ops, setup_ai, setup_server, setup_steps
 from family_brief.config import Config
+from family_brief.llm import codex as codex_backend
 from conftest import program
 from setup_page import (PAGE_DIR, Response, assert_never_leaked, at_finish, at_the_check_step, call,
                         chat_installed, check_ai, config_file, confirm, health_result, inside,
@@ -483,13 +484,82 @@ def test_on_windows_installing_codex_that_is_there_already_only_opens_its_sign_i
     assert codex_installer["ran"] == []
 
 
+@pytest.fixture
+def mac_codex_installer(harness, ai, monkeypatch) -> dict[str, Any]:
+    """A Mac without Codex, and OpenAI's installer for macOS, which sh runs: the fake puts `codex`
+    where the real one does, in ~/.local/bin, unless `fails`. The Mac's PATH doesn't lead there:
+    the installer adds it only for windows opened after it ran."""
+    installer = {"fails": False, "ran": [], "folder": harness.home / ".local" / "bin"}
+    record_background_processes(harness, monkeypatch, [])
+    run = subprocess.run
+
+    def sh(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
+        if cmd[:2] != ["/bin/sh", "-c"]:
+            return run(cmd, *a, **k)
+        installer["ran"].append((cmd, k.get("env")))
+        if installer["fails"]:
+            return subprocess.CompletedProcess(cmd, 1, "", "curl: (6) Could not resolve host")
+        program(installer["folder"], "codex", FAKE_CODEX.format(python=sys.executable))
+        return subprocess.CompletedProcess(cmd, 0, "Codex CLI 0.1.0 installed successfully.\n", "")
+    monkeypatch.setattr(subprocess, "run", sh)
+    return installer
+
+
 @pytest.mark.macos
-def test_on_a_mac_the_page_doesn_t_install_codex_since_it_comes_with_the_chatgpt_app(harness,
-                                                                                    page, ai):
+def test_on_a_mac_the_page_installs_codex_with_openai_s_installer_and_opens_its_sign_in(
+        harness, page, mac_codex_installer):
+    at_the_ai_step(harness, page.url, "codex")
+    harness.signed_in["codex"] = False
+    assert codex_check(page.url) == {"result": "not-installed"}
+
     r = call(page.url, "api/codex/install", method="POST", body={})
 
-    assert r.status == 400
-    assert harness.commands == []
+    assert r.status == 200 and r.json() == {"result": "installing"}
+    assert codex_installed(page.url) == {"result": "waiting"}  # the sign-in is open in the browser
+    [(cmd, env)] = mac_codex_installer["ran"]
+    assert cmd == ["/bin/sh", "-c",
+                   "curl -fsSL https://github.com/openai/codex/releases/latest/download/install.sh | sh"]
+    # Run from Terminal, the installer would ask on its tty whether to start Codex, and wait.
+    assert env["CODEX_NON_INTERACTIVE"] == "1"
+    codex = mac_codex_installer["folder"] / "codex"
+    assert [str(codex), "login"] in harness.commands
+    wait_for(lambda: (codex.parent / "codex-login.ran").exists())
+    harness.signed_in["codex"] = True  # the family signs in with ChatGPT in the browser
+    out = codex_check(page.url)
+    assert out["result"] == "signed-in" and out["progress"]["sources"]["ai"] == "done"
+
+
+@pytest.mark.macos
+def test_on_a_mac_an_install_of_codex_that_fails_says_so_and_can_be_tried_again(
+        harness, page, mac_codex_installer):
+    at_the_ai_step(harness, page.url, "codex")
+    mac_codex_installer["fails"] = True
+
+    assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
+        {"result": "installing"}
+
+    assert codex_installed(page.url) == {"result": "install-failed"}
+    assert codex_check(page.url) == {"result": "not-installed"}  # said once
+    mac_codex_installer["fails"] = False
+    assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
+        {"result": "installing"}
+    assert codex_installed(page.url)["result"] == "signed-in"
+    assert len(mac_codex_installer["ran"]) == 2
+
+
+@pytest.mark.macos
+def test_on_a_mac_with_the_chatgpt_app_installing_codex_only_opens_the_app_s_codex_s_sign_in(
+        harness, page, mac_codex_installer, monkeypatch):
+    bundled = program(harness.home / "Applications" / "ChatGPT.app" / "Contents" / "Resources"
+                      / "codex-cli" / "bin", "codex", FAKE_CODEX.format(python=sys.executable))
+    monkeypatch.setattr(codex_backend, "CODEX_BUNDLED", (str(bundled),))
+    harness.signed_in["codex"] = False
+
+    r = call(page.url, "api/codex/install", method="POST", body={})
+
+    assert r.status == 200 and r.json() == {"result": "waiting"}
+    assert mac_codex_installer["ran"] == []
+    assert [str(bundled), "login"] in harness.commands
 
 
 @pytest.fixture

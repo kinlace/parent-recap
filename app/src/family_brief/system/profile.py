@@ -24,6 +24,8 @@ class Profile:
     ais: tuple[str, ...]          # the AIs the setup page offers, Welcome's default first
     page_installs: frozenset[str]  # the AIs the setup page installs itself
     install_lines: Mapping[str, str]  # the line that installs each AI's program in the terminal
+    installer: tuple[str, ...]    # the command the setup page runs such a line with, line last
+    codex_apps: bool              # whether the Codex or ChatGPT desktop app, with a codex inside, runs here
     chats: frozenset[str]         # the AIs whose chat has a setup skill for this system
     pseudo_terminal: bool         # whether a program can run in a pseudo-terminal the program reads
     login_shell: bool             # whether the family's login shell can say where a program is

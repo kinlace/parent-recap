@@ -3,8 +3,7 @@ program runs on Windows: whether "Allow wake timers" lets the evening job's task
 whether Windows signs the family back in after it restarts for an update ("Use my sign-in info to
 automatically finish setting up after an update"), without which that night's run doesn't happen.
 And uninstall's last step, which only Windows needs: removing the program and its Python once
-uninstall, which runs from them, has ended, and the setup page's install of Claude Code and the
-Codex CLI, whose own installers run in PowerShell. And whether setup runs as administrator, which it
+uninstall, which runs from them, has ended. And whether setup runs as administrator, which it
 refuses. They aren't interfaces with an adapter per system; their code stays Windows code."""
 from __future__ import annotations
 
@@ -27,20 +26,6 @@ TOKEN_QUERY, TOKEN_ELEVATION_TYPE, ELEVATION_FULL = 0x0008, 18, 2  # winnt.h
 def offers(name: str) -> bool:
     """Whether doctor and schedule offer the check `name` on this system."""
     return name not in CHECKS or profile.current().system == "windows"
-
-
-def install(line: str, timeout: int) -> bool:
-    """Runs an installer's own install `line` in a hidden PowerShell, as its instructions say
-    to: PowerShell downloads and runs it. Whether it ran through within `timeout` seconds. What
-    it said isn't kept."""
-    try:
-        proc = subprocess.run(["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
-                               "-Command", line],
-                              capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              timeout=timeout, stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return proc.returncode == 0
 
 
 def _dword(key: str, value: str) -> int | None:

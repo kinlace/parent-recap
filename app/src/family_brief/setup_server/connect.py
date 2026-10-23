@@ -6,7 +6,7 @@ from collections.abc import Callable
 from http import HTTPStatus
 from typing import Any, Literal
 
-from .. import setup_ai, setup_connect, setup_gmail, setup_myclub, setup_save
+from .. import setup_connect, setup_gmail, setup_myclub, setup_save
 from .. import sources as source_registry
 from ..setup_connect import Nothing, Reply, Strict, parse
 from ..system import desktop, desktop_macos, macos_only
@@ -17,7 +17,7 @@ from .context import Action, Phase
 SKIPPABLE = tuple(s.name for s in source_registry.in_connect_order() if s.skippable)
 # The sites the page's buttons open, by name: the page itself names none.
 SITES = {"app-passwords": setup_gmail.APP_PASSWORDS_URL, "two-step": setup_gmail.TWO_STEP_URL,
-         "myclub": setup_myclub.MYCLUB_URL, "codex-app": setup_ai.CODEX_APP_URL}
+         "myclub": setup_myclub.MYCLUB_URL}
 # The apps they open, by name.
 APPS = {"passwords": desktop_macos.open_passwords}
 

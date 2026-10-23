@@ -25,19 +25,14 @@ CODEX_BUNDLED = tuple(os.path.join(folder, app, inside)
 STATUS_SECONDS = 20
 
 
-def _page_installs() -> bool:
-    """Whether the setup page installs the Codex CLI on this system, with no Codex app to sign in
-    from (Windows); elsewhere it comes with the Codex or ChatGPT desktop app."""
-    return "codex" in profile.current().page_installs
-
-
 def missing() -> str:
-    """What to do when codex isn't found, on this system."""
+    """What to do when codex isn't found, on this system: the setup page installs the Codex CLI
+    with OpenAI's own installer, and a Mac's Codex or ChatGPT desktop app brings one too, which
+    is found first."""
     system = profile.current()
-    if _page_installs():
-        return (f"install the Codex CLI on the setup page, or in {system.terminal} with "
-                f"{system.install_lines['codex']}")
-    return "install the Codex or ChatGPT desktop app and sign in"
+    return (f"install the Codex CLI on the setup page, or in {system.terminal} with "
+            f"{system.install_lines['codex']}"
+            + (", or install the Codex or ChatGPT desktop app and sign in" if system.codex_apps else ""))
 
 
 def find_at(codex_path: str | None) -> str | None:
@@ -81,7 +76,6 @@ class Codex:
         return missing()
 
     def install_line(self) -> str | None:
-        # On a Mac it comes with the Codex or ChatGPT desktop app.
         return profile.current().install_lines.get("codex")
 
     def program_env(self) -> dict[str, str]:
@@ -130,11 +124,10 @@ class Codex:
         if not codex:
             return [Finding("fail", "codex", f"codex command not found: {missing()}, or set "
                             "llm.codex_path in the config")]
-        sign_in = (f"sign in again on the setup page, or run codex login in "
-                   f"{profile.current().terminal}; Codex keeps the sign-in in ~/.codex unless its "
-                   "own config says otherwise"
-                   if _page_installs() else
-                   "open the Codex app and sign in again with your ChatGPT account")
+        system = profile.current()
+        sign_in = (f"sign in again on the setup page, or run codex login in {system.terminal}"
+                   + (", or in the Codex or ChatGPT app" if system.codex_apps else "")
+                   + "; Codex keeps the sign-in in ~/.codex unless its own config says otherwise")
         if _signed_out(codex):
             return [Finding("fail", "codex", f"not signed in ({sign_in})")]
         try:

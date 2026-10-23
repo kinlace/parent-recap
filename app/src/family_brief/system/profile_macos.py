@@ -1,5 +1,6 @@
-"""The macOS `profile`: install.sh's layout, Terminal, Homebrew's and nix's folders, and the setup
-skills, which set up a Mac."""
+"""The macOS `profile`: install.sh's layout, Terminal, Homebrew's and nix's folders, the setup
+skills, which set up a Mac, and the Codex CLI's install, which the setup page runs when no Codex
+or ChatGPT desktop app brought one (#473)."""
 from __future__ import annotations
 
 import os
@@ -9,6 +10,10 @@ from .profile import Profile
 
 # Homebrew on Apple silicon and on Intel, and nix-darwin's per-user profile.
 SYSTEM_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", "/etc/profiles/per-user/{user}/bin")
+# The Codex CLI the way OpenAI installs it on a Mac: its own install.sh, published with each
+# release, puts `codex` in ~/.local/bin (one of tools.find's HOME_DIRS) without administrator
+# rights. Claude Code's line stays the family's to paste: its sign-in needs the Terminal anyway.
+CODEX_INSTALL = "curl -fsSL https://github.com/openai/codex/releases/latest/download/install.sh | sh"
 
 
 def _program_folders() -> list[str]:
@@ -33,8 +38,11 @@ PROFILE = Profile(
         "zh": "Parent Recap 的设置页面已经关闭。你可以关掉这个终端窗口了。",
     },
     ais=("claude", "codex", "gateway"),
-    page_installs=frozenset(),  # the family pastes Claude's line; Codex comes with the ChatGPT app
-    install_lines={"claude": "curl -fsSL https://claude.ai/install.sh | bash"},  # Claude Code's own
+    page_installs=frozenset({"codex"}),  # the family pastes Claude's line
+    install_lines={"claude": "curl -fsSL https://claude.ai/install.sh | bash",  # Claude Code's own
+                   "codex": CODEX_INSTALL},
+    installer=("/bin/sh", "-c"),
+    codex_apps=True,
     chats=frozenset({"claude", "codex"}),
     pseudo_terminal=True,
     login_shell=True,

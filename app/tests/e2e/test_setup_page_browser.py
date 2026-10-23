@@ -120,10 +120,12 @@ State = dict[str, Any]
 
 
 def as_on(tab, system: str, change: Callable[[State], State] = lambda state: state) -> None:
-    """The page loaded again as it is on `system`: the server's state says that system, with
-    `change` made to it, each time the page reads it."""
+    """The page loaded again as it is on `system`: the server's state says that system, and the
+    AIs its page installs there, with `change` made to it, each time the page reads it."""
+    installs = ["claude", "codex"] if system == "windows" else ["codex"]
+
     def handle(route) -> None:
-        route.fulfill(json=change({**route.fetch().json(), "system": system}))
+        route.fulfill(json=change({**route.fetch().json(), "system": system, "installs": installs}))
     tab.route(re.compile(r"/api/state$"), handle)
     tab.reload()
 
@@ -438,11 +440,12 @@ def test_welcome_offers_to_check_again_only_while_it_can_t_go_on(tab, ai, on, na
     again = button(tab, "welcome.ai.again", system=on)
     go_on = button(tab, "continue", system=on)
 
-    # Not installed: on Windows, Claude's or ChatGPT's own step installs it, so Welcome goes on.
+    # Not installed: where the AI's own step installs it (Codex on both systems, Claude Code on
+    # Windows), Welcome goes on; on a Mac the family installs Claude Code first.
     tab.get_by_role("radio", name=text(f"welcome.ai.{name}", system=on)).check()
 
     expect(tab.get_by_text(text(f"ai.{name}.not-installed", system=on))).to_be_visible()
-    if on == "windows":
+    if on == "windows" or name == "codex":
         expect(again).to_be_hidden()
         expect(go_on).to_be_enabled()
     else:
@@ -455,19 +458,26 @@ def test_welcome_offers_to_check_again_only_while_it_can_t_go_on(tab, ai, on, na
 
 
 @pytest.mark.parametrize("on", ["macos", "windows"])
-def test_chatgpt_s_step_installs_codex_on_windows_and_offers_the_chatgpt_app_on_a_mac(
+def test_chatgpt_s_step_installs_codex_and_offers_the_button_again_when_that_fails(
         tab, family, ai, on):
+    """Install Codex on a Mac as on Windows (#473); OpenAI's installer itself isn't run here, the
+    server's answers are played."""
     at_the_ai_step(tab, family, "codex", on)
-
     expect(tab.get_by_text(text("codex.not-installed", system=on))).to_be_visible()
     install = button(tab, "codex.install", system=on)
-    download = button(tab, "codex.download", system=on)
-    if on == "windows":
-        expect(install).to_be_visible()
-        expect(download).to_be_hidden()
-    else:
-        expect(download).to_be_visible()
-        expect(install).to_be_hidden()
+    expect(install).to_be_visible()
+    expect(tab.locator("#codex-download")).to_have_count(0)  # the ChatGPT app's download, before
+    tab.route(re.compile(r"/api/codex/install$"), lambda route: route.fulfill(json={"result": "installing"}))
+    tab.route(re.compile(r"/api/codex$"), lambda route: route.fulfill(json={"result": "install-failed"}))
+
+    with tab.expect_request(lambda r: r.method == "POST" and r.url.endswith("api/codex/install")):
+        install.click()
+
+    expect(tab.get_by_text(text("codex.installing", system=on))).to_be_visible()
+    expect(install).to_be_hidden()
+    # The next check says the install failed: the page says so and offers the button again.
+    expect(tab.get_by_text(text("codex.install-failed", system=on))).to_be_visible()
+    expect(install).to_be_visible()
 
 
 @pytest.mark.parametrize("on, asks", [("macos", "api/claude"),

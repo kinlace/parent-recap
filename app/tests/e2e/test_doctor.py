@@ -105,6 +105,38 @@ def test_doctor_in_tmux_says_to_store_the_token_outside_it(harness, claude_witho
     assert line.startswith(ops.FAIL) and setup_steps.PLAIN_TERMINAL in line
 
 
+@pytest.mark.macos
+def test_on_a_mac_doctor_finds_the_codex_the_setup_page_installed_without_the_config_naming_it(
+        harness, nothing_loaded, monkeypatch, capsys):
+    """OpenAI's installer puts codex in ~/.local/bin, on the family's PATH only in Terminal
+    windows opened later (#473)."""
+    monkeypatch.setattr(codex_backend, "CODEX_BUNDLED", ())  # not this Mac's own apps
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    harness.config["llm"]["backend"] = "codex"
+    harness.model_reply = {"ok": True}
+    assert "codex_path" not in harness.config["llm"]
+    codex = program(harness.home / ".local" / "bin", "codex")
+
+    harness.cli("doctor")
+
+    line = codex_line(capsys)
+    assert line.startswith(ops.OK) and str(codex) in line
+
+
+@pytest.mark.macos
+def test_on_a_mac_doctor_says_a_missing_codex_is_installed_on_the_setup_page_or_comes_with_the_app(
+        harness, nothing_loaded, monkeypatch, capsys):
+    monkeypatch.setattr(codex_backend, "CODEX_BUNDLED", ())
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    harness.config["llm"]["backend"] = "codex"
+
+    harness.cli("doctor")
+
+    line = codex_line(capsys)
+    assert line.startswith(ops.FAIL) and "the setup page" in line and "ChatGPT desktop app" in line
+    assert "curl -fsSL https://github.com/openai/codex/releases/latest/download/install.sh | sh" in line
+
+
 @pytest.fixture
 def codex_on_windows(harness, nothing_loaded, windows_programs, monkeypatch) -> Path:
     """A Household on ChatGPT, on a PC where codex.exe would be where OpenAI's installer puts it,

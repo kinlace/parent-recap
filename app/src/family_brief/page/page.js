@@ -3,7 +3,7 @@
 // The setup page. Every address here is relative, so it keeps the page's one-time code.
 const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish"];
 const page = {
-  text: null, language: "en", chosen: null, languages: [], system: "macos", ais: [],
+  text: null, language: "en", chosen: null, languages: [], system: "macos", ais: [], installs: [],
   progress: null, welcome: null, connect: null, gmail: null, whatsapp: null, myclub: null,
   check: null, brief: null, welcomeShown: false, connectShown: false, workingShown: false,
   checkShown: false, briefShown: false, finishShown: false, finished: false,
@@ -247,11 +247,13 @@ async function checkAI() {
   }
 }
 
-// Welcome goes on once the AI picked is ready. On Windows, ChatGPT's and Claude's own steps after
-// it install Codex or Claude Code and sign in, so Welcome needn't wait for those.
+// Welcome goes on once the AI picked is ready, or when its own step after Welcome installs it,
+// as the server says it does here (Codex on both systems, Claude Code on Windows). On Windows
+// those steps also sign in, so Welcome needn't wait for that either.
 function welcomeGoesOn(name, result) {
-  return result === "ready" || (page.system === "windows" && ["codex", "claude"].includes(name)
-    && ["not-installed", "signed-out"].includes(result));
+  if (result === "ready") return true;
+  if (result === "not-installed") return page.installs.includes(name);
+  return result === "signed-out" && page.system === "windows" && ["codex", "claude"].includes(name);
 }
 
 function showAI(name, result, install) {
@@ -827,8 +829,8 @@ const CLAUDE_INSTALL = ["installing", "install-failed", "opened", "no-terminal"]
 const CODEX_AGAIN = [
   "codex.waiting", "codex.not-installed", "codex.check-failed", "codex.installing",
 ];
-// Codex's results after which the page offers to install it: on Windows, where it installs the
-// Codex CLI itself. A Mac gets Codex with the ChatGPT app, which the page offers to download.
+// Codex's results after which the page offers to install the Codex CLI itself. A Mac's Codex or
+// ChatGPT desktop app brings one too, which is found first.
 const CODEX_INSTALL = ["codex.not-installed", "codex.install-failed"];
 
 function renderAI() {
@@ -837,7 +839,6 @@ function renderAI() {
   document.getElementById("claude-terminal").addEventListener("click", openClaudeWindow);
   document.getElementById("claude-form").addEventListener("submit", saveClaudeToken);
   document.getElementById("codex-login").addEventListener("click", signInCodex);
-  document.getElementById("codex-download").addEventListener("click", () => openSite("codex-app"));
   document.getElementById("codex-install").addEventListener("click", installCodex);
   document.getElementById("gateway-form").addEventListener("submit", saveGatewayKey);
 }
@@ -988,7 +989,7 @@ async function signInCodex() {
   }
 }
 
-// On Windows: installs the Codex CLI, then opens ChatGPT's sign-in by itself.
+// Installs the Codex CLI with OpenAI's installer, then opens ChatGPT's sign-in by itself.
 async function installCodex() {
   clearError();
   clearTimeout(aiStep.timer);
@@ -1001,11 +1002,9 @@ async function installCodex() {
 
 function codexResult(out) {
   const key = "codex." + out.result;
-  const windows = page.system === "windows";
   document.getElementById("codex-login").hidden =
     !["codex.signed-out", "codex.login-failed"].includes(key);
-  document.getElementById("codex-download").hidden = windows || key !== "codex.not-installed";
-  document.getElementById("codex-install").hidden = !windows || !CODEX_INSTALL.includes(key);
+  document.getElementById("codex-install").hidden = !CODEX_INSTALL.includes(key);
   if (out.result === "signed-in") return aiDone(out, key);
   showSource(key);
   if (CODEX_AGAIN.includes(key)) aiStep.timer = setTimeout(checkCodex, AI_MS);
@@ -1803,7 +1802,6 @@ function signInFinishAI(event) {
   document.getElementById("gateway-key").value = "";
   document.getElementById("claude-form").hidden = true;
   document.getElementById("codex-login").hidden = true;
-  document.getElementById("codex-download").hidden = true;
   document.getElementById("codex-install").hidden = true;
   document.getElementById("source-ai").hidden = false;
   document.getElementById("ai-claude").hidden = name !== "claude";
@@ -2078,6 +2076,7 @@ async function start() {
   page.languages = state.languages;
   page.system = state.system;
   page.ais = state.ais;
+  page.installs = state.installs;
   page.chosen = state.language;
   page.language = state.language || state.preselected;
   page.progress = state.progress;

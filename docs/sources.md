@@ -32,13 +32,13 @@ The program reads and sends with the one Gmail account above, and can't read a s
 
 ### ChatGPT (`llm.backend: codex`)
 
-1. Install the Codex or ChatGPT desktop app, open it and log in to Codex with a ChatGPT account. Any ChatGPT plan works, Free and Go included: OpenAI includes Codex, its command line too, in every plan ([Using Codex with your ChatGPT plan](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan)). Free and Go have lower usage limits; one Brief a night fits in them
-2. No extra token is needed. The scheduled job uses the codex bundled with the app and its saved login (`~/.codex`)
+1. Sign in to Codex with a ChatGPT account. The setup page does this: if no `codex` is found on the Mac, its Install Codex button runs OpenAI's own installer, which puts the Codex CLI in `~/.local/bin` without administrator rights, then opens the ChatGPT sign-in in the browser. A Mac with the Codex or ChatGPT desktop app already has a Codex: open the app and log in to Codex there instead. Any ChatGPT plan works, Free and Go included: OpenAI includes Codex, its command line too, in every plan ([Using Codex with your ChatGPT plan](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan)). Free and Go have lower usage limits; one Brief a night fits in them
+2. No extra token is needed. The scheduled job uses the codex it finds, the app's first, and its saved login (`~/.codex`)
 3. `$FB doctor` makes a test call; once the Codex line shows ✅ you're done
 
 Notes:
 
-- The program prefers the codex bundled in `Codex.app` or `ChatGPT.app` (in `/Applications` or `~/Applications`; the ChatGPT app keeps it in `Contents/Resources/codex-cli/bin/codex`), because it updates with the app. A `codex` installed with npm or brew is only used when no app is found. To point to another path, set `llm.codex_path`
+- The program prefers the codex bundled in `Codex.app` or `ChatGPT.app` (in `/Applications` or `~/Applications`; the ChatGPT app keeps it in `Contents/Resources/codex-cli/bin/codex`), because it updates with the app. A `codex` the setup page installed (`~/.local/bin/codex`), or one installed with npm or brew, is only used when no app is found. To point to another path, set `llm.codex_path`
 - Every call is isolated: an empty temporary folder, a read-only sandbox, no saved session, and none of the user's own Codex configuration or MCP tools
 
 ### Claude (`llm.backend: claude`)
