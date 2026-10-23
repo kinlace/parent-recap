@@ -4,6 +4,13 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.7.1 · 2026-10-23
+
+On a Mac, the setup page installs Codex itself when it's missing, as it already did on Windows.
+
+### Changed
+- A family that picks ChatGPT on a Mac without Codex presses Install Codex on the setup page, and the page installs it and goes on to the ChatGPT sign-in, instead of being sent to download the ChatGPT app and waiting.
+
 ## 0.7.0 · 2026-10-22
 
 Setup is harder to get wrong: the WhatsApp step waits for the chats to sync, the last step asks for one thing, Windows refuses an administrator install, and the Mac Keychain warning shows only when it's real. Under the hood, the Sources, the AI backends and the setup page were reorganised (ADRs 0022–0024) with no change to what families see.
