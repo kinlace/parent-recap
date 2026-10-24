@@ -943,13 +943,14 @@ def timed_out(cmd: list[str]) -> Any:
 
 
 def cannot_run(cmd: list[str]) -> Any:
-    raise PermissionError(13, "Permission denied", cmd[1])
+    raise OSError("Permission denied\nfor npm")  # on one line on the page
 
 
 @pytest.mark.parametrize("npm, said", [
     ("silent", "npm ended with exit code 1."),
     ("timed out", f"npm didn't finish within {setup_wilma.INSTALL_SECONDS} seconds."),
-    ("os error", "The install stopped: PermissionError: [Errno 13] Permission denied: "),
+    ("os error", "The install stopped: OSError: Permission denied for npm"),
+    ("nothing", "npm finished without installing the wilma program."),
     ("wrong version", "npm installed version 1.6.2 of the wilma program, not 2.1.2."),
     ("no cli", "npm installed the wilma program without the file that runs it."),
 ])
@@ -964,6 +965,7 @@ def test_each_other_way_npm_fails_says_which_in_one_line_on_the_page(harness, pa
         (fake_node.npm_prefix(cmd) / fake_node.PACKAGE / fake_node.SCRIPT).unlink()
         return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
     wilma_cli.npm = {"silent": lambda cmd: subprocess.CompletedProcess(cmd, 1, "", ""),
+                     "nothing": lambda cmd: subprocess.CompletedProcess(cmd, 0, "up to date", ""),
                      "timed out": timed_out, "os error": cannot_run,
                      "wrong version": wrong_version, "no cli": no_cli}[npm]
 

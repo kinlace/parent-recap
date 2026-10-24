@@ -165,7 +165,7 @@ def update() -> str:
     npm = own_node.npm()
     if npm is None:
         return "no-node"
-    return "update-failed" if _npm_install(npm) else "updated"
+    return "updated" if _npm_install(npm) is None else "update-failed"
 
 
 def _half_there() -> bool:
@@ -193,7 +193,8 @@ def _npm_install(npm: list[str]) -> str | None:
     except subprocess.TimeoutExpired:
         reason = f"npm didn't finish within {INSTALL_SECONDS} seconds."
     except (OSError, subprocess.SubprocessError) as e:
-        reason = f"The install stopped: {type(e).__name__}: {e}"  # npm, or the move after it
+        # npm's, or the move after it; on one line, as the page has room for
+        reason = f"The install stopped: {type(e).__name__}: {' '.join(str(e).split())}"
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     if reason:
