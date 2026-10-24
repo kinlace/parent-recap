@@ -500,9 +500,9 @@ const TRY_AGAIN = [
   "wilma.ready.install-failed", "wilma.not-installed", "wilma.window.not-installed",
 ];
 
-// What the last step said, under the Source: a text key, or null for nothing, with an address
-// to open, the Kids found or a line to install something.
-function showSource(key, { url, kids, install, values } = {}) {
+// What the last step said, under the Source: a text key, or null for nothing, with why it
+// failed, an address to open, the Kids found or a line to install something.
+function showSource(key, { reason, url, kids, install, values } = {}) {
   const status = document.getElementById("source-status");
   const message = document.getElementById("source-message");
   status.hidden = !key;
@@ -512,6 +512,9 @@ function showSource(key, { url, kids, install, values } = {}) {
   } else {
     delete message.dataset.text;
   }
+  const why = document.getElementById("source-reason");
+  why.hidden = !reason;
+  why.textContent = reason || "";
   const where = document.getElementById("source-url");
   where.hidden = !url;
   where.textContent = url || "";
@@ -636,7 +639,7 @@ async function getWilmaReady() {
   try {
     const out = await post("api/wilma/install", {});
     if (out.result !== "installed") {
-      showSource("wilma.ready." + out.result);
+      showSource("wilma.ready." + out.result, { reason: out.reason });
       showWilmaWait("wilma.ready." + out.result);
       return;
     }

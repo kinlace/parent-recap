@@ -555,7 +555,7 @@ def test_a_household_without_the_wilma_cli_gets_none_from_an_update(harness, wil
 
 @pytest.mark.macos
 def test_a_wilma_cli_that_cannot_be_updated_keeps_working_and_the_install_goes_on(harness, wilma,
-                                                                               capsys):
+                                                                               capsys, caplog):
     wilma.install("1.6.2")
     wilma.npm_works = False
 
@@ -564,6 +564,7 @@ def test_a_wilma_cli_that_cannot_be_updated_keeps_working_and_the_install_goes_o
     assert package_version(harness) == "1.6.2" and setup_wilma.installed()
     out = capsys.readouterr().out
     assert "couldn't be updated to 2.1.2" in out and "Run the install again" in out
+    assert "npm ended with exit code 1:\nnpm error code ENOTFOUND" in caplog.text  # why, logged
     # The next install tries again.
     wilma.npm_works = True
     assert setup_wilma.update() == "updated"
@@ -737,6 +738,7 @@ class WilmaCLI:
         self.students: list[dict[str, Any]] = WILMA_STUDENTS
         self.fails: list[str] | None = None  # any other failure, as the CLI's code and words
         self.npm_works = True
+        self.npm: Any = None  # npm's run, given the command, in place of one that works
         self.installs: list[list[str]] = []
         self.npm_env: dict[str, str] = {}  # the last npm's
         self.ships_tenants = True
@@ -808,6 +810,8 @@ def wilma_cli(harness, monkeypatch) -> WilmaCLI:
             w.npm_env = k["env"]
             if not w.npm_works:
                 return subprocess.CompletedProcess(cmd, 1, "", "npm error code E404")
+            if w.npm is not None:
+                return w.npm(cmd)
             w.install(prefix=fake_node.npm_prefix(cmd))
             return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
         return others(cmd, *a, **k)
@@ -870,7 +874,7 @@ def test_setup_installs_the_pinned_wilma_cli_with_its_own_node_when_it_is_missin
 
     r = wilma_ready(page.url)
 
-    assert r.status == 200 and r.json()["result"] == "installed"
+    assert r.status == 200 and r.json() == {"result": "installed"}  # no reason to show
     prefix = str(wilma_cli.prefix)
     # Into a folder of its own next to Parent Recap's, which then takes its place.
     [[*args, staging, version]] = wilma_cli.installs
@@ -916,6 +920,62 @@ def test_without_its_own_node_it_says_to_run_the_install_again_on_the_page(harne
     fake_node.pinned_node(harness.home)
     wilma_cli.npm_works = False
     assert wilma_ready(page.url).json()["result"] == "install-failed"
+
+
+def test_an_npm_that_fails_says_its_exit_code_and_last_lines_on_the_page(harness, page,
+                                                                         wilma_cli, caplog):
+    # The page says why, since a photo of the screen is all a tester sends.
+    errors = "".join(f"npm error line {n}\n" for n in range(1, 31))
+    wilma_cli.npm = lambda cmd: subprocess.CompletedProcess(cmd, 243, "added 0 packages", errors)
+
+    out = wilma_ready(page.url).json()
+
+    assert out["result"] == "install-failed"
+    assert out["reason"].splitlines() == [
+        "npm ended with exit code 243:",
+        *(f"npm error line {n}" for n in range(31 - setup_wilma.REASON_LINES, 31))]
+    assert out["reason"] in caplog.text
+    assert not setup_wilma.installed()
+
+
+def timed_out(cmd: list[str]) -> Any:
+    raise subprocess.TimeoutExpired(cmd, setup_wilma.INSTALL_SECONDS)
+
+
+def cannot_run(cmd: list[str]) -> Any:
+    raise PermissionError(13, "Permission denied", cmd[1])
+
+
+@pytest.mark.parametrize("npm, said", [
+    ("silent", "npm ended with exit code 1."),
+    ("timed out", f"npm didn't finish within {setup_wilma.INSTALL_SECONDS} seconds."),
+    ("os error", "The install stopped: PermissionError: [Errno 13] Permission denied: "),
+    ("wrong version", "npm installed version 1.6.2 of the wilma program, not 2.1.2."),
+    ("no cli", "npm installed the wilma program without the file that runs it."),
+])
+def test_each_other_way_npm_fails_says_which_in_one_line_on_the_page(harness, page, wilma_cli,
+                                                                     caplog, npm, said):
+    def wrong_version(cmd: list[str]) -> Any:
+        fake_node.install_wilma(harness.home, "", "1.6.2", fake_node.npm_prefix(cmd))
+        return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
+
+    def no_cli(cmd: list[str]) -> Any:
+        fake_node.install_wilma(harness.home, "", prefix=fake_node.npm_prefix(cmd))
+        (fake_node.npm_prefix(cmd) / fake_node.PACKAGE / fake_node.SCRIPT).unlink()
+        return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
+    wilma_cli.npm = {"silent": lambda cmd: subprocess.CompletedProcess(cmd, 1, "", ""),
+                     "timed out": timed_out, "os error": cannot_run,
+                     "wrong version": wrong_version, "no cli": no_cli}[npm]
+
+    out = wilma_ready(page.url).json()
+
+    assert out["result"] == "install-failed"
+    assert out["reason"].startswith(said) and "\n" not in out["reason"]
+    assert out["reason"] in caplog.text
+    assert not setup_wilma.installed()
+    # Tried again once npm works, it installs, with no reason left over.
+    wilma_cli.npm = None
+    assert wilma_ready(page.url).json() == {"result": "installed"}
 
 
 def test_no_message_suggests_homebrew_any_more():

@@ -50,10 +50,11 @@ class Wilma(Phase):
                 "api/wilma/check": self.check_wilma_window}
 
     def wilma_ready(self, raw: Any) -> Reply:
-        """Installs the pinned wilma CLI unless it's there, since the town list comes with it."""
+        """Installs the pinned wilma CLI unless it's there, since the town list comes with it. A
+        failed install says why, for the page to show."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
-        return HTTPStatus.OK, {"result": setup_wilma.install()}
+        return HTTPStatus.OK, setup_wilma.install()
 
     def find_towns(self, raw: Any) -> Reply:
         """The entries of Wilma's list that the town or name typed finds, each with its town."""
