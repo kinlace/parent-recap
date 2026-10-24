@@ -296,7 +296,7 @@ jobs:
       - name: The wilma CLI installs and runs on the program's own Node
         run: |
           $py = "$env:INSTALLED\app\.venv\Scripts\python.exe"
-          & $py -c "import sys; from family_brief import setup_wilma; r = setup_wilma.install(); print(r); sys.exit(r != 'installed')"
+          & $py -c "import sys; from family_brief import setup_wilma; r = setup_wilma.install(); print(r); sys.exit(r['result'] != 'installed')"
           if ($LASTEXITCODE -ne 0) { throw "the wilma CLI didn't install" }
           & $py -c "import subprocess, sys; from family_brief import own_node, setup_wilma; c = own_node.wilma(); print(c, setup_wilma.installed_version()); sys.exit(subprocess.run([*c, '--help'], env=own_node.wilma_env()).returncode)"
           if ($LASTEXITCODE -ne 0) { throw 'wilma --help failed' }
