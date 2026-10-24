@@ -28,7 +28,7 @@ except ImportError:  # the browser fixture skips the tests and says why
     sync_playwright = None
 
 import fake_node
-from family_brief import ops, setup_connect
+from family_brief import ops, setup_connect, setup_wilma
 from family_brief.collectors import myclub
 from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, progress_file,
                         save_progress)
@@ -39,7 +39,7 @@ from test_setup_myclub import LINK as MYCLUB_LINK
 from test_setup_page_windows import Web, school_mail
 from test_setup_status import install_program
 from test_setup_whatsapp import WHATSAPP_CHATS, fake_mac
-from test_setup_wilma import wilma_cli  # noqa: F401
+from test_setup_wilma import timed_out, wilma_cli  # noqa: F401
 
 pytestmark = pytest.mark.browser
 
@@ -392,6 +392,32 @@ def test_the_town_box_says_why_it_still_waits_when_the_wilma_cli_doesn_t_install
     expect(wait).not_to_have_class(re.compile(r"\bbusy\b"))
     expect(tab.get_by_label(text("wilma.search"))).to_be_disabled()
     expect(button(tab, "wilma.again")).to_be_visible()
+
+
+def test_a_wilma_cli_that_doesn_t_install_shows_why_under_the_message(tab, wilma_cli):  # noqa: F811
+    wilma_cli.npm_works = False
+
+    in_english_with_the_gateway(tab)
+
+    # In a small block of its own under the message, as npm said it, for a photo to carry.
+    message = tab.locator("#source-message")
+    reason = tab.locator("#source-reason")
+    expect(message).to_have_text(text("wilma.ready.install-failed"))
+    expect(reason).to_have_text("npm ended with exit code 1:\nnpm error code E404")
+    expect(reason).to_have_css("white-space", "pre-wrap")
+    assert "mono" in reason.evaluate("e => getComputedStyle(e).fontFamily").lower()
+
+    # Trying again shows only the new reason, and none once it installs.
+    wilma_cli.npm_works = True
+    wilma_cli.npm = timed_out
+    button(tab, "wilma.again").click()
+    expect(reason).to_have_text(
+        f"npm didn't finish within {setup_wilma.INSTALL_SECONDS} seconds.")
+    wilma_cli.npm = None
+    button(tab, "wilma.again").click()
+    expect(tab.get_by_label(text("wilma.search"))).to_be_enabled()
+    expect(reason).to_be_hidden()
+    expect(reason).to_have_text("")
 
 
 @pytest.mark.parametrize("on", ["macos", "windows"])

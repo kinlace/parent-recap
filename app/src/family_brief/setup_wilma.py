@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import math
 import os
 import select
@@ -51,9 +52,12 @@ try:  # the Wilma window's pseudo-terminal, which Windows doesn't have yet
 except ImportError:
     pass
 
+log = logging.getLogger(__name__)
+
 WILMA_CLI_VERSION = "2.1.2"
 PACKAGE = own_node.WILMA_PACKAGE
 INSTALL_SECONDS = 300
+REASON_LINES = 10  # of npm's errors, which the setup page shows when the install fails
 SALT = "wilmai::"  # the CLI's own, in front of the password before it's Base64-encoded
 # What the CLI keeps next to its config: the Wilma sessions its commands carry on with (from 2.0),
 # and its note of the newest version on npm.
@@ -131,18 +135,20 @@ def installed_version(folder: Path | None = None) -> str | None:
     return version if isinstance(version, str) else None
 
 
-def install() -> str:
+def install() -> dict[str, Any]:
     """Installs the pinned wilma CLI with Parent Recap's own Node into its folder, unless it's
-    there, and adds that folder to setup's record. Returns `installed`, `no-node` (the install
-    didn't leave Parent Recap's own Node) or `install-failed`."""
+    there, and adds that folder to setup's record. Returns its `result`: `installed`, `no-node`
+    (the install didn't leave Parent Recap's own Node) or `install-failed`, which comes with the
+    `reason` npm failed, for the setup page to show."""
     if installed():
-        return "installed"
+        return {"result": "installed"}
     npm = own_node.npm()
     if npm is None:
-        return "no-node"
+        return {"result": "no-node"}
     # Before npm runs, so uninstall removes the folder however this install ends.
     install_record.add("wilma-cli", str(own_node.wilma_folder()))
-    return "installed" if _npm_install(npm) else "install-failed"
+    reason = _npm_install(npm)
+    return {"result": "install-failed", "reason": reason} if reason else {"result": "installed"}
 
 
 def update() -> str:
@@ -159,7 +165,7 @@ def update() -> str:
     npm = own_node.npm()
     if npm is None:
         return "no-node"
-    return "updated" if _npm_install(npm) else "update-failed"
+    return "update-failed" if _npm_install(npm) else "updated"
 
 
 def _half_there() -> bool:
@@ -170,32 +176,54 @@ def _half_there() -> bool:
         and bool(profile_ids(config_path()))
 
 
-def _npm_install(npm: list[str]) -> bool:
-    """Whether `npm`, on Parent Recap's own Node, installed the pinned CLI. It installs into a new
-    folder next to the CLI's, which takes the CLI's place only once npm has finished and left the
-    pinned version, so an npm that fails, or is ended at the time limit, changes nothing."""
+def _npm_install(npm: list[str]) -> str | None:
+    """Has `npm`, on Parent Recap's own Node, install the pinned CLI. Returns why it didn't, which
+    is also logged, or None once it did. It installs into a new folder next to the CLI's, which
+    takes the CLI's place only once npm has finished and left the pinned version, so an npm that
+    fails, or is ended at the time limit, changes nothing."""
     folder = own_node.wilma_folder()
     folder.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     for left in folder.parent.glob(f".{folder.name}-*"):  # by an install that was itself ended
         shutil.rmtree(left, ignore_errors=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{folder.name}-", dir=folder.parent))
     try:
-        # npm's cache in a temporary folder, so nothing is left outside Parent Recap's.
-        with tempfile.TemporaryDirectory(prefix="parent-recap-npm-") as cache:
-            # npm runs package scripts with the `node` its PATH finds: this one, not the Mac's.
-            env = {**os.environ, "npm_config_cache": cache, "npm_config_update_notifier": "false",
-                   "PATH": os.pathsep.join([str(Path(npm[0]).parent), os.environ.get("PATH", "")])}
-            proc = subprocess.run([*npm, *install_args(staging)], capture_output=True, text=True, encoding="utf-8",
-                                  timeout=INSTALL_SECONDS, stdin=subprocess.DEVNULL, env=env)
-        if proc.returncode != 0 or installed_version(staging) != WILMA_CLI_VERSION \
-                or own_node.wilma_cli(staging) is None:
-            return False
-        _replace(folder, staging)
-        return True
-    except (OSError, subprocess.SubprocessError):
-        return False
+        reason = _npm_run(npm, staging)
+        if reason is None:
+            _replace(folder, staging)
+    except subprocess.TimeoutExpired:
+        reason = f"npm didn't finish within {INSTALL_SECONDS} seconds."
+    except (OSError, subprocess.SubprocessError) as e:
+        reason = f"The install stopped: {type(e).__name__}: {e}"  # npm, or the move after it
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+    if reason:
+        log.warning("The wilma CLI didn't install: %s", reason)
+    return reason
+
+
+def _npm_run(npm: list[str], staging: Path) -> str | None:
+    """Runs `npm` to install the pinned CLI into `staging`. Returns why that didn't leave the CLI
+    there, in words a photo of the setup page carries, or None."""
+    # npm's cache in a temporary folder, so nothing is left outside Parent Recap's.
+    with tempfile.TemporaryDirectory(prefix="parent-recap-npm-") as cache:
+        # npm runs package scripts with the `node` its PATH finds: this one, not the Mac's.
+        env = {**os.environ, "npm_config_cache": cache, "npm_config_update_notifier": "false",
+               "PATH": os.pathsep.join([str(Path(npm[0]).parent), os.environ.get("PATH", "")])}
+        proc = subprocess.run([*npm, *install_args(staging)], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=INSTALL_SECONDS,
+                              stdin=subprocess.DEVNULL, env=env)
+    if proc.returncode != 0:
+        said = (proc.stderr or proc.stdout or "").strip().splitlines()[-REASON_LINES:]
+        ended = f"npm ended with exit code {proc.returncode}"
+        return "\n".join([f"{ended}:", *said]) if said else f"{ended}."
+    version = installed_version(staging)
+    if version is None:
+        return "npm finished without installing the wilma program."
+    if version != WILMA_CLI_VERSION:
+        return f"npm installed version {version} of the wilma program, not {WILMA_CLI_VERSION}."
+    if own_node.wilma_cli(staging) is None:
+        return "npm installed the wilma program without the file that runs it."
+    return None
 
 
 def _replace(folder: Path, new: Path) -> None:
@@ -481,13 +509,13 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
     and a profile new to the CLI go in setup's record."""
     again = f"{program()} setup wilma"
     got = install()
-    if got == "no-node":
+    if got["result"] == "no-node":
         return outcome("not-installed", "Parent Recap's own Node, which the wilma CLI runs on, "
                        "is missing. The family pastes the Parent Recap install line into "
                        f"Terminal again, then run: {again}")
-    if got != "installed":
+    if got["result"] != "installed":
         return outcome("not-installed", "The wilma CLI didn't install. The family checks that "
-                       f"the Mac is online, then run: {again}")
+                       f"the Mac is online, then run: {again}", reason=got["reason"])
     config = config_path()
     profiles_before = profile_ids(config)
     with tempfile.TemporaryDirectory(prefix="parent-recap-wilma-") as tmp:

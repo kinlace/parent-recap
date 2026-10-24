@@ -310,6 +310,14 @@ fieldset .field label {
   overflow-wrap: anywhere;
 }
 
+/* Why an install failed, small, for a photo of the screen to carry. */
+.status .reason {
+  margin: 8px 0 0;
+  font: 11px/1.4 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .install {
   display: flex;
   align-items: center;
