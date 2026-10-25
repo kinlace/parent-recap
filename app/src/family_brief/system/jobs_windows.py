@@ -1,5 +1,7 @@
 """The Windows adapter of `jobs`: Task Scheduler tasks in its root folder, registered, read and
-started through PowerShell's ScheduledTasks commands, none of which needs administrator rights.
+started through schtasks.exe, none of which needs administrator rights. PowerShell's ScheduledTasks
+commands do the same through CIM, which takes seconds a call where schtasks takes milliseconds
+(#468).
 
 A task runs only while the family is signed in ("run only when user is logged on"), locked or
 asleep, wakes the PC to run ("wake the computer to run this task"), and runs as soon as it can
@@ -9,9 +11,11 @@ starts pythonw.exe with `task_run`, which gives the job its log files without op
 the family's desktop."""
 from __future__ import annotations
 
+import codecs
+import csv
 import ctypes
-import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -28,8 +32,11 @@ CATCH_UP = "daily catch-up"  # the evening job's sign-in task (`catch_up_xml`)
 TASK_NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 DAYS = ("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
 RUNNER = "family_brief.system.task_run"
-# run_now's script exits with these when there's no task to start or it is already going.
-NO_TASK, RUNNING = 3, 4
+# A task's Last Result while it runs (SCHED_S_TASK_RUNNING), in schtasks' list of it; its Status
+# column says "Running" in the PC's own language.
+RUNNING = "267009"
+# Where Last Result is in that list, `/Query /FO CSV /V`, whose columns don't move.
+LAST_RESULT = 6
 
 
 def system_name(name: str) -> str:
@@ -41,21 +48,17 @@ def _where(task: str) -> Path:
     return Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "Tasks" / task
 
 
-def _powershell(script: str, **env: str) -> subprocess.CompletedProcess:
-    """Runs `script` in Windows PowerShell, its values handed over as PARENT_RECAP_<NAME>
-    variables so none is ever quoted into the script. A failure's message goes to stderr.
+def _schtasks(*args: str) -> subprocess.CompletedProcess:
+    """Runs schtasks.exe with `args`, its output as text. A failure's message goes to stderr."""
+    r = subprocess.run(["schtasks.exe", *args], capture_output=True)
+    return subprocess.CompletedProcess(r.args, r.returncode, _text(r.stdout), _text(r.stderr))
 
-    Each call is a fresh PowerShell, so callers do their work in as few as they can. The
-    ScheduledTasks module is imported by name: finding a command's module by itself makes
-    PowerShell look through every module installed, which takes seconds on a PC with many."""
-    script = ("$ErrorActionPreference = 'Stop'; "
-              "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
-              "Import-Module ScheduledTasks; "
-              f"try {{ {script} }} catch {{ [Console]::Error.WriteLine($_.Exception.Message); exit 1 }}")
-    return subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-        capture_output=True, encoding="utf-8", errors="replace",
-        env={**os.environ, **{f"PARENT_RECAP_{k.upper()}": v for k, v in env.items()}})
+
+def _text(out: bytes) -> str:
+    """schtasks' output: in the console's code page, or in UTF-16 for some of its XML."""
+    if out.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)) or b"\x00" in out[:64]:
+        return out.decode("utf-16", errors="replace").lstrip("\ufeff")
+    return out.decode("oem" if sys.platform == "win32" else "utf-8", errors="replace")
 
 
 def _error(r: subprocess.CompletedProcess) -> str:
@@ -165,56 +168,65 @@ def catch_up_xml(job: jobs.Job) -> str:
                  wake=False, more_args=("--if-missed",))
 
 
-# Our tasks in Task Scheduler's root folder, as $ours.
-_OURS = ("$ours = @(Get-ScheduledTask -TaskPath '\\' -ErrorAction SilentlyContinue | "
-         "Where-Object { $_.TaskName.StartsWith($env:PARENT_RECAP_PREFIX) }); ")
-# Unregisters each of $ours that $kept doesn't name.
-_UNREGISTER = ("foreach ($t in $ours) { if ($kept -notcontains $t.TaskName) { "
-               "try { Unregister-ScheduledTask -InputObject $t -Confirm:$false } "
-               "catch { throw \"Task Scheduler didn't remove $($t.TaskName): "
-               "$($_.Exception.Message)\" } } }")
+def _names() -> list[str]:
+    """Our tasks in Task Scheduler's root folder."""
+    r = _schtasks("/Query", "/FO", "CSV", "/NH")
+    # A folder the family may not read makes it fail after listing the others.
+    if r.returncode != 0 and not r.stdout.strip():
+        raise RuntimeError(f"Task Scheduler's tasks couldn't be read: {_error(r)}")
+    names = (row[0].removeprefix("\\") for row in csv.reader(r.stdout.splitlines()) if row)
+    return list(dict.fromkeys(n for n in names if n.startswith(PREFIX) and "\\" not in n))
+
+
+def _remove(kept: set[str]) -> None:
+    """Removes our tasks that `kept` doesn't name."""
+    for name in _names():
+        if name not in kept:
+            r = _schtasks("/Delete", "/TN", name, "/F")
+            if r.returncode != 0:
+                raise RuntimeError(f"Task Scheduler didn't remove {name}: {_error(r)}")
 
 
 def install(wanted: list[jobs.Job]) -> None:
-    """Registers `wanted` and removes our other tasks, in one PowerShell."""
-    tasks = [{"name": system_name(job.name), "xml": task_xml(job)} for job in wanted]
-    tasks += [{"name": system_name(CATCH_UP), "xml": catch_up_xml(job)} for job in wanted
-              if job.name == jobs.DAILY]
-    # Windows PowerShell hands a JSON array on as one object, so it's assigned before the loop.
-    r = _powershell("$kept = @(); $tasks = ConvertFrom-Json $env:PARENT_RECAP_TASKS; "
-                    "foreach ($t in $tasks) { "
-                    "$kept += $t.name; "
-                    "try { Register-ScheduledTask -TaskName $t.name -TaskPath '\\' -Xml $t.xml "
-                    "-Force | Out-Null } "
-                    "catch { throw \"Task Scheduler didn't register $($t.name): "
-                    "$($_.Exception.Message)\" } }; " + _OURS + _UNREGISTER,
-                    tasks=json.dumps(tasks), prefix=PREFIX)
-    if r.returncode != 0:
-        raise RuntimeError(_error(r))
+    """Registers `wanted` and removes our other tasks."""
+    tasks = {system_name(job.name): task_xml(job) for job in wanted}
+    tasks |= {system_name(CATCH_UP): catch_up_xml(job) for job in wanted
+              if job.name == jobs.DAILY}
+    with tempfile.TemporaryDirectory(prefix="parent-recap-task-") as work:
+        file = Path(work) / "task.xml"
+        for name, xml in tasks.items():
+            # schtasks refuses a file whose bytes don't match its declared encoding.
+            file.write_text('<?xml version="1.0" encoding="UTF-16"?>\n' + xml, encoding="utf-16")
+            r = _schtasks("/Create", "/TN", name, "/XML", str(file), "/F")
+            if r.returncode != 0:
+                raise RuntimeError(f"Task Scheduler didn't register {name}: {_error(r)}")
+    _remove(kept=set(tasks))
 
 
 def _tasks() -> list[dict[str, Any]]:
-    """Our tasks, each with its name, state ("Ready", "Running", "Disabled"...), and the program
-    and arguments it starts."""
-    r = _powershell(
-        _OURS + "ConvertTo-Json -Compress -InputObject @($ours | ForEach-Object { @{ "
-        "name = $_.TaskName; state = [string]$_.State; "
-        "execute = [string]$_.Actions[0].Execute; arguments = [string]$_.Actions[0].Arguments } })",
-        prefix=PREFIX)
-    if r.returncode != 0:
-        raise RuntimeError(f"Task Scheduler's tasks couldn't be read: {_error(r)}")
-    return json.loads(r.stdout or "[]")
+    """Our tasks, each with its name, whether it's enabled, and the program and arguments it
+    starts, from its XML."""
+    tasks = []
+    for name in _names():
+        r = _schtasks("/Query", "/TN", name, "/XML")
+        if r.returncode != 0:
+            raise RuntimeError(f"Task Scheduler's task {name} couldn't be read: {_error(r)}")
+        # Its declared encoding is the one schtasks didn't necessarily write it in.
+        task = ET.fromstring(re.sub(r"^\s*<\?xml[^>]*\?>", "", r.stdout))
+        ns = {"t": TASK_NS}
+        tasks.append({"name": name,
+                      "enabled": task.findtext("t:Settings/t:Enabled", "true", ns) == "true",
+                      "execute": task.findtext("t:Actions/t:Exec/t:Command", "", ns),
+                      "arguments": task.findtext("t:Actions/t:Exec/t:Arguments", "", ns)})
+    return tasks
 
 
 def remove_all() -> None:
-    r = _powershell("$kept = @(); " + _OURS + _UNREGISTER, prefix=PREFIX)
-    if r.returncode != 0:
-        raise RuntimeError(_error(r))
+    _remove(kept=set())
 
 
 def installed() -> set[str]:
-    names = {task["name"].removeprefix(PREFIX) for task in _tasks()
-             if task["state"] != "Disabled"}
+    names = {task["name"].removeprefix(PREFIX) for task in _tasks() if task["enabled"]}
     # The evening job is both its tasks, so doctor asks for `schedule install` when one is gone,
     # such as after an upgrade from a version without the sign-in task.
     if CATCH_UP not in names:
@@ -266,16 +278,16 @@ def program(name: str) -> list[str] | None:
 
 
 def run_now(name: str) -> None:
-    r = _powershell("$t = Get-ScheduledTask -TaskName $env:PARENT_RECAP_TASK -TaskPath '\\' "
-                    f"-ErrorAction SilentlyContinue; if (-not $t) {{ exit {NO_TASK} }}; "
-                    f"if ([string]$t.State -eq 'Running') {{ exit {RUNNING} }}; "
-                    "Start-ScheduledTask -InputObject $t", task=system_name(name))
-    if r.returncode == NO_TASK:
+    task = system_name(name)
+    if task not in _names():
         raise jobs.NotInstalled()
-    if r.returncode == RUNNING:
+    r = _schtasks("/Query", "/TN", task, "/FO", "CSV", "/NH", "/V")
+    rows = [row for row in csv.reader(r.stdout.splitlines()) if len(row) > LAST_RESULT]
+    if r.returncode == 0 and rows and rows[0][LAST_RESULT] == RUNNING:
         raise jobs.AlreadyRunning()
+    r = _schtasks("/Run", "/TN", task)
     if r.returncode != 0:
-        raise jobs.NotStarted(f"Task Scheduler couldn't start {system_name(name)}: {_error(r)}")
+        raise jobs.NotStarted(f"Task Scheduler couldn't start {task}: {_error(r)}")
 
 
 # ---------------------------------------------------------------- one-off runs

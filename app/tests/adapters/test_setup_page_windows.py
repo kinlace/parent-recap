@@ -106,7 +106,7 @@ def windows_pc(fresh_install, credential_manager, monkeypatch):
     fake = subprocess.run
 
     def run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        windows = cmd[0].lower().removesuffix(".exe") in ("powershell", "powercfg")
+        windows = cmd[0].lower().removesuffix(".exe") in ("powershell", "powercfg", "schtasks")
         return (REAL_RUN if windows else fake)(cmd, *a, **k)
     monkeypatch.setattr(subprocess, "run", run)
     yield harness
