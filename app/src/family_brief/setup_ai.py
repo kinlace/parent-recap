@@ -30,7 +30,7 @@ import threading
 import time
 from typing import Any
 
-from . import install_record, llm
+from . import failure, install_record, llm
 from .setup_report import keychain_failure
 from .system import profile, secrets
 
@@ -123,33 +123,40 @@ def _token(shown: bytes, *, ended: bool) -> str | None:
     return found[-1].group(0) if found else None
 
 
-def install_codex() -> bool:
+def install_codex() -> str | None:
     """Installs the Codex CLI with OpenAI's own installer, as their instructions say to: the
-    system's shell downloads and runs it. Whether it ran through. What it said isn't kept."""
+    system's shell downloads and runs it. Returns why it didn't run through, which is also
+    logged, or None once it did."""
     # Out of the Terminal the setup page runs in, where the installer would otherwise ask on
     # the tty whether to start Codex, and wait for an answer.
-    return _install("codex", {"CODEX_NON_INTERACTIVE": "1"})
+    return _install("codex", "Codex", {"CODEX_NON_INTERACTIVE": "1"})
 
 
-def install_claude() -> bool:
+def install_claude() -> str | None:
     """Installs Claude Code with Anthropic's own installer, the same way, where the page installs
     it (Windows): on a Mac the family pastes its line into Terminal."""
-    return _install("claude", {})
+    return _install("claude", "Claude Code", {})
 
 
-def _install(name: str, env: dict[str, str]) -> bool:
+def _install(name: str, called: str, env: dict[str, str]) -> str | None:
     system = profile.current()
     line = llm.named(name).install_line()
     if name not in system.page_installs or line is None:  # the family installs it
-        return False
+        return failure.logged(f"{called} didn't install",
+                              f"The setup page doesn't install {called} on this system.")
     try:
         proc = subprocess.run([*system.installer, line], capture_output=True, text=True,
                               encoding="utf-8", errors="replace", timeout=CODEX_INSTALL_SECONDS,
                               stdin=subprocess.DEVNULL, env={**os.environ, **env},
                               start_new_session=True)  # no tty of the Terminal's to ask on
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return proc.returncode == 0
+    except (OSError, subprocess.SubprocessError) as e:
+        reason = failure.of(e, f"The {called} install", f"The {called} installer")
+    else:
+        if proc.returncode == 0:
+            return None
+        reason = failure.exited(f"The {called} installer", proc.returncode, proc.stderr,
+                                proc.stdout)
+    return failure.logged(f"{called} didn't install", reason)
 
 
 def start_codex_login(program: str) -> subprocess.Popen | None:

@@ -584,6 +584,20 @@ def test_on_windows_chatgpt_has_no_chat_to_continue_in_since_the_skills_are_maco
         assert "$parent-recap" not in table["finish.changes.codex.windows"], language
 
 
+@pytest.mark.parametrize("on, called", [(MACOS, "macOS "), (WINDOWS, "Windows ")])
+def test_the_page_knows_parent_recap_s_version_and_the_system_for_a_failure_s_report(
+        harness, page, on, called):
+    # What a family copies with a failure's reason, so we needn't ask which version or computer.
+    harness.system = on
+    pinned = re.search(r'^version = "(.+)"$', (ROOT / "app" / "pyproject.toml").read_text(),
+                       re.M).group(1)
+
+    about = call(page.url, "api/state").json()["about"]
+
+    assert about["version"] == pinned
+    assert about["os"].startswith(called) and len(about["os"]) > len(called)
+
+
 def test_on_windows_chatgpt_s_texts_say_the_page_installs_codex_in_all_three_languages():
     for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
         for key in ("ai.codex.not-installed", "ai.codex.signed-out", "codex.not-installed",

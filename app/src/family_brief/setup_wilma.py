@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import base64
 import json
-import logging
 import math
 import os
 import select
@@ -38,7 +37,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from . import install_record, own_node, private_files
+from . import failure, install_record, own_node, private_files
 from .collectors import wilma
 from .setup_report import outcome, program
 from .system import desktop
@@ -52,12 +51,9 @@ try:  # the Wilma window's pseudo-terminal, which Windows doesn't have yet
 except ImportError:
     pass
 
-log = logging.getLogger(__name__)
-
 WILMA_CLI_VERSION = "2.1.2"
 PACKAGE = own_node.WILMA_PACKAGE
 INSTALL_SECONDS = 300
-REASON_LINES = 10  # of npm's errors, which the setup page shows when the install fails
 SALT = "wilmai::"  # the CLI's own, in front of the password before it's Base64-encoded
 # What the CLI keeps next to its config: the Wilma sessions its commands carry on with (from 2.0),
 # and its note of the newest version on npm.
@@ -191,15 +187,12 @@ def _npm_install(npm: list[str]) -> str | None:
         if reason is None:
             _replace(folder, staging)
     except subprocess.TimeoutExpired:
-        reason = f"npm didn't finish within {INSTALL_SECONDS} seconds."
-    except (OSError, subprocess.SubprocessError) as e:
-        # npm's, or the move after it; on one line, as the page has room for
-        reason = f"The install stopped: {type(e).__name__}: {' '.join(str(e).split())}"
+        reason = failure.timed_out("npm", INSTALL_SECONDS)
+    except (OSError, subprocess.SubprocessError) as e:  # npm's, or the move after it
+        reason = failure.raised(e, "The install")
     finally:
         shutil.rmtree(staging, ignore_errors=True)
-    if reason:
-        log.warning("The wilma CLI didn't install: %s", reason)
-    return reason
+    return failure.logged("The wilma CLI didn't install", reason) if reason else None
 
 
 def _npm_run(npm: list[str], staging: Path) -> str | None:
@@ -214,9 +207,7 @@ def _npm_run(npm: list[str], staging: Path) -> str | None:
                               encoding="utf-8", errors="replace", timeout=INSTALL_SECONDS,
                               stdin=subprocess.DEVNULL, env=env)
     if proc.returncode != 0:
-        said = (proc.stderr or proc.stdout or "").strip().splitlines()[-REASON_LINES:]
-        ended = f"npm ended with exit code {proc.returncode}"
-        return "\n".join([f"{ended}:", *said]) if said else f"{ended}."
+        return failure.exited("npm", proc.returncode, proc.stderr, proc.stdout)
     version = installed_version(staging)
     if version is None:
         return "npm finished without installing the wilma program."
@@ -320,35 +311,39 @@ def obfuscate(password: str) -> str:
     return base64.b64encode((SALT + password).encode()).decode()
 
 
-def sign_in(tenant: dict[str, Any], username: str, password: str) -> tuple[str, list[dict[str, Any]]]:
+def sign_in(tenant: dict[str, Any], username: str, password: str) -> dict[str, Any]:
     """Writes the CLI's profile for `username` at the Wilma `tenant`, checks it with the CLI's Kid
-    list, and once that works saves it in the CLI's config. Returns `signed-in` with the Kids, or
-    `wrong-password`, `sign-in-failed`, `no-kids` or `not-installed`. Unless signed in, the CLI's
-    config stays as it was, so a wrong password isn't kept and an earlier sign-in still works. A
-    new profile goes in setup's record."""
+    list, and once that works saves it in the CLI's config. Returns its `result`: `signed-in` with
+    the `kids`, or `wrong-password`, `sign-in-failed`, which comes with the `reason` the CLI gave,
+    for the setup page to show, `no-kids` or `not-installed`. Unless signed in, the CLI's config
+    stays as it was, so a wrong password isn't kept and an earlier sign-in still works. A new
+    profile goes in setup's record."""
     if not installed():
-        return "not-installed", []
+        return {"result": "not-installed"}
     # From 2.0 the CLI's commands read every profile in its config, so an earlier one that works
     # would hide a wrong password. The new one is checked alone, in a config of its own in an
     # owner-only folder, which also takes the session the CLI saves next to it and goes with it.
     with tempfile.TemporaryDirectory(prefix="parent-recap-wilma-") as folder:
         alone = Path(folder) / "config.json"
         checked_id = write_profile(alone, tenant, username, password)
-        result, kids = "sign-in-failed", []
+        out: dict[str, Any]
         try:
             kids = [k for k in wilma.list_kids(alone) if isinstance(k.get("name"), str) and k["name"]]
-            result = "signed-in" if kids else "no-kids"  # no Kids: not a guardian's account
+            # No Kids: not a guardian's account.
+            out = {"result": "signed-in", "kids": kids} if kids else {"result": "no-kids"}
         except wilma.WilmaError as e:
-            result = "wrong-password" if e.wrong_password else "sign-in-failed"
+            out = {"result": "wrong-password"} if e.wrong_password else {
+                "result": "sign-in-failed",
+                "reason": failure.logged("Wilma didn't sign in", failure.raised(e, "Signing in"))}
         checked = profile(alone, checked_id) or {}
-    if result != "signed-in":
-        return result, []
+    if out["result"] != "signed-in":
+        return out
     path = config_path()
     profiles_before = profile_ids(path)
     # With the Kids the CLI saved in the profile it checked.
     profile_id = write_profile(path, tenant, username, password, checked.get("students"))
     record_profile(profile_id, profiles_before)
-    return result, kids
+    return out
 
 
 def record_profile(profile_id: str | None, before: list[str]) -> None:
@@ -547,9 +542,11 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
                     return outcome("not-signed-in", "The Wilma screen was closed before signing "
                                    f"in. Run this again when the family is ready: {again}")
                 if exit_status is not None:
+                    why = failure.exited("The Wilma screen", exit_status, None, None)
                     return outcome("sign-in-failed", "Wilma didn't sign in. The family checks "
                                    "the city and the parent account's username and password, "
-                                   f"then signs in again: {again}")
+                                   f"then signs in again: {again}",
+                                   reason=failure.logged("Wilma didn't sign in", why))
             if poll < polls:
                 time.sleep(WILMA_POLL_SECONDS)
     return outcome("timeout", f"The family didn't sign in to Wilma within {timeout} "

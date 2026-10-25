@@ -44,6 +44,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_brief_text.py`          | The program's own Brief and Weekend Picks text                   |
 | `test_citations.py`           | The model's citations checked against what the program supplied  |
 | `test_eval_scoring.py`        | The eval's deterministic scoring                                 |
+| `test_failure.py`             | Why a setup step failed, as the setup page shows and copies it   |
 | `test_held_back.py`           | Which texts look sensitive, against `sensitive_words.yaml`       |
 | `test_kid_placeholders.py`    | Each Kid as Kid A, Kid B and back                                |
 | `test_llm_memory.py`          | The llm package's in-memory adapter (ADR 0023)                   |

@@ -336,13 +336,16 @@ def test_while_macos_asks_for_the_password_the_page_waits(harness, page, schedul
     assert len(schedule.dialogs) == 1
 
 
-def test_jobs_that_cannot_be_loaded_say_so(harness, page, schedule):
+def test_jobs_that_cannot_be_loaded_say_so_and_why(harness, page, schedule, caplog):
     at_finish(harness)
     schedule.load_fails = True
 
     finish(page.url)
 
-    assert finished(page.url) == {"result": "install-failed"}
+    reason = "Turning on the evening Brief stopped: RuntimeError: the jobs couldn't be loaded"
+    assert finished(page.url) == {"result": "install-failed", "reason": reason}
+    assert reason in caplog.text
+    assert call(page.url, "api/finish/check", method="POST", body={}).json()["reason"] == reason
     assert schedule.dialogs == []
     schedule.load_fails = False
     finish(page.url)

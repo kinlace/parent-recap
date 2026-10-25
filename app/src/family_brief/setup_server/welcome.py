@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
-from .. import feedback, setup_save
+from .. import failure, feedback, setup_save
 from ..system import desktop, profile, secrets
 from . import ai, gmail
 from .context import (LANGUAGES, Action, Phase, Reply, ais, chats, claude_missing, not_offered,
@@ -46,6 +46,8 @@ class Welcome(Phase):
                 "system": profile.current().system,
                 "ais": list(ais()),
                 "installs": sorted(profile.current().page_installs),
+                # What Copy puts with a failure's reason, for the family to send us.
+                "about": failure.about(),
                 # In tmux or SSH, macOS may not let this server save the passwords in the Keychain.
                 "keychain": {"reachable": secrets.reachable()},
                 "welcome": self._welcome(progress)}
@@ -74,7 +76,7 @@ class Welcome(Phase):
         if program is None:
             missing = claude_missing() if name == "claude" else {"result": "not-installed"}
             return HTTPStatus.OK, {**missing, "ai": name}
-        return HTTPStatus.OK, {"result": ai.status(self.context, program, name), "ai": name}
+        return HTTPStatus.OK, {**ai.status(self.context, program, name), "ai": name}
 
     def save_welcome(self, raw: Any) -> Reply:
         """Saves Welcome's choices: the AI, the partner or only me, and pilot feedback, and moves

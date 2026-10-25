@@ -6,7 +6,7 @@ import threading
 from http import HTTPStatus
 from typing import Any
 
-from .. import ops, setup_connect, setup_save, setup_status
+from .. import failure, ops, setup_connect, setup_save, setup_status
 from ..config import Config
 from ..system import wake
 from .context import Action, Context, Phase, Reply, nothing_to_give
@@ -121,9 +121,11 @@ class Finish(Phase):
                 hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
                 other = wake.status(hour, minute).others
                 result = wake.set(hour, minute, replace)
-            except Exception:  # its error can name the Mac's files: never leave the page installing
+            except Exception as e:  # never leave the page installing
                 self._wake = {}
-                runs["finish"] = {"result": "install-failed"}
+                runs["finish"] = {"result": "install-failed", "reason": failure.logged(
+                    "The evening Brief wasn't turned on",
+                    failure.of(e, "Turning on the evening Brief"))}
                 return
             self._wake = {"wake": result, **({"other": other} if result == "other-schedule" else {})}
             runs["finish"] = {"result": "checking"}

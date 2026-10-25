@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import install_record, llm
+from . import failure, install_record, llm
 
 REPO = "kinlace/parent-recap"
 MARKETPLACE = "kinlace"
@@ -31,9 +31,11 @@ CLAUDE_SECONDS = 180  # adding the marketplace downloads it from GitHub
 SKILLS = ("setup", "manage")
 
 
-def install_claude_plugin(program: str) -> str:
-    """Installs or updates the plugin in Claude Code: `installed`, or `install-failed`. The
-    plugin and the marketplace go in setup's record when they weren't there in any form before."""
+def install_claude_plugin(program: str) -> dict[str, Any]:
+    """Installs or updates the plugin in Claude Code. Returns its `result`: `installed`, or
+    `install-failed`, which comes with the `reason` Claude Code failed, for the setup page to
+    show. The plugin and the marketplace go in setup's record when they weren't there in any
+    form before."""
     try:
         plugins = _listed(program, "plugin", "list", "--json")
         marketplaces = _listed(program, "plugin", "marketplace", "list", "--json")
@@ -60,11 +62,12 @@ def install_claude_plugin(program: str) -> str:
         else:
             # User scope, so the plugin isn't tied to the folder Claude Code starts in.
             _claude(program, "plugin", "install", PLUGIN, "--scope", "user")
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return "install-failed"
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"result": "install-failed", "reason": failure.logged(
+            "The plugin didn't install", failure.of(e, "The plugin install"))}
     for kind, value in new:
         install_record.add(kind, value)
-    return "installed"
+    return {"result": "installed"}
 
 
 def claude_installed(program: str) -> tuple[list[str], list[str]]:
@@ -84,18 +87,19 @@ def remove_claude_marketplace(program: str, marketplace: str) -> None:
 
 
 def _claude(program: str, *args: str) -> str:
-    """Runs `claude <args>` and returns what it printed; raises if it failed."""
+    """Runs `claude <args>` and returns what it printed; raises if it failed, with what it said."""
     proc = subprocess.run([program, *args], capture_output=True, text=True, encoding="utf-8", timeout=CLAUDE_SECONDS,
                           stdin=subprocess.DEVNULL, env=llm.named("claude").program_env())
     if proc.returncode != 0:
-        raise subprocess.CalledProcessError(proc.returncode, args[:3])
+        raise subprocess.CalledProcessError(proc.returncode, ["claude", *args], proc.stdout,
+                                            proc.stderr)
     return proc.stdout
 
 
 def _listed(program: str, *args: str) -> list[dict[str, Any]]:
     listed = json.loads(_claude(program, *args))
     if not isinstance(listed, list):
-        raise ValueError("not a list")
+        raise ValueError(f"claude {' '.join(args)} gave no list")
     return [entry for entry in listed if isinstance(entry, dict)]
 
 

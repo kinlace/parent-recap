@@ -406,7 +406,7 @@ def codex_installer(harness, ai, windows_programs, monkeypatch) -> dict[str, Any
     """A Windows PC without Codex, and OpenAI's installer, which PowerShell runs: the fake puts
     `codex` where the real one puts codex.exe, under %LOCALAPPDATA%, unless `fails`. The PC's
     PATH doesn't lead there: the installer adds it only for windows opened after it ran."""
-    installer = {"fails": False, "ran": [],
+    installer = {"fails": False, "ran": [], "run": None,
                  "folder": windows_programs / "Programs" / "OpenAI" / "Codex" / "bin"}
     record_background_processes(harness, monkeypatch, [])
     run = subprocess.run
@@ -415,6 +415,8 @@ def codex_installer(harness, ai, windows_programs, monkeypatch) -> dict[str, Any
         if cmd[0] != "powershell.exe":
             return run(cmd, *a, **k)
         installer["ran"].append(cmd)
+        if installer["run"] is not None:  # the installer's run, in place of one that works
+            return installer["run"](cmd)
         if installer["fails"]:
             return subprocess.CompletedProcess(cmd, 1, "", "Invoke-WebRequest: no network")
         fake_codex(installer["folder"])
@@ -457,20 +459,53 @@ def test_on_windows_the_page_installs_codex_with_openai_s_installer_and_opens_it
 
 
 def test_on_windows_an_install_of_codex_that_fails_says_so_and_can_be_tried_again(
-        harness, page, codex_installer):
+        harness, page, codex_installer, caplog):
     at_the_ai_step(harness, page.url, "codex")
     codex_installer["fails"] = True
 
     assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
         {"result": "installing"}
 
-    assert codex_installed(page.url) == {"result": "install-failed"}
+    # With what the installer said last, for the page to show.
+    reason = "The Codex installer ended with exit code 1:\nInvoke-WebRequest: no network"
+    assert codex_installed(page.url) == {"result": "install-failed", "reason": reason}
+    assert reason in caplog.text
     assert codex_check(page.url) == {"result": "not-installed"}  # said once
     codex_installer["fails"] = False
     assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
         {"result": "installing"}
     assert codex_installed(page.url)["result"] == "signed-in"
     assert len(codex_installer["ran"]) == 2
+
+
+def installer_times_out(cmd: list[str]) -> Any:
+    raise subprocess.TimeoutExpired(cmd, setup_ai.CODEX_INSTALL_SECONDS)
+
+
+def installer_leaves_nothing(cmd: list[str]) -> Any:
+    return subprocess.CompletedProcess(cmd, 0, "Codex CLI installed successfully.\n", "")
+
+
+def installer_cannot_run(cmd: list[str]) -> Any:
+    raise FileNotFoundError(2, "The system cannot find the file specified", cmd[0])
+
+
+@pytest.mark.parametrize("run, said", [
+    (installer_times_out,
+     f"The Codex installer didn't finish within {setup_ai.CODEX_INSTALL_SECONDS} seconds."),
+    (installer_leaves_nothing,
+     "The Codex installer finished, but codex isn't where the setup page looks for it."),
+    (installer_cannot_run, "The Codex install stopped: FileNotFoundError: [Errno 2] The system "
+                           "cannot find the file specified: 'powershell.exe'"),
+], ids=["timeout", "nothing-installed", "cannot-run"])
+def test_each_other_way_an_install_of_codex_fails_says_which_in_one_line(
+        harness, page, codex_installer, run, said):
+    at_the_ai_step(harness, page.url, "codex")
+    codex_installer["run"] = run
+
+    call(page.url, "api/codex/install", method="POST", body={})
+
+    assert codex_installed(page.url) == {"result": "install-failed", "reason": said}
 
 
 def test_on_windows_installing_codex_that_is_there_already_only_opens_its_sign_in(
@@ -538,7 +573,9 @@ def test_on_a_mac_an_install_of_codex_that_fails_says_so_and_can_be_tried_again(
     assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
         {"result": "installing"}
 
-    assert codex_installed(page.url) == {"result": "install-failed"}
+    assert codex_installed(page.url) == {
+        "result": "install-failed",
+        "reason": "The Codex installer ended with exit code 1:\ncurl: (6) Could not resolve host"}
     assert codex_check(page.url) == {"result": "not-installed"}  # said once
     mac_codex_installer["fails"] = False
     assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
@@ -629,7 +666,9 @@ def test_on_windows_an_install_of_claude_code_that_fails_says_so_and_can_be_trie
     assert call(page.url, "api/claude/install", method="POST", body={}).json() == \
         {"result": "installing"}
 
-    assert claude_installed(page.url) == {"result": "install-failed"}
+    assert claude_installed(page.url) == {
+        "result": "install-failed",
+        "reason": "The Claude Code installer ended with exit code 1:\nInvoke-RestMethod: no network"}
     assert call(page.url, "api/claude/check", method="POST", body={}).json() == \
         {"result": "no-sign-in"}  # said once
     assert not harness.desktop.windows
