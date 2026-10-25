@@ -4,6 +4,7 @@
 const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish"];
 const page = {
   text: null, language: "en", chosen: null, languages: [], system: "macos", ais: [], installs: [],
+  about: null,
   progress: null, welcome: null, connect: null, gmail: null, whatsapp: null, myclub: null,
   check: null, brief: null, welcomeShown: false, connectShown: false, workingShown: false,
   checkShown: false, briefShown: false, finishShown: false, finished: false,
@@ -144,6 +145,40 @@ function renderChoices() {
   });
 }
 
+// ── Why a step failed: the reason the server gave, in a small monospace block under the step's
+// message, for a photo of the screen to carry, with a Copy button for the family to send us.
+
+// Shows `reason` in the block of the status area `area`, or hides it without one. `step` is the
+// message's text key, which names the step and how it ended in any language.
+function showReason(area, step, reason) {
+  const block = document.getElementById(`${area}-why`);
+  block.hidden = !reason;
+  block.dataset.step = reason ? step : "";
+  block.dataset.time = reason ? new Date().toISOString() : "";
+  document.getElementById(`${area}-reason`).textContent = reason || "";
+}
+
+// What Copy puts on the clipboard: the reason, then Parent Recap's version, the system, the step
+// and when it failed, so we needn't ask which version or computer.
+function reasonReport(block) {
+  return [
+    block.querySelector(".reason").textContent,
+    "",
+    `Parent Recap ${page.about.version}`,
+    `System: ${page.about.os}`,
+    `Step: ${block.dataset.step}`,
+    `Time: ${block.dataset.time}`,
+  ].join("\n");
+}
+
+function setUpReasons() {
+  for (const block of document.querySelectorAll(".why")) {
+    block.querySelector("button").addEventListener("click", () => {
+      navigator.clipboard.writeText(reasonReport(block));
+    });
+  }
+}
+
 function renderPhase() {
   const current = page.progress.phase;
   const list = document.getElementById("phases");
@@ -241,7 +276,7 @@ async function checkAI() {
     return;
   }
   if (check !== ai.checking) return; // the parent picked the other one meanwhile
-  showAI(name, out.result, out.install);
+  showAI(name, out.result, out.install, out.reason);
   if (out.result !== "ready" && !document.getElementById("welcome").hidden) {
     ai.timer = setTimeout(checkAI, RECHECK_MS);
   }
@@ -256,13 +291,14 @@ function welcomeGoesOn(name, result) {
   return result === "signed-out" && page.system === "windows" && ["codex", "claude"].includes(name);
 }
 
-function showAI(name, result, install) {
+function showAI(name, result, install, reason) {
   ai.result = result;
   const status = document.getElementById("ai-status");
   status.dataset.result = result;
   const message = document.getElementById("ai-message");
   message.dataset.text = result === "checking" ? "welcome.ai.checking" : `ai.${name}.${result}`;
   message.textContent = t(message.dataset.text);
+  showReason("ai", message.dataset.text, reason);
   document.getElementById("ai-install").hidden = !install;
   document.getElementById("ai-install-line").textContent = install || "";
   // A recheck can't change a result Welcome already goes on with.
@@ -512,9 +548,7 @@ function showSource(key, { reason, url, kids, install, values } = {}) {
   } else {
     delete message.dataset.text;
   }
-  const why = document.getElementById("source-reason");
-  why.hidden = !reason;
-  why.textContent = reason || "";
+  showReason("source", key, reason);
   const where = document.getElementById("source-url");
   where.hidden = !url;
   where.textContent = url || "";
@@ -759,7 +793,7 @@ async function signInWilma(event) {
 
 // How signing in went. Once signed in, Wilma is done and the Kids it found are listed.
 function wilmaResult(out, prefix) {
-  if (out.result !== "signed-in") return showSource(prefix + out.result);
+  if (out.result !== "signed-in") return showSource(prefix + out.result, { reason: out.reason });
   page.progress = out.progress;
   renderSources();
   showSource("wilma.signed-in", { kids: out.kids });
@@ -950,7 +984,7 @@ function claudeInstallResult(out) {
   clearTimeout(aiStep.timer);
   if (out.result === "installing") aiStep.timer = setTimeout(checkClaudeInstall, AI_MS);
   if (["installing", "install-failed"].includes(out.result)) {
-    return showSource("claude." + out.result);
+    return showSource("claude." + out.result, { reason: out.reason });
   }
   if (out.result !== "no-sign-in") claudeWindowResult(out);
 }
@@ -1009,7 +1043,7 @@ function codexResult(out) {
     !["codex.signed-out", "codex.login-failed"].includes(key);
   document.getElementById("codex-install").hidden = !CODEX_INSTALL.includes(key);
   if (out.result === "signed-in") return aiDone(out, key);
-  showSource(key);
+  showSource(key, { reason: out.reason });
   if (CODEX_AGAIN.includes(key)) aiStep.timer = setTimeout(checkCodex, AI_MS);
 }
 
@@ -1303,6 +1337,7 @@ function renderWorking() {
   document.getElementById("working-status").hidden = !failedRead;
   document.getElementById("working-again").hidden = !failedRead;
   if (failedRead) setText(document.getElementById("working-message"), "working.read-failed");
+  showReason("working", "working.read-failed", failedRead && reading.reason);
 }
 
 // ── Check: one page of everything found, each list ticked by best guess, confirmed at once.
@@ -1879,6 +1914,7 @@ function finishResult(out) {
   status.dataset.result = "finish." + out.result;
   setText(document.getElementById("finish-message"), "finish." + out.result,
     { evening: page.check.evening });
+  showReason("finish", "finish." + out.result, out.reason);
   const wake = document.getElementById("finish-wake");
   wake.hidden = !out.wake;
   if (out.wake) setText(wake, "finish.wake." + out.wake);
@@ -2027,6 +2063,7 @@ async function continueInChat(event) {
     const line = out.type || out.install;
     document.getElementById("chat-line").hidden = !line;
     document.getElementById("chat-line-text").textContent = line || "";
+    showReason("chat", `chat.${name}.install-failed`, out.install_failed);
     document.getElementById("chat-status").hidden = false;
   } catch (e) {
     failed(e);
@@ -2080,6 +2117,7 @@ async function start() {
   page.system = state.system;
   page.ais = state.ais;
   page.installs = state.installs;
+  page.about = state.about;
   page.chosen = state.language;
   page.language = state.language || state.preselected;
   page.progress = state.progress;
@@ -2095,6 +2133,7 @@ async function start() {
   renderSwitch();
   renderChoices();
   renderChat();
+  setUpReasons();
   show();
 }
 
