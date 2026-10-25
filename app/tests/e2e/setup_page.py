@@ -323,6 +323,7 @@ class Health:
                         (ops.OK, "gmail", "Gmail", "parent@example.com signed in, 3 allowlisted emails"),
                         (ops.OK, "claude", "Claude", "call succeeded (auth: keychain-oauth)")]
         self.runs: list[tuple[str | None, bool]] = []
+        self.fails: Exception | None = None  # raised in place of the checks' results
         self.go = threading.Event()
         self.go.set()
 
@@ -330,6 +331,8 @@ class Health:
                  show: bool = False, schedule: bool = True) -> list[ops.Check]:
         self.runs.append((config, schedule))
         assert self.go.wait(5)
+        if self.fails is not None:
+            raise self.fails
         return [c if isinstance(c, ops.Check) else ops.Check(*c) for c in self.results]
 
 

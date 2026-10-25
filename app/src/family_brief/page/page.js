@@ -149,13 +149,16 @@ function renderChoices() {
 // message, for a photo of the screen to carry, with a Copy button for the family to send us.
 
 // Shows `reason` in the block of the status area `area`, or hides it without one. `step` is the
-// message's text key, which names the step and how it ended in any language.
+// message's text key, which names the step and how it ended in any language. A step that says
+// the same again, as the page checks it every few seconds, keeps the time it first failed.
 function showReason(area, step, reason) {
   const block = document.getElementById(`${area}-why`);
+  const shown = document.getElementById(`${area}-reason`);
+  const same = Boolean(reason) && block.dataset.step === step && shown.textContent === reason;
   block.hidden = !reason;
   block.dataset.step = reason ? step : "";
-  block.dataset.time = reason ? new Date().toISOString() : "";
-  document.getElementById(`${area}-reason`).textContent = reason || "";
+  if (!same) block.dataset.time = reason ? new Date().toISOString() : "";
+  shown.textContent = reason || "";
 }
 
 // What Copy puts on the clipboard: the reason, then Parent Recap's version, the system, the step

@@ -336,6 +336,21 @@ def test_while_macos_asks_for_the_password_the_page_waits(harness, page, schedul
     assert len(schedule.dialogs) == 1
 
 
+def test_outcomes_that_cannot_be_checked_say_why(harness, page, schedule, health, caplog):
+    at_finish(harness)
+    health.fails = OSError(5, "Input/output error")
+
+    finish(page.url)
+
+    out = finished(page.url)
+    reason = "Checking the outcomes stopped: OSError: [Errno 5] Input/output error"
+    assert out["result"] == "not-done" and out["reason"] == reason
+    assert reason in caplog.text
+    health.fails = None  # checked again, it says nothing more
+    call(page.url, "api/finish/outcomes", method="POST", body={"again": True})
+    assert "reason" not in finished(page.url)
+
+
 def test_jobs_that_cannot_be_loaded_say_so_and_why(harness, page, schedule, caplog):
     at_finish(harness)
     schedule.load_fails = True
