@@ -33,9 +33,9 @@ from test_setup_status import install_program
 from test_uninstall import Handover, leftovers, uninstall
 
 PARENT = "parent@example.com"
-# Windows' own Task Scheduler takes minutes on CI's runner to register, list and check the tasks
-# (test_jobs_windows.py takes as long), so Finish and the checks around it are given that.
-SLOW = 600
+# Windows' own Task Scheduler and Credential Manager take seconds on CI's runner, so Finish and the
+# checks around it are given longer than the page's own waits.
+SLOW = 120
 SENDERS = ["Opettaja <opettaja@edu.espoo.fi>"] * 3 + ["Coach <coach@tapiolan-seura.fi>"] * 2
 
 
