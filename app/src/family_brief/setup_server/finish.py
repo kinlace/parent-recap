@@ -129,15 +129,18 @@ class Finish(Phase):
                 return
             self._wake = {"wake": result, **({"other": other} if result == "other-schedule" else {})}
             runs["finish"] = {"result": "checking"}
+        why: dict[str, str] = {}
         try:
             outcomes = setup_status.check(str(self.context.config))
-        except Exception:  # never leave the page checking
+        except Exception as e:  # never leave the page checking
             outcomes = []
+            why = {"reason": failure.logged("Finish's outcomes weren't checked",
+                                            failure.of(e, "Checking the outcomes"))}
         done = bool(outcomes) and all(o.ok for o in outcomes)
         # Only checked, after a try: the checklist still says what's missing.
         tried = {"tried": True} if replace is None and self._tried else {}
         runs["finish"] = {"result": "done" if done else "not-done", **self._wake, **tried,
-                          "outcomes": [_finish_outcome(o) for o in outcomes]}
+                          "outcomes": [_finish_outcome(o) for o in outcomes], **why}
 
 
 def _finish_outcome(o: setup_status.Outcome) -> dict[str, Any]:

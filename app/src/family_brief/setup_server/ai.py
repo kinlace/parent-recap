@@ -108,10 +108,10 @@ class AISignIn(Phase):
             install = self._claude_install
             if install not in (None, "installing"):
                 self._claude_install = None  # said once, and the family can start it again
-            why = self._install_reason.pop("claude", None) if install == "install-failed" \
-                else None
+            why = {"reason": self._install_reason.pop("claude")} \
+                if install == "install-failed" else {}
         if install is not None:
-            return HTTPStatus.OK, {"result": install, **({"reason": why} if why else {})}
+            return HTTPStatus.OK, {"result": install, **why}
         sign_in = self._claude
         if sign_in is None:
             return HTTPStatus.OK, {"result": "no-sign-in"}
@@ -162,7 +162,7 @@ class AISignIn(Phase):
         return HTTPStatus.OK, {"result": "installing"}
 
     def _installing_claude(self) -> None:
-        result, reason = "install-failed", None
+        result = "install-failed"
         try:
             reason = setup_ai.install_claude()
             program = None if reason else claude().program()
@@ -176,7 +176,7 @@ class AISignIn(Phase):
                                     failure.of(e, "The Claude Code install"))
         with self._lock:
             self._claude_install = result
-            if result == "install-failed" and reason:
+            if result == "install-failed":  # every way it fails says why
                 self._install_reason["claude"] = reason
 
     def save_claude_token(self, raw: Any) -> Reply:
@@ -302,8 +302,8 @@ class AISignIn(Phase):
             if codex is not None and (self._codex is None or self._codex.poll() is not None):
                 self._codex = setup_ai.start_codex_login(codex)
             self._codex_install = "installed" if codex else "install-failed"
-            if codex is None:
-                self._install_reason["codex"] = reason or "The Codex install stopped."
+            if codex is None:  # every way it fails says why
+                self._install_reason["codex"] = reason
 
     # ── the gateway
 
