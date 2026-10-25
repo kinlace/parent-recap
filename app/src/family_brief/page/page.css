@@ -310,7 +310,19 @@ fieldset .field label {
   overflow-wrap: anywhere;
 }
 
-/* Why an install failed, small, for a photo of the screen to carry. */
+/* Why a step failed, small, for a photo of the screen to carry, with its Copy button. */
+.status .why {
+  margin-top: 8px;
+}
+
+.status .why .hint {
+  margin: 0;
+}
+
+.status .why button {
+  margin-top: 6px;
+}
+
 .status .reason {
   margin: 8px 0 0;
   font: 11px/1.4 var(--mono);

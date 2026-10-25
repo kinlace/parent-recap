@@ -28,11 +28,11 @@ except ImportError:  # the browser fixture skips the tests and says why
     sync_playwright = None
 
 import fake_node
-from family_brief import ops, setup_connect, setup_wilma
+from family_brief import failure, ops, setup_connect, setup_wilma
 from family_brief.collectors import myclub
 from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, progress_file,
                         save_progress)
-from setup_page import ai, clock, health, page  # noqa: F401
+from setup_page import ai, clock, health, page, schedule  # noqa: F401
 from test_setup_ai import GATEWAY_KEY
 from test_setup_gmail import TYPED
 from test_setup_myclub import LINK as MYCLUB_LINK
@@ -604,6 +604,44 @@ def test_check_again_is_offered_only_once_turn_it_on_left_something_failing(tab,
 
     expect(tab.locator("#finish-status")).to_have_attribute("data-result", "finish.done")
     expect(button(tab, "finish.again")).to_be_hidden()
+
+
+def test_a_failed_step_shows_why_copy_says_where_and_trying_again_clears_it(
+        tab, family, health, schedule):
+    at_finish(family)
+    schedule.load_fails = True
+    tab.reload()
+    # Copy writes to the clipboard, which a headless browser keeps to itself.
+    tab.evaluate("() => { window.copied = []; navigator.clipboard.writeText = "
+                 "(t) => { window.copied.push(t); return Promise.resolve(); }; }")
+
+    button(tab, "finish.start").click()
+
+    # The general message as it was, and under it why, in the block Wilma's install uses.
+    status = tab.locator("#finish-status")
+    expect(status.get_by_text(text("finish.install-failed"))).to_be_visible()
+    reason = tab.locator("#finish-reason")
+    said = "Turning on the evening Brief stopped: RuntimeError: the jobs couldn't be loaded"
+    expect(reason).to_have_text(said)
+    expect(reason).to_have_css("white-space", "pre-wrap")
+    assert "mono" in reason.evaluate("e => getComputedStyle(e).fontFamily").lower()
+
+    status.get_by_role("button", name=text("copy"), exact=True).click()
+
+    tab.wait_for_function("() => window.copied.length > 0")
+    [report] = tab.evaluate("() => window.copied")
+    about = failure.about()
+    *lines, time = report.splitlines()
+    assert lines == [said, "", f"Parent Recap {about['version']}", f"System: {about['os']}",
+                     "Step: finish.install-failed"]
+    assert re.fullmatch(r"Time: \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", time)
+
+    # Turn it on again: the reason goes as it starts, and once it works nothing more is shown.
+    schedule.load_fails = False
+    button(tab, "finish.start").click()
+    expect(status).to_have_attribute("data-result", "finish.done")
+    expect(reason).to_be_hidden()
+    expect(status.get_by_role("button", name=text("copy"), exact=True)).to_be_hidden()
 
 
 def test_finish_moves_connect_s_sign_ins_into_changing_the_ai(tab, family, health):

@@ -39,6 +39,10 @@
         <p class="hint" data-text="welcome.ai.plan"></p>
         <div id="ai-status" class="status" role="status">
           <p id="ai-message"></p>
+          <div id="ai-why" class="why" hidden>
+            <pre id="ai-reason" class="reason"></pre>
+            <button type="button" class="secondary" data-text="copy"></button>
+          </div>
           <div id="ai-install" class="install" hidden>
             <code id="ai-install-line"></code>
             <button type="button" id="ai-copy" class="secondary" data-text="copy"></button>
@@ -308,7 +312,10 @@
     </div>
     <div id="source-status" class="status" role="status" hidden>
       <p id="source-message"></p>
-      <pre id="source-reason" class="reason" hidden></pre>
+      <div id="source-why" class="why" hidden>
+        <pre id="source-reason" class="reason"></pre>
+        <button type="button" class="secondary" data-text="copy"></button>
+      </div>
       <code id="source-url" hidden></code>
       <ul id="source-kids" class="kids" hidden></ul>
       <div id="source-install" class="install" hidden>
@@ -330,6 +337,10 @@
     <progress id="working-bar" max="1" value="0"></progress>
     <div id="working-status" class="status" role="status" hidden>
       <p id="working-message"></p>
+      <div id="working-why" class="why" hidden>
+        <pre id="working-reason" class="reason"></pre>
+        <button type="button" class="secondary" data-text="copy"></button>
+      </div>
       <button type="button" id="working-again" class="secondary" data-text="working.again" hidden></button>
     </div>
   </section>
@@ -422,6 +433,10 @@
     </div>
     <div id="finish-status" class="status" role="status" hidden>
       <p id="finish-message"></p>
+      <div id="finish-why" class="why" hidden>
+        <pre id="finish-reason" class="reason"></pre>
+        <button type="button" class="secondary" data-text="copy"></button>
+      </div>
       <p id="finish-wake"></p>
       <ul id="finish-other" class="kids" hidden></ul>
       <button type="button" id="finish-replace" class="secondary" data-text="finish.replace" hidden></button>
@@ -465,6 +480,11 @@
       <div id="chat-line" class="install" hidden>
         <code id="chat-line-text"></code>
         <button type="button" id="chat-copy" class="secondary" data-text="copy"></button>
+      </div>
+      <div id="chat-why" class="why" hidden>
+        <p class="hint" data-text="chat.install-failed"></p>
+        <pre id="chat-reason" class="reason"></pre>
+        <button type="button" class="secondary" data-text="copy"></button>
       </div>
     </div>
   </div>
