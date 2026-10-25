@@ -151,7 +151,7 @@ def test_bg_stops_a_run_that_takes_too_long(harness, child_process):
 def task_scheduler(monkeypatch):
     """Windows' own Task Scheduler, under names of the test's own, so no task of the family whose
     PC runs the tests is touched; they're removed after. Without the harness, whose fake
-    `subprocess.run` would stand in for PowerShell."""
+    `subprocess.run` would stand in for schtasks."""
     monkeypatch.setattr(jobs, "_adapter", jobs_windows)
     monkeypatch.setattr(jobs_windows, "PREFIX", f"Parent Recap test {uuid.uuid4().hex[:8]} ")
     yield
@@ -181,9 +181,7 @@ def test_installing_registers_both_tasks_and_without_weekend_picks_removes_their
 def test_the_evening_job_without_its_sign_in_task_is_not_installed(task_scheduler, tmp_path):
     # As after an upgrade from 0.6.2, so doctor asks for `schedule install` (#386).
     jobs.install(both(tmp_path))
-    r = jobs_windows._powershell(
-        "Unregister-ScheduledTask -TaskName $env:PARENT_RECAP_TASK -TaskPath '\\' -Confirm:$false",
-        task=jobs.system_name(jobs_windows.CATCH_UP))
+    r = jobs_windows._schtasks("/Delete", "/TN", jobs.system_name(jobs_windows.CATCH_UP), "/F")
     assert r.returncode == 0, r.stderr
 
     assert jobs.installed() == {jobs.WEEKEND}
