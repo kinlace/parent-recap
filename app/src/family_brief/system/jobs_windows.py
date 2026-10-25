@@ -50,15 +50,20 @@ def _where(task: str) -> Path:
 
 def _schtasks(*args: str) -> subprocess.CompletedProcess:
     """Runs schtasks.exe with `args`, its output as text. A failure's message goes to stderr."""
-    r = subprocess.run(["schtasks.exe", *args], capture_output=True)
+    r = subprocess.run(["schtasks.exe", *args], capture_output=True,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return subprocess.CompletedProcess(r.args, r.returncode, _text(r.stdout), _text(r.stderr))
 
 
 def _text(out: bytes) -> str:
-    """schtasks' output: in the console's code page, or in UTF-16 for some of its XML."""
+    """schtasks' output, which is in the console's code page: UTF-8 on a PC set to it, else the
+    PC's OEM one; or UTF-16 for some of its XML."""
     if out.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)) or b"\x00" in out[:64]:
         return out.decode("utf-16", errors="replace").lstrip("\ufeff")
-    return out.decode("oem" if sys.platform == "win32" else "utf-8", errors="replace")
+    try:
+        return out.decode("utf-8")
+    except UnicodeDecodeError:
+        return out.decode("oem", errors="replace")
 
 
 def _error(r: subprocess.CompletedProcess) -> str:
