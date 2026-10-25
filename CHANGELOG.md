@@ -4,6 +4,14 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.7.2 · 2026-10-25
+
+When the Wilma program doesn't install, the setup page says why, so a photo of the screen tells us what went wrong.
+
+### Changed
+
+- When the Wilma program doesn't install, the setup page shows why under the usual message: npm's error, a timeout, or what was missing afterwards. Try again clears it.
+
 ## 0.7.1 · 2026-10-23
 
 On a Mac, the setup page installs Codex itself when it's missing, as it already did on Windows.
