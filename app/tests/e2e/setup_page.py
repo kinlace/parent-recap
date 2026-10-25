@@ -227,7 +227,8 @@ def chat_installed(url: str, name: str) -> str:
     out: dict[str, str] = {}
 
     def done() -> bool:
-        out["result"] = call(url, "api/state").json()["chat"].get(name, "installing")
+        out["result"] = call(url, "api/state").json()["chat"].get(name, {}).get("result",
+                                                                                "installing")
         return out["result"] != "installing"
     wait_for(done)
     return out["result"]

@@ -187,17 +187,26 @@ def test_an_ai_only_the_login_shell_finds_is_ready(harness, page, ai, login_shel
 
 
 @pytest.mark.macos
-def test_an_ai_check_that_cannot_run_says_so(harness, page, ai, monkeypatch):
+@pytest.mark.parametrize("error, said", [
+    (lambda cmd: subprocess.TimeoutExpired(cmd, 20),
+     "claude auth status didn't finish within 20 seconds."),
+    (lambda cmd: PermissionError(13, "Permission denied"),
+     "The check stopped: PermissionError: [Errno 13] Permission denied"),
+], ids=["timeout", "cannot-run"])
+def test_an_ai_check_that_cannot_run_says_so_and_why(harness, page, ai, monkeypatch, caplog,
+                                                     error, said):
     ai("claude")
     run = subprocess.run
 
     def fails(cmd, *a, **k):
         if cmd[1:3] == ["auth", "status"]:
-            raise subprocess.TimeoutExpired(cmd, 20)
+            raise error(cmd)
         return run(cmd, *a, **k)
     monkeypatch.setattr(subprocess, "run", fails)
 
-    assert check_ai(page.url, "claude").json() == {"result": "check-failed", "ai": "claude"}
+    assert check_ai(page.url, "claude").json() == \
+        {"result": "check-failed", "reason": said, "ai": "claude"}
+    assert said in caplog.text
 
 
 def test_only_claude_or_chatgpt_is_checked(page):

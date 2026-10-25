@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from pydantic import Field
 
-from .. import setup_save, setup_wilma
+from .. import failure, setup_save, setup_wilma
 from ..setup_connect import Reply, Strict, parse
 from .context import Action, Context, Phase, nothing_to_give
 
@@ -83,10 +83,10 @@ class Wilma(Phase):
         if tenant is None:
             return HTTPStatus.BAD_REQUEST, _wilma_invalid()
         with self._lock:
-            result, kids = setup_wilma.sign_in(tenant, answer.username.strip(), answer.password)
-        if result != "signed-in":
-            return HTTPStatus.OK, {"result": result}
-        return self._signed_in(kids, answer.town)
+            out = setup_wilma.sign_in(tenant, answer.username.strip(), answer.password)
+        if out["result"] != "signed-in":
+            return HTTPStatus.OK, out
+        return self._signed_in(out["kids"], answer.town)
 
     def save_town(self, raw: Any) -> Reply:
         """For a Household whose school doesn't use Wilma: saves the town picked from Wilma's list
@@ -131,10 +131,11 @@ class Wilma(Phase):
             if out["result"] == "signed-in":
                 kids = [k for k in out["kids"] if isinstance(k.get("name"), str) and k["name"]]
                 _, done = self._signed_in(kids, _city(out.get("wilma_address"), town))
-            else:
-                done = {"result": out["result"]}
-        except Exception:  # never leave the page waiting
-            done = {"result": "sign-in-failed"}
+            else:  # with why, where it failed
+                done = {k: v for k, v in out.items() if k in ("result", "reason")}
+        except Exception as e:  # never leave the page waiting
+            done = {"result": "sign-in-failed", "reason": failure.logged(
+                "Wilma didn't sign in", failure.raised(e, "The Wilma window"))}
         window["result"] = done
 
     def _signed_in(self, kids: list[dict[str, Any]], city: str | None) -> Reply:

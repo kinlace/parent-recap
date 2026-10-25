@@ -135,7 +135,8 @@ def test_reading_picks_up_again_after_the_page_was_restarted(harness, page, send
     assert read_to_the_end(page.url)["result"] == "read"
 
 
-def test_a_gmail_that_cannot_be_read_says_so_and_can_be_tried_again(harness, page, senders):
+def test_a_gmail_that_cannot_be_read_says_so_and_why_and_can_be_tried_again(harness, page,
+                                                                           senders, caplog):
     connect_done(harness)
     senders.go.set()
     del harness.secrets["gmail-imap-parent@example.com"]
@@ -143,7 +144,9 @@ def test_a_gmail_that_cannot_be_read_says_so_and_can_be_tried_again(harness, pag
     start_reading(page.url)
     out = read_to_the_end(page.url)
 
-    assert out == {"result": "read-failed"}  # without the error, which names the address
+    assert out["result"] == "read-failed"
+    assert out["reason"].startswith("Reading the senders stopped: ") and "\n" not in out["reason"]
+    assert out["reason"] in caplog.text
     assert setup_save.read(config_file(harness))["progress"]["phase"] == "working"
     harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
     start_reading(page.url)

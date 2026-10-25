@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from .. import chat_install, llm, setup_connect, setup_save, setup_whatsapp
+from .. import chat_install, failure, llm, setup_connect, setup_save, setup_whatsapp
 from ..config import Config
 from ..setup_connect import Reply
 from ..system import profile
@@ -52,22 +52,23 @@ class Timeouts:
 
 class ChatInstalls:
     """What lets the family ask for changes in the chat later, by AI, installed in the
-    background once Welcome has saved it: `installing`, `installed`, `install-failed`,
-    `not-installed` (no Claude Code) or `no-plugin-copy` (the program wasn't installed by the
-    install line). `api/state` says how each went."""
+    background once Welcome has saved it. Each one's `result`: `installing`, `installed`,
+    `install-failed`, which comes with the `reason` it failed, `not-installed` (no Claude Code)
+    or `no-plugin-copy` (the program wasn't installed by the install line). `api/state` says how
+    each went."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self.results: dict[str, str] = {}
+        self.results: dict[str, dict[str, str]] = {}
         self._threads: dict[str, threading.Thread] = {}  # each AI's latest install
 
     def install(self, name: str) -> threading.Thread:
         """Installs Claude Code's plugin or the Codex skills, unless they're being installed
         already."""
         with self._lock:
-            if self.results.get(name) == "installing":
+            if self.result(name) == "installing":
                 return self._threads[name]
-            self.results[name] = "installing"
+            self.results[name] = {"result": "installing"}
             thread = threading.Thread(target=self._installing, args=(name,), daemon=True)
             self._threads[name] = thread
         thread.start()
@@ -80,21 +81,27 @@ class ChatInstalls:
         for thread in threads:
             thread.join()
 
+    def result(self, name: str) -> str | None:
+        """How the install for the AI `name` went, or None before it started."""
+        return self.results.get(name, {}).get("result")
+
     def _installing(self, name: str) -> None:
+        result: dict[str, str]
         try:
             if name == "claude":
                 program = claude().program()
-                result = "not-installed" if program is None \
+                result = {"result": "not-installed"} if program is None \
                     else chat_install.install_claude_plugin(program)
             else:
                 root = chat_install.plugin_copy()
                 if root is None:
-                    result = "no-plugin-copy"
+                    result = {"result": "no-plugin-copy"}
                 else:
                     chat_install.install_codex_skills(root)
-                    result = "installed"
-        except Exception:  # never leave it installing
-            result = "install-failed"
+                    result = {"result": "installed"}
+        except Exception as e:  # never leave it installing
+            result = {"result": "install-failed", "reason": failure.logged(
+                "The chat's setup skill didn't install", failure.of(e, "The install"))}
         self.results[name] = result
 
 

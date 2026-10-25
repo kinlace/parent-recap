@@ -19,7 +19,7 @@ class Chat(Phase):
         return {"api/chat": self.continue_in_chat}
 
     def state(self, progress: dict[str, Any]) -> dict[str, Any]:
-        return {"chat": dict(self.context.chat.results)}
+        return {"chat": {name: dict(r) for name, r in self.context.chat.results.items()}}
 
     def stop(self) -> None:
         desktop.forget_terminal(CHAT_WINDOW)
@@ -28,7 +28,8 @@ class Chat(Phase):
         """Hands setup over to the chat with the AI picked: opens Claude Code at the setup skill
         in a Terminal window, or says what to type in Codex. The skill reads the progress and the
         answers saved so far, and carries on from the same phase and Source. The plugin or the
-        Codex skills are installed first if they aren't yet, since the skill comes with them."""
+        Codex skills are installed first if they aren't yet, since the skill comes with them: if
+        that fails, the reply says why, as `install_failed`."""
         if not (isinstance(raw, dict) and set(raw) == {"ai"} and raw["ai"] in CHAT_SKILLS):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Pick Claude or ChatGPT.", errors=["ai: should be claude or codex"])
@@ -40,14 +41,18 @@ class Chat(Phase):
                 errors=["ai: has no chat to continue in on this system"])
         skill = CHAT_SKILLS[raw["ai"]]
         installs = self.context.chat
-        if installs.results.get(raw["ai"]) != "installed":  # the skill must be there to start
+        if installs.result(raw["ai"]) != "installed":  # the skill must be there to start
             installs.install(raw["ai"]).join()
+        installed = installs.results.get(raw["ai"], {})
+        failed = {"install_failed": installed["reason"]} \
+            if installed.get("result") == "install-failed" else {}
         if raw["ai"] == "codex":
-            return HTTPStatus.OK, {"result": "open-codex", "type": skill}
+            return HTTPStatus.OK, {"result": "open-codex", "type": skill, **failed}
         program = claude().program()
         if program is None:
             return HTTPStatus.OK, {"result": "not-installed", "install": claude().install_line()}
         # Claude Code in the family's home folder, at the setup skill.
         if desktop.open_terminal([program, skill], {}, CHAT_WINDOW):
-            return HTTPStatus.OK, {"result": "opened"}
-        return HTTPStatus.OK, {"result": "no-terminal", "type": shlex.join([program, skill])}
+            return HTTPStatus.OK, {"result": "opened", **failed}
+        return HTTPStatus.OK, {"result": "no-terminal", "type": shlex.join([program, skill]),
+                               **failed}

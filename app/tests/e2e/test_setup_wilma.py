@@ -32,7 +32,7 @@ from typing import Any
 import pytest
 
 import fake_node
-from family_brief import install_record, setup_server, setup_wilma
+from family_brief import failure, install_record, setup_server, setup_wilma
 from family_brief.config import Config
 from fake_system import WINDOWS, Window
 from conftest import program
@@ -933,7 +933,7 @@ def test_an_npm_that_fails_says_its_exit_code_and_last_lines_on_the_page(harness
     assert out["result"] == "install-failed"
     assert out["reason"].splitlines() == [
         "npm ended with exit code 243:",
-        *(f"npm error line {n}" for n in range(31 - setup_wilma.REASON_LINES, 31))]
+        *(f"npm error line {n}" for n in range(31 - failure.REASON_LINES, 31))]
     assert out["reason"] in caplog.text
     assert not setup_wilma.installed()
 
@@ -1151,13 +1151,18 @@ def test_a_wrong_password_is_reported_as_such_and_not_kept(harness, page, wilma_
                                    ["mfa_required", "Two-step verification is on for this Wilma account."],
                                    ["network", "fetch failed (ENOTFOUND)"]],
                          ids=["wilma-down", "two-step", "offline"])
-def test_any_other_failure_offers_the_terminal_window(harness, page, wilma_cli, fails):
+def test_any_other_failure_offers_the_terminal_window(harness, page, wilma_cli, fails, caplog):
     wilma_cli.fails = fails
     wilma_cli.install()
 
     r = sign_in_wilma(page.url)
 
-    assert r.status == 200 and r.json() == {"result": "sign-in-failed"}
+    # With why, in the CLI's own code and words, for the page to show and the family to copy.
+    out = r.json()
+    assert r.status == 200 and out["result"] == "sign-in-failed"
+    assert out["reason"].startswith("Signing in stopped: WilmaError: wilma ")
+    assert f"{fails[0]}: {fails[1]}" in out["reason"] and "\n" not in out["reason"]
+    assert out["reason"] in caplog.text
     assert not wilma_cli.profile_path.exists()
     assert statuses(page.url)["wilma"] == "to-do"
 
@@ -1247,6 +1252,21 @@ def test_a_terminal_window_without_a_sign_in_says_so(harness, page, wilma_cli):
     call(page.url, "api/wilma/terminal", method="POST", body={"town": None})
 
     assert wilma_window_result(page.url)["result"] == "timeout"
+    assert statuses(page.url)["wilma"] == "to-do"
+
+
+def test_a_terminal_window_whose_wilma_screen_fails_says_why(harness, page, wilma_cli, caplog):
+    def fails(window: Any) -> None:  # the screen ends with an error, without signing in
+        Path(window.argv[window.argv.index("--status") + 1]).write_text("3\n")
+    harness.desktop.in_window = fails
+    wilma_cli.install()
+
+    call(page.url, "api/wilma/terminal", method="POST", body={"town": None})
+
+    out = wilma_window_result(page.url)
+    assert out == {"result": "sign-in-failed",
+                   "reason": "The Wilma screen ended with exit code 3."}
+    assert out["reason"] in caplog.text
     assert statuses(page.url)["wilma"] == "to-do"
 
 

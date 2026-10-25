@@ -4,6 +4,7 @@ or ChatGPT desktop app brought one (#473)."""
 from __future__ import annotations
 
 import os
+import platform
 from pathlib import Path
 
 from .profile import Profile
@@ -23,6 +24,10 @@ def _program_folders() -> list[str]:
 
 def _install_folders(home: Path) -> list[Path]:
     return [home / "ParentRecap"]  # install.sh's
+
+
+def _os_version() -> str:
+    return f"macOS {platform.mac_ver()[0] or 'unknown'} ({platform.machine()})"
 
 
 PROFILE = Profile(
@@ -54,4 +59,5 @@ PROFILE = Profile(
     node_modules=Path("lib/node_modules"),
     npm_links_programs=True,
     removes_running=True,
+    os_version=_os_version,
 )

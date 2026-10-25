@@ -86,14 +86,29 @@ def test_a_plugin_from_an_unzipped_release_or_its_old_name_is_switched_to_stable
 
 
 @pytest.mark.macos
-def test_a_plugin_install_that_fails_says_so(harness, page, ai):
+@pytest.mark.parametrize("how, said", [
+    ("no list", "The plugin install stopped: ValueError: claude plugin list --json gave no list"),
+    ("no remove", "claude plugin uninstall family-brief@family-brief ended with exit code 1:\n"
+                  "Failed to uninstall"),
+], ids=["no-list", "no-remove"])
+def test_a_plugin_install_that_fails_says_so_and_why(harness, page, ai, caplog, how, said):
     ai("claude")
-    harness.claude_plugins = {"error": "not signed in"}  # type: ignore[assignment]
+    if how == "no list":
+        harness.claude_plugins = {"error": "not signed in"}  # type: ignore[assignment]
+    else:  # the plugin's name before 0.4.0, which Claude Code won't remove
+        harness.claude_plugins = [{"id": "family-brief@family-brief"}]
+        harness.claude_removes = False
 
     welcome(page.url, ai="claude")
 
     assert chat_installed(page.url, "claude") == "install-failed"
+    assert call(page.url, "api/state").json()["chat"] == \
+        {"claude": {"result": "install-failed", "reason": said}}
+    assert said in caplog.text
     assert install_record.entries("claude-plugin") == []
+    # Continuing in the chat tries it once more, and says why it still didn't install.
+    out = continue_in_chat(page.url, "claude").json()
+    assert out == {"result": "opened", "install_failed": said}
 
 
 @pytest.mark.macos
@@ -169,7 +184,7 @@ def test_continue_in_the_chat_before_welcome_installs_the_plugin_first(harness, 
     assert continue_in_chat(page.url, "claude").json() == {"result": "opened"}
 
     assert ["plugin", "install", "parent-recap@kinlace", "--scope", "user"] in harness.plugin_calls
-    assert call(page.url, "api/state").json()["chat"] == {"claude": "installed"}
+    assert call(page.url, "api/state").json()["chat"] == {"claude": {"result": "installed"}}
 
 
 @pytest.mark.macos

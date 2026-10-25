@@ -3,6 +3,7 @@ Windows installers use, and no setup skill yet, since the skills set up a Mac.""
 from __future__ import annotations
 
 import os
+import platform
 from pathlib import Path
 
 from . import profile
@@ -35,6 +36,11 @@ def _install_folders(home: Path) -> list[Path]:
                                home / "ParentRecap"]))
 
 
+def _os_version() -> str:
+    # platform.release() says 10 on Windows 11 too; the build in version() tells them apart.
+    return f"Windows {platform.version() or 'unknown'} ({platform.machine()})"
+
+
 PROFILE = profile.Profile(
     system="windows",
     computer="PC",
@@ -65,4 +71,5 @@ PROFILE = profile.Profile(
     node_modules=Path("node_modules"),
     npm_links_programs=False,  # only .cmd wrappers, so the program runs from its package's script
     removes_running=False,  # Windows doesn't let a running program, or its Python, be removed
+    os_version=_os_version,
 )

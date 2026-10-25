@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from .. import ops, setup_connect, setup_gmail, setup_save
+from .. import failure, ops, setup_connect, setup_gmail, setup_save
 from ..config import Config, Kid
 from . import health
 from .context import Action, Context, Phase, Reply, nothing_to_give
@@ -85,10 +85,14 @@ class Check(Phase):
             with self.context.connect.lock:
                 out = setup_save.save(self.context.config, {"progress": {
                     "phase": "check", "gmail_senders": senders}})
-        except Exception:  # its error can name the address: never leave the page reading
-            out = {"result": "failed"}
-        self._reading = {"result": "read", "progress": out["progress"]} \
-            if out["result"] == "saved" else {"result": "read-failed"}
+        except Exception as e:  # never leave the page reading
+            out = {"result": "failed", "reason": failure.of(e, "Reading the senders")}
+        if out["result"] == "saved":
+            self._reading = {"result": "read", "progress": out["progress"]}
+            return
+        why = out.get("reason") or f"Saving the senders said {out['result']}."
+        self._reading = {"result": "read-failed",
+                         "reason": failure.logged("Gmail's senders weren't read", why)}
 
     # ── Check
 

@@ -8,7 +8,7 @@ import threading
 from http import HTTPStatus
 from typing import Any
 
-from .. import llm, setup_ai, setup_save
+from .. import failure, llm, setup_ai, setup_save
 from ..config import LLMConfig
 from ..setup_connect import Nothing, Reply, Strict, parse
 from ..system import desktop, profile
@@ -54,6 +54,8 @@ class AISignIn(Phase):
         # The Codex CLI's install, once started: `installing`, then `installed` or
         # `install-failed`, which the next check says once.
         self._codex_install: str | None = None
+        # Why the last install of either failed, which the check says with it.
+        self._install_reason: dict[str, str] = {}
 
     def routes(self) -> dict[str, Action]:
         return {"api/claude": self.sign_in_claude, "api/claude/check": self.check_claude,
@@ -106,8 +108,10 @@ class AISignIn(Phase):
             install = self._claude_install
             if install not in (None, "installing"):
                 self._claude_install = None  # said once, and the family can start it again
+            why = self._install_reason.pop("claude", None) if install == "install-failed" \
+                else None
         if install is not None:
-            return HTTPStatus.OK, {"result": install}
+            return HTTPStatus.OK, {"result": install, **({"reason": why} if why else {})}
         sign_in = self._claude
         if sign_in is None:
             return HTTPStatus.OK, {"result": "no-sign-in"}
@@ -158,15 +162,22 @@ class AISignIn(Phase):
         return HTTPStatus.OK, {"result": "installing"}
 
     def _installing_claude(self) -> None:
-        result = "install-failed"
+        result, reason = "install-failed", None
         try:
-            program = claude().program() if setup_ai.install_claude() else None
+            reason = setup_ai.install_claude()
+            program = None if reason else claude().program()
             if program is not None:
                 result = _open_claude_window(program)
-        except Exception:  # never leave the page installing
-            pass
+            elif not reason:
+                reason = failure.logged("Claude Code didn't install", _not_found("Claude Code",
+                                                                                 "claude"))
+        except Exception as e:  # never leave the page installing
+            reason = failure.logged("Claude Code didn't install",
+                                    failure.of(e, "The Claude Code install"))
         with self._lock:
             self._claude_install = result
+            if result == "install-failed" and reason:
+                self._install_reason["claude"] = reason
 
     def save_claude_token(self, raw: Any) -> Reply:
         """Tests the token pasted into the page's own field and stores it, as the chat's Claude
@@ -190,26 +201,31 @@ class AISignIn(Phase):
         parse(Nothing, raw)
         install = self._codex_installing()
         if install is not None:
-            return HTTPStatus.OK, {"result": install}
+            return HTTPStatus.OK, install
         codex = program(self.context, "codex")
         if codex is None:
             return HTTPStatus.OK, {"result": "not-installed"}
         with self._lock:  # before the status, so a sign-in that ends meanwhile isn't called failed
             login = self._codex
             ended = login is not None and login.poll() is not None
-        result = status(self.context, codex, "codex")
-        if result == "ready":
+        checked = status(self.context, codex, "codex")
+        if checked["result"] == "ready":
             return self._codex_signed_in()
-        return HTTPStatus.OK, {"result": result if result != "signed-out"
-                               else self._codex_login(login, ended)}
+        if checked["result"] == "signed-out":
+            return HTTPStatus.OK, {"result": self._codex_login(login, ended)}
+        return HTTPStatus.OK, checked
 
-    def _codex_installing(self) -> str | None:
-        """`installing` while the page installs the Codex CLI, then `install-failed` once."""
+    def _codex_installing(self) -> dict[str, Any] | None:
+        """`installing` while the page installs the Codex CLI, then `install-failed` once, with
+        why."""
         with self._lock:
             install = self._codex_install
-            if install == "install-failed":
-                self._codex_install = None  # said once, and the family can start it again
-        return install if install in ("installing", "install-failed") else None
+            if install == "installing":
+                return {"result": install}
+            if install != "install-failed":
+                return None
+            self._codex_install = None  # said once, and the family can start it again
+            return {"result": install, "reason": self._install_reason.pop("codex")}
 
     def _codex_signed_in(self) -> Reply:
         """Saves the AI sign-in as done with Codex, which at Finish must answer a test call."""
@@ -275,14 +291,19 @@ class AISignIn(Phase):
     def _installing_codex(self) -> None:
         codex = None
         try:
-            if setup_ai.install_codex():
+            reason = setup_ai.install_codex()
+            if not reason:
                 codex = program(self.context, "codex")
-        except Exception:  # never leave the page installing
-            pass
+                if codex is None:
+                    reason = failure.logged("Codex didn't install", _not_found("Codex", "codex"))
+        except Exception as e:  # never leave the page installing
+            reason = failure.logged("Codex didn't install", failure.of(e, "The Codex install"))
         with self._lock:
             if codex is not None and (self._codex is None or self._codex.poll() is not None):
                 self._codex = setup_ai.start_codex_login(codex)
             self._codex_install = "installed" if codex else "install-failed"
+            if codex is None:
+                self._install_reason["codex"] = reason or "The Codex install stopped."
 
     # ── the gateway
 
@@ -318,17 +339,25 @@ def program(context: Context, name: str) -> str | None:
     return llm.named(name, codex_path if isinstance(codex_path, str) else None).program()
 
 
-def status(context: Context, program: str, name: str) -> str:
-    """`ready`, `signed-out` or `check-failed`, from the AI's own status check."""
+def status(context: Context, program: str, name: str) -> dict[str, Any]:
+    """The `result` of the AI's own status check: `ready`, `signed-out` or `check-failed`, which
+    comes with the `reason` it couldn't run, for the page to show."""
     command = ["auth", "status"] if name == "claude" else ["login", "status"]
     try:
         # Only its exit code is read: the output can name the account.
         proc = subprocess.run([program, *command], capture_output=True, text=True,
                               encoding="utf-8", timeout=context.timeouts.ai_check,
                               stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.SubprocessError):
-        return "check-failed"
-    return "ready" if proc.returncode == 0 else "signed-out"
+    except (OSError, subprocess.SubprocessError) as e:
+        return {"result": "check-failed", "reason": failure.logged(
+            f"The check for {name} didn't finish",
+            failure.of(e, "The check", " ".join([name, *command])))}
+    return {"result": "ready" if proc.returncode == 0 else "signed-out"}
+
+
+def _not_found(called: str, name: str) -> str:
+    """Why an installer that ran through still left nothing to run."""
+    return f"The {called} installer finished, but {name} isn't where the setup page looks for it."
 
 
 def _open_claude_window(program: str) -> str:
