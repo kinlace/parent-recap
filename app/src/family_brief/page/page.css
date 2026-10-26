@@ -295,6 +295,9 @@ fieldset .field label {
 .status[data-result="wilma.signed-in"],
 .status[data-result="wilma.town-saved"],
 .status[data-result="claude.saved"],
+.status[data-result="gateway.saved"],
+.status[data-result="myclub.saved"],
+.status[data-result="health.ok"],
 .status[data-result="codex.signed-in"],
 .status[data-result="whatsapp.readable"],
 .status[data-result="finish.done"] {
