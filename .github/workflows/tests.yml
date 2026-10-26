@@ -55,7 +55,7 @@ jobs:
     # public repo, so every run (PRs, main, tags) is on macOS (ADR 0002). The windows
     # job below only checks the program as the Windows version is built (ADR 0019).
     runs-on: macos-latest
-    # The suite takes about 5 minutes. A hung test fails the job here instead of holding a
+    # The suite takes a few minutes. A hung test fails the job here instead of holding a
     # macOS runner for GitHub's 6-hour limit (#216).
     timeout-minutes: 20
     defaults:
@@ -85,18 +85,20 @@ jobs:
       # a run that got slower shows which test did it. Each step adds to the same coverage data;
       # the last prints the table (lines and branches per module, pyproject.toml's
       # [tool.coverage]) of what the suite reaches, with no threshold: numbers for tickets that
-      # trade end-to-end tests for unit tests (#403).
+      # trade end-to-end tests for unit tests (#403). The slow layers run on every core
+      # (pytest-xdist's -n auto), and pytest-cov combines the workers' coverage (#509); the fast
+      # ones take seconds, less than starting the workers would save.
       - name: Unit tests
         run: python -m pytest -m unit --durations=15 --cov --cov-report=
       - name: Integration tests
         run: python -m pytest -m integration --durations=15 --cov --cov-append --cov-report=
       - name: End-to-end tests
-        run: python -m pytest -m "e2e and not browser" --durations=15 --cov --cov-append --cov-report=
+        run: python -m pytest -m "e2e and not browser" -n auto --durations=15 --cov --cov-append --cov-report=
       - name: Adapter tests
         run: python -m pytest -m adapters --durations=15 --cov --cov-append --cov-report=
       # Includes the version-consistency check (tests/scripts/test_version.py).
       - name: Script tests
-        run: python -m pytest -m scripts --durations=15 --cov --cov-append --cov-report=
+        run: python -m pytest -m scripts -n auto --durations=15 --cov --cov-append --cov-report=
       # The setup page in a real browser (ADR 0024), the slowest layer, last. Playwright's Chromium
       # is cached per Playwright version, which constraints.txt pins.
       - name: Playwright's version
@@ -111,7 +113,7 @@ jobs:
         run: python -m playwright install --only-shell chromium
       # -rs prints why a test skipped, so a run that skipped them all says so.
       - name: Browser tests
-        run: python -m pytest -m browser -rs --durations=15 --cov --cov-append --cov-report=term --cov-report=html
+        run: python -m pytest -m browser -n auto -rs --durations=15 --cov --cov-append --cov-report=term --cov-report=html
       - name: Upload the coverage report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6

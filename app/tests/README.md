@@ -14,10 +14,13 @@ python -m pytest tests/e2e/test_nightly_brief.py  # one file
 python -m pytest --update-goldens=normal_night  # rewrite one night's goldens (see Golden files)
 python -m playwright install --only-shell chromium  # once, for the browser tests
 python -m pytest -m "e2e and not browser"       # the e2e layer without them
+python -m pytest -n auto                        # on every core (pytest-xdist)
 ```
 
 CI runs the layers as separate steps, fastest first (unit, integration, e2e, adapters, scripts),
-so a failure in the fast layers shows in a minute. The browser tests run last.
+so a failure in the fast layers shows in a minute. The browser tests run last. On macOS the e2e,
+script and browser layers run on every core (`-n auto`), so a test must not share state with
+another: a free port, files under `tmp_path`. Windows runs them in one process.
 
 ## Layers
 

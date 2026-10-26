@@ -54,6 +54,14 @@ def test_the_macos_job_reports_coverage_with_no_threshold_and_windows_doesnt():
     assert "--cov" not in windows_runs
 
 
+def test_the_macos_job_runs_its_slow_layers_on_every_core():
+    # They took most of its 7 to 8 minutes in one process on a 3-core runner (#509).
+    steps = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]["test"]["steps"]
+    runs = {step["name"]: step["run"] for step in steps if "pytest" in step.get("run", "")}
+    for name in ("End-to-end tests", "Script tests", "Browser tests"):
+        assert "-n auto" in runs[name], name
+
+
 def test_coverage_measures_lines_and_branches_of_the_package_with_no_threshold():
     pyproject = tomllib.loads((WORKFLOW_DIR.parents[1] / "app" / "pyproject.toml").read_text())
     coverage = pyproject["tool"]["coverage"]

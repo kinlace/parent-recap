@@ -25,6 +25,8 @@ google = [
 test = [
     "pytest>=8",
     "pytest-cov>=7",
+    # Runs the slow layers on every core: python -m pytest -n auto (#509).
+    "pytest-xdist>=3.8",
     "time-machine>=2.14",
     # Drives the setup page in a real browser (ADR 0024). Its Chromium is a separate download:
     # python -m playwright install --only-shell chromium
