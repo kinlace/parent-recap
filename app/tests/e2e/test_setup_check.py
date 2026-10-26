@@ -323,8 +323,8 @@ def test_warnings_alone_let_setup_move_on(harness, page, health):
 
 def test_a_pilot_household_is_not_asked_for_a_feedback_label_setup_makes_its_pseudonym(
         harness, page, health):
-    # #491: nothing to fill in for pilot feedback. Setup makes the label, the setup parent's email
-    # user, which stays on the Mac, and the Form only ever gets the pseudonym made from it.
+    # #491: nothing to fill in for pilot feedback. Setup makes the label, a random one (#493), which
+    # stays on the Mac, and the Form only ever gets the pseudonym made from it.
     harness.config["feedback"] = {k: v for k, v in FEEDBACK.items() if k != "household_label"}
     at_the_check_step(harness)
 
@@ -333,7 +333,7 @@ def test_a_pilot_household_is_not_asked_for_a_feedback_label_setup_makes_its_pse
 
     assert confirm(page.url).json()["result"] == "checking"
     label = Config.load(config_file(harness)).feedback.household_label
-    assert label == "parent"
+    assert re.fullmatch(r"household-[0-9a-f]{8}", label)
     assert re.fullmatch(r"Household [0-9a-f]{6}", feedback.pseudonym(label))
 
 

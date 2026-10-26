@@ -30,8 +30,9 @@ What the answers don't mention stays as it was. The Kids given are the Household
 left out is removed, and each one given keeps what the answers don't say about them, such as a
 MyClub link, which only `setup myclub` and the setup page's MyClub field save. Turning pilot
 feedback on writes the pilot Form shipped with the program (feedback.pilot_form), and is refused
-in a version that ships none. Setup makes the `household_label` itself, as the setup parent's
-email user, unless the answers give one; the family is never asked for it (#491). The merged
+in a version that ships none. Setup makes the `household_label` itself, a random
+`household-<hex>`, unless the answers or the config already give one; the family is never asked
+for it (#491, #493). The merged
 config is checked against the config model before it's written. `--read` saves nothing and only
 reads the progress back.
 
@@ -43,6 +44,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sys
 from pathlib import Path
 from typing import Any, Literal
@@ -288,12 +290,11 @@ def _merge(data: dict[str, Any], a: Answers, form: dict[str, Any] | None) -> Non
         if a.feedback.enabled and form is not None:
             _section(data, "feedback").update(form)
         _section(data, "feedback").update(_given(a.feedback))
-    fb, gmail = data.get("feedback"), data.get("gmail")
-    username = gmail.get("username") if isinstance(gmail, dict) else None
-    if isinstance(fb, dict) and fb.get("enabled") and not fb.get("household_label") \
-            and isinstance(username, str) and username:
-        # Made by setup, not asked: the setup parent's email user. The Form only gets its pseudonym.
-        fb["household_label"] = username.split("@")[0]
+    fb = data.get("feedback")
+    if isinstance(fb, dict) and fb.get("enabled") and not fb.get("household_label"):
+        # Made by setup, not asked, and random so it says nothing about the family. Kept once saved,
+        # since the Form groups a Household's feedback by the pseudonym made from it.
+        fb["household_label"] = f"household-{secrets.token_hex(4)}"
 
 
 def _given(answer: BaseModel) -> dict[str, Any]:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import stat
 import sys
 from pathlib import Path
@@ -197,28 +198,30 @@ def test_opting_in_to_pilot_feedback_writes_the_shipped_form_with_the_household_
     assert save(harness, {"feedback": {"enabled": True}}) == 0
 
     feedback = saved(harness)["feedback"]
+    label = feedback.pop("household_label")
+    assert re.fullmatch(r"household-[0-9a-f]{8}", label)  # random, nothing about the family (#493)
     assert feedback == {"enabled": True, "prefill_base_url": PILOT_FORM_URL,
-                        "fields": PILOT_FORM_FIELDS,
-                        "household_label": "parent"}  # the setup parent's email user, until changed
+                        "fields": PILOT_FORM_FIELDS}
     capsys.readouterr()
     harness.config = saved(harness)
     harness.cli("doctor", "--skip-llm")
     out = capsys.readouterr().out
-    assert "✅ Pilot feedback: the Brief has ⭐/❌ links, Household label parent" in out
+    assert f"✅ Pilot feedback: the Brief has ⭐/❌ links, Household label {label}" in out
     assert "⚠️  Pilot feedback" not in out
 
     assert save(harness, {"feedback": {"household_label": "Virtanen family"}}) == 0
     assert saved(harness)["feedback"]["household_label"] == "Virtanen family"
 
 
-def test_the_household_label_follows_once_the_setup_parent_s_gmail_is_known(harness, capsys):
+def test_the_household_label_is_random_and_kept_once_made(harness, capsys):
     harness.ship_pilot_form()
 
     assert save(harness, {"ai": "claude", "feedback": {"enabled": True}}) == 0
-    assert "household_label" not in saved(harness)["feedback"]
+    label = saved(harness)["feedback"]["household_label"]
+    assert re.fullmatch(r"household-[0-9a-f]{8}", label)  # made before Gmail is connected
     assert save(harness, {"sources": {"gmail": {"address": "virtanen.home@gmail.com"}}}) == 0
 
-    assert saved(harness)["feedback"]["household_label"] == "virtanen.home"
+    assert saved(harness)["feedback"]["household_label"] == label  # not the email user, and kept
 
 
 def test_without_a_shipped_pilot_form_pilot_feedback_cant_be_turned_on(harness, capsys):
