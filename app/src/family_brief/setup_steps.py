@@ -150,13 +150,14 @@ def cmd_gmail(args: argparse.Namespace) -> int:
         return report("no-address", "Run it again with --address and the family's Gmail "
                       "address: parent-recap setup gmail --address name@gmail.com")
     warning = _warn_if_unreachable()
+    url = setup_gmail.app_passwords_url(address)
     if not args.no_open:
-        desktop.open_url(setup_gmail.APP_PASSWORDS_URL)
+        desktop.open_url(url)
 
     try:
         password = secret_dialog.ask(
             f"{warning}Paste the App Password for {address}.\n\nCreate it on Google's App "
-            f"passwords page, which is open in your browser ({setup_gmail.APP_PASSWORDS_URL}), "
+            f"passwords page, which is open in your browser ({url}), "
             "with the name Parent Recap, then copy the 16 letters Google shows.",
             other=PAGE_UNAVAILABLE)
     except secret_dialog.Cancelled:

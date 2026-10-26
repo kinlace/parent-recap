@@ -115,8 +115,10 @@ def test_an_app_password_typed_in_the_dialog_is_tested_and_stored(harness, gmail
 
     res, printed = result(capsys)
     assert res["result"] == "saved"
-    assert harness.desktop.opened == ["https://myaccount.google.com/apppasswords"]
-    assert len(harness.dialog.shown) == 1
+    # #501: in the family's Gmail, not the browser's default Google account.
+    url = "https://myaccount.google.com/apppasswords?authuser=parent%40example.com"
+    assert harness.desktop.opened == [url]
+    assert len(harness.dialog.shown) == 1 and url in harness.dialog.shown[0]
     assert gmail.logins == [("parent@example.com", APP_PASSWORD)]
     assert harness.secrets == {ACCOUNT: APP_PASSWORD}
     assert install_record.entries("keychain") == [ACCOUNT]
@@ -370,15 +372,22 @@ def connect_gmail(url: str, address: str = "Parent@Example.com", password: str =
     return call(url, "api/gmail", method="POST", body={"address": address, "password": password})
 
 
-def test_the_button_opens_google_s_app_passwords_page(harness, page):
-    r = call(page.url, "api/open", method="POST", body={"site": "app-passwords"})
+def test_the_button_opens_google_s_app_passwords_page_in_the_family_s_gmail(harness, page):
+    r = call(page.url, "api/open", method="POST",
+             body={"site": "app-passwords", "address": " Parent+Kids@Example.com "})
 
     assert r.status == 200 and r.json()["result"] == "opened"
-    assert harness.desktop.opened == ["https://myaccount.google.com/apppasswords"]
+    assert harness.desktop.opened == [
+        "https://myaccount.google.com/apppasswords?authuser=parent%2Bkids%40example.com"]
 
     call(page.url, "api/open", method="POST", body={"site": "two-step"})
     assert harness.desktop.opened[-1] == "https://myaccount.google.com/signinoptions/two-step-verification"
-    for body in [{"site": "https://evil.example"}, {}, {"site": "two-step", "x": 1}]:
+    for address in ["", "parent", "parent@example"]:
+        r = call(page.url, "api/open", method="POST",
+                 body={"site": "app-passwords", "address": address})
+        assert r.status == 200 and r.json()["result"] == "no-address", address
+    for body in [{"site": "https://evil.example"}, {}, {"site": "two-step", "x": 1},
+                 {"site": "app-passwords"}, {"site": "two-step", "address": "a@b.fi"}]:
         assert call(page.url, "api/open", method="POST", body=body).status == 400, body
     assert len(harness.desktop.opened) == 2
 

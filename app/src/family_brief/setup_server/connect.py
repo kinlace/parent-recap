@@ -12,10 +12,12 @@ from ..setup_connect import Nothing, Reply, Strict, parse
 from ..system import desktop, desktop_macos, macos_only
 from . import finish
 from .context import Action, Phase
+from .gmail import ADDRESS
 
 # The Sources a family can skip and add later through manage, in the page's order.
 SKIPPABLE = tuple(s.name for s in source_registry.in_connect_order() if s.skippable)
-# The sites the page's buttons open, by name: the page itself names none.
+# The sites the page's buttons open, by name: the page itself names none. App Passwords' also
+# takes the family's Gmail address, to open in that Google account.
 SITES = {"app-passwords": setup_gmail.APP_PASSWORDS_URL, "two-step": setup_gmail.TWO_STEP_URL,
          "myclub": setup_myclub.MYCLUB_URL}
 # The apps they open, by name.
@@ -51,16 +53,24 @@ class Connect(Phase):
 
     def open_site(self, raw: Any) -> Reply:
         """Opens one of the sites the page sends the family to, in the default browser, or one of
-        the Mac's apps."""
+        the Mac's apps. App Passwords' opens in the family's Gmail, so it needs the address."""
         apps = {name: open_app for name, open_app in APPS.items() if macos_only.offers(name)}
-        if not (isinstance(raw, dict) and set(raw) == {"site"} and raw["site"] in {*SITES, *apps}):
+        site = raw.get("site") if isinstance(raw, dict) else None
+        given = {"site", "address"} if site == "app-passwords" else {"site"}
+        if not (isinstance(raw, dict) and set(raw) == given and site in {*SITES, *apps}):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Open one of the page's own sites.",
-                errors=[f"site: should be one of {', '.join([*SITES, *apps])}"])
-        if raw["site"] in apps:
-            opened = apps[raw["site"]]()
+                errors=[f"site: should be one of {', '.join([*SITES, *apps])}, with the "
+                        "address for app-passwords"])
+        if site in apps:
+            opened = apps[site]()
             return HTTPStatus.OK, {"result": "opened" if opened else "not-opened"}
-        url = SITES[raw["site"]]
+        url = SITES[site]
+        if site == "app-passwords":
+            address = raw["address"].strip().lower() if isinstance(raw["address"], str) else ""
+            if not ADDRESS.match(address):
+                return HTTPStatus.OK, {"result": "no-address"}
+            url = setup_gmail.app_passwords_url(address)
         opened = desktop.open_url(url)
         return HTTPStatus.OK, {"result": "opened" if opened else "not-opened", "url": url}
 

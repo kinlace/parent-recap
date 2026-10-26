@@ -32,7 +32,7 @@ from family_brief import failure, ops, setup_connect, setup_wilma
 from family_brief.collectors import myclub
 from family_brief.config import Config
 from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, config_file,
-                        progress_file, save_progress)
+                        progress_file, save_progress, wait_for)
 from setup_page import ai, clock, health, page, schedule  # noqa: F401
 from test_setup_ai import GATEWAY_KEY
 from test_setup_gmail import TYPED
@@ -368,6 +368,30 @@ def test_skipping_wilma_with_a_town_picked_saves_no_city(tab, family):
     assert progress["sources"]["wilma"] == "skipped"
     cfg = Config.load(config_file(family))
     assert cfg.city is None and not cfg.wilma.enabled
+
+
+def test_the_app_passwords_button_asks_for_the_gmail_address_first(tab, family):
+    # #501: the page opens in the family's Gmail, so the address comes before the button.
+    in_english_with_the_gateway(tab)
+    skip(tab, "wilma").click()
+    address = tab.get_by_label(text("gmail.address"))
+    expect(tab.get_by_text(text("gmail.account"))).to_be_visible()
+    address.fill("")
+
+    button(tab, "gmail.open").click()
+
+    expect(tab.get_by_text(text("gmail.no-address"))).to_be_visible()
+    expect(address).to_have_attribute("aria-invalid", "")
+    expect(address).to_be_focused()
+    assert family.desktop.opened == []
+
+    address.fill(PARENT)
+    button(tab, "gmail.open").click()
+
+    wait_for(lambda: family.desktop.opened == [
+        "https://myaccount.google.com/apppasswords?authuser=parent%40example.com"])
+    expect(address).not_to_have_attribute("aria-invalid", "")
+    expect(tab.get_by_text(text("gmail.no-address"))).to_be_hidden()
 
 
 def test_an_app_password_gmail_rejects_shows_why_and_the_way_to_fix_it(tab):
