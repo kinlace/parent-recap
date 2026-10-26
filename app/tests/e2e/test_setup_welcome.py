@@ -252,7 +252,7 @@ READY_WORDS = {
            "phone.why": ("WhatsApp for Mac", "Google"),
            "later": ("until later",)},
     "fi": {"wilma": ("käyttäjätunnu", "salasana"),
-           "gmail": ("2-vaiheinen vahvistus",),
+           "gmail": ("Kaksivaiheinen vahvistus",),
            "myclub": ("kalenterilinkki", "lapselle"),
            "phone.why": ("WhatsAppin Mac-sovellu", "Google"),
            "later": ("myöhemmäksi",)},
