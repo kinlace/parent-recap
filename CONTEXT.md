@@ -36,6 +36,10 @@ _Avoid_: filtered message, hidden message, 敏感消息
 A place messages or events are read from for a Household, such as Gmail, Wilma, WhatsApp or MyClub.
 _Avoid_: collector, channel, feed, 采集器, 来源
 
+**Linked Device** (zh 已关联设备, fi linkitetty laite):
+A way to read the WhatsApp Source by pairing Parent Recap with a parent's WhatsApp account through a QR code, as WhatsApp Web is paired, instead of reading WhatsApp for Mac's database. It is the same Source either way; a Household reads WhatsApp one way or the other, not both. Opt-in on macOS, the only way on Windows (ADR 0025).
+_Avoid_: headless source, wacli or Baileys (in user-facing text)
+
 **AI filter** (zh AI 过滤, fi tekoälysuodatin):
 The step on the Mac that every AI call of the evening Brief goes through: Third Parties' names, phone numbers, email addresses and links become placeholders, which the program turns back into the real values before the Brief goes out, and Held-back Messages are left out altogether (ADR 0013). It is on by default, and a parent can turn it off with `manage`.
 _Avoid_: anonymizer, redaction, masking (in user-facing text), 脱敏
