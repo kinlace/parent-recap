@@ -74,8 +74,8 @@ main {
   padding: 0 24px 48px;
 }
 
-/* Each screen, and Continue in the chat under it, is a white card on the page. */
-main > section, .chat {
+/* Each screen is a white card on the page. */
+main > section {
   padding: 28px 32px;
   background: var(--panel);
   border-radius: 12px;
@@ -199,7 +199,7 @@ button:focus-visible,
 .switch select:focus-visible,
 input[type="radio"]:focus-visible,
 input[type="checkbox"]:focus-visible,
-.have-ready summary:focus-visible {
+summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -250,6 +250,11 @@ fieldset .field label {
 
 .field input:disabled { background: var(--panel-2); }
 
+.field input[aria-invalid] { border-color: var(--bad); }
+
+/* What a plan an AI needs, quiet beside its name. */
+.plan { color: var(--muted); }
+
 /* The partner's address and language side by side. */
 #partner-details { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
 
@@ -276,7 +281,20 @@ fieldset .field label {
 
 .have-ready dd { margin: 0; color: var(--ink-2); }
 
-/* ── What a step said: a quiet box, green once it's done. */
+/* ── "More": background a step doesn't need, folded under one small line. */
+
+.more { margin: 12px 0 0; }
+
+.more summary { cursor: pointer; color: var(--ink-2); font-size: 13px; }
+
+.more p { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+
+.more .pictures { margin-top: 12px; }
+
+/* Gmail's three steps, the first a button. */
+.steps { display: grid; gap: 6px; margin: 0 0 16px; padding-left: 20px; }
+
+/* ── What a step said: a quiet box, green once it's done, red-tinted when it failed. */
 
 .status {
   padding: 12px 14px;
@@ -306,6 +324,16 @@ fieldset .field label {
   color: var(--good);
 }
 
+.status.fail {
+  border-color: transparent;
+  background: var(--bad-soft);
+  color: #8E2A1F;
+}
+
+.status .actions:not(:has(button:not([hidden]))) { display: none; }
+
+.status .actions button { margin-top: 10px; margin-right: 0; }
+
 .status code {
   display: block;
   margin-top: 8px;
@@ -313,10 +341,15 @@ fieldset .field label {
   overflow-wrap: anywhere;
 }
 
-/* Why a step failed, small, for a photo of the screen to carry, with its Copy button. */
+/* Why a step failed, small, folded as "Details for the Parent Recap team", for a photo of the
+   screen to carry, with its Copy button. */
 .status .why {
-  margin-top: 8px;
+  margin-top: 10px;
+  color: var(--ink-2);
+  font-size: 13px;
 }
+
+.status .why summary { cursor: pointer; }
 
 .status .why .hint {
   margin: 0;
@@ -409,6 +442,21 @@ fieldset .field label {
 
 .source { margin: 0 0 16px; }
 
+/* Where a step's result goes, under what it's about. */
+.slot:empty { display: none; }
+
+#wilma-towns, #source-myclub fieldset { margin: 0; }
+
+/* MyClub's "Where to find the link" sits between its button and its form. */
+#source-myclub > .more { margin: 0 0 16px; }
+
+/* Adding a Kid, under the link form once there's a Kid to link: set apart from it. */
+#myclub-form:not([hidden]) + #myclub-kid-form {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
 .kids { margin: 8px 0 0; padding-left: 20px; }
 
 .towns:empty { display: none; }
@@ -422,7 +470,6 @@ fieldset .field label {
 
 .towns .town { color: var(--muted); font-size: 13px; margin-left: auto; }
 
-#wilma-towns + .hint, #source-wilma .field { margin-bottom: 16px; }
 
 /* Why the town box is still greyed out, right under it, turning while the wilma CLI installs. */
 .wait { font-size: 13px; margin: 6px 0 4px; }
@@ -513,6 +560,8 @@ fieldset label.all { background: var(--panel); }
 
 .add { display: flex; align-items: flex-end; gap: 10px; }
 
+.add-open { margin: 0; }
+
 .add .field { flex: 1; }
 
 .checks { list-style: none; display: grid; gap: 8px; padding: 0; margin: 10px 0 0; }
@@ -544,14 +593,6 @@ iframe.brief {
   background: #FFFFFF;
 }
 
-#brief-actions {
-  display: grid;
-  gap: 10px;
-  justify-items: start;
-}
-
-#brief-feedback .hint { margin: 4px 0 0; }
-
 #brief-sent { margin-top: 14px; }
 
 /* ── Finish: the outcome checklist, each ticked once it's true */
@@ -564,6 +605,8 @@ iframe.brief {
 .status[data-result="finish.checking"] { border-color: var(--accent-line); }
 
 #finish-checklist { margin-bottom: 14px; }
+
+#finish .more { margin-top: 8px; }
 
 /* A health check that isn't OK: its checks, each with what to do, under it. */
 #finish-checklist .checks { margin: 8px 0 0 1.2em; }
@@ -578,21 +621,19 @@ iframe.brief {
 
 #finish-later h3 { font-size: 15px; margin: 12px 0 6px; }
 
-/* ── Continue in the chat */
+/* ── "Stuck? Continue in the chat", one quiet line at the bottom of the step */
 
-.chat {
-  display: grid;
-  gap: 10px;
-  justify-items: start;
-}
+.chat { margin-top: 20px; }
 
-.chat .status { justify-self: stretch; }
+.chat > p { margin: 0; }
+
+.chat .status { margin-top: 10px; }
 
 /* ── Phone width: one column, the phase strip in two rows of three. */
 @media (max-width: 600px) {
   header { padding: 14px 16px 10px; }
   main { padding: 0 12px 32px; gap: 12px; }
-  main > section, .chat { padding: 20px 18px; }
+  main > section { padding: 20px 18px; }
   h1 { font-size: 24px; }
   .phases { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #partner-details { grid-template-columns: minmax(0, 1fr); }

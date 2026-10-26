@@ -33,7 +33,6 @@ class CheckAnswer(BaseModel):
     senders: list[str]                    # the sender domains ticked
     recipients: list[setup_save.RecipientAnswer]
     evening: str                          # HH:MM
-    household_label: str | None = None    # a pilot Household's; None for any other
 
 
 class Check(Phase):
@@ -100,8 +99,8 @@ class Check(Phase):
         """What the check page shows, each list ticked by best guess: the Kids, all ticked with
         their everyday names; the WhatsApp groups, those linked to a Kid ticked (none without
         WhatsApp); the Gmail senders that look like school, city or club mail ticked, and never
-        a public one; each Recipient with their language; the evening time; and for a pilot
-        Household, the label its feedback goes under (None for any other). `other_sources` is
+        a public one; each Recipient with their language; and the evening time. A pilot
+        Household's feedback label isn't asked: setup makes it (#491). `other_sources` is
         whether a Source besides Gmail brings news, so that a Gmail with no sender ticked only
         sends the Brief (#361)."""
         cfg = self.context.model()
@@ -116,9 +115,7 @@ class Check(Phase):
                 "other_sources": others,
                 "recipients": [{"address": r.address, "language": cfg.language_of(r)}
                                for r in cfg.email.to],
-                "evening": f"{hour:02d}:{minute:02d}",
-                "feedback": {"household_label": cfg.feedback.household_label}
-                if cfg.feedback.enabled else None}
+                "evening": f"{hour:02d}:{minute:02d}"}
 
     def confirm_check(self, raw: Any) -> Reply:
         """Saves what the check page confirms through `setup save`, then runs the health check in
@@ -197,8 +194,6 @@ def _check_answers(answer: CheckAnswer, cfg: Config, progress: dict[str, Any]) -
         "evening": answer.evening,
         "sources": {"gmail": {"allowlist_domains": answer.senders}},
     }
-    if answer.household_label is not None:
-        answers["feedback"] = {"household_label": answer.household_label.strip()}
     if answer.whatsapp is not None:
         found = {c["name"]: c for c in progress.get("whatsapp_chats") or []}
         before = {c.name: c for c in cfg.whatsapp.chats}
@@ -242,9 +237,6 @@ def _check_errors(answer: CheckAnswer, offered: dict[str, Any], phase: str) -> l
         errors.append("senders: should be sender domains the check page lists")
     if [r.address for r in answer.recipients] != [r["address"] for r in offered["recipients"]]:
         errors.append("recipients: should be the Recipients the check page lists, in order")
-    label = answer.household_label
-    if label is not None and (offered["feedback"] is None or not label.strip()):
-        errors.append("household_label: should be a name, and only for a pilot Household")
     return errors
 
 

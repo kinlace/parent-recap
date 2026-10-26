@@ -224,41 +224,43 @@ def test_every_ai_result_says_what_to_do_in_all_three_languages():
                 assert table.get(f"ai.{name}.{result}", "").strip(), (language, name, result)
 
 
-def test_welcome_says_which_sources_come_next():
+def test_welcome_names_each_ai_s_plan_beside_it_and_nothing_comes_next():
+    # #491: each AI says the plan it needs on its own line, and "What comes next" is gone.
     text = json.loads((PAGE_DIR / "text.json").read_text())
-    used = (PAGE_DIR / "index.html").read_text()
+    welcome = inside((PAGE_DIR / "index.html").read_text(), "welcome")
 
+    for name in setup_server.context.AIS:
+        assert re.search(rf'<span data-text="welcome.ai.{name}"></span> '
+                         rf'<span class="plan" data-text="welcome.ai.{name}.plan"></span>', welcome)
+    assert "welcome.next" not in welcome and "welcome.sources" not in welcome
     for language, table in text.items():
-        for source in ("Wilma", "Gmail", "WhatsApp", "MyClub"):
-            assert source in table["welcome.sources"], (language, source)
-    assert 'data-text="welcome.sources"' in inside(used, "welcome")
+        assert "Pro" in table["welcome.ai.claude.plan"] and "Max" in table["welcome.ai.claude.plan"]
+        assert "welcome.ai.plan" not in table and "welcome.next" not in table, language
+    # What pilot feedback sends is folded under the question.
+    assert re.search(r'<details class="more">\s*<summary data-text="welcome.feedback.more"></summary>'
+                     r'\s*<p data-text="welcome.feedback.note"></p>', welcome)
 
 
-# What Welcome's "Have these ready" list says in each language (#298), in the words the steps and
-# Wilma's own sign-in page use: the Wilma login and Wilma's link for a forgotten password, one
-# MyClub link per Kid and the buttons that make it, 2-Step Verification for the App Password, and
-# the phone that signs in WhatsApp for Mac and may confirm the App Password. The last line says
-# WhatsApp and MyClub can wait.
+# What Welcome's "Have these ready" list says in each language (#298), one line each (#491): the
+# Wilma login, 2-Step Verification for the App Password, one MyClub link per Kid, and the phone
+# that signs in WhatsApp for Mac and may confirm it's you to Google. The last line says the rest can
+# wait.
 READY_WORDS = {
-    "en": {"wilma": ("username", "password", '"Forgot your password?"', "sign-in page"),
-           "gmail": ("2-Step Verification", "App Password"),
-           "myclub": ("each Kid", "Calendar subscription (Tilaa kalenteri)",
-                      "Selected members (Valitut jäsenet)", "only that Kid", "copy the link"),
-           "phone.why": ("WhatsApp for Mac", "installed", "QR code", "confirm", "App Password"),
-           "later": ("WhatsApp and MyClub", "until later")},
-    "fi": {"wilma": ("käyttäjätunnus", "salasana", "”Unohditko salasanasi?”", "kirjautumissivu"),
-           "gmail": ("2-vaiheinen vahvistus", "sovellussalasana"),
-           "myclub": ("jokaiselle lapselle", "Tilaa kalenteri", "Valitut jäsenet",
-                      "vain tämä lapsi", "kopioi linkki"),
-           "phone.why": ("WhatsAppin Mac-sovellu", "asennettu", "QR-koodi", "vahvistus",
-                         "sovellussalasana"),
-           "later": ("WhatsApp ja MyClub", "myöhemmäksi")},
-    "zh": {"wilma": ("用户名", "密码", "“Forgot your password?”", "“Unohditko salasanasi?”", "登录页"),
-           "gmail": ("两步验证", "应用专用密码"),
-           "myclub": ("每个孩子", "“订阅日历”（Tilaa kalenteri）", "“选定成员”（Valitut jäsenet）",
-                      "只勾这一个孩子", "复制链接"),
-           "phone.why": ("WhatsApp Mac 版", "装好", "二维码", "确认", "应用专用密码"),
-           "later": ("WhatsApp 和 MyClub", "以后再连")},
+    "en": {"wilma": ("username", "password"),
+           "gmail": ("2-Step Verification",),
+           "myclub": ("calendar link", "each Kid"),
+           "phone.why": ("WhatsApp for Mac", "Google"),
+           "later": ("until later",)},
+    "fi": {"wilma": ("käyttäjätunnu", "salasana"),
+           "gmail": ("2-vaiheinen vahvistus",),
+           "myclub": ("kalenterilinkki", "lapselle"),
+           "phone.why": ("WhatsAppin Mac-sovellu", "Google"),
+           "later": ("myöhemmäksi",)},
+    "zh": {"wilma": ("用户名", "密码"),
+           "gmail": ("两步验证",),
+           "myclub": ("日历链接", "每个孩子"),
+           "phone.why": ("WhatsApp Mac 版", "Google"),
+           "later": ("以后",)},
 }
 
 
@@ -289,8 +291,6 @@ def test_the_ready_list_names_what_setup_needs_in_each_language():
             said = text[language][f"welcome.ready.{item}"]
             for word in words:
                 assert word.lower() in said.lower(), (language, item, word)
-        # Said once: the list says what can wait, and the line above it no longer does.
-        assert items["later"][-1] not in text[language]["welcome.sources"], language
     # The list replaces Welcome's old Wilma sentence rather than adding a second one.
     assert all("welcome.wilma" not in table for table in text.values())
     assert "welcome.wilma" not in page_html

@@ -36,8 +36,8 @@ from family_brief import failure, install_record, setup_server, setup_wilma
 from family_brief.config import Config
 from fake_system import WINDOWS, Window
 from conftest import program
-from setup_page import (PAGE_DIR, Response, assert_never_leaked, call, config_file, statuses, towns,
-                        wait_for, welcome)
+from setup_page import (PAGE_DIR, Response, assert_never_leaked, call, config_file, inside, statuses,
+                        towns, wait_for, welcome)
 from setup_page import clock, page  # noqa: F401
 
 # The tests of `parent-recap setup wilma` are each marked macos: the Wilma window's pseudo-terminal,
@@ -1315,21 +1315,26 @@ def test_the_wilma_fields_are_standard_login_fields(page):
     assert 'autocomplete="username"' in username
     password = re.search(r'<input[^>]*id="wilma-password"[^>]*>', form).group(0)
     assert 'type="password"' in password and 'autocomplete="current-password"' in password
-    assert 'id="wilma-passwords"' in form
+    # The Passwords app, for a forgotten password, is folded under the step (#491).
+    more = re.search(r'<details class="more">\s*<summary data-text="wilma.more">.*?</details>',
+                     inside(html, "source-wilma"), re.S).group(0)
+    assert 'id="wilma-passwords"' in more
 
 
 def test_the_town_box_says_why_it_waits_right_under_it_while_the_wilma_cli_installs(page):
     html = call(page.url).body.decode()
 
-    # Right under the box, before its hint and well above the username, and read out with it,
-    # but not announced: the status area further down already is.
+    # Right under the box, well above the username, and read out with it, but not announced: the
+    # status area is.
     field = re.search(r'<div class="field">\s*<label for="wilma-search".*?</div>', html,
                       re.S).group(0)
     box = re.search(r'<input[^>]*id="wilma-search"[^>]*>', field).group(0)
     assert "disabled" in box and 'aria-describedby="wilma-search-wait"' in box
     wait = re.search(r'<p id="wilma-search-wait"[^>]*>', field).group(0)
     assert "hidden" in wait and 'role="status"' not in wait
-    assert field.index(box) < field.index(wait) < field.index('data-text="wilma.search.hint"')
+    assert field.index(box) < field.index(wait)
+    assert html.index('id="wilma-search-wait"') < html.index('id="wilma-town-slot"') \
+        < html.index('id="wilma-username"')
 
 
 def test_every_wilma_result_is_explained_in_all_three_languages():
@@ -1340,10 +1345,6 @@ def test_every_wilma_result_is_explained_in_all_three_languages():
             assert table.get(f"wilma.{result}", "").strip(), (language, result)
         for result in setup_server.wilma.WILMA_READY_RESULTS:
             assert table.get(f"wilma.ready.{result}", "").strip(), (language, result)
-        # Without Wilma, the install gets the town list ready, on a Mac and a PC alike.
-        town = table.get("wilma.ready.installing.town", "")
-        assert town.strip() and "wilma" not in town.lower(), language
-        assert "wilma.ready.installing.town.windows" not in table, language
         for result in setup_server.wilma.WILMA_WINDOW_RESULTS:
             assert table.get(f"wilma.window.{result}", "").strip(), (language, result)
 

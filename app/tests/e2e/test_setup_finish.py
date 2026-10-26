@@ -515,7 +515,7 @@ def test_every_finish_text_is_in_all_three_languages():
                 *(f"health.check.{c}" for c in {*setup_server.health.FINISH_CHECKS.values(), "other"}),
                 *(f"finish.fail.{c}" for c in {*setup_server.health.FINISH_CHECKS.values(), "other"}),
                 "finish.title", "finish.intro", "finish.start", "finish.replace", "finish.restart",
-                "finish.checklist", "finish.closed", "finish.stop", "finish.warnings",
+                "finish.leave", "finish.more", "finish.closed", "finish.stop", "finish.warnings",
                 "finish.again", "finish.to-do.nightly", "finish.to-do.wake",
                 "finish.to-do.wake.windows", "finish.later"]
         for key in keys:
@@ -525,6 +525,7 @@ def test_every_finish_text_is_in_all_three_languages():
 def test_finish_says_a_mac_that_s_shut_down_makes_no_brief():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
-    assert "shut down" in text["en"]["finish.restart"]
-    assert "sammutettu" in text["fi"]["finish.restart"]
-    assert "关机" in text["zh"]["finish.restart"]
+    # The one line Finish shows under its checklist (#491); the rest is folded.
+    assert "shut down" in text["en"]["finish.leave"]
+    assert "sammuta" in text["fi"]["finish.leave"]
+    assert "关机" in text["zh"]["finish.leave"]

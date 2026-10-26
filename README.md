@@ -37,7 +37,7 @@ On a Windows 11 PC, paste a PowerShell line instead: see [Install](docs/windows.
 
 ### Next
 
-The page walks you through setup in Finnish, English or Chinese: a few choices with defaults, then your Sources one at a time from a list (WhatsApp and MyClub can be skipped and added later), one page of what was found, and a preview of your first Brief before it's sent. Setup downloads about 230 MB, mostly the Python packages the program uses and its own Python and Node, so you don't need Homebrew, Python or Node of your own. Passwords go only into the page's own fields, on your Mac, and never into a chat. If you get stuck, **Continue in the chat** on any step hands setup over to Claude Code or Codex at the same step.
+The page walks you through setup in Finnish, English or Chinese: a few choices with defaults, then your Sources one at a time from a list (Wilma, WhatsApp and MyClub can be skipped and added later), one page of what was found, and a preview of your first Brief before it's sent. Setup downloads about 230 MB, mostly the Python packages the program uses and its own Python and Node, so you don't need Homebrew, Python or Node of your own. Passwords go only into the page's own fields, on your Mac, and never into a chat. If you get stuck, **Continue in the chat** on any step hands setup over to Claude Code or Codex at the same step.
 
 Once installed, if something goes wrong or you want to change a setting (a new school year, a different group, another recipient), type `/parent-recap:manage` (`$parent-recap-manage` in Codex), or just say what you want.
 
