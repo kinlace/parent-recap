@@ -342,24 +342,24 @@ fieldset .field label {
 }
 
 /* Why a step failed, small, folded as "Details for the Parent Recap team", for a photo of the
-   screen to carry, with its Copy button. */
-.status .why {
+   screen to carry, with its Copy button. A check on Check and Finish that isn't OK has its own. */
+.status .why, .checks .why {
   margin-top: 10px;
   color: var(--ink-2);
   font-size: 13px;
 }
 
-.status .why summary { cursor: pointer; }
+.status .why summary, .checks .why summary { cursor: pointer; }
 
 .status .why .hint {
   margin: 0;
 }
 
-.status .why button {
+.status .why button, .checks .why button {
   margin-top: 6px;
 }
 
-.status .reason {
+.status .reason, .checks .reason {
   margin: 8px 0 0;
   font: 11px/1.4 var(--mono);
   white-space: pre-wrap;

@@ -24,6 +24,7 @@ from test_setup_steps import HeaderImap
 from setup_page import (APP_PASSWORD, PAGE_DIR, Response, at_the_check_step, call, check_page, config_file,
                         confirm, connect_done, health_result, more_progress, save_progress, wait_for)
 from setup_page import ai, clock, health, page  # noqa: F401
+from test_setup_whatsapp import fake_mac
 
 
 # ── Working: Parent Recap reads the Sources, with progress shown
@@ -295,16 +296,22 @@ def test_a_health_check_that_fails_keeps_the_page_and_says_which_check(harness, 
         (ops.WARN, "feedback", "Pilot feedback", "feedback is on but prefill_base_url or fields is "
          "missing"),
         ops.Check(ops.FAIL, "myclub", "MyClub (Mia)",
-                  "subscription link doesn't open: https://x.myclub.fi/secret", subject="Mia")]
+                  "subscription link doesn't open: x.myclub.fi answered HTTP 404", subject="Mia")]
 
     assert confirm(page.url).json()["result"] == "checking"
     out = health_result(page.url)
 
+    # Each check that isn't OK says what doctor said about it, for the family to copy to us
+    # (#500). An OK one's detail, which says nothing to fix, stays on the Mac.
     assert out == {"result": "not-ok", "checks": [
-        {"check": "config", "status": "ok"}, {"check": "gmail", "status": "fail"},
-        {"check": "feedback", "status": "warn"},
-        {"check": "myclub", "status": "fail", "kid": "Mia"}]}
-    assert "parent@example.com" not in json.dumps(out) and "secret" not in json.dumps(out)
+        {"check": "config", "status": "ok"},
+        {"check": "gmail", "status": "fail",
+         "detail": "IMAP login failed: parent@example.com rejected"},
+        {"check": "feedback", "status": "warn",
+         "detail": "feedback is on but prefill_base_url or fields is missing"},
+        {"check": "myclub", "status": "fail", "kid": "Mia",
+         "detail": "subscription link doesn't open: x.myclub.fi answered HTTP 404"}]}
+    assert "config.yaml" not in json.dumps(out)
     assert setup_save.read(config_file(harness))["progress"]["phase"] == "check"
     # Fixed, it's run again by confirming again.
     health.results = health.results[:1]
@@ -346,13 +353,18 @@ def test_a_pilot_household_keeps_the_label_it_has(harness, page, health):
     assert Config.load(config_file(harness)).feedback.household_label == "王家"
 
 
-@pytest.mark.macos
-def test_the_health_check_runs_for_real_with_the_sources_confirmed(harness, page, ai, monkeypatch):
+def signed_in(harness, ai, monkeypatch) -> None:
+    """Gmail and Claude as the health check meets them for real, both working."""
     ai("claude")
     harness.secrets["claude-oauth-token"] = "sk-ant-oat01-token"
     harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
-    harness.config["wilma"]["enabled"] = False
     monkeypatch.setattr(imaplib, "IMAP4_SSL", HeaderImap(SENDERS))
+
+
+@pytest.mark.macos
+def test_the_health_check_runs_for_real_with_the_sources_confirmed(harness, page, ai, monkeypatch):
+    signed_in(harness, ai, monkeypatch)
+    harness.config["wilma"]["enabled"] = False
     at_the_check_step(harness)
 
     confirm(page.url, whatsapp=[])
@@ -361,6 +373,77 @@ def test_the_health_check_runs_for_real_with_the_sources_confirmed(harness, page
     assert out["result"] == "ok", out
     assert {c["check"] for c in out["checks"]} >= {"config", "gmail", "ai", "calendar"}
     assert not Config.load(config_file(harness)).whatsapp.enabled  # no group ticked
+
+
+# ── A Source the family can do without never holds setup up (#500)
+
+
+def skip_at_check(url: str, body: Any) -> Response:
+    return call(url, "api/check/skip", method="POST", body=body)
+
+
+def break_source(harness, monkeypatch, source: str) -> dict[str, Any]:
+    """The Source `source` connected, at the check step, with its check failing for real, and
+    the others' checks working; what the check page confirms, with WhatsApp's groups ticked when
+    it's WhatsApp that fails."""
+    harness.config["wilma"]["enabled"] = source == "wilma"
+    at_the_check_step(harness)
+    kids = [{"name": "Mia", "everyday_name": "Mia"}, {"name": "Leo", "everyday_name": "Leo"}]
+    if source == "wilma":  # its password changed
+        harness.source_fakes["wilma"].answers[("kids", "list")] = (1, {"error": "unauthorized"})
+    if source == "whatsapp":  # WhatsApp for Mac was never installed on this Mac
+        fake_mac(harness, monkeypatch)
+    if source == "myclub":  # Mia's link doesn't open any more
+        harness.config["kids"][0]["myclub_ical_url"] = "https://example.myclub.fi/ical/mia.ics"
+        config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+        more_progress(harness, sources={"myclub": "done"})
+        harness.source_fakes["myclub"].failures = [404] * 10
+    return {"kids": kids, "whatsapp": ["3B parents"] if source == "whatsapp" else []}
+
+
+@pytest.mark.macos
+@pytest.mark.parametrize("source", ["wilma", "whatsapp", "myclub"])
+def test_a_source_whose_check_fails_can_be_skipped_and_the_health_check_then_passes(
+        harness, page, ai, monkeypatch, source):
+    signed_in(harness, ai, monkeypatch)
+    answers = break_source(harness, monkeypatch, source)
+    confirm(page.url, **answers)
+    out = health_result(page.url)
+    assert out["result"] == "not-ok"
+    [failed] = [c for c in out["checks"] if c["status"] == "fail"]
+    assert failed["check"] == source and failed["detail"].strip()
+
+    r = skip_at_check(page.url, {"source": source})
+
+    assert r.status == 200 and r.json()["result"] == "checking"
+    assert r.json()["progress"]["sources"][source] == "skipped"
+    # The check page as it is now: a skipped WhatsApp has no groups to tick.
+    assert (r.json()["check"]["whatsapp"] is None) == (source == "whatsapp")
+    out = health_result(page.url)
+    assert out["result"] == "ok", out
+    assert out["progress"]["phase"] == "first-brief"
+    assert source not in [c["check"] for c in out["checks"]]
+    # Turned off for now, as Connect's Skip does: opened from Connect's list, it comes back.
+    assert source not in Config.load(config_file(harness)).other_sources()
+
+
+def test_a_skip_at_check_is_refused_for_gmail_elsewhere_and_while_checking(harness, page, health):
+    at_the_check_step(harness)
+
+    for body in [{"source": "gmail"}, {"source": "ai"}, {"source": "nothing"}, {}, {"x": 1},
+                 {"source": "wilma", "x": 1}]:
+        assert skip_at_check(page.url, body).status == 400, body
+    health.go.clear()
+    confirm(page.url)
+    assert skip_at_check(page.url, {"source": "wilma"}).status == 409  # the health check runs
+    health.go.set()
+    health_result(page.url)
+    more_progress(harness, phase="finish")
+    assert skip_at_check(page.url, {"source": "wilma"}).status == 400  # only at Check
+
+    assert setup_save.read(config_file(harness))["progress"]["sources"]["wilma"] == "done"
+    assert Config.load(config_file(harness)).wilma.enabled
+    assert len(health.runs) == 1
 
 
 @pytest.mark.parametrize("answers", [

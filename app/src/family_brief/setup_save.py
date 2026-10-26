@@ -12,7 +12,8 @@ answers as JSON on stdin, every key optional:
    "evening": "21:00",
    "sources": {"gmail": {"address": "parent@gmail.com", "allowlist_domains": ["espoo.fi"]},
                "wilma": {"enabled": true},
-               "whatsapp": {"enabled": true, "chats": [{"name": "3B", "kid": "Mia Virtanen", "label": "class"}]}},
+               "whatsapp": {"enabled": true, "chats": [{"name": "3B", "kid": "Mia Virtanen", "label": "class"}]},
+               "myclub": {"enabled": false}},
    "feedback": {"enabled": true, "household_label": "Virtanen family"},
    "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"},
                 "partner": {"address": "partner@gmail.com", "language": "fi"},
@@ -28,7 +29,8 @@ gmail-senders --json` found, each as it reports them, kept for the check page.
 
 What the answers don't mention stays as it was. The Kids given are the Household's Kids: a Kid
 left out is removed, and each one given keeps what the answers don't say about them, such as a
-MyClub link, which only `setup myclub` and the setup page's MyClub field save. Turning pilot
+MyClub link, which only `setup myclub` and the setup page's MyClub field save; `"myclub":
+{"enabled": false}` removes every Kid's, as skipping MyClub on the setup page does. Turning pilot
 feedback on writes the pilot Form shipped with the program (feedback.pilot_form), and is refused
 in a version that ships none. Setup makes the `household_label` itself, a random
 `household-<hex>`, unless the answers or the config already give one; the family is never asked
@@ -101,10 +103,17 @@ class WhatsAppAnswer(_Strict):
     chats: list[WhatsAppChat] | None = None
 
 
+class MyClubAnswer(_Strict):
+    """Only turning MyClub off, which removes every Kid's link: a link is saved by `setup myclub`
+    and the setup page's MyClub field, never as an answer."""
+    enabled: Literal[False]
+
+
 class SourcesAnswer(_Strict):
     gmail: GmailAnswer | None = None
     wilma: WilmaAnswer | None = None
     whatsapp: WhatsAppAnswer | None = None
+    myclub: MyClubAnswer | None = None
 
 
 class FeedbackAnswer(_Strict):
@@ -286,6 +295,10 @@ def _merge(data: dict[str, Any], a: Answers, form: dict[str, Any] | None) -> Non
         _section(data, "wilma")["enabled"] = sources.wilma.enabled
     if sources.whatsapp is not None:
         _section(data, "whatsapp").update(_given(sources.whatsapp))
+    if sources.myclub is not None:
+        for kid in data.get("kids") or []:
+            if isinstance(kid, dict):
+                kid.pop("myclub_ical_url", None)
     if a.feedback is not None:
         if a.feedback.enabled and form is not None:
             _section(data, "feedback").update(form)

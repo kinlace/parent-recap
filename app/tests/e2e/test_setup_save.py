@@ -268,6 +268,20 @@ def test_a_myclub_link_is_refused_and_never_repeated(harness, capsys):
     assert saved(harness) == before
 
 
+def test_turning_myclub_off_removes_every_kid_s_link_and_keeps_the_rest(harness, capsys):
+    # As skipping MyClub on the setup page does (#500): a link is only ever saved by its own step.
+    before = existing_config(harness)
+
+    assert save(harness, {"sources": {"myclub": {"enabled": False}}}) == 0
+
+    kids = saved(harness)["kids"]
+    assert [k.get("myclub_ical_url") for k in kids] == [None, None]
+    assert kids[0] == {k: v for k, v in before["kids"][0].items() if k != "myclub_ical_url"}
+    assert {k: v for k, v in saved(harness).items() if k != "kids"} == \
+        {k: v for k, v in before.items() if k != "kids"}
+    assert save(harness, {"sources": {"myclub": {"enabled": True}}}) == 1  # only by its step
+
+
 def test_a_config_it_cannot_read_is_left_alone(harness, capsys):
     config_file(harness).parent.mkdir(parents=True)
     config_file(harness).write_text(f"kids: [{{name: Mia, myclub_ical_url: {LINK}, grade: x}}]\n")

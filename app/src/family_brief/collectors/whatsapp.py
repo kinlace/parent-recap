@@ -8,6 +8,7 @@ import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import NamedTuple
 
 from ..config import Config
 from ..state import State
@@ -171,6 +172,8 @@ def _read_chats(cfg: Config, state: State) -> list[Message]:
 # doctor and discover compare against this to offer the scheduled job's Python, which often has access.
 NO_ACCESS = ("macOS doesn't let this process read WhatsApp data: it has no Full Disk Access "
              "(System Settings → Privacy & Security → Full Disk Access)")
+NO_DATA = ("No WhatsApp Desktop data found (WhatsApp for Mac isn't installed, "
+           "or has never been signed in on this Mac)")
 
 
 def full_disk_access_file() -> Path:
@@ -195,25 +198,39 @@ def has_full_disk_access() -> bool:
     return True
 
 
-def check_access() -> str | None:
-    """None if the DB can be copied, else a human-readable reason (NO_ACCESS without Full Disk
-    Access). WhatsApp is only touched once Full Disk Access is there, so macOS never asks."""
+class AccessProblem(NamedTuple):
+    """Why WhatsApp's database can't be copied: a reason doctor's check names, from
+    ops.WHATSAPP_REASONS, and what happened, in words."""
+    reason: str
+    detail: str
+
+
+def access_problem() -> AccessProblem | None:
+    """None if the DB can be copied, else why not: no-access without Full Disk Access,
+    access-unknown when that can't be checked, no-whatsapp without WhatsApp for Mac's data, or
+    unreadable. WhatsApp is only touched once Full Disk Access is there, so macOS never asks."""
     try:
         if not has_full_disk_access():
-            return NO_ACCESS
+            return AccessProblem("no-access", NO_ACCESS)
     except OSError as e:
-        return f"Couldn't check for Full Disk Access: {e}"
+        return AccessProblem("access-unknown", f"Couldn't check for Full Disk Access: {e}")
     if not DB_FILE.exists():
-        return ("No WhatsApp Desktop data found (WhatsApp for Mac isn't installed, "
-                "or has never been signed in on this Mac)")
+        return AccessProblem("no-whatsapp", NO_DATA)
     try:
         snap = _snapshot_db()
         shutil.rmtree(snap.parent, ignore_errors=True)
         return None
     except PermissionError:
-        return NO_ACCESS
+        return AccessProblem("no-access", NO_ACCESS)
     except Exception as e:
-        return f"Couldn't read it: {e}"
+        return AccessProblem("unreadable", f"Couldn't read it: {e}")
+
+
+def check_access() -> str | None:
+    """None if the DB can be copied, else a human-readable reason (NO_ACCESS without Full Disk
+    Access)."""
+    problem = access_problem()
+    return problem.detail if problem else None
 
 
 def list_groups(days: int = 180) -> list[dict]:

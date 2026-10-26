@@ -93,7 +93,8 @@ def test_a_failed_health_check_names_the_checks_that_aren_t_ok(harness, page, sc
     health.results += [(ops.FAIL, "gmail", "Gmail", "IMAP login failed for parent@example.com"),
                        (ops.WARN, "last-run", "Last run", "40 hours ago"),
                        ops.Check(ops.FAIL, "myclub", "MyClub (Mia)",
-                                 "subscription link doesn't open: secret", subject="Mia"),
+                                 "subscription link doesn't open: x.myclub.fi answered HTTP 404",
+                                 subject="Mia"),
                        (ops.WARN, "something-new", "Something new", "a check the page doesn't know")]
 
     finish(page.url)
@@ -101,11 +102,13 @@ def test_a_failed_health_check_names_the_checks_that_aren_t_ok(harness, page, sc
 
     assert out["result"] == "not-done"
     doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
+    # Each with what doctor said about it, which the page folds for the family to copy (#500).
     assert doctor == {"outcome": "doctor", "ok": False, "checks": [
-        {"check": "gmail", "status": "fail"}, {"check": "last-run", "status": "warn"},
-        {"check": "myclub", "status": "fail", "kid": "Mia"}, {"check": "other", "status": "warn"}]}
-    # Only their names: doctor's details can name an address or quote an error.
-    assert "parent@example.com" not in json.dumps(out) and "secret" not in json.dumps(out)
+        {"check": "gmail", "status": "fail", "detail": "IMAP login failed for parent@example.com"},
+        {"check": "last-run", "status": "warn", "detail": "40 hours ago"},
+        {"check": "myclub", "status": "fail", "kid": "Mia",
+         "detail": "subscription link doesn't open: x.myclub.fi answered HTTP 404"},
+        {"check": "other", "status": "warn", "detail": "a check the page doesn't know"}]}
     # The outcomes that are true and have no warnings carry nothing more.
     assert all(set(o) == {"outcome", "ok"} for o in out["outcomes"] if o["ok"])
 
@@ -122,8 +125,9 @@ def test_warnings_alone_dont_hold_finish_up_and_are_listed(harness, page, schedu
     assert out["result"] == "done"
     doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
     assert doctor == {"outcome": "doctor", "ok": True, "checks": [
-        {"check": "feedback", "status": "warn"},
-        {"check": "language", "status": "warn", "language": "sv"}]}
+        {"check": "feedback", "status": "warn", "detail": "feedback.household_label is empty"},
+        {"check": "language", "status": "warn", "language": "sv",
+         "detail": "the Brief's own text in sv isn't ready yet"}]}
 
 
 def test_finish_names_a_check_by_its_key_whatever_doctor_calls_it(harness, page, schedule, health):
@@ -139,9 +143,10 @@ def test_finish_names_a_check_by_its_key_whatever_doctor_calls_it(harness, page,
     out = finished(page.url)
 
     doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
-    assert doctor["checks"] == [{"check": "gmail", "status": "fail"},
-                                {"check": "language", "status": "warn", "language": "sv"},
-                                {"check": "myclub", "status": "fail", "kid": "Mia"}]
+    assert [{k: v for k, v in c.items() if k != "detail"} for c in doctor["checks"]] == [
+        {"check": "gmail", "status": "fail"},
+        {"check": "language", "status": "warn", "language": "sv"},
+        {"check": "myclub", "status": "fail", "kid": "Mia"}]
 
 
 @pytest.mark.parametrize("failure", WHATSAPP_FAILURES)
@@ -158,8 +163,8 @@ def test_finish_says_why_whatsapp_isn_t_ok(harness, page, schedule, health, fail
     doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
     check = {"check": "whatsapp", "status": setup_server.health.HEALTH_STATUSES[status], "reason": reason,
              **({"groups": list(groups)} if groups else {})}
-    assert doctor == {"outcome": "doctor", "ok": status == ops.WARN, "checks": [check]}
-    assert WHATSAPP_PYTHON not in json.dumps(out)
+    assert doctor == {"outcome": "doctor", "ok": status == ops.WARN,
+                      "checks": [{**check, "detail": f"{WHATSAPP_PYTHON} can't"}]}
     assert_says_why("finish", check)
 
 
@@ -445,7 +450,7 @@ def test_check_again_keeps_saying_what_s_still_missing(harness, page, schedule, 
 
     assert out["result"] == "not-done" and out["tried"] is True and out["wake"] == "set"
     doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
-    assert doctor["ok"] is False and {"check": "ai", "status": "fail"} in doctor["checks"]
+    assert doctor["ok"] is False and {"check": "ai", "status": "fail", "detail": "call failed"} in doctor["checks"]
     assert call(page.url, "api/state").status == 200  # still serving
     for body in [{"again": False}, {"again": "yes"}, {"again": 1}, {"again": True, "x": 1}]:
         assert call(page.url, "api/finish/outcomes", method="POST", body=body).status == 400

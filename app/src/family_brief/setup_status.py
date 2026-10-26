@@ -42,8 +42,8 @@ class Outcome:
     outcome: str
     ok: bool
     reason: str
-    # Doctor's checks that aren't OK, without their details, for the setup page to name and say
-    # what to do about: on a true outcome, its warnings.
+    # Doctor's checks that aren't OK, for the setup page to name and say what to do about, with
+    # their details folded for the family to copy to us (#500): on a true outcome, its warnings.
     checks: list[ops.Check] = field(default_factory=list)
 
 
@@ -97,7 +97,7 @@ def _installed() -> Outcome:
 def _doctor(config: str | None) -> Outcome:
     # Only the checks' names and statuses go into the reason: their details can quote an error.
     results = ops.health_checks(config)
-    checks = list(dict.fromkeys(c._replace(detail="") for c in results if c.status != ops.OK))
+    checks = _once_each([c for c in results if c.status != ops.OK])
     if not checks:
         return Outcome("doctor", True, f"all {len(results)} checks OK")
     not_ok = list(dict.fromkeys(f"{c.item} {c.status.strip()}" for c in checks))
@@ -107,6 +107,14 @@ def _doctor(config: str | None) -> Outcome:
                        f"warning: {', '.join(not_ok)} (run parent-recap doctor to see why)", checks)
     return Outcome("doctor", False, f"{len(not_ok)} of {len(results)} checks aren't OK: "
                    f"{', '.join(not_ok)} (run parent-recap doctor to see why)", checks)
+
+
+def _once_each(checks: list[ops.Check]) -> list[ops.Check]:
+    """Each check once, with the details of the checks the same but for them, one per line."""
+    same: dict[ops.Check, list[str]] = {}
+    for c in checks:
+        same.setdefault(c._replace(detail=""), []).append(c.detail)
+    return [c._replace(detail="\n".join(dict.fromkeys(details))) for c, details in same.items()]
 
 
 def _brief(cfg: Config | None) -> Outcome:

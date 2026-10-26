@@ -24,9 +24,12 @@ Progress = dict[str, Any]
 # What a step saves besides its progress, or how to tell from the progress read under the lock.
 Answers = dict[str, Any] | Callable[[Progress], dict[str, Any]]
 T = TypeVar("T", bound=BaseModel)
-# What skipping a Source also saves: a Household that skips Wilma doesn't use it.
+# What skipping a Source also saves, so that a Household that skips it doesn't use it, whether
+# it's skipped in Connect or on Check after its check failed (#500): Wilma and WhatsApp are turned
+# off, and MyClub's links are removed, as a skipped MyClub has none to keep.
 SKIP_ANSWERS: dict[str, dict[str, Any]] = {
-    source_registry.WILMA.name: {"sources": {source_registry.WILMA.name: {"enabled": False}}},
+    s.name: {"sources": {s.name: {"enabled": False}}}
+    for s in (source_registry.WILMA, source_registry.WHATSAPP, source_registry.MYCLUB)
 }
 
 
