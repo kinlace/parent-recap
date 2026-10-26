@@ -6,6 +6,7 @@ from __future__ import annotations
 import imaplib
 import shlex
 from typing import Any
+from urllib.parse import urlencode
 
 from .setup_report import PLAIN_TERMINAL, keychain_failure, program
 from .system import secrets
@@ -23,6 +24,12 @@ CITY_DOMAINS = {
 TURN_ON_TWO_STEP = (f"Turn on 2-Step Verification at {TWO_STEP_URL}, then create the App "
                     "Password again and run this again. A work or school Google account may not "
                     "allow App Passwords at all; then use a personal Gmail.")
+
+
+def app_passwords_url(address: str) -> str:
+    """Google's App Passwords page in the family's Gmail, not the browser's default Google account
+    (#501). Google falls back to the default one when the Gmail isn't signed in on that browser."""
+    return f"{APP_PASSWORDS_URL}?{urlencode({'authuser': address})}"
 
 
 def sign_in(address: str, password: str) -> tuple[str, str | None, dict[str, Any]]:

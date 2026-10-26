@@ -446,7 +446,7 @@ function renderConnect() {
 }
 
 function setUpGmail() {
-  document.getElementById("gmail-open").addEventListener("click", () => openSite("app-passwords"));
+  document.getElementById("gmail-open").addEventListener("click", openAppPasswords);
   for (const id of ["gmail-two-step", "gmail-two-step-more"]) {
     document.getElementById(id).addEventListener("click", () => openSite("two-step"));
   }
@@ -671,15 +671,33 @@ function showSource(key, { reason, url, kids, install, values } = {}) {
 }
 
 // The server opens the site, so the page itself names none.
-async function openSite(site) {
+async function openSite(site, more = {}) {
   clearError();
   try {
-    const out = await post("api/open", { site });
-    if (out.result !== "opened") {
+    const out = await post("api/open", { site, ...more });
+    if (out.result === "not-opened") {
       showSource(out.url ? "open.not-opened" : "open.app-not-opened", { url: out.url });
     }
+    return out;
   } catch (e) {
     failed(e);
+  }
+}
+
+// Google's App Passwords page opens in the family's Gmail, not the browser's default Google
+// account (#501), so it asks for the address first and opens nothing without it.
+async function openAppPasswords() {
+  const field = document.getElementById("gmail-address");
+  const address = field.value.trim();
+  let known = Boolean(address) && field.checkValidity();
+  if (known) {
+    showSource(null);
+    known = (await openSite("app-passwords", { address }))?.result !== "no-address";
+  }
+  field.toggleAttribute("aria-invalid", !known);
+  if (!known) {
+    showSource("gmail.no-address");
+    field.focus();
   }
 }
 

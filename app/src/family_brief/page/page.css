@@ -294,6 +294,8 @@ fieldset .field label {
 /* Gmail's three steps, the first a button. */
 .steps { display: grid; gap: 6px; margin: 0 0 16px; padding-left: 20px; }
 
+.details > .steps { margin: 0; }
+
 /* ── What a step said: a quiet box, green once it's done, red-tinted when it failed. */
 
 .status {
