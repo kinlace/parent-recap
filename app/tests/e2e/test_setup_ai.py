@@ -196,7 +196,9 @@ def test_a_claude_sign_in_already_running_is_not_started_twice(harness, page, cl
 @pytest.mark.parametrize("how, result", [("no token", "sign-in-failed"), ("hangs", "timeout")])
 def test_a_claude_sign_in_without_a_token_offers_the_terminal_window(harness, page, claude, how,
                                                                     result):
-    page.context.timeouts.claude_sign_in = 1
+    # Only the hung sign-in waits out the limit: on a busy runner (tests on every core, #509),
+    # claude exiting with no token can take longer than the second the hung one is given.
+    page.context.timeouts.claude_sign_in = 1 if how == "hangs" else 30
     claude.token = None
     claude.hangs = how == "hangs"
     claude.install()
