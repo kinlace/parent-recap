@@ -4,6 +4,17 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.7.4 · 2026-10-26
+
+Setup gets stuck less: Google's App Passwords page opens in the family's own Gmail, a family without Wilma just skips it, and a failed check on the last steps says why and lets an optional Source be skipped.
+
+### Changed
+
+- Google's App Passwords page now opens in the family's own Gmail, not whichever Google account the browser uses by default. The setup page asks for the Gmail address before the Open button, and says what to do if Google shows another account.
+- A family whose school doesn't use Wilma just skips Wilma: the page no longer saves or asks for a town without it.
+- When a check on the Check or Finish step fails, the page says what went wrong with a Copy button, and on Check a family can skip WhatsApp, MyClub or Wilma for now so setup carries on.
+- Finnish parents see the setup page in natural Finnish, with Google's and macOS's own names for things.
+
 ## 0.7.3 · 2026-10-26
 
 The setup page is calmer: each step shows only what to do, background folds away, every Source a family can do without has a Skip link, and when a step fails, the reason shows right under it with a Copy button.
