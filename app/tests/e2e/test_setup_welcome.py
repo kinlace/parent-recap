@@ -67,7 +67,7 @@ def test_a_pilot_household_s_opt_in_writes_the_whole_feedback_section(harness, p
     assert cfg.feedback.active()
     assert cfg.feedback.prefill_base_url == PILOT_FORM_URL
     assert cfg.feedback.fields.model_dump() == PILOT_FORM_FIELDS
-    assert cfg.feedback.household_label == "parent"  # the setup parent's, until changed on Check
+    assert re.fullmatch(r"household-[0-9a-f]{8}", cfg.feedback.household_label)  # random (#493)
 
 
 def test_without_a_shipped_pilot_form_welcome_doesnt_ask_about_feedback(harness, page):
