@@ -4,6 +4,19 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.7.3 · 2026-10-26
+
+The setup page is calmer: each step shows only what to do, background folds away, every Source a family can do without has a Skip link, and when a step fails, the reason shows right under it with a Copy button.
+
+### Changed
+
+- Each setup step shows only what to do, with background folded away, a Skip link on every Source a family can do without, and any failure shown right under what failed. A family whose Wilma program can't be installed can skip Wilma and carry on.
+- When a setup step fails, the page shows why under its message, with a Copy button that adds the version, the computer, the step and the time, ready to send us.
+- The setup page no longer asks pilot families for a household name. The label behind their feedback pseudonym is made at random, so it no longer comes from their email address.
+- A saved Gateway Key, a saved MyClub link and a check where everything works now show in green, like the other steps that succeed.
+- On Windows, the setup page registers the evening tasks and `doctor` reads them in milliseconds instead of seconds per task.
+- A Windows family reading the plugin's listing or the setup skill's description is no longer told it's for Macs only.
+
 ## 0.7.2 · 2026-10-25
 
 When the Wilma program doesn't install, the setup page says why, so a photo of the screen tells us what went wrong.
