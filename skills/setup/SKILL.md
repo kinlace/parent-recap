@@ -83,7 +83,7 @@ $FB setup save <<'EOF'
  "sources": {"gmail": {"address": "parent@gmail.com", "allowlist_domains": ["espoo.fi"], "allowlist_senders": []},
              "wilma": {"enabled": true},
              "whatsapp": {"enabled": true, "chats": [{"name": "3B vanhemmat", "kid": "Mia Virtanen", "label": "class"}]}},
- "feedback": {"enabled": true, "household_label": "Virtanen family"},
+ "feedback": {"enabled": true},
  "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"}}}
 EOF
 ```
@@ -255,7 +255,7 @@ Give each list an "all" line the parent can tick instead of going through it. Th
 
 Then save it with `$FB setup save`: `kids` with every ticked Kid's `name`, `everyday_name` and `aliases`; `sources.gmail` with the ticked domains in `allowlist_domains` and the ticked addresses in `allowlist_senders`; `sources.whatsapp` with `"enabled": true` and each ticked group in `chats`, with `name` **copied exactly** from `chats` (trailing spaces, curly quotes and emoji all have to match), `kid` (a Kid's `name`, or `both`) and `label`; and `"progress": {"phase": "check"}`.
 
-**Pilot feedback**, if the card says pilot family. Read the "Pilot feedback" section of `PLUGIN/docs/config.md` and tell the parent every point the parents must know before turning it on, in your own words, leaving none out, especially that "just opening the link without submitting still leaves a record". End with one choice: turn it on, or not now. If not, save no `feedback`, and say they can turn it on later with `/parent-recap:manage`. If they agree, in the next message offer a `household_label` as a choice: the family name from the Kids' names (such as "Virtanen family"), with their own typed as the other option. Save `"feedback": {"enabled": true, "household_label": "..."}` with `$FB setup save`: it writes the rest of the section from the pilot form the program ships. Nothing is pasted.
+**Pilot feedback**, if the card says pilot family. Read the "Pilot feedback" section of `PLUGIN/docs/config.md` and tell the parent every point the parents must know before turning it on, in your own words, leaving none out, especially that "just opening the link without submitting still leaves a record". End with one choice: turn it on, or not now. If not, save no `feedback`, and say they can turn it on later with `/parent-recap:manage`. If they agree, save `"feedback": {"enabled": true}` with `$FB setup save`: it writes the rest of the section from the pilot form the program ships, with a `household_label` it makes itself. Don't ask for a label. Nothing is pasted.
 
 Then run `$FB doctor` once more. Fix every ❌, and with pilot feedback on, any ⚠️ on its line. Other ⚠️ don't stop setup: tell the parent what each one means and what to do, as doctor says. For WhatsApp, follow "When doctor's WhatsApp line isn't ✅" below.
 

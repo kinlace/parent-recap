@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 import yaml
 
-from family_brief import ops, setup_save, setup_server
+from family_brief import feedback, ops, setup_save, setup_server
 from family_brief.config import Config
 from nights import FEEDBACK
 from test_setup_steps import HeaderImap
@@ -321,23 +321,29 @@ def test_warnings_alone_let_setup_move_on(harness, page, health):
     assert health_result(page.url)["result"] == "ok"
 
 
-def test_a_pilot_household_sees_its_feedback_label_and_can_change_it(harness, page, health):
-    harness.config["feedback"] = {**FEEDBACK, "household_label": "parent"}
+def test_a_pilot_household_is_not_asked_for_a_feedback_label_setup_makes_its_pseudonym(
+        harness, page, health):
+    # #491: nothing to fill in for pilot feedback. Setup makes the label, the setup parent's email
+    # user, which stays on the Mac, and the Form only ever gets the pseudonym made from it.
+    harness.config["feedback"] = {k: v for k, v in FEEDBACK.items() if k != "household_label"}
     at_the_check_step(harness)
 
-    assert check_page(page.url)["feedback"] == {"household_label": "parent"}
-    assert confirm(page.url, household_label=" ").status == 400
-
-    assert confirm(page.url, household_label=" Virtanen family ").json()["result"] == "checking"
-    assert Config.load(config_file(harness)).feedback.household_label == "Virtanen family"
-
-
-def test_a_household_not_in_the_pilot_has_no_feedback_label_to_give(harness, page, health):
-    at_the_check_step(harness)
-
-    assert check_page(page.url)["feedback"] is None
+    assert "feedback" not in check_page(page.url)
     assert confirm(page.url, household_label="Virtanen family").status == 400
+
     assert confirm(page.url).json()["result"] == "checking"
+    label = Config.load(config_file(harness)).feedback.household_label
+    assert label == "parent"
+    assert re.fullmatch(r"Household [0-9a-f]{6}", feedback.pseudonym(label))
+
+
+def test_a_pilot_household_keeps_the_label_it_has(harness, page, health):
+    harness.config["feedback"] = FEEDBACK  # the label is 王家
+    at_the_check_step(harness)
+
+    assert confirm(page.url).json()["result"] == "checking"
+
+    assert Config.load(config_file(harness)).feedback.household_label == "王家"
 
 
 @pytest.mark.macos

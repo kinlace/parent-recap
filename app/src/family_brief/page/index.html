@@ -33,21 +33,21 @@
     <form id="welcome-form">
       <fieldset>
         <legend data-text="welcome.ai"></legend>
-        <label><input type="radio" name="ai" value="claude"><span data-text="welcome.ai.claude"></span></label>
-        <label><input type="radio" name="ai" value="codex"><span data-text="welcome.ai.codex"></span></label>
-        <label><input type="radio" name="ai" value="gateway"><span data-text="welcome.ai.gateway"></span></label>
-        <p class="hint" data-text="welcome.ai.plan"></p>
+        <label><input type="radio" name="ai" value="claude"><span><span data-text="welcome.ai.claude"></span> <span class="plan" data-text="welcome.ai.claude.plan"></span></span></label>
+        <label><input type="radio" name="ai" value="codex"><span><span data-text="welcome.ai.codex"></span> <span class="plan" data-text="welcome.ai.codex.plan"></span></span></label>
+        <label><input type="radio" name="ai" value="gateway"><span><span data-text="welcome.ai.gateway"></span> <span class="plan" data-text="welcome.ai.gateway.plan"></span></span></label>
         <div id="ai-status" class="status" role="status">
           <p id="ai-message"></p>
-          <div id="ai-why" class="why" hidden>
-            <pre id="ai-reason" class="reason"></pre>
-            <button type="button" class="secondary" data-text="copy"></button>
-          </div>
           <div id="ai-install" class="install" hidden>
             <code id="ai-install-line"></code>
             <button type="button" id="ai-copy" class="secondary" data-text="copy"></button>
           </div>
           <button type="button" id="ai-again" class="secondary" data-text="welcome.ai.again" hidden></button>
+          <details id="ai-why" class="why" hidden>
+            <summary data-text="fail.details"></summary>
+            <pre id="ai-reason" class="reason"></pre>
+            <button type="button" class="secondary" data-text="copy"></button>
+          </details>
         </div>
       </fieldset>
       <fieldset>
@@ -69,10 +69,11 @@
         <legend data-text="welcome.feedback"></legend>
         <label><input type="radio" name="feedback" value="yes"><span data-text="welcome.feedback.yes"></span></label>
         <label><input type="radio" name="feedback" value="no"><span data-text="welcome.feedback.no"></span></label>
-        <p class="hint" data-text="welcome.feedback.note"></p>
+        <details class="more">
+          <summary data-text="welcome.feedback.more"></summary>
+          <p data-text="welcome.feedback.note"></p>
+        </details>
       </fieldset>
-      <h2 data-text="welcome.next"></h2>
-      <p data-text="welcome.sources"></p>
       <details id="welcome-ready" class="have-ready">
         <summary data-text="welcome.ready"></summary>
         <dl>
@@ -95,47 +96,49 @@
     <p class="note" data-text="connect.intro"></p>
     <ol id="sources" class="sources"></ol>
     <p id="source-handoff" class="handoff" role="status" hidden></p>
+    <div id="connect-slot" class="slot"></div>
     <div id="source-wilma" class="source" hidden>
       <h2 data-text="source.wilma"></h2>
-      <fieldset>
-        <legend data-text="wilma.uses"></legend>
-        <label><input type="radio" name="wilma-uses" value="yes" checked><span data-text="wilma.uses.yes"></span></label>
-        <label><input type="radio" name="wilma-uses" value="no"><span data-text="wilma.uses.no"></span></label>
-      </fieldset>
-      <div class="field">
-        <label for="wilma-search" data-text="wilma.search"></label>
-        <input type="search" id="wilma-search" autocomplete="off" spellcheck="false" aria-describedby="wilma-search-wait" disabled>
-        <p id="wilma-search-wait" class="wait" hidden></p>
-        <p class="hint" data-text="wilma.search.hint"></p>
-      </div>
-      <fieldset id="wilma-towns" class="towns"></fieldset>
-      <p id="wilma-none" class="hint" data-text="wilma.none-found" hidden></p>
+      <p data-text="wilma.explain"></p>
       <form id="wilma-form" class="details">
         <div class="field">
-          <label for="wilma-username" data-text="wilma.username"></label>
-          <input type="text" id="wilma-username" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+          <label for="wilma-search" data-text="wilma.search"></label>
+          <input type="search" id="wilma-search" autocomplete="off" spellcheck="false" aria-describedby="wilma-search-wait" disabled>
+          <p id="wilma-search-wait" class="wait" hidden></p>
         </div>
-        <div class="field">
-          <label for="wilma-password" data-text="wilma.password"></label>
-          <input type="password" id="wilma-password" name="password" autocomplete="current-password" required>
-        </div>
-        <p class="hint" data-text="wilma.fill"></p>
-        <div class="actions">
-          <button type="submit" id="wilma-sign-in" data-text="wilma.sign-in"></button>
-          <button type="button" id="wilma-passwords" class="secondary" data-text="wilma.passwords"></button>
+        <div id="wilma-town-slot" class="slot"></div>
+        <div id="wilma-sign-in" class="details">
+          <fieldset id="wilma-towns" class="towns"></fieldset>
+          <p id="wilma-none" class="hint" data-text="wilma.none-found" hidden></p>
+          <div class="field">
+            <label for="wilma-username" data-text="wilma.username"></label>
+            <input type="text" id="wilma-username" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+          </div>
+          <div class="field">
+            <label for="wilma-password" data-text="wilma.password"></label>
+            <input type="password" id="wilma-password" name="password" autocomplete="current-password" required>
+          </div>
+          <div class="slot" data-default></div>
+          <div class="actions">
+            <button type="submit" id="wilma-sign-in-button" data-text="wilma.sign-in"></button>
+            <button type="button" class="link" data-skip hidden></button>
+          </div>
         </div>
       </form>
-      <form id="town-form" class="details" hidden>
-        <p class="hint" data-text="wilma.town.note"></p>
-        <div class="actions">
-          <button type="submit" id="town-save" data-text="wilma.town.save"></button>
-        </div>
-      </form>
+      <details class="more">
+        <summary data-text="wilma.more"></summary>
+        <p data-text="wilma.more.text"></p>
+        <p><button type="button" id="wilma-passwords" class="secondary" data-text="wilma.passwords"></button></p>
+      </details>
     </div>
     <div id="source-gmail" class="source" hidden>
       <h2 data-text="source.gmail"></h2>
       <p data-text="gmail.explain"></p>
-      <p><button type="button" id="gmail-open" class="secondary" data-text="gmail.open"></button></p>
+      <ol class="steps">
+        <li><button type="button" id="gmail-open" class="secondary" data-text="gmail.open"></button></li>
+        <li data-text="gmail.step.name"></li>
+        <li data-text="gmail.step.paste"></li>
+      </ol>
       <form id="gmail-form" class="details">
         <div class="field">
           <label for="gmail-address" data-text="gmail.address"></label>
@@ -145,11 +148,16 @@
           <label for="gmail-password" data-text="gmail.password"></label>
           <input type="password" id="gmail-password" autocomplete="off" spellcheck="false" required>
         </div>
+        <div class="slot" data-default></div>
         <div class="actions">
           <button type="submit" id="gmail-save" data-text="gmail.save"></button>
-          <button type="button" id="gmail-unavailable" class="link" data-text="gmail.unavailable"></button>
         </div>
       </form>
+      <details class="more">
+        <summary data-text="gmail.unavailable"></summary>
+        <p data-text="gmail.unavailable.text"></p>
+        <p><button type="button" id="gmail-two-step-more" class="secondary" data-text="gmail.two-step"></button></p>
+      </details>
     </div>
     <div id="source-ai" class="source" hidden>
       <h2 data-text="source.ai"></h2>
@@ -166,13 +174,21 @@
             <button type="submit" id="claude-save" data-text="claude.save"></button>
           </div>
         </form>
-        <p class="hint" data-text="claude.training"></p>
+        <div class="slot" data-default></div>
+        <details class="more">
+          <summary data-text="claude.training.more"></summary>
+          <p data-text="claude.training"></p>
+        </details>
       </div>
       <div id="ai-codex" hidden>
         <p data-text="codex.explain"></p>
         <p><button type="button" id="codex-login" data-text="codex.login" hidden></button></p>
         <p><button type="button" id="codex-install" data-text="codex.install" hidden></button></p>
-        <p class="hint" data-text="codex.training"></p>
+        <div class="slot" data-default></div>
+        <details class="more">
+          <summary data-text="codex.training.more"></summary>
+          <p data-text="codex.training"></p>
+        </details>
       </div>
       <div id="ai-gateway" hidden>
         <p data-text="gateway.explain"></p>
@@ -181,11 +197,15 @@
             <label for="gateway-key" data-text="gateway.key"></label>
             <input type="password" id="gateway-key" autocomplete="off" spellcheck="false" required>
           </div>
+          <div class="slot" data-default></div>
           <div class="actions">
             <button type="submit" id="gateway-save" data-text="gateway.save"></button>
           </div>
         </form>
-        <p class="hint" data-text="gateway.privacy"></p>
+        <details class="more">
+          <summary data-text="gateway.privacy.more"></summary>
+          <p data-text="gateway.privacy"></p>
+        </details>
       </div>
     </div>
     <div id="source-whatsapp" class="source" hidden>
@@ -226,77 +246,94 @@
           <figcaption data-text="whatsapp.picture.switch"></figcaption>
         </figure>
       </div>
+      <details class="more">
+        <summary data-text="whatsapp.more"></summary>
+        <p data-text="whatsapp.more.text"></p>
+      </details>
+      <div class="slot" data-default></div>
+      <div class="actions">
+        <button type="button" class="link" data-skip hidden></button>
+      </div>
     </div>
     <div id="source-myclub" class="source" hidden>
       <h2 data-text="source.myclub"></h2>
       <p data-text="myclub.explain"></p>
       <p><button type="button" id="myclub-open" class="secondary" data-text="myclub.open"></button></p>
-      <div class="pictures">
-        <figure>
-          <svg viewBox="0 0 240 150" role="img" aria-hidden="true">
-            <rect x="4" y="18" width="232" height="112" rx="6" fill="#fff" stroke="#D8DDE4"/>
-            <rect x="4" y="18" width="232" height="16" rx="6" fill="#E3E7EC"/>
-            <rect x="16" y="44" width="56" height="76" rx="4" fill="#F5F7F9"/>
-            <rect x="22" y="52" width="44" height="7" rx="3" fill="#D8DDE4"/>
-            <rect x="22" y="66" width="44" height="12" rx="3" fill="#2f6fde"/>
-            <rect x="22" y="86" width="44" height="7" rx="3" fill="#D8DDE4"/>
-            <rect x="84" y="44" width="140" height="76" rx="4" fill="#F5F7F9"/>
-            <rect x="92" y="54" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
-            <rect x="120" y="54" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
-            <rect x="148" y="54" width="22" height="16" rx="2" fill="#2f6fde"/>
-            <rect x="176" y="54" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
-            <rect x="92" y="76" width="22" height="16" rx="2" fill="#2f6fde"/>
-            <rect x="120" y="76" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
-            <rect x="148" y="76" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
-            <rect x="176" y="76" width="22" height="16" rx="2" fill="#2f6fde"/>
-            <circle cx="44" cy="72" r="26" fill="none" stroke="#C8731A" stroke-width="2.5"/>
-          </svg>
-          <figcaption data-text="myclub.picture.calendar"></figcaption>
-        </figure>
-        <figure>
-          <svg viewBox="0 0 240 150" role="img" aria-hidden="true">
-            <rect x="4" y="18" width="232" height="112" rx="6" fill="#fff" stroke="#D8DDE4"/>
-            <rect x="4" y="18" width="232" height="16" rx="6" fill="#E3E7EC"/>
-            <rect x="20" y="48" width="120" height="8" rx="3" fill="#D8DDE4"/>
-            <rect x="20" y="64" width="90" height="8" rx="3" fill="#D8DDE4"/>
-            <rect x="20" y="92" width="120" height="24" rx="5" fill="#2f6fde"/>
-            <text x="80" y="108" font-size="10" fill="#fff" text-anchor="middle" data-text="myclub.picture.subscribe-button"></text>
-            <rect x="14" y="86" width="132" height="36" rx="8" fill="none" stroke="#C8731A" stroke-width="2.5"/>
-          </svg>
-          <figcaption data-text="myclub.picture.subscribe"></figcaption>
-        </figure>
-        <figure>
-          <svg viewBox="0 0 240 150" role="img" aria-hidden="true">
-            <rect x="24" y="22" width="192" height="106" rx="10" fill="#fff" stroke="#D8DDE4"/>
-            <rect x="40" y="38" width="100" height="8" rx="3" fill="#D8DDE4"/>
-            <rect x="40" y="58" width="160" height="22" rx="4" fill="#F5F7F9" stroke="#D8DDE4"/>
-            <text x="48" y="73" font-size="10" fill="#12161B">webcal://…</text>
-            <rect x="136" y="94" width="64" height="22" rx="5" fill="#2f6fde"/>
-            <rect x="152" y="102" width="32" height="7" rx="3" fill="#fff"/>
-            <rect x="34" y="52" width="172" height="34" rx="8" fill="none" stroke="#C8731A" stroke-width="2.5"/>
-          </svg>
-          <figcaption data-text="myclub.picture.copy"></figcaption>
-        </figure>
-      </div>
+      <details class="more">
+        <summary data-text="myclub.where"></summary>
+        <div class="pictures">
+          <figure>
+            <svg viewBox="0 0 240 150" role="img" aria-hidden="true">
+              <rect x="4" y="18" width="232" height="112" rx="6" fill="#fff" stroke="#D8DDE4"/>
+              <rect x="4" y="18" width="232" height="16" rx="6" fill="#E3E7EC"/>
+              <rect x="16" y="44" width="56" height="76" rx="4" fill="#F5F7F9"/>
+              <rect x="22" y="52" width="44" height="7" rx="3" fill="#D8DDE4"/>
+              <rect x="22" y="66" width="44" height="12" rx="3" fill="#2f6fde"/>
+              <rect x="22" y="86" width="44" height="7" rx="3" fill="#D8DDE4"/>
+              <rect x="84" y="44" width="140" height="76" rx="4" fill="#F5F7F9"/>
+              <rect x="92" y="54" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
+              <rect x="120" y="54" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
+              <rect x="148" y="54" width="22" height="16" rx="2" fill="#2f6fde"/>
+              <rect x="176" y="54" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
+              <rect x="92" y="76" width="22" height="16" rx="2" fill="#2f6fde"/>
+              <rect x="120" y="76" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
+              <rect x="148" y="76" width="22" height="16" rx="2" fill="#fff" stroke="#D8DDE4"/>
+              <rect x="176" y="76" width="22" height="16" rx="2" fill="#2f6fde"/>
+              <circle cx="44" cy="72" r="26" fill="none" stroke="#C8731A" stroke-width="2.5"/>
+            </svg>
+            <figcaption data-text="myclub.picture.calendar"></figcaption>
+          </figure>
+          <figure>
+            <svg viewBox="0 0 240 150" role="img" aria-hidden="true">
+              <rect x="4" y="18" width="232" height="112" rx="6" fill="#fff" stroke="#D8DDE4"/>
+              <rect x="4" y="18" width="232" height="16" rx="6" fill="#E3E7EC"/>
+              <rect x="20" y="48" width="120" height="8" rx="3" fill="#D8DDE4"/>
+              <rect x="20" y="64" width="90" height="8" rx="3" fill="#D8DDE4"/>
+              <rect x="20" y="92" width="120" height="24" rx="5" fill="#2f6fde"/>
+              <text x="80" y="108" font-size="10" fill="#fff" text-anchor="middle" data-text="myclub.picture.subscribe-button"></text>
+              <rect x="14" y="86" width="132" height="36" rx="8" fill="none" stroke="#C8731A" stroke-width="2.5"/>
+            </svg>
+            <figcaption data-text="myclub.picture.subscribe"></figcaption>
+          </figure>
+          <figure>
+            <svg viewBox="0 0 240 150" role="img" aria-hidden="true">
+              <rect x="24" y="22" width="192" height="106" rx="10" fill="#fff" stroke="#D8DDE4"/>
+              <rect x="40" y="38" width="100" height="8" rx="3" fill="#D8DDE4"/>
+              <rect x="40" y="58" width="160" height="22" rx="4" fill="#F5F7F9" stroke="#D8DDE4"/>
+              <text x="48" y="73" font-size="10" fill="#12161B">webcal://…</text>
+              <rect x="136" y="94" width="64" height="22" rx="5" fill="#2f6fde"/>
+              <rect x="152" y="102" width="32" height="7" rx="3" fill="#fff"/>
+              <rect x="34" y="52" width="172" height="34" rx="8" fill="none" stroke="#C8731A" stroke-width="2.5"/>
+            </svg>
+            <figcaption data-text="myclub.picture.copy"></figcaption>
+          </figure>
+        </div>
+      </details>
+      <form id="myclub-form" class="details">
+        <fieldset class="towns">
+          <legend data-text="myclub.kid"></legend>
+          <div id="myclub-kids" class="ticks"></div>
+        </fieldset>
+        <div class="field">
+          <label for="myclub-link" data-text="myclub.link"></label>
+          <input type="text" id="myclub-link" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+        </div>
+        <div class="slot" data-default></div>
+        <div class="actions">
+          <button type="submit" id="myclub-save" data-text="myclub.save"></button>
+          <button type="button" class="link" data-skip hidden></button>
+        </div>
+      </form>
       <form id="myclub-kid-form" class="details" hidden>
         <p class="hint" data-text="myclub.add.note"></p>
         <div class="field">
           <label for="myclub-kid-name" data-text="myclub.add.name"></label>
           <input type="text" id="myclub-kid-name" autocomplete="off" required>
         </div>
+        <div id="myclub-kid-slot" class="slot" data-default></div>
         <div class="actions">
           <button type="submit" id="myclub-kid-add" class="secondary" data-text="myclub.add"></button>
-        </div>
-      </form>
-      <form id="myclub-form" class="details">
-        <p data-text="myclub.kid"></p>
-        <fieldset id="myclub-kids" class="towns"></fieldset>
-        <div class="field">
-          <label for="myclub-link" data-text="myclub.link"></label>
-          <input type="text" id="myclub-link" autocomplete="off" autocapitalize="off" spellcheck="false" required>
-        </div>
-        <div class="actions">
-          <button type="submit" id="myclub-save" data-text="myclub.save"></button>
+          <button type="button" id="myclub-kid-skip" class="link" data-skip hidden></button>
         </div>
       </form>
       <div id="myclub-more" class="details" hidden>
@@ -312,23 +349,26 @@
     </div>
     <div id="source-status" class="status" role="status" hidden>
       <p id="source-message"></p>
-      <div id="source-why" class="why" hidden>
-        <pre id="source-reason" class="reason"></pre>
-        <button type="button" class="secondary" data-text="copy"></button>
-      </div>
       <code id="source-url" hidden></code>
       <ul id="source-kids" class="kids" hidden></ul>
       <div id="source-install" class="install" hidden>
         <code id="source-install-line"></code>
         <button type="button" id="source-copy" class="secondary" data-text="copy"></button>
       </div>
-      <button type="button" id="gmail-two-step" class="secondary" data-text="gmail.two-step" hidden></button>
-      <button type="button" id="wilma-again" class="secondary" data-text="wilma.again" hidden></button>
-      <button type="button" id="wilma-terminal" class="secondary" data-text="wilma.terminal" hidden></button>
-      <button type="button" id="claude-again" class="secondary" data-text="claude.again" hidden></button>
-      <button type="button" id="claude-terminal" class="secondary" data-text="claude.terminal" hidden></button>
+      <div class="actions">
+        <button type="button" id="source-skip-failed" hidden></button>
+        <button type="button" id="gmail-two-step" class="secondary" data-text="gmail.two-step" hidden></button>
+        <button type="button" id="wilma-again" class="secondary" data-text="wilma.again" hidden></button>
+        <button type="button" id="wilma-terminal" class="secondary" data-text="wilma.terminal" hidden></button>
+        <button type="button" id="claude-again" class="secondary" data-text="claude.again" hidden></button>
+        <button type="button" id="claude-terminal" class="secondary" data-text="claude.terminal" hidden></button>
+      </div>
+      <details id="source-why" class="why" hidden>
+        <summary data-text="fail.details"></summary>
+        <pre id="source-reason" class="reason"></pre>
+        <button type="button" class="secondary" data-text="copy"></button>
+      </details>
     </div>
-    <p><button type="button" id="source-skip" class="secondary" data-text="source.skip" hidden></button></p>
   </section>
   <section id="working" hidden>
     <h1 data-text="working.title"></h1>
@@ -337,11 +377,12 @@
     <progress id="working-bar" max="1" value="0"></progress>
     <div id="working-status" class="status" role="status" hidden>
       <p id="working-message"></p>
-      <div id="working-why" class="why" hidden>
+      <button type="button" id="working-again" class="secondary" data-text="working.again" hidden></button>
+      <details id="working-why" class="why" hidden>
+        <summary data-text="fail.details"></summary>
         <pre id="working-reason" class="reason"></pre>
         <button type="button" class="secondary" data-text="copy"></button>
-      </div>
-      <button type="button" id="working-again" class="secondary" data-text="working.again" hidden></button>
+      </details>
     </div>
   </section>
   <section id="check" hidden>
@@ -351,9 +392,9 @@
     <form id="check-form">
       <fieldset>
         <legend data-text="check.kids"></legend>
-        <p class="hint" data-text="check.kids.note"></p>
         <div id="check-kids" class="ticks"></div>
-        <div id="check-kid-form" class="add">
+        <p class="add-open"><button type="button" id="check-kid-open" class="link" data-text="check.kid.add.open"></button></p>
+        <div id="check-kid-form" class="add" hidden>
           <div class="field">
             <label for="check-kid-name" data-text="check.kid.add.name"></label>
             <input type="text" id="check-kid-name" autocomplete="off">
@@ -363,36 +404,32 @@
       </fieldset>
       <fieldset id="check-whatsapp">
         <legend data-text="check.whatsapp"></legend>
-        <p class="hint" data-text="check.whatsapp.note"></p>
         <label class="all"><input type="checkbox" id="check-whatsapp-all"><span data-text="check.all"></span></label>
         <div id="check-groups" class="ticks towns"></div>
+        <details class="more">
+          <summary data-text="check.whatsapp.more"></summary>
+          <p data-text="check.whatsapp.note"></p>
+        </details>
       </fieldset>
       <fieldset>
         <legend data-text="check.senders"></legend>
-        <p class="hint" data-text="check.senders.note"></p>
         <p id="check-senders-none" class="ready" data-text="check.senders.none" hidden></p>
         <label class="all"><input type="checkbox" id="check-senders-all"><span data-text="check.all"></span></label>
         <div id="check-senders" class="ticks towns"></div>
+        <details class="more">
+          <summary data-text="check.senders.more"></summary>
+          <p data-text="check.senders.note"></p>
+        </details>
       </fieldset>
       <fieldset>
         <legend data-text="check.recipients"></legend>
-        <div id="check-recipients" class="details"></div>
-      </fieldset>
-      <fieldset>
-        <legend data-text="check.evening"></legend>
-        <div class="field">
-          <label for="check-evening" data-text="check.evening.label"></label>
-          <input type="time" id="check-evening" step="60" required>
+        <div class="details">
+          <div id="check-recipients" class="details"></div>
+          <div class="field">
+            <label for="check-evening" data-text="check.evening.label"></label>
+            <input type="time" id="check-evening" step="60" required>
+          </div>
         </div>
-        <p class="hint" data-text="check.evening.note"></p>
-      </fieldset>
-      <fieldset id="check-feedback" hidden>
-        <legend data-text="check.feedback"></legend>
-        <div class="field">
-          <label for="check-household-label" data-text="check.feedback.label"></label>
-          <input type="text" id="check-household-label" autocomplete="off" spellcheck="false">
-        </div>
-        <p class="hint" data-text="check.feedback.note"></p>
       </fieldset>
       <button type="submit" id="check-confirm" data-text="check.confirm"></button>
     </form>
@@ -410,12 +447,9 @@
       <button type="button" id="brief-again" class="secondary" data-text="brief.again" hidden></button>
     </div>
     <iframe id="brief-frame" class="brief" data-label="brief.frame" sandbox hidden></iframe>
-    <div id="brief-actions" hidden>
+    <div id="brief-actions" class="actions" hidden>
       <button type="button" id="brief-send" data-text="brief.send"></button>
-      <div id="brief-feedback" hidden>
-        <button type="button" id="brief-feedback-open" class="secondary" data-text="brief.feedback"></button>
-        <p class="hint" data-text="brief.feedback.note"></p>
-      </div>
+      <button type="button" id="brief-feedback-open" class="link" data-text="brief.feedback" hidden></button>
     </div>
     <div id="brief-sent" class="status" role="status" hidden>
       <p id="brief-sent-message"></p>
@@ -433,22 +467,27 @@
     </div>
     <div id="finish-status" class="status" role="status" hidden>
       <p id="finish-message"></p>
-      <div id="finish-why" class="why" hidden>
-        <pre id="finish-reason" class="reason"></pre>
-        <button type="button" class="secondary" data-text="copy"></button>
-      </div>
       <p id="finish-wake"></p>
       <ul id="finish-other" class="kids" hidden></ul>
       <button type="button" id="finish-replace" class="secondary" data-text="finish.replace" hidden></button>
       <button type="button" id="finish-again" class="secondary" data-text="finish.again" hidden></button>
+      <details id="finish-why" class="why" hidden>
+        <summary data-text="fail.details"></summary>
+        <pre id="finish-reason" class="reason"></pre>
+        <button type="button" class="secondary" data-text="copy"></button>
+      </details>
     </div>
     <div id="finish-stopped" class="status" role="status" hidden>
       <p id="finish-stopped-message"></p>
     </div>
     <p id="finish-closed" class="hint" data-text="finish.closed" hidden></p>
-    <h2 data-text="finish.checklist"></h2>
     <ul id="finish-checklist" class="checks"></ul>
-    <p class="ready" data-text="finish.restart"></p>
+    <p class="hint" data-text="finish.leave"></p>
+    <details class="more">
+      <summary data-text="finish.more"></summary>
+      <p data-text="finish.restart"></p>
+      <p id="finish-changes"></p>
+    </details>
     <div id="finish-later">
       <h2 data-text="finish.later"></h2>
       <div id="finish-ai">
@@ -459,22 +498,20 @@
         <form id="finish-ai-form" hidden>
           <fieldset>
             <legend data-text="welcome.ai"></legend>
-            <label><input type="radio" name="finish-ai" value="claude"><span data-text="welcome.ai.claude"></span></label>
-            <label><input type="radio" name="finish-ai" value="codex"><span data-text="welcome.ai.codex"></span></label>
-            <label><input type="radio" name="finish-ai" value="gateway"><span data-text="welcome.ai.gateway"></span></label>
+            <label><input type="radio" name="finish-ai" value="claude"><span><span data-text="welcome.ai.claude"></span> <span class="plan" data-text="welcome.ai.claude.plan"></span></span></label>
+            <label><input type="radio" name="finish-ai" value="codex"><span><span data-text="welcome.ai.codex"></span> <span class="plan" data-text="welcome.ai.codex.plan"></span></span></label>
+            <label><input type="radio" name="finish-ai" value="gateway"><span><span data-text="welcome.ai.gateway"></span> <span class="plan" data-text="welcome.ai.gateway.plan"></span></span></label>
             <p class="hint" data-text="finish.ai.note"></p>
           </fieldset>
           <button type="submit" id="finish-ai-continue" data-text="finish.ai.continue"></button>
         </form>
         <div id="finish-ai-sign-in" hidden></div>
       </div>
-      <p id="finish-changes" class="note"></p>
       <p id="finish-back" hidden><button type="button" class="link" data-text="connect.back"></button></p>
     </div>
   </section>
   <div id="chat" class="chat" hidden>
-    <p class="hint" data-text="chat.note"></p>
-    <button type="button" id="chat-continue" class="secondary" data-text="chat.continue"></button>
+    <p class="hint"><span data-text="chat.note"></span> <button type="button" id="chat-continue" class="link" data-text="chat.continue"></button></p>
     <div id="chat-status" class="status" role="status" hidden>
       <p id="chat-message"></p>
       <div id="chat-line" class="install" hidden>

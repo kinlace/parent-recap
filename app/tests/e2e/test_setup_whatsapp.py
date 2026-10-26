@@ -466,7 +466,7 @@ def test_the_button_shows_the_python_and_opens_full_disk_access(harness, page, m
 
 
 # The texts that name the Python file Finder selects, by its name on this Mac (#297).
-PYTHON_FILE_TEXTS = ("whatsapp.explain", "whatsapp.picture.drag", "whatsapp.open.opened",
+PYTHON_FILE_TEXTS = ("whatsapp.picture.drag", "whatsapp.open.opened",
                      "health.fail.whatsapp.no-access", "finish.fail.whatsapp.no-access")
 
 
@@ -674,7 +674,7 @@ def test_the_whatsapp_step_names_full_disk_access_and_never_allow(page):
 
     for language, table in text.items():
         whatsapp = {k: v for k, v in table.items() if k.startswith("whatsapp.")}
-        assert names[language] in whatsapp["whatsapp.explain"], language
+        assert names[language] in whatsapp["whatsapp.picture.drag"], language
         for key, value in whatsapp.items():
             assert not any(word in value for word in allow[language]), (language, key)
     html = call(page.url).body.decode()

@@ -30,8 +30,10 @@ What the answers don't mention stays as it was. The Kids given are the Household
 left out is removed, and each one given keeps what the answers don't say about them, such as a
 MyClub link, which only `setup myclub` and the setup page's MyClub field save. Turning pilot
 feedback on writes the pilot Form shipped with the program (feedback.pilot_form), and is refused
-in a version that ships none; until the answers give a `household_label`, it's the setup parent's
-email user. The merged config is checked against the config model before it's written. `--read` saves nothing and only reads the progress back.
+in a version that ships none. Setup makes the `household_label` itself, as the setup parent's
+email user, unless the answers give one; the family is never asked for it (#491). The merged
+config is checked against the config model before it's written. `--read` saves nothing and only
+reads the progress back.
 
 It prints one line of JSON, with the progress in it. Invalid answers are refused with the path
 of each problem; the values aren't repeated, since a config can hold links that are secrets.
@@ -290,7 +292,7 @@ def _merge(data: dict[str, Any], a: Answers, form: dict[str, Any] | None) -> Non
     username = gmail.get("username") if isinstance(gmail, dict) else None
     if isinstance(fb, dict) and fb.get("enabled") and not fb.get("household_label") \
             and isinstance(username, str) and username:
-        # Until the family changes it on the check page: the setup parent's email user.
+        # Made by setup, not asked: the setup parent's email user. The Form only gets its pseudonym.
         fb["household_label"] = username.split("@")[0]
 
 

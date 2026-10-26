@@ -10,10 +10,11 @@ from .. import setup_gmail
 from ..setup_connect import Reply, Strict, parse
 from .context import Action, Context, Phase, keychain_code
 
-# What connecting Gmail on the page can say: the chat's `setup gmail` results, `no-address` for
-# an address that isn't one, and `app-passwords-unavailable`, which the page's own button gives.
+# What connecting Gmail on the page can say: the chat's `setup gmail` results, and `no-address`
+# for an address that isn't one. What to do when Google offers no App Passwords is folded under the
+# step itself, so the page never says `app-passwords-unavailable` (#491).
 GMAIL_RESULTS = ("saved", "no-address", "not-an-app-password", "rejected", "no-connection",
-                 "keychain-not-reachable", "keychain-failed", "app-passwords-unavailable")
+                 "keychain-not-reachable", "keychain-failed")
 ADDRESS = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 

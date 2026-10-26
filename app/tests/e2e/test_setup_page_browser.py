@@ -160,16 +160,20 @@ def in_english_with_the_gateway(tab) -> None:
     expect(heading(tab, "connect.title")).to_be_visible()
 
 
+def skip(tab, source: str):
+    """The "Skip <Source> for now" link the page shows."""
+    return button(tab, "source.skip", source=text(f"source.{source}"))
+
+
 def without_wilma_in_espoo(tab) -> None:
-    """Wilma's step for a school without it: only the town."""
-    tab.get_by_role("radio", name=text("wilma.uses.no")).check()
+    """Wilma's step for a school without it: the town picked, then Wilma skipped, which keeps it."""
     town = tab.get_by_label(text("wilma.search"))
     expect(town).to_be_enabled()  # once the town list is ready
     town.fill("Espoo")
-    expect(tab.get_by_role("radio", name="Espoo", exact=True)).to_be_checked()
-    # Its name beside the radio button, where a long one wraps.
-    expect(tab.locator("#wilma-towns label .name")).to_have_text(["Espoo"])
-    button(tab, "wilma.town.save").click()
+    # Each entry's name beside its radio button, where a long one wraps, with its town.
+    expect(tab.locator("#wilma-towns label .name")).to_have_count(4)
+    tab.get_by_role("radio", name=re.compile("^Espoon kaupunki")).check()
+    skip(tab, "wilma").click()
     expect(tab.get_by_text(text("wilma.town-saved"))).to_be_visible()
 
 
@@ -196,7 +200,7 @@ def connect_up_to_whatsapp(tab) -> None:
     expect(tab.get_by_text(text("gmail.saved"))).to_be_visible()
     expect(tab.get_by_text(text("connect.handoff", done=text("source.gmail"),
                                 next=text("source.ai")))).to_be_visible()
-    tab.get_by_label(text("gateway.key")).fill(GATEWAY_KEY)
+    tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
     button(tab, "gateway.save").click()
     # Not the step's own result: on macOS, WhatsApp's step checks at once and says so in its place.
     expect(source_listed(tab, "ai", "done")).to_be_visible()
@@ -207,7 +211,7 @@ def connect_up_to_myclub(tab) -> None:
     WhatsApp skipped."""
     connect_up_to_whatsapp(tab)
     if sys.platform == "darwin":  # WhatsApp for Mac, only on macOS
-        button(tab, "source.skip").click()
+        skip(tab, "whatsapp").click()
         expect(source_listed(tab, "whatsapp", "skipped")).to_be_visible()
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_visible()
 
@@ -286,14 +290,14 @@ def test_the_steps_are_in_the_order_the_server_sends_them(tab, monkeypatch):
     # Without Wilma, saving the town skips it, and MyClub's step is next, not Gmail's.
     expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_visible()
-    expect(button(tab, "source.skip")).to_be_visible()
+    expect(skip(tab, "myclub")).to_be_visible()
     expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
 
 
 def test_a_skipped_source_is_listed_as_skipped_and_can_be_opened_again(tab):
     connect_up_to_myclub(tab)
 
-    button(tab, "source.skip").click()
+    skip(tab, "myclub").click()
 
     expect(source_listed(tab, "myclub", "skipped")).to_be_visible()
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_hidden()
@@ -304,13 +308,13 @@ def test_a_skipped_source_is_listed_as_skipped_and_can_be_opened_again(tab):
 
     expect(source_listed(tab, "myclub", "to-do")).to_be_visible()
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_visible()
-    expect(button(tab, "source.skip")).to_be_visible()
+    expect(skip(tab, "myclub")).to_be_visible()
     expect(tab.get_by_text(text("connect.done"))).to_be_hidden()
 
 
 def test_the_check_page_links_back_to_connect_s_list_while_a_source_is_skipped(tab):
     connect_up_to_myclub(tab)
-    button(tab, "source.skip").click()
+    skip(tab, "myclub").click()
     button(tab, "continue").click()
     expect(heading(tab, "check.title")).to_be_visible()
 
@@ -320,6 +324,36 @@ def test_the_check_page_links_back_to_connect_s_list_while_a_source_is_skipped(t
     expect(source_listed(tab, "myclub", "skipped")).to_be_visible()
 
 
+def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(tab):
+    # #491: Wilma, WhatsApp and MyClub each say "Skip <Source> for now" beside the step's main
+    # button. Gmail and the AI sign-in can't be skipped.
+    in_english_with_the_gateway(tab)
+    actions = tab.locator("#wilma-form .actions")
+    expect(actions.get_by_role("button", name=text("wilma.sign-in"))).to_be_visible()
+    expect(actions.get_by_role("button", name=text("source.skip", source="Wilma"))).to_be_visible()
+
+    skip(tab, "wilma").click()  # no town picked: Wilma is only skipped
+
+    expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
+    expect(tab.get_by_label(text("gmail.password"))).to_be_visible()
+    expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(0)
+    sign_in_to_gmail(tab, TYPED)
+    expect(source_listed(tab, "gmail", "done")).to_be_visible()
+    expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(0)
+    tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
+    button(tab, "gateway.save").click()
+    expect(source_listed(tab, "ai", "done")).to_be_visible()
+    if sys.platform == "darwin":
+        expect(tab.locator("#source-whatsapp").get_by_role(
+            "button", name=text("source.skip", source="WhatsApp"))).to_be_visible()
+        skip(tab, "whatsapp").click()
+    # Without Wilma's Kids, MyClub first asks for them, with Skip beside Add the Kid.
+    kid_form = tab.locator("#myclub-kid-form .actions")
+    expect(kid_form.get_by_role("button", name=text("myclub.add"))).to_be_visible()
+    expect(kid_form.get_by_role("button", name=text("source.skip", source="MyClub"))).to_be_visible()
+    expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(1)
+
+
 def test_an_app_password_gmail_rejects_shows_why_and_the_way_to_fix_it(tab):
     in_english_with_the_gateway(tab)
     without_wilma_in_espoo(tab)
@@ -327,7 +361,14 @@ def test_an_app_password_gmail_rejects_shows_why_and_the_way_to_fix_it(tab):
     sign_in_to_gmail(tab, "zyxw vuts rqpo nmlk")  # an App Password, but not this address's
 
     expect(tab.get_by_text(text("gmail.rejected"))).to_be_visible()
+    # #491: right under the field Gmail turned down, in red, and the field marked.
+    status = tab.locator("#gmail-form .slot > #source-status")
+    expect(status).to_have_class(re.compile(r"\bfail\b"))
+    expect(status).to_have_attribute("role", "alert")
+    expect(tab.get_by_label(text("gmail.password"))).to_have_attribute("aria-invalid", "")
     expect(button(tab, "gmail.two-step")).to_be_visible()
+    # Gmail can't be skipped for now.
+    expect(tab.locator("#source-gmail [data-skip]")).to_have_count(0)
     expect(source_listed(tab, "gmail", "to-do")).to_be_visible()
     expect(button(tab, "gmail.save")).to_be_enabled()
     expect(tab.get_by_label(text("gmail.password"))).to_have_value("")
@@ -357,41 +398,50 @@ def test_the_town_box_says_why_it_waits_right_under_it_while_the_wilma_cli_insta
     monkeypatch.setattr(subprocess, "run", held)
     town = tab.get_by_label(text("wilma.search"))
     wait = tab.locator("#wilma-search-wait")
-    status = tab.locator("#source-message")
     try:
         in_english_with_the_gateway(tab)
         expect(town).to_be_disabled()
         expect(wait).to_have_text(text("wilma.ready.installing"))
         expect(wait).to_have_class(re.compile(r"\bbusy\b"))
-
-        # Without Wilma it's only the town list that's being got ready.
-        tab.get_by_role("radio", name=text("wilma.uses.no")).check()
-
-        expect(wait).to_have_text(text("wilma.ready.installing.town"))
-        expect(status).to_have_text(text("wilma.ready.installing.town"))
-        # What the parent caused meanwhile stays in the status area as the answer changes.
-        button(tab, "wilma.town.save").click()
-        expect(status).to_have_text(text("wilma.pick-town"))
-        tab.get_by_role("radio", name=text("wilma.uses.yes")).check()
-        expect(wait).to_have_text(text("wilma.ready.installing"))
-        expect(status).to_have_text(text("wilma.pick-town"))
+        # Said once, under the box: nothing else says it meanwhile.
+        expect(tab.locator("#source-status")).to_be_hidden()
+        # A town picked too early is said right under the box.
+        button(tab, "wilma.sign-in").click()
+        expect(tab.locator("#wilma-town-slot #source-message")).to_be_hidden()  # fields first
+        tab.get_by_label(text("wilma.username")).fill("parent")
+        tab.get_by_label(text("wilma.password")).fill("secret")
+        button(tab, "wilma.sign-in").click()
+        expect(tab.locator("#wilma-town-slot #source-message")).to_have_text(text("wilma.pick-town"))
     finally:
         go.set()
     expect(town).to_be_enabled()
     expect(wait).to_be_hidden()
 
 
-def test_the_town_box_says_why_it_still_waits_when_the_wilma_cli_doesn_t_install(
+def test_a_wilma_program_that_doesn_t_install_offers_to_skip_wilma_and_go_on(
         tab, wilma_cli):  # noqa: F811
+    # #491: a macOS tester got stuck here. The box under the town says so, in red, with Skip and
+    # Try again, in place of the sign-in that can't work, and Skip moves Connect on.
     wilma_cli.npm_works = False
 
     in_english_with_the_gateway(tab)
 
-    wait = tab.locator("#wilma-search-wait")
-    expect(wait).to_have_text(text("wilma.ready.install-failed"))
-    expect(wait).not_to_have_class(re.compile(r"\bbusy\b"))
+    status = tab.locator("#wilma-town-slot > #source-status")
+    expect(status).to_be_visible()
+    expect(status).to_have_class(re.compile(r"\bfail\b"))
+    expect(status.locator("#source-message")).to_have_text(text("wilma.ready.install-failed"))
+    expect(tab.locator("#wilma-search-wait")).to_be_hidden()
     expect(tab.get_by_label(text("wilma.search"))).to_be_disabled()
-    expect(button(tab, "wilma.again")).to_be_visible()
+    expect(tab.get_by_label(text("wilma.username"))).to_be_hidden()
+    expect(status.get_by_role("button", name=text("wilma.again"))).to_be_visible()
+    skip_wilma = status.get_by_role("button", name=text("source.skip", source="Wilma"))
+    expect(skip_wilma).to_be_visible()
+
+    skip_wilma.click()
+
+    expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
+    expect(tab.get_by_label(text("gmail.password"))).to_be_visible()
+    expect(status).to_be_hidden()
 
 
 def test_a_wilma_cli_that_doesn_t_install_shows_why_under_the_message(tab, wilma_cli):  # noqa: F811
@@ -399,10 +449,13 @@ def test_a_wilma_cli_that_doesn_t_install_shows_why_under_the_message(tab, wilma
 
     in_english_with_the_gateway(tab)
 
-    # In a small block of its own under the message, as npm said it, for a photo to carry.
+    # In a small block of its own under the message, as npm said it, for a photo to carry, folded
+    # as the details for the Parent Recap team.
     message = tab.locator("#source-message")
     reason = tab.locator("#source-reason")
     expect(message).to_have_text(text("wilma.ready.install-failed"))
+    expect(reason).to_be_hidden()
+    tab.locator("#source-status").get_by_text(text("fail.details")).click()
     expect(reason).to_have_text("npm ended with exit code 1:\nnpm error code E404")
     expect(reason).to_have_css("white-space", "pre-wrap")
     assert "mono" in reason.evaluate("e => getComputedStyle(e).fontFamily").lower()
@@ -426,6 +479,7 @@ def test_the_wilma_step_offers_the_passwords_app_only_on_a_mac(tab, on):
     in_english_with_the_gateway(tab)
 
     expect(tab.get_by_label(text("wilma.username"))).to_be_visible()
+    tab.get_by_text(text("wilma.more", system=on)).click()  # folded under the step
     passwords = button(tab, "wilma.passwords", system=on)
     if on == "macos":
         expect(passwords).to_be_visible()
@@ -522,7 +576,6 @@ def test_whatsapp_s_step_names_the_python_file_finder_selects(tab):
 
     connect_up_to_whatsapp(tab)
 
-    expect(tab.locator("#whatsapp-explain")).to_have_text(text("whatsapp.explain", python=python))
     expect(tab.locator("#whatsapp-drag")).to_have_text(text("whatsapp.picture.drag", python=python))
     expect(tab.locator("#source-whatsapp .python-file")).to_have_text([python, python])
 
@@ -538,7 +591,7 @@ def test_whatsapp_s_step_waits_for_the_chats_to_sync_and_offers_to_skip_meanwhil
     connect_up_to_whatsapp(tab)
 
     expect(tab.get_by_text(text("whatsapp.syncing"))).to_be_visible()
-    expect(button(tab, "source.skip")).to_be_visible()
+    expect(skip(tab, "whatsapp")).to_be_visible()
     expect(source_listed(tab, "whatsapp", "to-do")).to_be_visible()
     mac.install_whatsapp(WHATSAPP_CHATS)  # the chats have synced, and the page checks again
     expect(tab.get_by_text(text("whatsapp.readable"))).to_be_visible()
@@ -565,6 +618,38 @@ def test_the_check_page_says_why_whatsapp_isn_t_ok_and_offers_the_button_that_fi
     if reason == "missing-groups":  # back to WhatsApp's step, to read the groups again
         button(tab, fix).click()
         expect(heading(tab, "connect.title")).to_be_visible()
+
+
+def test_the_check_page_reveals_add_a_kid_on_a_click_and_asks_no_feedback_label(
+        tab, family, health):
+    # #491: "Add a Kid" is a link until it's needed, and a pilot family has nothing to fill in.
+    family.config["feedback"] = {"enabled": True}
+    at_the_check_step(family)
+    tab.reload()
+    expect(heading(tab, "check.title")).to_be_visible()
+    field = tab.get_by_label(text("check.kid.add.name"))
+    expect(field).to_be_hidden()
+
+    button(tab, "check.kid.add.open").click()
+
+    expect(field).to_be_visible()
+    expect(field).to_be_focused()
+    expect(button(tab, "check.kid.add.open")).to_be_hidden()
+    field.fill("Ella")
+    button(tab, "check.kid.add").click()
+    expect(tab.get_by_role("checkbox", name="Ella")).to_be_checked()
+    expect(tab.locator("#check-household-label")).to_have_count(0)
+
+
+@pytest.mark.macos
+def test_continue_in_the_chat_is_one_line_at_the_bottom_of_the_step_shown(tab):
+    in_english(tab)
+
+    # The last thing in Welcome's card, after its Continue.
+    line = tab.locator("#welcome > #chat:last-child")
+    expect(line).to_be_visible()
+    expect(line.locator("p").first).to_have_text(f'{text("chat.note")} {text("chat.continue")}')
+    expect(line.get_by_role("button", name=text("chat.continue"))).to_be_visible()
 
 
 def test_finish_offers_only_turn_it_on_and_no_failure_for_what_it_turns_on(tab, family, health):
@@ -626,6 +711,7 @@ def test_a_failed_step_shows_why_copy_says_where_and_trying_again_clears_it(
     expect(reason).to_have_css("white-space", "pre-wrap")
     assert "mono" in reason.evaluate("e => getComputedStyle(e).fontFamily").lower()
 
+    status.get_by_text(text("fail.details")).click()  # folded until opened
     status.get_by_role("button", name=text("copy"), exact=True).click()
 
     tab.wait_for_function("() => window.copied.length > 0")
@@ -653,4 +739,4 @@ def test_finish_moves_connect_s_sign_ins_into_changing_the_ai(tab, family, healt
     tab.get_by_role("radio", name=text("welcome.ai.gateway")).check()
     button(tab, "finish.ai.continue").click()
 
-    expect(tab.locator("#finish-ai-sign-in").get_by_label(text("gateway.key"))).to_be_visible()
+    expect(tab.locator("#finish-ai-sign-in").get_by_label(text("gateway.key"), exact=True)).to_be_visible()

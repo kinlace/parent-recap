@@ -302,6 +302,7 @@ function showAI(name, result, install, reason) {
   message.dataset.text = result === "checking" ? "welcome.ai.checking" : `ai.${name}.${result}`;
   message.textContent = t(message.dataset.text);
   showReason("ai", message.dataset.text, reason);
+  status.classList.toggle("fail", result === "check-failed");
   document.getElementById("ai-install").hidden = !install;
   document.getElementById("ai-install-line").textContent = install || "";
   // A recheck can't change a result Welcome already goes on with.
@@ -359,18 +360,19 @@ async function post(path, body) {
 }
 
 // Connect's steps, which the list shows in the order the server sends (page.connect.sources). A
-// step's panel is the element `source-<name>`, shown while it's the current step; the rest of the
-// step is its entry here, each part optional:
+// step's panel is the element `source-<name>`, shown while it's the current step; its "Skip
+// <Source> for now" links are its `[data-skip]` buttons; the rest of the step is its entry here,
+// each part optional:
 //   setUp   — once, as Connect is first shown: its buttons and the texts that don't change
 //   first   — as it becomes the current step, the first time since a step was opened or skipped
 //   again   — each time the list is drawn again while it stays the current step
 //   leave   — as any step is opened or skipped: what was typed into it and what it waits on
-//   ownSkip — its panel asks whether to skip it, in place of the skip button
+//   skip    — what its Skip link does, in place of skipping it as it is
 //   working — Working's line for it once it's done: a text key and its values
 //   label   — what the first Brief's progress calls it while it's read
 const STEPS = {
   wilma: {
-    setUp: renderWilma, first: prepareWilma, again: prepareWilma, ownSkip: true,
+    setUp: renderWilma, first: prepareWilma, again: prepareWilma, skip: skipWilma,
     leave: () => {
       document.getElementById("wilma-password").value = "";
       clearTimeout(wilmaStep.timer);
@@ -418,9 +420,9 @@ function connectSteps() {
 }
 
 function renderConnect() {
-  document.getElementById("source-skip").addEventListener("click", () => {
-    chooseSource(currentSource(), "skip");
-  });
+  for (const link of document.querySelectorAll("#connect [data-skip], #source-skip-failed")) {
+    link.addEventListener("click", skipSource);
+  }
   document.getElementById("source-copy").addEventListener("click", () => {
     navigator.clipboard.writeText(document.getElementById("source-install-line").textContent);
   });
@@ -430,10 +432,9 @@ function renderConnect() {
 
 function setUpGmail() {
   document.getElementById("gmail-open").addEventListener("click", () => openSite("app-passwords"));
-  document.getElementById("gmail-two-step").addEventListener("click", () => openSite("two-step"));
-  document.getElementById("gmail-unavailable").addEventListener("click", () => {
-    showSource("gmail.app-passwords-unavailable");
-  });
+  for (const id of ["gmail-two-step", "gmail-two-step-more"]) {
+    document.getElementById(id).addEventListener("click", () => openSite("two-step"));
+  }
   document.getElementById("gmail-form").addEventListener("submit", connectGmail);
   document.getElementById("gmail-address").value = page.gmail.address || "";
 }
@@ -482,11 +483,10 @@ function renderSources() {
     list.append(item);
   }
   const step = connectSteps().find((s) => s.name === current);
-  document.getElementById("source-skip").hidden =
-    !step?.skippable || statuses[current] !== "to-do" || Boolean(step.ownSkip);
   for (const name of Object.keys(STEPS)) {
     document.getElementById("source-" + name).hidden = name !== current;
   }
+  showSkips(step, statuses[current]);
   document.getElementById("connect-done").hidden = Boolean(current);
   renderHandoff(moved);
   if (!step) return;
@@ -513,17 +513,45 @@ function renderHandoff(moved) {
   target.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
 }
 
+// Each Source a family can do without has "Skip <Source> for now" beside its main button, while
+// it's still to do. MyClub's form for adding Kids has one too, for when it's the only form shown.
+function showSkips(step, status) {
+  const offered = Boolean(step?.skippable) && status === "to-do";
+  for (const link of document.querySelectorAll("#connect [data-skip]")) {
+    link.hidden = !offered || !link.closest(`#source-${step.name}`);
+    if (!link.hidden) setText(link, "source.skip", { source: t("source." + step.name) });
+  }
+  const kidSkip = document.getElementById("myclub-kid-skip");
+  if (offered && step.name === "myclub") {
+    kidSkip.hidden = !document.getElementById("myclub-form").hidden;
+  }
+}
+
+// The current Source's Skip link, or the one in a failure's box.
+function skipSource() {
+  const name = currentSource();
+  if (!name) return;
+  if (STEPS[name]?.skip) return STEPS[name].skip();
+  chooseSource(name, "skip");
+}
+
 // Skips the Source, or opens it from the list, which brings a skipped one back.
-async function chooseSource(name, action) {
+function chooseSource(name, action) {
+  return moveOn("api/source", { source: name, action });
+}
+
+// Moves Connect on as the server says, then shows `key`, if any, as what was done.
+async function moveOn(path, body, key) {
   clearError();
   try {
-    const out = await post("api/source", { source: name, action });
+    const out = await post(path, body);
     page.progress = out.progress;
     // What was typed isn't kept once the parent moves on, and each step starts again.
     for (const step of Object.values(STEPS)) step.leave?.();
     connectStep.shown.clear();
     showSource(null);
     renderSources();
+    if (key) showSource(key);
   } catch (e) {
     failed(e);
   }
@@ -538,14 +566,67 @@ const OFFER_TERMINAL = [
 const TRY_AGAIN = [
   "wilma.ready.install-failed", "wilma.not-installed", "wilma.window.not-installed",
 ];
+// Wilma's program couldn't be got ready, so neither the town list nor the sign-in works: the box
+// under the town says so, and offers to skip Wilma and carry on with the other Sources.
+const WILMA_NOT_READY = [
+  "wilma.ready.no-node", "wilma.ready.install-failed", "wilma.not-installed",
+  "wilma.window.not-installed", "wilma.no-list",
+];
+// What a step says right under what it's about, in place of under its main button.
+const SLOTS = [
+  [[...WILMA_NOT_READY, "wilma.pick-town"], "wilma-town-slot"],
+  [["myclub.added", "myclub.kid-exists"], "myclub-kid-slot"],
+  // A Source just done: by the hand-off, as the next Source's step is shown.
+  [["gmail.saved", "wilma.signed-in", "wilma.town-saved", "claude.saved", "gateway.saved",
+    "codex.signed-in", "whatsapp.readable"], "connect-slot"],
+];
+// The results that say something failed, shown in red.
+const FAILED = [
+  "gmail.no-address", "gmail.not-an-app-password", "gmail.rejected", "gmail.no-connection",
+  "gmail.keychain-not-reachable", "gmail.keychain-failed",
+  ...WILMA_NOT_READY, "wilma.pick-town", "wilma.wrong-password", "wilma.sign-in-failed",
+  "wilma.no-kids", "wilma.window.not-signed-in", "wilma.window.sign-in-failed",
+  "wilma.window.timeout", "wilma.window.no-terminal",
+  "claude.not-installed", "claude.sign-in-failed", "claude.timeout", "claude.not-a-token",
+  "claude.test-call-failed", "claude.keychain-not-reachable", "claude.keychain-failed",
+  "claude.window.no-terminal", "claude.window.not-installed", "claude.install-failed",
+  "codex.install-failed", "codex.login-failed", "codex.check-failed", "codex.test-call-failed",
+  "gateway.not-a-key", "gateway.rejected", "gateway.no-connection", "gateway.test-call-failed",
+  "gateway.keychain-not-reachable", "gateway.keychain-failed",
+  "whatsapp.unreadable", "whatsapp.bg-failed", "whatsapp.open.not-opened",
+  "myclub.pick-kid", "myclub.not-a-myclub-link", "myclub.link-failed", "myclub.not-a-calendar",
+  "myclub.save-failed", "myclub.same-link", "myclub.kid-exists",
+  "open.not-opened", "open.app-not-opened",
+];
 
-// What the last step said, under the Source: a text key, or null for nothing, with why it
+// Where what a step says goes: under what it's about, else under the step shown, its first slot
+// not in a part of it that's hidden, else by the Source list.
+function statusSlot(key) {
+  const named = SLOTS.find(([keys]) => keys.includes(key));
+  if (named) return document.getElementById(named[1]);
+  const step = page.progress.phase === "finish" ? "ai" : currentSource();
+  const panel = step && document.getElementById("source-" + step);
+  const shown = (slot) => {
+    for (let el = slot.parentElement; el && el !== panel; el = el.parentElement) {
+      if (el.hidden) return false;
+    }
+    return true;
+  };
+  const slots = panel ? [...panel.querySelectorAll(".slot[data-default]")] : [];
+  return slots.find(shown) || document.getElementById("connect-slot");
+}
+
+// What the last step said, under what it's about: a text key, or null for nothing, with why it
 // failed, an address to open, the Kids found or a line to install something.
 function showSource(key, { reason, url, kids, install, values } = {}) {
   const status = document.getElementById("source-status");
   const message = document.getElementById("source-message");
+  if (key) statusSlot(key).append(status);
   status.hidden = !key;
   status.dataset.result = key || "";
+  const fail = FAILED.includes(key);
+  status.classList.toggle("fail", fail);
+  status.setAttribute("role", fail ? "alert" : "status");
   if (key) {
     setText(message, key, values);
   } else {
@@ -564,8 +645,10 @@ function showSource(key, { reason, url, kids, install, values } = {}) {
   list.hidden = !kids || !kids.length;
   document.getElementById("source-install").hidden = !install;
   document.getElementById("source-install-line").textContent = install || "";
-  document.getElementById("gmail-two-step").hidden =
-    !["gmail.app-passwords-unavailable", "gmail.rejected"].includes(key);
+  const skip = document.getElementById("source-skip-failed");
+  skip.hidden = !WILMA_NOT_READY.includes(key);
+  if (!skip.hidden) setText(skip, "source.skip", { source: t("source.wilma") });
+  document.getElementById("gmail-two-step").hidden = key !== "gmail.rejected";
   document.getElementById("wilma-terminal").hidden = !OFFER_TERMINAL.includes(key);
   document.getElementById("wilma-again").hidden = !TRY_AGAIN.includes(key);
   document.getElementById("claude-terminal").hidden = !CLAUDE_TERMINAL.includes(key);
@@ -598,6 +681,10 @@ async function connectGmail(event) {
       password: password.value,
     });
     if (out.result !== "no-connection" && out.result !== "keychain-failed") password.value = "";
+    document.getElementById("gmail-address").toggleAttribute("aria-invalid",
+      out.result === "no-address");
+    password.toggleAttribute("aria-invalid",
+      ["not-an-app-password", "rejected"].includes(out.result));
     if (out.result === "saved") {
       page.progress = out.progress;
       page.gmail.address = out.address;
@@ -622,9 +709,6 @@ const wilmaStep = {
 };
 
 function renderWilma() {
-  for (const input of document.querySelectorAll('input[name="wilma-uses"]')) {
-    input.addEventListener("change", showWilmaUses);
-  }
   const search = document.getElementById("wilma-search");
   search.addEventListener("input", () => {
     clearTimeout(wilmaStep.typing);
@@ -634,33 +718,18 @@ function renderWilma() {
     if (event.key === "Enter") event.preventDefault();
   });
   document.getElementById("wilma-form").addEventListener("submit", signInWilma);
-  document.getElementById("town-form").addEventListener("submit", saveTown);
   document.getElementById("wilma-passwords").addEventListener("click", () => openSite("passwords"));
   document.getElementById("wilma-passwords").hidden = page.system !== "macos"; // macOS's own app
   document.getElementById("wilma-terminal").addEventListener("click", openWilmaWindow);
   document.getElementById("wilma-again").addEventListener("click", getWilmaReady);
-  showWilmaUses();
 }
 
-// With Wilma, the login fields; without, only the town.
-function showWilmaUses() {
-  const uses = picked("wilma-uses") === "yes";
-  document.getElementById("wilma-form").hidden = !uses;
-  document.getElementById("town-form").hidden = uses;
-  // A status the parent caused meanwhile, such as "pick your town", stays.
-  if (wilmaStep.preparing) {
-    const status = document.getElementById("source-status");
-    if (INSTALLING.includes(status.dataset.result)) showSource(wilmaInstalling());
-    showWilmaWait(wilmaInstalling());
-  }
-  renderTowns();
-}
-
-// What the install gets ready: a family without Wilma, who just said so, waits only for the
-// town list, so the page doesn't say it's getting Wilma ready.
-const INSTALLING = ["wilma.ready.installing", "wilma.ready.installing.town"];
-function wilmaInstalling() {
-  return picked("wilma-uses") === "no" ? "wilma.ready.installing.town" : "wilma.ready.installing";
+// Skipping Wilma with a town picked keeps the town, for a school without Wilma: Parent Recap then
+// knows which city's school mail to look for.
+function skipWilma() {
+  const town = wilmaStep.ready ? chosenTown()?.town : null;
+  if (!town) return chooseSource("wilma", "skip");
+  return moveOn("api/town", { town }, "wilma.town-saved");
 }
 
 // Wilma's step, each time it's drawn: the CLI made ready, unless it is or is being made so.
@@ -668,16 +737,20 @@ function prepareWilma() {
   if (!wilmaStep.ready && !wilmaStep.preparing) getWilmaReady();
 }
 
-// Gets the pinned wilma CLI ready, installing it if it isn't: the town list comes with it.
+// Gets the pinned wilma CLI ready, installing it if it isn't: the town list comes with it. While
+// it installs, the town box says so right under it. If it doesn't install, a box under the town
+// says so in place of the sign-in, with Skip and Try again.
 async function getWilmaReady() {
   wilmaStep.preparing = true;
-  showSource(wilmaInstalling());
-  showWilmaWait(wilmaInstalling());
+  showSource(null);
+  wilmaNotReady(false);
+  showWilmaWait("wilma.ready.installing");
   try {
     const out = await post("api/wilma/install", {});
     if (out.result !== "installed") {
+      showWilmaWait(null);
+      wilmaNotReady(true);
       showSource("wilma.ready." + out.result, { reason: out.reason });
-      showWilmaWait("wilma.ready." + out.result);
       return;
     }
     wilmaStep.ready = true;
@@ -701,7 +774,7 @@ async function getWilmaReady() {
 function showWilmaWait(key) {
   const wait = document.getElementById("wilma-search-wait");
   wait.hidden = !key;
-  wait.classList.toggle("busy", INSTALLING.includes(key));
+  wait.classList.toggle("busy", key === "wilma.ready.installing");
   if (key) setText(wait, key);
   else delete wait.dataset.text;
 }
@@ -719,6 +792,7 @@ async function searchTowns() {
     const out = await post("api/towns", { query });
     if (search !== wilmaStep.searching) return; // the parent typed on meanwhile
     if (out.result !== "found") {
+      wilmaNotReady(out.result === "not-installed");
       showSource("wilma." + out.result);
       return;
     }
@@ -730,29 +804,28 @@ async function searchTowns() {
   }
 }
 
-// The entries found, to pick one from, each with its town; without Wilma, each town once.
+// Without Wilma's program, the sign-in can't work: only the box saying so is shown, under the town.
+function wilmaNotReady(notReady) {
+  document.getElementById("wilma-sign-in").hidden = notReady;
+}
+
+// The entries found, to pick one from, each with its town.
 function renderTowns() {
-  const uses = picked("wilma-uses") === "yes";
   const before = chosenTown();
-  const shown = [];
-  for (const entry of wilmaStep.found) {
-    if (!uses && (!entry.town || shown.some((e) => e.town === entry.town))) continue;
-    shown.push(entry);
-  }
+  const shown = wilmaStep.found;
   const list = document.getElementById("wilma-towns");
-  list.replaceChildren(...shown.map((entry) => {
+  list.replaceChildren(...shown.map((entry, i) => {
     const label = document.createElement("label");
     const input = document.createElement("input");
     input.type = "radio";
     input.name = "wilma-town";
-    input.value = String(wilmaStep.found.indexOf(entry));
-    input.checked = shown.length === 1 || Boolean(before) &&
-      (uses ? before.url === entry.url : before.town === entry.town);
+    input.value = String(i);
+    input.checked = shown.length === 1 || Boolean(before) && before.url === entry.url;
     const name = document.createElement("span");
     name.className = "name";
-    name.textContent = uses ? entry.name : entry.town;
+    name.textContent = entry.name;
     label.append(input, name);
-    if (uses && entry.town) {
+    if (entry.town) {
       const town = document.createElement("span");
       town.className = "town";
       town.textContent = entry.town;
@@ -800,25 +873,6 @@ function wilmaResult(out, prefix) {
   page.progress = out.progress;
   renderSources();
   showSource("wilma.signed-in", { kids: out.kids });
-}
-
-async function saveTown(event) {
-  event.preventDefault();
-  clearError();
-  const entry = chosenTown();
-  if (!entry) return showSource("wilma.pick-town");
-  const button = event.submitter;
-  button.disabled = true;
-  try {
-    const out = await post("api/town", { town: entry.town });
-    page.progress = out.progress;
-    renderSources();
-    showSource("wilma.town-saved");
-  } catch (e) {
-    failed(e);
-  } finally {
-    button.disabled = false;
-  }
 }
 
 // The Terminal sign-in window, for when the page's own sign-in fails. The page asks how it's
@@ -1160,7 +1214,6 @@ function renderMyClub() {
     myclubStep.kid = (kids.find((k) => !k.linked) ?? kids[0])?.name ?? null;
   }
   const list = document.getElementById("myclub-kids");
-  list.setAttribute("aria-label", t("myclub.kid"));
   list.replaceChildren(...kids.map(({ name, linked }) => {
     const label = document.createElement("label");
     const input = document.createElement("input");
@@ -1186,6 +1239,9 @@ function renderMyClub() {
   document.getElementById("myclub-kid-form").hidden = !add;
   document.getElementById("myclub-form").hidden = !kids.length;
   document.getElementById("myclub-more").hidden = page.progress.sources.myclub !== "done";
+  if (currentSource() === "myclub") {
+    showSkips(connectSteps().find((s) => s.name === "myclub"), page.progress.sources.myclub);
+  }
 }
 
 async function saveMyClubLink(event) {
@@ -1338,6 +1394,7 @@ function renderWorking() {
   bar.hidden = reading.result !== "reading";
   const failedRead = reading.result === "read-failed";
   document.getElementById("working-status").hidden = !failedRead;
+  document.getElementById("working-status").classList.toggle("fail", failedRead);
   document.getElementById("working-again").hidden = !failedRead;
   if (failedRead) setText(document.getElementById("working-message"), "working.read-failed");
   showReason("working", "working.read-failed", failedRead && reading.reason);
@@ -1352,6 +1409,12 @@ const checkStep = { timer: null, checking: false };
 function enterCheck() {
   document.getElementById("check-form").addEventListener("submit", confirmCheck);
   document.getElementById("check-kid-add").addEventListener("click", addCheckKid);
+  // "Add a Kid" shows the field to add one by.
+  document.getElementById("check-kid-open").addEventListener("click", (event) => {
+    event.currentTarget.hidden = true;
+    document.getElementById("check-kid-form").hidden = false;
+    document.getElementById("check-kid-name").focus();
+  });
   document.getElementById("check-kid-name").addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
     event.preventDefault();
@@ -1365,7 +1428,7 @@ function enterCheck() {
 }
 
 function renderCheck() {
-  const { kids, whatsapp, senders, recipients, evening, feedback } = page.check;
+  const { kids, whatsapp, senders, recipients, evening } = page.check;
   document.getElementById("check-kids").replaceChildren(...kids.map(kidRow));
   document.getElementById("check-whatsapp").hidden = whatsapp === null;
   document.getElementById("check-groups").replaceChildren(...(whatsapp || []).map((group) =>
@@ -1381,11 +1444,6 @@ function renderCheck() {
   setText(none, page.check.other_sources ? "check.senders.none.other" : "check.senders.none");
   document.getElementById("check-recipients").replaceChildren(...recipients.map(recipientRow));
   document.getElementById("check-evening").value = evening;
-  // A pilot Household's feedback goes under this name in the team's sheet.
-  document.getElementById("check-feedback").hidden = feedback === null;
-  const label = document.getElementById("check-household-label");
-  label.required = feedback !== null;
-  label.value = feedback ? feedback.household_label : "";
   syncAll("check-whatsapp-all", "check-groups");
   syncAll("check-senders-all", "check-senders");
 }
@@ -1509,9 +1567,6 @@ async function confirmCheck(event) {
       .map((select) => ({ address: select.dataset.address, language: select.value })),
     evening: document.getElementById("check-evening").value,
   };
-  if (page.check.feedback !== null) {
-    answers.household_label = document.getElementById("check-household-label").value.trim();
-  }
   const button = event.submitter;
   button.disabled = true;
   try {
@@ -1711,7 +1766,7 @@ function briefResult(out) {
   if (made) frame.src = "brief.html?" + Date.now(); // the one just made, not one kept from before
   frame.hidden = !made;
   document.getElementById("brief-actions").hidden = !made;
-  document.getElementById("brief-feedback").hidden = !(made && out.feedback);
+  document.getElementById("brief-feedback-open").hidden = !(made && out.feedback);
   if (making) briefStep.timer = setTimeout(checkBrief, BRIEF_MS);
 }
 
@@ -1822,8 +1877,7 @@ function openFinishAI() {
     });
   }
   finishAI.ready = true;
-  document.getElementById("finish-ai-sign-in").append(
-    document.getElementById("source-ai"), document.getElementById("source-status"));
+  document.getElementById("finish-ai-sign-in").append(document.getElementById("source-ai"));
   offerAIs("finish-ai");
   pick("finish-ai", page.welcome.ai);
   document.getElementById("finish-ai-open").hidden = true;
@@ -1915,6 +1969,7 @@ function finishResult(out) {
   const status = document.getElementById("finish-status");
   status.hidden = out.result === "not-done" && !tried;
   status.dataset.result = "finish." + out.result;
+  status.classList.toggle("fail", out.result === "install-failed");
   setText(document.getElementById("finish-message"), "finish." + out.result,
     { evening: page.check.evening });
   showReason("finish", "finish." + out.result, out.reason);
@@ -2031,8 +2086,9 @@ function closed() {
   document.getElementById("finish-closed").hidden = false;
 }
 
-// ── Continue in the chat: Claude Code opens at the setup skill in Terminal, or the page says
-// what to type in Codex. The skill carries on from the step saved here.
+// ── Continue in the chat, one quiet line at the bottom of each step: Claude Code opens at the
+// setup skill in Terminal, or the page says what to type in Codex. The skill carries on from the
+// step saved here.
 
 function renderChat() {
   document.getElementById("chat-continue").addEventListener("click", continueInChat);
@@ -2109,6 +2165,9 @@ function show() {
     page.finishShown = true;
     enterFinish();
   }
+  // "Stuck? Continue in the chat" is the last line of the step shown.
+  const section = phase && document.getElementById(phase);
+  if (section) section.append(document.getElementById("chat"));
   showChat(); // once Welcome's choices are on the page
   applyText();
 }

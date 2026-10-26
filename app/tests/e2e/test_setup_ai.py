@@ -722,18 +722,24 @@ def test_every_ai_sign_in_result_is_explained_in_all_three_languages():
 
 # Where each AI's consumer plans let the family turn off training on their chats, named as the
 # app names it (ADR 0013).
-TRAINING_SETTINGS = {"claude": ("Settings > Privacy", "Help improve Claude"),
-                     "codex": ("Settings > Data controls", "Improve the model for everyone")}
+TRAINING_SETTINGS = {"claude": ("Settings › Privacy", "Help improve Claude"),
+                     "codex": ("Settings › Data controls", "Improve the model for everyone")}
+
+
+def folded(markup: str, summary: str, key: str) -> bool:
+    """Whether `markup` has `key`'s text folded under a "more" line with `summary`'s (#491)."""
+    return re.search(rf'<details class="more">\s*<summary data-text="{re.escape(summary)}"></summary>'
+                     rf'\s*<p data-text="{re.escape(key)}"></p>', markup) is not None
 
 
 def test_the_ai_sign_in_says_where_to_turn_off_training_on_the_chats():
     # Both AIs may train on the family's chats by default, and Parent Recap can't check the
-    # setting, so the sign-in for the AI the family chose names it, as a hint beside the step.
+    # setting, so the sign-in for the AI the family chose names it, folded under the step.
     page_html = (PAGE_DIR / "index.html").read_text()
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for name, (menu, setting) in TRAINING_SETTINGS.items():
-        assert f'<p class="hint" data-text="{name}.training"></p>' in inside(page_html, f"ai-{name}")
+        assert folded(inside(page_html, f"ai-{name}"), f"{name}.training.more", f"{name}.training")
         for language, table in text.items():
             assert menu in table[f"{name}.training"], (language, name)
             assert setting in table[f"{name}.training"], (language, name)
@@ -862,7 +868,7 @@ def test_the_page_says_the_messages_go_through_the_maintainers_gateway():
     page_html = (PAGE_DIR / "index.html").read_text()
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
-    assert '<p class="hint" data-text="gateway.privacy"></p>' in inside(page_html, "ai-gateway")
+    assert folded(inside(page_html, "ai-gateway"), "gateway.privacy.more", "gateway.privacy")
     for language, (gateway, eu) in GATEWAY_WORDS.items():
         for key in ("ai.gateway.ready", "gateway.privacy"):
             assert gateway in text[language][key] and eu in text[language][key], (language, key)
