@@ -3,6 +3,7 @@ no jobs. A tests workflow that doesn't parse reports no check at all, and PRs th
 other checks alone (#128)."""
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -59,7 +60,7 @@ def test_the_macos_job_runs_its_slow_layers_on_every_core():
     steps = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]["test"]["steps"]
     runs = {step["name"]: step["run"] for step in steps if "pytest" in step.get("run", "")}
     for name in ("End-to-end tests", "Script tests", "Browser tests"):
-        assert "-n auto" in runs[name], name
+        assert re.search(r" -n (auto|\d+)\b", runs[name]), name
 
 
 def test_coverage_measures_lines_and_branches_of_the_package_with_no_threshold():
