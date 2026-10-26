@@ -52,16 +52,16 @@ The flow is the same in both:
 
 Each prints one line of JSON. `result` says what happened; when it isn't a success, `next` says what to do about it, in English: tell the parent the gist in their language, help with it, and run the command again as `next` says (often with `--no-open`, so the page or window doesn't open twice).
 
-| Command                                    | Success                                        | Also gives                                                           |
-| ------------------------------------------ | ---------------------------------------------- | -------------------------------------------------------------------- |
-| `$FB setup wilma --timeout 540 --language <code>` | `signed-in` | `kids` (name, school, class), `wilma_address`, `city` (or null) |
-| `$FB setup gmail --address <address>`      | `saved`                                        | `address`                                                            |
-| `$FB setup claude`                         | `saved`                                        | `test_call: ok`                                                      |
-| `$FB setup whatsapp --timeout 540`         | `readable`                                     | `chats` (name, last message, archived, `hint` naming the Kids it seems to be about) |
-| `$FB setup myclub --kid "<Kid's name>"`    | `saved`                                        | `events`, the number of events in the calendar                       |
-| `$FB setup status`                         | `done`                                         | `outcomes`, each with `ok` and a `reason`                            |
-| `$FB setup save` (answers as JSON on stdin) | `saved`                                       | `progress`                                                           |
-| `$FB setup save --read`                    | `read`                                         | `progress`                                                           |
+| Command                                           | Success     | Also gives                                                                          |
+| ------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------- |
+| `$FB setup wilma --timeout 540 --language <code>` | `signed-in` | `kids` (name, school, class), `wilma_address`, `city` (or null)                     |
+| `$FB setup gmail --address <address>`             | `saved`     | `address`                                                                           |
+| `$FB setup claude`                                | `saved`     | `test_call: ok`                                                                     |
+| `$FB setup whatsapp --timeout 540`                | `readable`  | `chats` (name, last message, archived, `hint` naming the Kids it seems to be about) |
+| `$FB setup myclub --kid "<Kid's name>"`           | `saved`     | `events`, the number of events in the calendar                                      |
+| `$FB setup status`                                | `done`      | `outcomes`, each with `ok` and a `reason`                                           |
+| `$FB setup save` (answers as JSON on stdin)       | `saved`     | `progress`                                                                          |
+| `$FB setup save --read`                           | `read`      | `progress`                                                                          |
 
 A `result` of `no-prompt` means no dialog could open here (for example from inside Codex's sandbox): run the command again outside the sandbox, and only if that fails too, give the parent the command in `next` to run in Terminal.
 
@@ -116,12 +116,12 @@ Every step of the setup page has a **Continue in the chat** button, for a family
 
 **The defaults card.** End the introduction with the defaults, as choices the parent only changes where they're wrong:
 
-| Default            | How you pick it                                                                                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Language           | The one they write in. It's setup's language and their Brief's                                                                                          |
-| AI                 | Claude in Claude Code; **ChatGPT** ("runs through Codex") in Codex. Say Claude needs a paid plan; ChatGPT works on any plan                              |
-| Recipients         | The parent and their partner ("Add my partner"), or "Only me"                                                                                           |
-| Pilot family       | Yes. Only when `PLUGIN/app/src/family_brief/pilot_feedback.yaml` exists; without it, leave this line and every pilot question out                       |
+| Default      | How you pick it                                                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Language     | The one they write in. It's setup's language and their Brief's                                                                    |
+| AI           | Claude in Claude Code; **ChatGPT** ("runs through Codex") in Codex. Say Claude needs a paid plan; ChatGPT works on any plan       |
+| Recipients   | The parent and their partner ("Add my partner"), or "Only me"                                                                     |
+| Pilot family | Yes. Only when `PLUGIN/app/src/family_brief/pilot_feedback.yaml` exists; without it, leave this line and every pilot question out |
 
 The card has no calendar question: new events always come as an `.ics` attachment on the Brief, which one tap adds to any calendar. If the parent asks about Google Calendar, say it can be turned on later through `/parent-recap:manage`, once the Parent Recap team has given them the Google app file it needs.
 
