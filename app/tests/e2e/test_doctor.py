@@ -246,7 +246,8 @@ def test_doctor_names_an_unreadable_config_in_english(harness, capsys):
 @pytest.mark.macos
 def test_doctor_in_a_bg_job_says_which_python_needs_whatsapp_access(harness, monkeypatch, capsys):
     monkeypatch.setenv(ops.BG_ENV, "1")
-    monkeypatch.setattr(whatsapp, "check_access", lambda: whatsapp.NO_ACCESS)
+    monkeypatch.setattr(whatsapp, "access_problem",
+                        lambda: whatsapp.AccessProblem("no-access", whatsapp.NO_ACCESS))
 
     assert harness.cli("doctor", "--whatsapp-only") == 1
 
@@ -442,10 +443,14 @@ def test_the_whatsapp_check_says_why_it_isn_t_ok_and_doctor_s_words_stay(harness
             "not-started": "the background check didn't start",
             "missing-groups": 'these group names aren\'t on this Mac (renamed, or a new group for '
                               'the new school year?): ["Leo piano"]',
-            "list-failed": "couldn't list the groups: database disk image is malformed"}
+            "list-failed": "couldn't list the groups: database disk image is malformed",
+            "not-installed": "No WhatsApp Desktop data found (WhatsApp for Mac isn't installed, "
+                             "or has never been signed in on this Mac)",
+            "unreadable": "Couldn't read it: [Errno 5] Input/output error",
+            "access-unknown": "Couldn't check for Full Disk Access: [Errno 2] No such file"}
     assert said[failure] in line
     assert line.endswith("(checked with the scheduled job's Python)") == \
-        (failure in ("no-access", "missing-groups", "list-failed"))  # read in the bg job
+        (failure not in ("hangs", "not-started", "access-unknown"))  # read in the bg job
     assert mac_for_reasons.prompts == 0
     # The chat skills give the same reason's fix, by doctor's own words.
     assert f'"{SKILL_WORDS[failure]}"' in skill_whatsapp_section() and SKILL_WORDS[failure] in line
@@ -456,7 +461,10 @@ SKILL_WORDS = {"no-access": "can't read WhatsApp: add it to Full Disk Access",
                "hangs": "didn't finish within 180 seconds",
                "not-started": "the background check didn't start",
                "missing-groups": "these group names aren't on this Mac",
-               "list-failed": "couldn't list the groups"}
+               "list-failed": "couldn't list the groups",
+               "not-installed": "No WhatsApp Desktop data found",
+               "unreadable": "Couldn't read it",
+               "access-unknown": "Couldn't check for Full Disk Access"}
 SKILLS = Path(__file__).resolve().parents[3] / "skills"
 
 
@@ -493,7 +501,7 @@ def test_the_whatsapp_check_is_ok_with_no_reason(harness, mac_for_reasons):
 
 def test_the_bg_job_sends_each_whatsapp_check_as_one_line_of_json(harness, monkeypatch, capsys):
     monkeypatch.setenv(ops.BG_ENV, "1")
-    monkeypatch.setattr(whatsapp, "check_access", lambda: None)
+    monkeypatch.setattr(whatsapp, "access_problem", lambda: None)
     monkeypatch.setattr(whatsapp, "list_groups", lambda days: [{"name": "3B parents"}])
 
     harness.cli("doctor", "--whatsapp-only")
@@ -550,7 +558,8 @@ def test_renaming_a_check_in_doctor_s_words_leaves_what_the_setup_page_shows(har
     out = capsys.readouterr().out
     assert "Email inbox:" in out and "Brief text in zh:" in out
     shown = [setup_server.health.health_check(c) for c in results]
-    assert {"check": "gmail", "status": "fail"} in shown
+    assert {"check": "gmail", "status": "fail"} in [{k: s[k] for k in ("check", "status")}
+                                                    for s in shown]
     assert {"check": "language", "status": "ok", "language": "zh"} in shown
     assert not [s for s in shown if s["check"] == "other"]
 

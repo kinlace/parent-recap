@@ -28,10 +28,12 @@ from .system import desktop_macos, jobs, macos_only, profile, wake, windows_only
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
 _STATUS_OF = {"ok": OK, "warn": WARN, "fail": FAIL}  # by llm.Finding's level
 # Why the WhatsApp check isn't OK, for the setup page and the chat skills to say what fixes it:
-# the scheduled job's Python has no Full Disk Access, the background check didn't start, gave no
-# result or timed out, a ticked group's name isn't on this Mac, or listing the groups failed. Any
-# other failure has no reason, and gets the general advice.
-WHATSAPP_REASONS = ("no-access", "not-finished", "missing-groups", "list-failed")
+# the scheduled job's Python has no Full Disk Access, or whether it has can't be checked, there's
+# no WhatsApp for Mac data on this Mac, its database couldn't be read, the background check
+# didn't start, gave no result or timed out, a ticked group's name isn't on this Mac, or listing
+# the groups failed. Any other failure has no reason, and gets the general advice.
+WHATSAPP_REASONS = ("no-access", "access-unknown", "no-whatsapp", "unreadable", "not-finished",
+                    "missing-groups", "list-failed")
 DEFAULT_CONFIG = Path.home() / ".family" / "config.yaml"
 BG_ENV = jobs.BG_ENV  # set inside `bg` jobs so doctor doesn't recurse
 # Where doctor says to grant WhatsApp's permission, after "Full Disk Access".
@@ -288,8 +290,8 @@ def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:
 
 def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
     from .collectors import whatsapp
-    err = whatsapp.check_access()
-    if err == whatsapp.NO_ACCESS and not os.environ.get(BG_ENV):
+    problem = whatsapp.access_problem()
+    if problem and problem.reason == "no-access" and not os.environ.get(BG_ENV):
         # Terminal, Claude Code and Codex usually can't read WhatsApp, but the scheduled job's
         # Python can. Ask that Python instead of reporting a failure that doesn't apply.
         try:
@@ -313,13 +315,13 @@ def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
             add(c.status, "whatsapp", c.detail + " (checked with the scheduled job's Python)",
                 c.reason, c.groups)
         return
-    if err == whatsapp.NO_ACCESS:
+    if problem and problem.reason == "no-access":
         python = os.path.realpath(sys.executable)
         add(FAIL, "whatsapp", f"the scheduled job's Python {python} can't read WhatsApp: add it "
             f"to Full Disk Access {FULL_DISK_ACCESS_WHERE}", "no-access")
         return
-    if err:
-        add(FAIL, "whatsapp", err)
+    if problem:
+        add(FAIL, "whatsapp", problem.detail, problem.reason)
         return
     try:
         known = {g["name"] for g in whatsapp.list_groups(days=3650)}

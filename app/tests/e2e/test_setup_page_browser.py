@@ -30,8 +30,9 @@ except ImportError:  # the browser fixture skips the tests and says why
 import fake_node
 from family_brief import failure, ops, setup_connect, setup_wilma
 from family_brief.collectors import myclub
-from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, progress_file,
-                        save_progress)
+from family_brief.config import Config
+from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, config_file,
+                        progress_file, save_progress)
 from setup_page import ai, clock, health, page, schedule  # noqa: F401
 from test_setup_ai import GATEWAY_KEY
 from test_setup_gmail import TYPED
@@ -618,6 +619,89 @@ def test_the_check_page_says_why_whatsapp_isn_t_ok_and_offers_the_button_that_fi
     if reason == "missing-groups":  # back to WhatsApp's step, to read the groups again
         button(tab, fix).click()
         expect(heading(tab, "connect.title")).to_be_visible()
+
+
+def copying(tab) -> None:
+    """Copy writes to the clipboard, which a headless browser keeps to itself: kept here instead."""
+    tab.evaluate("() => { window.copied = []; navigator.clipboard.writeText = "
+                 "(t) => { window.copied.push(t); return Promise.resolve(); }; }")
+
+
+def assert_report(tab, said: str, step: str) -> None:
+    """What Copy put on the clipboard: what failed, then the version, the system, the step and
+    when, as for a step that failed (#487)."""
+    tab.wait_for_function("() => window.copied.length > 0")
+    [report] = tab.evaluate("() => window.copied")
+    about = failure.about()
+    *lines, time = report.splitlines()
+    assert lines == [said, "", f"Parent Recap {about['version']}", f"System: {about['os']}",
+                     f"Step: {step}"]
+    assert re.fullmatch(r"Time: \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", time)
+
+
+@pytest.mark.parametrize("where", ["check", "finish"])
+def test_a_failed_check_without_a_reason_folds_what_it_said_under_its_hint_with_copy(
+        tab, family, health, schedule, where):
+    # #500: a WhatsApp check that fails in a way doctor has no reason for says why too.
+    said = "Couldn't read it: database is locked"
+    (at_the_check_step if where == "check" else at_finish)(family)
+    health.results.append((ops.FAIL, "whatsapp", "WhatsApp", said))
+    tab.reload()
+    copying(tab)
+
+    if where == "check":
+        button(tab, "check.confirm").click()
+        item = tab.locator("#health-checks > li").filter(has_text=text("health.check.whatsapp"))
+    else:
+        button(tab, "finish.start").click()
+        item = tab.locator("#finish-checklist .checks > li").filter(
+            has_text=text("health.check.whatsapp"))
+    prefix = "health" if where == "check" else "finish"
+
+    # The general hint first, then what doctor said, folded until it's opened.
+    expect(item.locator("p.hint").first).to_have_text(text(f"{prefix}.fail.whatsapp"))
+    reason = item.locator(".reason")
+    expect(reason).to_be_hidden()
+    item.get_by_text(text("fail.details")).click()
+    expect(reason).to_have_text(said)
+    item.get_by_role("button", name=text("copy"), exact=True).click()
+    assert_report(tab, said, f"{prefix}.fail.whatsapp")
+    # Skipping is the check page's, where Confirm runs again without the Source.
+    expect(item.get_by_role("button", name=text("source.skip", source="WhatsApp"))).to_have_count(
+        1 if where == "check" and SYSTEM == "macos" else 0)
+
+
+def test_a_failed_check_of_a_source_the_family_can_do_without_offers_skip_and_setup_goes_on(
+        tab, family, monkeypatch):
+    # #500: a Source a family can do without never holds setup up. Doctor checks Wilma only while
+    # it's on, as it does for real.
+    at_the_check_step(family)
+    gmail_fails = True
+
+    def checks(config: str, **_k: Any) -> list[ops.Check]:
+        wilma = Config.load(config).wilma.enabled
+        return [ops.Check(ops.OK, "config", "Config file", "2 kids"),
+                ops.Check(ops.FAIL, "gmail", "Gmail", "IMAP login failed") if gmail_fails
+                else ops.Check(ops.OK, "gmail", "Gmail", "signed in"),
+                *([ops.Check(ops.FAIL, "wilma", "Wilma", "wilma kids list failed")] if wilma else [])]
+    monkeypatch.setattr(ops, "health_checks", checks)
+    tab.reload()
+    button(tab, "check.confirm").click()
+
+    checks_shown = tab.locator("#health-checks > li")
+    wilma = checks_shown.filter(has_text=text("health.check.wilma"))
+    gmail = checks_shown.filter(has_text=text("health.check.gmail"))
+    expect(wilma.locator("p.hint").first).to_have_text(text("health.fail.wilma"))
+    expect(gmail.locator("p.hint").first).to_have_text(text("health.fail.gmail"))
+    expect(skip(tab, "wilma")).to_have_count(1)
+    expect(gmail.get_by_role("button", name=re.compile("Skip"))).to_have_count(0)  # never Gmail
+
+    gmail_fails = False  # the parent fixed Gmail, and Wilma's school doesn't use it after all
+    wilma.get_by_role("button", name=text("source.skip", source="Wilma")).click()
+
+    expect(heading(tab, "brief.title")).to_be_visible()
+    assert json.loads(progress_file(family).read_text())["sources"]["wilma"] == "skipped"
+    assert not Config.load(config_file(family)).wilma.enabled
 
 
 def test_the_check_page_reveals_add_a_kid_on_a_click_and_asks_no_feedback_label(

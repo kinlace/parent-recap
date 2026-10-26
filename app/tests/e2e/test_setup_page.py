@@ -680,6 +680,7 @@ def test_finish_names_windows_sign_in_after_updates_and_leaves_wake_timers_to_it
     doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
     # The wake outcome says what the Wake check would, so it isn't said twice.
     assert doctor == {"outcome": "doctor", "ok": True,
-                      "checks": [{"check": "sign-in-after-update", "status": "warn"}]}
+                      "checks": [{"check": "sign-in-after-update", "status": "warn",
+                                  "detail": "nobody is signed in after an update"}]}
     for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
         assert re.search(r"update|päivity|更新", table["finish.fail.sign-in-after-update"]), language

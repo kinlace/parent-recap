@@ -5,7 +5,7 @@ from __future__ import annotations
 from http import HTTPStatus
 from typing import Any
 
-from .. import ops, setup_save
+from .. import failure, ops, setup_save
 from .context import Action, Context, Phase, Reply, nothing_to_give
 
 # Check: the health check, and how it ended. Warnings alone don't hold setup up.
@@ -33,8 +33,8 @@ class Health(Phase):
         return {"api/check/health": self.check_health}
 
     def check_health(self, raw: Any) -> Reply:
-        """How the health check went: `checking` while it runs. Only each check's name and status
-        are given, since their details can quote an address or an error."""
+        """How the health check went: `checking` while it runs. Each check by its name and status,
+        and one that isn't OK with what doctor says about it, for the family to copy to us."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
         return HTTPStatus.OK, self.context.runs.get("health") or {"result": "no-check"}
@@ -53,15 +53,18 @@ def run(context: Context) -> None:
                 out = setup_save.save(context.config, {"progress": {"phase": "first-brief"}})
             done = {"result": "ok", "checks": checks, "progress": out["progress"]} \
                 if out["result"] == "saved" else {"result": "not-ok", "checks": checks}
-    except Exception:  # never leave the page checking
-        done = {"result": "not-ok", "checks": [{"check": "other", "status": "fail"}]}
+    except Exception as e:  # never leave the page checking
+        done = {"result": "not-ok", "checks": [{"check": "other", "status": "fail",
+                                                "detail": failure.of(e, "The health check")}]}
     context.runs["health"] = done
 
 
 def health_check(check: ops.Check, names: dict[str, str] = HEALTH_CHECKS) -> dict[str, Any]:
-    """One of doctor's checks as the check page shows it, or Finish with its own `names`,
-    without its details: with why it isn't OK, where doctor says, and the groups that's about,
-    whose names the check page shows anyway."""
+    """One of doctor's checks as the check page shows it, or Finish with its own `names`: with why
+    it isn't OK, where doctor says, and the groups that's about, whose names the check page shows
+    anyway. One that isn't OK also carries doctor's detail, which the page folds under "Details
+    for the Parent Recap team" with a Copy button (#500). An OK check's detail stays out: it can
+    quote an address and says nothing that needs fixing."""
     out: dict[str, Any] = {"check": names.get(check.key, "other"),
                            "status": HEALTH_STATUSES.get(check.status, "warn")}
     if check.key in HEALTH_SUBJECTS and check.subject is not None:
@@ -70,4 +73,6 @@ def health_check(check: ops.Check, names: dict[str, str] = HEALTH_CHECKS) -> dic
         out["reason"] = check.reason
     if check.groups:
         out["groups"] = list(check.groups)
+    if out["status"] != "ok" and check.detail:
+        out["detail"] = check.detail
     return out

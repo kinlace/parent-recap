@@ -174,12 +174,27 @@ function reasonReport(block) {
   ].join("\n");
 }
 
+// Copy on `block` puts its report on the clipboard.
+function copyReason(block) {
+  block.querySelector("button").addEventListener("click", () => {
+    navigator.clipboard.writeText(reasonReport(block));
+  });
+}
+
 function setUpReasons() {
-  for (const block of document.querySelectorAll(".why")) {
-    block.querySelector("button").addEventListener("click", () => {
-      navigator.clipboard.writeText(reasonReport(block));
-    });
-  }
+  for (const block of document.querySelectorAll(".why")) copyReason(block);
+}
+
+// The same block, folded, for one of the checks on Check and Finish that isn't OK (#500): one
+// under each, with what doctor said about it. `step` names the check and why it isn't OK.
+function reasonBlock(step, reason) {
+  const block = document.getElementById("why-template").content.firstElementChild.cloneNode(true);
+  for (const el of block.querySelectorAll("[data-text]")) setText(el, el.dataset.text);
+  block.querySelector(".reason").textContent = reason;
+  block.dataset.step = step;
+  block.dataset.time = new Date().toISOString();
+  copyReason(block);
+  return block;
 }
 
 function renderPhase() {
@@ -1648,22 +1663,56 @@ const WHATSAPP_STEPS = {
 
 // What to do about a check that isn't OK, as the check page ("health") or Finish ("finish") says
 // it: the text for why it isn't, where the check says why, else the check's own, and the button
-// that fixes it, if there's one.
+// that fixes it, if there's one. On the check page, a failed check of a Source the family can do
+// without also offers to skip it for now. Last, folded, what the check said, to copy to us.
 function nextStep(prefix, check, values) {
   const general = `${prefix}.fail.${check.check}`;
   const own = `${general}.${check.reason}`;
+  const key = check.reason && own in page.text[page.language] ? own : general;
   const next = document.createElement("p");
   next.className = "hint";
-  setText(next, check.reason && own in page.text[page.language] ? own : general,
-    { ...values, groups: (check.groups || []).join(", "), ...pythonFile() });
+  setText(next, key, { ...values, groups: (check.groups || []).join(", "), ...pythonFile() });
+  const shown = [next];
   const step = check.check === "whatsapp" && WHATSAPP_STEPS[check.reason];
-  if (!step) return [next];
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "secondary";
-  setText(button, step[0]);
-  button.addEventListener("click", step[1]);
-  return [next, button];
+  if (step) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary";
+    setText(button, step[0]);
+    button.addEventListener("click", step[1]);
+    shown.push(button);
+  }
+  const source = page.connect.sources.find((s) => s.name === check.check);
+  if (prefix === "health" && check.status === "fail" && source?.skippable) {
+    const skip = document.createElement("button");
+    skip.type = "button";
+    skip.className = "link";
+    skip.dataset.skipCheck = source.name;
+    setText(skip, "source.skip", { source: t("source." + source.name) });
+    skip.addEventListener("click", skipFailedSource);
+    shown.push(skip);
+  }
+  if (check.detail) shown.push(reasonBlock(check.reason ? own : general, check.detail));
+  return shown;
+}
+
+// Skips a Source whose check failed, as Connect's Skip does, and the server runs the health check
+// again without it, so setup carries on. The check page shows what's left of it.
+async function skipFailedSource(event) {
+  clearError();
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const out = await post("api/check/skip", { source: button.dataset.skipCheck });
+    page.progress = out.progress;
+    page.check = out.check;
+    renderCheck();
+    document.getElementById("check-back").hidden = false; // a Source is skipped now
+    healthResult(out);
+  } catch (e) {
+    failed(e);
+    button.disabled = false;
+  }
 }
 
 // As on WhatsApp's step, but here the page doesn't read WhatsApp again by itself: the text says

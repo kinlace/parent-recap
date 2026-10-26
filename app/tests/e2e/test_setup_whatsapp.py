@@ -692,15 +692,26 @@ WHATSAPP_FAILURES = {
     "not-started": (ops.WARN, "not-finished"),
     "missing-groups": (ops.WARN, "missing-groups"),
     "list-failed": (ops.FAIL, "list-failed"),
+    "not-installed": (ops.FAIL, "no-whatsapp"),
+    "unreadable": (ops.FAIL, "unreadable"),
+    "access-unknown": (ops.FAIL, "access-unknown"),
 }
 
 
 def break_whatsapp(mac, monkeypatch, failure: str) -> None:
     """The fake Mac as it is when the WhatsApp check fails in one of WHATSAPP_FAILURES' ways.
     For missing-groups, Leo's piano group has a new name on it."""
+    if failure == "not-installed":  # WhatsApp for Mac was never installed or signed in here
+        return
     piano = "Leo piano autumn" if failure == "missing-groups" else "Leo piano"
     mac.install_whatsapp([("3B parents", 1, False), (piano, 2, False)])
-    if failure == "no-access":
+    if failure == "unreadable":
+        def broken() -> Path:
+            raise OSError(5, "Input/output error")
+        monkeypatch.setattr(whatsapp, "_snapshot_db", broken)
+    elif failure == "access-unknown":  # the one file only Full Disk Access opens is gone
+        mac.tcc_db.unlink()
+    elif failure == "no-access":
         mac.full_disk_access_after = 10_000
     elif failure == "hangs":
         mac.jobs.hangs = True
@@ -743,6 +754,13 @@ def assert_says_why(prefix: str, check: dict[str, Any]) -> None:
             assert "parent-recap doctor" in said, language
 
 
+def whatsapp_detail(harness) -> str:
+    """What doctor says about WhatsApp, as `parent-recap doctor` prints it, for the same Mac."""
+    results = ops.health_checks(str(config_file(harness)), whatsapp_only=True)
+    [check] = [c for c in results if c.key == "whatsapp"]
+    return check.detail
+
+
 def back_to_whatsapp(url: str, body: Any = None) -> Response:
     return call(url, "api/whatsapp/back", method="POST", body={} if body is None else body)
 
@@ -765,9 +783,11 @@ def test_the_check_page_says_why_whatsapp_isn_t_ok(harness, page, mac, monkeypat
     status, reason = WHATSAPP_FAILURES[failure]
     check = {"check": "whatsapp", "status": setup_server.health.HEALTH_STATUSES[status], "reason": reason,
              **({"groups": ["Leo piano"]} if reason == "missing-groups" else {})}
-    assert out["checks"] == [check]
-    # Only the reason, and the groups the check page lists anyway: no path and no error.
-    assert WHATSAPP_PYTHON not in json.dumps(out) and "malformed" not in json.dumps(out)
+    [shown] = out["checks"]
+    # Doctor's own words come along, for the page to fold under its text with Copy (#500).
+    detail = shown.pop("detail")
+    assert shown == check
+    assert detail == whatsapp_detail(harness)
     assert_says_why("health", check)
     assert all(mac.reads) and mac.prompts == 0  # only ever read in a bg job, and never asked
 

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from .. import failure, ops, setup_connect, setup_gmail, setup_save
 from ..config import Config, Kid
 from . import health
+from .connect import SKIPPABLE
 from .context import Action, Context, Phase, Reply, nothing_to_give
 
 # Working: reading the Gmail senders for the check page, how far it is and how it ended, and
@@ -24,6 +25,10 @@ class KidCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str            # as Wilma spells it, or the everyday name for a Kid added on the page
     everyday_name: str
+
+
+class SkipAnswer(setup_connect.Strict):
+    source: setup_save.SourceName
 
 
 class CheckAnswer(BaseModel):
@@ -42,7 +47,7 @@ class Check(Phase):
 
     def routes(self) -> dict[str, Action]:
         return {"api/working": self.start_reading, "api/working/check": self.check_reading,
-                "api/check": self.confirm_check}
+                "api/check": self.confirm_check, "api/check/skip": self.skip_source}
 
     def state(self, progress: dict[str, Any]) -> dict[str, Any]:
         return {"check": self._check(progress)}
@@ -141,9 +146,36 @@ class Check(Phase):
             if out["result"] != "saved":
                 return (HTTPStatus.BAD_REQUEST if out["result"] == "invalid-answers"
                         else HTTPStatus.CONFLICT), out
-            context.runs["health"] = {"result": "checking"}
-            threading.Thread(target=health.run, args=(context,), daemon=True).start()
+            self._check_health()
         return HTTPStatus.OK, {**out, "result": "checking"}
+
+    def skip_source(self, raw: Any) -> Reply:
+        """Skips a Source the family can do without, as Connect's Skip does, once its check failed
+        on the check page, and runs the health check again without it (#500): a Source a family
+        can do without never holds setup up. The reply has the check page as it is now, without
+        the Source, for the page to show."""
+        answer = setup_connect.parse(SkipAnswer, raw)
+        context = self.context
+        with context.working:
+            if context.runs.get("health", {}).get("result") == "checking":
+                return HTTPStatus.CONFLICT, {"result": "checking"}
+            with context.connect.lock:
+                progress = context.progress()
+                if progress["phase"] != "check" or answer.source not in SKIPPABLE \
+                        or answer.source not in setup_connect.sources():
+                    return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                        "invalid-answers", "Skip a Source that can be skipped, at Check.",
+                        errors=[f"source: skip one of {', '.join(SKIPPABLE)}, at Check"])
+                status, out = context.connect.skip(answer.source)
+            if status != HTTPStatus.OK:
+                return status, out
+            self._check_health()
+        return HTTPStatus.OK, {**out, "result": "checking", "check": self._check(out["progress"])}
+
+    def _check_health(self) -> None:
+        """Starts the health check in the background; the caller holds `working`."""
+        self.context.runs["health"] = {"result": "checking"}
+        threading.Thread(target=health.run, args=(self.context,), daemon=True).start()
 
 
 def _groups(cfg: Config, progress: dict[str, Any]) -> list[dict[str, Any]]:
