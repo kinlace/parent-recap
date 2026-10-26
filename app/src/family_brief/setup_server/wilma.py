@@ -1,5 +1,5 @@
 """Wilma's connect step (ADR 0008): the pinned CLI, the town search, the sign-in in the page's own
-fields or, when that fails, in a Terminal window, and the town of a Household without Wilma."""
+fields or, when that fails, in a Terminal window."""
 from __future__ import annotations
 
 import threading
@@ -33,10 +33,6 @@ class WilmaSignIn(Strict):
     password: str = Field(min_length=1)
 
 
-class TownPick(Strict):
-    town: str
-
-
 class Wilma(Phase):
     def __init__(self, context: Context) -> None:
         super().__init__(context)
@@ -45,7 +41,7 @@ class Wilma(Phase):
 
     def routes(self) -> dict[str, Action]:
         return {"api/wilma/install": self.wilma_ready, "api/towns": self.find_towns,
-                "api/wilma": self.sign_in_wilma, "api/town": self.save_town,
+                "api/wilma": self.sign_in_wilma,
                 "api/wilma/terminal": self.open_wilma_window,
                 "api/wilma/check": self.check_wilma_window}
 
@@ -87,16 +83,6 @@ class Wilma(Phase):
         if out["result"] != "signed-in":
             return HTTPStatus.OK, out
         return self._signed_in(out["kids"], answer.town)
-
-    def save_town(self, raw: Any) -> Reply:
-        """For a Household whose school doesn't use Wilma: saves the town picked from Wilma's list
-        as its city, and moves setup on with Wilma skipped."""
-        town = parse(TownPick, raw).town
-        if not any(town in setup_wilma.towns_of(t) for t in setup_wilma.tenants() or []):
-            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                "invalid-answers", "Pick your town from the list.",
-                errors=["town: should be a town in Wilma's list"])
-        return self.context.connect.skip("wilma", {"city": town})
 
     def open_wilma_window(self, raw: Any) -> Reply:
         """Opens the Terminal sign-in window (#74), for when the page's own sign-in fails for any

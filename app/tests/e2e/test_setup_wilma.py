@@ -1275,18 +1275,16 @@ def test_checking_without_a_terminal_window_says_none_is_open(page):
         {"result": "no-window"}
 
 
-def test_a_household_without_wilma_picks_its_town_and_moves_on(harness, page, wilma_cli):
+def test_a_household_without_wilma_skips_it_and_saves_no_town(harness, page, wilma_cli):
+    # #481: the town is only for finding the family's Wilma, so skipping Wilma saves none.
     wilma_cli.install()
 
-    r = call(page.url, "api/town", method="POST", body={"town": "Espoo"})
+    r = call(page.url, "api/source", method="POST", body={"source": "wilma", "action": "skip"})
 
-    assert r.status == 200 and r.json()["result"] == "saved"
-    assert r.json()["progress"]["sources"]["wilma"] == "skipped"
-    assert r.json()["progress"]["source"] == "gmail"
+    assert r.status == 200 and r.json()["progress"]["sources"]["wilma"] == "skipped"
     cfg = Config.load(config_file(harness))
-    assert cfg.city == "Espoo" and cfg.wilma.enabled is False
-    for body in [{"town": "Tukholma"}, {"town": None}, {}, {"town": "Espoo", "x": 1}]:
-        assert call(page.url, "api/town", method="POST", body=body).status == 400, body
+    assert cfg.city is None and cfg.wilma.enabled is False
+    assert call(page.url, "api/town", method="POST", body={"town": "Espoo"}).status == 404
 
 
 @pytest.mark.macos

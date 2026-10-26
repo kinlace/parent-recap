@@ -171,7 +171,7 @@ Each sub-flow: in one message, say in a sentence or two why it's needed and end 
 
 Why: Wilma has the school's messages and timetable, and setup reads the Kids' names from it, so the parent doesn't type them.
 
-If the Kids' school doesn't use Wilma, mark Wilma skipped. Ask, one message each, for the city the school is in (a choice: Espoo, Helsinki, Vantaa, Kauniainen, with any other city typed) and each Kid's full name; not their school or class. Then go on to writing the config.
+If the Kids' school doesn't use Wilma, mark Wilma skipped. Don't ask for the city: it's only for finding the family's Wilma. Ask for each Kid's full name, one message; not their school or class. Then go on to writing the config.
 
 Otherwise:
 
@@ -183,8 +183,8 @@ Otherwise:
 **Save the Kids** now with `$FB setup save`, in one call:
 
 - `kids`: one per Kid, `name` exactly as Wilma spells it (or as the parent typed it without Wilma), `school` and `class_name` only when Wilma has them, and `grade` when it follows from the class (3 for 3B). Their everyday names come in Check
-- `city`: the Household's town in Finnish, such as `Espoo`: the `city` from `setup wilma`, or the city the parent gave without Wilma. Leave it out when `setup wilma` gave none
-- `sources.gmail.allowlist_domains`: the starting allowlist for the city from "City presets" in `PLUGIN/docs/config.md`
+- `city`: the Household's town in Finnish, such as `Espoo`: the `city` from `setup wilma`. Leave it out without Wilma, or when `setup wilma` gave none
+- `sources.gmail.allowlist_domains`: the starting allowlist for the city from "City presets" in `PLUGIN/docs/config.md`; without a city, leave it empty for the parent to pick in the Gmail step
 - `sources.wilma`: `{"enabled": true}` with Wilma
 - `progress`: Wilma `done` (or `skipped`), and `source` `gmail`
 
