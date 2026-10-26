@@ -38,7 +38,7 @@ PROFILE = Profile(
     reinstall="run the plugin's install.sh",
     missed_run="the Mac may be asleep, consider a pmset wake-up",
     closed_lines={
-        "fi": "Parent Recapin käyttöönottosivu on suljettu. Voit sulkea tämän Terminal-ikkunan.",
+        "fi": "Parent Recapin käyttöönottosivu on suljettu. Voit sulkea tämän Pääte-ikkunan.",
         "en": "Parent Recap's setup page has closed. You can close this Terminal window.",
         "zh": "Parent Recap 的设置页面已经关闭。你可以关掉这个终端窗口了。",
     },

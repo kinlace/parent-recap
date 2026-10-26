@@ -2201,7 +2201,7 @@ async function start() {
 
 // Without the text table there's no language yet, so this says it in all three.
 const CLOSED = [
-  "Käyttöönottosivu on suljettu. Käynnistä se uudelleen Terminalissa.",
+  "Käyttöönottosivu on suljettu. Käynnistä se uudelleen Päätteessä.",
   "The setup page has closed. Start it again in Terminal.",
   "设置页面已经关闭。请在终端里重新启动它。",
 ];

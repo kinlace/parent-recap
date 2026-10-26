@@ -301,7 +301,7 @@ FI = BriefText(
     login_failed="kirjautuminen epäonnistui",
     fallback_header="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua, joten tässä ovat viestit sellaisenaan "
                     "(kaikki ovat tallessa arkistossa ~/ParentRecap):",
-    fallback_spent="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua: yhdyskäytävän avaimen tämän päivän "
+    fallback_spent="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua: gateway-avaimen tämän päivän "
                    "kiintiö on käytetty. Se nollautuu huomiseen mennessä, joten huomisillan kooste kirjoitetaan "
                    "normaalisti. Tässä ovat viestit sellaisenaan (kaikki ovat tallessa arkistossa ~/ParentRecap):",
     unsorted="Muut viestit",
