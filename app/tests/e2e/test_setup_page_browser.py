@@ -167,7 +167,8 @@ def skip(tab, source: str):
 
 
 def without_wilma_in_espoo(tab) -> None:
-    """Wilma's step for a school without it: the town picked, then Wilma skipped, which keeps it."""
+    """Wilma's step for a school without it: a town picked, then Wilma skipped, which only skips
+    it (#481): the town is for finding the family's Wilma."""
     town = tab.get_by_label(text("wilma.search"))
     expect(town).to_be_enabled()  # once the town list is ready
     town.fill("Espoo")
@@ -175,7 +176,7 @@ def without_wilma_in_espoo(tab) -> None:
     expect(tab.locator("#wilma-towns label .name")).to_have_count(4)
     tab.get_by_role("radio", name=re.compile("^Espoon kaupunki")).check()
     skip(tab, "wilma").click()
-    expect(tab.get_by_text(text("wilma.town-saved"))).to_be_visible()
+    expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
 
 
 def sign_in_to_gmail(tab, password: str) -> None:
@@ -246,7 +247,10 @@ def test_a_family_goes_from_the_language_to_finish_in_the_browser(tab):
     # Working reads Gmail's senders, then the check page lists what was found.
     expect(heading(tab, "check.title")).to_be_visible()
     expect(tab.get_by_role("checkbox", name=re.compile("^Mia"))).to_be_checked()
-    expect(tab.get_by_role("checkbox", name=re.compile(r"^edu\.espoo\.fi"))).to_be_checked()
+    # Without Wilma, no town is saved, so the family ticks the city's school mail itself (#481).
+    school = tab.get_by_role("checkbox", name=re.compile(r"^edu\.espoo\.fi"))
+    expect(school).not_to_be_checked()
+    school.check()
     # #362: Finish says the evening confirmed here, not the one the page loaded with.
     tab.get_by_label(text("check.evening.label")).fill("16:05")
     button(tab, "check.confirm").click()
@@ -288,8 +292,7 @@ def test_the_steps_are_in_the_order_the_server_sends_them(tab, monkeypatch):
     expect(tab.locator("#sources li button > span:first-child")).to_have_text(
         [text(f"source.{s}") for s in reordered])
     without_wilma_in_espoo(tab)
-    # Without Wilma, saving the town skips it, and MyClub's step is next, not Gmail's.
-    expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
+    # Without Wilma, MyClub's step is next, not Gmail's.
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_visible()
     expect(skip(tab, "myclub")).to_be_visible()
     expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
@@ -333,7 +336,7 @@ def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(
     expect(actions.get_by_role("button", name=text("wilma.sign-in"))).to_be_visible()
     expect(actions.get_by_role("button", name=text("source.skip", source="Wilma"))).to_be_visible()
 
-    skip(tab, "wilma").click()  # no town picked: Wilma is only skipped
+    skip(tab, "wilma").click()
 
     expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
     expect(tab.get_by_label(text("gmail.password"))).to_be_visible()
@@ -353,6 +356,18 @@ def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(
     expect(kid_form.get_by_role("button", name=text("myclub.add"))).to_be_visible()
     expect(kid_form.get_by_role("button", name=text("source.skip", source="MyClub"))).to_be_visible()
     expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(1)
+
+
+def test_skipping_wilma_with_a_town_picked_saves_no_city(tab, family):
+    in_english_with_the_gateway(tab)
+
+    without_wilma_in_espoo(tab)
+
+    expect(tab.get_by_label(text("gmail.password"))).to_be_visible()
+    progress = json.loads(progress_file(family).read_text())
+    assert progress["sources"]["wilma"] == "skipped"
+    cfg = Config.load(config_file(family))
+    assert cfg.city is None and not cfg.wilma.enabled
 
 
 def test_an_app_password_gmail_rejects_shows_why_and_the_way_to_fix_it(tab):

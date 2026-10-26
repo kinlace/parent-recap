@@ -477,7 +477,7 @@ def test_gmail_and_the_ai_sign_in_cannot_be_skipped(harness, page):
 
 
 # Every call that completes, skips or reopens a Source step.
-SOURCE_STEPS = ("api/source", "api/gmail", "api/wilma", "api/town", "api/claude/token",
+SOURCE_STEPS = ("api/source", "api/gmail", "api/wilma", "api/claude/token",
                 "api/gateway", "api/codex", "api/whatsapp/check", "api/whatsapp/back",
                 "api/connect/back", "api/myclub", "api/myclub/kid", "api/myclub/done")
 

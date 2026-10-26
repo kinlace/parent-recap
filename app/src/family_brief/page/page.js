@@ -387,7 +387,7 @@ async function post(path, body) {
 //   label   — what the first Brief's progress calls it while it's read
 const STEPS = {
   wilma: {
-    setUp: renderWilma, first: prepareWilma, again: prepareWilma, skip: skipWilma,
+    setUp: renderWilma, first: prepareWilma, again: prepareWilma,
     leave: () => {
       document.getElementById("wilma-password").value = "";
       clearTimeout(wilmaStep.timer);
@@ -592,7 +592,7 @@ const SLOTS = [
   [[...WILMA_NOT_READY, "wilma.pick-town"], "wilma-town-slot"],
   [["myclub.added", "myclub.kid-exists"], "myclub-kid-slot"],
   // A Source just done: by the hand-off, as the next Source's step is shown.
-  [["gmail.saved", "wilma.signed-in", "wilma.town-saved", "claude.saved", "gateway.saved",
+  [["gmail.saved", "wilma.signed-in", "claude.saved", "gateway.saved",
     "codex.signed-in", "whatsapp.readable"], "connect-slot"],
 ];
 // The results that say something failed, shown in red.
@@ -714,7 +714,7 @@ async function connectGmail(event) {
   }
 }
 
-// ── Connect: Wilma, signed in to in the page (ADR 0008), or only the town without it.
+// ── Connect: Wilma, signed in to in the page (ADR 0008).
 
 const SEARCH_MS = 250;
 const WINDOW_MS = 3000;
@@ -737,14 +737,6 @@ function renderWilma() {
   document.getElementById("wilma-passwords").hidden = page.system !== "macos"; // macOS's own app
   document.getElementById("wilma-terminal").addEventListener("click", openWilmaWindow);
   document.getElementById("wilma-again").addEventListener("click", getWilmaReady);
-}
-
-// Skipping Wilma with a town picked keeps the town, for a school without Wilma: Parent Recap then
-// knows which city's school mail to look for.
-function skipWilma() {
-  const town = wilmaStep.ready ? chosenTown()?.town : null;
-  if (!town) return chooseSource("wilma", "skip");
-  return moveOn("api/town", { town }, "wilma.town-saved");
 }
 
 // Wilma's step, each time it's drawn: the CLI made ready, unless it is or is being made so.
