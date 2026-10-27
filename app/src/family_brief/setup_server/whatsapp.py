@@ -28,6 +28,7 @@ from .context import Action, Phase
 PAIR_RESULTS = ("starting", "qr", "linking", "paired", "timed-out", "failed", "no-library",
                 "no-pairing")
 UNDER_WAY = ("starting", "qr", "linking")
+NOT_SCANNED = ("starting", "qr")  # what moving on from the step still ends
 
 
 @dataclass
@@ -86,17 +87,13 @@ class WhatsApp(Phase):
         """Ends a pairing the phone hasn't scanned yet, as the family moves on from the step."""
         parse(Nothing, raw)
         with self._lock:
-            run = self._run
-            if run is not None and run.said["result"] in ("starting", "qr"):
-                run.stopped = True
-                run.proc.terminate()
+            if self._run is not None and self._run.said["result"] in NOT_SCANNED:
+                _end(self._run)
         return HTTPStatus.OK, {"result": "stopped"}
 
     def stop(self) -> None:
-        run = self._run
-        if run is not None and run.proc.poll() is None:
-            run.stopped = True
-            run.proc.terminate()
+        if self._run is not None and self._run.proc.poll() is None:
+            _end(self._run)
 
     def _pairing(self, run: _Run, following: bool) -> None:
         """Reads what `pair` prints until it exits, then says how it ended. Never leaves the page
@@ -159,6 +156,11 @@ class WhatsApp(Phase):
         except Exception as e:
             failure.logged("The Linked Device's job wasn't installed",
                            failure.raised(e, "Installing the job"))
+
+
+def _end(run: _Run) -> None:
+    run.stopped = True
+    run.proc.terminate()
 
 
 def _said(line: str) -> dict[str, Any]:

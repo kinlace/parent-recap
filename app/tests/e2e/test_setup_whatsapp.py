@@ -14,7 +14,7 @@ import pytest
 import yaml
 
 import fake_node
-from family_brief import baileys_install, linked_device, own_node
+from family_brief import baileys_install, linked_device, own_node, setup_server
 from family_brief.config import Config
 from family_brief.system import jobs
 from setup_page import (call, check_page, config_file, confirm, health_result, more_progress,
@@ -204,6 +204,20 @@ def test_moving_on_from_the_step_ends_a_pairing_not_scanned(harness, page, phone
     assert harness.jobs.program(jobs.ALWAYS) is None
 
 
+def test_a_scan_whose_groups_aren_t_listed_offers_a_new_code_with_why(harness, page, phone):
+    at_the_whatsapp_step(harness)
+    page.context.timeouts.whatsapp_pair = 1
+    # Scanned, but the socket WhatsApp asks for after the scan never opens to list the groups.
+    phone.plays([{"qr": "2@first"}, {"creds": {"me": ME}}, {"close": 515}], [])
+
+    pair(page.url)
+    out = until_said(page.url, "failed")
+
+    assert "exit code 3" in out["reason"] and "2@first" not in out["reason"]
+    assert statuses(page.url)["whatsapp"] == "to-do"
+    assert harness.jobs.program(jobs.ALWAYS) is None
+
+
 def test_without_the_whatsapp_library_the_step_says_so_and_runs_nothing(harness, page):
     at_the_whatsapp_step(harness)
 
@@ -225,3 +239,12 @@ def test_the_step_names_linked_devices_as_whatsapp_does_in_each_language():
                             "zh": ("已关联设备", "关联新设备")}.items():
         for said in words:
             assert said in texts[language]["whatsapp.step.link"], (language, said)
+
+
+def test_every_pairing_result_is_explained_in_all_three_languages():
+    texts = json.loads((Path(linked_device.__file__).parent / "page" / "text.json").read_text(
+        encoding="utf-8"))
+
+    for language, table in texts.items():
+        for result in setup_server.whatsapp.PAIR_RESULTS:
+            assert table.get(f"whatsapp.{result}", "").strip(), (language, result)

@@ -249,16 +249,17 @@ def _check_answers(answer: CheckAnswer, cfg: Config, progress: dict[str, Any]) -
         chats = []
         for name in answer.whatsapp:
             if name in found:
+                group_id = found[name].get("id")
                 hint = found[name].get("hint") or {}
                 kids = [k for k in hint.get("kids", []) if k in kept]
                 label = next((_label(term, k) for term in hint.get("matched", [])
                               for k in cfg.kids if k.name in kept and _label(term, k)), None)
             else:
                 chat = before[name]
+                group_id = chat.id
                 kids = [chat.kid] if chat.kid in kept or chat.kid == "both" else []
                 label = chat.label
-            chats.append({"name": name, "id": found[name].get("id") if name in found
-                          else before[name].id, "label": label,
+            chats.append({"name": name, "id": group_id, "label": label,
                           "kid": kids[0] if len(kids) == 1 else ("both" if kids else None)})
         answers["sources"]["whatsapp"] = {"enabled": bool(chats), "chats": chats}
     return answers
