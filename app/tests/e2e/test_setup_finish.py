@@ -20,7 +20,7 @@ from fake_system import FakeWake
 from setup_page import (PAGE_DIR, Response, at_finish, call, finish, finished, more_progress, new_server,
                         refused, wait_for)
 from setup_page import clock, health, page, schedule  # noqa: F401
-from test_setup_whatsapp import WHATSAPP_FAILURES, WHATSAPP_PYTHON, assert_says_why, back_to_connect
+from test_setup_back_to_connect import back_to_connect
 
 
 # ── Finish: the evening job and the wake-up, then the outcome checklist
@@ -146,25 +146,6 @@ def test_finish_names_a_check_by_its_key_whatever_doctor_calls_it(harness, page,
         {"check": "gmail", "status": "fail"},
         {"check": "language", "status": "warn", "language": "sv"},
         {"check": "myclub", "status": "fail", "kid": "Mia"}]
-
-
-@pytest.mark.parametrize("failure", WHATSAPP_FAILURES)
-def test_finish_says_why_whatsapp_isn_t_ok(harness, page, schedule, health, failure):
-    at_finish(harness)
-    status, reason = WHATSAPP_FAILURES[failure]
-    groups = ("Leo piano",) if reason == "missing-groups" else ()
-    health.results.append((status, "whatsapp", "WhatsApp", f"{WHATSAPP_PYTHON} can't", reason,
-                           groups))
-
-    finish(page.url)
-    out = finished(page.url)
-
-    doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
-    check = {"check": "whatsapp", "status": setup_server.health.HEALTH_STATUSES[status], "reason": reason,
-             **({"groups": list(groups)} if groups else {})}
-    assert doctor == {"outcome": "doctor", "ok": status == ops.WARN,
-                      "checks": [{**check, "detail": f"{WHATSAPP_PYTHON} can't"}]}
-    assert_says_why("finish", check)
 
 
 def test_finish_leads_back_to_connect_s_list_for_a_skipped_source(harness, page, schedule):
@@ -474,8 +455,7 @@ def test_finish_offers_check_again_in_every_language():
     for table in text.values():
         assert table["finish.again"] in table["finish.not-done"]
         # Turn it on is for installing, not for checking.
-        for key in ["finish.fail.ai", "finish.fail.whatsapp", "finish.fail.weekend",
-                    "finish.fail.other"]:
+        for key in ["finish.fail.ai", "finish.fail.weekend", "finish.fail.other"]:
             assert table["finish.again"] in table[key], key
             assert table["finish.start"] not in table[key], key
 

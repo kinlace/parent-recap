@@ -13,16 +13,15 @@ HEALTH_RESULTS = ("checking", "ok", "not-ok", "no-check")
 # Doctor's checks as the check page names them. Any other is `other`.
 HEALTH_CHECKS = {"config": "config", "recipients": "recipients", "language": "language",
                  "gmail": "gmail", "claude": "ai", "codex": "ai", "gateway": "gateway",
-                 "gateway-key": "gateway", "wilma": "wilma", "whatsapp": "whatsapp",
-                 "whatsapp-library": "whatsapp-library",
+                 "gateway-key": "gateway", "wilma": "wilma", "whatsapp-library": "whatsapp-library",
                  "myclub": "myclub", "calendar": "calendar",
                  "feedback": "feedback", "weekend": "weekend"}
 # A language's and a Kid's MyClub check carry the language or the Kid too, from their subject.
 HEALTH_SUBJECTS = {"language": "language", "myclub": "kid"}
 # The scheduled job's checks, which aren't run before Finish installs it; Windows adds the last two.
-SCHEDULE_CHECKS = frozenset({"schedule", "last-run", "python-path", "wake", "sign-in-after-update"})
-# Doctor's checks as Finish names them, with the scheduled job's. Python path is always OK, and
-# Windows' Wake check says what the wake outcome does, so Finish leaves it out.
+SCHEDULE_CHECKS = frozenset({"schedule", "last-run", "wake", "sign-in-after-update"})
+# Doctor's checks as Finish names them, with the scheduled job's. Windows' Wake check says what the
+# wake outcome does, so Finish leaves it out.
 FINISH_CHECKS = {**HEALTH_CHECKS, "schedule": "schedule", "last-run": "last-run",
                  "sign-in-after-update": "sign-in-after-update"}
 FINISH_LEAVES_OUT = frozenset({"wake"})

@@ -596,25 +596,6 @@ def test_claude_s_step_installs_claude_code_on_windows_and_signs_in_on_a_mac(
         button(tab, "claude.start", system=on).click()
 
 
-@pytest.mark.parametrize("reason, says", [("no-access", "health.fail.whatsapp"),
-                                          ("missing-groups", "health.fail.whatsapp.missing-groups")])
-def test_the_check_page_says_why_whatsapp_isn_t_ok_with_no_full_disk_access_step(
-        tab, family, health, reason, says):
-    # The step that opened Full Disk Access, and the one back to WhatsApp's step, went with it
-    # (ADR 0027): a reason only Full Disk Access fixed gets the check's general text.
-    at_the_check_step(family)
-    health.results = [(ops.FAIL, "gmail", "Gmail", "IMAP login failed"),
-                      (ops.WARN, "whatsapp", "WhatsApp", "not OK", reason, ("3B parents",))]
-    tab.reload()
-    expect(heading(tab, "check.title")).to_be_visible()
-
-    button(tab, "check.confirm").click()
-
-    item = tab.locator("#health-checks > li").filter(has_text=text("health.check.whatsapp"))
-    expect(item.locator("p.hint").first).to_have_text(text(says, groups="3B parents"))
-    expect(item.locator("xpath=./button")).to_have_count(0)  # no step that fixes it, nor Skip
-
-
 def copying(tab) -> None:
     """Copy writes to the clipboard, which a headless browser keeps to itself: kept here instead."""
     tab.evaluate("() => { window.copied = []; navigator.clipboard.writeText = "
@@ -636,33 +617,32 @@ def assert_report(tab, said: str, step: str) -> None:
 @pytest.mark.parametrize("where", ["check", "finish"])
 def test_a_failed_check_without_a_reason_folds_what_it_said_under_its_hint_with_copy(
         tab, family, health, schedule, where):
-    # #500: a WhatsApp check that fails in a way doctor has no reason for says why too.
-    said = "Couldn't read it: database is locked"
+    # #500: a check that fails in a way doctor has no reason for says why too.
+    said = "google mode, but the token couldn't be refreshed: invalid_grant"
     (at_the_check_step if where == "check" else at_finish)(family)
-    health.results.append((ops.FAIL, "whatsapp", "WhatsApp", said))
+    health.results.append((ops.FAIL, "calendar", "Calendar", said))
     tab.reload()
     copying(tab)
 
     if where == "check":
         button(tab, "check.confirm").click()
-        item = tab.locator("#health-checks > li").filter(has_text=text("health.check.whatsapp"))
+        item = tab.locator("#health-checks > li").filter(has_text=text("health.check.calendar"))
     else:
         button(tab, "finish.start").click()
         item = tab.locator("#finish-checklist .checks > li").filter(
-            has_text=text("health.check.whatsapp"))
+            has_text=text("health.check.calendar"))
     prefix = "health" if where == "check" else "finish"
 
     # The general hint first, then what doctor said, folded until it's opened.
-    expect(item.locator("p.hint").first).to_have_text(text(f"{prefix}.fail.whatsapp"))
+    expect(item.locator("p.hint").first).to_have_text(text(f"{prefix}.fail.calendar"))
     reason = item.locator(".reason")
     expect(reason).to_be_hidden()
     item.get_by_text(text("fail.details")).click()
     expect(reason).to_have_text(said)
     item.get_by_role("button", name=text("copy"), exact=True).click()
-    assert_report(tab, said, f"{prefix}.fail.whatsapp")
-    # Skipping is the check page's, for a Source Connect's list offers, which WhatsApp isn't on
-    # any system until the Linked Device's step (ADR 0027).
-    expect(item.get_by_role("button", name=text("source.skip", source="WhatsApp"))).to_have_count(0)
+    assert_report(tab, said, f"{prefix}.fail.calendar")
+    # Skipping is the check page's, for a Source Connect's list offers; the calendar isn't one.
+    expect(item.locator("xpath=./button")).to_have_count(0)
 
 
 def test_a_failed_check_of_a_source_the_family_can_do_without_offers_skip_and_setup_goes_on(

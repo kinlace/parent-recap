@@ -16,7 +16,7 @@ import time_machine
 import fake_sources
 from conftest import NOW
 from nights import caught_up_last_night
-from test_source_failures import (one_whatsapp_message, payload_ids, seen,  # noqa: F401 (autouse)
+from test_source_failures import (one_new_message, payload_ids, seen,  # noqa: F401 (autouse)
                                   the_model_says_something)
 
 from family_brief import ops, setup_wilma
@@ -53,10 +53,8 @@ def failed(code: str, message: str, status: int = 1) -> tuple[int, dict[str, Any
 @pytest.fixture
 def cli(harness) -> fake_sources.Wilma:
     """The wilma CLI on Parent Recap's own Node, which the tests here have print what 2.x prints, in
-    its `answers` (fake_sources.py), for a household whose Gmail has no sender ticked and so isn't
-    read."""
-    harness.config["gmail"]["allowlist_domains"] = []
-    one_whatsapp_message(harness)
+    its `answers` (fake_sources.py), for a household already running nightly."""
+    one_new_message(harness, "wilma")
     caught_up_last_night(harness)
     fake = harness.source_fakes["wilma"]
     fake.set_up()  # installed, for the tests that run its commands outside the evening run

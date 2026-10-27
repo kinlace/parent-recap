@@ -1,7 +1,7 @@
 """The fixtures that fake the program's outside edges, so internals can be refactored without
 touching tests. Each fakes one edge, and an integration test asks only for the one it uses:
   1. `sources`: each Source in the registry faked at its transport (fake_sources.py: Gmail's IMAP
-     server, the MyClub feed's HTTP, the wilma CLI, WhatsApp's database), serving what
+     server, the MyClub feed's HTTP, the wilma CLI; WhatsApp has none yet), serving what
      `sources.tonight` holds for it to its real collector.
   2. `model`: every backend's model calls made to the llm package's in-memory Backend, which
      records each and answers from the replies it is given (fake_model.py, ADR 0023).
@@ -193,8 +193,7 @@ class Processes:
     """`subprocess.run` for the program under test: each command it starts is recorded in
     `commands` and answered by the first of `answers` that knows it, and any other fails the test.
     What is left here has no interface of its own, so it meets its command: ADR 0020's gap, the
-    macOS-only features (iMessage's osascript, `open` beside Full Disk Access and for the
-    Passwords app), the Sources' own programs, and Claude Code's and Codex's sign-in and plugin
+    macOS-only features (iMessage's osascript, `open` for the Passwords app), the Sources' own programs, and Claude Code's and Codex's sign-in and plugin
     commands. A model call never is one: the model is the in-memory Backend (fake_model.py)."""
 
     def __init__(self, mp: pytest.MonkeyPatch) -> None:

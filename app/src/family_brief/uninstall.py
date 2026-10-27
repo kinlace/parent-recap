@@ -30,7 +30,7 @@ from . import (ai_filter_report, baileys_install, chat_install, install_record, 
                run_lock, setup_save, setup_wilma, sources, tools)
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
-from .system import desktop, jobs, macos_only, profile, secrets, wake, windows_only
+from .system import desktop, jobs, profile, secrets, wake, windows_only
 
 OK, FAIL = ops.OK, ops.FAIL
 # install.sh's and install.ps1's pinned ones, and the folders they download them into.
@@ -160,7 +160,8 @@ def survey(config: Path) -> Survey:
     for p in programs:
         _program(s, p)  # last of all: this command may be running from it
     runtimes = [*(Path(p) for p in install_record.entries("runtime")), *(f / "runtime" for f in usual)]
-    pythons = [python for d in dict.fromkeys(runtimes) for python in _runtime(s, d)]
+    for d in dict.fromkeys(runtimes):
+        _runtime(s, d)
     if install_record.exists():
         s.items.append(_file("Setup's record of what it created", install_record.path(), last=True))
 
@@ -172,7 +173,7 @@ def survey(config: Path) -> Survey:
     if cfg and run_lock.is_busy(cfg):
         s.stops.append("A Parent Recap run is going right now. Wait a few minutes for it to "
                        "finish, then run uninstall again.")
-    _notes(s, defaults, pythons)
+    _notes(s, defaults)
     return s
 
 
@@ -316,14 +317,6 @@ def _baileys(s: Survey, programs: list[Path]) -> None:
                            f"WhatsApp library, but it holds other files too: {', '.join(others)}")
 
 
-def survey_whatsapp(s: Survey, programs: list[Path]) -> None:
-    """The record of which Python setup's old WhatsApp for Mac step gave Full Disk Access (ADR
-    0012), which an install from before 0.8.0 may still have."""
-    p = Path.home() / ".family" / "whatsapp-python.json"
-    if p.exists():
-        s.items.append(_file("Which Python reads WhatsApp", p))
-
-
 def _npm_made(prefix: Path) -> set[str]:
     """The names npm gives what it puts in `prefix`: on Windows also a wrapper of each of the
     package's commands, without an extension, .cmd and .ps1, named in its package.json."""
@@ -459,7 +452,9 @@ def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Con
               ("The program's text in other languages", state.parent / "languages"),
               ("Where Claude, Codex and Node were found", tools.remembered_path()),
               ("Google Calendar app file", family / "calendar_credentials.json"),
-              ("Google Calendar authorization", family / "calendar_token.json")]
+              ("Google Calendar authorization", family / "calendar_token.json"),
+              # Which Python read WhatsApp, which installs from before 0.8.0 may still have.
+              ("Which Python reads WhatsApp", family / "whatsapp-python.json")]
     for what, p in dict.fromkeys(found):
         if p.exists():
             s.items.append(_file(what, p))
@@ -478,19 +473,16 @@ def _program(s: Survey, program: Path) -> None:
         s.stops.append(f"{_show(program)} is where the program goes, but it isn't Parent Recap")
 
 
-def _runtime(s: Survey, runtime: Path) -> list[Path]:
-    """install.sh's pinned Python and Node, after the program that runs on them. Returns the
-    real path of each Python, which WhatsApp's permission names."""
+def _runtime(s: Survey, runtime: Path) -> None:
+    """install.sh's pinned Python and Node, after the program that runs on them."""
     if not runtime.is_dir():
-        return []
+        return
     inside = sorted(runtime.iterdir())
     if not all(p.is_dir() and not p.is_symlink() and RUNTIMES.match(p.name) for p in inside):
         s.stops.append(f"{_show(runtime)} is where Parent Recap keeps its own Python and Node, "
                        "but it holds other files too")
-        return []
+        return
     s.items.append(_file("Parent Recap's own Python and Node", runtime, running=True))
-    return [(p / "bin" / "python3").resolve() for p in inside
-            if p.name.startswith("python-") and (p / "bin" / "python3").exists()]
 
 
 def _left_in(s: Survey, folder: Path, archive: Path) -> None:
@@ -503,10 +495,10 @@ def _left_in(s: Survey, folder: Path, archive: Path) -> None:
             s.left.append(f"{_show(p)}: not Parent Recap's")
 
 
-def _notes(s: Survey, cfg: Config, pythons: list[Path]) -> None:
+def _notes(s: Survey, cfg: Config) -> None:
     accounts = ", ".join(source.label() for source in sources.ALL)
     s.notes.append(f"Your accounts aren't touched: {accounts} and Google stay as they are.")
-    s.notes += [note for source in sources.ALL for note in source.notes(cfg, pythons)]
+    s.notes += [note for source in sources.ALL for note in source.notes(cfg)]
     if cfg.google_calendar.mode == "google" or any(i.what == "Google Calendar authorization"
                                                    for i in s.items):
         s.notes.append("Parent Recap's access to Google Calendar stays until you remove it in your "
@@ -515,12 +507,12 @@ def _notes(s: Survey, cfg: Config, pythons: list[Path]) -> None:
         s.notes.append(s.claude_left)
 
 
-def gmail_notes(cfg: Config, pythons: list[Path]) -> list[str]:
+def gmail_notes(cfg: Config) -> list[str]:
     return ["The Gmail App Password keeps working until you delete it in your Google account: "
             "https://myaccount.google.com/apppasswords (it's named Parent Recap)."]
 
 
-def wilma_notes(cfg: Config, pythons: list[Path]) -> list[str]:
+def wilma_notes(cfg: Config) -> list[str]:
     """A wilma CLI sign-in setup didn't make keeps its password, which uninstall doesn't remove."""
     wilma_config = setup_wilma.config_path()
     profiles = setup_wilma.profile_ids(wilma_config)
@@ -534,16 +526,6 @@ def wilma_notes(cfg: Config, pythons: list[Path]) -> list[str]:
     return [f"The wilma CLI keeps a Wilma password, not encrypted, in {folder}, from a sign-in "
             "setup didn't make, so uninstall leaves it. If you only used it for Parent Recap, "
             f"remove it {remove}"]
-
-
-def whatsapp_notes(cfg: Config, pythons: list[Path]) -> list[str]:
-    """Full Disk Access, which only the family can take back from a Python."""
-    if not macos_only.offers("whatsapp"):
-        return []
-    python = f" ({', '.join(str(p) for p in pythons)})" if pythons else ""
-    return [f"If you gave the program's Python{python} access to WhatsApp, remove it by hand from "
-            "System Settings → Privacy & Security → Full Disk Access: a program can't change that "
-            "list."]
 
 
 # ---------------------------------------------------------------- listing and removing

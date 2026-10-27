@@ -17,7 +17,6 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from . import setup_save
 from . import sources as source_registry
-from .system import macos_only
 
 Reply = tuple[HTTPStatus, dict[str, Any]]
 Progress = dict[str, Any]
@@ -67,8 +66,8 @@ def parse(model: type[T], raw: Any) -> T:
 
 
 def sources() -> list[str]:
-    """The Sources this system offers, in Connect's list's order."""
-    return [s for s in setup_save.SOURCES if s not in NOT_OFFERED and macos_only.offers(s)]
+    """The Sources the page offers, in Connect's list's order."""
+    return [s for s in setup_save.SOURCES if s not in NOT_OFFERED]
 
 
 def next_source(statuses: dict[str, str]) -> str | None:

@@ -1,5 +1,5 @@
-"""The macOS adapter of `desktop`: `open`, Terminal and `defaults`. The macOS-only features'
-own windows open from here too: Finder beside Full Disk Access, and the Passwords app."""
+"""The macOS adapter of `desktop`: `open`, Terminal and `defaults`. The macOS-only Passwords
+app opens from here too."""
 from __future__ import annotations
 
 import re
@@ -71,13 +71,6 @@ def typing_at_terminal() -> bool:
         return sys.stdin is not None and sys.stdin.isatty()
     except ValueError:  # closed
         return False
-
-
-def show_beside(path: str, pane: str) -> list[list[str]]:
-    """Selects `path` in Finder and opens System Settings at `pane` next to it, for the family to
-    drag it in. Returns the commands that didn't work, for the family to run in Terminal."""
-    commands = [["open", "-R", path], ["open", pane]]
-    return [c for c in commands if not _open(c[1:])]
 
 
 def open_passwords() -> bool:

@@ -55,7 +55,7 @@ def test_a_source_added_to_the_registry_is_read_counted_and_caught_up(harness, m
     assert harness.run() == 0
 
     [email] = harness.sent
-    assert ("📥 Read tonight: Gmail 2 messages · MyClub 1 event · Wilma 1 message · WhatsApp 2 messages · "
+    assert ("📥 Read tonight: Gmail 4 messages · MyClub 1 event · Wilma 1 message · "
             + counted) in email.text
     assert looked_back == [52]  # back to when it was last read, with its 2 hours' slack
     assert harness.lookback_hours["gmail"] == [26]

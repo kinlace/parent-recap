@@ -6,7 +6,7 @@ import pytest
 import time_machine
 
 from conftest import NOW
-from family_brief.collectors import whatsapp, wilma
+from family_brief.collectors import wilma
 from family_brief.config import Config
 from family_brief.state import State
 
@@ -30,7 +30,3 @@ def test_wilma_timetable_is_headed_with_its_date(sources, day, label):
     assert msg.subject == f"Timetable for the next school day (from {day})"
     assert msg.body.splitlines()[:3] == [
         f"[{day} {label}]", "— Virtanen Aino —", "  08:15–09:45  Liikunta  @ ulkokenttä"]
-
-
-def test_whatsapp_placeholders_are_english():
-    assert [whatsapp._media_placeholder(t) for t in (0, 1, 3, 8)] == ["", "[image]", "[voice]", "[document]"]

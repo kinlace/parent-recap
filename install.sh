@@ -30,7 +30,7 @@ refuse_old_install() {
 
 # ── Parent Recap's own Python (ADR 0011)
 # A pinned python-build-standalone build, so no `brew upgrade` or `uv python upgrade` can move the
-# Python that WhatsApp's permission names, or break the venv. To bump it, see CONTRIBUTING.md.
+# Python the scheduled job runs on, or break the venv. To bump it, see CONTRIBUTING.md.
 PYTHON_VERSION=3.13.16
 PYTHON_BUILD=20261003
 PYTHON_SHA256_AARCH64=d8975d7df4f08f7b1c7aafcdfacbddcec3d366415f2c1a72b2466b6850815933
@@ -113,7 +113,7 @@ install_runtimes() {
   trap - EXIT
 }
 
-# The venv's Python with its links followed, which is what WhatsApp's permission names; empty
+# The venv's Python with its links followed, so a new pinned Python rebuilds the venv; empty
 # without a venv.
 venv_real_python() {
   [ -e "$APP/.venv/bin/python" ] || [ -L "$APP/.venv/bin/python" ] || return 0
@@ -202,11 +202,3 @@ fi
 
 echo "✅ Parent Recap ${VERSION:-} installed to $APP"
 echo "   Command: $APP/.venv/bin/parent-recap"
-echo "   Real Python path (needed for the WhatsApp permission): $REAL_PY"
-if [ -n "$OLD_REAL_PY" ] && [ "$OLD_REAL_PY" != "$REAL_PY" ]; then
-  echo "⚠️  Parent Recap now runs on a new Python, so macOS no longer lets it read WhatsApp."
-  echo "   If Parent Recap reads your WhatsApp groups, grant the permission again: System Settings →"
-  echo "   Privacy & Security → Full Disk Access, press +, and add this Python:"
-  echo "     $REAL_PY"
-  echo "   (In the file picker, press ⌘⇧G and paste the path.) You can remove the old Python from that list."
-fi

@@ -392,7 +392,7 @@ def run_detached(args: list[str], config: str | None, timeout: int,
             proc = subprocess.Popen(
                 prog + args, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                 cwd=Path.home(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                env={**os.environ, **task_run.UTF8, "PYTHONUNBUFFERED": "1", jobs.BG_ENV: "1"})
+                env={**os.environ, **task_run.UTF8, "PYTHONUNBUFFERED": "1"})
             try:
                 deadline = time.time() + timeout
                 while code is None and time.time() < deadline:

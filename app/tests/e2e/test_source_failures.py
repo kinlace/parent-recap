@@ -1,15 +1,12 @@
 """A Source that fails partway through a night, or times out. The real Sources run here, as in every
 test of the evening run, against their fakes (fake_sources.py) failing: Gmail's IMAP server, the
-`wilma` CLI, the MyClub feed and WhatsApp's database. Assertions are on what leaves the system: the
+`wilma` CLI and the MyClub feed. Assertions are on what leaves the system: the
 model payload, the email's coverage line and persisted state."""
 from __future__ import annotations
 
 import imaplib
 import json
-import logging
-import os
 import subprocess
-import sys
 from datetime import timedelta
 from email.message import EmailMessage
 from typing import Any
@@ -20,7 +17,6 @@ import time_machine
 
 from conftest import NOW, SAYS_SOMETHING, msg, myclub_event
 from nights import caught_up_last_night
-from test_setup_whatsapp import fake_mac
 
 
 @pytest.fixture(autouse=True)
@@ -33,10 +29,17 @@ def payload_ids(h, source: str) -> list[str]:
     return sorted(m["external_id"] for m in h.model_payload()["messages"] if m["source"] == source)
 
 
-def one_whatsapp_message(h) -> None:
-    """So each night has something new and a Brief goes out, whatever the Source under test gives."""
-    h.sources["whatsapp"] = lambda: [msg("whatsapp", f"2:{100 + len(h.model_calls)}", "2026-09-27T18:00:00+03:00",
-                                         "Piano moves to Wednesday", sender="Anna", chat="Leo piano")]
+def one_new_message(h, under_test: str) -> None:
+    """So each night has something new and a Brief goes out, whatever the Source under test gives:
+    a Wilma message when Gmail is under test, else a Gmail one."""
+    def tonight() -> list:
+        n = 100 + len(h.model_calls)
+        if under_test == "gmail":
+            return [msg("wilma", f"message:{n}", "2026-09-27T18:00:00+03:00", "Piano moves to Wednesday",
+                        sender="Opettaja Virtanen", subject="Piano", kid="Leo")]
+        return [msg("gmail", f"9{n}", "2026-09-27T18:00:00+03:00", "Piano moves to Wednesday",
+                    sender="anna.piano@kilo.example.fi", subject="Piano")]
+    h.sources["wilma" if under_test == "gmail" else "gmail"] = tonight
 
 
 def seen(h, source: str) -> list[str]:
@@ -66,9 +69,8 @@ def gmail_messages(*numbers: int) -> list:
 
 @pytest.fixture
 def gmail(harness):
-    """Gmail's server, for a household already running nightly, with Wilma off."""
-    harness.config["wilma"]["enabled"] = False
-    one_whatsapp_message(harness)
+    """Gmail's server, for a household already running nightly."""
+    one_new_message(harness, "gmail")
     caught_up_last_night(harness)
     return harness.source_fakes["gmail"]
 
@@ -121,10 +123,8 @@ def wilma_message(n: int, body: str) -> Any:
 
 @pytest.fixture
 def wilma(harness):
-    """The wilma CLI, for a household already running nightly, whose Gmail has no sender ticked
-    and so isn't read."""
-    harness.config["gmail"]["allowlist_domains"] = []
-    one_whatsapp_message(harness)
+    """The wilma CLI, for a household already running nightly."""
+    one_new_message(harness, "wilma")
     caught_up_last_night(harness)
     return harness.source_fakes["wilma"]
 
@@ -234,7 +234,7 @@ def test_wilma_timing_out_twice_is_reported_as_not_read(harness, wilma):
 
 
 def test_myclub_feed_timing_out_once_is_fetched_again(harness):
-    one_whatsapp_message(harness)
+    one_new_message(harness, "myclub")
     harness.sources["myclub"] = [myclub_event("training-1", "Football training", "2026-09-29T15:00:00+00:00",
                                               "2026-09-29T16:30:00+00:00")]
     feed = harness.source_fakes["myclub"]
@@ -245,27 +245,3 @@ def test_myclub_feed_timing_out_once_is_fetched_again(harness):
     assert len(feed.gets) == 2
     coverage = json.loads((harness.archive_dir / "2026-09-27.raw.json").read_text())["summary"]["_coverage"]
     assert coverage["myclub"] == {"count": 1, "error": None}
-
-
-# ── WhatsApp
-
-@pytest.mark.macos
-def test_whatsapp_macos_refuses_names_a_changed_python_in_the_brief_and_the_log(harness, monkeypatch,
-                                                                                caplog):
-    # The evening job's Python isn't the one given Full Disk Access, as after Parent Recap's pinned
-    # Python changed (ADR 0011): the database is there, and Full Disk Access is refused.
-    harness.config["summary_language"] = "en"
-    harness.sources["gmail"] = [msg("gmail", "1001", "2026-09-27T18:00:00+03:00", "Piano moves to Wednesday")]
-    mac = fake_mac(harness, monkeypatch)
-    mac.install_whatsapp([("Leo piano", 1, False)])
-
-    with caplog.at_level(logging.ERROR, logger="family_brief.collectors.whatsapp"):
-        assert harness.run() == 0
-
-    [email] = harness.sent
-    assert ("WhatsApp not read (macOS permission denied, maybe because Parent Recap's Python "
-            "changed)") in email.text
-    [error] = [r.getMessage() for r in caplog.records if r.name == "family_brief.collectors.whatsapp"]
-    assert "Operation not permitted" in error or "Permission denied" in error
-    assert "Parent Recap's Python changed" in error
-    assert os.path.realpath(sys.executable) in error and "parent-recap doctor" in error

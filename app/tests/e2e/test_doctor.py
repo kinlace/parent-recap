@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import imaplib
-import json
 import os
 import re
 import shutil
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -15,13 +13,11 @@ import pytest
 import yaml
 
 import fake_node
-from family_brief import __main__ as cli, ops, setup_steps
-from family_brief.collectors import whatsapp
+from family_brief import __main__ as cli, ops, setup_server, setup_steps
 from family_brief.llm import codex as codex_backend
 from family_brief.system import jobs
 from conftest import program
-from fake_system import WINDOWS
-from test_setup_whatsapp import WHATSAPP_FAILURES, break_whatsapp, fake_mac
+from fake_system import MACOS, WINDOWS
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
 
@@ -302,82 +298,17 @@ def test_doctor_names_an_unreadable_config_in_english(harness, capsys):
     assert not HAN.findall(out)
 
 
-@pytest.mark.macos
-def test_doctor_in_a_bg_job_says_which_python_needs_whatsapp_access(harness, monkeypatch, capsys):
-    monkeypatch.setenv(ops.BG_ENV, "1")
-    monkeypatch.setattr(whatsapp, "access_problem",
-                        lambda: whatsapp.AccessProblem("no-access", whatsapp.NO_ACCESS))
-
-    assert harness.cli("doctor", "--whatsapp-only") == 1
-
-    out = capsys.readouterr().out
-    assert os.path.realpath(sys.executable) in out and "add it to Full Disk Access" in out
-    assert "App Management" not in out
-    assert not HAN.findall(out)
+# ── No WhatsApp check until the Linked Device's (ADR 0027)
 
 
-# ── Full Disk Access, checked through bg on the fake Mac without a question from macOS (ADR 0012)
-
-
-@pytest.fixture
-def mac_with_whatsapp(harness, monkeypatch):
+@pytest.mark.parametrize("on", [MACOS, WINDOWS])
+def test_doctor_has_no_whatsapp_check_on_any_system(harness, capsys, on):
+    # WhatsApp turned on with groups picked, as a Household that read WhatsApp for Mac has it.
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
-    monkeypatch.delenv(ops.BG_ENV, raising=False)
     harness.jobs.add(jobs.DAILY)
-    mac = fake_mac(harness, monkeypatch)
-    mac.install_whatsapp([("3B parents", 1, False), ("Leo piano", 2, False)])
-    return mac
-
-
-def whatsapp_lines(out: str) -> list[str]:
-    return [l for l in out.splitlines() if "WhatsApp:" in l]
-
-
-@pytest.mark.macos
-@pytest.mark.parametrize("command", [["doctor", "--skip-llm"], ["bg", "doctor", "--skip-llm"]])
-def test_doctor_fails_without_full_disk_access_and_macos_never_asks(harness, mac_with_whatsapp,
-                                                                    capsys, command):
-    mac = mac_with_whatsapp
-    mac.full_disk_access_after = 10_000
-    mac.allow = "allow"  # an Allow click would let one read through
-
-    harness.cli(*command)
-
-    [line] = whatsapp_lines(capsys.readouterr().out)
-    assert line.lstrip().startswith(ops.FAIL.strip())
-    assert os.path.realpath(sys.executable) in line and "add it to Full Disk Access" in line
-    assert mac.prompts == 0 and mac.reads == []
-
-
-@pytest.mark.macos
-@pytest.mark.parametrize("command", [["doctor", "--skip-llm"], ["bg", "doctor", "--skip-llm"]])
-def test_doctor_reads_whatsapp_with_full_disk_access_and_macos_never_asks(harness,
-                                                                          mac_with_whatsapp,
-                                                                          capsys, command):
-    mac = mac_with_whatsapp
-
-    harness.cli(*command)
-
-    [line] = whatsapp_lines(capsys.readouterr().out)
-    assert line.lstrip().startswith(ops.OK.strip()) and "all 2 configured groups found" in line
-    assert mac.prompts == 0 and mac.reads and all(mac.reads)
-
-
-def test_off_macos_doctor_has_no_whatsapp_check(harness, mac_with_whatsapp, capsys):
-    # WhatsApp for Mac's database and Full Disk Access exist only on macOS (ADR 0020).
-    harness.system = WINDOWS
-
-    harness.cli("doctor", "--skip-llm")
-
-    assert whatsapp_lines(capsys.readouterr().out) == []
-    assert mac_with_whatsapp.reads == []
-
-
-@pytest.mark.macos
-def test_doctor_no_longer_compares_the_python_setup_once_gave_full_disk_access(
-        harness, mac_with_whatsapp, capsys):
-    # Setup's WhatsApp for Mac step recorded it; the step and its record are gone (ADR 0027).
+    harness.system = on
+    # Setup's old WhatsApp for Mac step recorded which Python read it; nothing reads that now.
     record = harness.home / ".family" / "whatsapp-python.json"
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text('{"python": "/Users/x/ParentRecap/runtime/python-3.12.6/bin/python3.12"}')
@@ -385,95 +316,15 @@ def test_doctor_no_longer_compares_the_python_setup_once_gave_full_disk_access(
     harness.cli("doctor", "--skip-llm")
 
     out = capsys.readouterr().out
-    assert "python-3.12.6" not in out and "evening job's Python" not in out
+    assert harness.config["whatsapp"]["enabled"] and harness.config["whatsapp"]["chats"]
+    assert [l for l in out.splitlines() if "WhatsApp" in l] == \
+        [l for l in out.splitlines() if "WhatsApp library:" in l]
+    assert "Python path" not in out and "python-3.12.6" not in out
+    assert "whatsapp" not in dict(ops.CHECK_ITEMS)
+    assert "whatsapp" not in setup_server.health.HEALTH_CHECKS
 
 
-# ── why WhatsApp isn't OK, carried through the bg job for the setup page and the chat skills
-
-
-@pytest.fixture
-def mac_for_reasons(harness, monkeypatch):
-    """The fake Mac, with the network out of the way, and a clock that a job that hangs moves
-    on."""
-    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
-    harness.config["wilma"]["enabled"] = False
-    monkeypatch.delenv(ops.BG_ENV, raising=False)
-    mac = fake_mac(harness, monkeypatch)
-    clock = [time.time()]
-    monkeypatch.setattr(time, "time", lambda: clock[0])
-    monkeypatch.setattr(time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s))
-    return mac
-
-
-def whatsapp_check(harness) -> ops.Check:
-    """Doctor's WhatsApp check, printed as doctor prints it."""
-    config = harness.home / ".family" / "config.yaml"
-    config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text(yaml.safe_dump(harness.config, allow_unicode=True))
-    results = ops.health_checks(str(config), skip_llm=True, show=True, schedule=False)
-    [check] = [c for c in results if c.key == "whatsapp"]
-    return check
-
-
-@pytest.mark.macos
-@pytest.mark.parametrize("failure", WHATSAPP_FAILURES)
-def test_the_whatsapp_check_says_why_it_isn_t_ok_and_doctor_s_words_stay(harness, mac_for_reasons,
-                                                                        monkeypatch, capsys,
-                                                                        failure):
-    break_whatsapp(mac_for_reasons, monkeypatch, failure)
-
-    check = whatsapp_check(harness)
-
-    assert (check.status, check.reason) == WHATSAPP_FAILURES[failure]
-    assert check.groups == (("Leo piano",) if failure == "missing-groups" else ())
-    # doctor prints the detail as before, with nothing of the reason the bg job sent along.
-    [line] = whatsapp_lines(capsys.readouterr().out)
-    assert line == f"{check.status} WhatsApp: {check.detail}"
-    assert "reason" not in line and "{" not in line
-    said = {"no-access": f"Python {os.path.realpath(sys.executable)} can't read WhatsApp: add it "
-                        "to Full Disk Access",
-            "hangs": "didn't finish within 180 seconds",
-            "not-started": "the background check didn't start",
-            "missing-groups": 'these group names aren\'t on this Mac (renamed, or a new group for '
-                              'the new school year?): ["Leo piano"]',
-            "list-failed": "couldn't list the groups: database disk image is malformed",
-            "not-installed": "No WhatsApp Desktop data found (WhatsApp for Mac isn't installed, "
-                             "or has never been signed in on this Mac)",
-            "unreadable": "Couldn't read it: [Errno 5] Input/output error",
-            "access-unknown": "Couldn't check for Full Disk Access: [Errno 2] No such file"}
-    assert said[failure] in line
-    assert line.endswith("(checked with the scheduled job's Python)") == \
-        (failure not in ("hangs", "not-started", "access-unknown"))  # read in the bg job
-    assert mac_for_reasons.prompts == 0
-    # The chat skills give the same reason's fix, by doctor's own words.
-    assert f'"{SKILL_WORDS[failure]}"' in skill_whatsapp_section() and SKILL_WORDS[failure] in line
-
-
-# The words of doctor's WhatsApp line that the setup skill's advice goes by, for each failure.
-SKILL_WORDS = {"no-access": "can't read WhatsApp: add it to Full Disk Access",
-               "hangs": "didn't finish within 180 seconds",
-               "not-started": "the background check didn't start",
-               "missing-groups": "these group names aren't on this Mac",
-               "list-failed": "couldn't list the groups",
-               "not-installed": "No WhatsApp Desktop data found",
-               "unreadable": "Couldn't read it",
-               "access-unknown": "Couldn't check for Full Disk Access"}
 SKILLS = Path(__file__).resolve().parents[3] / "skills"
-
-
-def skill_whatsapp_section() -> str:
-    skill = (SKILLS / "setup" / "SKILL.md").read_text()
-    [section] = re.findall(r"\n## When doctor's WhatsApp line isn't ✅\n(.*?)(?=\n## |\Z)", skill, re.S)
-    return section
-
-
-def test_the_chat_skills_say_only_the_parent_can_turn_on_full_disk_access():
-    section = skill_whatsapp_section()
-    assert "only the parent can turn it on" in section and "you can't do it for them" in section
-    assert "`$FB full-disk-access`" in section
-    manage = (SKILLS / "manage" / "SKILL.md").read_text()
-    assert manage.count("\"When doctor's WhatsApp line isn't ✅\" in `PLUGIN/skills/setup/SKILL.md`") == 2
-    assert "Only the user can turn on Full Disk Access" in manage
 
 
 def test_the_skills_and_docs_never_send_the_parent_to_a_file_called_python3():
@@ -481,30 +332,6 @@ def test_the_skills_and_docs_never_send_the_parent_to_a_file_called_python3():
     root = Path(__file__).resolve().parents[3]
     for path in [*SKILLS.glob("*/SKILL.md"), *(root / "docs").glob("*.md"), root / "README.md"]:
         assert not re.search(r"python3(?![.\d])", path.read_text()), path
-
-
-@pytest.mark.macos
-def test_the_whatsapp_check_is_ok_with_no_reason(harness, mac_for_reasons):
-    mac_for_reasons.install_whatsapp([("3B parents", 1, False), ("Leo piano", 2, False)])
-
-    check = whatsapp_check(harness)
-
-    assert (check.status, check.reason, check.groups) == (ops.OK, None, ())
-
-
-def test_the_bg_job_sends_each_whatsapp_check_as_one_line_of_json(harness, monkeypatch, capsys):
-    monkeypatch.setenv(ops.BG_ENV, "1")
-    monkeypatch.setattr(whatsapp, "access_problem", lambda: None)
-    monkeypatch.setattr(whatsapp, "list_groups", lambda days: [{"name": "3B parents"}])
-
-    harness.cli("doctor", "--whatsapp-only")
-
-    [line] = capsys.readouterr().out.splitlines()
-    assert json.loads(line) == {
-        "status": ops.WARN, "key": "whatsapp", "item": "WhatsApp", "reason": "missing-groups",
-        "groups": ["Leo piano"], "subject": None,
-        "detail": "readable, but these group names aren't on this Mac (renamed, or a new group for "
-                  'the new school year?): ["Leo piano"]'}
 
 
 # ── Each check's key, which the setup page goes by instead of doctor's words (#414)
@@ -555,17 +382,6 @@ def test_renaming_a_check_in_doctor_s_words_leaves_what_the_setup_page_shows(har
                                                     for s in shown]
     assert {"check": "language", "status": "ok", "language": "zh"} in shown
     assert not [s for s in shown if s["check"] == "other"]
-
-
-def test_discover_without_whatsapp_access_points_to_bg(harness, monkeypatch, capsys):
-    monkeypatch.delenv(ops.BG_ENV, raising=False)
-    monkeypatch.setattr(whatsapp, "check_access", lambda: whatsapp.NO_ACCESS)
-
-    assert harness.cli("discover", "whatsapp-chats") == 1
-
-    out = capsys.readouterr().out
-    assert "parent-recap bg discover whatsapp-chats" in out
-    assert not HAN.findall(out)
 
 
 def wilma_cli_listing(harness, kids: Any) -> None:

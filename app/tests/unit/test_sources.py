@@ -43,9 +43,10 @@ _KID = {"name": "Mia Virtanen"}
     ({"wilma": {"enabled": True}}, ["wilma"]),  # Gmail with no sender ticked only sends
     ({"gmail": {"allowlist_senders": ["a@b.fi"]}, "wilma": {"enabled": True}}, ["gmail", "wilma"]),
     ({"whatsapp": {"enabled": True}}, ["gmail"]),  # no group ticked
-    ({"whatsapp": {"enabled": True, "chats": [{"name": "3B"}]}}, ["whatsapp"]),
+    # Nothing reads WhatsApp until the Linked Device's collector lands (ADR 0027).
+    ({"whatsapp": {"enabled": True, "chats": [{"name": "3B"}]}}, ["gmail"]),
     ({"kids": [{**_KID, "myclub_ical_url": "https://myclub.fi/x.ics"}], "wilma": {"enabled": True},
-      "whatsapp": {"enabled": True, "chats": [{"name": "3B"}]}}, ["myclub", "wilma", "whatsapp"]),
+      "whatsapp": {"enabled": True, "chats": [{"name": "3B"}]}}, ["myclub", "wilma"]),
 ], ids=["nothing", "gmail", "wilma", "gmail-and-wilma", "whatsapp-no-groups", "whatsapp", "all-but-gmail"])
 def test_the_household_uses_the_connected_sources_in_run_order(config, used):
     cfg = Config(**{"kids": [_KID], **config})

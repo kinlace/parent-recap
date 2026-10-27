@@ -177,6 +177,38 @@ Don't add calendar_events for the events in `already_queued_for_calendar` (a mat
       }
     },
     {
+      "source": "gmail",
+      "external_id": "1111",
+      "timestamp": "2026-09-27T15:02:00+00:00",
+      "sender": "anna.piano@kilo.example.fi",
+      "recipient": null,
+      "subject": "Leo's piano lesson",
+      "body": "Piano lesson moves to Wednesday 17:30 this week",
+      "chat_name": null,
+      "kid_hint": null,
+      "url": "https://mail.google.com/mail/u/0/#search/rfc822msgid:1111@mail.gmail.com",
+      "metadata": {
+        "sender_email": "anna.piano@kilo.example.fi",
+        "thread_id": ""
+      }
+    },
+    {
+      "source": "gmail",
+      "external_id": "1112",
+      "timestamp": "2026-09-27T16:45:00+00:00",
+      "sender": "parents.3b@kilo.example.fi",
+      "recipient": null,
+      "subject": "3B parents",
+      "body": "Remember reissuvihko signatures 🙏",
+      "chat_name": null,
+      "kid_hint": null,
+      "url": "https://mail.google.com/mail/u/0/#search/rfc822msgid:1112@mail.gmail.com",
+      "metadata": {
+        "sender_email": "parents.3b@kilo.example.fi",
+        "thread_id": ""
+      }
+    },
+    {
       "source": "wilma",
       "external_id": "message:55",
       "timestamp": "2026-09-27T09:00:00+00:00",
@@ -193,38 +225,6 @@ Don't add calendar_events for the events in `already_queued_for_calendar` (a mat
         "student_number": "7731905",
         "wilma_url": null,
         "addressee_count": null
-      }
-    },
-    {
-      "source": "whatsapp",
-      "external_id": "1:2",
-      "timestamp": "2026-09-27T16:45:00+00:00",
-      "sender": "Parent rep",
-      "recipient": null,
-      "subject": null,
-      "body": "Remember reissuvihko signatures 🙏",
-      "chat_name": "3B parents",
-      "kid_hint": "Mia",
-      "url": null,
-      "metadata": {
-        "from_me": false,
-        "msg_type": 0
-      }
-    },
-    {
-      "source": "whatsapp",
-      "external_id": "2:1",
-      "timestamp": "2026-09-27T15:02:00+00:00",
-      "sender": "Anna (piano)",
-      "recipient": null,
-      "subject": null,
-      "body": "Piano lesson moves to Wednesday 17:30 this week",
-      "chat_name": "Leo piano",
-      "kid_hint": "Leo",
-      "url": null,
-      "metadata": {
-        "from_me": false,
-        "msg_type": 0
       }
     }
   ]

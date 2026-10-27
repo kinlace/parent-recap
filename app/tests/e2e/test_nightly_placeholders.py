@@ -46,10 +46,10 @@ def contact_night(h) -> None:
         "wilma": [msg("wilma", "message:301", "2026-09-27T12:00:00+03:00",
                       "If Leo is ill, call the school nurse on +358 9 816 2000.",
                       sender="Terveydenhoitaja", subject="Sairauspoissaolot", kid="Leo",
-                      metadata={"student_number": STUDENT_NUMBER})],
-        "whatsapp": [msg("whatsapp", "1:401", "2026-09-27T19:00:00+03:00",
-                         f"Football sign-up is at {SIGNUP}, or text me on 050-765 4321",
-                         sender="Anna", chat="3B parents", kid="Mia")],
+                      metadata={"student_number": STUDENT_NUMBER}),
+                  msg("wilma", "message:401", "2026-09-27T19:00:00+03:00",
+                      f"Football sign-up is at {SIGNUP}, or text me on 050-765 4321",
+                      sender="Anna", subject="Football", kid="Mia")],
         "myclub": [dataclasses.replace(myclub_event("mc-1", "FC Kilo P2017 vs HJK", "2026-10-03T07:00:00+00:00",
                                                     "2026-10-03T08:30:00+00:00"),
                                        description=f"Kit list: {KIT_LIST}")],
@@ -67,21 +67,21 @@ def test_the_brief_prompt_has_placeholders_in_place_of_contact_details(harness):
     for value in CONTACT_DETAILS:
         assert value not in prompt
     payload = harness.model_payload(0)
-    gmail, wilma, whatsapp = (next(m for m in payload["messages"] if m["external_id"] == i)
-                              for i in ("1201", "message:301", "1:401"))
+    gmail, wilma, football = (next(m for m in payload["messages"] if m["external_id"] == i)
+                              for i in ("1201", "message:301", "message:401"))
     # The display name's person and the address each have one placeholder everywhere (#191).
     assert re.fullmatch(rf"⟦N\d⟧ Opettaja <{gmail['metadata']['sender_email']}>", gmail["sender"])
     assert re.fullmatch(r"⟦E\d⟧", gmail["metadata"]["sender_email"])
     assert re.fullmatch(r"Sign up for the retki at ⟦L\d⟧ or call ⟦P\d⟧\. Questions to ⟦E\d⟧\.", gmail["body"])
     assert re.fullmatch(r"If Kid B is ill, call the school nurse on ⟦P\d⟧\.", wilma["body"])
-    assert re.fullmatch(r"Football sign-up is at ⟦L\d⟧, or text me on ⟦P\d⟧", whatsapp["body"])
+    assert re.fullmatch(r"Football sign-up is at ⟦L\d⟧, or text me on ⟦P\d⟧", football["body"])
     assert re.fullmatch(r"Kit list: ⟦L\d⟧", payload["already_queued_for_calendar"][0]["description"])
     assert re.fullmatch(r"The lost-property box is at the office, ⟦E\d⟧",
                         payload["earlier_briefs"][0]["per_kid"][0]["notices"][0]["text"])
     # Identifiers the model doesn't need aren't sent, and the ids it cites are sent as they are.
     assert "url" not in gmail and "rfc822msgid" not in prompt and "mail.google.com" not in prompt
     assert "student_number" not in wilma["metadata"] and STUDENT_NUMBER not in prompt
-    assert payload_message_ids(harness, 0) == ["1201", "1:401", "message:301"]
+    assert payload_message_ids(harness, 0) == ["1201", "message:301", "message:401"]
     assert payload["earlier_briefs"][0]["per_kid"][0]["notices"][0]["refs"] == ["g-200"]
     assert "placeholders such as ⟦N1⟧, ⟦P1⟧, ⟦E1⟧ and ⟦L1⟧" in harness.model_calls[0].system_prompt
 
@@ -91,7 +91,7 @@ def reply_with_placeholders(prompt: str) -> dict:
     body = {m["external_id"]: m["body"] for m in json.loads(prompt[prompt.index("\n{") + 1:])["messages"]}
     form, phone, _office = placeholders_in(body["1201"])
     [nurse] = placeholders_in(body["message:301"])
-    signup, _anna = placeholders_in(body["1:401"])
+    signup, _anna = placeholders_in(body["message:401"])
     return {
         "per_kid": [
             {"kid": "Mia", "notices": [], "action_items": [
@@ -105,7 +105,7 @@ def reply_with_placeholders(prompt: str) -> dict:
              "refs": ["1201"]},
             # The retki's link pinned to an event whose message never had it.
             {"kid": "Mia", "title": "Football sign-up", "start": "2026-10-02T17:00:00",
-             "description": f"Sign up at {signup} or {form}", "refs": ["1:401"]},
+             "description": f"Sign up at {signup} or {form}", "refs": ["message:401"]},
         ],
         "message_digest": f"**Mia**\n- Retki: sign up at {form}\n\n**Leo**\n- Ill? Call the nurse on {nurse}",
     }
@@ -176,10 +176,10 @@ def chinese_night(h) -> None:
         "gmail": [msg("gmail", "1601", "2026-09-27T10:00:00+03:00",
                       f"请联系040 123 4567或发邮件到{OFFICE}。课表见www.zhongwen.example.com/kebiao。",
                       sender=f"中文学校 <{LAOSHI}>", subject="中文课")],
-        "whatsapp": [msg("whatsapp", "2:501", "2026-09-27T18:00:00+03:00", "周六中文课请联系13800138000报名",
-                         sender="王老师", chat="Leo piano", kid="Leo"),
-                     msg("whatsapp", "1:502", "2026-09-27T19:00:00+03:00",
-                         f"请在{ILMO}报名，或致电040 765 4321。", sender="Anna", chat="3B parents", kid="Mia")],
+        "wilma": [msg("wilma", "message:501", "2026-09-27T18:00:00+03:00", "周六中文课请联系13800138000报名",
+                      sender="王老师", subject="中文课", kid="Leo"),
+                  msg("wilma", "message:502", "2026-09-27T19:00:00+03:00",
+                      f"请在{ILMO}报名，或致电040 765 4321。", sender="Anna", subject="足球", kid="Mia")],
     }
 
 
@@ -193,8 +193,8 @@ def test_contact_details_inside_chinese_text_become_placeholders_and_the_text_st
         assert value not in prompt
     body = {m["external_id"]: m["body"] for m in harness.model_payload(0)["messages"]}
     assert re.fullmatch(r"请联系⟦P\d⟧或发邮件到⟦E\d⟧。课表见⟦L\d⟧。", body["1601"])
-    assert re.fullmatch(r"周六中文课请联系⟦P\d⟧报名", body["2:501"])
-    assert re.fullmatch(r"请在⟦L\d⟧报名，或致电⟦P\d⟧。", body["1:502"])
+    assert re.fullmatch(r"周六中文课请联系⟦P\d⟧报名", body["message:501"])
+    assert re.fullmatch(r"请在⟦L\d⟧报名，或致电⟦P\d⟧。", body["message:502"])
 
 
 def test_a_chinese_brief_gets_its_values_back_and_its_translation_prompt_has_none(harness):
@@ -347,17 +347,18 @@ def names_night(h) -> None:
                       sender="Kilo News <news@kilo.example.fi>", subject="Science fair")],
         "wilma": [msg("wilma", "message:701", "2026-09-27T12:00:00+03:00",
                       "Retki torstaina. Palauttakaa lupalappu Maijalle tai Virtaselle. Eetu ja Mia ovat samassa "
-                      "ryhmässä.", sender="Virtanen Maija", subject="Retki", kid="Mia")],
-        "whatsapp": [
-            msg("whatsapp", "1:701", "2026-09-27T18:00:00+03:00", "Eetulle synttärit lauantaina! Mia ja Leo tervetuloa.",
-                sender="Eetun äiti", chat="3B parents", kid="Mia"),
-            msg("whatsapp", "1:702", "2026-09-27T18:30:00+03:00", "Kiitos Maijalle retkestä! Onni-koira tulee mukaan.",
-                sender="Toivo Mäkelä", chat="3B parents", kid="Mia"),
-            msg("whatsapp", "1:703", "2026-09-27T19:00:00+03:00", "小明和米娅周六一起去Juha教练的足球课",
-                sender="王小明妈妈", chat="3B parents", kid="Mia"),
-            msg("whatsapp", "2:704", "2026-09-27T19:30:00+03:00", "Mäkisen perhe tuo kakun. Leon reppu jäi kouluun.",
-                sender="Leon Mäkinen", chat="Leo piano", kid="Leo"),
-        ],
+                      "ryhmässä.", sender="Virtanen Maija", subject="Retki", kid="Mia"),
+                  msg("wilma", "message:711", "2026-09-27T18:00:00+03:00",
+                      "Eetulle synttärit lauantaina! Mia ja Leo tervetuloa.", sender="Eetun äiti",
+                      subject="Synttärit", kid="Mia"),
+                  msg("wilma", "message:712", "2026-09-27T18:30:00+03:00",
+                      "Kiitos Maijalle retkestä! Onni-koira tulee mukaan.", sender="Toivo Mäkelä",
+                      subject="Kiitos", kid="Mia"),
+                  msg("wilma", "message:713", "2026-09-27T19:00:00+03:00", "小明和米娅周六一起去Juha教练的足球课",
+                      sender="王小明妈妈", subject="足球课", kid="Mia"),
+                  msg("wilma", "message:714", "2026-09-27T19:30:00+03:00",
+                      "Mäkisen perhe tuo kakun. Leon reppu jäi kouluun.", sender="Leon Mäkinen",
+                      subject="Kakku", kid="Leo")],
     }
 
 
@@ -370,19 +371,19 @@ def names_reply(prompt: str) -> dict:
     Finnish case ending after a colon."""
     sender = {m["external_id"]: m["sender"] for m in json.loads(prompt[prompt.index("\n{") + 1:])["messages"]}
     [coach], [teacher], [eetu], [toivo], [xiaoming] = (people_in(sender[i]) for i in
-                                                       ("1701", "message:701", "1:701", "1:702", "1:703"))
+                                                       ("1701", "message:701", "message:711", "message:712", "message:713"))
     return {
         "per_kid": [
             {"kid": "Mia",
              "notices": [{"text": f"{eetu}:n synttärit lauantaina, {xiaoming} ja Mia menevät {coach}:n treeneihin",
-                          "refs": ["1:701", "1:703"]}],
+                          "refs": ["message:711", "message:713"]}],
              "action_items": [{"what": f"Palauta retken lupalappu {teacher}:lle", "by": "2026-09-30",
                                "who": "Kumpi tahansa", "refs": ["message:701"]}]},
             {"kid": "Leo", "notices": [{"text": "Hanna hakee Leon maanantaina", "refs": ["1702"]}],
              "action_items": []},
         ],
         "calendar_events": [{"kid": "Mia", "title": f"{eetu}:n synttärit", "start": "2026-10-03",
-                             "description": f"{toivo} kiitti {teacher}:a", "refs": ["1:701", "1:702"]}],
+                             "description": f"{toivo} kiitti {teacher}:a", "refs": ["message:711", "message:712"]}],
         "message_digest": f"**Mia**\n- Lupalappu {teacher}:lle\n- {eetu}:n synttärit lauantaina",
     }
 
@@ -400,7 +401,7 @@ def test_third_parties_names_reach_the_brief_prompt_only_as_placeholders(harness
     messages = {m["external_id"]: m for m in harness.model_payload(0)["messages"]}
     # One placeholder per person: a name, its parts and their case forms, also inside Chinese text.
     coach, teacher, eetu, toivo, xiaoming, leon = (people_in(messages[i]["sender"])[0] for i in
-                                                   ("1701", "message:701", "1:701", "1:702", "1:703", "2:704"))
+                                                   ("1701", "message:701", "message:711", "message:712", "message:713", "message:714"))
     assert len({coach, teacher, eetu, toivo, xiaoming, leon}) == 6
     # The club in the coach's sender stays, as an organisation and no one's name.
     assert re.fullmatch(rf'"{coach}, Kilo FC" <⟦E\d⟧>', messages["1701"]["sender"])
@@ -408,17 +409,17 @@ def test_third_parties_names_reach_the_brief_prompt_only_as_placeholders(harness
         f"Hi! {coach} here. Training moves to Tuesday. Questions to {coach} or {coach}:n apuvalmentaja."
     assert messages["message:701"]["body"] == f"Retki torstaina. Palauttakaa lupalappu {teacher}:lle tai {teacher}:lle. " \
                                         f"{eetu} ja Mia ovat samassa ryhmässä."
-    assert messages["1:701"]["sender"] == f"{eetu}:n äiti"
-    assert messages["1:701"]["body"] == f"{eetu}:lle synttärit lauantaina! Mia ja Leo tervetuloa."
+    assert messages["message:711"]["sender"] == f"{eetu}:n äiti"
+    assert messages["message:711"]["body"] == f"{eetu}:lle synttärit lauantaina! Mia ja Leo tervetuloa."
     # A newsletter's sender is no person, so its words stay.
     assert messages["1703"]["body"] == "Science fair on Friday. Greetings, Kilo News"
     # Only tonight's people: Onni is no one's name tonight.
-    assert messages["1:702"]["body"] == f"Kiitos {teacher}:lle retkestä! Onni-koira tulee mukaan."
+    assert messages["message:712"]["body"] == f"Kiitos {teacher}:lle retkestä! Onni-koira tulee mukaan."
     # A Chinese name's given name alone is the same person.
-    assert messages["1:703"] == {**messages["1:703"], "sender": f"{xiaoming}妈妈",
+    assert messages["message:713"] == {**messages["message:713"], "sender": f"{xiaoming}妈妈",
                                   "body": f"{xiaoming}和米娅周六一起去{coach}教练的足球课"}
     # Leon is a pupil's name, and the Kid Leo's genitive: Leo's backpack stays.
-    assert messages["2:704"]["body"] == f"{leon}:n perhe tuo kakun. Leon reppu jäi kouluun."
+    assert messages["message:714"]["body"] == f"{leon}:n perhe tuo kakun. Leon reppu jäi kouluun."
     # The Household's own names still reach the model: the Kids, their aliases and the partner.
     assert messages["1702"]["sender"] == "Hanna Parent <⟦E2⟧>" and "Hanna picks Leo up" in messages["1702"]["body"]
     assert [k["name"] for k in harness.model_payload(0)["kid_profiles"]] == ["Mia", "Leo"]
@@ -499,10 +500,10 @@ def test_with_the_kids_masked_no_kids_name_reaches_the_model_and_the_brief_has_t
     assert [(c["name"], c["kid"]) for c in payload["whatsapp_chat_map"]] == \
         [("3B parents", "Kid A"), ("Kid B piano", "Kid B")]
     messages = {m["external_id"]: m for m in payload["messages"]}
-    [xiaoming] = people_in(messages["1:703"]["sender"])
-    assert messages["1:701"]["body"].endswith("Kid A ja Kid B tervetuloa.")
-    assert messages["1:703"]["body"].startswith(f"{xiaoming}和Kid A周六")
-    assert messages["2:704"]["body"].endswith("Kid B:n reppu jäi kouluun.")  # Leo's, in the genitive
+    [xiaoming] = people_in(messages["message:713"]["sender"])
+    assert messages["message:711"]["body"].endswith("Kid A ja Kid B tervetuloa.")
+    assert messages["message:713"]["body"].startswith(f"{xiaoming}和Kid A周六")
+    assert messages["message:714"]["body"].endswith("Kid B:n reppu jäi kouluun.")  # Leo's, in the genitive
     assert "Kid A" in harness.model_calls[0].system_prompt
     fi, en = harness.sent
     assert "Palauta retken lupalappu Maijalle (Mia)" in fi.text and "**Mia**" in fi.text
@@ -519,13 +520,13 @@ def test_with_the_kids_masked_a_kids_name_whose_stem_changes_goes_as_their_place
     harness.config["ai_filter"] = {"mask_kids": True}
     harness.config["kids"] = [{"name": "Elias Virta", "everyday_name": "Elias", "grade": 3},
                               {"name": "Pekka", "grade": 1}]
-    harness.sources = {"whatsapp": [
-        msg("whatsapp", "1:801", "2026-09-27T18:00:00+03:00",
+    harness.sources = {"wilma": [
+        msg("wilma", "message:801", "2026-09-27T18:00:00+03:00",
             "Eliaksen ja Pekan reput jäivät kouluun. Eliakselle ja Pekalle uudet kumisaappaat.",
-            sender="Opettaja", chat="3B parents")]}
+            sender="Opettaja", subject="Reput")]}
     harness.model_reply = {
-        "per_kid": [{"kid": "Kid B", "notices": [{"text": "Kid B:n reppu jäi kouluun", "refs": ["1:801"]}],
-                     "action_items": [{"what": "Hae Kid B:lle reppu", "by": "2026-09-28", "refs": ["1:801"]}]}],
+        "per_kid": [{"kid": "Kid B", "notices": [{"text": "Kid B:n reppu jäi kouluun", "refs": ["message:801"]}],
+                     "action_items": [{"what": "Hae Kid B:lle reppu", "by": "2026-09-28", "refs": ["message:801"]}]}],
         "calendar_events": [],
         "message_digest": "**Kid B**\n- Kid B:n reppu jäi kouluun",
     }
@@ -661,7 +662,7 @@ def test_a_feedback_link_masks_people_and_contact_details_inside_chinese_text_wi
 
     def reply(prompt: str) -> dict:
         brief = chinese_reply(prompt)
-        wa_501 = next(m for m in json.loads(prompt[prompt.index("\n{") + 1:])["messages"] if m["external_id"] == "2:501")
+        wa_501 = next(m for m in json.loads(prompt[prompt.index("\n{") + 1:])["messages"] if m["external_id"] == "message:501")
         [wang], [mobile] = people_in(wa_501["sender"]), placeholders_in(wa_501["body"])
         brief["per_kid"][1]["action_items"][0]["what"] = f"周六前告诉{wang}老师小狮不去中文课，或打{mobile}"
         return brief
@@ -672,8 +673,8 @@ def test_a_feedback_link_masks_people_and_contact_details_inside_chinese_text_wi
     [email] = harness.sent
     assert "周六前告诉王老师小狮不去中文课，或打13800138000" in email.text
     messages = {m["external_id"]: m for m in harness.model_payload(0)["messages"]}
-    [wang], [mobile] = people_in(messages["2:501"]["sender"]), placeholders_in(messages["2:501"]["body"])
-    [anna], [form, anna_phone] = people_in(messages["1:502"]["sender"]), placeholders_in(messages["1:502"]["body"])
+    [wang], [mobile] = people_in(messages["message:501"]["sender"]), placeholders_in(messages["message:501"]["body"])
+    [anna], [form, anna_phone] = people_in(messages["message:502"]["sender"]), placeholders_in(messages["message:502"]["body"])
     digest, item = (answers for _, answers, _ in feedback_links(email.html) if answers["verdict"] != feedback.SAVED)
     assert (item["item_text"], item["kid"]) == (f"周六前告诉{wang}老师Kid B不去中文课，或打{mobile}", "Kid B")
     # Anna, whom the model wrote out itself, goes as the placeholder the AI saw for her too.

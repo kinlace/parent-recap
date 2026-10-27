@@ -19,7 +19,6 @@ else:
 
 DAILY = "daily"
 WEEKEND = "weekend-events"
-BG_ENV = "PARENT_RECAP_BG"  # set inside run_detached's runs so doctor doesn't recurse
 TIMED_OUT = 124  # run_detached's exit code for a run it stopped, as timeout(1) gives
 ALWAYS = "linked-device"  # the always-running job's name
 # The always-running job's exit code once its link has ended, after which nothing starts it

@@ -1,5 +1,5 @@
-"""First Brief: the real Brief made through a bg job, which reads WhatsApp with the scheduled job's
-permission, without sending it, shown in the page's frame and sent to the setup parent only."""
+"""First Brief: the real Brief made through a bg job, which reads the Sources as the scheduled job
+does, without sending it, shown in the page's frame and sent to the setup parent only."""
 from __future__ import annotations
 
 import json

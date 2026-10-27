@@ -327,8 +327,8 @@ class Health:
         self.go = threading.Event()
         self.go.set()
 
-    def __call__(self, config: str | None, skip_llm: bool = False, whatsapp_only: bool = False,
-                 show: bool = False, schedule: bool = True) -> list[ops.Check]:
+    def __call__(self, config: str | None, skip_llm: bool = False, show: bool = False,
+                 schedule: bool = True) -> list[ops.Check]:
         self.runs.append((config, schedule))
         assert self.go.wait(5)
         if self.fails is not None:

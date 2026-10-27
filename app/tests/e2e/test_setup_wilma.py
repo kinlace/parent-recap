@@ -1296,7 +1296,7 @@ def test_the_button_opens_the_passwords_app(harness, page):
 
 
 def test_off_macos_the_page_offers_neither_whatsapp_nor_the_passwords_app(harness, page):
-    # Reading WhatsApp for Mac and the Passwords app exist only on macOS (ADR 0020).
+    # The Passwords app exists only on macOS (ADR 0020); WhatsApp isn't offered on any system.
     harness.system = WINDOWS
 
     sources = [s["name"] for s in call(page.url, "api/state").json()["connect"]["sources"]]
