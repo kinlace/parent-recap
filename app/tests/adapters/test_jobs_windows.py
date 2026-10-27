@@ -277,11 +277,11 @@ def test_the_always_running_job_is_installed_running_stopped_and_removed(task_sc
                                                                          tmp_path):
     log = tmp_path / f"{jobs.ALWAYS}-stdout.log"
     ticks = [sys.executable, "-c", TICKS]
-    assert jobs.always_status() == jobs.Status(installed=False, running=False)
+    assert jobs.always_status() == jobs.AlwaysStatus(installed=False, running=False)
 
     jobs.install_always(ticks, tmp_path)
 
-    assert wait_for(lambda: jobs.always_status() == jobs.Status(installed=True, running=True))
+    assert wait_for(lambda: jobs.always_status() == jobs.AlwaysStatus(installed=True, running=True))
     assert wait_for(lambda: log.exists() and "tick" in log.read_text())
     assert jobs.program(jobs.ALWAYS) == ticks
     jobs.install(both(tmp_path)[:1])  # the evening jobs leave it be
@@ -289,7 +289,7 @@ def test_the_always_running_job_is_installed_running_stopped_and_removed(task_sc
 
     jobs.stop_always()
 
-    assert wait_for(lambda: jobs.always_status() == jobs.Status(installed=True, running=False))
+    assert wait_for(lambda: jobs.always_status() == jobs.AlwaysStatus(installed=True, running=False))
     time.sleep(2)  # ending the task ends the job it started too
     stopped_at = log.stat().st_size
     time.sleep(2)
@@ -297,7 +297,7 @@ def test_the_always_running_job_is_installed_running_stopped_and_removed(task_sc
 
     jobs.remove_always()
 
-    assert jobs.always_status() == jobs.Status(installed=False, running=False)
+    assert jobs.always_status() == jobs.AlwaysStatus(installed=False, running=False)
     assert {j.system_name for j in jobs.found()} == {jobs.system_name(jobs.DAILY),
                                                      jobs.system_name(jobs_windows.CATCH_UP)}
 
@@ -309,7 +309,7 @@ def test_removing_all_also_stops_and_removes_the_always_running_job(task_schedul
 
     jobs.remove_all()
 
-    assert jobs.always_status() == jobs.Status(installed=False, running=False)
+    assert jobs.always_status() == jobs.AlwaysStatus(installed=False, running=False)
     assert jobs.found() == []
 
 

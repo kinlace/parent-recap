@@ -38,6 +38,7 @@ RUNNER = "family_brief.system.task_run"
 RUNNING = "267009"
 # Where Last Result is in that list, `/Query /FO CSV /V`, whose columns don't move.
 LAST_RESULT = 6
+STOP_WAIT = 15  # seconds the always-running job's task gets to end once stopped
 
 
 def system_name(name: str) -> str:
@@ -356,10 +357,10 @@ def remove_always() -> None:
             raise RuntimeError(f"Task Scheduler didn't remove {task}: {_error(r)}")
 
 
-def always_status() -> jobs.Status:
+def always_status() -> jobs.AlwaysStatus:
     task = system_name(jobs.ALWAYS)
     installed = task in _names()
-    return jobs.Status(installed=installed, running=installed and _running(task))
+    return jobs.AlwaysStatus(installed=installed, running=installed and _running(task))
 
 
 def stop_always() -> None:
@@ -368,6 +369,10 @@ def stop_always() -> None:
         r = _schtasks("/End", "/TN", task)
         if r.returncode != 0:
             raise RuntimeError(f"Task Scheduler couldn't stop {task}: {_error(r)}")
+        # The task may still be ending, and a start while it is would be ignored (IgnoreNew).
+        deadline = time.time() + STOP_WAIT
+        while _running(task) and time.time() < deadline:
+            time.sleep(0.5)
 
 
 # ---------------------------------------------------------------- one-off runs

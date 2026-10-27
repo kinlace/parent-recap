@@ -180,20 +180,20 @@ def test_the_always_running_job_starts_at_login_and_again_unless_its_link_ended(
 
 def test_the_always_running_job_is_installed_running_stopped_and_removed(harness, launchctl,
                                                                          tmp_path):
-    assert jobs.always_status() == jobs.Status(installed=False, running=False)
+    assert jobs.always_status() == jobs.AlwaysStatus(installed=False, running=False)
 
     jobs.install_always(FOLLOW, tmp_path)
-    assert jobs.always_status() == jobs.Status(installed=True, running=True)
+    assert jobs.always_status() == jobs.AlwaysStatus(installed=True, running=True)
 
     jobs.stop_always()
-    assert jobs.always_status() == jobs.Status(installed=True, running=False)
+    assert jobs.always_status() == jobs.AlwaysStatus(installed=True, running=False)
 
     jobs.install_always([*FOLLOW, "--again"], tmp_path)
-    assert jobs.always_status() == jobs.Status(installed=True, running=True)
+    assert jobs.always_status() == jobs.AlwaysStatus(installed=True, running=True)
     assert jobs.program(jobs.ALWAYS) == [*FOLLOW, "--again"]
 
     jobs.remove_always()
-    assert jobs.always_status() == jobs.Status(installed=False, running=False)
+    assert jobs.always_status() == jobs.AlwaysStatus(installed=False, running=False)
     assert list(jobs_macos.LAUNCH_AGENTS.iterdir()) == []
     jobs.remove_always()  # nothing left to remove
 
@@ -213,7 +213,7 @@ def test_the_evening_jobs_leave_the_always_running_job_be_and_remove_all_takes_i
 
     jobs.remove_all()
 
-    assert jobs.always_status() == jobs.Status(installed=False, running=False)
+    assert jobs.always_status() == jobs.AlwaysStatus(installed=False, running=False)
     assert list(jobs_macos.LAUNCH_AGENTS.iterdir()) == []
 
 
