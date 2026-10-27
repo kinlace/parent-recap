@@ -494,7 +494,9 @@ function renderSources() {
   }
   const step = connectSteps().find((s) => s.name === current);
   for (const name of Object.keys(STEPS)) {
-    document.getElementById("source-" + name).hidden = name !== current;
+    // WhatsApp has no panel until the Linked Device's step (#521).
+    const panel = document.getElementById("source-" + name);
+    if (panel) panel.hidden = name !== current;
   }
   showSkips(step, statuses[current]);
   document.getElementById("connect-done").hidden = Boolean(current);
