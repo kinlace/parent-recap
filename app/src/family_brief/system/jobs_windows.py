@@ -8,7 +8,8 @@ asleep, wakes the PC to run ("wake the computer to run this task"), and runs as 
 after a start it missed (ADR 0021). A start missed because nobody was signed in isn't caught up
 that way, so the evening job has a second task, at sign-in, that runs it if it was missed. Each
 starts pythonw.exe with `task_run`, which gives the job its log files without opening a window on
-the family's desktop."""
+the family's desktop. The always-running job's task starts at sign-in, and its `task_run` starts
+the job again whenever it exits (`always_xml`)."""
 from __future__ import annotations
 
 import codecs
@@ -101,6 +102,30 @@ def _task(job: jobs.Job, description: str, trigger: Callable[[ET.Element], None]
     """A task that runs `job`'s command and `more_args` when `trigger` (handed the Triggers
     element) says, in Task Scheduler's XML; `wake` wakes the PC for it and catches up a missed
     start."""
+    return _xml(description, trigger, [
+        str(job.log_dir / f"{job.subcommand}-stdout.log"),
+        str(job.log_dir / f"{job.subcommand}-stderr.log"),
+        sys.executable, "-m", "family_brief", job.subcommand, *more_args], wake=wake)
+
+
+def _at_sign_in(delay: str | None) -> Callable[[ET.Element], None]:
+    """A trigger at the family's sign-in, `delay` (as PT1M) after it."""
+    def trigger(triggers: ET.Element) -> None:
+        trigger = _add(triggers, "LogonTrigger")
+        _add(trigger, "Enabled", "true")
+        # Without one it starts at anyone's sign-in:
+        # https://learn.microsoft.com/en-us/windows/win32/taskschd/logontrigger-userid
+        if user := _user():
+            _add(trigger, "UserId", user)
+        if delay:
+            _add(trigger, "Delay", delay)
+    return trigger
+
+
+def _xml(description: str, trigger: Callable[[ET.Element], None], runner_args: list[str], *,
+         wake: bool, always: bool = False) -> str:
+    """A task that runs `task_run` with `runner_args` when `trigger` says. `always`: for the
+    always-running job, which has no time limit and is started again when it fails to start."""
     ET.register_namespace("", TASK_NS)
     task = ET.Element(f"{{{TASK_NS}}}Task", version="1.2")
     _add(_add(task, "RegistrationInfo"), "Description", description)
@@ -122,17 +147,19 @@ def _task(job: jobs.Job, description: str, trigger: Callable[[ET.Element], None]
     _add(settings, "StopIfGoingOnBatteries", "false")
     _add(settings, "StartWhenAvailable", str(wake).lower())
     _add(settings, "WakeToRun", str(wake).lower())
+    if always:
+        # Task Scheduler stops a task after 72 hours unless told otherwise.
+        _add(settings, "ExecutionTimeLimit", "PT0S")
+        restart = _add(settings, "RestartOnFailure")
+        _add(restart, "Interval", "PT1M")
+        _add(restart, "Count", "10")
     _add(settings, "Enabled", "true")
 
     actions = _add(task, "Actions")
     actions.set("Context", "Author")
     run = _add(actions, "Exec")
     _add(run, "Command", _pythonw())
-    _add(run, "Arguments", subprocess.list2cmdline([
-        "-m", RUNNER,
-        str(job.log_dir / f"{job.subcommand}-stdout.log"),
-        str(job.log_dir / f"{job.subcommand}-stderr.log"),
-        sys.executable, "-m", "family_brief", job.subcommand, *more_args]))
+    _add(run, "Arguments", subprocess.list2cmdline(["-m", RUNNER, *runner_args]))
     _add(run, "WorkingDirectory", str(Path.home()))
     return ET.tostring(task, encoding="unicode")
 
@@ -159,18 +186,18 @@ def catch_up_xml(job: jobs.Job) -> str:
     """The evening job's second task, which runs it at the family's sign-in if its evening run
     was missed. StartWhenAvailable doesn't catch up a start missed because nobody was signed in,
     and the run itself tells whether one was (`run --if-missed`, #386)."""
-    def at_sign_in(triggers: ET.Element) -> None:
-        trigger = _add(triggers, "LogonTrigger")
-        _add(trigger, "Enabled", "true")
-        # Without one it starts at anyone's sign-in:
-        # https://learn.microsoft.com/en-us/windows/win32/taskschd/logontrigger-userid
-        if user := _user():
-            _add(trigger, "UserId", user)
-        # The run waits for the network too, but Wi-Fi can take a while after signing in.
-        _add(trigger, "Delay", "PT1M")
-
-    return _task(job, "Parent Recap: the evening Brief, if it was missed", at_sign_in,
+    # The run waits for the network too, but Wi-Fi can take a while after signing in.
+    return _task(job, "Parent Recap: the evening Brief, if it was missed", _at_sign_in("PT1M"),
                  wake=False, more_args=("--if-missed",))
+
+
+def always_xml(program: list[str], log_dir: Path) -> str:
+    """The always-running job's task: `program`, from the family's sign-in on, started again by
+    `task_run` whenever it exits other than with jobs.LINK_ENDED."""
+    return _xml("Parent Recap: the Linked Device, kept connected to WhatsApp", _at_sign_in(None),
+                ["--restart-unless", str(jobs.LINK_ENDED),
+                 str(log_dir / f"{jobs.ALWAYS}-stdout.log"),
+                 str(log_dir / f"{jobs.ALWAYS}-stderr.log"), *program], wake=False, always=True)
 
 
 def _names() -> list[str]:
@@ -192,11 +219,8 @@ def _remove(kept: set[str]) -> None:
                 raise RuntimeError(f"Task Scheduler didn't remove {name}: {_error(r)}")
 
 
-def install(wanted: list[jobs.Job]) -> None:
-    """Registers `wanted` and removes our other tasks."""
-    tasks = {system_name(job.name): task_xml(job) for job in wanted}
-    tasks |= {system_name(CATCH_UP): catch_up_xml(job) for job in wanted
-              if job.name == jobs.DAILY}
+def _register(tasks: dict[str, str]) -> None:
+    """Registers each task by its name from its XML, in place of one by that name."""
     with tempfile.TemporaryDirectory(prefix="parent-recap-task-") as work:
         file = Path(work) / "task.xml"
         for name, xml in tasks.items():
@@ -205,7 +229,15 @@ def install(wanted: list[jobs.Job]) -> None:
             r = _schtasks("/Create", "/TN", name, "/XML", str(file), "/F")
             if r.returncode != 0:
                 raise RuntimeError(f"Task Scheduler didn't register {name}: {_error(r)}")
-    _remove(kept=set(tasks))
+
+
+def install(wanted: list[jobs.Job]) -> None:
+    """Registers `wanted` and removes our other tasks but the always-running job's."""
+    tasks = {system_name(job.name): task_xml(job) for job in wanted}
+    tasks |= {system_name(CATCH_UP): catch_up_xml(job) for job in wanted
+              if job.name == jobs.DAILY}
+    _register(tasks)
+    _remove(kept={*tasks, system_name(jobs.ALWAYS)})
 
 
 def _tasks() -> list[dict[str, Any]]:
@@ -227,6 +259,7 @@ def _tasks() -> list[dict[str, Any]]:
 
 
 def remove_all() -> None:
+    remove_always()
     _remove(kept=set())
 
 
@@ -236,7 +269,7 @@ def installed() -> set[str]:
     # such as after an upgrade from a version without the sign-in task.
     if CATCH_UP not in names:
         names.discard(jobs.DAILY)
-    return names - {CATCH_UP}
+    return names - {CATCH_UP, jobs.ALWAYS}
 
 
 def waiting_for_login() -> set[str]:
@@ -267,7 +300,10 @@ def _program(task: dict[str, Any]) -> list[str]:
     """The command a task runs: the job's own, for one started through `task_run`."""
     argv = [task["execute"], *_split(task["arguments"])] if task["execute"] else []
     if argv[1:3] == ["-m", RUNNER]:
-        return argv[5:]
+        runner_args = argv[3:]
+        if runner_args[:1] == ["--restart-unless"]:
+            runner_args = runner_args[2:]
+        return runner_args[2:]  # after the two log files
     return argv
 
 
@@ -282,17 +318,56 @@ def program(name: str) -> list[str] | None:
     return None
 
 
+def _running(task: str) -> bool:
+    r = _schtasks("/Query", "/TN", task, "/FO", "CSV", "/NH", "/V")
+    rows = [row for row in csv.reader(r.stdout.splitlines()) if len(row) > LAST_RESULT]
+    return r.returncode == 0 and bool(rows) and rows[0][LAST_RESULT] == RUNNING
+
+
 def run_now(name: str) -> None:
     task = system_name(name)
     if task not in _names():
         raise jobs.NotInstalled()
-    r = _schtasks("/Query", "/TN", task, "/FO", "CSV", "/NH", "/V")
-    rows = [row for row in csv.reader(r.stdout.splitlines()) if len(row) > LAST_RESULT]
-    if r.returncode == 0 and rows and rows[0][LAST_RESULT] == RUNNING:
+    if _running(task):
         raise jobs.AlreadyRunning()
     r = _schtasks("/Run", "/TN", task)
     if r.returncode != 0:
         raise jobs.NotStarted(f"Task Scheduler couldn't start {task}: {_error(r)}")
+
+
+# ---------------------------------------------------------------- the always-running job
+
+def install_always(program: list[str], log_dir: Path) -> None:
+    task = system_name(jobs.ALWAYS)
+    stop_always()  # a running one keeps its old command, and a second start would be ignored
+    _register({task: always_xml(program, log_dir)})
+    # Its trigger is the next sign-in; the family is signed in now.
+    r = _schtasks("/Run", "/TN", task)
+    if r.returncode != 0:
+        raise RuntimeError(f"Task Scheduler couldn't start {task}: {_error(r)}")
+
+
+def remove_always() -> None:
+    task = system_name(jobs.ALWAYS)
+    if task in _names():
+        stop_always()
+        r = _schtasks("/Delete", "/TN", task, "/F")
+        if r.returncode != 0:
+            raise RuntimeError(f"Task Scheduler didn't remove {task}: {_error(r)}")
+
+
+def always_status() -> jobs.Status:
+    task = system_name(jobs.ALWAYS)
+    installed = task in _names()
+    return jobs.Status(installed=installed, running=installed and _running(task))
+
+
+def stop_always() -> None:
+    task = system_name(jobs.ALWAYS)
+    if task in _names() and _running(task):
+        r = _schtasks("/End", "/TN", task)
+        if r.returncode != 0:
+            raise RuntimeError(f"Task Scheduler couldn't stop {task}: {_error(r)}")
 
 
 # ---------------------------------------------------------------- one-off runs

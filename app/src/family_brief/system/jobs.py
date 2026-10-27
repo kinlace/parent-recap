@@ -1,6 +1,10 @@
-"""The evening jobs, and one-off runs with the evening job's permissions (ADR 0020). The program
-describes a job; each system's adapter turns it into its own scheduler's: launchd on macOS, Task
-Scheduler on Windows."""
+"""The evening jobs, the always-running job, and one-off runs with the evening job's permissions
+(ADR 0020). The program describes a job; each system's adapter turns it into its own scheduler's:
+launchd on macOS, Task Scheduler on Windows.
+
+The evening jobs run at their time. The always-running job, the Linked Device's (ADR 0026), runs
+from the family's sign-in on and is started again whenever it exits, unless it exits with
+LINK_ENDED."""
 from __future__ import annotations
 
 import sys
@@ -17,6 +21,12 @@ DAILY = "daily"
 WEEKEND = "weekend-events"
 BG_ENV = "PARENT_RECAP_BG"  # set inside run_detached's runs so doctor doesn't recurse
 TIMED_OUT = 124  # run_detached's exit code for a run it stopped, as timeout(1) gives
+ALWAYS = "linked-device"  # the always-running job's name
+# The always-running job's exit code once its link has ended, after which nothing starts it
+# again until it's installed anew. launchd's KeepAlive tells only a successful exit from the
+# rest, so it is 0, and the program must end any other way, a crash or an empty event loop
+# included, with another code.
+LINK_ENDED = 0
 
 
 @dataclass(frozen=True)
@@ -27,6 +37,13 @@ class Job:
     hour: int
     minute: int
     log_dir: Path          # <subcommand>-stdout.log and -stderr.log go here
+
+
+@dataclass(frozen=True)
+class Status:
+    """The always-running job's: installed, and running right now."""
+    installed: bool
+    running: bool
 
 
 @dataclass(frozen=True)
@@ -56,13 +73,37 @@ def install(jobs: list[Job]) -> None:
 
 
 def remove_all() -> None:
-    """Removes our jobs, including what older versions left under their names or in the record."""
+    """Removes our jobs, the always-running one too, including what older versions left under
+    their names or in the record."""
     _adapter.remove_all()
 
 
 def installed() -> set[str]:
-    """The names of our jobs the system will run at their time."""
+    """The names of our evening jobs the system will run at their time."""
     return _adapter.installed()
+
+
+def install_always(program: list[str], log_dir: Path) -> None:
+    """Installs the always-running job to run `program` (a command and its arguments) at every
+    sign-in of the family's user, in place of the one installed, and starts it now. Its output
+    goes to ALWAYS-stdout.log and -stderr.log in `log_dir`."""
+    _adapter.install_always(program, log_dir)
+
+
+def remove_always() -> None:
+    """Stops and removes the always-running job, if it's installed."""
+    _adapter.remove_always()
+
+
+def always_status() -> Status:
+    """Whether the always-running job is installed, and running."""
+    return _adapter.always_status()
+
+
+def stop_always() -> None:
+    """Stops the always-running job without removing it: it starts again at the next sign-in, or
+    once installed anew."""
+    _adapter.stop_always()
 
 
 def waiting_for_login() -> set[str]:

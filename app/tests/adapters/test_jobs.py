@@ -2,7 +2,8 @@
 Callers' tests use fake_system.FakeJobs instead.
 
 The outside edge is faked: `launchctl`, which loads and unloads the plists in a temporary HOME,
-starts them by hand and runs one-off jobs, which it reports as running."""
+starts them by hand or at load when they ask to, and runs one-off jobs, which it reports as
+running."""
 from __future__ import annotations
 
 import os
@@ -37,8 +38,11 @@ class FakeLaunchctl:
         self.ran.append(list(cmd))
         if cmd[1] == "load":
             self.loaded.add(Path(cmd[2]).stem)
+            if plistlib.loads(Path(cmd[2]).read_bytes()).get("RunAtLoad"):
+                self.running.add(Path(cmd[2]).stem)
         elif cmd[1] == "unload":
             self.loaded.discard(Path(cmd[2]).stem)
+            self.running.discard(Path(cmd[2]).stem)
         elif cmd[1] == "list":
             return subprocess.CompletedProcess(cmd, 0, "".join(f"-\t0\t{label}\n"
                                                                for label in self.loaded), "")
@@ -148,6 +152,68 @@ def test_removing_all_also_removes_an_older_versions_job_from_the_record(harness
     jobs.remove_all()
 
     assert jobs.found() == [] and jobs.installed() == set()
+    assert list(jobs_macos.LAUNCH_AGENTS.iterdir()) == []
+
+
+# ── the always-running job
+
+
+FOLLOW = ["/ParentRecap/runtime/node-v24/bin/node", "/ParentRecap/app/linked-device.mjs", "follow"]
+
+
+def test_the_always_running_job_starts_at_login_and_again_unless_its_link_ended(harness,
+                                                                                launchctl,
+                                                                                tmp_path):
+    jobs.install_always(FOLLOW, tmp_path)
+
+    plist = plistlib.loads((jobs_macos.LAUNCH_AGENTS / "com.parentrecap.linked-device.plist")
+                           .read_bytes())
+    assert plist["ProgramArguments"] == FOLLOW
+    assert plist["RunAtLoad"] is True
+    # launchd starts it again after any exit but a successful one, which is the link ending.
+    assert plist["KeepAlive"] == {"SuccessfulExit": False} and jobs.LINK_ENDED == 0
+    assert plist["Umask"] == 0o077  # as the evening job's
+    assert plist["StandardOutPath"] == str(tmp_path / "linked-device-stdout.log")
+    assert plist["StandardErrorPath"] == str(tmp_path / "linked-device-stderr.log")
+    assert plist["EnvironmentVariables"]["HOME"] == str(harness.home)
+
+
+def test_the_always_running_job_is_installed_running_stopped_and_removed(harness, launchctl,
+                                                                         tmp_path):
+    assert jobs.always_status() == jobs.Status(installed=False, running=False)
+
+    jobs.install_always(FOLLOW, tmp_path)
+    assert jobs.always_status() == jobs.Status(installed=True, running=True)
+
+    jobs.stop_always()
+    assert jobs.always_status() == jobs.Status(installed=True, running=False)
+
+    jobs.install_always([*FOLLOW, "--again"], tmp_path)
+    assert jobs.always_status() == jobs.Status(installed=True, running=True)
+    assert jobs.program(jobs.ALWAYS) == [*FOLLOW, "--again"]
+
+    jobs.remove_always()
+    assert jobs.always_status() == jobs.Status(installed=False, running=False)
+    assert list(jobs_macos.LAUNCH_AGENTS.iterdir()) == []
+    jobs.remove_always()  # nothing left to remove
+
+
+def test_the_evening_jobs_leave_the_always_running_job_be_and_remove_all_takes_it(harness,
+                                                                                  launchctl,
+                                                                                  tmp_path):
+    jobs.install_always(FOLLOW, tmp_path)
+
+    jobs.install(both(tmp_path))
+    jobs.install(both(tmp_path)[:1])
+
+    assert jobs.always_status().running
+    assert jobs.installed() == {"daily"}
+    assert {j.system_name for j in jobs.found()} == {"com.parentrecap.daily",
+                                                     "com.parentrecap.linked-device"}
+
+    jobs.remove_all()
+
+    assert jobs.always_status() == jobs.Status(installed=False, running=False)
     assert list(jobs_macos.LAUNCH_AGENTS.iterdir()) == []
 
 
