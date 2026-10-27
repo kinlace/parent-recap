@@ -205,7 +205,9 @@ def _jobs(s: Survey, programs: list[Path]) -> None:
     found = jobs.found()
     for job in found:
         prog = job.program
-        if not (prog[1:3] == ["-m", "family_brief"] and any(
+        # A Service runs its program through `-m family_brief.system.keep_running`.
+        module = prog[2].split(".")[0] if prog[1:2] == ["-m"] and len(prog) > 2 else None
+        if not (module == "family_brief" and any(
                 Path(prog[0]).parent.resolve().is_relative_to(v) for v in venvs)):
             runs = prog[0] if prog else "a program it can't read"
             s.stops.append(f"{_show(job.where)} is a scheduled job named {job.system_name}, but "

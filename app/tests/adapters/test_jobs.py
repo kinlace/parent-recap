@@ -9,6 +9,7 @@ import os
 import plistlib
 import signal
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -149,6 +150,78 @@ def test_removing_all_also_removes_an_older_versions_job_from_the_record(harness
 
     assert jobs.found() == [] and jobs.installed() == set()
     assert list(jobs_macos.LAUNCH_AGENTS.iterdir()) == []
+
+
+# ── a Service, kept running while the family is signed in
+
+
+def follow(log_dir: Path) -> jobs.Service:
+    return jobs.Service(jobs.LINKED_DEVICE, ["/pinned/node", "linked-device.js", "follow"], log_dir)
+
+
+def service_plist() -> dict[str, Any]:
+    return plistlib.loads((jobs_macos.LAUNCH_AGENTS / "com.parentrecap.whatsapp.plist").read_bytes())
+
+
+def test_a_service_starts_at_login_and_again_unless_its_link_ended(harness, launchctl, tmp_path):
+    jobs.keep_running(follow(tmp_path))
+
+    plist = service_plist()
+    assert plist["RunAtLoad"] is True
+    # The runner exits with 0 only after the program exits with LINK_ENDED.
+    assert plist["KeepAlive"] == {"SuccessfulExit": False}
+    assert plist["ProgramArguments"] == [
+        sys.executable, "-m", "family_brief.system.keep_running",
+        str(tmp_path / "whatsapp-stdout.log"), str(tmp_path / "whatsapp-stderr.log"),
+        "/pinned/node", "linked-device.js", "follow"]
+    assert plist["StandardErrorPath"] == str(tmp_path / "whatsapp-stderr.log")
+    assert plist["Umask"] == 0o077
+    assert launchctl.verbs("load") == [["launchctl", "load", str(jobs_macos.LAUNCH_AGENTS /
+                                                                 "com.parentrecap.whatsapp.plist")]]
+    assert jobs.installed() == set()  # the evening jobs only
+
+
+def test_a_services_status_says_whether_it_is_installed_and_running(harness, launchctl, tmp_path):
+    assert jobs.service_status(jobs.LINKED_DEVICE) == jobs.ServiceStatus(False, False)
+    jobs.keep_running(follow(tmp_path))
+    assert jobs.service_status(jobs.LINKED_DEVICE) == jobs.ServiceStatus(True, False)
+    launchctl.running.add("com.parentrecap.whatsapp")
+    assert jobs.service_status(jobs.LINKED_DEVICE) == jobs.ServiceStatus(True, True)
+
+
+def test_a_stopped_service_stays_installed_for_the_next_login(harness, launchctl, tmp_path):
+    jobs.keep_running(follow(tmp_path))
+    launchctl.running.add("com.parentrecap.whatsapp")
+
+    jobs.stop(jobs.LINKED_DEVICE)
+
+    assert "com.parentrecap.whatsapp" not in launchctl.loaded
+    launchctl.running.clear()
+    assert jobs.service_status(jobs.LINKED_DEVICE) == jobs.ServiceStatus(True, False)
+
+
+def test_a_removed_service_is_neither_loaded_nor_kept(harness, launchctl, tmp_path):
+    jobs.keep_running(follow(tmp_path))
+
+    jobs.remove(jobs.LINKED_DEVICE)
+    jobs.remove(jobs.LINKED_DEVICE)  # already gone
+
+    assert launchctl.loaded == set() and jobs.found() == []
+    assert jobs.service_status(jobs.LINKED_DEVICE) == jobs.ServiceStatus(False, False)
+
+
+def test_installing_the_evening_jobs_leaves_a_service_and_removing_all_removes_it(harness,
+                                                                                  launchctl,
+                                                                                  tmp_path):
+    jobs.keep_running(follow(tmp_path))
+
+    jobs.install(both(tmp_path)[:1])
+
+    assert jobs.service_status(jobs.LINKED_DEVICE).installed
+    assert {j.system_name for j in jobs.found()} == {"com.parentrecap.daily",
+                                                     "com.parentrecap.whatsapp"}
+    jobs.remove_all()
+    assert jobs.found() == [] and launchctl.loaded == set()
 
 
 # ── starting a job by hand

@@ -1,12 +1,14 @@
-"""The evening jobs, and one-off runs with the evening job's permissions (ADR 0020). The program
-describes a job; each system's adapter turns it into its own scheduler's: launchd on macOS, Task
-Scheduler on Windows."""
+"""The evening jobs, the jobs kept running while the family is signed in, and one-off runs with
+the evening job's permissions (ADR 0020, ADR 0026). The program describes a job; each system's
+adapter turns it into its own scheduler's: launchd on macOS, Task Scheduler on Windows."""
 from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+
+from .keep_running import LINK_ENDED  # noqa: F401  part of this interface
 
 if sys.platform == "win32":
     from . import jobs_windows as _adapter
@@ -15,6 +17,8 @@ else:
 
 DAILY = "daily"
 WEEKEND = "weekend-events"
+LINKED_DEVICE = "whatsapp"  # the Linked Device's `follow` (ADR 0026)
+SERVICES = (LINKED_DEVICE,)  # the names a Service may have
 BG_ENV = "PARENT_RECAP_BG"  # set inside run_detached's runs so doctor doesn't recurse
 TIMED_OUT = 124  # run_detached's exit code for a run it stopped, as timeout(1) gives
 
@@ -27,6 +31,21 @@ class Job:
     hour: int
     minute: int
     log_dir: Path          # <subcommand>-stdout.log and -stderr.log go here
+
+
+@dataclass(frozen=True)
+class Service:
+    """A job the system starts when the family signs in and starts again whenever it exits,
+    except with LINK_ENDED, after which it waits for the next sign-in or `keep_running`."""
+    name: str              # one of SERVICES
+    program: list[str]     # the program and its arguments
+    log_dir: Path          # <name>-stdout.log and -stderr.log go here
+
+
+@dataclass(frozen=True)
+class ServiceStatus:
+    installed: bool        # the system starts it at sign-in
+    running: bool
 
 
 @dataclass(frozen=True)
@@ -50,19 +69,41 @@ class NotStarted(Exception):
 
 
 def install(jobs: list[Job]) -> None:
-    """Installs `jobs` in place of ours, removing ours that aren't among them, and adds each to
-    setup's record."""
+    """Installs `jobs` in place of our evening jobs, removing those that aren't among them, and
+    adds each to setup's record. Services are left as they are."""
     _adapter.install(jobs)
 
 
 def remove_all() -> None:
-    """Removes our jobs, including what older versions left under their names or in the record."""
+    """Removes our jobs, Services too, including what older versions left under their names or in
+    the record."""
     _adapter.remove_all()
 
 
 def installed() -> set[str]:
-    """The names of our jobs the system will run at their time."""
+    """The names of our evening jobs the system will run at their time."""
     return _adapter.installed()
+
+
+def keep_running(service: Service) -> None:
+    """Installs `service` in place of the one of its name, stopped first, adds it to setup's
+    record and starts it now."""
+    _adapter.keep_running(service)
+
+
+def stop(name: str) -> None:
+    """Stops the Service `name` until the family next signs in or it's installed again."""
+    _adapter.stop(name)
+
+
+def remove(name: str) -> None:
+    """Stops and removes the Service `name`, if it's installed."""
+    _adapter.remove(name)
+
+
+def service_status(name: str) -> ServiceStatus:
+    """Whether the Service `name` is installed, and whether it is running."""
+    return _adapter.service_status(name)
 
 
 def waiting_for_login() -> set[str]:

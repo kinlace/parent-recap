@@ -72,6 +72,41 @@ def test_doctor_says_a_job_that_isnt_installed_isnt_installed_yet(harness, nothi
     assert "not loaded" not in line
 
 
+def linked_device(harness) -> None:
+    """The Linked Device's job as pairing leaves it, running."""
+    harness.jobs.keep_running(jobs.Service(jobs.LINKED_DEVICE, ["node", "follow"],
+                                           harness.home / "ParentRecap" / "logs"))
+
+
+def test_doctor_names_a_service_kept_running_with_the_other_jobs(harness, nothing_loaded, capsys):
+    harness.jobs.add(jobs.DAILY)
+    linked_device(harness)
+
+    harness.cli("doctor", "--skip-llm")
+
+    lines = [l for l in capsys.readouterr().out.splitlines() if "Schedule:" in l]
+    [service] = [l for l in lines if jobs.system_name(jobs.LINKED_DEVICE) in l]
+    assert service.startswith(ops.OK.strip()) and "while you're signed in" in service
+
+
+def test_doctor_says_a_service_that_isnt_running_starts_at_the_next_sign_in(harness, nothing_loaded,
+                                                                           capsys):
+    linked_device(harness)
+    harness.jobs.stop(jobs.LINKED_DEVICE)
+
+    harness.cli("doctor", "--skip-llm")
+
+    [line] = [l for l in capsys.readouterr().out.splitlines()
+              if jobs.system_name(jobs.LINKED_DEVICE) in l]
+    assert line.startswith(ops.WARN.strip()) and "not running" in line
+
+
+def test_doctor_leaves_out_a_service_that_isnt_installed(harness, nothing_loaded, capsys):
+    harness.cli("doctor", "--skip-llm")
+
+    assert jobs.system_name(jobs.LINKED_DEVICE) not in capsys.readouterr().out
+
+
 @pytest.fixture
 def claude_without_token(harness, monkeypatch):
     """Claude Code installed and answering, with no claude-oauth-token in the Keychain."""

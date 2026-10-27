@@ -26,8 +26,8 @@ from typing import Any, Callable, ContextManager
 
 import pytest
 
-from family_brief.system import (desktop, dialog, jobs, profile, profile_macos, profile_windows,
-                                 secrets, wake, windows_only)
+from family_brief.system import (desktop, dialog, jobs, keep_running, profile, profile_macos,
+                                 profile_windows, secrets, wake, windows_only)
 from family_brief.system.secrets_error import SecretsError
 
 MACOS, WINDOWS = profile_macos.PROFILE, profile_windows.PROFILE
@@ -83,8 +83,9 @@ class FakeSecrets(dict):
 
 
 class FakeJobs:
-    """The system's scheduler: our jobs installed, which it will run at their time, and the one-off
-    runs, which run `parent-recap` in this process with the evening job's environment."""
+    """The system's scheduler: our jobs installed, which it will run at their time, the Services it
+    keeps running, and the one-off runs, which run `parent-recap` in this process with the evening
+    job's environment."""
 
     def __init__(self) -> None:
         self.programs: dict[str, list[str]] = {}  # what each installed job runs, by its name
@@ -93,6 +94,8 @@ class FakeJobs:
         self.older: list[jobs.Found] = []  # jobs an older version left, found and removed with ours
         self.running: set[str] = set()     # run_now finds these already going
         self.started: list[str] = []       # each job run_now started
+        self.services: dict[str, jobs.Service] = {}  # the Services installed, by their name
+        self.services_running: set[str] = set()      # those running now
         self.start_fails: str | None = None  # run_now's NotStarted reason
         self.detached: list[list[str]] = []  # each one-off run's arguments, -c config first
         self.detached_fails: str | None = None  # the system didn't start a one-off run
@@ -115,6 +118,7 @@ class FakeJobs:
 
     def remove_all(self) -> None:
         self.programs, self.loaded, self.older = {}, set(), []
+        self.services, self.services_running = {}, set()
 
     def installed(self) -> set[str]:
         return self.loaded & set(self.programs)
@@ -123,8 +127,26 @@ class FakeJobs:
         return set(self.programs) - self.loaded
 
     def found(self) -> list[jobs.Found]:
+        # A Service's job runs its program through this Python's keep_running.
+        services = {name: [sys.executable, "-m", keep_running.__name__, *service.program]
+                    for name, service in self.services.items()}
         return [jobs.Found(self.system_name(name), self.where(name), program)
-                for name, program in self.programs.items()] + self.older
+                for name, program in {**self.programs, **services}.items()] + self.older
+
+    def keep_running(self, service: jobs.Service) -> None:
+        assert service.name in jobs.SERVICES, service.name
+        self.services[service.name] = service
+        self.services_running.add(service.name)
+
+    def stop(self, name: str) -> None:
+        self.services_running.discard(name)
+
+    def remove(self, name: str) -> None:
+        self.services.pop(name, None)
+        self.services_running.discard(name)
+
+    def service_status(self, name: str) -> jobs.ServiceStatus:
+        return jobs.ServiceStatus(name in self.services, name in self.services_running)
 
     def program(self, name: str) -> list[str] | None:
         return self.programs.get(name)

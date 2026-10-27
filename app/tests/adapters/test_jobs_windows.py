@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from family_brief.system import jobs, jobs_windows, task_run
+from family_brief.system import jobs, jobs_windows, keep_running, task_run
 
 NS = {"t": jobs_windows.TASK_NS}
 EVENING = datetime(2026, 9, 27, 18, 30)
@@ -124,6 +124,59 @@ def test_the_runner_appends_the_jobs_output_to_its_log_files_and_gives_its_exit_
     assert err.read_text().strip() == "UTF-8 1"
 
 
+# ── a Service, kept running while the family is signed in
+
+
+def follow(log_dir: Path) -> jobs.Service:
+    return jobs.Service(jobs.LINKED_DEVICE, [r"C:\pinned\node.exe", "linked-device.js", "follow"],
+                        log_dir)
+
+
+def test_a_service_starts_at_the_familys_sign_in_and_again_when_it_fails(tmp_path, monkeypatch):
+    monkeypatch.setenv("USERDOMAIN", "KITCHEN-PC")
+    monkeypatch.setenv("USERNAME", "family")
+
+    service = ET.fromstring(jobs_windows.service_xml(follow(tmp_path)))
+
+    [trigger] = service.find("t:Triggers", NS)
+    assert trigger.tag == f"{{{jobs_windows.TASK_NS}}}LogonTrigger"
+    assert text(trigger, "t:UserId") == "KITCHEN-PC\\family"
+    assert text(service, "t:Principals/t:Principal/t:LogonType") == "InteractiveToken"
+    assert text(service, "t:Settings/t:RestartOnFailure/t:Interval") == "PT1M"
+    assert int(text(service, "t:Settings/t:RestartOnFailure/t:Count")) > 100
+    # Task Scheduler stops a task after 72 hours unless told not to.
+    assert text(service, "t:Settings/t:ExecutionTimeLimit") == "PT0S"
+    assert text(service, "t:Settings/t:DisallowStartIfOnBatteries") == "false"
+    assert text(service, "t:Settings/t:StopIfGoingOnBatteries") == "false"
+    assert text(service, "t:Settings/t:WakeToRun") == "false"
+
+
+def test_a_service_runs_its_program_through_the_runner_with_its_log_files(tmp_path):
+    args = text(ET.fromstring(jobs_windows.service_xml(follow(tmp_path))),
+                "t:Actions/t:Exec/t:Arguments")
+
+    assert args.startswith("-m family_brief.system.keep_running ")
+    assert str(tmp_path / "whatsapp-stdout.log") in args
+    assert str(tmp_path / "whatsapp-stderr.log") in args
+    assert args.endswith(r"C:\pinned\node.exe linked-device.js follow")
+
+
+def test_the_runner_starts_the_program_again_until_its_link_ended(tmp_path, monkeypatch):
+    monkeypatch.setattr(keep_running, "PAUSE", 0)
+    out, err, runs = tmp_path / "out.log", tmp_path / "err.log", tmp_path / "runs"
+    # Fails, exits as if done, then exits with LINK_ENDED.
+    script = (f"import pathlib, sys; p = pathlib.Path({str(runs)!r}); n = len(p.read_text()) "
+              f"if p.exists() else 0; p.write_text('x' * (n + 1)); print('run', n); "
+              f"sys.exit([1, 0, {jobs.LINK_ENDED}][n])")
+
+    code = keep_running.main([str(out), str(err), sys.executable, "-c", script])
+
+    assert code == 0  # so launchd's KeepAlive leaves it stopped
+    assert out.read_text().splitlines() == ["run 0", "run 1", "run 2"]
+    assert [line.split("keep_running: ")[1] for line in err.read_text().splitlines()] == [
+        "exited with 1, starting again in 0 seconds", "exited with 0, starting again in 0 seconds"]
+
+
 # ── one-off runs, a hidden child process
 
 
@@ -210,3 +263,50 @@ def test_run_now_starts_the_task_which_writes_its_log_files(task_scheduler, tmp_
     while time.time() < deadline and "usage:" not in (log.read_text() if log.exists() else ""):
         time.sleep(1)
     assert "usage:" in log.read_text()
+
+
+def sleeper(log_dir: Path, beats: Path) -> jobs.Service:
+    """A Service whose program writes a beat every quarter second, for a test to see it run."""
+    script = (f"import pathlib, time\nwhile True:\n    with pathlib.Path({str(beats)!r}).open('a') "
+              "as f: f.write('.')\n    time.sleep(0.25)")
+    return jobs.Service(jobs.LINKED_DEVICE, [sys.executable, "-c", script], log_dir)
+
+
+def wait_for(condition, seconds: int = 30) -> bool:
+    deadline = time.time() + seconds
+    while time.time() < deadline and not condition():
+        time.sleep(0.5)
+    return condition()
+
+
+def beating(beats: Path) -> bool:
+    before = beats.stat().st_size if beats.exists() else 0
+    time.sleep(1.5)
+    return beats.exists() and beats.stat().st_size > before
+
+
+@pytest.mark.windows
+def test_a_service_is_started_stopped_and_removed_with_its_program(task_scheduler, tmp_path):
+    beats = tmp_path / "beats"
+    jobs.keep_running(sleeper(tmp_path, beats))
+
+    assert wait_for(lambda: jobs.service_status(jobs.LINKED_DEVICE) == jobs.ServiceStatus(True, True))
+    assert wait_for(lambda: beats.exists())
+    jobs.install(both(tmp_path)[:1])  # leaves the Service as it is
+    assert jobs.installed() == {jobs.DAILY}
+    assert jobs.service_status(jobs.LINKED_DEVICE).installed
+
+    jobs.stop(jobs.LINKED_DEVICE)
+
+    assert wait_for(lambda: not jobs.service_status(jobs.LINKED_DEVICE).running)
+    assert jobs.service_status(jobs.LINKED_DEVICE).installed
+    assert not beating(beats)  # the program ended with the task
+
+    jobs.keep_running(sleeper(tmp_path, beats))
+    assert wait_for(lambda: beating(beats))
+    jobs.remove(jobs.LINKED_DEVICE)
+
+    assert jobs.service_status(jobs.LINKED_DEVICE) == jobs.ServiceStatus(False, False)
+    assert not beating(beats)
+    assert {j.system_name for j in jobs.found()} == {jobs.system_name(jobs.DAILY),
+                                                     jobs.system_name(jobs_windows.CATCH_UP)}

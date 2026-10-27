@@ -224,6 +224,23 @@ def test_names_the_family_accounts_it_leaves_alone(harness, monkeypatch, capsys)
 # ── removing
 
 
+def test_lists_and_removes_the_linked_devices_job_with_the_evening_one(harness, monkeypatch,
+                                                                      capsys):
+    set_up(harness, monkeypatch)
+    node = fake_node.pinned_node(harness.home)
+    harness.jobs.keep_running(jobs.Service(jobs.LINKED_DEVICE, [str(node), "follow"],
+                                           harness.home / "ParentRecap" / "logs"))
+
+    assert uninstall(harness) == 0
+    assert jobs.system_name(jobs.LINKED_DEVICE) in capsys.readouterr().out
+    assert harness.jobs.service_status(jobs.LINKED_DEVICE).running
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    assert harness.jobs.service_status(jobs.LINKED_DEVICE) == jobs.ServiceStatus(False, False)
+    assert harness.jobs.found() == []
+
+
 def test_confirmed_with_the_archive_kept_removes_all_but_the_archive(harness, monkeypatch,
                                                                     capsys):
     set_up(harness, monkeypatch)

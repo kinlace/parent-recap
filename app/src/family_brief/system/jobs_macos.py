@@ -1,4 +1,5 @@
 """The macOS adapter of `jobs`: LaunchAgents in ~/Library/LaunchAgents, loaded with `launchctl`.
+A Service is one too, loaded at login and kept alive (ADR 0026).
 
 A one-off run goes through launchd too. macOS grants WhatsApp access per responsible process.
 Started from Terminal, Claude Code or Codex, that is the parent app, which usually has no access.
@@ -22,6 +23,7 @@ from typing import Callable
 
 from .. import install_record, private_files, tools
 from . import jobs  # its names are read at call time: jobs imports this module first
+from . import keep_running as service_runner
 
 LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
 PREFIX = "com.parentrecap."
@@ -88,7 +90,7 @@ def _remove(path: Path) -> None:
 
 def _plists() -> list[Path]:
     """Our jobs' plists, by our labels and from setup's record, which has older versions' too."""
-    usual = [_path(label) for label in OURS]
+    usual = [_path(label) for label in (*OURS, *(system_name(s) for s in jobs.SERVICES))]
     return [p for p in dict.fromkeys([*usual, *(Path(p) for p in install_record.entries("launchd"))])
             if p.exists()]
 
@@ -104,7 +106,7 @@ def _loaded() -> set[str]:
 
 
 def installed() -> set[str]:
-    return {_name(label) for label in _loaded()}
+    return {_name(label) for label in _loaded()} - set(jobs.SERVICES)
 
 
 def waiting_for_login() -> set[str]:
@@ -130,18 +132,75 @@ def program(name: str) -> list[str] | None:
     return _program(path) or None if path.exists() else None
 
 
+def _probe(name: str) -> subprocess.CompletedProcess:
+    """launchctl's description of the loaded job `name`; it fails for one not loaded."""
+    return subprocess.run(["launchctl", "print", f"{_domain()}/{system_name(name)}"],
+                          capture_output=True, text=True, encoding="utf-8")
+
+
+def _running(probe: subprocess.CompletedProcess) -> bool:
+    return bool(re.search(r"^\tstate = running$", probe.stdout, re.M))
+
+
 def run_now(name: str) -> None:
     target = f"{_domain()}/{system_name(name)}"
-    probe = subprocess.run(["launchctl", "print", target], capture_output=True, text=True, encoding="utf-8")
+    probe = _probe(name)
     if probe.returncode != 0:
         raise jobs.NotInstalled()
     # Plain kickstart (no -k) leaves a running job alone, so say so instead of looking like a start.
-    if re.search(r"^\tstate = running$", probe.stdout, re.M):
+    if _running(probe):
         raise jobs.AlreadyRunning()
     kick = subprocess.run(["launchctl", "kickstart", target], capture_output=True, text=True, encoding="utf-8")
     if kick.returncode != 0:
         raise jobs.NotStarted(f"launchctl couldn't start {system_name(name)}: "
                          f"{kick.stderr.strip() or kick.returncode}")
+
+
+# ---------------------------------------------------------------- Services
+
+def _service_plist(service: jobs.Service) -> dict:
+    out, err = (str(service.log_dir / f"{service.name}-{kind}.log") for kind in ("stdout", "stderr"))
+    return {
+        "Label": system_name(service.name),
+        "ProgramArguments": [sys.executable, "-m", service_runner.__name__, out, err,
+                             *service.program],
+        # Started at login, and again whenever the runner ends but with 0, which it gives only
+        # once the program exits with LINK_ENDED.
+        "RunAtLoad": True,
+        "KeepAlive": {"SuccessfulExit": False},
+        "StandardOutPath": out,  # the runner's own errors
+        "StandardErrorPath": err,
+        "EnvironmentVariables": {"PATH": _path_env(), "HOME": str(Path.home())},
+        "Umask": private_files.UMASK,
+    }
+
+
+def keep_running(service: jobs.Service) -> None:
+    path = _path(system_name(service.name))
+    LAUNCH_AGENTS.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
+    with path.open("wb") as f:
+        plistlib.dump(_service_plist(service), f)
+    subprocess.run(["launchctl", "load", str(path)], check=True)
+    install_record.add("launchd", str(path))
+
+
+def stop(name: str) -> None:
+    # Unloaded, KeepAlive no longer applies; the plist loads again at the next login.
+    path = _path(system_name(name))
+    if path.exists():
+        subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
+
+
+def remove(name: str) -> None:
+    _remove(_path(system_name(name)))
+
+
+def service_status(name: str) -> jobs.ServiceStatus:
+    if not _path(system_name(name)).exists():
+        return jobs.ServiceStatus(False, False)
+    probe = _probe(name)
+    return jobs.ServiceStatus(True, probe.returncode == 0 and _running(probe))
 
 
 def _path_env() -> str:

@@ -8,7 +8,10 @@ asleep, wakes the PC to run ("wake the computer to run this task"), and runs as 
 after a start it missed (ADR 0021). A start missed because nobody was signed in isn't caught up
 that way, so the evening job has a second task, at sign-in, that runs it if it was missed. Each
 starts pythonw.exe with `task_run`, which gives the job its log files without opening a window on
-the family's desktop."""
+the family's desktop.
+
+A Service is a task at the family's sign-in, with no time limit, that starts pythonw.exe with
+`keep_running`, which starts the program again when it exits (ADR 0026)."""
 from __future__ import annotations
 
 import codecs
@@ -26,6 +29,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import jobs, task_run  # jobs' names are read at call time: jobs imports this module first
+from . import keep_running as service_runner
 
 PREFIX = "Parent Recap "
 CATCH_UP = "daily catch-up"  # the evening job's sign-in task (`catch_up_xml`)
@@ -96,11 +100,11 @@ def _user() -> str | None:
     return (f"{domain}\\{user}" if domain else user) if user else None
 
 
-def _task(job: jobs.Job, description: str, trigger: Callable[[ET.Element], None], *,
-          wake: bool, more_args: tuple[str, ...] = ()) -> str:
-    """A task that runs `job`'s command and `more_args` when `trigger` (handed the Triggers
-    element) says, in Task Scheduler's XML; `wake` wakes the PC for it and catches up a missed
-    start."""
+def _task(description: str, trigger: Callable[[ET.Element], None], arguments: list[str], *,
+          wake: bool, always: bool = False) -> str:
+    """A task that runs pythonw.exe with `arguments` when `trigger` (handed the Triggers element)
+    says, in Task Scheduler's XML; `wake` wakes the PC for it and catches up a missed start, and
+    `always` lets it run with no time limit and starts it again if it fails."""
     ET.register_namespace("", TASK_NS)
     task = ET.Element(f"{{{TASK_NS}}}Task", version="1.2")
     _add(_add(task, "RegistrationInfo"), "Description", description)
@@ -123,18 +127,38 @@ def _task(job: jobs.Job, description: str, trigger: Callable[[ET.Element], None]
     _add(settings, "StartWhenAvailable", str(wake).lower())
     _add(settings, "WakeToRun", str(wake).lower())
     _add(settings, "Enabled", "true")
+    if always:
+        _add(settings, "ExecutionTimeLimit", "PT0S")  # else stopped after 72 hours
+        # Should the runner itself fail; a minute is the shortest Task Scheduler takes.
+        restart = _add(settings, "RestartOnFailure")
+        _add(restart, "Interval", "PT1M")
+        _add(restart, "Count", "999")
 
     actions = _add(task, "Actions")
     actions.set("Context", "Author")
     run = _add(actions, "Exec")
     _add(run, "Command", _pythonw())
-    _add(run, "Arguments", subprocess.list2cmdline([
-        "-m", RUNNER,
-        str(job.log_dir / f"{job.subcommand}-stdout.log"),
-        str(job.log_dir / f"{job.subcommand}-stderr.log"),
-        sys.executable, "-m", "family_brief", job.subcommand, *more_args]))
+    _add(run, "Arguments", subprocess.list2cmdline(arguments))
     _add(run, "WorkingDirectory", str(Path.home()))
     return ET.tostring(task, encoding="unicode")
+
+
+def _job_arguments(job: jobs.Job, *more_args: str) -> list[str]:
+    return ["-m", RUNNER,
+            str(job.log_dir / f"{job.subcommand}-stdout.log"),
+            str(job.log_dir / f"{job.subcommand}-stderr.log"),
+            sys.executable, "-m", "family_brief", job.subcommand, *more_args]
+
+
+def _at_sign_in(triggers: ET.Element, delay: str | None = None) -> None:
+    trigger = _add(triggers, "LogonTrigger")
+    _add(trigger, "Enabled", "true")
+    # Without one it starts at anyone's sign-in:
+    # https://learn.microsoft.com/en-us/windows/win32/taskschd/logontrigger-userid
+    if user := _user():
+        _add(trigger, "UserId", user)
+    if delay:
+        _add(trigger, "Delay", delay)
 
 
 def task_xml(job: jobs.Job, now: datetime | None = None) -> str:
@@ -152,25 +176,25 @@ def task_xml(job: jobs.Job, now: datetime | None = None) -> str:
             _add(weekly, "WeeksInterval", "1")
 
     what = "the evening Brief" if job.name == jobs.DAILY else "Weekend Picks"
-    return _task(job, f"Parent Recap: {what}", at_its_time, wake=True)
+    return _task(f"Parent Recap: {what}", at_its_time, _job_arguments(job), wake=True)
 
 
 def catch_up_xml(job: jobs.Job) -> str:
     """The evening job's second task, which runs it at the family's sign-in if its evening run
     was missed. StartWhenAvailable doesn't catch up a start missed because nobody was signed in,
     and the run itself tells whether one was (`run --if-missed`, #386)."""
-    def at_sign_in(triggers: ET.Element) -> None:
-        trigger = _add(triggers, "LogonTrigger")
-        _add(trigger, "Enabled", "true")
-        # Without one it starts at anyone's sign-in:
-        # https://learn.microsoft.com/en-us/windows/win32/taskschd/logontrigger-userid
-        if user := _user():
-            _add(trigger, "UserId", user)
-        # The run waits for the network too, but Wi-Fi can take a while after signing in.
-        _add(trigger, "Delay", "PT1M")
+    # The run waits for the network too, but Wi-Fi can take a while after signing in.
+    return _task("Parent Recap: the evening Brief, if it was missed",
+                 lambda triggers: _at_sign_in(triggers, "PT1M"),
+                 _job_arguments(job, "--if-missed"), wake=False)
 
-    return _task(job, "Parent Recap: the evening Brief, if it was missed", at_sign_in,
-                 wake=False, more_args=("--if-missed",))
+
+def service_xml(service: jobs.Service) -> str:
+    """The task for `service`, in Task Scheduler's XML."""
+    logs = [str(service.log_dir / f"{service.name}-{kind}.log") for kind in ("stdout", "stderr")]
+    return _task(f"Parent Recap: {service.name}, kept running while you're signed in", _at_sign_in,
+                 ["-m", service_runner.__name__, *logs, *service.program], wake=False,
+                 always=True)
 
 
 def _names() -> list[str]:
@@ -183,13 +207,31 @@ def _names() -> list[str]:
     return list(dict.fromkeys(n for n in names if n.startswith(PREFIX) and "\\" not in n))
 
 
+def _services() -> set[str]:
+    return {system_name(name) for name in jobs.SERVICES}
+
+
 def _remove(kept: set[str]) -> None:
-    """Removes our tasks that `kept` doesn't name."""
+    """Removes our tasks that `kept` doesn't name, a Service's stopped first: removing a task
+    leaves it running."""
     for name in _names():
         if name not in kept:
+            if name in _services():
+                _schtasks("/End", "/TN", name)
             r = _schtasks("/Delete", "/TN", name, "/F")
             if r.returncode != 0:
                 raise RuntimeError(f"Task Scheduler didn't remove {name}: {_error(r)}")
+
+
+def _register(name: str, xml: str) -> None:
+    """Registers the task `name` from its XML, in place of one of that name."""
+    with tempfile.TemporaryDirectory(prefix="parent-recap-task-") as work:
+        file = Path(work) / "task.xml"
+        # schtasks refuses a file whose bytes don't match its declared encoding.
+        file.write_text('<?xml version="1.0" encoding="UTF-16"?>\n' + xml, encoding="utf-16")
+        r = _schtasks("/Create", "/TN", name, "/XML", str(file), "/F")
+        if r.returncode != 0:
+            raise RuntimeError(f"Task Scheduler didn't register {name}: {_error(r)}")
 
 
 def install(wanted: list[jobs.Job]) -> None:
@@ -197,15 +239,9 @@ def install(wanted: list[jobs.Job]) -> None:
     tasks = {system_name(job.name): task_xml(job) for job in wanted}
     tasks |= {system_name(CATCH_UP): catch_up_xml(job) for job in wanted
               if job.name == jobs.DAILY}
-    with tempfile.TemporaryDirectory(prefix="parent-recap-task-") as work:
-        file = Path(work) / "task.xml"
-        for name, xml in tasks.items():
-            # schtasks refuses a file whose bytes don't match its declared encoding.
-            file.write_text('<?xml version="1.0" encoding="UTF-16"?>\n' + xml, encoding="utf-16")
-            r = _schtasks("/Create", "/TN", name, "/XML", str(file), "/F")
-            if r.returncode != 0:
-                raise RuntimeError(f"Task Scheduler didn't register {name}: {_error(r)}")
-    _remove(kept=set(tasks))
+    for name, xml in tasks.items():
+        _register(name, xml)
+    _remove(kept=set(tasks) | _services())
 
 
 def _tasks() -> list[dict[str, Any]]:
@@ -236,7 +272,7 @@ def installed() -> set[str]:
     # such as after an upgrade from a version without the sign-in task.
     if CATCH_UP not in names:
         names.discard(jobs.DAILY)
-    return names - {CATCH_UP}
+    return names - {CATCH_UP, *jobs.SERVICES}
 
 
 def waiting_for_login() -> set[str]:
@@ -282,17 +318,52 @@ def program(name: str) -> list[str] | None:
     return None
 
 
+def _running(task: str) -> bool:
+    r = _schtasks("/Query", "/TN", task, "/FO", "CSV", "/NH", "/V")
+    rows = [row for row in csv.reader(r.stdout.splitlines()) if len(row) > LAST_RESULT]
+    return r.returncode == 0 and bool(rows) and rows[0][LAST_RESULT] == RUNNING
+
+
 def run_now(name: str) -> None:
     task = system_name(name)
     if task not in _names():
         raise jobs.NotInstalled()
-    r = _schtasks("/Query", "/TN", task, "/FO", "CSV", "/NH", "/V")
-    rows = [row for row in csv.reader(r.stdout.splitlines()) if len(row) > LAST_RESULT]
-    if r.returncode == 0 and rows and rows[0][LAST_RESULT] == RUNNING:
+    if _running(task):
         raise jobs.AlreadyRunning()
     r = _schtasks("/Run", "/TN", task)
     if r.returncode != 0:
         raise jobs.NotStarted(f"Task Scheduler couldn't start {task}: {_error(r)}")
+
+
+# ---------------------------------------------------------------- Services
+
+def keep_running(service: jobs.Service) -> None:
+    task = system_name(service.name)
+    # Registering a task again leaves its running instance as it was.
+    stop(service.name)
+    _register(task, service_xml(service))
+    r = _schtasks("/Run", "/TN", task)
+    if r.returncode != 0:
+        raise RuntimeError(f"Task Scheduler couldn't start {task}: {_error(r)}")
+
+
+def stop(name: str) -> None:
+    task = system_name(name)
+    if task in _names():
+        r = _schtasks("/End", "/TN", task)
+        if r.returncode != 0 and _running(task):
+            raise RuntimeError(f"Task Scheduler couldn't stop {task}: {_error(r)}")
+
+
+def remove(name: str) -> None:
+    _remove(kept=set(_names()) - {system_name(name)})
+
+
+def service_status(name: str) -> jobs.ServiceStatus:
+    task = system_name(name)
+    if task not in _names():
+        return jobs.ServiceStatus(False, False)
+    return jobs.ServiceStatus(True, _running(task))
 
 
 # ---------------------------------------------------------------- one-off runs

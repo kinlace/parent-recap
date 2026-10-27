@@ -467,6 +467,13 @@ def _check_schedule(cfg: Config, add) -> None:
     if not missing:
         add(OK, "schedule", f"runs every day at {cfg.schedule.daily_hour:02d}:{cfg.schedule.daily_minute:02d}"
             + (", Weekend Picks once every Friday" if cfg.weekend_events.enabled else ""))
+    for name in jobs.SERVICES:
+        service = jobs.service_status(name)
+        if service.running:
+            add(OK, "schedule", f"{jobs.system_name(name)} runs while you're signed in")
+        elif service.installed:
+            add(WARN, "schedule", f"{jobs.system_name(name)} is installed but not running: it "
+                "starts again when you next sign in")
     last = State(cfg.resolved_state_path()).last_run_at
     if last:
         hours = (datetime.now(timezone.utc) - last).total_seconds() / 3600
