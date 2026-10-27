@@ -153,7 +153,7 @@ def test_an_npm_that_installs_another_baileys_changes_nothing(harness, npm, capl
     assert baileys_install.install() == "failed"
 
     assert not folder(harness).exists()
-    assert "npm installed Baileys 7.0.0, not 7.0.0-rc14." in caplog.text
+    assert "npm installed version 7.0.0 of the WhatsApp library, not 7.0.0-rc14." in caplog.text
 
 
 def test_without_its_own_node_it_says_to_run_the_install_again(harness, npm, capsys):

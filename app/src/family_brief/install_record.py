@@ -2,8 +2,7 @@
 
 Each step that creates something adds it here: `install.sh` the program, its logs folder, the
 folder of its pinned Python and Node, the Codex skills, the plugin copy it runs from and the
-Linked Device's Baileys tree; `schedule
-install` the launchd jobs; storing a Gmail App Password its Keychain account; installing the
+Linked Device's Baileys tree; `schedule install` the launchd jobs; storing a Gmail App Password its Keychain account; installing the
 wilma CLI and saving its sign-in the CLI's folder and the profile's id; installing Claude Code's
 plugin, and its marketplace, their names. Only what setup installed goes in: a Wilma profile,
 plugin or marketplace that was there before stays when Parent Recap is uninstalled. Uninstall
