@@ -45,7 +45,7 @@ You receive one JSON object: the Brief's Digest (message_digest), each kid's not
           "what": "签 reissuvihko",
           "by": "2026-09-28",
           "refs": [
-            "1112"
+            "1:2"
           ]
         }
       ]

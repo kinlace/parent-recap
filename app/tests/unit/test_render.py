@@ -21,8 +21,8 @@ from family_brief.summarize import extract_calendar_events
 DATE = "2026-09-27"
 STAMP = NOW.astimezone(timezone.utc)
 PARENT, PARTNER = "parent@example.com", "partner@example.com"
-COVERAGE = {"gmail": {"count": 4, "error": None}, "myclub": {"count": 1, "error": None},
-            "wilma": {"count": 1, "error": None}}
+COVERAGE = {"gmail": {"count": 2, "error": None}, "myclub": {"count": 1, "error": None},
+            "wilma": {"count": 1, "error": None}, "whatsapp": {"count": 2, "error": None}}
 
 
 def written(reply: dict, sources: dict[str, str]) -> Brief:
@@ -85,6 +85,7 @@ HELD_BACK = [
                     "https://mail.google.com/mail/u/0/#search/rfc822msgid:selvitys-12@kilo.example.fi"),
     render.HeldBack("wilma", "Opettaja Virtanen", "Välituntitilanne",
                     "https://espoo.inschool.fi/!7731905/messages/812"),
+    render.HeldBack("whatsapp", "李妈妈", "3B parents", None, group_first=True),
 ]
 
 
@@ -92,7 +93,8 @@ HELD_BACK = [
 def test_held_back_night(golden, language):
     reply, sources = the_normal_night(language)
     t = TEXT[language]
-    coverage = {**COVERAGE, "gmail": {"count": 5, "error": None}, "wilma": {"count": 2, "error": None}}
+    coverage = {**COVERAGE, "gmail": {"count": 3, "error": None}, "wilma": {"count": 2, "error": None},
+                "whatsapp": {"count": 3, "error": None}}
     night = brief_of(written(reply, sources), t, coverage=coverage, held_back=HELD_BACK)
 
     [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.brief)], PARENT, []))
@@ -100,15 +102,44 @@ def test_held_back_night(golden, language):
     check(golden, f"held_back.{language}", mail)
 
 
-def test_a_held_back_group_post_is_listed_by_its_group_with_no_link():
-    reply, sources = the_normal_night("en")
-    t = TEXT["en"]
-    held_back = [render.HeldBack("whatsapp", "李妈妈", "3B parents", None, group_first=True)]
-    night = brief_of(written(reply, sources), t, held_back=held_back)
+# The coverage of a night the Linked Device needed a new pairing, since a time or not
+NEEDS_PAIRING = {"count": 0, "error": "needs a new pairing", "since": "2026-09-25T14:05:00+03:00"}
+
+
+@pytest.mark.parametrize("language, line", [
+    ("en", "⚠️ WhatsApp not read since Fri 25 Sep 14:05 (needs a new pairing). Tonight's Brief may be "
+           "incomplete."),
+    ("zh", "⚠️ WhatsApp 自 9月25日 周五 14:05 起没读到（需要重新关联设备），今天的日报可能缺这一块。"),
+    ("fi", "⚠️ WhatsApp on jäänyt lukematta pe 25.9. klo 14.05 lähtien (laite on linkitettävä uudelleen). "
+           "Tämäniltaisesta koosteesta voi puuttua jotain."),
+])
+def test_a_linked_device_that_needs_a_new_pairing_is_not_read_since_then(language, line):
+    reply, sources = the_normal_night(language)
+    t = TEXT[language]
+    night = brief_of(written(reply, sources), t, coverage={**COVERAGE, "whatsapp": NEEDS_PAIRING})
 
     [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], PARENT, []))
 
-    assert "\n• WhatsApp · 3B parents · 李妈妈 · read it in WhatsApp\n" in mail.text
+    assert mail.text.endswith("\n" + line)
+
+
+def test_one_never_paired_since_an_unknown_time_is_not_read_for_that_reason():
+    reply, sources = the_normal_night("en")
+    t = TEXT["en"]
+    night = brief_of(written(reply, sources), t, coverage={**COVERAGE, "whatsapp": {**NEEDS_PAIRING, "since": None}})
+
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], PARENT, []))
+
+    assert mail.text.endswith("\n⚠️ WhatsApp not read (needs a new pairing). Tonight's Brief may be incomplete.")
+
+
+def test_a_night_nothing_could_be_read_says_to_pair_again():
+    t = TEXT["en"]
+
+    [mail] = mails(render.nothing_read({**NOTHING_READ, "whatsapp": NEEDS_PAIRING}, DATE, "Claude", t,
+                                       [(t, [PARENT])], PARENT, []))
+
+    assert mail.text.endswith("\n• WhatsApp: needs a new pairing. Tell Claude “pair WhatsApp again” to fix it.")
 
 
 def fallback(t: BriefText) -> Brief:
@@ -120,11 +151,11 @@ def fallback(t: BriefText) -> Brief:
         return [f"**{kid} · {source}**{t.fallback_count.format(count=t.messages(len(lines)))}",
                 *(f"  • {line}" for line in lines), ""]
     digest = [t.fallback_header, "",
+              *group("Leo", "whatsapp", f"{at(9, 27, 18, 2)} Anna (piano): Piano lesson moves to Wednesday 17:30 this week"),
+              *group("Mia", "whatsapp", f"{at(9, 27, 19, 45)} Parent rep: Remember reissuvihko signatures 🙏"),
               *group("Mia", "wilma", f"{at(9, 27, 12, 0)} Opettaja Virtanen: Koe 5.10."),
               *group(t.unsorted, "gmail", f"{at(9, 27, 8, 15)} teacher.3b@kilo.example.fi: Retki Nuuksioon to 1.10.",
-                     f"{at(9, 27, 10, 40)} office@kilo.example.fi: Valokuvaus ke 30.9.",
-                     f"{at(9, 27, 18, 2)} anna.piano@kilo.example.fi: Leo's piano lesson",
-                     f"{at(9, 27, 19, 45)} parents.3b@kilo.example.fi: 3B parents")]
+                     f"{at(9, 27, 10, 40)} office@kilo.example.fi: Valokuvaus ke 30.9.")]
     return Brief("\n".join(digest))
 
 
@@ -142,7 +173,8 @@ def test_night_the_model_failed(golden, language):
 NOTHING_READ = {
     "gmail": {"count": 0, "error": "b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'"},
     "myclub": {"count": 0, "error": "MyClub fetch failed for Mia: example.myclub.fi: OSError"},
-    "wilma": {"count": 0, "error": "[Errno 1] Operation not permitted"},
+    "wilma": {"count": 0, "error": "wilma: request timed out"},
+    "whatsapp": {"count": 0, "error": "[Errno 1] Operation not permitted"},
 }
 
 

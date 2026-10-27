@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Literal
+from zoneinfo import ZoneInfo
 
 from . import ai_filter, feedback, gateway, languages, llm, private_files, render
 from . import sources as source_registry
@@ -241,6 +242,12 @@ def _read(cfg: Config, options: Options, io: IO, state: State) -> _Read:
     messages, direct_events = collect(
         cfg, state, sources, coverage,
         reading=(lambda source: _preview_step("reading", source=source)) if options.preview else None)
+    # A Source the Household set up but that can't be read, such as a Linked Device that needs a
+    # new pairing, is in the coverage line as one that failed, unless the run asked for others.
+    for source, why in ({} if options.sources else source_registry.unread(cfg, state)).items():
+        log.warning("%s not read: %s", source, why.reason)
+        since = why.since.astimezone(ZoneInfo(cfg.timezone)).isoformat() if why.since else None
+        coverage[source] = {"count": 0, "error": why.reason, "since": since}
     earlier = io.recent_points(cfg, today_str(cfg.timezone))
     return _Read(messages, direct_events, coverage, earlier,
                  archive.has_due_soon(earlier, today_str(cfg.timezone)))

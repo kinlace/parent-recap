@@ -27,12 +27,6 @@ def normal_night(h, language: str = "zh") -> None:
             msg("gmail", "1102", "2026-09-27T10:40:00+03:00",
                 "Class photos for 1A are on Wednesday morning.",
                 sender="office@kilo.example.fi", subject="Valokuvaus ke 30.9."),
-            msg("gmail", "1111", "2026-09-27T18:02:00+03:00",
-                "Piano lesson moves to Wednesday 17:30 this week", sender="anna.piano@kilo.example.fi",
-                subject="Leo's piano lesson"),
-            msg("gmail", "1112", "2026-09-27T19:45:00+03:00",
-                "Remember reissuvihko signatures 🙏", sender="parents.3b@kilo.example.fi",
-                subject="3B parents"),
         ],
         "myclub": [myclub_event("mc-1", "FC Kilo P2017 vs HJK", "2026-10-03T07:00:00+00:00",
                                 "2026-10-03T08:30:00+00:00")],
@@ -40,6 +34,13 @@ def normal_night(h, language: str = "zh") -> None:
             msg("wilma", "message:55", "2026-09-27T12:00:00+03:00",
                 "Matematiikan koe maanantaina 5.10. Kertotaulut 2-5.",
                 sender="Opettaja Virtanen", subject="Koe 5.10.", kid="Mia"),
+        ],
+        "whatsapp": [
+            msg("whatsapp", "2:1", "2026-09-27T18:02:00+03:00",
+                "Piano lesson moves to Wednesday 17:30 this week", sender="Anna (piano)",
+                chat="Leo piano", kid="Leo"),
+            msg("whatsapp", "1:2", "2026-09-27T19:45:00+03:00",
+                "Remember reissuvihko signatures 🙏", sender="Parent rep", chat="3B parents", kid="Mia"),
         ],
     }
     h.model_reply = {
@@ -49,7 +50,7 @@ def normal_night(h, language: str = "zh") -> None:
                          {"text": "周一 10/5 数学考试，范围乘法表 2–5", "refs": ["message:55"]}],
              "action_items": [
                  {"what": "在 Wilma 签远足同意书", "by": "2026-09-29", "who": "任一", "refs": ["1101"]},
-                 {"what": "签 reissuvihko", "by": "2026-09-28", "who": "妈妈", "refs": ["1112"]}]},
+                 {"what": "签 reissuvihko", "by": "2026-09-28", "who": "妈妈", "refs": ["1:2"]}]},
             {"kid": "Leo",
              "notices": [{"text": "周三 9/30 上午拍班级照", "refs": ["1102"]}],
              "action_items": [{"what": "给 Leo 准备拍照穿的衣服 <整洁>", "by": "2026-09-30", "who": "爸爸",
@@ -60,7 +61,7 @@ def normal_night(h, language: str = "zh") -> None:
              "end": "2026-10-01T14:00:00", "location": "Nuuksio",
              "description": "班级远足，带午餐和雨衣（gmail）", "refs": ["1101"]},
             {"kid": "Leo", "title": "钢琴课（改期）", "start": "2026-09-30T17:30:00+03:00",
-             "location": "Music school", "description": "本周改到周三", "refs": ["1111"]},
+             "location": "Music school", "description": "本周改到周三", "refs": ["2:1"]},
         ],
         "message_digest": "**Mia**\n- 周四远足，周二前在 Wilma 签同意书\n- 下周一数学考试\n\n"
                           "**Leo**\n- 周三拍班级照\n- 钢琴课本周改到周三 17:30",
@@ -78,7 +79,7 @@ ENGLISH_REPLY = {
          "action_items": [
              {"what": "Sign the retki permission slip in Wilma", "by": "2026-09-29", "who": "Either",
               "refs": ["1101"]},
-             {"what": "Sign the reissuvihko", "by": "2026-09-28", "who": "Mom", "refs": ["1112"]}]},
+             {"what": "Sign the reissuvihko", "by": "2026-09-28", "who": "Mom", "refs": ["1:2"]}]},
         {"kid": "Leo",
          "notices": [{"text": "Wed 9/30 class photos in the morning", "refs": ["1102"]}],
          "action_items": [{"what": "Get Leo's photo-day clothes ready <neat>", "by": "2026-09-30", "who": "Dad",
@@ -89,7 +90,7 @@ ENGLISH_REPLY = {
          "end": "2026-10-01T14:00:00", "location": "Nuuksio",
          "description": "Class retki; pack lunch and rain gear (gmail)", "refs": ["1101"]},
         {"kid": "Leo", "title": "Piano lesson (moved)", "start": "2026-09-30T17:30:00+03:00",
-         "location": "Music school", "description": "Moved to Wednesday this week", "refs": ["1111"]},
+         "location": "Music school", "description": "Moved to Wednesday this week", "refs": ["2:1"]},
     ],
     "message_digest": "**Mia**\n- Thursday retki; sign the slip in Wilma by Tuesday\n- Maths test next Monday\n\n"
                       "**Leo**\n- Class photos Wednesday\n- Piano moves to Wednesday 17:30 this week",
@@ -105,7 +106,7 @@ FINNISH_REPLY = {
          "action_items": [
              {"what": "Allekirjoita retken lupalappu Wilmassa", "by": "2026-09-29", "who": "Kumpi tahansa",
               "refs": ["1101"]},
-             {"what": "Allekirjoita reissuvihko", "by": "2026-09-28", "who": "Äiti", "refs": ["1112"]}]},
+             {"what": "Allekirjoita reissuvihko", "by": "2026-09-28", "who": "Äiti", "refs": ["1:2"]}]},
         {"kid": "Leo",
          "notices": [{"text": "ke 30.9. aamupäivällä luokkakuvaus", "refs": ["1102"]}],
          "action_items": [{"what": "Varaa Leolle kuvauspäiväksi siistit vaatteet <siistit>", "by": "2026-09-30",
@@ -116,7 +117,7 @@ FINNISH_REPLY = {
          "end": "2026-10-01T14:00:00", "location": "Nuuksio",
          "description": "Luokan retki; mukaan eväät ja sadevarusteet (gmail)", "refs": ["1101"]},
         {"kid": "Leo", "title": "Pianotunti (siirretty)", "start": "2026-09-30T17:30:00+03:00",
-         "location": "Musiikkiopisto", "description": "Siirtyy tällä viikolla keskiviikkoon", "refs": ["1111"]},
+         "location": "Musiikkiopisto", "description": "Siirtyy tällä viikolla keskiviikkoon", "refs": ["2:1"]},
     ],
     "message_digest": "**Mia**\n- Torstaina retki; lupalappu Wilmassa tiistaihin mennessä\n"
                       "- Ensi maanantaina matematiikan koe\n\n"
@@ -140,7 +141,7 @@ def payload_message_ids(h, i: int = -1) -> list[str]:
     return sorted(m["external_id"] for m in h.model_payload(i)["messages"])
 
 
-NORMAL_NIGHT_IDS = ["1101", "1102", "1111", "1112", "message:55"]
+NORMAL_NIGHT_IDS = ["1101", "1102", "1:2", "2:1", "message:55"]
 
 
 def archived_summary(h, day: str = "2026-09-27") -> dict:
@@ -186,17 +187,17 @@ def chinese_reply(prompt: str) -> dict:
     """The Chinese night as a model writes it in Chinese: placeholders with no space around them."""
     body = {m["external_id"]: m["body"] for m in json.loads(prompt[prompt.index("\n{") + 1:])["messages"]}
     phone, _office, timetable = placeholders_in(body["1601"])
-    [mobile] = placeholders_in(body["message:501"])
-    form, anna = placeholders_in(body["message:502"])
+    [mobile] = placeholders_in(body["2:501"])
+    form, anna = placeholders_in(body["1:502"])
     return {
         "per_kid": [
-            {"kid": "Mia", "notices": [{"text": f"足球在{form}报名，也可以WhatsApp{anna}联系Anna", "refs": ["message:502"]}],
+            {"kid": "Mia", "notices": [{"text": f"足球在{form}报名，也可以WhatsApp{anna}联系Anna", "refs": ["1:502"]}],
              "action_items": []},
             {"kid": "Leo", "notices": [{"text": f"课表见{timetable}", "refs": ["1601"]}],
              "action_items": [{"what": f"打{mobile}给中文课报名，或致电{phone}", "by": "2026-10-02", "who": "任一",
-                               "refs": ["message:501", "1601"]}]},
+                               "refs": ["2:501", "1601"]}]},
         ],
         "calendar_events": [{"kid": "Mia", "title": "足球报名截止", "start": "2026-10-02",
-                             "description": f"报名链接：{form}，周五截止", "refs": ["message:502"]}],
+                             "description": f"报名链接：{form}，周五截止", "refs": ["1:502"]}],
         "message_digest": f"**Leo**\n- 中文课报名打{mobile}\n\n**Mia**\n- 足球在{form}报名，也可以WhatsApp{anna}联系Anna",
     }

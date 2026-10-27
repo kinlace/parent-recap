@@ -85,7 +85,8 @@ def every_source_fails(h) -> None:
     h.sources = {
         "gmail": RuntimeError("b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'"),
         "myclub": OSError("[Errno 8] nodename nor servname provided, or not known"),
-        "wilma": PermissionError(1, "Operation not permitted"),
+        "wilma": RuntimeError("wilma: request timed out"),
+        "whatsapp": PermissionError(1, "Operation not permitted"),
     }
 
 
@@ -138,7 +139,7 @@ def test_night_when_no_source_could_be_read_says_so_even_if_the_model_finds_noth
 
     assert len(harness.model_calls) == 1
     [email] = harness.sent
-    assert "Gmail" in email.text and "Wilma" in email.text
+    assert "Gmail" in email.text and "WhatsApp" in email.text
 
 
 def test_dry_run_when_no_source_could_be_read_sends_nothing(harness):
@@ -171,7 +172,7 @@ def test_outage_over_three_nights_is_told_each_night_and_caught_up_after(harness
     with time_machine.travel(NOW + timedelta(days=4), tick=False):
         assert harness.run() == 0
 
-    for source in ("gmail", "wilma"):
+    for source in ("gmail", "wilma", "whatsapp"):
         # Each outage night keeps reaching back to night 0, the last one every Source was read.
         assert harness.lookback_hours[source] == [26, 26, 50, 74, 98]
     assert payload_message_ids(harness) == ["1201"]
@@ -205,7 +206,7 @@ def test_gmail_with_no_sender_beside_another_source_only_sends_the_brief(harness
 
     assert "gmail" not in harness.lookback_hours  # never read
     [email] = harness.sent
-    coverage = "📥 Read tonight: MyClub 1 event · Wilma 1 message"
+    coverage = "📥 Read tonight: MyClub 1 event · Wilma 1 message · WhatsApp 2 messages"
     assert email.text.endswith("\n\n" + coverage)
 
 

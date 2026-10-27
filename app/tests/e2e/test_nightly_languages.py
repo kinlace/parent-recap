@@ -233,7 +233,7 @@ def test_without_the_model_each_recipient_gets_the_raw_list_in_their_language(ha
     zh, en = harness.sent
     assert zh.text.startswith("👨‍👩‍👧‍👦 Parent Recap 9月27日 周日\n\n⚠️ 今日 LLM 总结失败")
     assert en.text.startswith("👨‍👩‍👧‍👦 Parent Recap Sun 27 Sep\n\n⚠️ Tonight's Digest could not be written")
-    assert "Read tonight: Gmail 4 messages" in en.text
+    assert "Read tonight: Gmail 2 messages" in en.text
     assert len(harness.model_calls) == 1  # no translation call to a model that just failed
 
 

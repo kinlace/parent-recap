@@ -175,36 +175,6 @@ Don't add calendar_events for the events in `already_queued_for_calendar` (a mat
       }
     },
     {
-      "source": "gmail",
-      "external_id": "1111",
-      "timestamp": "2026-09-27T15:02:00+00:00",
-      "sender": "⟦E3⟧",
-      "recipient": null,
-      "subject": "Kid B's piano lesson",
-      "body": "Piano lesson moves to Wednesday 17:30 this week",
-      "chat_name": null,
-      "kid_hint": null,
-      "metadata": {
-        "sender_email": "⟦E3⟧",
-        "thread_id": ""
-      }
-    },
-    {
-      "source": "gmail",
-      "external_id": "1112",
-      "timestamp": "2026-09-27T16:45:00+00:00",
-      "sender": "⟦E4⟧",
-      "recipient": null,
-      "subject": "3B parents",
-      "body": "Remember reissuvihko signatures 🙏",
-      "chat_name": null,
-      "kid_hint": null,
-      "metadata": {
-        "sender_email": "⟦E4⟧",
-        "thread_id": ""
-      }
-    },
-    {
       "source": "wilma",
       "external_id": "message:55",
       "timestamp": "2026-09-27T09:00:00+00:00",
@@ -218,6 +188,34 @@ Don't add calendar_events for the events in `already_queued_for_calendar` (a mat
         "wilma_kind": "message",
         "raw_id": 55,
         "addressee_count": null
+      }
+    },
+    {
+      "source": "whatsapp",
+      "external_id": "2:1",
+      "timestamp": "2026-09-27T15:02:00+00:00",
+      "sender": "⟦N2⟧ (piano)",
+      "recipient": null,
+      "subject": null,
+      "body": "Piano lesson moves to Wednesday 17:30 this week",
+      "chat_name": "Kid B piano",
+      "kid_hint": "Kid B",
+      "metadata": {
+        "from_me": false
+      }
+    },
+    {
+      "source": "whatsapp",
+      "external_id": "1:2",
+      "timestamp": "2026-09-27T16:45:00+00:00",
+      "sender": "Parent rep",
+      "recipient": null,
+      "subject": null,
+      "body": "Remember reissuvihko signatures 🙏",
+      "chat_name": "3B parents",
+      "kid_hint": "Kid A",
+      "metadata": {
+        "from_me": false
       }
     }
   ]

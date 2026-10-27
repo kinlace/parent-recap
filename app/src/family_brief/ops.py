@@ -16,6 +16,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
+from zoneinfo import ZoneInfo
 
 from . import (baileys_install, google_packages, languages, own_node, private_files, secret_dialog,
                sources)
@@ -266,6 +267,35 @@ def _check_myclub(kid: str, url: str, add) -> None:
     except Exception as e:
         add(FAIL, "myclub", f"subscription link doesn't open: {e} (save a new one with "
             f"parent-recap setup myclub --kid {shlex.quote(kid)})", subject=kid)
+
+
+def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:
+    """The Linked Device's link, once groups are picked: connected, last connected, or needs a new
+    pairing, as the always-running job's status file has it."""
+    if not cfg.whatsapp.enabled or not cfg.whatsapp.chats:
+        return
+    from . import linked_device
+    from .collectors import whatsapp
+
+    def when(moment: datetime) -> str:
+        return f"{moment.astimezone(ZoneInfo(cfg.timezone)):%Y-%m-%d %H:%M}"
+    link = linked_device.link()
+    if not whatsapp.connected(cfg):
+        why = f"WhatsApp ended the link on {when(link.ended_at)}" if link.ended_at else \
+            "the picked groups have no pairing with WhatsApp yet"
+        add(FAIL, "whatsapp", f"needs a new pairing: {why}, so the Brief has no WhatsApp messages "
+            "(pair again on the setup page)")
+        return
+    groups = len(cfg.whatsapp.picked_ids())
+    picked = f"{groups} picked group{'' if groups == 1 else 's'}"
+    if link.connected_since:
+        add(OK, "whatsapp", f"connected since {when(link.connected_since)}, keeping {picked}")
+    elif link.last_connected:
+        add(WARN, "whatsapp", f"not connected right now, last connected {when(link.last_connected)}, "
+            f"for {picked}. It connects again by itself while you're signed in")
+    else:
+        add(WARN, "whatsapp", f"paired, but not connected yet, for {picked}. It connects once "
+            "you're signed in")
 
 
 def _check_whatsapp_library(add) -> None:

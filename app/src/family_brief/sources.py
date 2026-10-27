@@ -3,13 +3,15 @@ would name the Sources asks this registry instead: what a Source is called, whet
 config connects it, how the evening run reads it and widens its lookback, what the Brief's coverage
 line counts of it, whether the setup page lets a family skip it, the mail it sends of its own
 news, which of its messages went to everyone and how the Brief lists one held back (ADR 0013), how
-the calendar treats its events, what `doctor` checks of it and what uninstall removes for it. A new
-Source is its collector module, its config model and its record here."""
+the calendar treats its events, what `doctor` checks of it, why one the Household set up can't be
+read tonight, and what uninstall removes for it. A new Source is its collector module, its config
+model and its record here."""
 from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
@@ -33,6 +35,22 @@ def _nothing(*_args: Any) -> list[str]:
     return []
 
 
+# Why a Linked Device's Source isn't read: WhatsApp ended the link, or it was never paired.
+NEEDS_PAIRING = "needs a new pairing"
+
+
+@dataclass(frozen=True)
+class Unread:
+    """Why a Source the Household set up isn't read tonight, and since when, if that's known. The
+    Brief's coverage line says so as it says a Source failed."""
+    reason: str
+    since: datetime | None = None
+
+
+def _read(*_args: Any) -> Unread | None:
+    return None
+
+
 @dataclass(frozen=True)
 class Source:
     """One Source as the program knows it everywhere but its collector and its setup panel."""
@@ -44,6 +62,8 @@ class Source:
     collect: Callable[[Config, State, list[str]], Collected]  # reads it, given the Kids' terms
     counts_events: bool = False         # the coverage line counts its events rather than its Messages
     lookback: Callable[[Config], Window] | None = None  # its section with lookback_hours, if any
+    # why it isn't read tonight though the Household set it up, given the config and the state
+    unread: Callable[[Config, State], Unread | None] = _read
     sender_domain: str | None = None    # the domain of the mail it sends of its own news (#361)
     # doctor's checks of it, given the config, `add` and the config's path; each does nothing for
     # a Source the Household hasn't set up
@@ -116,13 +136,14 @@ WILMA = Source("wilma", _same_everywhere("Wilma"), lambda cfg: cfg.wilma.enabled
                survey=_in("uninstall", "survey_wilma"), notes=_in("uninstall", "wilma_notes"),
                sent_to_everyone=_in("collectors.wilma", "sent_to_everyone"),
                held_back_link=_in("collectors.wilma", "link"))
-# Declared but read by nothing until the Linked Device's collector lands (ADR 0027), so no
-# Household has it connected yet and setup doesn't offer it (setup_connect.NOT_OFFERED). A post in a
-# group, where incidents get discussed, is always checked, and has no subject: the Brief lists it by
-# its group.
-WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), lambda cfg: False,
+# Read as a Linked Device (ADR 0027): connected once it is paired and has groups picked. Picked
+# groups without a pairing, or a link WhatsApp ended, need a new pairing. Setup doesn't offer it
+# until its pairing step lands (setup_connect.NOT_OFFERED). A post in a group, where incidents get
+# discussed, is always checked, and has no subject: the Brief lists it by its group.
+WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), _in("collectors.whatsapp", "connected"),
                   skippable=True, connect_rank=3, collect=_collector("whatsapp"),
-                  lookback=lambda cfg: cfg.whatsapp, check_items={}, group=lambda m: m.chat_name)
+                  lookback=lambda cfg: cfg.whatsapp, unread=_in("collectors.whatsapp", "unread"),
+                  check=_in("ops", "check_whatsapp"), group=lambda m: m.chat_name)
 
 ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP)
 
@@ -141,6 +162,11 @@ def label_of(name: str, language: str = "en") -> str:
 def in_connect_order() -> list[Source]:
     """The Sources in the order the setup page's Connect list shows them."""
     return sorted(ALL, key=lambda s: s.connect_rank)
+
+
+def unread(cfg: Config, state: State) -> dict[str, Unread]:
+    """The Sources the Household set up that aren't read tonight, by name, with why."""
+    return {s.name: why for s in ALL if (why := s.unread(cfg, state)) is not None}
 
 
 def used(cfg: Config) -> list[Source]:
