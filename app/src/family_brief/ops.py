@@ -4,7 +4,7 @@ doctor   — check every configured connection; prints status + counts only, nev
 discover — list candidate Gmail sender domains / WhatsApp group names / Wilma students
 schedule — install, remove or inspect the evening jobs
 full-disk-access — show the scheduled job's Python in Finder and open Full Disk Access, to grant
-                   WhatsApp (setup whatsapp does this and waits for it)
+                   WhatsApp
 bg       — run any of the above (or run/collect) as a one-off job with the evening job's
            permissions, for WhatsApp access
 """
@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from . import (baileys_install, google_packages, languages, own_node, private_files, secret_dialog,
-               sources, whatsapp_python)
+               sources)
 from .config import Config
 from .system import desktop_macos, jobs, macos_only, profile, wake, windows_only
 
@@ -283,10 +283,8 @@ def check_wilma(cfg: Config, add, config: str | None = None) -> None:
 
 
 def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:
-    """Whether the evening job's Python is still the one allowed to read WhatsApp, then whether
-    WhatsApp reads, for a WhatsApp turned on even before a group is ticked."""
+    """Whether WhatsApp reads, for a WhatsApp turned on even before a group is ticked."""
     if cfg.whatsapp.enabled:
-        _check_whatsapp_python(add)
         _check_whatsapp(cfg, add, config)
 
 
@@ -351,31 +349,6 @@ def _job_checks(out: str) -> list[Check]:
         except (ValueError, KeyError, TypeError):
             continue
     return checks
-
-
-def _check_whatsapp_python(add) -> None:
-    """Whether the Python given Full Disk Access to read WhatsApp is still the evening job's (ADR
-    0011, 0012). An update of Parent Recap's own Python moves the evening job to a new real path,
-    which macOS hasn't given it, and the WhatsApp check alone can't tell that from never given."""
-    job = _evening_job_python()
-    if not os.path.exists(job):
-        here = os.path.realpath(sys.executable)
-        add(FAIL, "whatsapp-python", f"the evening job's Python {job} points at nothing, so the "
-            "evening job can't start and the Python given Full Disk Access to read WhatsApp is no "
-            "longer the evening job's Python: run parent-recap schedule install to give it this "
-            f"Python, then add {here} to Full Disk Access {FULL_DISK_ACCESS_WHERE}")
-        return
-    granted, real = whatsapp_python.granted(), os.path.realpath(job)
-    if granted and granted != real:
-        add(WARN, "whatsapp-python", "the Python given Full Disk Access to read WhatsApp, "
-            f"{granted}, is no longer the evening job's Python, which is now {real}: add {real} "
-            f"to Full Disk Access {FULL_DISK_ACCESS_WHERE}")
-
-
-def _evening_job_python() -> str:
-    """The Python the installed evening job starts, or this one before it's installed."""
-    program = jobs.program(jobs.DAILY)
-    return program[0] if program else sys.executable
 
 
 def check_myclub(cfg: Config, add, config: str | None = None) -> None:

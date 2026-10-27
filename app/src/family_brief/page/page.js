@@ -5,7 +5,7 @@ const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish
 const page = {
   text: null, language: "en", chosen: null, languages: [], system: "macos", ais: [], installs: [],
   about: null,
-  progress: null, welcome: null, connect: null, gmail: null, whatsapp: null, myclub: null,
+  progress: null, welcome: null, connect: null, gmail: null, myclub: null,
   check: null, brief: null, welcomeShown: false, connectShown: false, workingShown: false,
   checkShown: false, briefShown: false, finishShown: false, finished: false,
 };
@@ -409,13 +409,8 @@ const STEPS = {
       clearTimeout(aiStep.timer);
     },
   },
+  // No step of its own until the Linked Device's (#521): what Working and the first Brief call it.
   whatsapp: {
-    setUp: renderWhatsApp,
-    first: () => {
-      showSource("whatsapp.checking");
-      checkWhatsApp();
-    },
-    leave: leaveWhatsApp,
     working: () => ["working.whatsapp", { count: (page.progress.whatsapp_chats || []).length }],
     label: "WhatsApp",
   },
@@ -593,7 +588,7 @@ const SLOTS = [
   [["myclub.added", "myclub.kid-exists"], "myclub-kid-slot"],
   // A Source just done: by the hand-off, as the next Source's step is shown.
   [["gmail.saved", "wilma.signed-in", "claude.saved", "gateway.saved",
-    "codex.signed-in", "whatsapp.readable"], "connect-slot"],
+    "codex.signed-in"], "connect-slot"],
 ];
 // The results that say something failed, shown in red.
 const FAILED = [
@@ -608,7 +603,6 @@ const FAILED = [
   "codex.install-failed", "codex.login-failed", "codex.check-failed", "codex.test-call-failed",
   "gateway.not-a-key", "gateway.rejected", "gateway.no-connection", "gateway.test-call-failed",
   "gateway.keychain-not-reachable", "gateway.keychain-failed",
-  "whatsapp.unreadable", "whatsapp.bg-failed", "whatsapp.open.not-opened",
   "myclub.pick-kid", "myclub.not-a-myclub-link", "myclub.link-failed", "myclub.not-a-calendar",
   "myclub.save-failed", "myclub.same-link", "myclub.kid-exists",
   "open.not-opened", "open.app-not-opened",
@@ -1150,67 +1144,6 @@ async function saveGatewayKey(event) {
   }
 }
 
-// ── Connect: WhatsApp, read with the evening job's own permission. The page reads again every
-// few seconds, so the entry ticks itself once the parent has given the permission.
-
-const WHATSAPP_MS = 5000;
-const whatsappStep = { opened: false, checking: 0, timer: null };
-
-// The Python file Finder selects, by the name it has on this Mac, such as python3.13: in the
-// step's texts, its pictures and the texts that send the parent back to Full Disk Access.
-function pythonFile() {
-  return { python: page.whatsapp.python };
-}
-
-function renderWhatsApp() {
-  document.getElementById("whatsapp-open").addEventListener("click", openFullDiskAccess);
-  setText(document.getElementById("whatsapp-explain"), "whatsapp.explain", pythonFile());
-  setText(document.getElementById("whatsapp-drag"), "whatsapp.picture.drag", pythonFile());
-  for (const name of document.querySelectorAll("#source-whatsapp .python-file")) {
-    name.textContent = page.whatsapp.python;
-  }
-}
-
-function leaveWhatsApp() {
-  clearTimeout(whatsappStep.timer);
-  whatsappStep.checking++; // a read still on its way is old news
-  whatsappStep.opened = false;
-}
-
-// Finder shows the Python to allow, and System Settings opens at Full Disk Access next to it.
-async function openFullDiskAccess() {
-  clearError();
-  try {
-    const out = await post("api/whatsapp/open", {});
-    whatsappStep.opened = out.result === "opened";
-    showSource("whatsapp.open." + out.result, { values: pythonFile() });
-  } catch (e) {
-    failed(e);
-  }
-}
-
-async function checkWhatsApp() {
-  clearTimeout(whatsappStep.timer);
-  const check = ++whatsappStep.checking;
-  let out;
-  try {
-    out = await post("api/whatsapp/check", {});
-  } catch (e) {
-    if (check === whatsappStep.checking) failed(e);
-    return;
-  }
-  if (check !== whatsappStep.checking) return; // the parent moved on meanwhile
-  if (out.result === "readable") {
-    page.progress = out.progress;
-    renderSources();
-    showSource("whatsapp.readable");
-    return;
-  }
-  // Once System Settings is open, the page keeps saying what to do there.
-  if (out.result !== "no-permission" || !whatsappStep.opened) showSource("whatsapp." + out.result);
-  whatsappStep.timer = setTimeout(checkWhatsApp, WHATSAPP_MS);
-}
-
 // ── Connect: MyClub. Each Kid's calendar link, pasted into the page's own field. A Household
 // without Wilma adds its Kids here first, by the names it calls them.
 
@@ -1663,35 +1596,18 @@ function healthResult(out) {
   if (checkStep.checking) checkStep.timer = setTimeout(checkHealth, HEALTH_MS);
 }
 
-// The button that fixes a WhatsApp check, by why it isn't OK: its text and what it does. One
-// opens Full Disk Access, the other goes back to WhatsApp's step for groups not on this Mac.
-// Once the page has closed, neither is shown.
-const WHATSAPP_STEPS = {
-  "no-access": ["whatsapp.open", openFullDiskAccessForCheck],
-  "missing-groups": ["whatsapp.back", backToWhatsApp],
-};
-
 // What to do about a check that isn't OK, as the check page ("health") or Finish ("finish") says
-// it: the text for why it isn't, where the check says why, else the check's own, and the button
-// that fixes it, if there's one. On the check page, a failed check of a Source the family can do
-// without also offers to skip it for now. Last, folded, what the check said, to copy to us.
+// it: the text for why it isn't, where the check says why, else the check's own. On the check
+// page, a failed check of a Source the family can do without also offers to skip it for now.
+// Last, folded, what the check said, to copy to us.
 function nextStep(prefix, check, values) {
   const general = `${prefix}.fail.${check.check}`;
   const own = `${general}.${check.reason}`;
   const key = check.reason && own in page.text[page.language] ? own : general;
   const next = document.createElement("p");
   next.className = "hint";
-  setText(next, key, { ...values, groups: (check.groups || []).join(", "), ...pythonFile() });
+  setText(next, key, { ...values, groups: (check.groups || []).join(", ") });
   const shown = [next];
-  const step = check.check === "whatsapp" && WHATSAPP_STEPS[check.reason];
-  if (step) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "secondary";
-    setText(button, step[0]);
-    button.addEventListener("click", step[1]);
-    shown.push(button);
-  }
   const source = page.connect.sources.find((s) => s.name === check.check);
   if (prefix === "health" && check.status === "fail" && source?.skippable) {
     const skip = document.createElement("button");
@@ -1725,33 +1641,6 @@ async function skipFailedSource(event) {
   }
 }
 
-// As on WhatsApp's step, but here the page doesn't read WhatsApp again by itself: the text says
-// to check again.
-async function openFullDiskAccessForCheck() {
-  clearError();
-  try {
-    const out = await post("api/whatsapp/open", {});
-    if (out.result !== "opened") showError("whatsapp.open.not-opened");
-  } catch (e) {
-    failed(e);
-  }
-}
-
-// Back to WhatsApp's step in Connect, which reads the groups again for Check. The page loads
-// again there, since each step sets itself up only once.
-async function backToWhatsApp(event) {
-  clearError();
-  const button = event.currentTarget;
-  button.disabled = true;
-  try {
-    await post("api/whatsapp/back", {});
-    window.location.reload();
-  } catch (e) {
-    failed(e);
-    button.disabled = false;
-  }
-}
-
 // On Check and Finish, while a Source the list offers is skipped, the one link back to Connect's
 // list, where it can be opened after all. A page opened again after setup is at Finish, so the
 // same link adds a Source later.
@@ -1761,7 +1650,7 @@ function showBackToConnect(id) {
   link.querySelector("button").addEventListener("click", backToConnect);
 }
 
-// As backToWhatsApp, to the list instead of one Source's step.
+// Back to Connect's list. The page loads again there, since each step sets itself up only once.
 async function backToConnect(event) {
   clearError();
   const button = event.currentTarget;
@@ -2245,7 +2134,6 @@ async function start() {
   page.welcome = state.welcome;
   page.connect = state.connect;
   page.gmail = state.gmail;
-  page.whatsapp = state.whatsapp;
   page.myclub = state.myclub;
   page.check = state.check;
   page.brief = state.brief;

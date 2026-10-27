@@ -31,6 +31,9 @@ SKIP_ANSWERS: dict[str, dict[str, Any]] = {
     s.name: {"sources": {s.name: {"enabled": False}}}
     for s in (source_registry.WILMA, source_registry.WHATSAPP, source_registry.MYCLUB)
 }
+# The Sources Connect's list leaves out on every system: WhatsApp until its Linked Device step
+# (#521), now that the step that read WhatsApp for Mac is gone (ADR 0027).
+NOT_OFFERED = frozenset({source_registry.WHATSAPP.name})
 
 
 class Strict(BaseModel):
@@ -65,7 +68,7 @@ def parse(model: type[T], raw: Any) -> T:
 
 def sources() -> list[str]:
     """The Sources this system offers, in Connect's list's order."""
-    return [s for s in setup_save.SOURCES if macos_only.offers(s)]
+    return [s for s in setup_save.SOURCES if s not in NOT_OFFERED and macos_only.offers(s)]
 
 
 def next_source(statuses: dict[str, str]) -> str | None:
@@ -138,15 +141,14 @@ class ConnectSteps:
             status = "to-do" if progress["sources"][name] == "skipped" else progress["sources"][name]
             return self._step(progress, None, {name: status}, {"source": name})
 
-    def reopen(self, source: str | None, allowed: Callable[[Progress], bool],
-               refusal: dict[str, Any]) -> Reply:
-        """Takes setup from Check or Finish back to Connect at `source`, or at its list for None,
-        when `allowed` says the progress allows it, or refuses with `refusal`."""
+    def reopen(self, allowed: Callable[[Progress], bool], refusal: dict[str, Any]) -> Reply:
+        """Takes setup from Check or Finish back to Connect's Source list, when `allowed` says the
+        progress allows it, or refuses with `refusal`."""
         with self.lock:
             progress = self.progress()
             if progress["phase"] not in ("check", "finish") or not allowed(progress):
                 return HTTPStatus.BAD_REQUEST, refusal
-            return self.save({"progress": {"phase": "connect", "source": source}})
+            return self.save({"progress": {"phase": "connect", "source": None}})
 
     def _step(self, progress: Progress, answers: Answers | None, statuses: dict[str, str],
               source: dict[str, Any], reply: dict[str, Any] | None = None) -> Reply:

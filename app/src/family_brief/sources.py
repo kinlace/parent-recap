@@ -120,15 +120,15 @@ WILMA = Source("wilma", _same_everywhere("Wilma"), lambda cfg: cfg.wilma.enabled
                sent_to_everyone=_in("collectors.wilma", "sent_to_everyone"),
                held_back_link=_in("collectors.wilma", "link"))
 # WhatsApp for Mac's own database (ADR 0012). Its permission is lost when Parent Recap's own Python
-# changes (ADR 0011), which its permission line and doctor's whatsapp-python check say. A post in a
-# group, where incidents get discussed, is always checked, and has no subject: the Brief lists it by
-# its group.
+# changes (ADR 0011), which its permission line says. A post in a group, where incidents get
+# discussed, is always checked, and has no subject: the Brief lists it by its group. Connect's list
+# doesn't offer it until the Linked Device's step (setup_connect.NOT_OFFERED).
 WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"),
                   lambda cfg: cfg.whatsapp.enabled and bool(cfg.whatsapp.chats),
                   skippable=True, connect_rank=3, collect=_collector("whatsapp"),
                   lookback=lambda cfg: cfg.whatsapp, permission_lacked=lambda t: t.whatsapp_permission_denied,
                   macos_only=True, check=_in("ops", "check_whatsapp"),
-                  check_items={"whatsapp": "WhatsApp", "whatsapp-python": "WhatsApp"},
+                  check_items={"whatsapp": "WhatsApp"},
                   survey=_in("uninstall", "survey_whatsapp"), notes=_in("uninstall", "whatsapp_notes"),
                   group=lambda m: m.chat_name)
 

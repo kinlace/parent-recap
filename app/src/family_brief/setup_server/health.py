@@ -14,7 +14,7 @@ HEALTH_RESULTS = ("checking", "ok", "not-ok", "no-check")
 HEALTH_CHECKS = {"config": "config", "recipients": "recipients", "language": "language",
                  "gmail": "gmail", "claude": "ai", "codex": "ai", "gateway": "gateway",
                  "gateway-key": "gateway", "wilma": "wilma", "whatsapp": "whatsapp",
-                 "whatsapp-python": "whatsapp", "whatsapp-library": "whatsapp-library",
+                 "whatsapp-library": "whatsapp-library",
                  "myclub": "myclub", "calendar": "calendar",
                  "feedback": "feedback", "weekend": "weekend"}
 # A language's and a Kid's MyClub check carry the language or the Kid too, from their subject.

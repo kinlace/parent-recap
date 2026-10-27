@@ -24,8 +24,8 @@ answers as JSON on stdin, every key optional:
 
 The progress's `partner` is Welcome's choice, or null for only me, kept until the setup parent's
 own address is known and the Recipients can be saved with the parent first. Its `whatsapp_chats`
-are the groups `setup whatsapp` found, and its `gmail_senders` the senders `discover
-gmail-senders --json` found, each as it reports them, kept for the check page.
+are the WhatsApp groups found, each with its Kid hint, and its `gmail_senders` the senders
+`discover gmail-senders --json` found, each as it reports them, kept for the check page.
 
 What the answers don't mention stays as it was. The Kids given are the Household's Kids: a Kid
 left out is removed, and each one given keeps what the answers don't say about them, such as a
@@ -129,7 +129,7 @@ class ChatHint(_Strict):
 
 
 class FoundChat(_Strict):
-    """A WhatsApp group `setup whatsapp` found, as it reports it."""
+    """A WhatsApp group setup found, with its Kid hint (setup_whatsapp.with_hints)."""
     name: str
     last: str | None = None
     archived: bool = False

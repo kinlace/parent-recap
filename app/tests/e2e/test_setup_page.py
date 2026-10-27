@@ -412,17 +412,21 @@ def test_running_it_again_resumes_at_the_saved_phase(harness, clock):
 # ── Connect: the Source list
 
 
-@pytest.mark.macos
 def test_the_source_list_shows_each_entry_with_its_status(harness, page):
     save_progress(harness, {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"}})
 
     state = call(page.url, "api/state").json()
 
+    # No WhatsApp on any system until the Linked Device's step (ADR 0027): the step that read
+    # WhatsApp for Mac, with Full Disk Access, and its calls are gone.
     assert [(s["name"], s["skippable"]) for s in state["connect"]["sources"]] == [
-        ("wilma", True), ("gmail", False), ("ai", False), ("whatsapp", True), ("myclub", True)]
+        ("wilma", True), ("gmail", False), ("ai", False), ("myclub", True)]
     assert state["progress"]["source"] == "gmail"
     assert state["progress"]["sources"] == {"wilma": "done", "gmail": "to-do", "ai": "to-do",
                                             "whatsapp": "to-do", "myclub": "to-do"}
+    assert "whatsapp" not in state
+    for path in ("api/whatsapp/check", "api/whatsapp/open", "api/whatsapp/back"):
+        assert call(page.url, path, method="POST", body={}).status == 404, path
 
 
 def test_every_source_list_button_is_named_after_its_source_and_status_in_each_language():
@@ -435,25 +439,24 @@ def test_every_source_list_button_is_named_after_its_source_and_status_in_each_l
 
 
 def test_a_skipped_source_moves_setup_on_and_can_be_come_back_to(harness, page):
-    save_progress(harness, {"phase": "connect", "source": "whatsapp",
-                            "sources": {"wilma": "done", "gmail": "done", "ai": "done"}})
+    save_progress(harness, {"phase": "connect", "source": "wilma"})
 
-    r = source(page.url, "whatsapp", "skip")
+    r = source(page.url, "wilma", "skip")
 
     assert r.status == 200 and r.json()["result"] == "saved"
-    assert r.json()["progress"]["source"] == "myclub"
-    assert statuses(page.url)["whatsapp"] == "skipped"
+    assert r.json()["progress"]["source"] == "gmail"
+    assert statuses(page.url)["wilma"] == "skipped"
 
-    r = source(page.url, "whatsapp", "open")
+    r = source(page.url, "wilma", "open")
 
-    assert r.json()["progress"]["source"] == "whatsapp"
-    assert statuses(page.url)["whatsapp"] == "to-do"
+    assert r.json()["progress"]["source"] == "wilma"
+    assert statuses(page.url)["wilma"] == "to-do"
 
 
 def test_skipping_the_last_source_leaves_none_to_do(harness, page):
+    # WhatsApp, still to do, isn't on the list (ADR 0027), so MyClub is the last.
     save_progress(harness, {"phase": "connect", "source": "myclub",
-                            "sources": {"wilma": "done", "gmail": "done", "ai": "done",
-                                        "whatsapp": "skipped"}})
+                            "sources": {"wilma": "done", "gmail": "done", "ai": "done"}})
 
     assert source(page.url, "myclub", "skip").json()["progress"]["source"] is None
 
@@ -478,8 +481,8 @@ def test_gmail_and_the_ai_sign_in_cannot_be_skipped(harness, page):
 
 # Every call that completes, skips or reopens a Source step.
 SOURCE_STEPS = ("api/source", "api/gmail", "api/wilma", "api/claude/token",
-                "api/gateway", "api/codex", "api/whatsapp/check", "api/whatsapp/back",
-                "api/connect/back", "api/myclub", "api/myclub/kid", "api/myclub/done")
+                "api/gateway", "api/codex", "api/connect/back", "api/myclub", "api/myclub/kid",
+                "api/myclub/done")
 
 
 def test_a_malformed_answer_gets_the_same_refusal_from_every_source_step(harness, page):

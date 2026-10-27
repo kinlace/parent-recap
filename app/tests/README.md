@@ -60,6 +60,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_summarize_normalise.py` | The model's reply put in the schema's shape                      |
 | `test_system_profile.py`      | The systems' profiles; only `system/` checks the system          |
 | `test_weekend_pipeline.py`    | The pure parts of Weekend Picks                                  |
+| `test_whatsapp_hints.py`      | The Kid hint on each WhatsApp group the check page lists         |
 
 ## Integration tests
 
@@ -105,27 +106,28 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 
 ## End-to-end tests: setup, doctor and uninstall
 
-| File                                                    | What it covers                                                         |
-| ------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `test_setup_page.py`                                    | The page's server, its safeguards, the language, resuming, Source list |
-| `test_setup_welcome.py`                                 | Welcome                                                                |
-| `test_setup_ai.py`                                      | The AI sign-in, the gateway, changing the AI on Finish                 |
-| `test_setup_gmail.py`, `_wilma`, `_whatsapp`, `_myclub` | Each Source's `setup` command, then its step on the page               |
-| `test_setup_claude.py`                                  | `setup claude` and its terminal window                                 |
-| `test_setup_check.py`                                   | Working and Check                                                      |
-| `test_setup_first_brief.py`                             | First Brief                                                            |
-| `test_setup_finish.py`                                  | Finish: the evening job, the wake-up, the outcomes                     |
-| `test_setup_chat.py`                                    | The chat Welcome sets up, "Continue in the chat"                       |
-| `test_setup_save.py`                                    | `setup save`: answers and progress                                     |
-| `test_setup_status.py`                                  | `setup status`: the outcomes that say setup is done                    |
-| `test_setup_steps.py`                                   | Setup steps a family runs by hand                                      |
-| `test_doctor.py`                                        | `doctor` and `discover`                                                |
-| `test_finding_programs.py`                              | Claude, Codex and Node found off PATH                                  |
-| `test_own_node.py`                                      | The wilma CLI on Parent Recap's own Node (ADR 0011)                    |
-| `test_baileys_install.py`                               | The install's Baileys tree, staged with its own Node's `npm ci`        |
-| `test_uninstall.py`                                     | `uninstall` removes what setup made, and nothing else                  |
-| `test_new_source_doctor_uninstall.py`                   | A Source added only to the registry in `doctor` and `uninstall`        |
-| `test_setup_page_browser.py`                            | Main paths and each step's own, in a real browser (ADR 0024)           |
+| File                                       | What it covers                                                             |
+| ------------------------------------------ | -------------------------------------------------------------------------- |
+| `test_setup_page.py`                       | The page's server, its safeguards, the language, resuming, Source list     |
+| `test_setup_welcome.py`                    | Welcome                                                                    |
+| `test_setup_ai.py`                         | The AI sign-in, the gateway, changing the AI on Finish                     |
+| `test_setup_gmail.py`, `_wilma`, `_myclub` | Each Source's `setup` command, then its step on the page                   |
+| `test_setup_whatsapp.py`                   | Why WhatsApp's check isn't OK on Check and Finish; the way back to Connect |
+| `test_setup_claude.py`                     | `setup claude` and its terminal window                                     |
+| `test_setup_check.py`                      | Working and Check                                                          |
+| `test_setup_first_brief.py`                | First Brief                                                                |
+| `test_setup_finish.py`                     | Finish: the evening job, the wake-up, the outcomes                         |
+| `test_setup_chat.py`                       | The chat Welcome sets up, "Continue in the chat"                           |
+| `test_setup_save.py`                       | `setup save`: answers and progress                                         |
+| `test_setup_status.py`                     | `setup status`: the outcomes that say setup is done                        |
+| `test_setup_steps.py`                      | Setup steps a family runs by hand                                          |
+| `test_doctor.py`                           | `doctor` and `discover`                                                    |
+| `test_finding_programs.py`                 | Claude, Codex and Node found off PATH                                      |
+| `test_own_node.py`                         | The wilma CLI on Parent Recap's own Node (ADR 0011)                        |
+| `test_baileys_install.py`                  | The install's Baileys tree, staged with its own Node's `npm ci`            |
+| `test_uninstall.py`                        | `uninstall` removes what setup made, and nothing else                      |
+| `test_new_source_doctor_uninstall.py`      | A Source added only to the registry in `doctor` and `uninstall`            |
+| `test_setup_page_browser.py`               | Main paths and each step's own, in a real browser (ADR 0024)               |
 
 The page's server, its calls and the steps more than one file walks through are in
 `e2e/setup_page.py`.
@@ -215,7 +217,8 @@ found as Windows finds them, on any system), `credential_manager`, and the build
 - `no_google/`: Google's packages blocked from import. `no_pty/`: the Wilma window's
   pseudo-terminal as a socket pair, where none can be opened (a sandbox).
 - `e2e/nights.py` and `e2e/setup_page.py` (`page`, `clock`, `ai`, `health`, `schedule`) are shared
-  by their files; `test_setup_whatsapp.py`'s `fake_mac` is the fake Mac other WhatsApp tests import.
+  by their files; `test_setup_whatsapp.py`'s `fake_mac` is the fake Mac other WhatsApp tests import,
+  until the WhatsApp for Mac database reader goes (#514).
   The page's server gets the test's clock and timeouts on its `Context`, and socket pairs for a
   listener where no port can be listened on; a test meets it through its HTTP calls, and never
   reaches its private parts or patches its modules.

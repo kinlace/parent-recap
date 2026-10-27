@@ -8,9 +8,6 @@ setup claude — open Claude's sign-in for the nightly token in a Terminal windo
                token in a macOS dialog, make one test call, store it in the Keychain
 setup gateway — ask for the Gateway Key in a macOS dialog, make one test call through the gateway,
                 store it in the Keychain
-setup whatsapp — read WhatsApp through a `bg` job; until the scheduled job's Python has Full
-                 Disk Access, show it in Finder, open Full Disk Access and wait for it, then list
-                 the chats with a hint on those that look like they're about a Kid
 setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, download it once,
                save it in the owner-only config
 setup save — save the Household's answers into the config, and setup's progress (in setup_save.py)
@@ -19,7 +16,7 @@ setup page — serve the setup page on this Mac and open it in the browser (in s
 
 This module is the chat's side only: the arguments, the dialogs and what each command prints. What
 a step does, which the setup page does too, is in its own module: setup_gmail, setup_wilma,
-setup_ai, setup_whatsapp and setup_myclub.
+setup_ai and setup_myclub.
 
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
@@ -28,23 +25,20 @@ it (ADR 0005).
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import shlex
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from . import secret_dialog, setup_ai, setup_gmail, setup_myclub, setup_whatsapp, setup_wilma
+from . import secret_dialog, setup_ai, setup_gmail, setup_myclub, setup_wilma
 from .config import Config, LLMConfig
 from .setup_ai import CLAUDE_WINDOW, setup_token_window
 from .setup_report import KEYCHAIN_WARNING, PLAIN_TERMINAL, program, report
-from .system import desktop, jobs, profile, secrets, windows_only
+from .system import desktop, profile, secrets, windows_only
 
-# Still found here by the tests, and by the setup page for its WhatsApp read, whose tests replace
-# it here, until they use the Sources' own modules (#423).
+# Still found here by the tests, until they use the Sources' own modules (#423).
 from .setup_gmail import CITY_DOMAINS
-from .setup_whatsapp import read_through_bg as read_whatsapp_through_bg
 from .setup_wilma import WILMA_CITIES, WILMA_WINDOW
 
 Step = Callable[[argparse.Namespace], int]
@@ -90,19 +84,6 @@ def register(sub) -> None:
     pgateway = steps.add_parser("gateway", help="Ask for the Gateway Key in a dialog, test it with "
                                 "the gateway and store it in the Keychain")
     pgateway.set_defaults(func=cmd_gateway)
-
-    pwhatsapp = steps.add_parser("whatsapp", help="Read WhatsApp with the scheduled job's Python, "
-                                 "opening Full Disk Access and waiting for it when needed, then "
-                                 "report the chats")
-    pwhatsapp.add_argument("--timeout", type=int, default=600,
-                           help="Seconds to wait for Full Disk Access (default: 600)")
-    pwhatsapp.add_argument("--days", type=int, default=setup_whatsapp.WHATSAPP_DAYS,
-                           help="List chats with messages in this many days "
-                           f"(default: {setup_whatsapp.WHATSAPP_DAYS})")
-    pwhatsapp.add_argument("--no-open", action="store_true",
-                           help="Don't open Finder and Full Disk Access again, only wait and read")
-    pwhatsapp.add_argument("--read", action="store_true", help=argparse.SUPPRESS)  # inside the bg job
-    pwhatsapp.set_defaults(func=cmd_whatsapp)
 
     pmyclub = steps.add_parser("myclub", help="Ask for a Kid's MyClub calendar link in a dialog, "
                                "download it once and save it in the config")
@@ -286,53 +267,6 @@ def _gateway_url(config: str | None) -> str:
         return Config.load(config).llm.gateway_url
     except Exception:  # no config yet: setup can store the key before writing it
         return LLMConfig().gateway_url
-
-
-# ---------------------------------------------------------------- whatsapp
-
-def cmd_whatsapp(args: argparse.Namespace) -> int:
-    """Every read goes through a `bg` job, with the scheduled job's permission (ADR 0012); with
-    --read this is that job."""
-    if args.read:
-        if not os.environ.get(jobs.BG_ENV):
-            print(f"Run it through bg: {program()} setup whatsapp, which does that itself.")
-            return 2
-        found = setup_whatsapp.read_in_job(args.days)
-        print(json.dumps(found, ensure_ascii=False))
-        return 0 if found["permission"] == "readable" else 1
-
-    read = setup_whatsapp.wait_until_readable(args.config, args.days, args.timeout,
-                                              no_open=args.no_open)
-    python = read["python"]
-    again = f"{program()} setup whatsapp --no-open"
-    grant = (f"In Finder the Python file {os.path.basename(python)} is selected. The family drags "
-             "it into the list in System Settings → Privacy & Security → Full Disk Access and "
-             f"turns its switch on, then run: {again}")
-    if read["result"] == "bg-failed":
-        return report("bg-failed", "The background job that reads WhatsApp didn't start. "
-                      f"Run this again; if it fails again, run: {program()} bg doctor",
-                      python=python, error=read["error"])
-    if read["result"] == "waiting":
-        return report("waiting", "Reading WhatsApp didn't finish in time. Check that WhatsApp "
-                      f"for Mac opens and shows the chats, then run: {again}", python=python)
-    if read["result"] == "readable":
-        return report("readable", python=python, chats=read["chats"])
-    if read["result"] == "not-installed":
-        return report("not-installed", "WhatsApp for Mac isn't on this Mac, or has never been "
-                      "signed in. The family installs it from the App Store (not the older "
-                      "version from WhatsApp's website), links it to their phone and lets "
-                      f"the chats sync, then run: {program()} setup whatsapp")
-    if read["result"] == "unreadable":
-        return report("unreadable", "Reading WhatsApp failed (see error). Run this again; if "
-                      "it fails again, check that WhatsApp for Mac opens and shows the chats, "
-                      f"and run: {program()} bg doctor", python=python, error=read["error"])
-    if read.get("failed"):
-        return report("no-permission", "Finder or System Settings didn't open from here. The "
-                      "family runs these in Terminal: "
-                      f"{'; '.join(shlex.join(c) for c in read['failed'])}. {grant}",
-                      python=python)
-    return report("no-permission", "The scheduled job's Python doesn't have Full Disk Access "
-                  f"yet. {grant}", python=python)
 
 
 # ---------------------------------------------------------------- myclub
