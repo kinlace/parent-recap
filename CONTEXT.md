@@ -37,7 +37,7 @@ A place messages or events are read from for a Household, such as Gmail, Wilma, 
 _Avoid_: collector, channel, feed, 采集器, 来源
 
 **Linked Device** (zh 已关联设备, fi linkitetty laite):
-A way to read the WhatsApp Source by pairing Parent Recap with a parent's WhatsApp account through a QR code, as WhatsApp Web is paired, instead of reading WhatsApp for Mac's database. It is the same Source either way; a Household reads WhatsApp one way or the other, not both. Opt-in on macOS, the only way on Windows (ADR 0025).
+How the WhatsApp Source is read: Parent Recap is paired with a parent's WhatsApp account through a QR code, as WhatsApp Web is paired, and keeps the picked groups' messages. The only way on macOS and Windows alike (ADR 0025, ADR 0027); WhatsApp for Mac's database is no longer read.
 _Avoid_: headless source, wacli or Baileys (in user-facing text)
 
 **AI filter** (zh AI 过滤, fi tekoälysuodatin):

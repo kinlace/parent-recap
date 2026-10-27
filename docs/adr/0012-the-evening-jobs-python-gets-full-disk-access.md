@@ -1,5 +1,7 @@
 # The evening job's Python gets Full Disk Access, not App Management
 
+Superseded by ADR 0027: the WhatsApp for Mac database is no longer read, so nothing needs Full Disk Access.
+
 ADR 0011 had the family put Parent Recap's own Python under App Management and click Allow when macOS asks whether python3.x may access data from other apps. On macOS 26 that doesn't last: Allow lets that one read through, and the next run asks again, so the evening job stops on a question nobody answers and the Brief goes out without WhatsApp. Full Disk Access on the same Python reads WhatsApp with no question (#20). So the family grants Full Disk Access to the Python's real path, and setup and `doctor` count WhatsApp as readable only when a read gets through without macOS asking.
 
 ## Considered Options
