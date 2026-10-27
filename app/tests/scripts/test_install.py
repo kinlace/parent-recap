@@ -178,7 +178,13 @@ def program(mac: dict, requires: tuple[str, ...], constraints: str = "",
     (app / "family_brief" / "__init__.py").write_text("")
     (app / "family_brief" / "__main__.py").write_text(
         "import os, sys\ndef main():\n    print('runs on', os.path.realpath(sys.executable))\n")
-    (app / "family_brief" / "install_record.py").write_text("")
+    # The real ones record what the install made (test_uninstall.py) and install the Baileys tree
+    # (test_baileys_install.py). These note, in order, that they were asked.
+    for module in ("install_record", "baileys_install"):
+        (app / "family_brief" / f"{module}.py").write_text(
+            "import pathlib, sys\n"
+            "with open(pathlib.Path.home() / 'installer.calls', 'a') as calls:\n"
+            f"    calls.write(' '.join(['{module}', *sys.argv[1:2]]) + '\\n')\n")
     # The real one moves an installed wilma CLI to the pinned version (test_setup_wilma.py). This
     # one notes that it was asked.
     (app / "family_brief" / "setup_wilma.py").write_text(
@@ -314,6 +320,22 @@ def test_every_install_moves_the_wilma_cli_to_the_pinned_version(mac):
         assert result.returncode == 0, result.stdout + result.stderr
 
     assert (mac["home"] / "setup_wilma.calls").read_text() == "update\nupdate\n"
+
+
+# --- The Linked Device's Baileys tree ------------------------------------------------------------
+
+@pytest.mark.macos
+def test_every_install_installs_the_baileys_tree_once_the_runtimes_are_recorded(mac):
+    # Its own module leaves an up-to-date tree alone, so this is how an update moves it.
+    wheel(mac["packages"], "pure-dep", "1.0")
+    program(mac, ("pure-dep",))
+
+    for _ in range(2):
+        result = install(mac)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    assert (mac["home"] / "installer.calls").read_text() == \
+        "install_record program\nbaileys_install install\n" * 2
 
 
 # --- The install log -------------------------------------------------------------------------

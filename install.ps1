@@ -303,6 +303,8 @@
     # A Household that connected Wilma gets the wilma CLI version this release pins (ADR 0008), on
     # the Node above. One that couldn't be updated keeps working, and the next install tries again.
     Invoke-Logged $venvPython @('-m', 'family_brief.setup_wilma', 'update') | Out-Null
+    # The Baileys tree the Linked Device runs on (ADR 0025), as install.sh installs it.
+    Invoke-Logged $venvPython @('-m', 'family_brief.baileys_install', 'install') | Out-Null
 
     Write-Host "Parent Recap $version is installed in $App"
     Write-Host "   Command: $(Join-Path $App '.venv\Scripts\parent-recap.exe')"
