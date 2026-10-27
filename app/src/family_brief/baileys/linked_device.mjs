@@ -226,7 +226,8 @@ const now = () => new Date().toISOString();
 // A message's time in seconds: Baileys gives a number or a protobuf Long.
 function epochSeconds(time) {
   if (time === null || time === undefined) return null;
-  return typeof time === "object" ? (time.toNumber?.() ?? Number(time.low)) : Number(time);
+  if (typeof time !== "object") return Number(time);
+  return time.toNumber?.() ?? time.high * 2 ** 32 + (time.low >>> 0);
 }
 
 // The store's record of a message in a picked group, without its subject, or null for one with
@@ -259,17 +260,22 @@ async function follow(baileys, auth, { picked, store, status }) {
   const { DisconnectReason } = baileys;
   for (const file of [store, status]) await makePrivateFolder(dirname(file));
 
+  // Until WhatsApp lets it connect, a link that ended stays ended: the OS starts this again at
+  // sign-in on the same auth state.
   let link = { paired: true, connected_since: null, last_connected: null, link_ended_at: null };
   try {
-    link.last_connected = JSON.parse(await readFile(status, "utf8")).last_connected ?? null;
+    const last = JSON.parse(await readFile(status, "utf8"));
+    for (const field of ["paired", "last_connected", "link_ended_at"]) {
+      if (field in last) link[field] = last[field];
+    }
   } catch {
     // No status yet, or one cut short: it is written whole below.
   }
-  const note = async (change) => {
+  const setStatus = async (change) => {
     link = { ...link, ...change };
     await writePrivate(status, JSON.stringify(link) + "\n");
   };
-  await note({});
+  await setStatus({});
 
   // The picked groups, read again whenever the file is another, as Python's replace makes it.
   let pickedIds = new Set();
@@ -331,10 +337,13 @@ async function follow(baileys, auth, { picked, store, status }) {
   let kept = Promise.resolve();
   const keepInTurn = (socket, messages) => (kept = kept.then(() => keep(socket, messages)));
 
+  const disconnected = async () => {
+    if (link.connected_since) await setStatus({ connected_since: null, last_connected: now() });
+  };
   const ended = async () => {
     await kept.catch(() => {});
     const at = now();
-    await note({
+    await setStatus({
       paired: false,
       connected_since: null,
       last_connected: link.connected_since ? at : link.last_connected,
@@ -358,7 +367,9 @@ async function follow(baileys, auth, { picked, store, status }) {
       drops = 0;
       const at = now();
       log("info", "connected");
-      await note({ paired: true, connected_since: at, last_connected: at, link_ended_at: null });
+      await setStatus({
+        paired: true, connected_since: at, last_connected: at, link_ended_at: null,
+      });
     }
     if (connection === "close") {
       const code = lastDisconnect?.error?.output?.statusCode;
@@ -367,16 +378,18 @@ async function follow(baileys, auth, { picked, store, status }) {
         log("warn", "logged out: the link ended");
         return ended();
       }
-      if (link.connected_since) await note({ connected_since: null, last_connected: now() });
+      await disconnected();
       const pause = code === DisconnectReason.restartRequired
         ? 0 : Math.min(RECONNECT_MS * 2 ** drops++, MOST_RECONNECT_MS);
       log("info", `connecting again in ${pause / 1000} seconds`);
       setTimeout(() => (current = connect(baileys, auth, handle, events)), pause);
     }
   };
+  // New messages and the history WhatsApp hands over at connect are kept the same way.
+  const arrived = async (socket, { messages }) => keepInTurn(socket, messages);
   const events = {
-    "messages.upsert": async (socket, { messages }) => keepInTurn(socket, messages),
-    "messaging-history.set": async (socket, { messages }) => keepInTurn(socket, messages),
+    "messages.upsert": arrived,
+    "messaging-history.set": arrived,
     "groups.update": async (_socket, updates) => {
       for (const { id, subject } of updates ?? []) {
         if (id && subject !== undefined) subjects.set(id, subject);
@@ -386,9 +399,7 @@ async function follow(baileys, auth, { picked, store, status }) {
   for (const signal of ["SIGTERM", "SIGINT"]) {
     process.on(signal, () => {
       log("info", `stopped by ${signal}`);
-      const closed = link.connected_since
-        ? note({ connected_since: null, last_connected: now() }) : Promise.resolve();
-      closed.finally(() => finish(0));
+      disconnected().finally(() => finish(0));
     });
   }
   current = connect(baileys, auth, handle, events);
