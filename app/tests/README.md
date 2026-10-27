@@ -113,6 +113,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_setup_welcome.py`                    | Welcome                                                                |
 | `test_setup_ai.py`                         | The AI sign-in, the gateway, changing the AI on Finish                 |
 | `test_setup_gmail.py`, `_wilma`, `_myclub` | Each Source's `setup` command, then its step on the page               |
+| `test_setup_whatsapp.py`                   | WhatsApp's step: the Linked Device's `pair` on a real Node, the job    |
 | `test_setup_back_to_connect.py`            | The way back from Check and Finish to Connect, for a skipped Source    |
 | `test_setup_claude.py`                     | `setup claude` and its terminal window                                 |
 | `test_setup_check.py`                      | Working and Check                                                      |
@@ -218,7 +219,9 @@ found as Windows finds them, on any system), `credential_manager`, and the build
 - `no_google/`: Google's packages blocked from import. `no_pty/`: the Wilma window's
   pseudo-terminal as a socket pair, where none can be opened (a sandbox).
 - `e2e/nights.py` and `e2e/setup_page.py` (`page`, `clock`, `ai`, `health`, `schedule`) are shared
-  by their files; `test_setup_back_to_connect.py`'s `back_to_connect` is Finish's way back too.
+  by their files; `test_setup_back_to_connect.py`'s `back_to_connect` is Finish's way back too,
+  and `test_setup_whatsapp.py`'s `phone` (the fake Baileys playing the QR codes and the scan) is
+  the browser tests' too.
   The page's server gets the test's clock and timeouts on its `Context`, and socket pairs for a
   listener where no port can be listened on; a test meets it through its HTTP calls, and never
   reaches its private parts or patches its modules.

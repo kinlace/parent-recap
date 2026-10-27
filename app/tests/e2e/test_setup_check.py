@@ -426,8 +426,7 @@ def test_a_source_whose_check_fails_can_be_skipped_and_the_health_check_then_pas
 def test_a_skip_at_check_is_refused_for_gmail_elsewhere_and_while_checking(harness, page, health):
     at_the_check_step(harness)
 
-    # WhatsApp isn't on Connect's list until the Linked Device's step (ADR 0027), so not here either.
-    for body in [{"source": "gmail"}, {"source": "ai"}, {"source": "whatsapp"}, {"source": "nothing"},
+    for body in [{"source": "gmail"}, {"source": "ai"}, {"source": "nothing"},
                  {}, {"x": 1}, {"source": "wilma", "x": 1}]:
         assert skip_at_check(page.url, body).status == 400, body
     health.go.clear()

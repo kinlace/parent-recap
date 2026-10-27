@@ -12,6 +12,8 @@ from .gmail import Gmail
 from .health import Health
 from .myclub import MyClub
 from .welcome import Welcome
+from .whatsapp import WhatsApp
 from .wilma import Wilma
 
-PHASES = (Welcome, Connect, Wilma, Gmail, AISignIn, MyClub, Check, Health, FirstBrief, Finish, Chat)
+PHASES = (Welcome, Connect, Wilma, Gmail, AISignIn, WhatsApp, MyClub, Check, Health, FirstBrief,
+          Finish, Chat)

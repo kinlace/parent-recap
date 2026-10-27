@@ -17,13 +17,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from . import own_node, private_files
+from . import baileys_install, own_node, private_files
 from .system import jobs
 
 if TYPE_CHECKING:
     from .config import Config
 
 PROGRAM = Path(__file__).parent / "baileys" / "linked_device.mjs"
+LOG = "linked-device.log"  # the program's log, in the log folder, every mode's
 
 # How the program exits, besides 0 once pair or groups has printed the groups.
 FAILED = 1
@@ -60,6 +61,39 @@ def status_file() -> Path:
 def picked_file() -> Path:
     """The picked groups' ids, which follow keeps the messages of."""
     return folder() / "picked-groups.json"
+
+
+def log_dir(cfg: Config) -> Path:
+    """The log folder, the evening jobs' and the always-running job's."""
+    return cfg.archive.resolved_dir() / "logs"
+
+
+def command(mode: str, cfg: Config, timeout: int | None = None) -> list[str] | None:
+    """The command that runs the program in `mode` on the pinned Node and the installed Baileys
+    tree, `timeout` passed on for pair and groups, or None without either."""
+    node = own_node.node()
+    if node is None or baileys_install.installed_version() is None:
+        return None
+    log_dir(cfg).mkdir(parents=True, exist_ok=True)
+    out = [str(node), str(PROGRAM), mode, "--modules", str(baileys_install.folder()),
+           "--auth", str(auth_folder()), "--log", str(log_dir(cfg) / LOG)]
+    if mode == "follow":
+        out += ["--picked", str(picked_file()), "--store", str(store()), "--status", str(status_file())]
+    elif timeout is not None:
+        out += ["--timeout", str(timeout)]
+    return out
+
+
+def install_follow(cfg: Config) -> bool:
+    """Installs the always-running job that runs follow (ADR 0026), which starts it at once and
+    at every sign-in, with the picked groups' file written for it. False without the pinned Node
+    or the Baileys tree."""
+    follow = command("follow", cfg)
+    if follow is None:
+        return False
+    keep_picked(cfg)
+    jobs.install_always(follow, log_dir(cfg))
+    return True
 
 
 @dataclass(frozen=True)

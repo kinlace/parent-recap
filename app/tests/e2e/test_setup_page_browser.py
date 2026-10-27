@@ -31,13 +31,15 @@ from family_brief import failure, ops, setup_connect, setup_wilma
 from family_brief.collectors import myclub
 from family_brief.config import Config
 from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, config_file,
-                        progress_file, save_progress, wait_for)
+                        more_progress, progress_file, save_progress, wait_for)
 from setup_page import ai, clock, health, page, schedule  # noqa: F401
 from test_setup_ai import GATEWAY_KEY
 from test_setup_gmail import TYPED
 from test_setup_myclub import LINK as MYCLUB_LINK
 from test_setup_page_windows import Web, school_mail
 from test_setup_status import install_program
+from test_setup_whatsapp import CLASS, FOOTBALL, SCANNED, at_the_whatsapp_step
+from test_setup_whatsapp import phone  # noqa: F401
 from test_setup_wilma import timed_out, wilma_cli  # noqa: F401
 
 pytestmark = pytest.mark.browser
@@ -193,8 +195,8 @@ def source_listed(tab, source: str, status: str, language: str = "en"):
 
 
 def connect_up_to_myclub(tab) -> None:
-    """Without Wilma, then Gmail and the Gateway Key. MyClub comes straight after the AI sign-in
-    on every system: the page lists no WhatsApp until the Linked Device's step (ADR 0027)."""
+    """Without Wilma, then Gmail and the Gateway Key, then WhatsApp skipped, which comes after the
+    AI sign-in on every system (ADR 0027)."""
     in_english_with_the_gateway(tab)
     without_wilma_in_espoo(tab)
     sign_in_to_gmail(tab, TYPED)
@@ -204,8 +206,10 @@ def connect_up_to_myclub(tab) -> None:
     tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
     button(tab, "gateway.save").click()
     expect(source_listed(tab, "ai", "done")).to_be_visible()
+    expect(tab.get_by_text(text("whatsapp.step.link"))).to_be_visible()
+    skip(tab, "whatsapp").click()
+    expect(source_listed(tab, "whatsapp", "skipped")).to_be_visible()
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_visible()
-    expect(tab.get_by_role("button", name=re.compile(r"^WhatsApp"))).to_have_count(0)
 
 
 def at_the_ai_step(tab, harness, name: str, system: str) -> None:
@@ -319,8 +323,8 @@ def test_the_check_page_links_back_to_connect_s_list_while_a_source_is_skipped(t
 
 
 def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(tab):
-    # #491: Wilma and MyClub each say "Skip <Source> for now" beside the step's main button.
-    # Gmail and the AI sign-in can't be skipped.
+    # #491: Wilma, WhatsApp and MyClub each say "Skip <Source> for now" beside the step's main
+    # button. Gmail and the AI sign-in can't be skipped.
     in_english_with_the_gateway(tab)
     actions = tab.locator("#wilma-form .actions")
     expect(actions.get_by_role("button", name=text("wilma.sign-in"))).to_be_visible()
@@ -337,6 +341,10 @@ def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(
     tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
     button(tab, "gateway.save").click()
     expect(source_listed(tab, "ai", "done")).to_be_visible()
+    # Without the WhatsApp library installed here, the step says so beside its Skip.
+    expect(tab.get_by_text(text("whatsapp.no-library"))).to_be_visible()
+    skip(tab, "whatsapp").click()
+    expect(source_listed(tab, "whatsapp", "skipped")).to_be_visible()
     # Without Wilma's Kids, MyClub first asks for them, with Skip beside Add the Kid.
     kid_form = tab.locator("#myclub-kid-form .actions")
     expect(kid_form.get_by_role("button", name=text("myclub.add"))).to_be_visible()
@@ -798,3 +806,68 @@ def test_finish_moves_connect_s_sign_ins_into_changing_the_ai(tab, family, healt
     button(tab, "finish.ai.continue").click()
 
     expect(tab.locator("#finish-ai-sign-in").get_by_label(text("gateway.key"), exact=True)).to_be_visible()
+
+
+# ── WhatsApp, paired as a Linked Device on the page (ADR 0027)
+
+
+def qr_code(tab):
+    return tab.get_by_role("img", name=text("whatsapp.code"))
+
+
+@pytest.mark.parametrize("on", ["macos", "windows"])
+def test_whatsapp_pairs_with_a_qr_code_and_its_groups_are_ticked_on_the_check_page(
+        tab, family, phone, health, on):  # noqa: F811
+    at_the_whatsapp_step(family)
+    phone.plays([{"qr": "2@first"}, {"wait": "next"}, {"qr": "2@second"}, {"wait": "scan"},
+                 *SCANNED])
+    as_on(tab, on)
+
+    for line in ("whatsapp.step.open", "whatsapp.step.link", "whatsapp.step.scan",
+                 "whatsapp.terms"):
+        expect(tab.get_by_text(text(line, system=on))).to_be_visible()
+    expect(qr_code(tab)).to_be_visible()
+    expect(tab.get_by_text(text("whatsapp.qr", system=on))).to_be_visible()
+    first = qr_code(tab).screenshot()
+    phone.go("next")  # WhatsApp changes the code
+    wait_for(lambda: qr_code(tab).screenshot() != first, 20)
+    phone.go("scan")
+
+    expect(tab.get_by_text(text("whatsapp.paired", system=on))).to_be_visible()
+    expect(qr_code(tab)).to_be_hidden()
+    expect(source_listed(tab, "whatsapp", "done")).to_be_visible()
+    expect(tab.get_by_label(text("myclub.link"))).to_be_visible()  # on to the next Source
+
+    more_progress(family, phase="check", sources={"myclub": "skipped"}, gmail_senders=[])
+    tab.reload()
+    expect(heading(tab, "check.title")).to_be_visible()
+    expect(tab.get_by_role("checkbox", name=re.compile("^Luokka 3B"))).to_be_checked()
+    expect(tab.get_by_role("checkbox", name=re.compile("^Futis P2017"))).not_to_be_checked()
+    button(tab, "check.confirm").click()
+
+    expect(heading(tab, "brief.title")).to_be_visible()
+    chats = Config.load(config_file(family)).whatsapp.chats
+    assert [(c.name, c.id) for c in chats] == [("Luokka 3B", CLASS)]
+    assert family.jobs.always_running
+
+
+def test_a_code_that_ran_out_offers_a_new_one_without_an_error(tab, family, phone, page):  # noqa: F811
+    at_the_whatsapp_step(family)
+    page.context.timeouts.whatsapp_pair = 1
+    phone.plays([{"qr": "2@first"}])
+    tab.reload()
+
+    expect(tab.get_by_text(text("whatsapp.timed-out"))).to_be_visible()
+    expect(qr_code(tab)).to_be_hidden()
+    expect(tab.get_by_role("alert")).to_have_count(0)  # no failure, in red
+    page.context.timeouts.whatsapp_pair = 20
+    phone.plays([{"qr": "2@fresh"}, {"wait": "scan"}, *SCANNED])
+    button(tab, "whatsapp.again").click()
+
+    expect(qr_code(tab)).to_be_visible()
+    expect(button(tab, "whatsapp.again")).to_be_hidden()
+    phone.go("scan")
+    expect(tab.get_by_text(text("whatsapp.paired"))).to_be_visible()
+    assert [g["id"] for g in json.loads(progress_file(family).read_text())["whatsapp_chats"]] == [
+        FOOTBALL, CLASS]
+

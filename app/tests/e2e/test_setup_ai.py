@@ -163,7 +163,7 @@ def test_claude_s_token_is_read_tested_and_stored_with_nothing_copied(harness, p
     assert claude.ran and claude.started == [[str(claude.bin_dir / "claude"), "setup-token"]]
     assert harness.secrets == {"claude-oauth-token": CLAUDE_TOKEN}
     assert harness.model.reached == [str(claude.bin_dir / "claude")]  # the token's test call
-    assert out["progress"]["sources"]["ai"] == "done" and out["progress"]["source"] == "myclub"
+    assert out["progress"]["sources"]["ai"] == "done" and out["progress"]["source"] == "whatsapp"
     assert not harness.desktop.windows
     assert_never_leaked(harness, [r, call(page.url, "api/claude/check", method="POST", body={}),
                                   call(page.url, "api/state")], caplog, capsys, CLAUDE_TOKEN)
@@ -343,7 +343,7 @@ def test_a_signed_in_codex_ticks_the_entry_itself(harness, page, codex):
     out = codex_check(page.url)
 
     assert out["result"] == "signed-in"
-    assert out["progress"]["sources"]["ai"] == "done" and out["progress"]["source"] == "myclub"
+    assert out["progress"]["sources"]["ai"] == "done" and out["progress"]["source"] == "whatsapp"
     assert not (codex / "codex-login.ran").exists()  # no sign-in needed
 
 
@@ -791,7 +791,7 @@ def test_a_gateway_key_pasted_on_the_page_is_tested_stored_and_ticks_the_ai(harn
 
     assert r.status == 200 and r.json()["result"] == "saved"
     assert r.json()["progress"]["sources"]["ai"] == "done"
-    assert r.json()["progress"]["source"] == "myclub"  # no WhatsApp step (ADR 0027)
+    assert r.json()["progress"]["source"] == "whatsapp"  # the Linked Device's step (ADR 0027)
     assert harness.model.reached == ["gateway.parentrecap.com"]  # the key's test call
     assert harness.secrets == {"gateway-key": GATEWAY_KEY}
     assert install_record.entries("keychain") == ["gateway-key"]  # so uninstall removes it

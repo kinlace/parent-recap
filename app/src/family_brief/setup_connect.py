@@ -30,9 +30,6 @@ SKIP_ANSWERS: dict[str, dict[str, Any]] = {
     s.name: {"sources": {s.name: {"enabled": False}}}
     for s in (source_registry.WILMA, source_registry.WHATSAPP, source_registry.MYCLUB)
 }
-# The Sources Connect's list leaves out on every system: WhatsApp until its Linked Device step
-# (#521), now that the step that read the Mac app's database is gone (ADR 0027).
-NOT_OFFERED = frozenset({source_registry.WHATSAPP.name})
 
 
 class Strict(BaseModel):
@@ -67,7 +64,7 @@ def parse(model: type[T], raw: Any) -> T:
 
 def sources() -> list[str]:
     """The Sources the page offers, in Connect's list's order."""
-    return [s for s in setup_save.SOURCES if s not in NOT_OFFERED]
+    return list(setup_save.SOURCES)
 
 
 def next_source(statuses: dict[str, str]) -> str | None:
