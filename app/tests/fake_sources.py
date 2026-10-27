@@ -1,6 +1,6 @@
 """Each Source's fake, at its transport, where the real thing varies (ADR 0022): Gmail's IMAP
-server, the MyClub feed over HTTP and the wilma CLI on Parent Recap's own Node; WhatsApp has none
-until the Linked Device's collector lands. FakeSources, the `sources` fixture, installs the fake of
+server, the MyClub feed over HTTP, the wilma CLI on Parent Recap's own Node, and the Linked
+Device's message store and status file. FakeSources, the `sources` fixture, installs the fake of
 each Source in the registry, so the real collectors run in every test of the evening run; FAKES is
 the list it reads.
 
@@ -10,6 +10,7 @@ written the way its transport carries it and read back by the real collector. So
 only the fields its transport carries, and the id the collector makes of it:
   - Gmail: its X-GM-MSGID, digits only;
   - Wilma: `message:<id>` or `news:<id>`, or `message:<tag>:<id>` once a Wilma is signed in to;
+  - WhatsApp: its message id;
   - MyClub: the event's UID.
 A Message older than the Source's lookback is skipped, as the collector skips it.
 """
@@ -19,7 +20,7 @@ import imaplib
 import json
 import re
 import subprocess
-from datetime import timezone
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import format_datetime
 from pathlib import Path
@@ -30,7 +31,7 @@ import pytest
 import requests
 
 import fake_node
-from family_brief import own_node, sources as registry
+from family_brief import linked_device, own_node, sources as registry
 from family_brief.collectors import gmail, myclub
 from family_brief.collectors.base import CalendarEvent, Collected, Message
 from fake_system import FakeSecrets
@@ -318,15 +319,62 @@ def _listed(m: Message) -> dict[str, Any]:
             "senderName": m.sender or "", "folder": "inbox", "unread": True, "replyCount": 0}
 
 
-# ── WhatsApp: nothing yet
+# ── WhatsApp: the Linked Device's message store and status file
 
 class WhatsApp(SourceFake):
-    """WhatsApp, which nothing reads until the Linked Device's collector lands (ADR 0027): it has no
-    transport, so nothing a test gives it tonight reaches the Brief."""
+    """The Linked Device's always-running job, as what it leaves in its folder (ADR 0026): the
+    status file, paired and connected unless `paired` is False, and the message store, to which
+    tonight's Messages are appended as follow keeps them, each time the collector reads it. A
+    Message's id is its WhatsApp message id, its chat_name its group's subject, and its group the
+    picked group of that name in the config, or the id `group_ids` gives the name, as for a group
+    renamed since it was picked. Its sender is the member's name, or "me" for one the family sent,
+    and its kid_hint the picked group's Kid, as the collector gives it. An exception tonight is
+    raised reading the store."""
     name = "whatsapp"
 
     def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
         super().__init__(sources)
+        self.paired = True
+        self.group_ids: dict[str, str] = {}
+        read = linked_device.records
+
+        def records() -> list[dict[str, Any]]:
+            self.keep(*(self.record(m) for m in self.tonight()))
+            return read()
+        mp.setattr(linked_device, "records", records)
+
+    def set_up(self) -> None:
+        picked = (self.sources.config.get("whatsapp") or {}).get("chats")
+        if self.paired and picked and not linked_device.status_file().exists():
+            now = datetime.now(timezone.utc).isoformat()
+            self.status(paired=True, connected_since=now, last_connected=now, link_ended_at=None)
+
+    def status(self, **link: Any) -> None:
+        """Writes the status file as follow does."""
+        self._private(linked_device.status_file()).write_text(json.dumps(link) + "\n")
+
+    def keep(self, *records: dict[str, Any]) -> None:
+        """Appends `records` to the store as follow does."""
+        store = self._private(linked_device.store())
+        with store.open("a", encoding="utf-8") as f:
+            f.writelines(json.dumps(r, ensure_ascii=False) + "\n" for r in records)
+
+    def record(self, m: Message) -> dict[str, Any]:
+        """`m` as follow keeps it."""
+        _carries(m, "whatsapp", {"sender", "chat_name", "kid_hint"}, {"from_me"})
+        assert m.chat_name, f"a WhatsApp Message is in a group: {m.external_id}"
+        picked = {c["name"]: c.get("id") for c in self.sources.config.get("whatsapp", {}).get("chats", [])}
+        group = self.group_ids.get(m.chat_name) or picked.get(m.chat_name) or f"{m.chat_name}@g.us"
+        from_me = m.sender == "me"
+        return {"id": m.external_id, "group_id": group, "group_subject": m.chat_name,
+                "sender": None if from_me else m.sender, "timestamp": m.timestamp.timestamp(),
+                "text": m.body, "from_me": from_me}
+
+    @staticmethod
+    def _private(path: Path) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path.touch(mode=0o600)
+        return path
 
 
 # The fake of each Source, by its name in the registry.

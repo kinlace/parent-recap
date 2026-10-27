@@ -70,34 +70,16 @@ def test_codex_is_given_the_same_prompt_and_makes_the_same_brief(harness, golden
 
 def test_failing_source_adds_coverage_warning(harness):
     normal_night(harness)
-    harness.sources["wilma"] = PermissionError(1, "Operation not permitted")
+    harness.sources["gmail"] = RuntimeError("b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'")
+    harness.sources["whatsapp"] = PermissionError(1, "Operation not permitted")
 
     assert harness.run() == 0
 
     [email] = harness.sent
-    coverage = ("📥 今晚读取：Gmail 4 条 · MyClub 1 个日程 · Wilma 0 条\n"
-                "⚠️ Wilma 没读到（macOS 权限被拒绝），今天的日报可能缺这一块。")
+    coverage = ("📥 今晚读取：Gmail 0 条 · MyClub 1 个日程 · Wilma 1 条 · WhatsApp 0 条\n"
+                "⚠️ Gmail 没读到（登录失败），WhatsApp 没读到（macOS 权限被拒绝），今天的日报可能缺这一块。")
     assert email.text.endswith("\n\n" + coverage)
     assert coverage.replace("\n", "<br>") in email.html
-
-
-def test_whatsapp_turned_on_with_groups_picked_is_not_read(harness):
-    # Nothing reads WhatsApp until the Linked Device's collector lands (ADR 0027), whatever it has.
-    normal_night(harness, "en")
-    harness.sources["whatsapp"] = [msg("whatsapp", "1:2", "2026-09-27T19:45:00+03:00",
-                                       "Remember reissuvihko signatures", sender="Parent rep",
-                                       chat="3B parents", kid="Mia")]
-    assert harness.config["whatsapp"]["enabled"] and harness.config["whatsapp"]["chats"]
-
-    assert harness.run() == 0
-
-    [email] = harness.sent
-    assert payload_message_ids(harness) == NORMAL_NIGHT_IDS
-    assert "whatsapp" not in harness.lookback_hours
-    # The coverage line has no WhatsApp, nor a permission it lacked.
-    assert email.text.endswith(
-        "\n\n📥 Read tonight: Gmail 4 messages · MyClub 1 event · Wilma 1 message")
-    assert "WhatsApp" not in email.text
 
 
 def test_failing_source_adds_coverage_warning_in_english(harness):
@@ -108,7 +90,7 @@ def test_failing_source_adds_coverage_warning_in_english(harness):
     assert harness.run() == 0
 
     [email] = harness.sent
-    coverage = ("📥 Read tonight: Gmail 0 messages · MyClub 0 events · Wilma 1 message\n"
+    coverage = ("📥 Read tonight: Gmail 0 messages · MyClub 0 events · Wilma 1 message · WhatsApp 2 messages\n"
                 "⚠️ Gmail not read (login failed), MyClub not read (MyClub fetch failed for Mia: "
                 "example.myclub.fi: RuntimeError). "
                 "Tonight's Brief may be incomplete.")
@@ -370,7 +352,7 @@ def test_lookback_covers_the_gap_since_the_last_delivered_brief(harness):
     with time_machine.travel(NOW + timedelta(days=3), tick=False):
         assert harness.run() == 0
 
-    for source in ("gmail", "wilma"):
+    for source in ("gmail", "wilma", "whatsapp"):
         # 26h is the configured window; after two failed nights it reaches back 72h (+2h slack).
         assert harness.lookback_hours[source] == [26, 26, 50, 74]
 
@@ -403,7 +385,7 @@ def test_source_that_failed_stays_behind_through_a_run_that_skips_it(harness):
         assert harness.run() == 0
     harness.sources["gmail"] = night_1
     with time_machine.travel(NOW + timedelta(days=2), tick=False):
-        assert harness.run("--sources", "wilma,myclub") == 0
+        assert harness.run("--sources", "wilma,whatsapp") == 0
     with time_machine.travel(NOW + timedelta(days=3), tick=False):
         assert harness.run() == 0
 
@@ -646,16 +628,16 @@ def test_action_item_citing_a_message_shows_its_source(harness):
     normal_night(harness)
     harness.model_reply["per_kid"] = [
         {"kid": "Mia", "notices": [],
-         "action_items": [{"what": "签 reissuvihko", "by": "2026-09-28", "who": "妈妈", "refs": ["message:55"]}]},
+         "action_items": [{"what": "签 reissuvihko", "by": "2026-09-28", "who": "妈妈", "refs": ["1:2"]}]},
     ]
 
     assert harness.run() == 0
 
     [email] = harness.sent
-    assert "签 reissuvihko<small style='color:#666'> (Mia) · by 9月28日 周一 · 妈妈 · Wilma</small>" \
+    assert "签 reissuvihko<small style='color:#666'> (Mia) · by 9月28日 周一 · 妈妈 · WhatsApp</small>" \
         in email.html
     [item] = archived_summary(harness)["per_kid"][0]["action_items"]
-    assert (item["source"], item["verified"]) == (["wilma"], True)
+    assert (item["source"], item["verified"]) == (["whatsapp"], True)
 
 
 def test_uncited_and_unknown_citations_are_unverified(harness):
@@ -742,8 +724,8 @@ def injected_night(h) -> None:
     normal_night(h)
     h.config["google_calendar"] = {"mode": "google", "invite_attendees": ["partner@example.com"]}
     h.authorize_google_calendar()
-    h.sources["gmail"].append(msg("gmail", "1113", "2026-09-27T20:10:00+03:00", INJECTION,
-                                  sender="parents.3b@kilo.example.fi", subject="3B parents"))
+    h.sources["whatsapp"].append(msg("whatsapp", "1:3", "2026-09-27T20:10:00+03:00", INJECTION,
+                                     sender="+358 40 000 0000", chat="3B parents", kid="Mia"))
 
 
 def test_system_prompt_says_message_text_is_untrusted(harness):
@@ -898,9 +880,9 @@ def test_feedback_links_prefill_each_action_item_and_the_digest(harness):
                          "kid": "Kid A", **common}),
         ("❌ 这条错了", {"verdict": "❌ This is wrong", "item_text": "在 Wilma 签远足同意书", "source": "gmail",
                         "kid": "Kid A", **common}),
-        ("⭐ 幸好有这条", {"verdict": "⭐ Glad this was here", "item_text": "签 reissuvihko", "source": "gmail",
+        ("⭐ 幸好有这条", {"verdict": "⭐ Glad this was here", "item_text": "签 reissuvihko", "source": "whatsapp",
                          "kid": "Kid A", **common}),
-        ("❌ 这条错了", {"verdict": "❌ This is wrong", "item_text": "签 reissuvihko", "source": "gmail",
+        ("❌ 这条错了", {"verdict": "❌ This is wrong", "item_text": "签 reissuvihko", "source": "whatsapp",
                         "kid": "Kid A", **common}),
         ("⭐ 幸好有这条", {"verdict": "⭐ Glad this was here", "item_text": "给 Kid B 准备拍照穿的衣服 <整洁>",
                          "source": "gmail", "kid": "Kid B", **common}),
@@ -915,8 +897,8 @@ def test_feedback_links_carry_only_the_derived_source(harness):
     harness.config["feedback"] = FEEDBACK
     harness.model_reply["per_kid"] = [
         {"kid": "Mia", "notices": [],
-         "action_items": [{"what": "签 reissuvihko 和远足同意书", "by": "2026-09-28",
-                           "refs": ["message:55", "1101"], "source": "myclub"},  # a model-written Source is ignored
+         "action_items": [{"what": "签 reissuvihko 和远足同意书", "by": "2026-09-28", "refs": ["1:2", "1101"],
+                           "source": "wilma"},  # a model-written Source is ignored
                           {"what": "交班费 20€", "by": "2026-09-29", "refs": ["g-404"]},
                           {"what": "带手工材料", "by": "2026-09-30"}]},
     ]
@@ -925,7 +907,7 @@ def test_feedback_links_carry_only_the_derived_source(harness):
 
     items = [answers for label, answers, _ in feedback_links(harness.sent[0].html) if label == "❌ 这条错了"]
     assert [(a["item_text"], a["source"]) for a in items] == [
-        ("签 reissuvihko 和远足同意书", "gmail,wilma"), ("交班费 20€", ""), ("带手工材料", "")]
+        ("签 reissuvihko 和远足同意书", "gmail,whatsapp"), ("交班费 20€", ""), ("带手工材料", "")]
 
 
 def test_long_feedback_text_is_truncated_to_keep_urls_short(harness):
@@ -984,7 +966,7 @@ def test_english_feedback_links_label_the_forms_choices_in_english(harness):
     ]
     assert "Written by Claude" in email.html
     assert "<h3>✅ Action Items</h3>" in email.html
-    assert "Sign the reissuvihko<small style='color:#666'> (Mia) · by Mon 28 Sep · Mom · Gmail</small>" \
+    assert "Sign the reissuvihko<small style='color:#666'> (Mia) · by Mon 28 Sep · Mom · WhatsApp</small>" \
         in email.html
 
 

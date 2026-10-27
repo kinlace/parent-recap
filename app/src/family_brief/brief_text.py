@@ -50,17 +50,20 @@ class BriefText:
     events: Plural
     not_read: str                       # {source} {reason}
     partly_read: str                    # {source} {reason}
+    not_read_since: str                 # {source} {when}, as `date_time` writes it, {reason}
     may_be_incomplete: str              # {missed}
     missed_sep: str
     permission_denied: str
     login_failed: str
     message_unreadable: str             # a Source skipped a Message it couldn't read
+    needs_pairing: str                  # the Linked Device's link ended, or it was never paired
 
     # ── The short Brief of a night when no Source could be read
     nothing_read: str
     source_problem: str                 # {source} {reason} {fix}
     fix_login: str                      # {assistant} {source}
     fix_permission: str                 # {assistant} {source}
+    fix_pairing: str                    # {assistant} {source}
     fix_other: str                      # {assistant}
 
     # ── Rule-based fallback when the model fails
@@ -152,16 +155,19 @@ EN = BriefText(
     events=Plural("{n} event", "{n} events"),
     not_read="{source} not read ({reason})",
     partly_read="{source} partly read ({reason})",
+    not_read_since="{source} not read since {when} ({reason})",
     may_be_incomplete="⚠️ {missed}. Tonight's Brief may be incomplete.",
     missed_sep=", ",
     permission_denied="macOS permission denied",
     login_failed="login failed",
     message_unreadable="a message couldn't be read",
+    needs_pairing="needs a new pairing",
     nothing_read="⚠️ No Source could be read tonight, so there is no Digest. Their messages will be "
                  "in the first Brief after they can be read again.",
     source_problem="• {source}: {reason}. {fix}",
     fix_login="Tell {assistant} “re-authorize {source}” to fix it.",
     fix_permission="Tell {assistant} “Parent Recap can't read {source}” to fix it.",
+    fix_pairing="Tell {assistant} “pair {source} again” to fix it.",
     fix_other="If the Mac was offline, this fixes itself. If it happens again, tell {assistant} "
               "“check Parent Recap”.",
     fallback_header="⚠️ Tonight's Digest could not be written, so here are the raw messages "
@@ -225,15 +231,18 @@ ZH = BriefText(
     events=Plural("{n} 个日程", "{n} 个日程"),
     not_read="{source} 没读到（{reason}）",
     partly_read="{source} 部分没读到（{reason}）",
+    not_read_since="{source} 自 {when} 起没读到（{reason}）",
     may_be_incomplete="⚠️ {missed}，今天的日报可能缺这一块。",
     missed_sep="，",
     permission_denied="macOS 权限被拒绝",
     login_failed="登录失败",
     message_unreadable="有一条消息读不出来",
+    needs_pairing="需要重新关联设备",
     nothing_read="⚠️ 今晚所有信息源都没读到，所以没有摘要。等它们恢复后，这些消息会出现在下一份日报里。",
     source_problem="• {source}：{reason}。{fix}",
     fix_login="跟 {assistant} 说「重新授权 {source}」即可修复。",
     fix_permission="跟 {assistant} 说「Parent Recap 读不了 {source}」即可修复。",
+    fix_pairing="跟 {assistant} 说「重新关联 {source}」即可修复。",
     fix_other="如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 {assistant} 说「检查 Parent Recap」。",
     fallback_header="⚠️ 今日 LLM 总结失败，以下是原始消息清单（详见 ~/ParentRecap 归档）：",
     fallback_spent="⚠️ 今晚没能写摘要：Gateway Key 今天的额度已用完，一天之内会恢复，赶得上明晚的日报。"
@@ -291,10 +300,12 @@ FI = BriefText(
     events=Plural("{n} tapahtuma", "{n} tapahtumaa"),
     not_read="{source} jäi lukematta ({reason})",
     partly_read="{source} luettiin vain osittain ({reason})",
+    not_read_since="{source} on jäänyt lukematta {when} lähtien ({reason})",
     may_be_incomplete="⚠️ {missed}. Tämäniltaisesta koosteesta voi puuttua jotain.",
     missed_sep=", ",
     permission_denied="macOS ei antanut käyttöoikeutta",
     login_failed="kirjautuminen epäonnistui",
+    needs_pairing="laite on linkitettävä uudelleen",
     fallback_header="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua, joten tässä ovat viestit sellaisenaan "
                     "(kaikki ovat tallessa arkistossa ~/ParentRecap):",
     fallback_spent="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua: gateway-avaimen tämän päivän "
@@ -312,6 +323,7 @@ FI = BriefText(
     fix_login="Voit korjata tämän kirjoittamalla {assistant}-avustajalle ”valtuuta {source} uudelleen”.",
     fix_permission="Voit korjata tämän kirjoittamalla {assistant}-avustajalle "
                    "”Parent Recap ei pysty lukemaan lähdettä {source}”.",
+    fix_pairing="Voit korjata tämän kirjoittamalla {assistant}-avustajalle ”linkitä {source} uudelleen”.",
     fix_other="Jos Macissa ei ollut verkkoyhteyttä, tämä korjaantuu itsestään. Jos ongelma toistuu, kirjoita "
               "{assistant}-avustajalle ”tarkista Parent Recap”.",
     message_time="{day}.{month}. klo {hour}.{minute:02}",

@@ -64,21 +64,21 @@ the import path, so a test may import a helper from a test in another layer.
 
 ## Integration tests
 
-| File                            | What it covers                                                                    |
-| ------------------------------- | --------------------------------------------------------------------------------- |
-| `test_collector_labels.py`      | The labels Sources add to Messages are English                                    |
-| `test_email.py`                 | The Brief email as sent to a fake SMTP server                                     |
-| `test_eval_runner.py`           | The eval runner end to end, only the model process faked                          |
-| `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was                   |
-| `test_goldens.py`               | The golden files' check and `--update-goldens`                                    |
-| `test_linked_device.py`         | The Linked Device's Node program's three modes on a fake Baileys                  |
-| `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code                |
-| `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses                      |
-| `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks                 |
-| `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token                            |
-| `test_setup_google_calendar.py` | The Google Calendar authorization script                                          |
-| `test_weekend_picks.py`         | Weekend Picks through the same backend as the Brief                               |
-| `test_whatsapp_source.py`       | WhatsApp, read by nothing yet, and the Linked Device's records mapped to Messages |
+| File                            | What it covers                                                                   |
+| ------------------------------- | -------------------------------------------------------------------------------- |
+| `test_collector_labels.py`      | The labels Sources add to Messages are English                                   |
+| `test_email.py`                 | The Brief email as sent to a fake SMTP server                                    |
+| `test_eval_runner.py`           | The eval runner end to end, only the model process faked                         |
+| `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was                  |
+| `test_goldens.py`               | The golden files' check and `--update-goldens`                                   |
+| `test_linked_device.py`         | The Linked Device's Node program's three modes on a fake Baileys                 |
+| `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code               |
+| `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses                     |
+| `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks                |
+| `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token                           |
+| `test_setup_google_calendar.py` | The Google Calendar authorization script                                         |
+| `test_weekend_picks.py`         | Weekend Picks through the same backend as the Brief                              |
+| `test_whatsapp_source.py`       | WhatsApp's collector: the Linked Device's store read, mapped to Messages, pruned |
 
 ## End-to-end tests: the evening run
 
@@ -96,6 +96,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_gateway.py`                 | The gateway backend (ADR 0014): Brief, doctor and `setup gateway`  |
 | `test_source_failures.py`         | A Source's transport failing partway or timing out                 |
 | `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON      |
+| `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing  |
 | `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish           |
 | `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                  |
 | `test_ai_filter_report.py`        | `parent-recap ai-filter-report` over an archive                    |
@@ -176,7 +177,7 @@ The shared fakes stay in `tests/`, beside the golden files. `conftest.py` has fo
 per outside edge of the program, each with its fakes in a module of its own:
 
 - `sources` (`fake_sources.py`): each Source's fake at its transport (Gmail's IMAP server, the
-  MyClub feed, the wilma CLI; WhatsApp has none until it is read again), as `sources.fakes[name]`, serving what
+  MyClub feed, the wilma CLI, the Linked Device's store and status file), as `sources.fakes[name]`, serving what
   `sources.tonight[name]` holds to the real collector. One is installed for each Source in the
   registry (ADR 0022), so a new Source adds its fake to `FAKES`. A test gives each Message the id
   its Source makes of it, and only the fields its transport carries.

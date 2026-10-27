@@ -50,10 +50,12 @@ def source_name(source: str) -> str:
     return "Calendar" if source == "calendar" else source_registry.label_of(source)
 
 
-def _problem(err: str) -> Literal["unreadable", "permission", "login", "other"]:
+def _problem(err: str) -> Literal["unreadable", "pairing", "permission", "login", "other"]:
     """What kind of error a Source reported, for what the Brief says about it."""
     if err.startswith(UNREADABLE_MESSAGE):
         return "unreadable"
+    if err == source_registry.NEEDS_PAIRING:
+        return "pairing"
     low = err.lower()
     if "operation not permitted" in low or "permission" in low:
         return "permission"
@@ -64,6 +66,7 @@ def _problem(err: str) -> Literal["unreadable", "permission", "login", "other"]:
 
 def _short_reason(err: str, t: BriefText) -> str:
     return {"unreadable": t.message_unreadable,  # without the Message's id and the error, which are for the log
+            "pairing": t.needs_pairing,
             "permission": t.permission_denied,
             "login": t.login_failed}.get(_problem(err)) or err.splitlines()[0][:60]
 
@@ -77,7 +80,10 @@ def _coverage_note(coverage: dict[str, dict], t: BriefText) -> str:
         name = source_name(source)
         counts_events = source_registry.named(source).counts_events
         read.append(f"{name} {(t.events if counts_events else t.messages)(c['count'])}")
-        if c["error"]:
+        if c["error"] and c.get("since"):  # a Source not read since then, in the Household's time
+            missed.append(t.not_read_since.format(source=name, when=t.at(datetime.fromisoformat(c["since"])),
+                                                  reason=_short_reason(c["error"], t)))
+        elif c["error"]:
             missed.append((t.partly_read if c["count"] else t.not_read)
                           .format(source=name, reason=_short_reason(c["error"], t)))
     note = t.read_tonight.format(counts=" · ".join(read))
@@ -91,7 +97,8 @@ def nothing_read_text(coverage: dict[str, dict], t: BriefText, assistant: str) -
     lines = [t.nothing_read]
     for source, c in coverage.items():
         name = source_name(source)
-        fix = {"login": t.fix_login, "permission": t.fix_permission}.get(_problem(c["error"]), t.fix_other)
+        fix = {"login": t.fix_login, "permission": t.fix_permission,
+               "pairing": t.fix_pairing}.get(_problem(c["error"]), t.fix_other)
         lines.append(t.source_problem.format(source=name, reason=_short_reason(c["error"], t).rstrip(".。 "),
                                              fix=fix.format(assistant=assistant, source=name)))
     return "\n".join(lines)

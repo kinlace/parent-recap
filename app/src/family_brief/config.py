@@ -70,7 +70,11 @@ class WilmaConfig(BaseModel):
 
 
 class WhatsAppChat(BaseModel):
+    """A picked group. The Linked Device keeps its messages by `id`, so a renamed group stays
+    picked; `name` is for the Brief and the Kid hints. Groups picked before the Linked Device have
+    a name only, until a pairing's group list fills the id in."""
     name: str
+    id: str | None = None           # its WhatsApp group id, ...@g.us
     kid: str | None = None          # a kid's short name, "both", or None
     label: str | None = None        # short topical label e.g. "class", "football", "piano"
 
@@ -83,7 +87,15 @@ class WhatsAppConfig(BaseModel):
     def chat_names(self) -> list[str]:
         return [c.name for c in self.chats]
 
-    def kid_for(self, name: str) -> str | None:
+    def picked_ids(self) -> list[str]:
+        """The picked groups' ids, which the Linked Device keeps the messages of."""
+        return list(dict.fromkeys(c.id for c in self.chats if c.id))
+
+    def kid_for(self, name: str, group_id: str | None = None) -> str | None:
+        """The Kid of the picked group with `group_id`, or else of the one named `name`."""
+        for c in self.chats:
+            if group_id is not None and c.id == group_id:
+                return c.kid
         for c in self.chats:
             if c.name == name:
                 return c.kid

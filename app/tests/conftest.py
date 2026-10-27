@@ -1,7 +1,7 @@
 """The fixtures that fake the program's outside edges, so internals can be refactored without
 touching tests. Each fakes one edge, and an integration test asks only for the one it uses:
   1. `sources`: each Source in the registry faked at its transport (fake_sources.py: Gmail's IMAP
-     server, the MyClub feed's HTTP, the wilma CLI; WhatsApp has none yet), serving what
+     server, the MyClub feed's HTTP, the wilma CLI, the Linked Device's store), serving what
      `sources.tonight` holds for it to its real collector.
   2. `model`: every backend's model calls made to the llm package's in-memory Backend, which
      records each and answers from the replies it is given (fake_model.py, ADR 0023).
@@ -51,6 +51,8 @@ sys.path += [str(Path(__file__).parent / layer) for layer in LAYERS]
 TZ = "Europe/Helsinki"
 # A Sunday evening in autumn, after the nightly launchd slot.
 NOW = datetime(2026, 9, 27, 21, 0, tzinfo=ZoneInfo(TZ))
+# The default config's picked WhatsApp groups, by their ids
+CLASS_GROUP, PIANO_GROUP = "120363000000000001@g.us", "120363000000000002@g.us"
 GOLDEN_DIR = Path(__file__).parent / "golden"
 # A stand-in for the pilot Form the team ships: no real Form is needed.
 PILOT_FORM_URL = "https://docs.google.com/forms/d/e/PILOT_FORM/viewform"
@@ -416,8 +418,8 @@ def default_config() -> dict[str, Any]:
         "gmail": {"username": "parent@example.com", "allowlist_domains": ["kilo.example.fi"]},
         "wilma": {"enabled": True},
         "whatsapp": {"enabled": True, "chats": [
-            {"name": "3B parents", "kid": "Mia", "label": "class"},
-            {"name": "Leo piano", "kid": "Leo", "label": "piano"},
+            {"name": "3B parents", "id": CLASS_GROUP, "kid": "Mia", "label": "class"},
+            {"name": "Leo piano", "id": PIANO_GROUP, "kid": "Leo", "label": "piano"},
         ]},
         "google_calendar": {"mode": "ics"},
         "email": {"enabled": True, "to": ["parent@example.com", "partner@example.com"]},

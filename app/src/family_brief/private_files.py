@@ -29,14 +29,21 @@ def tighten(cfg: Config) -> None:
     """Make the archive, log, Weekend Picks and config folders owner-only, and the files directly
     in them (state, config backups), so installs from before this was done are fixed on their
     next run. So are the wilma CLI's folder, its sign-in and the Wilma session it saves next to it,
-    which give the same access as the Wilma password. A file it can't change is left as it is
-    rather than stopping the run."""
-    from . import setup_wilma  # it reads the config through the Wilma Source
+    which give the same access as the Wilma password, and the Linked Device's folder with all in
+    it: its auth state is the WhatsApp pairing, and its store the picked groups' messages. A file
+    it can't change is left as it is rather than stopping the run."""
+    from . import linked_device, setup_wilma  # they read the config through the Sources
 
     wilma = setup_wilma.config_path()
     if wilma.parent.is_dir():
         for p in (wilma.parent, wilma, wilma.with_name(setup_wilma.SESSIONS)):
             if p.exists() and not p.is_symlink():
+                _strip_others(p)
+    linked = linked_device.folder()
+    if linked.is_dir() and not linked.is_symlink():
+        _strip_others(linked)
+        for p in linked.rglob("*"):
+            if not p.is_symlink():
                 _strip_others(p)
     archive = cfg.archive.resolved_dir()
     default = Path.home() / "ParentRecap"  # model diagnostics always go to its logs/

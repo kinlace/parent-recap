@@ -298,30 +298,72 @@ def test_doctor_names_an_unreadable_config_in_english(harness, capsys):
     assert not HAN.findall(out)
 
 
-# ── No WhatsApp check until the Linked Device's (ADR 0027)
+# ── WhatsApp: the Linked Device's link (ADR 0027)
 
 
-@pytest.mark.parametrize("on", [MACOS, WINDOWS])
-def test_doctor_has_no_whatsapp_check_on_any_system(harness, capsys, on):
-    # WhatsApp turned on with groups picked, as a Household that read the Mac app's database has it.
+def whatsapp_line(harness, capsys) -> str:
+    """doctor's WhatsApp line, for a Household with WhatsApp's groups picked."""
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.jobs.add(jobs.DAILY)
+
+    harness.cli("doctor", "--skip-llm")
+
+    [line] = [l for l in capsys.readouterr().out.splitlines() if "WhatsApp:" in l]
+    return line
+
+
+@pytest.mark.parametrize("on", [MACOS, WINDOWS])
+def test_doctor_says_the_linked_device_is_connected_on_any_system(harness, capsys, on):
     harness.system = on
     # Setup's old step that read the Mac app recorded which Python read it; nothing reads that now.
     record = harness.home / ".family" / "whatsapp-python.json"
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text('{"python": "/Users/x/ParentRecap/runtime/python-3.12.6/bin/python3.12"}')
+    harness.source_fakes["whatsapp"].status(paired=True, connected_since="2026-09-27T05:12:00.000Z",
+                                            last_connected="2026-09-27T05:12:00.000Z", link_ended_at=None)
+
+    line = whatsapp_line(harness, capsys)
+
+    assert line == "✅ WhatsApp: connected since 2026-09-27 08:12, keeping 2 picked groups"
+    assert "python-3.12.6" not in line
+
+
+def test_doctor_says_when_the_linked_device_last_connected(harness, capsys):
+    harness.source_fakes["whatsapp"].status(paired=True, connected_since=None,
+                                            last_connected="2026-09-27T17:40:00.000Z", link_ended_at=None)
+
+    assert whatsapp_line(harness, capsys).startswith(
+        "⚠️  WhatsApp: not connected right now, last connected 2026-09-27 20:40, for 2 picked groups.")
+
+
+def test_doctor_says_a_link_whatsapp_ended_needs_a_new_pairing(harness, capsys):
+    harness.source_fakes["whatsapp"].status(paired=False, connected_since=None,
+                                            last_connected="2026-09-26T05:30:00.000Z",
+                                            link_ended_at="2026-09-26T05:30:00.000Z")
+
+    assert whatsapp_line(harness, capsys) == (
+        "❌ WhatsApp: needs a new pairing: WhatsApp ended the link on 2026-09-26 08:30, so the Brief "
+        "has no WhatsApp messages (pair again on the setup page)")
+
+
+def test_doctor_says_groups_picked_without_a_pairing_need_a_new_pairing(harness, capsys):
+    # As a Household that read WhatsApp for Mac's database has it: groups picked by name only.
+    for chat in harness.config["whatsapp"]["chats"]:
+        del chat["id"]
+
+    assert whatsapp_line(harness, capsys) == (
+        "❌ WhatsApp: needs a new pairing: the picked groups have no pairing with WhatsApp yet, so "
+        "the Brief has no WhatsApp messages (pair again on the setup page)")
+
+
+def test_doctor_has_no_whatsapp_line_without_picked_groups(harness, capsys):
+    harness.config["whatsapp"] = {"enabled": False, "chats": []}
+    harness.jobs.add(jobs.DAILY)
 
     harness.cli("doctor", "--skip-llm")
 
-    out = capsys.readouterr().out
-    assert harness.config["whatsapp"]["enabled"] and harness.config["whatsapp"]["chats"]
-    assert [l for l in out.splitlines() if "WhatsApp" in l] == \
-        [l for l in out.splitlines() if "WhatsApp library:" in l]
-    assert "Python path" not in out and "python-3.12.6" not in out
-    assert "whatsapp" not in dict(ops.CHECK_ITEMS)
-    assert "whatsapp" not in setup_server.health.HEALTH_CHECKS
+    assert "WhatsApp:" not in capsys.readouterr().out
 
 
 SKILLS = Path(__file__).resolve().parents[3] / "skills"
