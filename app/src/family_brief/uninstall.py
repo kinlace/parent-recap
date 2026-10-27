@@ -26,8 +26,8 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import (ai_filter_report, chat_install, install_record, llm, ops, own_node, run_lock,
-               setup_save, setup_wilma, sources, tools, whatsapp_python)
+from . import (ai_filter_report, baileys_install, chat_install, install_record, llm, ops, own_node,
+               run_lock, setup_save, setup_wilma, sources, tools, whatsapp_python)
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
 from .system import desktop, jobs, macos_only, profile, secrets, wake, windows_only
@@ -38,6 +38,8 @@ RUNTIMES = re.compile(r"^(python-[\w.+-]+|node-v[\w.-]+|\.incoming|\.download)$"
 # What `npm install -g --prefix` makes in the wilma CLI's folder; on Windows the package goes in
 # node_modules, with npm's wrappers for each of its commands beside it (_npm_made).
 NPM_PREFIX = {"bin", "lib", "etc", "share", "node_modules"}
+# What the install's `npm ci` leaves in the Baileys tree's folder: the npm files it ran from.
+NPM_CI = {*baileys_install.NPM_FILES, "node_modules"}
 DATED = re.compile(r"^\d{4}-\d{2}-\d{2}\.(md|raw\.json)$")  # an archived Brief and its messages
 MARKETPLACE = "kinlace"
 
@@ -143,6 +145,7 @@ def survey(config: Path) -> Survey:
     for source in sources.ALL:
         if source.survey:
             source.survey(s, programs)
+    _baileys(s, programs)
     _claude_code(s)
     _codex_skills(s, home)
     _plugin_copies(s, usual)
@@ -296,6 +299,21 @@ def survey_wilma(s: Survey, programs: list[Path]) -> None:
         else:
             s.stops.append(f"{_show(folder)} is where Parent Recap installs the wilma CLI, but "
                            f"it holds other files too: {', '.join(others)}")
+
+
+def _baileys(s: Survey, programs: list[Path]) -> None:
+    """The Baileys tree the install put next to the program, as `npm ci` left it."""
+    recorded = [Path(p) for p in install_record.entries("baileys")]
+    usual = [*(p.parent / "baileys" for p in programs), Path.home() / "ParentRecap" / "baileys"]
+    for folder in dict.fromkeys([*recorded, *usual]):
+        if not folder.is_dir() or folder.is_symlink():
+            continue
+        others = sorted(p.name for p in folder.iterdir() if p.name not in NPM_CI)
+        if not others:
+            s.items.append(_file("The Linked Device's WhatsApp library", folder))
+        else:
+            s.stops.append(f"{_show(folder)} is where Parent Recap installs the Linked Device's "
+                           f"WhatsApp library, but it holds other files too: {', '.join(others)}")
 
 
 def survey_whatsapp(s: Survey, programs: list[Path]) -> None:
