@@ -2,7 +2,9 @@
 
 `install.sh` (`install.ps1` on Windows) unpacks a pinned Node into a versioned folder in
 `runtime/`, next to the pinned Python. The setup page installs the pinned wilma CLI (ADR 0008)
-with that Node's npm into `wilma/`, not into the computer's global npm prefix. The CLI always runs
+with that Node's npm into `wilma/`, not into the computer's global npm prefix, and the install
+the Linked Device's Baileys tree into `baileys/` (`baileys_install`), both staged the same way
+(`install_staged`). The CLI always runs
 on that Node, so a Node the computer has, or having none, changes nothing, and nothing outside
 Parent Recap's folder can update either of them.
 
@@ -15,9 +17,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
+from typing import Callable
 
-from . import install_record
+from . import failure, install_record
 from .system import profile
 
 WILMA_PACKAGE = "@wilm-ai/wilma-cli"
@@ -61,6 +67,57 @@ def npm() -> list[str] | None:
         return None
     cli = modules(folder) / "npm" / "bin" / "npm-cli.js"
     return [str(_program(folder)), str(cli)] if cli.is_file() else None
+
+
+def run_npm(npm: list[str], args: list[str], seconds: int,
+            cwd: Path | None = None) -> subprocess.CompletedProcess:
+    """Runs `npm` with `args`, its output captured, ended after `seconds`."""
+    # npm's cache in a temporary folder, so nothing is left outside Parent Recap's.
+    with tempfile.TemporaryDirectory(prefix="parent-recap-npm-") as cache:
+        # npm runs package scripts with the `node` its PATH finds: this one, not the computer's.
+        env = {**os.environ, "npm_config_cache": cache, "npm_config_update_notifier": "false",
+               "PATH": os.pathsep.join([str(Path(npm[0]).parent), os.environ.get("PATH", "")])}
+        return subprocess.run([*npm, *args], capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=seconds, stdin=subprocess.DEVNULL,
+                              env=env, cwd=cwd)
+
+
+def install_staged(folder: Path, install: Callable[[Path], str | None], what: str,
+                   seconds: int) -> str | None:
+    """Has `install` put what npm installs into a new folder next to `folder`, which takes
+    `folder`'s place only once `install` has finished without a reason it failed, so an npm that
+    fails, or is ended at the time limit `seconds`, changes nothing. Returns why it failed, which
+    is also logged after `what`, or None once it's in place."""
+    folder.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    for left in folder.parent.glob(f".{folder.name}-*"):  # by an install that was itself ended
+        shutil.rmtree(left, ignore_errors=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{folder.name}-", dir=folder.parent))
+    try:
+        reason = install(staging)
+        if reason is None:
+            _replace(folder, staging)
+    except subprocess.TimeoutExpired:
+        reason = failure.timed_out("npm", seconds)
+    except (OSError, subprocess.SubprocessError) as e:  # npm's, or the move after it
+        reason = failure.raised(e, "The install")
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return failure.logged(what, reason) if reason else None
+
+
+def _replace(folder: Path, new: Path) -> None:
+    """Puts what npm installed in `new` in `folder`'s place, and removes what was there. npm
+    links bin/ to the packages by relative paths, so they run from their new place."""
+    old = new.with_name(new.name + "-old")
+    if folder.exists():
+        folder.rename(old)
+    try:
+        new.rename(folder)
+    except OSError:
+        if old.exists():
+            old.rename(folder)
+        raise
+    shutil.rmtree(old, ignore_errors=True)
 
 
 def wilma_folder() -> Path:
