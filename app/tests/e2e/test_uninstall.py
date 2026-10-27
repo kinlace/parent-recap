@@ -500,6 +500,38 @@ def test_a_wilma_cli_folder_holding_something_else_names_it(harness, monkeypatch
     assert (folder / "notes.txt").exists()
 
 
+# ── the Linked Device's Baileys tree
+
+
+@pytest.mark.parametrize("recorded", [True, False], ids=["recorded", "in the usual place"])
+def test_the_baileys_tree_the_install_made_is_listed_and_removed(harness, monkeypatch, capsys,
+                                                                 recorded):
+    set_up(harness, monkeypatch)
+    folder = fake_node.baileys_folder(harness.home)
+    fake_node.install_baileys(folder)
+    if recorded:
+        install_record.add("baileys", str(folder))
+
+    assert uninstall(harness) == 0
+    assert "The Linked Device's WhatsApp library: ~/ParentRecap/baileys" in capsys.readouterr().out
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert not folder.exists()
+
+
+def test_a_baileys_folder_holding_something_else_is_left_alone(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
+    folder = fake_node.baileys_folder(harness.home)
+    fake_node.install_baileys(folder)
+    (folder / "notes.txt").write_text("mine\n")
+    install_record.add("baileys", str(folder))
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 1
+
+    assert "holds other files too: notes.txt" in capsys.readouterr().out
+    assert (folder / "notes.txt").exists() and (folder / "node_modules").exists()
+
+
 def test_on_windows_credential_manager_items_are_listed_without_a_question(harness,
                                                                          monkeypatch, capsys):
     set_up(harness, monkeypatch)
