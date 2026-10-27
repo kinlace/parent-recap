@@ -5,15 +5,53 @@
 //
 // Steps: {"qr": "..."}, {"open": true}, {"close": STATUS}, {"creds": {...}} (a creds.update),
 // {"keys": {...}} (the program's keys.set), {"get": [TYPE, [IDS]]} (its keys.get, recorded),
-// {"message": {"chat": "...", "text": "..."}} (a messages.upsert) and {"log": "..."} (a warning
-// in Baileys' logger, with the text in its fields).
+// {"message": MESSAGE} (a messages.upsert), {"history": [MESSAGE, ...]} (a
+// messaging-history.set, as WhatsApp hands over at connect), {"rename": {"id": "...", "subject":
+// "..."}} (a groups.update), {"wait": NAME} (waits until the test makes NAME beside the
+// scenario) and {"log": "..."} (a warning in Baileys' logger, with the text in its fields).
+//
+// A MESSAGE is {"chat": "...", "text": "..."}, with "media" (a content type such as
+// "imageMessage") instead of "text", or "content" for the whole message content, and optional
+// "id", "sender", "fromMe" and "time" (seconds).
 
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const scenario = JSON.parse(readFileSync(process.env.FAKE_BAILEYS_SCENARIO, "utf8"));
 const record = (line) => appendFileSync(process.env.FAKE_BAILEYS_CALLS, JSON.stringify(line) + "\n");
 const pause = () => new Promise((resolve) => setTimeout(resolve, 20));
 let opened = 0;
+
+async function waitFor(name) {
+  const file = join(dirname(process.env.FAKE_BAILEYS_SCENARIO), name);
+  while (!existsSync(file)) await pause();
+}
+
+function waMessage({ chat, id = "M1", text, media, content, sender = "Liisa", fromMe = false,
+                     time = 1761555600 }) {
+  return {
+    key: { remoteJid: chat, id, fromMe, participant: fromMe ? undefined : "358409999999@lid" },
+    message: content ?? (media ? { [media]: {} } : { conversation: text }),
+    messageTimestamp: time,
+    pushName: fromMe ? undefined : sender,
+  };
+}
+
+// As Baileys' own, for the wrappers the program meets.
+export function normalizeMessageContent(content) {
+  for (let i = 0; i < 5 && content; i++) {
+    const inner = content.ephemeralMessage ?? content.viewOnceMessage ??
+      content.viewOnceMessageV2 ?? content.documentWithCaptionMessage ?? content.editedMessage;
+    if (!inner) break;
+    content = inner.message;
+  }
+  return content;
+}
+
+export function getContentType(content) {
+  return content ? Object.keys(content).find((key) =>
+    key !== "senderKeyDistributionMessage" && key !== "messageContextInfo") : undefined;
+}
 
 export const DisconnectReason = {
   connectionClosed: 428, connectionLost: 408, loggedOut: 401, restartRequired: 515, timedOut: 408,
@@ -59,6 +97,7 @@ export function makeWASocket(config) {
   const { auth, logger } = config;
   record({
     call: "makeWASocket",
+    at: Date.now(),
     options: {
       browser: config.browser,
       markOnlineOnConnect: config.markOnlineOnConnect,
@@ -74,6 +113,10 @@ export function makeWASocket(config) {
   const socket = {
     ev: recorded({ on: (name, listener) => (listeners[name] ??= []).push(listener) }, "ev."),
     groupFetchAllParticipating: async () => scenario.groups,
+    groupMetadata: async (jid) => {
+      if (!scenario.groups[jid]) throw new Error("item-not-found");
+      return scenario.groups[jid];
+    },
     end: () => {},
   };
 
@@ -94,11 +137,15 @@ export function makeWASocket(config) {
       if ("keys" in step) await auth.keys.set(step.keys);
       if ("get" in step) record({ call: "keys.get", result: await auth.keys.get(...step.get) });
       if ("message" in step) {
-        await emit("messages.upsert", { type: "notify", messages: [{
-          key: { remoteJid: step.message.chat, id: "M1", fromMe: false },
-          message: { conversation: step.message.text },
-        }] });
+        await emit("messages.upsert", { type: "notify", messages: [waMessage(step.message)] });
       }
+      if ("history" in step) {
+        await emit("messaging-history.set", {
+          chats: [], contacts: [], messages: step.history.map(waMessage), isLatest: true,
+        });
+      }
+      if ("rename" in step) await emit("groups.update", [step.rename]);
+      if ("wait" in step) await waitFor(step.wait);
       if ("log" in step) {
         logger.warn({ message: { conversation: step.log } }, "failed to decrypt message");
         logger.info({ text: step.log }, `received ${step.log}`);

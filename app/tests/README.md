@@ -70,7 +70,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_eval_runner.py`           | The eval runner end to end, only the model process faked           |
 | `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was    |
 | `test_goldens.py`               | The golden files' check and `--update-goldens`                     |
-| `test_linked_device.py`         | The Linked Device's Node program's `pair` and `groups` on a fake   |
+| `test_linked_device.py`         | The Linked Device's Node program's three modes on a fake Baileys   |
 | `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code |
 | `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses       |
 | `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks  |
