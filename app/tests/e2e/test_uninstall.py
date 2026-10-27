@@ -131,7 +131,7 @@ def set_up(harness, monkeypatch, *, record: bool = True) -> None:
     (home / ".family" / "languages" / "sv.json").write_text("{}")
     (home / ".family" / "config.yaml.bak-202609011200").write_text("old: config\n")
     tools.remembered_path().write_text('{"node": "/nix/store/node/bin/node"}\n')  # found off PATH
-    # The record of the Python given Full Disk Access, which setup's old WhatsApp for Mac step kept.
+    # The record of the Python that read WhatsApp, which setup's old WhatsApp for Mac step kept.
     (home / ".family" / "whatsapp-python.json").write_text(json.dumps({"python": str(home / PINNED_PYTHON)}))
     # The progress the setup page and the chat share.
     saved = setup_save.save(home / ".family" / "config.yaml", {"progress": {"phase": "finish"}})
@@ -186,16 +186,19 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, monkeypatch
 
 
 @pytest.mark.macos
-def test_says_to_remove_its_python_from_full_disk_access_by_hand(harness, monkeypatch, capsys):
+def test_the_old_record_of_whatsapp_s_python_goes_as_a_leftover_with_no_note_about_it(
+        harness, monkeypatch, capsys):
     set_up(harness, monkeypatch)
+    record = harness.home / ".family" / "whatsapp-python.json"
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
     out = capsys.readouterr().out
-    note = next(line for line in out.splitlines() if "Full Disk Access" in line)
-    assert "App Management" not in out
-    assert "by hand" in note and str(harness.home / PINNED_PYTHON) in note
-    assert not (harness.home / "ParentRecap" / "runtime").exists()  # the Node with it
+    assert "Which Python reads WhatsApp: ~/.family/whatsapp-python.json" in out
+    assert not record.exists()
+    # Nothing but Parent Recap's own Python and Node goes for it, and nothing is left to do by hand.
+    assert not (harness.home / "ParentRecap" / "runtime").exists()
+    assert str(harness.home / PINNED_PYTHON) not in out and "Privacy & Security" not in out
 
 
 @pytest.mark.macos
@@ -437,7 +440,7 @@ def test_on_windows_the_program_and_its_python_go_once_uninstall_has_ended(harne
     out = capsys.readouterr().out
     assert "The program goes once uninstall has ended: ~/ParentRecap/app" in out
     assert "this PC" in out and "Mac" not in out
-    assert "Full Disk Access" not in out and "macOS" not in out
+    assert "macOS" not in out
 
 
 def test_on_windows_a_program_that_couldn_t_be_handed_over_is_reported(harness, handover,

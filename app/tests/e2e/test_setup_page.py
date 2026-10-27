@@ -27,7 +27,6 @@ from setup_page import (CAN_LISTEN, PAGE_DIR, ROOT, at_finish, call, check_ai, c
                         finished, new_server, progress_file, refused, save_progress, source,
                         statuses, wait_for, welcome)
 from setup_page import ai, clock, health, page, schedule  # noqa: F401
-from test_setup_whatsapp import mac  # noqa: F401
 
 
 # ── the command
@@ -417,8 +416,8 @@ def test_the_source_list_shows_each_entry_with_its_status(harness, page):
 
     state = call(page.url, "api/state").json()
 
-    # No WhatsApp on any system until the Linked Device's step (ADR 0027): the step that read
-    # WhatsApp for Mac, with Full Disk Access, and its calls are gone.
+    # No WhatsApp on any system until the Linked Device's step (ADR 0027): the old step and its
+    # calls are gone.
     assert [(s["name"], s["skippable"]) for s in state["connect"]["sources"]] == [
         ("wilma", True), ("gmail", False), ("ai", False), ("myclub", True)]
     assert state["progress"]["source"] == "gmail"
@@ -427,6 +426,10 @@ def test_the_source_list_shows_each_entry_with_its_status(harness, page):
     assert "whatsapp" not in state
     for path in ("api/whatsapp/check", "api/whatsapp/open", "api/whatsapp/back"):
         assert call(page.url, path, method="POST", body={}).status == 404, path
+    html = call(page.url).body.decode()
+    assert 'id="source-whatsapp"' not in html
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        assert not [key for key in table if key.startswith("whatsapp.")], language
 
 
 def test_every_source_list_button_is_named_after_its_source_and_status_in_each_language():

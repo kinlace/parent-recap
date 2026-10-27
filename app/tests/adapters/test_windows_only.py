@@ -50,7 +50,7 @@ def test_doctor_says_what_to_change_for_each_of_the_evening_runs_checks(harness,
     sign_in = line(out, "Sign-in after updates")
     assert sign_in.startswith(ops.WARN.strip()) and "nobody is signed in" in sign_in
     assert windows_only.SIGN_IN_SETTING in sign_in
-    assert "Full Disk Access" not in out and "pmset" not in out
+    assert "pmset" not in out
 
 
 def test_doctor_is_happy_once_the_tasks_wake_timers_and_sign_in_are_all_set(harness, windows,

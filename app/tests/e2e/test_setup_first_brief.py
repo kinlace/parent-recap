@@ -21,7 +21,6 @@ from nights import FEEDBACK, FORM, feedback_links
 from setup_page import (APP_PASSWORD, PAGE_DIR, Response, at_the_check_step, call, config_file, connect_done,
                         more_progress, wait_for)
 from setup_page import clock, page  # noqa: F401
-from test_setup_whatsapp import mac  # noqa: F401
 
 
 # ── First Brief: the real Brief in the page, then sent to the setup parent only
@@ -59,7 +58,7 @@ def send_it_to_me(url: str) -> Response:
     return call(url, "api/brief/send", method="POST", body={})
 
 
-def test_the_preview_makes_the_real_brief_and_sends_nothing(harness, page, mac):
+def test_the_preview_makes_the_real_brief_and_sends_nothing(harness, page):
     at_the_first_brief(harness)
 
     r = make_brief(page.url)
@@ -73,12 +72,12 @@ def test_the_preview_makes_the_real_brief_and_sends_nothing(harness, page, mac):
     assert harness.sent == [] and harness.imessages == []
     assert not harness.state_path.exists()  # nothing recorded: the evening Brief reads it again
     assert not list(harness.home.glob("ParentRecap/*.md"))
-    # Through a bg job, so WhatsApp can be read, over the last three days.
+    # Through a bg job, as the scheduled job reads the Sources, over the last three days.
     assert harness.jobs.detached[-1][2:] == ["run", "--preview", "--lookback-hours", "72"]
     assert harness.lookback_hours["gmail"] == [72]
 
 
-def test_the_preview_is_shown_in_a_sandboxed_frame(harness, page, mac):
+def test_the_preview_is_shown_in_a_sandboxed_frame(harness, page):
     at_the_first_brief(harness)
     assert call(page.url, "brief.html").status == 404  # nothing made yet
 
@@ -98,7 +97,7 @@ def test_the_preview_is_shown_in_a_sandboxed_frame(harness, page, mac):
     assert re.search(r'<iframe id="brief-frame"[^>]* sandbox[ >]', page_html)
 
 
-def test_three_quiet_days_still_make_a_brief(harness, page, mac):
+def test_three_quiet_days_still_make_a_brief(harness, page):
     at_the_first_brief(harness)
     harness.sources["gmail"] = []
 
@@ -113,7 +112,7 @@ def test_three_quiet_days_still_make_a_brief(harness, page, mac):
 def test_the_page_shows_progress_while_the_brief_is_made(harness, page, monkeypatch):
     at_the_first_brief(harness)
     go = threading.Event()
-    lines = ['{"preview": "reading", "sources": ["gmail", "wilma", "whatsapp"]}',
+    lines = ['{"preview": "reading", "sources": ["gmail", "myclub", "wilma"]}',
              '{"preview": "reading", "source": "gmail"}',
              '{"preview": "reading", "source": "wilma"}']
 
@@ -131,13 +130,13 @@ def test_the_page_shows_progress_while_the_brief_is_made(harness, page, monkeypa
     make_brief(page.url)
 
     check = call(page.url, "api/brief/check", method="POST", body={}).json()
-    assert check == {"result": "making", "sources": ["gmail", "wilma", "whatsapp"], "step": "wilma"}
+    assert check == {"result": "making", "sources": ["gmail", "myclub", "wilma"], "step": "wilma"}
     assert make_brief(page.url).json()["result"] == "making"  # not made twice at once
     go.set()
     assert brief_made(page.url)["result"] == "made"
 
 
-def test_a_brief_that_cannot_be_made_says_so_and_can_be_made_again(harness, page, mac):
+def test_a_brief_that_cannot_be_made_says_so_and_can_be_made_again(harness, page):
     at_the_first_brief(harness)
     harness.jobs.detached_fails = "Bootstrap failed: 5: Input/output error"
 
@@ -150,7 +149,7 @@ def test_a_brief_that_cannot_be_made_says_so_and_can_be_made_again(harness, page
     assert brief_made(page.url)["result"] == "made"
 
 
-def test_the_brief_is_made_only_once_check_is_confirmed(harness, page, mac):
+def test_the_brief_is_made_only_once_check_is_confirmed(harness, page):
     at_the_check_step(harness)
 
     r = make_brief(page.url)
@@ -162,7 +161,7 @@ def test_the_brief_is_made_only_once_check_is_confirmed(harness, page, mac):
         assert call(page.url, "api/brief", method="POST", body=body).status == 400
 
 
-def test_send_it_to_me_reaches_only_the_setup_parent(harness, page, mac):
+def test_send_it_to_me_reaches_only_the_setup_parent(harness, page):
     harness.config["email"]["to"] = ["parent@example.com",
                                      {"address": "partner@example.com", "language": "fi"}]
     at_the_first_brief(harness)
@@ -185,7 +184,7 @@ def test_send_it_to_me_reaches_only_the_setup_parent(harness, page, mac):
     assert next(o for o in setup_status.check(str(config_file(harness))) if o.outcome == "brief").ok
 
 
-def test_after_the_first_brief_setup_moves_on_to_finish(harness, page, mac):
+def test_after_the_first_brief_setup_moves_on_to_finish(harness, page):
     at_the_first_brief(harness)
     assert call(page.url, "api/brief/done", method="POST", body={}).status == 400  # not yet sent
     make_brief(page.url)
@@ -198,7 +197,7 @@ def test_after_the_first_brief_setup_moves_on_to_finish(harness, page, mac):
     assert setup_save.read(config_file(harness))["progress"]["phase"] == "finish"
 
 
-def test_nothing_is_sent_before_the_brief_is_made(harness, page, mac):
+def test_nothing_is_sent_before_the_brief_is_made(harness, page):
     at_the_first_brief(harness)
 
     r = send_it_to_me(page.url)
@@ -212,7 +211,7 @@ def test_nothing_is_sent_before_the_brief_is_made(harness, page, mac):
     assert harness.sent == []
 
 
-def test_a_send_that_fails_says_so_and_can_be_tried_again(harness, page, mac):
+def test_a_send_that_fails_says_so_and_can_be_tried_again(harness, page):
     at_the_first_brief(harness)
     make_brief(page.url)
     brief_made(page.url)
@@ -226,7 +225,7 @@ def test_a_send_that_fails_says_so_and_can_be_tried_again(harness, page, mac):
     assert send_it_to_me(page.url).json()["result"] == "sent"
 
 
-def test_it_is_not_sent_while_an_evening_run_is_going(harness, page, mac):
+def test_it_is_not_sent_while_an_evening_run_is_going(harness, page):
     at_the_first_brief(harness)
     make_brief(page.url)
     brief_made(page.url)
@@ -238,8 +237,7 @@ def test_it_is_not_sent_while_an_evening_run_is_going(harness, page, mac):
     assert send_it_to_me(page.url).json()["result"] == "sent"
 
 
-def test_a_pilot_household_can_say_something_is_wrong_through_the_feedback_form(harness, page,
-                                                                                 mac):
+def test_a_pilot_household_can_say_something_is_wrong_through_the_feedback_form(harness, page):
     at_the_first_brief(harness, feedback=FEEDBACK)
     make_brief(page.url)
 
@@ -255,7 +253,7 @@ def test_a_pilot_household_can_say_something_is_wrong_through_the_feedback_form(
     assert answers["household"] == "Household 24ebb1"  # 王家's pseudonym, as in the evening's Brief
 
 
-def test_only_a_pilot_household_has_the_feedback_button(harness, page, mac):
+def test_only_a_pilot_household_has_the_feedback_button(harness, page):
     at_the_first_brief(harness, feedback={**FEEDBACK, "enabled": False})
     make_brief(page.url)
 

@@ -64,21 +64,21 @@ the import path, so a test may import a helper from a test in another layer.
 
 ## Integration tests
 
-| File                            | What it covers                                                     |
-| ------------------------------- | ------------------------------------------------------------------ |
-| `test_collector_labels.py`      | The labels Sources add to Messages are English                     |
-| `test_email.py`                 | The Brief email as sent to a fake SMTP server                      |
-| `test_eval_runner.py`           | The eval runner end to end, only the model process faked           |
-| `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was    |
-| `test_goldens.py`               | The golden files' check and `--update-goldens`                     |
-| `test_linked_device.py`         | The Linked Device's Node program's three modes on a fake Baileys   |
-| `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code |
-| `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses       |
-| `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks  |
-| `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token             |
-| `test_setup_google_calendar.py` | The Google Calendar authorization script                           |
-| `test_weekend_picks.py`         | Weekend Picks through the same backend as the Brief                |
-| `test_whatsapp_source.py`       | The WhatsApp Source against a `ChatStorage.sqlite` its fake builds |
+| File                            | What it covers                                                                    |
+| ------------------------------- | --------------------------------------------------------------------------------- |
+| `test_collector_labels.py`      | The labels Sources add to Messages are English                                    |
+| `test_email.py`                 | The Brief email as sent to a fake SMTP server                                     |
+| `test_eval_runner.py`           | The eval runner end to end, only the model process faked                          |
+| `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was                   |
+| `test_goldens.py`               | The golden files' check and `--update-goldens`                                    |
+| `test_linked_device.py`         | The Linked Device's Node program's three modes on a fake Baileys                  |
+| `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code                |
+| `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses                      |
+| `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks                 |
+| `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token                            |
+| `test_setup_google_calendar.py` | The Google Calendar authorization script                                          |
+| `test_weekend_picks.py`         | Weekend Picks through the same backend as the Brief                               |
+| `test_whatsapp_source.py`       | WhatsApp, read by nothing yet, and the Linked Device's records mapped to Messages |
 
 ## End-to-end tests: the evening run
 
@@ -106,28 +106,28 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 
 ## End-to-end tests: setup, doctor and uninstall
 
-| File                                       | What it covers                                                             |
-| ------------------------------------------ | -------------------------------------------------------------------------- |
-| `test_setup_page.py`                       | The page's server, its safeguards, the language, resuming, Source list     |
-| `test_setup_welcome.py`                    | Welcome                                                                    |
-| `test_setup_ai.py`                         | The AI sign-in, the gateway, changing the AI on Finish                     |
-| `test_setup_gmail.py`, `_wilma`, `_myclub` | Each Source's `setup` command, then its step on the page                   |
-| `test_setup_whatsapp.py`                   | Why WhatsApp's check isn't OK on Check and Finish; the way back to Connect |
-| `test_setup_claude.py`                     | `setup claude` and its terminal window                                     |
-| `test_setup_check.py`                      | Working and Check                                                          |
-| `test_setup_first_brief.py`                | First Brief                                                                |
-| `test_setup_finish.py`                     | Finish: the evening job, the wake-up, the outcomes                         |
-| `test_setup_chat.py`                       | The chat Welcome sets up, "Continue in the chat"                           |
-| `test_setup_save.py`                       | `setup save`: answers and progress                                         |
-| `test_setup_status.py`                     | `setup status`: the outcomes that say setup is done                        |
-| `test_setup_steps.py`                      | Setup steps a family runs by hand                                          |
-| `test_doctor.py`                           | `doctor` and `discover`                                                    |
-| `test_finding_programs.py`                 | Claude, Codex and Node found off PATH                                      |
-| `test_own_node.py`                         | The wilma CLI on Parent Recap's own Node (ADR 0011)                        |
-| `test_baileys_install.py`                  | The install's Baileys tree, staged with its own Node's `npm ci`            |
-| `test_uninstall.py`                        | `uninstall` removes what setup made, and nothing else                      |
-| `test_new_source_doctor_uninstall.py`      | A Source added only to the registry in `doctor` and `uninstall`            |
-| `test_setup_page_browser.py`               | Main paths and each step's own, in a real browser (ADR 0024)               |
+| File                                       | What it covers                                                         |
+| ------------------------------------------ | ---------------------------------------------------------------------- |
+| `test_setup_page.py`                       | The page's server, its safeguards, the language, resuming, Source list |
+| `test_setup_welcome.py`                    | Welcome                                                                |
+| `test_setup_ai.py`                         | The AI sign-in, the gateway, changing the AI on Finish                 |
+| `test_setup_gmail.py`, `_wilma`, `_myclub` | Each Source's `setup` command, then its step on the page               |
+| `test_setup_back_to_connect.py`            | The way back from Check and Finish to Connect, for a skipped Source    |
+| `test_setup_claude.py`                     | `setup claude` and its terminal window                                 |
+| `test_setup_check.py`                      | Working and Check                                                      |
+| `test_setup_first_brief.py`                | First Brief                                                            |
+| `test_setup_finish.py`                     | Finish: the evening job, the wake-up, the outcomes                     |
+| `test_setup_chat.py`                       | The chat Welcome sets up, "Continue in the chat"                       |
+| `test_setup_save.py`                       | `setup save`: answers and progress                                     |
+| `test_setup_status.py`                     | `setup status`: the outcomes that say setup is done                    |
+| `test_setup_steps.py`                      | Setup steps a family runs by hand                                      |
+| `test_doctor.py`                           | `doctor` and `discover`                                                |
+| `test_finding_programs.py`                 | Claude, Codex and Node found off PATH                                  |
+| `test_own_node.py`                         | The wilma CLI on Parent Recap's own Node (ADR 0011)                    |
+| `test_baileys_install.py`                  | The install's Baileys tree, staged with its own Node's `npm ci`        |
+| `test_uninstall.py`                        | `uninstall` removes what setup made, and nothing else                  |
+| `test_new_source_doctor_uninstall.py`      | A Source added only to the registry in `doctor` and `uninstall`        |
+| `test_setup_page_browser.py`               | Main paths and each step's own, in a real browser (ADR 0024)           |
 
 The page's server, its calls and the steps more than one file walks through are in
 `e2e/setup_page.py`.
@@ -176,7 +176,7 @@ The shared fakes stay in `tests/`, beside the golden files. `conftest.py` has fo
 per outside edge of the program, each with its fakes in a module of its own:
 
 - `sources` (`fake_sources.py`): each Source's fake at its transport (Gmail's IMAP server, the
-  MyClub feed, the wilma CLI, WhatsApp's database), as `sources.fakes[name]`, serving what
+  MyClub feed, the wilma CLI; WhatsApp has none until it is read again), as `sources.fakes[name]`, serving what
   `sources.tonight[name]` holds to the real collector. One is installed for each Source in the
   registry (ADR 0022), so a new Source adds its fake to `FAKES`. A test gives each Message the id
   its Source makes of it, and only the fields its transport carries.
@@ -199,7 +199,7 @@ real `parent-recap` in-process in a temporary HOME, with "now" pinned: the end-t
 it, and reach each fixture's fakes by its attributes (`harness.sources`, `.model_calls`, `.sent`,
 `.secrets`, `.system`, ...). What has no interface of its own still meets its command through
 the harness's one `subprocess.run` fake (`Processes`): the macOS-only features ADR 0020 leaves
-out (iMessage, `open` beside Full Disk Access), the Sources' own programs, and Claude Code's and
+out (iMessage, `open` for the Passwords app), the Sources' own programs, and Claude Code's and
 Codex's sign-in and plugin commands. A model call never does. `conftest.py` also has `pauses`
 (a busy model's pauses, on a fake clock), `golden`, `login_shell`, `windows_programs` (programs
 found as Windows finds them, on any system), `credential_manager`, and the builders `msg` and
@@ -217,8 +217,7 @@ found as Windows finds them, on any system), `credential_manager`, and the build
 - `no_google/`: Google's packages blocked from import. `no_pty/`: the Wilma window's
   pseudo-terminal as a socket pair, where none can be opened (a sandbox).
 - `e2e/nights.py` and `e2e/setup_page.py` (`page`, `clock`, `ai`, `health`, `schedule`) are shared
-  by their files; `test_setup_whatsapp.py`'s `fake_mac` is the fake Mac other WhatsApp tests import,
-  until the WhatsApp for Mac database reader goes (#514).
+  by their files; `test_setup_back_to_connect.py`'s `back_to_connect` is Finish's way back too.
   The page's server gets the test's clock and timeouts on its `Context`, and socket pairs for a
   listener where no port can be listened on; a test meets it through its HTTP calls, and never
   reaches its private parts or patches its modules.
@@ -231,7 +230,7 @@ The layer markers come from the folder and are never written by hand. Two more s
 a test needs, and skip it elsewhere, so each CI job runs every other test:
 
 - `@pytest.mark.macos` (a whole module: `pytestmark = pytest.mark.macos`): the macOS adapters,
-  macOS-only features (WhatsApp for Mac and Full Disk Access, the Passwords app), `install.sh`
+  macOS-only features (the Passwords app), `install.sh`
   and the other shell scripts, permission bits, and what Windows can't do yet (finding programs by
   bare name, shell-script stand-ins, pseudo-terminal windows). A Windows ticket that makes one work
   there drops the mark.

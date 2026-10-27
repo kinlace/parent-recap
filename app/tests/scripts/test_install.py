@@ -532,9 +532,7 @@ def test_a_fresh_install_runs_parent_recap_on_the_pinned_python(mac):
     assert real_python(mac).is_relative_to(pinned)
     ran = subprocess.run([venv_python(mac).parent / "parent-recap"], capture_output=True, text=True)
     assert ran.stdout.strip() == f"runs on {real_python(mac)}", ran.stderr
-    assert f"Real Python path (needed for the WhatsApp permission): {real_python(mac)}" in result.stdout
     assert "the Mac's own python3" not in result.stdout + result.stderr
-    assert "grant" not in result.stdout.lower()  # setup asks for the permission the first time
 
 
 @pytest.mark.macos
@@ -576,7 +574,6 @@ def test_running_the_install_again_reuses_the_python_already_there(mac):
     assert result.returncode == 0, result.stdout + result.stderr
     assert len(downloads(mac)) == 2  # the Python and the Node, once
     assert real_python(mac) == before
-    assert "grant" not in result.stdout.lower()
 
 
 @pytest.mark.macos
@@ -591,13 +588,12 @@ def test_a_venv_on_another_python_is_rebuilt_on_the_pinned_one(mac):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert real_python(mac).is_relative_to(runtimes(mac)) and real_python(mac) != old
-    assert "grant" in result.stdout.lower() and str(real_python(mac)) in result.stdout
     assert "family_brief" in subprocess.run([venv_python(mac), "-m", "pip", "list"],
                                             capture_output=True, text=True).stdout.replace("-", "_")
 
 
 @pytest.mark.macos
-def test_a_new_pinned_version_goes_into_a_new_folder_and_asks_to_grant_again(mac):
+def test_a_new_pinned_version_goes_into_a_new_folder_and_asks_nothing_of_the_family(mac):
     program(mac, ())
     assert install(mac).returncode == 0
     old = real_python(mac)
@@ -608,17 +604,13 @@ def test_a_new_pinned_version_goes_into_a_new_folder_and_asks_to_grant_again(mac
     assert result.returncode == 0, result.stdout + result.stderr
     assert sorted(p.name for p in runtimes(mac).iterdir()) == [f"node-v{NODE}", "python-3.13.17-20261101"]
     assert real_python(mac).is_relative_to(runtimes(mac) / "python-3.13.17-20261101") and real_python(mac) != old
-    shown = result.stdout
-    assert "WhatsApp" in shown and "grant" in shown.lower() and "Full Disk Access" in shown
-    assert "App Management" not in shown
-    assert str(real_python(mac)) in shown
-
-    again = install(mac)
-    assert again.returncode == 0 and "grant" not in again.stdout.lower()
+    # No permission names the Python since WhatsApp is no longer read from this Mac (ADR 0027).
+    assert "grant" not in result.stdout.lower() and "Privacy & Security" not in result.stdout
+    assert str(real_python(mac)) not in result.stdout
 
 
 @pytest.mark.macos
-def test_a_new_pinned_node_replaces_the_old_one_without_asking_to_grant_again(mac):
+def test_a_new_pinned_node_replaces_the_old_one(mac):
     program(mac, ())
     assert install(mac).returncode == 0
     python = real_python(mac)
@@ -629,7 +621,6 @@ def test_a_new_pinned_node_replaces_the_old_one_without_asking_to_grant_again(ma
     assert result.returncode == 0, result.stdout + result.stderr
     assert sorted(p.name for p in runtimes(mac).iterdir()) == ["node-v24.22.0", "python-3.13.16-20261003"]
     assert real_python(mac) == python
-    assert "grant" not in result.stdout.lower()  # WhatsApp's permission names the Python only
 
 
 @pytest.mark.macos

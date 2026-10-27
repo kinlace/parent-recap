@@ -1,7 +1,8 @@
 """Each Source's fake, at its transport, where the real thing varies (ADR 0022): Gmail's IMAP
-server, the MyClub feed over HTTP, the wilma CLI on Parent Recap's own Node, and WhatsApp for
-Mac's database. FakeSources, the `sources` fixture, installs the fake of each Source in the
-registry, so the real collectors run in every test of the evening run; FAKES is the list it reads.
+server, the MyClub feed over HTTP and the wilma CLI on Parent Recap's own Node; WhatsApp has none
+until the Linked Device's collector lands. FakeSources, the `sources` fixture, installs the fake of
+each Source in the registry, so the real collectors run in every test of the evening run; FAKES is
+the list it reads.
 
 A fake serves what `sources.tonight[name]` holds when the collector reaches it: tonight's Messages
 and events, an exception its transport raises, or a function returning either. A Message is
@@ -9,7 +10,6 @@ written the way its transport carries it and read back by the real collector. So
 only the fields its transport carries, and the id the collector makes of it:
   - Gmail: its X-GM-MSGID, digits only;
   - Wilma: `message:<id>` or `news:<id>`, or `message:<tag>:<id>` once a Wilma is signed in to;
-  - WhatsApp: `<chat>:<message>`;
   - MyClub: the event's UID.
 A Message older than the Source's lookback is skipped, as the collector skips it.
 """
@@ -18,10 +18,8 @@ from __future__ import annotations
 import imaplib
 import json
 import re
-import shutil
-import sqlite3
 import subprocess
-from datetime import datetime, timezone
+from datetime import timezone
 from email.message import EmailMessage
 from email.utils import format_datetime
 from pathlib import Path
@@ -33,7 +31,7 @@ import requests
 
 import fake_node
 from family_brief import own_node, sources as registry
-from family_brief.collectors import gmail, myclub, whatsapp
+from family_brief.collectors import gmail, myclub
 from family_brief.collectors.base import CalendarEvent, Collected, Message
 from fake_system import FakeSecrets
 
@@ -320,142 +318,15 @@ def _listed(m: Message) -> dict[str, Any]:
             "senderName": m.sender or "", "folder": "inbox", "unread": True, "replyCount": 0}
 
 
-# ── WhatsApp: WhatsApp for Mac's database
-
-# WhatsApp's Core Data store, with the tables and columns of chats, messages, group members and
-# push names the Source reads or that show it skips something; real rows have many more.
-WHATSAPP_SCHEMA = """
-CREATE TABLE ZWACHATSESSION (
-    Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, Z_OPT INTEGER, ZARCHIVED INTEGER, ZREMOVED INTEGER,
-    ZSESSIONTYPE INTEGER, ZUNREADCOUNT INTEGER, ZLASTMESSAGE INTEGER, ZLASTMESSAGEDATE TIMESTAMP,
-    ZCONTACTJID VARCHAR, ZPARTNERNAME VARCHAR);
-CREATE TABLE ZWAGROUPMEMBER (
-    Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, Z_OPT INTEGER, ZISACTIVE INTEGER, ZISADMIN INTEGER,
-    ZCHATSESSION INTEGER, ZCONTACTNAME VARCHAR, ZFIRSTNAME VARCHAR, ZMEMBERJID VARCHAR);
-CREATE TABLE ZWAPROFILEPUSHNAME (
-    Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, Z_OPT INTEGER, ZJID VARCHAR, ZPUSHNAME VARCHAR);
-CREATE TABLE ZWAMESSAGE (
-    Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, Z_OPT INTEGER, ZISFROMME INTEGER,
-    ZMESSAGESTATUS INTEGER, ZMESSAGETYPE INTEGER, ZCHATSESSION INTEGER, ZGROUPMEMBER INTEGER,
-    ZMEDIAITEM INTEGER, ZMESSAGEDATE TIMESTAMP, ZSENTDATE TIMESTAMP, ZFROMJID VARCHAR,
-    ZPUSHNAME VARCHAR, ZSTANZAID VARCHAR, ZTEXT VARCHAR, ZTOJID VARCHAR);
-"""
-TEXT = 0  # ZWAMESSAGE.ZMESSAGETYPE of a text message
-
-
-def core_data(when: datetime) -> float:
-    """`when` as WhatsApp stores dates: seconds since 2001-01-01 UTC."""
-    return (when - datetime(2001, 1, 1, tzinfo=timezone.utc)).total_seconds()
-
-
-class WhatsAppDb:
-    """WhatsApp's ChatStorage.sqlite at `path`, made afresh. Rows get the next free Z_PK unless
-    given one."""
-
-    def __init__(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.unlink(missing_ok=True)
-        self.conn = sqlite3.connect(path)
-        self.conn.executescript(WHATSAPP_SCHEMA)
-        self._pk = 0
-
-    def _next(self, pk: int | None = None) -> int:
-        """`pk` when given, else the next free one."""
-        if pk is None:
-            pk = self._pk + 1
-        self._pk = max(self._pk, pk)
-        return pk
-
-    def chat(self, name: str, pk: int | None = None, last: datetime | None = None) -> int:
-        pk = self._next(pk)
-        self.conn.execute("INSERT INTO ZWACHATSESSION (Z_PK, ZSESSIONTYPE, ZCONTACTJID, ZPARTNERNAME, "
-                          "ZLASTMESSAGEDATE) VALUES (?, 1, ?, ?, ?)",
-                          (pk, f"1203630{pk}@g.us", name, core_data(last or datetime.now(timezone.utc))))
-        return pk
-
-    def member(self, chat: int, jid: str, contact: str | None = None, first: str | None = None) -> int:
-        pk = self._next()
-        self.conn.execute("INSERT INTO ZWAGROUPMEMBER (Z_PK, ZCHATSESSION, ZMEMBERJID, ZCONTACTNAME, "
-                          "ZFIRSTNAME) VALUES (?, ?, ?, ?, ?)", (pk, chat, jid, contact, first))
-        return pk
-
-    def push_name(self, jid: str, name: str) -> None:
-        self.conn.execute("INSERT INTO ZWAPROFILEPUSHNAME (Z_PK, ZJID, ZPUSHNAME) VALUES (?, ?, ?)",
-                          (self._next(), jid, name))
-
-    def message(self, chat: int, when: datetime, text: str | None, *, msg_type: int | None = TEXT,
-                member: int | None = None, from_jid: str | None = None, from_me: bool = False,
-                pk: int | None = None) -> str:
-        """A message in `chat`; returns the external id the Source gives it. ZPUSHNAME holds binary
-        in newer WhatsApp builds, so every row has some for the Source to ignore."""
-        pk = self._next(pk)
-        self.conn.execute(
-            "INSERT INTO ZWAMESSAGE (Z_PK, ZCHATSESSION, ZMESSAGEDATE, ZSENTDATE, ZTEXT, ZMESSAGETYPE, "
-            "ZGROUPMEMBER, ZFROMJID, ZISFROMME, ZPUSHNAME, ZSTANZAID) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (pk, chat, core_data(when), core_data(when), text, msg_type, member, from_jid,
-             int(from_me), b"\x0a\x07\xff\x00binary", f"3EB0{pk:016X}"))
-        self.conn.commit()
-        return f"{chat}:{pk}"
-
-    def close(self) -> None:
-        self.conn.commit()
-        self.conn.close()
-
+# ── WhatsApp: nothing yet
 
 class WhatsApp(SourceFake):
-    """WhatsApp for Mac, signed in, on a Mac that gives this Python Full Disk Access. Its database
-    is written from tonight's Messages each time the collector copies it: a Message's id is
-    `<chat Z_PK>:<message Z_PK>`, its chat_name its chat's name, and its sender a group member's
-    contact name, or "me" for one the family sent. Its kid_hint comes from the config's chat, as
-    the collector gives it. An exception tonight is raised copying the database. A test that
-    installs WhatsApp itself (test_setup_whatsapp.py's fake Mac) sets `installed` to False."""
+    """WhatsApp, which nothing reads until the Linked Device's collector lands (ADR 0027): it has no
+    transport, so nothing a test gives it tonight reaches the Brief."""
     name = "whatsapp"
 
     def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
         super().__init__(sources)
-        self.db_dir = sources.home / "Library" / "Group Containers" / "group.net.whatsapp.WhatsApp.shared"
-        mp.setattr(whatsapp, "DB_DIR", self.db_dir)
-        mp.setattr(whatsapp, "DB_FILE", self.db_dir / "ChatStorage.sqlite")
-        self.installed = True
-        copy = shutil.copy2
-
-        def copy2(src: Any, dst: Any, **k: Any) -> Any:
-            if self.installed and Path(src) == self.db_dir / "ChatStorage.sqlite":
-                self._write(self.tonight())
-            return copy(src, dst, **k)
-        mp.setattr(shutil, "copy2", copy2)
-
-    def set_up(self) -> None:
-        if not self.installed:
-            return
-        tcc = whatsapp.full_disk_access_file()
-        if not tcc.exists():
-            tcc.parent.mkdir(parents=True, exist_ok=True)
-            tcc.write_bytes(b"")
-        if not whatsapp.DB_FILE.exists():
-            WhatsAppDb(whatsapp.DB_FILE).close()
-
-    def _write(self, messages: list[Message]) -> None:
-        chats: dict[int, str] = {}
-        rows: list[tuple[int, int, Message]] = []
-        for m in messages:
-            _carries(m, "whatsapp", {"sender", "chat_name", "kid_hint"})
-            ids = re.fullmatch(r"(\d+):(\d+)", m.external_id)
-            assert ids, f"WhatsApp's ids are <chat>:<message>: {m.external_id}"
-            assert m.chat_name, f"a WhatsApp Message is in a chat: {m.external_id}"
-            chat = int(ids[1])
-            assert chats.setdefault(chat, m.chat_name) == m.chat_name, \
-                f"chat {chat} is {chats[chat]}, not {m.chat_name}"
-            rows.append((chat, int(ids[2]), m))
-        db = WhatsAppDb(self.db_dir / "ChatStorage.sqlite")
-        for chat, name in chats.items():
-            db.chat(name, chat)
-        for chat, pk, m in rows:
-            from_me = m.sender == "me"
-            member = None if from_me or m.sender is None else \
-                db.member(chat, f"35840{chat}{pk:06d}@s.whatsapp.net", contact=m.sender)
-            db.message(chat, m.timestamp, m.body, member=member, from_me=from_me, pk=pk)
-        db.close()
 
 
 # The fake of each Source, by its name in the registry.

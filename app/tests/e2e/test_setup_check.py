@@ -503,6 +503,5 @@ def test_every_health_check_doctor_runs_has_a_name_on_the_page():
 
     assert added and added <= keys, added - keys
     assert keys - setup_server.health.SCHEDULE_CHECKS == set(setup_server.health.HEALTH_CHECKS)
-    # Python path is always OK, so Finish never names it.
-    assert setup_server.health.SCHEDULE_CHECKS - setup_server.health.FINISH_LEAVES_OUT - {"python-path"} <= \
+    assert setup_server.health.SCHEDULE_CHECKS - setup_server.health.FINISH_LEAVES_OUT <= \
         set(setup_server.health.FINISH_CHECKS)

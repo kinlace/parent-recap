@@ -279,6 +279,5 @@ def test_bg_boots_out_its_job_when_it_times_out(harness, launchctl, temp):
 
     [job] = launchctl.bootstrapped
     assert job["ProgramArguments"][-1] == "doctor"
-    assert job["EnvironmentVariables"][jobs.BG_ENV] == "1"  # so doctor doesn't start another
     assert len(launchctl.verbs("bootout")) == 1
     assert list(temp.iterdir()) == []

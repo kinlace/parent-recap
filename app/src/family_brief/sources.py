@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Any, Protocol
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from .brief_text import BriefText
     from .collectors.base import Collected, Message
     from .config import Config
     from .state import State
@@ -45,8 +44,6 @@ class Source:
     collect: Callable[[Config, State, list[str]], Collected]  # reads it, given the Kids' terms
     counts_events: bool = False         # the coverage line counts its events rather than its Messages
     lookback: Callable[[Config], Window] | None = None  # its section with lookback_hours, if any
-    permission_lacked: Callable[[BriefText], str] = lambda t: t.permission_denied  # the Brief's reason
-    macos_only: bool = False            # read only on macOS (system/macos_only.py, ADR 0020)
     sender_domain: str | None = None    # the domain of the mail it sends of its own news (#361)
     # doctor's checks of it, given the config, `add` and the config's path; each does nothing for
     # a Source the Household hasn't set up
@@ -56,8 +53,8 @@ class Source:
     # anything else uninstall removes for it, such as a sign-in profile or its own program, given
     # where Parent Recap's program is
     survey: Callable[[Survey, list[Path]], None] | None = None
-    # what uninstall leaves the family to do for it, given Parent Recap's own Pythons
-    notes: Callable[[Config, list[Path]], list[str]] = _nothing
+    # what uninstall leaves the family to do for it
+    notes: Callable[[Config], list[str]] = _nothing
     # ── Held-back Messages (ADR 0013). A Source without these holds a message back when in doubt and
     # lists it by sender and subject, with no link.
     sent_to_everyone: Callable[[Message], bool] = lambda m: False  # so it is never held back
@@ -119,19 +116,13 @@ WILMA = Source("wilma", _same_everywhere("Wilma"), lambda cfg: cfg.wilma.enabled
                survey=_in("uninstall", "survey_wilma"), notes=_in("uninstall", "wilma_notes"),
                sent_to_everyone=_in("collectors.wilma", "sent_to_everyone"),
                held_back_link=_in("collectors.wilma", "link"))
-# Read from WhatsApp for Mac's own database (ADR 0012) until the Linked Device replaces it (ADR
-# 0027); setup no longer offers it meanwhile (setup_connect.NOT_OFFERED). Its permission is lost when
-# Parent Recap's own Python changes (ADR 0011), which its permission line says. A post in a group,
-# where incidents get discussed, is always checked, and has no subject: the Brief lists it by its
-# group.
-WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"),
-                  lambda cfg: cfg.whatsapp.enabled and bool(cfg.whatsapp.chats),
+# Declared but read by nothing until the Linked Device's collector lands (ADR 0027), so no
+# Household has it connected yet and setup doesn't offer it (setup_connect.NOT_OFFERED). A post in a
+# group, where incidents get discussed, is always checked, and has no subject: the Brief lists it by
+# its group.
+WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), lambda cfg: False,
                   skippable=True, connect_rank=3, collect=_collector("whatsapp"),
-                  lookback=lambda cfg: cfg.whatsapp, permission_lacked=lambda t: t.whatsapp_permission_denied,
-                  macos_only=True, check=_in("ops", "check_whatsapp"),
-                  check_items={"whatsapp": "WhatsApp"},
-                  survey=_in("uninstall", "survey_whatsapp"), notes=_in("uninstall", "whatsapp_notes"),
-                  group=lambda m: m.chat_name)
+                  lookback=lambda cfg: cfg.whatsapp, check_items={}, group=lambda m: m.chat_name)
 
 ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP)
 

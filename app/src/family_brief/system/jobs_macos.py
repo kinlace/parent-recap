@@ -1,9 +1,8 @@
 """The macOS adapter of `jobs`: LaunchAgents in ~/Library/LaunchAgents, loaded with `launchctl`.
 
-A one-off run goes through launchd too. macOS grants WhatsApp access per responsible process.
-Started from Terminal, Claude Code or Codex, that is the parent app, which usually has no access.
-A launchd job is its own responsible process, so it gets exactly the permission the evening job's
-Python has (ADR 0012)."""
+A one-off run goes through launchd too. macOS grants permissions per responsible process. Started
+from Terminal, Claude Code or Codex, that is the parent app, whose permissions differ. A launchd
+job is its own responsible process, so it runs exactly as the evening job does."""
 from __future__ import annotations
 
 import os
@@ -227,7 +226,7 @@ def run_detached(args: list[str], config: str | None, timeout: int,
         "WorkingDirectory": str(Path.home()),
         "Umask": private_files.UMASK,
         "EnvironmentVariables": {"PATH": _path_env(), "HOME": str(Path.home()),
-                                 "PYTHONUNBUFFERED": "1", jobs.BG_ENV: "1"},
+                                 "PYTHONUNBUFFERED": "1"},
     }))
     code: int | None = None
     # Python skips `finally` on SIGTERM, and the job belongs to launchd, so an agent's command

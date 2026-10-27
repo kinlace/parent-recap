@@ -113,7 +113,7 @@ def _all_kid_terms(cfg: Config) -> list[str]:
 
 class _CollectorErrors(logging.Handler):
     """Remembers the first error each collector logs, so the brief can say what it missed.
-    Collectors often log and return nothing rather than raise (e.g. WhatsApp permission)."""
+    Collectors often log and return nothing rather than raise (e.g. MyClub's feed)."""
 
     def __init__(self) -> None:
         super().__init__(logging.ERROR)

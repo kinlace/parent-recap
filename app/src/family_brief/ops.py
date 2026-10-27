@@ -1,18 +1,15 @@
 """Operational commands used during onboarding and troubleshooting.
 
 doctor   — check every configured connection; prints status + counts only, never message content
-discover — list candidate Gmail sender domains / WhatsApp group names / Wilma students
+discover — list candidate Gmail sender domains / Wilma students
 schedule — install, remove or inspect the evening jobs
-full-disk-access — show the scheduled job's Python in Finder and open Full Disk Access, to grant
-                   WhatsApp
 bg       — run any of the above (or run/collect) as a one-off job with the evening job's
-           permissions, for WhatsApp access
+           permissions
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import shlex
 import sys
@@ -23,23 +20,11 @@ from typing import NamedTuple
 from . import (baileys_install, google_packages, languages, own_node, private_files, secret_dialog,
                sources)
 from .config import Config
-from .system import desktop_macos, jobs, macos_only, profile, wake, windows_only
+from .system import jobs, profile, wake, windows_only
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
 _STATUS_OF = {"ok": OK, "warn": WARN, "fail": FAIL}  # by llm.Finding's level
-# Why the WhatsApp check isn't OK, for the setup page and the chat skills to say what fixes it:
-# the scheduled job's Python has no Full Disk Access, or whether it has can't be checked, there's
-# no WhatsApp for Mac data on this Mac, its database couldn't be read, the background check
-# didn't start, gave no result or timed out, a ticked group's name isn't on this Mac, or listing
-# the groups failed. Any other failure has no reason, and gets the general advice.
-WHATSAPP_REASONS = ("no-access", "access-unknown", "no-whatsapp", "unreadable", "not-finished",
-                    "missing-groups", "list-failed")
 DEFAULT_CONFIG = Path.home() / ".family" / "config.yaml"
-BG_ENV = jobs.BG_ENV  # set inside `bg` jobs so doctor doesn't recurse
-# Where doctor says to grant WhatsApp's permission, after "Full Disk Access".
-FULL_DISK_ACCESS_WHERE = ("(System Settings → Privacy & Security; parent-recap full-disk-access "
-                          "shows the Python in Finder)")
-FULL_DISK_ACCESS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
 
 
 def _sources_after_the_ai() -> list[sources.Source]:
@@ -58,7 +43,7 @@ CHECK_ITEMS = (
     *(item for s in _sources_after_the_ai() for item in s.doctor_items().items()),
     ("whatsapp-library", "WhatsApp library"),
     ("calendar", "Calendar"), ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"),
-    ("schedule", "Schedule"), ("last-run", "Last run"), ("python-path", "Python path"),
+    ("schedule", "Schedule"), ("last-run", "Last run"),
     ("wake", "Wake"), ("sign-in-after-update", "Sign-in after updates"),
 )
 _ITEMS = dict(CHECK_ITEMS)
@@ -74,8 +59,8 @@ def _item(key: str) -> str:
 
 class Check(NamedTuple):
     """One of doctor's checks. doctor prints its status, item and detail; `key` names the check
-    and `subject` what it's about, such as a language or a Kid. A WhatsApp check that isn't OK can
-    also have a `reason` from WHATSAPP_REASONS, and `groups` names the groups a missing-groups
+    and `subject` what it's about, such as a language or a Kid. A check that isn't OK can also have
+    a `reason`, which the setup page has its own text for, and `groups` names the groups that
     reason is about."""
     status: str
     key: str
@@ -89,11 +74,10 @@ class Check(NamedTuple):
 def register(sub) -> None:
     pd = sub.add_parser("doctor", help="Check all configured connections (no message content shown)")
     pd.add_argument("--skip-llm", action="store_true", help="Don't make a test call to Claude / Codex")
-    pd.add_argument("--whatsapp-only", action="store_true", help=argparse.SUPPRESS)
     pd.set_defaults(func=cmd_doctor)
 
     pdis = sub.add_parser("discover", help="List candidates to put in config during onboarding")
-    pdis.add_argument("what", choices=["gmail-senders", "whatsapp-chats", "wilma-students"])
+    pdis.add_argument("what", choices=["gmail-senders", "wilma-students"])
     pdis.add_argument("--days", type=int, default=None)
     pdis.add_argument("--json", action="store_true", help="gmail-senders only: one line of JSON, "
                       "each sender domain with whether it looks like school, city or club mail")
@@ -112,39 +96,26 @@ def register(sub) -> None:
                    "evening one.")
     psch.set_defaults(func=cmd_schedule)
 
-    # app-management: its name before WhatsApp's permission moved to Full Disk Access (ADR 0012).
-    pfda = sub.add_parser("full-disk-access", aliases=["app-management"],
-                          help="Show the scheduled job's Python in Finder and open Full Disk "
-                          "Access, so you can drag it in for WhatsApp")
-    pfda.set_defaults(func=cmd_full_disk_access)
-
     pbg = sub.add_parser("bg", help="Run a parent-recap command as a one-off launchd job "
                                     "(same Python and macOS permissions as the scheduled job)")
     pbg.add_argument("--timeout", type=int, default=900, help="Give up after this many seconds")
-    pbg.add_argument("command", nargs=argparse.REMAINDER, help="e.g. discover whatsapp-chats")
+    pbg.add_argument("command", nargs=argparse.REMAINDER, help="e.g. doctor")
     pbg.set_defaults(func=cmd_bg)
 
 
 # ---------------------------------------------------------------- doctor
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    results = health_checks(args.config, skip_llm=args.skip_llm, whatsapp_only=args.whatsapp_only,
-                            show=not args.whatsapp_only)
+    results = health_checks(args.config, skip_llm=args.skip_llm, show=True)
     fails = sum(1 for c in results if c.status == FAIL)
-    if args.whatsapp_only:
-        # For the doctor that started this bg job: one line of JSON per check, so that the reason
-        # gets there too. That doctor prints the detail.
-        for c in results:
-            print(json.dumps(c._asdict(), ensure_ascii=False), flush=True)
-    else:
-        warns = sum(1 for c in results if c.status == WARN)
-        print(f"\n{len(results)} checks: {len(results) - fails - warns} OK, {warns} warnings, "
-              f"{fails} to fix")
+    warns = sum(1 for c in results if c.status == WARN)
+    print(f"\n{len(results)} checks: {len(results) - fails - warns} OK, {warns} warnings, "
+          f"{fails} to fix")
     return 1 if fails else 0
 
 
-def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: bool = False,
-                  show: bool = False, schedule: bool = True) -> list[Check]:
+def health_checks(config: str | None, skip_llm: bool = False, show: bool = False,
+                  schedule: bool = True) -> list[Check]:
     """Doctor's checks. With `show`, each is printed as it's done. Without `schedule`, the
     scheduled job's checks are left out, for before it's installed."""
     results: list[Check] = []
@@ -161,9 +132,6 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
         cfg = Config.load(config)
     except Exception as e:
         add(FAIL, "config", f"couldn't read {cfg_path}: {e}")
-        return results
-    if whatsapp_only:
-        _check_whatsapp(cfg, add, config)
         return results
     add(OK, "config", f"{cfg_path}, {len(cfg.kids)} kids, "
         f"Brief goes to {', '.join(r.address for r in cfg.email.to) or '(no recipients set)'}")
@@ -195,7 +163,7 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
 
 
 def _check_source(source: sources.Source, cfg: Config, add, config: str | None) -> None:
-    if source.check and macos_only.offers(source.name):
+    if source.check:
         source.check(cfg, add, config)
 
 
@@ -280,75 +248,6 @@ def check_wilma(cfg: Config, add, config: str | None = None) -> None:
                 f"{p.get('tenantName') or p.get('tenantUrl')} every evening, a sign-in setup didn't "
                 "make, for none of the Kids, so the Brief doesn't say when it fails. If it's no "
                 f"longer used, remove it: wilma accounts remove {p.get('username')}")
-
-
-def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:
-    """Whether WhatsApp reads, for a WhatsApp turned on even before a group is ticked."""
-    if cfg.whatsapp.enabled:
-        _check_whatsapp(cfg, add, config)
-
-
-def _check_whatsapp(cfg: Config, add, config: str | None) -> None:
-    from .collectors import whatsapp
-    problem = whatsapp.access_problem()
-    if problem and problem.reason == "no-access" and not os.environ.get(BG_ENV):
-        # Terminal, Claude Code and Codex usually can't read WhatsApp, but the scheduled job's
-        # Python can. Ask that Python instead of reporting a failure that doesn't apply.
-        try:
-            code, out = jobs.run_detached(["doctor", "--whatsapp-only"], 180, config=config,
-                                          echo=False)
-        except Exception as e:
-            add(WARN, "whatsapp", f"this process can't read WhatsApp, and the background check "
-                f"didn't start ({e}). Run parent-recap bg doctor to confirm", "not-finished")
-            return
-        checks = [c for c in _job_checks(out) if c.key == "whatsapp"]
-        if not checks and code == jobs.TIMED_OUT:
-            add(FAIL, "whatsapp", "the background check didn't finish within 180 seconds and was "
-                "stopped (check that WhatsApp for Mac opens and shows the chats, then run doctor "
-                "again)", "not-finished")
-            return
-        if not checks:
-            add(FAIL, "whatsapp", f"the background check gave no result (exit code {code}): "
-                f"{out.strip()[-200:]}", "not-finished")
-            return
-        for c in checks:
-            add(c.status, "whatsapp", c.detail + " (checked with the scheduled job's Python)",
-                c.reason, c.groups)
-        return
-    if problem and problem.reason == "no-access":
-        python = os.path.realpath(sys.executable)
-        add(FAIL, "whatsapp", f"the scheduled job's Python {python} can't read WhatsApp: add it "
-            f"to Full Disk Access {FULL_DISK_ACCESS_WHERE}", "no-access")
-        return
-    if problem:
-        add(FAIL, "whatsapp", problem.detail, problem.reason)
-        return
-    try:
-        known = {g["name"] for g in whatsapp.list_groups(days=3650)}
-    except Exception as e:
-        add(FAIL, "whatsapp", f"couldn't list the groups: {e}", "list-failed")
-        return
-    missing = [c.name for c in cfg.whatsapp.chats if c.name not in known]
-    if missing:
-        add(WARN, "whatsapp", "readable, but these group names aren't on this Mac (renamed, or a "
-            f"new group for the new school year?): {json.dumps(missing, ensure_ascii=False)}",
-            "missing-groups", missing)
-    else:
-        add(OK, "whatsapp", f"readable, all {len(cfg.whatsapp.chats)} configured groups found")
-
-
-def _job_checks(out: str) -> list[Check]:
-    """The checks a `doctor --whatsapp-only` bg job printed, one line of JSON each, among
-    whatever else the job printed."""
-    checks = []
-    for line in out.splitlines():
-        try:
-            c = json.loads(line)
-            checks.append(Check(c["status"], c["key"], c["item"], c["detail"], c.get("reason"),
-                                tuple(c.get("groups") or ()), c.get("subject")))
-        except (ValueError, KeyError, TypeError):
-            continue
-    return checks
 
 
 def check_myclub(cfg: Config, add, config: str | None = None) -> None:
@@ -475,9 +374,6 @@ def _check_schedule(cfg: Config, add) -> None:
         why = profile.current().missed_run
         add(status, "last-run", f"{hours:.0f} hours ago" + ("" if hours < 30 else
             f" (no run for over a day; {why})"))
-    if macos_only.offers("whatsapp"):
-        add(OK, "python-path", f"{os.path.realpath(sys.executable)} "
-            "(this is the path WhatsApp needs under Full Disk Access)")
 
 
 def _wake_timers(result: str, hour: int, minute: int) -> tuple[str, str]:
@@ -519,23 +415,6 @@ def _check_sign_in_after_update(add) -> None:
 # ---------------------------------------------------------------- discover
 
 def cmd_discover(args: argparse.Namespace) -> int:
-    if args.what == "whatsapp-chats":
-        from .collectors import whatsapp
-        err = whatsapp.check_access()
-        if err:
-            print(f"{FAIL} {err}")
-            if err == whatsapp.NO_ACCESS and not os.environ.get(BG_ENV):
-                print("   Use parent-recap bg discover whatsapp-chats instead, to read with the "
-                      "scheduled job's Python and its permissions")
-            return 1
-        groups = whatsapp.list_groups(days=args.days or 180)
-        print(f"WhatsApp groups with messages in the last {args.days or 180} days ({len(groups)}; "
-              "names shown exactly as stored, mind spaces and quotes):")
-        for g in groups:
-            print(f"  {json.dumps(g['name'], ensure_ascii=False)}  last message {g['last']}"
-                  + ("  [archived]" if g["archived"] else ""))
-        return 0
-
     if args.what == "wilma-students":
         # Needs no config: setup runs it before the household step, to prefill the Kids.
         from .collectors.wilma import _run_or_log
@@ -640,42 +519,12 @@ def _discover_senders_json(config: str | None, days: int) -> int:
     return report("read", days=days, senders=senders)
 
 
-# ---------------------------------------------------------------- full-disk-access
-
-def cmd_full_disk_access(args: argparse.Namespace) -> int:
-    python, failed = show_python_for_full_disk_access()
-    print(f"The scheduled job's Python is {python}")
-    if failed:
-        print(f"{WARN}Couldn't open Finder or System Settings from here. Run this in Terminal:")
-        for c in failed:
-            print(f"  {shlex.join(c)}")
-    print(f"In Finder that Python file, {os.path.basename(python)}, is selected. Drag it into "
-          "the list in System Settings → Privacy & Security → Full Disk Access, then turn its "
-          "switch on.")
-    return 0
-
-
-def full_disk_access_python() -> str:
-    """The Python file the family gives Full Disk Access: the real file of the scheduled job's
-    Python, which Finder selects. Its name, such as python3.13, follows the pinned Python."""
-    return os.path.realpath(sys.executable)
-
-
-def show_python_for_full_disk_access() -> tuple[str, list[list[str]]]:
-    """Selects the scheduled job's Python in Finder and opens Full Disk Access. Returns that Python
-    and the commands that didn't work, for the family to run in Terminal."""
-    # The real Python sits in a hidden folder, so finding it with ⌘⇧G is hard. Selecting it in
-    # Finder next to the open pane leaves the family one drag.
-    python = full_disk_access_python()
-    return python, desktop_macos.show_beside(python, FULL_DISK_ACCESS_URL)
-
-
 # ---------------------------------------------------------------- bg
 
 def cmd_bg(args: argparse.Namespace) -> int:
     inner = args.command[1:] if args.command[:1] == ["--"] else list(args.command)
     if not inner or inner[0] == "bg":
-        print("Usage: parent-recap bg <command>, e.g. parent-recap bg discover whatsapp-chats")
+        print("Usage: parent-recap bg <command>, e.g. parent-recap bg doctor")
         return 2
     print(f"Running parent-recap {' '.join(inner)} as a background job "
           "(same Python and permissions as the scheduled job)", flush=True)

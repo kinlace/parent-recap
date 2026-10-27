@@ -158,7 +158,7 @@ def test_google_mode_upgrade_does_not_rewrite_events_from_before_0_4_0(harness):
     # MyClub start in UTC).
     old_hashes = [hashlib.sha1(key.encode()).hexdigest()[:20] for key in (
         "gmail|1101|2026-10-01T09:00:00+03:00|3B 远足 Nuuksio",
-        "whatsapp|2:1|2026-09-30T17:30:00+03:00|钢琴课（改期）",
+        "gmail|1111|2026-09-30T17:30:00+03:00|钢琴课（改期）",
         "myclub|mc-1|2026-10-03T07:00:00+00:00|⚽ FC Kilo P2017 vs HJK")]
     harness.state_path.parent.mkdir(parents=True, exist_ok=True)
     harness.state_path.write_text(json.dumps({"created_event_hashes": {

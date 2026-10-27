@@ -173,7 +173,6 @@ class FakeJobs:
         out = io.StringIO()
         with self.inside(), pytest.MonkeyPatch.context() as mp, \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-            mp.setenv(jobs.BG_ENV, "1")
             mp.setattr(sys, "argv", ["family-brief", *argv])
             try:
                 code = cli.main()
@@ -338,8 +337,8 @@ class FakeSystem:
         mp.setattr(windows_only, "elevated", lambda: self.elevated)
 
     def open_command(self, cmd: list[str], prog: str, **_k: Any) -> subprocess.CompletedProcess | None:
-        """`open`, which the macOS-only steps beside Full Disk Access run for Finder and System
-        Settings, and for the Passwords app: macOS-only, so behind no interface (ADR 0020)."""
+        """`open`, which the macOS-only step runs for the Passwords app: macOS-only, so behind no
+        interface (ADR 0020)."""
         if prog != "open":
             return None
         self.opened.append(cmd[-1])

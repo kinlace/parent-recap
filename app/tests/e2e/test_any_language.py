@@ -53,10 +53,10 @@ def test_recipient_without_a_reviewed_language_gets_program_text_in_it(harness, 
     zh, sv = harness.sent
     assert sv.to == ["partner@example.com"]
     assert "sv:✅ Action Items\n• " in sv.text
-    assert "sv:📥 Read tonight: Gmail sv:2 messages · MyClub sv:1 event" in sv.text
+    assert "sv:📥 Read tonight: Gmail sv:4 messages · MyClub sv:1 event" in sv.text
     assert "<h3>sv:✅ Action Items</h3>" in sv.html
     # Dates come in the translated format, built from its own weekday and month names.
-    assert "Sign the reissuvihko<small style='color:#666'> (Mia) · sv:by sv:sv:Mon 28 sv:Sep · sv:Mom · WhatsApp" \
+    assert "Sign the reissuvihko<small style='color:#666'> (Mia) · sv:by sv:sv:Mon 28 sv:Sep · sv:Mom · Gmail" \
            "</small>" in sv.html
     assert "Parent Recap sv:sv:Sun 27 sv:Sep" in sv.text and "sv:sv:Thu 1 sv:Oct 09:00" in sv.text
     assert "✅ 待办\n• " in zh.text

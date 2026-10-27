@@ -53,7 +53,6 @@ class BriefText:
     may_be_incomplete: str              # {missed}
     missed_sep: str
     permission_denied: str
-    whatsapp_permission_denied: str     # WhatsApp's, whose likely cause is a changed Python
     login_failed: str
     message_unreadable: str             # a Source skipped a Message it couldn't read
 
@@ -156,7 +155,6 @@ EN = BriefText(
     may_be_incomplete="⚠️ {missed}. Tonight's Brief may be incomplete.",
     missed_sep=", ",
     permission_denied="macOS permission denied",
-    whatsapp_permission_denied="macOS permission denied, maybe because Parent Recap's Python changed",
     login_failed="login failed",
     message_unreadable="a message couldn't be read",
     nothing_read="⚠️ No Source could be read tonight, so there is no Digest. Their messages will be "
@@ -230,7 +228,6 @@ ZH = BriefText(
     may_be_incomplete="⚠️ {missed}，今天的日报可能缺这一块。",
     missed_sep="，",
     permission_denied="macOS 权限被拒绝",
-    whatsapp_permission_denied="macOS 权限被拒绝，可能是 Parent Recap 的 Python 换了",
     login_failed="登录失败",
     message_unreadable="有一条消息读不出来",
     nothing_read="⚠️ 今晚所有信息源都没读到，所以没有摘要。等它们恢复后，这些消息会出现在下一份日报里。",
@@ -297,7 +294,6 @@ FI = BriefText(
     may_be_incomplete="⚠️ {missed}. Tämäniltaisesta koosteesta voi puuttua jotain.",
     missed_sep=", ",
     permission_denied="macOS ei antanut käyttöoikeutta",
-    whatsapp_permission_denied="macOS ei antanut lupaa lukea viestejä, ehkä koska Parent Recapin Python päivittyi",
     login_failed="kirjautuminen epäonnistui",
     fallback_header="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua, joten tässä ovat viestit sellaisenaan "
                     "(kaikki ovat tallessa arkistossa ~/ParentRecap):",
