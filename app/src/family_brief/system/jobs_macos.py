@@ -159,7 +159,7 @@ def run_now(name: str) -> None:
 # ---------------------------------------------------------------- Services
 
 def _service_plist(service: jobs.Service) -> dict:
-    out, err = (str(service.log_dir / f"{service.name}-{kind}.log") for kind in ("stdout", "stderr"))
+    out, err = service.logs
     return {
         "Label": system_name(service.name),
         "ProgramArguments": [sys.executable, "-m", service_runner.__name__, out, err,

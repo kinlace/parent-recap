@@ -41,6 +41,11 @@ class Service:
     program: list[str]     # the program and its arguments
     log_dir: Path          # <name>-stdout.log and -stderr.log go here
 
+    @property
+    def logs(self) -> list[str]:
+        """Its stdout and stderr log files."""
+        return [str(self.log_dir / f"{self.name}-{kind}.log") for kind in ("stdout", "stderr")]
+
 
 @dataclass(frozen=True)
 class ServiceStatus:

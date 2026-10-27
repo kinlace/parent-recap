@@ -191,9 +191,8 @@ def catch_up_xml(job: jobs.Job) -> str:
 
 def service_xml(service: jobs.Service) -> str:
     """The task for `service`, in Task Scheduler's XML."""
-    logs = [str(service.log_dir / f"{service.name}-{kind}.log") for kind in ("stdout", "stderr")]
     return _task(f"Parent Recap: {service.name}, kept running while you're signed in", _at_sign_in,
-                 ["-m", service_runner.__name__, *logs, *service.program], wake=False,
+                 ["-m", service_runner.__name__, *service.logs, *service.program], wake=False,
                  always=True)
 
 

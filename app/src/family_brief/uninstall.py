@@ -30,7 +30,7 @@ from . import (ai_filter_report, chat_install, install_record, llm, ops, own_nod
                setup_save, setup_wilma, sources, tools, whatsapp_python)
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
-from .system import desktop, jobs, macos_only, profile, secrets, wake, windows_only
+from .system import desktop, jobs, keep_running, macos_only, profile, secrets, wake, windows_only
 
 OK, FAIL = ops.OK, ops.FAIL
 # install.sh's and install.ps1's pinned ones, and the folders they download them into.
@@ -205,9 +205,8 @@ def _jobs(s: Survey, programs: list[Path]) -> None:
     found = jobs.found()
     for job in found:
         prog = job.program
-        # A Service runs its program through `-m family_brief.system.keep_running`.
-        module = prog[2].split(".")[0] if prog[1:2] == ["-m"] and len(prog) > 2 else None
-        if not (module == "family_brief" and any(
+        # A Service runs its program through keep_running.
+        if not (prog[1:3] in (["-m", "family_brief"], ["-m", keep_running.__name__]) and any(
                 Path(prog[0]).parent.resolve().is_relative_to(v) for v in venvs)):
             runs = prog[0] if prog else "a program it can't read"
             s.stops.append(f"{_show(job.where)} is a scheduled job named {job.system_name}, but "
