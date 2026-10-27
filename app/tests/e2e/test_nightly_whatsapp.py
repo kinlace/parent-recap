@@ -113,12 +113,9 @@ def test_records_past_the_longest_lookback_and_a_margin_are_pruned(harness, what
     assert store_ids() == ["KEPT", "3EB0A1", "3EB0A2", "3EB0A3"]
 
 
-@pytest.mark.parametrize("language, line", [
-    ("en", "⚠️ WhatsApp not read since Sat 26 Sep 08:30 (needs a new pairing). Tonight's Brief may be incomplete."),
-    ("zh", "⚠️ WhatsApp 自 9月26日 周六 08:30 起没读到（需要重新关联设备），今天的日报可能缺这一块。"),
-])
-def test_a_link_whatsapp_ended_is_not_read_since_then(harness, language, line):
-    harness.config["summary_language"] = language
+# Each language's wording of it is test_render.py's.
+def test_a_link_whatsapp_ended_is_not_read_since_then(harness):
+    harness.config["summary_language"] = "en"
     harness.model_reply = SAYS_SOMETHING
     one_gmail_message(harness)
     harness.sources["whatsapp"] = list(TONIGHT)
@@ -129,7 +126,9 @@ def test_a_link_whatsapp_ended_is_not_read_since_then(harness, language, line):
     assert harness.run() == 0
 
     assert payload_message_ids(harness) == ["1001"]
-    assert coverage_line(harness).endswith("\n" + line)
+    coverage = json.loads((harness.archive_dir / "2026-09-27.raw.json").read_text())["summary"]["_coverage"]
+    assert coverage["whatsapp"] == {"count": 0, "error": "needs a new pairing", "since": "2026-09-26T08:30:00+03:00"}
+    assert "WhatsApp not read since Sat 26 Sep 08:30" in coverage_line(harness)
     assert "whatsapp" not in harness.lookback_hours  # never read
 
 
