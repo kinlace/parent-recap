@@ -467,6 +467,14 @@ def _check_schedule(cfg: Config, add) -> None:
     if not missing:
         add(OK, "schedule", f"runs every day at {cfg.schedule.daily_hour:02d}:{cfg.schedule.daily_minute:02d}"
             + (", Weekend Picks once every Friday" if cfg.weekend_events.enabled else ""))
+    always = jobs.always_status()
+    if always.installed:
+        name = jobs.system_name(jobs.ALWAYS)
+        if always.running:
+            add(OK, "schedule", f"{name} runs all the time while you're signed in")
+        else:
+            add(WARN, "schedule", f"installed but not running: {name}. It starts again when you "
+                "sign in, unless WhatsApp ended its link")
     last = State(cfg.resolved_state_path()).last_run_at
     if last:
         hours = (datetime.now(timezone.utc) - last).total_seconds() / 3600

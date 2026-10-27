@@ -72,6 +72,32 @@ def test_doctor_says_a_job_that_isnt_installed_isnt_installed_yet(harness, nothi
     assert "not loaded" not in line
 
 
+def schedule_lines(out: str) -> list[str]:
+    return [l for l in out.splitlines() if "Schedule:" in l]
+
+
+def test_doctor_names_the_always_running_job_when_it_is_installed(harness, nothing_loaded,
+                                                                  capsys):
+    harness.cli("doctor", "--skip-llm")
+    assert not any(jobs.system_name(jobs.ALWAYS) in l
+                   for l in schedule_lines(capsys.readouterr().out))
+
+    harness.jobs.install_always(["node", "linked-device.mjs", "follow"], harness.home)
+    harness.cli("doctor", "--skip-llm")
+
+    [line] = [l for l in schedule_lines(capsys.readouterr().out)
+              if jobs.system_name(jobs.ALWAYS) in l]
+    assert line.startswith(ops.OK.strip()) and "runs all the time" in line
+
+    harness.jobs.stop_always()
+    harness.cli("doctor", "--skip-llm")
+
+    [line] = [l for l in schedule_lines(capsys.readouterr().out)
+              if jobs.system_name(jobs.ALWAYS) in l]
+    assert line.startswith(ops.WARN.strip()) and "installed but not running" in line
+    assert not HAN.findall(line)
+
+
 @pytest.fixture
 def claude_without_token(harness, monkeypatch):
     """Claude Code installed and answering, with no claude-oauth-token in the Keychain."""
