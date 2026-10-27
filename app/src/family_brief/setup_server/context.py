@@ -46,6 +46,7 @@ class Timeouts:
     ai_check: float = 20  # an AI's own status check
     claude_sign_in: float = 600  # Claude's sign-in in the browser
     wilma_window: float = 600  # the Terminal window Wilma's sign-in falls back to
+    whatsapp_pair: int = 300  # the phone scanning WhatsApp's QR code
     brief: float = 900  # making the first Brief, reading the Sources included
 
 

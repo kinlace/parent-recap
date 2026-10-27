@@ -409,8 +409,8 @@ const STEPS = {
       clearTimeout(aiStep.timer);
     },
   },
-  // No step of its own until the Linked Device's (#521): what Working and the first Brief call it.
   whatsapp: {
+    setUp: setUpWhatsApp, first: firstWhatsApp, leave: leaveWhatsApp,
     working: () => ["working.whatsapp", { count: (page.progress.whatsapp_chats || []).length }],
     label: "WhatsApp",
   },
@@ -494,9 +494,7 @@ function renderSources() {
   }
   const step = connectSteps().find((s) => s.name === current);
   for (const name of Object.keys(STEPS)) {
-    // WhatsApp has no panel until the Linked Device's step (#521).
-    const panel = document.getElementById("source-" + name);
-    if (panel) panel.hidden = name !== current;
+    document.getElementById("source-" + name).hidden = name !== current;
   }
   showSkips(step, statuses[current]);
   document.getElementById("connect-done").hidden = Boolean(current);
@@ -590,7 +588,7 @@ const SLOTS = [
   [["myclub.added", "myclub.kid-exists"], "myclub-kid-slot"],
   // A Source just done: by the hand-off, as the next Source's step is shown.
   [["gmail.saved", "wilma.signed-in", "claude.saved", "gateway.saved",
-    "codex.signed-in"], "connect-slot"],
+    "codex.signed-in", "whatsapp.paired"], "connect-slot"],
 ];
 // The results that say something failed, shown in red.
 const FAILED = [
@@ -607,6 +605,7 @@ const FAILED = [
   "gateway.keychain-not-reachable", "gateway.keychain-failed",
   "myclub.pick-kid", "myclub.not-a-myclub-link", "myclub.link-failed", "myclub.not-a-calendar",
   "myclub.save-failed", "myclub.same-link", "myclub.kid-exists",
+  "whatsapp.failed", "whatsapp.no-library",
   "open.not-opened", "open.app-not-opened",
 ];
 
@@ -1144,6 +1143,338 @@ async function saveGatewayKey(event) {
   } finally {
     button.disabled = false;
   }
+}
+
+// ── Connect: WhatsApp, as a Linked Device (ADR 0027). The server runs the pairing; the page asks
+// every few seconds what it last said, draws the QR code again as WhatsApp changes it, and goes
+// on once the phone has scanned it.
+
+const WHATSAPP_MS = 2000;
+// The pairing's results that are still under way, and those the page offers a new code after.
+const WHATSAPP_WAITING = ["starting", "qr", "linking"];
+const WHATSAPP_AGAIN = ["timed-out", "failed", "no-pairing"];
+const whatsappStep = { checking: 0, timer: null, pairing: false, qr: null };
+
+function setUpWhatsApp() {
+  document.getElementById("whatsapp-again").addEventListener("click", pairWhatsApp);
+}
+
+// A WhatsApp already linked says so; else pairing starts as the step is shown.
+function firstWhatsApp() {
+  if (page.progress.sources.whatsapp === "done") return showSource("whatsapp.paired");
+  pairWhatsApp();
+}
+
+// A pairing the phone hasn't scanned is ended as the parent moves on, so it can't link later.
+function leaveWhatsApp() {
+  clearTimeout(whatsappStep.timer);
+  whatsappStep.checking++; // a reply still on its way is old news
+  showQR(null);
+  document.getElementById("whatsapp-again").hidden = true;
+  if (whatsappStep.pairing) post("api/whatsapp/stop", {}).catch(() => {});
+  whatsappStep.pairing = false;
+}
+
+function pairWhatsApp() {
+  clearError();
+  document.getElementById("whatsapp-again").hidden = true;
+  showSource("whatsapp.starting");
+  whatsappStep.pairing = true;
+  return askWhatsApp("api/whatsapp/pair");
+}
+
+async function askWhatsApp(path) {
+  clearTimeout(whatsappStep.timer);
+  const check = ++whatsappStep.checking;
+  let out;
+  try {
+    out = await post(path, {});
+  } catch (e) {
+    if (check === whatsappStep.checking) failed(e);
+    return;
+  }
+  if (check !== whatsappStep.checking) return; // the parent moved on meanwhile
+  showWhatsApp(out);
+  if (WHATSAPP_WAITING.includes(out.result)) {
+    whatsappStep.timer = setTimeout(() => askWhatsApp("api/whatsapp/check"), WHATSAPP_MS);
+  }
+}
+
+function showWhatsApp(out) {
+  showQR(out.result === "qr" ? out.qr : null);
+  if (!WHATSAPP_WAITING.includes(out.result)) whatsappStep.pairing = false;
+  if (out.result === "paired") {
+    page.progress = out.progress;
+    renderSources();
+    showSource("whatsapp.paired");
+    return;
+  }
+  // A code that ran out isn't a failure: a new one is a click away.
+  document.getElementById("whatsapp-again").hidden = !WHATSAPP_AGAIN.includes(out.result);
+  showSource("whatsapp." + out.result, { reason: out.reason });
+}
+
+// Draws `text`'s QR code in the step, or hides it for null.
+function showQR(text) {
+  const box = document.getElementById("whatsapp-qr");
+  box.hidden = !text;
+  if (text === whatsappStep.qr) return;
+  whatsappStep.qr = text;
+  if (!text) return;
+  const modules = qrMatrix(text);
+  const quiet = 4; // the margin of light modules a reader needs around the code
+  const size = modules.length + 2 * quiet;
+  let path = "";
+  modules.forEach((row, y) => row.forEach((dark, x) => {
+    if (dark) path += `M${x + quiet} ${y + quiet}h1v1h-1z`;
+  }));
+  const svg = box.querySelector("svg");
+  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+  svg.querySelector("path").setAttribute("d", path);
+}
+
+// ── A QR code drawn from the pairing string, on the page itself (ISO/IEC 18004): byte mode,
+// error correction level M, the smallest version that holds the string, and the mask the
+// standard's penalty rules pick. Nothing is fetched to draw it.
+
+// Level M's error correction codewords per block, and its blocks, by version (1 to 40).
+const QR_ECC = [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26,
+  26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28];
+const QR_BLOCKS = [0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17,
+  18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49];
+
+// The modules a version has for data and error correction, after its patterns.
+function qrRawModules(version) {
+  let modules = (16 * version + 128) * version + 64;
+  if (version >= 2) {
+    const align = Math.floor(version / 7) + 2;
+    modules -= (25 * align - 10) * align - 55;
+    if (version >= 7) modules -= 36;
+  }
+  return modules;
+}
+
+function qrDataCodewords(version) {
+  return Math.floor(qrRawModules(version) / 8) - QR_ECC[version] * QR_BLOCKS[version];
+}
+
+// Multiplication in GF(2^8) with the QR code's polynomial, 0x11D.
+function gfMultiply(x, y) {
+  let z = 0;
+  for (let i = 7; i >= 0; i--) {
+    z = (z << 1) ^ ((z >>> 7) * 0x11d);
+    z ^= ((y >>> i) & 1) * x;
+  }
+  return z;
+}
+
+// The Reed-Solomon error correction codewords of `data`, `degree` of them.
+function qrErrorCorrection(data, degree) {
+  const divisor = new Array(degree).fill(0);
+  divisor[degree - 1] = 1;
+  for (let i = 0, root = 1; i < degree; i++, root = gfMultiply(root, 2)) {
+    for (let j = 0; j < degree; j++) {
+      divisor[j] = gfMultiply(divisor[j], root) ^ (j + 1 < degree ? divisor[j + 1] : 0);
+    }
+  }
+  const remainder = new Array(degree).fill(0);
+  for (const byte of data) {
+    const factor = byte ^ remainder.shift();
+    remainder.push(0);
+    divisor.forEach((coefficient, i) => { remainder[i] ^= gfMultiply(coefficient, factor); });
+  }
+  return remainder;
+}
+
+// The codewords of `text` in `version`: its bytes padded, then split into blocks, each with its
+// error correction, and interleaved.
+function qrCodewords(text, version) {
+  const bits = [];
+  const put = (value, length) => {
+    for (let i = length - 1; i >= 0; i--) bits.push((value >>> i) & 1);
+  };
+  const bytes = new TextEncoder().encode(text);
+  put(0b0100, 4);
+  put(bytes.length, version < 10 ? 8 : 16);
+  for (const byte of bytes) put(byte, 8);
+  const capacity = qrDataCodewords(version) * 8;
+  put(0, Math.min(4, capacity - bits.length));
+  put(0, (8 - (bits.length % 8)) % 8);
+  for (let pad = 0xec; bits.length < capacity; pad ^= 0xec ^ 0x11) put(pad, 8);
+  const data = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    data.push(bits.slice(i, i + 8).reduce((byte, bit) => (byte << 1) | bit, 0));
+  }
+
+  const blocks = QR_BLOCKS[version];
+  const ecc = QR_ECC[version];
+  const raw = Math.floor(qrRawModules(version) / 8);
+  const short = blocks - (raw % blocks);
+  const shortLength = Math.floor(raw / blocks) - ecc;
+  const split = [];
+  for (let i = 0, at = 0; i < blocks; i++) {
+    const block = data.slice(at, at + shortLength + (i < short ? 0 : 1));
+    at += block.length;
+    split.push([block, qrErrorCorrection(block, ecc)]);
+  }
+  const out = [];
+  for (let i = 0; i <= shortLength; i++) {
+    for (const [block] of split) if (i < block.length) out.push(block[i]);
+  }
+  for (let i = 0; i < ecc; i++) for (const [, corrections] of split) out.push(corrections[i]);
+  return out;
+}
+
+const QR_MASKS = [
+  (x, y) => (x + y) % 2 === 0,
+  (x, y) => y % 2 === 0,
+  (x) => x % 3 === 0,
+  (x, y) => (x + y) % 3 === 0,
+  (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0,
+  (x, y) => ((x * y) % 2) + ((x * y) % 3) === 0,
+  (x, y) => (((x * y) % 2) + ((x * y) % 3)) % 2 === 0,
+  (x, y) => (((x + y) % 2) + ((x * y) % 3)) % 2 === 0,
+];
+
+// The QR code of `text`: rows of modules, true for dark, without the quiet zone around it.
+function qrMatrix(text) {
+  let version = 1;
+  const length = new TextEncoder().encode(text).length;
+  while (4 + (version < 10 ? 8 : 16) + 8 * length > 8 * qrDataCodewords(version)) {
+    if (++version > 40) throw new Error("too long for a QR code");
+  }
+  const size = 4 * version + 17;
+  const dark = Array.from({ length: size }, () => new Array(size).fill(false));
+  const fixed = Array.from({ length: size }, () => new Array(size).fill(false));
+  const set = (x, y, on) => {
+    dark[y][x] = on;
+    fixed[y][x] = true;
+  };
+
+  for (let i = 0; i < size; i++) {
+    set(6, i, i % 2 === 0);
+    set(i, 6, i % 2 === 0);
+  }
+  for (const [cx, cy] of [[3, 3], [size - 4, 3], [3, size - 4]]) {
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const x = cx + dx;
+        const y = cy + dy;
+        const ring = Math.max(Math.abs(dx), Math.abs(dy));
+        if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, ring !== 2 && ring !== 4);
+      }
+    }
+  }
+  if (version > 1) {
+    const count = Math.floor(version / 7) + 2;
+    const step = Math.floor((version * 8 + count * 3 + 5) / (count * 4 - 4)) * 2;
+    const at = [6];
+    for (let p = size - 7; at.length < count; p -= step) at.splice(1, 0, p);
+    for (const [i, cx] of at.entries()) {
+      for (const [j, cy] of at.entries()) {
+        const corner = (i === 0 && j === 0) || (i === 0 && j === count - 1) ||
+          (i === count - 1 && j === 0);
+        if (corner) continue;
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            set(cx + dx, cy + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+          }
+        }
+      }
+    }
+  }
+  const bit = (value, i) => ((value >>> i) & 1) !== 0;
+  const drawFormat = (mask) => {
+    let rest = mask; // level M's bits are 00
+    for (let i = 0; i < 10; i++) rest = (rest << 1) ^ ((rest >>> 9) * 0x537);
+    const format = ((mask << 10) | rest) ^ 0x5412;
+    for (let i = 0; i <= 5; i++) set(8, i, bit(format, i));
+    set(8, 7, bit(format, 6));
+    set(8, 8, bit(format, 7));
+    set(7, 8, bit(format, 8));
+    for (let i = 9; i < 15; i++) set(14 - i, 8, bit(format, i));
+    for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(format, i));
+    for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(format, i));
+    set(8, size - 8, true);
+  };
+  drawFormat(0); // for now: it marks the format's modules as taken
+  if (version >= 7) {
+    let rest = version;
+    for (let i = 0; i < 12; i++) rest = (rest << 1) ^ ((rest >>> 11) * 0x1f25);
+    const bits = (version << 12) | rest;
+    for (let i = 0; i < 18; i++) {
+      const a = size - 11 + (i % 3);
+      const b = Math.floor(i / 3);
+      set(a, b, bit(bits, i));
+      set(b, a, bit(bits, i));
+    }
+  }
+
+  const codewords = qrCodewords(text, version);
+  let i = 0;
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    const upward = ((right + 1) & 2) === 0;
+    for (let step = 0; step < size; step++) {
+      const y = upward ? size - 1 - step : step;
+      for (const x of [right, right - 1]) {
+        if (fixed[y][x] || i >= codewords.length * 8) continue;
+        dark[y][x] = bit(codewords[i >>> 3], 7 - (i & 7));
+        i++;
+      }
+    }
+  }
+
+  const masked = (mask) => dark.map((row, y) =>
+    row.map((on, x) => (!fixed[y][x] && QR_MASKS[mask](x, y) ? !on : on)));
+  let best = null;
+  for (let mask = 0; mask < 8; mask++) {
+    drawFormat(mask);
+    const candidate = masked(mask);
+    const score = qrPenalty(candidate);
+    if (best === null || score < best.score) best = { score, modules: candidate };
+  }
+  return best.modules;
+}
+
+// The standard's penalty for a masked QR code: runs of one colour, 2x2 squares of one colour,
+// finder-like patterns, and dark modules away from half.
+function qrPenalty(modules) {
+  const size = modules.length;
+  const lines = [...modules, ...modules.map((_, x) => modules.map((row) => row[x]))];
+  let score = 0;
+  for (const line of lines) {
+    let run = 1;
+    for (let i = 1; i <= size; i++) {
+      if (i < size && line[i] === line[i - 1]) {
+        run++;
+        continue;
+      }
+      if (run >= 5) score += run - 2;
+      run = 1;
+    }
+    const text = line.map((on) => (on ? "1" : "0")).join("");
+    for (const pattern of ["10111010000", "00001011101"]) {
+      for (let at = text.indexOf(pattern); at !== -1; at = text.indexOf(pattern, at + 1)) {
+        score += 40;
+      }
+    }
+  }
+  let darkCount = 0;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (modules[y][x]) darkCount++;
+      if (x < size - 1 && y < size - 1) {
+        const on = modules[y][x];
+        if (modules[y][x + 1] === on && modules[y + 1][x] === on && modules[y + 1][x + 1] === on) {
+          score += 3;
+        }
+      }
+    }
+  }
+  const total = size * size;
+  score += 10 * Math.floor(Math.abs(darkCount * 20 - total * 10) / total);
+  return score;
 }
 
 // ── Connect: MyClub. Each Kid's calendar link, pasted into the page's own field. A Household

@@ -416,20 +416,15 @@ def test_the_source_list_shows_each_entry_with_its_status(harness, page):
 
     state = call(page.url, "api/state").json()
 
-    # No WhatsApp on any system until the Linked Device's step (ADR 0027): the old step and its
-    # calls are gone.
+    # WhatsApp is a Linked Device on every system (ADR 0027), in the slot after the AI sign-in.
     assert [(s["name"], s["skippable"]) for s in state["connect"]["sources"]] == [
-        ("wilma", True), ("gmail", False), ("ai", False), ("myclub", True)]
+        ("wilma", True), ("gmail", False), ("ai", False), ("whatsapp", True), ("myclub", True)]
     assert state["progress"]["source"] == "gmail"
     assert state["progress"]["sources"] == {"wilma": "done", "gmail": "to-do", "ai": "to-do",
                                             "whatsapp": "to-do", "myclub": "to-do"}
-    assert "whatsapp" not in state
-    for path in ("api/whatsapp/check", "api/whatsapp/open", "api/whatsapp/back"):
+    # The WhatsApp for Mac step's calls are gone.
+    for path in ("api/whatsapp/open", "api/whatsapp/back"):
         assert call(page.url, path, method="POST", body={}).status == 404, path
-    html = call(page.url).body.decode()
-    assert 'id="source-whatsapp"' not in html
-    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
-        assert not [key for key in table if key.startswith("whatsapp.")], language
 
 
 def test_every_source_list_button_is_named_after_its_source_and_status_in_each_language():
@@ -457,9 +452,9 @@ def test_a_skipped_source_moves_setup_on_and_can_be_come_back_to(harness, page):
 
 
 def test_skipping_the_last_source_leaves_none_to_do(harness, page):
-    # WhatsApp, still to do, isn't on the list (ADR 0027), so MyClub is the last.
     save_progress(harness, {"phase": "connect", "source": "myclub",
-                            "sources": {"wilma": "done", "gmail": "done", "ai": "done"}})
+                            "sources": {"wilma": "done", "gmail": "done", "ai": "done",
+                                        "whatsapp": "skipped"}})
 
     assert source(page.url, "myclub", "skip").json()["progress"]["source"] is None
 
@@ -523,17 +518,16 @@ def test_a_source_already_done_stays_done_when_opened_again(harness, page):
 
 
 # The words for what only macOS has, in each language: the Mac, its Keychain, Terminal, Finder,
-# System Settings and the Passwords app, and WhatsApp's Mac app.
+# System Settings and the Passwords app.
 MACOS_WORDS = {
-    "en": r"\bMac\b|macOS|Keychain|Terminal|Finder|System Settings|Passwords app|WhatsApp",
-    "fi": r"Mac|macOS|avainnippu|Pääte|Terminal|Järjestelmäasetukset|Salasanat-sovellu|WhatsApp",
-    "zh": r"Mac|macOS|钥匙串|终端|访达|系统设置|“密码”应用|WhatsApp",
+    "en": r"\bMac\b|macOS|Keychain|Terminal|Finder|System Settings|Passwords app",
+    "fi": r"Mac|macOS|avainnippu|Pääte|Terminal|Järjestelmäasetukset|Salasanat-sovellu",
+    "zh": r"Mac|macOS|钥匙串|终端|访达|系统设置|“密码”应用",
 }
 # Texts the page shows only on macOS, such as Claude's sign-in read from its pseudo-terminal, or
 # the chat's.
 MACOS_ONLY_TEXTS = re.compile(
-    r"^(whatsapp\.|health\.fail\.whatsapp|finish\.fail\.whatsapp|check\.whatsapp|working\.whatsapp"
-    r"|source\.whatsapp|health\.check\.whatsapp|claude\.(waiting|sign-in-failed|timeout)$|chat\."
+    r"^(claude\.(waiting|sign-in-failed|timeout)$|chat\."
     r"|keychain\."
     r"|open\.app-not-opened$|wilma\.passwords$|(health|finish)\.fail\.ai$"
     r"|finish\.wake\.(set|other-schedule|cancelled|no-dialog)$|finish\.replace$)"

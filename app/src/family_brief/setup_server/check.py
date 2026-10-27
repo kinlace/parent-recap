@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from .. import failure, ops, setup_connect, setup_gmail, setup_save
+from .. import failure, linked_device, ops, setup_connect, setup_gmail, setup_save
 from ..config import Config, Kid
 from . import health
 from .connect import SKIPPABLE
@@ -146,6 +146,8 @@ class Check(Phase):
             if out["result"] != "saved":
                 return (HTTPStatus.BAD_REQUEST if out["result"] == "invalid-answers"
                         else HTTPStatus.CONFLICT), out
+            if answer.whatsapp is not None:
+                _keep_picked(context)
             self._check_health()
         return HTTPStatus.OK, {**out, "result": "checking"}
 
@@ -179,22 +181,37 @@ class Check(Phase):
 
 
 def _groups(cfg: Config, progress: dict[str, Any]) -> list[dict[str, Any]]:
-    """The groups WhatsApp's step found, then those picked before but not found this time."""
+    """The groups WhatsApp's step found, each with its id, then those picked before but not
+    found this time. A group picked before is ticked by its id, or by its name for one picked
+    before the Linked Device, which has none yet."""
     called = {k.name: everyday_name(k) for k in cfg.kids}
-    picked = {c.name: c for c in cfg.whatsapp.chats}
+    names, ids = set(cfg.whatsapp.chat_names()), set(cfg.whatsapp.picked_ids())
     groups = []
     for chat in progress.get("whatsapp_chats") or []:
         kids = [k for k in (chat.get("hint") or {}).get("kids", []) if k in called]
-        groups.append({"name": chat["name"], "last": chat.get("last"),
+        groups.append({"name": chat["name"], "id": chat.get("id"), "last": chat.get("last"),
                        "archived": bool(chat.get("archived")), "kids": [called[k] for k in kids],
-                       "ticked": bool(kids) or chat["name"] in picked})
-    found = {g["name"] for g in groups}
+                       "ticked": bool(kids) or chat["name"] in names or chat.get("id") in ids})
+    found = {g["name"] for g in groups} | {g["id"] for g in groups if g["id"]}
     for chat in cfg.whatsapp.chats:
-        if chat.name not in found:
+        if chat.name not in found and (chat.id is None or chat.id not in found):
             kids = list(called) if chat.kid == "both" else [k for k in called if k == chat.kid]
-            groups.append({"name": chat.name, "last": None, "archived": False,
+            groups.append({"name": chat.name, "id": chat.id, "last": None, "archived": False,
                            "kids": [called[k] for k in kids], "ticked": True})
     return groups
+
+
+def _keep_picked(context: Context) -> None:
+    """Tells the Linked Device's always-running job the groups just picked, which it keeps the
+    messages of from then on. The evening run tells it again, so one not told now loses nothing
+    it would have read. Without a pairing there's no job to tell."""
+    if not linked_device.folder().is_dir():
+        return
+    try:
+        linked_device.keep_picked(context.model())
+    except OSError as e:
+        failure.logged("The picked WhatsApp groups weren't passed on",
+                       failure.raised(e, "Writing the picked groups"))
 
 
 def _senders(cfg: Config, progress: dict[str, Any]) -> list[dict[str, Any]]:
@@ -240,7 +257,8 @@ def _check_answers(answer: CheckAnswer, cfg: Config, progress: dict[str, Any]) -
                 chat = before[name]
                 kids = [chat.kid] if chat.kid in kept or chat.kid == "both" else []
                 label = chat.label
-            chats.append({"name": name, "label": label,
+            chats.append({"name": name, "id": found[name].get("id") if name in found
+                          else before[name].id, "label": label,
                           "kid": kids[0] if len(kids) == 1 else ("both" if kids else None)})
         answers["sources"]["whatsapp"] = {"enabled": bool(chats), "chats": chats}
     return answers

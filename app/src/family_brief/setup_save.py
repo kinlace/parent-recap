@@ -12,12 +12,13 @@ answers as JSON on stdin, every key optional:
    "evening": "21:00",
    "sources": {"gmail": {"address": "parent@gmail.com", "allowlist_domains": ["espoo.fi"]},
                "wilma": {"enabled": true},
-               "whatsapp": {"enabled": true, "chats": [{"name": "3B", "kid": "Mia Virtanen", "label": "class"}]},
+               "whatsapp": {"enabled": true, "chats": [{"name": "3B", "id": "120363@g.us",
+                                                        "kid": "Mia Virtanen", "label": "class"}]},
                "myclub": {"enabled": false}},
    "feedback": {"enabled": true, "household_label": "Virtanen family"},
    "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"},
                 "partner": {"address": "partner@gmail.com", "language": "fi"},
-                "whatsapp_chats": [{"name": "3B", "last": "2026-09-25", "archived": false,
+                "whatsapp_chats": [{"name": "3B", "id": "120363@g.us",
                                     "hint": {"kids": ["Mia Virtanen"], "matched": ["3B"]}}],
                 "gmail_senders": [{"domain": "edu.espoo.fi", "count": 5, "example": "Opettaja",
                                    "likely": true}]}}
@@ -129,8 +130,10 @@ class ChatHint(_Strict):
 
 
 class FoundChat(_Strict):
-    """A WhatsApp group setup found, with its Kid hint (setup_whatsapp.with_hints)."""
+    """A WhatsApp group setup found, with its Kid hint (setup_whatsapp.with_hints): the Linked
+    Device's pairing lists each with its group id."""
     name: str
+    id: str | None = None
     last: str | None = None
     archived: bool = False
     hint: ChatHint | None = None

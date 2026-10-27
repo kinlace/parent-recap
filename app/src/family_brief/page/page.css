@@ -316,6 +316,7 @@ fieldset .field label {
 .status[data-result="claude.saved"],
 .status[data-result="gateway.saved"],
 .status[data-result="myclub.saved"],
+.status[data-result="whatsapp.paired"],
 .status[data-result="health.ok"],
 .status[data-result="codex.signed-in"],
 .status[data-result="finish.done"] {
@@ -512,6 +513,22 @@ fieldset .field label {
 }
 
 .pictures figcaption { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+
+/* ── WhatsApp's QR code, drawn on the page: black on white inside its quiet zone, large enough
+   for a phone to read off the screen. */
+
+.whatsapp-steps { margin: 0 0 12px; padding-left: 22px; }
+
+.qr { margin: 0 0 12px; }
+
+.qr svg {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
 
 /* ── Working: what's been read, ✓ once read, ◐ while it reads. */
 

@@ -137,8 +137,8 @@ WILMA = Source("wilma", _same_everywhere("Wilma"), lambda cfg: cfg.wilma.enabled
                sent_to_everyone=_in("collectors.wilma", "sent_to_everyone"),
                held_back_link=_in("collectors.wilma", "link"))
 # Read as a Linked Device (ADR 0027): connected once it is paired and has groups picked. Picked
-# groups without a pairing, or a link WhatsApp ended, need a new pairing. Setup doesn't offer it
-# until its pairing step lands (setup_connect.NOT_OFFERED). A post in a group, where incidents get
+# groups without a pairing, or a link WhatsApp ended, need a new pairing. Setup pairs it with a
+# QR code on every system (setup_server/whatsapp.py). A post in a group, where incidents get
 # discussed, is always checked, and has no subject: the Brief lists it by its group.
 WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), _in("collectors.whatsapp", "connected"),
                   skippable=True, connect_rank=3, collect=_collector("whatsapp"),
