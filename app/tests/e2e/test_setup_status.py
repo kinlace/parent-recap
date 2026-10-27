@@ -13,6 +13,7 @@ import sys
 from typing import Any
 
 import pytest
+import fake_node
 from conftest import msg
 from fake_system import FakeWake
 
@@ -119,7 +120,9 @@ def test_on_windows_the_program_is_installed_with_install_ps1_s_venv(harness, of
 
 @pytest.fixture
 def healthy(harness, offline, monkeypatch) -> None:
-    """Everything doctor checks works: Gmail signs in, Claude answers, the nightly job is loaded."""
+    """Everything doctor checks works: Gmail signs in, Claude answers, the nightly job is loaded,
+    the install left the pinned Baileys tree."""
+    fake_node.install_baileys(fake_node.baileys_folder(harness.home))
     harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
     harness.secrets["claude-oauth-token"] = CLAUDE_TOKEN
     which = shutil.which
