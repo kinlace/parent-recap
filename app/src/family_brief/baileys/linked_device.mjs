@@ -3,12 +3,25 @@
 //
 //   node linked_device.mjs pair   --modules TREE --auth FOLDER --log FILE [--timeout SECONDS]
 //   node linked_device.mjs groups --modules TREE --auth FOLDER --log FILE [--timeout SECONDS]
+//   node linked_device.mjs follow --modules TREE --auth FOLDER --log FILE
+//                                 --picked FILE --store FILE --status FILE
 //
 // `pair` connects with no auth state and prints each QR string Baileys emits as a line of JSON,
 // {"qr": "..."}, until the phone pairs. Only then is the auth state written to FOLDER, and
 // {"paired": true} printed, so a pairing that never happens leaves none. `groups` connects with
 // the auth state in FOLDER. Both then print {"groups": [{"id": "...", "subject": "..."}]} and
 // exit; no message is kept.
+//
+// `follow` runs all day (ADR 0026) on the auth state in FOLDER. The picked groups are the ids in
+// the `--picked` file, {"groups": ["...@g.us"]}, which Python writes; it is read again when it
+// changes. Every message, as it arrives or in the history WhatsApp hands over at connect, whose
+// chat isn't a picked group is dropped before anything is written; the rest are appended to the
+// `--store` file, one line of JSON each: {"id", "group_id", "group_subject", "sender",
+// "timestamp" (seconds), "text" (or a placeholder such as "[image]"), "from_me"}. The `--status`
+// file is {"paired", "connected_since", "last_connected", "link_ended_at"}, times in ISO 8601.
+// After a drop it connects again, after a pause that doubles with each drop up to five minutes.
+// When WhatsApp ends the link it sets "link_ended_at" and exits with EXIT.needsPairing, which the
+// OS job doesn't restart. The store and status are 0600 in folders made 0700.
 //
 // It only reads: no send, read-receipt or presence call is ever made. Delivery receipts and
 // presence nodes Baileys sends on its own are accepted (#181). Log lines go to FILE, never to
@@ -18,16 +31,34 @@
 // linked_device.py names its exit codes, EXIT below, for Python.
 
 import { appendFileSync } from "node:fs";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 const EXIT = { failed: 1, usage: 2, timedOut: 3, needsPairing: 4 };
 // The phone lists a linked device by the first of these.
 const BROWSER = ["Parent Recap", "Chrome", "1.0"];
-const SECONDS = { pair: 300, groups: 60 };
+// How long pair and groups wait; follow doesn't stop.
+const SECONDS = { pair: 300, groups: 60, follow: null };
 const RECONNECT_MS = 2000;
+const MOST_RECONNECT_MS = 5 * 60_000;
+// What the store keeps for a message without text, by its content type; others aren't kept.
+const PLACEHOLDERS = {
+  imageMessage: "[image]",
+  videoMessage: "[video]",
+  ptvMessage: "[video]",
+  audioMessage: "[voice]",
+  contactMessage: "[contact]",
+  contactsArrayMessage: "[contact]",
+  locationMessage: "[location]",
+  liveLocationMessage: "[live location]",
+  documentMessage: "[document]",
+  stickerMessage: "[sticker]",
+  pollCreationMessage: "[poll]",
+  pollCreationMessageV2: "[poll]",
+  pollCreationMessageV3: "[poll]",
+};
 
 let logFile;
 
@@ -161,7 +192,8 @@ function authState(baileys, folder, onDisk) {
   };
 }
 
-function connect(baileys, auth, handlers) {
+// `events` maps more of the socket's events to a handler, called with the socket and the event.
+function connect(baileys, auth, handlers, events = {}) {
   const makeSocket = baileys.makeWASocket ?? baileys.default;
   const socket = makeSocket({
     auth: auth.state,
@@ -175,6 +207,9 @@ function connect(baileys, auth, handlers) {
     await auth.saveCreds();
   });
   socket.ev.on("connection.update", (update) => handlers(socket, update).catch(stop));
+  for (const [name, handler] of Object.entries(events)) {
+    socket.ev.on(name, (value) => handler(socket, value).catch(stop));
+  }
   return socket;
 }
 
@@ -186,6 +221,179 @@ async function listGroups(socket) {
   say({ groups });
 }
 
+const now = () => new Date().toISOString();
+
+// A message's time in seconds: Baileys gives a number or a protobuf Long.
+function epochSeconds(time) {
+  if (time === null || time === undefined) return null;
+  return typeof time === "object" ? (time.toNumber?.() ?? Number(time.low)) : Number(time);
+}
+
+// The store's record of a message in a picked group, without its subject, or null for one with
+// nothing to keep: a reaction, an edit, a deletion, a key exchange.
+function storeRecord(baileys, creds, message) {
+  const content = baileys.normalizeMessageContent(message.message);
+  const type = baileys.getContentType(content);
+  const body = type && content[type];
+  let text;
+  if (type === "conversation") text = body;
+  else if (type === "extendedTextMessage") text = body?.text;
+  else if (type in PLACEHOLDERS) {
+    text = body?.caption?.trim() || (body?.gifPlayback ? "[GIF]" : PLACEHOLDERS[type]);
+  }
+  text = typeof text === "string" ? text.trim() : "";
+  if (!text) return null;
+  const fromMe = Boolean(message.key.fromMe);
+  return {
+    id: message.key.id,
+    group_id: message.key.remoteJid,
+    group_subject: null,
+    sender: (fromMe ? creds.me?.name : message.pushName) ?? null,
+    timestamp: epochSeconds(message.messageTimestamp),
+    text,
+    from_me: fromMe,
+  };
+}
+
+async function follow(baileys, auth, { picked, store, status }) {
+  const { DisconnectReason } = baileys;
+  for (const file of [store, status]) await makePrivateFolder(dirname(file));
+
+  let link = { paired: true, connected_since: null, last_connected: null, link_ended_at: null };
+  try {
+    link.last_connected = JSON.parse(await readFile(status, "utf8")).last_connected ?? null;
+  } catch {
+    // No status yet, or one cut short: it is written whole below.
+  }
+  const note = async (change) => {
+    link = { ...link, ...change };
+    await writePrivate(status, JSON.stringify(link) + "\n");
+  };
+  await note({});
+
+  // The picked groups, read again whenever the file is another, as Python's replace makes it.
+  let pickedIds = new Set();
+  let pickedFile;
+  const readPicked = async () => {
+    let seen = "none";
+    try {
+      const { ino, size, mtimeMs } = await stat(picked);
+      seen = `${ino}:${size}:${mtimeMs}`;
+    } catch (e) {
+      if (e.code !== "ENOENT") throw e;
+    }
+    if (seen === pickedFile) return;
+    pickedFile = seen;
+    if (seen === "none") {
+      pickedIds = new Set();
+      log("warn", "no picked-groups file: no group is kept");
+      return;
+    }
+    try {
+      const { groups } = JSON.parse(await readFile(picked, "utf8"));
+      if (!Array.isArray(groups)) throw new Error("it has no list of groups");
+      pickedIds = new Set(groups.map(String));
+      log("info", `${pickedIds.size} picked groups`);
+    } catch (e) {
+      log("warn", `the picked-groups file can't be read, so the last pick holds: ${e.message}`);
+    }
+  };
+
+  const subjects = new Map(); // group id -> subject
+  const subjectOf = async (socket, id) => {
+    if (!subjects.has(id)) {
+      try {
+        subjects.set(id, (await socket.groupMetadata(id))?.subject ?? null);
+      } catch (e) {
+        log("warn", `a picked group's subject couldn't be fetched: ${e?.message ?? e}`);
+        return null;
+      }
+    }
+    return subjects.get(id);
+  };
+
+  // A message whose chat isn't picked is dropped here, before anything is written.
+  const keep = async (socket, messages) => {
+    await readPicked();
+    const lines = [];
+    for (const message of messages ?? []) {
+      if (!message?.key || !pickedIds.has(message.key.remoteJid)) continue;
+      const record = storeRecord(baileys, auth.state.creds, message);
+      if (!record) continue;
+      record.group_subject = await subjectOf(socket, record.group_id);
+      lines.push(JSON.stringify(record) + "\n");
+    }
+    if (lines.length === 0) return;
+    appendFileSync(store, lines.join(""), { mode: 0o600 });
+    log("info", `stored ${lines.length} message${lines.length === 1 ? "" : "s"}`);
+  };
+  // In arrival order, one batch at a time.
+  let kept = Promise.resolve();
+  const keepInTurn = (socket, messages) => (kept = kept.then(() => keep(socket, messages)));
+
+  const ended = async () => {
+    await kept.catch(() => {});
+    const at = now();
+    await note({
+      paired: false,
+      connected_since: null,
+      last_connected: link.connected_since ? at : link.last_connected,
+      link_ended_at: at,
+    });
+    finish(EXIT.needsPairing);
+  };
+
+  await readPicked();
+  // Node would end once a socket has closed and the next isn't open yet.
+  setInterval(() => {}, 60_000);
+  let current;
+  let drops = 0;
+  const handle = async (socket, { connection, lastDisconnect, qr }) => {
+    if (socket !== current) return;
+    if (qr) {
+      log("warn", "asked for a QR code: the link ended");
+      return ended();
+    }
+    if (connection === "open") {
+      drops = 0;
+      const at = now();
+      log("info", "connected");
+      await note({ paired: true, connected_since: at, last_connected: at, link_ended_at: null });
+    }
+    if (connection === "close") {
+      const code = lastDisconnect?.error?.output?.statusCode;
+      log("info", `connection closed (${code ?? "no status"})`);
+      if (code === DisconnectReason.loggedOut) {
+        log("warn", "logged out: the link ended");
+        return ended();
+      }
+      if (link.connected_since) await note({ connected_since: null, last_connected: now() });
+      const pause = code === DisconnectReason.restartRequired
+        ? 0 : Math.min(RECONNECT_MS * 2 ** drops++, MOST_RECONNECT_MS);
+      log("info", `connecting again in ${pause / 1000} seconds`);
+      setTimeout(() => (current = connect(baileys, auth, handle, events)), pause);
+    }
+  };
+  const events = {
+    "messages.upsert": async (socket, { messages }) => keepInTurn(socket, messages),
+    "messaging-history.set": async (socket, { messages }) => keepInTurn(socket, messages),
+    "groups.update": async (_socket, updates) => {
+      for (const { id, subject } of updates ?? []) {
+        if (id && subject !== undefined) subjects.set(id, subject);
+      }
+    },
+  };
+  for (const signal of ["SIGTERM", "SIGINT"]) {
+    process.on(signal, () => {
+      log("info", `stopped by ${signal}`);
+      const closed = link.connected_since
+        ? note({ connected_since: null, last_connected: now() }) : Promise.resolve();
+      closed.finally(() => finish(0));
+    });
+  }
+  current = connect(baileys, auth, handle, events);
+}
+
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -194,14 +402,21 @@ async function main() {
       auth: { type: "string" },
       log: { type: "string" },
       timeout: { type: "string" },
+      picked: { type: "string" },
+      store: { type: "string" },
+      status: { type: "string" },
     },
   });
   const [mode] = positionals;
+  const following = mode === "follow";
   if (positionals.length !== 1 || !(mode in SECONDS) || !values.modules || !values.auth ||
-      !values.log) {
+      !values.log ||
+      (following && (!values.picked || !values.store || !values.status || values.timeout))) {
     process.stderr.write(
       "Usage: linked_device.mjs pair|groups --modules TREE --auth FOLDER --log FILE " +
-      "[--timeout SECONDS]\n");
+      "[--timeout SECONDS]\n" +
+      "       linked_device.mjs follow --modules TREE --auth FOLDER --log FILE " +
+      "--picked FILE --store FILE --status FILE\n");
     return finish(EXIT.usage);
   }
   process.umask(0o077);
@@ -216,6 +431,7 @@ async function main() {
     log("warn", "no auth state: needs a new pairing");
     return finish(EXIT.needsPairing);
   }
+  if (following) return follow(baileys, auth, values);
 
   setTimeout(() => {
     log("warn", `${pairing ? "not paired" : "not connected"} after ${seconds} seconds`);
