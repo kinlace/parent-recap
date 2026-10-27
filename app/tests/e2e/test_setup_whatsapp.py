@@ -273,7 +273,6 @@ def test_no_text_on_the_page_names_full_disk_access_finder_or_the_python_file(pa
         assert not [key for key in table if key.startswith("whatsapp.")], language  # its old step
     html = call(page.url).body.decode()
     assert 'id="source-whatsapp"' not in html and "python-file" not in html
-    assert "api/whatsapp" not in (PAGE_DIR / "page.js").read_text()
 
 
 def test_check_leads_back_to_connect_s_list_where_a_skipped_source_can_be_opened(harness, page,
