@@ -3,10 +3,9 @@
 `install.sh` (`install.ps1` on Windows) unpacks a pinned Node into a versioned folder in
 `runtime/`, next to the pinned Python. The setup page installs the pinned wilma CLI (ADR 0008)
 with that Node's npm into `wilma/`, not into the computer's global npm prefix, and the install
-the Linked Device's Baileys tree into `baileys/` (`baileys_install`), both staged the same way
-(`install_staged`). The CLI always runs
-on that Node, so a Node the computer has, or having none, changes nothing, and nothing outside
-Parent Recap's folder can update either of them.
+puts the Linked Device's Baileys tree into `baileys/` the same way (`baileys_install`), both
+staged by `install_staged`. The CLI always runs on that Node, so a Node the computer has, or
+having none, changes nothing, and nothing outside Parent Recap's folder can update either of them.
 
 Node and npm lay their files out differently on Windows: `node.exe` at the top of Node's folder
 with npm beside it in `node_modules`, and a global install's packages in `<prefix>/node_modules`

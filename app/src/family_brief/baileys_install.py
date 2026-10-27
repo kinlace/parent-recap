@@ -83,8 +83,10 @@ def _npm_ci(npm: list[str], staging: Path) -> str | None:
     if proc.returncode != 0:
         return failure.exited("npm", proc.returncode, proc.stderr, proc.stdout)
     version = installed_version(staging)
+    if version is None:
+        return "npm finished without installing the WhatsApp library."
     if version != BAILEYS_VERSION:
-        return f"npm installed Baileys {version or 'nowhere'}, not {BAILEYS_VERSION}."
+        return f"npm installed version {version} of the WhatsApp library, not {BAILEYS_VERSION}."
     return None
 
 

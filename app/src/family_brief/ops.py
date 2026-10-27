@@ -56,7 +56,8 @@ CHECK_ITEMS = (
     *sources.GMAIL.doctor_items().items(), ("claude", "Claude"), ("codex", "Codex"),
     ("gateway", "AI gateway"), ("gateway-key", "Gateway Key"),
     *(item for s in _sources_after_the_ai() for item in s.doctor_items().items()),
-    ("whatsapp-library", "WhatsApp library"), ("calendar", "Calendar"), ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"),
+    ("whatsapp-library", "WhatsApp library"),
+    ("calendar", "Calendar"), ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"),
     ("schedule", "Schedule"), ("last-run", "Last run"), ("python-path", "Python path"),
     ("wake", "Wake"), ("sign-in-after-update", "Sign-in after updates"),
 )
