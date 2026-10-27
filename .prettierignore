@@ -1,0 +1,5 @@
+# The setup page's hand-formatted files: the editor's format-on-save hook would otherwise
+# reformat the whole file on every edit and bury the change in the diff.
+app/src/family_brief/page/index.html
+app/src/family_brief/page/page.css
+app/src/family_brief/page/page.js
