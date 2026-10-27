@@ -85,6 +85,7 @@ def test_a_failed_codex_call_raises(codex, process):
 
 def test_codex_that_isnt_there_says_how_to_get_it(home, system, monkeypatch):
     monkeypatch.setattr(codex_backend, "CODEX_BUNDLED", ())
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")  # not the codex this Mac's own PATH may have
     codex = llm.for_llm(LLMConfig(backend="codex"))
 
     assert codex.program() is None
