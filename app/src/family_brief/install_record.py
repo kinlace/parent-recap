@@ -1,7 +1,8 @@
 """The record of what setup created on this Mac, so uninstall removes exactly that.
 
 Each step that creates something adds it here: `install.sh` the program, its logs folder, the
-folder of its pinned Python and Node, the Codex skills and the plugin copy it runs from; `schedule
+folder of its pinned Python and Node, the Codex skills, the plugin copy it runs from and the
+Linked Device's Baileys tree; `schedule
 install` the launchd jobs; storing a Gmail App Password its Keychain account; installing the
 wilma CLI and saving its sign-in the CLI's folder and the profile's id; installing Claude Code's
 plugin, and its marketplace, their names. Only what setup installed goes in: a Wilma profile,
@@ -24,7 +25,7 @@ import threading
 from pathlib import Path
 
 KINDS = ("program", "logs", "runtime", "plugin", "codex-skill", "launchd", "keychain", "wilma-cli",
-         "wilma-profile", "claude-plugin", "claude-marketplace")
+         "wilma-profile", "claude-plugin", "claude-marketplace", "baileys")
 
 
 # The setup page's steps run in threads; two adds at once would each write the record without the

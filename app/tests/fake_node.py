@@ -1,5 +1,5 @@
-"""Parent Recap's own Node and the wilma CLI installed with it, laid out in a test's
-~/ParentRecap as the install and npm lay them out on the system the tests run on (ADR 0011).
+"""Parent Recap's own Node and the wilma CLI and Baileys tree installed with it, laid out in a
+test's ~/ParentRecap as the install and npm lay them out on the system the tests run on (ADR 0011).
 
 On macOS, the stand-in `node` runs the script it's given as a program, so a fake wilma CLI with
 a Python shebang runs on it; without it, nothing runs the CLI. On Windows, `node.exe` is an empty
@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-from family_brief import setup_wilma
+from family_brief import baileys_install, setup_wilma
 
 NODE_VERSION = "24.21.0"
 WINDOWS = sys.platform == "win32"
@@ -70,6 +70,23 @@ def install_wilma(home: Path, script: str, version: str = setup_wilma.WILMA_CLI_
     link.unlink(missing_ok=True)
     link.symlink_to(Path("..") / PACKAGE / SCRIPT)
     return link
+
+
+def baileys_folder(home: Path) -> Path:
+    return home / "ParentRecap" / "baileys"
+
+
+def install_baileys(folder: Path, version: str = baileys_install.BAILEYS_VERSION,
+                    lockfile: bytes | None = None) -> None:
+    """The Baileys tree in `folder` as `npm ci` leaves it, from the committed npm files, the
+    lockfile `lockfile` instead when given, with Baileys' package.json saying `version`."""
+    package = folder / "node_modules" / baileys_install.BAILEYS_PACKAGE
+    package.mkdir(parents=True, exist_ok=True)
+    (package / "package.json").write_text(json.dumps(
+        {"name": baileys_install.BAILEYS_PACKAGE, "version": version}))
+    (folder / "package.json").write_bytes((baileys_install.PINNED / "package.json").read_bytes())
+    (folder / "package-lock.json").write_bytes(
+        lockfile or (baileys_install.PINNED / "package-lock.json").read_bytes())
 
 
 def is_npm(cmd: list[str]) -> bool:
