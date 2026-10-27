@@ -188,6 +188,10 @@ if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_RO
 # A Household that connected Wilma gets the wilma CLI version this release pins (ADR 0008), on
 # the Node above. One that couldn't be updated keeps working, and the next install tries again.
 "$APP/.venv/bin/python" -m family_brief.setup_wilma update
+# The Baileys tree the Linked Device runs on (ADR 0025), with the Node above's `npm ci` from the
+# lockfile this release pins. One that couldn't be installed leaves the one there, and the next
+# install tries again.
+"$APP/.venv/bin/python" -m family_brief.baileys_install install
 
 # --codex: also install the two skills for Codex, which reads user skills from ~/.agents/skills.
 # They get unique names, Codex's $skill syntax, and a note saying where this plugin folder is.

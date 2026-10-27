@@ -42,6 +42,14 @@ def test_run_as_administrator_it_stops_before_it_makes_anything():
     assert "Run as administrator" in body.split("if (Test-Elevated) {", 1)[1].split("}", 1)[0]
 
 
+def test_as_install_sh_it_installs_the_baileys_tree_once_the_runtimes_are_recorded():
+    # CI's windows-install job runs it for real; this says where.
+    body = (ROOT / "install.ps1").read_text().split("function Install-ParentRecap {", 1)[1]
+
+    recorded = body.index("'-m', 'family_brief.install_record'")
+    assert recorded < body.index("@('-m', 'family_brief.baileys_install', 'install')")
+
+
 def test_install_ps1_is_ascii_only():
     # Windows PowerShell 5.1 reads a script file without a byte order mark in the PC's own code
     # page, so anything else would come out garbled.

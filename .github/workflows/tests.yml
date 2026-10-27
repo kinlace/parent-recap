@@ -257,6 +257,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the program doesn't find its own Node" }
           & $py -c "import sys; print(sys._base_executable); sys.exit('ParentRecap' not in sys._base_executable)"
           if ($LASTEXITCODE -ne 0) { throw "the venv isn't on Parent Recap's own Python" }
+          & $py -c "import sys; from family_brief import baileys_install as b; print(b.folder(), b.installed_version()); sys.exit(not b.up_to_date())"
+          if ($LASTEXITCODE -ne 0) { throw "the install didn't leave the pinned Baileys tree" }
       # As the pasted line ends: the installed program's setup page, served on this PC, offering
       # what Windows has and nothing only macOS has (no WhatsApp, the gateway first of the AIs).
       - name: The installed program serves the setup page, without macOS's steps
@@ -285,7 +287,7 @@ jobs:
       - name: A second install downloads and installs nothing
         run: |
           $watched = @("$env:INSTALLED\runtime", "$env:INSTALLED\app\.venv\Scripts\python.exe",
-                       "$env:INSTALLED\app\.venv\parent-recap-packages.txt")
+                       "$env:INSTALLED\app\.venv\parent-recap-packages.txt", "$env:INSTALLED\baileys")
           $before = $watched | ForEach-Object { (Get-Item $_).LastWriteTimeUtc.Ticks }
           $out = powershell -NoProfile -ExecutionPolicy Bypass -File $env:PARENT_RECAP *>&1 | Out-String
           if ($LASTEXITCODE -ne 0) { throw "exited with $LASTEXITCODE" }
@@ -293,7 +295,7 @@ jobs:
           if ($out -match 'Downloading|Installing') { throw 'the second install downloaded or installed something' }
           if ($out -notmatch 'up to date') { throw 'no word that the packages are up to date' }
           $after = $watched | ForEach-Object { (Get-Item $_).LastWriteTimeUtc.Ticks }
-          if (Compare-Object $before $after) { throw 'the second install changed the runtimes or the venv' }
+          if (Compare-Object $before $after) { throw 'the second install changed the runtimes, the venv or the Baileys tree' }
       # As the setup page's Wilma step installs it, from npm, with the program's own Node.
       - name: The wilma CLI installs and runs on the program's own Node
         run: |
@@ -306,7 +308,7 @@ jobs:
           & $py -c "import sys; from family_brief import setup_wilma; t = setup_wilma.tenants(); print(len(t or [])); sys.exit(not t)"
           if ($LASTEXITCODE -ne 0) { throw "the wilma CLI came without Wilma's town list" }
       # What setup leaves (a config, a secret in Credential Manager, the evening tasks in Task
-      # Scheduler, the wilma CLI above), then uninstall run from the installed program, as a family
+      # Scheduler, the wilma CLI above, the install's Baileys tree), then uninstall run from the installed program, as a family
       # runs it: the program and its Python go once it has ended, from a hidden PowerShell. The
       # runner's output is a pipe in the PC's code page, as an agent's is, with no ✅ or ❌ (#380).
       - name: Uninstall leaves no task, credential or folder of Parent Recap's
