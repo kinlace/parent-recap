@@ -1,8 +1,8 @@
 """The Linked Device's Node program (ADR 0025) in its `pair`, `groups` and `follow` modes, run by
 a real Node on the fake Baileys package (`fake_baileys/`) in the test's module folder: what it
 prints, the auth state, message store and status file it writes and doesn't, how it reconnects,
-its log, and that it only reads. No JavaScript test toolchain
-(ADR 0024): the Node is Parent Recap's pinned one where it is installed, else one on PATH."""
+its log, and that it only reads. No JavaScript test toolchain (ADR 0024): the Node is Parent
+Recap's pinned one where it is installed, else one on PATH."""
 from __future__ import annotations
 
 import json
@@ -308,8 +308,7 @@ def test_follow_keeps_its_status_and_marks_a_logout_as_the_link_ended(device, tm
     seen: dict[str, Any] = {}
 
     def connected(_proc: subprocess.Popen) -> None:
-        seen.update(until(lambda: read_status(tmp_path).get("connected_since") and
-                          read_status(tmp_path)))
+        seen.update(until(lambda: (now := read_status(tmp_path)).get("connected_since") and now))
         go(tmp_path)
 
     run = device("follow", [[{"open": True}, {"wait": "go"}, LOGOUT]], during=connected)
@@ -322,6 +321,24 @@ def test_follow_keeps_its_status_and_marks_a_logout_as_the_link_ended(device, tm
     assert ended["link_ended_at"] >= ended["last_connected"] >= seen["connected_since"]
     assert len(run.options()) == 1  # no reconnect after a logout
     assert "logged out: the link ended" in run.log
+
+
+def test_follow_started_again_keeps_an_ended_link_ended_until_it_connects(device, tmp_path):
+    paired(device, tmp_path, CLASS)
+    device("follow", [[{"open": True}, LOGOUT]])
+    ended = read_status(tmp_path)
+    seen: dict[str, Any] = {}
+
+    def starting(_proc: subprocess.Popen) -> None:
+        until(lambda: tmp_path.joinpath("calls-2.jsonl").read_text(encoding="utf-8"))
+        seen.update(read_status(tmp_path))
+        go(tmp_path)
+
+    run = device("follow", [[{"wait": "go"}, {"open": True}, LOGOUT]], during=starting)
+
+    assert run.code == linked_device.NEEDS_PAIRING, run.stderr
+    assert seen == ended
+    assert read_status(tmp_path)["link_ended_at"] > ended["link_ended_at"]
 
 
 @pytest.mark.macos
