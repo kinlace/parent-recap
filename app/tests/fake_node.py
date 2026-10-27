@@ -1,5 +1,6 @@
 """Parent Recap's own Node and the wilma CLI and Baileys tree installed with it, laid out in a
-test's ~/ParentRecap as the install and npm lay them out on the system the tests run on (ADR 0011).
+test's ~/ParentRecap as the install and npm lay them out on the system the tests run on (ADR 0011),
+and the fake Baileys package the Linked Device's program runs on in its tests.
 
 On macOS, the stand-in `node` runs the script it's given as a program, so a fake wilma CLI with
 a Python shebang runs on it; without it, nothing runs the CLI. On Windows, `node.exe` is an empty
@@ -9,6 +10,7 @@ nothing: the tests that install the CLI fake the npm command itself.
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -87,6 +89,13 @@ def install_baileys(folder: Path, version: str = baileys_install.BAILEYS_VERSION
     (folder / "package.json").write_bytes((baileys_install.PINNED / "package.json").read_bytes())
     (folder / "package-lock.json").write_bytes(
         lockfile or (baileys_install.PINNED / "package-lock.json").read_bytes())
+
+
+def install_fake_baileys(folder: Path) -> None:
+    """The fake Baileys package in `folder`'s node_modules, where the Linked Device's program
+    imports it from (`fake_baileys/index.mjs` says what it plays)."""
+    package = folder / "node_modules" / baileys_install.BAILEYS_PACKAGE
+    shutil.copytree(Path(__file__).parent / "fake_baileys", package)
 
 
 def is_npm(cmd: list[str]) -> bool:

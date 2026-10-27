@@ -73,6 +73,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code |
 | `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses       |
 | `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks  |
+| `test_linked_device.py`         | The Linked Device's Node program's `pair` and `groups` on a fake   |
 | `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token             |
 | `test_setup_google_calendar.py` | The Google Calendar authorization script                           |
 | `test_weekend_picks.py`         | Weekend Picks through the same backend as the Brief                |
@@ -205,7 +206,10 @@ found as Windows finds them, on any system), `credential_manager`, and the build
 ## Other fakes and helpers
 
 - `fake_node.py`: Parent Recap's own Node, a fake wilma CLI and Baileys tree in the test's
-  `~/ParentRecap`.
+  `~/ParentRecap`, and `install_fake_baileys`, which puts `fake_baileys/` in a module folder: a
+  stand-in Baileys that plays the steps a test gives it (QR codes, open, close, creds and keys)
+  and records each call the Linked Device's program makes. That program runs on a real Node,
+  Parent Recap's own where it is installed, else one on PATH; CI's runners have one.
 - `fake_packages.py`: packages for tests that run the real pip offline.
 - `goldens.py`: the golden files' check.
 - `no_google/`: Google's packages blocked from import. `no_pty/`: the Wilma window's
