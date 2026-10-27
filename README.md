@@ -4,7 +4,7 @@ Every evening Parent Recap reads the places your kids' news comes from, has Clau
 
 - **Gmail**: only mail from the schools, teachers and clubs on your allowlist
 - **Wilma**: school messages, announcements and the timetable for the next school day
-- **WhatsApp**: the parent, teacher, team and hobby groups you pick (read from the local data of WhatsApp for Mac)
+- **WhatsApp**: the parent, teacher, team and hobby groups you pick (read as a Linked Device, paired on the setup page)
 - **MyClub**: the club's training and match calendar
 
 The Brief is grouped by Kid and lists **Notices** (things to know) and **Action Items** (things to do, with due dates). New events come with the email as a calendar attachment you can add with one tap, or can be written straight into Google Calendar. Optional: Weekend Picks, family events in the Helsinki region recommended every Friday.
@@ -19,7 +19,7 @@ Have a Windows 11 PC instead of a Mac? [Parent Recap on Windows](docs/windows.md
 - Someone logged in to that Mac in the evening, even with the screen locked. The evening job only runs while you're logged in, and after a restart (a macOS update, a power cut) no Brief goes out until someone logs in again; an SSH login doesn't count. Log in once after each restart, or turn on automatic login: "No Brief after the Mac restarted" in [troubleshooting](docs/troubleshooting.md) says what that means for security
 - Either a Claude Pro or Max subscription with Claude Code installed, or a ChatGPT account on any plan, Free included, with the ChatGPT desktop app installed. Install Claude Code with its [native installer](https://code.claude.com/docs/en/setup), which keeps it up to date by itself: paste `curl -fsSL https://claude.ai/install.sh | bash` into Terminal
 - A Gmail account with two-step verification turned on
-- Optional: a Wilma parent account, WhatsApp from the App Store, a MyClub account
+- Optional: a Wilma parent account, WhatsApp on your phone, a MyClub account
 
 ## Install
 
@@ -37,7 +37,7 @@ On a Windows 11 PC, paste a PowerShell line instead: see [Install](docs/windows.
 
 ### Next
 
-The page walks you through setup in Finnish, English or Chinese: a few choices with defaults, then your Sources one at a time from a list (Wilma, WhatsApp and MyClub can be skipped and added later), one page of what was found, and a preview of your first Brief before it's sent. Setup downloads about 230 MB, mostly the Python packages the program uses and its own Python and Node, so you don't need Homebrew, Python or Node of your own. Passwords go only into the page's own fields, on your Mac, and never into a chat. If you get stuck, **Continue in the chat** on any step hands setup over to Claude Code or Codex at the same step.
+The page walks you through setup in Finnish, English or Chinese: a few choices with defaults, then your Sources one at a time from a list (Wilma and MyClub can be skipped and added later), one page of what was found, and a preview of your first Brief before it's sent. Setup downloads about 230 MB, mostly the Python packages the program uses and its own Python and Node, so you don't need Homebrew, Python or Node of your own. Passwords go only into the page's own fields, on your Mac, and never into a chat. If you get stuck, **Continue in the chat** on any step hands setup over to Claude Code or Codex at the same step.
 
 Once installed, if something goes wrong or you want to change a setting (a new school year, a different group, another recipient), type `/parent-recap:manage` (`$parent-recap-manage` in Codex), or just say what you want.
 
@@ -75,7 +75,7 @@ Tell Claude or Codex "uninstall Parent Recap". It lists everything setup created
 
 - Passwords and tokens are stored in the macOS Keychain; the config file `~/.family/config.yaml` is readable only by you
 - Gmail only scans senders on your allowlist, and skips mail you sent yourself, drafts, Promotions and Social
-- WhatsApp only reads the groups you picked; the database is copied first, read, and the copy deleted
+- WhatsApp only keeps the messages of the groups you picked
 - Every Brief and the raw data it was built from are archived in `~/ParentRecap/`
 
 The `family-brief` command still works beside `parent-recap`, and `~/.family` keeps its name. Installed an earlier version, whose folder is `~/FamilyBrief`? Uninstall it with that version first (`~/FamilyBrief/app/.venv/bin/family-brief uninstall`), then paste the install line again: the install line stops and says so.

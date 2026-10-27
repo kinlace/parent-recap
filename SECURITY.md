@@ -12,7 +12,7 @@ Each evening the scheduled job on your Mac does the following.
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | Gmail                    | IMAP to Google, using your App Password. Only senders on your allowlist are fetched; mail you sent yourself, drafts, Promotions and Social are skipped.                      | Nothing new: the mail is already at Google.             |
 | Wilma                    | The unofficial community [wilma CLI](https://github.com/aikarjal/wilmai) logs in to your school's Wilma server as you and returns messages, announcements and the timetable. | Your Wilma login, sent by the CLI to the Wilma server.  |
-| WhatsApp                 | The local database of WhatsApp for Mac is copied to a temporary folder, only the chats you picked are read, and the copy is deleted.                                         | Nothing: it's never sent to WhatsApp or Meta.           |
+| WhatsApp                 | As a Linked Device, paired on the setup page the way WhatsApp Web is (ADR 0027). Only the messages of the groups you picked are kept.                                        | Nothing new: the messages already come through WhatsApp. |
 | MyClub                   | Your personal calendar subscription link is downloaded.                                                                                                                      | The link, including its personal token, sent to MyClub. |
 | Weekend Picks (optional) | Public events are fetched from the Helsinki region's Linked Events API.                                                                                                      | Nothing about your Household.                           |
 
@@ -90,7 +90,7 @@ Keep `~/.family` and `~/.config/wilmai` out of cloud sync, dotfiles repos and ba
 
 ## On Windows
 
-On a Windows 11 PC ([Parent Recap on Windows](docs/windows.md), ADR 0019) data flows as above, without WhatsApp, and the setup page works the same way. What differs is where things are kept and who on the PC can read them.
+On a Windows 11 PC ([Parent Recap on Windows](docs/windows.md), ADR 0019) data flows as above, and the setup page works the same way. What differs is where things are kept and who on the PC can read them.
 
 - **The secrets** (the Gmail App Password, the Gateway Key and the Claude token) go into Credential Manager, one generic credential each, named `Parent Recap/<account>` with the accounts above (Control Panel → Credential Manager → Windows Credentials). They're kept on this PC for this Windows user and never roam to another PC. Parent Recap writes and reads them through Windows' own Credential Manager functions, never on a command line, and the setup page takes them in its own fields as on a Mac.
 - **Any program you run as the same Windows user can read them without asking.** Windows has no counterpart to the Keychain's per-program trust (ADR 0009): a program you run under that account, including one you shouldn't have trusted, gets the Gmail App Password, the Gateway Key and the Claude token (ADR 0021).

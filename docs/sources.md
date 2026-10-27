@@ -97,18 +97,7 @@ After login, the wilma CLI stores the Wilma username and password in `~/.config/
 
 ## WhatsApp (optional)
 
-This reads the local database of WhatsApp for Mac; the data never leaves the computer.
-
-1. It needs **WhatsApp** from the App Store (not the old Electron version), linked by scanning the QR code with the phone, with chat history fully synced
-2. **Give the scheduled job permission and list the chats**: run `$FB setup whatsapp`. It reads WhatsApp through `bg`, with the scheduled job's Python. It first checks, without macOS asking anything, whether that Python has Full Disk Access. Until it does, it selects the Python file in Finder (it sits in a hidden folder), opens System Settings → Privacy & Security → **Full Disk Access** and waits: drag the file from Finder into the list and turn its switch on. WhatsApp isn't read before that, so macOS never asks whether python3.x may access data from other apps; on macOS 26 an Allow there only lasts one read (ADR 0012). Once it has Full Disk Access, it lists the chats, with a hint on those that look like they're about a Kid. If it can't open Finder or System Settings, it says which `open` commands to run in Terminal
-3. Later, `$FB bg discover whatsapp-chats` lists the chats the same way
-4. Pick the groups about the Kids: class parent groups, teacher groups, team groups, carpool groups, hobby groups, playdate groups. For each group set:
-   - `name`: **copied exactly** from the output (the text inside the quotes, keeping trailing spaces, curly quotes ’ and emoji)
-   - `kid`: which Kid it belongs to (matching a `name` in kids), or `both` if the two Kids share it
-   - `label`: class / football / piano / carpool / playdate …
-5. Set `whatsapp.enabled: true`
-
-Note: without `bg`, reading WhatsApp directly from Terminal, Claude Code or Codex fails with "Operation not permitted". That's because macOS grants this permission per process; don't give Terminal the permission. `doctor` automatically checks WhatsApp with the scheduled job's Python. If it still fails with `bg`, step 2 wasn't done right: check that what was added is the "real Python path", and if it still fails, add it to "Full Disk Access" too.
+WhatsApp is read as a Linked Device, paired on the setup page (ADR 0027). The page doesn't offer the pairing yet.
 
 ## MyClub (optional)
 
@@ -175,8 +164,7 @@ Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declare
 1. **Its collector**: a module in `family_brief.collectors` with one function, `collect(cfg, state, kid_terms)`, returning a `Collected` (`family_brief.collectors.base`) with the Source's Messages, its events or both. It reads only its own transport (IMAP, HTTP, a command-line program, a local database) and skips what is older than its lookback
 2. **Its config model**: a section of `Config` in `family_brief.config` for what setup saves, or a field on `Kid` when each Kid has their own, as MyClub's link. A section with `lookback_hours` lets the run widen the lookback after nights the Source missed
 3. **Its record** in `family_brief.sources`, added to `ALL` at its place in the run's order. Every record has a name, a label in each reviewed language (en, fi, zh), `connected` (whether the Household's config has it read), `skippable` (on the setup page), `connect_rank` (its place on the setup page's list, one of its own) and `collect`. The other fields are optional hooks, each with a default, as `Source` describes them:
-   - the run and the Brief: `lookback`, `counts_events` (the coverage line counts its events), `permission_lacked`
-   - `macos_only`: off macOS, `doctor` and the setup page leave it out
+   - the run and the Brief: `lookback`, `counts_events` (the coverage line counts its events)
    - `sender_domain`: the domain of the mail it sends of its own news, which Gmail's sender suggestions leave out once it is connected
    - `doctor`: `check`, and `check_items` when it makes more than one check. Without `check`, `doctor` says nothing of the Source
    - uninstall: `secrets`, `survey` and `notes`, for what setup made for it and what the family removes themselves
