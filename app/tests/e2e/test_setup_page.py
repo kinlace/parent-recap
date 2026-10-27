@@ -523,7 +523,7 @@ def test_a_source_already_done_stays_done_when_opened_again(harness, page):
 
 
 # The words for what only macOS has, in each language: the Mac, its Keychain, Terminal, Finder,
-# System Settings and the Passwords app, and WhatsApp for Mac.
+# System Settings and the Passwords app, and WhatsApp's Mac app.
 MACOS_WORDS = {
     "en": r"\bMac\b|macOS|Keychain|Terminal|Finder|System Settings|Passwords app|WhatsApp",
     "fi": r"Mac|macOS|avainnippu|Pääte|Terminal|Järjestelmäasetukset|Salasanat-sovellu|WhatsApp",

@@ -131,7 +131,7 @@ def set_up(harness, monkeypatch, *, record: bool = True) -> None:
     (home / ".family" / "languages" / "sv.json").write_text("{}")
     (home / ".family" / "config.yaml.bak-202609011200").write_text("old: config\n")
     tools.remembered_path().write_text('{"node": "/nix/store/node/bin/node"}\n')  # found off PATH
-    # The record of the Python that read WhatsApp, which setup's old WhatsApp for Mac step kept.
+    # The record of the Python that read WhatsApp, which setup's old step that read the Mac app kept.
     (home / ".family" / "whatsapp-python.json").write_text(json.dumps({"python": str(home / PINNED_PYTHON)}))
     # The progress the setup page and the chat share.
     saved = setup_save.save(home / ".family" / "config.yaml", {"progress": {"phase": "finish"}})

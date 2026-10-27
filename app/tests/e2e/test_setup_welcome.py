@@ -243,8 +243,8 @@ def test_welcome_names_each_ai_s_plan_beside_it_and_nothing_comes_next():
 
 # What Welcome's "Have these ready" list says in each language (#298), one line each (#491): the
 # Wilma login, 2-Step Verification for the App Password, one MyClub link per Kid, and the phone
-# that may confirm it's you to Google, on macOS as on Windows now that setup has no WhatsApp for Mac
-# step to sign in to. The last line says the rest can wait.
+# that may confirm it's you to Google, on macOS as on Windows now that setup has no WhatsApp Mac app
+# to sign in to. The last line says the rest can wait.
 READY_WORDS = {
     "en": {"wilma": ("username", "password"),
            "gmail": ("2-Step Verification",),
@@ -291,7 +291,7 @@ def test_the_ready_list_names_what_setup_needs_in_each_language():
             said = text[language][f"welcome.ready.{item}"]
             for word in words:
                 assert word.lower() in said.lower(), (language, item, word)
-        # The same on every system: no WhatsApp for Mac to sign in to.
+        # The same on every system: no WhatsApp Mac app to sign in to.
         assert "WhatsApp" not in text[language]["welcome.ready.phone.why"], language
         assert "welcome.ready.phone.why.windows" not in text[language], language
     # The list replaces Welcome's old Wilma sentence rather than adding a second one.
