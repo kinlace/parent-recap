@@ -47,7 +47,7 @@ class Unread:
     since: datetime | None = None
 
 
-def _read(*_args: Any) -> Unread | None:
+def _never_unread(*_args: Any) -> Unread | None:
     return None
 
 
@@ -63,7 +63,7 @@ class Source:
     counts_events: bool = False         # the coverage line counts its events rather than its Messages
     lookback: Callable[[Config], Window] | None = None  # its section with lookback_hours, if any
     # why it isn't read tonight though the Household set it up, given the config and the state
-    unread: Callable[[Config, State], Unread | None] = _read
+    unread: Callable[[Config, State], Unread | None] = _never_unread
     sender_domain: str | None = None    # the domain of the mail it sends of its own news (#361)
     # doctor's checks of it, given the config, `add` and the config's path; each does nothing for
     # a Source the Household hasn't set up

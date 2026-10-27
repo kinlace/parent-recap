@@ -26,11 +26,15 @@ def connected(cfg: Config) -> bool:
 
 
 def unread(cfg: Config, state: State) -> Unread | None:
-    """Picked groups that aren't read: the link ended, since when WhatsApp ended it, or there's no
-    pairing, as for groups picked when WhatsApp for Mac was read, since WhatsApp was last read."""
-    if not cfg.whatsapp.enabled or not cfg.whatsapp.chats or connected(cfg):
+    """Why picked groups aren't read tonight: they need a new pairing. Since WhatsApp ended the
+    link, or, with no pairing at all, as for groups picked when WhatsApp for Mac was read, since
+    the last run that read WhatsApp."""
+    if not cfg.whatsapp.enabled or not cfg.whatsapp.chats:
         return None
-    return Unread(NEEDS_PAIRING, linked_device.link().ended_at or state.caught_up_at("whatsapp"))
+    link = linked_device.link()
+    if link.paired and cfg.whatsapp.picked_ids():
+        return None
+    return Unread(NEEDS_PAIRING, link.ended_at or state.caught_up_at("whatsapp"))
 
 
 def collect(cfg: Config, state: State, kid_terms: list[str]) -> Collected:
