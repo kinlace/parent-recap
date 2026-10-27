@@ -20,8 +20,10 @@
 // "timestamp" (seconds), "text" (or a placeholder such as "[image]"), "from_me"}. The `--status`
 // file is {"paired", "connected_since", "last_connected", "link_ended_at"}, times in ISO 8601.
 // After a drop it connects again, after a pause that doubles with each drop up to five minutes.
-// When WhatsApp ends the link it sets "link_ended_at" and exits with EXIT.needsPairing, which the
-// OS job doesn't restart. The store and status are 0600 in folders made 0700.
+// When WhatsApp ends the link it sets "link_ended_at" and exits with EXIT.linkEnded, as it does
+// without auth state: the only exit the OS job doesn't start it again after (jobs.LINK_ENDED).
+// Stopped by the OS, it exits with EXIT.stopped. The store and status are 0600 in folders made
+// 0700.
 //
 // It only reads: no send, read-receipt or presence call is ever made. Delivery receipts and
 // presence nodes Baileys sends on its own are accepted (#181). Log lines go to FILE, never to
@@ -36,7 +38,9 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-const EXIT = { failed: 1, usage: 2, timedOut: 3, needsPairing: 4 };
+// follow's linkEnded is 0, since launchd tells only a successful exit from the rest; any other
+// way it ends, a crash included, has another code, so the OS job starts it again.
+const EXIT = { failed: 1, usage: 2, timedOut: 3, needsPairing: 4, stopped: 5, linkEnded: 0 };
 // The phone lists a linked device by the first of these.
 const BROWSER = ["Parent Recap", "Chrome", "1.0"];
 // How long pair and groups wait; follow doesn't stop.
@@ -349,7 +353,7 @@ async function follow(baileys, auth, { picked, store, status }) {
       last_connected: link.connected_since ? at : link.last_connected,
       link_ended_at: at,
     });
-    finish(EXIT.needsPairing);
+    finish(EXIT.linkEnded);
   };
 
   await readPicked();
@@ -399,7 +403,7 @@ async function follow(baileys, auth, { picked, store, status }) {
   for (const signal of ["SIGTERM", "SIGINT"]) {
     process.on(signal, () => {
       log("info", `stopped by ${signal}`);
-      disconnected().finally(() => finish(0));
+      disconnected().finally(() => finish(EXIT.stopped));
     });
   }
   current = connect(baileys, auth, handle, events);
@@ -440,7 +444,7 @@ async function main() {
   const auth = authState(baileys, values.auth, !pairing);
   if (!(await auth.load())) {
     log("warn", "no auth state: needs a new pairing");
-    return finish(EXIT.needsPairing);
+    return finish(following ? EXIT.linkEnded : EXIT.needsPairing);
   }
   if (following) return follow(baileys, auth, values);
 
