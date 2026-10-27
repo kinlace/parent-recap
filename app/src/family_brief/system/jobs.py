@@ -40,7 +40,7 @@ class Job:
 
 
 @dataclass(frozen=True)
-class Status:
+class AlwaysStatus:
     """The always-running job's: installed, and running right now."""
     installed: bool
     running: bool
@@ -95,7 +95,7 @@ def remove_always() -> None:
     _adapter.remove_always()
 
 
-def always_status() -> Status:
+def always_status() -> AlwaysStatus:
     """Whether the always-running job is installed, and running."""
     return _adapter.always_status()
 

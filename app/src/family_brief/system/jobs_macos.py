@@ -172,11 +172,11 @@ def remove_always() -> None:
     _remove(_path(ALWAYS_LABEL))
 
 
-def always_status() -> jobs.Status:
+def always_status() -> jobs.AlwaysStatus:
     probe = subprocess.run(["launchctl", "print", f"{_domain()}/{ALWAYS_LABEL}"],
                            capture_output=True, text=True, encoding="utf-8")
     running = probe.returncode == 0 and bool(re.search(r"^\tstate = running$", probe.stdout, re.M))
-    return jobs.Status(installed=_path(ALWAYS_LABEL).exists(), running=running)
+    return jobs.AlwaysStatus(installed=_path(ALWAYS_LABEL).exists(), running=running)
 
 
 def stop_always() -> None:

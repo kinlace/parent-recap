@@ -253,11 +253,11 @@ def test_lists_the_always_running_job_and_stops_and_removes_it(harness, monkeypa
 
     assert uninstall(harness) == 0
     assert jobs.system_name(jobs.ALWAYS) in capsys.readouterr().out
-    assert harness.jobs.always_status() == jobs.Status(installed=True, running=True)
+    assert harness.jobs.always_status() == jobs.AlwaysStatus(installed=True, running=True)
 
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
 
-    assert harness.jobs.always_status() == jobs.Status(installed=False, running=False)
+    assert harness.jobs.always_status() == jobs.AlwaysStatus(installed=False, running=False)
     assert harness.jobs.found() == []
 
 

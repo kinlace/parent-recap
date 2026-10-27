@@ -140,8 +140,8 @@ class FakeJobs:
     def remove_always(self) -> None:
         self.always, self.always_log_dir, self.always_running = None, None, False
 
-    def always_status(self) -> jobs.Status:
-        return jobs.Status(installed=self.always is not None, running=self.always_running)
+    def always_status(self) -> jobs.AlwaysStatus:
+        return jobs.AlwaysStatus(installed=self.always is not None, running=self.always_running)
 
     def stop_always(self) -> None:
         self.always_running = False
