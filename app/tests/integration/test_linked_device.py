@@ -272,7 +272,7 @@ def test_follow_keeps_only_the_picked_groups_messages(device, tmp_path):
             "ephemeralMessage": {"message": {"extendedTextMessage": {"text": "Linkki: x.fi"}}}}}},
         LOGOUT]])
 
-    assert run.code == linked_device.NEEDS_PAIRING, run.stderr
+    assert run.code == linked_device.LINK_ENDED, run.stderr
     class_ = {"group_id": CLASS, "group_subject": "Luokka 3B"}
     assert stored(tmp_path) == [
         {"id": "M1", **class_, "sender": "Liisa", "timestamp": 1000, "text": TEXT,
@@ -299,7 +299,7 @@ def test_follow_keeps_the_picked_groups_history_whatsapp_hands_over(device, tmp_
         {"chat": CLASS, "id": "H2", "text": TEXT, "time": 900},
         {"chat": PRIVATE, "id": "H3", "text": PRIVATE_TEXT}]}, LOGOUT]])
 
-    assert run.code == linked_device.NEEDS_PAIRING, run.stderr
+    assert run.code == linked_device.LINK_ENDED, run.stderr
     assert [(r["id"], r["text"], r["timestamp"]) for r in stored(tmp_path)] == [("H2", TEXT, 900)]
 
 
@@ -313,7 +313,7 @@ def test_follow_keeps_its_status_and_marks_a_logout_as_the_link_ended(device, tm
 
     run = device("follow", [[{"open": True}, {"wait": "go"}, LOGOUT]], during=connected)
 
-    assert run.code == linked_device.NEEDS_PAIRING, run.stderr
+    assert run.code == linked_device.LINK_ENDED, run.stderr
     assert seen["paired"] is True and seen["link_ended_at"] is None
     assert seen["last_connected"] == seen["connected_since"]
     ended = read_status(tmp_path)
@@ -336,7 +336,7 @@ def test_follow_started_again_keeps_an_ended_link_ended_until_it_connects(device
 
     run = device("follow", [[{"wait": "go"}, {"open": True}, LOGOUT]], during=starting)
 
-    assert run.code == linked_device.NEEDS_PAIRING, run.stderr
+    assert run.code == linked_device.LINK_ENDED, run.stderr
     assert seen == ended
     assert read_status(tmp_path)["link_ended_at"] > ended["link_ended_at"]
 
@@ -351,7 +351,7 @@ def test_follow_stopped_by_the_os_is_no_longer_connected(device, tmp_path):
 
     run = device("follow", [[{"open": True}, {"wait": "never"}]], during=stop)
 
-    assert run.code == 0, run.stderr
+    assert run.code == linked_device.STOPPED, run.stderr
     stopped = read_status(tmp_path)
     assert stopped["paired"] is True and stopped["connected_since"] is None
     assert stopped["last_connected"] is not None and stopped["link_ended_at"] is None
@@ -375,7 +375,7 @@ def test_follow_reconnects_after_a_drop_with_a_growing_pause(device, tmp_path):
     run = device("follow", [[{"open": True}, {"close": 428}], [{"close": 408}],
                             [{"open": True}, {"message": {"chat": CLASS, "text": TEXT}}, LOGOUT]])
 
-    assert run.code == linked_device.NEEDS_PAIRING, run.stderr
+    assert run.code == linked_device.LINK_ENDED, run.stderr
     opened = [c["at"] for c in run.calls if c["call"] == "makeWASocket"]
     assert len(opened) == 3
     first, second = opened[1] - opened[0], opened[2] - opened[1]
@@ -399,7 +399,7 @@ def test_follow_takes_a_changed_pick_without_a_new_pairing(device, tmp_path):
         {"message": {"chat": FOOTBALL, "id": "F2", "text": "Peli lauantaina"}}, LOGOUT]],
         during=pick_football)
 
-    assert run.code == linked_device.NEEDS_PAIRING, run.stderr
+    assert run.code == linked_device.LINK_ENDED, run.stderr
     assert [(r["id"], r["group_subject"]) for r in stored(tmp_path)] == [
         ("C1", "Luokka 3B"), ("F2", "Futis P2017 syksy")]
 
@@ -407,7 +407,7 @@ def test_follow_takes_a_changed_pick_without_a_new_pairing(device, tmp_path):
 def test_follow_without_auth_state_needs_a_new_pairing(device, tmp_path):
     run = device("follow", [[{"open": True}]])
 
-    assert run.code == linked_device.NEEDS_PAIRING
+    assert run.code == linked_device.LINK_ENDED
     assert run.calls == []
     assert not store(tmp_path).exists()
 
@@ -417,6 +417,6 @@ def test_follow_asked_for_a_qr_code_marks_the_link_ended(device, tmp_path):
 
     run = device("follow", [[{"qr": "2@again"}]])
 
-    assert run.code == linked_device.NEEDS_PAIRING
+    assert run.code == linked_device.LINK_ENDED
     assert run.printed == []
     assert read_status(tmp_path)["link_ended_at"] is not None

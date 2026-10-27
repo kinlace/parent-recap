@@ -18,19 +18,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from . import own_node, private_files
+from .system import jobs
 
 if TYPE_CHECKING:
     from .config import Config
 
 PROGRAM = Path(__file__).parent / "baileys" / "linked_device.mjs"
 
-# How the program exits, besides 0 once it has printed the groups, or once follow was stopped.
+# How the program exits, besides 0 once pair or groups has printed the groups.
 FAILED = 1
 USAGE = 2
 TIMED_OUT = 3  # pair: the phone didn't pair in time; groups: WhatsApp didn't connect in time
-# No auth state, or WhatsApp ended the link; follow has marked it ended in its status file, and
-# the OS job doesn't start it again.
-NEEDS_PAIRING = 4
+NEEDS_PAIRING = 4  # pair or groups: no auth state, or WhatsApp ended the link
+STOPPED = 5  # follow, stopped by the OS
+# follow: no auth state, or WhatsApp ended the link, which it has marked in its status file. The
+# OS job doesn't start it again after this exit alone.
+LINK_ENDED = jobs.LINK_ENDED
 
 # The store keeps a record this long past the longest lookback the evening run can read with.
 PRUNE_MARGIN = timedelta(days=1)
