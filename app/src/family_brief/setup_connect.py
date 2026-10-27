@@ -31,7 +31,7 @@ SKIP_ANSWERS: dict[str, dict[str, Any]] = {
     for s in (source_registry.WILMA, source_registry.WHATSAPP, source_registry.MYCLUB)
 }
 # The Sources Connect's list leaves out on every system: WhatsApp until its Linked Device step
-# (#521), now that the step that read WhatsApp for Mac is gone (ADR 0027).
+# (#521), now that the step that read the Mac app's database is gone (ADR 0027).
 NOT_OFFERED = frozenset({source_registry.WHATSAPP.name})
 
 

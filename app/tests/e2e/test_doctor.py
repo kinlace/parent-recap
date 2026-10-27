@@ -303,12 +303,12 @@ def test_doctor_names_an_unreadable_config_in_english(harness, capsys):
 
 @pytest.mark.parametrize("on", [MACOS, WINDOWS])
 def test_doctor_has_no_whatsapp_check_on_any_system(harness, capsys, on):
-    # WhatsApp turned on with groups picked, as a Household that read WhatsApp for Mac has it.
+    # WhatsApp turned on with groups picked, as a Household that read the Mac app's database has it.
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     harness.jobs.add(jobs.DAILY)
     harness.system = on
-    # Setup's old WhatsApp for Mac step recorded which Python read it; nothing reads that now.
+    # Setup's old step that read the Mac app recorded which Python read it; nothing reads that now.
     record = harness.home / ".family" / "whatsapp-python.json"
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text('{"python": "/Users/x/ParentRecap/runtime/python-3.12.6/bin/python3.12"}')

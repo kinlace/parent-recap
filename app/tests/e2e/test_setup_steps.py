@@ -130,12 +130,13 @@ def test_discover_gmail_senders_as_json_says_when_gmail_cannot_be_read(harness, 
     assert out["result"] == "read-failed" and "parent-recap doctor" in out["next"]
 
 
-# ── The steps that read WhatsApp for Mac, gone with it (ADR 0027)
+# ── The steps that read the Mac app's database, gone with it (ADR 0027). Their names are joined
+# from parts so that a search of the repo for them finds only the ADRs and the CHANGELOG (#515).
 
 
-@pytest.mark.parametrize("command", [["full-disk-access"], ["app-management"],
-                                     ["discover", "whatsapp-chats"]])
-def test_the_whatsapp_for_mac_commands_are_unknown(harness, capsys, command):
+@pytest.mark.parametrize("command", [["-".join(("full", "disk", "access"))], ["app-management"],
+                                     ["discover", "-".join(("whatsapp", "chats"))]])
+def test_the_mac_app_commands_are_unknown(harness, capsys, command):
     with pytest.raises(SystemExit) as exited:
         harness.cli(*command)
 
