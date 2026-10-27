@@ -1,0 +1,11 @@
+{
+  "name": "@whiskeysockets/baileys",
+  "version": "7.0.0-rc14",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./index.mjs"
+    }
+  }
+}
