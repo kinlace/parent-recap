@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 import yaml
 
+import fake_node
 from family_brief import __main__ as cli, ops, setup_steps, whatsapp_python
 from family_brief.collectors import whatsapp
 from family_brief.llm import codex as codex_backend
@@ -96,6 +97,38 @@ def test_doctor_names_the_always_running_job_when_it_is_installed(harness, nothi
               if jobs.system_name(jobs.ALWAYS) in l]
     assert line.startswith(ops.WARN.strip()) and "installed but not running" in line
     assert not HAN.findall(line)
+
+
+def whatsapp_library_line(out: str) -> str:
+    [line] = [l for l in out.splitlines() if "WhatsApp library:" in l]
+    return line
+
+
+@pytest.mark.parametrize("version, status, says", [
+    (None, ops.WARN, "not installed"),
+    ("7.0.0-rc9", ops.WARN, "version 7.0.0-rc9, not the pinned 7.0.0-rc14"),
+    ("7.0.0-rc14", ops.OK, "installed, the pinned version 7.0.0-rc14"),
+], ids=["missing", "another version", "pinned"])
+def test_doctor_says_whether_the_pinned_baileys_tree_is_installed(harness, nothing_loaded, capsys,
+                                                                  version, status, says):
+    if version:
+        fake_node.install_baileys(fake_node.baileys_folder(harness.home), version)
+
+    harness.cli("doctor", "--skip-llm")
+
+    line = whatsapp_library_line(capsys.readouterr().out)
+    assert line.startswith(status.strip()) and says in line
+    assert ("run the install again" in line) is (status == ops.WARN)
+
+
+def test_doctor_says_a_tree_from_another_lockfile_is_not_the_pinned_one(harness, nothing_loaded,
+                                                                         capsys):
+    fake_node.install_baileys(fake_node.baileys_folder(harness.home), lockfile=b"{}\n")
+
+    harness.cli("doctor", "--skip-llm")
+
+    line = whatsapp_library_line(capsys.readouterr().out)
+    assert line.startswith(ops.WARN.strip()) and "not the pinned tree" in line
 
 
 @pytest.fixture

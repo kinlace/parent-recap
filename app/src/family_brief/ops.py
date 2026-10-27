@@ -20,8 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
-from . import (google_packages, languages, own_node, private_files, secret_dialog, sources,
-               whatsapp_python)
+from . import (baileys_install, google_packages, languages, own_node, private_files, secret_dialog,
+               sources, whatsapp_python)
 from .config import Config
 from .system import desktop_macos, jobs, macos_only, profile, wake, windows_only
 
@@ -56,7 +56,7 @@ CHECK_ITEMS = (
     *sources.GMAIL.doctor_items().items(), ("claude", "Claude"), ("codex", "Codex"),
     ("gateway", "AI gateway"), ("gateway-key", "Gateway Key"),
     *(item for s in _sources_after_the_ai() for item in s.doctor_items().items()),
-    ("calendar", "Calendar"), ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"),
+    ("whatsapp-library", "WhatsApp library"), ("calendar", "Calendar"), ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"),
     ("schedule", "Schedule"), ("last-run", "Last run"), ("python-path", "Python path"),
     ("wake", "Wake"), ("sign-in-after-update", "Sign-in after updates"),
 )
@@ -178,6 +178,7 @@ def health_checks(config: str | None, skip_llm: bool = False, whatsapp_only: boo
         _check_llm(cfg, add)
     for source in _sources_after_the_ai():
         _check_source(source, cfg, add, config)
+    _check_whatsapp_library(add)
     _check_calendar(cfg, add)
     if cfg.feedback.enabled:
         _check_feedback(cfg, add)
@@ -392,6 +393,24 @@ def _check_myclub(kid: str, url: str, add) -> None:
     except Exception as e:
         add(FAIL, "myclub", f"subscription link doesn't open: {e} (save a new one with "
             f"parent-recap setup myclub --kid {shlex.quote(kid)})", subject=kid)
+
+
+def _check_whatsapp_library(add) -> None:
+    """The Baileys tree the install puts in place for the Linked Device (ADR 0025). A warning, not
+    a failure, when it isn't the pinned one: WhatsApp is one Source, and the next install tries
+    again."""
+    pinned = baileys_install.BAILEYS_VERSION
+    version = baileys_install.installed_version()
+    again = " (run the install again)"
+    if baileys_install.up_to_date():
+        add(OK, "whatsapp-library", f"installed, the pinned version {pinned}")
+    elif version is None:
+        add(WARN, "whatsapp-library", "not installed, so WhatsApp can't be read as a Linked "
+            "Device" + again)
+    elif version != pinned:
+        add(WARN, "whatsapp-library", f"version {version}, not the pinned {pinned}" + again)
+    else:
+        add(WARN, "whatsapp-library", f"version {version}, but not the pinned tree" + again)
 
 
 def _check_calendar(cfg: Config, add) -> None:
