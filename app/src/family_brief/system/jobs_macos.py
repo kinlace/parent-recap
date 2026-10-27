@@ -28,6 +28,7 @@ PREFIX = "com.parentrecap."
 DAILY_LABEL = f"{PREFIX}daily"
 WEEKEND_LABEL = f"{PREFIX}weekend-events"
 OURS = (DAILY_LABEL, WEEKEND_LABEL)
+ALWAYS_LABEL = f"{PREFIX}linked-device"
 
 
 def system_name(name: str) -> str:
@@ -88,7 +89,7 @@ def _remove(path: Path) -> None:
 
 def _plists() -> list[Path]:
     """Our jobs' plists, by our labels and from setup's record, which has older versions' too."""
-    usual = [_path(label) for label in OURS]
+    usual = [_path(label) for label in (*OURS, ALWAYS_LABEL)]
     return [p for p in dict.fromkeys([*usual, *(Path(p) for p in install_record.entries("launchd"))])
             if p.exists()]
 
@@ -104,7 +105,7 @@ def _loaded() -> set[str]:
 
 
 def installed() -> set[str]:
-    return {_name(label) for label in _loaded()}
+    return {_name(label) for label in _loaded() if label != ALWAYS_LABEL}
 
 
 def waiting_for_login() -> set[str]:
@@ -142,6 +143,47 @@ def run_now(name: str) -> None:
     if kick.returncode != 0:
         raise jobs.NotStarted(f"launchctl couldn't start {system_name(name)}: "
                          f"{kick.stderr.strip() or kick.returncode}")
+
+
+# ---------------------------------------------------------------- the always-running job
+
+def install_always(program: list[str], log_dir: Path) -> None:
+    path = _path(ALWAYS_LABEL)
+    LAUNCH_AGENTS.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
+    with path.open("wb") as f:
+        plistlib.dump({
+            "Label": ALWAYS_LABEL,
+            "ProgramArguments": program,
+            "RunAtLoad": True,  # at load, which is now and at each login
+            # Started again after any exit but jobs.LINK_ENDED, which is the only successful one.
+            "KeepAlive": {"SuccessfulExit": False},
+            "StandardOutPath": str(log_dir / f"{jobs.ALWAYS}-stdout.log"),
+            "StandardErrorPath": str(log_dir / f"{jobs.ALWAYS}-stderr.log"),
+            "WorkingDirectory": str(Path.home()),
+            "EnvironmentVariables": {"PATH": _path_env(), "HOME": str(Path.home())},
+            "Umask": private_files.UMASK,
+        }, f)
+    subprocess.run(["launchctl", "load", str(path)], check=True)
+    install_record.add("launchd", str(path))
+
+
+def remove_always() -> None:
+    _remove(_path(ALWAYS_LABEL))
+
+
+def always_status() -> jobs.Status:
+    probe = subprocess.run(["launchctl", "print", f"{_domain()}/{ALWAYS_LABEL}"],
+                           capture_output=True, text=True, encoding="utf-8")
+    running = probe.returncode == 0 and bool(re.search(r"^\tstate = running$", probe.stdout, re.M))
+    return jobs.Status(installed=_path(ALWAYS_LABEL).exists(), running=running)
+
+
+def stop_always() -> None:
+    # Unloaded, KeepAlive no longer applies; the plist stays, so the next login loads it again.
+    path = _path(ALWAYS_LABEL)
+    if path.exists():
+        subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
 
 
 def _path_env() -> str:

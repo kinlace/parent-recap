@@ -124,6 +124,71 @@ def test_the_runner_appends_the_jobs_output_to_its_log_files_and_gives_its_exit_
     assert err.read_text().strip() == "UTF-8 1"
 
 
+# ── the always-running job's task
+
+
+def test_the_always_running_job_starts_at_the_familys_sign_in_and_runs_without_end(tmp_path,
+                                                                                  monkeypatch):
+    monkeypatch.setenv("USERDOMAIN", "KITCHEN-PC")
+    monkeypatch.setenv("USERNAME", "family")
+    node = tmp_path / "runtime" / "node.exe"
+
+    always = ET.fromstring(jobs_windows.always_xml([str(node), "linked-device.mjs", "follow"],
+                                                   tmp_path / "log folder"))
+
+    [trigger] = always.find("t:Triggers", NS)
+    assert trigger.tag == f"{{{jobs_windows.TASK_NS}}}LogonTrigger"
+    assert text(trigger, "t:UserId") == "KITCHEN-PC\\family"
+    assert text(trigger, "t:Delay") is None
+    assert text(always, "t:Principals/t:Principal/t:LogonType") == "InteractiveToken"
+    assert text(always, "t:Settings/t:RestartOnFailure/t:Interval") == "PT1M"
+    assert text(always, "t:Settings/t:ExecutionTimeLimit") == "PT0S"  # not stopped after 72 h
+    assert text(always, "t:Settings/t:WakeToRun") == "false"
+    assert text(always, "t:Settings/t:DisallowStartIfOnBatteries") == "false"
+    args = text(always, "t:Actions/t:Exec/t:Arguments")
+    # task_run starts it again unless its link ended.
+    assert args.startswith(f"-m {jobs_windows.RUNNER} --restart-unless {jobs.LINK_ENDED} ")
+    assert f'"{tmp_path / "log folder" / "linked-device-stderr.log"}"' in args
+    assert args.endswith(f"{node} linked-device.mjs follow")
+
+
+def test_the_evening_jobs_tasks_are_not_restarted_and_keep_their_time_limit(tmp_path):
+    daily = task(both(tmp_path)[0])
+
+    assert daily.find("t:Settings/t:RestartOnFailure", NS) is None
+    assert daily.find("t:Settings/t:ExecutionTimeLimit", NS) is None
+
+
+RUNS = """import pathlib, sys
+runs = pathlib.Path(sys.argv[1])
+n = len(runs.read_text()) if runs.exists() else 0
+runs.write_text("x" * (n + 1))
+print("run", n + 1)
+sys.exit({codes}[n])"""
+
+
+def test_the_runner_starts_the_always_running_job_again_until_its_link_ended(tmp_path,
+                                                                            monkeypatch):
+    monkeypatch.setattr(task_run, "RESTART_AFTER", 0)
+    out, err = tmp_path / "linked-device-stdout.log", tmp_path / "linked-device-stderr.log"
+    script = RUNS.format(codes=[1, 3, jobs.LINK_ENDED, 1])
+
+    code = task_run.main(["--restart-unless", str(jobs.LINK_ENDED), str(out), str(err),
+                          sys.executable, "-c", script, str(tmp_path / "runs")])
+
+    assert code == jobs.LINK_ENDED
+    assert out.read_text().splitlines() == ["run 1", "run 2", "run 3"]
+
+
+def test_the_runner_gives_an_evening_jobs_exit_code_without_starting_it_again(tmp_path):
+    out, err = tmp_path / "run-stdout.log", tmp_path / "run-stderr.log"
+
+    code = task_run.main([str(out), str(err), sys.executable, "-c", RUNS.format(codes=[1, 0]),
+                          str(tmp_path / "runs")])
+
+    assert code == 1 and out.read_text().splitlines() == ["run 1"]
+
+
 # ── one-off runs, a hidden child process
 
 
@@ -194,6 +259,58 @@ def test_removing_all_unregisters_every_task_of_ours(task_scheduler, tmp_path):
     jobs.remove_all()
 
     assert jobs.installed() == set() and jobs.found() == []
+
+
+def wait_for(check, seconds: int = 60) -> bool:
+    deadline = time.time() + seconds
+    while time.time() < deadline and not check():
+        time.sleep(1)
+    return check()
+
+
+# A job that never ends, writing a line every half second, so whether it still runs shows.
+TICKS = "import time\nwhile True:\n    print('tick', flush=True)\n    time.sleep(0.5)"
+
+
+@pytest.mark.windows
+def test_the_always_running_job_is_installed_running_stopped_and_removed(task_scheduler,
+                                                                         tmp_path):
+    log = tmp_path / f"{jobs.ALWAYS}-stdout.log"
+    ticks = [sys.executable, "-c", TICKS]
+    assert jobs.always_status() == jobs.Status(installed=False, running=False)
+
+    jobs.install_always(ticks, tmp_path)
+
+    assert wait_for(lambda: jobs.always_status() == jobs.Status(installed=True, running=True))
+    assert wait_for(lambda: log.exists() and "tick" in log.read_text())
+    assert jobs.program(jobs.ALWAYS) == ticks
+    jobs.install(both(tmp_path)[:1])  # the evening jobs leave it be
+    assert jobs.installed() == {jobs.DAILY} and jobs.always_status().installed
+
+    jobs.stop_always()
+
+    assert wait_for(lambda: jobs.always_status() == jobs.Status(installed=True, running=False))
+    time.sleep(2)  # ending the task ends the job it started too
+    stopped_at = log.stat().st_size
+    time.sleep(2)
+    assert log.stat().st_size == stopped_at
+
+    jobs.remove_always()
+
+    assert jobs.always_status() == jobs.Status(installed=False, running=False)
+    assert {j.system_name for j in jobs.found()} == {jobs.system_name(jobs.DAILY),
+                                                     jobs.system_name(jobs_windows.CATCH_UP)}
+
+
+@pytest.mark.windows
+def test_removing_all_also_stops_and_removes_the_always_running_job(task_scheduler, tmp_path):
+    jobs.install_always([sys.executable, "-c", TICKS], tmp_path)
+    assert wait_for(lambda: jobs.always_status().running)
+
+    jobs.remove_all()
+
+    assert jobs.always_status() == jobs.Status(installed=False, running=False)
+    assert jobs.found() == []
 
 
 @pytest.mark.windows

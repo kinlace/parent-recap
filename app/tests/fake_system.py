@@ -99,6 +99,9 @@ class FakeJobs:
         self.hangs = False                    # a one-off run doesn't finish in time
         # Around each one-off run, as the system gives the job its permissions.
         self.inside: Callable[[], ContextManager[None]] = contextlib.nullcontext
+        self.always: list[str] | None = None   # the always-running job's command, if installed
+        self.always_log_dir: Path | None = None
+        self.always_running = False            # stopped, or ended with its link, when False
 
     def add(self, *names: str, loaded: bool = True) -> None:
         """Our jobs `names` as `schedule install` leaves them, loaded or waiting for a login."""
@@ -115,6 +118,7 @@ class FakeJobs:
 
     def remove_all(self) -> None:
         self.programs, self.loaded, self.older = {}, set(), []
+        self.remove_always()
 
     def installed(self) -> set[str]:
         return self.loaded & set(self.programs)
@@ -123,11 +127,24 @@ class FakeJobs:
         return set(self.programs) - self.loaded
 
     def found(self) -> list[jobs.Found]:
+        always = {jobs.ALWAYS: self.always} if self.always else {}
         return [jobs.Found(self.system_name(name), self.where(name), program)
-                for name, program in self.programs.items()] + self.older
+                for name, program in {**self.programs, **always}.items()] + self.older
 
     def program(self, name: str) -> list[str] | None:
-        return self.programs.get(name)
+        return self.always if name == jobs.ALWAYS else self.programs.get(name)
+
+    def install_always(self, program: list[str], log_dir: Path) -> None:
+        self.always, self.always_log_dir, self.always_running = list(program), log_dir, True
+
+    def remove_always(self) -> None:
+        self.always, self.always_log_dir, self.always_running = None, None, False
+
+    def always_status(self) -> jobs.Status:
+        return jobs.Status(installed=self.always is not None, running=self.always_running)
+
+    def stop_always(self) -> None:
+        self.always_running = False
 
     def system_name(self, name: str) -> str:
         return f"Parent Recap {name}"
