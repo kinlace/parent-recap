@@ -80,6 +80,9 @@ def test_builds_versioned_zip_with_the_plugin_root_under_one_folder(repo):
         "parent-recap/.claude-plugin/marketplace.json",
         "parent-recap/app/pyproject.toml",
         "parent-recap/app/src/family_brief/__main__.py",
+        # The Baileys tree's pin, which the installers' `npm ci` installs from.
+        "parent-recap/app/src/family_brief/baileys/package.json",
+        "parent-recap/app/src/family_brief/baileys/package-lock.json",
         "parent-recap/skills/setup/SKILL.md",
         "parent-recap/skills/manage/SKILL.md",
     ):
