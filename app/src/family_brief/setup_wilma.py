@@ -24,7 +24,6 @@ import json
 import math
 import os
 import select
-import shutil
 import signal
 import subprocess
 import sys
@@ -177,35 +176,14 @@ def _npm_install(npm: list[str]) -> str | None:
     is also logged, or None once it did. It installs into a new folder next to the CLI's, which
     takes the CLI's place only once npm has finished and left the pinned version, so an npm that
     fails, or is ended at the time limit, changes nothing."""
-    folder = own_node.wilma_folder()
-    folder.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    for left in folder.parent.glob(f".{folder.name}-*"):  # by an install that was itself ended
-        shutil.rmtree(left, ignore_errors=True)
-    staging = Path(tempfile.mkdtemp(prefix=f".{folder.name}-", dir=folder.parent))
-    try:
-        reason = _npm_run(npm, staging)
-        if reason is None:
-            _replace(folder, staging)
-    except subprocess.TimeoutExpired:
-        reason = failure.timed_out("npm", INSTALL_SECONDS)
-    except (OSError, subprocess.SubprocessError) as e:  # npm's, or the move after it
-        reason = failure.raised(e, "The install")
-    finally:
-        shutil.rmtree(staging, ignore_errors=True)
-    return failure.logged("The wilma CLI didn't install", reason) if reason else None
+    return own_node.install_staged(own_node.wilma_folder(), lambda staging: _npm_run(npm, staging),
+                                   "The wilma CLI didn't install", INSTALL_SECONDS)
 
 
 def _npm_run(npm: list[str], staging: Path) -> str | None:
     """Runs `npm` to install the pinned CLI into `staging`. Returns why that didn't leave the CLI
     there, in words a photo of the setup page carries, or None."""
-    # npm's cache in a temporary folder, so nothing is left outside Parent Recap's.
-    with tempfile.TemporaryDirectory(prefix="parent-recap-npm-") as cache:
-        # npm runs package scripts with the `node` its PATH finds: this one, not the Mac's.
-        env = {**os.environ, "npm_config_cache": cache, "npm_config_update_notifier": "false",
-               "PATH": os.pathsep.join([str(Path(npm[0]).parent), os.environ.get("PATH", "")])}
-        proc = subprocess.run([*npm, *install_args(staging)], capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", timeout=INSTALL_SECONDS,
-                              stdin=subprocess.DEVNULL, env=env)
+    proc = own_node.run_npm(npm, install_args(staging), INSTALL_SECONDS)
     if proc.returncode != 0:
         return failure.exited("npm", proc.returncode, proc.stderr, proc.stdout)
     version = installed_version(staging)
@@ -216,21 +194,6 @@ def _npm_run(npm: list[str], staging: Path) -> str | None:
     if own_node.wilma_cli(staging) is None:
         return "npm installed the wilma program without the file that runs it."
     return None
-
-
-def _replace(folder: Path, new: Path) -> None:
-    """Puts the CLI npm installed in `new` in `folder`'s place, and removes the one that was there.
-    npm links bin/wilma to the package by a relative path, so the CLI runs from its new place."""
-    old = new.with_name(new.name + "-old")
-    if folder.exists():
-        folder.rename(old)
-    try:
-        new.rename(folder)
-    except OSError:
-        if old.exists():
-            old.rename(folder)
-        raise
-    shutil.rmtree(old, ignore_errors=True)
 
 
 def install_args(folder: Path) -> list[str]:
