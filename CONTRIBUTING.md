@@ -77,7 +77,7 @@ curl -fsSL https://github.com/astral-sh/python-build-standalone/releases/downloa
 
 `install.ps1`, the Windows install, pins the same Python: change `$PythonVersion` and `$PythonBuild` there too, and `$PythonSha256` to the checksum of `cpython-<version>+<build>-x86_64-pc-windows-msvc-install_only.tar.gz` from the same `SHA256SUMS`. CI's windows-install job checks the pinned checksums against the published lists and prints the published line when one doesn't match; `tests/scripts/test_install_ps1.py` checks both scripts pin the same versions.
 
-A new minor Python also goes into `PYTHONS` in `scripts/check_wheels.py`. Each version goes into its own folder, so every family has to grant WhatsApp's permission again: `install.sh` says so and prints the new path, and the release's changelog should say it too.
+A new minor Python also goes into `PYTHONS` in `scripts/check_wheels.py`. Each version goes into its own folder.
 
 ## Pinned Node
 
@@ -89,7 +89,7 @@ curl -fsSL https://nodejs.org/dist/v<version>/SHASUMS256.txt | grep -E 'darwin-(
 
 In `install.ps1`, change `$NodeVersion` too, and `$NodeSha256` to the checksum of `node-v<version>-win-x64.zip` from the same `SHASUMS256.txt`.
 
-A new Node needs no new WhatsApp permission, and the wilma CLI already installed keeps working on it: the next install replaces the old Node.
+The wilma CLI already installed keeps working on a new Node: the next install replaces the old one.
 
 ## Pinned Baileys
 

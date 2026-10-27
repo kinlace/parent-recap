@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Install and configure Parent Recap, which every evening reads the kids' school mail, Wilma, WhatsApp parent groups and MyClub club calendar, and has Claude or ChatGPT (Codex) write a Brief sent to each parent's inbox in their own language. Use when the user says "install / set up parent recap", "install / set up family brief", "parent recap onboarding", "安装 / 设置 family brief", "家庭日报 onboarding", or has just installed this plugin and wants to start. Works on a Mac or a Windows 11 PC; on Windows there is no WhatsApp step and no Google Calendar mode.
+description: Install and configure Parent Recap, which every evening reads the kids' school mail, Wilma, WhatsApp parent groups and MyClub club calendar, and has Claude or ChatGPT (Codex) write a Brief sent to each parent's inbox in their own language. Use when the user says "install / set up parent recap", "install / set up family brief", "parent recap onboarding", "安装 / 设置 family brief", "家庭日报 onboarding", or has just installed this plugin and wants to start. Works on a Mac or a Windows 11 PC; on Windows there is no Google Calendar mode.
 ---
 
 # Parent Recap setup
@@ -12,13 +12,12 @@ You are helping a parent install Parent Recap on their own Mac. The user is ofte
 ## Rules
 
 1. **A password, App Password, token or MyClub link never goes in the chat.** The `setup` commands ask for each one in a macOS dialog with hidden input (a hidden Terminal prompt without a desktop session), check it and store it themselves, and never print it. Wilma's password is typed only on the Wilma sign-in screen in Terminal, and the Mac password only in macOS's own dialogs. If the user pastes a secret into the chat anyway, tell them to delete it and make a new one afterwards. Once a Kid has a MyClub link, don't open or print the whole config; view it with `grep -v myclub_ical_url ~/.family/config.yaml`, and make changes with commands that don't print the file.
-2. **Don't ask "done?" about what a command can check.** Each Source command waits for the parent and checks the result itself (a Gmail sign-in, a test call, a WhatsApp read, Wilma's student list). Tell the parent what to do, run the command, and act on its `result`. Ask the parent only about what the program can't see.
+2. **Don't ask "done?" about what a command can check.** Each Source command waits for the parent and checks the result itself (a Gmail sign-in, a test call, Wilma's student list). Tell the parent what to do, run the command, and act on its `result`. Ask the parent only about what the program can't see.
 3. **Don't print mail or chat text into the chat.** Check connections with the `setup` commands and `$FB doctor`, which give only status, names and counts. Don't run `$FB collect`; it prints message text.
 4. **Don't overwrite an existing config.** If `~/.family/config.yaml` or `~/.family/setup-progress.json` already exists, run `$FB setup status`. If it says `done`, this Mac has been set up before: stop and use `/parent-recap:manage` instead. If not, an earlier setup stopped part-way, in the chat or on the setup page: carry on from where it got to as "Coming from the setup page" says, without asking again what the config already has. If the user insists on setting up again, back it up first as `config.yaml.bak-<date>`. To start again from nothing, they can uninstall first ("uninstall Parent Recap" with `/parent-recap:manage`), then run setup.
 5. **Commands that need `sudo`:** only show them, and let the user run them. The wake schedule normally needs none: `$FB schedule install` asks for the Mac password in macOS's administrator dialog.
-6. **Always put `bg` in commands that read WhatsApp yourself**, for example `$FB bg run --dry-run`. Without it they can't read WhatsApp from Terminal, Claude Code or Codex, because macOS grants the permission per process. `$FB setup whatsapp` does this itself. Don't have the user give Terminal the permission.
-7. **Never search the family's folders or read their files to find something** (a file they were sent, a password, a link). Not with `find`, `ls` or `grep`, not by opening a file to see what's inside, not even after saying you'd only look at file names. Ask the parent where it is, or offer the alternative that needs nothing (such as staying with the `.ics` attachment). Parent Recap's own files and the checks in this skill (the plugin folder, installed apps, `~/.family`) are fine.
-8. **Never write the config by hand.** Every answer goes into it through `$FB setup save` (see "Saving answers and progress"), the same command the setup page uses, which checks the answers before writing them.
+6. **Never search the family's folders or read their files to find something** (a file they were sent, a password, a link). Not with `find`, `ls` or `grep`, not by opening a file to see what's inside, not even after saying you'd only look at file names. Ask the parent where it is, or offer the alternative that needs nothing (such as staying with the `.ics` attachment). Parent Recap's own files and the checks in this skill (the plugin folder, installed apps, `~/.family`) are fine.
+7. **Never write the config by hand.** Every answer goes into it through `$FB setup save` (see "Saving answers and progress"), the same command the setup page uses, which checks the answers before writing them.
 
 ## Each message
 
@@ -26,7 +25,7 @@ The parent should always know what to do next, without asking.
 
 - **One thing at a time.** Every message ends with exactly one thing for the parent to do or answer: one question, one choice, or one step such as "a Terminal window opens now: sign in there". Ask the next thing in the next message. One AskUserQuestion call, or one page the parent answers in a single reply, counts as one thing. Notes and reminders (where a password is kept, what a Source is for) come before that one thing, in a sentence or two each. Show the Source list only when a status in it changed.
 - **Choices before typing.** Where the answer has a few likely values, offer them as choices with the default first: AskUserQuestion in Claude Code, a numbered list in Codex that the parent answers with a number. Ask the parent to type only what has no likely values, such as an email address or a name, and only once they've chosen something that needs it.
-- **Long lists come ticked.** A list that could be long (Kids, Gmail senders, WhatsApp groups) comes with your best guess already ticked and "all" as an option, so the parent answers "ok", "all", or names only what to change.
+- **Long lists come ticked.** A list that could be long (Kids, Gmail senders) comes with your best guess already ticked and "all" as an option, so the parent answers "ok", "all", or names only what to change.
 - **No school or class questions.** Never ask for a Kid's school or class; parents often don't know them exactly, and the program works without them. Use them when Wilma gives them, and otherwise leave them out.
 
 ## Paths
@@ -46,7 +45,7 @@ The flow is the same in both:
 - AskUserQuestion in this file is Claude Code's question tool. In Codex, write the question and its options as a numbered list, with the default first, and the parent replies with a number.
 - In Codex, the `setup` commands, `install.sh`, and anything that goes online, opens a page or dialog, or writes to `~/.family` must run outside the sandbox. Codex asks for approval each time; tell the user once that this is normal and to approve.
 - The two invoke skills differently: Claude Code starts with `/parent-recap:`, Codex with `$parent-recap-`. This file already uses the form for the one you are in; pass commands on to the user as written.
-- Some commands wait for the parent for up to 10 minutes (Wilma, WhatsApp), and a Brief run can take 15. Give each a long enough command timeout. Claude Code's tool allows at most 10 minutes: pass `--timeout 540` to `setup wilma` and `setup whatsapp`, and run a Brief in the background and wait for it to finish before doing anything else. The commands that show a dialog wait until the parent answers it; if your tool cuts one off, run it again with `--no-open`.
+- Some commands wait for the parent for up to 10 minutes (Wilma), and a Brief run can take 15. Give each a long enough command timeout. Claude Code's tool allows at most 10 minutes: pass `--timeout 540` to `setup wilma`, and run a Brief in the background and wait for it to finish before doing anything else. The commands that show a dialog wait until the parent answers it; if your tool cuts one off, run it again with `--no-open`.
 
 ## The `setup` commands
 
@@ -57,7 +56,6 @@ Each prints one line of JSON. `result` says what happened; when it isn't a succe
 | `$FB setup wilma --timeout 540 --language <code>` | `signed-in` | `kids` (name, school, class), `wilma_address`, `city` (or null)                     |
 | `$FB setup gmail --address <address>`             | `saved`     | `address`                                                                           |
 | `$FB setup claude`                                | `saved`     | `test_call: ok`                                                                     |
-| `$FB setup whatsapp --timeout 540`                | `readable`  | `chats` (name, last message, archived, `hint` naming the Kids it seems to be about) |
 | `$FB setup myclub --kid "<Kid's name>"`           | `saved`     | `events`, the number of events in the calendar                                      |
 | `$FB setup status`                                | `done`      | `outcomes`, each with `ok` and a `reason`                                           |
 | `$FB setup save` (answers as JSON on stdin)       | `saved`     | `progress`                                                                          |
@@ -81,17 +79,16 @@ $FB setup save <<'EOF'
  "ai": "claude",
  "evening": "21:00",
  "sources": {"gmail": {"address": "parent@gmail.com", "allowlist_domains": ["espoo.fi"], "allowlist_senders": []},
-             "wilma": {"enabled": true},
-             "whatsapp": {"enabled": true, "chats": [{"name": "3B vanhemmat", "kid": "Mia Virtanen", "label": "class"}]}},
+             "wilma": {"enabled": true}},
  "feedback": {"enabled": true},
  "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"}}}
 EOF
 ```
 
 - `kids` is the whole list of Kids: a Kid left out is removed. Each Kid keeps what you don't give for them, such as their MyClub link, which only `setup myclub` saves. Never put a MyClub link in the answers.
-- `recipients`, `allowlist_domains`, `allowlist_senders` and `chats` are whole lists too: give every ticked item, not only the new ones.
+- `recipients`, `allowlist_domains` and `allowlist_senders` are whole lists too: give every ticked item, not only the new ones.
 - `language` is the Household's language code (`summary_language`); a Recipient's `language` is given only when it differs.
-- `progress`: `phase` is one of `welcome`, `connect`, `working`, `check`, `first-brief`, `finish`; `source` is the Source the parent is on (`wilma`, `gmail`, `ai`, `whatsapp`, `myclub`); `sources` gives each Source's status, `to-do`, `done` or `skipped`. Save it whenever the phase or a Source's status changes, in the same call as that step's answers when there are any.
+- `progress`: `phase` is one of `welcome`, `connect`, `working`, `check`, `first-brief`, `finish`; `source` is the Source the parent is on (`wilma`, `gmail`, `ai`, `myclub`); `sources` gives each Source's status, `to-do`, `done` or `skipped`. Save it whenever the phase or a Source's status changes, in the same call as that step's answers when there are any.
 - A progress read back after the setup page's Welcome can also have `partner`: the partner's `address` and `language`, or `null` for "Only me". The page saves the Recipients only once it knows the parent's Gmail address, so if `recipients` aren't in the config yet, use this as the Welcome answer instead of asking again, and save `recipients` with the parent's address first once you have it.
 - On `invalid-answers`, nothing was saved: `errors` names each answer that's wrong. Fix them and save again. On `bad-config`, the existing config can't be read: run `$FB doctor` and fix what it names.
 
@@ -101,13 +98,13 @@ Every step of the setup page has a **Continue in the chat** button, for a family
 
 1. Run `$FB setup save --read`. `phase` is the phase reached, `source` the Source the parent was on in Connect (null once each is done or skipped), and `sources` each Source's status.
 2. Read the answers already given with `grep -v myclub_ical_url ~/.family/config.yaml`. `summary_language` is the language the parent picked on the page: use it from your first line, since they haven't written anything yet, and don't ask for it again. The AI (`llm.backend`), pilot feedback (`feedback.enabled`), the Recipients (`email.to`), the Gmail address (`gmail.username`), the city and the Kids are answers too. Without `llm.backend` yet (the parent left Welcome before saving it), the AI is the one whose chat you're in.
-3. The progress can also have `partner`, Welcome's choice of partner (see "Saving answers and progress"), `whatsapp_chats`, the WhatsApp groups the page found, in the same form as `chats` from `setup whatsapp`, and `gmail_senders`, the Gmail senders the page read in Working, in the same form as `senders` from `discover gmail-senders --json`, for Check. Use them instead of asking again or reading WhatsApp again.
+3. The progress can also have `partner`, Welcome's choice of partner (see "Saving answers and progress"), `whatsapp_chats`, the WhatsApp groups the page found, each with its `name` and a `hint` naming the Kids it seems to be about, and `gmail_senders`, the Gmail senders the page read in Working, in the same form as `senders` from `discover gmail-senders --json`, for Check. Use them instead of asking again.
 4. The program is already installed, since it serves the page: skip "Get the Mac ready first" and `install.sh` unless `$FB` is missing.
-5. In one short message, say you're carrying on from where setup got to: the phase, and in Connect the Source list with its statuses. Ask the parent to carry on here rather than on the page, which they can close. Then go straight to that step and end with its one thing to do. On Welcome, ask only what isn't answered yet. Don't redo a Source that's `done`; a `skipped` one stays skipped unless the parent asks for it. If the parent says what went wrong on the page, help with that first. When it was WhatsApp at Check or Finish, run `$FB doctor` and follow "When doctor's WhatsApp line isn't ✅" below: the page said the same.
+5. In one short message, say you're carrying on from where setup got to: the phase, and in Connect the Source list with its statuses. Ask the parent to carry on here rather than on the page, which they can close. Then go straight to that step and end with its one thing to do. On Welcome, ask only what isn't answered yet. Don't redo a Source that's `done`; a `skipped` one stays skipped unless the parent asks for it. If the parent says what went wrong on the page, help with that first.
 
 ## 1. Welcome
 
-**Introduction.** In a few sentences: every evening Parent Recap reads the Kids' school mail, Wilma, WhatsApp parent groups and MyClub, and emails each parent a short Brief in their own language, with new events attached for the calendar. Then say:
+**Introduction.** In a few sentences: every evening Parent Recap reads the Kids' school mail, Wilma and MyClub, and emails each parent a short Brief in their own language, with new events attached for the calendar. Then say:
 
 - What a Brief looks like: the link to the demo in the invite the Parent Recap team sent them. If they don't have it, describe a Brief in a sentence: grouped by Kid, with Notices and Action Items with due dates
 - Where the data goes: it's read on this Mac. Only that night's messages from the Kids' Sources go to the AI the family already uses, to write the Brief, and the Brief goes out from their own Gmail. Nothing goes to the Parent Recap team, except the ⭐ / ❌ feedback a pilot family chooses to send.
@@ -140,7 +137,7 @@ Note from the answers:
 - The parent's Gmail address. Parent Recap reads school mail in it and sends the Brief from it, so it's the account school mail arrives in. If the parent gives an address that isn't Gmail, ask for the Gmail address school mail arrives in, or is forwarded to ("School mail at another address" in `PLUGIN/docs/sources.md`).
 - The Recipients: the parent's address first, then the partner's if they added one, with the partner's language if it differs. The Brief is written in the first Recipient's language, and the archive and calendar events follow it.
 
-**What they'll connect.** Show the Source list below, with one line each on why it's needed, and that WhatsApp and MyClub can be skipped and added later through `/parent-recap:manage`. Ask them to have their Wilma username and password ready, the same ones as on the Wilma website or app; if they don't remember them, they may find them in their browser's saved passwords. End with one choice: start now, or wait while they find their Wilma login.
+**What they'll connect.** Show the Source list below, with one line each on why it's needed, and that MyClub can be skipped and added later through `/parent-recap:manage`. Ask them to have their Wilma username and password ready, the same ones as on the Wilma website or app; if they don't remember them, they may find them in their browser's saved passwords. End with one choice: start now, or wait while they find their Wilma login.
 
 ## 2. Connect
 
@@ -162,10 +159,9 @@ Then install the program with `bash "PLUGIN/install.sh"`. It takes a few minutes
 1. **Wilma**: the Kids' names, and the school's messages and timetable
 2. **Gmail** (needed to send the Brief): school and club mail, and the Brief is sent from it
 3. **AI login** (required for Claude; for ChatGPT, only a check)
-4. **WhatsApp** (can be skipped): the class and club parent groups
-5. **MyClub** (can be skipped): the club calendars
+4. **MyClub** (can be skipped): the club calendars
 
-Each sub-flow: in one message, say in a sentence or two why it's needed and end with the one thing the parent does (such as what to do in the window that opens); then run its command, act on the result and mark it done. The message after a sub-flow carries its result, any short reminder from it and the list with the new status, and ends with one choice: go on to the next Source, or wait a moment. Keep the next Source's own explanation for its own message. When a command fails, say clearly what went wrong and the one thing to do about it, help with it and run it again. If the parent wants to skip WhatsApp or MyClub, mark it skipped. Gmail and the AI login can't be skipped; neither can Wilma when the school uses it.
+Each sub-flow: in one message, say in a sentence or two why it's needed and end with the one thing the parent does (such as what to do in the window that opens); then run its command, act on the result and mark it done. The message after a sub-flow carries its result, any short reminder from it and the list with the new status, and ends with one choice: go on to the next Source, or wait a moment. Keep the next Source's own explanation for its own message. When a command fails, say clearly what went wrong and the one thing to do about it, help with it and run it again. If the parent wants to skip MyClub, mark it skipped. Gmail and the AI login can't be skipped; neither can Wilma when the school uses it.
 
 ### Wilma
 
@@ -214,16 +210,7 @@ Then run `$FB setup gmail --address <address>`. It opens the App passwords page 
 
 ### WhatsApp
 
-Why: class and club parent groups are often where things are said first. Parent Recap reads WhatsApp for Mac's own data on this Mac; nothing from WhatsApp leaves it except that night's messages from the groups the parent picks.
-
-It needs WhatsApp for Mac from the App Store (not the older version from WhatsApp's website), linked to the phone that's in those groups, with its chats synced. The command finds out whether it's there.
-
-Tell the parent that if the Python doesn't have Full Disk Access yet, Finder will select a Python file named python3.x, such as python3.13, and System Settings will open at Full Disk Access: they drag that file into the list and turn its switch on. Then run `$FB setup whatsapp --timeout 540`. It waits for Full Disk Access itself.
-
-- `readable`: keep `chats` for Check. Don't show them yet.
-- `not-installed`: WhatsApp for Mac isn't installed or signed in. Offer a choice: install it now (they install it, link it and let the chats sync, and you run the command again), or skip WhatsApp for now.
-- `no-permission` or `waiting`: help with what `next` says, then run `$FB setup whatsapp --no-open --timeout 540`.
-- `bg-failed` or `unreadable`: run it again once; if it fails again, do what `next` says.
+WhatsApp is read as a Linked Device, paired on the setup page. Until the page offers that pairing, setup doesn't connect WhatsApp, so it isn't on the Source list.
 
 ### MyClub
 
@@ -239,25 +226,24 @@ Tell the parent they can step away for a few minutes. Save `"progress": {"phase"
 
 1. Run `$FB language <code>` for each language in the config (`summary_language` and any Recipient's `language`). For a reviewed language it only says so; for any other, the AI translates the program's own text once. If it fails, run it again, or the preview shows English headings.
 2. Run `$FB discover gmail-senders --json`. It reads only the senders of the last 60 days, takes 1 to 2 minutes, and prints one line of JSON: `senders`, each with its `domain`, how many mails (`count`), an `example` sender name, `likely` when it looks like school, city or club mail, and `public` for a mail service anyone has an address at. If the setup page already read them, they're in the progress's `gmail_senders` (see "Coming from the setup page"): use those instead.
-3. Run `$FB doctor`. It makes a test call to the AI, and with ChatGPT this is the check for the AI login. Fix each ❌ with the parent before going on, and for WhatsApp do what "When doctor's WhatsApp line isn't ✅" below says.
+3. Run `$FB doctor`. It makes a test call to the AI, and with ChatGPT this is the check for the AI login. Fix each ❌ with the parent before going on.
 
-Wilma's Kids and WhatsApp's chats came back from their sub-flows; read them again only if they're lost (`$FB setup wilma --no-open`, `$FB setup whatsapp --no-open`).
+Wilma's Kids came back from its sub-flow; read them again only if they're lost (`$FB setup wilma --no-open`).
 
 ## 4. Check
 
 Show **one page**, with everything already ticked as you think it should be, and have the parent untick what isn't about the Kids:
 
 - **Kids**: each Kid with the everyday name the Brief will call them, guessed from the first name. The parent corrects it and adds any other names used in chats and mail (`aliases`). A Kid who shouldn't be in the Brief is unticked.
-- **Gmail senders**: the domains from `discover gmail-senders --json` with `likely`, and any others that look like the school, the teachers, clubs, hobbies and the music school, ticked; the starting allowlist ticked. **Never tick public domains** (those with `public`) like gmail.com or outlook.com, or private mail gets read; a teacher or coach writing from one goes in `allowlist_senders` as the full address. If no school senders turned up, say so on the page: school mail may arrive at another address, and it has to be forwarded to this Gmail ("School mail at another address" in `PLUGIN/docs/sources.md`). Say the Briefs come out empty only when no other Source (Wilma, MyClub or a ticked WhatsApp group) brings the news; with one, Gmail can just send the Brief.
-- **WhatsApp groups**: the chats from `setup whatsapp`, those with a `hint` ticked and marked with the Kids it names (or `both`), and a type (class / football / piano …). The rest listed unticked.
+- **Gmail senders**: the domains from `discover gmail-senders --json` with `likely`, and any others that look like the school, the teachers, clubs, hobbies and the music school, ticked; the starting allowlist ticked. **Never tick public domains** (those with `public`) like gmail.com or outlook.com, or private mail gets read; a teacher or coach writing from one goes in `allowlist_senders` as the full address. If no school senders turned up, say so on the page: school mail may arrive at another address, and it has to be forwarded to this Gmail ("School mail at another address" in `PLUGIN/docs/sources.md`). Say the Briefs come out empty only when no other Source (Wilma or MyClub) brings the news; with one, Gmail can just send the Brief.
 
 Give each list an "all" line the parent can tick instead of going through it. The lists are too long for AskUserQuestion's few options, so in both Claude Code and Codex write the page as text with ☑ and ☐, and end it with the one thing to do: reply "ok" to keep it as ticked, "all" with a list's name (such as "all groups") to tick that whole list, or name what to change. Ask nothing else on the page; an everyday name or alias they want changed goes in the same reply.
 
-Then save it with `$FB setup save`: `kids` with every ticked Kid's `name`, `everyday_name` and `aliases`; `sources.gmail` with the ticked domains in `allowlist_domains` and the ticked addresses in `allowlist_senders`; `sources.whatsapp` with `"enabled": true` and each ticked group in `chats`, with `name` **copied exactly** from `chats` (trailing spaces, curly quotes and emoji all have to match), `kid` (a Kid's `name`, or `both`) and `label`; and `"progress": {"phase": "check"}`.
+Then save it with `$FB setup save`: `kids` with every ticked Kid's `name`, `everyday_name` and `aliases`; `sources.gmail` with the ticked domains in `allowlist_domains` and the ticked addresses in `allowlist_senders`; and `"progress": {"phase": "check"}`.
 
 **Pilot feedback**, if the card says pilot family. Read the "Pilot feedback" section of `PLUGIN/docs/config.md` and tell the parent every point the parents must know before turning it on, in your own words, leaving none out, especially that "just opening the link without submitting still leaves a record". End with one choice: turn it on, or not now. If not, save no `feedback`, and say they can turn it on later with `/parent-recap:manage`. If they agree, save `"feedback": {"enabled": true}` with `$FB setup save`: it writes the rest of the section from the pilot form the program ships, with a `household_label` it makes itself. Don't ask for a label. Nothing is pasted.
 
-Then run `$FB doctor` once more. Fix every ❌, and with pilot feedback on, any ⚠️ on its line. Other ⚠️ don't stop setup: tell the parent what each one means and what to do, as doctor says. For WhatsApp, follow "When doctor's WhatsApp line isn't ✅" below.
+Then run `$FB doctor` once more. Fix every ❌, and with pilot feedback on, any ⚠️ on its line. Other ⚠️ don't stop setup: tell the parent what each one means and what to do, as doctor says.
 
 ## 5. First Brief
 
@@ -274,24 +260,11 @@ Save `"progress": {"phase": "first-brief"}` first.
 Save `"progress": {"phase": "finish"}` first.
 
 1. Tell the parent macOS will ask for their Mac password in its own dialog, to wake the Mac 5 minutes before the Brief. Run `$FB schedule install`. If it warns the Mac already has a repeating wake schedule, show the parent what it lists and ask, as a choice, whether to replace it (keep it first); only if they choose to replace it, run `$FB schedule install --replace-wake`. If it prints a `sudo pmset ...` command, give it to the parent to run in Terminal.
-2. Run `$FB setup status`. It reports five outcomes: the program installed, the health check with nothing to fix (no ❌; its `reason` names any ⚠️, which you tell the parent about with what to do, but which don't stop setup), the first Brief delivered to the setup parent (the first Recipient; the others' first is the first evening one), the nightly job loaded, and the wake schedule set or the Mac never sleeping. Show them as a checklist. For each with `ok: false`, do what its `reason` says, and run it again, until `result` is `done`. When the health check's `reason` names WhatsApp, run `$FB doctor` and follow "When doctor's WhatsApp line isn't ✅" below.
+2. Run `$FB setup status`. It reports five outcomes: the program installed, the health check with nothing to fix (no ❌; its `reason` names any ⚠️, which you tell the parent about with what to do, but which don't stop setup), the first Brief delivered to the setup parent (the first Recipient; the others' first is the first evening one), the nightly job loaded, and the wake schedule set or the Mac never sleeping. Show them as a checklist. For each with `ok: false`, do what its `reason` says, and run it again, until `result` is `done`.
 3. The sixth outcome is yours to confirm: after the Mac restarts, such as after a macOS update, someone must log in to this Mac user once, or no Brief comes until they do. The wake-up wakes a sleeping Mac only: a Mac that's shut down makes no Brief, so in the evening it should be left asleep or locked, not shut down. Tell the parent both, and end with one choice for them to confirm they've got it.
 
 Setup ends only when `setup status` says `done` and the parent has confirmed the restart reminder. Then tell them:
 
 - What time the Brief comes each day
-- That for any problem or change later (a new school year, a new group, a skipped Source, another Recipient, Weekend Picks, uninstalling), they type `/parent-recap:manage` or just say what they want
+- That for any problem or change later (a new school year, a skipped Source, another Recipient, Weekend Picks, uninstalling), they type `/parent-recap:manage` or just say what they want
 - That the config is in `~/.family/config.yaml`, and the archive of Briefs in `~/ParentRecap/`
-
-## When doctor's WhatsApp line isn't ✅
-
-doctor reads WhatsApp with the scheduled job's Python and says in its line why it couldn't. Each reason has its own fix, the same one the setup page gives. Never tell the parent it's fixed until `$FB doctor` shows WhatsApp ✅ again.
-
-- **"can't read WhatsApp: add it to Full Disk Access"**: the scheduled job's Python has no Full Disk Access. Say plainly that only the parent can turn it on, in System Settings: you can't do it for them, and opening WhatsApp doesn't help. Don't give Terminal, Claude Code or Codex the permission instead. Run `$FB full-disk-access`: Finder selects the Python file whose name it prints, such as python3.13, and System Settings opens at Full Disk Access. Tell the parent that exact name: they drag that file into the list and turn its switch on. Then run `$FB doctor` again.
-- **"the background check didn't start", "didn't finish within 180 seconds" or "gave no result"**: the check didn't get to read WhatsApp. The parent opens WhatsApp for Mac and waits until the chats show. Then run `$FB doctor` again.
-- **"these group names aren't on this Mac"**: WhatsApp is readable, but a ticked group has a new name, is a new group for the school year, or its name in the config isn't exactly WhatsApp's. Read the groups again with `$FB setup whatsapp --no-open --timeout 540`, and show the parent its `chats` with the new names ticked and the groups doctor names unticked, as on the Check page. Save their answer with `$FB setup save`, each name copied exactly from `chats`, then run `$FB doctor` again.
-- **"couldn't list the groups"**: as when the check didn't finish, the parent opens WhatsApp for Mac and waits until the chats show, then run `$FB doctor` again. If it still fails, the rest of doctor's line is the error: help with what it says.
-- **"No WhatsApp Desktop data found"**: WhatsApp for Mac isn't installed on this Mac, or was never signed in here. The parent installs WhatsApp for Mac, signs in with their phone and waits until the chats show. Then run `$FB doctor` again. A family without WhatsApp for Mac can skip WhatsApp for now and add it later.
-- **"Couldn't read it"**: WhatsApp's chats are on this Mac, but copying them failed. The parent quits WhatsApp for Mac, opens it again and waits until the chats show, then run `$FB doctor` again. If it still fails, the rest of doctor's line is the error: help with what it says.
-- **"Couldn't check for Full Disk Access"**: Parent Recap couldn't tell whether its Python has the permission, so it didn't touch WhatsApp. The parent restarts the Mac and opens WhatsApp for Mac, then run `$FB doctor` again. If it still fails, the rest of doctor's line is the error: help with what it says.
-- Anything else, such as a Python that's no longer the evening job's: follow the WhatsApp rows and sections of `PLUGIN/docs/troubleshooting.md`.

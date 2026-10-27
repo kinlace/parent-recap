@@ -116,6 +116,6 @@ Afterwards run `parent-recap doctor`: a ⚠️ on the pilot feedback line means 
 ## New school year (every August)
 
 1. Update each Kid's `grade` and `class_name`, if the config has them
-2. Class groups are often replaced or renamed: run `parent-recap bg discover whatsapp-chats` and replace the old group names in `whatsapp.chats` with the new ones
+2. Class groups are often replaced or renamed: replace the old group names in `whatsapp.chats` with the new ones, exactly as WhatsApp shows them
 3. Music school groups named after the school year (such as `EMO-PIANO 2025-2026`) also get the new year's name
-4. Run `parent-recap doctor` once to confirm every group is found
+4. Run `parent-recap doctor` once
