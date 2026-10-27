@@ -1,5 +1,7 @@
 # WhatsApp can be read as a Linked Device, built on Baileys
 
+Superseded for the opt-in by ADR 0027: the Linked Device is the only way to read WhatsApp on macOS too. Baileys and the group filter still follow this ADR.
+
 Reading WhatsApp for Mac's database needs the desktop app signed in, a logged-in session and Full Disk Access (ADR 0012), and on Windows there is no database to read at all. So a Household can instead read the WhatsApp Source as a Linked Device: Parent Recap pairs with the parent's account through a QR code and keeps the messages of the picked groups. It is opt-in on macOS, where the database stays the default, and the only WhatsApp route on Windows. It is built on Baileys, the WhatsApp Web library for Node, rather than wacli, because Baileys runs on the Node we already ship (ADR 0011) and lets us drop every chat but the picked groups before anything is written, so a family's private chats never reach the disk. Both held a pairing for 14 days with no warning from WhatsApp (#181); the privacy gain is worth the code we write ourselves (decided at the stand-up of 2026-10-26, #453).
 
 ## Considered Options
