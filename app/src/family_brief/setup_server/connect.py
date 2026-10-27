@@ -2,7 +2,6 @@
 send the family to, and the way back to it from Check or Finish."""
 from __future__ import annotations
 
-from collections.abc import Callable
 from http import HTTPStatus
 from typing import Any, Literal
 
@@ -32,7 +31,6 @@ class SourceChoice(Strict):
 class Connect(Phase):
     def routes(self) -> dict[str, Action]:
         return {"api/source": self.choose_source, "api/open": self.open_site,
-                "api/whatsapp/back": self.back_to_whatsapp,
                 "api/connect/back": self.back_to_connect}
 
     def state(self, progress: dict[str, Any]) -> dict[str, Any]:
@@ -74,30 +72,11 @@ class Connect(Phase):
         opened = desktop.open_url(url)
         return HTTPStatus.OK, {"result": "opened" if opened else "not-opened", "url": url}
 
-    def back_to_whatsapp(self, raw: Any) -> Reply:
-        """Takes setup from Check or Finish back to WhatsApp's step in Connect, for ticked groups
-        the health check didn't find on this Mac. The step reads the groups again, so a group's
-        new name is there to tick in Check, and setup goes on from there as before."""
-        return self._back_to_connect(
-            raw, "whatsapp", lambda progress: progress["sources"]["whatsapp"] == "done",
-            "Only Check and Finish go back to WhatsApp.",
-            "answers: should be {}, at Check or Finish with WhatsApp done")
-
     def back_to_connect(self, raw: Any) -> Reply:
         """Takes setup from Check or Finish back to Connect's Source list, for a Source the family
         skipped and wants after all: they open it from the list, which brings it back, and setup
         goes on from there as before. A page opened again after setup is at Finish, so this is
-        also how a Source is added later."""
-        return self._back_to_connect(
-            raw, None, lambda progress: setup_connect.skipped(progress["sources"]),
-            "Only Check and Finish go back to Connect, for a Source that was skipped.",
-            "answers: should be {}, at Check or Finish with a Source skipped")
-
-    def _back_to_connect(self, raw: Any, source: str | None,
-                         allowed: Callable[[dict[str, Any]], bool], refusal: str,
-                         error: str) -> Reply:
-        """Takes setup from Check or Finish back to Connect at `source`, or at its list for None,
-        when `allowed` says setup's progress allows it, and never while a check runs."""
+        also how a Source is added later. Never while a check runs."""
         parse(Nothing, raw)
         context = self.context
         with context.working:
@@ -106,7 +85,11 @@ class Connect(Phase):
                     runs.get("finish", {}).get("result") in finish.UNDER_WAY:
                 return HTTPStatus.CONFLICT, {"result": "busy"}
             status, out = context.connect.reopen(
-                source, allowed, setup_save.outcome("invalid-answers", refusal, errors=[error]))
+                lambda progress: setup_connect.skipped(progress["sources"]),
+                setup_save.outcome(
+                    "invalid-answers",
+                    "Only Check and Finish go back to Connect, for a Source that was skipped.",
+                    errors=["answers: should be {}, at Check or Finish with a Source skipped"]))
             if status == HTTPStatus.OK:
                 # How the health check and Finish went was about the Sources as they were.
                 runs.pop("health", None)

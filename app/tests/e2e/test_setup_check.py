@@ -24,7 +24,6 @@ from test_setup_steps import HeaderImap
 from setup_page import (APP_PASSWORD, PAGE_DIR, Response, at_the_check_step, call, check_page, config_file,
                         confirm, connect_done, health_result, more_progress, save_progress, wait_for)
 from setup_page import ai, clock, health, page  # noqa: F401
-from test_setup_whatsapp import fake_mac
 
 
 # ── Working: Parent Recap reads the Sources, with progress shown
@@ -384,25 +383,22 @@ def skip_at_check(url: str, body: Any) -> Response:
 
 def break_source(harness, monkeypatch, source: str) -> dict[str, Any]:
     """The Source `source` connected, at the check step, with its check failing for real, and
-    the others' checks working; what the check page confirms, with WhatsApp's groups ticked when
-    it's WhatsApp that fails."""
+    the others' checks working; what the check page confirms."""
     harness.config["wilma"]["enabled"] = source == "wilma"
     at_the_check_step(harness)
     kids = [{"name": "Mia", "everyday_name": "Mia"}, {"name": "Leo", "everyday_name": "Leo"}]
     if source == "wilma":  # its password changed
         harness.source_fakes["wilma"].answers[("kids", "list")] = (1, {"error": "unauthorized"})
-    if source == "whatsapp":  # WhatsApp for Mac was never installed on this Mac
-        fake_mac(harness, monkeypatch)
     if source == "myclub":  # Mia's link doesn't open any more
         harness.config["kids"][0]["myclub_ical_url"] = "https://example.myclub.fi/ical/mia.ics"
         config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
         more_progress(harness, sources={"myclub": "done"})
         harness.source_fakes["myclub"].failures = [404] * 10
-    return {"kids": kids, "whatsapp": ["3B parents"] if source == "whatsapp" else []}
+    return {"kids": kids, "whatsapp": []}
 
 
 @pytest.mark.macos
-@pytest.mark.parametrize("source", ["wilma", "whatsapp", "myclub"])
+@pytest.mark.parametrize("source", ["wilma", "myclub"])
 def test_a_source_whose_check_fails_can_be_skipped_and_the_health_check_then_passes(
         harness, page, ai, monkeypatch, source):
     signed_in(harness, ai, monkeypatch)
@@ -417,8 +413,8 @@ def test_a_source_whose_check_fails_can_be_skipped_and_the_health_check_then_pas
 
     assert r.status == 200 and r.json()["result"] == "checking"
     assert r.json()["progress"]["sources"][source] == "skipped"
-    # The check page as it is now: a skipped WhatsApp has no groups to tick.
-    assert (r.json()["check"]["whatsapp"] is None) == (source == "whatsapp")
+    # The check page as it is now, WhatsApp's groups still there to tick.
+    assert r.json()["check"]["whatsapp"] is not None
     out = health_result(page.url)
     assert out["result"] == "ok", out
     assert out["progress"]["phase"] == "first-brief"
@@ -430,8 +426,9 @@ def test_a_source_whose_check_fails_can_be_skipped_and_the_health_check_then_pas
 def test_a_skip_at_check_is_refused_for_gmail_elsewhere_and_while_checking(harness, page, health):
     at_the_check_step(harness)
 
-    for body in [{"source": "gmail"}, {"source": "ai"}, {"source": "nothing"}, {}, {"x": 1},
-                 {"source": "wilma", "x": 1}]:
+    # WhatsApp isn't on Connect's list until the Linked Device's step (ADR 0027), so not here either.
+    for body in [{"source": "gmail"}, {"source": "ai"}, {"source": "whatsapp"}, {"source": "nothing"},
+                 {}, {"x": 1}, {"source": "wilma", "x": 1}]:
         assert skip_at_check(page.url, body).status == 400, body
     health.go.clear()
     confirm(page.url)

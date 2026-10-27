@@ -19,7 +19,6 @@ import fake_node
 from test_codex_install import install_codex_skills
 
 from family_brief import __main__ as cli, install_record, run_lock, setup_save, setup_wilma, tools
-from family_brief import whatsapp_python
 from family_brief.collectors import gmail
 from family_brief.config import Config
 from family_brief.system import jobs, wake, windows_only
@@ -132,7 +131,8 @@ def set_up(harness, monkeypatch, *, record: bool = True) -> None:
     (home / ".family" / "languages" / "sv.json").write_text("{}")
     (home / ".family" / "config.yaml.bak-202609011200").write_text("old: config\n")
     tools.remembered_path().write_text('{"node": "/nix/store/node/bin/node"}\n')  # found off PATH
-    whatsapp_python.record(str(home / PINNED_PYTHON))  # setup's WhatsApp step
+    # The record of the Python given Full Disk Access, which setup's old WhatsApp for Mac step kept.
+    (home / ".family" / "whatsapp-python.json").write_text(json.dumps({"python": str(home / PINNED_PYTHON)}))
     # The progress the setup page and the chat share.
     saved = setup_save.save(home / ".family" / "config.yaml", {"progress": {"phase": "finish"}})
     assert saved["result"] == "saved"

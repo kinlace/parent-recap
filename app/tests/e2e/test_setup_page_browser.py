@@ -11,7 +11,6 @@ say why; `-m "e2e and not browser"` runs the rest of the layer."""
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import sys
@@ -39,7 +38,6 @@ from test_setup_gmail import TYPED
 from test_setup_myclub import LINK as MYCLUB_LINK
 from test_setup_page_windows import Web, school_mail
 from test_setup_status import install_program
-from test_setup_whatsapp import WHATSAPP_CHATS, fake_mac
 from test_setup_wilma import timed_out, wilma_cli  # noqa: F401
 
 pytestmark = pytest.mark.browser
@@ -194,8 +192,9 @@ def source_listed(tab, source: str, status: str, language: str = "en"):
     return tab.get_by_role("button", name=name, exact=True)
 
 
-def connect_up_to_whatsapp(tab) -> None:
-    """Without Wilma, then Gmail and the Gateway Key."""
+def connect_up_to_myclub(tab) -> None:
+    """Without Wilma, then Gmail and the Gateway Key. MyClub comes straight after the AI sign-in
+    on every system: the page lists no WhatsApp until the Linked Device's step (ADR 0027)."""
     in_english_with_the_gateway(tab)
     without_wilma_in_espoo(tab)
     sign_in_to_gmail(tab, TYPED)
@@ -204,18 +203,9 @@ def connect_up_to_whatsapp(tab) -> None:
                                 next=text("source.ai")))).to_be_visible()
     tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
     button(tab, "gateway.save").click()
-    # Not the step's own result: on macOS, WhatsApp's step checks at once and says so in its place.
     expect(source_listed(tab, "ai", "done")).to_be_visible()
-
-
-def connect_up_to_myclub(tab) -> None:
-    """As far as WhatsApp's step, and on macOS, the only system whose page lists WhatsApp,
-    WhatsApp skipped."""
-    connect_up_to_whatsapp(tab)
-    if sys.platform == "darwin":  # WhatsApp for Mac, only on macOS
-        skip(tab, "whatsapp").click()
-        expect(source_listed(tab, "whatsapp", "skipped")).to_be_visible()
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_visible()
+    expect(tab.get_by_role("button", name=re.compile(r"^WhatsApp"))).to_have_count(0)
 
 
 def at_the_ai_step(tab, harness, name: str, system: str) -> None:
@@ -329,8 +319,8 @@ def test_the_check_page_links_back_to_connect_s_list_while_a_source_is_skipped(t
 
 
 def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(tab):
-    # #491: Wilma, WhatsApp and MyClub each say "Skip <Source> for now" beside the step's main
-    # button. Gmail and the AI sign-in can't be skipped.
+    # #491: Wilma and MyClub each say "Skip <Source> for now" beside the step's main button.
+    # Gmail and the AI sign-in can't be skipped.
     in_english_with_the_gateway(tab)
     actions = tab.locator("#wilma-form .actions")
     expect(actions.get_by_role("button", name=text("wilma.sign-in"))).to_be_visible()
@@ -347,10 +337,6 @@ def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(
     tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
     button(tab, "gateway.save").click()
     expect(source_listed(tab, "ai", "done")).to_be_visible()
-    if sys.platform == "darwin":
-        expect(tab.locator("#source-whatsapp").get_by_role(
-            "button", name=text("source.skip", source="WhatsApp"))).to_be_visible()
-        skip(tab, "whatsapp").click()
     # Without Wilma's Kids, MyClub first asks for them, with Skip beside Add the Kid.
     kid_form = tab.locator("#myclub-kid-form .actions")
     expect(kid_form.get_by_role("button", name=text("myclub.add"))).to_be_visible()
@@ -610,39 +596,12 @@ def test_claude_s_step_installs_claude_code_on_windows_and_signs_in_on_a_mac(
         button(tab, "claude.start", system=on).click()
 
 
-@pytest.mark.macos
-def test_whatsapp_s_step_names_the_python_file_finder_selects(tab):
-    python = os.path.basename(ops.full_disk_access_python())
-
-    connect_up_to_whatsapp(tab)
-
-    expect(tab.locator("#whatsapp-drag")).to_have_text(text("whatsapp.picture.drag", python=python))
-    expect(tab.locator("#source-whatsapp .python-file")).to_have_text([python, python])
-
-
-@pytest.mark.macos
-def test_whatsapp_s_step_waits_for_the_chats_to_sync_and_offers_to_skip_meanwhile(
-        tab, family, monkeypatch):
-    # Signed in to WhatsApp for Mac during the step: readable, but no group yet (#460). The
-    # real clock, as the page checks again every few seconds.
-    mac = fake_mac(family, monkeypatch)
-    mac.install_whatsapp([])
-
-    connect_up_to_whatsapp(tab)
-
-    expect(tab.get_by_text(text("whatsapp.syncing"))).to_be_visible()
-    expect(skip(tab, "whatsapp")).to_be_visible()
-    expect(source_listed(tab, "whatsapp", "to-do")).to_be_visible()
-    mac.install_whatsapp(WHATSAPP_CHATS)  # the chats have synced, and the page checks again
-    expect(tab.get_by_text(text("whatsapp.readable"))).to_be_visible()
-    expect(source_listed(tab, "whatsapp", "done")).to_be_visible()
-
-
-@pytest.mark.macos
-@pytest.mark.parametrize("reason, fix", [("no-access", "whatsapp.open"),
-                                         ("missing-groups", "whatsapp.back")])
-def test_the_check_page_says_why_whatsapp_isn_t_ok_and_offers_the_button_that_fixes_it(
-        tab, family, health, reason, fix):
+@pytest.mark.parametrize("reason, says", [("no-access", "health.fail.whatsapp"),
+                                          ("missing-groups", "health.fail.whatsapp.missing-groups")])
+def test_the_check_page_says_why_whatsapp_isn_t_ok_with_no_full_disk_access_step(
+        tab, family, health, reason, says):
+    # The step that opened Full Disk Access, and the one back to WhatsApp's step, went with it
+    # (ADR 0027): a reason only Full Disk Access fixed gets the check's general text.
     at_the_check_step(family)
     health.results = [(ops.FAIL, "gmail", "Gmail", "IMAP login failed"),
                       (ops.WARN, "whatsapp", "WhatsApp", "not OK", reason, ("3B parents",))]
@@ -651,13 +610,9 @@ def test_the_check_page_says_why_whatsapp_isn_t_ok_and_offers_the_button_that_fi
 
     button(tab, "check.confirm").click()
 
-    python = os.path.basename(ops.full_disk_access_python())
-    said = text(f"health.fail.whatsapp.{reason}", groups="3B parents", python=python)
-    expect(tab.locator("#health-checks").get_by_text(said)).to_be_visible()
-    expect(button(tab, fix)).to_be_visible()
-    if reason == "missing-groups":  # back to WhatsApp's step, to read the groups again
-        button(tab, fix).click()
-        expect(heading(tab, "connect.title")).to_be_visible()
+    item = tab.locator("#health-checks > li").filter(has_text=text("health.check.whatsapp"))
+    expect(item.locator("p.hint").first).to_have_text(text(says, groups="3B parents"))
+    expect(item.locator("xpath=./button")).to_have_count(0)  # no step that fixes it, nor Skip
 
 
 def copying(tab) -> None:
@@ -705,9 +660,9 @@ def test_a_failed_check_without_a_reason_folds_what_it_said_under_its_hint_with_
     expect(reason).to_have_text(said)
     item.get_by_role("button", name=text("copy"), exact=True).click()
     assert_report(tab, said, f"{prefix}.fail.whatsapp")
-    # Skipping is the check page's, where Confirm runs again without the Source.
-    expect(item.get_by_role("button", name=text("source.skip", source="WhatsApp"))).to_have_count(
-        1 if where == "check" and SYSTEM == "macos" else 0)
+    # Skipping is the check page's, for a Source Connect's list offers, which WhatsApp isn't on
+    # any system until the Linked Device's step (ADR 0027).
+    expect(item.get_by_role("button", name=text("source.skip", source="WhatsApp"))).to_have_count(0)
 
 
 def test_a_failed_check_of_a_source_the_family_can_do_without_offers_skip_and_setup_goes_on(

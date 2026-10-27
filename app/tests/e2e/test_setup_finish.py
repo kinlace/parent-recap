@@ -20,8 +20,7 @@ from fake_system import FakeWake
 from setup_page import (PAGE_DIR, Response, at_finish, call, finish, finished, more_progress, new_server,
                         refused, wait_for)
 from setup_page import clock, health, page, schedule  # noqa: F401
-from test_setup_whatsapp import (WHATSAPP_FAILURES, WHATSAPP_PYTHON, assert_says_why, back_to_connect,
-                                 back_to_whatsapp)
+from test_setup_whatsapp import WHATSAPP_FAILURES, WHATSAPP_PYTHON, assert_says_why, back_to_connect
 
 
 # ── Finish: the evening job and the wake-up, then the outcome checklist
@@ -166,22 +165,6 @@ def test_finish_says_why_whatsapp_isn_t_ok(harness, page, schedule, health, fail
     assert doctor == {"outcome": "doctor", "ok": status == ops.WARN,
                       "checks": [{**check, "detail": f"{WHATSAPP_PYTHON} can't"}]}
     assert_says_why("finish", check)
-
-
-def test_finish_leads_back_to_whatsapp_s_step_while_the_page_is_open(harness, page, schedule,
-                                                                      health):
-    at_finish(harness, delivered=False)  # so the page stays open
-    health.results.append((ops.WARN, "whatsapp", "WhatsApp", "", "missing-groups", ("3B parents",)))
-    finish(page.url)
-    assert finished(page.url)["result"] == "not-done"
-
-    r = back_to_whatsapp(page.url)
-
-    assert r.status == 200
-    assert (r.json()["progress"]["phase"], r.json()["progress"]["source"]) == ("connect", "whatsapp")
-    # Finish checks again once setup is back there.
-    assert call(page.url, "api/finish/check", method="POST", body={}).json() == \
-        {"result": "no-finish"}
 
 
 def test_finish_leads_back_to_connect_s_list_for_a_skipped_source(harness, page, schedule):

@@ -15,7 +15,7 @@ import pytest
 import yaml
 
 import fake_node
-from family_brief import __main__ as cli, ops, setup_steps, whatsapp_python
+from family_brief import __main__ as cli, ops, setup_steps
 from family_brief.collectors import whatsapp
 from family_brief.llm import codex as codex_backend
 from family_brief.system import jobs
@@ -374,84 +374,18 @@ def test_off_macos_doctor_has_no_whatsapp_check(harness, mac_with_whatsapp, caps
     assert mac_with_whatsapp.reads == []
 
 
-# ── the Python given Full Disk Access, against the evening job's (ADR 0011, 0012)
-
-
-@pytest.fixture
-def evening_job(harness, monkeypatch):
-    """Parent Recap's own Python under ~/ParentRecap/runtime and the evening job's venv Python
-    linking to it, as install.sh and schedule install lay them out. Returns the venv's link."""
-    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
-    harness.config["wilma"]["enabled"] = False
-    venv_python = harness.home / "ParentRecap" / "app" / ".venv" / "bin" / "python"
-    venv_python.parent.mkdir(parents=True)
-    harness.jobs.add(jobs.DAILY)
-    harness.jobs.programs[jobs.DAILY] = [str(venv_python), "-m", "family_brief", "run"]
-    return venv_python
-
-
-def pinned_python(harness, version: str) -> str:
-    python = harness.home / "ParentRecap" / "runtime" / f"python-{version}" / "bin" / "python3.12"
-    python.parent.mkdir(parents=True, exist_ok=True)
-    python.touch()
-    return os.path.realpath(python)
-
-
-def allowed_python_lines(out: str) -> list[str]:
-    return [l for l in out.splitlines() if "WhatsApp:" in l and "evening job's Python" in l]
-
-
 @pytest.mark.macos
-def test_doctor_is_quiet_when_the_python_allowed_is_the_evening_jobs(harness, evening_job, capsys):
-    python = pinned_python(harness, "3.12.7")
-    evening_job.symlink_to(python)
-    whatsapp_python.record(python)
+def test_doctor_no_longer_compares_the_python_setup_once_gave_full_disk_access(
+        harness, mac_with_whatsapp, capsys):
+    # Setup's WhatsApp for Mac step recorded it; the step and its record are gone (ADR 0027).
+    record = harness.home / ".family" / "whatsapp-python.json"
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text('{"python": "/Users/x/ParentRecap/runtime/python-3.12.6/bin/python3.12"}')
 
     harness.cli("doctor", "--skip-llm")
 
-    assert allowed_python_lines(capsys.readouterr().out) == []
-
-
-@pytest.mark.macos
-def test_doctor_says_when_the_python_allowed_is_no_longer_the_evening_jobs(harness, evening_job,
-                                                                         capsys):
-    whatsapp_python.record(pinned_python(harness, "3.12.6"))
-    python = pinned_python(harness, "3.12.7")
-    evening_job.symlink_to(python)
-
-    harness.cli("doctor", "--skip-llm")
-
-    [line] = allowed_python_lines(capsys.readouterr().out)
-    assert line.startswith(ops.WARN.strip())
-    assert "no longer the evening job's Python" in line
-    assert f"add {python} to Full Disk Access" in line
-    assert "parent-recap full-disk-access" in line
-    assert not HAN.findall(line)
-
-
-@pytest.mark.macos
-def test_doctor_fails_when_the_evening_jobs_python_points_at_nothing(harness, evening_job, capsys):
-    whatsapp_python.record(pinned_python(harness, "3.12.6"))
-    evening_job.symlink_to(harness.home / "ParentRecap" / "runtime" / "python-3.12.5" / "bin" / "python3.12")
-
-    harness.cli("doctor", "--skip-llm")
-
-    [line] = allowed_python_lines(capsys.readouterr().out)
-    assert line.startswith(ops.FAIL)
-    assert f"{evening_job} points at nothing" in line
-    assert "no longer the evening job's Python" in line
-    assert "parent-recap schedule install" in line
-    assert f"add {os.path.realpath(sys.executable)} to Full Disk Access" in line
-
-
-@pytest.mark.macos
-def test_doctor_does_not_compare_an_install_from_before_the_record(harness, evening_job, capsys):
-    evening_job.symlink_to(pinned_python(harness, "3.12.7"))
-
-    harness.cli("doctor", "--skip-llm")
-
-    assert not whatsapp_python.path().exists()
-    assert allowed_python_lines(capsys.readouterr().out) == []
+    out = capsys.readouterr().out
+    assert "python-3.12.6" not in out and "evening job's Python" not in out
 
 
 # ── why WhatsApp isn't OK, carried through the bg job for the setup page and the chat skills
@@ -459,8 +393,8 @@ def test_doctor_does_not_compare_an_install_from_before_the_record(harness, even
 
 @pytest.fixture
 def mac_for_reasons(harness, monkeypatch):
-    """The fake Mac, with doctor's other WhatsApp check and the network out of the way, and a
-    clock that a job that hangs moves on."""
+    """The fake Mac, with the network out of the way, and a clock that a job that hangs moves
+    on."""
     del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
     harness.config["wilma"]["enabled"] = False
     monkeypatch.delenv(ops.BG_ENV, raising=False)

@@ -124,11 +124,10 @@ def walk_to_finish(harness, url: str) -> dict[str, Any]:
                 body={"ai": "gateway", "partner": None, "feedback": False}).status == 200
 
     listed = [s["name"] for s in call(url, "api/state").json()["connect"]["sources"]]
-    # WhatsApp for Mac, and its Full Disk Access, only on macOS.
-    assert listed == ["wilma", "gmail", "ai", *(["whatsapp"] if sys.platform == "darwin" else []),
-                      "myclub"]
+    # No WhatsApp on any system until the Linked Device's step (ADR 0027).
+    assert listed == ["wilma", "gmail", "ai", "myclub"]
     for name in listed:
-        if name in ("wilma", "whatsapp"):  # the school has no Wilma; WhatsApp can wait
+        if name == "wilma":  # the school has no Wilma
             assert source(url, name, "skip").status == 200, name
         elif name == "gmail":
             assert connect_gmail(url, PARENT, TYPED).json()["result"] == "saved"

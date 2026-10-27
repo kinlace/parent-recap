@@ -27,7 +27,7 @@ import yaml
 from pydantic import ValidationError
 
 from . import (ai_filter_report, baileys_install, chat_install, install_record, llm, ops, own_node,
-               run_lock, setup_save, setup_wilma, sources, tools, whatsapp_python)
+               run_lock, setup_save, setup_wilma, sources, tools)
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
 from .system import desktop, jobs, macos_only, profile, secrets, wake, windows_only
@@ -317,8 +317,9 @@ def _baileys(s: Survey, programs: list[Path]) -> None:
 
 
 def survey_whatsapp(s: Survey, programs: list[Path]) -> None:
-    """The record of which Python setup's WhatsApp step gave Full Disk Access (ADR 0012)."""
-    p = whatsapp_python.path()
+    """The record of which Python setup's old WhatsApp for Mac step gave Full Disk Access (ADR
+    0012), which an install from before 0.8.0 may still have."""
+    p = Path.home() / ".family" / "whatsapp-python.json"
     if p.exists():
         s.items.append(_file("Which Python reads WhatsApp", p))
 
