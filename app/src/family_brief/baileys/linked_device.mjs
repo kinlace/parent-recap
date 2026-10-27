@@ -5,16 +5,17 @@
 //   node linked_device.mjs groups --modules TREE --auth FOLDER --log FILE [--timeout SECONDS]
 //
 // `pair` connects with no auth state and prints each QR string Baileys emits as a line of JSON,
-// {"qr": "..."}, until the phone pairs. Only then is the auth state written to FOLDER, so a
-// pairing that never happens leaves none. `groups` connects with the auth state in FOLDER. Both
-// then print {"groups": [{"id": "...", "subject": "..."}]} and exit; no message is kept.
+// {"qr": "..."}, until the phone pairs. Only then is the auth state written to FOLDER, and
+// {"paired": true} printed, so a pairing that never happens leaves none. `groups` connects with
+// the auth state in FOLDER. Both then print {"groups": [{"id": "...", "subject": "..."}]} and
+// exit; no message is kept.
 //
 // It only reads: no send, read-receipt or presence call is ever made. Delivery receipts and
 // presence nodes Baileys sends on its own are accepted (#181). Log lines go to FILE, never to
 // stdout, and never hold a message's text: Baileys' own lines are kept as their fixed wording,
 // without the objects it logs with them.
 //
-// The exit codes are in linked_device.py.
+// linked_device.py names its exit codes, EXIT below, for Python.
 
 import { appendFileSync } from "node:fs";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -173,7 +174,7 @@ function connect(baileys, auth, handlers) {
     Object.assign(auth.state.creds, update);
     await auth.saveCreds();
   });
-  socket.ev.on("connection.update", (update) => handlers(socket, update));
+  socket.ev.on("connection.update", (update) => handlers(socket, update).catch(stop));
   return socket;
 }
 
@@ -224,7 +225,17 @@ async function main() {
   const alive = setInterval(() => {}, 60_000);
 
   const { DisconnectReason } = baileys;
+  let current;
+  let kept = !pairing;
+  const keep = async () => {
+    if (kept) return;
+    kept = true;
+    await auth.keep();
+    log("info", "paired, auth state saved");
+    say({ paired: true });
+  };
   const handle = async (socket, { connection, lastDisconnect, qr }) => {
+    if (socket !== current) return; // a socket that has closed
     if (qr && !pairing) {
       log("warn", "asked for a QR code: needs a new pairing");
       return finish(EXIT.needsPairing);
@@ -236,11 +247,7 @@ async function main() {
     if (connection === "open") {
       log("info", "connected");
       try {
-        if (pairing) {
-          await auth.keep();
-          log("info", "paired, auth state saved");
-          say({ paired: true });
-        }
+        await keep();
         await listGroups(socket);
       } catch (e) {
         log("error", `listing the groups failed: ${e?.message ?? e}`);
@@ -257,15 +264,20 @@ async function main() {
         log("warn", "logged out: needs a new pairing");
         return finish(EXIT.needsPairing);
       }
-      // Pairing ends with WhatsApp asking for a restart, which needs a new socket at once.
-      const wait = status === DisconnectReason.restartRequired ? 0 : RECONNECT_MS;
-      setTimeout(() => connect(baileys, auth, handle), wait);
+      // A scan ends with WhatsApp asking for a restart, which needs a new socket at once. The
+      // phone lists the device from then on, so the pairing is kept even if that socket never
+      // opens.
+      const restart = status === DisconnectReason.restartRequired;
+      if (restart && auth.state.creds.me) await keep();
+      setTimeout(() => (current = connect(baileys, auth, handle)), restart ? 0 : RECONNECT_MS);
     }
   };
-  connect(baileys, auth, handle);
+  current = connect(baileys, auth, handle);
 }
 
-main().catch((e) => {
+function stop(e) {
   log("error", `stopped: ${e?.message ?? e}`);
   finish(EXIT.failed);
-});
+}
+
+main().catch(stop);

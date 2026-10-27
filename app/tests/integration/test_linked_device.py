@@ -113,6 +113,14 @@ def test_pair_opens_a_new_socket_when_whatsapp_asks_for_a_restart(device, tmp_pa
     assert json.loads((auth(tmp_path) / "creds.json").read_text(encoding="utf-8"))["me"] == ME
 
 
+def test_pair_keeps_a_pairing_whose_restarted_socket_never_opens(device, tmp_path):
+    run = device("pair", [[{"qr": "2@first"}, *PAIRED, {"close": 515}], []], timeout=1)
+
+    assert run.code == linked_device.TIMED_OUT
+    assert run.printed == [{"qr": "2@first"}, {"paired": True}]  # the phone lists it already
+    assert json.loads((auth(tmp_path) / "creds.json").read_text(encoding="utf-8"))["me"] == ME
+
+
 @pytest.mark.macos
 def test_the_auth_state_is_only_the_users(device, tmp_path):
     device("pair", [[{"qr": "2@first"}, *PAIRED, {"open": True}]])
