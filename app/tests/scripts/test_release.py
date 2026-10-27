@@ -83,6 +83,8 @@ def test_builds_versioned_zip_with_the_plugin_root_under_one_folder(repo):
         # The Baileys tree's pin, which the installers' `npm ci` installs from.
         "parent-recap/app/src/family_brief/baileys/package.json",
         "parent-recap/app/src/family_brief/baileys/package-lock.json",
+        # The Linked Device's own program, which the pinned Node runs on that tree.
+        "parent-recap/app/src/family_brief/baileys/linked_device.mjs",
         "parent-recap/skills/setup/SKILL.md",
         "parent-recap/skills/manage/SKILL.md",
     ):
