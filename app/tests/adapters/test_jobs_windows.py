@@ -268,8 +268,9 @@ def wait_for(check, seconds: int = 60) -> bool:
     return check()
 
 
-# A job that never ends, writing a line every half second, so whether it still runs shows.
-TICKS = "import time\nwhile True:\n    print('tick', flush=True)\n    time.sleep(0.5)"
+# A job that never ends, writing a line every half second, so whether it still runs shows. On
+# one line: a line break in a task's arguments comes back from Task Scheduler doubled.
+TICKS = "import time; [(print('tick', flush=True), time.sleep(0.5)) for _ in iter(int, 1)]"
 
 
 @pytest.mark.windows
