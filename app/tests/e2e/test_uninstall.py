@@ -239,6 +239,40 @@ def test_confirmed_with_the_archive_kept_removes_all_but_the_archive(harness, mo
     assert APP_PASSWORD not in out and CLAUDE_TOKEN not in out
 
 
+def linked_device_job(harness) -> list[str]:
+    """What the setup page's WhatsApp step installs: the install's own Node, following."""
+    follow = [str(fake_node.pinned_node(harness.home)),
+              str(harness.home / "ParentRecap" / "app" / "linked-device.mjs"), "follow"]
+    harness.jobs.install_always(follow, harness.home / "ParentRecap" / "logs")
+    return follow
+
+
+def test_lists_the_always_running_job_and_stops_and_removes_it(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
+    linked_device_job(harness)
+
+    assert uninstall(harness) == 0
+    assert jobs.system_name(jobs.ALWAYS) in capsys.readouterr().out
+    assert harness.jobs.always_status() == jobs.Status(installed=True, running=True)
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    assert harness.jobs.always_status() == jobs.Status(installed=False, running=False)
+    assert harness.jobs.found() == []
+
+
+def test_stops_on_an_always_running_job_that_runs_another_node(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
+    linked_device_job(harness)
+    harness.jobs.always[0] = "/opt/homebrew/bin/node"
+    before = leftovers(harness.home)
+
+    out = assert_stopped(harness, before, capsys)
+
+    assert "/opt/homebrew/bin/node" in out and jobs.system_name(jobs.ALWAYS) in out
+    assert harness.jobs.always_status().installed
+
+
 def test_the_list_of_held_back_messages_goes_also_when_the_archive_stays(harness, monkeypatch, capsys):
     set_up(harness, monkeypatch)
     (harness.archive_dir / "held-back-list.txt").write_text("1 message held back from the AI, by date\n")

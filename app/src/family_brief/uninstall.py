@@ -202,11 +202,16 @@ def _config(path: Path, s: Survey) -> Config | None:
 def _jobs(s: Survey, programs: list[Path]) -> None:
     # The venv's python is a symlink out of the venv, so only the folder it sits in is resolved.
     venvs = [(p / ".venv").resolve() for p in programs]
+    # The always-running job runs the install's own Node, in its runtime folder.
+    runtimes = [(p.parent / "runtime").resolve() for p in programs]
     found = jobs.found()
     for job in found:
         prog = job.program
-        if not (prog[1:3] == ["-m", "family_brief"] and any(
-                Path(prog[0]).parent.resolve().is_relative_to(v) for v in venvs)):
+        ours = prog[1:3] == ["-m", "family_brief"] and any(
+            Path(prog[0]).parent.resolve().is_relative_to(v) for v in venvs)
+        if job.system_name == jobs.system_name(jobs.ALWAYS) and prog:
+            ours = any(Path(prog[0]).resolve().is_relative_to(r) for r in runtimes)
+        if not ours:
             runs = prog[0] if prog else "a program it can't read"
             s.stops.append(f"{_show(job.where)} is a scheduled job named {job.system_name}, but "
                            f"it runs {runs}, not this install in "
