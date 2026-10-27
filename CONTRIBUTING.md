@@ -101,7 +101,7 @@ npm install --package-lock-only --ignore-scripts
 
 The next install of each family replaces the tree, since its lockfile no longer matches.
 
-The Linked Device's own program, `linked_device.mjs` in the same folder, is tested on a fake Baileys (`app/tests/fake_baileys/`), not the real one. So read the new version's changelog for what the program uses (`makeWASocket`'s options, `connection.update`, `creds.update`, `groupFetchAllParticipating`, the auth state's `BufferJSON`, `initAuthCreds` and `proto`), and change the fake with the program when it moves.
+The Linked Device's own program, `linked_device.mjs` in the same folder, is tested on a fake Baileys (`app/tests/fake_baileys/`), not the real one. So read the new version's changelog for what the program uses (`makeWASocket`'s options, `connection.update`, `creds.update`, `messages.upsert`, `messaging-history.set`, `groups.update`, `groupFetchAllParticipating`, `groupMetadata`, the shape of a message (`key`, `pushName`, `messageTimestamp`) and the `normalizeMessageContent` and `getContentType` that read its content, the auth state's `BufferJSON`, `initAuthCreds` and `proto`), and change the fake with the program when it moves.
 
 ## Two kinds of skills
 
