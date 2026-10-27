@@ -91,6 +91,16 @@ In `install.ps1`, change `$NodeVersion` too, and `$NodeSha256` to the checksum o
 
 A new Node needs no new WhatsApp permission, and the wilma CLI already installed keeps working on it: the next install replaces the old Node.
 
+## Pinned Baileys
+
+The Linked Device runs on Baileys (ADR 0025), whose whole npm tree is pinned in `app/src/family_brief/baileys/`: `package.json` names the Baileys version, and `package-lock.json` pins every package with its integrity hash. The installers install exactly that tree with `npm ci`. To move Baileys, change its version in `package.json` and `BAILEYS_VERSION` in `family_brief/baileys_install.py`, then rebuild the lockfile in that folder with the pinned Node's npm and review its diff:
+
+```bash
+npm install --package-lock-only --ignore-scripts
+```
+
+The next install of each family replaces the tree, since its lockfile no longer matches.
+
 ## Two kinds of skills
 
 - `skills/` is the product: the `setup` and `manage` skills users install. Edit these freely.

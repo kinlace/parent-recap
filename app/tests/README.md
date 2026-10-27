@@ -43,6 +43,7 @@ the import path, so a test may import a helper from a test in another layer.
 | File                          | What it covers                                                   |
 | ----------------------------- | ---------------------------------------------------------------- |
 | `test_ai_filter.py`           | The AI filter on its own: messages in, masked text and names out |
+| `test_baileys_pin.py`         | The committed npm files pin Baileys and its tree, with hashes    |
 | `test_brief.py`               | The Brief read from the archive and written back; old archives   |
 | `test_brief_text.py`          | The program's own Brief and Weekend Picks text                   |
 | `test_citations.py`           | The model's citations checked against what the program supplied  |
@@ -120,6 +121,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_doctor.py`                                        | `doctor` and `discover`                                                |
 | `test_finding_programs.py`                              | Claude, Codex and Node found off PATH                                  |
 | `test_own_node.py`                                      | The wilma CLI on Parent Recap's own Node (ADR 0011)                    |
+| `test_baileys_install.py`                               | The install's Baileys tree, staged with its own Node's `npm ci`        |
 | `test_uninstall.py`                                     | `uninstall` removes what setup made, and nothing else                  |
 | `test_new_source_doctor_uninstall.py`                   | A Source added only to the registry in `doctor` and `uninstall`        |
 | `test_setup_page_browser.py`                            | Main paths and each step's own, in a real browser (ADR 0024)           |
@@ -202,7 +204,8 @@ found as Windows finds them, on any system), `credential_manager`, and the build
 
 ## Other fakes and helpers
 
-- `fake_node.py`: Parent Recap's own Node and a fake wilma CLI in the test's `~/ParentRecap`.
+- `fake_node.py`: Parent Recap's own Node, a fake wilma CLI and Baileys tree in the test's
+  `~/ParentRecap`.
 - `fake_packages.py`: packages for tests that run the real pip offline.
 - `goldens.py`: the golden files' check.
 - `no_google/`: Google's packages blocked from import. `no_pty/`: the Wilma window's
