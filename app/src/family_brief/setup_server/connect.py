@@ -2,6 +2,7 @@
 send the family to, and the way back to it from Check or Finish."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from http import HTTPStatus
 from typing import Any, Literal
 
@@ -10,7 +11,7 @@ from .. import sources as source_registry
 from ..setup_connect import Nothing, Reply, Strict, parse
 from ..system import desktop, desktop_macos, macos_only
 from . import finish
-from .context import Action, Phase
+from .context import Action, Context, Phase
 from .gmail import ADDRESS
 
 # The Sources a family can skip and add later through manage, in the page's order.
@@ -78,20 +79,24 @@ class Connect(Phase):
         goes on from there as before. A page opened again after setup is at Finish, so this is
         also how a Source is added later. Never while a check runs."""
         parse(Nothing, raw)
-        context = self.context
-        with context.working:
-            runs = context.runs
-            if runs.get("health", {}).get("result") == "checking" or \
-                    runs.get("finish", {}).get("result") in finish.UNDER_WAY:
-                return HTTPStatus.CONFLICT, {"result": "busy"}
-            status, out = context.connect.reopen(
-                lambda progress: setup_connect.skipped(progress["sources"]),
-                setup_save.outcome(
-                    "invalid-answers",
-                    "Only Check and Finish go back to Connect, for a Source that was skipped.",
-                    errors=["answers: should be {}, at Check or Finish with a Source skipped"]))
-            if status == HTTPStatus.OK:
-                # How the health check and Finish went was about the Sources as they were.
-                runs.pop("health", None)
-                runs.pop("finish", None)
-        return status, out
+        return go_back(self.context, lambda: self.context.connect.reopen(
+            lambda progress: setup_connect.skipped(progress["sources"]),
+            setup_save.outcome(
+                "invalid-answers",
+                "Only Check and Finish go back to Connect, for a Source that was skipped.",
+                errors=["answers: should be {}, at Check or Finish with a Source skipped"])))
+
+
+def go_back(context: Context, step: Callable[[], Reply]) -> Reply:
+    """Takes setup back to an earlier phase with `step`, never while a check runs. How the health
+    check and Finish went was about setup as it was, so a step back forgets it."""
+    with context.working:
+        runs = context.runs
+        if runs.get("health", {}).get("result") == "checking" or \
+                runs.get("finish", {}).get("result") in finish.UNDER_WAY:
+            return HTTPStatus.CONFLICT, {"result": "busy"}
+        status, out = step()
+        if status == HTTPStatus.OK:
+            runs.pop("health", None)
+            runs.pop("finish", None)
+    return status, out

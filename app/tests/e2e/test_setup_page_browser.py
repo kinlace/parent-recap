@@ -888,15 +888,58 @@ def test_a_link_that_ended_is_paired_again_and_whatsapp_turned_off_at_finish(
     expect(qr_code(tab)).to_be_visible()
     phone.go("scan")
 
+    # The groups it keeps reading, by name, before going back (#548).
+    expect(tab.get_by_text(text("whatsapp.repaired"))).to_be_visible()
+    expect(tab.locator("#whatsapp-groups li")).to_have_text(["3B parents", "Leo piano"])
+    expect(button(tab, "whatsapp.change")).to_be_visible()
+    expect(tab.get_by_text(text("whatsapp.step.scan"))).to_be_hidden()
+    button(tab, "continue").click()
     expect(heading(tab, "finish.title")).to_be_visible()  # back where the family was
     assert [c.id for c in Config.load(config_file(family)).whatsapp.chats] == [
         CLASS_GROUP, PIANO_GROUP]
+    expect(tab.locator("#finish-whatsapp-groups li")).to_have_text(["3B parents", "Leo piano"])
     phone.plays([{"open": True}])  # the logout's socket
     button(tab, "finish.whatsapp.off").click()
 
     expect(tab.get_by_text(text("whatsapp.off"))).to_be_visible()
     expect(button(tab, "finish.whatsapp.off")).to_be_hidden()
+    expect(tab.get_by_text(text("finish.whatsapp.groups"))).to_be_hidden()  # none is read now
     expect(tab.locator("#finish-back")).to_be_visible()  # to add it again
     assert not linked_device.folder().exists()
     assert not Config.load(config_file(family)).whatsapp.enabled
+
+
+def test_finish_names_the_whatsapp_groups_and_changes_them_with_nothing_skipped(
+        tab, family, health, page):  # noqa: F811
+    at_finish(family)
+    more_progress(family, sources={"myclub": "done"})  # no Source skipped to add
+    tab.reload()
+
+    expect(heading(tab, "finish.title")).to_be_visible()
+    expect(tab.get_by_text(text("finish.whatsapp.groups"))).to_be_visible()
+    expect(tab.locator("#finish-whatsapp-groups li")).to_have_text(["3B parents", "Leo piano"])
+    expect(tab.locator("#finish-back")).to_be_hidden()
+    # Finish checks the outcomes as it opens, which going back waits for.
+    wait_for(lambda: page.context.runs.get("finish", {}).get("result") not in
+             (None, "installing", "checking"), 20)
+    button(tab, "whatsapp.change").click()
+
+    expect(heading(tab, "check.title")).to_be_visible()
+    expect(tab.get_by_role("checkbox", name=re.compile("^3B parents"))).to_be_checked()
+    expect(tab.get_by_role("checkbox", name=re.compile("^Leo piano"))).to_be_checked()
+
+
+def test_a_linked_whatsapp_opened_from_connect_s_list_goes_on_without_a_code(tab, family):
+    at_the_whatsapp_step(family)
+    more_progress(family, sources={"whatsapp": "done", "myclub": "skipped"})
+    tab.reload()
+
+    expect(tab.get_by_text(text("whatsapp.paired"))).to_be_visible()
+    expect(tab.get_by_text(text("whatsapp.step.scan"))).to_be_hidden()
+    expect(qr_code(tab)).to_be_hidden()
+    expect(tab.locator("#connect-continue")).to_be_hidden()  # a Source is current
+    tab.locator("#whatsapp-on").click()
+
+    expect(tab.locator("#connect-continue")).to_be_visible()  # on to Check
+    expect(source_listed(tab, "whatsapp", "done")).to_be_visible()
 

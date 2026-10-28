@@ -289,7 +289,7 @@ def test_a_link_whatsapp_ended_is_paired_again_keeping_the_picked_groups(harness
 
     assert (state["progress"]["phase"], state["progress"]["source"]) == ("connect", "whatsapp")
     assert state["progress"]["sources"]["whatsapp"] == "to-do"
-    assert state["whatsapp"] == {"picked": 1}
+    assert state["whatsapp"] == {"picked": ["3B parents"]}  # named as the page says it
     phone.plays([{"qr": "2@again"}, *SCANNED])
     pair(page.url)
     out = until_said(page.url, "paired")
@@ -343,6 +343,73 @@ def test_a_paired_link_leaves_the_page_where_the_family_was(harness, page):
     state = opened(page.url)
 
     assert state["progress"]["phase"] == "finish" and state["progress"]["sources"] == ALL_DONE
+
+
+# ── Changing the picked groups (#548): at any later visit, with nothing skipped, and from a
+# WhatsApp step opened again in Connect
+
+
+def paired_at_finish(harness) -> None:
+    """Set up before, with a pairing that holds and the groups it found, opened at Finish."""
+    finished_with_groups(harness, [{"name": "3B parents", "id": CLASS, "kid": "Mia"}])
+    harness.source_fakes["whatsapp"].status(paired=True, connected_since=None,
+                                            last_connected=None, link_ended_at=None)
+    more_progress(harness, gmail_senders=[], whatsapp_chats=[
+        {"name": "3B parents", "id": CLASS}, {"name": "Futis P2017", "id": FOOTBALL}])
+
+
+def change_groups(url: str, body: Any = None) -> Any:
+    return call(url, "api/whatsapp/groups", method="POST", body={} if body is None else body)
+
+
+def test_finish_takes_the_family_to_the_check_page_to_change_the_groups(harness, page, health):
+    paired_at_finish(harness)
+    assert opened(page.url)["whatsapp"] == {"picked": ["3B parents"]}
+
+    r = change_groups(page.url)
+
+    assert r.status == 200
+    progress = r.json()["progress"]
+    assert (progress["phase"], progress["source"]) == ("check", None)
+    assert progress["sources"] == ALL_DONE  # nothing had to be skipped
+    offered = check_page(page.url)["whatsapp"]
+    assert [(g["name"], g["ticked"]) for g in offered] == [
+        ("3B parents", True), ("Futis P2017", False)]
+    assert confirm(page.url, whatsapp=["3B parents", "Futis P2017"], senders=[]).status == 200
+    assert health_result(page.url)["result"] == "ok"
+    assert [c.id for c in saved_config(harness).whatsapp.chats] == [CLASS, FOOTBALL]
+
+
+def test_the_groups_change_only_once_whatsapp_is_done_past_connect_never_while_checking(
+        harness, page, health):
+    paired_at_finish(harness)
+    assert change_groups(page.url, {"x": 1}).status == 400
+    more_progress(harness, sources={"whatsapp": "skipped"})
+    assert change_groups(page.url).status == 400  # off: nothing to change
+    more_progress(harness, phase="connect", source=None, sources={"whatsapp": "done"})
+    assert change_groups(page.url).status == 400  # Connect goes on to Check by itself
+    more_progress(harness, phase="first-brief")
+    assert change_groups(page.url).status == 200
+
+    health.go.clear()
+    assert confirm(page.url, senders=[]).status == 200
+    assert change_groups(page.url).status == 409  # the health check is running
+    health.go.set()
+    health_result(page.url)
+
+
+def test_a_done_whatsapp_opened_from_connect_s_list_goes_on_from_there(harness, page):
+    at_the_whatsapp_step(harness)
+    more_progress(harness, sources={"whatsapp": "done", "myclub": "to-do"})
+
+    out = call(page.url, "api/whatsapp/done", method="POST", body={}).json()
+
+    assert out["progress"]["source"] == "myclub"  # the next to do
+    more_progress(harness, source="whatsapp", sources={"myclub": "skipped"})
+    out = call(page.url, "api/whatsapp/done", method="POST", body={}).json()
+    assert out["progress"]["source"] is None  # none left: on to Check
+    more_progress(harness, source="whatsapp", sources={"whatsapp": "to-do"})
+    assert call(page.url, "api/whatsapp/done", method="POST", body={}).status == 400
 
 
 # ── Turning WhatsApp off
