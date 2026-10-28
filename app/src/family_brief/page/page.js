@@ -399,7 +399,7 @@ const STEPS = {
     label: "Wilma",
   },
   gmail: {
-    setUp: setUpGmail, first: prepareGmail,
+    setUp: setUpGmail, first: prepareGmail, again: showSender,
     leave: () => {
       document.getElementById("gmail-password").value = "";
       document.getElementById("gateway-sends-key").value = "";
@@ -481,10 +481,6 @@ function setUpGmail() {
 function prepareGmail() {
   const sends = page.gmail.sender === "gateway";
   pick("sender", "gmail");
-  const key = page.welcome.ai !== "gateway";
-  document.getElementById("gateway-sends-key-part").hidden = !key;
-  document.getElementById("gateway-sends-key").required = key;
-  setText(document.getElementById("gateway-sends-save"), key ? "gateway.save" : "gmail.gateway.save");
   document.getElementById("gmail-reading-only").hidden = !sends;
   const { partner } = page.welcome;
   document.getElementById("gateway-sends-language").value = page.language;
@@ -496,12 +492,22 @@ function prepareGmail() {
   showSender();
 }
 
-// The Gmail form, or the Recipients' addresses for Parent Recap to send to.
+// The Gmail form, or the Recipients' addresses for Parent Recap to send to, with the Gateway Key
+// for sending alone while the AI, which Finish can change, isn't the gateway.
 function showSender() {
   const gateway = picked("sender") === "gateway";
   document.getElementById("gmail-own").hidden = gateway;
   document.getElementById("gateway-sends-form").hidden = !gateway;
+  const asksKey = asksSendKey();
+  document.getElementById("gateway-sends-key-part").hidden = !asksKey;
+  document.getElementById("gateway-sends-key").required = asksKey;
+  setText(document.getElementById("gateway-sends-save"),
+    asksKey ? "gateway.save" : "gmail.gateway.save");
   showJunk();
+}
+
+function asksSendKey() {
+  return page.welcome.ai !== "gateway";
 }
 
 // The addresses given for Parent Recap to send to, the setup parent's first.
@@ -538,14 +544,14 @@ async function saveParentRecapSends(event) {
   const button = event.submitter;
   button.disabled = true;
   const recipients = gatewayRecipients();
-  const key = document.getElementById("gateway-sends-key");
+  const keyField = document.getElementById("gateway-sends-key");
   try {
     const out = await post("api/gmail/gateway", {
       recipients: recipients.map(({ address, language }) => ({ address, language })),
-      ...(key.required ? { key: key.value } : {}),
+      ...(asksSendKey() ? { key: keyField.value } : {}),
     });
-    // The key stays in the field only when the same key can be tried again as it is.
-    if (!["no-address", "same-address", ...KEY_AGAIN].includes(out.result)) key.value = "";
+    // The key stays in the field only when it wasn't tried, or the same key can be tried again.
+    if (!["no-address", "same-address", ...KEY_AGAIN].includes(out.result)) keyField.value = "";
     const seen = new Set();
     for (const { field, address } of recipients) {
       const key = address.trim().toLowerCase();
