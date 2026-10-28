@@ -9,6 +9,7 @@ import importlib.util
 import json
 import logging
 import smtplib
+import socket
 import sys
 import threading
 import urllib.error
@@ -191,6 +192,8 @@ def test_a_bad_request_doesnt_count(tmp_path, day):
     {"to": ["parent@example.com\r\nBcc: spam@example.net"]},
     {"subject": ""},
     {"subject": "Brief\r\nBcc: spam@example.net"},
+    {"subject": "Brief \ud800"},
+    {"to": ["vanhempi@esimerkki.fi", "äiti@esimerkki.fi"]},
     {"text": None},
     {"html": 7},
     {"attachments": [{"filename": "../events.ics", "content_type": "text/calendar",
@@ -207,7 +210,7 @@ def test_a_malformed_request_gets_400_saying_what_is_wrong(tmp_path, day, change
     assert FakeSMTP.sent == []
 
 
-@pytest.mark.parametrize("raw", [b"not json", b"[1, 2]"])
+@pytest.mark.parametrize("raw", [b"not json", b"[1, 2]", pytest.param(b"[" * 100_000, id="nested")])
 def test_a_body_that_isnt_a_json_object_gets_400(tmp_path, day, raw):
     assert post(make_relay(tmp_path, day), body=raw)[0] == 400
 
@@ -264,6 +267,18 @@ def test_an_email_delivery_failure_gets_502_with_a_short_reason(tmp_path, day, s
     assert status == 502 and reason in body["error"]
 
 
+def test_an_unexpected_failure_while_sending_gets_500_counts_nothing_and_logs_no_content(
+        tmp_path, day, smtp, caplog):
+    caplog.set_level(logging.INFO, logger="brief-relay")
+    relay = make_relay(tmp_path, day, cap=1)
+    smtp.fail = UnicodeEncodeError("ascii", BRIEF["subject"], 0, 1, "ordinal not in range")
+    status, body = post(relay)
+    assert status == 500 and body["error"]
+    assert "Iltakooste" not in caplog.text
+    smtp.fail = None
+    assert post(relay)[0] == 200
+
+
 # ── The log
 
 def test_the_log_has_the_keys_name_the_count_the_size_and_the_outcome_and_no_content(
@@ -303,6 +318,18 @@ def test_over_http_only_post_v1_brief_is_served_and_the_key_is_x_api_key(tmp_pat
         assert call("/v1/messages", KEY, raw) == 404
         assert call("/v1/brief", KEY) == 404  # a GET
         assert call("/health") == 200
+        assert raw_status(base, "POST /v1/brief HTTP/1.1", f"x-api-key: {KEY}",
+                          "Content-Length: -1") == 400
+        assert raw_status(base, "POST /v1/brief HTTP/1.1", f"x-api-key: {KEY}",
+                          "Transfer-Encoding: chunked") == 411
     finally:
         server.shutdown()
         server.server_close()
+
+
+def raw_status(base: str, *lines: str) -> int:
+    """The status for a request written by hand, headers that urllib won't send included."""
+    host, port = base.removeprefix("http://").split(":")
+    with socket.create_connection((host, int(port)), timeout=5) as s:
+        s.sendall(("\r\n".join([*lines, "Connection: close", "", ""])).encode())
+        return int(s.recv(1024).split()[1])

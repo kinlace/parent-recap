@@ -48,7 +48,7 @@ Both scripts are safe to run again.
 
 ## What the gateway does
 
-- Only `POST /v1/messages`, `POST /v1/brief` (see "Sending the Brief") and the Brief's stop page `/brief/stop` are reachable from the internet. Caddy sends `/v1/messages` to Bifrost's Anthropic endpoint and answers 404 to everything else, so the admin API and UI are only reachable through an SSH tunnel.
+- Only `POST /v1/messages`, `POST /v1/brief` (see "Sending the Brief") and the Brief's stop page `/brief/stop` are reachable from the internet. Caddy sends `/v1/messages` to Bifrost's Anthropic endpoint and `/v1/brief` to the Brief relay, serves the stop page as a static file, and answers 404 to everything else, so the admin API and UI are only reachable through an SSH tunnel.
 - A request without a Gateway Key is refused. Clients send `model: "parent-recap"`, which `config.json` maps to the real model, so changing model is a config change, not a release.
 - Request and reply text is not stored (`disable_content_logging`, and the per-request override is off). Token counts, cost and status are. Caddy keeps no access log.
 - A Gateway Key is a Bifrost virtual key with a $0.10 budget that resets daily. A key past its budget gets HTTP 402 `budget_exceeded`.
