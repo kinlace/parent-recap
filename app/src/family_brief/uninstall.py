@@ -26,11 +26,11 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import (ai_filter_report, baileys_install, chat_install, install_record, linked_device, llm,
-               ops, own_node, run_lock, setup_save, setup_wilma, sources, tools)
+from . import (ai_filter_report, baileys_install, chat_install, command_path, install_record,
+               linked_device, llm, ops, own_node, run_lock, setup_save, setup_wilma, sources, tools)
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
-from .system import desktop, jobs, profile, secrets, wake, windows_only
+from .system import desktop, jobs, profile, secrets, user_path, wake, windows_only
 
 OK, FAIL = ops.OK, ops.FAIL
 # install.sh's and install.ps1's pinned ones, and the folders they download them into.
@@ -157,6 +157,7 @@ def survey(config: Path) -> Survey:
         if d.is_dir():
             s.items.append(_file("Logs", d))
     _job_logs(s, archive / "logs")
+    _command(s, usual)
     for p in programs:
         _program(s, p)  # last of all: this command may be running from it
     runtimes = [*(Path(p) for p in install_record.entries("runtime")), *(f / "runtime" for f in usual)]
@@ -480,6 +481,27 @@ def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Con
     for what, p in dict.fromkeys(found):
         if p.exists():
             s.items.append(_file(what, p))
+
+
+def _command(s: Survey, usual: list[Path]) -> None:
+    """The folder holding `parent-recap`, and its entry on the PATH (command_path.py)."""
+    recorded = [Path(p) for p in install_record.entries("command")]
+    folders = [*recorded, *(command_path.folder(f) for f in usual)]
+    # First the PATH entry, so on Windows the folder goes with the other items handed over.
+    for d in dict.fromkeys([*(Path(p) for p in install_record.entries("user-path")), *folders]):
+        if user_path.has(d):
+            s.items.append(Item(f"{_show(d)} on the PATH", user_path.where(),
+                                partial(user_path.remove, d)))
+    names = {command_path.NAME, command_path.NAME + ".exe"}
+    for d in dict.fromkeys(folders):
+        if not d.exists():
+            continue
+        if d.is_dir() and all(p.name in names for p in d.iterdir()):
+            # On Windows `parent-recap uninstall` runs from it.
+            s.items.append(_file("The parent-recap command", d, running=True))
+        else:
+            s.stops.append(f"{_show(d)} is where Parent Recap's command goes, but it holds other "
+                           "files too")
 
 
 def _program(s: Survey, program: Path) -> None:

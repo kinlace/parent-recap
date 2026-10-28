@@ -24,7 +24,7 @@ import threading
 from pathlib import Path
 
 KINDS = ("program", "logs", "runtime", "plugin", "codex-skill", "launchd", "keychain", "wilma-cli",
-         "wilma-profile", "claude-plugin", "claude-marketplace", "baileys")
+         "wilma-profile", "claude-plugin", "claude-marketplace", "baileys", "command", "user-path")
 
 
 # The setup page's steps run in threads; two adds at once would each write the record without the

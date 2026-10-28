@@ -1,6 +1,6 @@
 # Troubleshooting
 
-First run `~/ParentRecap/app/.venv/bin/parent-recap doctor`; it points out most problems directly. The log is `~/ParentRecap/logs/run-stderr.log`; the last few dozen lines are usually enough. **Don't paste mail or message text from the log into the chat.**
+First run `parent-recap doctor` in a new Terminal window; it points out most problems directly. If Terminal says `command not found` (an install from before 0.9.0, or a window opened before the install), use its full path, `~/ParentRecap/app/.venv/bin/parent-recap doctor`, or paste the install line again. The log is `~/ParentRecap/logs/run-stderr.log`; the last few dozen lines are usually enough. **Don't paste mail or message text from the log into the chat.**
 
 | Symptom                                                                                                                                                                | Cause                                                                                                                                                                                                                                                                                             | Fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -42,8 +42,8 @@ After the plugin is updated, the program also needs syncing to `~/ParentRecap/ap
 
 ```bash
 bash "PLUGIN/install.sh"
-~/ParentRecap/app/.venv/bin/parent-recap schedule install
-~/ParentRecap/app/.venv/bin/parent-recap doctor
+parent-recap schedule install
+parent-recap doctor
 ```
 
 `install.sh` doesn't touch the config, the Keychain or the archive.
@@ -53,10 +53,10 @@ bash "PLUGIN/install.sh"
 Tell Claude or Codex "uninstall Parent Recap", or run this in Terminal:
 
 ```bash
-~/ParentRecap/app/.venv/bin/parent-recap uninstall
+parent-recap uninstall
 ```
 
-It first lists everything setup created on this Mac (the scheduled jobs, the wake schedule, the program, its own Python and Node and its logs, the config and state, the Keychain items, the Codex skills and the plugin copy, the wilma CLI in `~/ParentRecap/wilma`, and the Wilma sign-in and the Claude Code plugin when setup installed them), asks whether to keep the archive of past Briefs, and removes only after you confirm. macOS may ask you to allow deleting each Keychain item, and asks for your Mac password to cancel the wake schedule. If it finds something in those places that isn't this install's, such as an older install's scheduled job, it stops and removes nothing. What it does step by step is in [setup-internals.md](setup-internals.md).
+It first lists everything setup created on this Mac (the scheduled jobs, the wake schedule, the program, its own Python and Node and its logs, the `parent-recap` command and its line in `~/.zprofile`, the config and state, the Keychain items, the Codex skills and the plugin copy, the wilma CLI in `~/ParentRecap/wilma`, and the Wilma sign-in and the Claude Code plugin when setup installed them), asks whether to keep the archive of past Briefs, and removes only after you confirm. macOS may ask you to allow deleting each Keychain item, and asks for your Mac password to cancel the wake schedule. If it finds something in those places that isn't this install's, such as an older install's scheduled job, it stops and removes nothing. What it does step by step is in [setup-internals.md](setup-internals.md).
 
 It never touches your accounts. Delete the Gmail App Password yourself at https://myaccount.google.com/apppasswords, and if you used Google Calendar mode, remove Parent Recap's access at https://myaccount.google.com/connections. If you installed the Claude Code plugin yourself, before setup, uninstall leaves it: remove it in Claude Code with `/plugin uninstall parent-recap@kinlace` and `/plugin marketplace remove kinlace`.
 

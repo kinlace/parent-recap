@@ -1,9 +1,9 @@
 """In-memory fakes of the OS services in `family_brief.system` (ADR 0020): secrets, the evening
-jobs, the daily wake, the desktop and the secret dialog. The harness puts one in place of each
-interface's adapter, so the program reaches it through the same interface it uses on any system,
-and the tests of its callers fake none of these services' commands. Only the adapters' own tests
-(test_secrets.py, test_jobs.py, test_wake.py, test_desktop.py, test_dialog.py and their _windows
-twins) meet the system instead.
+jobs, the daily wake, the user's PATH, the desktop and the secret dialog. The harness puts one in
+place of each interface's adapter, so the program reaches it through the same interface it uses
+on any system, and the tests of its callers fake none of these services' commands. Only the
+adapters' own tests (test_secrets.py, test_jobs.py, test_wake.py, test_user_path.py,
+test_desktop.py, test_dialog.py and their _windows twins) meet the system instead.
 
 Each fake keeps what the system would keep, for a test to set up and check, and has its own
 names for what the family reads (where a secret is, a job's name, the wake's line), so a test
@@ -27,7 +27,7 @@ from typing import Any, Callable, ContextManager
 import pytest
 
 from family_brief.system import (desktop, dialog, jobs, profile, profile_macos, profile_windows,
-                                 secrets, wake, windows_only)
+                                 secrets, user_path, wake, windows_only)
 from family_brief.system.secrets_error import SecretsError
 
 MACOS, WINDOWS = profile_macos.PROFILE, profile_windows.PROFILE
@@ -244,6 +244,28 @@ class FakeWake:
         return f"set-wake {wake_h:02d}:{wake_m:02d}"
 
 
+class FakeUserPath:
+    """The folders setup put on the user's PATH, in the order it put them."""
+
+    def __init__(self) -> None:
+        self.folders: list[Path] = []
+
+    def add(self, folder: Path) -> None:
+        if folder not in self.folders:
+            self.folders.append(folder)
+
+    def has(self, folder: Path) -> bool:
+        return folder in self.folders
+
+    def remove(self, folder: Path) -> None:
+        if folder in self.folders:
+            self.folders.remove(folder)
+
+    @staticmethod
+    def where() -> str:
+        return "the PATH"
+
+
 @dataclass
 class Window:
     """A terminal window: the command it runs, the variables it's given and its title."""
@@ -314,13 +336,14 @@ class FakeDialog:
 
 
 class FakeSystem:
-    """The fake of each OS service, in place of its adapter, as `secrets`, `jobs`, `wake`, `desktop`
-    and `dialog`, and `profile`, the system's profile the program sees."""
+    """The fake of each OS service, in place of its adapter, as `secrets`, `jobs`, `wake`,
+    `user_path`, `desktop` and `dialog`, and `profile`, the system's profile the program sees."""
 
     def __init__(self, mp: pytest.MonkeyPatch) -> None:
         self.secrets = FakeSecrets()
         self.jobs = FakeJobs()
         self.wake = FakeWake()
+        self.user_path = FakeUserPath()
         self.desktop = FakeDesktop()
         self.dialog = FakeDialog()
         # This system's, until a test makes it another's.
@@ -330,7 +353,8 @@ class FakeSystem:
         self.elevated = False  # whether it runs as administrator on Windows
         self.opened: list[str] = []  # what the macOS-only steps' `open` opened
         for module, fake in ((secrets, self.secrets), (jobs, self.jobs), (wake, self.wake),
-                             (desktop, self.desktop), (dialog, self.dialog)):
+                             (user_path, self.user_path), (desktop, self.desktop),
+                             (dialog, self.dialog)):
             mp.setattr(module, "_adapter", fake)
         mp.setattr(profile, "current", lambda: self.profile)
         mp.setattr(windows_only, "signs_back_in_after_update", lambda: self.signs_in_after_update)

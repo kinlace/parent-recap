@@ -18,10 +18,11 @@ import pytest
 import fake_node
 from test_codex_install import install_codex_skills
 
-from family_brief import __main__ as cli, install_record, run_lock, setup_save, setup_wilma, tools
+from family_brief import (__main__ as cli, command_path, install_record, run_lock, setup_save,
+                          setup_wilma, tools)
 from family_brief.collectors import gmail
 from family_brief.config import Config
-from family_brief.system import jobs, wake, windows_only
+from family_brief.system import jobs, profile, wake, windows_only
 from family_brief.system.secrets_error import SecretsError
 from fake_system import WINDOWS
 
@@ -72,8 +73,9 @@ PINNED_PYTHON = "ParentRecap/runtime/python-3.13.16-20261003/bin/python3.13"
 
 
 def make_program(home: Path, monkeypatch) -> Path:
-    """What install.sh leaves in ~/ParentRecap/app, running as the program's own Python, and its
-    pinned Python and Node in ~/ParentRecap/runtime."""
+    """What install.sh leaves in ~/ParentRecap/app, running as the program's own Python, its
+    pinned Python and Node in ~/ParentRecap/runtime, and the command in ~/ParentRecap/bin, on the
+    PATH."""
     python = home / PINNED_PYTHON
     python.parent.mkdir(parents=True)
     python.write_text("")
@@ -82,9 +84,15 @@ def make_program(home: Path, monkeypatch) -> Path:
     app = home / "ParentRecap" / "app"
     (app / ".venv" / "bin").mkdir(parents=True)
     (app / ".venv" / "bin" / "python").write_text("")
+    # The venv's command, which install.sh puts on the PATH.
+    command = profile.current().command
+    venv_command = app / ".venv" / command.with_name("parent-recap" + command.suffix)
+    venv_command.parent.mkdir(parents=True, exist_ok=True)
+    venv_command.write_text("")
     (app / "pyproject.toml").write_text('[project]\nname = "family-brief"\n')
     (app / "VERSION").write_text("0.5.0\n")
     (home / "ParentRecap" / "logs").mkdir()
+    assert command_path.install(home / "ParentRecap") == 0
     # Uninstall finds the program it runs from by its own Python.
     monkeypatch.setattr(sys, "executable", str(app / ".venv" / "bin" / "python"))
     return app
@@ -109,7 +117,8 @@ def nothing_removed(harness) -> bool:
     """Everything setup stored, scheduled and set is still there, and nothing was asked to go."""
     return bool(harness.secrets) and harness.jobs.installed() == {jobs.DAILY} \
         and harness.wake.wakes == [our_wake(harness)] and harness.wake.asked == [] \
-        and claude_code_removals(harness) == []
+        and claude_code_removals(harness) == [] \
+        and harness.user_path.folders == [harness.home / "ParentRecap" / "bin"]
 
 
 def set_up(harness, monkeypatch, *, record: bool = True) -> None:
@@ -172,7 +181,8 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, monkeypatch
     out = capsys.readouterr().out
     for item in (jobs.system_name(jobs.DAILY), f"Scheduler/{jobs.system_name(jobs.DAILY)}",
                  our_wake(harness),
-                 "ParentRecap/app", "ParentRecap/logs", "ParentRecap/runtime", ".family/config.yaml",
+                 "ParentRecap/app", "ParentRecap/logs", "ParentRecap/runtime", "ParentRecap/bin",
+                 "on the PATH: the PATH", ".family/config.yaml",
                  ".family/config.yaml.bak-202609011200", ".family/state.json", ".family/languages",
                  ".family/install-record.json", ".family/setup-progress.json",
                  ".family/programs.json", ".family/whatsapp-python.json", "gmail-imap-parent@example.com",
@@ -333,6 +343,7 @@ def test_confirmed_with_the_archive_removed_leaves_nothing_of_parent_recap(harne
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
     assert leftovers(harness.home) == []
+    assert harness.user_path.folders == []
 
 
 def test_confirming_needs_a_choice_about_the_archive(harness, monkeypatch, capsys):
@@ -458,16 +469,19 @@ def test_on_windows_the_program_and_its_python_go_once_uninstall_has_ended(harne
     handover.keeps = True
     capsys.readouterr()
     app, runtime = harness.home / "ParentRecap" / "app", harness.home / "ParentRecap" / "runtime"
+    command = harness.home / "ParentRecap" / "bin"  # `parent-recap uninstall` runs from it
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
     [(paths, folders)] = handover.handed
-    assert paths == [app, runtime]
+    assert paths == [command, app, runtime]
     assert harness.home / "ParentRecap" in folders
     # Windows can't remove them while uninstall runs from them; all the rest is gone already.
-    assert app.exists() and runtime.exists()
+    assert command.exists() and app.exists() and runtime.exists()
     assert [r for r in leftovers(harness.home)
-            if not r.startswith(("ParentRecap/app", "ParentRecap/runtime"))] == ["ParentRecap"]
+            if not r.startswith(("ParentRecap/bin", "ParentRecap/app", "ParentRecap/runtime"))] \
+        == ["ParentRecap"]
+    assert harness.user_path.folders == []
     assert harness.secrets == {} and harness.jobs.found() == []
     out = capsys.readouterr().out
     assert "The program goes once uninstall has ended: ~/ParentRecap/app" in out
@@ -802,6 +816,7 @@ def test_an_install_without_a_record_is_recognised_and_listed_for_confirmation(h
     assert uninstall(harness, "--confirm", "--keep-archive") == 0
     assert leftovers(harness.home) == ["ParentRecap", "ParentRecap/2026-09-26.md",
                                        "ParentRecap/2026-09-26.raw.json"]
+    assert harness.user_path.folders == []
 
 
 # ── stopping on what isn't this install's
@@ -857,6 +872,16 @@ def test_stops_on_a_runtime_folder_holding_something_else(harness, monkeypatch, 
     out = assert_stopped(harness, before, capsys)
 
     assert "ParentRecap/runtime" in out
+
+
+def test_stops_on_a_command_folder_holding_something_else(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
+    (harness.home / "ParentRecap" / "bin" / "notes.txt").write_text("mine\n")
+    before = leftovers(harness.home)
+
+    out = assert_stopped(harness, before, capsys)
+
+    assert "ParentRecap/bin" in out
 
 
 def test_stops_on_a_codex_skill_with_its_name_that_it_did_not_install(harness, monkeypatch,
@@ -992,14 +1017,16 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     items = out.split("\n\nLeft as it is:")[0].split("\n\nNothing has been removed yet")[0]
     listed = [line.split(": ", 1)[1].split(" (", 1)[0] for line in items.splitlines()
               if line.startswith("  • ")]
-    assert len(listed) == 23
+    assert len(listed) == 25
     for where in listed:
         name = where.rsplit("/", 1)[-1].strip().replace("parent@example.com", "<address>")
         name = name.replace("202609011200", "<date>").replace("1 day in ~", "~")
-        ours = (our_wake(harness), f"~/Scheduler/{jobs.system_name(jobs.DAILY)}")  # the fakes' own
+        ours = (our_wake(harness), f"~/Scheduler/{jobs.system_name(jobs.DAILY)}",
+                harness.user_path.where())  # the fakes' own
         assert name in doc or where in ours, where
     # What the macOS adapters keep in their place.
     assert "com.parentrecap.daily.plist" in doc and "pmset repeat cancel" in doc
+    assert "~/.zprofile" in doc
 
 
 @pytest.mark.macos
