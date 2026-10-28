@@ -1,5 +1,5 @@
-"""The Brief email as a Recipient receives it. The real email action runs here, with fakes one step
-further out: the SMTP server and the `system` fixture's secrets store. Assertions are on
+"""The Brief email as a Recipient receives it when the Household's Gmail sends it, the default.
+The real email action runs here, with fakes one step further out: the SMTP server and the `system` fixture's secrets store. Assertions are on
 the message handed to the server, parsed back the way a mail client reads it."""
 from __future__ import annotations
 
@@ -14,8 +14,9 @@ import pytest
 
 from family_brief.actions import email as email_action
 from family_brief.collectors.gmail import keychain_account
+from family_brief.config import Config
 
-REAL_SEND = email_action.send  # captured before any test's outbox fixture fakes it
+REAL_SEND = email_action.send  # captured before any test's outbox fixture fakes a transport
 
 SENDER = "parent@example.com"
 APP_PASSWORD = "abcdabcdabcdabcd"
@@ -66,9 +67,9 @@ def smtp(system, monkeypatch: pytest.MonkeyPatch) -> type[FakeSMTP]:
 
 
 def send(**kwargs: Any) -> None:
-    args: dict[str, Any] = {"subject": SUBJECT, "body_text": TEXT, "from_addr": SENDER,
-                            "to_addrs": RECIPIENTS, "body_html": HTML}
-    REAL_SEND(**{**args, **kwargs})
+    cfg = Config.model_validate({"kids": [{"name": "Mia"}], "gmail": {"username": SENDER}})
+    args: dict[str, Any] = {"subject": SUBJECT, "body_text": TEXT, "to_addrs": RECIPIENTS, "body_html": HTML}
+    REAL_SEND(cfg, **{**args, **kwargs})
 
 
 def received(smtp: type[FakeSMTP]) -> Message:

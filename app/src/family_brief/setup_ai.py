@@ -202,9 +202,11 @@ def setup_token_window(program: str, paste_into: str = "the Parent Recap dialog"
     return [sys.executable, "-m", "family_brief.claude_window", program, paste_into]
 
 
-def gateway_sign_in(url: str, typed: str) -> tuple[str, dict[str, Any]]:
+def gateway_sign_in(url: str, typed: str, sends_only: bool = False) -> tuple[str, dict[str, Any]]:
     """Makes one test call through the gateway at `url` with the Gateway Key `typed` and stores
-    it in the Keychain. Returns the step's result, `saved`, `not-a-key`, `rejected`,
+    it in the Keychain. With `sends_only`, for a Household whose AI is its own Claude Code or
+    Codex and whose Brief the gateway sends (ADR 0028), the test is the Brief relay's check, which
+    sends nothing: such a key may have no model behind it. Returns the step's result, `saved`, `not-a-key`, `rejected`,
     `no-connection`, `test-call-failed`, `keychain-not-reachable` or `keychain-failed`, and what
     else it reports: for a failed test call what the gateway said as `error`, with the key taken
     out, and when the Keychain refused it macOS's `code`. A key that has used today's budget
@@ -214,7 +216,7 @@ def gateway_sign_in(url: str, typed: str) -> tuple[str, dict[str, Any]]:
     key = "".join(typed.split())  # spaces and line breaks are from copying it
     if not GATEWAY_KEY.fullmatch(key):
         return "not-a-key", {}  # not sent: most likely a password, or part of the key
-    outcome, detail = gateway.test_call(url, key)
+    outcome, detail = (gateway.send_test if sends_only else gateway.test_call)(url, key)
     if outcome in (gateway.UNKNOWN, gateway.NO_ANSWER, gateway.FAILED):
         result = {gateway.UNKNOWN: "rejected", gateway.NO_ANSWER: "no-connection",
                   gateway.FAILED: "test-call-failed"}[outcome]

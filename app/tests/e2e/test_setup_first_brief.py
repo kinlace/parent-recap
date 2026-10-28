@@ -13,6 +13,8 @@ import re
 import threading
 from typing import Any
 
+import yaml
+
 from family_brief import feedback, run_lock, setup_save, setup_server, setup_status
 from family_brief.config import Config
 from family_brief.system import jobs
@@ -182,6 +184,41 @@ def test_send_it_to_me_reaches_only_the_setup_parent(harness, page):
     assert list(state["brief_delivered_at"]) == ["parent@example.com"]
     assert not state["seen_message_ids"]  # the evening Brief still reads these three days
     assert next(o for o in setup_status.check(str(config_file(harness))) if o.outcome == "brief").ok
+
+
+def test_the_first_brief_goes_through_the_gateway_when_it_sends_the_brief(harness, page):
+    # A Household with a Gateway Key that has the gateway send its Brief (ADR 0028): no App
+    # Password is needed to send.
+    at_the_first_brief(harness)
+    harness.config["summary_language"] = "en"
+    harness.config["email"]["sender"] = "gateway"
+    harness.config["llm"]["gateway_url"] = "https://gateway.example.test"
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+    del harness.secrets["gmail-imap-parent@example.com"]
+    harness.secrets["gateway-key"] = "sk-bf-fake-gateway-key"
+    make_brief(page.url)
+    made = brief_made(page.url)
+
+    assert send_it_to_me(page.url).json()["result"] == "sent"
+
+    [email] = harness.sent
+    assert email.via == "gateway" and email.to == ["parent@example.com"]
+    assert email.html == made["html"]
+    assert "This email comes from an address nobody reads" in email.html + email.text
+    assert harness.relay_keys == ["sk-bf-fake-gateway-key"]
+
+
+def test_a_send_the_gateway_refuses_says_so(harness, page):
+    at_the_first_brief(harness)
+    harness.config["email"]["sender"] = "gateway"
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+    harness.secrets["gateway-key"] = "sk-bf-fake-gateway-key"
+    harness.relay_answer = (401, {"error": "missing, unknown or revoked Gateway Key"})
+    make_brief(page.url)
+    brief_made(page.url)
+
+    assert send_it_to_me(page.url).json()["result"] == "send-failed"
+    assert harness.sent == []
 
 
 def test_after_the_first_brief_setup_moves_on_to_finish(harness, page):

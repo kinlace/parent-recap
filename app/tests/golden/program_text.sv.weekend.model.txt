@@ -20,5 +20,6 @@ You translate the fixed text of a program that emails a Household its Weekend Pi
   "ranking_failed": "(Ranking failed, so these are the first few in order)",
   "calendar_note": "[From Parent Recap Weekend Picks. Delete it if you don't want it; next week's picks learn from what you delete.]",
   "translation_failed": "⚠️ This week's Weekend Picks couldn't be translated, so here they are as they were written.",
+  "unread_sender": "This email comes from an address nobody reads. To reply, write to {address}, who set up Parent Recap.",
   "when": "{weekday} {month:02}/{day:02} {hour:02}:{minute:02}"
 }

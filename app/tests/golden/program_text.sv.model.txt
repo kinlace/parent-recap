@@ -90,6 +90,7 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "new_events": "📅 New calendar events",
   "new_events_line": "📅 New calendar events:",
   "written_by": "Written by {assistant}",
+  "unread_sender": "This email comes from an address nobody reads. To reply, write to {address}, who set up Parent Recap.",
   "untitled": "(untitled)",
   "phone_number": "a phone number",
   "email_address": "an email address",

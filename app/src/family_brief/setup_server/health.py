@@ -13,7 +13,7 @@ HEALTH_RESULTS = ("checking", "ok", "not-ok", "no-check")
 # Doctor's checks as the check page names them. Any other is `other`.
 HEALTH_CHECKS = {"config": "config", "recipients": "recipients", "language": "language",
                  "gmail": "gmail", "claude": "ai", "codex": "ai", "gateway": "gateway",
-                 "gateway-key": "gateway", "wilma": "wilma", "whatsapp": "whatsapp",
+                 "gateway-key": "gateway", "gateway-sends": "gateway", "wilma": "wilma", "whatsapp": "whatsapp",
                  "whatsapp-library": "whatsapp-library",
                  "myclub": "myclub", "calendar": "calendar",
                  "feedback": "feedback", "weekend": "weekend"}

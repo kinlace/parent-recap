@@ -300,7 +300,9 @@ def _versions(cfg: Config, picks: list[dict]) -> list[_Version]:
         lambda language: _text(cfg, language).translation_failed)
 
 
-def _format_body(candidates_by_id: dict[str, Candidate], weekend: tuple[Any, Any], v: _Version) -> str:
+def _format_body(candidates_by_id: dict[str, Candidate], weekend: tuple[Any, Any], v: _Version,
+                 write_to: str | None = None) -> str:
+    """The plain-text Weekend Picks; from an address nobody reads, they end naming `write_to`."""
     t, weekdays, picks = v.t, v.weekdays, v.picks
     lines = [t.heading.format(weekend=_weekend_str(weekend)),
              *([v.translation_note, ""] if v.translation_note else []), t.intro, ""]
@@ -318,10 +320,13 @@ def _format_body(candidates_by_id: dict[str, Candidate], weekend: tuple[Any, Any
         if c.url:
             lines.append(f"   🔗 {c.url}")
         lines.append("")
+    if write_to:
+        lines.append(t.unread_sender.format(address=write_to))
     return "\n".join(lines)
 
 
-def _format_html(candidates_by_id: dict[str, Candidate], weekend: tuple[Any, Any], v: _Version) -> str:
+def _format_html(candidates_by_id: dict[str, Candidate], weekend: tuple[Any, Any], v: _Version,
+                 write_to: str | None = None) -> str:
     import html as _h
     t, weekdays, picks = v.t, v.weekdays, v.picks
     parts = [f"<h2>{_h.escape(t.heading.format(weekend=_weekend_str(weekend)))}</h2>",
@@ -346,6 +351,9 @@ def _format_html(candidates_by_id: dict[str, Candidate], weekend: tuple[Any, Any
             parts.append(f"<br>💡 {why}")
         parts.append("</li>")
     parts.append("</ol>")
+    if write_to:
+        parts.append(f"<p style='color:#888;font-size:12px'>"
+                     f"{_h.escape(t.unread_sender.format(address=write_to))}</p>")
     return "<html><body style='font-family:-apple-system,Helvetica,Arial;font-size:14px'>" \
            + "".join(parts) + "</body></html>"
 
@@ -568,10 +576,10 @@ def run(cfg: Config, dry_run: bool = False) -> int:
         for v in _versions(cfg, picks):
             try:
                 email_action.send(
+                    cfg,
                     subject=v.t.subject.format(weekend=_weekend_str(weekend)),
-                    body_text=_format_body(by_id, weekend, v),
-                    body_html=_format_html(by_id, weekend, v),
-                    from_addr=cfg.email.from_addr or cfg.gmail.username or "",
+                    body_text=_format_body(by_id, weekend, v, email_action.write_to(cfg)),
+                    body_html=_format_html(by_id, weekend, v, email_action.write_to(cfg)),
                     to_addrs=v.to,
                 )
                 delivered = True

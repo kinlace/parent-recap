@@ -38,7 +38,7 @@ def test_an_old_archive_renders_as_it_did(golden, version):
     night = render.Night(date="2026-09-27", tz=TZ, t=t, assistant="Claude", brief=brief,
                          coverage=notes.coverage or {}, created=data["calendar_created"],
                          ics_events=events, stamp=STAMP, incomplete=notes.incomplete)
-    [mail] = render.brief(night, [render.Version(t, ["parent@example.com"], brief)], "parent@example.com", [])
+    [mail] = render.brief(night, [render.Version(t, ["parent@example.com"], brief)], [])
 
     golden(f"archive_{version}.zh.txt", mail.text)
     golden(f"archive_{version}.zh.html", html_for_golden(mail.html))

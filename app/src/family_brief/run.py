@@ -45,7 +45,7 @@ class IO:
     """The ports the evening run reaches the world through, other than the Sources and the model:
     the mailer, iMessage, Google Calendar, the archive, the state and the network it waits for.
     `real()` gives the program's own."""
-    send_mail: Callable[[render.Mail], None]
+    send_mail: Callable[[Config, render.Mail], None]  # by the config's sender
     send_imessage: Callable[[list[str], str], None]
     calendar_ready: Callable[[], bool]
     upcoming_events: Callable[[Config, int], list[dict]]
@@ -58,9 +58,9 @@ class IO:
     @classmethod
     def real(cls) -> IO:
         return cls(
-            send_mail=lambda m: email_action.send(subject=m.subject, body_text=m.text, body_html=m.html,
-                                                  from_addr=m.from_addr, to_addrs=m.to,
-                                                  attachments=m.attachments),
+            send_mail=lambda cfg, m: email_action.send(cfg, subject=m.subject, body_text=m.text,
+                                                       body_html=m.html, to_addrs=m.to,
+                                                       attachments=m.attachments),
             send_imessage=imessage.send,
             calendar_ready=calendar_action.is_configured,
             upcoming_events=calendar_action.get_upcoming_events,
@@ -424,7 +424,7 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         # The rule-based fallback is a raw message list the model never wrote, and a night with only
         # MyClub events or Held-back Messages asks no model: nothing to judge and no model to credit.
         model_wrote=bool(for_ai or read.due_soon) and notes.error is None, form=form,
-        stamp=datetime.now(timezone.utc), incomplete=notes.incomplete)
+        stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg))
     return _Written(night, notes, for_ai, held, model_events, placeholders)
 
 
@@ -500,13 +500,13 @@ def _log_preview(cfg: Config, coverage: dict[str, dict], held: list[Message], wr
 
 # ── The run
 
-def _send(io: IO, channel: str, make: Callable[[], render.Outgoing]) -> render.Outgoing | None:
+def _send(cfg: Config, io: IO, channel: str, make: Callable[[], render.Outgoing]) -> render.Outgoing | None:
     """Make one mail or iMessage and send it, giving what was sent. A failure, making it or
     sending it, is logged, and the others still go."""
     try:
         item = make()
         if isinstance(item, render.Mail):
-            io.send_mail(item)
+            io.send_mail(cfg, item)
         else:
             io.send_imessage(item.to, item.text)
         return item
@@ -522,28 +522,24 @@ def _send_nothing_read(cfg: Config, io: IO, read: _Read) -> None:
     readers = [(languages.text(cfg, language), to)
                for language, to in cfg.brief_recipients_by_language().items()] if cfg.email.enabled else []
     for item in render.nothing_read(read.coverage, today_str(cfg.timezone), llm.backend(cfg).display_name,
-                                    languages.text(cfg, cfg.brief_language()), readers, _from_addr(cfg),
+                                    languages.text(cfg, cfg.brief_language()), readers, email_action.write_to(cfg),
                                     cfg.imessage.recipients if cfg.imessage.enabled else []):
-        _send(io, "email" if isinstance(item, render.Mail) else "imessage", lambda: item)
-
-
-def _from_addr(cfg: Config) -> str:
-    return cfg.email.from_addr or cfg.gmail.username or ""
+        _send(cfg, io, "email" if isinstance(item, render.Mail) else "imessage", lambda: item)
 
 
 def _deliver(cfg: Config, io: IO, state: State, written: _Written) -> tuple[bool, bool]:
     """Send tonight's Brief to each Recipient: whether an email went out, and whether anyone got
     it. Delivered once any enabled channel gets it out; with none enabled there is nothing to retry."""
     versions = _versions(cfg, written) if cfg.email.enabled else []
-    night, from_addr = written.night, _from_addr(cfg)
+    night = written.night
     # Each mail is made as it goes, so one that can't be made leaves the others to go out.
-    mails = [("email", lambda v=v: render.mail(night, v, from_addr)) for v in versions]
+    mails = [("email", lambda v=v: render.mail(night, v)) for v in versions]
     imessages = [("imessage", lambda: render.imessage(night, cfg.imessage.recipients))] \
         if cfg.imessage.enabled else []
     email_sent = False
     delivered = not (cfg.email.enabled or cfg.imessage.enabled)
     for channel, make in mails + imessages:
-        sent = _send(io, channel, make)
+        sent = _send(cfg, io, channel, make)
         if sent:
             email_sent = email_sent or channel == "email"
             delivered = True
