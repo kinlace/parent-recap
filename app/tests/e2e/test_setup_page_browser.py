@@ -350,6 +350,9 @@ def test_with_codex_parent_recap_sends_with_a_key_for_sending_and_setup_finishes
                                                                                 codex):
     # #565: a Household whose AI is its own Codex, given a Gateway Key for sending alone.
     hotmail = "parent@hotmail.com"
+    # Codex answers doctor's test call, made through the model as the Brief is, as it's asked to.
+    brief = family.model_reply
+    family.model_reply = lambda prompt: {"ok": True} if '{"ok": true}' in prompt else brief
     in_english(tab)
     tab.get_by_role("radio", name=text("welcome.ai.codex")).check()
     expect(tab.get_by_text(text("ai.codex.ready"))).to_be_visible()
