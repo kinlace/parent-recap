@@ -2,9 +2,9 @@
 
 The program posts the Brief to POST /v1/brief with its Gateway Key in `x-api-key`, as its model
 calls do. The key must be an active Bifrost virtual key, looked up on Bifrost's admin API on
-localhost, so revoking a key in Bifrost stops both. Each key may send `BRIEF_DAILY_CAP` messages a
-UTC day, to at most MAX_RECIPIENTS each, so a leaked key can't use up Email Delivery's 100 a day
-for everyone or become a spam relay. The message goes to OCI Email Delivery over SMTP and nothing
+localhost, so revoking a key in Bifrost stops both. Each key may send DAILY_CAP messages a UTC
+day, to at most MAX_RECIPIENTS each, so a leaked key can't use up Email Delivery's 100 a day for
+everyone or become a spam relay. The message goes to OCI Email Delivery over SMTP and nothing
 of it is kept: the log has the key's name, the number of recipients, the size and the outcome.
 
 Python's standard library only, so it runs on the host's own python3 with nothing to install.
@@ -33,6 +33,9 @@ from typing import Any
 
 FROM_ADDR = "brief@parentrecap.com"
 FROM = f"Parent Recap <{FROM_ADDR}>"
+# Messages per Gateway Key per UTC day: the Brief, Weekend Picks and a retry. With MAX_RECIPIENTS,
+# one key can send at most 40 of the tenancy's 100 a day (README "Sending the Brief").
+DAILY_CAP = 4
 MAX_RECIPIENTS = 10
 MAX_ATTACHMENTS = 5
 MAX_REQUEST_BYTES = 2_000_000
@@ -334,7 +337,7 @@ def main() -> None:
         keys=Bifrost(env.get("BIFROST_URL", "http://127.0.0.1:8080"),
                      env["BIFROST_ADMIN_USERNAME"], env["BIFROST_ADMIN_PASSWORD"]),
         cap=DailyCap(Path(env.get("STATE_DIRECTORY", "/var/lib/brief-relay")) / "sent.json",
-                     limit=int(env.get("BRIEF_DAILY_CAP", "4"))),
+                     limit=DAILY_CAP),
         mailer=Mailer(env.get("BRIEF_SMTP_HOST", "smtp.email.eu-stockholm-1.oci.oraclecloud.com"),
                       465, env["BRIEF_SMTP_USERNAME"], env["BRIEF_SMTP_PASSWORD"]),
         stop_url=f"https://{env['GATEWAY_HOST']}/brief/stop")

@@ -94,7 +94,7 @@ up() {
 }
 up 8080 || { echo "bifrost did not answer on /health; see: journalctl -u bifrost" >&2; exit 1; }
 echo "bifrost $BIFROST_VERSION is up"
-if ! grep -q '^BRIEF_SMTP_PASSWORD=.' /etc/bifrost/bifrost.env; then
+if ! grep -qs '^BRIEF_SMTP_PASSWORD=.' /etc/brief-relay/brief-relay.env; then
   echo "brief-relay waits for the SMTP credentials: run set-smtp-credentials.sh"
   exit 0
 fi

@@ -94,7 +94,7 @@ oci iam smtp-credential delete --user-id "$U" --smtp-credential-id <old id>
 
 ## Sending the Brief
 
-`brief_relay.py` (the `brief-relay` unit) sends a Household's Brief from `brief@parentrecap.com` (ADR 0028). It is Python's standard library on the host's own `python3`, listens on `127.0.0.1:8081`, and Caddy sends `POST /v1/brief` to it. Bifrost only proxies model calls, so the relay is its own service. It runs as a throwaway system user and gets the env file without the Anthropic key.
+`brief_relay.py` (the `brief-relay` unit) sends a Household's Brief from `brief@parentrecap.com` (ADR 0028). It is Python's standard library on the host's own `python3`, listens on `127.0.0.1:8081`, and Caddy sends `POST /v1/brief` to it. Bifrost only proxies model calls, so the relay is its own service. It runs as a throwaway system user and reads Bifrost's admin login from `bifrost.env` (without the Anthropic key) and the SMTP credentials from their own `/etc/brief-relay/brief-relay.env`.
 
 **The request.** The program posts JSON with its Gateway Key in `x-api-key`, as for `/v1/messages`. One request is one message to all of the Household's Recipients, in `To`:
 
@@ -120,7 +120,7 @@ oci iam smtp-credential delete --user-id "$U" --smtp-credential-id <old id>
 
 **The key.** The relay looks the key up in Bifrost's virtual-key list on localhost with the admin login, so a Household's one Gateway Key covers writing and sending the Brief, and revoking it (below) stops both.
 
-**The cap.** Each key may send 4 messages a UTC day (`BRIEF_DAILY_CAP` in the env file changes it): the Brief, Weekend Picks and room for a retry. At 10 Recipients each, one key can use at most 40 of the tenancy's 100 a day, so a leaked key can neither become a spam relay nor use up every other Household's sending. A message Email Delivery didn't take doesn't count. The counts are in `/var/lib/brief-relay/sent.json`. Before raising the cap or adding Households that send this way, check the total against the 100 a day.
+**The cap.** Each key may send 4 messages a UTC day (`DAILY_CAP` in `brief_relay.py`): the Brief, Weekend Picks and room for a retry. At 10 Recipients each, one key can use at most 40 of the tenancy's 100 a day, so a leaked key can neither become a spam relay nor use up every other Household's sending. A message Email Delivery didn't take doesn't count. The counts are in `/var/lib/brief-relay/sent.json`. Before raising the cap or adding Households that send this way, check the total against the 100 a day.
 
 **What it keeps.** Nothing of the message. Each request logs one line to the journal: the key's name, the number of Recipients, the request's size and the outcome (`journalctl -u brief-relay`), never the subject, body, attachments or addresses.
 
