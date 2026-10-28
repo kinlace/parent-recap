@@ -79,10 +79,10 @@ def log_dir(cfg: Config) -> Path:
 def command(mode: str, cfg: Config, timeout: int | None = None) -> list[str] | None:
     """The command that runs the program in `mode` on the pinned Node and the installed Baileys
     tree, `timeout` passed on for pair and groups, or None without either."""
-    if own_node.node() is None or baileys_install.installed_version() is None:
-        return None
-    log_dir(cfg).mkdir(parents=True, exist_ok=True)
-    return _command(mode, log_dir(cfg) / LOG, timeout)
+    out = _command(mode, log_dir(cfg) / LOG, timeout)
+    if out is not None:
+        log_dir(cfg).mkdir(parents=True, exist_ok=True)
+    return out
 
 
 def _command(mode: str, log: Path, timeout: int | None = None) -> list[str] | None:
@@ -122,9 +122,10 @@ def forget() -> None:
 
 def logout(timeout: int = LOGOUT_SECONDS) -> bool:
     """Logs out of WhatsApp on the saved pairing, so the phone drops the device from its Linked
-    devices. Best effort: False when there's no pairing, no pinned Node or Baileys tree, or it
-    didn't log out in time. Its log goes into the folder, which forget deletes next."""
-    if not (auth_folder() / "creds.json").is_file():
+    devices. Best effort: False when there's no pairing, or one WhatsApp ended, which the phone
+    has dropped already, no pinned Node or Baileys tree, or it didn't log out in time. Its log goes
+    into the folder, which forget deletes next."""
+    if not (auth_folder() / "creds.json").is_file() or link().ended_at is not None:
         return False
     logout = _command("logout", folder() / LOG, timeout)
     if logout is None:
