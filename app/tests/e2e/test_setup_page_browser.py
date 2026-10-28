@@ -926,7 +926,16 @@ def test_finish_names_the_whatsapp_groups_and_changes_them_with_nothing_skipped(
 
     expect(heading(tab, "check.title")).to_be_visible()
     expect(tab.get_by_role("checkbox", name=re.compile("^3B parents"))).to_be_checked()
-    expect(tab.get_by_role("checkbox", name=re.compile("^Leo piano"))).to_be_checked()
+    piano = tab.get_by_role("checkbox", name=re.compile("^Leo piano"))
+    expect(piano).to_be_checked()
+    piano.uncheck()
+    button(tab, "check.confirm").click()
+    expect(heading(tab, "brief.title")).to_be_visible()
+    expect(tab.get_by_text(text("brief.made"))).to_be_visible()
+    button(tab, "brief.done").click()
+
+    expect(heading(tab, "finish.title")).to_be_visible()  # without loading the page again
+    expect(tab.locator("#finish-whatsapp-groups li")).to_have_text(["3B parents"])
 
 
 def test_a_linked_whatsapp_opened_from_connect_s_list_goes_on_without_a_code(tab, family):

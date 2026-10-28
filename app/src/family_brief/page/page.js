@@ -1908,6 +1908,7 @@ async function confirmCheck(event) {
     if (!r.ok && out.result !== "checking") throw new Error(out.result);
     // Saved now, so Finish says the evening that was chosen, not the one the page loaded with.
     page.check.evening = answers.evening;
+    if (answers.whatsapp !== null) page.whatsapp.picked = answers.whatsapp; // and its groups
     healthResult(out);
   } catch (e) {
     failed(e);
