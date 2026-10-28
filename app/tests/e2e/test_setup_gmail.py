@@ -488,6 +488,22 @@ def test_every_gmail_result_is_explained_in_all_three_languages():
             assert table.get(f"status.{status}", "").strip(), (language, status)
 
 
+def test_the_gmail_step_warns_before_google_and_its_fold_names_the_likely_causes_in_order(page):
+    # #528: where the first outside tester got stuck, said before the parent goes to Google.
+    html = call(page.url).body.decode()
+    step = html[html.index('id="source-gmail"'):html.index('id="source-ai"')]
+
+    assert step.index('data-text="gmail.before"') < step.index('id="gmail-open"')
+    fold = step[step.index('data-text="gmail.unavailable"'):]
+    assert (fold.index('data-text="gmail.unavailable.account"')
+            < fold.index('data-text="gmail.unavailable.two-step"')
+            < fold.index('id="gmail-two-step-more"'))
+    english = json.loads((PAGE_DIR / "text.json").read_text())["en"]
+    assert "2-Step Verification" in english["gmail.before"]
+    assert "password reset" in english["gmail.before"]
+    assert "Switch account" in english["gmail.unavailable.account"]
+
+
 def test_the_gmail_fields_are_the_page_s_own(page):
     html = call(page.url).body.decode()
 

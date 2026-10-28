@@ -289,6 +289,8 @@ fieldset .field label {
 
 .more p { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
 
+.more ol { font-size: 13px; color: var(--muted); margin: 8px 0 0; padding-left: 20px; }
+
 .more .pictures { margin-top: 12px; }
 
 /* Gmail's three steps, the first a button. */

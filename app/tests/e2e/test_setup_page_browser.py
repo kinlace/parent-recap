@@ -371,6 +371,7 @@ def test_the_app_passwords_button_asks_for_the_gmail_address_first(tab, family):
     skip(tab, "wilma").click()
     address = tab.get_by_label(text("gmail.address"))
     expect(tab.get_by_text(text("gmail.account"))).to_be_visible()
+    expect(tab.get_by_text(text("gmail.before"))).to_be_visible()  # #528
     address.fill("")
 
     button(tab, "gmail.open").click()
