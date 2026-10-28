@@ -143,7 +143,8 @@ WILMA = Source("wilma", _same_everywhere("Wilma"), lambda cfg: cfg.wilma.enabled
 WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), _in("collectors.whatsapp", "connected"),
                   skippable=True, connect_rank=3, collect=_collector("whatsapp"),
                   lookback=lambda cfg: cfg.whatsapp, unread=_in("collectors.whatsapp", "unread"),
-                  check=_in("ops", "check_whatsapp"), group=lambda m: m.chat_name)
+                  check=_in("ops", "check_whatsapp"), survey=_in("uninstall", "survey_whatsapp"),
+                  notes=_in("uninstall", "whatsapp_notes"), group=lambda m: m.chat_name)
 
 ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP)
 

@@ -28,6 +28,7 @@ from fake_system import WINDOWS
 OTHER_WAKE = "wake every weekday at 07:00"
 APP_PASSWORD = "abcdabcdabcdabcd"
 CLAUDE_TOKEN = "sk-ant-oat01-secret"
+PHONE_NOTE = "remove “Parent Recap” from Linked devices"
 
 
 class Handover:
@@ -262,6 +263,37 @@ def test_lists_the_always_running_job_and_stops_and_removes_it(harness, monkeypa
 
     assert harness.jobs.always_status() == jobs.AlwaysStatus(installed=False, running=False)
     assert harness.jobs.found() == []
+
+
+def test_a_paired_linked_device_goes_with_its_job_and_the_phone_note_is_printed(
+        harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
+    linked_device_job(harness)
+    folder = harness.home / "ParentRecap" / "linked-device"
+    (folder / "auth").mkdir(parents=True)
+    (folder / "auth" / "creds.json").write_text("{}")
+    (folder / "messages.jsonl").write_text("")
+
+    assert uninstall(harness) == 0
+    listed = capsys.readouterr().out
+    assert "The Linked Device's WhatsApp pairing and kept messages: ~/ParentRecap/linked-device" \
+        in listed
+    assert PHONE_NOTE in listed
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    out = capsys.readouterr().out
+    assert not folder.exists() and harness.jobs.always_status().installed is False
+    assert "linked-device: not Parent Recap's" not in out
+    assert PHONE_NOTE in out.split("What uninstall leaves to you:")[1]
+
+
+def test_without_a_pairing_there_is_no_phone_note(harness, monkeypatch, capsys):
+    set_up(harness, monkeypatch)
+
+    assert uninstall(harness) == 0
+
+    assert PHONE_NOTE not in capsys.readouterr().out
 
 
 def test_stops_on_an_always_running_job_that_runs_another_node(harness, monkeypatch, capsys):

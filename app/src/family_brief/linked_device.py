@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -38,6 +40,12 @@ LINK_ENDED = jobs.LINK_ENDED
 
 # The store keeps a record this long past the longest lookback the evening run can read with.
 PRUNE_MARGIN = timedelta(days=1)
+LOGOUT_SECONDS = 30  # how long turning it off waits for WhatsApp to take the logout
+# What turning it off and uninstall tell the family: a logout that didn't get through leaves the
+# device listed on the phone.
+PHONE_NOTE = ("WhatsApp on your phone may still list Parent Recap as a linked device: in WhatsApp, "
+              "go to Settings → Linked devices and remove “Parent Recap” from Linked devices if "
+              "it's there.")
 
 
 def folder() -> Path:
@@ -71,12 +79,18 @@ def log_dir(cfg: Config) -> Path:
 def command(mode: str, cfg: Config, timeout: int | None = None) -> list[str] | None:
     """The command that runs the program in `mode` on the pinned Node and the installed Baileys
     tree, `timeout` passed on for pair and groups, or None without either."""
+    if own_node.node() is None or baileys_install.installed_version() is None:
+        return None
+    log_dir(cfg).mkdir(parents=True, exist_ok=True)
+    return _command(mode, log_dir(cfg) / LOG, timeout)
+
+
+def _command(mode: str, log: Path, timeout: int | None = None) -> list[str] | None:
     node = own_node.node()
     if node is None or baileys_install.installed_version() is None:
         return None
-    log_dir(cfg).mkdir(parents=True, exist_ok=True)
     out = [str(node), str(PROGRAM), mode, "--modules", str(baileys_install.folder()),
-           "--auth", str(auth_folder()), "--log", str(log_dir(cfg) / LOG)]
+           "--auth", str(auth_folder()), "--log", str(log)]
     if mode == "follow":
         out += ["--picked", str(picked_file()), "--store", str(store()), "--status", str(status_file())]
     elif timeout is not None:
@@ -94,6 +108,42 @@ def install_follow(cfg: Config) -> bool:
     keep_picked(cfg)
     jobs.install_always(follow, log_dir(cfg))
     return True
+
+
+def forget() -> None:
+    """Turns the Linked Device off, for the setup page's off switch and uninstall: stops and
+    removes the always-running job, logs out, which is best effort, and deletes the folder with
+    the pairing and the messages kept. The phone may still list the device (PHONE_NOTE)."""
+    jobs.remove_always()
+    logout()
+    if folder().is_dir():
+        shutil.rmtree(folder())
+
+
+def logout(timeout: int = LOGOUT_SECONDS) -> bool:
+    """Logs out of WhatsApp on the saved pairing, so the phone drops the device from its Linked
+    devices. Best effort: False when there's no pairing, no pinned Node or Baileys tree, or it
+    didn't log out in time. Its log goes into the folder, which forget deletes next."""
+    if not (auth_folder() / "creds.json").is_file():
+        return False
+    logout = _command("logout", folder() / LOG, timeout)
+    if logout is None:
+        return False
+    try:
+        return subprocess.run(logout, stdin=subprocess.DEVNULL, capture_output=True,
+                              timeout=timeout + 10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def mark_paired() -> None:
+    """Writes the status file of a link just paired, in place of one that ended: follow says when
+    it connects."""
+    _private_folder(folder())
+    partial = status_file().with_name(f"{status_file().name}.{os.getpid()}.partial")
+    private_files.write(partial, json.dumps({"paired": True, "connected_since": None,
+                                             "last_connected": None, "link_ended_at": None}) + "\n")
+    os.replace(partial, status_file())
 
 
 @dataclass(frozen=True)
