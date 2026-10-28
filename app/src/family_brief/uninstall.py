@@ -26,8 +26,8 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import (ai_filter_report, baileys_install, chat_install, install_record, llm, ops, own_node,
-               run_lock, setup_save, setup_wilma, sources, tools)
+from . import (ai_filter_report, baileys_install, chat_install, install_record, linked_device, llm,
+               ops, own_node, run_lock, setup_save, setup_wilma, sources, tools)
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
 from .system import desktop, jobs, profile, secrets, wake, windows_only
@@ -300,6 +300,28 @@ def survey_wilma(s: Survey, programs: list[Path]) -> None:
         else:
             s.stops.append(f"{_show(folder)} is where Parent Recap installs the wilma CLI, but "
                            f"it holds other files too: {', '.join(others)}")
+
+
+def survey_whatsapp(s: Survey, programs: list[Path]) -> None:
+    """The Linked Device's folder, with the pairing and the messages it kept. It goes after the
+    always-running job, with a logout first while the Node and the Baileys tree are still there."""
+    usual = [linked_device.folder(), *(p.parent / "linked-device" for p in programs)]
+    for folder in dict.fromkeys(usual):
+        if folder.is_dir() and not folder.is_symlink():
+            s.items.append(Item("The Linked Device's WhatsApp pairing and kept messages",
+                                _show(folder), partial(_forget_linked_device, folder), path=folder))
+
+
+def _forget_linked_device(folder: Path) -> None:
+    if folder == linked_device.folder():
+        linked_device.forget()
+    else:  # another install's place, whose pairing this install can't log out
+        shutil.rmtree(folder)
+
+
+def whatsapp_notes(cfg: Config) -> list[str]:
+    """A pairing, removed or not, may leave the device listed on the phone."""
+    return [linked_device.PHONE_NOTE] if linked_device.folder().is_dir() else []
 
 
 def _baileys(s: Survey, programs: list[Path]) -> None:

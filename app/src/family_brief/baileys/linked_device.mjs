@@ -3,6 +3,7 @@
 //
 //   node linked_device.mjs pair   --modules TREE --auth FOLDER --log FILE [--timeout SECONDS]
 //   node linked_device.mjs groups --modules TREE --auth FOLDER --log FILE [--timeout SECONDS]
+//   node linked_device.mjs logout --modules TREE --auth FOLDER --log FILE [--timeout SECONDS]
 //   node linked_device.mjs follow --modules TREE --auth FOLDER --log FILE
 //                                 --picked FILE --store FILE --status FILE
 //
@@ -10,7 +11,9 @@
 // {"qr": "..."}, until the phone pairs. Only then is the auth state written to FOLDER, and
 // {"paired": true} printed, so a pairing that never happens leaves none. `groups` connects with
 // the auth state in FOLDER. Both then print {"groups": [{"id": "...", "subject": "..."}]} and
-// exit; no message is kept.
+// exit; no message is kept. `logout` connects with the auth state in FOLDER and logs out, so the
+// phone drops the device from its Linked devices, then exits 0 and prints nothing; Python deletes
+// FOLDER after it.
 //
 // `follow` runs all day (ADR 0026) on the auth state in FOLDER. The picked groups are the ids in
 // the `--picked` file, {"groups": ["...@g.us"]}, which Python writes; it is read again when it
@@ -43,8 +46,8 @@ import { parseArgs } from "node:util";
 const EXIT = { failed: 1, usage: 2, timedOut: 3, needsPairing: 4, stopped: 5, linkEnded: 0 };
 // The phone lists a linked device by the first of these.
 const BROWSER = ["Parent Recap", "Chrome", "1.0"];
-// How long pair and groups wait; follow doesn't stop.
-const SECONDS = { pair: 300, groups: 60, follow: null };
+// How long pair, groups and logout wait; follow doesn't stop.
+const SECONDS = { pair: 300, groups: 60, logout: 30, follow: null };
 const RECONNECT_MS = 2000;
 const MOST_RECONNECT_MS = 5 * 60_000;
 // What the store keeps for a message without text, by its content type; others aren't kept.
@@ -428,7 +431,7 @@ async function main() {
       !values.log ||
       (following && (!values.picked || !values.store || !values.status || values.timeout))) {
     process.stderr.write(
-      "Usage: linked_device.mjs pair|groups --modules TREE --auth FOLDER --log FILE " +
+      "Usage: linked_device.mjs pair|groups|logout --modules TREE --auth FOLDER --log FILE " +
       "[--timeout SECONDS]\n" +
       "       linked_device.mjs follow --modules TREE --auth FOLDER --log FILE " +
       "--picked FILE --store FILE --status FILE\n");
@@ -474,6 +477,14 @@ async function main() {
     if (qr) {
       log("info", "QR code shown");
       say({ qr });
+    }
+    if (connection === "open" && mode === "logout") {
+      log("info", "connected");
+      current = null; // the close the logout brings is its own, not a drop
+      await socket.logout();
+      log("info", "logged out");
+      clearInterval(alive);
+      return finish(0);
     }
     if (connection === "open") {
       log("info", "connected");

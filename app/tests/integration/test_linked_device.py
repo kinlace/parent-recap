@@ -420,3 +420,32 @@ def test_follow_asked_for_a_qr_code_marks_the_link_ended(device, tmp_path):
     assert run.code == linked_device.LINK_ENDED
     assert run.printed == []
     assert read_status(tmp_path)["link_ended_at"] is not None
+
+
+def test_logout_logs_out_on_the_saved_auth_state_and_reads_nothing_else(device, tmp_path):
+    device("pair", [[{"qr": "2@first"}, *PAIRED, {"open": True}]])
+
+    run = device("logout", [[{"message": {"chat": CLASS, "text": TEXT}}, {"open": True}]])
+
+    assert run.code == 0, run.stderr
+    assert run.printed == []
+    assert [c["call"] for c in run.calls if c["call"] not in READS] == ["logout"]
+    assert run.options()[0]["me"] == ME
+    assert "logged out" in run.log
+    assert not store(tmp_path).exists()
+
+
+def test_logout_of_a_link_whatsapp_ended_needs_a_new_pairing(device):
+    device("pair", [[{"qr": "2@first"}, *PAIRED, {"open": True}]])
+
+    run = device("logout", [[LOGOUT]])
+
+    assert run.code == linked_device.NEEDS_PAIRING
+    assert "logout" not in {c["call"] for c in run.calls}
+
+
+def test_logout_without_auth_state_needs_a_new_pairing(device):
+    run = device("logout", [[{"open": True}]])
+
+    assert run.code == linked_device.NEEDS_PAIRING
+    assert run.calls == []
