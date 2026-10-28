@@ -141,6 +141,8 @@ class SetupServer:
         self.context.chat.join()
 
     def state(self) -> dict[str, Any]:
+        for phase in self.phases:
+            phase.opening()
         progress = self.context.progress()
         out: dict[str, Any] = {"progress": progress}
         for phase in self.phases:

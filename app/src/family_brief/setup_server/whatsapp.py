@@ -5,7 +5,13 @@ The server runs the Node program's `pair` mode in the background, and the page a
 seconds what it last said: the QR string to draw, which WhatsApp changes now and then, until the
 phone has scanned it. Once paired, the groups it lists are kept in setup's progress for the check
 page, each with its id and Kid hint, WhatsApp is done, and the always-running job is installed so
-that `follow` keeps the picked groups' messages from then on (ADR 0026)."""
+that `follow` keeps the picked groups' messages from then on (ADR 0026).
+
+A link that isn't fresh is paired the same way: a page opened with picked groups and no pairing,
+since WhatsApp ended the link or the groups were picked when WhatsApp for Mac was read, goes to
+the step, and the pairing keeps the groups, fills in the ids of those picked by name only, and
+returns the family to where they were. Turning WhatsApp off removes the job, the pairing and the
+messages kept."""
 from __future__ import annotations
 
 import json
@@ -16,6 +22,7 @@ from http import HTTPStatus
 from typing import Any
 
 from .. import failure, linked_device, setup_whatsapp
+from ..config import Config
 from ..setup_connect import Nothing, Reply, parse
 from ..system import jobs
 from .context import Action, Phase
@@ -29,6 +36,10 @@ PAIR_RESULTS = ("starting", "qr", "linking", "paired", "timed-out", "failed", "n
                 "no-pairing")
 UNDER_WAY = ("starting", "qr", "linking")
 NOT_SCANNED = ("starting", "qr")  # what moving on from the step still ends
+# What turning WhatsApp off says: `off`, or `failed` with why.
+OFF_RESULTS = ("off", "failed")
+# The phases past Connect a page opened again is taken back from to pair again, and returned to.
+AFTER_CONNECT = ("check", "first-brief", "finish")
 
 
 @dataclass
@@ -38,6 +49,7 @@ class _Run:
     proc: subprocess.Popen
     said: dict[str, Any]
     stopped: bool = False
+    off: bool = False  # ended as WhatsApp was turned off: nothing is installed after it
 
 
 class WhatsApp(Phase):
@@ -45,10 +57,34 @@ class WhatsApp(Phase):
         super().__init__(context)
         self._lock = threading.Lock()  # one pairing at a time
         self._run: _Run | None = None
+        # The phase a page opened again was at before it was taken to pair again, which pairing
+        # returns it to. None when the family got to the step in setup's order.
+        self._back_to: str | None = None
 
     def routes(self) -> dict[str, Action]:
         return {"api/whatsapp/pair": self.pair, "api/whatsapp/check": self.check_pairing,
-                "api/whatsapp/stop": self.stop_pairing}
+                "api/whatsapp/stop": self.stop_pairing, "api/whatsapp/off": self.turn_off}
+
+    def opening(self) -> None:
+        """Takes a page opened with picked groups that need a new pairing to the step: the link
+        WhatsApp ended, or groups picked when WhatsApp for Mac was read, which have none. From a
+        phase past Connect, pairing then returns the family there; in Connect, a step done is
+        to do again, and one to do comes in its turn."""
+        if not needs_pairing(self.context.model()):
+            return
+        with self.context.connect.lock:
+            progress = self.context.progress()
+            phase = progress["phase"]
+            if phase in AFTER_CONNECT:
+                self._back_to = phase
+            elif not (phase == "connect" and progress["sources"]["whatsapp"] == "done"):
+                return
+            self.context.connect.save({"progress": {"phase": "connect", "source": "whatsapp",
+                                                    "sources": {"whatsapp": "to-do"}}})
+
+    def state(self, progress: dict[str, Any]) -> dict[str, Any]:
+        """How many groups are picked already, which a new pairing keeps."""
+        return {"whatsapp": {"picked": len(self.context.model().whatsapp.chats)}}
 
     def pair(self, raw: Any) -> Reply:
         """Starts pairing, unless a pairing is under way, which the page then goes on with. A
@@ -91,6 +127,27 @@ class WhatsApp(Phase):
                 _end(self._run)
         return HTTPStatus.OK, {"result": "stopped"}
 
+    def turn_off(self, raw: Any) -> Reply:
+        """Turns WhatsApp off: ends a pairing under way, stops and removes the always-running
+        job, logs out as best it can, deletes the Linked Device's folder, and saves WhatsApp as
+        off and skipped, keeping the picked groups for turning it on again. The page then tells
+        the family to remove the device on the phone."""
+        parse(Nothing, raw)
+        with self._lock:
+            if self._run is not None and self._run.proc.poll() is None:
+                self._run.off = True
+                _end(self._run)
+            self._back_to = None
+            try:
+                linked_device.forget()
+            except Exception as e:
+                return HTTPStatus.OK, {"result": "failed", "reason": failure.logged(
+                    "WhatsApp wasn't turned off", failure.raised(e, "Turning it off"))}
+        status, out = self.context.connect.skip("whatsapp")
+        if status != HTTPStatus.OK:
+            return status, out
+        return HTTPStatus.OK, {"result": "off", "progress": out["progress"]}
+
     def stop(self) -> None:
         if self._run is not None and self._run.proc.poll() is None:
             _end(self._run)
@@ -112,7 +169,9 @@ class WhatsApp(Phase):
                     groups = said["groups"]
             code = run.proc.wait()
             errors = run.proc.stderr.read()
-            if paired and groups is not None:
+            if run.off:
+                done = {"result": "no-pairing"}
+            elif paired and groups is not None:
                 done = self._paired(groups)
             elif run.stopped:
                 done = {"result": "no-pairing"}
@@ -125,21 +184,32 @@ class WhatsApp(Phase):
             run.proc.kill()
             done = {"result": "failed", "reason": failure.logged(
                 "WhatsApp wasn't paired", failure.raised(e, "The pairing"))}
-        if done["result"] != "paired" and following:
+        if done["result"] != "paired" and following and not run.off:
             self._follow_again()
         run.said = done
 
     def _paired(self, groups: list[Any]) -> dict[str, Any]:
-        """Keeps the groups for the check page, each with its Kid hint, and WhatsApp is done,
-        unless the family skipped it meanwhile: their choice stands. Then installs the
-        always-running job."""
+        """Marks the link paired, keeps the groups for the check page, each with its Kid hint,
+        and WhatsApp is done, unless the family skipped it meanwhile: their choice stands. Groups
+        picked already stay picked, those picked by name only given their ids, and a page taken
+        to the step to pair again goes back to where it was. Then installs the always-running
+        job."""
         context = self.context
+        linked_device.mark_paired()
         found = [{"name": g.get("subject") or g["id"], "id": g["id"]} for g in groups
                  if isinstance(g, dict) and isinstance(g.get("id"), str)]
-        chats = setup_whatsapp.with_hints(found, context.model().kids)
+        cfg = context.model()
+        back, self._back_to = self._back_to, None
+        answers: dict[str, Any] = {"progress": {
+            "whatsapp_chats": setup_whatsapp.with_hints(found, cfg.kids),
+            **({"phase": back, "source": None} if back else {})}}
+        if cfg.whatsapp.chats:
+            kept = setup_whatsapp.with_ids(cfg.whatsapp.chats, found)
+            answers["sources"] = {"whatsapp": {
+                "enabled": True, "chats": [c.model_dump(exclude_none=True) for c in kept]}}
         status, out = context.connect.complete(
-            "whatsapp", {"progress": {"whatsapp_chats": chats}}, keep_skipped=True,
-            move_on=lambda progress: progress["source"] == "whatsapp")
+            "whatsapp", answers, keep_skipped=True,
+            move_on=lambda progress: back is None and progress["source"] == "whatsapp")
         if status != HTTPStatus.OK:
             return {"result": "failed", "reason": failure.logged(
                 "WhatsApp's groups weren't saved", out.get("reason") or
@@ -156,6 +226,13 @@ class WhatsApp(Phase):
         except Exception as e:
             failure.logged("The Linked Device's job wasn't installed",
                            failure.raised(e, "Installing the job"))
+
+
+def needs_pairing(cfg: Config) -> bool:
+    """Whether WhatsApp has groups picked but no pairing: WhatsApp ended the link, or there never
+    was one. A pairing none of whose groups had a picked name has groups to pick on the check page
+    instead."""
+    return cfg.whatsapp.enabled and bool(cfg.whatsapp.chats) and not linked_device.link().paired
 
 
 def _end(run: _Run) -> None:

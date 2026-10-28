@@ -287,6 +287,8 @@ def connect_done(harness, **config: Any) -> None:
     config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
     save_progress(harness, {"phase": "connect", "source": None, "sources": {
         "wilma": "done", "gmail": "done", "ai": "done", "whatsapp": "done", "myclub": "skipped"}})
+    # WhatsApp done is a pairing, which a page opened again would otherwise take the family to.
+    harness.source_fakes["whatsapp"].set_up()
 
 
 def more_progress(harness, **progress: Any) -> None:

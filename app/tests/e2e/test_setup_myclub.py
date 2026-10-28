@@ -361,6 +361,7 @@ def at_the_myclub_step(harness) -> None:
     config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
     save_progress(harness, {"phase": "connect", "source": "myclub", "sources": {
         "wilma": "done", "gmail": "done", "ai": "done", "whatsapp": "done"}})
+    harness.source_fakes["whatsapp"].set_up()  # WhatsApp done: paired
 
 
 def save_link(url: str, kid: str, link: str = MYCLUB_LINK) -> Response:

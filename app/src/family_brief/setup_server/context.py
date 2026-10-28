@@ -173,6 +173,10 @@ class Phase:
         """The files this phase serves, by the path under the page's address."""
         return {}
 
+    def opening(self) -> None:
+        """Brings setup's progress up to date as the page loads `api/state`, before any phase
+        reads it: such as taking the family to a step that needs doing again."""
+
     def state(self, progress: dict[str, Any]) -> dict[str, Any]:
         """This phase's part of `api/state`, with setup's `progress` as saved."""
         return {}
