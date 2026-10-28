@@ -1,0 +1,29 @@
+[Unit]
+Description=Parent Recap Brief relay (POST /v1/brief)
+After=network-online.target bifrost.service
+Wants=network-online.target
+
+[Service]
+DynamicUser=true
+# The SMTP credentials and Bifrost's admin login; the provider key is not this service's to see.
+EnvironmentFile=/etc/bifrost/bifrost.env
+UnsetEnvironment=ANTHROPIC_API_KEY
+# GATEWAY_HOST comes from the drop-in gateway-setup.sh writes.
+ExecStart=/usr/bin/python3 /usr/local/lib/brief-relay/brief_relay.py
+Restart=on-failure
+# 78: a setting is missing, which restarting won't fix.
+RestartPreventExitStatus=78
+RestartSec=5
+# The daily cap's counts ($STATE_DIRECTORY/sent.json); no message is ever written.
+StateDirectory=brief-relay
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
