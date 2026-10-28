@@ -109,10 +109,33 @@ async function loadBaileys(tree) {
   return import(pathToFileURL(join(root, entry ?? pkg.main ?? "index.js")).href);
 }
 
+// Windows refuses, with EPERM, to replace a file or folder another handle holds open for the
+// moment: a virus scanner's on a file just written, or the one of two writes of the same file.
+// So a replace is tried again for a couple of seconds before it fails.
+const REPLACE_TRIES = 10;
+const REPLACE_PAUSE_MS = 50;
+
+async function replace(from, to) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await rename(from, to);
+    } catch (e) {
+      if (!["EPERM", "EACCES", "EBUSY"].includes(e?.code) || attempt >= REPLACE_TRIES) throw e;
+      await new Promise((resolve) => setTimeout(resolve, REPLACE_PAUSE_MS * attempt));
+    }
+  }
+}
+
+// Written whole beside `file`, then moved over it; a move that fails leaves no partial file.
 async function writePrivate(file, text) {
   const partial = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.partial`;
   await writeFile(partial, text, { mode: 0o600 });
-  await rename(partial, file);
+  try {
+    await replace(partial, file);
+  } catch (e) {
+    await rm(partial, { force: true });
+    throw e;
+  }
 }
 
 async function makePrivateFolder(folder) {
@@ -140,11 +163,22 @@ function authState(baileys, folder, onDisk) {
     }
   }
 
+  // Two writes of one file take turns, so neither moves its copy over the other's half-made one:
+  // Baileys can send several creds.update events in a row.
+  const turns = new Map(); // file name -> the write under way
   async function write(name, value) {
     memory.set(name, value);
     if (!onDisk) return;
-    if (value === null) await rm(join(folder, name), { force: true });
-    else await writePrivate(join(folder, name), JSON.stringify(value, BufferJSON.replacer));
+    const turn = (turns.get(name) ?? Promise.resolve()).catch(() => {}).then(async () => {
+      if (value === null) await rm(join(folder, name), { force: true });
+      else await writePrivate(join(folder, name), JSON.stringify(value, BufferJSON.replacer));
+    });
+    turns.set(name, turn);
+    try {
+      await turn;
+    } finally {
+      if (turns.get(name) === turn) turns.delete(name);
+    }
   }
 
   const state = {
@@ -180,6 +214,8 @@ function authState(baileys, folder, onDisk) {
       return state.creds !== null;
     },
     saveCreds: () => write("creds.json", state.creds),
+    // Once every write under way is done, so an exit doesn't cut one short.
+    settled: () => Promise.all([...turns.values()].map((turn) => turn.catch(() => {}))),
     // Writes what pairing made into the folder in one move, in place of whatever was there.
     async keep() {
       await mkdir(join(folder, ".."), { recursive: true, mode: 0o700 });
@@ -193,7 +229,7 @@ function authState(baileys, folder, onDisk) {
         }
       }
       await rm(folder, { recursive: true, force: true });
-      await rename(staging, folder);
+      await replace(staging, folder);
       onDisk = true;
     },
   };
@@ -209,9 +245,11 @@ function connect(baileys, auth, handlers, events = {}) {
     syncFullHistory: false,
     logger: baileysLogger(),
   });
+  // A save that fails stops the program with its reason in the log, as the handlers below do,
+  // rather than as an unhandled rejection with a stack on stderr.
   socket.ev.on("creds.update", async (update) => {
     Object.assign(auth.state.creds, update);
-    await auth.saveCreds();
+    await auth.saveCreds().catch(stop);
   });
   socket.ev.on("connection.update", (update) => handlers(socket, update).catch(stop));
   for (const [name, handler] of Object.entries(events)) {
@@ -349,6 +387,7 @@ async function follow(baileys, auth, { picked, store, status }) {
   };
   const ended = async () => {
     await kept.catch(() => {});
+    await auth.settled();
     const at = now();
     await setStatus({
       paired: false,
@@ -483,6 +522,7 @@ async function main() {
       current = null; // the close the logout brings is its own, not a drop
       await socket.logout();
       log("info", "logged out");
+      await auth.settled();
       clearInterval(alive);
       return finish(0);
     }
@@ -491,6 +531,7 @@ async function main() {
       try {
         await keep();
         await listGroups(socket);
+        await auth.settled(); // a creds.update WhatsApp sent on connecting may still be writing
       } catch (e) {
         log("error", `listing the groups failed: ${e?.message ?? e}`);
         return finish(EXIT.failed);
