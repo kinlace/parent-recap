@@ -97,7 +97,15 @@ After login, the wilma CLI stores the Wilma username and password in `~/.config/
 
 ## WhatsApp (optional)
 
-WhatsApp is read as a Linked Device, paired on the setup page (ADR 0027). The page doesn't offer the pairing yet.
+WhatsApp is read as a Linked Device, paired on the setup page (ADR 0027).
+
+### Pairing again
+
+When WhatsApp ends the link, or the groups were picked when WhatsApp for Mac was read, the Brief's coverage line and `doctor` say WhatsApp "needs a new pairing". Open the setup page again (`parent-recap setup page`): it goes to the WhatsApp step and shows a QR code. Scan it in WhatsApp on the phone, under Settings → Linked devices → Link a device. The picked groups stay picked, a group picked by name only gets its WhatsApp id from the pairing, and the page goes back to where it was. The next Brief reads WhatsApp again, back to when it was last read.
+
+### Turning it off
+
+On the setup page's Finish, "Turn WhatsApp off" stops the always-running job, logs out, and deletes `~/ParentRecap/linked-device`, with the pairing and the messages kept. The picked groups stay in the config for turning it on again from Connect's list. On the phone, open WhatsApp → Settings → Linked devices and remove "Parent Recap" if it's still listed. `parent-recap uninstall` does the same and says the same.
 
 ## MyClub (optional)
 
