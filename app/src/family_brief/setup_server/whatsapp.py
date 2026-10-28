@@ -140,7 +140,7 @@ class WhatsApp(Phase):
             self._back_to = None
             try:
                 linked_device.forget()
-            except Exception as e:
+            except Exception as e:  # such as a file Windows keeps open: the page says why
                 return HTTPStatus.OK, {"result": "failed", "reason": failure.logged(
                     "WhatsApp wasn't turned off", failure.raised(e, "Turning it off"))}
         status, out = self.context.connect.skip("whatsapp")
@@ -189,13 +189,12 @@ class WhatsApp(Phase):
         run.said = done
 
     def _paired(self, groups: list[Any]) -> dict[str, Any]:
-        """Marks the link paired, keeps the groups for the check page, each with its Kid hint,
-        and WhatsApp is done, unless the family skipped it meanwhile: their choice stands. Groups
-        picked already stay picked, those picked by name only given their ids, and a page taken
-        to the step to pair again goes back to where it was. Then installs the always-running
-        job."""
+        """Keeps the groups for the check page, each with its Kid hint, and WhatsApp is done,
+        unless the family skipped it meanwhile: their choice stands. Groups picked already stay
+        picked, those picked by name only given their ids, and a page taken to the step to pair
+        again goes back to where it was. Then marks the link paired and installs the
+        always-running job."""
         context = self.context
-        linked_device.mark_paired()
         found = [{"name": g.get("subject") or g["id"], "id": g["id"]} for g in groups
                  if isinstance(g, dict) and isinstance(g.get("id"), str)]
         cfg = context.model()
@@ -214,6 +213,8 @@ class WhatsApp(Phase):
             return {"result": "failed", "reason": failure.logged(
                 "WhatsApp's groups weren't saved", out.get("reason") or
                 f"Saving the groups said {out['result']}.")}
+        # Only once saved: a link marked paired whose groups weren't would never be offered again.
+        linked_device.mark_paired()
         if out["progress"]["sources"]["whatsapp"] == "done":
             self._follow_again()
         return {"result": "paired"}
