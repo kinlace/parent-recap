@@ -67,6 +67,9 @@ PROFILE = profile.Profile(
     program_folders=_program_folders,
     install_folders=_install_folders,
     command=Path("Scripts/parent-recap.exe"),
+    path_command=Path("Scripts/parent-recap.exe"),
+    # A link needs Developer Mode; the venv's launcher finds its Python by its full path.
+    links_command=False,
     node=Path("node.exe"),  # npm beside it, in node_modules
     node_modules=Path("node_modules"),
     npm_links_programs=False,  # only .cmd wrappers, so the program runs from its package's script

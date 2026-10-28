@@ -15,7 +15,7 @@ from fake_system import WINDOWS
 
 def installed_program(target: Path, profile) -> Path:
     """The venv's `parent-recap` the install made."""
-    command = target / "app" / ".venv" / profile.command.with_name(name(profile))
+    command = target / "app" / ".venv" / profile.path_command
     command.parent.mkdir(parents=True)
     command.write_text("the venv's parent-recap\n")
     (command.parent / ("python.exe" if profile is WINDOWS else "python")).write_text("")
@@ -24,7 +24,7 @@ def installed_program(target: Path, profile) -> Path:
 
 def name(profile) -> str:
     """The command's file name: `parent-recap`, or `parent-recap.exe` on Windows."""
-    return "parent-recap" + profile.command.suffix
+    return profile.path_command.name
 
 
 @pytest.fixture

@@ -492,11 +492,10 @@ def _command(s: Survey, usual: list[Path]) -> None:
         if user_path.has(d):
             s.items.append(Item(f"{_show(d)} on the PATH", user_path.where(),
                                 partial(user_path.remove, d)))
-    names = {command_path.NAME, command_path.NAME + ".exe"}
     for d in dict.fromkeys(folders):
         if not d.exists():
             continue
-        if d.is_dir() and all(p.name in names for p in d.iterdir()):
+        if d.is_dir() and all(p.stem == command_path.NAME for p in d.iterdir()):
             # On Windows `parent-recap uninstall` runs from it.
             s.items.append(_file("The parent-recap command", d, running=True))
         else:
