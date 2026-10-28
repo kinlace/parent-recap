@@ -6,8 +6,8 @@
 #   scp ops/gateway/set-smtp-credentials.sh <vm>:/tmp/
 #   ssh -t <vm> "sudo bash /tmp/set-smtp-credentials.sh"
 #
-# Typed at the prompt, so they stay out of shell history and the repo. Nothing is restarted:
-# the service that sends Briefs (#525) reads the file when it starts.
+# Typed at the prompt, so they stay out of shell history and the repo. The Brief relay reads the
+# file when it starts, so it is restarted if it is installed.
 set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)" >&2; exit 1; }
@@ -37,3 +37,7 @@ if [ -f "$old" ] && grep -q '^BRIEF_SMTP_' "$old"; then
   echo "removed the SMTP lines from $old"
 fi
 echo "SMTP credentials written to $env"
+if systemctl is-enabled --quiet brief-relay 2>/dev/null; then
+  systemctl restart brief-relay
+  echo "brief-relay restarted"
+fi

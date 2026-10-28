@@ -66,6 +66,7 @@ the import path, so a test may import a helper from a test in another layer.
 
 | File                            | What it covers                                                                   |
 | ------------------------------- | -------------------------------------------------------------------------------- |
+| `test_brief_relay.py`           | The gateway's Brief relay: the key, the daily cap, the request, the message sent |
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                   |
 | `test_email.py`                 | The Brief email as sent to a fake SMTP server                                    |
 | `test_eval_runner.py`           | The eval runner end to end, only the model process faked                         |

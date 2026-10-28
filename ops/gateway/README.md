@@ -3,8 +3,8 @@
 The server that invited Households' Gateway Keys go through (ADR 0014). Everything needed to rebuild it is here, and none of it is secret (ADR 0015). Where the running server is and how to reach it are in the maintainers' Bitwarden, not here.
 
 - `host-setup.sh` sets up the VM (Ubuntu/Debian): system updates, SSH with keys only, a firewall that lets in only SSH and HTTPS, Caddy, and a login for the AI assistant that can read logs but has no sudo.
-- `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016) behind Caddy. It works on any systemd Linux with Caddy installed.
-- `config.json`, `bifrost.service`, `Caddyfile` and `bifrost.env.example` are what it installs. The env examples hold only variable names.
+- `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016) and the Brief relay behind Caddy. It works on any systemd Linux with Caddy and `python3` installed.
+- `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile` and `bifrost.env.example` are what it installs. The env examples hold only variable names.
 - `oci-quota.json` is the Oracle Cloud quota policy that lets the account create only Always Free resources.
 - `set-smtp-credentials.sh` puts the sending domain's SMTP credentials into their own env file, whose names are in `brief-relay.env.example` (see "The sending domain").
 
@@ -48,7 +48,7 @@ Both scripts are safe to run again.
 
 ## What the gateway does
 
-- Only `POST /v1/messages` is reachable from the internet. Caddy sends it to Bifrost's Anthropic endpoint and answers 404 to everything else, so the admin API and UI are only reachable through an SSH tunnel.
+- Only `POST /v1/messages`, `POST /v1/brief` (see "Sending the Brief") and the Brief's stop page `/brief/stop` are reachable from the internet. Caddy sends `/v1/messages` to Bifrost's Anthropic endpoint and answers 404 to everything else, so the admin API and UI are only reachable through an SSH tunnel.
 - A request without a Gateway Key is refused. Clients send `model: "parent-recap"`, which `config.json` maps to the real model, so changing model is a config change, not a release.
 - Request and reply text is not stored (`disable_content_logging`, and the per-request override is off). Token counts, cost and status are. Caddy keeps no access log.
 - A Gateway Key is a Bifrost virtual key with a $0.10 budget that resets daily. A key past its budget gets HTTP 402 `budget_exceeded`.
@@ -70,9 +70,9 @@ Briefs sent from Parent Recap's own address (ADR 0028) leave as `brief@parentrec
 
 **What it keeps and what it costs.** Email Delivery stores no message content; it keeps bounces, complaints (a suppression list) and delivery metrics. There is no archiving to turn off, and none must ever be turned on. Sending is inside Always Free (3,000 messages a month, 100 a day), and `oci-quota.json` has `set email-delivery quota max-emails-day to 100 in tenancy` so the tenancy cannot be billed for more. Oracle accepted that statement but its limits API reports no effective value for it, so the cap is not proven to be enforced: the `$1` budget from step 2 is the backstop.
 
-**Hotmail and Outlook.com junk the domain at first.** On 2026-10-28 the test sends passed SPF, DKIM and DMARC at both Gmail and Microsoft (`compauth=pass`), landed in Gmail's inbox, and were still scored spam by Microsoft (`SCL 5`), with a Brief-shaped message as much as a two-line test. The sending IP is clean and the authentication is complete, so what is missing is history for `parentrecap.com`: Microsoft's filter learns from how recipients treat the mail. Decided (#524): accept it and warm up. A Hotmail or Outlook.com Recipient finds the first Brief in Junk and marks it "Not junk" once, which puts the sender on that mailbox's trusted list; the setup page and the first Brief say so (#527). Email Delivery adds a `List-Unsubscribe` header of its own unless the message carries an HTTPS one (#525).
+**Hotmail and Outlook.com junk the domain at first.** On 2026-10-28 the test sends passed SPF, DKIM and DMARC at both Gmail and Microsoft (`compauth=pass`), landed in Gmail's inbox, and were still scored spam by Microsoft (`SCL 5`), with a Brief-shaped message as much as a two-line test. The sending IP is clean and the authentication is complete, so what is missing is history for `parentrecap.com`: Microsoft's filter learns from how recipients treat the mail. Decided (#524): accept it and warm up. A Hotmail or Outlook.com Recipient finds the first Brief in Junk and marks it "Not junk" once, which puts the sender on that mailbox's trusted list; the setup page and the first Brief say so (#527). Email Delivery adds a `List-Unsubscribe` header of its own unless the message carries an HTTPS one, so the Brief relay sets its own.
 
-**Put the credentials on the host.** Prompts for the SMTP username and password and writes them to `/etc/brief-relay/brief-relay.env` (`BRIEF_SMTP_USERNAME`, `BRIEF_SMTP_PASSWORD`); the service that sends Briefs (#525) reads them from there. It is not `bifrost.env`, because Bifrost's unit loads that file into Bifrost's environment and Bifrost only proxies model calls. SMTP endpoint `smtp.email.eu-stockholm-1.oci.oraclecloud.com`, port 465 (TLS) or 587 (STARTTLS), AUTH PLAIN.
+**Put the credentials on the host.** Prompts for the SMTP username and password and writes them to `/etc/brief-relay/brief-relay.env` (`BRIEF_SMTP_USERNAME`, `BRIEF_SMTP_PASSWORD`); the Brief relay reads them from there, and the script restarts it. It is not `bifrost.env`, because Bifrost's unit loads that file into Bifrost's environment and Bifrost only proxies model calls. SMTP endpoint `smtp.email.eu-stockholm-1.oci.oraclecloud.com`, port 465 (TLS) or 587 (STARTTLS), AUTH PLAIN.
 
 ```sh
 scp ops/gateway/set-smtp-credentials.sh ubuntu@<ip>:/tmp/
@@ -91,6 +91,48 @@ oci iam smtp-credential delete --user-id "$U" --smtp-credential-id <old id>
 **Rotate the DKIM key.** Create a second DKIM on the email domain with a new selector, add its CNAME at Porkbun, wait until it is `ACTIVE`, then delete the old DKIM and its record.
 
 **Check it.** `oci email domain get --email-domain-id <id>` shows `is-spf` and the active DKIM; `oci email suppression list --compartment-id <tenancy OCID>` shows addresses Email Delivery has stopped sending to (bounced or complained) and is where to look when a family says the Brief stopped coming.
+
+## Sending the Brief
+
+`brief_relay.py` (the `brief-relay` unit) sends a Household's Brief from `brief@parentrecap.com` (ADR 0028). It is Python's standard library on the host's own `python3`, listens on `127.0.0.1:8081`, and Caddy sends `POST /v1/brief` to it. Bifrost only proxies model calls, so the relay is its own service. It runs as a throwaway system user and gets the env file without the Anthropic key.
+
+**The request.** The program posts JSON with its Gateway Key in `x-api-key`, as for `/v1/messages`. One request is one message to all of the Household's Recipients, in `To`:
+
+```json
+{
+  "to": ["parent@example.com", "partner@example.fi"],
+  "subject": "…",
+  "text": "…",
+  "html": "…",
+  "attachments": [
+    {
+      "filename": "events.ics",
+      "content_type": "text/calendar",
+      "data": "<base64>"
+    }
+  ]
+}
+```
+
+`html` and `attachments` are optional. At most 10 Recipients, 5 attachments and 2 MB a request; an address must be a plain `name@domain`. The From is `Parent Recap <brief@parentrecap.com>` and there is no Reply-To: the Brief's footer, which the program adds, says the address is unread. `List-Unsubscribe` points at `https://<hostname>/brief/stop` (`brief-stop.html`), which says how a Household stops the Brief in its own config.
+
+**The answers.** 200 `{"sent": n, "refused": n}` once Email Delivery has taken the message. 401 for a missing, unknown or inactive key; 429 for a key past its daily cap; 400 or 413 for a malformed or too large request. 502 when Email Delivery refused the message or couldn't be reached, 503 when Bifrost couldn't be asked about the key: a 5xx means "try again later", a 4xx "fix the request or the key". Each error has a short `error` saying why.
+
+**The key.** The relay looks the key up in Bifrost's virtual-key list on localhost with the admin login, so a Household's one Gateway Key covers writing and sending the Brief, and revoking it (below) stops both.
+
+**The cap.** Each key may send 4 messages a UTC day (`BRIEF_DAILY_CAP` in the env file changes it): the Brief, Weekend Picks and room for a retry. At 10 Recipients each, one key can use at most 40 of the tenancy's 100 a day, so a leaked key can neither become a spam relay nor use up every other Household's sending. A message Email Delivery didn't take doesn't count. The counts are in `/var/lib/brief-relay/sent.json`. Before raising the cap or adding Households that send this way, check the total against the 100 a day.
+
+**What it keeps.** Nothing of the message. Each request logs one line to the journal: the key's name, the number of Recipients, the request's size and the outcome (`journalctl -u brief-relay`), never the subject, body, attachments or addresses.
+
+**Check it.** From a maintainer's machine, with a real Gateway Key, send a test with an `.ics` to a Gmail and a Hotmail inbox:
+
+```sh
+ics=$(printf 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Parent Recap//test//EN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:relay-test@parentrecap.com\r\nDTSTAMP:20261028T120000Z\r\nDTSTART;VALUE=DATE:20261030\r\nSUMMARY:Relay test\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n' | base64 | tr -d '\n')
+curl -s https://<hostname>/v1/brief -H "x-api-key: $GATEWAY_KEY" -H 'content-type: application/json' -d '{
+  "to": ["<gmail address>", "<hotmail address>"], "subject": "Relay test", "text": "Relay test.",
+  "html": "<p>Relay test.</p>",
+  "attachments": [{"filename": "events.ics", "content_type": "text/calendar", "data": "'"$ics"'"}]}'
+```
 
 ## Runbook
 
@@ -137,4 +179,4 @@ Make a test call, then delete the old key in the Console.
 
 **Change the model.** Edit the `aliases` entry in `config.json` and run step 7 again.
 
-**Check it is up.** The assistant's login can read logs and status: `journalctl -u bifrost -u caddy`, `systemctl status bifrost`.
+**Check it is up.** The assistant's login can read logs and status: `journalctl -u bifrost -u brief-relay -u caddy`, `systemctl status bifrost brief-relay`.

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Installs or upgrades Bifrost behind Caddy on any systemd Linux with Caddy
-# already installed (host-setup.sh does that on Ubuntu). Safe to run again.
+# Installs or upgrades Bifrost and the Brief relay behind Caddy on any systemd
+# Linux with Caddy and python3 already installed (host-setup.sh does that on
+# Ubuntu). Safe to run again.
 #
 #   scp -r ops/gateway <vm>:/tmp/
 #   ssh -t <vm> "sudo GATEWAY_HOST=<hostname> bash /tmp/gateway/gateway-setup.sh"
@@ -62,6 +63,19 @@ systemctl daemon-reload
 systemctl enable bifrost
 systemctl restart bifrost
 
+# ── Brief relay (POST /v1/brief, README "Sending the Brief")
+# Starts without the SMTP credentials only to exit and say so: set them with
+# set-smtp-credentials.sh, which restarts it.
+install -d -m 0755 /usr/local/lib/brief-relay /usr/local/share/brief-relay
+install -m 0644 "$here/brief_relay.py" /usr/local/lib/brief-relay/brief_relay.py
+install -m 0644 "$here/brief-stop.html" /usr/local/share/brief-relay/stop.html
+install -m 0644 "$here/brief-relay.service" /etc/systemd/system/brief-relay.service
+mkdir -p /etc/systemd/system/brief-relay.service.d
+printf '[Service]\nEnvironment=GATEWAY_HOST=%s\n' "$GATEWAY_HOST" >/etc/systemd/system/brief-relay.service.d/gateway.conf
+systemctl daemon-reload
+systemctl enable brief-relay
+systemctl restart brief-relay
+
 # ── Caddy
 install -m 0644 "$here/Caddyfile" /etc/caddy/Caddyfile
 mkdir -p /etc/systemd/system/caddy.service.d
@@ -71,9 +85,18 @@ GATEWAY_HOST=$GATEWAY_HOST caddy validate --config /etc/caddy/Caddyfile --adapte
 systemctl restart caddy
 
 # ── Check
-for _ in $(seq 1 20); do
-  curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1 && { echo "bifrost $BIFROST_VERSION is up"; exit 0; }
-  sleep 1
-done
-echo "bifrost did not answer on /health; see: journalctl -u bifrost" >&2
-exit 1
+up() {
+  for _ in $(seq 1 20); do
+    curl -fsS "http://127.0.0.1:$1/health" >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  return 1
+}
+up 8080 || { echo "bifrost did not answer on /health; see: journalctl -u bifrost" >&2; exit 1; }
+echo "bifrost $BIFROST_VERSION is up"
+if ! grep -q '^BRIEF_SMTP_PASSWORD=.' /etc/bifrost/bifrost.env; then
+  echo "brief-relay waits for the SMTP credentials: run set-smtp-credentials.sh"
+  exit 0
+fi
+up 8081 || { echo "brief-relay did not answer on /health; see: journalctl -u brief-relay" >&2; exit 1; }
+echo "brief-relay is up"
