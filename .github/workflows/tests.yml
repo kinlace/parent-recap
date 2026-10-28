@@ -187,7 +187,10 @@ jobs:
       PARENT_RECAP: ${{ github.workspace }}\install.ps1
       # What a new window's PATH is, the PC's and the user's as Windows keeps them; a step's own
       # is the runner's, from before the install (#560).
-      NEW_WINDOW: '$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User"); '
+      # Single quotes only: Windows PowerShell drops double quotes from a -Command argument.
+      NEW_WINDOW: >-
+        $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+        [Environment]::GetEnvironmentVariable('Path', 'User');
     steps:
       - uses: actions/checkout@v7
       - name: Where it installs
