@@ -10,5 +10,6 @@
   "zero load-balancer quotas in tenancy",
   "set block-storage quota total-storage-gb to 200 in tenancy",
   "set block-storage quota backup-count to 5 in tenancy",
-  "zero filesystem quotas in tenancy"
+  "zero filesystem quotas in tenancy",
+  "set email-delivery quota max-emails-day to 100 in tenancy"
 ]

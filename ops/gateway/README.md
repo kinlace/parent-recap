@@ -6,6 +6,7 @@ The server that invited Households' Gateway Keys go through (ADR 0014). Everythi
 - `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016) behind Caddy. It works on any systemd Linux with Caddy installed.
 - `config.json`, `bifrost.service`, `Caddyfile` and `bifrost.env.example` are what it installs. The env file holds only variable names.
 - `oci-quota.json` is the Oracle Cloud quota policy that lets the account create only Always Free resources.
+- `set-smtp-credentials.sh` puts the sending domain's SMTP credentials into the env file (see "The sending domain").
 
 This is how we run it. Take as much as fits your own setup. `host-setup.sh` works on any Ubuntu 24.04 server; on another Linux, do its steps yourself (updates, SSH keys only, firewall, install Caddy) and go straight to `gateway-setup.sh`. On a cloud other than Oracle's, use that cloud's own firewall too: the script only opens port 443 in front of the reject-all rule Oracle's image ships, and adds no rules of its own on an image without one. Steps 1–4 below are Oracle's.
 
@@ -51,6 +52,43 @@ Both scripts are safe to run again.
 - A request without a Gateway Key is refused. Clients send `model: "parent-recap"`, which `config.json` maps to the real model, so changing model is a config change, not a release.
 - Request and reply text is not stored (`disable_content_logging`, and the per-request override is off). Token counts, cost and status are. Caddy keeps no access log.
 - A Gateway Key is a Bifrost virtual key with a $0.10 budget that resets daily. A key past its budget gets HTTP 402 `budget_exceeded`.
+
+## The sending domain
+
+Briefs sent from Parent Recap's own address (ADR 0028) leave as `brief@parentrecap.com` through OCI Email Delivery in the same tenancy and region as the VM (`eu-stockholm-1`), so there is no second cloud account or card. Nobody reads that address: `parentrecap.com`'s mail is not forwarded anywhere, and the Brief says replies go unread. Set up 2026-10-28 (#524) with the `oci` CLI; the same commands rebuild it.
+
+**In OCI (Email Delivery, tenancy compartment).** An email domain `parentrecap.com` with a DKIM key (selector `prk2026`) and an email return path `rp.parentrecap.com`, so SPF and DKIM both align with the From address under DMARC; an approved sender `brief@parentrecap.com`. The sender identity is the IAM user `brief-sender` in group `email-senders`, whose only policy is `Allow group email-senders to use email-family in tenancy`: it can send mail and nothing else, and it has no console password. Its SMTP credentials are the only secret.
+
+**At Porkbun (DNS).** Four records, added through Porkbun's API with the maintainers' key:
+
+| Record | Name                 | Value                                                                        |
+| ------ | -------------------- | ---------------------------------------------------------------------------- |
+| CNAME  | `prk2026._domainkey` | `prk2026.parentrecap.com.dkim.arn1.oracleemaildelivery.com`                  |
+| CNAME  | `rp`                 | `arn1.rp.oracleemaildelivery.com`                                            |
+| TXT    | `@` (existing SPF)   | `v=spf1 include:_spf.porkbun.com include:eu.rp.oracleemaildelivery.com ~all` |
+| TXT    | `_dmarc`             | `v=DMARC1; p=quarantine; adkim=r; aspf=r`                                    |
+
+**What it keeps and what it costs.** Email Delivery stores no message content; it keeps bounces, complaints (a suppression list) and delivery metrics. There is no archiving to turn off, and none must ever be turned on. Sending is inside Always Free (3,000 messages a month, 100 a day), and `oci-quota.json` has `set email-delivery quota max-emails-day to 100 in tenancy` so the tenancy cannot be billed for more. Oracle accepted that statement but its limits API reports no effective value for it, so the cap is not proven to be enforced: the `$1` budget from step 2 is the backstop.
+
+**Put the credentials on the host.** Prompts for the SMTP username and password and writes them to `/etc/bifrost/bifrost.env` (`BRIEF_SMTP_USERNAME`, `BRIEF_SMTP_PASSWORD`); the service that sends Briefs (#525) reads them from there. SMTP endpoint `smtp.email.eu-stockholm-1.oci.oraclecloud.com`, port 465 (TLS) or 587 (STARTTLS), AUTH PLAIN.
+
+```sh
+scp ops/gateway/set-smtp-credentials.sh ubuntu@<ip>:/tmp/
+ssh -t ubuntu@<ip> "sudo bash /tmp/set-smtp-credentials.sh"
+```
+
+**Rotate the SMTP credentials.** Make a new pair for `brief-sender`, put it on the host, then delete the old one. New credentials take a few minutes to work.
+
+```sh
+U=$(oci iam user list --compartment-id <tenancy OCID> --name brief-sender --query 'data[0].id' --raw-output)
+oci iam smtp-credential list --user-id "$U"                 # note the old one's id
+oci iam smtp-credential create --user-id "$U" --description "gateway, <date>"   # shown once
+oci iam smtp-credential delete --user-id "$U" --smtp-credential-id <old id>
+```
+
+**Rotate the DKIM key.** Create a second DKIM on the email domain with a new selector, add its CNAME at Porkbun, wait until it is `ACTIVE`, then delete the old DKIM and its record.
+
+**Check it.** `oci email domain get --email-domain-id <id>` shows `is-spf` and the active DKIM; `oci email suppression list --compartment-id <tenancy OCID>` shows addresses Email Delivery has stopped sending to (bounced or complained) and is where to look when a family says the Brief stopped coming.
 
 ## Runbook
 
