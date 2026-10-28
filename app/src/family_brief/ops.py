@@ -271,8 +271,13 @@ def _check_myclub(kid: str, url: str, add) -> None:
 
 def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:
     """The Linked Device's link, once groups are picked: connected, last connected, or needs a new
-    pairing, as the always-running job's status file has it."""
-    if not cfg.whatsapp.enabled or not cfg.whatsapp.chats:
+    pairing, as the always-running job's status file has it. Groups kept picked with WhatsApp
+    turned off say it's off."""
+    if not cfg.whatsapp.chats:
+        return
+    if not cfg.whatsapp.enabled:
+        add(OK, "whatsapp", "off, so the Brief has no WhatsApp messages (turn it on again on the "
+            "setup page)")
         return
     from . import linked_device
     from .collectors import whatsapp

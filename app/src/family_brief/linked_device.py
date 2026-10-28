@@ -130,9 +130,14 @@ def logout(timeout: int = LOGOUT_SECONDS) -> bool:
     if logout is None:
         return False
     try:
-        return subprocess.run(logout, stdin=subprocess.DEVNULL, capture_output=True,
-                              timeout=timeout + 10).returncode == 0
-    except (OSError, subprocess.SubprocessError):
+        with subprocess.Popen(logout, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL) as proc:
+            try:
+                return proc.wait(timeout=timeout + 10) == 0
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                return False
+    except OSError:
         return False
 
 

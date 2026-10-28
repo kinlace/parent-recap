@@ -213,6 +213,7 @@
     </div>
     <div id="source-whatsapp" class="source" hidden>
       <h2 data-text="source.whatsapp"></h2>
+      <p id="whatsapp-kept" data-text="whatsapp.kept" hidden></p>
       <ol class="whatsapp-steps">
         <li data-text="whatsapp.step.open"></li>
         <li data-text="whatsapp.step.link"></li>
@@ -482,6 +483,19 @@
           <button type="submit" id="finish-ai-continue" data-text="finish.ai.continue"></button>
         </form>
         <div id="finish-ai-sign-in" hidden></div>
+      </div>
+      <div id="finish-whatsapp" hidden>
+        <h3 data-text="source.whatsapp"></h3>
+        <p data-text="finish.whatsapp.about"></p>
+        <p><button type="button" id="finish-whatsapp-off" class="secondary" data-text="finish.whatsapp.off"></button></p>
+        <div id="finish-whatsapp-status" class="status" role="status" hidden>
+          <p id="finish-whatsapp-message"></p>
+          <details id="finish-whatsapp-why" class="why" hidden>
+            <summary data-text="fail.details"></summary>
+            <pre id="finish-whatsapp-reason" class="reason"></pre>
+            <button type="button" class="secondary" data-text="copy"></button>
+          </details>
+        </div>
       </div>
       <p id="finish-back" hidden><button type="button" class="link" data-text="connect.back"></button></p>
     </div>

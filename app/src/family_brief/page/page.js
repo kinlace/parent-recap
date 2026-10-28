@@ -1159,9 +1159,12 @@ function setUpWhatsApp() {
   document.getElementById("whatsapp-again").addEventListener("click", pairWhatsApp);
 }
 
-// A WhatsApp already linked says so; else pairing starts as the step is shown.
+// A WhatsApp already linked says so; else pairing starts as the step is shown, saying that the
+// groups picked before stay, for a link that ended or was never made.
 function firstWhatsApp() {
-  if (page.progress.sources.whatsapp === "done") return showSource("whatsapp.paired");
+  const done = page.progress.sources.whatsapp === "done";
+  document.getElementById("whatsapp-kept").hidden = done || !page.whatsapp.picked;
+  if (done) return showSource("whatsapp.paired");
   pairWhatsApp();
 }
 
@@ -1204,7 +1207,10 @@ function showWhatsApp(out) {
   showQR(out.result === "qr" ? out.qr : null);
   if (!WHATSAPP_WAITING.includes(out.result)) whatsappStep.pairing = false;
   if (out.result === "paired") {
+    document.getElementById("whatsapp-kept").hidden = true;
     page.progress = out.progress;
+    // Paired again from a page opened after Connect: back to where the family was.
+    if (page.progress.phase !== "connect") return show();
     renderSources();
     showSource("whatsapp.paired");
     return;
@@ -2130,9 +2136,38 @@ function enterFinish() {
   document.getElementById("finish-stop").addEventListener("click", stopForNow);
   document.getElementById("finish-ai-open").addEventListener("click", openFinishAI);
   document.getElementById("finish-ai-form").addEventListener("submit", signInFinishAI);
+  document.getElementById("finish-whatsapp-off").addEventListener("click", turnWhatsAppOff);
+  document.getElementById("finish-whatsapp").hidden = page.progress.sources.whatsapp !== "done";
   showBackToConnect("finish-back");
   showHouseholdAI();
   checkFinish();
+}
+
+// ── Finish: turning WhatsApp off. The server removes the job, the pairing and the messages
+// kept; the phone may still list the device, which the parent removes there.
+
+async function turnWhatsAppOff() {
+  clearError();
+  const button = document.getElementById("finish-whatsapp-off");
+  button.disabled = true;
+  try {
+    const out = await post("api/whatsapp/off", {});
+    const off = out.result === "off";
+    setText(document.getElementById("finish-whatsapp-message"),
+      off ? "whatsapp.off" : "whatsapp.off.failed");
+    showReason("finish-whatsapp", "whatsapp.off.failed", out.reason);
+    document.getElementById("finish-whatsapp-status").hidden = false;
+    if (off) {
+      page.progress = out.progress;
+      button.hidden = true;
+      // Skipped now, so it can be added again from Connect's list.
+      document.getElementById("finish-back").hidden = false;
+    }
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // What depends on the Household's one AI: who writes the Briefs, and where changes go.
@@ -2468,6 +2503,7 @@ async function start() {
   page.connect = state.connect;
   page.gmail = state.gmail;
   page.myclub = state.myclub;
+  page.whatsapp = state.whatsapp;
   page.check = state.check;
   page.brief = state.brief;
   // Said before the family types a password: in tmux or SSH, none can be saved.

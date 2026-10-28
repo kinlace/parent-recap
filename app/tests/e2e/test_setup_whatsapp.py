@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 import fake_node
+from conftest import SAYS_SOMETHING, msg
 from family_brief import baileys_install, linked_device, own_node, setup_server
 from family_brief.config import Config
 from family_brief.system import jobs
@@ -226,7 +227,8 @@ def test_without_the_whatsapp_library_the_step_says_so_and_runs_nothing(harness,
 
 
 def test_the_pairing_calls_take_no_answers(harness, page):
-    for path in ("api/whatsapp/pair", "api/whatsapp/check", "api/whatsapp/stop"):
+    for path in ("api/whatsapp/pair", "api/whatsapp/check", "api/whatsapp/stop",
+                 "api/whatsapp/off"):
         assert call(page.url, path, method="POST", body={"x": 1}).status == 400, path
 
 
@@ -248,3 +250,130 @@ def test_every_pairing_result_is_explained_in_all_three_languages():
     for language, table in texts.items():
         for result in setup_server.whatsapp.PAIR_RESULTS:
             assert table.get(f"whatsapp.{result}", "").strip(), (language, result)
+
+
+# ── A link that isn't fresh: a new pairing keeps the picked groups
+
+
+ALL_DONE = {"wilma": "done", "gmail": "done", "ai": "done", "whatsapp": "done", "myclub": "done"}
+
+
+def finished_with_groups(harness, chats: list[dict[str, Any]]) -> None:
+    """A Household set up before, the page opened again at Finish, with WhatsApp's `chats`
+    picked."""
+    config_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    harness.config["whatsapp"] = {"enabled": True, "chats": chats}
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+    save_progress(harness, {"phase": "finish", "source": None, "sources": ALL_DONE})
+
+
+def opened(url: str) -> dict[str, Any]:
+    """The page's state as it loads."""
+    return call(url, "api/state").json()
+
+
+def saved_config(harness) -> Config:
+    """The config the page saved, which the harness's runs write from then on."""
+    harness.config = yaml.safe_load(config_file(harness).read_text(encoding="utf-8"))
+    return Config.load(config_file(harness))
+
+
+def test_a_link_whatsapp_ended_is_paired_again_keeping_the_picked_groups(harness, page, phone):
+    picked = [{"name": "3B parents", "id": CLASS, "kid": "Mia", "label": "class"}]
+    finished_with_groups(harness, picked)
+    harness.source_fakes["whatsapp"].status(paired=False, connected_since=None,
+                                            last_connected="2026-09-26T05:30:00.000Z",
+                                            link_ended_at="2026-09-26T05:30:00.000Z")
+
+    state = opened(page.url)
+
+    assert (state["progress"]["phase"], state["progress"]["source"]) == ("connect", "whatsapp")
+    assert state["progress"]["sources"]["whatsapp"] == "to-do"
+    assert state["whatsapp"] == {"picked": 1}
+    phone.plays([{"qr": "2@again"}, *SCANNED])
+    pair(page.url)
+    out = until_said(page.url, "paired")
+
+    assert out["progress"]["phase"] == "finish"  # back where the family was
+    assert out["progress"]["sources"]["whatsapp"] == "done"
+    cfg = saved_config(harness)
+    assert cfg.whatsapp.enabled
+    assert [c.model_dump(exclude_none=True) for c in cfg.whatsapp.chats] == picked
+    assert linked_device.link().paired and linked_device.link().ended_at is None
+    assert harness.jobs.always_running
+    assert opened(page.url)["progress"]["phase"] == "finish"  # nothing left to pair
+
+    harness.config["summary_language"] = "en"
+    harness.model_reply = SAYS_SOMETHING
+    # Not read tonight; its CLI in place, so its fake doesn't put a stand-in over the real Node
+    # the pairing ran on.
+    harness.config["wilma"]["enabled"] = False
+    fake_node.install_wilma(harness.home, "#!/bin/sh\n")
+    harness.sources = {"gmail": [msg("gmail", "1001", "2026-09-27T18:00:00+03:00", "Retki",
+                                     sender="teacher@kilo.example.fi", subject="Retki")]}
+    assert harness.run() == 0
+    [raw] = harness.archive_dir.glob("*.raw.json")
+    coverage = json.loads(raw.read_text(encoding="utf-8"))["summary"]["_coverage"]
+    assert coverage["whatsapp"] == {"count": 0, "error": None}  # read, with no note
+
+
+def test_groups_picked_by_name_only_get_their_ids_from_the_pairing(harness, page, phone):
+    # As a Household that read WhatsApp for Mac's database has it after the update: no pairing.
+    finished_with_groups(harness, [{"name": "Luokka 3B", "kid": "Mia", "label": "class"},
+                                   {"name": "Kuoro", "kid": "Leo"}])
+    assert not linked_device.folder().exists()
+
+    assert opened(page.url)["progress"]["source"] == "whatsapp"
+    phone.plays([{"qr": "2@first"}, *SCANNED])
+    pair(page.url)
+    until_said(page.url, "paired")
+
+    cfg = saved_config(harness)
+    assert [(c.name, c.id, c.kid) for c in cfg.whatsapp.chats] == [
+        ("Luokka 3B", CLASS, "Mia"), ("Kuoro", None, "Leo")]  # one not found stays picked
+    assert json.loads(linked_device.picked_file().read_text(encoding="utf-8")) == {
+        "groups": [CLASS]}
+
+
+def test_a_paired_link_leaves_the_page_where_the_family_was(harness, page):
+    finished_with_groups(harness, [{"name": "3B parents", "id": CLASS, "kid": "Mia"}])
+    harness.source_fakes["whatsapp"].status(paired=True, connected_since=None,
+                                            last_connected=None, link_ended_at=None)
+
+    state = opened(page.url)
+
+    assert state["progress"]["phase"] == "finish" and state["progress"]["sources"] == ALL_DONE
+
+
+# ── Turning WhatsApp off
+
+
+def test_turning_whatsapp_off_logs_out_removes_the_job_and_the_folder(harness, page, phone,
+                                                                     capsys):
+    finished_with_groups(harness, [{"name": "3B parents", "id": CLASS, "kid": "Mia"}])
+    phone.plays([{"qr": "2@first"}, *SCANNED])
+    opened(page.url)  # no pairing yet: the page goes to the step
+    pair(page.url)
+    until_said(page.url, "paired")
+    assert harness.jobs.always_running and linked_device.folder().is_dir()
+    phone.plays([{"open": True}])  # the logout's socket
+
+    out = call(page.url, "api/whatsapp/off", method="POST", body={}).json()
+
+    assert out["result"] == "off"
+    assert out["progress"]["sources"]["whatsapp"] == "skipped"
+    assert out["progress"]["phase"] == "finish"
+    assert harness.jobs.always_status() == jobs.AlwaysStatus(installed=False, running=False)
+    assert not linked_device.folder().exists()
+    assert "logout" in {json.loads(line)["call"]
+                        for line in phone.calls.read_text(encoding="utf-8").splitlines()}
+    cfg = saved_config(harness)
+    assert not cfg.whatsapp.enabled
+    assert [c.name for c in cfg.whatsapp.chats] == ["3B parents"]  # kept for turning it on again
+
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    harness.config["wilma"]["enabled"] = False
+    capsys.readouterr()
+    harness.cli("doctor", "--skip-llm")
+    [line] = [l for l in capsys.readouterr().out.splitlines() if "WhatsApp:" in l]
+    assert line.startswith("✅ WhatsApp: off")

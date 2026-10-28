@@ -27,7 +27,8 @@ except ImportError:  # the browser fixture skips the tests and says why
     sync_playwright = None
 
 import fake_node
-from family_brief import failure, ops, setup_connect, setup_wilma
+from conftest import CLASS_GROUP, PIANO_GROUP
+from family_brief import failure, linked_device, ops, setup_connect, setup_wilma
 from family_brief.collectors import myclub
 from family_brief.config import Config
 from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, config_file,
@@ -870,4 +871,30 @@ def test_a_code_that_ran_out_offers_a_new_one_without_an_error(tab, family, phon
     expect(tab.get_by_text(text("whatsapp.paired"))).to_be_visible()
     assert [g["id"] for g in json.loads(progress_file(family).read_text())["whatsapp_chats"]] == [
         FOOTBALL, CLASS]
+
+
+def test_a_link_that_ended_is_paired_again_and_whatsapp_turned_off_at_finish(
+        tab, family, phone, health):  # noqa: F811
+    at_finish(family)
+    family.source_fakes["whatsapp"].status(paired=False, connected_since=None,
+                                           last_connected=None,
+                                           link_ended_at="2026-09-26T05:30:00.000Z")
+    phone.plays([{"qr": "2@again"}, {"wait": "scan"}, *SCANNED])
+    tab.reload()
+
+    expect(tab.get_by_text(text("whatsapp.kept"))).to_be_visible()
+    expect(qr_code(tab)).to_be_visible()
+    phone.go("scan")
+
+    expect(heading(tab, "finish.title")).to_be_visible()  # back where the family was
+    assert [c.id for c in Config.load(config_file(family)).whatsapp.chats] == [
+        CLASS_GROUP, PIANO_GROUP]
+    phone.plays([{"open": True}])  # the logout's socket
+    button(tab, "finish.whatsapp.off").click()
+
+    expect(tab.get_by_text(text("whatsapp.off"))).to_be_visible()
+    expect(button(tab, "finish.whatsapp.off")).to_be_hidden()
+    expect(tab.locator("#finish-back")).to_be_visible()  # to add it again
+    assert not linked_device.folder().exists()
+    assert not Config.load(config_file(family)).whatsapp.enabled
 

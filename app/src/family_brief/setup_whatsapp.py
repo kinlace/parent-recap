@@ -1,13 +1,13 @@
 """WhatsApp's groups as setup lists them for the check page: each with a hint on those that look
 like they're about a Kid. Kept for the Linked Device's pairing step, which lists the groups the
-same way (ADR 0027).
+same way (ADR 0027), and fills in the ids of groups picked by name only.
 """
 from __future__ import annotations
 
 import re
 from typing import Any
 
-from .config import Config, Kid
+from .config import Config, Kid, WhatsAppChat
 
 
 def configured_kids(config: str | None) -> list[Kid]:
@@ -31,6 +31,21 @@ def with_hints(chats: list[dict[str, Any]], kids: list[Kid]) -> list[dict[str, A
                 matched += [t for t in hits if t not in matched]
         out.append({**chat, "hint": {"kids": matched_kids, "matched": matched}} if matched_kids
                    else chat)
+    return out
+
+
+def with_ids(chats: list[WhatsAppChat], found: list[dict[str, Any]]) -> list[WhatsAppChat]:
+    """The picked `chats`, each one picked by name only given the id of the one group `found`
+    (each with its name and id) of that name, as for groups picked before the Linked Device. A
+    group not found, or whose name more than one group has, stays as it was."""
+    ids: dict[str, list[str]] = {}
+    for group in found:
+        ids.setdefault(group["name"].strip().casefold(), []).append(group["id"])
+    out = []
+    for chat in chats:
+        matched = ids.get(chat.name.strip().casefold(), [])
+        out.append(chat.model_copy(update={"id": matched[0]})
+                   if chat.id is None and len(matched) == 1 else chat)
     return out
 
 
