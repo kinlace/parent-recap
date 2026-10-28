@@ -74,9 +74,9 @@ def test_normal_night(golden, language):
     t = TEXT[language]
     night = brief_of(written(reply, sources), t)
 
-    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.brief)], PARENT, []))
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.brief)], []))
 
-    assert (mail.subject, mail.from_addr, mail.to) == ("Parent Recap · 2026-09-27", PARENT, [PARENT, PARTNER])
+    assert (mail.subject, mail.to) == ("Parent Recap · 2026-09-27", [PARENT, PARTNER])
     check(golden, f"normal_night.{language}", mail, ics=True)
 
 
@@ -97,7 +97,7 @@ def test_held_back_night(golden, language):
                 "whatsapp": {"count": 3, "error": None}}
     night = brief_of(written(reply, sources), t, coverage=coverage, held_back=HELD_BACK)
 
-    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.brief)], PARENT, []))
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.brief)], []))
 
     check(golden, f"held_back.{language}", mail)
 
@@ -118,7 +118,7 @@ def test_a_linked_device_that_needs_a_new_pairing_is_not_read_since_then(languag
     t = TEXT[language]
     night = brief_of(written(reply, sources), t, coverage={**COVERAGE, "whatsapp": NEEDS_PAIRING})
 
-    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], PARENT, []))
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
 
     assert mail.text.endswith("\n" + line)
 
@@ -128,7 +128,7 @@ def test_one_never_paired_since_an_unknown_time_is_not_read_for_that_reason():
     t = TEXT["en"]
     night = brief_of(written(reply, sources), t, coverage={**COVERAGE, "whatsapp": {**NEEDS_PAIRING, "since": None}})
 
-    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], PARENT, []))
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
 
     assert mail.text.endswith("\n⚠️ WhatsApp not read (needs a new pairing). Tonight's Brief may be incomplete.")
 
@@ -137,7 +137,7 @@ def test_a_night_nothing_could_be_read_says_to_pair_again():
     t = TEXT["en"]
 
     [mail] = mails(render.nothing_read({**NOTHING_READ, "whatsapp": NEEDS_PAIRING}, DATE, "Claude", t,
-                                       [(t, [PARENT])], PARENT, []))
+                                       [(t, [PARENT])], None, []))
 
     assert mail.text.endswith("\n• WhatsApp: needs a new pairing. Tell Claude “pair WhatsApp again” to fix it.")
 
@@ -164,7 +164,7 @@ def test_night_the_model_failed(golden, language):
     t = TEXT[language]
     night = brief_of(fallback(t), t, model_wrote=False)
 
-    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.brief)], PARENT, []))
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.brief)], []))
 
     check(golden, f"model_failed.{language}", mail)
     assert not mail.attachments
@@ -182,7 +182,7 @@ NOTHING_READ = {
 def test_night_no_source_could_be_read(golden, language):
     t = TEXT[language]
 
-    [mail] = mails(render.nothing_read(NOTHING_READ, DATE, "Claude", t, [(t, [PARENT, PARTNER])], PARENT, []))
+    [mail] = mails(render.nothing_read(NOTHING_READ, DATE, "Claude", t, [(t, [PARENT, PARTNER])], None, []))
 
     assert (mail.subject, mail.to) == ("Parent Recap · 2026-09-27", [PARENT, PARTNER])
     check(golden, f"nothing_read.{language}", mail)
@@ -191,7 +191,7 @@ def test_night_no_source_could_be_read(golden, language):
 def test_night_no_source_could_be_read_reaches_imessage_in_the_brief_language():
     zh, en = TEXT["zh"], TEXT["en"]
 
-    out = render.nothing_read(NOTHING_READ, DATE, "Claude", zh, [(en, [PARTNER])], PARENT, ["+358401234567"])
+    out = render.nothing_read(NOTHING_READ, DATE, "Claude", zh, [(en, [PARTNER])], None, ["+358401234567"])
 
     [mail, imessage] = out
     assert mail.to == [PARTNER] and "No Source could be read tonight" in mail.text
@@ -208,7 +208,7 @@ def test_night_in_two_languages(golden):
               zip(night.ics_events, extract_calendar_events(translated, TZ, en.untitled))}
 
     first, partner = mails(render.brief(night, [render.Version(zh, [PARENT], night.brief),
-                                                render.Version(en, [PARTNER], translated, events)], PARENT, []))
+                                                render.Version(en, [PARTNER], translated, events)], []))
 
     assert (first.to, partner.to) == ([PARENT], [PARTNER])
     check(golden, "normal_night.zh", first, ics=True)
@@ -221,7 +221,7 @@ def test_night_its_translation_failed(golden):
     night = brief_of(written(reply, sources), zh)
     failed = render.Version(zh, [PARTNER], night.brief, translation_note=TEXT["en"].translation_failed)
 
-    first, partner = mails(render.brief(night, [render.Version(zh, [PARENT], night.brief), failed], PARENT, []))
+    first, partner = mails(render.brief(night, [render.Version(zh, [PARENT], night.brief), failed], []))
 
     check(golden, "normal_night.zh", first)
     check(golden, "failed_translation.en", partner)
@@ -232,7 +232,7 @@ def test_the_imessage_is_the_plain_text_brief_in_the_brief_language(golden):
     reply, sources = the_normal_night("zh")
     night = brief_of(written(reply, sources), TEXT["zh"])
 
-    [imessage] = render.brief(night, [], PARENT, ["+358401234567"])
+    [imessage] = render.brief(night, [], ["+358401234567"])
 
     assert isinstance(imessage, render.IMessage) and imessage.to == ["+358401234567"]
     golden("normal_night.zh.txt", imessage.text)

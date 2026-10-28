@@ -26,7 +26,6 @@ class Mail:
     subject: str
     text: str
     html: str
-    from_addr: str
     attachments: list[tuple[str, bytes, str]] = field(default_factory=list)
 
 
@@ -105,7 +104,7 @@ def nothing_read_text(coverage: dict[str, dict], t: BriefText, assistant: str) -
 
 
 def nothing_read(coverage: dict[str, dict], date_str: str, assistant: str, t: BriefText,
-                 readers: list[tuple[BriefText, list[str]]], from_addr: str,
+                 readers: list[tuple[BriefText, list[str]]], write_to: str | None,
                  imessage_to: list[str]) -> list[Outgoing]:
     """What goes out on a night when no Source could be read: a mail to the Recipients of each
     language among the `readers` saying so in it, and the iMessage in the Brief's language `t`."""
@@ -114,11 +113,11 @@ def nothing_read(coverage: dict[str, dict], date_str: str, assistant: str, t: Br
     out: list[Outgoing] = []
     for reader_t, to in readers:
         note = _h.escape(nothing_read_text(coverage, reader_t, assistant)).replace("\n", "<br>")
-        out.append(Mail(to=to, subject=f"{PRODUCT_NAME} · {date_str}", text=whole(reader_t),
+        sender = unread_sender(reader_t, write_to)
+        out.append(Mail(to=to, subject=f"{PRODUCT_NAME} · {date_str}", text=_with_note(whole(reader_t), sender),
                         html=_HTML_PAGE
                         + f"<h2>👨‍👩‍👧‍👦 {PRODUCT_NAME} · {_h.escape(_header_date(date_str, reader_t))}</h2>"
-                          f"<p style='color:#a33'>{note}</p></body></html>",
-                        from_addr=from_addr))
+                          f"<p style='color:#a33'>{note}</p>" + _small(sender) + "</body></html>"))
     if imessage_to:
         out.append(IMessage(imessage_to, whole(t)))
     return out
@@ -251,7 +250,8 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
                       coverage: str = "", footer: str = "",
                       feedback_link: Callable[..., str] | None = None,
                       original: Brief | None = None, top_note: str = "",
-                      held_back: list[HeldBack] | None = None, assistant: str = "") -> str:
+                      held_back: list[HeldBack] | None = None, assistant: str = "",
+                      sender_note: str = "") -> str:
     """Simple HTML rendering of the Brief, safe for Gmail. `brief` is translated from
     `original` for a Recipient in another language; feedback links carry the original's text, so
     the Form gets the same words from every language version (ADR 0004). `top_note` holds the
@@ -317,8 +317,14 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
         parts.append("<p style='color:#888;font-size:12px'>"
                      + _h.escape(coverage).replace("\n", "<br>") + "</p>")
     if footer:
-        parts.append(f"<p style='color:#888;font-size:12px'>{_h.escape(footer)}</p>")
+        parts.append(_small(footer))
+    parts.append(_small(sender_note))
     return _HTML_PAGE + "".join(parts) + "</body></html>"
+
+
+def _small(text: str) -> str:
+    """A footer line, or nothing for none."""
+    return f"<p style='color:#888;font-size:12px'>{_h.escape(text)}</p>" if text else ""
 
 
 def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: str,
@@ -406,6 +412,9 @@ class Night:
     model_wrote: bool = True
     form: feedback.Links | None = None
     incomplete: bool = False
+    # Where a Recipient writes instead of replying, when the Brief comes from an address nobody
+    # reads (the gateway's, ADR 0028); None when the Household's own Gmail sends it.
+    write_to: str | None = None
 
     @property
     def subject(self) -> str:
@@ -441,7 +450,16 @@ class Version:
         return out
 
 
-def mail(night: Night, v: Version, from_addr: str) -> Mail:
+def unread_sender(t: BriefText, write_to: str | None) -> str:
+    """The footer line of a Brief sent from an address nobody reads, naming where to write."""
+    return t.unread_sender.format(address=write_to) if write_to else ""
+
+
+def _with_note(text: str, note: str) -> str:
+    return f"{text}\n\n{note}" if note else text
+
+
+def mail(night: Night, v: Version) -> Mail:
     """Tonight's mail to the Recipients of version `v`."""
     t, assistant = v.t, night.assistant
     listed = v.translated_list(night.created)
@@ -456,11 +474,13 @@ def mail(night: Night, v: Version, from_addr: str) -> Mail:
                              ics_attached=bool(attachments), coverage=coverage_note,
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
                              feedback_link=links, original=night.brief, top_note=top_note,
-                             held_back=night.held_back, assistant=assistant)
+                             held_back=night.held_back, assistant=assistant,
+                             sender_note=unread_sender(t, night.write_to))
     return Mail(to=v.to, subject=night.subject,
-                text=_brief_text(v.brief, listed, night.date, t, night.tz, coverage_note,
-                                 calendar_note, top_note, night.held_back, assistant),
-                html=html, from_addr=from_addr, attachments=attachments)
+                text=_with_note(_brief_text(v.brief, listed, night.date, t, night.tz, coverage_note,
+                                            calendar_note, top_note, night.held_back, assistant),
+                                unread_sender(t, night.write_to)),
+                html=html, attachments=attachments)
 
 
 def imessage(night: Night, to: list[str]) -> IMessage:
@@ -468,11 +488,11 @@ def imessage(night: Night, to: list[str]) -> IMessage:
     return IMessage(to, night.text())
 
 
-def brief(night: Night, versions: list[Version], from_addr: str, imessage_to: list[str]) -> list[Outgoing]:
+def brief(night: Night, versions: list[Version], imessage_to: list[str]) -> list[Outgoing]:
     """What goes out tonight: a mail per version, each to the Recipients who read its language,
     and the plain-text Brief to the iMessage Recipients. The run makes each with mail() and
     imessage() as it sends it, so one that fails leaves the others to go out."""
-    out: list[Outgoing] = [mail(night, v, from_addr) for v in versions]
+    out: list[Outgoing] = [mail(night, v) for v in versions]
     if imessage_to:
         out.append(imessage(night, imessage_to))
     return out
@@ -488,10 +508,11 @@ def preview(night: Night) -> dict[str, str | None]:
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
                              feedback_link=form.link if form and night.model_wrote else None,
                              top_note=_top_note(night.incomplete, t, assistant), held_back=night.held_back,
-                             assistant=assistant)
+                             assistant=assistant, sender_note=unread_sender(t, night.write_to))
     wrong = form.link(feedback.DIGEST_WRONG, _shown_digest(night.brief, t) if night.model_wrote else "") \
         if form else None
-    return {"subject": night.subject, "text": night.text(), "html": html, "feedback": wrong}
+    return {"subject": night.subject, "text": _with_note(night.text(), unread_sender(t, night.write_to)),
+            "html": html, "feedback": wrong}
 
 
 def nothing_to_show(night: Night) -> bool:

@@ -240,7 +240,8 @@ def cmd_gateway(args: argparse.Namespace) -> int:
         return report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
                       f"runs this in Terminal: {again}")
 
-    result, extra = setup_ai.gateway_sign_in(_gateway_url(args.config), typed)
+    url, sends_only = _gateway_use(args.config)
+    result, extra = setup_ai.gateway_sign_in(url, typed, sends_only)
     next_ = {
         "not-a-key": "That wasn't a Gateway Key. Copy the whole key the maintainers sent, starting "
                      f"with sk-, and run this again: {again}",
@@ -262,11 +263,14 @@ def cmd_gateway(args: argparse.Namespace) -> int:
     return report(result, next_, **extra)
 
 
-def _gateway_url(config: str | None) -> str:
+def _gateway_use(config: str | None) -> tuple[str, bool]:
+    """The gateway's address, and whether the Household uses it only to send the Brief, its AI
+    being another (ADR 0028)."""
     try:
-        return Config.load(config).llm.gateway_url
+        cfg = Config.load(config)
     except Exception:  # no config yet: setup can store the key before writing it
-        return LLMConfig().gateway_url
+        return LLMConfig().gateway_url, False
+    return cfg.llm.gateway_url, cfg.email.sender == "gateway" and cfg.llm.backend != "gateway"
 
 
 # ---------------------------------------------------------------- myclub

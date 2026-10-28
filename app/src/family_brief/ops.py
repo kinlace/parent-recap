@@ -39,7 +39,8 @@ def _sources_after_the_ai() -> list[sources.Source]:
 # in its record.
 CHECK_ITEMS = (
     ("config", "Config file"), ("recipients", "Recipients"), ("language", "Language {}"),
-    *sources.GMAIL.doctor_items().items(), ("claude", "Claude"), ("codex", "Codex"),
+    *sources.GMAIL.doctor_items().items(), ("gateway-sends", "Brief sending"),
+    ("claude", "Claude"), ("codex", "Codex"),
     ("gateway", "AI gateway"), ("gateway-key", "Gateway Key"),
     *(item for s in _sources_after_the_ai() for item in s.doctor_items().items()),
     ("whatsapp-library", "WhatsApp library"),
@@ -144,6 +145,8 @@ def health_checks(config: str | None, skip_llm: bool = False, show: bool = False
         add(OK if ready else WARN, "language", detail, subject=language)
 
     _check_source(sources.GMAIL, cfg, add, config)
+    if cfg.email.sender == "gateway":
+        _check_gateway_sends(cfg, add)
     if not skip_llm:
         _check_llm(cfg, add)
     for source in _sources_after_the_ai():
@@ -169,7 +172,10 @@ def _check_source(source: sources.Source, cfg: Config, add, config: str | None) 
 
 
 def check_gmail(cfg: Config, add, config: str | None = None) -> None:
-    """Gmail, which sends the Brief, so is checked whether or not it's read."""
+    """Gmail, which sends the Brief unless the gateway does, so is checked whether or not it's
+    read. A Gmail the gateway sends for and nothing is read from isn't used, so isn't checked."""
+    if cfg.email.sender == "gateway" and not sources.GMAIL.connected(cfg):
+        return
     from .collectors import gmail
     username = gmail.username_of(cfg)
     if not username:
@@ -208,6 +214,32 @@ def check_gmail(cfg: Config, add, config: str | None = None) -> None:
     except Exception as e:
         add(FAIL, "gmail", f"IMAP login failed: {e} "
             "(the App Password may have been revoked; create a new one and store it again)")
+
+
+def _check_gateway_sends(cfg: Config, add) -> None:
+    """The gateway's Brief relay, when it sends the Brief (ADR 0028): whether it answers and takes
+    the Gateway Key, from one request it refuses once it has checked the key, so nothing is sent."""
+    from . import gateway as api
+    url = cfg.llm.gateway_url
+    try:
+        key = api.key()
+    except api.NoKey as e:
+        add(FAIL, "gateway-sends", f"{e}, so the evening Brief can't be sent")
+        return
+    outcome, detail = api.send_test(url, key)
+    if outcome == api.WORKS:
+        add(OK, "gateway-sends", f"the gateway at {url} sends the Brief from Parent Recap's address, "
+            "and takes the Gateway Key")
+    elif outcome == api.NO_ANSWER:
+        add(FAIL, "gateway-sends", f"no answer from {url}: {detail} (check the computer is online "
+            "and llm.gateway_url in the config)")
+    elif outcome == api.UNKNOWN:
+        add(FAIL, "gateway-sends", "the gateway doesn't know this Gateway Key, or it was revoked, so "
+            "it won't send the Brief (ask the Parent Recap maintainers for a new one and store it "
+            f"with {api.SETUP})")
+    else:
+        add(FAIL, "gateway-sends", f"the gateway at {url} couldn't be asked to send the Brief: {detail} "
+            "(if it happens again, tell the Parent Recap maintainers)")
 
 
 def _check_llm(cfg: Config, add) -> None:

@@ -1,5 +1,6 @@
 """The maintainers' gateway, which writes the Brief for a Household with a Gateway Key and no
-Claude or ChatGPT subscription (ADR 0014).
+Claude or ChatGPT subscription (ADR 0014), and can send it from Parent Recap's own address
+(ADR 0028, `POST /v1/brief`).
 
 The program calls the gateway's Anthropic-format `POST /v1/messages` itself, so the Household
 needs neither Claude Code nor Codex. The Gateway Key lives in the Keychain and goes only into the
@@ -70,7 +71,7 @@ def key() -> str:
                     f"before reading it, which the evening Brief can't answer (store it again with "
                     f"{SETUP})") from None
     if not stored:
-        raise NoKey(f"no Gateway Key in the Keychain (store one with {SETUP})")
+        raise NoKey(f"no Gateway Key in the {secrets.STORE} (store one with {SETUP})")
     return stored
 
 
@@ -81,10 +82,14 @@ def post(url: str, gateway_key: str, system: str, prompt: str, timeout: float,
     MODEL: a Gateway Key may use no other, so an llm.model left from another backend is ignored."""
     body = {"model": MODEL, "max_tokens": max_tokens, "system": system,
             "messages": [{"role": "user", "content": prompt}]}
+    return _post(url, "/v1/messages", body, timeout,
+                 {"x-api-key": gateway_key, "anthropic-version": ANTHROPIC_VERSION})
+
+
+def _post(url: str, path: str, body: dict[str, Any], timeout: float,
+          headers: dict[str, str]) -> requests.Response:
     try:
-        return requests.post(f"{url.rstrip('/')}/v1/messages", json=body, timeout=timeout,
-                             headers={"x-api-key": gateway_key,
-                                      "anthropic-version": ANTHROPIC_VERSION})
+        return requests.post(f"{url.rstrip('/')}{path}", json=body, timeout=timeout, headers=headers)
     except requests.Timeout:
         raise TimeoutError(f"the gateway at {host(url)} didn't answer within {timeout:g}s") from None
     except requests.RequestException as e:
@@ -158,3 +163,58 @@ def test_call(url: str, gateway_key: str, timeout: float = 60) -> tuple[str, str
         detail = str(e).replace(gateway_key, "<key>") if gateway_key else str(e)
         return outcome, detail
     return WORKS, None
+
+
+# ── Sending the Brief (ADR 0028)
+
+# How a send refused because the key has sent its Briefs for the day starts. The relay's cap
+# resets at midnight UTC (ops/gateway/README.md "Sending the Brief").
+SENT_ALL_MESSAGE = "the Gateway Key has sent all the Briefs it may send today"
+SEND_TIMEOUT = 60
+
+
+def post_brief(url: str, gateway_key: str, body: dict[str, Any],
+               timeout: float = SEND_TIMEOUT) -> requests.Response:
+    """One request to the gateway's Brief relay at `url`, failing as `post` does."""
+    return _post(url, "/v1/brief", body, timeout, {"x-api-key": gateway_key})
+
+
+def read_sent(response: requests.Response) -> int:
+    """How many Recipients the mail service refused of a Brief the relay took (0 normally).
+    Raises GatewayError for a refused send, saying what the Household can do about it."""
+    status = response.status_code
+    if status == 200:
+        try:
+            return int(response.json().get("refused") or 0)
+        except (ValueError, AttributeError, TypeError):
+            return 0
+    if status == UNKNOWN_KEY:
+        raise GatewayError("the gateway doesn't know the Gateway Key, or it was revoked (ask the "
+                           f"Parent Recap maintainers for a new one and store it with {SETUP}; the "
+                           f"gateway answered {said(response)})", status)
+    if status == 429 or out_of_budget(response):
+        raise GatewayError(f"{SENT_ALL_MESSAGE}, so tonight's waits for tomorrow (the gateway "
+                           f"answered {said(response)})", status)
+    if status >= 500:
+        raise GatewayError("the gateway couldn't send the Brief just now, so it is tried again "
+                           f"with the next one (the gateway answered {said(response)})", status)
+    raise GatewayError(f"the gateway refused the Brief (it answered {said(response)})", status)
+
+
+def send_test(url: str, gateway_key: str, timeout: float = SEND_TIMEOUT) -> tuple[str, str | None]:
+    """Whether the Brief relay answers and takes the key, without sending a message: it checks
+    the key before the request, so an empty one is refused with 400 for a key it knows and 401
+    for one it doesn't, and counts against no cap. Returns WORKS, UNKNOWN, NO_ANSWER or FAILED,
+    and for all but WORKS what went wrong, with the key taken out."""
+    try:
+        response = post_brief(url, gateway_key, {}, timeout)
+    except (TimeoutError, GatewayError) as e:
+        return NO_ANSWER, _without(str(e), gateway_key)
+    if response.status_code in (200, 400):
+        return WORKS, None
+    outcome = UNKNOWN if response.status_code == UNKNOWN_KEY else FAILED
+    return outcome, _without(f"the gateway answered {said(response)}", gateway_key)
+
+
+def _without(text: str, gateway_key: str) -> str:
+    return text.replace(gateway_key, "<key>") if gateway_key else text

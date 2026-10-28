@@ -131,9 +131,12 @@ class Recipient(BaseModel):
 
 
 class EmailConfig(BaseModel):
-    """Email delivery via Gmail SMTP + App Password (same Keychain entry as inbound IMAP)."""
+    """Email delivery: by default through the Household's Gmail over SMTP with the App Password
+    (the same Keychain entry as inbound IMAP), or from Parent Recap's own address through the
+    maintainers' gateway at llm.gateway_url, with the Gateway Key (ADR 0028)."""
     enabled: bool = True
-    from_addr: str | None = None                # falls back to gmail.username
+    sender: Literal["gmail", "gateway"] = "gmail"
+    from_addr: str | None = None                # Gmail's; falls back to gmail.username
     to: list[Recipient] = Field(default_factory=list)          # Brief Recipients
     weekend_to: list[Recipient] = Field(default_factory=list)  # Weekend Picks Recipients
 

@@ -48,7 +48,8 @@ google_calendar:
 
 email:
   enabled: true
-  from_addr: you@gmail.com
+  sender: gmail # or gateway: Parent Recap's own address sends it, with the Gateway Key (ADR 0028)
+  from_addr: you@gmail.com # Gmail only
   to: # Brief recipients; add a partner if you like
     - you@gmail.com # reads the Brief in summary_language
     # - address: partner@gmail.com # a Recipient who reads another language

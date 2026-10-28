@@ -113,10 +113,8 @@ class FirstBrief(Phase):
         try:
             with run_lock.exclusive(cfg):
                 try:
-                    email_action.send(subject=brief["subject"], body_text=brief["text"],
-                                      body_html=brief["html"],
-                                      from_addr=cfg.email.from_addr or cfg.gmail.username or "",
-                                      to_addrs=[parent])
+                    email_action.send(cfg, subject=brief["subject"], body_text=brief["text"],
+                                      body_html=brief["html"], to_addrs=[parent])
                 except Exception:  # its error can name the address
                     return HTTPStatus.OK, {"result": "send-failed"}
                 state = State(cfg.resolved_state_path())

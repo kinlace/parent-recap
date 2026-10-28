@@ -320,6 +320,8 @@ class Harness:
     claude_removes = _to("model", "claude_removes")
     sent = _to("outbox", "sent")
     email_error = _to("outbox", "email_error")
+    relay_answer = _to("outbox", "relay_answer")
+    relay_keys = _to("outbox", "relay_keys")
     imessages = _to("outbox", "imessages")
     imessage_error = _to("outbox", "imessage_error")
     calendar = _to("outbox", "calendar")

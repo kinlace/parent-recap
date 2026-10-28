@@ -64,45 +64,47 @@ the import path, so a test may import a helper from a test in another layer.
 
 ## Integration tests
 
-| File                            | What it covers                                                                   |
-| ------------------------------- | -------------------------------------------------------------------------------- |
-| `test_brief_relay.py`           | The gateway's Brief relay: the key, the daily cap, the request, the message sent |
-| `test_collector_labels.py`      | The labels Sources add to Messages are English                                   |
-| `test_email.py`                 | The Brief email as sent to a fake SMTP server                                    |
-| `test_eval_runner.py`           | The eval runner end to end, only the model process faked                         |
-| `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was                  |
-| `test_goldens.py`               | The golden files' check and `--update-goldens`                                   |
-| `test_linked_device.py`         | The Linked Device's Node program's four modes on a fake Baileys                  |
-| `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code               |
-| `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses                     |
-| `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks                |
-| `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token                           |
-| `test_setup_google_calendar.py` | The Google Calendar authorization script                                         |
-| `test_weekend_picks.py`         | Weekend Picks through the same backend as the Brief                              |
-| `test_whatsapp_source.py`       | WhatsApp's collector: the Linked Device's store read, mapped to Messages, pruned |
+| File                            | What it covers                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------- |
+| `test_brief_relay.py`           | The gateway's Brief relay: the key, the daily cap, the request, the message sent            |
+| `test_collector_labels.py`      | The labels Sources add to Messages are English                                              |
+| `test_email.py`                 | The Brief email as sent to a fake SMTP server                                               |
+| `test_email_gateway.py`         | The Brief sent through the gateway's Brief relay: the request, each refusal, doctor's check |
+| `test_eval_runner.py`           | The eval runner end to end, only the model process faked                                    |
+| `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was                             |
+| `test_goldens.py`               | The golden files' check and `--update-goldens`                                              |
+| `test_linked_device.py`         | The Linked Device's Node program's four modes on a fake Baileys                             |
+| `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code                          |
+| `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses                                |
+| `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks                           |
+| `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token                                      |
+| `test_setup_google_calendar.py` | The Google Calendar authorization script                                                    |
+| `test_weekend_picks.py`         | Weekend Picks through the same backend as the Brief                                         |
+| `test_whatsapp_source.py`       | WhatsApp's collector: the Linked Device's store read, mapped to Messages, pruned            |
 
 ## End-to-end tests: the evening run
 
-| File                              | What it covers                                                     |
-| --------------------------------- | ------------------------------------------------------------------ |
-| `test_nightly_brief.py`           | The Brief a normal night makes, failures at the edges              |
-| `test_nightly_continuity.py`      | Nights in a row, quiet nights, `run --if-missed`                   |
-| `test_nightly_google_calendar.py` | Google Calendar mode                                               |
-| `test_nightly_languages.py`       | Recipients in their own languages                                  |
-| `test_nightly_placeholders.py`    | The AI filter's placeholders, end to end (ADR 0013)                |
-| `test_nightly_held_back.py`       | Held-back Messages, end to end (ADR 0013)                          |
-| `test_nightly_new_source.py`      | A Source added only to the registry is read, counted, caught up    |
-| `test_any_language.py`            | A Recipient in a language without reviewed program text (ADR 0004) |
-| `test_busy_model.py`              | How long each model call may wait for a busy model                 |
-| `test_gateway.py`                 | The gateway backend (ADR 0014): Brief, doctor and `setup gateway`  |
-| `test_source_failures.py`         | A Source's transport failing partway or timing out                 |
-| `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON      |
-| `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing  |
-| `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish           |
-| `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                  |
-| `test_ai_filter_report.py`        | `parent-recap ai-filter-report` over an archive                    |
-| `test_schedule_run_now.py`        | `schedule run-now`                                                 |
-| `test_without_google_packages.py` | Everything but google mode runs without Google's packages          |
+| File                              | What it covers                                                                        |
+| --------------------------------- | ------------------------------------------------------------------------------------- |
+| `test_nightly_brief.py`           | The Brief a normal night makes, failures at the edges                                 |
+| `test_nightly_continuity.py`      | Nights in a row, quiet nights, `run --if-missed`                                      |
+| `test_nightly_google_calendar.py` | Google Calendar mode                                                                  |
+| `test_nightly_languages.py`       | Recipients in their own languages                                                     |
+| `test_nightly_placeholders.py`    | The AI filter's placeholders, end to end (ADR 0013)                                   |
+| `test_nightly_held_back.py`       | Held-back Messages, end to end (ADR 0013)                                             |
+| `test_nightly_new_source.py`      | A Source added only to the registry is read, counted, caught up                       |
+| `test_any_language.py`            | A Recipient in a language without reviewed program text (ADR 0004)                    |
+| `test_busy_model.py`              | How long each model call may wait for a busy model                                    |
+| `test_gateway.py`                 | The gateway backend (ADR 0014): Brief, doctor and `setup gateway`                     |
+| `test_gateway_sends.py`           | The gateway sending the Brief (ADR 0028): no Gmail, refusals, doctor, a send-only key |
+| `test_source_failures.py`         | A Source's transport failing partway or timing out                                    |
+| `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON                         |
+| `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing                     |
+| `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish                              |
+| `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                                     |
+| `test_ai_filter_report.py`        | `parent-recap ai-filter-report` over an archive                                       |
+| `test_schedule_run_now.py`        | `schedule run-now`                                                                    |
+| `test_without_google_packages.py` | Everything but google mode runs without Google's packages                             |
 
 The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights.py`.
 

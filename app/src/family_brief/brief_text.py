@@ -96,6 +96,7 @@ class BriefText:
     new_events: str
     new_events_line: str                # the plain-text heading
     written_by: str                     # {assistant}
+    unread_sender: str                  # {address}, when the gateway's address nobody reads sent it
     untitled: str
 
     # ── In place of a placeholder the model changed so it can't be put back (ADR 0013)
@@ -196,6 +197,8 @@ EN = BriefText(
     new_events="📅 New calendar events",
     new_events_line="📅 New calendar events:",
     written_by="Written by {assistant}",
+    unread_sender="This email comes from an address nobody reads. To reply, write to {address}, "
+                  "who set up Parent Recap.",
     untitled="(untitled)",
     phone_number="a phone number",
     email_address="an email address",
@@ -266,6 +269,7 @@ ZH = BriefText(
     new_events="📅 新日历事件",
     new_events_line="📅 新加日历事件:",
     written_by="由 {assistant} 生成",
+    unread_sender="这封邮件的发件地址无人查看。如需回复，请写信给设置 Parent Recap 的人：{address}。",
     untitled="(无标题)",
     phone_number="一个电话号码",
     email_address="一个邮箱地址",
@@ -344,6 +348,8 @@ FI = BriefText(
     new_events="📅 Uudet kalenteritapahtumat",
     new_events_line="📅 Uudet kalenteritapahtumat:",
     written_by="Kirjoittanut: {assistant}",
+    unread_sender="Tämä viesti tulee osoitteesta, jota kukaan ei lue. Jos haluat vastata, kirjoita "
+                  "osoitteeseen {address}: hän otti Parent Recapin käyttöön.",
     untitled="(ei otsikkoa)",
     phone_number="puhelinnumero",
     email_address="sähköpostiosoite",
@@ -385,6 +391,7 @@ class WeekendText:
     ranking_failed: str
     calendar_note: str
     translation_failed: str             # at the top of the original, sent to a Recipient whose translation failed
+    unread_sender: str                  # {address}, when the gateway's address nobody reads sent it
     when: str                           # an event's start: {weekday} {day} {month} {hour} {minute}
 
 
@@ -404,6 +411,8 @@ WEEKEND_TEXT: dict[Language, WeekendText] = {  # the reviewed languages
         calendar_note="[From Parent Recap Weekend Picks. Delete it if you don't want it; "
                       "next week's picks learn from what you delete.]",
         translation_failed="⚠️ This week's Weekend Picks couldn't be translated, so here they are as they were written.",
+        unread_sender="This email comes from an address nobody reads. To reply, write to {address}, "
+                      "who set up Parent Recap.",
         when="{weekday} {month:02}/{day:02} {hour:02}:{minute:02}",
     ),
     "zh": WeekendText(
@@ -418,6 +427,7 @@ WEEKEND_TEXT: dict[Language, WeekendText] = {  # the reviewed languages
         ranking_failed="（LLM 排序失败，按顺序展示前几条）",
         calendar_note="[本条来自 Parent Recap 周末活动推荐 — 不想要请直接删除，删除信号会用于下周学习偏好]",
         translation_failed="⚠️ 本周的周末活动推荐没能翻译成功，下面是原文。",
+        unread_sender="这封邮件的发件地址无人查看。如需回复，请写信给设置 Parent Recap 的人：{address}。",
         when="{weekday} {month:02}/{day:02} {hour:02}:{minute:02}",
     ),
     "fi": WeekendText(
@@ -435,6 +445,8 @@ WEEKEND_TEXT: dict[Language, WeekendText] = {  # the reviewed languages
         calendar_note="[Parent Recapin viikonlopun vinkki. Poista tapahtuma, jos se ei kiinnosta – "
                       "poistosi huomioidaan ensi viikon vinkeissä.]",
         translation_failed="⚠️ Tämän viikon vinkkejä ei saatu käännettyä, joten tässä ne ovat alkuperäisellä kielellä.",
+        unread_sender="Tämä viesti tulee osoitteesta, jota kukaan ei lue. Jos haluat vastata, kirjoita "
+                      "osoitteeseen {address}: hän otti Parent Recapin käyttöön.",
         when="{weekday} {day}.{month}. klo {hour}.{minute:02}",
     ),
 }
