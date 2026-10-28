@@ -303,8 +303,8 @@ def _check_myclub(kid: str, url: str, add) -> None:
 
 def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:
     """The Linked Device's link, once groups are picked: connected, last connected, or needs a new
-    pairing, as the always-running job's status file has it. Groups kept picked with WhatsApp
-    turned off say it's off."""
+    pairing, as the always-running job's status file has it, with the picked groups by name.
+    Groups kept picked with WhatsApp turned off say it's off."""
     if not cfg.whatsapp.chats:
         return
     if not cfg.whatsapp.enabled:
@@ -323,8 +323,9 @@ def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:
         add(FAIL, "whatsapp", f"needs a new pairing: {why}, so the Brief has no WhatsApp messages "
             "(pair again on the setup page)")
         return
-    groups = len(cfg.whatsapp.picked_ids())
-    picked = f"{groups} picked group{'' if groups == 1 else 's'}"
+    # By name, so the family knows which groups to post a test message in (#548).
+    names = [f'"{c.name}"' for c in cfg.whatsapp.chats if c.id]
+    picked = f"{len(names)} picked group{'' if len(names) == 1 else 's'}: {', '.join(names)}"
     if link.connected_since:
         add(OK, "whatsapp", f"connected since {when(link.connected_since)}, keeping {picked}")
     elif link.last_connected:
