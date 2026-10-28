@@ -13,6 +13,7 @@ from pydantic import Field
 
 from .. import setup_ai, setup_gmail, setup_save
 from ..setup_connect import Reply, Strict, parse
+from .ai import GATEWAY_RESULTS
 from .context import Action, Context, Phase, keychain_code
 
 # What connecting Gmail on the page can say: the chat's `setup gmail` results, and `no-address`
@@ -24,9 +25,8 @@ GMAIL_RESULTS = ("saved", "no-address", "not-an-app-password", "rejected", "no-c
 # address given for two Recipients.
 GATEWAY_SENDS_RESULTS = ("saved", "no-address", "same-address")
 # And how testing and storing a Gateway Key for sending alone went when it didn't save, which the
-# page says as the gateway AI's key field does (ai.GATEWAY_RESULTS).
-SEND_KEY_RESULTS = ("not-a-key", "rejected", "no-connection", "test-call-failed",
-                    "keychain-not-reachable", "keychain-failed")
+# page says as the gateway AI's key field does.
+SEND_KEY_RESULTS = tuple(r for r in GATEWAY_RESULTS if r != "saved")
 ADDRESS = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 

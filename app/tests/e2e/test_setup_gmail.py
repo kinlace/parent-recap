@@ -701,7 +701,6 @@ def test_parent_recap_s_results_are_explained_in_all_three_languages():
             assert table.get(key, "").strip(), (language, key)
         # A key the relay doesn't take is said as the gateway AI's key field says it.
         for result in setup_server.gmail.SEND_KEY_RESULTS:
-            assert result in setup_server.ai.GATEWAY_RESULTS
             assert table.get(f"gateway.{result}", "").strip(), (language, result)
         assert "sk-" in table["gmail.gateway.key.explain"], language
     english = text["en"]
