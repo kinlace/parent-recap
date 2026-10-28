@@ -325,7 +325,8 @@ def test_doctor_says_the_linked_device_is_connected_on_any_system(harness, capsy
 
     line = whatsapp_line(harness, capsys)
 
-    assert line == "✅ WhatsApp: connected since 2026-09-27 08:12, keeping 2 picked groups"
+    assert line == ('✅ WhatsApp: connected since 2026-09-27 08:12, keeping 2 picked groups: '
+                    '"3B parents", "Leo piano"')
     assert "python-3.12.6" not in line
 
 
@@ -334,7 +335,8 @@ def test_doctor_says_when_the_linked_device_last_connected(harness, capsys):
                                             last_connected="2026-09-27T17:40:00.000Z", link_ended_at=None)
 
     assert whatsapp_line(harness, capsys).startswith(
-        "⚠️  WhatsApp: not connected right now, last connected 2026-09-27 20:40, for 2 picked groups.")
+        '⚠️  WhatsApp: not connected right now, last connected 2026-09-27 20:40, for 2 picked '
+        'groups: "3B parents", "Leo piano".')
 
 
 def test_doctor_says_a_link_whatsapp_ended_needs_a_new_pairing(harness, capsys):
