@@ -156,11 +156,18 @@ curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
   }'
 ```
 
-**Revoke.** Find the key's `id` in the list, then turn it off (or `DELETE` it):
+**Create a send-only Gateway Key.** A Household whose AI backend is its own Claude Code or Codex still needs a Gateway Key for the gateway to send its Brief (ADR 0028). Give it a key with no `provider_configs` and no budget: Bifrost refuses its model calls (400 or 403) and the relay accepts it, since the relay only checks that the key exists and is active. Same naming, same handover:
+
+```sh
+curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
+  -H 'content-type: application/json' -d '{"name": "household-<label>", "is_active": true}'
+```
+
+**Revoke.** Find the key's `id` in the list, then turn it off (or `DELETE` it). `PUT` changes only the fields it is given (Bifrost has no `PATCH` here):
 
 ```sh
 curl -s -u "$ADMIN" localhost:8080/api/governance/virtual-keys
-curl -s -u "$ADMIN" -X PATCH localhost:8080/api/governance/virtual-keys/<id> \
+curl -s -u "$ADMIN" -X PUT localhost:8080/api/governance/virtual-keys/<id> \
   -H 'content-type: application/json' -d '{"is_active": false}'
 ```
 
