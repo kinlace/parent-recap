@@ -8,6 +8,7 @@ answers as JSON on stdin, every key optional:
    "city": "Espoo",
    "kids": [{"name": "Mia Virtanen", "everyday_name": "Mia", "aliases": ["米娅"]}],
    "recipients": [{"address": "parent@gmail.com"}, {"address": "partner@gmail.com", "language": "fi"}],
+   "sender": "gmail",
    "ai": "claude",
    "evening": "21:00",
    "sources": {"gmail": {"address": "parent@gmail.com", "allowlist_domains": ["espoo.fi"]},
@@ -27,6 +28,9 @@ The progress's `partner` is Welcome's choice, or null for only me, kept until th
 own address is known and the Recipients can be saved with the parent first. Its `whatsapp_chats`
 are the WhatsApp groups found, each with its Kid hint, and its `gmail_senders` the senders
 `discover gmail-senders --json` found, each as it reports them, kept for the check page.
+
+`sender` is what sends the Brief (email.sender): the Household's Gmail, or `gateway`, Parent
+Recap's own address through the maintainers' gateway (ADR 0028), which needs no Gmail at all.
 
 What the answers don't mention stays as it was. The Kids given are the Household's Kids: a Kid
 left out is removed, and each one given keeps what the answers don't say about them, such as a
@@ -166,6 +170,7 @@ class Answers(_Strict):
     city: str | None = None         # the Household's town, in Finnish, as in Wilma's list
     kids: list[KidAnswer] | None = None
     recipients: list[RecipientAnswer] | None = None
+    sender: Literal["gmail", "gateway"] | None = None  # what sends the Brief (ADR 0028)
     ai: Literal["claude", "codex", "gateway"] | None = None
     evening: str | None = None      # HH:MM, when the Brief comes
     sources: SourcesAnswer | None = None
@@ -283,6 +288,8 @@ def _merge(data: dict[str, Any], a: Answers, form: dict[str, Any] | None) -> Non
         _section(data, "email")["to"] = [r.address if r.language is None
                                          else {"address": r.address, "language": r.language}
                                          for r in a.recipients]
+    if a.sender is not None:
+        _section(data, "email")["sender"] = a.sender
     if a.ai is not None:
         _section(data, "llm")["backend"] = a.ai
     if a.evening is not None:

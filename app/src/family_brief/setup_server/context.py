@@ -157,6 +157,14 @@ class Context:
         address = self.section("gmail").get("username")
         return address if isinstance(address, str) and address else None
 
+    def setup_parent(self) -> str | None:
+        """The setup parent's address, first among the Recipients, once it's known: the Gmail's,
+        unless Parent Recap sends the Brief (ADR 0028), when it was given with that choice."""
+        email = self.model().email
+        if email.sender == "gateway":
+            return email.to[0].address if email.to else None
+        return self.gmail_address()
+
 
 class Phase:
     """A phase of setup on the page: the calls it answers, the files it serves, its part of

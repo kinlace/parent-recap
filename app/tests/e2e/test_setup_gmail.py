@@ -412,7 +412,8 @@ def test_a_valid_app_password_is_tested_stored_and_gmail_turns_done(harness, pag
     # Now the parent's address is known, the Recipients are saved with the parent first.
     assert [(t.address, t.language) for t in cfg.email.to] == \
         [("parent@example.com", None), ("partner@example.com", "fi")]
-    assert call(page.url, "api/state").json()["gmail"] == {"address": "parent@example.com"}
+    assert call(page.url, "api/state").json()["gmail"] == {"address": "parent@example.com",
+                                                           "sender": "gmail"}
     assert_never_leaked_by_page(harness, [r], caplog, capsys, TYPED)
 
 
@@ -511,3 +512,104 @@ def test_the_gmail_fields_are_the_page_s_own(page):
     assert 'type="password"' in password
     address = re.search(r'<input[^>]*id="gmail-address"[^>]*>', html).group(0)
     assert 'type="email"' in address
+
+
+# ── Connect: Parent Recap sends the Brief, in place of Gmail (ADR 0028)
+
+
+def parent_recap_sends(url: str, *recipients: dict[str, Any]) -> Response:
+    return call(url, "api/gmail/gateway", method="POST", body={"recipients": list(recipients)})
+
+
+def with_the_gateway_as_the_ai(url: str, partner: dict[str, str] | None = None) -> None:
+    welcome(url, ai="gateway", partner=partner)
+    source(url, "wilma", "skip")
+
+
+def test_with_the_gateway_as_the_ai_parent_recap_sends_the_brief_and_gmail_is_skipped(
+        harness, page, gmail):
+    with_the_gateway_as_the_ai(page.url, {"address": "partner@example.com", "language": "fi"})
+
+    r = parent_recap_sends(page.url, {"address": " Parent@Hotmail.com ", "language": "en"},
+                           {"address": "partner@example.com", "language": "fi"})
+
+    assert r.status == 200 and r.json()["result"] == "saved"
+    progress = r.json()["progress"]
+    assert progress["sources"]["gmail"] == "skipped"
+    assert progress["source"] == "ai"
+    cfg = Config.load(config_file(harness))
+    assert cfg.email.sender == "gateway"
+    # The setup parent first; a language the same as the Household's isn't saved twice.
+    assert [(t.address, t.language) for t in cfg.email.to] == \
+        [("parent@hotmail.com", None), ("partner@example.com", "fi")]
+    assert cfg.gmail.username is None and not cfg.gmail.allowlist_domains
+    # No App Password is asked for, tested or stored.
+    assert gmail.logins == [] and harness.secrets == {}
+    assert call(page.url, "api/state").json()["gmail"] == {"address": None, "sender": "gateway"}
+
+
+def test_parent_recap_sends_only_for_a_household_whose_ai_is_the_gateway(harness, page):
+    welcome(page.url, ai="claude")
+
+    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"})
+
+    assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    assert statuses(page.url)["gmail"] == "to-do"
+    assert Config.load(config_file(harness)).email.sender == "gmail"
+
+
+def test_each_recipient_parent_recap_sends_to_needs_an_address_of_their_own(harness, page):
+    with_the_gateway_as_the_ai(page.url)
+
+    for given in [[{"address": "parent", "language": "en"}],
+                  [{"address": "parent@example.com", "language": "en"},
+                   {"address": "a b@example.com", "language": "fi"}]]:
+        assert parent_recap_sends(page.url, *given).json() == {"result": "no-address"}, given
+    same = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"},
+                              {"address": "Parent@Example.com", "language": "fi"})
+    assert same.json() == {"result": "same-address"}
+    for body in [{}, {"recipients": []}, {"recipients": [{"address": "parent@example.com"}]},
+                 {"recipients": [{"address": "parent@example.com", "language": "sv"}]},
+                 {"recipients": [{"address": "parent@example.com", "language": "en"}], "x": 1}]:
+        r = call(page.url, "api/gmail/gateway", method="POST", body=body)
+        assert r.status == 400 and r.json()["result"] == "invalid-answers", body
+    assert statuses(page.url)["gmail"] == "to-do"
+
+
+def test_gmail_connected_after_parent_recap_sends_only_adds_reading(harness, page, gmail):
+    with_the_gateway_as_the_ai(page.url, {"address": "partner@example.com", "language": "fi"})
+    parent_recap_sends(page.url, {"address": "parent@hotmail.com", "language": "en"},
+                       {"address": "partner@example.com", "language": "fi"})
+    assert source(page.url, "gmail", "open").json()["progress"]["sources"]["gmail"] == "to-do"
+
+    r = connect_gmail(page.url)
+
+    assert r.status == 200 and r.json()["result"] == "saved"
+    cfg = Config.load(config_file(harness))
+    assert cfg.gmail.username == "parent@example.com"
+    # Parent Recap still sends the Brief, to the Recipients as they were.
+    assert cfg.email.sender == "gateway"
+    assert [t.address for t in cfg.email.to] == ["parent@hotmail.com", "partner@example.com"]
+
+
+def test_welcome_saved_again_keeps_the_parent_parent_recap_sends_to_first(harness, page, gmail):
+    with_the_gateway_as_the_ai(page.url)
+    parent_recap_sends(page.url, {"address": "parent@hotmail.com", "language": "en"})
+    source(page.url, "gmail", "open")
+    connect_gmail(page.url)  # read only
+
+    welcome(page.url, ai="gateway", partner={"address": "partner@example.com", "language": "fi"})
+
+    assert [t.address for t in Config.load(config_file(harness)).email.to] == \
+        ["parent@hotmail.com", "partner@example.com"]
+
+
+def test_parent_recap_s_results_are_explained_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for result in setup_server.gmail.GATEWAY_SENDS_RESULTS:
+            assert table.get(f"gmail.gateway.{result}", "").strip(), (language, result)
+        for key in ("gmail.choice", "gmail.choice.gmail", "gmail.choice.gateway",
+                    "gmail.gateway.unread", "gmail.gateway.junk", "brief.junk"):
+            assert table.get(key, "").strip(), (language, key)

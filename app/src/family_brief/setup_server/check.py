@@ -35,7 +35,7 @@ class CheckAnswer(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kids: list[KidCheck]                  # the Kids ticked
     whatsapp: list[str] | None            # the groups ticked; None without WhatsApp
-    senders: list[str]                    # the sender domains ticked
+    senders: list[str] | None             # the sender domains ticked; None without Gmail
     recipients: list[setup_save.RecipientAnswer]
     evening: str                          # HH:MM
 
@@ -85,7 +85,9 @@ class Check(Phase):
         def read(done: int, total: int) -> None:
             self._reading = {"result": "reading", "read": done, "total": total}
         try:
-            senders = ops.gmail_senders(Config.load(self.context.config), SENDER_DAYS, progress=read)
+            # A Gmail skipped, as when Parent Recap sends the Brief (ADR 0028), has none to read.
+            senders = [] if _without_gmail(self.context.progress()) else \
+                ops.gmail_senders(Config.load(self.context.config), SENDER_DAYS, progress=read)
             with self.context.connect.lock:
                 out = setup_save.save(self.context.config, {"progress": {
                     "phase": "check", "gmail_senders": senders}})
@@ -104,7 +106,8 @@ class Check(Phase):
         """What the check page shows, each list ticked by best guess: the Kids, all ticked with
         their everyday names; the WhatsApp groups, those linked to a Kid ticked (none without
         WhatsApp); the Gmail senders that look like school, city or club mail ticked, and never
-        a public one; each Recipient with their language; and the evening time. A pilot
+        a public one, or none without Gmail (skipped when Parent Recap sends the Brief, ADR 0028);
+        each Recipient with their language; and the evening time. A pilot
         Household's feedback label isn't asked: setup makes it (#491). `other_sources` is
         whether a Source besides Gmail brings news, so that a Gmail with no sender ticked only
         sends the Brief (#361)."""
@@ -116,7 +119,7 @@ class Check(Phase):
             or any(g["ticked"] for g in groups or [])
         return {"kids": [{"name": k.name, "everyday_name": everyday_name(k)} for k in cfg.kids],
                 "whatsapp": groups,
-                "senders": _senders(cfg, progress),
+                "senders": None if _without_gmail(progress) else _senders(cfg, progress),
                 "other_sources": others,
                 "recipients": [{"address": r.address, "language": cfg.language_of(r)}
                                for r in cfg.email.to],
@@ -214,6 +217,11 @@ def _keep_picked(context: Context) -> None:
                        failure.raised(e, "Writing the picked groups"))
 
 
+def _without_gmail(progress: dict[str, Any]) -> bool:
+    """Whether Gmail was skipped, as it is when Parent Recap sends the Brief (ADR 0028)."""
+    return progress["sources"]["gmail"] == "skipped"
+
+
 def _senders(cfg: Config, progress: dict[str, Any]) -> list[dict[str, Any]]:
     """The senders Working found, but no public mail service, then the city's starting
     allowlist and the domains already on the allowlist, ticked."""
@@ -241,8 +249,10 @@ def _check_answers(answer: CheckAnswer, cfg: Config, progress: dict[str, Any]) -
                         **({"language": r.language} if r.language != cfg.summary_language
                            else {})} for r in answer.recipients],
         "evening": answer.evening,
-        "sources": {"gmail": {"allowlist_domains": answer.senders}},
+        "sources": {},
     }
+    if answer.senders is not None:
+        answers["sources"]["gmail"] = {"allowlist_domains": answer.senders}
     if answer.whatsapp is not None:
         found = {c["name"]: c for c in progress.get("whatsapp_chats") or []}
         before = {c.name: c for c in cfg.whatsapp.chats}
@@ -284,8 +294,11 @@ def _check_errors(answer: CheckAnswer, offered: dict[str, Any], phase: str) -> l
     if (answer.whatsapp is None) != (groups is None) or \
             not set(answer.whatsapp or []) <= {g["name"] for g in groups or []}:
         errors.append("whatsapp: should be groups the check page lists, or null without WhatsApp")
-    if not set(answer.senders) <= {s["domain"] for s in offered["senders"]}:
-        errors.append("senders: should be sender domains the check page lists")
+    senders = offered["senders"]
+    if (answer.senders is None) != (senders is None) or \
+            not set(answer.senders or []) <= {s["domain"] for s in senders or []}:
+        errors.append("senders: should be sender domains the check page lists, or null without "
+                      "Gmail")
     if [r.address for r in answer.recipients] != [r["address"] for r in offered["recipients"]]:
         errors.append("recipients: should be the Recipients the check page lists, in order")
     return errors

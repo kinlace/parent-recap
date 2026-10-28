@@ -17,7 +17,7 @@ import fake_node
 from conftest import msg
 from fake_system import FakeWake
 
-from family_brief import install_record, ops
+from family_brief import gateway, install_record, ops
 from family_brief.system import jobs
 
 APP_PASSWORD = "abcdabcdabcdabcd"
@@ -342,6 +342,20 @@ def test_setup_is_done_when_all_five_outcomes_are_true(harness, set_up, capsys):
     assert [o["outcome"] for o in report["outcomes"]] == \
         ["installed", "doctor", "brief", "nightly", "wake"]
     assert all(o["ok"] and o["reason"] for o in report["outcomes"])
+
+
+def test_setup_is_done_without_gmail_when_parent_recap_sends_the_brief(harness, set_up, capsys):
+    # ADR 0028: the gateway sends, nothing reads mail, and there's no Gmail or App Password.
+    harness.config["gmail"] = {}
+    harness.config["email"]["sender"] = "gateway"
+    harness.secrets[gateway.ACCOUNT] = "sk-bf-fake-gateway-key"
+    del harness.secrets["gmail-imap-parent@example.com"]
+    capsys.readouterr()
+
+    code, report = status(harness, capsys)
+
+    assert code == 0 and report["result"] == "done", report
+    assert "Gmail" not in outcome(report, "doctor")["reason"]
 
 
 def test_the_readable_form_has_a_short_line_per_outcome(harness, set_up, capsys):

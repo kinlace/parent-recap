@@ -353,6 +353,8 @@ async function saveWelcome(event) {
     clearTimeout(ai.timer);
     page.progress = out.progress;
     page.welcome.ai = answers.ai;
+    // For the Recipients Gmail's step asks for when Parent Recap sends the Brief.
+    page.welcome.partner = { ...page.welcome.partner, add, ...answers.partner };
     show();
   } catch (e) {
     failed(e);
@@ -397,7 +399,7 @@ const STEPS = {
     label: "Wilma",
   },
   gmail: {
-    setUp: setUpGmail,
+    setUp: setUpGmail, first: prepareGmail,
     leave: () => { document.getElementById("gmail-password").value = ""; },
     label: "Gmail",
   },
@@ -447,6 +449,104 @@ function setUpGmail() {
   }
   document.getElementById("gmail-form").addEventListener("submit", connectGmail);
   document.getElementById("gmail-address").value = page.gmail.address || "";
+  for (const input of document.querySelectorAll('input[name="sender"]')) {
+    input.addEventListener("change", () => {
+      showSource(null);
+      showSender();
+    });
+  }
+  for (const id of ["gateway-sends-language", "gateway-sends-partner-language"]) {
+    const select = document.getElementById(id);
+    for (const { code, name } of page.languages) {
+      const option = document.createElement("option");
+      option.value = code;
+      option.lang = code;
+      option.textContent = name;
+      select.append(option);
+    }
+  }
+  for (const id of ["gateway-sends-address", "gateway-sends-partner-address"]) {
+    document.getElementById(id).addEventListener("input", showJunk);
+  }
+  document.getElementById("gateway-sends-form").addEventListener("submit", gatewaySends);
+}
+
+// With the gateway as the AI, Gmail's step offers to have Parent Recap send the Brief from its own
+// address instead, with no Gmail at all (ADR 0028). Gmail stays the default: once Parent Recap
+// sends, connecting Gmail only has the school's mail read.
+function prepareGmail() {
+  const sends = page.gmail.sender === "gateway";
+  document.getElementById("gmail-choice").hidden = !(page.welcome.ai === "gateway" || sends);
+  pick("sender", "gmail");
+  document.getElementById("gmail-reading-only").hidden = !sends;
+  const { partner } = page.welcome;
+  document.getElementById("gateway-sends-language").value = page.language;
+  document.getElementById("gateway-sends-partner").hidden = !partner.add;
+  const partnerAddress = document.getElementById("gateway-sends-partner-address");
+  partnerAddress.required = partner.add;
+  partnerAddress.value = partner.add ? partner.address : "";
+  document.getElementById("gateway-sends-partner-language").value = partner.language;
+  showSender();
+}
+
+// The Gmail form, or the Recipients' addresses for Parent Recap to send to.
+function showSender() {
+  const gateway = picked("sender") === "gateway";
+  document.getElementById("gmail-own").hidden = gateway;
+  document.getElementById("gateway-sends-form").hidden = !gateway;
+  showJunk();
+}
+
+// The addresses given for Parent Recap to send to, the setup parent's first.
+function gatewayRecipients() {
+  const rows = [["gateway-sends-address", "gateway-sends-language"]];
+  if (!document.getElementById("gateway-sends-partner").hidden) {
+    rows.push(["gateway-sends-partner-address", "gateway-sends-partner-language"]);
+  }
+  return rows.map(([address, language]) => ({
+    field: document.getElementById(address),
+    address: document.getElementById(address).value,
+    language: document.getElementById(language).value,
+  }));
+}
+
+// Hotmail and Outlook.com junk mail from Parent Recap's new address at first (#524).
+const JUNKS_AT_FIRST = /@(hotmail|outlook|live|msn)\.[a-z.]+$/i;
+
+function showJunk() {
+  document.getElementById("gateway-sends-junk").hidden =
+    !gatewayRecipients().some(({ address }) => JUNKS_AT_FIRST.test(address.trim()));
+}
+
+async function gatewaySends(event) {
+  event.preventDefault();
+  clearError();
+  showSource(null);
+  const button = event.submitter;
+  button.disabled = true;
+  const recipients = gatewayRecipients();
+  try {
+    const out = await post("api/gmail/gateway", {
+      recipients: recipients.map(({ address, language }) => ({ address, language })),
+    });
+    const seen = new Set();
+    for (const { field, address } of recipients) {
+      const key = address.trim().toLowerCase();
+      field.toggleAttribute("aria-invalid", (out.result === "no-address" && !field.checkValidity()) ||
+        (out.result === "same-address" && seen.has(key)));
+      seen.add(key);
+    }
+    if (out.result === "saved") {
+      page.progress = out.progress;
+      page.gmail.sender = "gateway";
+      renderSources();
+    }
+    showSource("gmail.gateway." + out.result);
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // The Source the parent is on: the one saved, else the first still to do (null once none is).
@@ -587,13 +687,14 @@ const SLOTS = [
   [[...WILMA_NOT_READY, "wilma.pick-town"], "wilma-town-slot"],
   [["myclub.added", "myclub.kid-exists"], "myclub-kid-slot"],
   // A Source just done: by the hand-off, as the next Source's step is shown.
-  [["gmail.saved", "wilma.signed-in", "claude.saved", "gateway.saved",
+  [["gmail.saved", "gmail.gateway.saved", "wilma.signed-in", "claude.saved", "gateway.saved",
     "codex.signed-in", "whatsapp.paired"], "connect-slot"],
 ];
 // The results that say something failed, shown in red.
 const FAILED = [
   "gmail.no-address", "gmail.not-an-app-password", "gmail.rejected", "gmail.no-connection",
   "gmail.keychain-not-reachable", "gmail.keychain-failed",
+  "gmail.gateway.no-address", "gmail.gateway.same-address",
   ...WILMA_NOT_READY, "wilma.pick-town", "wilma.wrong-password", "wilma.sign-in-failed",
   "wilma.no-kids", "wilma.window.not-signed-in", "wilma.window.sign-in-failed",
   "wilma.window.timeout", "wilma.window.no-terminal",
@@ -1706,8 +1807,11 @@ function renderWorking() {
   const reading = workingStep.reading || { result: "reading", read: 0, total: null };
   const items = connectSteps().filter((step) => step.working && statuses[step.name] === "done")
     .map((step) => step.working());
-  items.push(reading.total ? ["working.gmail", { read: reading.read, total: reading.total }, true]
-    : ["working.gmail.start", null, true]);
+  // A Gmail skipped, as when Parent Recap sends the Brief, has no senders to read.
+  if (statuses.gmail !== "skipped") {
+    items.push(reading.total ? ["working.gmail", { read: reading.read, total: reading.total }, true]
+      : ["working.gmail.start", null, true]);
+  }
   document.getElementById("working-list").replaceChildren(...items.map(([key, values, now]) => {
     const item = document.createElement("li");
     item.dataset.status = now ? "to-do" : "done";
@@ -1761,14 +1865,16 @@ function renderCheck() {
   document.getElementById("check-whatsapp").hidden = whatsapp === null;
   document.getElementById("check-groups").replaceChildren(...(whatsapp || []).map((group) =>
     tickRow(group.name, group.ticked, group.kids.length ? { text: group.kids.join(", ") } : null)));
-  document.getElementById("check-senders").replaceChildren(...senders.map((sender) =>
+  // No senders without Gmail, skipped when Parent Recap sends the Brief (ADR 0028).
+  document.getElementById("check-mail").hidden = senders === null;
+  document.getElementById("check-senders").replaceChildren(...(senders || []).map((sender) =>
     tickRow(sender.domain, sender.ticked, sender.count
       ? { key: "check.sender.mails", values: { count: sender.count, example: sender.example } }
       : { key: "check.sender.no-mail" })));
   // Without school mail among what came in, the Briefs come out empty, unless another Source
   // brings the news and Gmail only sends the Brief.
   const none = document.getElementById("check-senders-none");
-  none.hidden = senders.some((s) => s.ticked && s.count > 0);
+  none.hidden = (senders || []).some((s) => s.ticked && s.count > 0);
   setText(none, page.check.other_sources ? "check.senders.none.other" : "check.senders.none");
   document.getElementById("check-recipients").replaceChildren(...recipients.map(recipientRow));
   document.getElementById("check-evening").value = evening;
@@ -1890,7 +1996,7 @@ async function confirmCheck(event) {
   const answers = {
     kids,
     whatsapp: page.check.whatsapp === null ? null : ticked("check-groups"),
-    senders: ticked("check-senders"),
+    senders: page.check.senders === null ? null : ticked("check-senders"),
     recipients: [...document.querySelectorAll("#check-recipients select")]
       .map((select) => ({ address: select.dataset.address, language: select.value })),
     evening: document.getElementById("check-evening").value,
@@ -2118,8 +2224,14 @@ async function sendBrief(event) {
   button.disabled = true;
   try {
     const out = await post("api/brief/send", {});
-    if (out.result === "sent") showSent("brief.send.sent", { to: out.to });
-    else showError("brief.send." + out.result);
+    if (out.result === "sent") {
+      showSent("brief.send.sent", { to: out.to });
+      // Parent Recap's new address may land in Hotmail's or Outlook.com's Junk at first (#524).
+      document.getElementById("brief-junk").hidden =
+        !(page.gmail.sender === "gateway" && JUNKS_AT_FIRST.test(out.to));
+    } else {
+      showError("brief.send." + out.result);
+    }
   } catch (e) {
     failed(e);
   } finally {

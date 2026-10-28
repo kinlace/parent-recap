@@ -265,6 +265,86 @@ def test_a_family_goes_from_the_language_to_finish_in_the_browser(tab):
     expect(button(tab, "connect.back")).to_be_hidden()
 
 
+def test_with_the_gateway_parent_recap_sends_the_brief_and_setup_finishes_without_gmail(
+        tab, family):
+    # ADR 0028: a Hotmail family, whose Brief comes from Parent Recap's own address.
+    hotmail = "parent@hotmail.com"
+    in_english_with_the_gateway(tab)
+    without_wilma_in_espoo(tab)
+    # Gmail stays the default.
+    expect(tab.get_by_role("radio", name=text("gmail.choice.gmail"))).to_be_checked()
+    expect(tab.get_by_label(text("gmail.password"))).to_be_visible()
+
+    tab.get_by_role("radio", name=text("gmail.choice.gateway")).check()
+
+    expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
+    expect(tab.get_by_text(text("gmail.gateway.unread"))).to_be_visible()
+    expect(tab.get_by_text(text("gmail.gateway.junk"))).to_be_hidden()
+    tab.get_by_label(text("gmail.gateway.address"), exact=True).fill(hotmail)
+    expect(tab.get_by_text(text("gmail.gateway.junk"))).to_be_visible()
+    button(tab, "gmail.gateway.save").click()
+    expect(tab.get_by_text(text("gmail.gateway.saved"))).to_be_visible()
+    expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
+    tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
+    button(tab, "gateway.save").click()
+    expect(source_listed(tab, "ai", "done")).to_be_visible()
+    skip(tab, "whatsapp").click()
+    tab.get_by_label(text("myclub.add.name")).fill("Mia")
+    button(tab, "myclub.add").click()
+    expect(tab.get_by_role("radio", name=re.compile("^Mia"))).to_be_checked()
+    tab.get_by_label(text("myclub.link")).fill(MYCLUB_LINK)
+    button(tab, "myclub.save").click()
+    expect(tab.get_by_text(text("connect.done"))).to_be_visible()
+    button(tab, "continue").click()
+
+    # No Gmail, so no senders to tick.
+    expect(heading(tab, "check.title")).to_be_visible()
+    expect(tab.get_by_text(text("check.senders"), exact=True)).to_be_hidden()
+    button(tab, "check.confirm").click()
+
+    expect(tab.get_by_text(text("brief.made"))).to_be_visible()
+    button(tab, "brief.send").click()
+    expect(tab.get_by_text(text("brief.send.sent", to=hotmail))).to_be_visible()
+    expect(tab.get_by_text(text("brief.junk"))).to_be_visible()
+    assert [(e.via, e.to) for e in family.sent] == [("gateway", [hotmail])]
+    button(tab, "brief.done").click()
+
+    button(tab, "finish.start").click()
+    expect(tab.get_by_text(text("finish.done", evening="21:00"))).to_be_visible()
+    cfg = Config.load(config_file(family))
+    assert (cfg.email.sender, cfg.gmail.username) == ("gateway", None)
+
+
+def test_gmail_opened_again_after_parent_recap_sends_is_only_read(tab, family):
+    in_english_with_the_gateway(tab)
+    skip(tab, "wilma").click()
+    tab.get_by_role("radio", name=text("gmail.choice.gateway")).check()
+    tab.get_by_label(text("gmail.gateway.address"), exact=True).fill("parent@hotmail.com")
+    button(tab, "gmail.gateway.save").click()
+    expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
+
+    source_listed(tab, "gmail", "skipped").click()
+
+    expect(tab.get_by_text(text("gmail.reading-only"))).to_be_visible()
+    sign_in_to_gmail(tab, TYPED)
+    expect(source_listed(tab, "gmail", "done")).to_be_visible()
+    cfg = Config.load(config_file(family))
+    assert cfg.email.sender == "gateway" and cfg.gmail.username == PARENT
+    assert [t.address for t in cfg.email.to] == ["parent@hotmail.com"]
+
+
+def test_without_the_gateway_as_the_ai_the_gmail_step_offers_only_gmail(tab):
+    in_english_with_the_gateway(tab)
+    skip(tab, "wilma").click()
+    expect(tab.get_by_role("radio", name=text("gmail.choice.gateway"))).to_be_visible()
+
+    as_on(tab, SYSTEM, lambda state: {**state, "welcome": {**state["welcome"], "ai": "claude"}})
+
+    expect(tab.get_by_label(text("gmail.password"))).to_be_visible()
+    expect(tab.get_by_role("radio", name=text("gmail.choice.gateway"))).to_have_count(0)
+    expect(tab.get_by_text(text("gmail.gateway.unread"))).to_be_hidden()
+
+
 def test_loading_the_page_logs_no_error_in_the_console(tab):
     # Such as a refused /favicon.ico, which the browser asks for at the root, outside the code.
     errors: list[str] = []
