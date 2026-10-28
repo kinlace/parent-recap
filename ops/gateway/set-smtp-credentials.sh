@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Puts the sending domain's SMTP credentials (OCI Email Delivery, README "The sending domain")
-# into the gateway's env file, adding the lines on first use and replacing them on rotation.
+# into their own env file on the gateway, replacing it on rotation. Not bifrost.env: Bifrost's
+# unit loads that file, and Bifrost has no use for them.
 #
 #   scp ops/gateway/set-smtp-credentials.sh <vm>:/tmp/
 #   ssh -t <vm> "sudo bash /tmp/set-smtp-credentials.sh"
@@ -10,26 +11,29 @@
 set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)" >&2; exit 1; }
-env=/etc/bifrost/bifrost.env
-[ -f "$env" ] || { echo "$env missing: run gateway-setup.sh first" >&2; exit 1; }
+dir=/etc/brief-relay
+env=$dir/brief-relay.env
+old=/etc/bifrost/bifrost.env
 [ -t 0 ] || { echo "needs ssh -t to ask for the credentials" >&2; exit 1; }
 
 read -r -p "SMTP username (ocid1.user…@ocid1.tenancy….com): " user
 read -r -s -p "SMTP password: " pass; echo
 [ -n "$user" ] && [ -n "$pass" ] || { echo "empty value" >&2; exit 1; }
 
-# awk, not sed: the values are data, not patterns.
+install -d -m 0700 "$dir"
 umask 077
 tmp=$(mktemp "$env.XXXXXX")
-SMTP_USER=$user SMTP_PASS=$pass awk '
-  /^BRIEF_SMTP_USERNAME=/ { print "BRIEF_SMTP_USERNAME=" ENVIRON["SMTP_USER"]; seen_u = 1; next }
-  /^BRIEF_SMTP_PASSWORD=/ { print "BRIEF_SMTP_PASSWORD=" ENVIRON["SMTP_PASS"]; seen_p = 1; next }
-  { print }
-  END {
-    if (!seen_u) print "BRIEF_SMTP_USERNAME=" ENVIRON["SMTP_USER"]
-    if (!seen_p) print "BRIEF_SMTP_PASSWORD=" ENVIRON["SMTP_PASS"]
-  }' "$env" >"$tmp"
+printf 'BRIEF_SMTP_USERNAME=%s\nBRIEF_SMTP_PASSWORD=%s\n' "$user" "$pass" >"$tmp"
 unset user pass
 chmod 0600 "$tmp"
 mv "$tmp" "$env"
+
+# Before #525 the credentials went into bifrost.env; take them out of there.
+if [ -f "$old" ] && grep -q '^BRIEF_SMTP_' "$old"; then
+  tmp=$(mktemp "$old.XXXXXX")
+  grep -v '^BRIEF_SMTP_' "$old" >"$tmp" || true
+  chmod 0600 "$tmp"
+  mv "$tmp" "$old"
+  echo "removed the SMTP lines from $old"
+fi
 echo "SMTP credentials written to $env"

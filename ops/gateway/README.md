@@ -4,9 +4,9 @@ The server that invited Households' Gateway Keys go through (ADR 0014). Everythi
 
 - `host-setup.sh` sets up the VM (Ubuntu/Debian): system updates, SSH with keys only, a firewall that lets in only SSH and HTTPS, Caddy, and a login for the AI assistant that can read logs but has no sudo.
 - `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016) behind Caddy. It works on any systemd Linux with Caddy installed.
-- `config.json`, `bifrost.service`, `Caddyfile` and `bifrost.env.example` are what it installs. The env file holds only variable names.
+- `config.json`, `bifrost.service`, `Caddyfile` and `bifrost.env.example` are what it installs. The env examples hold only variable names.
 - `oci-quota.json` is the Oracle Cloud quota policy that lets the account create only Always Free resources.
-- `set-smtp-credentials.sh` puts the sending domain's SMTP credentials into the env file (see "The sending domain").
+- `set-smtp-credentials.sh` puts the sending domain's SMTP credentials into their own env file, whose names are in `brief-relay.env.example` (see "The sending domain").
 
 This is how we run it. Take as much as fits your own setup. `host-setup.sh` works on any Ubuntu 24.04 server; on another Linux, do its steps yourself (updates, SSH keys only, firewall, install Caddy) and go straight to `gateway-setup.sh`. On a cloud other than Oracle's, use that cloud's own firewall too: the script only opens port 443 in front of the reject-all rule Oracle's image ships, and adds no rules of its own on an image without one. Steps 1–4 below are Oracle's.
 
@@ -72,7 +72,7 @@ Briefs sent from Parent Recap's own address (ADR 0028) leave as `brief@parentrec
 
 **Hotmail and Outlook.com junk the domain at first.** On 2026-10-28 the test sends passed SPF, DKIM and DMARC at both Gmail and Microsoft (`compauth=pass`), landed in Gmail's inbox, and were still scored spam by Microsoft (`SCL 5`), with a Brief-shaped message as much as a two-line test. The sending IP is clean and the authentication is complete, so what is missing is history for `parentrecap.com`: Microsoft's filter learns from how recipients treat the mail. Decided (#524): accept it and warm up. A Hotmail or Outlook.com Recipient finds the first Brief in Junk and marks it "Not junk" once, which puts the sender on that mailbox's trusted list; the setup page and the first Brief say so (#527). Email Delivery adds a `List-Unsubscribe` header of its own unless the message carries an HTTPS one (#525).
 
-**Put the credentials on the host.** Prompts for the SMTP username and password and writes them to `/etc/bifrost/bifrost.env` (`BRIEF_SMTP_USERNAME`, `BRIEF_SMTP_PASSWORD`); the service that sends Briefs (#525) reads them from there. SMTP endpoint `smtp.email.eu-stockholm-1.oci.oraclecloud.com`, port 465 (TLS) or 587 (STARTTLS), AUTH PLAIN.
+**Put the credentials on the host.** Prompts for the SMTP username and password and writes them to `/etc/brief-relay/brief-relay.env` (`BRIEF_SMTP_USERNAME`, `BRIEF_SMTP_PASSWORD`); the service that sends Briefs (#525) reads them from there. It is not `bifrost.env`, because Bifrost's unit loads that file into Bifrost's environment and Bifrost only proxies model calls. SMTP endpoint `smtp.email.eu-stockholm-1.oci.oraclecloud.com`, port 465 (TLS) or 587 (STARTTLS), AUTH PLAIN.
 
 ```sh
 scp ops/gateway/set-smtp-credentials.sh ubuntu@<ip>:/tmp/
