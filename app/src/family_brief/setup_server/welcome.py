@@ -94,7 +94,7 @@ class Welcome(Phase):
         }
         if answer.feedback or feedback.pilot_form():  # without a pilot Form, setup save refuses yes
             answers["feedback"] = {"enabled": answer.feedback}
-        parent = self.context.gmail_address()
+        parent = self.context.setup_parent()
         if parent:
             answers["recipients"] = gmail.recipients(self.context, parent, partner)
         with self.context.connect.lock:

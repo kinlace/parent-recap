@@ -133,39 +133,74 @@
     </div>
     <div id="source-gmail" class="source" hidden>
       <h2 data-text="source.gmail"></h2>
-      <p data-text="gmail.explain"></p>
-      <p data-text="gmail.before"></p>
-      <form id="gmail-form" class="details">
+      <fieldset id="gmail-choice" hidden>
+        <legend data-text="gmail.choice"></legend>
+        <label><input type="radio" name="sender" value="gmail"><span data-text="gmail.choice.gmail"></span></label>
+        <label><input type="radio" name="sender" value="gateway"><span data-text="gmail.choice.gateway"></span></label>
+      </fieldset>
+      <form id="gateway-sends-form" class="details" hidden>
+        <p data-text="gmail.gateway.explain"></p>
+        <p data-text="gmail.gateway.unread"></p>
         <div class="field">
-          <label for="gmail-address" data-text="gmail.address"></label>
-          <input type="email" id="gmail-address" autocomplete="email" spellcheck="false" required>
+          <label for="gateway-sends-address" data-text="gmail.gateway.address"></label>
+          <input type="email" id="gateway-sends-address" autocomplete="email" spellcheck="false" required>
         </div>
-        <ol class="steps">
-          <li>
-            <button type="button" id="gmail-open" class="secondary" data-text="gmail.open"></button>
-            <p class="hint" data-text="gmail.account"></p>
-          </li>
-          <li data-text="gmail.step.name"></li>
-          <li data-text="gmail.step.paste"></li>
-        </ol>
         <div class="field">
-          <label for="gmail-password" data-text="gmail.password"></label>
-          <input type="password" id="gmail-password" autocomplete="off" spellcheck="false" required>
+          <label for="gateway-sends-language" data-text="gmail.gateway.language"></label>
+          <select id="gateway-sends-language"></select>
         </div>
+        <div id="gateway-sends-partner" class="details" hidden>
+          <div class="field">
+            <label for="gateway-sends-partner-address" data-text="gmail.gateway.partner"></label>
+            <input type="email" id="gateway-sends-partner-address" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="gateway-sends-partner-language" data-text="gmail.gateway.partner.language"></label>
+            <select id="gateway-sends-partner-language"></select>
+          </div>
+        </div>
+        <p id="gateway-sends-junk" class="hint" data-text="gmail.gateway.junk" hidden></p>
         <div class="slot" data-default></div>
         <div class="actions">
-          <button type="submit" id="gmail-save" data-text="gmail.save"></button>
+          <button type="submit" id="gateway-sends-save" data-text="gmail.gateway.save"></button>
         </div>
       </form>
-      <details class="more">
-        <summary data-text="gmail.unavailable"></summary>
-        <ol>
-          <li data-text="gmail.unavailable.account"></li>
-          <li data-text="gmail.unavailable.two-step"></li>
-        </ol>
-        <p><button type="button" id="gmail-two-step-more" class="secondary" data-text="gmail.two-step"></button></p>
-        <p data-text="gmail.unavailable.work"></p>
-      </details>
+      <div id="gmail-own">
+        <p id="gmail-reading-only" data-text="gmail.reading-only" hidden></p>
+        <p data-text="gmail.explain"></p>
+        <p data-text="gmail.before"></p>
+        <form id="gmail-form" class="details">
+          <div class="field">
+            <label for="gmail-address" data-text="gmail.address"></label>
+            <input type="email" id="gmail-address" autocomplete="email" spellcheck="false" required>
+          </div>
+          <ol class="steps">
+            <li>
+              <button type="button" id="gmail-open" class="secondary" data-text="gmail.open"></button>
+              <p class="hint" data-text="gmail.account"></p>
+            </li>
+            <li data-text="gmail.step.name"></li>
+            <li data-text="gmail.step.paste"></li>
+          </ol>
+          <div class="field">
+            <label for="gmail-password" data-text="gmail.password"></label>
+            <input type="password" id="gmail-password" autocomplete="off" spellcheck="false" required>
+          </div>
+          <div class="slot" data-default></div>
+          <div class="actions">
+            <button type="submit" id="gmail-save" data-text="gmail.save"></button>
+          </div>
+        </form>
+        <details class="more">
+          <summary data-text="gmail.unavailable"></summary>
+          <ol>
+            <li data-text="gmail.unavailable.account"></li>
+            <li data-text="gmail.unavailable.two-step"></li>
+          </ol>
+          <p><button type="button" id="gmail-two-step-more" class="secondary" data-text="gmail.two-step"></button></p>
+          <p data-text="gmail.unavailable.work"></p>
+        </details>
+      </div>
     </div>
     <div id="source-ai" class="source" hidden>
       <h2 data-text="source.ai"></h2>
@@ -399,7 +434,7 @@
           <p data-text="check.whatsapp.note"></p>
         </details>
       </fieldset>
-      <fieldset>
+      <fieldset id="check-mail">
         <legend data-text="check.senders"></legend>
         <p id="check-senders-none" class="ready" data-text="check.senders.none" hidden></p>
         <label class="all"><input type="checkbox" id="check-senders-all"><span data-text="check.all"></span></label>
@@ -441,6 +476,7 @@
     </div>
     <div id="brief-sent" class="status" role="status" hidden>
       <p id="brief-sent-message"></p>
+      <p id="brief-junk" data-text="brief.junk" hidden></p>
       <button type="button" id="brief-done" data-text="brief.done"></button>
     </div>
   </section>

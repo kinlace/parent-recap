@@ -199,6 +199,25 @@ def test_without_whatsapp_there_are_no_groups_to_tick(harness, page):
     assert check_page(page.url)["whatsapp"] is None
 
 
+def test_without_gmail_working_reads_no_mail_and_there_are_no_senders_to_tick(harness, page,
+                                                                              health, monkeypatch):
+    # Parent Recap sends the Brief, so Gmail was skipped (ADR 0028): nothing signs in to it.
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", None)
+    harness.config["gmail"] = {}
+    harness.config["email"]["sender"] = "gateway"
+    connect_done(harness)
+    more_progress(harness, sources={"gmail": "skipped"})
+
+    start_reading(page.url)
+
+    assert read_to_the_end(page.url)["result"] == "read"
+    assert check_page(page.url)["senders"] is None  # not even the city's
+    assert confirm(page.url, senders=["espoo.fi"]).status == 400
+    assert confirm(page.url, senders=None).status == 200
+    cfg = Config.load(config_file(harness))
+    assert not cfg.gmail.allowlist_domains and cfg.gmail.username is None
+
+
 def test_with_another_source_the_check_page_doesnt_say_the_briefs_come_out_empty(harness, page):
     # With Wilma's or a WhatsApp group's news, a Gmail with no sender only sends the Brief (#361).
     at_the_check_step(harness)

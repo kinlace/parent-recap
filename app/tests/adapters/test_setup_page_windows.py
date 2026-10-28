@@ -27,7 +27,7 @@ from setup_page import (APP_PASSWORD, call, check_page, clock, config_file,  # n
 from test_setup_ai import GATEWAY_KEY, save_gateway_key
 from test_setup_check import read_to_the_end, start_reading
 from test_setup_first_brief import BRIEF_TEXT, brief_made, make_brief, send_it_to_me
-from test_setup_gmail import TYPED, connect_gmail
+from test_setup_gmail import TYPED, connect_gmail, parent_recap_sends
 from test_setup_myclub import CALENDAR, LINK as MYCLUB_LINK, add_kid, save_link
 from test_setup_status import install_program
 from test_uninstall import Handover, leftovers, uninstall
@@ -113,10 +113,11 @@ def windows_pc(fresh_install, credential_manager, monkeypatch):
     jobs.remove_all()
 
 
-def walk_to_finish(harness, url: str) -> dict[str, Any]:
+def walk_to_finish(harness, url: str, sender: str = "gmail") -> dict[str, Any]:
     """Every step a family without Wilma takes, with a Gateway Key: the language, Welcome, each
     Source the page lists, Working, Check and the first Brief, then Finish, with Weekend Picks
-    turned on as manage turns them on. Returns how Finish ended."""
+    turned on as manage turns them on. With `sender` "gateway", Parent Recap sends the Brief and
+    Gmail is skipped (ADR 0028). Returns how Finish ended."""
     state = call(url, "api/state").json()
     assert state["system"] == ("windows" if sys.platform == "win32" else "macos")
     assert call(url, "api/language", method="POST", body={"language": "en"}).status == 200
@@ -128,6 +129,9 @@ def walk_to_finish(harness, url: str) -> dict[str, Any]:
     for name in listed:
         if name in ("wilma", "whatsapp"):  # the school has no Wilma, the family skips WhatsApp
             assert source(url, name, "skip").status == 200, name
+        elif name == "gmail" and sender == "gateway":
+            out = parent_recap_sends(url, {"address": PARENT, "language": "en"}).json()
+            assert out["result"] == "saved"
         elif name == "gmail":
             assert connect_gmail(url, PARENT, TYPED).json()["result"] == "saved"
         elif name == "ai":
@@ -137,15 +141,17 @@ def walk_to_finish(harness, url: str) -> dict[str, Any]:
             out = save_link(url, "Mia", MYCLUB_LINK).json()
             assert out["result"] == "saved" and out["progress"]["source"] is None
     statuses = call(url, "api/state").json()["progress"]["sources"]
-    assert {statuses[s] for s in ("gmail", "ai", "myclub")} == {"done"}
+    assert {statuses[s] for s in ("ai", "myclub")} == {"done"}
+    assert statuses["gmail"] == ("skipped" if sender == "gateway" else "done")
 
     assert start_reading(url).status == 200
     assert read_to_the_end(url)["result"] == "read"
     offered = check_page(url)
     assert offered["whatsapp"] is None
+    senders = offered["senders"] and [s["domain"] for s in offered["senders"] if s["ticked"]]
     answers = {"kids": [{"name": k["name"], "everyday_name": k["everyday_name"]}
                         for k in offered["kids"]],
-               "whatsapp": None, "senders": [s["domain"] for s in offered["senders"] if s["ticked"]],
+               "whatsapp": None, "senders": senders,
                "recipients": offered["recipients"], "evening": offered["evening"]}
     assert call(url, "api/check", method="POST", body=answers).status == 200
     health = health_result(url, SLOW)
@@ -197,6 +203,38 @@ def test_a_family_sets_up_with_the_gateway_gmail_and_myclub_on_the_page_and_unin
     assert out["result"] == "done" and out["wake"] == "set"
     uninstall_leaves_nothing(fresh_install, monkeypatch)
     assert fresh_install.wake.wakes == []
+
+
+def assert_sent_by_parent_recap(harness, out: dict[str, Any]) -> None:
+    """Finish done with no Gmail at all: Parent Recap's address sent the first Brief."""
+    outcomes = {o["outcome"]: o["ok"] for o in out["outcomes"]}
+    assert {k: v for k, v in outcomes.items() if k != "wake"} == \
+        {"installed": True, "doctor": True, "brief": True, "nightly": True}, out
+    assert gateway.key() == GATEWAY_KEY
+    cfg = Config.load(config_file(harness))
+    assert (cfg.email.sender, cfg.gmail.username) == ("gateway", None)
+    assert [(e.via, e.to) for e in harness.sent] == [("gateway", [PARENT])]
+    assert harness.relay_keys[-1] == GATEWAY_KEY
+    assert not any(n.startswith("gmail-imap-") for n in harness.secrets)
+
+
+def test_a_family_parent_recap_sends_for_sets_up_without_gmail_and_uninstalls(
+        fresh_install, page, monkeypatch):
+    out = walk_to_finish(fresh_install, page.url, sender="gateway")
+
+    assert out["result"] == "done", out
+    assert_sent_by_parent_recap(fresh_install, out)
+    uninstall_leaves_nothing(fresh_install, monkeypatch)
+
+
+@pytest.mark.windows
+def test_on_windows_a_family_parent_recap_sends_for_sets_up_without_gmail(windows_pc, page,
+                                                                          monkeypatch):
+    out = walk_to_finish(windows_pc, page.url, sender="gateway")
+
+    assert_sent_by_parent_recap(windows_pc, out)
+    assert secrets.get(gateway.ACCOUNT) == GATEWAY_KEY
+    uninstall_leaves_nothing(windows_pc, monkeypatch)
 
 
 @pytest.mark.windows
