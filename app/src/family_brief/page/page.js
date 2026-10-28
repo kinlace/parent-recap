@@ -400,7 +400,10 @@ const STEPS = {
   },
   gmail: {
     setUp: setUpGmail, first: prepareGmail,
-    leave: () => { document.getElementById("gmail-password").value = ""; },
+    leave: () => {
+      document.getElementById("gmail-password").value = "";
+      document.getElementById("gateway-sends-key").value = "";
+    },
     label: "Gmail",
   },
   ai: {
@@ -471,13 +474,17 @@ function setUpGmail() {
   document.getElementById("gateway-sends-form").addEventListener("submit", saveParentRecapSends);
 }
 
-// With the gateway as the AI, Gmail's step offers to have Parent Recap send the Brief from its own
-// address instead, with no Gmail at all (ADR 0028). Gmail stays the default: once Parent Recap
-// sends, connecting Gmail only has the school's mail read.
+// Gmail's step offers to have Parent Recap send the Brief from its own address instead, with no
+// Gmail at all (ADR 0028). Gmail stays the default: once Parent Recap sends, connecting Gmail only
+// has the school's mail read. With its own Claude Code or Codex as the AI, a Household gives a
+// Gateway Key for sending alone, which the gateway as the AI has on its own step.
 function prepareGmail() {
   const sends = page.gmail.sender === "gateway";
-  document.getElementById("gmail-choice").hidden = !(page.welcome.ai === "gateway" || sends);
   pick("sender", "gmail");
+  const key = page.welcome.ai !== "gateway";
+  document.getElementById("gateway-sends-key-part").hidden = !key;
+  document.getElementById("gateway-sends-key").required = key;
+  setText(document.getElementById("gateway-sends-save"), key ? "gateway.save" : "gmail.gateway.save");
   document.getElementById("gmail-reading-only").hidden = !sends;
   const { partner } = page.welcome;
   document.getElementById("gateway-sends-language").value = page.language;
@@ -518,6 +525,12 @@ function showJunk() {
     !gatewayRecipients().some(({ address }) => JUNKS_AT_FIRST.test(address.trim()));
 }
 
+// How testing and storing a Gateway Key went when it didn't save, and those after which the same
+// key can be tried again as it is.
+const KEY_RESULTS = ["not-a-key", "rejected", "no-connection", "test-call-failed",
+  "keychain-not-reachable", "keychain-failed"];
+const KEY_AGAIN = ["no-connection", "test-call-failed", "keychain-failed"];
+
 async function saveParentRecapSends(event) {
   event.preventDefault();
   clearError();
@@ -525,10 +538,14 @@ async function saveParentRecapSends(event) {
   const button = event.submitter;
   button.disabled = true;
   const recipients = gatewayRecipients();
+  const key = document.getElementById("gateway-sends-key");
   try {
     const out = await post("api/gmail/gateway", {
       recipients: recipients.map(({ address, language }) => ({ address, language })),
+      ...(key.required ? { key: key.value } : {}),
     });
+    // The key stays in the field only when the same key can be tried again as it is.
+    if (!["no-address", "same-address", ...KEY_AGAIN].includes(out.result)) key.value = "";
     const seen = new Set();
     for (const { field, address } of recipients) {
       const key = address.trim().toLowerCase();
@@ -541,7 +558,8 @@ async function saveParentRecapSends(event) {
       page.gmail.sender = "gateway";
       renderSources();
     }
-    showSource("gmail.gateway." + out.result);
+    // What a key the relay didn't take says is the gateway AI's key field's own.
+    showSource((KEY_RESULTS.includes(out.result) ? "gateway." : "gmail.gateway.") + out.result);
   } catch (e) {
     failed(e);
   } finally {
@@ -1240,7 +1258,7 @@ async function saveGatewayKey(event) {
   const key = document.getElementById("gateway-key");
   try {
     const out = await post("api/gateway", { key: key.value });
-    if (!["no-connection", "test-call-failed", "keychain-failed"].includes(out.result)) key.value = "";
+    if (!KEY_AGAIN.includes(out.result)) key.value = "";
     if (out.result === "saved") return aiDone(out, "gateway.saved");
     showSource("gateway." + out.result);
   } catch (e) {

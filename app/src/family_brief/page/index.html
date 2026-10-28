@@ -133,7 +133,7 @@
     </div>
     <div id="source-gmail" class="source" hidden>
       <h2 data-text="source.gmail"></h2>
-      <fieldset id="gmail-choice" hidden>
+      <fieldset id="gmail-choice">
         <legend data-text="gmail.choice"></legend>
         <label><input type="radio" name="sender" value="gmail"><span data-text="gmail.choice.gmail"></span></label>
         <label><input type="radio" name="sender" value="gateway"><span data-text="gmail.choice.gateway"></span></label>
@@ -160,6 +160,13 @@
           </div>
         </div>
         <p id="gateway-sends-junk" class="hint" data-text="gmail.gateway.junk" hidden></p>
+        <div id="gateway-sends-key-part" hidden>
+          <p data-text="gmail.gateway.key.explain"></p>
+          <div class="field">
+            <label for="gateway-sends-key" data-text="gmail.gateway.key"></label>
+            <input type="password" id="gateway-sends-key" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
         <div class="slot" data-default></div>
         <div class="actions">
           <button type="submit" id="gateway-sends-save" data-text="gmail.gateway.save"></button>

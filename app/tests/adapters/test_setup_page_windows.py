@@ -18,7 +18,7 @@ import pytest
 import yaml
 
 from conftest import REAL_RUN, msg
-from family_brief import gateway
+from family_brief import gateway, ops
 from family_brief.collectors import myclub
 from family_brief.config import Config
 from family_brief.system import jobs, jobs_windows, secrets, wake, wake_windows, windows_only
@@ -235,6 +235,43 @@ def test_on_windows_a_family_parent_recap_sends_for_sets_up_without_gmail(window
     assert_sent_by_parent_recap(windows_pc, out)
     assert secrets.get(gateway.ACCOUNT) == GATEWAY_KEY
     uninstall_leaves_nothing(windows_pc, monkeypatch)
+
+
+def a_key_for_sending_is_saved(harness, url: str) -> None:
+    """A Household whose AI is its own Codex has Parent Recap send its Brief with a Gateway Key for
+    sending alone (#565): the key is stored, the page's state says Gmail is skipped and the gateway
+    sends, and doctor's sending check, which sends nothing, passes with it."""
+    assert call(url, "api/language", method="POST", body={"language": "en"}).status == 200
+    assert call(url, "api/welcome", method="POST",
+                body={"ai": "codex", "partner": None, "feedback": False}).status == 200
+    assert source(url, "wilma", "skip").status == 200
+
+    out = parent_recap_sends(url, {"address": PARENT, "language": "en"}, key=GATEWAY_KEY).json()
+
+    assert out["result"] == "saved" and out["progress"]["sources"]["gmail"] == "skipped"
+    assert gateway.key() == GATEWAY_KEY
+    state = call(url, "api/state").json()
+    assert state["gmail"] == {"address": None, "sender": "gateway"}
+    assert state["progress"]["sources"]["gmail"] == "skipped"
+    assert state["progress"]["sources"]["ai"] == "to-do"  # Codex's own sign-in is still to come
+    assert harness.relay_keys == [GATEWAY_KEY] and harness.sent == []
+    [sending] = [c for c in ops.health_checks(str(config_file(harness)), skip_llm=True,
+                                               schedule=False) if c.key == "gateway-sends"]
+    assert sending.status == ops.OK, sending
+    assert harness.sent == []
+
+
+def test_a_codex_household_saves_a_key_for_sending_alone(fresh_install, page):
+    a_key_for_sending_is_saved(fresh_install, page.url)
+
+    assert fresh_install.secrets == {gateway.ACCOUNT: GATEWAY_KEY}
+
+
+@pytest.mark.windows
+def test_on_windows_a_key_for_sending_alone_is_saved_in_credential_manager(windows_pc, page):
+    a_key_for_sending_is_saved(windows_pc, page.url)
+
+    assert secrets.get(gateway.ACCOUNT) == GATEWAY_KEY
 
 
 @pytest.mark.windows

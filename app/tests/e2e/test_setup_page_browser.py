@@ -28,13 +28,14 @@ except ImportError:  # the browser fixture skips the tests and says why
 
 import fake_node
 from conftest import CLASS_GROUP, PIANO_GROUP
-from family_brief import failure, linked_device, ops, setup_connect, setup_wilma
+from family_brief import failure, gateway, linked_device, ops, setup_connect, setup_wilma
 from family_brief.collectors import myclub
 from family_brief.config import Config
 from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, config_file,
                         more_progress, progress_file, save_progress, wait_for)
 from setup_page import ai, clock, health, page, schedule  # noqa: F401
 from test_setup_ai import GATEWAY_KEY
+from test_setup_ai import codex  # noqa: F401
 from test_setup_gmail import TYPED
 from test_setup_myclub import LINK as MYCLUB_LINK
 from test_setup_page_windows import Web, school_mail
@@ -333,16 +334,73 @@ def test_gmail_opened_again_after_parent_recap_sends_is_only_read(tab, family):
     assert [t.address for t in cfg.email.to] == ["parent@hotmail.com"]
 
 
-def test_without_the_gateway_as_the_ai_the_gmail_step_offers_only_gmail(tab):
+def test_with_the_gateway_as_the_ai_parent_recap_sends_with_no_key_asked(tab):
     in_english_with_the_gateway(tab)
     skip(tab, "wilma").click()
-    expect(tab.get_by_role("radio", name=text("gmail.choice.gateway"))).to_be_visible()
 
-    as_on(tab, SYSTEM, lambda state: {**state, "welcome": {**state["welcome"], "ai": "claude"}})
+    tab.get_by_role("radio", name=text("gmail.choice.gateway")).check()
 
-    expect(tab.get_by_label(text("gmail.password"))).to_be_visible()
-    expect(tab.get_by_role("radio", name=text("gmail.choice.gateway"))).to_have_count(0)
-    expect(tab.get_by_text(text("gmail.gateway.unread"))).to_be_hidden()
+    expect(tab.get_by_text(text("gmail.gateway.unread"))).to_be_visible()
+    expect(tab.get_by_label(text("gmail.gateway.key"))).to_be_hidden()
+    expect(button(tab, "gmail.gateway.save")).to_be_visible()
+
+
+@pytest.mark.macos
+def test_with_codex_parent_recap_sends_with_a_key_for_sending_and_setup_finishes(tab, family,
+                                                                                codex):
+    # #565: a Household whose AI is its own Codex, given a Gateway Key for sending alone.
+    hotmail = "parent@hotmail.com"
+    in_english(tab)
+    tab.get_by_role("radio", name=text("welcome.ai.codex")).check()
+    expect(tab.get_by_text(text("ai.codex.ready"))).to_be_visible()
+    tab.get_by_role("radio", name=text("welcome.partner.only-me")).check()
+    button(tab, "continue").click()
+    expect(heading(tab, "connect.title")).to_be_visible()
+    without_wilma_in_espoo(tab)
+    expect(tab.get_by_role("radio", name=text("gmail.choice.gmail"))).to_be_checked()
+
+    tab.get_by_role("radio", name=text("gmail.choice.gateway")).check()
+
+    expect(tab.get_by_text(text("gmail.gateway.key.explain"))).to_be_visible()
+    expect(tab.get_by_text(text("gmail.gateway.unread"))).to_be_visible()
+    tab.get_by_label(text("gmail.gateway.address"), exact=True).fill(hotmail)
+    key = tab.get_by_label(text("gmail.gateway.key"), exact=True)
+    # A key the relay doesn't know is said as the gateway AI's field says it, and not kept.
+    family.relay_answer = (401, {"error": "missing, unknown or revoked Gateway Key"})
+    key.fill(GATEWAY_KEY)
+    button(tab, "gateway.save").click()
+    expect(tab.get_by_text(text("gateway.rejected"))).to_be_visible()
+    expect(key).to_have_value("")
+    expect(source_listed(tab, "gmail", "to-do")).to_be_visible()
+    family.relay_answer = (200, {"sent": 1, "refused": 0})
+    key.fill(GATEWAY_KEY)
+    button(tab, "gateway.save").click()
+    expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
+    # Codex's own sign-in, unchanged: it's signed in already, which its step checks at once.
+    expect(source_listed(tab, "ai", "done")).to_be_visible()
+    skip(tab, "whatsapp").click()
+    tab.get_by_label(text("myclub.add.name")).fill("Mia")
+    button(tab, "myclub.add").click()
+    expect(tab.get_by_role("radio", name=re.compile("^Mia"))).to_be_checked()
+    tab.get_by_label(text("myclub.link")).fill(MYCLUB_LINK)
+    button(tab, "myclub.save").click()
+    expect(tab.get_by_text(text("connect.done"))).to_be_visible()
+    button(tab, "continue").click()
+
+    expect(heading(tab, "check.title")).to_be_visible()
+    button(tab, "check.confirm").click()
+    expect(tab.get_by_text(text("brief.made"))).to_be_visible()
+    button(tab, "brief.send").click()
+    expect(tab.get_by_text(text("brief.send.sent", to=hotmail))).to_be_visible()
+    assert [(e.via, e.to) for e in family.sent] == [("gateway", [hotmail])]
+    button(tab, "brief.done").click()
+
+    button(tab, "finish.start").click()
+    expect(tab.get_by_text(text("finish.done", evening="21:00"))).to_be_visible()
+    cfg = Config.load(config_file(family))
+    assert (cfg.llm.backend, cfg.email.sender, cfg.gmail.username) == ("codex", "gateway", None)
+    assert family.secrets[gateway.ACCOUNT] == GATEWAY_KEY
+    assert family.model.reached and "gateway.parentrecap.com" not in family.model.reached
 
 
 def test_loading_the_page_logs_no_error_in_the_console(tab):

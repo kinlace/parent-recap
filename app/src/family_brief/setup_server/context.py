@@ -19,7 +19,7 @@ import yaml
 from pydantic import ValidationError
 
 from .. import chat_install, failure, llm, setup_connect, setup_save
-from ..config import Config
+from ..config import Config, LLMConfig
 from ..setup_connect import Reply
 from ..system import profile
 
@@ -164,6 +164,11 @@ class Context:
         if email.sender == "gateway":
             return email.to[0].address if email.to else None
         return self.gmail_address()
+
+    def gateway_url(self) -> str:
+        """The gateway the config names, else the maintainers' own."""
+        url = self.section("llm").get("gateway_url")
+        return url if isinstance(url, str) and url else LLMConfig().gateway_url
 
 
 class Phase:

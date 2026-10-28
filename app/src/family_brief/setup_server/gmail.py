@@ -1,6 +1,8 @@
 """Gmail's connect step: the address and the App Password, which make the address the setup
-parent's, first among the Recipients (ADR 0007). With the gateway as the AI, the step also offers
-"Parent Recap sends the Brief" (ADR 0028): the Recipients' addresses alone, and Gmail skipped."""
+parent's, first among the Recipients (ADR 0007). The step also offers "Parent Recap sends the
+Brief" (ADR 0028): the Recipients' addresses, and Gmail skipped. A Household whose AI is its own
+Claude Code or Codex gives a Gateway Key for sending alone with them, which the gateway as the AI
+needn't."""
 from __future__ import annotations
 
 import re
@@ -9,7 +11,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from .. import setup_gmail, setup_save
+from .. import setup_ai, setup_gmail, setup_save
 from ..setup_connect import Reply, Strict, parse
 from .context import Action, Context, Phase, keychain_code
 
@@ -21,6 +23,10 @@ GMAIL_RESULTS = ("saved", "no-address", "not-an-app-password", "rejected", "no-c
 # What "Parent Recap sends the Brief" can say: saved, an address that isn't one, or the same
 # address given for two Recipients.
 GATEWAY_SENDS_RESULTS = ("saved", "no-address", "same-address")
+# And how testing and storing a Gateway Key for sending alone went when it didn't save, which the
+# page says as the gateway AI's key field does (ai.GATEWAY_RESULTS).
+SEND_KEY_RESULTS = ("not-a-key", "rejected", "no-connection", "test-call-failed",
+                    "keychain-not-reachable", "keychain-failed")
 ADDRESS = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -36,6 +42,7 @@ class SentTo(Strict):
 
 class GatewaySends(Strict):
     recipients: list[SentTo] = Field(min_length=1)  # the setup parent first
+    key: str | None = None  # the Gateway Key for sending alone, unless the gateway is the AI
 
 
 class Gmail(Phase):
@@ -63,20 +70,30 @@ class Gmail(Phase):
             "gmail", lambda progress: self._answers(address, progress), reply={"address": address})
 
     def parent_recap_sends(self, raw: Any) -> Reply:
-        """"Parent Recap sends the Brief", for a Household whose AI is the gateway (ADR 0028): saves
-        the Recipients, the setup parent first, and the gateway as what sends the Brief, and skips
-        Gmail, which needs no App Password then. Gmail can still be opened from the Source list
-        later, to have the school's mail read."""
+        """"Parent Recap sends the Brief" (ADR 0028): saves the Recipients, the setup parent first,
+        and the gateway as what sends the Brief, and skips Gmail, which needs no App Password then.
+        Gmail can still be opened from the Source list later, to have the school's mail read.
+        A Household whose AI is its own Claude Code or Codex gives a Gateway Key for sending alone,
+        pasted into the page's own field (ADR 0007): it's tested with the Brief relay's check,
+        which sends nothing and makes no model call, and stored, as `setup gateway` does. The
+        gateway as the AI has its key tested with a model call on the AI step instead. The key is
+        never returned, logged or put on a command line."""
         answer = parse(GatewaySends, raw)
-        if self.context.model().llm.backend != "gateway":
+        if (answer.key is None) != (self.context.model().llm.backend == "gateway"):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                "invalid-answers", "Parent Recap sends the Brief only for a Household whose AI "
-                "is the gateway.", errors=["answers: the AI isn't the gateway"])
+                "invalid-answers", "Give a Gateway Key for sending alone, unless the gateway is "
+                "the AI: the AI step takes its key.",
+                errors=["key: should be given when, and only when, the AI isn't the gateway"])
         addresses = [r.address.strip().lower() for r in answer.recipients]
         if not all(ADDRESS.match(a) for a in addresses):
             return HTTPStatus.OK, {"result": "no-address"}
         if len(set(addresses)) < len(addresses):
             return HTTPStatus.OK, {"result": "same-address"}
+        if answer.key is not None:
+            result, extra = setup_ai.gateway_sign_in(self.context.gateway_url(), answer.key,
+                                                     sends_only=True)
+            if result != "saved":
+                return HTTPStatus.OK, {"result": result, **keychain_code(extra)}
         household = self.context.model().summary_language
         recipients = [{"address": a, **({"language": r.language} if r.language != household else {})}
                       for a, r in zip(addresses, answer.recipients)]
