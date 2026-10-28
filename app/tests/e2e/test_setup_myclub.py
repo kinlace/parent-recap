@@ -124,7 +124,7 @@ def test_a_link_pasted_in_the_dialog_is_downloaded_and_saved(harness, server, ca
 
     res, printed = result(capsys)
     assert res == {"result": "saved", "kid": "Mia", "events": 2}
-    assert harness.desktop.opened == ["https://id.myclub.fi"]
+    assert harness.desktop.opened == ["https://id.myclub.fi/flow/login"]
     assert len(harness.dialog.shown) == 1
     assert "Mia" in harness.dialog.shown[0]
     assert server.downloads == [LINK.replace("webcal://", "https://")]
@@ -381,7 +381,7 @@ def test_the_button_opens_myclub_s_site(harness, page):
     r = call(page.url, "api/open", method="POST", body={"site": "myclub"})
 
     assert r.status == 200 and r.json()["result"] == "opened"
-    assert harness.desktop.opened == ["https://id.myclub.fi"]
+    assert harness.desktop.opened == ["https://id.myclub.fi/flow/login"]
 
 
 def test_each_kid_known_so_far_is_listed_without_its_link(harness, page, myclub_server):
