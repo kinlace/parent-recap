@@ -160,8 +160,7 @@ def test_call(url: str, gateway_key: str, timeout: float = 60) -> tuple[str, str
         status = getattr(e, "status", None)
         outcome = (NO_ANSWER if status is None else SPENT if spent(str(e))
                    else UNKNOWN if status == UNKNOWN_KEY else FAILED)
-        detail = str(e).replace(gateway_key, "<key>") if gateway_key else str(e)
-        return outcome, detail
+        return outcome, without_key(str(e), gateway_key)
     return WORKS, None
 
 
@@ -192,12 +191,12 @@ def read_sent(response: requests.Response) -> int:
         raise GatewayError("the gateway doesn't know the Gateway Key, or it was revoked (ask the "
                            f"Parent Recap maintainers for a new one and store it with {SETUP}; the "
                            f"gateway answered {said(response)})", status)
-    if status == 429 or out_of_budget(response):
+    if status == 429:
         raise GatewayError(f"{SENT_ALL_MESSAGE}, so tonight's waits for tomorrow (the gateway "
                            f"answered {said(response)})", status)
     if status >= 500:
-        raise GatewayError("the gateway couldn't send the Brief just now, so it is tried again "
-                           f"with the next one (the gateway answered {said(response)})", status)
+        raise GatewayError("the gateway couldn't send the Brief just now; it may work again in a "
+                           f"while (the gateway answered {said(response)})", status)
     raise GatewayError(f"the gateway refused the Brief (it answered {said(response)})", status)
 
 
@@ -209,12 +208,13 @@ def send_test(url: str, gateway_key: str, timeout: float = SEND_TIMEOUT) -> tupl
     try:
         response = post_brief(url, gateway_key, {}, timeout)
     except (TimeoutError, GatewayError) as e:
-        return NO_ANSWER, _without(str(e), gateway_key)
+        return NO_ANSWER, without_key(str(e), gateway_key)
     if response.status_code in (200, 400):
         return WORKS, None
     outcome = UNKNOWN if response.status_code == UNKNOWN_KEY else FAILED
-    return outcome, _without(f"the gateway answered {said(response)}", gateway_key)
+    return outcome, without_key(f"the gateway answered {said(response)}", gateway_key)
 
 
-def _without(text: str, gateway_key: str) -> str:
+def without_key(text: str, gateway_key: str) -> str:
+    """`text` with the Gateway Key taken out, for an error that echoes it back."""
     return text.replace(gateway_key, "<key>") if gateway_key else text

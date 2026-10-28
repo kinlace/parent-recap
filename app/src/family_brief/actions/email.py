@@ -73,7 +73,7 @@ def gateway(url: str, subject: str, body_text: str, to_addrs: list[str],
     try:
         refused = api.read_sent(api.post_brief(url, key, body))
     except api.GatewayError as e:
-        raise api.GatewayError(str(e).replace(key, "<key>"), e.status) from None
+        raise api.GatewayError(api.without_key(str(e), key), e.status) from None
     if refused:
         log.warning("email: the mail service refused %d of %d Recipients", refused, len(to_addrs))
     log.info("email sent through the gateway at %s: subject=%r (%d Recipients, %d chars, "

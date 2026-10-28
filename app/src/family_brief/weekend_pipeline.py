@@ -573,13 +573,14 @@ def run(cfg: Config, dry_run: bool = False) -> int:
 
     delivered = False
     if cfg.email.enabled:
+        write_to = email_action.write_to(cfg)
         for v in _versions(cfg, picks):
             try:
                 email_action.send(
                     cfg,
                     subject=v.t.subject.format(weekend=_weekend_str(weekend)),
-                    body_text=_format_body(by_id, weekend, v, email_action.write_to(cfg)),
-                    body_html=_format_html(by_id, weekend, v, email_action.write_to(cfg)),
+                    body_text=_format_body(by_id, weekend, v, write_to),
+                    body_html=_format_html(by_id, weekend, v, write_to),
                     to_addrs=v.to,
                 )
                 delivered = True
