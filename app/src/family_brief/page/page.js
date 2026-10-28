@@ -353,7 +353,7 @@ async function saveWelcome(event) {
     clearTimeout(ai.timer);
     page.progress = out.progress;
     page.welcome.ai = answers.ai;
-    // For the Recipients Gmail's step asks for when Parent Recap sends the Brief.
+    // Gmail's step asks for the partner's address too when Parent Recap sends the Brief.
     page.welcome.partner = { ...page.welcome.partner, add, ...answers.partner };
     show();
   } catch (e) {
@@ -468,7 +468,7 @@ function setUpGmail() {
   for (const id of ["gateway-sends-address", "gateway-sends-partner-address"]) {
     document.getElementById(id).addEventListener("input", showJunk);
   }
-  document.getElementById("gateway-sends-form").addEventListener("submit", gatewaySends);
+  document.getElementById("gateway-sends-form").addEventListener("submit", saveParentRecapSends);
 }
 
 // With the gateway as the AI, Gmail's step offers to have Parent Recap send the Brief from its own
@@ -518,7 +518,7 @@ function showJunk() {
     !gatewayRecipients().some(({ address }) => JUNKS_AT_FIRST.test(address.trim()));
 }
 
-async function gatewaySends(event) {
+async function saveParentRecapSends(event) {
   event.preventDefault();
   clearError();
   showSource(null);

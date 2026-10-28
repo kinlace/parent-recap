@@ -40,7 +40,7 @@ class GatewaySends(Strict):
 
 class Gmail(Phase):
     def routes(self) -> dict[str, Action]:
-        return {"api/gmail": self.connect_gmail, "api/gmail/gateway": self.gateway_sends}
+        return {"api/gmail": self.connect_gmail, "api/gmail/gateway": self.parent_recap_sends}
 
     def state(self, progress: dict[str, Any]) -> dict[str, Any]:
         return {"gmail": {"address": self.context.gmail_address(),
@@ -62,7 +62,7 @@ class Gmail(Phase):
         return self.context.connect.complete(
             "gmail", lambda progress: self._answers(address, progress), reply={"address": address})
 
-    def gateway_sends(self, raw: Any) -> Reply:
+    def parent_recap_sends(self, raw: Any) -> Reply:
         """"Parent Recap sends the Brief", for a Household whose AI is the gateway (ADR 0028): saves
         the Recipients, the setup parent first, and the gateway as what sends the Brief, and skips
         Gmail, which needs no App Password then. Gmail can still be opened from the Source list

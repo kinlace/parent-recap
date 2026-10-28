@@ -249,10 +249,9 @@ def _check_answers(answer: CheckAnswer, cfg: Config, progress: dict[str, Any]) -
                         **({"language": r.language} if r.language != cfg.summary_language
                            else {})} for r in answer.recipients],
         "evening": answer.evening,
-        "sources": {},
+        "sources": {} if answer.senders is None
+        else {"gmail": {"allowlist_domains": answer.senders}},
     }
-    if answer.senders is not None:
-        answers["sources"]["gmail"] = {"allowlist_domains": answer.senders}
     if answer.whatsapp is not None:
         found = {c["name"]: c for c in progress.get("whatsapp_chats") or []}
         before = {c.name: c for c in cfg.whatsapp.chats}
