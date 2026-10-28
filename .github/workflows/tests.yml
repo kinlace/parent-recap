@@ -260,8 +260,8 @@ jobs:
           & $py -c "import sys; from family_brief import baileys_install as b; print(b.folder(), b.installed_version()); sys.exit(not b.up_to_date())"
           if ($LASTEXITCODE -ne 0) { throw "the install didn't leave the pinned Baileys tree" }
       # As the pasted line ends: the installed program's setup page, served on this PC, offering
-      # what Windows has and nothing only macOS has (no WhatsApp, the gateway first of the AIs).
-      - name: The installed program serves the setup page, without macOS's steps
+      # what Windows has (WhatsApp as a Linked Device, the gateway first of the AIs).
+      - name: The installed program serves the setup page with the Windows steps
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'setup-page.txt'
           $page = Start-Process "$env:INSTALLED\app\.venv\Scripts\parent-recap.exe" -ArgumentList 'setup', 'page' `
@@ -279,7 +279,7 @@ jobs:
             $ais = @($state.ais) -join ','
             Write-Host "system $($state.system), Sources $sources, AIs $ais"
             if ($state.system -ne 'windows') { throw "the page words itself for $($state.system)" }
-            if ($sources -ne 'wilma,gmail,ai,myclub') { throw "the page lists $sources" }
+            if ($sources -ne 'wilma,gmail,ai,whatsapp,myclub') { throw "the page lists $sources" }
             if ($ais -ne 'gateway,codex,claude') { throw "the page offers $ais" }
           } finally {
             Stop-Process -Id $page.Id -Force -ErrorAction SilentlyContinue
