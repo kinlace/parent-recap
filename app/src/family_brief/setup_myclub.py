@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-MYCLUB_URL = "https://id.myclub.fi"
+MYCLUB_URL = "https://id.myclub.fi/flow/login"
 
 
 def save_link(path: Path, kid: str, url: str,
