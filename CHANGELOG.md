@@ -4,6 +4,12 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.8.1 · 2026-10-28
+
+### Fixed
+
+- The setup page's MyClub step opens MyClub's sign-in page instead of its club search page.
+
 ## 0.8.0 · 2026-10-28
 
 WhatsApp is read as a Linked Device on a Mac and on Windows: the setup page shows a QR code, one scan on the phone pairs it, and the parent picks the groups to read (ADR 0027). WhatsApp for Mac and Full Disk Access are no longer needed.
@@ -27,6 +33,7 @@ WhatsApp is read as a Linked Device on a Mac and on Windows: the setup page show
 ### Fixed
 
 - On a Windows PC, pairing WhatsApp no longer fails with "The pairing ended with exit code 1" when WhatsApp sends several credential updates at once.
+
 ## 0.7.4 · 2026-10-26
 
 Setup gets stuck less: Google's App Passwords page opens in the family's own Gmail, a family without Wilma just skips it, and a failed check on the last steps says why and lets an optional Source be skipped.
