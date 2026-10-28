@@ -4,6 +4,29 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.8.0 · 2026-10-28
+
+WhatsApp is read as a Linked Device on a Mac and on Windows: the setup page shows a QR code, one scan on the phone pairs it, and the parent picks the groups to read (ADR 0027). WhatsApp for Mac and Full Disk Access are no longer needed.
+
+### Upgrading
+
+- A family already reading WhatsApp for Mac: after updating, open the setup page (paste the install line again, or `parent-recap setup page`) and scan the QR code once. The picked groups stay picked. Full Disk Access can be turned off for Python afterwards.
+- Every install now puts in place the WhatsApp library the Linked Device runs on, and `doctor` says whether it is there.
+
+### Added
+
+- On macOS and Windows the setup page links WhatsApp by scanning a QR code with the phone, then lets the parent pick which groups to read. WhatsApp group messages are in the Brief once the Linked Device is paired; a background job keeps reading them whenever the family is signed in, and `doctor` says whether it is connected.
+- When WhatsApp's link ends, or after updating from the WhatsApp for Mac version, the Brief and `doctor` say WhatsApp needs a new pairing and since when, and opening the setup page shows a QR code that pairs it again in one scan, keeping the picked groups.
+- WhatsApp can be turned off on the setup page's Finish, and uninstall removes the pairing and says to remove the device on the phone.
+- Before going to Google, the setup page's Gmail step tells parents to use a Gmail they've had for a while, not to make the App Password on the day of a password reset or account recovery, and to turn on 2-Step Verification first; if Google says App Passwords aren't available, it names the two likely causes in order.
+
+### Changed
+
+- The evening Brief no longer reads WhatsApp for Mac, and nothing asks for Full Disk Access any more; the setup page goes from the AI sign-in to WhatsApp's QR code. The docs and the setup and manage assistants say so.
+
+### Fixed
+
+- On a Windows PC, pairing WhatsApp no longer fails with "The pairing ended with exit code 1" when WhatsApp sends several credential updates at once.
 ## 0.7.4 · 2026-10-26
 
 Setup gets stuck less: Google's App Passwords page opens in the family's own Gmail, a family without Wilma just skips it, and a failed check on the last steps says why and lets an optional Source be skipped.
