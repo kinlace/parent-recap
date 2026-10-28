@@ -102,7 +102,11 @@ WhatsApp is read as a Linked Device, paired on the setup page (ADR 0027).
 
 ### Pairing again
 
-When WhatsApp ends the link, or the groups were picked when WhatsApp for Mac was read, the Brief's coverage line and `doctor` say WhatsApp "needs a new pairing". Open the setup page again (`parent-recap setup page`): it goes to the WhatsApp step and shows a QR code. Scan it in WhatsApp on the phone, under Settings → Linked devices → Link a device. The picked groups stay picked, a group picked by name only gets its WhatsApp id from the pairing, and the page goes back to where it was. The next Brief reads WhatsApp again, back to when it was last read.
+When WhatsApp ends the link, or the groups were picked when WhatsApp for Mac was read, the Brief's coverage line and `doctor` say WhatsApp "needs a new pairing". Open the setup page again (`parent-recap setup page`): it goes to the WhatsApp step and shows a QR code. Scan it in WhatsApp on the phone, under Settings → Linked devices → Link a device. The picked groups stay picked, and a group picked by name only gets its WhatsApp id from the pairing. The page then names the groups it keeps reading, with "Change the groups" to pick them again on the check page, and "Continue" to go back to where it was. The next Brief reads WhatsApp again, back to when it was last read.
+
+### Which groups are read
+
+`doctor`'s WhatsApp line names the picked groups. While WhatsApp is on, the setup page's Finish lists them too, with "Change the groups", which takes the family to the check page to pick them again, then on through the first Brief to Finish.
 
 ### Turning it off
 
