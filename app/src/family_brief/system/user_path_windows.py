@@ -8,6 +8,7 @@ from pathlib import Path
 
 KEY = "Environment"
 VALUE = "Path"
+HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG = 0xFFFF, 0x001A, 0x0002
 
 
 def _same(entry: str, folder: str) -> bool:
@@ -57,8 +58,8 @@ def _announce() -> None:
     import ctypes
     from ctypes import wintypes
     result = wintypes.DWORD()
-    ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000,
-                                             ctypes.byref(result))
+    ctypes.windll.user32.SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment",
+                                             SMTO_ABORTIFHUNG, 5000, ctypes.byref(result))
 
 
 def add(folder: Path) -> None:

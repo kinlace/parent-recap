@@ -185,6 +185,9 @@ jobs:
         shell: powershell
     env:
       PARENT_RECAP: ${{ github.workspace }}\install.ps1
+      # What a new window's PATH is, the PC's and the user's as Windows keeps them; a step's own
+      # is the runner's, from before the install (#560).
+      NEW_WINDOW: '$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User"); '
     steps:
       - uses: actions/checkout@v7
       - name: Where it installs
@@ -259,16 +262,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the venv isn't on Parent Recap's own Python" }
           & $py -c "import sys; from family_brief import baileys_install as b; print(b.folder(), b.installed_version()); sys.exit(not b.up_to_date())"
           if ($LASTEXITCODE -ne 0) { throw "the install didn't leave the pinned Baileys tree" }
-      # A new window's PATH is the PC's and the user's, as Windows keeps them; this step's is the
-      # runner's, from before the install (#560).
       - name: A new PowerShell window runs parent-recap, and python is still the PC's own
         run: |
-          $fresh = 'Import-Module PSReadLine; $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User"); '
-          $found = powershell -NoProfile -Command ($fresh + '(Get-Command parent-recap).Source; parent-recap --help | Out-Null; exit $LASTEXITCODE')
+          $found = powershell -NoProfile -Command ('Import-Module PSReadLine; ' + $env:NEW_WINDOW + '(Get-Command parent-recap).Source; parent-recap --help | Out-Null; exit $LASTEXITCODE')
           if ($LASTEXITCODE -ne 0) { throw 'parent-recap --help failed in a new window' }
           Write-Host "parent-recap: $found"
           if ($found -ne "$env:INSTALLED\bin\parent-recap.exe") { throw "a new window finds parent-recap at $found" }
-          $python = powershell -NoProfile -Command ($fresh + '(Get-Command python -ErrorAction SilentlyContinue).Source')
+          $python = powershell -NoProfile -Command ($env:NEW_WINDOW + '(Get-Command python -ErrorAction SilentlyContinue).Source')
           Write-Host "python: $python"
           if ($python -like "$env:INSTALLED*") { throw "python in a new window is Parent Recap's: $python" }
           @(Get-ChildItem "$env:INSTALLED\bin" | ForEach-Object Name) -join ',' | Tee-Object -Variable inside
@@ -340,8 +340,7 @@ jobs:
           if (@(Get-ScheduledTask -TaskPath '\' | Where-Object { $_.TaskName -like 'Parent Recap *' }).Count -ne 3) { throw 'no tasks to remove' }
 
           # From a new window's PATH, as the family types it.
-          $fresh = '$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User"); '
-          $out = powershell -NoProfile -Command ($fresh + 'parent-recap uninstall --confirm --remove-archive; exit $LASTEXITCODE') | Out-String
+          $out = powershell -NoProfile -Command ($env:NEW_WINDOW + 'parent-recap uninstall --confirm --remove-archive; exit $LASTEXITCODE') | Out-String
           $code = $LASTEXITCODE
           Write-Host $out
           if ($code -ne 0) { throw "uninstall exited with $code" }

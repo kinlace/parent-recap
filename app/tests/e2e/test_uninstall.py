@@ -85,8 +85,7 @@ def make_program(home: Path, monkeypatch) -> Path:
     (app / ".venv" / "bin").mkdir(parents=True)
     (app / ".venv" / "bin" / "python").write_text("")
     # The venv's command, which install.sh puts on the PATH.
-    command = profile.current().command
-    venv_command = app / ".venv" / command.with_name("parent-recap" + command.suffix)
+    venv_command = app / ".venv" / profile.current().path_command
     venv_command.parent.mkdir(parents=True, exist_ok=True)
     venv_command.write_text("")
     (app / "pyproject.toml").write_text('[project]\nname = "family-brief"\n')

@@ -3,10 +3,9 @@
 
 The command goes in a folder of its own beside the program, `<install folder>/bin`, which holds
 nothing else: the venv's own `bin` (`Scripts` on Windows) also holds its `python`, which would
-take the place of the family's own. On macOS it is a link to the venv's command; on Windows a
-copy of the venv's launcher, which finds the venv's Python by its full path, since a link needs
-Developer Mode there. The folder and the PATH entry go into setup's record first, so uninstall
-takes both back out.
+take the place of the family's own. It is a link to the venv's command, or a copy where the
+system's profile says a link won't do. The folder and the PATH entry go into setup's record
+first, so uninstall takes both back out.
 
 install.sh and install.ps1 call it as `python -m family_brief.command_path install <install folder>`.
 """
@@ -28,19 +27,18 @@ def folder(target: Path) -> Path:
 
 
 def install(target: Path) -> int:
-    command = profile.current().command
-    name = NAME + command.suffix
-    program = target / "app" / ".venv" / command.with_name(name)
+    system = profile.current()
+    program = target / "app" / ".venv" / system.path_command
     if not program.is_file():
         print(f"There is no program at {program}, so {NAME} wasn't put on the PATH.",
               file=sys.stderr)
         return 1
-    bin_ = folder(target)
-    install_record.add("command", str(bin_))
-    install_record.add("user-path", str(bin_))
-    bin_.mkdir(exist_ok=True)
-    placed = bin_ / name
-    if command.suffix:  # Windows
+    bin_folder = folder(target)
+    install_record.add("command", str(bin_folder))
+    install_record.add("user-path", str(bin_folder))
+    bin_folder.mkdir(exist_ok=True)
+    placed = bin_folder / program.name
+    if not system.links_command:
         try:
             shutil.copyfile(program, placed)
         except OSError:  # it runs, as when the update was started from it; the next one copies it
@@ -49,7 +47,7 @@ def install(target: Path) -> int:
     elif not (placed.is_symlink() and placed.readlink() == program):
         placed.unlink(missing_ok=True)
         placed.symlink_to(program)
-    user_path.add(bin_)
+    user_path.add(bin_folder)
     return 0
 
 

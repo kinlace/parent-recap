@@ -33,6 +33,8 @@ class Profile:
     program_folders: Callable[[], list[str]]  # where installers put programs, besides the home's
     install_folders: Callable[[Path], list[Path]]  # where the install puts Parent Recap, for a home
     command: Path                 # the program's command, in its venv
+    path_command: Path            # `parent-recap` in its venv, which the install puts on the PATH
+    links_command: bool           # whether the PATH's `parent-recap` links to it, or is a copy
     node: Path                    # `node`, in the folder Node was unpacked into
     node_modules: Path            # where npm puts packages, under a Node folder or a prefix
     npm_links_programs: bool      # whether npm puts a package's program in <prefix>/bin
