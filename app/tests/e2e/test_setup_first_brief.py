@@ -13,6 +13,7 @@ import re
 import threading
 from typing import Any
 
+import pytest
 import yaml
 
 from family_brief import feedback, run_lock, setup_save, setup_server, setup_status
@@ -206,6 +207,42 @@ def test_the_first_brief_goes_through_the_gateway_when_it_sends_the_brief(harnes
     assert email.html == made["html"]
     assert "This email comes from an address nobody reads" in email.html + email.text
     assert harness.relay_keys == ["sk-bf-fake-gateway-key"]
+    # Only Hotmail and Outlook.com junk Parent Recap's new address at first (#524).
+    assert "Not junk" not in email.html + email.text
+
+
+JUNK_NOTE = 'Found this in Junk? Mark it "Not junk" once'
+
+
+@pytest.mark.parametrize("address", ["parent@hotmail.com", "Parent@Outlook.com", "parent@live.fi"])
+def test_a_first_brief_the_gateway_sends_to_hotmail_says_to_mark_it_not_junk(harness, page,
+                                                                            address):
+    at_the_first_brief(harness)
+    harness.config["summary_language"] = "en"
+    harness.config["email"].update(sender="gateway", to=[address])
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+    harness.secrets["gateway-key"] = "sk-bf-fake-gateway-key"
+    make_brief(page.url)
+    brief_made(page.url)
+
+    assert send_it_to_me(page.url).json()["result"] == "sent"
+
+    [email] = harness.sent
+    assert JUNK_NOTE in email.text and JUNK_NOTE.replace('"', "&quot;") in email.html
+
+
+def test_a_first_brief_from_the_household_s_own_gmail_says_nothing_of_junk(harness, page):
+    at_the_first_brief(harness)
+    harness.config["summary_language"] = "en"
+    harness.config["email"]["to"] = ["parent@hotmail.com"]
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+    make_brief(page.url)
+    brief_made(page.url)
+
+    assert send_it_to_me(page.url).json()["result"] == "sent"
+
+    [email] = harness.sent
+    assert "Junk" not in email.text + email.html
 
 
 def test_a_send_the_gateway_refuses_says_so(harness, page):

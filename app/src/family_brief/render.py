@@ -455,6 +455,20 @@ def unread_sender(t: BriefText, write_to: str | None) -> str:
     return t.unread_sender.format(address=write_to) if write_to else ""
 
 
+# Hotmail and Outlook.com junk mail from Parent Recap's new address at first (#524). The setup
+# page's script says so beside an address it matches too (JUNKS_AT_FIRST in page.js).
+JUNKS_AT_FIRST = re.compile(r"@(hotmail|outlook|live|msn)\.[a-z.]+$", re.I)
+
+
+def first_sender_note(t: BriefText, write_to: str | None) -> str:
+    """The footer of the first Brief, from setup: as every Brief's from the address nobody reads,
+    and for a setup parent at Hotmail or Outlook.com, how to get the rest out of Junk."""
+    note = unread_sender(t, write_to)
+    if write_to and JUNKS_AT_FIRST.search(write_to.strip()):
+        note = f"{note} {t.junk_at_first}"
+    return note
+
+
 def _with_note(text: str, note: str) -> str:
     return f"{text}\n\n{note}" if note else text
 
@@ -501,17 +515,18 @@ def brief(night: Night, versions: list[Version], imessage_to: list[str]) -> list
 def preview(night: Night) -> dict[str, str | None]:
     """The first Recipient's email as tonight's Brief would send it, for the setup page: its
     subject, text and HTML, and for a pilot Household (with its Form links) the Digest's
-    feedback link."""
+    feedback link. It is the first Brief, which setup sends to the setup parent only."""
     t, assistant, form = night.t, night.assistant, night.form
+    sender_note = first_sender_note(t, night.write_to)
     html = _daily_brief_html(night.brief, night.created, night.date, t, night.tz,
                              coverage=_coverage_note(night.coverage, t),
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
                              feedback_link=form.link if form and night.model_wrote else None,
                              top_note=_top_note(night.incomplete, t, assistant), held_back=night.held_back,
-                             assistant=assistant, sender_note=unread_sender(t, night.write_to))
+                             assistant=assistant, sender_note=sender_note)
     wrong = form.link(feedback.DIGEST_WRONG, _shown_digest(night.brief, t) if night.model_wrote else "") \
         if form else None
-    return {"subject": night.subject, "text": _with_note(night.text(), unread_sender(t, night.write_to)),
+    return {"subject": night.subject, "text": _with_note(night.text(), sender_note),
             "html": html, "feedback": wrong}
 
 

@@ -97,6 +97,7 @@ class BriefText:
     new_events_line: str                # the plain-text heading
     written_by: str                     # {assistant}
     unread_sender: str                  # {address}, when the gateway's address nobody reads sent it
+    junk_at_first: str                  # the first Brief from that address, to Hotmail or Outlook.com
     untitled: str
 
     # ── In place of a placeholder the model changed so it can't be put back (ADR 0013)
@@ -199,6 +200,8 @@ EN = BriefText(
     written_by="Written by {assistant}",
     unread_sender="This email comes from an address nobody reads. To reply, write to {address}, "
                   "who set up Parent Recap.",
+    junk_at_first='Found this in Junk? Mark it "Not junk" once, and the rest arrive in the inbox: '
+                  "Parent Recap's address is new, so Hotmail and Outlook.com may junk its first Brief.",
     untitled="(untitled)",
     phone_number="a phone number",
     email_address="an email address",
@@ -270,6 +273,8 @@ ZH = BriefText(
     new_events_line="📅 新加日历事件:",
     written_by="由 {assistant} 生成",
     unread_sender="这封邮件的发件地址无人查看。如需回复，请写信给设置 Parent Recap 的人：{address}。",
+    junk_at_first="在垃圾邮件里找到这封？把它标记一次“不是垃圾邮件”，之后的就会进收件箱："
+                  "Parent Recap 的地址是新的，Hotmail 和 Outlook.com 可能把第一份日报当成垃圾邮件。",
     untitled="(无标题)",
     phone_number="一个电话号码",
     email_address="一个邮箱地址",
@@ -350,6 +355,9 @@ FI = BriefText(
     written_by="Kirjoittanut: {assistant}",
     unread_sender="Tämä viesti tulee osoitteesta, jota kukaan ei lue. Jos haluat vastata, kirjoita "
                   "osoitteeseen {address}: hän otti Parent Recapin käyttöön.",
+    junk_at_first="Löytyikö tämä roskapostista? Merkitse se kerran ”Ei roskapostia”, niin loput tulevat "
+                  "saapuneisiin: Parent Recapin osoite on uusi, joten Hotmail ja Outlook.com voivat pitää "
+                  "sen ensimmäistä koostetta roskapostina.",
     untitled="(ei otsikkoa)",
     phone_number="puhelinnumero",
     email_address="sähköpostiosoite",
