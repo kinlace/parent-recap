@@ -460,7 +460,7 @@ fieldset .field label {
   border-top: 1px solid var(--line);
 }
 
-.kids { margin: 8px 0 0; padding-left: 20px; }
+.kids, .groups { margin: 8px 0 0; padding-left: 20px; }
 
 .towns:empty { display: none; }
 

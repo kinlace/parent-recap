@@ -219,7 +219,7 @@
     <div id="source-whatsapp" class="source" hidden>
       <h2 data-text="source.whatsapp"></h2>
       <p id="whatsapp-kept" data-text="whatsapp.kept" hidden></p>
-      <ol class="whatsapp-steps">
+      <ol id="whatsapp-steps" class="whatsapp-steps">
         <li data-text="whatsapp.step.open"></li>
         <li data-text="whatsapp.step.link"></li>
         <li data-text="whatsapp.step.scan"></li>
@@ -231,9 +231,15 @@
         </svg>
       </div>
       <p class="hint" data-text="whatsapp.terms"></p>
+      <div id="whatsapp-repaired" hidden>
+        <p data-text="whatsapp.repaired"></p>
+        <ul id="whatsapp-groups" class="groups"></ul>
+      </div>
       <div class="slot" data-default></div>
       <div class="actions">
         <button type="button" id="whatsapp-again" data-text="whatsapp.again" hidden></button>
+        <button type="button" id="whatsapp-on" data-text="continue" hidden></button>
+        <button type="button" id="whatsapp-change" class="secondary" data-text="whatsapp.change" hidden></button>
         <button type="button" class="link" data-skip hidden></button>
       </div>
     </div>
@@ -491,6 +497,11 @@
       </div>
       <div id="finish-whatsapp" hidden>
         <h3 data-text="source.whatsapp"></h3>
+        <div id="finish-whatsapp-picked">
+          <p id="finish-whatsapp-read"></p>
+          <ul id="finish-whatsapp-groups" class="groups"></ul>
+          <p><button type="button" id="finish-whatsapp-change" class="secondary" data-text="whatsapp.change"></button></p>
+        </div>
         <p data-text="finish.whatsapp.about"></p>
         <p><button type="button" id="finish-whatsapp-off" class="secondary" data-text="finish.whatsapp.off"></button></p>
         <div id="finish-whatsapp-status" class="status" role="status" hidden>

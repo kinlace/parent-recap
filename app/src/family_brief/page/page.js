@@ -646,13 +646,7 @@ function showSource(key, { reason, url, kids, install, values } = {}) {
   const where = document.getElementById("source-url");
   where.hidden = !url;
   where.textContent = url || "";
-  const list = document.getElementById("source-kids");
-  list.replaceChildren(...(kids || []).map((name) => {
-    const item = document.createElement("li");
-    item.textContent = name;
-    return item;
-  }));
-  list.hidden = !kids || !kids.length;
+  showList(document.getElementById("source-kids"), kids || []);
   document.getElementById("source-install").hidden = !install;
   document.getElementById("source-install-line").textContent = install || "";
   const skip = document.getElementById("source-skip-failed");
@@ -663,6 +657,16 @@ function showSource(key, { reason, url, kids, install, values } = {}) {
   document.getElementById("wilma-again").hidden = !TRY_AGAIN.includes(key);
   document.getElementById("claude-terminal").hidden = !CLAUDE_TERMINAL.includes(key);
   document.getElementById("claude-again").hidden = !CLAUDE_AGAIN.includes(key);
+}
+
+// `names` as the items of `list`, hidden while there are none.
+function showList(list, names) {
+  list.replaceChildren(...names.map((name) => {
+    const item = document.createElement("li");
+    item.textContent = name;
+    return item;
+  }));
+  list.hidden = !names.length;
 }
 
 // The server opens the site, so the page itself names none.
@@ -1157,15 +1161,21 @@ const whatsappStep = { checking: 0, timer: null, pairing: false, qr: null };
 
 function setUpWhatsApp() {
   document.getElementById("whatsapp-again").addEventListener("click", pairWhatsApp);
+  document.getElementById("whatsapp-on").addEventListener("click", goOnFromWhatsApp);
+  document.getElementById("whatsapp-change").addEventListener("click",
+    goBack("api/whatsapp/groups"));
 }
 
-// A WhatsApp already linked says so; else pairing starts as the step is shown, saying that the
-// groups picked before stay, for a link that ended or was never made.
+// A WhatsApp already linked, opened again from the list, says so, without the code to scan, and
+// offers the way on; else pairing starts as the step is shown, saying that the groups picked
+// before stay, for a link that ended or was never made.
 function firstWhatsApp() {
   const done = page.progress.sources.whatsapp === "done";
-  document.getElementById("whatsapp-kept").hidden = done || !page.whatsapp.picked;
-  if (done) return showSource("whatsapp.paired");
-  pairWhatsApp();
+  document.getElementById("whatsapp-kept").hidden = done || !page.whatsapp.picked.length;
+  if (!done) return pairWhatsApp();
+  document.getElementById("whatsapp-steps").hidden = true;
+  document.getElementById("whatsapp-on").hidden = false;
+  showSource("whatsapp.paired");
 }
 
 // A pairing the phone hasn't scanned is ended as the parent moves on, so it can't link later.
@@ -1173,9 +1183,30 @@ function leaveWhatsApp() {
   clearTimeout(whatsappStep.timer);
   whatsappStep.checking++; // a reply still on its way is old news
   showQR(null);
-  document.getElementById("whatsapp-again").hidden = true;
+  for (const id of ["whatsapp-again", "whatsapp-on", "whatsapp-change", "whatsapp-repaired"]) {
+    document.getElementById(id).hidden = true;
+  }
+  document.getElementById("whatsapp-steps").hidden = false;
   if (whatsappStep.pairing) post("api/whatsapp/stop", {}).catch(() => {});
   whatsappStep.pairing = false;
+}
+
+// Paired again from a page opened after Connect: back to where the family was. Else on from a
+// WhatsApp opened again from the list, to the next Source to do or Connect's Continue.
+function goOnFromWhatsApp() {
+  if (page.progress.phase !== "connect") return show();
+  return moveOn("api/whatsapp/done", {});
+}
+
+// Paired again from a page opened after Connect: the groups it keeps reading, by name, with the
+// way to change them on the check page, before going back to where the family was.
+function showRepaired() {
+  showSource(null);
+  document.getElementById("whatsapp-steps").hidden = true;
+  document.getElementById("whatsapp-repaired").hidden = false;
+  showList(document.getElementById("whatsapp-groups"), page.whatsapp.picked);
+  document.getElementById("whatsapp-on").hidden = false;
+  document.getElementById("whatsapp-change").hidden = false;
 }
 
 function pairWhatsApp() {
@@ -1209,8 +1240,8 @@ function showWhatsApp(out) {
   if (out.result === "paired") {
     document.getElementById("whatsapp-kept").hidden = true;
     page.progress = out.progress;
-    // Paired again from a page opened after Connect: back to where the family was.
-    if (page.progress.phase !== "connect") return show();
+    page.whatsapp.picked = out.picked;
+    if (page.progress.phase !== "connect") return showRepaired();
     renderSources();
     showSource("whatsapp.paired");
     return;
@@ -1986,21 +2017,25 @@ async function skipFailedSource(event) {
 function showBackToConnect(id) {
   const link = document.getElementById(id);
   link.hidden = !page.connect.sources.some(({ name }) => page.progress.sources[name] === "skipped");
-  link.querySelector("button").addEventListener("click", backToConnect);
+  link.querySelector("button").addEventListener("click", goBack("api/connect/back"));
 }
 
-// Back to Connect's list. The page loads again there, since each step sets itself up only once.
-async function backToConnect(event) {
-  clearError();
-  const button = event.currentTarget;
-  button.disabled = true;
-  try {
-    await post("api/connect/back", {});
-    window.location.reload();
-  } catch (e) {
-    failed(e);
-    button.disabled = false;
-  }
+// A button's way back to an earlier phase through the server's `path`: to Connect's list, or to
+// the check page to change the WhatsApp groups. The page loads again there, since each step sets
+// itself up only once.
+function goBack(path) {
+  return async (event) => {
+    clearError();
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      await post(path, {});
+      window.location.reload();
+    } catch (e) {
+      failed(e);
+      button.disabled = false;
+    }
+  };
 }
 
 // ── First Brief: the real Brief, made from the Sources without sending it and shown as it
@@ -2137,7 +2172,14 @@ function enterFinish() {
   document.getElementById("finish-ai-open").addEventListener("click", openFinishAI);
   document.getElementById("finish-ai-form").addEventListener("submit", signInFinishAI);
   document.getElementById("finish-whatsapp-off").addEventListener("click", turnWhatsAppOff);
+  document.getElementById("finish-whatsapp-change").addEventListener("click",
+    goBack("api/whatsapp/groups"));
   document.getElementById("finish-whatsapp").hidden = page.progress.sources.whatsapp !== "done";
+  // The groups read, by name, so the family can see them at any later visit.
+  const picked = page.whatsapp.picked;
+  setText(document.getElementById("finish-whatsapp-read"),
+    picked.length ? "finish.whatsapp.groups" : "finish.whatsapp.none");
+  showList(document.getElementById("finish-whatsapp-groups"), picked);
   showBackToConnect("finish-back");
   showHouseholdAI();
   checkFinish();
@@ -2160,6 +2202,7 @@ async function turnWhatsAppOff() {
     if (off) {
       page.progress = out.progress;
       button.hidden = true;
+      document.getElementById("finish-whatsapp-picked").hidden = true; // none is read now
       // Skipped now, so it can be added again from Connect's list.
       document.getElementById("finish-back").hidden = false;
     }

@@ -10,8 +10,9 @@ that `follow` keeps the picked groups' messages from then on (ADR 0026).
 A link that isn't fresh is paired the same way: a page opened with picked groups and no pairing,
 since WhatsApp ended the link or the groups were picked when WhatsApp for Mac was read, goes to
 the step, and the pairing keeps the groups, fills in the ids of those picked by name only, and
-returns the family to where they were. Turning WhatsApp off removes the job, the pairing and the
-messages kept."""
+the page names them before returning the family to where they were. The picked groups can be
+changed on the check page from there, and from Finish at any later visit (#548). Turning WhatsApp
+off removes the job, the pairing and the messages kept."""
 from __future__ import annotations
 
 import json
@@ -21,10 +22,11 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Any
 
-from .. import failure, linked_device, setup_whatsapp
+from .. import failure, linked_device, setup_save, setup_whatsapp
 from ..config import Config
 from ..setup_connect import Nothing, Reply, parse
 from ..system import jobs
+from .connect import go_back
 from .context import Action, Phase
 
 # What the page is told about a pairing: `starting` until the first QR string, `qr` with the one
@@ -63,7 +65,8 @@ class WhatsApp(Phase):
 
     def routes(self) -> dict[str, Action]:
         return {"api/whatsapp/pair": self.pair, "api/whatsapp/check": self.check_pairing,
-                "api/whatsapp/stop": self.stop_pairing, "api/whatsapp/off": self.turn_off}
+                "api/whatsapp/stop": self.stop_pairing, "api/whatsapp/off": self.turn_off,
+                "api/whatsapp/done": self.go_on, "api/whatsapp/groups": self.change_groups}
 
     def opening(self) -> None:
         """Takes a page opened with picked groups that need a new pairing to the step: the link
@@ -83,8 +86,8 @@ class WhatsApp(Phase):
                                                     "sources": {"whatsapp": "to-do"}}})
 
     def state(self, progress: dict[str, Any]) -> dict[str, Any]:
-        """How many groups are picked already, which a new pairing keeps."""
-        return {"whatsapp": {"picked": len(self.context.model().whatsapp.chats)}}
+        """The groups picked already, by name, which a new pairing keeps and Finish lists."""
+        return {"whatsapp": {"picked": self.context.model().whatsapp.chat_names()}}
 
     def pair(self, raw: Any) -> Reply:
         """Starts pairing, unless a pairing is under way, which the page then goes on with. A
@@ -111,12 +114,14 @@ class WhatsApp(Phase):
         return HTTPStatus.OK, run.said
 
     def check_pairing(self, raw: Any) -> Reply:
-        """What the pairing last said, with setup's progress once paired."""
+        """What the pairing last said, with setup's progress and the groups picked, by name,
+        once paired."""
         parse(Nothing, raw)
         run = self._run
         said = run.said if run is not None else {"result": "no-pairing"}
         if said["result"] == "paired":
-            return HTTPStatus.OK, {**said, "progress": self.context.progress()}
+            return HTTPStatus.OK, {**said, "progress": self.context.progress(),
+                                   "picked": self.context.model().whatsapp.chat_names()}
         return HTTPStatus.OK, said
 
     def stop_pairing(self, raw: Any) -> Reply:
@@ -126,6 +131,32 @@ class WhatsApp(Phase):
             if self._run is not None and self._run.said["result"] in NOT_SCANNED:
                 _end(self._run)
         return HTTPStatus.OK, {"result": "stopped"}
+
+    def go_on(self, raw: Any) -> Reply:
+        """Moves setup on from the step once WhatsApp is linked, as when it was opened again from
+        Connect's list: to the next Source to do, or, with none, to Connect's way on to Check."""
+        parse(Nothing, raw)
+        return self.context.connect.move_on("whatsapp", setup_save.outcome(
+            "invalid-answers", "Link WhatsApp first, or skip it.",
+            errors=["answers: should be {}, once WhatsApp is linked"]))
+
+    def change_groups(self, raw: Any) -> Reply:
+        """Takes setup to the check page to change the picked groups, from a phase past Connect
+        with WhatsApp linked: after a new pairing, or at any later visit to Finish. Nothing has
+        to be skipped for it. Never while a check runs."""
+        parse(Nothing, raw)
+        connect = self.context.connect
+
+        def to_check() -> Reply:
+            with connect.lock:
+                progress = connect.progress()
+                if progress["phase"] not in AFTER_CONNECT or \
+                        progress["sources"]["whatsapp"] != "done":
+                    return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                        "invalid-answers", "The groups change once WhatsApp is linked, past Connect.",
+                        errors=["answers: should be {}, past Connect with WhatsApp linked"])
+                return connect.save({"progress": {"phase": "check", "source": None}})
+        return go_back(self.context, to_check)
 
     def turn_off(self, raw: Any) -> Reply:
         """Turns WhatsApp off: ends a pairing under way, stops and removes the always-running
