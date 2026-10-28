@@ -47,11 +47,13 @@ Paste the install line into PowerShell again. It updates what it installed and n
 
 ## Checking how it runs
 
-In PowerShell, run:
+In a new PowerShell window, run:
 
 ```powershell
-& "$env:LOCALAPPDATA\ParentRecap\app\.venv\Scripts\parent-recap.exe" doctor
+parent-recap doctor
 ```
+
+If PowerShell doesn't know `parent-recap` (an install from before 0.9.0, or a window opened before the install), paste the install line again, or use its full path: `& "$env:LOCALAPPDATA\ParentRecap\app\.venv\Scripts\parent-recap.exe" doctor`.
 
 It checks the evening run's tasks in Task Scheduler, "Allow wake timers", signing back in after an update, and the stored passwords and AI sign-in, and says what to fix. The evening run's log is `%USERPROFILE%\ParentRecap\logs\run-stderr.log`, and the install's logs are in `%LOCALAPPDATA%\ParentRecap\logs`. Don't paste mail or message text from the logs into a chat.
 
@@ -60,14 +62,14 @@ It checks the evening run's tasks in Task Scheduler, "Allow wake timers", signin
 In PowerShell, run:
 
 ```powershell
-& "$env:LOCALAPPDATA\ParentRecap\app\.venv\Scripts\parent-recap.exe" uninstall
+parent-recap uninstall
 ```
 
-It lists everything setup created on the PC, asks whether to keep the archive of past Briefs, and removes the rest once you confirm: the tasks in Task Scheduler, the `Parent Recap/…` credentials in Credential Manager, and the folders below. The program itself goes last, just after uninstall ends. Your Gmail, Wilma and MyClub accounts stay as they are: delete the Gmail App Password yourself in your Google account.
+It lists everything setup created on the PC, asks whether to keep the archive of past Briefs, and removes the rest once you confirm: the tasks in Task Scheduler, the `Parent Recap/…` credentials in Credential Manager, the `ParentRecap\bin` entry in your PATH, and the folders below. The program itself goes last, just after uninstall ends. Your Gmail, Wilma and MyClub accounts stay as they are: delete the Gmail App Password yourself in your Google account.
 
 ## Where it keeps things
 
-- `%LOCALAPPDATA%\ParentRecap`: the program, its own Python and Node, the downloaded release and the install's logs
+- `%LOCALAPPDATA%\ParentRecap`: the program, its own Python and Node, the downloaded release and the install's logs, and `bin`, which holds only the `parent-recap` command and is on your PATH
 - `%USERPROFILE%\ParentRecap`: every Brief and the messages it was built from, the evening run's logs, and the wilma CLI
 - `%USERPROFILE%\.family`: your configuration and what was already handled
 - Credential Manager (Control Panel › Credential Manager › Windows Credentials): the Gmail App Password, the Gateway Key and the Claude token, as `Parent Recap/<name>`

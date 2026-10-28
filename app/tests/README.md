@@ -68,6 +68,7 @@ the import path, so a test may import a helper from a test in another layer.
 | ------------------------------- | ------------------------------------------------------------------------------------------- |
 | `test_brief_relay.py`           | The gateway's Brief relay: the key, the daily cap, the request, the message sent            |
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                              |
+| `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                        |
 | `test_email.py`                 | The Brief email as sent to a fake SMTP server                                               |
 | `test_email_gateway.py`         | The Brief sent through the gateway's Brief relay: the request, each refusal, doctor's check |
 | `test_eval_runner.py`           | The eval runner end to end, only the model process faked                                    |
@@ -152,10 +153,12 @@ slowest tests, so add one for a main path, not for each result.
 | `test_jobs.py`                  | macOS jobs: LaunchAgents and `launchctl`                  |
 | `test_secrets.py`               | macOS secrets: the Keychain through `/usr/bin/security`   |
 | `test_wake.py`                  | macOS wake: `pmset`                                       |
+| `test_user_path.py`             | macOS PATH: the marked line in `~/.zprofile`              |
 | `test_desktop_windows.py`       | Windows desktop: browser, Notepad, PowerShell windows     |
 | `test_jobs_windows.py`          | Windows jobs: Task Scheduler tasks                        |
 | `test_secrets_windows.py`       | Windows secrets: Credential Manager                       |
 | `test_wake_windows.py`          | Windows wake: wake timers and sleep timeouts              |
+| `test_user_path_windows.py`     | Windows PATH: the user's Path in the registry             |
 | `test_windows_only.py`          | What only Windows checks for the evening run              |
 | `test_brief_by_hand_windows.py` | A Brief started by hand on Windows                        |
 | `test_setup_page_windows.py`    | The setup page from a fresh install to Finish, on Windows |

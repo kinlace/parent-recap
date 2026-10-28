@@ -259,6 +259,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the venv isn't on Parent Recap's own Python" }
           & $py -c "import sys; from family_brief import baileys_install as b; print(b.folder(), b.installed_version()); sys.exit(not b.up_to_date())"
           if ($LASTEXITCODE -ne 0) { throw "the install didn't leave the pinned Baileys tree" }
+      # A new window's PATH is the PC's and the user's, as Windows keeps them; this step's is the
+      # runner's, from before the install (#560).
+      - name: A new PowerShell window runs parent-recap, and python is still the PC's own
+        run: |
+          $fresh = 'Import-Module PSReadLine; $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User"); '
+          $found = powershell -NoProfile -Command ($fresh + '(Get-Command parent-recap).Source; parent-recap --help | Out-Null; exit $LASTEXITCODE')
+          if ($LASTEXITCODE -ne 0) { throw 'parent-recap --help failed in a new window' }
+          Write-Host "parent-recap: $found"
+          if ($found -ne "$env:INSTALLED\bin\parent-recap.exe") { throw "a new window finds parent-recap at $found" }
+          $python = powershell -NoProfile -Command ($fresh + '(Get-Command python -ErrorAction SilentlyContinue).Source')
+          Write-Host "python: $python"
+          if ($python -like "$env:INSTALLED*") { throw "python in a new window is Parent Recap's: $python" }
+          @(Get-ChildItem "$env:INSTALLED\bin" | ForEach-Object Name) -join ',' | Tee-Object -Variable inside
+          if ($inside -ne 'parent-recap.exe') { throw "the PATH folder holds $inside" }
       # As the pasted line ends: the installed program's setup page, served on this PC, offering
       # what Windows has (WhatsApp as a Linked Device, the gateway first of the AIs).
       - name: The installed program serves the setup page with the Windows steps
@@ -325,7 +339,9 @@ jobs:
           # The evening Brief, its sign-in catch-up (#386) and Weekend Picks.
           if (@(Get-ScheduledTask -TaskPath '\' | Where-Object { $_.TaskName -like 'Parent Recap *' }).Count -ne 3) { throw 'no tasks to remove' }
 
-          $out = & $pr uninstall --confirm --remove-archive | Out-String
+          # From a new window's PATH, as the family types it.
+          $fresh = '$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User"); '
+          $out = powershell -NoProfile -Command ($fresh + 'parent-recap uninstall --confirm --remove-archive; exit $LASTEXITCODE') | Out-String
           $code = $LASTEXITCODE
           Write-Host $out
           if ($code -ne 0) { throw "uninstall exited with $code" }
@@ -336,5 +352,6 @@ jobs:
             Get-ScheduledTask -TaskPath '\' | Where-Object { $_.TaskName -like 'Parent Recap *' } | ForEach-Object { "task $($_.TaskName)" }
             cmdkey /list | Select-String 'Parent Recap/' | ForEach-Object { "credential $($_.Line.Trim())" }
             @($env:INSTALLED, "$HOME\.family", "$HOME\ParentRecap") | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { "folder $_" }
+            "$([Environment]::GetEnvironmentVariable('Path', 'User'))".Split(';') | Where-Object { $_ -like '*ParentRecap*' } | ForEach-Object { "PATH entry $_" }
           )
           if ($left.Count -ne 0) { throw "left behind: $($left -join '; ')" }

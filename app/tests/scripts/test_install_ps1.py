@@ -50,6 +50,17 @@ def test_as_install_sh_it_installs_the_baileys_tree_once_the_runtimes_are_record
     assert recorded < body.index("@('-m', 'family_brief.baileys_install', 'install')")
 
 
+def test_as_install_sh_it_puts_the_command_on_the_path_once_the_program_is_recorded():
+    # CI's windows-install job opens a PowerShell with the user's PATH and runs it from there.
+    body = (ROOT / "install.ps1").read_text().split("function Install-ParentRecap {", 1)[1]
+
+    recorded = body.index("'-m', 'family_brief.install_record'")
+    assert recorded < body.index("@('-m', 'family_brief.command_path', 'install', $Target)")
+    # This window's PATH is the one it opened with, so it also says the full path.
+    said = body.split("is installed in $App", 1)[1].split("\n  }", 1)[0]
+    assert "new PowerShell window" in said and ".venv\\Scripts\\parent-recap.exe" in said
+
+
 def test_install_ps1_is_ascii_only():
     # Windows PowerShell 5.1 reads a script file without a byte order mark in the PC's own code
     # page, so anything else would come out garbled.

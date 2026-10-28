@@ -300,6 +300,11 @@
     if ((Invoke-Logged $venvPython $record) -ne 0) {
       Stop-Install "Parent Recap couldn't write setup's record. The full log is at $Log"
     }
+    # `parent-recap` in a folder of its own, $Target\bin, on the user's PATH, so every new
+    # PowerShell window runs it without its full path (#560).
+    if ((Invoke-Logged $venvPython @('-m', 'family_brief.command_path', 'install', $Target)) -ne 0) {
+      Stop-Install "Parent Recap couldn't put its command on the PATH. The full log is at $Log"
+    }
     # A Household that connected Wilma gets the wilma CLI version this release pins (ADR 0008), on
     # the Node above. One that couldn't be updated keeps working, and the next install tries again.
     Invoke-Logged $venvPython @('-m', 'family_brief.setup_wilma', 'update') | Out-Null
@@ -307,7 +312,8 @@
     Invoke-Logged $venvPython @('-m', 'family_brief.baileys_install', 'install') | Out-Null
 
     Write-Host "Parent Recap $version is installed in $App"
-    Write-Host "   Command: $(Join-Path $App '.venv\Scripts\parent-recap.exe')"
+    # This window's PATH is the one it opened with, before the user's PATH had the folder.
+    Write-Host "   Command: parent-recap in a new PowerShell window; in this one: $(Join-Path $App '.venv\Scripts\parent-recap.exe')"
   }
 
   $failed = $false

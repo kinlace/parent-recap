@@ -185,6 +185,9 @@ RECORD=("$APP/.venv/bin/python" -m family_brief.install_record)
 # The copy of the plugin the install line downloads, which the Codex skills run from; Claude
 # Code manages its own copy.
 if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_ROOT"; fi
+# `parent-recap` in a folder of its own, $TARGET/bin, with a line in ~/.zprofile that puts it on
+# the PATH of every new Terminal window (#560).
+"$APP/.venv/bin/python" -m family_brief.command_path install "$TARGET"
 # A Household that connected Wilma gets the wilma CLI version this release pins (ADR 0008), on
 # the Node above. One that couldn't be updated keeps working, and the next install tries again.
 "$APP/.venv/bin/python" -m family_brief.setup_wilma update
@@ -201,4 +204,5 @@ if [ "${1:-}" = "--codex" ]; then
 fi
 
 echo "✅ Parent Recap ${VERSION:-} installed to $APP"
-echo "   Command: $APP/.venv/bin/parent-recap"
+# This Terminal's PATH is the one it opened with, before ~/.zprofile had the line.
+echo "   Command: parent-recap in a new Terminal window; in this one: $APP/.venv/bin/parent-recap"

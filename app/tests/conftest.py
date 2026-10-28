@@ -328,6 +328,7 @@ class Harness:
     secrets = _to("_system", "secrets")
     jobs = _to("_system", "jobs")
     wake = _to("_system", "wake")
+    user_path = _to("_system", "user_path")
     desktop = _to("_system", "desktop")
     dialog = _to("_system", "dialog")
     system = _to("_system", "profile")  # the profile the program sees

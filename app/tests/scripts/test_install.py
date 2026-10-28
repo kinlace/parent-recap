@@ -178,9 +178,9 @@ def program(mac: dict, requires: tuple[str, ...], constraints: str = "",
     (app / "family_brief" / "__init__.py").write_text("")
     (app / "family_brief" / "__main__.py").write_text(
         "import os, sys\ndef main():\n    print('runs on', os.path.realpath(sys.executable))\n")
-    # The real ones record what the install made (test_uninstall.py) and install the Baileys tree
-    # (test_baileys_install.py). These note, in order, that they were asked.
-    for module in ("install_record", "baileys_install"):
+    # The real ones record what the install made (test_uninstall.py), put the command on the PATH
+    # (test_command_path.py) and install the Baileys tree (test_baileys_install.py). These note, in order, that they were asked.
+    for module in ("install_record", "command_path", "baileys_install"):
         (app / "family_brief" / f"{module}.py").write_text(
             "import pathlib, sys\n"
             "with open(pathlib.Path.home() / 'installer.calls', 'a') as calls:\n"
@@ -335,7 +335,22 @@ def test_every_install_installs_the_baileys_tree_once_the_runtimes_are_recorded(
         assert result.returncode == 0, result.stdout + result.stderr
 
     assert (mac["home"] / "installer.calls").read_text() == \
-        "install_record program\nbaileys_install install\n" * 2
+        "install_record program\ncommand_path install\nbaileys_install install\n" * 2
+
+
+@pytest.mark.macos
+def test_the_last_lines_say_the_command_for_a_new_window_and_for_this_one(mac):
+    # This Terminal's PATH is the one it opened with, before ~/.zprofile had the line (#560).
+    wheel(mac["packages"], "pure-dep", "1.0")
+    program(mac, ("pure-dep",))
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    last = result.stdout.splitlines()[-1]
+    assert "parent-recap in a new Terminal window" in last
+    assert str(mac["home"] / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap") in last
+    assert (mac["home"] / "installer.calls").read_text().splitlines()[1] == "command_path install"
 
 
 # --- The install log -------------------------------------------------------------------------
