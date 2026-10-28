@@ -3,7 +3,8 @@
 // $FAKE_BAILEYS_SCENARIO, one list per socket the program opens, and appends each call the
 // program made on a socket, and the options it opened it with, to $FAKE_BAILEYS_CALLS.
 //
-// Steps: {"qr": "..."}, {"open": true}, {"close": STATUS}, {"creds": {...}} (a creds.update),
+// Steps: {"qr": "..."}, {"open": true}, {"close": STATUS}, {"creds": {...}} (a creds.update;
+// a list of them is emitted all at once, as Baileys sends several in a row),
 // {"keys": {...}} (the program's keys.set), {"get": [TYPE, [IDS]]} (its keys.get, recorded),
 // {"message": MESSAGE} (a messages.upsert), {"history": [MESSAGE, ...]} (a
 // messaging-history.set, as WhatsApp hands over at connect), {"rename": {"id": "...", "subject":
@@ -131,8 +132,11 @@ export function makeWASocket(config) {
         });
       }
       if ("creds" in step) {
-        Object.assign(auth.creds, step.creds);
-        await emit("creds.update", step.creds);
+        const updates = Array.isArray(step.creds) ? step.creds : [step.creds];
+        await Promise.all(updates.map((update) => {
+          Object.assign(auth.creds, update);
+          return emit("creds.update", update);
+        }));
       }
       if ("keys" in step) await auth.keys.set(step.keys);
       if ("get" in step) record({ call: "keys.get", result: await auth.keys.get(...step.get) });

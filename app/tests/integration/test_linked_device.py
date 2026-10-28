@@ -240,6 +240,42 @@ def test_groups_lists_the_groups_on_the_saved_auth_state_and_keeps_no_message(de
     assert TEXT not in run.log and "received" not in run.log
 
 
+def test_creds_updates_sent_at_once_are_all_kept_and_leave_no_partial_file(device, tmp_path):
+    """Baileys sends several creds.update events in a row: each write of creds.json takes its
+    turn, so none moves its copy over another's, which Windows refuses (#523)."""
+    paired(device, tmp_path)
+
+    run = device("groups", [[{"creds": [{"first": 1}, {"second": 2}, {"third": 3}]},
+                             {"open": True}]])
+
+    assert run.code == 0, run.stderr
+    creds = json.loads((auth(tmp_path) / "creds.json").read_text(encoding="utf-8"))
+    assert creds["me"] == ME
+    assert (creds["first"], creds["second"], creds["third"]) == (1, 2, 3)
+    assert [name for name in os.listdir(auth(tmp_path)) if ".partial" in name] == []
+
+
+@pytest.mark.windows
+def test_a_creds_file_held_open_for_a_moment_is_replaced_once_it_is_let_go(device, tmp_path):
+    """On Windows a file another handle holds open, such as a virus scanner's, can't be replaced
+    for the moment: the write waits for it rather than ending the pairing (#523)."""
+    paired(device, tmp_path)
+    creds = auth(tmp_path) / "creds.json"
+
+    def hold_for_a_moment(_proc: subprocess.Popen) -> None:
+        with creds.open("rb"):  # Python's open shares no delete, so a rename over it fails
+            go(tmp_path)
+            time.sleep(0.5)
+
+    run = device("groups", [[{"wait": "go"}, {"creds": {"later": True}}, {"open": True}]],
+                 during=hold_for_a_moment)
+
+    assert run.code == 0, run.stderr
+    assert json.loads(creds.read_text(encoding="utf-8"))["later"] is True
+    assert [name for name in os.listdir(auth(tmp_path)) if ".partial" in name] == []
+    assert "stopped" not in run.log
+
+
 def test_groups_without_auth_state_needs_a_new_pairing(device, tmp_path):
     run = device("groups", [[{"open": True}]])
 
