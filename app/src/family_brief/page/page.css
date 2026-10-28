@@ -287,9 +287,9 @@ fieldset .field label {
 
 .more summary { cursor: pointer; color: var(--ink-2); font-size: 13px; }
 
-.more p { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+.more p, .more ol { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
 
-.more ol { font-size: 13px; color: var(--muted); margin: 8px 0 0; padding-left: 20px; }
+.more ol { padding-left: 20px; }
 
 .more .pictures { margin-top: 12px; }
 
