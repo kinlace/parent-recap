@@ -402,14 +402,14 @@ def test_a_done_whatsapp_opened_from_connect_s_list_goes_on_from_there(harness, 
     at_the_whatsapp_step(harness)
     more_progress(harness, sources={"whatsapp": "done", "myclub": "to-do"})
 
-    out = call(page.url, "api/whatsapp/done", method="POST", body={}).json()
+    def go_on() -> Any:
+        return call(page.url, "api/whatsapp/done", method="POST", body={})
 
-    assert out["progress"]["source"] == "myclub"  # the next to do
+    assert go_on().json()["progress"]["source"] == "myclub"  # the next to do
     more_progress(harness, source="whatsapp", sources={"myclub": "skipped"})
-    out = call(page.url, "api/whatsapp/done", method="POST", body={}).json()
-    assert out["progress"]["source"] is None  # none left: on to Check
+    assert go_on().json()["progress"]["source"] is None  # none left: on to Check
     more_progress(harness, source="whatsapp", sources={"whatsapp": "to-do"})
-    assert call(page.url, "api/whatsapp/done", method="POST", body={}).status == 400
+    assert go_on().status == 400
 
 
 # ── Turning WhatsApp off
