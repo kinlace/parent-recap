@@ -5,8 +5,11 @@ Wants=network-online.target
 
 [Service]
 DynamicUser=true
-# The SMTP credentials and Bifrost's admin login; the provider key is not this service's to see.
+# Bifrost's admin login, to check Gateway Keys; the provider key in the same file is not this
+# service's to see. The SMTP credentials have their own file, which set-smtp-credentials.sh writes:
+# without it the relay starts only to exit and say so.
 EnvironmentFile=/etc/bifrost/bifrost.env
+EnvironmentFile=-/etc/brief-relay/brief-relay.env
 UnsetEnvironment=ANTHROPIC_API_KEY
 # GATEWAY_HOST comes from the drop-in gateway-setup.sh writes.
 ExecStart=/usr/bin/python3 /usr/local/lib/brief-relay/brief_relay.py
