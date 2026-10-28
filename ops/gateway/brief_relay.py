@@ -44,8 +44,9 @@ EX_CONFIG = 78
 # Bifrost's virtual-key list returns at most 100 keys a page.
 PAGE = 100
 
-# Strict on purpose: no display names, no commas, nothing a header could be split on.
-ADDRESS = re.compile(r"[^@\s,;<>\"()\[\]\\]+@[^@\s,;<>\"()\[\]\\]+\.[^@\s,;<>\"()\[\]\\]+")
+# Strict on purpose: no display names, no commas, nothing a header could be split on, and ASCII
+# only, as Email Delivery's SMTP takes no internationalized addresses.
+ADDRESS = re.compile(r"[!#-'*+./0-9=?A-Z^-~-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+", re.ASCII)
 MIME_TYPE = re.compile(r"([a-z0-9][a-z0-9.+-]*)/([a-z0-9][a-z0-9.+-]*)")
 FILENAME = re.compile(r"[^/\\\x00-\x1f\x7f]{1,100}")
 
@@ -156,6 +157,10 @@ def _text(body: dict, field: str, required: bool = True, one_line: bool = False)
         raise Refused(400, f"`{field}` must be a non-empty string")
     if one_line and ("\r" in value or "\n" in value):
         raise Refused(400, f"`{field}` must be one line")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise Refused(400, f"`{field}` isn't valid text") from None
     return value
 
 
@@ -253,26 +258,32 @@ class Relay:
         """The status and JSON answer for one POST /v1/brief."""
         key = None
         recipients = 0
+        counted = False
         try:
-            key = self.keys.key(key_value) if key_value else None
-            if key is None:
-                raise Refused(401, "missing, unknown or revoked Gateway Key")
-            if len(raw) > MAX_REQUEST_BYTES:
-                raise Refused(413, f"the request is over {MAX_REQUEST_BYTES} bytes")
             try:
-                body = json.loads(raw)
-            except ValueError:
-                raise Refused(400, "the body isn't JSON") from None
-            msg, to = message(body, self.stop_url)
-            recipients = len(to)
-            if not self.cap.take(key):
-                raise Refused(429, f"this key has sent its {self.cap.limit} Briefs for today")
-            try:
+                key = self.keys.key(key_value) if key_value else None
+                if key is None:
+                    raise Refused(401, "missing, unknown or revoked Gateway Key")
+                if len(raw) > MAX_REQUEST_BYTES:
+                    raise Refused(413, f"the request is over {MAX_REQUEST_BYTES} bytes")
+                try:
+                    body = json.loads(raw)
+                except (ValueError, RecursionError):
+                    raise Refused(400, "the body isn't JSON") from None
+                msg, to = message(body, self.stop_url)
+                recipients = len(to)
+                if not self.cap.take(key):
+                    raise Refused(429, f"this key has sent its {self.cap.limit} Briefs for today")
+                counted = True
                 refused = self.mailer.send(msg, to)
             except Refused:
-                self.cap.give_back(key)
                 raise
+            except Exception as e:
+                # Only the class: an exception's text can quote the message.
+                raise Refused(500, f"the relay failed ({e.__class__.__name__})") from None
         except Refused as e:
+            if counted:
+                self.cap.give_back(key)
             self._log(key, recipients, raw, f"{e.status} {e.reason}")
             return e.status, {"error": e.reason}
         self._log(key, recipients, raw, "sent" + (f", {refused} refused" if refused else ""))
@@ -290,6 +301,8 @@ def handler(relay: Relay) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "brief-relay"
         sys_version = ""
+        # A client that stops sending mid-request doesn't hold a thread for ever.
+        timeout = 30
 
         def _answer(self, status: int, body: dict) -> None:
             data = json.dumps(body).encode()
@@ -309,9 +322,13 @@ def handler(relay: Relay) -> type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:
             if self.path != "/v1/brief":
                 return self._answer(404, {"error": "not found"})
+            if self.headers.get("Content-Length") is None:
+                return self._answer(411, {"error": "Content-Length is required"})
             try:
-                length = int(self.headers.get("Content-Length") or 0)
+                length = int(self.headers["Content-Length"])
             except ValueError:
+                length = -1
+            if length < 0:
                 return self._answer(400, {"error": "bad Content-Length"})
             # A body over the limit isn't read: the key is checked on what's there, then 413.
             raw = self.rfile.read(min(length, MAX_REQUEST_BYTES + 1))
