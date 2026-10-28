@@ -9,7 +9,6 @@ from http import HTTPStatus
 from typing import Any
 
 from .. import failure, llm, setup_ai, setup_save
-from ..config import LLMConfig
 from ..setup_connect import Nothing, Reply, Strict, parse
 from ..system import desktop, profile
 from .context import (Action, Context, Phase, chats, claude, claude_missing, keychain_code,
@@ -312,9 +311,7 @@ class AISignIn(Phase):
         config names, and stores it, as `setup gateway` does with the dialog's (ADR 0007). The
         key, and what the gateway said, are never returned, logged or put on a command line."""
         answer = parse(GatewayKey, raw)
-        url = self.context.section("llm").get("gateway_url")
-        result, extra = setup_ai.gateway_sign_in(
-            url if isinstance(url, str) and url else LLMConfig().gateway_url, answer.key)
+        result, extra = setup_ai.gateway_sign_in(self.context.gateway_url(), answer.key)
         if result != "saved":
             return HTTPStatus.OK, {"result": result, **keychain_code(extra)}
         return self._signed_in("gateway")

@@ -20,13 +20,14 @@ from typing import Any
 
 import pytest
 
-from family_brief import install_record, setup_save, setup_server
+from family_brief import gateway, install_record, setup_save, setup_server
 from family_brief.config import Config
 from family_brief.system import secrets
 from setup_page import (APP_PASSWORD, PAGE_DIR, Response, call, config_file, refuse_secrets, source,
                         statuses, welcome)
 from setup_page import clock, page  # noqa: F401
 from setup_page import assert_never_leaked as assert_never_leaked_by_page
+from test_gateway import KEY as GATEWAY_KEY, assert_key_never_leaked
 
 TYPED = "abcd efgh ijkl mnop"  # how Google shows it, and how it's copied
 ACCOUNT = "gmail-imap-parent@example.com"
@@ -517,8 +518,10 @@ def test_the_gmail_fields_are_the_page_s_own(page):
 # ── Connect: Parent Recap sends the Brief, in place of Gmail (ADR 0028)
 
 
-def parent_recap_sends(url: str, *recipients: dict[str, Any]) -> Response:
-    return call(url, "api/gmail/gateway", method="POST", body={"recipients": list(recipients)})
+def parent_recap_sends(url: str, *recipients: dict[str, Any], key: str | None = None) -> Response:
+    """"Parent Recap sends the Brief", with the Gateway Key for sending alone when it's given."""
+    return call(url, "api/gmail/gateway", method="POST",
+                body={"recipients": list(recipients), **({"key": key} if key is not None else {})})
 
 
 def with_the_gateway_as_the_ai(url: str, partner: dict[str, str] | None = None) -> None:
@@ -548,14 +551,95 @@ def test_with_the_gateway_as_the_ai_parent_recap_sends_the_brief_and_gmail_is_sk
     assert call(page.url, "api/state").json()["gmail"] == {"address": None, "sender": "gateway"}
 
 
-def test_parent_recap_sends_only_for_a_household_whose_ai_is_the_gateway(harness, page):
-    welcome(page.url, ai="claude")
+def test_with_the_gateway_as_the_ai_its_key_is_not_asked_for_again(harness, page):
+    # The AI step tests it with a model call (test_setup_ai.py), which a key for sending alone fails.
+    with_the_gateway_as_the_ai(page.url)
 
-    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"})
+    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"},
+                           key=GATEWAY_KEY)
 
     assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    assert GATEWAY_KEY.encode() not in r.body
+    assert harness.relay_keys == [] and harness.secrets == {}
+    assert statuses(page.url)["gmail"] == "to-do"
+
+
+@pytest.mark.parametrize("ai", ["claude", "codex"])
+def test_with_its_own_ai_parent_recap_sends_with_a_key_tested_by_the_relay(harness, page, gmail,
+                                                                           caplog, ai):
+    # A send-only key has no model behind it (ops/gateway/README.md), so no model call tests it.
+    caplog.set_level(logging.DEBUG)
+    welcome(page.url, ai=ai)
+    source(page.url, "wilma", "skip")
+
+    r = parent_recap_sends(page.url, {"address": "parent@hotmail.com", "language": "en"},
+                           key=f" {GATEWAY_KEY}\n")  # as copied from a message
+
+    assert r.status == 200 and r.json()["result"] == "saved"
+    assert r.json()["progress"]["sources"]["gmail"] == "skipped"
+    assert r.json()["progress"]["source"] == "ai"  # its sign-in is unchanged
+    assert harness.relay_keys == [GATEWAY_KEY] and harness.sent == []
+    assert harness.model.reached == [] and harness.model_calls == []
+    assert harness.secrets == {gateway.ACCOUNT: GATEWAY_KEY}
+    assert install_record.entries("keychain") == [gateway.ACCOUNT]  # so uninstall removes it
+    cfg = Config.load(config_file(harness))
+    assert (cfg.llm.backend, cfg.email.sender) == (ai, "gateway")
+    assert [t.address for t in cfg.email.to] == ["parent@hotmail.com"]
+    assert gmail.logins == []
+    assert_key_never_leaked(harness, r.body.decode(), caplog)
+
+
+@pytest.mark.parametrize("answer, result", [
+    ((401, {"error": "missing, unknown or revoked Gateway Key"}), "rejected"),
+    ((502, {"error": "the gateway is down"}), "test-call-failed"),
+    (None, "no-connection"),
+])
+def test_a_key_the_relay_does_not_take_is_not_stored_and_says_what_to_do(harness, page, caplog,
+                                                                          answer, result):
+    caplog.set_level(logging.DEBUG)
+    welcome(page.url, ai="claude")
+    source(page.url, "wilma", "skip")
+    if answer is None:
+        harness.email_error = gateway.GatewayError(
+            "couldn't reach the gateway at gateway.parentrecap.com (ConnectionError)")
+    else:
+        harness.relay_answer = answer
+
+    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"},
+                           key=GATEWAY_KEY)
+
+    assert r.status == 200 and r.json() == {"result": result}
+    assert harness.secrets == {} and install_record.entries("keychain") == []
     assert statuses(page.url)["gmail"] == "to-do"
     assert Config.load(config_file(harness)).email.sender == "gmail"
+    assert_key_never_leaked(harness, r.body.decode(), caplog)
+
+
+def test_with_its_own_ai_a_key_is_needed_and_what_is_not_one_is_never_sent(harness, page):
+    welcome(page.url, ai="codex")
+
+    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"})
+    assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"},
+                           key="my-password")
+    assert r.json() == {"result": "not-a-key"}
+    # Addresses are checked before the key goes anywhere.
+    r = parent_recap_sends(page.url, {"address": "parent", "language": "en"}, key=GATEWAY_KEY)
+    assert r.json() == {"result": "no-address"}
+
+    assert harness.relay_keys == [] and harness.secrets == {}
+    assert statuses(page.url)["gmail"] == "to-do"
+
+
+def test_a_keychain_that_refuses_the_key_says_so_with_its_code(harness, page):
+    welcome(page.url, ai="claude")
+    refuse_secrets(harness, -25293)
+
+    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"},
+                           key=GATEWAY_KEY)
+
+    assert r.json() == {"result": "keychain-failed", "code": -25293}
+    assert statuses(page.url)["gmail"] == "to-do"
 
 
 def test_each_recipient_parent_recap_sends_to_needs_an_address_of_their_own(harness, page):
@@ -611,5 +695,15 @@ def test_parent_recap_s_results_are_explained_in_all_three_languages():
         for result in setup_server.gmail.GATEWAY_SENDS_RESULTS:
             assert table.get(f"gmail.gateway.{result}", "").strip(), (language, result)
         for key in ("gmail.choice", "gmail.choice.gmail", "gmail.choice.gateway",
-                    "gmail.gateway.unread", "gmail.gateway.junk", "brief.junk"):
+                    "gmail.gateway.unread", "gmail.gateway.junk", "brief.junk",
+                    "gmail.gateway.key", "gmail.gateway.key.explain",
+                    "gmail.gateway.key.explain.windows"):
             assert table.get(key, "").strip(), (language, key)
+        # A key the relay doesn't take is said as the gateway AI's key field says it.
+        for result in setup_server.gmail.SEND_KEY_RESULTS:
+            assert result in setup_server.ai.GATEWAY_RESULTS
+            assert table.get(f"gateway.{result}", "").strip(), (language, result)
+        assert "sk-" in table["gmail.gateway.key.explain"], language
+    english = text["en"]
+    assert "only for sending" in english["gmail.gateway.key.explain"]
+    assert "nobody reads" in english["gmail.gateway.unread"]
