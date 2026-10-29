@@ -28,6 +28,26 @@ refuse_old_install() {
   exit 1
 }
 
+# ── macOS version check
+# The pinned Node below needs macOS 13.5 or newer: on an older one the install would fail halfway
+# with an error a family can't act on (#571). A version sw_vers can't tell lets the install go on.
+# Kept in sync with get.sh, which checks before it downloads the release, and with the README.
+refuse_old_macos() {
+  local version major minor
+  version=$(sw_vers -productVersion 2>/dev/null) || return 0
+  IFS=. read -r major minor _ <<<"$version"
+  [[ "$major" =~ ^[0-9]+$ ]] || return 0
+  [[ "${minor:-}" =~ ^[0-9]+$ ]] || minor=0
+  [ "$major" -lt 13 ] || { [ "$major" -eq 13 ] && [ "$minor" -lt 5 ]; } || return 0
+  echo "❌ Parent Recap needs macOS 13.5 (Ventura) or newer; this Mac has macOS $version. Nothing was changed."
+  echo "   Update macOS, or install Parent Recap on another computer."
+  echo "   Parent Recap vaatii macOS 13.5:n (Ventura) tai uudemman; tässä Macissa on macOS $version."
+  echo "   Päivitä macOS tai asenna Parent Recap toiselle tietokoneelle."
+  echo "   Parent Recap 需要 macOS 13.5 (Ventura) 或更新版本，这台 Mac 是 macOS ${version}。"
+  echo "   请升级 macOS，或在另一台电脑上安装 Parent Recap。"
+  exit 1
+}
+
 # ── Parent Recap's own Python (ADR 0011)
 # A pinned python-build-standalone build, so no `brew upgrade` or `uv python upgrade` can move the
 # Python the scheduled job runs on, or break the venv. To bump it, see CONTRIBUTING.md.
@@ -121,6 +141,7 @@ venv_real_python() {
 }
 
 if [ "$(uname)" != "Darwin" ]; then echo "❌ Only macOS is supported for now"; exit 1; fi
+refuse_old_macos
 refuse_old_install
 install_runtimes
 

@@ -4,8 +4,8 @@ the versions in the shipped constraints file.
 Runs the real `install.sh` and the real pip, offline: pip reads packages only from a folder made
 here (`fake_packages.py`), and the program it installs is a stand-in with the real one's layout.
 The pinned Python comes from a fake `curl` serving a stand-in python-build-standalone tarball
-(`python_build`), the pinned Node from a stand-in nodejs.org tarball (`serve_node`), and the
-Mac's kind from a fake `sysctl`. A `python3` on PATH fails, so nothing
+(`python_build`), the pinned Node from a stand-in nodejs.org tarball (`serve_node`), the
+Mac's kind from a fake `sysctl` and its macOS version from a fake `sw_vers`. A `python3` on PATH fails, so nothing
 runs on a Python the Mac already has.
 """
 from __future__ import annotations
@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[3]
 PINNED = ("3.13.16", "20261003")
 NODE = "24.21.0"
 NODE_ARCHES = {"aarch64": "arm64", "x86_64": "x64"}
+MACOS = "15.5"
 
 
 @pytest.fixture(scope="session")
@@ -82,6 +83,7 @@ cp "$served" "$out"
 """)
     fake(bin_ / "python3", 'echo "the Mac\'s own python3 was run" >&2; exit 97')
     a_mac(m, "arm64")
+    macos(m, MACOS)
     serve(m, *PINNED)
     serve_node(m, NODE)
     return m
@@ -100,6 +102,11 @@ def a_mac(mac: dict, kind: str) -> None:
     fake(mac["bin"] / "sysctl", f'[ "$*" = "-n hw.optional.arm64" ] || exit 2\n{sysctl}')
     machine = "arm64" if kind == "arm64" else "x86_64"
     fake(mac["bin"] / "uname", f'[ "$1" = -m ] && echo {machine} || echo Darwin')
+
+
+def macos(mac: dict, version: str) -> None:
+    """What `sw_vers -productVersion` says."""
+    fake(mac["bin"] / "sw_vers", f'[ "$*" = -productVersion ] || exit 2\necho {version}')
 
 
 def build_name(version: str, build: str, arch: str) -> str:
@@ -393,13 +400,12 @@ def test_every_install_keeps_a_dated_log_that_starts_with_the_mac_it_ran_on(mac)
     venv = mac["home"] / "ParentRecap" / "app" / ".venv" / "bin"
     pip_version = subprocess.run([venv / "pip", "--version"], capture_output=True, text=True).stdout.split()[1]
     machine = "aarch64"  # the build picked for the fake sysctl's Apple Silicon Mac
-    macos = subprocess.run(["sw_vers", "-productVersion"], capture_output=True, text=True).stdout.strip()
     python = subprocess.run([venv / "python", "-c", "import platform; print(platform.python_version())"],
                             capture_output=True, text=True).stdout.strip()
     cc = shutil.which("cc") or "none"
     env = re.fullmatch(r"Mac: (\S+), macOS (\S+), Python (\S+) \((\S+)\), pip (\S+), cc (\S+)", first)
     assert env, first
-    assert env.groups() == (machine, macos, env[3], python, pip_version, cc)
+    assert env.groups() == (machine, MACOS, env[3], python, pip_version, cc)
     assert env[3].startswith("~/ParentRecap/runtime/")
     assert os.path.realpath(env[3].replace("~", str(mac["home"]), 1)) == os.path.realpath(venv / "python")
     assert any("pure-dep" in line for line in rest)
@@ -527,6 +533,35 @@ def test_install_stops_over_an_install_from_before_the_rename(mac):
     assert result.returncode != 0
     assert "Uninstall it with its own version first" in result.stdout
     assert not (mac["home"] / "ParentRecap").exists()
+
+
+@pytest.mark.macos
+@pytest.mark.parametrize("version", ["13.4.1", "13.0", "12.7.6", "10.15.7"])
+def test_a_macos_older_than_13_5_stops_the_install_before_any_download(mac, version):
+    program(mac, ())
+    macos(mac, version)
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    assert f"Parent Recap needs macOS 13.5 (Ventura) or newer; this Mac has macOS {version}." in result.stdout
+    assert "Update macOS, or install Parent Recap on another computer." in result.stdout
+    assert "vaatii macOS 13.5:n (Ventura) tai uudemman" in result.stdout
+    assert "需要 macOS 13.5 (Ventura) 或更新版本" in result.stdout
+    assert downloads(mac) == []
+    assert not (mac["home"] / "ParentRecap").exists()
+
+
+@pytest.mark.macos
+@pytest.mark.parametrize("version", ["13.5", "13.6.9", "14.0", "26.1"])
+def test_macos_13_5_and_newer_install_as_before(mac, version):
+    program(mac, ())
+    macos(mac, version)
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "13.5" not in result.stdout
 
 
 def test_both_commands_name_the_same_entry_point():
