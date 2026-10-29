@@ -5,8 +5,8 @@ Runs the real `install.sh` and the real pip, offline: pip reads packages only fr
 here (`fake_packages.py`), and the program it installs is a stand-in with the real one's layout.
 The pinned Python comes from a fake `curl` serving a stand-in python-build-standalone tarball
 (`python_build`), the pinned Node from a stand-in nodejs.org tarball (`serve_node`), the
-Mac's kind from a fake `sysctl` and its macOS version from a fake `sw_vers`. A `python3` on PATH fails, so nothing
-runs on a Python the Mac already has.
+Mac's kind from a fake `sysctl` and its macOS version from a fake `sw_vers`. A `python3` on PATH
+fails, so nothing runs on a Python the Mac already has.
 """
 from __future__ import annotations
 
@@ -553,7 +553,7 @@ def test_a_macos_older_than_13_5_stops_the_install_before_any_download(mac, vers
 
 
 @pytest.mark.macos
-@pytest.mark.parametrize("version", ["13.5", "13.6.9", "14.0", "26.1"])
+@pytest.mark.parametrize("version", ["13.5", "13.6.9", "14.0", "26.1", "13.5 beta", "unknown"])
 def test_macos_13_5_and_newer_install_as_before(mac, version):
     program(mac, ())
     macos(mac, version)
@@ -561,7 +561,7 @@ def test_macos_13_5_and_newer_install_as_before(mac, version):
     result = install(mac)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "13.5" not in result.stdout
+    assert "needs macOS" not in result.stdout
 
 
 def test_both_commands_name_the_same_entry_point():

@@ -41,7 +41,7 @@ def mac(tmp_path: Path) -> dict:
     bin_.mkdir()
     log = tmp_path / "calls.log"
     fake(bin_ / "uname", "echo Darwin")
-    fake(bin_ / "sw_vers", 'echo 15.5')
+    fake(bin_ / "sw_vers", "echo 15.5")
     fake(bin_ / "claude", f"""
 echo "claude $*" >> "{log}"
 case "$*" in
@@ -387,7 +387,7 @@ def test_codex_refuses_a_download_that_is_not_parent_recap(mac):
 @pytest.mark.parametrize("flag", ["", "--claude", "--codex"])
 def test_the_line_stops_on_a_macos_older_than_13_5_before_any_download(mac, flag):
     stable_release(mac, "0.4.0")
-    fake(mac["bin"] / "sw_vers", 'echo 13.4.1')
+    fake(mac["bin"] / "sw_vers", "echo 13.4.1")
 
     result = get(mac, *([flag] if flag else []))
 
@@ -401,12 +401,12 @@ def test_the_line_stops_on_a_macos_older_than_13_5_before_any_download(mac, flag
 
 def test_the_line_on_macos_13_5_goes_on_as_before(mac):
     stable_release(mac, "0.4.0")
-    fake(mac["bin"] / "sw_vers", 'echo 13.5')
+    fake(mac["bin"] / "sw_vers", "echo 13.5")
 
     result = get(mac)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "13.5" not in result.stdout
+    assert "needs macOS" not in result.stdout
 
 
 def test_only_runs_on_a_mac(mac):
