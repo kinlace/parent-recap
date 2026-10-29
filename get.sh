@@ -43,6 +43,26 @@ refuse_old_install() {
   exit 1
 }
 
+# ── macOS version check
+# The Node install.sh pins needs macOS 13.5 or newer (#571), so an older Mac stops before
+# anything is downloaded. Kept in sync with install.sh, which checks when a release zip's
+# install.sh runs alone, and with the README.
+refuse_old_macos() {
+  local version major minor
+  version=$(sw_vers -productVersion 2>/dev/null) || return 0
+  IFS=. read -r major minor _ <<<"$version"
+  [[ "$major" =~ ^[0-9]+$ ]] || return 0
+  [[ "${minor:-}" =~ ^[0-9]+$ ]] || minor=0
+  [ "$major" -lt 13 ] || { [ "$major" -eq 13 ] && [ "$minor" -lt 5 ]; } || return 0
+  echo "❌ Parent Recap needs macOS 13.5 (Ventura) or newer; this Mac has macOS $version. Nothing was changed."
+  echo "   Update macOS, or install Parent Recap on another computer."
+  echo "   Parent Recap vaatii macOS 13.5:n (Ventura) tai uudemman; tässä Macissa on macOS $version."
+  echo "   Päivitä macOS tai asenna Parent Recap toiselle tietokoneelle."
+  echo "   Parent Recap 需要 macOS 13.5 (Ventura) 或更新版本，这台 Mac 是 macOS ${version}。"
+  echo "   请升级 macOS，或在另一台电脑上安装 Parent Recap。"
+  exit 1
+}
+
 usage() {
   echo "Paste this into Terminal:"
   echo "  bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/$REPO/stable/get.sh)\""
@@ -178,6 +198,7 @@ install_codex() {
 }
 
 [ "$(uname)" = "Darwin" ] || { echo "❌ Parent Recap only runs on macOS for now."; exit 1; }
+refuse_old_macos
 refuse_old_install
 case "${1:-}" in
   --claude) install_claude ;;

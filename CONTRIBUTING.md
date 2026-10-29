@@ -91,6 +91,8 @@ In `install.ps1`, change `$NodeVersion` too, and `$NodeSha256` to the checksum o
 
 The wilma CLI already installed keeps working on a new Node: the next install replaces the old one.
 
+If the new Node needs a newer macOS than 13.5 (see its release's supported platforms), raise the minimum in `refuse_old_macos` in both `install.sh` and `get.sh`, and under "What you need" in the README.
+
 ## Pinned Baileys
 
 The Linked Device runs on Baileys (ADR 0025), whose whole npm tree is pinned in `app/src/family_brief/baileys/`: `package.json` names the Baileys version, and `package-lock.json` pins every package with its integrity hash. The installers install exactly that tree with `npm ci`. To move Baileys, change its version in `package.json` and `BAILEYS_VERSION` in `family_brief/baileys_install.py`, then rebuild the lockfile in that folder with the pinned Node's npm and review its diff:
