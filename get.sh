@@ -45,15 +45,16 @@ refuse_old_install() {
 
 # ── macOS version check
 # The Node install.sh pins needs macOS 13.5 or newer (#571), so an older Mac stops before
-# anything is downloaded. Kept in sync with install.sh, which checks when a release zip's
-# install.sh runs alone, and with the README.
+# anything is downloaded. A version sw_vers can't tell lets the install go on. Kept in sync
+# with install.sh, which checks when a release zip's install.sh runs alone, and with the README.
 refuse_old_macos() {
   local version major minor
   version=$(sw_vers -productVersion 2>/dev/null) || return 0
   IFS=. read -r major minor _ <<<"$version"
   [[ "$major" =~ ^[0-9]+$ ]] || return 0
-  [[ "${minor:-}" =~ ^[0-9]+$ ]] || minor=0
-  [ "$major" -lt 13 ] || { [ "$major" -eq 13 ] && [ "$minor" -lt 5 ]; } || return 0
+  minor=${minor:-0}
+  [[ "$minor" =~ ^[0-9]+$ ]] || return 0
+  if ((major > 13 || (major == 13 && minor >= 5))); then return 0; fi
   echo "❌ Parent Recap needs macOS 13.5 (Ventura) or newer; this Mac has macOS $version. Nothing was changed."
   echo "   Update macOS, or install Parent Recap on another computer."
   echo "   Parent Recap vaatii macOS 13.5:n (Ventura) tai uudemman; tässä Macissa on macOS $version."
