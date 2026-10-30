@@ -170,12 +170,13 @@ ssh -L 8080:localhost:8080 ubuntu@<ip>      # leave open
 export ADMIN=<admin user>:<admin password>
 ```
 
-**Create a Gateway Key and give it to a Household.** The name is a neutral label; who holds which key is kept only in the gateway's database, never in the repo. The reply's `virtual_key.value` (`sk-bf-…`) is the key: send it to the Household over a private channel and don't save it anywhere. Bifrost keeps it in plaintext and the key list returns it too, so a lost key can be read back, and the admin login (kept only in the maintainers' password manager) can read every Household's key.
+**Create a Gateway Key and give it to a Household.** The `name` is a neutral label, because it is written to Bifrost's request log and the relay's journal, which more people can read. Who holds the key goes in its `description` (the Household, its AI backend, the date), which only the admin API returns; it is kept only in the gateway's database, never in the repo. The reply's `virtual_key.value` (`sk-bf-…`) is the key: send it to the Household over a private channel and don't save it anywhere. Bifrost keeps it in plaintext and the key list returns it too, so a lost key can be read back, and the admin login (kept only in the maintainers' password manager) can read every Household's key.
 
 ```sh
 curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
   -H 'content-type: application/json' -d '{
     "name": "household-<label>",
+    "description": "<Household>, gateway AI, <date>",
     "is_active": true,
     "provider_configs": [{"provider": "anthropic", "weight": 1,
       "allowed_models": ["parent-recap"], "key_ids": ["*"]}],
@@ -187,7 +188,15 @@ curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
 
 ```sh
 curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
-  -H 'content-type: application/json' -d '{"name": "household-<label>", "is_active": true}'
+  -H 'content-type: application/json' -d '{"name": "household-<label>",
+    "description": "<Household>, own Claude Code or Codex, <date>", "is_active": true}'
+```
+
+**Say who holds a key made without a description.** Find its `id` in the list (below) and set the `description` alone:
+
+```sh
+curl -s -u "$ADMIN" -X PUT localhost:8080/api/governance/virtual-keys/<id> \
+  -H 'content-type: application/json' -d '{"description": "<Household>, <AI backend>, <date>"}'
 ```
 
 **Revoke.** Find the key's `id` in the list, then turn it off (or `DELETE` it). `PUT` changes only the fields it is given (Bifrost has no `PATCH` here):
