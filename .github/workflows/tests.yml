@@ -254,6 +254,8 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -Command 'Import-Module PSReadLine; & $env:PARENT_RECAP; exit $LASTEXITCODE'
           if ($LASTEXITCODE -ne 0) { throw "exited with $LASTEXITCODE" }
           Get-Content "$env:INSTALLED\logs\*.log" -Tail 20
+          # A step that ends in a traceback still lets the install go on, so only its log tells (#596).
+          if (Select-String -Path "$env:INSTALLED\logs\*.log" -Pattern '^Traceback' -Quiet) { throw 'a Python step ended in a traceback' }
       - name: The installed program runs on its own Python and Node
         run: |
           $py = "$env:INSTALLED\app\.venv\Scripts\python.exe"
