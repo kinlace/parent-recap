@@ -92,10 +92,10 @@ def signup(harness, wilma_cli, tmp_path):  # noqa: F811
     yield s
     s.server.stop()
     thread.join(5)
-    made()  # nothing goes on making a Household after the test
+    all_made()  # nothing goes on making a Household after the test
 
 
-def made() -> None:
+def all_made() -> None:
     """Waits until no Household is being made, with no page asking how it went."""
     for maker in threading.enumerate():
         if maker.name == "household-maker":
@@ -385,10 +385,16 @@ def test_a_sign_up_behind_another_says_it_waits_and_starts_once_that_one_is_done
 
     html = until(signup, second, lambda html: said("zh", "queued") in html)
     assert marks(html, "zh") == "⬜⬜⬜"  # no step begun
-    held.end(6)
+    # A third waits behind both, and goes after the second, which was posted first.
+    third = signup.invite(Recipient("third@example.com", "fi"))
+    assert sign_in(signup, third).status == 200
+    assert post_links(signup, third, "", "").status == 303
+    until(signup, third, lambda html: said("en", "queued") in html)
+    held.end(9)
     assert marks(text(result(signup, first)), "en") == "✅✅✅"
-    assert marks(text(result(signup, second)), "zh") == "✅✅✅"
-    assert [h.evening for h in signup.store.households()] == ["21:00", "21:05"]
+    second_done = text(result(signup, second))
+    assert marks(second_done, "zh") == "✅✅✅" and said("zh", "sent", time="21:05") in second_done
+    assert said("en", "sent", time="21:10") in text(result(signup, third))
 
 
 def test_a_phone_that_slept_through_the_steps_finds_how_they_ended(signup, monkeypatch):
@@ -400,7 +406,7 @@ def test_a_phone_that_slept_through_the_steps_finds_how_they_ended(signup, monke
 
     # The screen turns off: the page asks nothing while the Household is made.
     held.end(3)
-    made()
+    all_made()
     signup.clock.now += timedelta(hours=1)
     # It turns on, and the browser may post the form again: back to the steps, nothing new.
     r = post_links(signup, code, "", "", lang="fi")
@@ -418,7 +424,7 @@ def test_how_a_sign_up_ended_is_kept_a_day_for_a_page_that_never_came_back(signu
     assert sign_in(signup, code).status == 200
     signup.host.fails = "mint_key"
     assert post_links(signup, code, "", "").status == 303
-    made()
+    all_made()
 
     signup.clock.now += timedelta(hours=25)
 

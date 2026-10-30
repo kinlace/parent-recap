@@ -94,8 +94,10 @@ class Service:
         self._pending: dict[str, _Pending] = {}
         # Each link's Household being made, until its page has seen how that ended.
         self._progress: dict[str, _Progress] = {}
-        self._steps = threading.Lock()  # guards _progress, which the page reads without _lock
-        self._making = threading.Lock()  # held while a Household is made, one at a time
+        self._progress_lock = threading.Lock()  # the page reads _progress without _lock
+        # The Households waiting to be made, in the order posted: the first is being made.
+        self._turns = threading.Condition()
+        self._queue: list[_Progress] = []
 
     # ---------------------------------------------------------------- the page
 
@@ -133,7 +135,7 @@ class Service:
     def _shown(self, code: str) -> tuple[HTTPStatus, str] | None:
         """The page while the link's Household is made, or how that ended, which is then gone;
         None when none is."""
-        with self._steps:
+        with self._progress_lock:
             now = self.now()
             self._progress = {c: p for c, p in self._progress.items()
                               if p.ended is None or p.ended > now - timedelta(hours=RESULT_HOURS)}
@@ -147,10 +149,10 @@ class Service:
             return progress.page
 
     def sign_up(self, code: str, fields: dict[str, str]) -> tuple[HTTPStatus, str | None]:
-        with self._steps:
-            if code in self._progress:  # posted again: back to the steps
-                return HTTPStatus.SEE_OTHER, ""
         with self._lock:
+            with self._progress_lock:
+                if code in self._progress:  # posted again: back to the steps
+                    return HTTPStatus.SEE_OTHER, ""
             now = self.now()
             invite = self.store.valid(code, now)
             if invite is None:
@@ -223,7 +225,7 @@ class Service:
             links[kid] = url
         del self._pending[code]
         progress = _Progress(language)
-        with self._steps:
+        with self._progress_lock:
             self._progress[code] = progress
         threading.Thread(target=self._make_in_turn, args=(code, pending, links, progress),
                          name="household-maker", daemon=True).start()
@@ -231,36 +233,46 @@ class Service:
 
     def _make_in_turn(self, code: str, pending: _Pending, links: dict[str, str],
                       progress: _Progress) -> None:
-        """Makes the Household once no other is being made, marking each step on `progress` as
-        it ends."""
+        """Makes the Household once those posted before it are made; the page stops asking
+        however that ends."""
+        with self._turns:
+            self._queue.append(progress)
+            self._turns.wait_for(lambda: self._queue[0] is progress)
+        progress.started = True
+        try:
+            self._make_household(code, pending, links, progress)
+        finally:
+            if progress.page is None:  # stopped by what no step expects
+                progress.end(self.now(), HTTPStatus.INTERNAL_SERVER_ERROR,
+                             page.failed(pending.language))
+            with self._turns:
+                self._queue.pop(0)
+                self._turns.notify_all()
+
+    def _make_household(self, code: str, pending: _Pending, links: dict[str, str],
+                        progress: _Progress) -> None:
+        """Makes the Household, marking each step on `progress` as it ends, or takes back what
+        was made."""
         language, kids = pending.language, pending.kids()
-        with self._making:
-            progress.started = True
-            try:
-                name = user_name()
-                evening = _evening(self.store.households())
-                answers = {**pending.answers, "evening": evening, "myclub": links}
-                try:
-                    self._create(name, answers, progress)
-                except Exception as e:  # noqa: BLE001 - whatever it was, it is undone
-                    log.error("Household %s wasn't created, and what was made is taken back: %s",
-                              name, failure.raised(e, "Signing up"))
-                    self._take_back(name)
-                    progress.end(self.now(), HTTPStatus.INTERNAL_SERVER_ERROR,
-                                 page.failed(language, progress.steps))
-                    return
-                self.store.add_household(HouseholdRecord(name, evening, self.now().isoformat()))
-                self.store.retire(code)
-                log.info("Household %s created from an Invite Link, with MyClub for %d of %d Kids; "
-                         "its first Brief was sent, and the next come at %s", name, len(links),
-                         len(kids), evening)
-                progress.end(self.now(), HTTPStatus.OK, page.done(language, evening, any(
-                    _junk_prone(r["address"]) for r in answers["recipients"])))
-            finally:
-                # Stopped by what no step expects: the page still stops asking.
-                if progress.page is None:
-                    progress.end(self.now(), HTTPStatus.INTERNAL_SERVER_ERROR,
-                                 page.failed(language))
+        name = user_name()
+        evening = _evening(self.store.households())
+        answers = {**pending.answers, "evening": evening, "myclub": links}
+        try:
+            self._create(name, answers, progress)
+        except Exception as e:  # noqa: BLE001 - whatever it was, the family hears and it's undone
+            log.error("Household %s wasn't created, and what was made is taken back: %s",
+                      name, failure.raised(e, "Signing up"))
+            self._take_back(name)
+            progress.end(self.now(), HTTPStatus.INTERNAL_SERVER_ERROR,
+                         page.failed(language, progress.steps))
+            return
+        self.store.add_household(HouseholdRecord(name, evening, self.now().isoformat()))
+        self.store.retire(code)
+        log.info("Household %s created from an Invite Link, with MyClub for %d of %d Kids; its "
+                 "first Brief was sent, and the next come at %s", name, len(links), len(kids),
+                 evening)
+        progress.end(self.now(), HTTPStatus.OK, page.done(language, evening, any(
+            _junk_prone(r["address"]) for r in answers["recipients"])))
 
     def _create(self, name: str, answers: dict[str, Any], progress: _Progress) -> None:
         """Makes the Household, one of page.STEPS after another, `progress.steps` of them ended."""
@@ -311,7 +323,7 @@ class _Progress:
     """A Household being made: how many of its steps have ended, and, once it has, the page
     that says how. Nothing secret, so the page may ask for it as often as it likes."""
     language: str
-    started: bool = False  # False while another family's is made
+    started: bool = False  # False while it waits its turn
     steps: int = 0  # of page.STEPS
     page: tuple[HTTPStatus, str] | None = None
     ended: datetime | None = None
