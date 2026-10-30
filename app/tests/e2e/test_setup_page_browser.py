@@ -20,6 +20,7 @@ from typing import Any, Iterator
 from urllib.parse import urlparse
 
 import pytest
+import yaml
 
 try:
     from playwright.sync_api import Error as PlaywrightError, expect, sync_playwright
@@ -358,6 +359,56 @@ def test_who_gets_the_brief_can_be_changed_before_gmail_is_connected(tab, family
     assert [t.address for t in Config.load(config_file(family)).email.to] == ["parent@gmail.com"]
     # The setup parent's own Gmail is the likeliest one to read.
     expect(tab.get_by_label(text("gmail.address"))).to_have_value("parent@gmail.com")
+
+
+def test_after_only_me_on_welcome_gmail_s_step_can_add_the_partner(tab, family):
+    # #638: Welcome said "Only me", and the partner's address goes in on Gmail's step instead.
+    in_english_with_the_gateway(tab)
+    skip(tab, "wilma").click()
+    # Welcome's own field has the same label.
+    partner = tab.locator("#source-gmail").get_by_label(text("gmail.brief.partner"), exact=True)
+    expect(partner).to_be_hidden()
+    # More than two stays a chat task, said in one line, in the words Finish uses for this AI.
+    expect(tab.get_by_text(text("gmail.brief.more.gateway"))).to_be_visible()
+
+    button(tab, "gmail.brief.partner.add").click()
+
+    expect(partner).to_be_visible()
+    expect(button(tab, "gmail.brief.partner.add")).to_be_hidden()
+    tab.get_by_label(text("gmail.brief.address"), exact=True).fill("parent@hotmail.com")
+    partner.fill("partner@gmail.com")
+    tab.get_by_label(text("gmail.brief.partner.language")).select_option("fi")
+    button(tab, "gmail.brief.save").click()
+    expect(tab.get_by_text(text("gmail.brief.to",
+                                addresses="parent@hotmail.com, partner@gmail.com"))).to_be_visible()
+    to = Config.load(config_file(family)).email.to
+    assert [(t.address, t.language) for t in to] == [("parent@hotmail.com", None),
+                                                    ("partner@gmail.com", "fi")]
+
+
+def test_recipients_added_in_the_chat_beyond_two_stay_when_the_page_changes_them(tab, family):
+    in_english_with_the_gateway(tab)
+    skip(tab, "wilma").click()
+    brief_goes_to(tab, "parent@hotmail.com")
+    # A third added in the chat (manage), or by hand.
+    saved = yaml.safe_load(config_file(family).read_text())
+    saved["email"]["to"] += [{"address": "partner@gmail.com", "language": "fi"},
+                             "grandma@example.fi"]
+    config_file(family).write_text(yaml.safe_dump(saved, allow_unicode=True, sort_keys=False))
+    tab.reload()
+    expect(tab.get_by_text(text("gmail.brief.to", addresses="parent@hotmail.com, "
+                                "partner@gmail.com, grandma@example.fi"))).to_be_visible()
+
+    button(tab, "gmail.brief.change").click()
+    tab.locator("#source-gmail").get_by_label(text("gmail.brief.partner"), exact=True).fill(
+        "partner@outlook.com")
+    button(tab, "gmail.brief.save").click()
+
+    expect(tab.get_by_text(text("gmail.brief.to", addresses="parent@hotmail.com, "
+                                "partner@outlook.com, grandma@example.fi"))).to_be_visible()
+    to = Config.load(config_file(family)).email.to
+    assert [(t.address, t.language) for t in to] == [
+        ("parent@hotmail.com", None), ("partner@outlook.com", "fi"), ("grandma@example.fi", None)]
 
 
 def test_with_the_gateway_as_the_ai_no_key_is_asked_for_sending(tab):
