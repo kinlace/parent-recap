@@ -346,6 +346,11 @@ class Harness:
     email_error = _to("outbox", "email_error")
     relay_answer = _to("outbox", "relay_answer")
     relay_keys = _to("outbox", "relay_keys")
+    key_requests = _to("outbox", "key_requests")
+    key_answer = _to("outbox", "key_answer")
+    made_keys = _to("outbox", "made_keys")
+    confirmations = _to("outbox", "confirmations")
+    binds = _to("outbox", "binds")
     imessages = _to("outbox", "imessages")
     imessage_error = _to("outbox", "imessage_error")
     calendar = _to("outbox", "calendar")
@@ -395,6 +400,10 @@ class Harness:
         this; a test reading the Sources another way, such as the setup page's preview, calls it."""
         self._sources.set_up()
         self.store_gateway_key()
+
+    def confirm(self, *addresses: str) -> None:
+        """The Recipients press the link in the gateway's confirmation email (ADR 0033)."""
+        self.outbox.confirm(*addresses)
 
     def store_gateway_key(self) -> None:
         """The Gateway Key setup stored, unless the test has put one or there's none to store."""

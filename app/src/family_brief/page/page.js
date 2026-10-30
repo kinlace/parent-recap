@@ -475,10 +475,11 @@ function setUpGmail() {
 }
 
 // Gmail's step has two parts. First who gets the Brief, which Parent Recap sends from its own
-// address (ADR 0032), with the Gateway Key for sending while the AI, which Finish can change,
-// isn't the gateway. Once they're saved, connecting Gmail, only to have the school's mail read,
-// or skipping it.
-const gmailStep = { changing: false };
+// address (ADR 0032). While the AI, which Finish can change, isn't the gateway, saving them gets a
+// send-only Gateway Key from the gateway, which mails each a link to confirm (ADR 0033); a key
+// from the Parent Recap team can be pasted in a fold instead. Once they're saved, connecting
+// Gmail, only to have the school's mail read, or skipping it.
+const gmailStep = { changing: false, confirm: null };
 
 function prepareGmail() {
   const { partner } = page.welcome;
@@ -512,11 +513,8 @@ function showGmailParts() {
   const parent = page.gmail.to[0]?.address || "";
   const field = document.getElementById("gmail-address");
   if (!field.value && /@(gmail|googlemail)\.com$/i.test(parent)) field.value = parent;
-  const asksKey = asksSendKey();
-  document.getElementById("gmail-brief-key-part").hidden = !asksKey;
-  document.getElementById("gmail-brief-key").required = asksKey;
-  setText(document.getElementById("gmail-brief-save"),
-    asksKey ? "gateway.save" : "gmail.brief.save");
+  document.getElementById("gmail-brief-key-part").hidden = !asksSendKey();
+  document.getElementById("gmail-confirm").hidden = saved ? !gmailStep.confirm : true;
   showJunk();
 }
 
@@ -559,10 +557,11 @@ async function saveRecipients(event) {
   button.disabled = true;
   const recipients = briefRecipients();
   const keyField = document.getElementById("gmail-brief-key");
+  const pasted = asksSendKey() && keyField.value.trim() !== "";
   try {
     const out = await post("api/gmail/recipients", {
       recipients: recipients.map(({ address, language }) => ({ address, language })),
-      ...(asksSendKey() ? { key: keyField.value } : {}),
+      ...(pasted ? { key: keyField.value } : {}),
     });
     // The key stays in the field only when it wasn't tried, or the same key can be tried again.
     if (!["no-address", "same-address", ...KEY_AGAIN].includes(out.result)) keyField.value = "";
@@ -578,6 +577,10 @@ async function saveRecipients(event) {
       page.gmail.to = recipients.map(({ address, language }) =>
         ({ address: address.trim().toLowerCase(), language }));
       gmailStep.changing = false;
+      gmailStep.confirm = out.confirm || null;
+      if (out.confirm) {
+        showConfirmation(document.getElementById("gmail-confirm"), out.confirm, false);
+      }
       showGmailParts();
     }
     // What a key the relay didn't take says is the gateway AI's key field's own.
@@ -2113,6 +2116,49 @@ function healthResult(out) {
   if (checkStep.checking) checkStep.timer = setTimeout(checkHealth, HEALTH_MS);
 }
 
+// Who still has to press the link in the confirmation email (ADR 0033), shown in `box` with a
+// button that has it sent again: on Gmail's step after the Recipients are saved, and under the
+// Brief sending check at Check and Finish. `resent` says it was just sent again.
+function showConfirmation(box, confirm, resent) {
+  const template = document.getElementById("confirm-template");
+  if (!box.querySelector(".confirm-message")) {
+    box.replaceChildren(...[...template.children].map((child) => child.cloneNode(true)));
+    const resend = box.querySelector(".confirm-resend");
+    setText(resend, "gmail.confirm.resend");
+    resend.addEventListener("click", () => resendConfirmation(box));
+  }
+  const message = box.querySelector(".confirm-message");
+  const waiting = (confirm.unconfirmed || []).join(", ");
+  const mailed = (confirm.mailed || []).join(", ");
+  if (confirm.result === "confirmed") {
+    setText(message, "gmail.confirm.confirmed");
+  } else if (confirm.result === "unconfirmed") {
+    if (resent && mailed) setText(message, "gmail.confirm.resent", { addresses: mailed });
+    else setText(message, "gmail.confirm.sent", { addresses: waiting });
+  } else {
+    setText(message, "gmail.confirm.no-key");
+  }
+  message.classList.toggle("fail", confirm.result !== "confirmed" && confirm.result !== "unconfirmed");
+  box.querySelector(".confirm-resend").parentElement.hidden = confirm.result === "confirmed";
+  box.hidden = false;
+}
+
+async function resendConfirmation(box) {
+  clearError();
+  const button = box.querySelector(".confirm-resend");
+  button.disabled = true;
+  try {
+    const out = await post("api/gmail/confirm", { resend: true });
+    if (box.id === "gmail-confirm") gmailStep.confirm = out;
+    showConfirmation(box, out, true);
+    box.querySelector(".confirm-message").hidden = false;
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 // What to do about a check that isn't OK, as the check page ("health") or Finish ("finish") says
 // it: the text for why it isn't, where the check says why, else the check's own. On the check
 // page, a failed check of a Source the family can do without also offers to skip it for now.
@@ -2138,6 +2184,14 @@ function nextStep(prefix, check, values) {
   if (check.detail) shown.push(reasonBlock(check.reason ? own : general, check.detail));
   if (check.check === "gateway" && check.reason === "no-key" && page.welcome.ai !== "gateway") {
     shown.push(sendKeyForm(prefix));
+  }
+  if (check.check === "gateway" && check.reason === "unconfirmed") {
+    const box = document.createElement("div");
+    box.className = "confirm";
+    // The check's own words say whom it was sent to; the box only has it sent again.
+    showConfirmation(box, { result: "unconfirmed", unconfirmed: check.groups || [], mailed: [] }, false);
+    box.querySelector(".confirm-message").hidden = true;
+    shown.push(box);
   }
   return shown;
 }

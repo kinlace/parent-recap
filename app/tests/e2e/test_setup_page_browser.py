@@ -370,9 +370,10 @@ def test_with_the_gateway_as_the_ai_no_key_is_asked_for_sending(tab):
 
 
 @pytest.mark.macos
-def test_with_codex_parent_recap_sends_with_a_key_for_sending_and_setup_finishes(tab, family,
+def test_with_codex_parent_recap_gets_a_key_for_sending_and_setup_finishes(tab, family,
                                                                                 codex):
-    # #565: a Household whose AI is its own Codex, given a Gateway Key for sending alone.
+    # #565: a Household whose AI is its own Codex, which gets a Gateway Key for sending alone
+    # from the gateway (#618).
     hotmail = "parent@hotmail.com"
     # Codex answers doctor's test call, made through the model as the Brief is, as it's asked to.
     brief = family.model_reply
@@ -385,21 +386,30 @@ def test_with_codex_parent_recap_sends_with_a_key_for_sending_and_setup_finishes
     expect(heading(tab, "connect.title")).to_be_visible()
     without_wilma_in_espoo(tab)
 
-    expect(tab.get_by_text(text("gmail.brief.key.explain"))).to_be_visible()
     expect(tab.get_by_text(text("gmail.brief.unread"))).to_be_visible()
     tab.get_by_label(text("gmail.brief.address"), exact=True).fill(hotmail)
+    # A key from the team can be pasted in the fold; one the relay doesn't know is said as the
+    # gateway AI's field says it, and not kept.
+    expect(tab.get_by_text(text("gmail.brief.key.explain"))).to_be_hidden()
+    tab.get_by_text(text("gmail.brief.key.have")).click()
+    expect(tab.get_by_text(text("gmail.brief.key.explain"))).to_be_visible()
     key = tab.locator("#source-gmail").get_by_label(text("gmail.brief.key"), exact=True)
-    # A key the relay doesn't know is said as the gateway AI's field says it, and not kept.
     family.relay_answer = (401, {"error": "missing, unknown or revoked Gateway Key"})
     key.fill(GATEWAY_KEY)
-    button(tab, "gateway.save").click()
+    button(tab, "gmail.brief.save").click()
     expect(tab.get_by_text(text("gateway.rejected"))).to_be_visible()
     expect(key).to_have_value("")
     expect(source_listed(tab, "gmail", "to-do")).to_be_visible()
+    # Without one, saving gets a send-only key from the gateway, which mails a link (ADR 0033).
     family.relay_answer = (200, {"sent": 1, "refused": 0})
-    key.fill(GATEWAY_KEY)
-    button(tab, "gateway.save").click()
+    button(tab, "gmail.brief.save").click()
     expect(tab.get_by_text(text("gmail.brief.to", addresses=hotmail))).to_be_visible()
+    expect(tab.get_by_text(text("gmail.confirm.sent", addresses=hotmail))).to_be_visible()
+    assert family.confirmations == [(hotmail, "en")]
+    button(tab, "gmail.confirm.resend").click()
+    expect(tab.get_by_text(text("gmail.confirm.resent", addresses=hotmail))).to_be_visible()
+    assert family.confirmations == [(hotmail, "en")] * 2
+    family.confirm(hotmail)
     skip(tab, "gmail").click()
     expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
     # Codex's own sign-in, unchanged: it's signed in already, which its step checks at once.
@@ -425,7 +435,7 @@ def test_with_codex_parent_recap_sends_with_a_key_for_sending_and_setup_finishes
     expect(tab.get_by_text(text("finish.done", evening="21:00"))).to_be_visible()
     cfg = Config.load(config_file(family))
     assert (cfg.llm.backend, cfg.gmail.username) == ("codex", None)
-    assert family.secrets[gateway.ACCOUNT] == GATEWAY_KEY
+    assert family.secrets[gateway.ACCOUNT] == next(iter(family.made_keys))
     assert family.model.reached and "gateway.parentrecap.com" not in family.model.reached
 
 
