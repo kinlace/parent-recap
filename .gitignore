@@ -15,3 +15,5 @@ htmlcov/
 .env
 # scripts/issue-loop.sh's hand-off files between the agent and the script
 .loop/
+# Claude Code's worktrees, kept inside the repo because its sandbox writes only here
+.claude/worktrees/
