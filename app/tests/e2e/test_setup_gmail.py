@@ -703,6 +703,13 @@ def test_parent_recap_s_results_are_explained_in_all_three_languages():
         for result in setup_server.gmail.SEND_KEY_RESULTS:
             assert table.get(f"gateway.{result}", "").strip(), (language, result)
         assert "sk-" in table["gmail.gateway.key.explain"], language
+        # #602: the Gmail step says Gmail is read for the school's mail, and names the choice that
+        # needs no Gmail as its radio button says it.
+        named = re.search(r'["“]([^"”]+)["”]', table["gmail.explain"]).group(1)
+        assert table["gmail.choice.gateway"].startswith(named), language
     english = text["en"]
     assert "only for sending" in english["gmail.gateway.key.explain"]
+    assert "reads the school's mail" in english["gmail.explain"]
+    assert "only from the senders you tick" in english["gmail.explain"]
+    assert "sends your Brief" not in english["gmail.explain"]
     assert "nobody reads" in english["gmail.gateway.unread"]
