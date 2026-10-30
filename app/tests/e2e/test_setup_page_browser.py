@@ -452,6 +452,37 @@ def test_a_skipped_source_is_listed_as_skipped_and_can_be_opened_again(tab):
     expect(tab.get_by_text(text("connect.done"))).to_be_hidden()
 
 
+MYCLUB_STEPS = ("sign-in", "calendar", "subscribe", "copy")
+
+
+def test_myclub_s_link_is_shown_on_its_own_page_in_each_language_and_at_phone_width(tab):
+    connect_up_to_myclub(tab)
+
+    for language in ("en", "fi", "zh"):
+        tab.locator("#language-switch").select_option(language)
+        where = tab.locator("#source-myclub summary")
+        expect(where).to_have_text(text("myclub.where", language=language))
+        if not tab.locator("#source-myclub details").evaluate("d => d.open"):
+            where.click()
+        picture = tab.get_by_role("img", name=text("myclub.picture.alt", language=language))
+        expect(picture).to_be_visible()
+        assert picture.evaluate("img => img.complete && img.naturalWidth") > 0  # served, decoded
+        expect(tab.locator("#source-myclub details ol li")).to_have_text(
+            [text(f"myclub.picture.{s}", language=language) for s in MYCLUB_STEPS])
+        expect(tab.get_by_text(text("myclub.picture.one-link", language=language))).to_be_visible()
+
+    # On a phone the picture shrinks to the screen, its marks still on what to click.
+    tab.set_viewport_size({"width": 375, "height": 812})
+    picture = tab.locator("#source-myclub .screenshot img").bounding_box()
+    assert picture["x"] >= 0 and picture["x"] + picture["width"] <= 375
+    assert tab.evaluate("document.documentElement.scrollWidth") <= 375
+    for mark in ("events", "own", "subscribe"):
+        box = tab.locator(f"#source-myclub .mark.{mark}").bounding_box()
+        assert box["width"] > 4 and box["height"] > 4, mark
+        assert picture["x"] <= box["x"] and box["x"] + box["width"] <= picture["x"] + picture["width"]
+        assert picture["y"] <= box["y"] and box["y"] + box["height"] <= picture["y"] + picture["height"]
+
+
 def test_the_check_page_links_back_to_connect_s_list_while_a_source_is_skipped(tab):
     connect_up_to_myclub(tab)
     skip(tab, "myclub").click()
