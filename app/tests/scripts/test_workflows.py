@@ -34,11 +34,15 @@ def test_a_hung_test_fails_each_tests_job_within_40_minutes():
         assert job["timeout-minutes"] <= 40
 
 
-def test_the_tests_run_on_macos_and_windows():
+def test_the_tests_run_on_macos_windows_and_linux_on_both_chips():
     # `changes` only decides whether they run, on a cheaper runner.
     workflow = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())
     jobs = {name: job for name, job in workflow["jobs"].items() if name != "changes"}
-    assert {job["runs-on"] for job in jobs.values()} == {"macos-latest", "windows-latest"}
+    runners = {runner for job in jobs.values()
+               for runner in job.get("strategy", dict()).get("matrix", dict()).get("runner", [])
+               or [job["runs-on"]]}
+    assert runners == {"macos-latest", "windows-latest", "ubuntu-latest", "ubuntu-24.04",
+                       "ubuntu-24.04-arm"}
     assert all(job["needs"] == "changes" for job in jobs.values())
 
 

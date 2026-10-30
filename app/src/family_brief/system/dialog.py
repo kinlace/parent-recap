@@ -1,15 +1,14 @@
 """Asking the family for a secret in a dialog of the system's own, with hidden input (ADR 0005,
 0020). Each system has its adapter: an AppleScript dialog through `osascript` on macOS; Windows
-has none yet, so the caller asks at a hidden prompt in the terminal instead."""
+has none yet and a Linux server none at all, so the caller asks at a hidden prompt in the terminal
+instead."""
 from __future__ import annotations
 
 import os
-import sys
 
-if sys.platform == "win32":
-    from . import dialog_windows as _adapter
-else:
-    from . import dialog_macos as _adapter
+from . import adapter
+
+_adapter = adapter("dialog")
 
 TITLE = "Parent Recap"
 

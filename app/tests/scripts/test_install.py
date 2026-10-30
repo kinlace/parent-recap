@@ -5,12 +5,14 @@ Runs the real `install.sh` and the real pip, offline: pip reads packages only fr
 here (`fake_packages.py`), and the program it installs is a stand-in with the real one's layout.
 The pinned Python comes from a fake `curl` serving a stand-in python-build-standalone tarball
 (`python_build`), the pinned Node from a stand-in nodejs.org tarball (`serve_node`), the
-Mac's kind from a fake `sysctl` and its macOS version from a fake `sw_vers`. A `python3` on PATH
+Mac's kind from a fake `sysctl` and its macOS version from a fake `sw_vers`, and a Linux server
+and its chip from a fake `uname` (`a_linux_server`). A `python3` on PATH
 fails, so nothing runs on a Python the Mac already has.
 """
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -33,6 +35,8 @@ PINNED = ("3.13.16", "20261003")
 NODE = "24.21.0"
 NODE_ARCHES = {"aarch64": "arm64", "x86_64": "x64"}
 MACOS = "15.5"
+# Each system as python-build-standalone names it, as nodejs.org does, and its pins' prefix.
+SYSTEMS = [("apple-darwin", "darwin", ""), ("unknown-linux-gnu", "linux", "LINUX_")]
 
 
 @pytest.fixture(scope="session")
@@ -104,62 +108,68 @@ def a_mac(mac: dict, kind: str) -> None:
     fake(mac["bin"] / "uname", f'[ "$1" = -m ] && echo {machine} || echo Darwin')
 
 
+def a_linux_server(mac: dict, machine: str) -> None:
+    """What `uname` and `uname -m` say on a Linux server with the chip `machine`. No sysctl."""
+    fake(mac["bin"] / "uname", f'[ "$1" = -m ] && echo {machine} || echo Linux')
+    fake(mac["bin"] / "sysctl", 'echo "sysctl was run on Linux" >&2; exit 2')
+
+
 def macos(mac: dict, version: str) -> None:
     """What `sw_vers -productVersion` says."""
     fake(mac["bin"] / "sw_vers", f'[ "$*" = -productVersion ] || exit 2\necho {version}')
 
 
-def build_name(version: str, build: str, arch: str) -> str:
-    return f"cpython-{version}+{build}-{arch}-apple-darwin-install_only.tar.gz"
+def build_name(version: str, build: str, arch: str, system: str = "apple-darwin") -> str:
+    return f"cpython-{version}+{build}-{arch}-{system}-install_only.tar.gz"
 
 
 def serve(mac: dict, version: str, build: str, tamper: bool = False) -> None:
-    """Serves the build for both kinds of Mac and pins it in the plugin's install.sh. Tampered,
-    what's served isn't what the pinned checksum says."""
+    """Serves the build for both kinds of Mac and of Linux server, and pins it in the plugin's
+    install.sh. Tampered, what's served isn't what the pinned checksum says."""
     script = mac["plugin"] / "install.sh"
     text = script.read_text()
     text = re.sub(r"(?m)^PYTHON_VERSION=.*$", f"PYTHON_VERSION={version}", text)
     text = re.sub(r"(?m)^PYTHON_BUILD=.*$", f"PYTHON_BUILD={build}", text)
-    for arch in ("aarch64", "x86_64"):
-        tarball = mac["served"] / build_name(version, build, arch)
+    for (system, _, pin), arch in itertools.product(SYSTEMS, ("aarch64", "x86_64")):
+        tarball = mac["served"] / build_name(version, build, arch, system)
         with tarfile.open(tarball, "w:gz", compresslevel=1) as tar:
             tar.add(mac["build"] / "python", arcname="python")
         digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
         if tamper:
             with tarfile.open(tarball, "w:gz", compresslevel=1) as tar:
                 tar.add(mac["build"] / "python" / "bin", arcname="python/bin")
-        key = arch.upper()
+        key = pin + arch.upper()
         text, n = re.subn(rf"(?m)^PYTHON_SHA256_{key}=.*$", f"PYTHON_SHA256_{key}={digest}", text)
         assert n == 1, key
     script.write_text(text)
 
 
-def node_name(version: str, arch: str) -> str:
-    return f"node-v{version}-darwin-{NODE_ARCHES[arch]}.tar.xz"
+def node_name(version: str, arch: str, system: str = "darwin") -> str:
+    return f"node-v{version}-{system}-{NODE_ARCHES[arch]}.tar.xz"
 
 
 def serve_node(mac: dict, version: str, tamper: bool = False) -> None:
-    """Serves a stand-in nodejs.org build for both kinds of Mac, a `node` and npm's entry point
-    in its layout, and pins it in the plugin's install.sh. Tampered, what's served isn't what the
-    pinned checksum says."""
+    """Serves a stand-in nodejs.org build for both kinds of Mac and of Linux server, a `node`
+    and npm's entry point in its layout, and pins it in the plugin's install.sh. Tampered, what's
+    served isn't what the pinned checksum says."""
     script = mac["plugin"] / "install.sh"
     text = re.sub(r"(?m)^NODE_VERSION=.*$", f"NODE_VERSION={version}", script.read_text())
-    for arch, node_arch in NODE_ARCHES.items():
-        top = mac["tmp"] / f"node-v{version}-darwin-{node_arch}"
+    for (_, system, pin), (arch, node_arch) in itertools.product(SYSTEMS, NODE_ARCHES.items()):
+        top = mac["tmp"] / f"node-v{version}-{system}-{node_arch}"
         (top / "bin").mkdir(parents=True, exist_ok=True)
         (top / "bin" / "node").write_text(f"#!/bin/sh\necho v{version}\n")
         (top / "bin" / "node").chmod(0o755)
         npm = top / "lib" / "node_modules" / "npm" / "bin" / "npm-cli.js"
         npm.parent.mkdir(parents=True, exist_ok=True)
         npm.write_text("#!/usr/bin/env node\n")
-        tarball = mac["served"] / node_name(version, arch)
+        tarball = mac["served"] / node_name(version, arch, system)
         with tarfile.open(tarball, "w:xz") as tar:
             tar.add(top, arcname=top.name)
         digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
         if tamper:
             with tarfile.open(tarball, "w:xz") as tar:
                 tar.add(top / "bin", arcname=f"{top.name}/bin")
-        key = node_arch.upper()
+        key = pin + node_arch.upper()
         text, n = re.subn(rf"(?m)^NODE_SHA256_{key}=.*$", f"NODE_SHA256_{key}={digest}", text)
         assert n == 1, key
     script.write_text(text)
@@ -728,3 +738,59 @@ def test_a_failed_first_download_creates_nothing(mac, break_it):
     assert result.returncode != 0
     assert "couldn't download" in result.stdout
     assert not (mac["home"] / "ParentRecap").exists()
+
+
+# --- On a Linux server (ADR 0029) ------------------------------------------------------------
+
+@pytest.mark.posix
+@pytest.mark.parametrize("machine, arch", [("aarch64", "aarch64"), ("arm64", "aarch64"),
+                                           ("x86_64", "x86_64")])
+def test_a_linux_server_gets_the_linux_builds_for_its_chip(mac, machine, arch):
+    program(mac, ())
+    a_linux_server(mac, machine)
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    python = build_name(*PINNED, arch, "unknown-linux-gnu")
+    node = node_name(NODE, arch, "linux")
+    assert downloads(mac) == [
+        f"https://github.com/astral-sh/python-build-standalone/releases/download/20261003/{python}",
+        f"https://nodejs.org/dist/v{NODE}/{node}"]
+    assert real_python(mac).is_relative_to(runtimes(mac) / "python-3.13.16-20261003")
+    ran = subprocess.run([venv_python(mac).parent / "parent-recap"], capture_output=True, text=True)
+    assert ran.stdout.strip() == f"runs on {real_python(mac)}", ran.stderr
+    assert install_log(mac).read_text().startswith(f"Linux: {arch}, ")
+    last = result.stdout.splitlines()[-1]
+    assert "parent-recap in a new login shell" in last
+    assert (mac["home"] / "installer.calls").read_text().splitlines()[1] == "command_path install"
+
+
+@pytest.mark.posix
+@pytest.mark.parametrize("break_it, said", [
+    (lambda m: serve(m, *PINNED, tamper=True), "The Python Parent Recap downloaded"),
+    (lambda m: serve_node(m, NODE, tamper=True), "The Node Parent Recap downloaded"),
+    (offline, "couldn't download its Python (is this server online?)"),
+], ids=["python-checksum", "node-checksum", "offline"])
+def test_on_linux_a_download_that_isnt_the_pinned_one_creates_nothing(mac, break_it, said):
+    program(mac, ())
+    a_linux_server(mac, "aarch64")
+    break_it(mac)
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    assert said in result.stdout and "Nothing was changed" in result.stdout
+    assert not (mac["home"] / "ParentRecap").exists()
+
+
+@pytest.mark.posix
+def test_a_linux_server_with_another_chip_stops_before_any_download(mac):
+    program(mac, ())
+    a_linux_server(mac, "riscv64")
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    assert "riscv64" in result.stdout and "Nothing was changed" in result.stdout
+    assert downloads(mac) == [] and not (mac["home"] / "ParentRecap").exists()

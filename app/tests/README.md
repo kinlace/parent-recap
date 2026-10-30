@@ -149,7 +149,7 @@ slowest tests, so add one for a main path, not for each result.
 | File                            | What it covers                                            |
 | ------------------------------- | --------------------------------------------------------- |
 | `test_desktop.py`               | macOS desktop: `open`, Terminal, `defaults`               |
-| `test_dialog.py`                | The secret dialog: `osascript` on macOS, none on Windows  |
+| `test_dialog.py`                | The secret dialog: `osascript` on macOS, none elsewhere   |
 | `test_jobs.py`                  | macOS jobs: LaunchAgents and `launchctl`                  |
 | `test_secrets.py`               | macOS secrets: the Keychain through `/usr/bin/security`   |
 | `test_wake.py`                  | macOS wake: `pmset`                                       |
@@ -160,6 +160,9 @@ slowest tests, so add one for a main path, not for each result.
 | `test_wake_windows.py`          | Windows wake: wake timers and sleep timeouts              |
 | `test_user_path_windows.py`     | Windows PATH: the user's Path in the registry             |
 | `test_windows_only.py`          | What only Windows checks for the evening run              |
+| `test_secrets_linux.py`         | Linux secrets: owner-only files, written for real         |
+| `test_user_path_linux.py`       | Linux PATH: links in `~/.local/bin`                       |
+| `test_desktop_linux.py`         | Linux desktop: a printed link, the locale's languages     |
 | `test_brief_by_hand_windows.py` | A Brief started by hand on Windows                        |
 | `test_setup_page_windows.py`    | The setup page from a fresh install to Finish, on Windows |
 | `test_setup_wilma_windows.py`   | The Wilma sign-in window on Windows                       |
@@ -200,7 +203,8 @@ per outside edge of the program, each with its fakes in a module of its own:
 - `system` (`fake_system.py`): in-memory secrets, jobs, wake, desktop and secret dialog, as
   `system.secrets`, `.jobs`, `.wake`, `.desktop` and `.dialog`. Only the adapter tests meet these
   services' commands. `system.profile` is the profile the program sees, this system's until a
-  test sets `MACOS` or `WINDOWS`, so a Mac runs the Windows paths too.
+  test sets `MACOS`, `WINDOWS` or `LINUX`, so a Mac runs the Windows paths too. On Linux it is
+  macOS's until a test sets `LINUX`, as the tests of a family's own computer expect.
 
 An integration test asks for the one fixture it uses. `harness` composes all four and runs the
 real `parent-recap` in-process in a temporary HOME, with "now" pinned: the end-to-end tests use
@@ -236,7 +240,7 @@ Config, state and the archive are real files in a temporary HOME; "now" and the 
 
 ## Markers
 
-The layer markers come from the folder and are never written by hand. Two more say which system
+The layer markers come from the folder and are never written by hand. Three more say which system
 a test needs, and skip it elsewhere, so each CI job runs every other test:
 
 - `@pytest.mark.macos` (a whole module: `pytestmark = pytest.mark.macos`): the macOS adapters,
@@ -244,6 +248,8 @@ a test needs, and skip it elsewhere, so each CI job runs every other test:
   and the other shell scripts, permission bits, and what Windows can't do yet (finding programs by
   bare name, shell-script stand-ins, pseudo-terminal windows). A Windows ticket that makes one work
   there drops the mark.
+- `@pytest.mark.posix`: what needs macOS or Linux, such as the Linux adapters run for real
+  (permission bits, links) and `install.sh` on a Linux server; skipped on Windows.
 - `@pytest.mark.windows`: the Windows adapters and Windows' own layout. The Credential Manager and
   Task Scheduler tests use the real ones, under a test name of their own, and delete what they
   made.
@@ -253,8 +259,9 @@ a step of their own, after Chromium is installed. They are the page script's tes
 `page.js`, and what the page does on Windows is tested by changing the `system` the Mac's server
 sends the page (`as_on` in `test_setup_page_browser.py`).
 
-CI runs the suite on macOS, and on Windows the unit, integration and adapter layers and the
-end-to-end tests marked `windows`. `install.ps1` itself runs for real in CI's windows-install job.
+CI runs the suite on macOS, on Linux all but the browser tests, and on Windows the unit,
+integration and adapter layers and the end-to-end tests marked `windows`. `install.ps1` itself
+runs for real in CI's windows-install job, and `install.sh` on Linux in its linux-install job.
 
 ## Golden files
 

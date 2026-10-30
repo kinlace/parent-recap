@@ -1,15 +1,13 @@
 """Waking the computer every day for the evening job (ADR 0020). Each system has its adapter:
 `pmset` on macOS, 5 minutes before the job; on Windows the job's own task wakes the PC, once the
-family's "Allow wake timers" lets it (ADR 0021)."""
+family's "Allow wake timers" lets it (ADR 0021); a Linux server never sleeps."""
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 
-if sys.platform == "win32":
-    from . import wake_windows as _adapter
-else:
-    from . import wake_macos as _adapter
+from . import adapter
+
+_adapter = adapter("wake")
 
 # What setting the daily wake can say: no wake needed (`never-sleeps`, `already-set`), another
 # repeating wake schedule kept until the family agrees to replace it (`other-schedule`), set, or
