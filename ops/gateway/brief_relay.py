@@ -198,8 +198,9 @@ class DailyCap:
 
 # ── Email Delivery's quota
 
-# The tenancy's messages a day (Always Free, and `oci-quota.json`); Email Delivery counts each
-# Recipient of a message as one. Past QUOTA_WARN_AT the maintainers are warned, once a day (README
+# The tenancy's messages a day (its `max-emails-day` quota in `oci-quota.json`); Email Delivery
+# counts each Recipient of a message as one (README "Email Delivery's quota" links Oracle's page
+# that says so). Past QUOTA_WARN_AT the maintainers are warned, once a day (README
 # "Email Delivery's quota"): confirmations take at most MAILS_PER_DAY, which leaves 70 for Briefs.
 QUOTA_PER_DAY = 100
 QUOTA_WARN_AT = 70
