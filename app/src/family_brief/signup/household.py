@@ -11,7 +11,7 @@ user once the program is installed there (ADR 0031). It reads, as JSON on stdin:
    "gateway_key": "sk-bf-…"}
 
 and makes the Household: its config, through `setup save` as the setup page saves one, with the
-Kids Wilma listed, the Recipients, the gateway as its AI and its sender, Wilma on, WhatsApp off and
+Kids Wilma listed, the Recipients, the gateway as its AI, Wilma on, WhatsApp off and
 the calendar as an .ics in the email; the MyClub link of each Kid in `myclub`, which the service
 checked, saved as `setup myclub` saves one; the Gateway Key in the secrets store; the wilma CLI
 with the sign-in the service checked; and the evening jobs at `evening`. It prints one line of
@@ -77,7 +77,7 @@ def cmd_household(args: argparse.Namespace) -> int:
 def create(config: Path, h: Household) -> dict[str, Any]:
     saved = setup_save.save(config, {
         "language": h.language, **({"city": h.city} if h.city else {}),
-        "kids": h.kids, "recipients": h.recipients, "sender": "gateway", "ai": "gateway",
+        "kids": h.kids, "recipients": h.recipients, "ai": "gateway",
         "evening": h.evening,
         "sources": {"wilma": {"enabled": True}, "whatsapp": {"enabled": False}},
     })

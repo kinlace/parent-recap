@@ -202,8 +202,7 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
         [program, "run", "--first-brief", "--lookback-hours", "72"]]
     # The first Brief, from Parent Recap's own address with the Household's key, to each
     # Recipient in the language they read it in.
-    assert {(tuple(m.to), m.via) for m in harness.sent} == {
-        (("parent@example.com",), "gateway"), (("partner@example.com",), "gateway")}
+    assert {tuple(m.to) for m in harness.sent} == {("parent@example.com",), ("partner@example.com",)}
     assert set(harness.relay_keys) == {key}
     by_reader = {m.to[0]: m for m in harness.sent}
     assert "Parent Recap su 27.9." in by_reader["parent@example.com"].text
@@ -216,7 +215,7 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     assert [(t.address, t.language) for t in cfg.email.to] == [
         ("parent@example.com", "fi"), ("partner@example.com", "zh")]
     assert cfg.summary_language == "en" and cfg.city == "Espoo"
-    assert (cfg.llm.backend, cfg.email.sender) == ("gateway", "gateway")
+    assert cfg.llm.backend == "gateway"
     assert cfg.wilma.enabled and not cfg.whatsapp.enabled
     assert cfg.google_calendar.mode == "ics"
     assert (cfg.schedule.daily_hour, cfg.schedule.daily_minute) == (21, 0)
