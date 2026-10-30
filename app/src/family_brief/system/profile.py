@@ -1,7 +1,7 @@
 """What else differs between the systems the program runs on, besides the OS services behind their
 own interfaces (ADR 0020): the words the family reads for their computer and its terminal, the
 AIs the setup page offers and installs, the chats setup continues in, where programs are found
-and how the install lays them out. One profile per system, in profile_macos.py,
+and how the install lays them out, and the unit a process's peak memory is given in. One profile per system, in profile_macos.py,
 profile_windows.py and profile_linux.py; callers ask `current()` instead of checking the system
 themselves, and the setup page gets it as data. A new system adds its profile here, and changes no caller."""
 from __future__ import annotations
@@ -42,7 +42,7 @@ class Profile:
     npm_links_programs: bool      # whether npm puts a package's program in <prefix>/bin
     removes_running: bool         # whether a program's files can be removed while it runs
     os_version: Callable[[], str]  # the system and its version, as a report of a failure names it
-    maxrss_bytes: int | None      # bytes in a unit of getrusage's ru_maxrss; None without getrusage
+    maxrss_unit: int | None       # bytes in a unit of getrusage's ru_maxrss; None without getrusage
 
 
 # After Profile, which each adapter imports from here.

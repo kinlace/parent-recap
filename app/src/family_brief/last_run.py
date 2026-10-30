@@ -37,12 +37,14 @@ def path(cfg: Config) -> Path:
 
 def peak_mb(own: int, children: int, unit: int) -> int:
     """The larger of the run's and its child processes' (the wilma CLI, Node) maximum resident
-    size, `ru_maxrss` in `unit` bytes as the system gives it, in MB."""
+    size, `ru_maxrss` in `unit` bytes as the system gives it, in MB. The children's is the
+    largest one's, not their sum, and Python and Node run at once: the run's unit as a whole (its
+    cgroup, which MemoryMax limits) can use more."""
     return round(max(own, children) * unit / 2**20)
 
 
 def _peak() -> int | None:
-    unit = profile.current().maxrss_bytes
+    unit = profile.current().maxrss_unit
     if unit is None:
         return None
     import resource  # not on Windows, whose unit is None

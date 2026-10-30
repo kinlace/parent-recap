@@ -57,5 +57,5 @@ PROFILE = Profile(
     npm_links_programs=True,
     removes_running=True,
     os_version=_os_version,
-    maxrss_bytes=1024,  # kilobytes
+    maxrss_unit=1024,  # kilobytes
 )

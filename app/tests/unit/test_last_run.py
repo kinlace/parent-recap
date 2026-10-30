@@ -7,7 +7,7 @@ import pytest
 from family_brief.last_run import peak_mb
 from family_brief.system import profile_linux, profile_macos, profile_windows
 
-LINUX, MACOS = profile_linux.PROFILE.maxrss_bytes, profile_macos.PROFILE.maxrss_bytes
+LINUX, MACOS = profile_linux.PROFILE.maxrss_unit, profile_macos.PROFILE.maxrss_unit
 
 
 @pytest.mark.parametrize("own, children, unit, mb", [
@@ -22,4 +22,4 @@ def test_the_peak_is_the_larger_of_the_run_s_and_its_children_s_in_mb(own, child
 
 
 def test_windows_gives_no_peak():
-    assert profile_windows.PROFILE.maxrss_bytes is None
+    assert profile_windows.PROFILE.maxrss_unit is None
