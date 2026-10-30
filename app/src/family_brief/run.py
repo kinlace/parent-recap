@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable, Literal
 from zoneinfo import ZoneInfo
 
-from . import ai_filter, feedback, gateway, languages, llm, private_files, render
+from . import ai_filter, feedback, gateway, languages, last_run, llm, private_files, render
 from . import sources as source_registry
 from .actions import archive, calendar as calendar_action, email as email_action, imessage
 from .brief import Brief, EarlierBrief, RunNotes
@@ -643,10 +643,19 @@ def _evening_missed(cfg: Config, state: State) -> bool:
 
 def run_unless_caught_up(cfg: Config, options: Options, io: IO) -> int:
     """`run`, or with `if_missed` only when the evening run was missed (#386). Checked under the
-    run lock, so a catch-up started beside the evening run sees the state that run left."""
+    run lock, so a catch-up started beside the evening run sees the state that run left. A run
+    that isn't a dry run notes how it ended in last-run.json, a crash as exit 1."""
     if options.if_missed:
         if not _evening_missed(cfg, io.load_state(cfg.resolved_state_path())):
             log.info("The evening run has run since its last time, so there is nothing to catch up")
             return 0
         log.info("The evening run was missed, so it runs now")
-    return run(cfg, options, io)
+    if options.dry_run:
+        return run(cfg, options, io)
+    try:
+        code = run(cfg, options, io)
+    except BaseException:
+        last_run.record(cfg, 1)
+        raise
+    last_run.record(cfg, code)
+    return code

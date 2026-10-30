@@ -1,7 +1,9 @@
 """The hosted version's sign-up (ADR 0031): `parent-recap signup serve`, the always-on service
 behind the gateway's web server that turns an Invite Link into a Hosted Household;
 `signup invite`, which mints an Invite Link (ops/gateway/invite.sh runs it as the service's user);
-and `signup household`, which the service runs as a new Household's own user.
+`signup household`, which the service runs as a new Household's own user; and `signup status`,
+which lists every Household's last run and doctor's statuses (ops/gateway/status.sh), from
+`signup health` run as each.
 
 The service runs as its own user, with Parent Recap installed under it for the wilma CLI that
 checks a family's sign-in. It reads from its environment (ops/gateway/signup.env.example):
@@ -44,6 +46,15 @@ def register(sub) -> None:
     invite.add_argument("--url", default=None, help="The address the link starts with "
                         "(default: https://$GATEWAY_HOST)")
     invite.set_defaults(func=cmd_invite)
+
+    from .status import cmd_health, cmd_status
+    status = steps.add_parser("status", help="List every Hosted Household with its last run "
+                              "and doctor's statuses, and nothing of its messages")
+    status.set_defaults(func=cmd_status)
+
+    health = steps.add_parser("health", help="Print this user's Household's last run and "
+                              "doctor's statuses as one line of JSON (signup status runs it)")
+    health.set_defaults(func=cmd_health)
 
     household = steps.add_parser("household", help="Make this user's Hosted Household from the "
                                  "answers on stdin (the sign-up service runs it)")
