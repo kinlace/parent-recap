@@ -368,8 +368,17 @@ def test_a_warning_reaches_the_journal_as_one_so_journalctl_p_warning_lists_it()
     def line(level: int) -> str:
         return br.JournalFormatter("%(message)s").format(
             logging.LogRecord("brief-relay", level, __file__, 1, "quota day=…", None, None))
+    assert line(logging.ERROR) == "<3>quota day=…"
     assert line(logging.WARNING) == "<4>quota day=…"
     assert line(logging.INFO) == "quota day=…"
+
+
+def test_a_count_that_cant_be_written_doesnt_make_a_sent_brief_look_failed(tmp_path, day, caplog):
+    caplog.set_level(logging.INFO, logger="brief-relay")
+    relay = make_relay(tmp_path, day)
+    relay.mailer.quota.path = tmp_path / "gone" / "quota.json"
+    assert post(relay) == (200, {"sent": 2, "refused": 0})
+    assert "quota count not written (FileNotFoundError)" in caplog.text
 
 
 def test_confirmation_emails_count_too(tmp_path, day, caplog):

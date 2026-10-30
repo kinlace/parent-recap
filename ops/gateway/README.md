@@ -185,7 +185,7 @@ journalctl -u brief-relay -p warning --grep '^quota '
 **When it shows up.** One day past 70 is a busy Friday; past 70 on most days means the Households have outgrown the free 100 and the next Briefs will be refused (502) once the day's 100 are gone. At about 30 Households, before that happens, ask Oracle for a higher limit:
 
 1. In the Console, open Governance & Administration > Tenancy Management > Limits, Quotas and Usage, pick the service Email Delivery and find the daily sending limit, to see the tenancy's current value.
-2. On that page, Request a service limit increase: service Email Delivery, the daily sending limit, the new value (the next Households' Briefs at 10 Recipients each, with the 30 confirmations on top), and as the reason "transactional email to opted-in Recipients, about N a day". Oracle answers by email; a Free Tier account may first have to be upgraded to Pay As You Go, after which mail past Always Free is billed.
+2. On that page, Request a service limit increase: service Email Delivery, the daily sending limit, the new value (the next Households' Briefs at 10 Recipients each, with the 30 confirmations on top), and as the reason "transactional email to opted-in Recipients, about N a day". Oracle answers by email. The account is Pay-As-You-Go (step 1 of "Building the server"), so mail past Always Free's 100 a day is then billed.
 3. Once raised, change `set email-delivery quota max-emails-day to 100` in `oci-quota.json` to the new value and update the `free-tier-only` quota policy with it (step 2 of "Building the server"), raise the `$1` budget to the expected spend, and set `QUOTA_PER_DAY` and `QUOTA_WARN_AT` in `brief_relay.py` to match, then run step 7 again.
 
 ## Hosted Households
