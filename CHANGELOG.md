@@ -4,6 +4,29 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.10.0 · 2026-10-30
+
+Every Brief now comes from `brief@parentrecap.com` through the Parent Recap gateway, and Gmail is only connected if the family wants the school's mail read (ADR 0032). A family whose AI is its own Claude or ChatGPT no longer asks the team for a Gateway Key: Parent Recap gets a send-only one by itself, and each person who gets the Brief confirms their address once (ADR 0033).
+
+### Upgrading
+
+- After updating (paste the install line again), Parent Recap asks the gateway for a send-only Gateway Key on its own, and each Recipient gets an email from `brief@parentrecap.com` with a link to confirm. The Brief goes only to addresses that pressed it, so press it once (look in Junk too). `parent-recap setup confirm --resend` sends the link again, and `doctor` says who hasn't confirmed.
+- A family that sent the Brief from its own Gmail: it now comes from `brief@parentrecap.com` instead. The App Password stays only for reading Gmail, and only if the family reads it.
+
+### Changed
+
+- The setup page no longer asks how the Brief is sent, and the recipient fields ask which language each person's Brief is in.
+- MyClub's "Where to find the link" shows MyClub's real Tapahtumat page with the three places to click numbered, and steps that match those numbers.
+- The README's "What you need" says a family without a computer that stays on can ask the maintainers to host Parent Recap, and SECURITY.md says what the hosted version holds, where, for how long and who can read it.
+
+### Added
+
+- The hosted version, for invited families only, run by the maintainers on a Linux server: a family opens its Invite Link on a phone, signs up with its Wilma login and Recipients, watches each step tick off, and gets its first Brief right away. Its Brief says WhatsApp isn't read there. Nothing changes on a Mac or Windows PC.
+
+### Fixed
+
+- On Windows, the Brief no longer tries to go out as an iMessage, which always failed there.
+
 ## 0.9.3 · 2026-10-30
 
 ### Fixed
