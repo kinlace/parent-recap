@@ -296,7 +296,8 @@ def test_google_mode_notes_are_in_english(harness):
     note = ("⚠️ Google Calendar access has expired, so new events were not added to it. "
             "Tell Claude “re-authorize Google Calendar” to fix it. "
             "The new events are in the .ics attached to this email; open it to add them to your calendar.")
-    assert email.text.endswith("\n\n" + note)
+    # The last paragraph but the unread address's, which ends every Brief.
+    assert without_unread_note(email.text).endswith("\n\n" + note)
     assert "📅 New calendar events:\n• 3B retki to Nuuksio" in email.text
     assert ("<h3>📅 New calendar events</h3><p style='color:#666'>Linked events are in Google Calendar; "
             "the rest are in the attached .ics. Open it to add them to your calendar.</p>") in email.html
