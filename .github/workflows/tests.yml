@@ -234,7 +234,8 @@ jobs:
           curl -fsSL "https://nodejs.org/dist/v$node/SHASUMS256.txt" > node.sums
           # $1 the pin's name, $2 the published list, $3 the file
           check() (
-            line=$(grep -E "[[:space:]]\*?$3\$" "$2" || true)
+            # The file name as it is: its + and . would be patterns to grep -E.
+            line=$(awk -v file="$3" '$2 == file || $2 == "*" file' "$2")
             [ "$(pin "$1")" = "$(echo "$line" | cut -d' ' -f1)" ] ||
               ! echo "$3: install.sh pins $1=$(pin "$1"), the published list says: $line"
           )
