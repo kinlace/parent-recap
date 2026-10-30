@@ -13,11 +13,13 @@ set -euo pipefail
 [ $# -eq 1 ] || { echo "usage: remove.sh ph-XXXXXXXX" >&2; exit 2; }
 # Bifrost's admin login revokes the key, as for the service; the provider key in the same file is
 # not read. It goes to the command in its environment, never on a command line.
-while IFS='=' read -r name value; do
+env=/etc/bifrost/bifrost.env
+[ -r "$env" ] || { echo "$env is missing: run gateway-setup.sh first" >&2; exit 1; }
+while IFS='=' read -r name value || [ -n "$name" ]; do
   case "$name" in
     BIFROST_ADMIN_USERNAME | BIFROST_ADMIN_PASSWORD) export "$name=$value" ;;
   esac
-done </etc/bifrost/bifrost.env
+done <"$env"
 cd /
 exec sudo --preserve-env=BIFROST_ADMIN_USERNAME,BIFROST_ADMIN_PASSWORD -u parent-recap-signup -H -- \
   /var/lib/parent-recap-signup/ParentRecap/app/.venv/bin/parent-recap signup remove "$1"
