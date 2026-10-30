@@ -42,7 +42,7 @@ CHECK_ITEMS = (
     *sources.GMAIL.doctor_items().items(), ("gateway-sends", "Brief sending"),
     ("claude", "Claude"), ("codex", "Codex"),
     ("gateway", "AI gateway"), ("gateway-key", "Gateway Key"),
-    *(item for s in _sources_after_the_ai() for item in s.doctor_items().items()),
+    *(item for s in sources.ALL if s is not sources.GMAIL for item in s.doctor_items().items()),
     ("whatsapp-library", "WhatsApp library"),
     ("calendar", "Calendar"), ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"),
     ("schedule", "Schedule"), ("last-run", "Last run"),
@@ -151,7 +151,8 @@ def health_checks(config: str | None, skip_llm: bool = False, show: bool = False
         _check_llm(cfg, add)
     for source in _sources_after_the_ai():
         _check_source(source, cfg, add, config)
-    _check_whatsapp_library(add)
+    if sources.WHATSAPP.available():
+        _check_whatsapp_library(add)
     _check_calendar(cfg, add)
     if cfg.feedback.enabled:
         _check_feedback(cfg, add)

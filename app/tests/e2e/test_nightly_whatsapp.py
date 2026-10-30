@@ -13,6 +13,7 @@ import pytest
 import time_machine
 
 from conftest import CLASS_GROUP, NOW, PIANO_GROUP, SAYS_SOMETHING, msg
+from fake_system import LINUX
 from nights import caught_up_last_night, payload_message_ids
 
 from family_brief import linked_device
@@ -114,6 +115,25 @@ def test_records_past_the_longest_lookback_and_a_margin_are_pruned(harness, what
 
 
 # Each language's wording of it is test_render.py's.
+@pytest.mark.parametrize("paired", [True, False], ids=["paired", "needs-pairing"])
+def test_the_hosted_version_never_reads_whatsapp_and_says_so(harness, whatsapp_only, paired):
+    harness.system = LINUX  # ADR 0029
+    one_gmail_message(harness)
+    if not paired:  # which elsewhere is a Source not read since then
+        harness.source_fakes["whatsapp"].status(paired=False, connected_since=None,
+                                                last_connected="2026-09-26T05:30:00.000Z",
+                                                link_ended_at="2026-09-26T05:30:00.000Z")
+
+    assert harness.run() == 0
+
+    assert payload_message_ids(harness) == ["1001"]
+    assert whatsapp_archived(harness) == []
+    assert coverage_line(harness) == (
+        "📥 Read tonight: Gmail 1 message · MyClub 0 events · Wilma 0 messages\n"
+        "WhatsApp isn't read in the hosted version.")
+    assert "whatsapp" not in harness.lookback_hours
+
+
 def test_a_link_whatsapp_ended_is_not_read_since_then(harness):
     harness.config["summary_language"] = "en"
     harness.model_reply = SAYS_SOMETHING

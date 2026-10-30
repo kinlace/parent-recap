@@ -61,6 +61,7 @@ PROFILE = profile.Profile(
     installer=("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command"),
     codex_apps=False,  # the Windows apps bring no codex the program finds
     chats=frozenset(),
+    page_skips=frozenset(),
     pseudo_terminal=False,
     login_shell=False,
     program_endings=(".exe", ".cmd", ".bat"),  # in the order Windows' own PATHEXT tries them

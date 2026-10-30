@@ -1,6 +1,7 @@
 """The Linux `profile`: a server the maintainers run Households on (ADR 0029), with install.sh's
 layout under the Household user's home. The gateway is its only AI, so nothing is offered to
-choose, installed by the page or continued in a chat."""
+choose, installed by the page or continued in a chat, and the setup page asks for neither the AI
+nor Gmail."""
 from __future__ import annotations
 
 import platform
@@ -41,6 +42,8 @@ PROFILE = Profile(
     installer=("/bin/sh", "-c"),
     codex_apps=False,
     chats=frozenset(),
+    # A Hosted Household's sign-up mints its Gateway Key, and it reads no Gmail yet (ADR 0031).
+    page_skips=frozenset({"ai", "gmail"}),
     pseudo_terminal=True,
     login_shell=True,
     program_endings=("",),

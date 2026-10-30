@@ -63,8 +63,8 @@ def parse(model: type[T], raw: Any) -> T:
 
 
 def sources() -> list[str]:
-    """The Sources the page offers, in Connect's list's order."""
-    return list(setup_save.SOURCES)
+    """The Sources the page offers on this system, in Connect's list's order."""
+    return setup_save.steps()
 
 
 def next_source(statuses: dict[str, str]) -> str | None:

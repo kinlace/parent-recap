@@ -57,6 +57,7 @@ class BriefText:
     login_failed: str
     message_unreadable: str             # a Source skipped a Message it couldn't read
     needs_pairing: str                  # the Linked Device's link ended, or it was never paired
+    not_hosted: str                     # {sources} the hosted version never reads (ADR 0029)
 
     # ── The short Brief of a night when no Source could be read
     nothing_read: str
@@ -164,6 +165,7 @@ EN = BriefText(
     login_failed="login failed",
     message_unreadable="a message couldn't be read",
     needs_pairing="needs a new pairing",
+    not_hosted="{sources} isn't read in the hosted version.",
     nothing_read="⚠️ No Source could be read tonight, so there is no Digest. Their messages will be "
                  "in the first Brief after they can be read again.",
     source_problem="• {source}: {reason}. {fix}",
@@ -244,6 +246,7 @@ ZH = BriefText(
     login_failed="登录失败",
     message_unreadable="有一条消息读不出来",
     needs_pairing="需要重新关联设备",
+    not_hosted="托管版不读取 {sources}。",
     nothing_read="⚠️ 今晚所有信息源都没读到，所以没有摘要。等它们恢复后，这些消息会出现在下一份日报里。",
     source_problem="• {source}：{reason}。{fix}",
     fix_login="跟 {assistant} 说「重新授权 {source}」即可修复。",
@@ -315,6 +318,7 @@ FI = BriefText(
     permission_denied="macOS ei antanut käyttöoikeutta",
     login_failed="kirjautuminen epäonnistui",
     needs_pairing="laite on linkitettävä uudelleen",
+    not_hosted="{sources} ei ole mukana ylläpidetyssä versiossa.",
     fallback_header="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua, joten tässä ovat viestit sellaisenaan "
                     "(kaikki ovat tallessa arkistossa ~/ParentRecap):",
     fallback_spent="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua: gateway-avaimen tämän päivän "

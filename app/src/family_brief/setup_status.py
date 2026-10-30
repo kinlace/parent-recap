@@ -122,7 +122,7 @@ def _brief(cfg: Config | None) -> Outcome:
     if cfg is None:
         return Outcome("brief", False, "the config can't be read, so its Recipients aren't known")
     to = [*(r.address for r in cfg.email.to if cfg.email.enabled),
-          *(cfg.imessage.recipients if cfg.imessage.enabled else [])]
+          *(cfg.imessage.recipients if cfg.sends_imessage() else [])]
     if not to:
         return Outcome("brief", False, "the Brief goes to nobody: email.to is empty or email is off")
     parent, others = to[0], to[1:]

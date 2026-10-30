@@ -18,7 +18,7 @@ from family_brief.llm import codex as codex_backend
 from family_brief.system import jobs
 from conftest import program
 from fake_sources import GmailFolders
-from fake_system import MACOS, WINDOWS
+from fake_system import LINUX, MACOS, WINDOWS
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
 
@@ -367,6 +367,25 @@ def test_doctor_has_no_whatsapp_line_without_picked_groups(harness, capsys):
     harness.cli("doctor", "--skip-llm")
 
     assert "WhatsApp:" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("on, whatsapp", [(MACOS, True), (LINUX, False)])
+def test_on_the_hosted_version_s_server_doctor_has_no_whatsapp_line(harness, capsys, on, whatsapp):
+    harness.system = on
+    harness.source_fakes["whatsapp"].status(paired=True, connected_since="2026-09-27T05:12:00.000Z",
+                                            last_connected="2026-09-27T05:12:00.000Z", link_ended_at=None)
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    harness.jobs.add(jobs.DAILY)
+
+    harness.cli("doctor", "--skip-llm")
+
+    items = {line.split(":")[0].split(" ", 1)[1].strip()
+             for line in capsys.readouterr().out.splitlines() if ":" in line}
+    assert ({"WhatsApp", "WhatsApp library"} <= items) is whatsapp
+    assert not {"WhatsApp", "WhatsApp library"} & items or whatsapp
+    # Nor any of Windows' own: a Linux server has no wake-up to check.
+    assert not {"Wake", "Sign-in after updates"} & items
+    assert {"Config file", "Wilma", "Schedule"} <= items
 
 
 SKILLS = Path(__file__).resolve().parents[3] / "skills"

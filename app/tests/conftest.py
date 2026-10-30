@@ -37,11 +37,11 @@ import yaml
 from family_brief import __main__ as cli, feedback, tools
 from family_brief.collectors.base import CalendarEvent, Message
 from family_brief.llm import retry
-from family_brief.system import profile_macos, secrets
+from family_brief.system import profile, profile_macos, secrets
 from fake_model import FakeModel
 from fake_outbox import FakeOutbox
 from fake_sources import FakeSources
-from fake_system import WINDOWS, FakeSystem
+from fake_system import LINUX, MACOS, WINDOWS, FakeSystem
 from goldens import Goldens
 
 # The test layers, one folder each (README.md). Tests import helpers from tests in other layers
@@ -71,6 +71,14 @@ def _programs_only_where_the_test_puts_them(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(profile_macos, "SYSTEM_DIRS", ())
     monkeypatch.delenv("SHELL", raising=False)
     monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
+
+
+@pytest.fixture(autouse=True)
+def _a_family_s_own_computer_on_linux(monkeypatch: pytest.MonkeyPatch) -> None:
+    """On Linux, macOS's profile, as FakeSystem starts with there: Linux's is the hosted
+    version's, which reads fewer Sources (ADR 0029), and a test of a server sets LINUX."""
+    if profile.current() is LINUX:
+        monkeypatch.setattr(profile, "current", lambda: MACOS)
 
 
 @pytest.fixture

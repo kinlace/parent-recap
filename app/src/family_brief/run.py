@@ -523,7 +523,7 @@ def _send_nothing_read(cfg: Config, io: IO, read: _Read) -> None:
                for language, to in cfg.brief_recipients_by_language().items()] if cfg.email.enabled else []
     for item in render.nothing_read(read.coverage, today_str(cfg.timezone), llm.backend(cfg).display_name,
                                     languages.text(cfg, cfg.brief_language()), readers, email_action.write_to(cfg),
-                                    cfg.imessage.recipients if cfg.imessage.enabled else []):
+                                    cfg.imessage.recipients if cfg.sends_imessage() else []):
         _send(cfg, io, "email" if isinstance(item, render.Mail) else "imessage", lambda: item)
 
 
@@ -535,9 +535,9 @@ def _deliver(cfg: Config, io: IO, state: State, written: _Written) -> tuple[bool
     # Each mail is made as it goes, so one that can't be made leaves the others to go out.
     mails = [("email", lambda v=v: render.mail(night, v)) for v in versions]
     imessages = [("imessage", lambda: render.imessage(night, cfg.imessage.recipients))] \
-        if cfg.imessage.enabled else []
+        if cfg.sends_imessage() else []
     email_sent = False
-    delivered = not (cfg.email.enabled or cfg.imessage.enabled)
+    delivered = not (cfg.email.enabled or cfg.sends_imessage())
     for channel, make in mails + imessages:
         sent = _send(cfg, io, channel, make)
         if sent:

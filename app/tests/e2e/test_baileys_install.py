@@ -12,6 +12,7 @@ import pytest
 
 import fake_node
 from family_brief import baileys_install, install_record
+from fake_system import LINUX
 
 
 class Npm:
@@ -85,6 +86,16 @@ def test_the_install_puts_the_pinned_tree_in_parent_recaps_folder_and_records_it
     assert nothing_left_beside_the_tree(harness)
     assert umasks == [0o077]  # install.sh runs it with the shell's umask
     assert "✅" in capsys.readouterr().out
+
+
+def test_the_hosted_version_s_install_puts_no_tree_there(harness, npm, capsys):
+    harness.system = LINUX  # which has no WhatsApp (ADR 0029)
+
+    assert baileys_install.main(["install"]) == 0
+
+    assert npm.commands == [] and not folder(harness).exists()
+    assert install_record.entries("baileys") == []
+    assert capsys.readouterr().out == ""
 
 
 def test_an_up_to_date_tree_is_not_installed_again(harness, npm, capsys):
