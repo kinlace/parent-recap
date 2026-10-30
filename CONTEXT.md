@@ -54,6 +54,14 @@ _Avoid_: API key, virtual key, token
 The unit that receives a Brief: its Kids, its Recipients and their configured Sources.
 _Avoid_: family, user, account
 
+**Hosted Household** (zh 托管家庭, fi ylläpidetty perhe):
+An invited Household whose program the maintainers run for it on their own server, instead of on the Household's computer (ADR 0029). It reads Wilma and MyClub, never WhatsApp; its Brief is written through the gateway and sent from Parent Recap's own address; and the maintainers hold its Gateway Key, its Wilma login and its config.
+_Avoid_: cloud user, hosted user, SaaS customer, 云端用户
+
+**Invite Link** (zh 邀请链接, fi kutsulinkki):
+The one-time link the maintainers send a Household they invite to be hosted. It opens the sign-up page and stands for the Household, so the family pastes no key (ADR 0031).
+_Avoid_: invite code, sign-up token, registration link
+
 **Recipient** (zh 收件人, fi vastaanottaja):
 A person who receives the Brief or Weekend Picks for a Household. Each Recipient has their own language, used for everything Parent Recap sends or says to them.
 _Avoid_: reader, subscriber, user, 用户
