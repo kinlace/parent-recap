@@ -96,11 +96,16 @@
   function Invoke-Logged([string]$Program, [string[]]$Arguments) {
     $before = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
+    # Piped, Python writes the PC's code page, which has no status line's emoji, so a step's
+    # last print would end it in a traceback (#596). The window keeps its own setting.
+    $utf8 = $env:PYTHONUTF8
+    $env:PYTHONUTF8 = '1'
     try {
       & $Program @Arguments 2>&1 | ForEach-Object { "$_" } | Out-File -FilePath $Log -Append -Encoding utf8
       return $LASTEXITCODE
     } finally {
       $ErrorActionPreference = $before
+      $env:PYTHONUTF8 = $utf8
     }
   }
 
