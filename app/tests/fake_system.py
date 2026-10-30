@@ -188,6 +188,7 @@ class FakeWake:
     """The computer's repeating wakes, and the administrator dialog that sets and cancels them."""
 
     MANUAL_CANCEL = "cancel-wakes"
+    SLEEPS = True  # a family's own computer; wake_linux's test meets a server's
 
     def __init__(self) -> None:
         self.wakes: list[str] = []   # the repeating wakes, as the system lists them

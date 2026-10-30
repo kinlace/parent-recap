@@ -163,6 +163,8 @@ slowest tests, so add one for a main path, not for each result.
 | `test_secrets_linux.py`         | Linux secrets: owner-only files, written for real         |
 | `test_user_path_linux.py`       | Linux PATH: links in `~/.local/bin`                       |
 | `test_desktop_linux.py`         | Linux desktop: a printed link, the locale's languages     |
+| `test_jobs_linux.py`            | Linux jobs: systemd user timers, lingering, their limits  |
+| `test_wake_linux.py`            | Linux wake: a server never sleeps, so no wake-up line     |
 | `test_brief_by_hand_windows.py` | A Brief started by hand on Windows                        |
 | `test_setup_page_windows.py`    | The setup page from a fresh install to Finish, on Windows |
 | `test_setup_wilma_windows.py`   | The Wilma sign-in window on Windows                       |

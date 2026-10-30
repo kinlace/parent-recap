@@ -61,6 +61,12 @@ def manual_step(hour: int, minute: int) -> str | None:
     return _adapter.manual_step(hour, minute)
 
 
+def sleeps() -> bool:
+    """Whether this computer can sleep, so the evening job may need a wake-up at all: a Linux
+    server never does, and setup and `doctor` say nothing of one there."""
+    return _adapter.SLEEPS
+
+
 def has_own_schedule() -> bool:
     """Whether setup's daily wake is a schedule of its own, which uninstall cancels: not on
     Windows, where the job's task wakes the PC and "Allow wake timers" is the family's own."""

@@ -6,10 +6,10 @@ one-line reason.
 3. brief     — the first Brief reached the setup parent, the first Recipient; the
                others' first Brief is the first evening one
 4. nightly   — the nightly job is loaded
-5. wake      — the wake schedule is set, or the Mac never sleeps
+5. wake      — the wake schedule is set, or the Mac never sleeps; none on a Linux server
 
 The sixth, knowing to log in after a restart, is the setup skill's to confirm with the family, and
-the setup page shows it under its checklist of these five.
+the setup page shows it under its checklist of these five, four on a Linux server.
 It prints one line of JSON for the setup skill, or with --text a short line per outcome. Neither
 has a secret or message text in it: doctor's own details stay out, only the names of its checks
 that aren't OK are given.
@@ -75,7 +75,8 @@ def check(config: str | None) -> list[Outcome]:
         cfg = None
     schedule = (cfg or Config(kids=[])).schedule
     hour, minute = schedule.daily_hour, schedule.daily_minute
-    return [_installed(), _doctor(config), _brief(cfg), _nightly(hour, minute), _wake(hour, minute)]
+    outcomes = [_installed(), _doctor(config), _brief(cfg), _nightly(hour, minute)]
+    return [*outcomes, _wake(hour, minute)] if wake.sleeps() else outcomes
 
 
 def _installed() -> Outcome:

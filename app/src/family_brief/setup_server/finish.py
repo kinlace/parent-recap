@@ -120,14 +120,18 @@ class Finish(Phase):
                 ops.install_jobs(cfg)
                 hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
                 other = wake.status(hour, minute).others
-                result = wake.set(hour, minute, replace)
+                # A server never sleeps, and the page says nothing of a wake-up there.
+                result = wake.set(hour, minute, replace) if wake.sleeps() else None
             except Exception as e:  # never leave the page installing
                 self._wake = {}
                 runs["finish"] = {"result": "install-failed", "reason": failure.logged(
                     "The evening Brief wasn't turned on",
                     failure.of(e, "Turning on the evening Brief"))}
                 return
-            self._wake = {"wake": result, **({"other": other} if result == "other-schedule" else {})}
+            self._wake = {}
+            if result:
+                self._wake = {"wake": result,
+                              **({"other": other} if result == "other-schedule" else {})}
             runs["finish"] = {"result": "checking"}
         why: dict[str, str] = {}
         try:

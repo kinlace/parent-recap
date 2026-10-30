@@ -9,6 +9,7 @@ from . import wake  # its names are read at call time: wake imports this module 
 from .dialog import Cancelled, NoWayToAsk, over_ssh
 from .dialog_macos import quote
 
+SLEEPS = True
 MANUAL_CANCEL = "sudo pmset repeat cancel"
 OWN_SCHEDULE = True  # a pmset repeat schedule, which uninstall cancels
 
