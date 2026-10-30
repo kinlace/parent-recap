@@ -46,6 +46,8 @@ class Welcome(Phase):
                 "system": profile.current().system,
                 "ais": list(ais()),
                 "installs": sorted(profile.current().page_installs),
+                # The AIs whose chat setup can continue in here.
+                "chats": sorted(chats()),
                 # What Copy puts with a failure's reason, for the family to send us.
                 "about": failure.about(),
                 # In tmux or SSH, macOS may not let this server save the passwords in the Keychain.

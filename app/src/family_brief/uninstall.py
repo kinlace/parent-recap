@@ -142,10 +142,10 @@ def survey(config: Path) -> Survey:
     _jobs(s, programs)
     _wake(s, defaults)
     _keychain(s, defaults)
-    for source in sources.ALL:
+    for source in sources.available():
         if source.survey:
             source.survey(s, programs)
-    _baileys(s, programs)
+    _baileys(s, programs)  # also an earlier Linux install's, from before it put none there
     _claude_code(s)
     _codex_skills(s, home)
     _plugin_copies(s, usual)
@@ -255,7 +255,7 @@ def _cancel_wake() -> None:
 
 def _keychain(s: Survey, cfg: Config) -> None:
     accounts = [*install_record.entries("keychain"),
-                *(account for source in sources.ALL for account in source.secrets(cfg)),
+                *(account for source in sources.available() for account in source.secrets(cfg)),
                 "claude-oauth-token", "anthropic-api-key"]
     for account in dict.fromkeys(accounts):
         if secrets.has(account):  # the secret itself isn't read
@@ -539,9 +539,9 @@ def _left_in(s: Survey, folder: Path, archive: Path) -> None:
 
 
 def _notes(s: Survey, cfg: Config) -> None:
-    accounts = ", ".join(source.label() for source in sources.ALL)
+    accounts = ", ".join(source.label() for source in sources.available())
     s.notes.append(f"Your accounts aren't touched: {accounts} and Google stay as they are.")
-    s.notes += [note for source in sources.ALL for note in source.notes(cfg)]
+    s.notes += [note for source in sources.available() for note in source.notes(cfg)]
     if cfg.google_calendar.mode == "google" or any(i.what == "Google Calendar authorization"
                                                    for i in s.items):
         s.notes.append("Parent Recap's access to Google Calendar stays until you remove it in your "

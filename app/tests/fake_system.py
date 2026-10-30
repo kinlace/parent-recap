@@ -13,8 +13,9 @@ and the Passwords app beside them.
 
 The system's profile is data, so its fake is FakeSystem's `profile`: the profile the program
 sees, the one of the system the tests run on until a test makes it MACOS's, WINDOWS's or
-LINUX's, so a Mac runs the Windows paths too. On Linux it starts as macOS's: the setup page's and
-doctor's tests walk a family's own computer, and those that walk a server set LINUX (#582).
+LINUX's, so a Mac runs the Windows and Linux paths too. On Linux it starts as macOS's, as does
+the profile of a test without it (conftest.py): the setup page's, doctor's and uninstall's tests
+walk a family's own computer, and those that walk the hosted version's server set LINUX.
 FakeSystem, the `system` fixture, puts all of them in place."""
 from __future__ import annotations
 
@@ -188,9 +189,9 @@ class FakeWake:
     """The computer's repeating wakes, and the administrator dialog that sets and cancels them."""
 
     MANUAL_CANCEL = "cancel-wakes"
-    SLEEPS = True  # a family's own computer; wake_linux's test meets a server's
 
-    def __init__(self) -> None:
+    def __init__(self, on_a_server: Callable[[], bool] = lambda: False) -> None:
+        self._on_a_server = on_a_server
         self.wakes: list[str] = []   # the repeating wakes, as the system lists them
         self.never_sleeps = False
         # The family's answer in the dialog: "allow", "cancel" or "none" (no dialog can open).
@@ -204,6 +205,11 @@ class FakeWake:
     def OWN_SCHEDULE(self) -> bool:  # noqa: N802  the adapters' constant
         # As on Windows, the wake rides on the job's task, with no schedule of its own.
         return self.settable
+
+    @property
+    def SLEEPS(self) -> bool:  # noqa: N802  the adapters' constant
+        # A family's own computer sleeps; the hosted version's server, under LINUX, never does.
+        return not self._on_a_server()
 
     @staticmethod
     def line(hour: int, minute: int) -> str:
@@ -345,7 +351,7 @@ class FakeSystem:
     def __init__(self, mp: pytest.MonkeyPatch) -> None:
         self.secrets = FakeSecrets()
         self.jobs = FakeJobs()
-        self.wake = FakeWake()
+        self.wake = FakeWake(lambda: self.profile is LINUX)
         self.user_path = FakeUserPath()
         self.desktop = FakeDesktop()
         self.dialog = FakeDialog()

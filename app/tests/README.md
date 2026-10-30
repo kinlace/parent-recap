@@ -206,7 +206,8 @@ per outside edge of the program, each with its fakes in a module of its own:
   `system.secrets`, `.jobs`, `.wake`, `.desktop` and `.dialog`. Only the adapter tests meet these
   services' commands. `system.profile` is the profile the program sees, this system's until a
   test sets `MACOS`, `WINDOWS` or `LINUX`, so a Mac runs the Windows paths too. On Linux it is
-  macOS's until a test sets `LINUX`, as the tests of a family's own computer expect.
+  macOS's until a test sets `LINUX`, as the tests of a family's own computer expect, and so is the
+  profile of a test without the fixture.
 
 An integration test asks for the one fixture it uses. `harness` composes all four and runs the
 real `parent-recap` in-process in a temporary HOME, with "now" pinned: the end-to-end tests use

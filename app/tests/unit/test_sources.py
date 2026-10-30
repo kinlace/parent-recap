@@ -6,6 +6,7 @@ import pytest
 from family_brief import sources
 from family_brief.brief_text import TEXT
 from family_brief.config import Config
+from fake_system import LINUX, MACOS, WINDOWS
 
 
 @pytest.mark.parametrize("source", sources.ALL, ids=lambda s: s.name)
@@ -25,6 +26,25 @@ def test_a_language_without_reviewed_text_gets_the_english_label():
 
 def test_the_connect_list_puts_wilma_first_and_myclub_last():
     assert [s.name for s in sources.in_connect_order()] == ["wilma", "gmail", "whatsapp", "myclub"]
+
+
+@pytest.mark.parametrize("profile", [MACOS, WINDOWS], ids=["macos", "windows"])
+def test_a_family_s_own_computer_reads_every_source(system, profile):
+    system.profile = profile
+
+    assert sources.available() == list(sources.ALL)
+    assert sources.unavailable() == []
+
+
+def test_the_hosted_version_never_reads_whatsapp(system):
+    system.profile = LINUX
+    cfg = Config(kids=[_KID], wilma={"enabled": True})
+
+    assert [s.name for s in sources.available()] == ["gmail", "myclub", "wilma"]
+    assert sources.unavailable() == [sources.WHATSAPP]
+    assert [s.name for s in sources.in_connect_order()] == ["wilma", "gmail", "myclub"]
+    assert [s.name for s in sources.used(cfg)] == ["wilma"]
+    assert cfg.other_sources() == ["wilma"]
 
 
 def test_a_source_is_found_by_its_name_and_any_other_name_is_its_own_label():

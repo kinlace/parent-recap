@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import sources
 from .brief_text import Language
+from .system import macos_only
 
 
 def _expand(p: str | None) -> str | None:
@@ -302,13 +303,17 @@ class Config(BaseModel):
         the whole inbox."""
         return [s.name for s in sources.used(self)]
 
+    def sends_imessage(self) -> bool:
+        """Whether the Brief also goes out as an iMessage: only on macOS, which has Messages."""
+        return self.imessage.enabled and macos_only.offers("imessage")
+
     def gmail_only_sends(self) -> bool:
         """Whether Gmail has no sender ticked and another Source is connected."""
         return not sources.GMAIL.connected(self) and bool(self.other_sources())
 
     def other_sources(self) -> list[str]:
-        """The Sources connected besides Gmail."""
-        return [s.name for s in sources.ALL if s is not sources.GMAIL and s.connected(self)]
+        """The Sources connected besides Gmail, of those this system can read."""
+        return [s.name for s in sources.available() if s is not sources.GMAIL and s.connected(self)]
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> "Config":

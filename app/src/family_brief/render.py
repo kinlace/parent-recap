@@ -71,7 +71,8 @@ def _short_reason(err: str, t: BriefText) -> str:
 
 
 def _coverage_note(coverage: dict[str, dict], t: BriefText) -> str:
-    """One line saying what was read tonight, plus a warning for any source that failed."""
+    """One line saying what was read tonight, plus a warning for any source that failed, and on
+    the hosted version which Sources it never reads, so their absence isn't taken for quiet."""
     if not coverage:
         return ""
     read, missed = [], []
@@ -88,6 +89,9 @@ def _coverage_note(coverage: dict[str, dict], t: BriefText) -> str:
     note = t.read_tonight.format(counts=" · ".join(read))
     if missed:
         note += "\n" + t.may_be_incomplete.format(missed=t.missed_sep.join(missed))
+    if not_read := source_registry.unavailable():
+        note += "\n" + t.not_hosted.format(sources=t.missed_sep.join(source_name(s.name)
+                                                                     for s in not_read))
     return note
 
 

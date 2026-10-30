@@ -49,6 +49,7 @@ PROFILE = Profile(
     installer=("/bin/sh", "-c"),
     codex_apps=True,
     chats=frozenset({"claude", "codex"}),
+    page_skips=frozenset(),
     pseudo_terminal=True,
     login_shell=True,
     program_endings=("",),

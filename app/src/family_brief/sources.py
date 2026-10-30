@@ -1,11 +1,11 @@
 """The Sources, one record each, in the order the evening run reads them (ADR 0022). Code that
 would name the Sources asks this registry instead: what a Source is called, whether a Household's
 config connects it, how the evening run reads it and widens its lookback, what the Brief's coverage
-line counts of it, whether the setup page lets a family skip it, the mail it sends of its own
-news, which of its messages went to everyone and how the Brief lists one held back (ADR 0013), how
-the calendar treats its events, what `doctor` checks of it, why one the Household set up can't be
-read tonight, and what uninstall removes for it. A new Source is its collector module, its config
-model and its record here."""
+line counts of it, which systems can read it, whether the setup page lets a family skip it, the
+mail it sends of its own news, which of its messages went to everyone and how the Brief lists one
+held back (ADR 0013), how the calendar treats its events, what `doctor` checks of it, why one the
+Household set up can't be read tonight, and what uninstall removes for it. A new Source is its
+collector module, its config model and its record here."""
 from __future__ import annotations
 
 import importlib
@@ -13,6 +13,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
+
+from .system import profile
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -51,6 +53,9 @@ def _never_unread(*_args: Any) -> Unread | None:
     return None
 
 
+EVERY_SYSTEM = frozenset({"macos", "windows", "linux"})
+
+
 @dataclass(frozen=True)
 class Source:
     """One Source as the program knows it everywhere but its collector and its setup panel."""
@@ -61,6 +66,9 @@ class Source:
     connect_rank: int                   # its place on the setup page's Connect list, first lowest
     collect: Callable[[Config, State, list[str]], Collected]  # reads it, given the Kids' terms
     counts_events: bool = False         # the coverage line counts its events rather than its Messages
+    # the systems it can be read on, by their profile's name; elsewhere nothing offers, reads,
+    # checks or removes it, and the Brief's coverage line says the hosted version doesn't read it
+    systems: frozenset[str] = EVERY_SYSTEM
     lookback: Callable[[Config], Window] | None = None  # its section with lookback_hours, if any
     # why it isn't read tonight though the Household set it up, given the config and the state
     unread: Callable[[Config, State], Unread | None] = _never_unread
@@ -88,6 +96,10 @@ class Source:
     def label(self, language: str = "en") -> str:
         """What `language` calls this Source; English for a language without reviewed text."""
         return self.labels.get(language) or self.labels["en"]
+
+    def available(self) -> bool:
+        """Whether it can be read on the system the program runs on."""
+        return profile.current().system in self.systems
 
     def doctor_items(self) -> Mapping[str, str]:
         """The key of each of doctor's checks of it, and the item doctor prints for it."""
@@ -138,11 +150,13 @@ WILMA = Source("wilma", _same_everywhere("Wilma"), lambda cfg: cfg.wilma.enabled
                held_back_link=_in("collectors.wilma", "link"))
 # Read as a Linked Device (ADR 0027): connected once it is paired and has groups picked. Picked
 # groups without a pairing, or a link WhatsApp ended, need a new pairing. Setup pairs it with a
-# QR code on every system (setup_server/whatsapp.py). A post in a group, where incidents get
+# QR code on a family's own computer (setup_server/whatsapp.py); the hosted version, on Linux,
+# never holds a Linked Device (ADR 0029). A post in a group, where incidents get
 # discussed, is always checked, and has no subject: the Brief lists it by its group.
 WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), _in("collectors.whatsapp", "connected"),
                   skippable=True, connect_rank=3, collect=_collector("whatsapp"),
-                  lookback=lambda cfg: cfg.whatsapp, unread=_in("collectors.whatsapp", "unread"),
+                  systems=frozenset({"macos", "windows"}), lookback=lambda cfg: cfg.whatsapp,
+                  unread=_in("collectors.whatsapp", "unread"),
                   check=_in("ops", "check_whatsapp"), survey=_in("uninstall", "survey_whatsapp"),
                   notes=_in("uninstall", "whatsapp_notes"), group=lambda m: m.chat_name)
 
@@ -160,17 +174,28 @@ def label_of(name: str, language: str = "en") -> str:
     return source.label(language) if source else name
 
 
+def available() -> list[Source]:
+    """The Sources that can be read on the system the program runs on, in run order."""
+    return [s for s in ALL if s.available()]
+
+
+def unavailable() -> list[Source]:
+    """The Sources the system the program runs on can't read, which the hosted version leaves out
+    (ADR 0029), in run order."""
+    return [s for s in ALL if not s.available()]
+
+
 def in_connect_order() -> list[Source]:
-    """The Sources in the order the setup page's Connect list shows them."""
-    return sorted(ALL, key=lambda s: s.connect_rank)
+    """The Sources this system can read, in the order the setup page's Connect list shows them."""
+    return sorted(available(), key=lambda s: s.connect_rank)
 
 
 def unread(cfg: Config, state: State) -> dict[str, Unread]:
     """The Sources the Household set up that aren't read tonight, by name, with why."""
-    return {s.name: why for s in ALL if (why := s.unread(cfg, state)) is not None}
+    return {s.name: why for s in available() if (why := s.unread(cfg, state)) is not None}
 
 
 def used(cfg: Config) -> list[Source]:
     """The Sources the Household's evening run reads, in run order. With nothing connected that's
     Gmail, which sends the Brief and so is always set up."""
-    return [s for s in ALL if s.connected(cfg)] or [GMAIL]
+    return [s for s in available() if s.connected(cfg)] or [GMAIL]

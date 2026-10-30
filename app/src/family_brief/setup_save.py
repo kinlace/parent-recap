@@ -64,15 +64,24 @@ from . import sources as source_registry
 from .brief_text import Language
 from .config import Config, WhatsAppChat
 from .setup_report import outcome, report
+from .system import profile
 
 Phase = Literal["welcome", "connect", "working", "check", "first-brief", "finish"]
-# The setup page's Source list: the Sources in the registry's connect order, with the AI's step
-# right after Gmail's.
-_CONNECT = [s.name for s in source_registry.in_connect_order()]
+# The setup page's Source list on any system: every Source in the registry's connect order, with
+# the AI's step right after Gmail's. steps() has those this system offers.
+_CONNECT = [s.name for s in sorted(source_registry.ALL, key=lambda s: s.connect_rank)]
 _AI_AT = _CONNECT.index(source_registry.GMAIL.name) + 1
 SOURCES: tuple[str, ...] = (*_CONNECT[:_AI_AT], "ai", *_CONNECT[_AI_AT:])
 SourceName = Literal[SOURCES]
 Status = Literal["to-do", "done", "skipped"]
+
+
+def steps() -> list[str]:
+    """The Source list's steps the setup page offers on this system, in the list's order: the AI's
+    and those of the Sources it can read, less those its profile leaves out."""
+    readable = {s.name for s in source_registry.available()}
+    return [s for s in SOURCES
+            if (s == "ai" or s in readable) and s not in profile.current().page_skips]
 
 
 class _Strict(BaseModel):

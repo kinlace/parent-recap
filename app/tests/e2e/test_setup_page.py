@@ -22,7 +22,7 @@ import yaml
 
 from family_brief import __main__ as cli, install_record, ops, setup_server
 from family_brief.config import Config
-from fake_system import MACOS, WINDOWS
+from fake_system import LINUX, MACOS, WINDOWS
 from setup_page import (CAN_LISTEN, PAGE_DIR, ROOT, at_finish, call, check_ai, config_file, finish,
                         finished, new_server, progress_file, refused, save_progress, source,
                         statuses, wait_for, welcome)
@@ -441,6 +441,31 @@ def test_the_source_list_shows_each_entry_with_its_status(harness, page):
     # The WhatsApp for Mac step's calls are gone.
     for path in ("api/whatsapp/open", "api/whatsapp/back"):
         assert call(page.url, path, method="POST", body={}).status == 404, path
+
+
+def test_on_the_hosted_version_s_server_the_page_offers_only_what_hosting_can_do(harness, page):
+    harness.system = LINUX
+
+    state = call(page.url, "api/state").json()
+
+    # The gateway is the AI, so there is no AI to pick or install and no chat to continue in.
+    assert (state["system"], state["ais"], state["installs"], state["chats"]) == \
+        ("linux", ["gateway"], [], [])
+    # No AI step, no Gmail step and no WhatsApp (ADR 0029, ADR 0031).
+    assert [(s["name"], s["skippable"]) for s in state["connect"]["sources"]] == [
+        ("wilma", True), ("myclub", True)]
+    for name in ("gmail", "ai", "whatsapp"):
+        for action in ("open", "skip"):
+            r = source(page.url, name, action)
+            assert r.status == 400 and r.json()["result"] == "invalid-answers", (name, action)
+    assert call(page.url, "api/chat", method="POST", body={"ai": "claude"}).status == 400
+    # macOS's Passwords app, which the Wilma step opens there.
+    assert call(page.url, "api/open", method="POST", body={"site": "passwords"}).status == 400
+    assert not harness.opened
+
+    assert welcome(page.url).json()["progress"]["source"] == "wilma"
+    assert source(page.url, "wilma", "skip").json()["progress"]["source"] == "myclub"
+    assert source(page.url, "myclub", "skip").json()["progress"]["source"] is None
 
 
 def test_every_source_list_button_is_named_after_its_source_and_status_in_each_language():

@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from .. import failure, linked_device, ops, setup_connect, setup_gmail, setup_save
 from ..config import Config, Kid
 from . import health
-from .connect import SKIPPABLE
+from .connect import skippable
 from .context import Action, Context, Phase, Reply, nothing_to_give
 
 # Working: reading the Gmail senders for the check page, how far it is and how it ended, and
@@ -166,11 +166,10 @@ class Check(Phase):
                 return HTTPStatus.CONFLICT, {"result": "checking"}
             with context.connect.lock:
                 progress = context.progress()
-                if progress["phase"] != "check" or answer.source not in SKIPPABLE \
-                        or answer.source not in setup_connect.sources():
+                if progress["phase"] != "check" or answer.source not in skippable():
                     return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                         "invalid-answers", "Skip a Source that can be skipped, at Check.",
-                        errors=[f"source: skip one of {', '.join(SKIPPABLE)}, at Check"])
+                        errors=[f"source: skip one of {', '.join(skippable())}, at Check"])
                 status, out = context.connect.skip(answer.source)
             if status != HTTPStatus.OK:
                 return status, out
@@ -218,8 +217,9 @@ def _keep_picked(context: Context) -> None:
 
 
 def _without_gmail(progress: dict[str, Any]) -> bool:
-    """Whether Gmail was skipped, as it is when Parent Recap sends the Brief (ADR 0028)."""
-    return progress["sources"]["gmail"] == "skipped"
+    """Whether Gmail was skipped, as it is when Parent Recap sends the Brief (ADR 0028), or this
+    system's page doesn't offer it."""
+    return progress["sources"]["gmail"] == "skipped" or "gmail" not in setup_connect.sources()
 
 
 def _senders(cfg: Config, progress: dict[str, Any]) -> list[dict[str, Any]]:

@@ -586,7 +586,7 @@ def run(cfg: Config, dry_run: bool = False) -> int:
                 delivered = True
             except Exception as e:
                 log.error("email delivery failed: %s", e)
-    if cfg.imessage.enabled and cfg.weekend_events.recipients:
+    if cfg.sends_imessage() and cfg.weekend_events.recipients:
         try:
             imessage.send(cfg.weekend_events.recipients, body)
             delivered = True

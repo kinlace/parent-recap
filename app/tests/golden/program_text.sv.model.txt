@@ -50,6 +50,7 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "login_failed": "login failed",
   "message_unreadable": "a message couldn't be read",
   "needs_pairing": "needs a new pairing",
+  "not_hosted": "{sources} isn't read in the hosted version.",
   "nothing_read": "⚠️ No Source could be read tonight, so there is no Digest. Their messages will be in the first Brief after they can be read again.",
   "source_problem": "• {source}: {reason}. {fix}",
   "fix_login": "Tell {assistant} “re-authorize {source}” to fix it.",

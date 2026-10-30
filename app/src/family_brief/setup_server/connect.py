@@ -14,14 +14,18 @@ from . import finish
 from .context import Action, Context, Phase
 from .gmail import ADDRESS
 
-# The Sources a family can skip and add later through manage, in the page's order.
-SKIPPABLE = tuple(s.name for s in source_registry.in_connect_order() if s.skippable)
 # The sites the page's buttons open, by name: the page itself names none. App Passwords' also
 # takes the family's Gmail address, to open in that Google account.
 SITES = {"app-passwords": setup_gmail.APP_PASSWORDS_URL, "two-step": setup_gmail.TWO_STEP_URL,
          "myclub": setup_myclub.MYCLUB_URL}
 # The apps they open, by name.
 APPS = {"passwords": desktop_macos.open_passwords}
+
+
+def skippable() -> list[str]:
+    """The Sources on this system's list that a family can skip and add later, in its order."""
+    can = {s.name for s in source_registry.ALL if s.skippable}
+    return [name for name in setup_connect.sources() if name in can]
 
 
 class SourceChoice(Strict):
@@ -35,19 +39,25 @@ class Connect(Phase):
                 "api/connect/back": self.back_to_connect}
 
     def state(self, progress: dict[str, Any]) -> dict[str, Any]:
-        return {"connect": {"sources": [{"name": s, "skippable": s in SKIPPABLE}
+        can_skip = skippable()
+        return {"connect": {"sources": [{"name": s, "skippable": s in can_skip}
                                         for s in setup_connect.sources()]}}
 
     def choose_source(self, raw: Any) -> Reply:
         """Skips a Source, moving setup on to the next one to do, or opens one from the list,
         which brings a skipped one back."""
         answer = parse(SourceChoice, raw)
+        listed = setup_connect.sources()
+        if answer.source not in listed:  # a step this system doesn't offer
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Open or skip one of the Sources on the list.",
+                errors=[f"source: should be one of {', '.join(listed)}"])
         if answer.action == "open":
             return self.context.connect.open(answer.source)
-        if answer.source not in SKIPPABLE:
+        if answer.source not in skippable():
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Open a Source, or skip one that can be skipped.",
-                errors=[f"source: skip one of {', '.join(SKIPPABLE)}"])
+                errors=[f"source: skip one of {', '.join(skippable())}"])
         return self.context.connect.skip(answer.source)
 
     def open_site(self, raw: Any) -> Reply:

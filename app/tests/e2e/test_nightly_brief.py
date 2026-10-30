@@ -18,6 +18,7 @@ import time_machine
 from conftest import NOW, html_for_golden, ics_for_golden, msg
 
 from family_brief import feedback
+from fake_system import LINUX, WINDOWS
 from nights import (ENGLISH_REPLY, FEEDBACK, FORM, NORMAL_NIGHT_IDS, PARTNER_EN, archived_summary,
                     caught_up_last_night, feedback_links, model_call_for_golden, normal_night,
                     payload_message_ids, two_languages)
@@ -324,6 +325,17 @@ def test_imessage_alone_counts_as_delivered(harness):
     with time_machine.travel(NOW + timedelta(days=1), tick=False):
         assert harness.run() == 0
     assert payload_message_ids(harness) == []
+
+
+@pytest.mark.parametrize("on", [WINDOWS, LINUX], ids=["windows", "linux"])
+def test_imessage_is_sent_only_from_a_mac(harness, on):
+    harness.system = on  # neither has Messages, so an iMessage set in the config is left out
+    normal_night(harness)
+    harness.config["imessage"] = {"enabled": True, "recipients": ["+358401234567"]}
+
+    assert harness.run() == 0
+
+    assert harness.imessages == [] and harness.sent
 
 
 def test_failed_imessage_and_email_is_not_delivered(harness):

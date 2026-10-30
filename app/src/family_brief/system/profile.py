@@ -28,6 +28,7 @@ class Profile:
     installer: tuple[str, ...]    # the command the setup page runs such a line with, line last
     codex_apps: bool              # whether the Codex or ChatGPT desktop app, with a codex inside, runs here
     chats: frozenset[str]         # the AIs whose chat has a setup skill for this system
+    page_skips: frozenset[str]    # the setup page's Connect steps never offered here, by name
     pseudo_terminal: bool         # whether a program can run in a pseudo-terminal the program reads
     login_shell: bool             # whether the family's login shell can say where a program is
     program_endings: tuple[str, ...]  # what a program's file name ends in, in the order tried

@@ -16,7 +16,7 @@ import pytest
 
 from family_brief import ops, setup_server, setup_status
 from family_brief.system import jobs, wake
-from fake_system import FakeWake
+from fake_system import LINUX, FakeWake
 from setup_page import (PAGE_DIR, Response, at_finish, call, finish, finished, more_progress, new_server,
                         refused, wait_for)
 from setup_page import clock, health, page, schedule  # noqa: F401
@@ -50,6 +50,19 @@ def test_finish_installs_the_evening_job_and_the_wake_up_through_macos_s_dialog(
     assert harness.wake.wakes == [FakeWake.line(21, 0)]
     # Doctor's checks run with the evening job's own, now that it's installed.
     assert health.runs[-1][1] is True
+
+
+def test_on_the_hosted_version_s_server_finish_says_nothing_of_a_wake_up(harness, page, schedule,
+                                                                         health):
+    harness.system = LINUX
+    at_finish(harness)
+
+    finish(page.url)
+    out = finished(page.url)
+
+    assert out["result"] == "done" and "wake" not in checklist(out)
+    assert jobs.DAILY in harness.jobs.installed()
+    assert schedule.dialogs == [] and harness.wake.wakes == []
 
 
 def test_finish_takes_no_password(page):

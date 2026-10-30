@@ -4,12 +4,14 @@ make. The Briefs are the nights' model replies (nights.py) with the Sources thei
 from __future__ import annotations
 
 import copy
+import html
 from datetime import timezone
 from types import SimpleNamespace
 
 import pytest
 
 from conftest import NOW, TZ, html_for_golden, ics_for_golden
+from fake_system import LINUX
 from nights import ENGLISH_REPLY, normal_night
 
 from family_brief import render
@@ -121,6 +123,27 @@ def test_a_linked_device_that_needs_a_new_pairing_is_not_read_since_then(languag
     [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
 
     assert mail.text.endswith("\n" + line)
+
+
+@pytest.mark.parametrize("language, lines", [
+    ("en", "📥 Read tonight: MyClub 1 event · Wilma 2 messages\n"
+           "WhatsApp isn't read in the hosted version."),
+    ("zh", "📥 今晚读取：MyClub 1 个日程 · Wilma 2 条\n托管版不读取 WhatsApp。"),
+    ("fi", "📥 Luettu tänä iltana: MyClub 1 tapahtuma · Wilma 2 viestiä\n"
+           "WhatsApp ei ole mukana ylläpidetyssä versiossa."),
+])
+def test_the_hosted_version_s_coverage_line_says_whatsapp_isn_t_read_there(system, language,
+                                                                           lines):
+    system.profile = LINUX
+    reply, sources = the_normal_night(language)
+    t = TEXT[language]
+    coverage = {"myclub": {"count": 1, "error": None}, "wilma": {"count": 2, "error": None}}
+    night = brief_of(written(reply, sources), t, coverage=coverage)
+
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
+
+    assert mail.text.endswith("\n" + lines)
+    assert html.escape(lines.splitlines()[-1]) in mail.html
 
 
 def test_one_never_paired_since_an_unknown_time_is_not_read_for_that_reason():

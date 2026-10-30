@@ -24,7 +24,7 @@ from family_brief.collectors import gmail
 from family_brief.config import Config
 from family_brief.system import jobs, profile, wake, windows_only
 from family_brief.system.secrets_error import SecretsError
-from fake_system import WINDOWS
+from fake_system import LINUX, WINDOWS
 
 OTHER_WAKE = "wake every weekday at 07:00"
 APP_PASSWORD = "abcdabcdabcdabcd"
@@ -193,6 +193,34 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, monkeypatch
     assert APP_PASSWORD not in out and CLAUDE_TOKEN not in out
     assert leftovers(harness.home) == before
     assert nothing_removed(harness)
+
+
+def test_on_the_hosted_version_s_server_it_lists_only_what_a_linux_install_made(harness,
+                                                                                monkeypatch, capsys):
+    harness.system = LINUX
+    home = harness.home
+    app = make_program(home, monkeypatch)
+    install_record.main(["program", str(app), "logs", str(home / "ParentRecap" / "logs"),
+                         "runtime", str(home / "ParentRecap" / "runtime")])
+    assert harness.cli("schedule", "install") == 0
+    harness.state_path.write_text("{}")
+
+    assert uninstall(harness) == 0
+
+    out = capsys.readouterr().out
+    for item in (jobs.system_name(jobs.DAILY), "ParentRecap/app", "ParentRecap/logs",
+                 "ParentRecap/runtime", "ParentRecap/bin", ".family/config.yaml",
+                 ".family/state.json", ".family/install-record.json"):
+        assert item in out, item
+    # A server never sleeps, and the hosted version has no WhatsApp, chat or Codex skills.
+    assert harness.wake.wakes == [] and "Wake schedule" not in out
+    for absent in ("WhatsApp", "Linked Device", PHONE_NOTE, "Claude Code", ".agents/skills"):
+        assert absent not in out, absent
+    assert "Your accounts aren't touched: Gmail, MyClub, Wilma and Google" in out
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert harness.jobs.found() == [] and not (home / "ParentRecap").exists()
 
 
 @pytest.mark.macos

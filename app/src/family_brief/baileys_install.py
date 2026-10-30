@@ -16,7 +16,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import failure, install_record, own_node, private_files
+from . import failure, install_record, own_node, private_files, sources
 
 BAILEYS_PACKAGE = "@whiskeysockets/baileys"
 BAILEYS_VERSION = "7.0.0-rc14"
@@ -56,7 +56,10 @@ def install() -> str:
     """Installs the pinned tree with Parent Recap's own Node, unless it's there, and adds its
     folder to setup's record. Returns `up-to-date`, `installed`, `updated` (another tree was
     there), `no-node` (the install didn't leave Parent Recap's own Node) or `failed`, which
-    leaves the tree that was there as it was."""
+    leaves the tree that was there as it was; `not-here` on a system that can't read WhatsApp,
+    as the hosted version's (ADR 0029)."""
+    if not sources.WHATSAPP.available():
+        return "not-here"
     if up_to_date():
         return "up-to-date"
     npm = own_node.npm()
