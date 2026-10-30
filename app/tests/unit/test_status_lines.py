@@ -56,6 +56,10 @@ def test_a_household_s_line():
     assert line(Status("ph-0123abcd", "21:05", ran, 0, False, checks)) == (
         "✅ ph-0123abcd  21:05  last run 2026-10-30 18:04 UTC, ok\n"
         "   doctor: ✅ config  ❌ wilma  ⚠️ schedule")
+    assert line(Status("ph-0123abcd", "21:05", ran, 0, False, checks, 7, 180)).startswith(
+        "✅ ph-0123abcd  21:05  last run 2026-10-30 18:04 UTC, ok, 7 s, 180 MB\n")
+    assert line(Status("ph-0123abcd", "21:05", ran, 0, False, checks, seconds=7)).startswith(
+        "✅ ph-0123abcd  21:05  last run 2026-10-30 18:04 UTC, ok, 7 s\n")  # Windows: no peak
     assert line(Status("ph-0123abcd", "21:05", ran, 1, True, {})).splitlines() == [
         "❌ ph-0123abcd  21:05  last run 2026-10-30 18:04 UTC, failed (exit 1), overdue",
         "   doctor: (no checks)"]

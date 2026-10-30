@@ -1,15 +1,16 @@
 """`parent-recap signup status`: every Hosted Household's status in one place, for the maintainers
 on the server (ops/gateway/status.sh runs it as the sign-up service's user). For each Household in
 the store it runs `signup health` as that Household's user, through the household host, and prints
-one line: its user, the time its Brief comes, when its last run ended and how, each of doctor's
-checks by its key with its status, and a mark when the last run failed or is overdue.
+one line: its user, the time its Brief comes, when its last run ended and how, how long it took
+and its peak memory, each of doctor's checks by its key with its status, and a mark when the last
+run failed or is overdue.
 
 `signup health` is the Household's side: it reads its own last-run.json and state.json, runs
 doctor's checks without the model's test call (which spends the Household's budget), and prints
-one line of JSON with only times, exit codes, check keys and statuses. Doctor's words name the
-Recipients and the Kids, so none of them is sent; and the maintainers' side takes from that line
-only what has those shapes, so no message text, subject, address or Kid's name can reach its
-output whatever a Household's files hold.
+one line of JSON with only times, exit codes, durations, peak memory, check keys and statuses.
+Doctor's words name the Recipients and the Kids, so none of them is sent; and the maintainers'
+side takes from that line only what has those shapes, so no message text, subject, address or
+Kid's name can reach its output whatever a Household's files hold.
 """
 from __future__ import annotations
 
@@ -59,6 +60,8 @@ def health(config: Path, now: datetime) -> dict[str, Any]:
     since = last.at if last else state.last_run_at or state.scheduled_at
     return {"last_run": last.at.isoformat() if last else None,
             "exit": last.exit if last else None,
+            "seconds": last.seconds if last else None,
+            "peak_mb": last.peak_mb if last else None,
             "overdue": overdue(since, cfg.schedule.daily_hour, cfg.schedule.daily_minute,
                                cfg.timezone, now),
             "checks": checks}
@@ -84,6 +87,8 @@ class Status:
     exit: int | None = None
     overdue: bool = False
     checks: dict[str, str] = field(default_factory=dict)  # each key's worst status, in order
+    seconds: int | None = None  # how long the last run took
+    peak_mb: int | None = None  # and the most memory it used
     unknown: str | None = None  # why the Household's status couldn't be read
 
     @property
@@ -105,7 +110,9 @@ def status(host: HouseholdHost, household: HouseholdRecord, homes: Path) -> Stat
                       unknown=f"signup health ended with {code} and said no status (a program "
                               "older than this command?)")
     return Status(household.user, household.evening, _time(said.get("last_run")),
-                  _int(said.get("exit")), said.get("overdue") is True, _checks(said["checks"]))
+                  last_run.number(said.get("exit")), said.get("overdue") is True,
+                  _checks(said["checks"]), last_run.number(said.get("seconds")),
+                  last_run.number(said.get("peak_mb")))
 
 
 def _time(value: Any) -> datetime | None:
@@ -113,10 +120,6 @@ def _time(value: Any) -> datetime | None:
         return datetime.fromisoformat(value).astimezone(timezone.utc)
     except (TypeError, ValueError):
         return None
-
-
-def _int(value: Any) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _checks(given: Any) -> dict[str, str]:
@@ -141,6 +144,9 @@ def line(s: Status) -> str:
     else:
         run = f"last run {s.last_run:%Y-%m-%d %H:%M} UTC, " + (
             f"failed (exit {s.exit})" if s.failed else "ok" if s.exit == 0 else "outcome unknown")
+        # A run noted before these were, or on a platform without its peak, says less.
+        run += "".join(f", {n} {unit}" for n, unit in ((s.seconds, "s"), (s.peak_mb, "MB"))
+                       if n is not None)
     doctor = "  ".join(f"{MARKS[level]} {key}" for key, level in s.checks.items())
     return (f"{mark} {s.user}  {s.evening}  {run}" + (", overdue" if s.overdue else "")
             + f"\n   doctor: {doctor or '(no checks)'}")

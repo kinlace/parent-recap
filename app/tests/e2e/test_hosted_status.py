@@ -9,11 +9,14 @@ are on what the maintainers' command prints, and on what it must never print.
 from __future__ import annotations
 
 import json
+import re
 from datetime import timedelta, timezone
 
 import pytest
 import time_machine
 
+from family_brief.config import Config
+from family_brief.last_run import path as last_run_path
 from family_brief.signup import status
 from family_brief.signup.invites import Recipient
 from conftest import NOW
@@ -22,6 +25,7 @@ from test_signup import signup, submit, wilma_cli  # noqa: F401
 pytestmark = pytest.mark.posix  # the fake wilma CLI is a script on a shell-script Node
 
 FIRST_RUN = f"last run {NOW.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC, ok"
+MEASURED = r", \d+ s, \d+ MB"  # how long the run took and its peak memory
 
 
 def sign_up(s, address: str = "parent@example.com", **fields: str) -> str:
@@ -50,7 +54,8 @@ def test_each_household_is_listed_with_its_last_run_and_doctor_s_statuses(signup
     lines = out.splitlines()
     for user, evening in ((first, "21:00"), (second, "21:05")):
         [row] = [i for i, line in enumerate(lines) if f" {user} " in line]
-        assert lines[row] == f"✅ {user}  {evening}  {FIRST_RUN}"
+        assert re.fullmatch(re.escape(f"✅ {user}  {evening}  {FIRST_RUN}") + MEASURED,
+                            lines[row]), lines[row]
         doctor = lines[row + 1]
         assert doctor.startswith("   doctor: ✅ config  ✅ language")
         for check in ("gateway-sends", "wilma", "calendar", "schedule", "last-run"):
@@ -87,8 +92,49 @@ def test_a_household_whose_run_is_overdue_is_marked(signup, capsys):
         code, out = report(signup, capsys)
 
     assert code == 1
-    assert f"⚠️ {name}  21:00  {FIRST_RUN}, overdue" in out
+    assert re.search(re.escape(f"⚠️ {name}  21:00  {FIRST_RUN}") + MEASURED + ", overdue", out)
     assert out.splitlines()[-1] == "1 Households: 0 failed, 1 overdue, 0 unknown"
+
+
+def health(s, name: str) -> dict:
+    _, said = s.host.run_as(name, [program(s, name), "signup", "health"], "", 300)
+    return json.loads(said.strip().splitlines()[-1])
+
+
+def noted(s, name: str, monkeypatch):
+    home = s.host.users[name].home
+    with monkeypatch.context() as mp:
+        mp.setenv("HOME", str(home))  # as its config's ~ is
+        return last_run_path(Config.load(home / ".family" / "config.yaml"))
+
+
+def test_each_run_notes_how_long_it_took_and_its_peak_memory(signup, capsys, monkeypatch):
+    name = sign_up(signup)
+    ran = json.loads(noted(signup, name, monkeypatch).read_text())
+    assert isinstance(ran["seconds"], int) and ran["seconds"] >= 0
+    assert isinstance(ran["peak_mb"], int) and ran["peak_mb"] > 0  # this process's, at least
+    said = health(signup, name)
+    assert (said["seconds"], said["peak_mb"]) == (ran["seconds"], ran["peak_mb"])
+
+    code, out = report(signup, capsys)
+
+    assert code == 0, out
+    assert f"{name}  21:00  {FIRST_RUN}, {ran['seconds']} s, {ran['peak_mb']} MB\n" in out
+
+
+def test_a_run_noted_before_its_duration_and_peak_were_still_reads(signup, capsys, monkeypatch):
+    name = sign_up(signup)
+    file = noted(signup, name, monkeypatch)
+    ran = json.loads(file.read_text())
+    file.write_text(json.dumps({"at": ran["at"], "exit": 0}))  # as 0.10.0 wrote it
+    said = health(signup, name)
+    assert (said["last_run"], said["exit"]) == (ran["at"], 0)
+    assert (said["seconds"], said["peak_mb"]) == (None, None)
+
+    code, out = report(signup, capsys)
+
+    assert code == 0, out
+    assert f"✅ {name}  21:00  {FIRST_RUN}\n" in out
 
 
 def test_a_household_without_the_health_command_is_said_to_be_unknown(
@@ -139,4 +185,5 @@ def test_nothing_of_a_household_s_messages_kids_or_addresses_is_printed(
                     "parent@example.com", "partner@example.com", "@", "Kilon"):
         assert private not in out, private
         assert private not in health, private
-    assert set(json.loads(health)) == {"last_run", "exit", "overdue", "checks"}
+    assert set(json.loads(health)) == {"last_run", "exit", "seconds", "peak_mb", "overdue",
+                                       "checks"}

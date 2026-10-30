@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import re
+import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -201,7 +202,6 @@ def wait_for_network(timeout_seconds: int = 60, probe_host: str = "api.anthropic
     """Block briefly until DNS+TCP to a key host works. Catches the wake-from-sleep case
     where launchd fires before Wi-Fi has reconnected."""
     import socket
-    import time
     deadline = time.time() + timeout_seconds
     delay = 1
     while time.time() < deadline:
@@ -644,7 +644,8 @@ def _evening_missed(cfg: Config, state: State) -> bool:
 def run_unless_caught_up(cfg: Config, options: Options, io: IO) -> int:
     """`run`, or with `if_missed` only when the evening run was missed (#386). Checked under the
     run lock, so a catch-up started beside the evening run sees the state that run left. A run
-    that isn't a dry run notes how it ended in last-run.json, a crash as exit 1."""
+    that isn't a dry run notes how it ended in last-run.json, a crash as exit 1, with how long it
+    took."""
     if options.if_missed:
         if not _evening_missed(cfg, io.load_state(cfg.resolved_state_path())):
             log.info("The evening run has run since its last time, so there is nothing to catch up")
@@ -652,10 +653,11 @@ def run_unless_caught_up(cfg: Config, options: Options, io: IO) -> int:
         log.info("The evening run was missed, so it runs now")
     if options.dry_run:
         return run(cfg, options, io)
+    started = time.monotonic()
     try:
         code = run(cfg, options, io)
     except BaseException:
-        last_run.record(cfg, 1)
+        last_run.record(cfg, 1, time.monotonic() - started)
         raise
-    last_run.record(cfg, code)
+    last_run.record(cfg, code, time.monotonic() - started)
     return code
