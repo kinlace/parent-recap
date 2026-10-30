@@ -1,6 +1,6 @@
 """The adapters of `family_brief.system.dialog` (ADR 0005, 0020): on macOS an AppleScript dialog
-with hidden input through `osascript`, on Windows none, so the family types at the terminal's
-hidden prompt. Callers' tests use fake_system.FakeDialog instead.
+with hidden input through `osascript`, on Windows and Linux none, so the family types at the
+terminal's hidden prompt. Callers' tests use fake_system.FakeDialog instead.
 
 The outside edges are faked: `osascript`, which answers as the family does in the dialog, and the
 terminal's hidden prompt."""
@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from family_brief import secret_dialog
-from family_brief.system import dialog, dialog_macos, dialog_windows
+from family_brief.system import dialog, dialog_linux, dialog_macos, dialog_windows
 
 
 class Osascript:
@@ -123,6 +123,16 @@ def test_without_the_lock_icon_the_dialog_shows_the_note_icon(harness, osascript
 
 def test_on_windows_the_family_types_at_the_terminal_prompt(harness, monkeypatch, prompt):
     monkeypatch.setattr(dialog, "_adapter", dialog_windows)
+    for var in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"):
+        monkeypatch.delenv(var, raising=False)
+
+    assert secret_dialog.ask("Paste the token") == "typed at the prompt"
+
+    assert len(prompt) == 1 and harness.commands == []
+
+
+def test_on_linux_the_family_types_at_the_terminal_prompt(harness, monkeypatch, prompt):
+    monkeypatch.setattr(dialog, "_adapter", dialog_linux)
     for var in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"):
         monkeypatch.delenv(var, raising=False)
 

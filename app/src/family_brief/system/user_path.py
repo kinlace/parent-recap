@@ -1,16 +1,15 @@
 """The user's PATH, which a new Terminal or PowerShell window starts with (ADR 0020, #560). Each
 system has its adapter: a marked line in `~/.zprofile` on macOS, whose default shell is zsh, and
-the user's own PATH under `HKCU\\Environment` on Windows. Neither needs an administrator, and
+the user's own PATH under `HKCU\\Environment` on Windows, and a link in `~/.local/bin` on Linux.
+None needs an administrator, and
 only the folder added is ever taken out: the rest stays as the family had it."""
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-if sys.platform == "win32":
-    from . import user_path_windows as _adapter
-else:
-    from . import user_path_macos as _adapter
+from . import adapter
+
+_adapter = adapter("user_path")
 
 
 def add(folder: Path) -> None:

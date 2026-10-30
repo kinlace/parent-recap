@@ -138,11 +138,14 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         if layer not in LAYERS:
             raise pytest.UsageError(f"{item.path.name} is in no layer's folder: {', '.join(LAYERS)}")
         item.add_marker(getattr(pytest.mark, layer))
-        # The one way a test says it needs macOS, or Windows, so each CI job runs every other test.
+        # The one way a test says it needs macOS, Windows, or either of macOS and Linux (posix), so
+        # each CI job runs every other test.
         if sys.platform != "darwin" and item.get_closest_marker("macos"):
             item.add_marker(pytest.mark.skip(reason="needs macOS"))
         if sys.platform != "win32" and item.get_closest_marker("windows"):
             item.add_marker(pytest.mark.skip(reason="needs Windows"))
+        if sys.platform == "win32" and item.get_closest_marker("posix"):
+            item.add_marker(pytest.mark.skip(reason="needs macOS or Linux"))
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

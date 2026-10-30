@@ -173,6 +173,114 @@ jobs:
       - name: End-to-end tests that need Windows
         run: python -m pytest -m "e2e and windows" --durations=15
 
+  linux:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    # The program's own tests on Linux, which the hosted version runs on (ADR 0029), so a Linux
+    # regression shows on every push. Tests marked `macos` or `windows` skip themselves here; the
+    # browser tests run on macOS only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    env:
+      # The tests pin the local timezone to Helsinki through time-machine, as on macOS.
+      TZ: Europe/Helsinki
+    steps:
+      - uses: actions/checkout@v7
+      # A python-build-standalone Python, as on macOS: test_install.py copies it for its pinned one.
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Python
+        run: |
+          uv python install 3.13
+          uv venv --seed --python 3.13
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Install
+        run: |
+          python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
+      - name: Unit tests
+        run: python -m pytest -m unit --durations=15
+      - name: Integration tests
+        run: python -m pytest -m integration --durations=15
+      - name: End-to-end tests
+        run: python -m pytest -m "e2e and not browser" -n auto --durations=15
+      - name: Adapter tests
+        run: python -m pytest -m adapters --durations=15
+      - name: Script tests
+        run: python -m pytest -m scripts -n auto --durations=15
+
+  linux-install:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    # install.sh on a clean Ubuntu, as the gateway server runs, on both chips, from this checkout,
+    # with the real downloads and no root (ADR 0029).
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      INSTALLED: /home/runner/ParentRecap
+    steps:
+      - uses: actions/checkout@v7
+      # Prints the published line for a pin that doesn't match, so a bump can copy it.
+      - name: The pinned Linux Python and Node are the ones their projects published
+        run: |
+          pin() (sed -n "s/^$1=//p" install.sh)
+          py=$(pin PYTHON_VERSION) build=$(pin PYTHON_BUILD) node=$(pin NODE_VERSION)
+          curl -fsSL "https://github.com/astral-sh/python-build-standalone/releases/download/$build/SHA256SUMS" > python.sums
+          curl -fsSL "https://nodejs.org/dist/v$node/SHASUMS256.txt" > node.sums
+          # $1 the pin's name, $2 the published list, $3 the file
+          check() (
+            line=$(grep -E "[[:space:]]\*?$3\$" "$2" || true)
+            [ "$(pin "$1")" = "$(echo "$line" | cut -d' ' -f1)" ] ||
+              ! echo "$3: install.sh pins $1=$(pin "$1"), the published list says: $line"
+          )
+          wrong=0
+          check PYTHON_SHA256_LINUX_AARCH64 python.sums "cpython-$py+$build-aarch64-unknown-linux-gnu-install_only.tar.gz" || wrong=1
+          check PYTHON_SHA256_LINUX_X86_64 python.sums "cpython-$py+$build-x86_64-unknown-linux-gnu-install_only.tar.gz" || wrong=1
+          check NODE_SHA256_LINUX_ARM64 node.sums "node-v$node-linux-arm64.tar.xz" || wrong=1
+          check NODE_SHA256_LINUX_X64 node.sums "node-v$node-linux-x64.tar.xz" || wrong=1
+          rm python.sums node.sums
+          exit $wrong
+      - name: Install
+        run: |
+          bash install.sh
+          head -1 "$INSTALLED"/logs/install-*.log
+      - name: The installed program runs on its own Python and Node
+        run: |
+          py="$INSTALLED/app/.venv/bin/python"
+          "$INSTALLED/app/.venv/bin/parent-recap" --help > /dev/null
+          "$py" -c "import sys; from family_brief import own_node; n = own_node.node(); print(n, own_node.npm()); sys.exit(n is None or own_node.npm() is None)"
+          "$py" -c "import os, sys; p = os.path.realpath(sys._base_executable); print(p); sys.exit('ParentRecap' not in p)"
+      - name: A new login shell runs parent-recap
+        run: |
+          found=$(bash -l -c 'command -v parent-recap')
+          echo "parent-recap: $found"
+          [ "$(readlink -f "$found")" = "$(readlink -f "$INSTALLED/app/.venv/bin/parent-recap")" ]
+          bash -l -c 'parent-recap --help' > /dev/null
+      # As the setup page's Wilma step installs it, from npm, with the program's own Node.
+      - name: The wilma CLI installs and runs on the program's own Node
+        run: |
+          py="$INSTALLED/app/.venv/bin/python"
+          "$py" -c "import sys; from family_brief import setup_wilma; r = setup_wilma.install(); print(r); sys.exit(r['result'] != 'installed')"
+          "$py" -c "import subprocess, sys; from family_brief import own_node; c = own_node.wilma(); print(c); sys.exit(subprocess.run([*c, '--help'], env=own_node.wilma_env()).returncode)"
+      # ADR 0030: the file is the Household user's alone.
+      - name: A secret is stored in an owner-only file under the config folder
+        run: |
+          py="$INSTALLED/app/.venv/bin/python"
+          where=$("$py" -c "from family_brief import gateway; from family_brief.system import secrets; secrets.put(gateway.ACCOUNT, 'sk-ci-not-a-real-key'); print(secrets.where(gateway.ACCOUNT))")
+          echo "$where"
+          [ "$(stat -c %a "$where")" = 600 ] && [ "$(stat -c %a "$(dirname "$where")")" = 700 ]
+          [[ "$where" == "$HOME/.family/secrets/"* ]]
+      - name: A second install downloads nothing
+        run: |
+          before=$(stat -c %Y "$INSTALLED"/runtime/*)
+          bash install.sh
+          [ "$(stat -c %Y "$INSTALLED"/runtime/*)" = "$before" ]
+
   windows-install:
     needs: changes
     if: needs.changes.outputs.code == 'true'

@@ -1,21 +1,19 @@
 """The evening jobs, the always-running job, and one-off runs with the evening job's permissions
 (ADR 0020). The program describes a job; each system's adapter turns it into its own scheduler's:
-launchd on macOS, Task Scheduler on Windows.
+launchd on macOS, Task Scheduler on Windows; none yet on Linux (#581).
 
 The evening jobs run at their time. The always-running job, the Linked Device's (ADR 0026), runs
 from the family's sign-in on and is started again whenever it exits, unless it exits with
 LINK_ENDED."""
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-if sys.platform == "win32":
-    from . import jobs_windows as _adapter
-else:
-    from . import jobs_macos as _adapter
+from . import adapter
+
+_adapter = adapter("jobs")
 
 DAILY = "daily"
 WEEKEND = "weekend-events"

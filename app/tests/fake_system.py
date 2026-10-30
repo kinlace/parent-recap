@@ -12,8 +12,10 @@ have no interface (ADR 0020), still meet their commands in callers' tests: iMess
 and the Passwords app beside them.
 
 The system's profile is data, so its fake is FakeSystem's `profile`: the profile the program
-sees, the one of the system the tests run on until a test makes it MACOS's or WINDOWS's, so
-a Mac runs the Windows paths too. FakeSystem, the `system` fixture, puts all of them in place."""
+sees, the one of the system the tests run on until a test makes it MACOS's, WINDOWS's or
+LINUX's, so a Mac runs the Windows paths too. On Linux it starts as macOS's: the setup page's and
+doctor's tests walk a family's own computer, and those that walk a server set LINUX (#582).
+FakeSystem, the `system` fixture, puts all of them in place."""
 from __future__ import annotations
 
 import contextlib
@@ -26,11 +28,11 @@ from typing import Any, Callable, ContextManager
 
 import pytest
 
-from family_brief.system import (desktop, dialog, jobs, profile, profile_macos, profile_windows,
-                                 secrets, user_path, wake, windows_only)
+from family_brief.system import (desktop, dialog, jobs, profile, profile_linux, profile_macos,
+                                 profile_windows, secrets, user_path, wake, windows_only)
 from family_brief.system.secrets_error import SecretsError
 
-MACOS, WINDOWS = profile_macos.PROFILE, profile_windows.PROFILE
+MACOS, WINDOWS, LINUX = profile_macos.PROFILE, profile_windows.PROFILE, profile_linux.PROFILE
 
 
 class FakeSecrets(dict):
@@ -346,8 +348,10 @@ class FakeSystem:
         self.user_path = FakeUserPath()
         self.desktop = FakeDesktop()
         self.dialog = FakeDialog()
-        # This system's, until a test makes it another's.
+        # This system's, or macOS's on Linux, until a test makes it another's.
         self.profile: profile.Profile = profile.current()
+        if self.profile is LINUX:
+            self.profile = MACOS
         # Whether Windows signs the family back in after an update restart; None: never set.
         self.signs_in_after_update: bool | None = True
         self.elevated = False  # whether it runs as administrator on Windows

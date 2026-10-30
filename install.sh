@@ -1,5 +1,6 @@
 #!/bin/bash
-# Install or update Parent Recap into ~/ParentRecap/app.
+# Install or update Parent Recap into ~/ParentRecap/app, on a Mac or, for the hosted version
+# (ADR 0029), on a Linux server under the Household's own user, without root.
 # Safe to re-run: never touches the config, tokens or Keychain. It only adds what it creates to
 # setup's record (~/.family/install-record.json), so `parent-recap uninstall` can remove it.
 set -euo pipefail
@@ -56,6 +57,8 @@ PYTHON_VERSION=3.13.16
 PYTHON_BUILD=20261003
 PYTHON_SHA256_AARCH64=d8975d7df4f08f7b1c7aafcdfacbddcec3d366415f2c1a72b2466b6850815933
 PYTHON_SHA256_X86_64=8e9cb087305bfb8969f68a905f79f41469d4aa5220c1aa71ada7fc9953bdba0f
+PYTHON_SHA256_LINUX_AARCH64=6477121f22904963a066ac8ff89983baae781510815590e894daa3c11ce86652
+PYTHON_SHA256_LINUX_X86_64=0a0272910b10417c659a9312fb3f2d7a6d774da7bd510999be7a3ba83273dc1f
 PYTHON_RELEASES=https://github.com/astral-sh/python-build-standalone/releases/download
 # Each pinned version gets its own folder: macOS is assumed not to keep the permission for a
 # binary replaced at the same path (#168).
@@ -69,17 +72,39 @@ PY="$RUNTIME/bin/python3"
 NODE_VERSION=24.21.0
 NODE_SHA256_ARM64=6239d4cf92d864487ec8cd3615038f7b67e7f58b77b21cd2f09ea9fbd68065fe
 NODE_SHA256_X64=0ae5a24c24bb7d015cd816c5036b3f90f2945aa872fcf54e58da054753b3a299
+NODE_SHA256_LINUX_ARM64=6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2
+NODE_SHA256_LINUX_X64=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
 NODE_RELEASES=https://nodejs.org/dist
 NODE_RUNTIME="$RUNTIMES/node-v$NODE_VERSION"
 NODE="$NODE_RUNTIME/bin/node"
 
-# `uname -m` says x86_64 in a Rosetta terminal; this says 1 on any Apple Silicon Mac.
-if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ]; then ARCH=aarch64; else ARCH=x86_64; fi
+# The system and its chip, as the builds name them. On a Mac `uname -m` says x86_64 in a Rosetta
+# terminal; sysctl says 1 on any Apple Silicon Mac.
+case "$(uname)" in
+  Darwin)
+    OS=macos COMPUTER=Mac
+    if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ]; then ARCH=aarch64; else ARCH=x86_64; fi
+    ;;
+  Linux)
+    OS=linux COMPUTER=server
+    case "$(uname -m)" in
+      aarch64 | arm64) ARCH=aarch64 ;;
+      x86_64 | amd64) ARCH=x86_64 ;;
+      *) echo "❌ Parent Recap runs on Linux on aarch64 or x86_64, not on $(uname -m). Nothing was changed."; exit 1 ;;
+    esac
+    ;;
+  *) echo "❌ Only macOS and Linux are supported for now"; exit 1 ;;
+esac
 
 runtime_failed() {
   echo "❌ $1 Nothing was changed."
   echo "   Run the install again. If it fails again, tell the Parent Recap team."
   exit 1
+}
+
+# The SHA-256 of the file $1: with sha256sum, which every Linux has, else macOS's shasum.
+sha256() {
+  if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1
 }
 
 # Downloads the pinned $1 (Python or Node) from $2, checks it against the checksum $3, and unpacks
@@ -89,8 +114,8 @@ fetch_runtime() {
   local tarball
   tarball="$tmp/$(basename "$url")"
   curl -fsSL --retry 2 -o "$tarball" "$url" 2>/dev/null ||
-    runtime_failed "Parent Recap couldn't download its $what (is this Mac online?)."
-  [ "$(shasum -a 256 "$tarball" | cut -d' ' -f1)" = "$sha" ] ||
+    runtime_failed "Parent Recap couldn't download its $what (is this $COMPUTER online?)."
+  [ "$(sha256 "$tarball")" = "$sha" ] ||
     runtime_failed "The $what Parent Recap downloaded isn't the one it expects (its checksum doesn't match), so it wasn't used."
   mkdir "$tmp/$what"
   tar -xf "$tarball" -C "$tmp/$what" --strip-components 1 2>/dev/null && [ -x "$tmp/$what/$program" ] ||
@@ -117,16 +142,23 @@ install_runtimes() {
   [ -x "$NODE" ] || node=yes
   [ "$python$node" != nono ] || return 0
   local py_sha=$PYTHON_SHA256_X86_64 node_arch=x64 node_sha=$NODE_SHA256_X64
+  local py_os=apple-darwin node_os=darwin
   if [ "$ARCH" = aarch64 ]; then
     py_sha=$PYTHON_SHA256_AARCH64 node_arch=arm64 node_sha=$NODE_SHA256_ARM64
+  fi
+  if [ "$OS" = linux ]; then
+    py_os=unknown-linux-gnu node_os=linux py_sha=$PYTHON_SHA256_LINUX_X86_64 node_sha=$NODE_SHA256_LINUX_X64
+    if [ "$ARCH" = aarch64 ]; then
+      py_sha=$PYTHON_SHA256_LINUX_AARCH64 node_sha=$NODE_SHA256_LINUX_ARM64
+    fi
   fi
   tmp=$(mktemp -d)  # not local: the trap reads it when runtime_failed exits
   trap 'rm -rf "$tmp"' EXIT
   [ "$python" = no ] || fetch_runtime Python \
-    "$PYTHON_RELEASES/$PYTHON_BUILD/cpython-$PYTHON_VERSION+$PYTHON_BUILD-$ARCH-apple-darwin-install_only.tar.gz" \
+    "$PYTHON_RELEASES/$PYTHON_BUILD/cpython-$PYTHON_VERSION+$PYTHON_BUILD-$ARCH-$py_os-install_only.tar.gz" \
     "$py_sha" bin/python3
   [ "$node" = no ] || fetch_runtime Node \
-    "$NODE_RELEASES/v$NODE_VERSION/node-v$NODE_VERSION-darwin-$node_arch.tar.xz" "$node_sha" bin/node
+    "$NODE_RELEASES/v$NODE_VERSION/node-v$NODE_VERSION-$node_os-$node_arch.tar.xz" "$node_sha" bin/node
   mkdir -p "$RUNTIMES"
   [ "$python" = no ] || place_runtime Python "$RUNTIME"
   [ "$node" = no ] || place_runtime Node "$NODE_RUNTIME"
@@ -141,14 +173,14 @@ venv_real_python() {
   "$PY" -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$APP/.venv/bin/python"
 }
 
-if [ "$(uname)" != "Darwin" ]; then echo "❌ Only macOS is supported for now"; exit 1; fi
-refuse_old_macos
+[ "$OS" = linux ] || refuse_old_macos
 refuse_old_install
 install_runtimes
 
 mkdir -p "$APP" "$TARGET/logs"
-# The archive holds every collected message and the logs, so only this Mac account may read them
-# (home folders let every standard account in). This also fixes installs from before it was done.
+# The archive holds every collected message and the logs, so only this account may read them
+# (home folders on macOS let every standard account in, and Households share a server). This also
+# fixes installs from before it was done.
 chmod 700 "$TARGET"
 chmod -R go-rwx "$TARGET"
 mkdir -p "$HOME/.family" && chmod 700 "$HOME/.family"
@@ -186,7 +218,11 @@ tilde() {
   esac
 }
 CC=$(command -v cc 2>/dev/null) || CC=none
-MAC="Mac: $ARCH, macOS $(sw_vers -productVersion 2>/dev/null || echo unknown),"
+if [ "$OS" = linux ]; then
+  MAC="Linux: $ARCH, $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || echo unknown),"
+else
+  MAC="Mac: $ARCH, macOS $(sw_vers -productVersion 2>/dev/null || echo unknown),"
+fi
 MAC+=" Python $(tilde "$PY") ($("$PY" -c 'import platform; print(platform.python_version())' 2>/dev/null || echo unknown)),"
 MAC+=" pip $("$APP/.venv/bin/python" -c 'from importlib.metadata import version; print(version("pip"))' 2>/dev/null || echo unknown), cc $(tilde "$CC")"
 printf '%s\n%s\n' "$MAC" "$UPGRADE" > "$LOG"
@@ -208,7 +244,7 @@ RECORD=("$APP/.venv/bin/python" -m family_brief.install_record)
 # Code manages its own copy.
 if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_ROOT"; fi
 # `parent-recap` in a folder of its own, $TARGET/bin, with a line in ~/.zprofile that puts it on
-# the PATH of every new Terminal window (#560).
+# the PATH of every new Terminal window (#560), or on Linux linked into ~/.local/bin.
 "$APP/.venv/bin/python" -m family_brief.command_path install "$TARGET"
 # A Household that connected Wilma gets the wilma CLI version this release pins (ADR 0008), on
 # the Node above. One that couldn't be updated keeps working, and the next install tries again.
@@ -227,4 +263,8 @@ fi
 
 echo "✅ Parent Recap ${VERSION:-} installed to $APP"
 # This Terminal's PATH is the one it opened with, before ~/.zprofile had the line.
-echo "   Command: parent-recap in a new Terminal window; in this one: $APP/.venv/bin/parent-recap"
+if [ "$OS" = linux ]; then
+  echo "   Command: parent-recap in a new login shell; in this one: $APP/.venv/bin/parent-recap"
+else
+  echo "   Command: parent-recap in a new Terminal window; in this one: $APP/.venv/bin/parent-recap"
+fi

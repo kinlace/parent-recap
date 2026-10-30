@@ -3,16 +3,20 @@ system package checks which system the program runs on, so a new system adds its
 adapters there and changes no caller."""
 from __future__ import annotations
 
+import importlib
 import re
+import sys
 from pathlib import Path
 
 import pytest
 
 import family_brief
 from family_brief.setup_server.context import AIS, CHAT_SKILLS, LANGUAGES
-from family_brief.system import profile_macos, profile_windows
+from family_brief import system
+from family_brief.system import profile_linux, profile_macos, profile_windows
 
-PROFILES = [profile_macos.PROFILE, profile_windows.PROFILE]
+PROFILES = [profile_macos.PROFILE, profile_windows.PROFILE, profile_linux.PROFILE]
+CONCERNS = ["profile", "secrets", "dialog", "desktop", "user_path", "jobs", "wake"]
 PACKAGE = Path(family_brief.__file__).parent
 
 
@@ -28,7 +32,8 @@ def test_a_profile_has_what_the_setup_page_and_its_callers_ask_of_it(system):
 
 
 def test_the_profiles_are_told_apart_by_their_system():
-    assert [p.system for p in PROFILES] == ["macos", "windows"]  # the page's words for them
+    # The page's words for them.
+    assert [p.system for p in PROFILES] == ["macos", "windows", "linux"]
 
 
 def test_only_the_system_package_checks_which_system_it_runs_on():
@@ -38,3 +43,39 @@ def test_only_the_system_package_checks_which_system_it_runs_on():
              for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
              if checks.search(line)]
     assert found == []
+
+
+def test_on_linux_the_gateway_is_the_only_ai_and_nothing_is_installed_or_chatted_in():
+    linux = profile_linux.PROFILE
+
+    assert linux.ais == ("gateway",)
+    assert linux.page_installs == frozenset() and linux.chats == frozenset()
+    assert linux.install_folders(Path("/home/h1")) == [Path("/home/h1/ParentRecap")]
+    mac = profile_macos.PROFILE
+    assert (linux.command, linux.node) == (mac.command, mac.node)
+
+
+@pytest.mark.parametrize("platform, expected", [("darwin", "macos"), ("win32", "windows"),
+                                              ("linux", "linux")])
+@pytest.mark.parametrize("concern", CONCERNS)
+def test_each_interface_s_adapter_is_the_one_of_the_platform_it_runs_on(monkeypatch, platform,
+                                                                        expected, concern):
+    monkeypatch.setattr(sys, "platform", platform)
+    # Imported for this test's platform, not the one it runs on: the interface's module itself
+    # stays as the program loaded it.
+    monkeypatch.setattr(importlib, "import_module", lambda name: name)
+
+    assert system.adapter(concern) == f"family_brief.system.{concern}_{expected}"
+
+
+def test_a_platform_the_program_doesnt_run_on_is_said_so(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "freebsd14")
+
+    with pytest.raises(RuntimeError, match="macOS, Windows and Linux"):
+        system.adapter("secrets")
+
+
+@pytest.mark.parametrize("concern", CONCERNS)
+@pytest.mark.parametrize("system_name", ["macos", "windows", "linux"])
+def test_every_system_has_an_adapter_for_every_interface(concern, system_name):
+    assert (PACKAGE / "system" / f"{concern}_{system_name}.py").is_file()

@@ -1,15 +1,12 @@
 """Reading, storing and deleting Parent Recap's secrets: the Gmail App Password, the Claude token
 and the Gateway Key (ADR 0020). Each system has its adapter: the Keychain on macOS, Credential
-Manager on Windows."""
+Manager on Windows, owner-only files on Linux (ADR 0030)."""
 from __future__ import annotations
 
-import sys
-
-if sys.platform == "win32":
-    from . import secrets_windows as _adapter
-else:
-    from . import secrets_macos as _adapter
+from . import adapter
 from .secrets_error import Reason, SecretsError  # noqa: F401  callers catch secrets.SecretsError
+
+_adapter = adapter("secrets")
 
 STORE: str = _adapter.STORE  # the store's name for messages
 

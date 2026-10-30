@@ -1,20 +1,21 @@
 """What else differs between the systems the program runs on, besides the OS services behind their
 own interfaces (ADR 0020): the words the family reads for their computer and its terminal, the
 AIs the setup page offers and installs, the chats setup continues in, where programs are found
-and how the install lays them out. One profile per system, in profile_macos.py and
-profile_windows.py; callers ask `current()` instead of checking the system themselves, and the
-setup page gets it as data. A new system adds its profile here, and changes no caller."""
+and how the install lays them out. One profile per system, in profile_macos.py,
+profile_windows.py and profile_linux.py; callers ask `current()` instead of checking the system
+themselves, and the setup page gets it as data. A new system adds its profile here, and changes no caller."""
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import adapter
+
 
 @dataclass(frozen=True)
 class Profile:
-    system: str                   # "macos" or "windows": which system's words the setup page uses
+    system: str                   # "macos", "windows" or "linux": the setup page's words for it
     computer: str                 # what the family calls their computer: "Mac", "PC"
     terminal: str                 # the window the family types commands in: "Terminal", "PowerShell"
     remove_folder: str            # the command that removes {folder} and what's in it
@@ -42,10 +43,8 @@ class Profile:
     os_version: Callable[[], str]  # the system and its version, as a report of a failure names it
 
 
-if sys.platform == "win32":
-    from . import profile_windows as _adapter
-else:
-    from . import profile_macos as _adapter
+# After Profile, which each adapter imports from here.
+_adapter = adapter("profile")
 
 
 def current() -> Profile:
