@@ -14,6 +14,9 @@ addresses are bound to which key, and whether they confirmed, is the one thing k
 (STATE_DIRECTORY/bindings.json), with per-day counts that rate-limit the requests. Keys made by
 hand aren't in that file and send as before.
 
+Everything the relay sends counts against Email Delivery's 100 a day for the whole tenancy; once a
+UTC day's count passes QUOTA_WARN_AT, the relay logs a warning for the maintainers (#627).
+
 Python's standard library only, so it runs on the host's own python3 with nothing to install.
 """
 from __future__ import annotations
@@ -191,6 +194,47 @@ class DailyCap:
             if sent.get(key.id, 0) > 0:
                 sent[key.id] -= 1
                 self._write(sent)
+
+
+# ── Email Delivery's quota
+
+# The tenancy's messages a day (Always Free, and `oci-quota.json`); Email Delivery counts each
+# Recipient of a message as one. Past QUOTA_WARN_AT the maintainers are warned, once a day (README
+# "Email Delivery's quota"): confirmations take at most MAILS_PER_DAY, which leaves 70 for Briefs.
+QUOTA_PER_DAY = 100
+QUOTA_WARN_AT = 70
+
+
+class Quota:
+    """Messages Email Delivery took on the current UTC day, sitewide, kept in a file so a restart
+    neither resets the count nor warns again."""
+
+    def __init__(self, path: Path, warn_at: int = QUOTA_WARN_AT,
+                 today: Callable[[], str] = lambda: datetime.now(UTC).date().isoformat()) -> None:
+        self.path = path
+        self.warn_at = warn_at
+        self.today = today
+        self.lock = threading.Lock()
+
+    def add(self, sent: int) -> None:
+        """Counts `sent` messages, and logs the warning when they take the day past the mark."""
+        with self.lock:
+            try:
+                state = json.loads(self.path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                state = {}
+            if not isinstance(state, dict) or state.get("day") != self.today():
+                state = {"day": self.today(), "sent": 0, "warned": False}
+            state["sent"] += sent
+            warn = state["sent"] > self.warn_at and not state["warned"]
+            state["warned"] = state["warned"] or warn
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(state), encoding="utf-8")
+            tmp.replace(self.path)
+        if warn:
+            log.warning("quota day=%s sent=%d of %d: past %d, see ops/gateway/README.md "
+                        "\"Email Delivery's quota\"", state["day"], state["sent"], QUOTA_PER_DAY,
+                        self.warn_at)
 
 
 # ── The request
@@ -532,12 +576,13 @@ def confirm_page(language: str, *texts: str, button: str | None = None) -> str:
 # ── Email Delivery
 
 class Mailer:
-    """OCI Email Delivery over SMTP with implicit TLS (port 465), AUTH PLAIN."""
+    """OCI Email Delivery over SMTP with implicit TLS (port 465), AUTH PLAIN. Every message the
+    relay sends goes through here, so the day's `quota` is counted here."""
 
-    def __init__(self, host: str, port: int, user: str, password: str,
+    def __init__(self, host: str, port: int, user: str, password: str, quota: Quota,
                  smtp: Callable[..., Any] = smtplib.SMTP_SSL) -> None:
         self.host, self.port, self.user, self.password = host, port, user, password
-        self.smtp = smtp
+        self.quota, self.smtp = quota, smtp
 
     def send(self, msg: EmailMessage, to: list[str]) -> int:
         """Hands `msg` over, returning how many Recipients Email Delivery refused (0 normally),
@@ -555,6 +600,7 @@ class Mailer:
             raise Refused(502, f"email delivery answered {e.smtp_code}") from None
         except (smtplib.SMTPException, OSError) as e:
             raise Refused(502, f"couldn't reach email delivery ({e.__class__.__name__})") from None
+        self.quota.add(len(to) - len(refused or {}))
         return len(refused or {})
 
 
@@ -808,8 +854,18 @@ def handler(relay: Relay) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
+class JournalFormatter(logging.Formatter):
+    """Marks a warning with journald's priority prefix, so `journalctl -p warning` lists it."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        line = super().format(record)
+        return f"<4>{line}" if record.levelno >= logging.WARNING else line
+
+
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
+    stderr = logging.StreamHandler(sys.stderr)
+    stderr.setFormatter(JournalFormatter("%(message)s"))
+    logging.basicConfig(level=logging.INFO, handlers=[stderr])
     env = os.environ
     state = Path(env.get("STATE_DIRECTORY", "/var/lib/brief-relay"))
     admin = Bifrost(env.get("BIFROST_URL", "http://127.0.0.1:8080"),
@@ -826,7 +882,8 @@ def main() -> None:
         keys=admin,
         cap=DailyCap(state / "sent.json", limit=DAILY_CAP, on_request_limit=ON_REQUEST_DAILY_CAP),
         mailer=Mailer(env.get("BRIEF_SMTP_HOST", "smtp.email.eu-stockholm-1.oci.oraclecloud.com"),
-                      465, env["BRIEF_SMTP_USERNAME"], env["BRIEF_SMTP_PASSWORD"]),
+                      465, env["BRIEF_SMTP_USERNAME"], env["BRIEF_SMTP_PASSWORD"],
+                      quota=Quota(state / "quota.json")),
         stop_url=f"https://{env['GATEWAY_HOST']}/brief/stop",
         bindings=Bindings(state / "bindings.json"),
         confirm_url=f"https://{env['GATEWAY_HOST']}/brief/confirm")

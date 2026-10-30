@@ -166,6 +166,28 @@ curl -s https://<hostname>/v1/brief/key -H 'content-type: application/json' \
 
 The email comes from `brief@parentrecap.com`; open its link and press Confirm. Then send a test Brief to that address with the key from the answer, as in "Sending the Brief" (it arrives), and to another address (403). Revoke the key afterwards (Runbook).
 
+## Email Delivery's quota
+
+Briefs, confirmation emails and Hosted Households' Briefs all leave through the relay and share the tenancy's 100 messages a UTC day; Email Delivery counts each Recipient of a message as one. It isn't split between them (agreed 2026-10-30, #627): confirmations are capped at 30 a day (`MAILS_PER_DAY`), which leaves at least 70 for Briefs.
+
+**The warning.** The relay counts every message Email Delivery took, Briefs and confirmations alike, per UTC day in `/var/lib/brief-relay/quota.json` (the day and the count, nothing else). The first time a day's count passes 70 (`QUOTA_WARN_AT` in `brief_relay.py`) it logs one warning line, at journald's warning priority, and no more that day:
+
+```
+quota day=2026-11-12 sent=71 of 100: past 70, see ops/gateway/README.md "Email Delivery's quota"
+```
+
+See whether any day passed it, with the assistant's login too:
+
+```sh
+journalctl -u brief-relay -p warning --grep '^quota '
+```
+
+**When it shows up.** One day past 70 is a busy Friday; past 70 on most days means the Households have outgrown the free 100 and the next Briefs will be refused (502) once the day's 100 are gone. At about 30 Households, before that happens, ask Oracle for a higher limit:
+
+1. In the Console, open Governance & Administration > Tenancy Management > Limits, Quotas and Usage, pick the service Email Delivery and find the daily sending limit, to see the tenancy's current value.
+2. On that page, Request a service limit increase: service Email Delivery, the daily sending limit, the new value (the next Households' Briefs at 10 Recipients each, with the 30 confirmations on top), and as the reason "transactional email to opted-in Recipients, about N a day". Oracle answers by email; a Free Tier account may first have to be upgraded to Pay As You Go, after which mail past Always Free is billed.
+3. Once raised, change `set email-delivery quota max-emails-day to 100` in `oci-quota.json` to the new value and update the `free-tier-only` quota policy with it (step 2 of "Building the server"), raise the `$1` budget to the expected spend, and set `QUOTA_PER_DAY` and `QUOTA_WARN_AT` in `brief_relay.py` to match, then run step 7 again.
+
 ## Hosted Households
 
 The hosted version runs invited Households on this server, each as its own Linux user (ADR 0029, ADR 0031). A Household is made by the sign-up service from an Invite Link the maintainers send: the family opens it on their phone, picks Finnish, English or Chinese, types their Wilma town and login, checks the Recipients the link prefilled, and goes on to paste each Kid's MyClub calendar link, or leave it empty, and sign up.
