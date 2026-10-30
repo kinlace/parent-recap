@@ -197,6 +197,12 @@ sudo bash /usr/local/lib/parent-recap-signup/status.sh
 
 For each Household in `households.json` it runs `parent-recap signup health` as the Household's user, and prints its user, the time its Brief comes, when its last run ended and how (from `last-run.json` beside its `state.json`), and each of `doctor`'s checks by its key with ✅, ⚠️ or ❌, run then without the model's test call. A last run that failed is marked ❌, a run not ended an hour after its time ⚠️ overdue, and a Household whose program is older than the command ❓. It prints no message text, subject, address or Kid's name, not even doctor's words, which name them. It exits 1 when any Household is marked.
 
+**Find a Household.** Nothing on the server says which family a label is. When a parent asks about their Brief, find their label from a Recipient address they give: each Household's config holds its Recipients, and root can read it.
+
+```sh
+sudo grep -l "parent@example.com" /home/ph-*/.family/config.yaml
+```
+
 **Remove a Household.** On the server, with the Household's label, its user as `ls /home`, `status.sh` and the sign-up's log show it:
 
 ```sh
