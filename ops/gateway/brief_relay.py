@@ -600,7 +600,12 @@ class Mailer:
             raise Refused(502, f"email delivery answered {e.smtp_code}") from None
         except (smtplib.SMTPException, OSError) as e:
             raise Refused(502, f"couldn't reach email delivery ({e.__class__.__name__})") from None
-        self.quota.add(len(to) - len(refused or {}))
+        try:
+            self.quota.add(len(to) - len(refused or {}))
+        except OSError as e:
+            # The message is sent: a count that couldn't be written mustn't make it look failed,
+            # or the program would send it again.
+            log.warning("quota count not written (%s)", e.__class__.__name__)
         return len(refused or {})
 
 
@@ -855,10 +860,13 @@ def handler(relay: Relay) -> type[BaseHTTPRequestHandler]:
 
 
 class JournalFormatter(logging.Formatter):
-    """Marks a warning with journald's priority prefix, so `journalctl -p warning` lists it."""
+    """Marks a warning or error with journald's priority prefix, so `journalctl -p warning` lists
+    it; other lines stay as they are, at journald's default."""
 
     def format(self, record: logging.LogRecord) -> str:
         line = super().format(record)
+        if record.levelno >= logging.ERROR:
+            return f"<3>{line}"
         return f"<4>{line}" if record.levelno >= logging.WARNING else line
 
 
