@@ -1,0 +1,34 @@
+#!/bin/bash
+# Adds or removes a Hosted Household's Linux user (ADR 0031). Root-owned, in
+# /usr/local/lib/parent-recap-signup/: the sign-up service's user may run this,
+# and nothing else, as root (signup.sudoers). It takes no name but a Household's.
+#
+#   household-user add ph-0123abcd      # prints the new home
+#   household-user remove ph-0123abcd   # with its home and everything running as it
+set -euo pipefail
+
+verb=${1:-} name=${2:-}
+[[ "$name" =~ ^ph-[0-9a-f]{8}$ ]] || { echo "not a Household's user: $name" >&2; exit 2; }
+group=parent-recap-households  # sudo runs commands as its members for the service
+
+case "$verb" in
+  add)
+    useradd --create-home --home-dir "/home/$name" --shell /usr/sbin/nologin \
+      --user-group --groups "$group" "$name"
+    chmod 700 "/home/$name"
+    # Its systemd user manager runs with nobody signed in, so its evening timers do.
+    loginctl enable-linger "$name"
+    echo "/home/$name"
+    ;;
+  remove)
+    id "$name" >/dev/null 2>&1 || exit 0
+    loginctl disable-linger "$name" || true
+    loginctl terminate-user "$name" 2>/dev/null || true
+    pkill -KILL -u "$name" || true
+    userdel --remove "$name"
+    ;;
+  *)
+    echo "usage: household-user add|remove ph-XXXXXXXX" >&2
+    exit 2
+    ;;
+esac

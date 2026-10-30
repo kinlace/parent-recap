@@ -1,5 +1,5 @@
-# Only inference and sending the Brief are public. Bifrost's admin API and UI stay on 127.0.0.1
-# (ssh -L). No access log: request lines are not worth keeping.
+# Only inference, sending the Brief and the sign-up page are public. Bifrost's admin API and UI
+# stay on 127.0.0.1 (ssh -L). No access log: request lines are not worth keeping.
 {$GATEWAY_HOST} {
 	handle /v1/messages {
 		rewrite * /anthropic/v1/messages
@@ -7,6 +7,11 @@
 	}
 	handle /v1/brief {
 		reverse_proxy 127.0.0.1:8081
+	}
+	# The hosted version's sign-up page under an Invite Link (ADR 0031). The service answers 404
+	# itself to a link that isn't good, as below.
+	handle /join/* {
+		reverse_proxy 127.0.0.1:8082
 	}
 	# The Brief's List-Unsubscribe page: how a Household stops the Brief.
 	handle /brief/stop {

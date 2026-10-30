@@ -138,11 +138,12 @@ def main() -> int:
     pwe.add_argument("--dry-run", action="store_true")
     pwe.set_defaults(func=cmd_weekend_events)
 
-    from . import ai_filter_report, ops, setup_steps, uninstall
+    from . import ai_filter_report, ops, setup_steps, signup, uninstall
     ops.register(sub)
     setup_steps.register(sub)
     uninstall.register(sub)
     ai_filter_report.register(sub)
+    signup.register(sub)
 
     # Piped by an agent, without the PYTHONUTF8 the program's own tasks get (task_run.UTF8),
     # Windows' stdout writes the code page (cp1252), which has no ✅: one status line would end

@@ -1,0 +1,30 @@
+[Unit]
+Description=Parent Recap sign-up for Hosted Households (/join/, ADR 0031)
+After=network-online.target bifrost.service
+Wants=network-online.target
+
+[Service]
+User=parent-recap-signup
+Group=parent-recap-signup
+# Bifrost's admin login, to mint each Household's Gateway Key; the provider key in the same file is
+# not this service's to see. signup.env says where the release is (signup.env.example).
+EnvironmentFile=/etc/bifrost/bifrost.env
+EnvironmentFile=/etc/parent-recap-signup/signup.env
+UnsetEnvironment=ANTHROPIC_API_KEY
+# The program install.sh put under the service's own user, with the wilma CLI that checks a
+# family's sign-in.
+ExecStart=/var/lib/parent-recap-signup/ParentRecap/app/.venv/bin/parent-recap signup serve
+WorkingDirectory=/var/lib/parent-recap-signup
+UMask=0077
+Restart=on-failure
+# 78: a setting is missing, which restarting won't fix.
+RestartPreventExitStatus=78
+RestartSec=5
+# It makes users and runs commands as them through sudo (signup.sudoers), which needs new
+# privileges and writes to /etc and /home: so no NoNewPrivileges, ProtectSystem or ProtectHome,
+# nor RestrictAddressFamilies or ProtectKernelTunables, which imply NoNewPrivileges for a service
+# with a User= (systemd.exec(5)).
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

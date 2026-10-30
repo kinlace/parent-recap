@@ -1,0 +1,5 @@
+# /etc/sudoers.d/parent-recap-signup (root, mode 0440): what the sign-up service's user may run
+# (ADR 0031). As root, only the helper that adds and removes a Household's user; as a Household's
+# user, a member of parent-recap-households, anything, since that user can do no more than itself.
+parent-recap-signup ALL=(root) NOPASSWD: /usr/local/lib/parent-recap-signup/household-user
+parent-recap-signup ALL=(%parent-recap-households) NOPASSWD: ALL

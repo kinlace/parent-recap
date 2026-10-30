@@ -134,6 +134,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_uninstall.py`                        | `uninstall` removes what setup made, and nothing else                  |
 | `test_new_source_doctor_uninstall.py`      | A Source added only to the registry in `doctor` and `uninstall`        |
 | `test_setup_page_browser.py`               | Main paths and each step's own, in a real browser (ADR 0024)           |
+| `test_signup.py`                           | The hosted sign-up: the page, the Wilma check, the Household, 404s     |
 
 The page's server, its calls and the steps more than one file walks through are in
 `e2e/setup_page.py`.
@@ -165,6 +166,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_desktop_linux.py`         | Linux desktop: a printed link, the locale's languages     |
 | `test_jobs_linux.py`            | Linux jobs: systemd user timers, lingering, their limits  |
 | `test_wake_linux.py`            | Linux wake: a server never sleeps, so no wake-up line     |
+| `test_household_host_linux.py`  | The sign-up's household host: sudo, Bifrost's admin API   |
 | `test_brief_by_hand_windows.py` | A Brief started by hand on Windows                        |
 | `test_setup_page_windows.py`    | The setup page from a fresh install to Finish, on Windows |
 | `test_setup_wilma_windows.py`   | The Wilma sign-in window on Windows                       |
@@ -228,6 +230,9 @@ found as Windows finds them, on any system), `credential_manager`, and the build
   and records each call the Linked Device's program makes. That program runs on a real Node,
   Parent Recap's own where it is installed, else one on PATH; CI's runners have one.
 - `fake_packages.py`: packages for tests that run the real pip offline.
+- `fake_household_host.py`: the sign-up service's household host (ADR 0031): users as folders,
+  each with its own secrets and jobs, Gateway Keys as a dict, and `parent-recap` run as a user
+  in-process with that user's HOME.
 - `goldens.py`: the golden files' check.
 - `no_google/`: Google's packages blocked from import. `no_pty/`: the Wilma window's
   pseudo-terminal as a socket pair, where none can be opened (a sandbox).

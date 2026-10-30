@@ -281,8 +281,25 @@ def sign_in(tenant: dict[str, Any], username: str, password: str) -> dict[str, A
     for the setup page to show, `no-kids` or `not-installed`. Unless signed in, the CLI's config
     stays as it was, so a wrong password isn't kept and an earlier sign-in still works. A new
     profile goes in setup's record."""
+    out, students = check(tenant, username, password)
+    if out["result"] != "signed-in":
+        return out
+    path = config_path()
+    profiles_before = profile_ids(path)
+    # With the Kids the CLI saved in the profile it checked.
+    profile_id = write_profile(path, tenant, username, password, students)
+    record_profile(profile_id, profiles_before)
+    return out
+
+
+def check(tenant: dict[str, Any], username: str,
+          password: str) -> tuple[dict[str, Any], list[dict[str, Any]] | None]:
+    """Signs in to the Wilma `tenant` as `username` with the CLI's Kid list, saving nothing in
+    the CLI's config. Returns sign_in's result, and the Kids as the CLI saves them in a profile
+    (`write_profile`'s `students`), which the hosted sign-up writes under the Household's own
+    user (ADR 0031)."""
     if not installed():
-        return {"result": "not-installed"}
+        return {"result": "not-installed"}, None
     # From 2.0 the CLI's commands read every profile in its config, so an earlier one that works
     # would hide a wrong password. The new one is checked alone, in a config of its own in an
     # owner-only folder, which also takes the session the CLI saves next to it and goes with it.
@@ -299,14 +316,7 @@ def sign_in(tenant: dict[str, Any], username: str, password: str) -> dict[str, A
                 "result": "sign-in-failed",
                 "reason": failure.logged("Wilma didn't sign in", failure.raised(e, "Signing in"))}
         checked = profile(alone, checked_id) or {}
-    if out["result"] != "signed-in":
-        return out
-    path = config_path()
-    profiles_before = profile_ids(path)
-    # With the Kids the CLI saved in the profile it checked.
-    profile_id = write_profile(path, tenant, username, password, checked.get("students"))
-    record_profile(profile_id, profiles_before)
-    return out
+    return out, checked.get("students") if out["result"] == "signed-in" else None
 
 
 def record_profile(profile_id: str | None, before: list[str]) -> None:
