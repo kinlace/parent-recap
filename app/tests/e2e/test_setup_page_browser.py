@@ -386,6 +386,16 @@ def test_after_only_me_on_welcome_gmail_s_step_can_add_the_partner(tab, family):
                                                     ("partner@gmail.com", "fi")]
 
 
+def test_the_partner_s_field_opened_by_mistake_may_be_left_empty(tab, family):
+    in_english_with_the_gateway(tab)
+    skip(tab, "wilma").click()
+    button(tab, "gmail.brief.partner.add").click()
+
+    brief_goes_to(tab, "parent@hotmail.com")
+
+    assert [t.address for t in Config.load(config_file(family)).email.to] == ["parent@hotmail.com"]
+
+
 def test_recipients_added_in_the_chat_beyond_two_stay_when_the_page_changes_them(tab, family):
     in_english_with_the_gateway(tab)
     skip(tab, "wilma").click()
