@@ -85,6 +85,22 @@ def test_the_page_stops_after_30_idle_minutes(harness, clock, capsys):
     assert capsys.readouterr().out.splitlines()[-1] == setup_server.closed_line("en")
 
 
+def test_the_page_asking_whether_it_is_still_there_doesn_t_keep_it_running(harness, clock):
+    """#601: the page asks every few seconds, to notice its window was closed, but an open tab
+    left alone still stops after 30 minutes."""
+    thread = serving(new_server(harness, clock), [])
+    wait_for(lambda: harness.desktop.opened)
+    url = harness.desktop.opened[0]
+
+    clock.now += 29 * 60
+    assert call(url, "api/alive").status == 204
+    clock.now += 2 * 60
+    thread.join(5)
+
+    assert not thread.is_alive()
+    assert refused(url)
+
+
 def test_terminal_says_the_page_has_closed_in_the_language_picked(harness, clock, capsys):
     thread = serving(new_server(harness, clock), [])
     wait_for(lambda: harness.desktop.opened)
