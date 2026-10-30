@@ -168,7 +168,7 @@ SENDER_SCAN_WHY = {
            "only mail from the senders you tick"),
     "fi": ("ei viestien sisältöä", "valita koulun, opettajat ja seurat",
            "vain valitsemiesi lähettäjien viestit"),
-    "zh": ("不看内容", "勾选学校、老师和俱乐部", "只读你勾选的发件人"),
+    "zh": ("不看内容", "勾选学校、老师和兴趣班", "只读你勾选的发件人"),
 }
 
 
