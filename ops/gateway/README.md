@@ -4,7 +4,7 @@ The server that invited Households' Gateway Keys go through (ADR 0014), and wher
 
 - `host-setup.sh` sets up the VM (Ubuntu/Debian): system updates, SSH with keys only, a firewall that lets in only SSH and HTTPS, Caddy, and a login for the AI assistant that can read logs but has no sudo.
 - `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016), the Brief relay and, given a release of the program, the hosted version's sign-up service (ADR 0031) behind Caddy. It works on any systemd Linux with Caddy and `python3` installed.
-- `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile` and `bifrost.env.example` are what it installs, and for the sign-up `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers`, `household-user`, `invite.sh`, `status.sh` and `remove.sh`. The env examples hold only variable names.
+- `config.json`, `bifrost.service`, `brief_relay.py`, `keys.sh`, `brief-relay.service`, `brief-stop.html`, `Caddyfile` and `bifrost.env.example` are what it installs, and for the sign-up `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers`, `household-user`, `invite.sh`, `status.sh` and `remove.sh`. The env examples hold only variable names.
 - `oci-quota.json` is the Oracle Cloud quota policy that lets the account create only Always Free resources.
 - `set-smtp-credentials.sh` puts the sending domain's SMTP credentials into their own env file, whose names are in `brief-relay.env.example` (see "The sending domain").
 
@@ -218,12 +218,12 @@ ssh -L 8080:localhost:8080 ubuntu@<ip>      # leave open
 export ADMIN=<admin user>:<admin password>
 ```
 
-**Create a Gateway Key and give it to a Household.** The `name` is a neutral label, because it is written to Bifrost's request log and the relay's journal, which more people can read. Who holds the key goes in its `description` (the Household, its AI backend, the date), which only the admin API returns; it is kept only in the gateway's database, never in the repo. The reply's `virtual_key.value` (`sk-bf-…`) is the key: send it to the Household over a private channel and don't save it anywhere. Bifrost keeps it in plaintext and the key list returns it too, so a lost key can be read back, and the admin login (kept only in the maintainers' password manager) can read every Household's key.
+**Create a Gateway Key and give it to a Household.** The `name` is a neutral label, because it is written to Bifrost's request log and the relay's journal, which more people can read. It starts with what the key can do, so a maintainer reading a list or a log tells the kinds apart: `ai-` for a key that writes the Brief and sends it, `send-` for one that only sends, each followed by the Household's label. Keys made by the program carry their own: a Hosted Household's is its user (`ph-…`), and one made on request starts `on-request-`. The key's value is the same kind of `sk-bf-…` for all of them; `keys.sh` (below) says what each can do from what Bifrost holds, not from its name. Who holds the key goes in its `description` (the Household, its AI backend, the date), which only the admin API returns; it is kept only in the gateway's database, never in the repo. The reply's `virtual_key.value` (`sk-bf-…`) is the key: send it to the Household over a private channel and don't save it anywhere. Bifrost keeps it in plaintext and the key list returns it too, so a lost key can be read back, and the admin login (kept only in the maintainers' password manager) can read every Household's key.
 
 ```sh
 curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
   -H 'content-type: application/json' -d '{
-    "name": "household-<label>",
+    "name": "ai-<label>",
     "description": "<Household>, gateway AI, <date>",
     "is_active": true,
     "provider_configs": [{"provider": "anthropic", "weight": 1,
@@ -232,11 +232,11 @@ curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
   }'
 ```
 
-**Create a send-only Gateway Key.** A Household whose AI backend is its own Claude Code or Codex gets one on request by itself (see "Send-only keys on request"), so this is only for a Household that can't, such as one whose Recipients can't confirm by email. A key made here isn't bound to addresses, so it sends to any. Give it a key with no `provider_configs` and no budget: Bifrost refuses its model calls (400 or 403) and the relay accepts it, since the relay only checks that the key exists and is active. Same naming, same handover:
+**Create a send-only Gateway Key.** A Household whose AI backend is its own Claude Code or Codex gets one on request by itself (see "Send-only keys on request"), so this is only for a Household that can't, such as one whose Recipients can't confirm by email. A key made here isn't bound to addresses, so it sends to any. Give it a key with no `provider_configs` and no budget: Bifrost refuses its model calls (400 or 403) and the relay accepts it, since the relay only checks that the key exists and is active. Same handover, named `send-<label>`:
 
 ```sh
 curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
-  -H 'content-type: application/json' -d '{"name": "household-<label>",
+  -H 'content-type: application/json' -d '{"name": "send-<label>",
     "description": "<Household>, own Claude Code or Codex, <date>", "is_active": true}'
 ```
 
@@ -247,15 +247,15 @@ curl -s -u "$ADMIN" -X PUT localhost:8080/api/governance/virtual-keys/<id> \
   -H 'content-type: application/json' -d '{"description": "<Household>, <AI backend>, <date>"}'
 ```
 
-**See the keys made on request.** Each is in Bifrost's list with a name starting `on-request-` and the description `made on request <date>`. Whom each is bound to, and who confirmed, the relay prints from its own file:
+**See every key.** On the server, without the tunnel. One line a key: its name and `id`, `writes+sends` or `sends only` (whether Bifrost has a provider behind it), `on` or `off`, and today's spend against its daily budget. A key made on request (name `on-request-…`, description `made on request <date>`) is followed by the addresses bound to it and who confirmed. It prints no key's value:
 
 ```sh
-sudo env STATE_DIRECTORY=/var/lib/private/brief-relay python3 /usr/local/lib/brief-relay/brief_relay.py keys
+sudo bash /usr/local/lib/brief-relay/keys.sh
 ```
 
 A key whose Recipients never confirmed sends nothing; revoke it when tidying up. A key made on request is revoked as any other, below: the relay then answers 401 to it, and its entry in `bindings.json` is no longer used.
 
-**Revoke.** A Hosted Household's key goes with it (see "Remove a Household"). For any other, find the key's `id` in the list, then turn it off (or `DELETE` it). `PUT` changes only the fields it is given (Bifrost has no `PATCH` here):
+**Revoke.** A Hosted Household's key goes with it (see "Remove a Household"). For any other, find the key's `id` with `keys.sh` (or in the list), then turn it off (or `DELETE` it). `PUT` changes only the fields it is given (Bifrost has no `PATCH` here):
 
 ```sh
 curl -s -u "$ADMIN" localhost:8080/api/governance/virtual-keys
@@ -263,7 +263,7 @@ curl -s -u "$ADMIN" -X PUT localhost:8080/api/governance/virtual-keys/<id> \
   -H 'content-type: application/json' -d '{"is_active": false}'
 ```
 
-**Check spend.** `budgets[].current_usage` in the same list is what each key has spent today. The month's total is in the Anthropic Console, which also enforces the gateway workspace's $10 limit.
+**Check spend.** `keys.sh` prints what each key has spent today (`budgets[].current_usage` in the list). The month's total is in the Anthropic Console, which also enforces the gateway workspace's $10 limit.
 
 **Upgrade.** Try the new version on your own machine first (`npx -y @maximhq/bifrost --transport-version vX.Y.Z`). Then, in `gateway-setup.sh`, change `BIFROST_VERSION` and both `SHA256_*` lines (hash the binaries at `https://downloads.getmaxim.ai/bifrost/<version>/linux/<arm64|amd64>/bifrost-http`), and run step 7 again. The old version stays in `/usr/local/lib/bifrost/`; repoint the `current` symlink and restart to roll back.
 

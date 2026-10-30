@@ -32,7 +32,7 @@ import ssl
 import sys
 import threading
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.message import EmailMessage
@@ -124,21 +124,26 @@ class Bifrost:
     def key(self, value: str) -> Key | None:
         """The active key whose value this is, else None. Bifrost can't search by value, so the
         list is read page by page; a pilot has tens of keys."""
-        offset = 0
         try:
-            while True:
-                page = self.fetch(f"/api/governance/virtual-keys?limit={PAGE}&offset={offset}")
-                keys = page.get("virtual_keys") or []
-                for k in keys:
-                    if k.get("value") == value:
-                        return Key(str(k["id"]), str(k.get("name") or k["id"])) \
-                            if k.get("is_active") is True else None
-                offset += len(keys)
-                if not keys or offset >= int(page.get("total_count") or 0):
-                    return None
+            for k in self.listed():
+                if k.get("value") == value:
+                    return Key(str(k["id"]), str(k.get("name") or k["id"])) \
+                        if k.get("is_active") is True else None
+            return None
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
             log.warning("bifrost admin API: %s", e.__class__.__name__)
             raise Refused(503, "the gateway couldn't check the key; try again later") from None
+
+    def listed(self) -> Iterator[dict]:
+        """Every virtual key as the admin API lists it, page by page."""
+        offset = 0
+        while True:
+            page = self.fetch(f"/api/governance/virtual-keys?limit={PAGE}&offset={offset}")
+            keys = page.get("virtual_keys") or []
+            yield from keys
+            offset += len(keys)
+            if not keys or offset >= int(page.get("total_count") or 0):
+                return
 
 
 # ── The daily cap
@@ -807,8 +812,10 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
     env = os.environ
     state = Path(env.get("STATE_DIRECTORY", "/var/lib/brief-relay"))
+    admin = Bifrost(env.get("BIFROST_URL", "http://127.0.0.1:8080"),
+                    env.get("BIFROST_ADMIN_USERNAME", ""), env.get("BIFROST_ADMIN_PASSWORD", ""))
     if sys.argv[1:] == ["keys"]:
-        return print_keys(state / "bindings.json")
+        return print_keys(admin, state / "bindings.json")
     missing = [v for v in ("BRIEF_SMTP_USERNAME", "BRIEF_SMTP_PASSWORD", "BIFROST_ADMIN_USERNAME",
                            "BIFROST_ADMIN_PASSWORD", "GATEWAY_HOST") if not env.get(v)]
     if missing:
@@ -816,8 +823,7 @@ def main() -> None:
               file=sys.stderr)
         sys.exit(EX_CONFIG)
     relay = Relay(
-        keys=Bifrost(env.get("BIFROST_URL", "http://127.0.0.1:8080"),
-                     env["BIFROST_ADMIN_USERNAME"], env["BIFROST_ADMIN_PASSWORD"]),
+        keys=admin,
         cap=DailyCap(state / "sent.json", limit=DAILY_CAP, on_request_limit=ON_REQUEST_DAILY_CAP),
         mailer=Mailer(env.get("BRIEF_SMTP_HOST", "smtp.email.eu-stockholm-1.oci.oraclecloud.com"),
                       465, env["BRIEF_SMTP_USERNAME"], env["BRIEF_SMTP_PASSWORD"]),
@@ -830,16 +836,27 @@ def main() -> None:
     server.serve_forever()
 
 
-def print_keys(path: Path) -> None:
-    """`brief_relay.py keys`: each key made on request, with its addresses and whether each
-    confirmed, for the maintainers (README "Runbook")."""
+def print_keys(keys: Bifrost, path: Path) -> None:
+    """`brief_relay.py keys`: every Gateway Key, one line each, for the maintainers (README
+    "Runbook"): its name and id, what it can do, whether it is on, and its spend today. A key made on
+    request is followed by its addresses and whether each confirmed. Never a key's value."""
     try:
-        keys = json.loads(path.read_text(encoding="utf-8")).get("keys") or {}
+        bound = json.loads(path.read_text(encoding="utf-8")).get("keys") or {}
     except (OSError, ValueError):
-        keys = {}
-    for key_id, entry in keys.items():
-        print(f"{entry['name']}  id={key_id}  made {entry['made']}")
-        for r in entry["recipients"]:
+        bound = {}
+    for k in keys.listed():
+        # What a key can do is what Bifrost holds for it, not its name: with a provider it
+        # writes the Brief too (README "Create a Gateway Key"), without one it only sends.
+        kind = "writes+sends" if k.get("provider_configs") else "sends only"
+        state = "on" if k.get("is_active") is True else "off"
+        budgets = k.get("budgets") or ([k["budget"]] if k.get("budget") else [])
+        spend = ", ".join(f"${b.get('current_usage') or 0:.2f} of ${b.get('max_limit') or 0:.2f}"
+                          for b in budgets) or "-"
+        entry = bound.get(str(k.get("id")))
+        made = f"  made {entry['made']}" if entry else ""
+        print(f"{k.get('name') or k.get('id')}  id={k.get('id')}  {kind}  {state}  "
+              f"today {spend}{made}")
+        for r in (entry or {}).get("recipients", []):
             print(f"  {r['address']} ({r['language']}): "
                   f"{'confirmed ' + r['confirmed'] if r['confirmed'] else 'not confirmed'}")
 
