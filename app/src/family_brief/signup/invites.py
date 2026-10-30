@@ -100,6 +100,15 @@ class Store:
         listed = [*self.households(), household]
         self._write(self._households, json.dumps([h.__dict__ for h in listed], indent=2))
 
+    def remove_household(self, user: str) -> bool:
+        """Takes `user` off the list, and says whether it was on it."""
+        listed = self.households()
+        kept = [h for h in listed if h.user != user]
+        if len(kept) == len(listed):
+            return False
+        self._write(self._households, json.dumps([h.__dict__ for h in kept], indent=2))
+        return True
+
     def _write(self, path: Path, text: str) -> None:
         """Owner-only, whatever the umask, in one step, so a reader never sees half of it."""
         for folder in dict.fromkeys((self.folder, path.parent)):

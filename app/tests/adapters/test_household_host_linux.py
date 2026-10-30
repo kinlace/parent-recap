@@ -79,6 +79,24 @@ def test_a_user_is_made_and_removed_by_the_helper_through_sudo(sudo):
     assert all(c["cwd"] == "/" for c in sudo.calls)
 
 
+@pytest.mark.posix  # no pwd on Windows
+def test_a_household_s_home_is_its_user_s_and_none_when_there_is_no_user(sudo, monkeypatch):
+    import pwd
+    users = {NAME: f"/home/{NAME}"}
+
+    def getpwnam(name: str):
+        if name not in users:
+            raise KeyError(name)
+        return type("Entry", (), {"pw_dir": users[name]})()
+    monkeypatch.setattr(pwd, "getpwnam", getpwnam)
+
+    assert HOST.home(NAME) == Path(f"/home/{NAME}")
+    assert HOST.home("ph-ffffffff") is None
+    with pytest.raises(ValueError):
+        HOST.home("root")
+    assert sudo.calls == []  # anyone may look a user up
+
+
 def test_a_command_runs_as_the_household_with_its_input_on_stdin(sudo):
     sudo.answer = subprocess.CompletedProcess([], 3, "out\n", "err\n")
 
@@ -123,8 +141,8 @@ def test_a_gateway_key_is_minted_with_a_household_s_budget_and_revoked_by_its_na
     assert body["budgets"] == [{"max_limit": 0.10, "reset_duration": "1d"}]
     assert body["provider_configs"][0]["allowed_models"] == ["parent-recap"]
 
-    HOST.revoke_key(NAME)
-    HOST.revoke_key(NAME)  # one that isn't there is fine
+    assert HOST.revoke_key(NAME) is True
+    assert HOST.revoke_key(NAME) is False  # one that isn't there is fine
 
     assert [k["name"] for k in admin.keys.values()] == ["ph-ffffffff"]
 

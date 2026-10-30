@@ -55,6 +55,13 @@ class LinuxHost:
             raise HostError(f"{HELPER} add didn't say where {name}'s home is")
         return Path(lines[-1])
 
+    def home(self, name: str) -> Path | None:
+        import pwd  # Linux's, so the module still imports where the adapters' tests run
+        try:
+            return Path(pwd.getpwnam(_checked(name)).pw_dir)
+        except KeyError:
+            return None
+
     def remove_user(self, name: str) -> None:
         self._helper("remove", name)
 
@@ -94,8 +101,9 @@ class LinuxHost:
             raise HostError("the gateway's admin API answered without a key")
         return value
 
-    def revoke_key(self, name: str) -> None:
+    def revoke_key(self, name: str) -> bool:
         _checked(name)
+        found = False
         offset = 0
         while True:
             try:
@@ -107,8 +115,9 @@ class LinuxHost:
             for key in keys:
                 if isinstance(key, dict) and key.get("name") == name and key.get("id"):
                     self._admin("DELETE", f"{ADMIN}/{key['id']}")
+                    found = True
             if len(keys) < PAGE:
-                return
+                return found
             offset += PAGE
 
     def _admin(self, method: str, url: str, **kwargs) -> requests.Response:

@@ -107,6 +107,7 @@ if [ -n "${PARENT_RECAP_RELEASE:-}" ]; then
   mv "$signup_lib/release.incoming" "$signup_lib/release"
   install -o root -g root -m 0755 "$here/household-user" "$signup_lib/household-user"
   install -o root -g root -m 0755 "$here/invite.sh" "$signup_lib/invite.sh"
+  install -o root -g root -m 0755 "$here/remove.sh" "$signup_lib/remove.sh"
   install -o root -g root -m 0440 "$here/signup.sudoers" /etc/sudoers.d/parent-recap-signup.incoming
   visudo -cf /etc/sudoers.d/parent-recap-signup.incoming
   mv /etc/sudoers.d/parent-recap-signup.incoming /etc/sudoers.d/parent-recap-signup

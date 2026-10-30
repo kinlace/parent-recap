@@ -1,6 +1,6 @@
 """The hosted version's sign-up (ADR 0031), driven over HTTP as a family's phone drives it: the
 page under an Invite Link, the Wilma check, the Household made under its own user, and the
-404 every other request gets.
+404 every other request gets; then the maintainers' command that removes a Household again.
 
 The outside edges are faked: the service's wilma CLI is `test_setup_wilma`'s fake, which knows one
 Wilma account; the household host is `fake_household_host`'s, whose users each have their own
@@ -27,6 +27,7 @@ from family_brief import setup_wilma
 from family_brief.config import Config
 from family_brief.signup import page
 from family_brief.signup.invites import Recipient, Store
+from family_brief.signup.remove import remove
 from family_brief.signup.server import Service, SignupServer
 from family_brief.system import jobs
 from fake_household_host import FakeHouseholdHost
@@ -385,3 +386,102 @@ def test_the_invite_command_refuses_a_recipient_it_can_t_read(harness, monkeypat
     assert harness.cli("signup", "invite", "--url", "https://g.example",
                        "--recipient", "parent@example.com:sv") == 2
     assert not (tmp_path / "store").exists()
+
+
+# ── Removing a Household
+
+def _signed_up(signup) -> str:
+    before = set(signup.host.users)
+    assert submit(signup, signup.invite(Recipient("parent@example.com", "fi"))).status == 200
+    [name] = set(signup.host.users) - before
+    return name
+
+
+def test_a_household_is_removed_jobs_key_user_and_home_in_that_order(signup, capsys):
+    name, other = _signed_up(signup), _signed_up(signup)
+    user = signup.host.users[name]
+    signup.host.log.clear()
+    capsys.readouterr()
+
+    assert remove(name, signup.store, signup.host) == 0
+
+    program = str(user.home / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap")
+    assert signup.host.log == [("run_as", name, program, "schedule", "uninstall"),
+                               ("revoke_key", name), ("remove_user", name)]
+    assert user.jobs.installed() == set()
+    assert not user.home.exists()
+    # Nothing of it stays; the other Household is as it was.
+    assert list(signup.host.users) == [other] and list(signup.host.keys) == [other]
+    assert signup.host.users[other].jobs.installed() == {jobs.DAILY}
+    assert [h.user for h in signup.store.households()] == [other]
+    out = capsys.readouterr().out.splitlines()
+    assert [line.split(" ", 1)[0] for line in out] == ["✅"] * 4, out
+    assert "jobs" in out[0] and "Gateway Key" in out[1] and str(user.home) in out[2]
+    assert all(name in line for line in out)
+
+
+@pytest.mark.parametrize("label", ["ph-0123abcd", "household-mia", "../ph-0123abcd"])
+def test_a_label_that_is_no_household_is_refused_and_nothing_is_touched(signup, capsys, label):
+    name = _signed_up(signup)
+    signup.host.log.clear()
+    capsys.readouterr()
+
+    assert remove(label, signup.store, signup.host) != 0
+
+    err = capsys.readouterr().err
+    assert label in err and "Nothing was removed" in err
+    assert signup.host.log == [] and list(signup.host.keys) == [name]
+    assert [h.user for h in signup.store.households()] == [name]
+
+
+@pytest.mark.parametrize("step", ["revoke_key", "remove_user"])
+def test_a_household_removed_half_way_is_removed_again_to_the_end(signup, capsys, step):
+    name = _signed_up(signup)
+    home = signup.host.users[name].home
+    signup.host.fails = step
+
+    assert remove(name, signup.store, signup.host) == 1
+    assert "Run the command again" in capsys.readouterr().err
+    assert [h.user for h in signup.store.households()] == [name]  # still known
+
+    signup.host.fails = None
+    assert remove(name, signup.store, signup.host) == 0
+
+    assert signup.host.users == {} and signup.host.keys == {} and not home.exists()
+    assert signup.store.households() == []
+    assert remove(name, signup.store, signup.host) == 1  # and now it is gone
+
+
+def test_a_household_whose_user_is_gone_is_taken_off_the_list(signup, capsys):
+    name = _signed_up(signup)
+    signup.host.remove_user(name)
+    signup.host.log.clear()
+    capsys.readouterr()
+
+    assert remove(name, signup.store, signup.host) == 0
+
+    assert signup.host.log == [("revoke_key", name)]  # no command run as a user that isn't there
+    assert signup.host.keys == {} and signup.store.households() == []
+    out = capsys.readouterr().out
+    assert "no jobs to stop" in out and "no user to delete" in out
+
+
+def test_jobs_its_program_can_t_remove_still_go_with_its_user(signup, capsys):
+    name = _signed_up(signup)
+    (signup.host.users[name].home / ".family" / "config.yaml").write_text("{not: yaml")
+    capsys.readouterr()
+
+    assert remove(name, signup.store, signup.host) == 0
+
+    assert signup.host.users == {} and signup.store.households() == []
+    assert "deleting its user below stops them" in capsys.readouterr().out
+
+
+def test_the_remove_command_needs_the_gateway_s_admin_login(harness, monkeypatch, tmp_path,
+                                                            capsys):
+    monkeypatch.setenv("SIGNUP_STORE", str(tmp_path / "store"))
+    monkeypatch.delenv("BIFROST_ADMIN_USERNAME", raising=False)
+    monkeypatch.delenv("BIFROST_ADMIN_PASSWORD", raising=False)
+
+    assert harness.cli("signup", "remove", "ph-0123abcd") == 1
+    assert "BIFROST_ADMIN_USERNAME and BIFROST_ADMIN_PASSWORD not set" in capsys.readouterr().err

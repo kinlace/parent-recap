@@ -36,7 +36,7 @@ from zoneinfo import ZoneInfo
 
 from .. import failure, setup_wilma
 from . import page
-from .host import HostError, HouseholdHost, user_name
+from .host import HostError, HouseholdHost, program, user_name
 from .invites import LANGUAGES, HouseholdRecord, Recipient, Store
 
 log = logging.getLogger("family_brief.signup")
@@ -171,8 +171,7 @@ class Service:
                                      INSTALL_SECONDS)
         if code != 0:
             raise HostError(f"install.sh ended with {code}: {out.strip()[-300:]}")
-        program = home / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap"
-        code, out = self.host.run_as(name, [str(program), "signup", "household"],
+        code, out = self.host.run_as(name, [str(program(home)), "signup", "household"],
                                      json.dumps({**answers, "gateway_key": key}),
                                      HOUSEHOLD_SECONDS)
         said = _last_json(out)

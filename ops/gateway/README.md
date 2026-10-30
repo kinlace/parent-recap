@@ -4,7 +4,7 @@ The server that invited Households' Gateway Keys go through (ADR 0014). Everythi
 
 - `host-setup.sh` sets up the VM (Ubuntu/Debian): system updates, SSH with keys only, a firewall that lets in only SSH and HTTPS, Caddy, and a login for the AI assistant that can read logs but has no sudo.
 - `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016), the Brief relay and, given a release of the program, the hosted version's sign-up service (ADR 0031) behind Caddy. It works on any systemd Linux with Caddy and `python3` installed.
-- `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile` and `bifrost.env.example` are what it installs, and for the sign-up `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers`, `household-user` and `invite.sh`. The env examples hold only variable names.
+- `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile` and `bifrost.env.example` are what it installs, and for the sign-up `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers`, `household-user`, `invite.sh` and `remove.sh`. The env examples hold only variable names.
 - `oci-quota.json` is the Oracle Cloud quota policy that lets the account create only Always Free resources.
 - `set-smtp-credentials.sh` puts the sending domain's SMTP credentials into their own env file, whose names are in `brief-relay.env.example` (see "The sending domain").
 
@@ -145,7 +145,7 @@ scp -r <unpacked release> ubuntu@<ip>:/tmp/parent-recap
 ssh -t ubuntu@<ip> "sudo GATEWAY_HOST=<hostname> PARENT_RECAP_RELEASE=/tmp/parent-recap bash /tmp/gateway/gateway-setup.sh"
 ```
 
-It copies the release to `/usr/local/lib/parent-recap-signup/release`, readable by all; makes the service's user `parent-recap-signup` (home `/var/lib/parent-recap-signup`) and installs the program under it with the release's `install.sh`; installs the `household-user` helper and `invite.sh` beside the release, the sudoers file and `/etc/parent-recap-signup/signup.env`; and starts the `parent-recap-signup` unit (`parent-recap signup serve`) on `127.0.0.1:8082`, which reads Bifrost's admin login from `bifrost.env`. Running it again with a newer release upgrades the service; Households already made keep the program they were installed with.
+It copies the release to `/usr/local/lib/parent-recap-signup/release`, readable by all; makes the service's user `parent-recap-signup` (home `/var/lib/parent-recap-signup`) and installs the program under it with the release's `install.sh`; installs the `household-user` helper, `invite.sh` and `remove.sh` beside the release, the sudoers file and `/etc/parent-recap-signup/signup.env`; and starts the `parent-recap-signup` unit (`parent-recap signup serve`) on `127.0.0.1:8082`, which reads Bifrost's admin login from `bifrost.env`. Running it again with a newer release upgrades the service; Households already made keep the program they were installed with.
 
 **Invite a Household.** On the server, with the Recipients the family gave you and the language each reads the Brief in. It prints the link; send it over a private channel:
 
@@ -154,6 +154,14 @@ sudo bash /usr/local/lib/parent-recap-signup/invite.sh --recipient parent@exampl
 ```
 
 The link is a random code, kept with the Recipients in the service's owner-only store (`/var/lib/parent-recap-signup/signup/invites/`). It works once, until it expires, and a Household made from it retires it, Recipients and all. A link that isn't good, or any other address under `/join/`, gets the same 404 as the rest of the server.
+
+**Remove a Household.** On the server, with the Household's label, its user as `ls /home` and the sign-up's log show it:
+
+```sh
+sudo bash /usr/local/lib/parent-recap-signup/remove.sh ph-0123abcd
+```
+
+It prints each step as it goes: the evening jobs removed by the Household's own program, its Gateway Key revoked on the admin API, its user deleted with its home (and so its config, Wilma sign-in, key file and archive), and its line taken off the store's `households.json`, which frees its evening slot. Nothing of the Household stays on the server. A label that is no Household's is refused and nothing is touched. If a step fails, such as the admin API not answering, it stops there and says so; the Household stays on the list, and running the command again does the rest. Jobs its program couldn't remove go with its user anyway, since deleting the user ends everything running as it.
 
 **What a sign-up does.** The service signs in to Wilma with the login typed and reads the Kids before anything is made: a wrong password is said on the page, and the link stays good. Then it makes the Household's user (`ph-` and 8 random hex digits, with a home only it can read, lingering so its timers run), mints its Gateway Key named after that user, installs the program under it with the release's `install.sh`, and runs `parent-recap signup household` as it with the answers, the Wilma login and the key on its stdin. That writes the config (Kids from Wilma, the Recipients, the gateway as AI and sender, Wilma on, WhatsApp off, the calendar as an `.ics` in the email), the wilma CLI's sign-in, the key as an owner-only file (ADR 0030), and the evening job. Each Household's Brief comes in the next free slot from 21:00 in 5-minute steps, so the runs don't all start at once. A step that fails takes back the user and the key, and the link stays good. The page then says when the first Brief comes. Only the user name and its evening time are kept in the store's `households.json`.
 
@@ -190,7 +198,7 @@ curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
   -H 'content-type: application/json' -d '{"name": "household-<label>", "is_active": true}'
 ```
 
-**Revoke.** Find the key's `id` in the list, then turn it off (or `DELETE` it). `PUT` changes only the fields it is given (Bifrost has no `PATCH` here):
+**Revoke.** A Hosted Household's key goes with it (see "Remove a Household"). For any other, find the key's `id` in the list, then turn it off (or `DELETE` it). `PUT` changes only the fields it is given (Bifrost has no `PATCH` here):
 
 ```sh
 curl -s -u "$ADMIN" localhost:8080/api/governance/virtual-keys
