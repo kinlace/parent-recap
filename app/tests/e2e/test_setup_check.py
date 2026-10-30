@@ -161,6 +161,27 @@ def test_every_working_result_is_explained_in_all_three_languages():
             assert table.get(f"working.{result}", "").strip(), (language, result)
 
 
+# #602: a parent who connected Gmail to send the Brief asked why the program read their senders.
+# Each line the sender scan shows says why, in the family's language.
+SENDER_SCAN_WHY = {
+    "en": ("not what it says", "tick the school, teachers and clubs",
+           "only mail from the senders you tick"),
+    "fi": ("ei viestien sisältöä", "valita koulun, opettajat ja seurat",
+           "vain valitsemiesi lähettäjien viestit"),
+    "zh": ("不看内容", "勾选学校、老师和俱乐部", "只读你勾选的发件人"),
+}
+
+
+def test_the_sender_scan_says_why_it_reads_the_senders_in_all_three_languages():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    assert set(text) == set(SENDER_SCAN_WHY)
+    for language, table in text.items():
+        for key in ("working.gmail.start", "working.gmail"):
+            for words in SENDER_SCAN_WHY[language]:
+                assert words in table[key], (language, key, words)
+
+
 # ── Check: one page with everything found, to confirm
 
 
