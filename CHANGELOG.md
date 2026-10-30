@@ -4,6 +4,12 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.9.1 · 2026-10-30
+
+### Fixed
+
+- On a Windows PC whose company manages Windows Security, the setup page opens after install and `parent-recap` runs, where Windows used to block it with "Your administrator has blocked this action". An install from 0.9.0 gets this by pasting the install line again.
+
 ## 0.9.0 · 2026-10-30
 
 Parent Recap can send the Brief itself, from `brief@parentrecap.com`, so a family can set up without Gmail and an App Password, and `parent-recap` runs in a new Terminal or PowerShell window without its full path.
