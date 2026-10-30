@@ -21,6 +21,7 @@ from conftest import GATEWAY_KEY, NOW, SAYS_SOMETHING, msg
 from nights import caught_up_last_night
 from fake_system import MACOS, WINDOWS
 from family_brief import gateway as api, ops, setup_status
+from family_brief.system import secrets
 from setup_page import PAGE_DIR, at_finish, call, config_file, finish, finished
 from setup_page import clock, health, page, schedule  # noqa: F401
 from test_gateway import assert_key_never_leaked
@@ -131,8 +132,9 @@ def test_without_a_gateway_key_nothing_is_sent_and_it_says_to_ask_the_team_for_o
     wilma_only.run()
 
     assert wilma_only.sent == [] and wilma_only.relay_keys == []
-    assert ("email send failed: no Gateway Key in the Keychain (ask the Parent Recap team for one, "
-            "then store it with parent-recap setup gateway)") in caplog.text
+    # In the Keychain, Credential Manager or an owner-only file, as the system keeps its secrets.
+    assert (f"email send failed: no Gateway Key in the {secrets.STORE} (ask the Parent Recap team "
+            "for one, then store it with parent-recap setup gateway)") in caplog.text
     assert "Brief not delivered" in caplog.text
 
 
