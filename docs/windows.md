@@ -21,7 +21,7 @@ Parent Recap also runs on a Windows PC instead of a Mac, installed natively, wit
 
 - A Windows 11 PC as above, signed in with the Windows account the Briefs should run under. No administrator rights are needed
 - Either an invitation to Parent Recap's gateway (a Gateway Key from the Parent Recap team) or a ChatGPT account on any plan, Free included
-- A Gmail account with two-step verification turned on
+- Optional: a Gmail account with two-step verification turned on. It's needed to read mail from the school and clubs, or to send the Brief from your own address. Without it, Parent Recap sends the Brief itself from `brief@parentrecap.com`, which needs a Gateway Key from the Parent Recap team
 - Optional: a Wilma parent account, a MyClub account
 
 ## Install
