@@ -109,10 +109,10 @@ def status(host: HouseholdHost, household: HouseholdRecord, homes: Path) -> Stat
         return Status(household.user, household.evening,
                       unknown=f"signup health ended with {code} and said no status (a program "
                               "older than this command?)")
-    return Status(household.user, household.evening, _time(said.get("last_run")),
-                  last_run.number(said.get("exit")), said.get("overdue") is True,
-                  _checks(said["checks"]), last_run.number(said.get("seconds")),
-                  last_run.number(said.get("peak_mb")))
+    return Status(household.user, household.evening, last_run=_time(said.get("last_run")),
+                  exit=last_run.number(said.get("exit")), overdue=said.get("overdue") is True,
+                  checks=_checks(said["checks"]), seconds=last_run.number(said.get("seconds")),
+                  peak_mb=last_run.number(said.get("peak_mb")))
 
 
 def _time(value: Any) -> datetime | None:

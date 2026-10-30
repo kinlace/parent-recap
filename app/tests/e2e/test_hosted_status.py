@@ -96,7 +96,7 @@ def test_a_household_whose_run_is_overdue_is_marked(signup, capsys):
     assert out.splitlines()[-1] == "1 Households: 0 failed, 1 overdue, 0 unknown"
 
 
-def health(s, name: str) -> dict:
+def health_of(s, name: str) -> dict:
     _, said = s.host.run_as(name, [program(s, name), "signup", "health"], "", 300)
     return json.loads(said.strip().splitlines()[-1])
 
@@ -113,7 +113,7 @@ def test_each_run_notes_how_long_it_took_and_its_peak_memory(signup, capsys, mon
     ran = json.loads(noted(signup, name, monkeypatch).read_text())
     assert isinstance(ran["seconds"], int) and ran["seconds"] >= 0
     assert isinstance(ran["peak_mb"], int) and ran["peak_mb"] > 0  # this process's, at least
-    said = health(signup, name)
+    said = health_of(signup, name)
     assert (said["seconds"], said["peak_mb"]) == (ran["seconds"], ran["peak_mb"])
 
     code, out = report(signup, capsys)
@@ -127,7 +127,7 @@ def test_a_run_noted_before_its_duration_and_peak_were_still_reads(signup, capsy
     file = noted(signup, name, monkeypatch)
     ran = json.loads(file.read_text())
     file.write_text(json.dumps({"at": ran["at"], "exit": 0}))  # as 0.10.0 wrote it
-    said = health(signup, name)
+    said = health_of(signup, name)
     assert (said["last_run"], said["exit"]) == (ran["at"], 0)
     assert (said["seconds"], said["peak_mb"]) == (None, None)
 

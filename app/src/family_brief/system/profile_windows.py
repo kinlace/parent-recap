@@ -76,5 +76,5 @@ PROFILE = profile.Profile(
     npm_links_programs=False,  # only .cmd wrappers, so the program runs from its package's script
     removes_running=False,  # Windows doesn't let a running program, or its Python, be removed
     os_version=_os_version,
-    maxrss_bytes=None,  # Python's `resource` isn't on Windows
+    maxrss_unit=None,  # Python's `resource` isn't on Windows
 )
