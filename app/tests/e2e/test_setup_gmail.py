@@ -398,6 +398,9 @@ def test_a_valid_app_password_is_tested_stored_and_gmail_turns_done(harness, pag
     caplog.set_level(logging.DEBUG)
     welcome(page.url, partner={"address": "partner@example.com", "language": "fi"})
     source(page.url, "wilma", "skip")
+    household = Config.load(config_file(harness)).summary_language
+    save_recipients(page.url, {"address": "parent@hotmail.com", "language": household},
+                    {"address": "partner@example.com", "language": "fi"}, key=GATEWAY_KEY)
 
     r = connect_gmail(page.url)
 
@@ -405,23 +408,26 @@ def test_a_valid_app_password_is_tested_stored_and_gmail_turns_done(harness, pag
     out = r.json()
     assert out["result"] == "saved" and out["address"] == "parent@example.com"
     assert gmail.logins == [("parent@example.com", APP_PASSWORD)]
-    assert harness.secrets == {"gmail-imap-parent@example.com": APP_PASSWORD}
+    assert harness.secrets == {"gmail-imap-parent@example.com": APP_PASSWORD,
+                               gateway.ACCOUNT: GATEWAY_KEY}
     assert out["progress"]["sources"]["gmail"] == "done"
     assert out["progress"]["source"] == "ai"
     cfg = Config.load(config_file(harness))
     assert cfg.gmail.username == "parent@example.com"
-    # Now the parent's address is known, the Recipients are saved with the parent first.
+    # Gmail is only read (ADR 0032): who gets the Brief stays as saved.
     assert [(t.address, t.language) for t in cfg.email.to] == \
-        [("parent@example.com", None), ("partner@example.com", "fi")]
-    assert call(page.url, "api/state").json()["gmail"] == {"address": "parent@example.com",
-                                                           "sender": "gmail"}
+        [("parent@hotmail.com", None), ("partner@example.com", "fi")]
+    assert call(page.url, "api/state").json()["gmail"] == {
+        "address": "parent@example.com",
+        "to": [{"address": "parent@hotmail.com", "language": household},
+               {"address": "partner@example.com", "language": "fi"}]}
     assert_never_leaked_by_page(harness, [r], caplog, capsys, TYPED)
 
 
-def test_without_a_welcome_partner_the_parent_becomes_the_recipient(harness, page, gmail):
+def test_gmail_s_address_never_becomes_a_recipient_by_itself(harness, page, gmail):
     assert connect_gmail(page.url).json()["result"] == "saved"
 
-    assert [t.address for t in Config.load(config_file(harness)).email.to] == ["parent@example.com"]
+    assert Config.load(config_file(harness)).email.to == []
 
 
 @pytest.mark.parametrize("typed, result", [
@@ -515,12 +521,12 @@ def test_the_gmail_fields_are_the_page_s_own(page):
     assert 'type="email"' in address
 
 
-# ── Connect: Parent Recap sends the Brief, in place of Gmail (ADR 0028)
+# ── Connect: who gets the Brief, which Parent Recap sends from its own address (ADR 0032)
 
 
-def parent_recap_sends(url: str, *recipients: dict[str, Any], key: str | None = None) -> Response:
-    """"Parent Recap sends the Brief", with the Gateway Key for sending alone when it's given."""
-    return call(url, "api/gmail/gateway", method="POST",
+def save_recipients(url: str, *recipients: dict[str, Any], key: str | None = None) -> Response:
+    """Who gets the Brief, with the Gateway Key for sending when it's given."""
+    return call(url, "api/gmail/recipients", method="POST",
                 body={"recipients": list(recipients), **({"key": key} if key is not None else {})})
 
 
@@ -529,61 +535,73 @@ def with_the_gateway_as_the_ai(url: str, partner: dict[str, str] | None = None) 
     source(url, "wilma", "skip")
 
 
-def test_with_the_gateway_as_the_ai_parent_recap_sends_the_brief_and_gmail_is_skipped(
+def test_with_the_gateway_as_the_ai_the_recipients_are_saved_and_gmail_waits_to_be_connected_or_skipped(
         harness, page, gmail):
     with_the_gateway_as_the_ai(page.url, {"address": "partner@example.com", "language": "fi"})
 
-    r = parent_recap_sends(page.url, {"address": " Parent@Hotmail.com ", "language": "en"},
-                           {"address": "partner@example.com", "language": "fi"})
+    r = save_recipients(page.url, {"address": " Parent@Hotmail.com ", "language": "en"},
+                        {"address": "partner@example.com", "language": "fi"})
 
     assert r.status == 200 and r.json()["result"] == "saved"
     progress = r.json()["progress"]
-    assert progress["sources"]["gmail"] == "skipped"
-    assert progress["source"] == "ai"
+    assert (progress["source"], progress["sources"]["gmail"]) == ("gmail", "to-do")
     cfg = Config.load(config_file(harness))
-    assert cfg.email.sender == "gateway"
     # The setup parent first; a language the same as the Household's isn't saved twice.
     assert [(t.address, t.language) for t in cfg.email.to] == \
         [("parent@hotmail.com", None), ("partner@example.com", "fi")]
-    assert cfg.gmail.username is None and not cfg.gmail.allowlist_domains
+    assert "sender" not in setup_save.read(config_file(harness)).get("email", {})
     # No App Password is asked for, tested or stored.
     assert gmail.logins == [] and harness.secrets == {}
-    assert call(page.url, "api/state").json()["gmail"] == {"address": None, "sender": "gateway"}
+
+    skipped = source(page.url, "gmail", "skip").json()["progress"]
+
+    assert (skipped["source"], skipped["sources"]["gmail"]) == ("ai", "skipped")
+    cfg = Config.load(config_file(harness))
+    assert cfg.gmail.username is None and not cfg.gmail.allowlist_domains
+    assert [t.address for t in cfg.email.to] == ["parent@hotmail.com", "partner@example.com"]
+
+
+def test_gmail_cannot_be_skipped_before_who_gets_the_brief_is_saved(harness, page):
+    with_the_gateway_as_the_ai(page.url)
+
+    r = source(page.url, "gmail", "skip")
+
+    assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    assert statuses(page.url)["gmail"] == "to-do"
 
 
 def test_with_the_gateway_as_the_ai_its_key_is_not_asked_for_again(harness, page):
     # The AI step tests it with a model call (test_setup_ai.py), which a key for sending alone fails.
     with_the_gateway_as_the_ai(page.url)
 
-    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"},
-                           key=GATEWAY_KEY)
+    r = save_recipients(page.url, {"address": "parent@example.com", "language": "en"},
+                        key=GATEWAY_KEY)
 
     assert r.status == 400 and r.json()["result"] == "invalid-answers"
     assert GATEWAY_KEY.encode() not in r.body
     assert harness.relay_keys == [] and harness.secrets == {}
-    assert statuses(page.url)["gmail"] == "to-do"
+    assert Config.load(config_file(harness)).email.to == []
 
 
 @pytest.mark.parametrize("ai", ["claude", "codex"])
-def test_with_its_own_ai_parent_recap_sends_with_a_key_tested_by_the_relay(harness, page, gmail,
-                                                                           caplog, ai):
+def test_with_its_own_ai_the_brief_is_sent_with_a_key_tested_by_the_relay(harness, page, gmail,
+                                                                          caplog, ai):
     # A send-only key has no model behind it (ops/gateway/README.md), so no model call tests it.
     caplog.set_level(logging.DEBUG)
     welcome(page.url, ai=ai)
     source(page.url, "wilma", "skip")
 
-    r = parent_recap_sends(page.url, {"address": "parent@hotmail.com", "language": "en"},
-                           key=f" {GATEWAY_KEY}\n")  # as copied from a message
+    r = save_recipients(page.url, {"address": "parent@hotmail.com", "language": "en"},
+                        key=f" {GATEWAY_KEY}\n")  # as copied from a message
 
     assert r.status == 200 and r.json()["result"] == "saved"
-    assert r.json()["progress"]["sources"]["gmail"] == "skipped"
-    assert r.json()["progress"]["source"] == "ai"  # its sign-in is unchanged
+    assert r.json()["progress"]["sources"]["gmail"] == "to-do"  # still to connect or skip
     assert harness.relay_keys == [GATEWAY_KEY] and harness.sent == []
     assert harness.model.reached == [] and harness.model_calls == []
     assert harness.secrets == {gateway.ACCOUNT: GATEWAY_KEY}
     assert install_record.entries("keychain") == [gateway.ACCOUNT]  # so uninstall removes it
     cfg = Config.load(config_file(harness))
-    assert (cfg.llm.backend, cfg.email.sender) == (ai, "gateway")
+    assert cfg.llm.backend == ai
     assert [t.address for t in cfg.email.to] == ["parent@hotmail.com"]
     assert gmail.logins == []
     assert_key_never_leaked(harness, r.body.decode(), caplog)
@@ -605,65 +623,65 @@ def test_a_key_the_relay_does_not_take_is_not_stored_and_says_what_to_do(harness
     else:
         harness.relay_answer = answer
 
-    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"},
-                           key=GATEWAY_KEY)
+    r = save_recipients(page.url, {"address": "parent@example.com", "language": "en"},
+                        key=GATEWAY_KEY)
 
     assert r.status == 200 and r.json() == {"result": result}
     assert harness.secrets == {} and install_record.entries("keychain") == []
-    assert statuses(page.url)["gmail"] == "to-do"
-    assert Config.load(config_file(harness)).email.sender == "gmail"
+    assert Config.load(config_file(harness)).email.to == []  # nothing saved without the key
     assert_key_never_leaked(harness, r.body.decode(), caplog)
 
 
 def test_with_its_own_ai_a_key_is_needed_and_what_is_not_one_is_never_sent(harness, page):
     welcome(page.url, ai="codex")
 
-    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"})
+    r = save_recipients(page.url, {"address": "parent@example.com", "language": "en"})
     assert r.status == 400 and r.json()["result"] == "invalid-answers"
-    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"},
-                           key="my-password")
+    r = save_recipients(page.url, {"address": "parent@example.com", "language": "en"},
+                        key="my-password")
     assert r.json() == {"result": "not-a-key"}
     # Addresses are checked before the key goes anywhere.
-    r = parent_recap_sends(page.url, {"address": "parent", "language": "en"}, key=GATEWAY_KEY)
+    r = save_recipients(page.url, {"address": "parent", "language": "en"}, key=GATEWAY_KEY)
     assert r.json() == {"result": "no-address"}
 
     assert harness.relay_keys == [] and harness.secrets == {}
-    assert statuses(page.url)["gmail"] == "to-do"
+    assert Config.load(config_file(harness)).email.to == []
 
 
 def test_a_keychain_that_refuses_the_key_says_so_with_its_code(harness, page):
     welcome(page.url, ai="claude")
     refuse_secrets(harness, -25293)
 
-    r = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"},
-                           key=GATEWAY_KEY)
+    r = save_recipients(page.url, {"address": "parent@example.com", "language": "en"},
+                        key=GATEWAY_KEY)
 
     assert r.json() == {"result": "keychain-failed", "code": -25293}
-    assert statuses(page.url)["gmail"] == "to-do"
+    assert Config.load(config_file(harness)).email.to == []
 
 
-def test_each_recipient_parent_recap_sends_to_needs_an_address_of_their_own(harness, page):
+def test_each_recipient_needs_an_address_of_their_own(harness, page):
     with_the_gateway_as_the_ai(page.url)
 
     for given in [[{"address": "parent", "language": "en"}],
                   [{"address": "parent@example.com", "language": "en"},
                    {"address": "a b@example.com", "language": "fi"}]]:
-        assert parent_recap_sends(page.url, *given).json() == {"result": "no-address"}, given
-    same = parent_recap_sends(page.url, {"address": "parent@example.com", "language": "en"},
-                              {"address": "Parent@Example.com", "language": "fi"})
+        assert save_recipients(page.url, *given).json() == {"result": "no-address"}, given
+    same = save_recipients(page.url, {"address": "parent@example.com", "language": "en"},
+                           {"address": "Parent@Example.com", "language": "fi"})
     assert same.json() == {"result": "same-address"}
     for body in [{}, {"recipients": []}, {"recipients": [{"address": "parent@example.com"}]},
                  {"recipients": [{"address": "parent@example.com", "language": "sv"}]},
                  {"recipients": [{"address": "parent@example.com", "language": "en"}], "x": 1}]:
-        r = call(page.url, "api/gmail/gateway", method="POST", body=body)
+        r = call(page.url, "api/gmail/recipients", method="POST", body=body)
         assert r.status == 400 and r.json()["result"] == "invalid-answers", body
-    assert statuses(page.url)["gmail"] == "to-do"
+    assert Config.load(config_file(harness)).email.to == []
 
 
-def test_gmail_connected_after_parent_recap_sends_only_adds_reading(harness, page, gmail):
+def test_gmail_opened_again_after_it_was_skipped_only_adds_reading(harness, page, gmail):
     with_the_gateway_as_the_ai(page.url, {"address": "partner@example.com", "language": "fi"})
-    parent_recap_sends(page.url, {"address": "parent@hotmail.com", "language": "en"},
-                       {"address": "partner@example.com", "language": "fi"})
+    save_recipients(page.url, {"address": "parent@hotmail.com", "language": "en"},
+                    {"address": "partner@example.com", "language": "fi"})
+    source(page.url, "gmail", "skip")
     assert source(page.url, "gmail", "open").json()["progress"]["sources"]["gmail"] == "to-do"
 
     r = connect_gmail(page.url)
@@ -671,15 +689,12 @@ def test_gmail_connected_after_parent_recap_sends_only_adds_reading(harness, pag
     assert r.status == 200 and r.json()["result"] == "saved"
     cfg = Config.load(config_file(harness))
     assert cfg.gmail.username == "parent@example.com"
-    # Parent Recap still sends the Brief, to the Recipients as they were.
-    assert cfg.email.sender == "gateway"
     assert [t.address for t in cfg.email.to] == ["parent@hotmail.com", "partner@example.com"]
 
 
-def test_welcome_saved_again_keeps_the_parent_parent_recap_sends_to_first(harness, page, gmail):
+def test_welcome_saved_again_keeps_the_setup_parent_first(harness, page, gmail):
     with_the_gateway_as_the_ai(page.url)
-    parent_recap_sends(page.url, {"address": "parent@hotmail.com", "language": "en"})
-    source(page.url, "gmail", "open")
+    save_recipients(page.url, {"address": "parent@hotmail.com", "language": "en"})
     connect_gmail(page.url)  # read only
 
     welcome(page.url, ai="gateway", partner={"address": "partner@example.com", "language": "fi"})
@@ -688,28 +703,53 @@ def test_welcome_saved_again_keeps_the_parent_parent_recap_sends_to_first(harnes
         ["parent@hotmail.com", "partner@example.com"]
 
 
-def test_parent_recap_s_results_are_explained_in_all_three_languages():
+def test_a_key_for_sending_alone_given_later_is_tested_by_the_relay_and_stored(harness, page,
+                                                                              caplog):
+    # Check and Finish take it when doctor says there's none (test_gateway_sends.py).
+    caplog.set_level(logging.DEBUG)
+    welcome(page.url, ai="claude")
+
+    for body in [{}, {"key": 1}, {"key": GATEWAY_KEY, "x": 1}]:
+        assert call(page.url, "api/gmail/key", method="POST", body=body).status == 400, body
+    assert call(page.url, "api/gmail/key", method="POST",
+                body={"key": "my-password"}).json() == {"result": "not-a-key"}
+    assert harness.relay_keys == []
+    harness.relay_answer = (401, {"error": "missing, unknown or revoked Gateway Key"})
+    assert call(page.url, "api/gmail/key", method="POST",
+                body={"key": GATEWAY_KEY}).json() == {"result": "rejected"}
+    assert harness.secrets == {}
+    harness.relay_answer = (200, {"sent": 1, "refused": 0})
+
+    r = call(page.url, "api/gmail/key", method="POST", body={"key": GATEWAY_KEY})
+
+    assert r.json() == {"result": "saved"}
+    assert harness.secrets == {gateway.ACCOUNT: GATEWAY_KEY} and harness.model_calls == []
+    assert_key_never_leaked(harness, r.body.decode(), caplog)
+
+
+def test_who_gets_the_brief_and_the_key_s_results_are_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for result in setup_server.gmail.GATEWAY_SENDS_RESULTS:
-            assert table.get(f"gmail.gateway.{result}", "").strip(), (language, result)
-        for key in ("gmail.choice", "gmail.choice.gmail", "gmail.choice.gateway",
-                    "gmail.gateway.unread", "gmail.gateway.junk", "brief.junk",
-                    "gmail.gateway.key", "gmail.gateway.key.explain",
-                    "gmail.gateway.key.explain.windows"):
+        for result in setup_server.gmail.RECIPIENTS_RESULTS:
+            assert table.get(f"gmail.brief.{result}", "").strip(), (language, result)
+        for key in ("gmail.brief.explain", "gmail.brief.unread", "gmail.brief.junk", "brief.junk",
+                    "gmail.brief.to", "gmail.brief.change", "gmail.key.saved",
+                    "gmail.brief.key", "gmail.brief.key.explain",
+                    "gmail.brief.key.explain.windows"):
             assert table.get(key, "").strip(), (language, key)
         # A key the relay doesn't take is said as the gateway AI's key field says it.
         for result in setup_server.gmail.SEND_KEY_RESULTS:
             assert table.get(f"gateway.{result}", "").strip(), (language, result)
-        assert "sk-" in table["gmail.gateway.key.explain"], language
-        # #602: the Gmail step says Gmail is read for the school's mail, and names the choice that
-        # needs no Gmail as its radio button says it.
-        named = re.search(r'["“]([^"”]+)["”]', table["gmail.explain"]).group(1)
-        assert table["gmail.choice.gateway"].startswith(named), language
+        assert "sk-" in table["gmail.brief.key.explain"], language
+        assert "brief@parentrecap.com" in table["gmail.brief.explain"], language
+        # No choice of how the Brief is sent is left (ADR 0032).
+        assert not any(k.startswith(("gmail.choice", "gmail.gateway.")) for k in table), language
     english = text["en"]
-    assert "only for sending" in english["gmail.gateway.key.explain"]
+    assert "only for sending" in english["gmail.brief.key.explain"]
+    assert "Nobody reads" in english["gmail.brief.unread"]
+    assert "never sends from your Gmail" in english["gmail.explain"]
+    # #602: the Gmail step says Gmail is read for the school's mail, only from the senders ticked.
     assert "reads the school's mail" in english["gmail.explain"]
     assert "only from the senders you tick" in english["gmail.explain"]
     assert "sends your Brief" not in english["gmail.explain"]
-    assert "nobody reads" in english["gmail.gateway.unread"]

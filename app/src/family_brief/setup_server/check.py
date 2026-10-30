@@ -85,7 +85,7 @@ class Check(Phase):
         def read(done: int, total: int) -> None:
             self._reading = {"result": "reading", "read": done, "total": total}
         try:
-            # A Gmail skipped, as when Parent Recap sends the Brief (ADR 0028), has none to read.
+            # A Gmail skipped has none to read.
             senders = [] if _without_gmail(self.context.progress()) else \
                 ops.gmail_senders(Config.load(self.context.config), SENDER_DAYS, progress=read)
             with self.context.connect.lock:
@@ -106,11 +106,10 @@ class Check(Phase):
         """What the check page shows, each list ticked by best guess: the Kids, all ticked with
         their everyday names; the WhatsApp groups, those linked to a Kid ticked (none without
         WhatsApp); the Gmail senders that look like school, city or club mail ticked, and never
-        a public one, or none without Gmail (skipped when Parent Recap sends the Brief, ADR 0028);
-        each Recipient with their language; and the evening time. A pilot
-        Household's feedback label isn't asked: setup makes it (#491). `other_sources` is
-        whether a Source besides Gmail brings news, so that a Gmail with no sender ticked only
-        sends the Brief (#361)."""
+        a public one, or none when Gmail was skipped; each Recipient with their language; and the
+        evening time. A pilot Household's feedback label isn't asked: setup makes it (#491).
+        `other_sources` is whether a Source besides Gmail brings news, so that a Gmail with no
+        sender ticked is simply not read (#361, ADR 0032)."""
         cfg = self.context.model()
         hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
         groups = _groups(cfg, progress) if progress["sources"]["whatsapp"] == "done" else None

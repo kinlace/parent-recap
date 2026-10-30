@@ -112,6 +112,7 @@ def run_weekend_picks(harness, monkeypatch, language: str, candidates: list[Cand
     harness.config["summary_language"] = language
     harness.config["weekend_events"] = {**harness.config.get("weekend_events", {}), "enabled": True}
     harness.authorize_google_calendar()
+    harness.store_gateway_key()
     monkeypatch.setattr(weekend_pipeline.we, "collect", lambda cfg: candidates or [candidate()])
     assert weekend_pipeline.run(Config.model_validate(harness.config), dry_run=dry_run) == 0
 

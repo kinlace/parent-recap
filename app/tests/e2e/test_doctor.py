@@ -484,12 +484,13 @@ class GmailImap(GmailFolders):
 
     def __init__(self) -> None:
         self.searches: list[tuple] = []
+        self.logins: list[tuple] = []
 
     def __call__(self, *_a, **_k) -> "GmailImap":
         return self
 
-    def login(self, *_a) -> None:
-        pass
+    def login(self, *a) -> None:
+        self.logins.append(a)
 
     def search(self, *args) -> tuple[str, list[bytes]]:
         self.searching()
@@ -509,28 +510,14 @@ def gmail_with_no_sender(harness, nothing_loaded, monkeypatch) -> GmailImap:
     return imap
 
 
-def gmail_line(out: str) -> str:
-    [line] = [l for l in out.splitlines() if "Gmail:" in l]
-    return line
-
-
-def test_doctor_is_ok_with_a_gmail_that_only_sends_the_brief_beside_another_source(
-        harness, gmail_with_no_sender, monkeypatch, capsys):
-    harness.config["wilma"]["enabled"] = True
+@pytest.mark.parametrize("another_source", [True, False])
+def test_doctor_leaves_a_gmail_with_no_sender_alone(harness, gmail_with_no_sender, capsys,
+                                                    another_source):
+    # It isn't read, and it sends nothing either: the gateway sends the Brief (ADR 0032).
+    harness.config["wilma"]["enabled"] = another_source
     wilma_cli_listing(harness, {"kids": [{"name": "Mia"}]})
 
     harness.cli("doctor", "--skip-llm")
 
-    line = gmail_line(capsys.readouterr().out)
-    assert line.startswith(ops.OK.strip())
-    assert "parent@example.com signed in" in line and "only sends the Brief" in line
-    assert gmail_with_no_sender.searches == []  # never the whole inbox
-
-
-def test_doctor_fails_a_gmail_with_no_sender_and_no_other_source(harness, gmail_with_no_sender,
-                                                                 capsys):
-    harness.cli("doctor", "--skip-llm")
-
-    line = gmail_line(capsys.readouterr().out)
-    assert line.startswith(ops.FAIL.strip()) and "the sender allowlist is empty" in line
-    assert gmail_with_no_sender.searches == []
+    assert "Gmail:" not in capsys.readouterr().out
+    assert gmail_with_no_sender.logins == [] and gmail_with_no_sender.searches == []

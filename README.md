@@ -20,8 +20,9 @@ No computer that stays on? Ask the maintainers to host Parent Recap for you. The
 - A Mac with macOS 13.5 (Ventura) or newer: on an older macOS the install stops and asks you to update macOS or use another computer
 - A Mac that is on or asleep around 9 pm (the program wakes it up on schedule). A Mac with Apple Silicon (M1 or later) is recommended. An Intel Mac works for now, on a best-effort basis
 - Someone logged in to that Mac in the evening, even with the screen locked. The evening job only runs while you're logged in, and after a restart (a macOS update, a power cut) no Brief goes out until someone logs in again; an SSH login doesn't count. Log in once after each restart, or turn on automatic login: "No Brief after the Mac restarted" in [troubleshooting](docs/troubleshooting.md) says what that means for security
+- A Gateway Key from the Parent Recap team, which comes with your invitation. Every Brief is sent with it from Parent Recap's own address, `brief@parentrecap.com`, to any mailbox
 - Either a Claude Pro or Max subscription with Claude Code installed, or a ChatGPT account on any plan, Free included, with the ChatGPT desktop app installed. Install Claude Code with its [native installer](https://code.claude.com/docs/en/setup), which keeps it up to date by itself: paste `curl -fsSL https://claude.ai/install.sh | bash` into Terminal
-- Optional: a Gmail account with two-step verification turned on. It's needed to read mail from the school and clubs, or to send the Brief from your own address. Without it, Parent Recap sends the Brief itself from `brief@parentrecap.com`, which needs a Gateway Key from the Parent Recap team
+- Optional: a Gmail account with two-step verification turned on, only if mail from the school and clubs arrives there. Parent Recap only reads it, from the senders you tick, and never sends from it
 - Optional: a Wilma parent account, WhatsApp on your phone, a MyClub account
 
 ## Install

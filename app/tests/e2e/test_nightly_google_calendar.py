@@ -10,9 +10,10 @@ from zoneinfo import ZoneInfo
 import pytest
 import time_machine
 
-from conftest import NOW, TZ, msg, myclub_event
+from conftest import NOW, TZ, msg, myclub_event, without_unread_note
 
 from family_brief import sources
+from family_brief.gateway import GatewayError
 from family_brief.collectors.base import CalendarEvent, Collected
 from nights import archived_summary, caught_up_last_night, normal_night
 
@@ -139,7 +140,7 @@ def test_a_clash_with_a_busy_block_is_cited_without_the_events_own_id(harness):
 
 def test_google_mode_undelivered_night_reworded_is_not_written_twice(harness):
     google_mode(harness)
-    harness.email_error = OSError("SMTP connection refused")
+    harness.email_error = GatewayError("couldn't reach the gateway at gateway.parentrecap.com (ConnectionError)")
     assert harness.run() == 0
     assert len(harness.calendar.inserted) == 3
 
@@ -242,7 +243,7 @@ def google_mode(h, *, authorized: bool = True, error: Exception | None = None) -
 
 def assert_ics_fallback(email, note: str) -> None:
     """The Brief warns, says the events are attached, and attaches them filtered as in .ics mode."""
-    assert email.text.endswith("\n\n" + note + ICS_FALLBACK)
+    assert without_unread_note(email.text).endswith("\n\n" + note + ICS_FALLBACK)
     assert note + ICS_FALLBACK in email.html
     [(name, payload, mime)] = email.attachments
     assert (name, mime) == ("parent-recap-2026-09-27.ics", "text/calendar")
@@ -337,7 +338,7 @@ def test_google_mode_fallback_includes_myclub_when_configured(harness):
 def test_google_mode_fallback_retries_after_failed_email(harness):
     google_mode(harness, authorized=False)
     caught_up_last_night(harness)
-    harness.email_error = OSError("SMTP connection refused")
+    harness.email_error = GatewayError("couldn't reach the gateway at gateway.parentrecap.com (ConnectionError)")
 
     assert harness.run() == 0
 

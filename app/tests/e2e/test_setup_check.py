@@ -393,10 +393,12 @@ def test_a_pilot_household_keeps_the_label_it_has(harness, page, health):
 
 
 def signed_in(harness, ai, monkeypatch) -> None:
-    """Gmail and Claude as the health check meets them for real, both working."""
+    """Gmail, Claude and the gateway that sends the Brief as the health check meets them for real,
+    all working."""
     ai("claude")
     harness.secrets["claude-oauth-token"] = "sk-ant-oat01-token"
     harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
+    harness.store_gateway_key()
     monkeypatch.setattr(imaplib, "IMAP4_SSL", HeaderImap(SENDERS))
 
 
@@ -424,9 +426,12 @@ def skip_at_check(url: str, body: Any) -> Response:
 def break_source(harness, monkeypatch, source: str) -> dict[str, Any]:
     """The Source `source` connected, at the check step, with its check failing for real, and
     the others' checks working; what the check page confirms."""
-    harness.config["wilma"]["enabled"] = source == "wilma"
+    harness.config["wilma"]["enabled"] = source in ("wilma", "gmail")  # Gmail's leaves Wilma's news
     at_the_check_step(harness)
     kids = [{"name": "Mia", "everyday_name": "Mia"}, {"name": "Leo", "everyday_name": "Leo"}]
+    if source == "gmail":  # its App Password was deleted; Wilma, signed in, brings the news
+        harness.source_fakes["wilma"].set_up()
+        del harness.secrets["gmail-imap-parent@example.com"]
     if source == "wilma":  # its password changed
         harness.source_fakes["wilma"].answers[("kids", "list")] = (1, {"error": "unauthorized"})
     if source == "myclub":  # Mia's link doesn't open any more
@@ -438,7 +443,7 @@ def break_source(harness, monkeypatch, source: str) -> dict[str, Any]:
 
 
 @pytest.mark.macos
-@pytest.mark.parametrize("source", ["wilma", "myclub"])
+@pytest.mark.parametrize("source", ["gmail", "wilma", "myclub"])
 def test_a_source_whose_check_fails_can_be_skipped_and_the_health_check_then_passes(
         harness, page, ai, monkeypatch, source):
     signed_in(harness, ai, monkeypatch)
@@ -460,13 +465,13 @@ def test_a_source_whose_check_fails_can_be_skipped_and_the_health_check_then_pas
     assert out["progress"]["phase"] == "first-brief"
     assert source not in [c["check"] for c in out["checks"]]
     # Turned off for now, as Connect's Skip does: opened from Connect's list, it comes back.
-    assert source not in Config.load(config_file(harness)).other_sources()
+    assert source not in Config.load(config_file(harness)).default_sources()
 
 
-def test_a_skip_at_check_is_refused_for_gmail_elsewhere_and_while_checking(harness, page, health):
+def test_a_skip_at_check_is_refused_for_the_ai_elsewhere_and_while_checking(harness, page, health):
     at_the_check_step(harness)
 
-    for body in [{"source": "gmail"}, {"source": "ai"}, {"source": "nothing"},
+    for body in [{"source": "ai"}, {"source": "nothing"},
                  {}, {"x": 1}, {"source": "wilma", "x": 1}]:
         assert skip_at_check(page.url, body).status == 400, body
     health.go.clear()

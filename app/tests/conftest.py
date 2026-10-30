@@ -34,7 +34,7 @@ import pytest
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli, feedback, tools
+from family_brief import __main__ as cli, feedback, gateway, tools
 from family_brief.collectors.base import CalendarEvent, Message
 from family_brief.llm import retry
 from family_brief.system import profile, profile_macos, secrets
@@ -48,6 +48,8 @@ from goldens import Goldens
 # (`from test_source_failures import ...`), so every layer's folder is on the path, whichever runs.
 LAYERS = ("unit", "integration", "e2e", "adapters", "scripts")
 sys.path += [str(Path(__file__).parent / layer) for layer in LAYERS]
+# The Gateway Key the maintainers gave the Household, which every Brief is sent with (ADR 0032).
+GATEWAY_KEY = "sk-bf-fake-gateway-key"
 TZ = "Europe/Helsinki"
 # A Sunday evening in autumn, after the nightly launchd slot.
 NOW = datetime(2026, 9, 27, 21, 0, tzinfo=ZoneInfo(TZ))
@@ -191,6 +193,14 @@ def golden(request: pytest.FixtureRequest) -> Callable[[str, str], None]:
     return request.config.stash[_GOLDENS].check
 
 
+def without_unread_note(text: str) -> str:
+    """The Brief's text without its last paragraph, which says the address it comes from, Parent
+    Recap's own, is unread and whom to write to instead (ADR 0032)."""
+    body, last = text.rsplit("\n\n", 1)
+    assert "parent@example.com" in last, last
+    return body
+
+
 def html_for_golden(html: str) -> str:
     # The Brief's HTML is one long line; a newline per tag makes golden diffs reviewable.
     return html.replace("><", ">\n<") + "\n"
@@ -315,6 +325,9 @@ class Harness:
         self.home = home
         self._sources, self.model, self.outbox, self._system = sources, model, outbox, system
         self.processes = processes
+        # The Gateway Key setup stored, which sends every Brief (ADR 0032); None for a Household
+        # the Parent Recap team hasn't given one yet.
+        self.gateway_key: str | None = GATEWAY_KEY
         self._install(monkeypatch)
 
     config = _to("_sources", "config")
@@ -377,10 +390,16 @@ class Harness:
         return self.cli("run", *args)
 
     def set_up_sources(self) -> None:
-        """What each Source's setup leaves on the family's computer (fake_sources.py), where the
-        test hasn't put it itself. `run` does this; a test reading the Sources another way, such
-        as the setup page's preview, calls it."""
+        """What each Source's setup leaves on the family's computer (fake_sources.py), and the
+        Gateway Key the Brief is sent with, where the test hasn't put them itself. `run` does
+        this; a test reading the Sources another way, such as the setup page's preview, calls it."""
         self._sources.set_up()
+        self.store_gateway_key()
+
+    def store_gateway_key(self) -> None:
+        """The Gateway Key setup stored, unless the test has put one or there's none to store."""
+        if self.gateway_key is not None:
+            self.secrets.setdefault(gateway.ACCOUNT, self.gateway_key)
 
     def cli(self, *args: str) -> int:
         cfg_path = self.home / ".family" / "config.yaml"

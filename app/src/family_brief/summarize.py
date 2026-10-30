@@ -151,7 +151,7 @@ def third_parties(cfg: Config, messages: list[dict[str, Any]]) -> list[str]:
     The Household's Recipients are left out: an email from one of their addresses, and their own
     WhatsApp posts (ADR 0013). Calendar attendees aren't in the events the program reads."""
     own = {a.casefold() for a in (*(r.address for r in (*cfg.email.to, *cfg.email.weekend_to)),
-                                  cfg.gmail.username, cfg.email.from_addr) if a}
+                                  cfg.gmail.username) if a}
     names = []
     for m in messages:
         sender = m.get("sender") or ""

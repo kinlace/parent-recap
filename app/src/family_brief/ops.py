@@ -28,21 +28,15 @@ _STATUS_OF = {"ok": OK, "warn": WARN, "fail": FAIL}  # by llm.Finding's level
 DEFAULT_CONFIG = Path.home() / ".family" / "config.yaml"
 
 
-def _sources_after_the_ai() -> list[sources.Source]:
-    """doctor checks Gmail first, since it sends the Brief, then the AI, then the other Sources in
-    the setup page's order."""
-    return [s for s in sources.in_connect_order() if s is not sources.GMAIL]
-
-
 # Each of doctor's checks: its key, which the setup page goes by and stays the same whatever the
 # check's words, and the item doctor prints, with `{}` for the subject it's about. A Source's are
 # in its record.
 CHECK_ITEMS = (
     ("config", "Config file"), ("recipients", "Recipients"), ("language", "Language {}"),
-    *sources.GMAIL.doctor_items().items(), ("gateway-sends", "Brief sending"),
+    ("gateway-sends", "Brief sending"),
     ("claude", "Claude"), ("codex", "Codex"),
     ("gateway", "AI gateway"), ("gateway-key", "Gateway Key"),
-    *(item for s in sources.ALL if s is not sources.GMAIL for item in s.doctor_items().items()),
+    *(item for s in sources.ALL for item in s.doctor_items().items()),
     ("whatsapp-library", "WhatsApp library"),
     ("calendar", "Calendar"), ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"),
     ("schedule", "Schedule"), ("last-run", "Last run"),
@@ -144,12 +138,13 @@ def health_checks(config: str | None, skip_llm: bool = False, show: bool = False
         ready, detail = languages.describe(cfg, language, languages.TABLES if weekend else (languages.BRIEF,))
         add(OK if ready else WARN, "language", detail, subject=language)
 
-    _check_source(sources.GMAIL, cfg, add, config)
-    if cfg.email.sender == "gateway":
+    # The Brief is sent through the gateway, whatever the AI (ADR 0032), then the AI writes it,
+    # then the Sources it's written from.
+    if cfg.email.enabled:
         _check_gateway_sends(cfg, add)
     if not skip_llm:
         _check_llm(cfg, add)
-    for source in _sources_after_the_ai():
+    for source in sources.in_connect_order():
         _check_source(source, cfg, add, config)
     if sources.WHATSAPP.available():
         _check_whatsapp_library(add)
@@ -173,9 +168,9 @@ def _check_source(source: sources.Source, cfg: Config, add, config: str | None) 
 
 
 def check_gmail(cfg: Config, add, config: str | None = None) -> None:
-    """Gmail, which sends the Brief unless the gateway does, so is checked whether or not it's
-    read. A Gmail the gateway sends for and nothing is read from isn't used, so isn't checked."""
-    if cfg.email.sender == "gateway" and not sources.GMAIL.connected(cfg):
+    """Gmail, when it's read: it never sends the Brief (ADR 0032), so a Gmail with no sender
+    ticked isn't used and isn't checked."""
+    if not sources.GMAIL.connected(cfg):
         return
     from .collectors import gmail
     username = gmail.username_of(cfg)
@@ -199,14 +194,6 @@ def check_gmail(cfg: Config, add, config: str | None = None) -> None:
             "(store one with parent-recap setup gmail)")
         return
     try:
-        if cfg.gmail_only_sends():
-            gmail.sign_in(cfg)
-            add(OK, "gmail", f"{username} signed in; no sender is ticked, so Gmail only sends the "
-                "Brief, and the other Sources bring the news")
-            return
-        if not (cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders):
-            add(FAIL, "gmail", "the sender allowlist is empty (allowlist_domains / allowlist_senders)")
-            return
         n = gmail.count_matching(cfg)
         # Gmail's search only filters by whole days; run() trims to lookback_hours afterwards.
         days = -(-cfg.gmail.lookback_hours // 24)
@@ -218,14 +205,17 @@ def check_gmail(cfg: Config, add, config: str | None = None) -> None:
 
 
 def _check_gateway_sends(cfg: Config, add) -> None:
-    """The gateway's Brief relay, when it sends the Brief (ADR 0028): whether it answers and takes
-    the Gateway Key, from one request it refuses once it has checked the key, so nothing is sent."""
+    """The gateway's Brief relay, which sends every Brief (ADR 0028, ADR 0032): whether it answers
+    and takes the Gateway Key, from one request it refuses once it has checked the key, so nothing
+    is sent. A Household that sent through its own Gmail before has no key until the Parent Recap
+    team gives it one: `no-key`, which the setup page says as its own."""
     from . import gateway as api
     url = cfg.llm.gateway_url
     try:
         key = api.key()
     except api.NoKey as e:
-        add(FAIL, "gateway-sends", f"{e}, so the evening Brief can't be sent")
+        add(FAIL, "gateway-sends", f"{e}, so the evening Brief can't be sent: Parent Recap sends "
+            "every Brief from its own address", reason="no-key" if e.missing else None)
         return
     outcome, detail = api.send_test(url, key)
     if outcome == api.WORKS:

@@ -124,6 +124,7 @@ def healthy(harness, offline, monkeypatch) -> None:
     fake_node.install_baileys(fake_node.baileys_folder(harness.home))
     harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
     harness.secrets["claude-oauth-token"] = CLAUDE_TOKEN
+    harness.store_gateway_key()
     which = shutil.which
     monkeypatch.setattr(shutil, "which", lambda cmd, *a, **k: f"/usr/local/bin/{cmd}"
                         if cmd == "claude" else which(cmd, *a, **k))
@@ -203,7 +204,7 @@ def test_no_brief_has_reached_the_setup_parent_before_the_first_one(harness, off
 
 
 def test_a_brief_that_couldnt_be_sent_hasnt_reached_anyone(harness, offline, capsys):
-    harness.email_error = OSError("SMTP connection refused")
+    harness.email_error = gateway.GatewayError("couldn't reach the gateway at gateway.parentrecap.com")
     send_a_brief(harness)
     capsys.readouterr()
 
@@ -343,11 +344,9 @@ def test_setup_is_done_when_all_five_outcomes_are_true(harness, set_up, capsys):
     assert all(o["ok"] and o["reason"] for o in report["outcomes"])
 
 
-def test_setup_is_done_without_gmail_when_parent_recap_sends_the_brief(harness, set_up, capsys):
-    # ADR 0028: the gateway sends, nothing reads mail, and there's no Gmail or App Password.
+def test_setup_is_done_without_gmail_when_it_reads_no_mail(harness, set_up, capsys):
+    # ADR 0032: the gateway sends, nothing reads mail, and there's no Gmail or App Password.
     harness.config["gmail"] = {}
-    harness.config["email"]["sender"] = "gateway"
-    harness.secrets[gateway.ACCOUNT] = "sk-bf-fake-gateway-key"
     del harness.secrets["gmail-imap-parent@example.com"]
     capsys.readouterr()
 

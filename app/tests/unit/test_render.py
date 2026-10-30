@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from conftest import NOW, TZ, html_for_golden, ics_for_golden
+from conftest import NOW, TZ, html_for_golden, ics_for_golden, without_unread_note
 from fake_system import LINUX
 from nights import ENGLISH_REPLY, normal_night
 
@@ -48,12 +48,13 @@ def the_normal_night(language: str) -> tuple[dict, dict[str, str]]:
 
 
 def brief_of(brief: Brief, t: BriefText, **more) -> render.Night:
-    """Tonight's Night for `brief`, its model-written events attached as .ics, as in ics mode."""
+    """Tonight's Night for `brief`, its model-written events attached as .ics, as in ics mode, from
+    Parent Recap's own address, which says to write to the setup parent (ADR 0032)."""
     events = extract_calendar_events(brief, TZ, t.untitled)
     created = [{"title": e.title, "start": e.start_iso(), "kid": e.kid} for e in events]
     return render.Night(**{"date": DATE, "tz": TZ, "t": t, "assistant": "Claude", "brief": brief,
                            "coverage": COVERAGE, "created": created, "ics_events": events, "stamp": STAMP,
-                           **more})
+                           "write_to": PARENT, **more})
 
 
 def mails(out: list[render.Outgoing]) -> list[render.Mail]:
@@ -122,7 +123,7 @@ def test_a_linked_device_that_needs_a_new_pairing_is_not_read_since_then(languag
 
     [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
 
-    assert mail.text.endswith("\n" + line)
+    assert without_unread_note(mail.text).endswith("\n" + line)
 
 
 @pytest.mark.parametrize("language, lines", [
@@ -142,7 +143,7 @@ def test_the_hosted_version_s_coverage_line_says_whatsapp_isn_t_read_there(syste
 
     [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
 
-    assert mail.text.endswith("\n" + lines)
+    assert without_unread_note(mail.text).endswith("\n" + lines)
     assert html.escape(lines.splitlines()[-1]) in mail.html
 
 
@@ -153,7 +154,8 @@ def test_one_never_paired_since_an_unknown_time_is_not_read_for_that_reason():
 
     [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
 
-    assert mail.text.endswith("\n⚠️ WhatsApp not read (needs a new pairing). Tonight's Brief may be incomplete.")
+    assert without_unread_note(mail.text).endswith(
+        "\n⚠️ WhatsApp not read (needs a new pairing). Tonight's Brief may be incomplete.")
 
 
 def test_a_night_nothing_could_be_read_says_to_pair_again():
@@ -205,7 +207,7 @@ NOTHING_READ = {
 def test_night_no_source_could_be_read(golden, language):
     t = TEXT[language]
 
-    [mail] = mails(render.nothing_read(NOTHING_READ, DATE, "Claude", t, [(t, [PARENT, PARTNER])], None, []))
+    [mail] = mails(render.nothing_read(NOTHING_READ, DATE, "Claude", t, [(t, [PARENT, PARTNER])], PARENT, []))
 
     assert (mail.subject, mail.to) == ("Parent Recap · 2026-09-27", [PARENT, PARTNER])
     check(golden, f"nothing_read.{language}", mail)
@@ -214,7 +216,7 @@ def test_night_no_source_could_be_read(golden, language):
 def test_night_no_source_could_be_read_reaches_imessage_in_the_brief_language():
     zh, en = TEXT["zh"], TEXT["en"]
 
-    out = render.nothing_read(NOTHING_READ, DATE, "Claude", zh, [(en, [PARTNER])], None, ["+358401234567"])
+    out = render.nothing_read(NOTHING_READ, DATE, "Claude", zh, [(en, [PARTNER])], PARENT, ["+358401234567"])
 
     [mail, imessage] = out
     assert mail.to == [PARTNER] and "No Source could be read tonight" in mail.text
@@ -258,4 +260,5 @@ def test_the_imessage_is_the_plain_text_brief_in_the_brief_language(golden):
     [imessage] = render.brief(night, [], ["+358401234567"])
 
     assert isinstance(imessage, render.IMessage) and imessage.to == ["+358401234567"]
-    golden("normal_night.zh.txt", imessage.text)
+    # The email's text, but for its last line, which says the address it came from is unread.
+    golden("normal_night.zh.imessage.txt", imessage.text)

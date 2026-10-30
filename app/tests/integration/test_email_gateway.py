@@ -1,5 +1,5 @@
-"""The Brief sent through the maintainers' gateway (ADR 0028): the email Action's second transport,
-picked by `email.sender`, and doctor's check of it. The gateway's `POST /v1/brief` is a fake one
+"""The Brief sent through the maintainers' gateway (ADR 0028): the email Action's only transport
+since ADR 0032, and doctor's check of it. The gateway's `POST /v1/brief` is a fake one
 step further out, at `requests.post`, answering as ops/gateway/brief_relay.py does; the secrets
 store is the `system` fixture's. Assertions are on the request the relay is sent and on what each
 of its refusals is reported as."""
@@ -53,10 +53,10 @@ def relay(system, monkeypatch) -> Relay:
     return relay
 
 
-def household(sender: str = "gateway", **email: Any) -> Config:
+def household(**email: Any) -> Config:
     return Config.model_validate({"kids": [{"name": "Mia"}], "gmail": {"username": "parent@gmail.com"},
                                   "llm": {"backend": "claude", "gateway_url": URL},
-                                  "email": {"sender": sender, **email}})
+                                  "email": email})
 
 
 def send(cfg: Config | None = None, **kwargs: Any) -> None:
@@ -64,11 +64,7 @@ def send(cfg: Config | None = None, **kwargs: Any) -> None:
     REAL_SEND(cfg or household(), **{**args, **kwargs})
 
 
-# ── the config's choice
-
-
-def test_gmail_sends_unless_the_config_says_the_gateway_does():
-    assert Config.model_validate({"kids": []}).email.sender == "gmail"
+# ── the request
 
 
 def test_the_gateway_is_sent_the_brief_with_the_key_in_its_header(relay):
@@ -89,23 +85,17 @@ def test_without_html_or_attachments_neither_is_sent(relay):
     assert relay.requests[0]["json"] == {"to": RECIPIENTS, "subject": SUBJECT, "text": TEXT}
 
 
-def test_the_from_address_and_the_gmail_app_password_are_not_used_when_the_gateway_sends(relay, system):
-    # No App Password is stored for either address: the gateway's send needs none.
-    send(household(from_addr="someone@gmail.com"))
+@pytest.mark.parametrize("before", [{"sender": "gmail"}, {"sender": "gmail", "from_addr": "someone@gmail.com"},
+                                    {"sender": "gateway"}])
+def test_a_config_from_before_every_brief_went_through_the_gateway_sends_through_it(relay, system, before):
+    # ADR 0032: the Household's Gmail sends nothing now, so neither its App Password nor the
+    # address it sent from is used.
+    send(household(**before))
 
+    [request] = relay.requests
+    assert request["url"] == f"{URL}/v1/brief" and request["headers"] == {"x-api-key": KEY}
     assert "someone@gmail.com" not in str(relay.requests)
     assert set(system.secrets) == {api.ACCOUNT}
-
-
-def test_gmail_sends_through_smtp_and_the_gateway_is_not_asked(relay, monkeypatch):
-    sent: list[tuple] = []
-    monkeypatch.setattr(email_action, "gmail", lambda *a, **k: sent.append((a, k)))
-
-    send(household("gmail", from_addr="parent@example.com"))
-
-    assert relay.requests == []
-    [(args, kwargs)] = sent
-    assert args[0] == "parent@example.com"
 
 
 def test_nobody_to_send_to_sends_nothing(relay):
@@ -117,11 +107,13 @@ def test_nobody_to_send_to_sends_nothing(relay):
 # ── refusals, reported as a failed model call is
 
 
-def test_without_a_key_nothing_is_sent_and_it_says_how_to_store_one(relay, system):
+def test_without_a_key_nothing_is_sent_and_it_says_to_ask_the_team_for_one(relay, system):
     del system.secrets[api.ACCOUNT]
 
-    with pytest.raises(api.NoKey, match="parent-recap setup gateway"):
+    with pytest.raises(api.NoKey, match="ask the Parent Recap team for one, then store it with "
+                                        "parent-recap setup gateway") as e:
         send()
+    assert e.value.missing
     assert relay.requests == []
 
 

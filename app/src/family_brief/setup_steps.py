@@ -231,7 +231,7 @@ def cmd_gateway(args: argparse.Namespace) -> int:
     warning = _warn_if_unreachable()
     try:
         typed = secret_dialog.ask(
-            f"{warning}Paste the Gateway Key for the nightly Brief.\n\nIt's the key starting with "
+            f"{warning}Paste the Gateway Key for the evening Brief.\n\nIt's the key starting with "
             "sk- that the Parent Recap maintainers sent you. Copy all of it and paste it here.")
     except secret_dialog.Cancelled:
         return report("cancelled", "The family closed the dialog. Run this again when they're "
@@ -265,12 +265,12 @@ def cmd_gateway(args: argparse.Namespace) -> int:
 
 def _gateway_use(config: str | None) -> tuple[str, bool]:
     """The gateway's address, and whether the Household uses it only to send the Brief, its AI
-    being another (ADR 0028)."""
+    being another (ADR 0028, ADR 0032)."""
     try:
         cfg = Config.load(config)
     except Exception:  # no config yet: setup can store the key before writing it
         return LLMConfig().gateway_url, False
-    return cfg.llm.gateway_url, cfg.email.sender == "gateway" and cfg.llm.backend != "gateway"
+    return cfg.llm.gateway_url, cfg.llm.backend != "gateway"
 
 
 # ---------------------------------------------------------------- myclub
