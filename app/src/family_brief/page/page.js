@@ -466,6 +466,10 @@ function setUpGmail() {
   for (const id of ["gmail-brief-address", "gmail-brief-partner-address"]) {
     document.getElementById(id).addEventListener("input", showJunk);
   }
+  document.getElementById("gmail-brief-partner-add").addEventListener("click", () => {
+    showBriefPartner(true);
+    document.getElementById("gmail-brief-partner-address").focus();
+  });
   document.getElementById("gmail-brief-form").addEventListener("submit", saveRecipients);
   document.getElementById("gmail-brief-change").addEventListener("click", () => {
     showSource(null);
@@ -486,15 +490,21 @@ function prepareGmail() {
   const [parent, other] = page.gmail.to;
   document.getElementById("gmail-brief-address").value = parent ? parent.address : "";
   document.getElementById("gmail-brief-language").value = offered(parent?.language) || page.language;
-  const partnerShown = partner.add || Boolean(other);
-  document.getElementById("gmail-brief-partner").hidden = !partnerShown;
-  const partnerAddress = document.getElementById("gmail-brief-partner-address");
-  partnerAddress.required = partnerShown;
-  partnerAddress.value = other ? other.address : partner.add ? partner.address : "";
+  showBriefPartner(partner.add || Boolean(other));
+  document.getElementById("gmail-brief-partner-address").value =
+    other ? other.address : partner.add ? partner.address : "";
   document.getElementById("gmail-brief-partner-language").value =
     offered(other?.language) || partner.language;
   gmailStep.changing = false;
   showGmailParts();
+}
+
+// The partner's fields, as after Welcome's "Me and my partner", or else the link that shows them,
+// for a parent who said "Only me" there (#638).
+function showBriefPartner(shown) {
+  document.getElementById("gmail-brief-partner").hidden = !shown;
+  document.getElementById("gmail-brief-partner-address").required = shown;
+  document.getElementById("gmail-brief-partner-add-part").hidden = shown;
 }
 
 // A Recipient's language, when the page offers it: any other was saved in the chat.
@@ -509,6 +519,8 @@ function showGmailParts() {
   document.getElementById("gmail-own").hidden = !saved;
   setText(document.getElementById("gmail-brief-to"), "gmail.brief.to",
     { addresses: page.gmail.to.map((r) => r.address).join(", ") });
+  // More than two stay the chat's (manage), or the team's where there's none: as Finish says it.
+  setText(document.getElementById("gmail-brief-more"), "gmail.brief.more." + page.welcome.ai);
   // The setup parent's own Gmail is the likeliest one to read.
   const parent = page.gmail.to[0]?.address || "";
   const field = document.getElementById("gmail-address");
@@ -556,16 +568,19 @@ async function saveRecipients(event) {
   const button = event.submitter;
   button.disabled = true;
   const recipients = briefRecipients();
+  // Those after the first two were added in the chat, or by hand, and stay as they are.
+  const kept = page.gmail.to.slice(2);
+  const sent = [...recipients.map(({ address, language }) => ({ address, language })), ...kept];
   const keyField = document.getElementById("gmail-brief-key");
   const pasted = asksSendKey() && keyField.value.trim() !== "";
   try {
     const out = await post("api/gmail/recipients", {
-      recipients: recipients.map(({ address, language }) => ({ address, language })),
+      recipients: sent,
       ...(pasted ? { key: keyField.value } : {}),
     });
     // The key stays in the field only when it wasn't tried, or the same key can be tried again.
     if (!["no-address", "same-address", ...KEY_AGAIN].includes(out.result)) keyField.value = "";
-    const seen = new Set();
+    const seen = new Set(kept.map(({ address }) => address.toLowerCase()));
     for (const { field, address } of recipients) {
       const key = address.trim().toLowerCase();
       field.toggleAttribute("aria-invalid", (out.result === "no-address" && !field.checkValidity()) ||
@@ -574,7 +589,7 @@ async function saveRecipients(event) {
     }
     if (out.result === "saved") {
       page.progress = out.progress;
-      page.gmail.to = recipients.map(({ address, language }) =>
+      page.gmail.to = sent.map(({ address, language }) =>
         ({ address: address.trim().toLowerCase(), language }));
       gmailStep.changing = false;
       gmailStep.confirm = out.confirm || null;
