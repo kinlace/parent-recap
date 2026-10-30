@@ -266,7 +266,9 @@ def test_a_key_the_gateway_cannot_make_on_an_update_says_what_to_do(wilma_only, 
 
     for said in (line, caplog.text):
         assert "the gateway couldn't make one just now" in said
-        assert "`parent-recap setup confirm`" in said and "next evening" in said
+        assert "`parent-recap setup confirm` asks now)" in said and "next evening" in said
+    assert line.endswith("from its own address (Parent Recap asks again at the next evening run; "
+                         "`parent-recap setup confirm` asks now)")
     assert wilma_only.sent == [] and api.ACCOUNT not in wilma_only.secrets
 
     wilma_only.key_answer = None

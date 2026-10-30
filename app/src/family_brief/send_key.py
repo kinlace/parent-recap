@@ -33,7 +33,7 @@ class Status:
     mailed: list[str] = field(default_factory=list)      # just sent a confirmation link
     requested: bool = False                              # the key was just made
     error: str | None = None
-    again: bool = False                                  # none could be had: asked again later
+    asks_again: bool = False                             # none could be had: see ASK_AGAIN
 
     @property
     def anyone(self) -> bool:
@@ -79,18 +79,23 @@ def ensure(cfg: Config, resend: bool = False) -> Status:
     return _status(addresses, got)
 
 
+# What to do when no key could be had: the evening run, and doctor, ask for one again each time.
+ASK_AGAIN = ("(Parent Recap asks again at the next evening run; `parent-recap setup confirm` asks "
+             "now)")
+
+
 def _request(url: str, to: list[dict[str, str]]) -> Status:
     addresses = [r["address"] for r in to]
     try:
         got = gateway.request_send_key(url, to)
     except (gateway.GatewayError, TimeoutError) as e:
         return Status(NO_KEY, addresses, error=f"no Gateway Key in the {secrets.STORE}, and the "
-                      f"gateway couldn't make one just now: {e}", again=True)
+                      f"gateway couldn't make one just now: {e}", asks_again=True)
     try:
         secrets.put(gateway.ACCOUNT, got.key or "")
     except secrets.SecretsError as e:
         return Status(NO_KEY, addresses, error=f"the gateway made a Gateway Key, but the "
-                      f"{secrets.STORE} didn't store it: {e}", again=True)
+                      f"{secrets.STORE} didn't store it: {e}", asks_again=True)
     install_record.add("keychain", gateway.ACCOUNT)
     status = _status(addresses, got)
     status.requested = True
@@ -105,9 +110,7 @@ def _status(addresses: list[str], got: gateway.Confirmation) -> Status:
 def describe(status: Status) -> str:
     """What doctor and the evening run's log say of a Status that isn't CONFIRMED."""
     if status.result in (NO_KEY, FAILED):
-        # A key the gateway couldn't make, or that wasn't stored, is asked for again each time.
-        again = (" (Parent Recap asks again at the next evening run; `parent-recap setup confirm` "
-                 "asks now)") if status.again else ""
+        again = f" {ASK_AGAIN}" if status.asks_again else ""
         return f"{status.error or status.result}{again}"
     asked = "Parent Recap asked the gateway for a Gateway Key, and " if status.requested else ""
     waiting = ", ".join(status.unconfirmed)
