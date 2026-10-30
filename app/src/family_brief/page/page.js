@@ -2693,6 +2693,39 @@ async function start() {
   renderChat();
   setUpReasons();
   show();
+  watchServer();
+}
+
+// ── Whether the page's program is still there. Closing its Terminal or PowerShell window stops
+// it, and a step where the family reads, types or waits sends nothing, so the page asks every few
+// seconds while it's in view (#601). Asking isn't use: the server still stops when idle.
+const ALIVE_MS = 3000;
+const alive = { timer: null, gone: false };
+
+function watchServer() {
+  clearTimeout(alive.timer);
+  if (alive.gone || page.finished || document.hidden) return;
+  alive.timer = setTimeout(async () => {
+    try {
+      await fetch("api/alive", { cache: "no-store" });
+    } catch (e) {
+      // After Finish, the server stopped on purpose and the page already says so.
+      if (e instanceof TypeError && !page.finished) return serverGone();
+    }
+    watchServer();
+  }, ALIVE_MS);
+}
+
+document.addEventListener("visibilitychange", watchServer);
+
+// The program has gone: the page says to start it again, and only Copy still works.
+function serverGone() {
+  alive.gone = true;
+  showError("error.closed");
+  for (const el of document.querySelectorAll("button, input, select, textarea")) {
+    if (el.dataset.text !== "copy") el.disabled = true;
+  }
+  document.getElementById("chat").hidden = true;
 }
 
 // Without the text table there's no language yet, so this says it in all three.

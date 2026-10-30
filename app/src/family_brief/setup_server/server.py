@@ -41,6 +41,7 @@ FILES = {  # what the page is made of, by the path under its address
 }
 FAVICON = "/favicon.ico"  # which the browser asks for at the root, outside the code, on every load
 STATE = "api/state"  # the page's state, which every phase adds its part to
+ALIVE = "api/alive"  # what the page asks every few seconds to see its program is still there
 MAX_BODY = 64 * 1024
 HEADERS = {
     "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; "
@@ -196,6 +197,8 @@ class _Handler(BaseHTTPRequestHandler):
         path = self._own_path(setup, method)
         if path is None:
             return self._send(HTTPStatus.FORBIDDEN, b"Forbidden\n", "text/plain; charset=utf-8")
+        if method == "GET" and path == "/" + ALIVE:  # not use: an open tab doesn't keep it running
+            return self._send(HTTPStatus.NO_CONTENT, b"", "text/plain; charset=utf-8")
         setup.last_request = setup.context.clock()
         if not path:  # the address without its final slash, which the page's links need
             return self._send(HTTPStatus.MOVED_PERMANENTLY, b"", "text/plain; charset=utf-8",

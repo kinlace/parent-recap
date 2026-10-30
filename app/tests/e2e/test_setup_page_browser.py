@@ -665,6 +665,23 @@ def test_the_wilma_step_offers_the_passwords_app_only_on_a_mac(tab, on):
         expect(passwords).to_be_hidden()
 
 
+@pytest.mark.parametrize("on", ["macos", "windows"])
+def test_a_page_whose_window_was_closed_says_so_without_a_click(tab, page, on):  # noqa: F811
+    """#601: the family is reading Welcome, its AI ready, so the page sends nothing, when its
+    Terminal or PowerShell window is closed. The page says so on its own, and offers nothing that
+    can't work any more."""
+    as_on(tab, on)
+    in_english(tab)
+    gateway_ai = tab.get_by_role("radio", name=text("welcome.ai.gateway"))
+    gateway_ai.check()
+    expect(tab.get_by_text(text("ai.gateway.ready"))).to_be_visible()
+    page.stop()
+
+    expect(tab.get_by_text(text("error.closed", system=on))).to_be_visible()
+    expect(button(tab, "continue")).to_be_disabled()
+    expect(gateway_ai).to_be_disabled()
+
+
 def test_on_windows_the_page_offers_only_the_server_s_ais_in_windows_words_without_a_chat(tab):
     as_on(tab, "windows", lambda state: {**state, "ais": ["claude", "gateway"]})
     in_english(tab)
