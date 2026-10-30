@@ -27,7 +27,8 @@ def test_the_pasted_line_ends_on_the_setup_page_and_a_file_run_only_installs():
     # As get.sh on a Mac: the family pastes one line and lands on the page, served from the window.
     opened = re.search(r"if \(-not \$failed -and -not \$PSCommandPath\) \{(.*?)\n  \}", end, re.S)
     assert opened, "the page opens only after an install that worked, pasted"
-    assert "& (Join-Path $App '.venv\\Scripts\\parent-recap.exe') setup page" in opened.group(1)
+    # On the venv's Python, not pip's launcher, which Defender can block (#591).
+    assert "& (Join-Path $App '.venv\\Scripts\\python.exe') -m family_brief setup page" in opened.group(1)
     assert "Keep this PowerShell window open" in opened.group(1)
     # Run as a file, it exits with the install's result, not the last program it ran: CI runs it
     # with `&` in a PowerShell with PSReadLine loaded, as a family's window has (#374).
@@ -58,7 +59,12 @@ def test_as_install_sh_it_puts_the_command_on_the_path_once_the_program_is_recor
     assert recorded < body.index("@('-m', 'family_brief.command_path', 'install', $Target)")
     # This window's PATH is the one it opened with, so it also says the full path.
     said = body.split("is installed in $App", 1)[1].split("\n  }", 1)[0]
-    assert "new PowerShell window" in said and ".venv\\Scripts\\parent-recap.exe" in said
+    assert "new PowerShell window" in said and "'bin\\parent-recap.cmd'" in said
+    assert "parent-recap.exe" not in script_without_comments(body)
+
+
+def script_without_comments(script: str) -> str:
+    return "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("#"))
 
 
 def test_install_ps1_is_ascii_only():

@@ -313,7 +313,7 @@
 
     Write-Host "Parent Recap $version is installed in $App"
     # This window's PATH is the one it opened with, before the user's PATH had the folder.
-    Write-Host "   Command: parent-recap in a new PowerShell window; in this one: $(Join-Path $App '.venv\Scripts\parent-recap.exe')"
+    Write-Host "   Command: parent-recap in a new PowerShell window; in this one: $(Join-Path $Target 'bin\parent-recap.cmd')"
   }
 
   $failed = $false
@@ -333,6 +333,7 @@
   if (-not $failed -and -not $PSCommandPath) {
     Write-Host 'Parent Recap is installed. The setup page opens in your browser now.'
     Write-Host '   Keep this PowerShell window open until setup is done: the page runs from it.'
-    & (Join-Path $App '.venv\Scripts\parent-recap.exe') setup page
+    # The venv's Python, not pip's parent-recap.exe, which Defender can block (#591).
+    & (Join-Path $App '.venv\Scripts\python.exe') -m family_brief setup page
   }
 }

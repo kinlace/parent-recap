@@ -67,8 +67,8 @@ PROFILE = profile.Profile(
     program_folders=_program_folders,
     install_folders=_install_folders,
     command=Path("Scripts/parent-recap.exe"),
-    path_command=Path("Scripts/parent-recap.exe"),
-    # A link needs Developer Mode; the venv's launcher finds its Python by its full path.
+    path_command=Path("Scripts/python.exe"),
+    # Not pip's launcher, which Defender can block (command_path.py), and a link needs Developer Mode.
     links_command=False,
     node=Path("node.exe"),  # npm beside it, in node_modules
     node_modules=Path("node_modules"),
