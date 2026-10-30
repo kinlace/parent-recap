@@ -90,6 +90,16 @@ def test_gmail_connection_dropped_partway_brings_its_messages_back_next_night(ha
     assert payload_ids(harness, "gmail") == ["101", "102", "103", "104"]
 
 
+def test_gmail_in_chinese_is_read_from_its_all_mail(harness, gmail):
+    """Gmail names All Mail in the account's language, so it's found by its flag (#595)."""
+    harness.sources["gmail"] = gmail_messages(1, 2)
+    gmail.all_mail = "[Gmail]/&YkBnCZCuTvY-"
+
+    assert harness.run() == 0
+
+    assert payload_ids(harness, "gmail") == ["101", "102"]
+
+
 def test_gmail_unknown_charset_still_reaches_the_brief(harness, gmail):
     harness.sources["gmail"] = gmail_messages(1, 2, 3)
     gmail.connections = [{"102": email_bytes(2, charset="unknown-8bit")}]
