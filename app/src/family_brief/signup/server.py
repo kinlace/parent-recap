@@ -42,7 +42,7 @@ from urllib.parse import parse_qs
 from .. import failure, setup_myclub, setup_wilma
 from ..setup_server.first_brief import BRIEF_LOOKBACK_HOURS
 from . import page
-from .host import HostError, HouseholdHost, user_name
+from .host import HostError, HouseholdHost, program, user_name
 from .invites import LANGUAGES, HouseholdRecord, Recipient, Store
 
 log = logging.getLogger("family_brief.signup")
@@ -216,8 +216,7 @@ class Service:
                                      INSTALL_SECONDS)
         if code != 0:
             raise HostError(f"install.sh ended with {code}: {out.strip()[-300:]}")
-        program = home / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap"
-        code, out = self.host.run_as(name, [str(program), "signup", "household"],
+        code, out = self.host.run_as(name, [str(program(home)), "signup", "household"],
                                      json.dumps({**answers, "gateway_key": key}),
                                      HOUSEHOLD_SECONDS)
         said = _last_json(out)
@@ -225,7 +224,7 @@ class Service:
             raise HostError(f"signup household said {said.get('result', code)}"
                             + (f": {said['reason']}" if said.get("reason") else ""))
         # Its output isn't quoted: the run's log can name a Recipient.
-        code, _ = self.host.run_as(name, [str(program), "run", "--first-brief", "--lookback-hours",
+        code, _ = self.host.run_as(name, [str(program(home)), "run", "--first-brief", "--lookback-hours",
                                           str(BRIEF_LOOKBACK_HOURS)], "", FIRST_BRIEF_SECONDS)
         if code != 0:
             raise HostError(f"the first Brief wasn't sent: run ended with {code}")

@@ -7,7 +7,8 @@ FakeJobs), as each Linux user has its own owner-only files and systemd user mana
 as the user is one of two the service runs: the release's install.sh, which here lays out what
 the install leaves, through `installs`, and the installed `parent-recap`, which runs this
 process's program in-process with the user's HOME, stdin, secrets and jobs. Every command is in
-`commands` and nothing is faked by patching the service's modules.
+`commands` and nothing is faked by patching the service's modules. `log` keeps the order of the
+steps a removal takes, and a removed user's home goes with it.
 """
 from __future__ import annotations
 
@@ -42,9 +43,10 @@ class FakeHouseholdHost:
         self.removed: list[str] = []
         self.revoked: list[str] = []
         self.commands: list[list[str]] = []  # every command run as a user, with the user first
+        self.log: list[tuple[str, ...]] = []  # revoke_key, remove_user and run_as, in order
         self.install_exit = 0           # install.sh's exit code
-        # "create_user" or "mint_key": that step raises; "jobs": the user's systemd doesn't
-        # take the evening jobs
+        # A step's name, such as "mint_key" or "revoke_key": that step raises; "jobs": the
+        # user's systemd doesn't take the evening jobs
         self.fails: str | None = None
 
     def create_user(self, name: str) -> Path:
@@ -59,10 +61,17 @@ class FakeHouseholdHost:
             self.users[name].jobs.install_fails = "Failed to connect to bus: No medium found"
         return home
 
+    def home(self, name: str) -> Path | None:
+        assert USER.fullmatch(name), name
+        return self.users[name].home if name in self.users else None
+
     def remove_user(self, name: str) -> None:
         """As `userdel --remove`: the user's home with it, and its systemd user manager with
         its jobs."""
         self.removed.append(name)
+        self.log.append(("remove_user", name))
+        if self.fails == "remove_user":
+            raise HostError("userdel failed")
         self.users.pop(name, None)
         shutil.rmtree(self.root / name, ignore_errors=True)
 
@@ -72,12 +81,16 @@ class FakeHouseholdHost:
         self.keys[name] = f"sk-bf-{name}-{len(self.keys)}-secret"
         return self.keys[name]
 
-    def revoke_key(self, name: str) -> None:
+    def revoke_key(self, name: str) -> bool:
         self.revoked.append(name)
-        self.keys.pop(name, None)
+        self.log.append(("revoke_key", name))
+        if self.fails == "revoke_key":
+            raise HostError("the gateway's admin API couldn't be reached (ConnectionError)")
+        return self.keys.pop(name, None) is not None
 
     def run_as(self, name: str, argv: list[str], stdin: str, timeout: int) -> tuple[int, str]:
         self.commands.append([name, *argv])
+        self.log.append(("run_as", name, *argv))
         user = self.users[name]
         if argv[0] == "bash" and Path(argv[1]).name == "install.sh":
             if self.install_exit == 0:

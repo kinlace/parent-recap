@@ -1,9 +1,10 @@
 """The hosted version's sign-up (ADR 0031): `parent-recap signup serve`, the always-on service
 behind the gateway's web server that turns an Invite Link into a Hosted Household;
 `signup invite`, which mints an Invite Link (ops/gateway/invite.sh runs it as the service's user);
-`signup household`, which the service runs as a new Household's own user; and `signup status`,
+`signup household`, which the service runs as a new Household's own user; `signup status`,
 which lists every Household's last run and doctor's statuses (ops/gateway/status.sh), from
-`signup health` run as each.
+`signup health` run as each; and `signup remove`, which removes a Household with everything of it
+(ops/gateway/remove.sh).
 
 The service runs as its own user, with Parent Recap installed under it for the wilma CLI that
 checks a family's sign-in. It reads from its environment (ops/gateway/signup.env.example):
@@ -56,6 +57,11 @@ def register(sub) -> None:
                               "doctor's statuses as one line of JSON (signup status runs it)")
     health.set_defaults(func=cmd_health)
 
+    remove = steps.add_parser("remove", help="Remove a Hosted Household: its jobs, its Gateway "
+                              "Key, its user and its home (ops/gateway/remove.sh runs it)")
+    remove.add_argument("label", help="The Household's user, ph-XXXXXXXX")
+    remove.set_defaults(func=cmd_remove)
+
     household = steps.add_parser("household", help="Make this user's Hosted Household from the "
                                  "answers on stdin (the sign-up service runs it)")
     from .household import cmd_household
@@ -89,6 +95,18 @@ def cmd_invite(args: argparse.Namespace) -> int:
     print(f"{base.rstrip('/')}{PREFIX}{invite.code}")
     print(f"It works once, until {invite.expires:%Y-%m-%d %H:%M} UTC.", file=sys.stderr)
     return 0
+
+
+def cmd_remove(args: argparse.Namespace) -> int:
+    from .host import HostError
+    from .host_linux import LinuxHost
+    from .remove import remove
+    try:
+        host = LinuxHost.from_env()
+    except HostError as e:
+        print(f"❌ {e}. Nothing was removed.", file=sys.stderr)
+        return 1
+    return remove(args.label, store(), host)
 
 
 def cmd_serve(args: argparse.Namespace) -> int:

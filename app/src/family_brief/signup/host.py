@@ -26,6 +26,9 @@ class HouseholdHost(Protocol):
         """Creates the Household's Linux user `name`, its home owner-only and its own systemd
         user manager running with nobody signed in. Returns its home."""
 
+    def home(self, name: str) -> Path | None:
+        """The home of the user `name`, or None when there is no such user."""
+
     def remove_user(self, name: str) -> None:
         """Removes the user `name` with its home and everything running as it; one that isn't
         there is fine."""
@@ -39,8 +42,14 @@ class HouseholdHost(Protocol):
         """A new Gateway Key named `name` on the gateway's admin API, with a Household's daily
         budget (ops/gateway/README.md)."""
 
-    def revoke_key(self, name: str) -> None:
-        """Deletes the Gateway Key named `name`; one that isn't there is fine."""
+    def revoke_key(self, name: str) -> bool:
+        """Deletes the Gateway Key named `name`, and says whether there was one; one that isn't
+        there is fine."""
+
+
+def program(home: Path) -> Path:
+    """The `parent-recap` the release's install.sh puts in a Household's home."""
+    return home / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap"
 
 
 def user_name() -> str:
