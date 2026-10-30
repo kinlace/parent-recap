@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# Installs or upgrades Bifrost and the Brief relay behind Caddy on any systemd
-# Linux with Caddy and python3 already installed (host-setup.sh does that on
-# Ubuntu). Safe to run again.
+# Installs or upgrades Bifrost, the Brief relay and, given PARENT_RECAP_RELEASE,
+# the hosted version's sign-up service behind Caddy on any systemd Linux with
+# Caddy and python3 already installed (host-setup.sh does that on Ubuntu). Safe
+# to run again.
 #
 #   scp -r ops/gateway <vm>:/tmp/
 #   ssh -t <vm> "sudo GATEWAY_HOST=<hostname> bash /tmp/gateway/gateway-setup.sh"
+#
+# With the sign-up service, from an unpacked release (or a checkout) copied over:
+#
+#   ssh -t <vm> "sudo GATEWAY_HOST=<hostname> PARENT_RECAP_RELEASE=/tmp/parent-recap bash /tmp/gateway/gateway-setup.sh"
 #
 # -t is needed: the first run asks for the secrets, which never touch the repo.
 set -euo pipefail
@@ -76,6 +81,48 @@ systemctl daemon-reload
 systemctl enable brief-relay
 systemctl restart brief-relay
 
+# ── Sign-up service (/join/, README "Hosted Households", ADR 0031)
+# Installed from PARENT_RECAP_RELEASE, the folder of an unpacked release of the
+# program (or a checkout): its install.sh installs the program under the
+# service's user and, for each new Household, under the Household's. Without it
+# the service is left as it is, and the Caddyfile's /join/ route answers 502.
+signup_lib=/usr/local/lib/parent-recap-signup
+signup_home=/var/lib/parent-recap-signup
+signup=no
+if [ -n "${PARENT_RECAP_RELEASE:-}" ]; then
+  [ -f "$PARENT_RECAP_RELEASE/install.sh" ] || { echo "PARENT_RECAP_RELEASE has no install.sh" >&2; exit 1; }
+  signup=yes
+  getent group parent-recap-households >/dev/null || groupadd --system parent-recap-households
+  id parent-recap-signup >/dev/null 2>&1 ||
+    useradd --system --create-home --home-dir "$signup_home" --shell /usr/sbin/nologin parent-recap-signup
+  chmod 700 "$signup_home"
+  # Root-owned and readable by all: every Household's install.sh runs from it.
+  install -d -m 0755 "$signup_lib"
+  rm -rf "$signup_lib/release.incoming"
+  cp -R "$PARENT_RECAP_RELEASE" "$signup_lib/release.incoming"
+  rm -rf "$signup_lib/release.incoming/.git"
+  chown -R root:root "$signup_lib/release.incoming"
+  chmod -R u=rwX,go=rX "$signup_lib/release.incoming"
+  rm -rf "$signup_lib/release"
+  mv "$signup_lib/release.incoming" "$signup_lib/release"
+  install -o root -g root -m 0755 "$here/household-user" "$signup_lib/household-user"
+  install -o root -g root -m 0755 "$here/invite.sh" "$signup_lib/invite.sh"
+  install -o root -g root -m 0440 "$here/signup.sudoers" /etc/sudoers.d/parent-recap-signup.incoming
+  visudo -cf /etc/sudoers.d/parent-recap-signup.incoming
+  mv /etc/sudoers.d/parent-recap-signup.incoming /etc/sudoers.d/parent-recap-signup
+  install -d -m 0755 /etc/parent-recap-signup
+  (umask 077 && printf 'SIGNUP_RELEASE=%s\nGATEWAY_HOST=%s\n' "$signup_lib/release" "$GATEWAY_HOST" \
+    >/etc/parent-recap-signup/signup.env)
+  # The program under the service's own user, as a Household gets it.
+  (cd / && sudo -u parent-recap-signup -H -- bash "$signup_lib/release/install.sh")
+  install -m 0644 "$here/parent-recap-signup.service" /etc/systemd/system/parent-recap-signup.service
+  systemctl daemon-reload
+  systemctl enable parent-recap-signup
+  systemctl restart parent-recap-signup
+else
+  echo "sign-up service skipped: set PARENT_RECAP_RELEASE to install or upgrade it"
+fi
+
 # ── Caddy
 install -m 0644 "$here/Caddyfile" /etc/caddy/Caddyfile
 mkdir -p /etc/systemd/system/caddy.service.d
@@ -100,3 +147,9 @@ if ! grep -qs '^BRIEF_SMTP_PASSWORD=.' /etc/brief-relay/brief-relay.env; then
 fi
 up 8081 || { echo "brief-relay did not answer on /health; see: journalctl -u brief-relay" >&2; exit 1; }
 echo "brief-relay is up"
+if [ "$signup" = yes ]; then
+  # Its first start installs the wilma CLI with npm, which takes a while.
+  for _ in $(seq 1 10); do up 8082 && break; done
+  up 8082 || { echo "the sign-up service did not answer on /health; see: journalctl -u parent-recap-signup" >&2; exit 1; }
+  echo "the sign-up service is up; mint an Invite Link with: sudo bash $signup_lib/invite.sh --help"
+fi

@@ -3,8 +3,8 @@
 The server that invited Households' Gateway Keys go through (ADR 0014). Everything needed to rebuild it is here, and none of it is secret (ADR 0015). Where the running server is and how to reach it are in the maintainers' Bitwarden, not here.
 
 - `host-setup.sh` sets up the VM (Ubuntu/Debian): system updates, SSH with keys only, a firewall that lets in only SSH and HTTPS, Caddy, and a login for the AI assistant that can read logs but has no sudo.
-- `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016) and the Brief relay behind Caddy. It works on any systemd Linux with Caddy and `python3` installed.
-- `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile` and `bifrost.env.example` are what it installs. The env examples hold only variable names.
+- `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016), the Brief relay and, given a release of the program, the hosted version's sign-up service (ADR 0031) behind Caddy. It works on any systemd Linux with Caddy and `python3` installed.
+- `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile` and `bifrost.env.example` are what it installs, and for the sign-up `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers`, `household-user` and `invite.sh`. The env examples hold only variable names.
 - `oci-quota.json` is the Oracle Cloud quota policy that lets the account create only Always Free resources.
 - `set-smtp-credentials.sh` puts the sending domain's SMTP credentials into their own env file, whose names are in `brief-relay.env.example` (see "The sending domain").
 
@@ -48,7 +48,7 @@ Both scripts are safe to run again.
 
 ## What the gateway does
 
-- Only `POST /v1/messages`, `POST /v1/brief` (see "Sending the Brief") and the Brief's stop page `/brief/stop` are reachable from the internet. Caddy sends `/v1/messages` to Bifrost's Anthropic endpoint and `/v1/brief` to the Brief relay, serves the stop page as a static file, and answers 404 to everything else, so the admin API and UI are only reachable through an SSH tunnel.
+- Only `POST /v1/messages`, `POST /v1/brief` (see "Sending the Brief"), the Brief's stop page `/brief/stop` and the sign-up page `/join/<code>` (see "Hosted Households") are reachable from the internet. Caddy sends `/v1/messages` to Bifrost's Anthropic endpoint, `/v1/brief` to the Brief relay and `/join/` to the sign-up service, serves the stop page as a static file, and answers 404 to everything else, so the admin API and UI are only reachable through an SSH tunnel.
 - A request without a Gateway Key is refused. Clients send `model: "parent-recap"`, which `config.json` maps to the real model, so changing model is a config change, not a release.
 - Request and reply text is not stored (`disable_content_logging`, and the per-request override is off). Token counts, cost and status are. Caddy keeps no access log.
 - A Gateway Key is a Bifrost virtual key with a $0.10 budget that resets daily. A key past its budget gets HTTP 402 `budget_exceeded`.
@@ -134,6 +134,33 @@ curl -s https://<hostname>/v1/brief -H "x-api-key: $GATEWAY_KEY" -H 'content-typ
   "attachments": [{"filename": "events.ics", "content_type": "text/calendar", "data": "'"$ics"'"}]}'
 ```
 
+## Hosted Households
+
+The hosted version runs invited Households on this server, each as its own Linux user (ADR 0029, ADR 0031). A Household is made by the sign-up service from an Invite Link the maintainers send: the family opens it on their phone, picks Finnish, English or Chinese, types their Wilma town and login, checks the Recipients the link prefilled, and submits.
+
+**Install it.** Copy an unpacked release of the program (or a checkout) to the server beside `ops/gateway`, and run step 7 with `PARENT_RECAP_RELEASE` pointing at it:
+
+```sh
+scp -r <unpacked release> ubuntu@<ip>:/tmp/parent-recap
+ssh -t ubuntu@<ip> "sudo GATEWAY_HOST=<hostname> PARENT_RECAP_RELEASE=/tmp/parent-recap bash /tmp/gateway/gateway-setup.sh"
+```
+
+It copies the release to `/usr/local/lib/parent-recap-signup/release`, readable by all; makes the service's user `parent-recap-signup` (home `/var/lib/parent-recap-signup`) and installs the program under it with the release's `install.sh`; installs the `household-user` helper and `invite.sh` beside the release, the sudoers file and `/etc/parent-recap-signup/signup.env`; and starts the `parent-recap-signup` unit (`parent-recap signup serve`) on `127.0.0.1:8082`, which reads Bifrost's admin login from `bifrost.env`. Running it again with a newer release upgrades the service; Households already made keep the program they were installed with.
+
+**Invite a Household.** On the server, with the Recipients the family gave you and the language each reads the Brief in. It prints the link; send it over a private channel:
+
+```sh
+sudo bash /usr/local/lib/parent-recap-signup/invite.sh --recipient parent@example.com:fi --recipient partner@example.com:en --days 14
+```
+
+The link is a random code, kept with the Recipients in the service's owner-only store (`/var/lib/parent-recap-signup/signup/invites/`). It works once, until it expires, and a Household made from it retires it, Recipients and all. A link that isn't good, or any other address under `/join/`, gets the same 404 as the rest of the server.
+
+**What a sign-up does.** The service signs in to Wilma with the login typed and reads the Kids before anything is made: a wrong password is said on the page, and the link stays good. Then it makes the Household's user (`ph-` and 8 random hex digits, with a home only it can read, lingering so its timers run), mints its Gateway Key named after that user, installs the program under it with the release's `install.sh`, and runs `parent-recap signup household` as it with the answers, the Wilma login and the key on its stdin. That writes the config (Kids from Wilma, the Recipients, the gateway as AI and sender, Wilma on, WhatsApp off, the calendar as an `.ics` in the email), the wilma CLI's sign-in, the key as an owner-only file (ADR 0030), and the evening job. Each Household's Brief comes in the next free slot from 21:00 in 5-minute steps, so the runs don't all start at once. A step that fails takes back the user and the key, and the link stays good. The page then says when the first Brief comes. Only the user name and its evening time are kept in the store's `households.json`.
+
+**Sudo.** The service's user may run, as root, only `household-user add|remove ph-…`, which refuses any other name, and anything as a member of `parent-recap-households`, the Households' group (`signup.sudoers`). A password or key never goes on a command line.
+
+**What it logs.** One line a sign-up (`journalctl -u parent-recap-signup`): the Household's user and evening time, or why the sign-up wasn't taken. Never a request's address, which carries the code, or its body, which carries the Wilma password.
+
 ## Runbook
 
 Open the admin API through a tunnel, with the admin login from the maintainers' password manager. Nothing below is run on the public address.
@@ -186,4 +213,4 @@ Make a test call, then delete the old key in the Console.
 
 **Change the model.** Edit the `aliases` entry in `config.json` and run step 7 again.
 
-**Check it is up.** The assistant's login can read logs and status: `journalctl -u bifrost -u brief-relay -u caddy`, `systemctl status bifrost brief-relay`.
+**Check it is up.** The assistant's login can read logs and status: `journalctl -u bifrost -u brief-relay -u parent-recap-signup -u caddy`, `systemctl status bifrost brief-relay parent-recap-signup`.
