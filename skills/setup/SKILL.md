@@ -57,6 +57,7 @@ Each prints one line of JSON. `result` says what happened; when it isn't a succe
 | `$FB setup gmail --address <address>`             | `saved`     | `address`                                                                           |
 | `$FB setup claude`                                | `saved`     | `test_call: ok`                                                                     |
 | `$FB setup gateway`                               | `saved`     | `test_call: ok`                                                                     |
+| `$FB setup confirm [--resend]`                    | `confirmed` | `unconfirmed` and `mailed` addresses (`unconfirmed` is the result while any wait)   |
 | `$FB setup myclub --kid "<Kid's name>"`           | `saved`     | `events`, the number of events in the calendar                                      |
 | `$FB setup status`                                | `done`      | `outcomes`, each with `ok` and a `reason`                                           |
 | `$FB setup save` (answers as JSON on stdin)       | `saved`     | `progress`                                                                          |
@@ -110,7 +111,7 @@ Every step of the setup page has a **Continue in the chat** button, for a family
 - What a Brief looks like: the link to the demo in the invite the Parent Recap team sent them. If they don't have it, describe a Brief in a sentence: grouped by Kid, with Notices and Action Items with due dates
 - Where the data goes: it's read on this Mac. Only that night's messages from the Kids' Sources go to the AI the family already uses, to write the Brief. The Brief is sent from Parent Recap's own address, `brief@parentrecap.com`, through the Parent Recap team's server, which keeps neither the Brief nor the addresses. Nobody reads that address: each Brief says to write to the parent instead. Nothing else goes to the Parent Recap team, except the ⭐ / ❌ feedback a pilot family chooses to send.
 - What it costs: Claude needs the paid plan the family already has, Claude Pro or Max. ChatGPT works on any plan, Free included. Nothing else costs money.
-- That it needs a Mac that is on in the evening, and the Gateway Key the Parent Recap team sent with the invitation, which every Brief is sent with. Gmail is only needed if school mail arrives there, and is only read.
+- That it needs a Mac that is on in the evening. Every Brief is sent with a Gateway Key: setup gets one for sending by itself, and each Recipient confirms their address once through a link in an email from `brief@parentrecap.com`. Gmail is only needed if school mail arrives there, and is only read.
 
 **The defaults card.** End the introduction with the defaults, as choices the parent only changes where they're wrong:
 
@@ -158,7 +159,7 @@ Then install the program with `bash "PLUGIN/install.sh"`. It takes a few minutes
 
 1. **Wilma**: the Kids' names, and the school's messages and timetable
 2. **Gmail** (can be skipped): school and club mail, only read, and only from the senders the parent ticks
-3. **AI login and the Gateway Key** (required): the AI's sign-in (for ChatGPT, only a check), then the Gateway Key every Brief is sent with
+3. **AI login and the Gateway Key** (required): the AI's sign-in (for ChatGPT, only a check), then the Gateway Key every Brief is sent with, which the Recipients confirm by email
 4. **MyClub** (can be skipped): the club calendars
 
 Each sub-flow: in one message, say in a sentence or two why it's needed and end with the one thing the parent does (such as what to do in the window that opens); then run its command, act on the result and mark it done. The message after a sub-flow carries its result, any short reminder from it and the list with the new status, and ends with one choice: go on to the next Source, or wait a moment. Keep the next Source's own explanation for its own message. When a command fails, say clearly what went wrong and the one thing to do about it, help with it and run it again. If the parent wants to skip Gmail or MyClub, mark it skipped. The AI login and the Gateway Key can't be skipped; neither can Wilma when the school uses it.
@@ -208,7 +209,7 @@ Then run `$FB setup gmail --address <address>`. It opens the App passwords page 
 
 **ChatGPT** (`llm.backend: codex`). There's no token step: the nightly job reuses the login Codex already has. Tell the parent so; the test call happens in Working. If Codex isn't signed in with a ChatGPT account, have them sign in in the Codex app first, or with `codex login` for a Codex the setup page or the install line above put in `~/.local/bin`.
 
-**The Gateway Key** (ADR 0032). Every Brief is sent from Parent Recap's own address through the Parent Recap team's server, with the Gateway Key the team sent with the invitation. Here it's only for sending: the family's own AI still writes the Brief. Tell the parent a dialog will open: they paste the whole key, starting with `sk-`. Run `$FB setup gateway`. It tests the key without sending anything and stores it. If the parent has no key, they ask the Parent Recap team for one; setup can't finish without it, since no Brief can be sent.
+**The Gateway Key** (ADR 0032, ADR 0033). Every Brief is sent from Parent Recap's own address through the Parent Recap team's server, with a Gateway Key. Here it's only for sending: the family's own AI still writes the Brief, and Parent Recap gets the key itself. Once the Recipients are saved, run `$FB setup confirm`. It gets a key bound to the Recipients and stores it, and the server emails each Recipient a link from `brief@parentrecap.com`, in their language. Tell the parent that each address in `unconfirmed` opens that email (it may be in Junk), opens the link and presses Confirm, and that the Brief goes only to addresses that confirmed. Run `$FB setup confirm` again to see who has; `--resend` sends the email again. Go on once at least the parent has confirmed. If the team sent the parent a key instead, `$FB setup gateway` stores it from a dialog: they paste the whole key, starting with `sk-`. With the gateway as the AI, its key comes from the team and is the AI login above.
 
 ### WhatsApp
 

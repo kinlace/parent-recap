@@ -55,7 +55,7 @@ Both scripts are safe to run again.
 
 ## What the gateway does
 
-- Only `POST /v1/messages`, `POST /v1/brief` (see "Sending the Brief"), the Brief's stop page `/brief/stop` and the sign-up page `/join/<code>` (see "Hosted Households") are reachable from the internet. Caddy sends `/v1/messages` to Bifrost's Anthropic endpoint, `/v1/brief` to the Brief relay and `/join/` to the sign-up service, serves the stop page as a static file, and answers 404 to everything else, so the admin API and UI are only reachable through an SSH tunnel.
+- Only `POST /v1/messages`, `POST /v1/brief` (see "Sending the Brief"), `POST /v1/brief/key`, `POST /v1/brief/recipients` and the confirmation page `/brief/confirm` (see "Send-only keys on request"), the Brief's stop page `/brief/stop` and the sign-up page `/join/<code>` (see "Hosted Households") are reachable from the internet. Caddy sends `/v1/messages` to Bifrost's Anthropic endpoint, the `/v1/brief` paths and `/brief/confirm` to the Brief relay and `/join/` to the sign-up service, serves the stop page as a static file, and answers 404 to everything else, so the admin API and UI are only reachable through an SSH tunnel.
 - A request without a Gateway Key is refused. Clients send `model: "parent-recap"`, which `config.json` maps to the real model, so changing model is a config change, not a release.
 - Request and reply text is not stored (`disable_content_logging`, and the per-request override is off). Token counts, cost and status are. Caddy keeps no access log.
 - A Gateway Key is a Bifrost virtual key with a $0.10 budget that resets daily. A key past its budget gets HTTP 402 `budget_exceeded`.
@@ -123,13 +123,13 @@ oci iam smtp-credential delete --user-id "$U" --smtp-credential-id <old id>
 
 `html` and `attachments` are optional. At most 10 Recipients, 5 attachments and 2 MB a request; an address must be a plain `name@domain`. The From is `Parent Recap <brief@parentrecap.com>` and there is no Reply-To: the Brief's footer, which the program adds, says the address is unread. `List-Unsubscribe` points at `https://<hostname>/brief/stop` (`brief-stop.html`), which says how a Household stops the Brief in its own config.
 
-**The answers.** 200 `{"sent": n, "refused": n}` once Email Delivery has taken the message. 401 for a missing, unknown or inactive key; 429 for a key past its daily cap; 400 or 413 for a malformed or too large request. 502 when Email Delivery refused the message or couldn't be reached, 503 when Bifrost couldn't be asked about the key: a 5xx means "try again later", a 4xx "fix the request or the key". Each error has a short `error` saying why.
+**The answers.** 200 `{"sent": n, "refused": n}` once Email Delivery has taken the message, with `"unconfirmed": [address, …]` when a key made on request left out Recipients who haven't confirmed. 401 for a missing, unknown or inactive key; 403 `recipient not confirmed` with `unconfirmed` when such a key has no confirmed Recipient in `to`; 429 for a key past its daily cap; 400 or 413 for a malformed or too large request. 502 when Email Delivery refused the message or couldn't be reached, 503 when Bifrost couldn't be asked about the key: a 5xx means "try again later", a 4xx "fix the request or the key". Each error has a short `error` saying why.
 
 **The key.** The relay looks the key up in Bifrost's virtual-key list on localhost with the admin login, so a Household's one Gateway Key covers writing and sending the Brief, and revoking it (below) stops both.
 
-**The cap.** Each key may send 4 messages a UTC day (`DAILY_CAP` in `brief_relay.py`): the Brief, Weekend Picks and room for a retry. At 10 Recipients each, one key can use at most 40 of the tenancy's 100 a day, so a leaked key can neither become a spam relay nor use up every other Household's sending. A message Email Delivery didn't take doesn't count. The counts are in `/var/lib/brief-relay/sent.json`. Before raising the cap or adding Households that send this way, check the total against the 100 a day.
+**The cap.** Each key may send 4 messages a UTC day (`DAILY_CAP` in `brief_relay.py`, and `ON_REQUEST_DAILY_CAP` for a key made on request): the Brief, Weekend Picks and room for a retry, or both in two languages on a Friday. At 10 Recipients each, one key can use at most 40 of the tenancy's 100 a day, so a leaked key can neither become a spam relay nor use up every other Household's sending. A message Email Delivery didn't take doesn't count. The counts are in `/var/lib/brief-relay/sent.json`. Before raising the cap or adding Households that send this way, check the total against the 100 a day.
 
-**What it keeps.** Nothing of the message. Each request logs one line to the journal: the key's name, the number of Recipients, the request's size and the outcome (`journalctl -u brief-relay`), never the subject, body, attachments or addresses.
+**What it keeps.** Nothing of the message. Each request logs one line to the journal: the key's name, the number of Recipients, the request's size and the outcome (`journalctl -u brief-relay`), never the subject, body, attachments or addresses. For keys made on request it keeps the addresses bound to each (see the next section).
 
 **Check it.** From a maintainer's machine, with a real Gateway Key, send a test with an `.ics` to a Gmail and a Hotmail inbox:
 
@@ -140,6 +140,31 @@ curl -s https://<hostname>/v1/brief -H "x-api-key: $GATEWAY_KEY" -H 'content-typ
   "html": "<p>Relay test.</p>",
   "attachments": [{"filename": "events.ics", "content_type": "text/calendar", "data": "'"$ics"'"}]}'
 ```
+
+## Send-only keys on request
+
+Every Brief is sent through the relay (ADR 0032), so every Household needs a Gateway Key. A Household whose AI is its own Claude Code or Codex needs one only for sending, and the program asks the relay for it itself (ADR 0033): the setup page once the Recipients are saved, `parent-recap setup confirm` from the chat, and `doctor` and the evening run of an installed Household that has none. Keys that write the Brief still come from the maintainers (Runbook below).
+
+**Asking for a key.** `POST /v1/brief/key`, no key, JSON `{"recipients": [{"address": "…", "language": "fi"}, …]}`, the setup parent first, at most 6. The relay makes a Bifrost virtual key named `on-request-<8 hex>`, described `made on request <date>`, with no `provider_configs` and no budget, so Bifrost refuses its model calls; binds the addresses to it, none confirmed; and mails each a link to confirm, from `brief@parentrecap.com`, in its language (Finnish, English or Chinese; any other gets English). The email says who asked (the setup parent's address) and that ignoring it is enough. The answer is 200 `{"key": "sk-bf-…", "recipients": [{"address", "confirmed": false}], "mailed": [address, …]}`, 400 for a malformed request, 429 over a limit, 503 when Bifrost couldn't be asked.
+
+**Confirming.** The link is `https://<hostname>/brief/confirm?t=<token>`. Opening it shows a small page with a Confirm button, in the Recipient's language; only pressing it (a `POST`) confirms, so a mail scanner that opens links confirms nothing. A link stays good as long as its address is bound, and sending it again sends the same link; a token that isn't bound gets a page saying to ask for a new email.
+
+**Binding changed Recipients and sending the link again.** `POST /v1/brief/recipients` with the key in `x-api-key` and `{"recipients": […], "resend": false}`. The key is then bound to exactly those addresses: one already bound keeps whether it confirmed, a new one is mailed its link, one left out is unbound. With `"resend": true` each still unconfirmed address is mailed its link again. It answers the same `recipients` and `mailed` (429 when `resend` could mail nobody for the limits). A key made by hand isn't bound: the relay answers that every address is confirmed and changes nothing. The program sends this from the setup page and from `doctor`, which `manage` runs after changing the Recipients.
+
+**Sending with it.** `POST /v1/brief` with a key made on request goes only to the addresses in `to` that are bound to it and confirmed; the others are left out and named in `unconfirmed`, and with none left it gets 403 `recipient not confirmed`. Keys made by hand send to any address, as before.
+
+**Limits**, per UTC day (`KEYS_PER_CALLER`, `KEYS_PER_DAY`, `MAILS_PER_ADDRESS` and `MAILS_PER_DAY` in `brief_relay.py`): 3 keys per caller (by IP address, from Caddy's `X-Forwarded-For`), 20 keys in all, 3 confirmation emails per address, whoever asks, and 30 confirmation emails in all. So the confirmation emails, the only mail sent before a Recipient says yes, use at most 30 of the tenancy's 100 a day. A key request over a limit makes no key.
+
+**What it keeps.** `bindings.json` in the relay's state directory (`/var/lib/private/brief-relay/`, owner-only, the unit's dynamic user): for each key made on request its Bifrost id and name, the date, and each bound address with its language, its link's token and when it confirmed. The day's counts keep a caller's IP address and each email address only as a truncated SHA-256, and start again each UTC day. Nothing else: no message and no key value. The journal has `key-request`, `bind` and `confirm` lines with the key's name, a count and the outcome, never an address, a token or a caller.
+
+**Check it.** From a maintainer's machine, with your own address:
+
+```sh
+curl -s https://<hostname>/v1/brief/key -H 'content-type: application/json' \
+  -d '{"recipients": [{"address": "<your address>", "language": "en"}]}'
+```
+
+The email comes from `brief@parentrecap.com`; open its link and press Confirm. Then send a test Brief to that address with the key from the answer, as in "Sending the Brief" (it arrives), and to another address (403). Revoke the key afterwards (Runbook).
 
 ## Hosted Households
 
@@ -207,7 +232,7 @@ curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
   }'
 ```
 
-**Create a send-only Gateway Key.** A Household whose AI backend is its own Claude Code or Codex still needs a Gateway Key for the gateway to send its Brief (ADR 0028). Give it a key with no `provider_configs` and no budget: Bifrost refuses its model calls (400 or 403) and the relay accepts it, since the relay only checks that the key exists and is active. Same naming, same handover:
+**Create a send-only Gateway Key.** A Household whose AI backend is its own Claude Code or Codex gets one on request by itself (see "Send-only keys on request"), so this is only for a Household that can't, such as one whose Recipients can't confirm by email. A key made here isn't bound to addresses, so it sends to any. Give it a key with no `provider_configs` and no budget: Bifrost refuses its model calls (400 or 403) and the relay accepts it, since the relay only checks that the key exists and is active. Same naming, same handover:
 
 ```sh
 curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
@@ -221,6 +246,14 @@ curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
 curl -s -u "$ADMIN" -X PUT localhost:8080/api/governance/virtual-keys/<id> \
   -H 'content-type: application/json' -d '{"description": "<Household>, <AI backend>, <date>"}'
 ```
+
+**See the keys made on request.** Each is in Bifrost's list with a name starting `on-request-` and the description `made on request <date>`. Whom each is bound to, and who confirmed, the relay prints from its own file:
+
+```sh
+sudo env STATE_DIRECTORY=/var/lib/private/brief-relay python3 /usr/local/lib/brief-relay/brief_relay.py keys
+```
+
+A key whose Recipients never confirmed sends nothing; revoke it when tidying up. A key made on request is revoked as any other, below: the relay then answers 401 to it, and its entry in `bindings.json` is no longer used.
 
 **Revoke.** A Hosted Household's key goes with it (see "Remove a Household"). For any other, find the key's `id` in the list, then turn it off (or `DELETE` it). `PUT` changes only the fields it is given (Bifrost has no `PATCH` here):
 
