@@ -42,6 +42,7 @@ class Profile:
     npm_links_programs: bool      # whether npm puts a package's program in <prefix>/bin
     removes_running: bool         # whether a program's files can be removed while it runs
     os_version: Callable[[], str]  # the system and its version, as a report of a failure names it
+    maxrss_bytes: int | None      # bytes in a unit of getrusage's ru_maxrss; None without getrusage
 
 
 # After Profile, which each adapter imports from here.

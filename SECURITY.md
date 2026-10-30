@@ -118,7 +118,7 @@ A Household with no computer to run Parent Recap on can ask the maintainers to h
 For each Hosted Household, in the home of its Linux user `ph-…` (8 random hex digits, a label that names no one):
 
 - its Wilma login and session, its MyClub links and its Gateway Key, as in [Where each secret lives](#where-each-secret-lives);
-- its config, `~/.family/config.yaml`: the Kids' names, schools and classes as Wilma lists them, the Recipients' addresses and languages, and the evening time, with `state.json` as on a Mac and `last-run.json`, when the last run ended and how;
+- its config, `~/.family/config.yaml`: the Kids' names, schools and classes as Wilma lists them, the Recipients' addresses and languages, and the evening time, with `state.json` as on a Mac and `last-run.json`, when the last run ended and how, how long it took and its peak memory;
 - its archive, `~/ParentRecap/`: every Brief, the Wilma and MyClub messages it was built from, and the logs, as in [What stays on the Mac](#what-stays-on-the-mac).
 
 All of it is kept until the Household is removed; the archive isn't trimmed, and only `state.json` drops what it records after 45 days. A Household has no setup page or `manage`: to change a setting it asks the maintainers, who edit its config, and to leave it asks them to remove it. Removing it ([Remove a Household](ops/gateway/README.md#hosted-households)) turns off its evening jobs, revokes its Gateway Key and deletes its Linux user with its home, and so everything above. What stays are log lines with nothing of the family in them: the journal's lines naming its label, and the gateway's per-call token counts and cost.
