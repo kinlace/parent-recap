@@ -157,13 +157,14 @@
           </div>
         </div>
         <p id="gmail-brief-junk" class="hint" data-text="gmail.brief.junk" hidden></p>
-        <div id="gmail-brief-key-part" hidden>
+        <details id="gmail-brief-key-part" class="more" hidden>
+          <summary data-text="gmail.brief.key.have"></summary>
           <p data-text="gmail.brief.key.explain"></p>
           <div class="field">
             <label for="gmail-brief-key" data-text="gmail.brief.key"></label>
             <input type="password" id="gmail-brief-key" autocomplete="off" spellcheck="false">
           </div>
-        </div>
+        </details>
         <div class="slot" data-default></div>
         <div class="actions">
           <button type="submit" id="gmail-brief-save" data-text="gmail.brief.save"></button>
@@ -171,6 +172,7 @@
       </form>
       <div id="gmail-own" hidden>
         <p class="ready"><span id="gmail-brief-to"></span> <button type="button" id="gmail-brief-change" class="link" data-text="gmail.brief.change"></button></p>
+        <div id="gmail-confirm" class="status" role="status" hidden></div>
         <p data-text="gmail.explain"></p>
         <p data-text="gmail.before"></p>
         <form id="gmail-form" class="details">
@@ -524,6 +526,12 @@
   </section>
   <!-- The Gateway Key for sending, which Check and Finish move under the Brief sending check
        when it says there's none (ADR 0032). -->
+  <!-- The way to have the confirmation email sent again (ADR 0033), which Gmail's step, Check and
+       Finish show where a Recipient hasn't confirmed: its message, and the button. -->
+  <div id="confirm-template" hidden>
+    <p class="confirm-message"></p>
+    <p><button type="button" class="secondary confirm-resend" data-text="gmail.confirm.resend"></button></p>
+  </div>
   <form id="send-key-form" class="details" hidden>
     <div class="field">
       <label for="send-key" data-text="gmail.brief.key"></label>

@@ -632,11 +632,10 @@ def test_a_key_the_relay_does_not_take_is_not_stored_and_says_what_to_do(harness
     assert_key_never_leaked(harness, r.body.decode(), caplog)
 
 
-def test_with_its_own_ai_a_key_is_needed_and_what_is_not_one_is_never_sent(harness, page):
+def test_with_its_own_ai_what_is_not_a_key_is_never_sent(harness, page):
+    # Without a key the page asks the gateway for one (test_send_key_on_request.py).
     welcome(page.url, ai="codex")
 
-    r = save_recipients(page.url, {"address": "parent@example.com", "language": "en"})
-    assert r.status == 400 and r.json()["result"] == "invalid-answers"
     r = save_recipients(page.url, {"address": "parent@example.com", "language": "en"},
                         key="my-password")
     assert r.json() == {"result": "not-a-key"}
@@ -736,17 +735,21 @@ def test_who_gets_the_brief_and_the_key_s_results_are_explained_in_all_three_lan
         for key in ("gmail.brief.explain", "gmail.brief.unread", "gmail.brief.junk", "brief.junk",
                     "gmail.brief.to", "gmail.brief.change", "gmail.key.saved",
                     "gmail.brief.key", "gmail.brief.key.explain",
-                    "gmail.brief.key.explain.windows"):
+                    "gmail.brief.key.explain.windows", "gmail.brief.key.have",
+                    "gmail.confirm.resend", "gmail.confirm.confirmed", "gmail.confirm.no-key"):
             assert table.get(key, "").strip(), (language, key)
         # A key the relay doesn't take is said as the gateway AI's key field says it.
         for result in setup_server.gmail.SEND_KEY_RESULTS:
             assert table.get(f"gateway.{result}", "").strip(), (language, result)
         assert "sk-" in table["gmail.brief.key.explain"], language
         assert "brief@parentrecap.com" in table["gmail.brief.explain"], language
+        # Whom the confirmation email went to (ADR 0033).
+        for key in ("gmail.confirm.sent", "gmail.confirm.resent"):
+            assert "{addresses}" in table[key], (language, key)
         # No choice of how the Brief is sent is left (ADR 0032).
         assert not any(k.startswith(("gmail.choice", "gmail.gateway.")) for k in table), language
     english = text["en"]
-    assert "only for sending" in english["gmail.brief.key.explain"]
+    assert "gets a key for sending by itself" in english["gmail.brief.key.explain"]
     assert "Nobody reads" in english["gmail.brief.unread"]
     assert "never sends from your Gmail" in english["gmail.explain"]
     # #602: the Gmail step says Gmail is read for the school's mail, only from the senders ticked.

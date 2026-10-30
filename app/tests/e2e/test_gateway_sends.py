@@ -2,8 +2,9 @@
 evening Brief, its first one from setup and its Weekend Picks through the gateway's
 `POST /v1/brief`, with the Gateway Key and no Gmail App Password. A Household that reads no mail
 needs no Gmail at all: the run, doctor and the health check pass without it. A Household that sent
-through its own Gmail before ADR 0032 sends through the gateway too, once the Parent Recap team
-has given it a Gateway Key; until then the run, doctor and the setup page say to ask for one.
+through its own Gmail before ADR 0032 sends through the gateway too: with no Gateway Key, the run,
+doctor and the setup page get a send-only one from the gateway and say to confirm the email it
+sent (ADR 0033; the key on request itself is test_send_key_on_request.py's).
 
 The relay is the outbox's (fake_outbox.py), answering as ops/gateway/brief_relay.py does; what each
 of its answers means is the email Action's own test's (integration/test_email_gateway.py).
@@ -126,12 +127,15 @@ def test_a_refused_send_fails_with_its_reason_and_the_night_comes_back_tomorrow(
     assert "Something new tonight" in email.text
 
 
-def test_without_a_gateway_key_nothing_is_sent_and_it_says_to_ask_the_team_for_one(wilma_only, caplog):
+def test_without_a_gateway_key_and_the_gateway_as_the_ai_it_says_to_ask_the_team_for_one(
+        wilma_only, caplog):
+    # A key that writes the Brief is the maintainers' to hand out (ADR 0033): none is asked for.
+    wilma_only.config["llm"]["backend"] = "gateway"
     no_key(wilma_only)
 
     wilma_only.run()
 
-    assert wilma_only.sent == [] and wilma_only.relay_keys == []
+    assert wilma_only.sent == [] and wilma_only.key_requests == []
     # In the Keychain, Credential Manager or an owner-only file, as the system keeps its secrets.
     assert (f"email send failed: no Gateway Key in the {secrets.STORE} (ask the Parent Recap team "
             "for one, then store it with parent-recap setup gateway)") in caplog.text
@@ -194,13 +198,15 @@ def test_doctor_says_when_the_gateway_does_not_know_the_key(wilma_only, capsys):
     assert "revoked" in line and "parent-recap setup gateway" in line
 
 
-def test_doctor_says_to_ask_the_team_for_a_missing_key(wilma_only, capsys):
+def test_doctor_says_to_ask_the_team_for_a_missing_key_when_the_gateway_is_the_ai(wilma_only, capsys):
+    wilma_only.config["llm"]["backend"] = "gateway"
     no_key(wilma_only)
 
     line = doctor(wilma_only, capsys)["Brief sending"]
 
     assert line.startswith(ops.FAIL)
     assert "ask the Parent Recap team for one" in line and "parent-recap setup gateway" in line
+    assert wilma_only.key_requests == []
 
 
 def test_doctor_says_when_the_gateway_does_not_answer(wilma_only, capsys):
@@ -285,38 +291,47 @@ def test_with_a_gateway_key_it_sends_through_the_gateway_and_gmail_is_only_read(
     assert sent_from_gmail.lookback_hours["gmail"]  # still read, with its App Password
 
 
-def test_without_a_gateway_key_the_failure_note_says_to_ask_the_team_and_the_night_waits(
+def test_without_a_gateway_key_the_failure_note_says_to_confirm_and_the_night_waits(
         sent_from_gmail, caplog):
     caught_up_last_night(sent_from_gmail)
     no_key(sent_from_gmail)
 
     assert sent_from_gmail.run() == 0
 
+    # The run got a send-only key and the gateway mailed each Recipient a link to confirm.
     assert sent_from_gmail.sent == []
-    assert "email send failed: no Gateway Key" in caplog.text
-    assert "ask the Parent Recap team for one" in caplog.text
+    assert sent_from_gmail.key_requests == [[{"address": "parent@example.com", "language": "en"},
+                                             {"address": "partner@example.com", "language": "en"}]]
+    [made] = sent_from_gmail.made_keys
+    assert sent_from_gmail.secrets[api.ACCOUNT] == made
+    assert "email send failed: no Gateway Key was stored" in caplog.text
+    assert "a confirmation email was sent to parent@example.com, partner@example.com" in caplog.text
+    assert "Press the link in it" in caplog.text
     assert not sent_from_gmail.state().get("brief_delivered_at")
 
-    # The key from the team brings the night's Brief the next evening.
-    sent_from_gmail.gateway_key = KEY
+    # The setup parent confirms: the night's Brief comes the next evening, to them only.
+    sent_from_gmail.confirm("parent@example.com")
     with time_machine.travel(NOW + timedelta(days=1), tick=False):
         assert sent_from_gmail.run() == 0
     [email] = sent_from_gmail.sent
-    assert "Something new tonight" in email.text
+    assert "Something new tonight" in email.text and email.to == ["parent@example.com"]
+    assert "not sent to partner@example.com, who has not confirmed" in caplog.text
 
 
-def test_without_a_gateway_key_doctor_says_to_ask_the_team(sent_from_gmail, capsys):
+def test_without_a_gateway_key_doctor_gets_one_and_says_to_confirm(sent_from_gmail, capsys):
     no_key(sent_from_gmail)
     sent_from_gmail.set_up_sources()  # the App Password Gmail is read with
 
     lines = doctor(sent_from_gmail, capsys)
 
     assert lines["Brief sending"].startswith(ops.FAIL)
-    assert "ask the Parent Recap team for one" in lines["Brief sending"]
+    assert "have not confirmed yet" in lines["Brief sending"]
+    assert "Parent Recap asked the gateway for a Gateway Key" in lines["Brief sending"]
     assert lines["Gmail"].startswith(ops.OK)  # reading is as it was
+    assert api.ACCOUNT in sent_from_gmail.secrets
 
 
-def test_without_a_gateway_key_the_setup_page_says_to_ask_the_team_and_takes_the_key(
+def test_without_a_gateway_key_the_setup_page_says_to_confirm_and_still_takes_a_key(
         sent_from_gmail, page, schedule, monkeypatch):
     # Doctor's own Brief sending check, the others being the harness's (they're its own tests').
     monkeypatch.setattr(ops, "health_checks", lambda config, **k: [
@@ -329,14 +344,15 @@ def test_without_a_gateway_key_the_setup_page_says_to_ask_the_team_and_takes_the
 
     doctor_outcome = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
     [sending] = [c for c in doctor_outcome["checks"] if c["status"] == "fail"]
-    assert (sending["check"], sending["reason"]) == ("gateway", "no-key")
-    # The page's text for it, which offers the field for the key.
+    assert (sending["check"], sending["reason"]) == ("gateway", "unconfirmed")
+    assert sending["groups"] == ["parent@example.com", "partner@example.com"]
     text = json.loads((PAGE_DIR / "text.json").read_text())
     for table in text.values():
         for prefix in ("health", "finish"):
+            assert "{groups}" in table[f"{prefix}.fail.gateway.unconfirmed"]
             assert "Parent Recap" in table[f"{prefix}.fail.gateway.no-key"]
-    assert "Ask the Parent Recap team" in text["en"]["finish.fail.gateway.no-key"]
 
+    # A key from the team, pasted, replaces the one on request.
     r = call(page.url, "api/gmail/key", method="POST", body={"key": f" {KEY}\n"})
 
     assert r.json() == {"result": "saved"}
