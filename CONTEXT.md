@@ -45,7 +45,7 @@ The step on the Mac that every AI call of the evening Brief goes through: Third 
 _Avoid_: anonymizer, redaction, masking (in user-facing text), 脱敏
 
 **Gateway Key** (zh 网关密钥, fi gateway-avain):
-The key the maintainers give an invited Household so the maintainers' gateway does things for it: writes its Briefs instead of the Household's own Claude or ChatGPT subscription (ADR 0014), or sends them from Parent Recap's own address instead of the Household's Gmail (ADR 0028).
+The key the maintainers give an invited Household so the maintainers' gateway does things for it: writes its Briefs instead of the Household's own Claude or ChatGPT subscription (ADR 0014), and sends them from Parent Recap's own address (ADR 0028, ADR 0032). Every Household needs one.
 _Avoid_: API key, virtual key, token
 
 ## People
