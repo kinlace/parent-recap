@@ -4,6 +4,12 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.9.2 · 2026-10-30
+
+### Fixed
+
+- Gmail set to a language other than English (Chinese, Finnish and others) is read again, on the setup page's sender scan and in the evening run, where it used to stop with "command SEARCH illegal in state AUTH". An install from 0.9.0 or 0.9.1 gets this by pasting the install line again.
+
 ## 0.9.1 · 2026-10-30
 
 ### Fixed
