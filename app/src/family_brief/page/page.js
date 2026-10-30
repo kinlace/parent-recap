@@ -4,7 +4,7 @@
 const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish"];
 const page = {
   text: null, language: "en", chosen: null, languages: [], system: "macos", ais: [], installs: [],
-  chats: [], about: null,
+  about: null,
   progress: null, welcome: null, connect: null, gmail: null, myclub: null,
   check: null, brief: null, welcomeShown: false, connectShown: false, workingShown: false,
   checkShown: false, briefShown: false, finishShown: false, finished: false,
@@ -2598,11 +2598,11 @@ function chatAI() {
   return page.progress.phase === "welcome" ? picked("ai") : page.welcome.ai;
 }
 
-// Only an AI the server has a chat for on this system: a gateway Household has neither Claude
-// nor ChatGPT to carry on with, and the chat skills set up a Mac, so Windows and Linux have none.
+// A gateway Household has neither Claude nor ChatGPT to carry on with in a chat.
 function showChat() {
-  document.getElementById("chat").hidden = !page.chosen || page.finished
-    || !page.chats.includes(chatAI());
+  // The chat skills set up a Mac, so Windows and Linux have no chat to continue in.
+  document.getElementById("chat").hidden = !page.chosen || page.finished || chatAI() === "gateway"
+    || page.system !== "macos";
 }
 
 async function continueInChat(event) {
@@ -2675,7 +2675,6 @@ async function start() {
   page.system = state.system;
   page.ais = state.ais;
   page.installs = state.installs;
-  page.chats = state.chats;
   page.about = state.about;
   page.chosen = state.language;
   page.language = state.language || state.preselected;

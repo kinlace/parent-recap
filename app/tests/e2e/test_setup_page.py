@@ -449,8 +449,7 @@ def test_on_the_hosted_version_s_server_the_page_offers_only_what_hosting_can_do
     state = call(page.url, "api/state").json()
 
     # The gateway is the AI, so there is no AI to pick or install and no chat to continue in.
-    assert (state["system"], state["ais"], state["installs"], state["chats"]) == \
-        ("linux", ["gateway"], [], [])
+    assert (state["system"], state["ais"], state["installs"]) == ("linux", ["gateway"], [])
     # No AI step, no Gmail step and no WhatsApp (ADR 0029, ADR 0031).
     assert [(s["name"], s["skippable"]) for s in state["connect"]["sources"]] == [
         ("wilma", True), ("myclub", True)]
