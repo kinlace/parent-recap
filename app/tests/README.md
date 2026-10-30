@@ -67,10 +67,10 @@ the import path, so a test may import a helper from a test in another layer.
 
 | File                            | What it covers                                                                              |
 | ------------------------------- | ------------------------------------------------------------------------------------------- |
-| `test_brief_relay.py`           | The gateway's Brief relay: the key, the daily cap, the request, the message sent            |
+| `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request      |
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                              |
 | `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                        |
-| `test_email_gateway.py`         | The Brief sent through the gateway's Brief relay: the request, each refusal, doctor's check |
+| `test_email_gateway.py`         | The Brief sent through the gateway's relay: the request, refusals, a key, binding, doctor   |
 | `test_eval_runner.py`           | The eval runner end to end, only the model process faked                                    |
 | `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was                             |
 | `test_goldens.py`               | The golden files' check and `--update-goldens`                                              |
@@ -98,6 +98,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_busy_model.py`              | How long each model call may wait for a busy model                                    |
 | `test_gateway.py`                 | The gateway backend (ADR 0014): Brief, doctor and `setup gateway`                     |
 | `test_gateway_sends.py`           | Every Brief sent by the gateway (ADR 0032): refusals, doctor, Gmail-sent Households   |
+| `test_send_key_on_request.py`     | A send-only key on request (ADR 0033): setup page, `setup confirm`, doctor, the run   |
 | `test_source_failures.py`         | A Source's transport failing partway or timing out                                    |
 | `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON                         |
 | `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing                     |
