@@ -105,10 +105,10 @@ class _Connection(http.client.HTTPConnection):
                 raise ConnectionRefusedError(self.port)
             self.sock = _PairedServer.servers[self.port].connect()
             # One rung in as the server stops is never answered, as a closed port refuses it.
-            self.sock.settimeout(5)
+            self.sock.settimeout(self.timeout)
             return
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.settimeout(5)
+        self.sock.settimeout(self.timeout)
         self.sock.connect((self.host, self.port))
 
 

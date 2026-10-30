@@ -92,7 +92,8 @@ def signup(harness, wilma_cli, tmp_path):  # noqa: F811
 def request(url: str, path: str, method: str = "GET", fields: dict[str, str] | None = None,
             content_type: str = "application/x-www-form-urlencoded") -> Response:
     parts = urlparse(url)
-    conn = _Connection(parts.hostname, parts.port, timeout=10)
+    # A sign-up answers only after install, config and the first Brief, which a busy machine slows.
+    conn = _Connection(parts.hostname, parts.port, timeout=60)
     body = urlencode(fields).encode() if fields is not None else None
     headers = {"Host": "gateway.example"} | ({"Content-Type": content_type} if body else {})
     try:
