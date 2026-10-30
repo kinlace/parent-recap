@@ -15,10 +15,11 @@ from pathlib import Path
 import pytest
 import time_machine
 
-from conftest import NOW, html_for_golden, ics_for_golden, msg
+from conftest import GATEWAY_KEY, NOW, html_for_golden, ics_for_golden, msg, without_unread_note
 
 from family_brief import feedback
 from fake_system import LINUX, WINDOWS
+from family_brief.gateway import GatewayError
 from nights import (ENGLISH_REPLY, FEEDBACK, FORM, NORMAL_NIGHT_IDS, PARTNER_EN, archived_summary,
                     caught_up_last_night, feedback_links, model_call_for_golden, normal_night,
                     payload_message_ids, two_languages)
@@ -34,8 +35,8 @@ def test_normal_night_matches_golden(harness, golden, language):
 
     [email] = harness.sent
     assert email.subject == "Parent Recap · 2026-09-27"
-    assert email.from_addr == "parent@example.com"
     assert email.to == ["parent@example.com", "partner@example.com"]
+    assert harness.relay_keys == [GATEWAY_KEY]  # Parent Recap's own address sends it (ADR 0032)
     golden(f"normal_night.{language}.txt", email.text)
     golden(f"normal_night.{language}.html", html_for_golden(email.html))
 
@@ -79,7 +80,7 @@ def test_failing_source_adds_coverage_warning(harness):
     [email] = harness.sent
     coverage = ("📥 今晚读取：Gmail 0 条 · MyClub 1 个日程 · Wilma 1 条 · WhatsApp 0 条\n"
                 "⚠️ Gmail 没读到（登录失败），WhatsApp 没读到（macOS 权限被拒绝），今天的日报可能缺这一块。")
-    assert email.text.endswith("\n\n" + coverage)
+    assert without_unread_note(email.text).endswith("\n\n" + coverage)
     assert coverage.replace("\n", "<br>") in email.html
 
 
@@ -95,7 +96,7 @@ def test_failing_source_adds_coverage_warning_in_english(harness):
                 "⚠️ Gmail not read (login failed), MyClub not read (MyClub fetch failed for Mia: "
                 "example.myclub.fi: RuntimeError). "
                 "Tonight's Brief may be incomplete.")
-    assert email.text.endswith("\n\n" + coverage)
+    assert without_unread_note(email.text).endswith("\n\n" + coverage)
     assert escape(coverage).replace("\n", "<br>") in email.html
 
 
@@ -283,7 +284,7 @@ def test_cut_off_reply_note_is_in_each_recipients_language(harness):
 def test_failed_email_brings_the_whole_night_back_tomorrow(harness):
     normal_night(harness)
     caught_up_last_night(harness)
-    harness.email_error = OSError("SMTP connection refused")
+    harness.email_error = GatewayError("couldn't reach the gateway at gateway.parentrecap.com (ConnectionError)")
 
     assert harness.run() == 0
 
@@ -318,7 +319,7 @@ def test_delivered_night_is_not_repeated(harness):
 def test_imessage_alone_counts_as_delivered(harness):
     normal_night(harness)
     harness.config["imessage"] = {"enabled": True, "recipients": ["+358401234567"]}
-    harness.email_error = OSError("SMTP connection refused")
+    harness.email_error = GatewayError("couldn't reach the gateway at gateway.parentrecap.com (ConnectionError)")
     assert harness.run() == 0
     assert harness.imessages
 
@@ -342,7 +343,7 @@ def test_failed_imessage_and_email_is_not_delivered(harness):
     normal_night(harness)
     caught_up_last_night(harness)
     harness.config["imessage"] = {"enabled": True, "recipients": ["+358401234567"]}
-    harness.email_error = OSError("SMTP connection refused")
+    harness.email_error = GatewayError("couldn't reach the gateway at gateway.parentrecap.com (ConnectionError)")
     harness.imessage_error = "Messages got an error"
     assert harness.run() == 0
 
@@ -356,7 +357,7 @@ def test_lookback_covers_the_gap_since_the_last_delivered_brief(harness):
     normal_night(harness)
     assert harness.run() == 0  # delivered
 
-    harness.email_error = OSError("SMTP connection refused")
+    harness.email_error = GatewayError("couldn't reach the gateway at gateway.parentrecap.com (ConnectionError)")
     for day in (1, 2):
         with time_machine.travel(NOW + timedelta(days=day), tick=False):
             assert harness.run() == 0
@@ -412,7 +413,7 @@ def test_lookback_after_failed_nights_is_capped_at_a_week(harness):
     harness.sources["gmail"] = harness.sources["gmail"] + [
         msg("gmail", "1201", "2026-10-06T09:00:00+03:00", "Vanhempainilta on 8.10.",
             sender="office@kilo.example.fi", subject="Vanhempainilta")]
-    harness.email_error = OSError("SMTP connection refused")
+    harness.email_error = GatewayError("couldn't reach the gateway at gateway.parentrecap.com (ConnectionError)")
     with time_machine.travel(NOW + timedelta(days=9), tick=False):
         assert harness.run() == 0
     with time_machine.travel(NOW + timedelta(days=10), tick=False):
@@ -423,7 +424,7 @@ def test_lookback_after_failed_nights_is_capped_at_a_week(harness):
 
 def test_lookback_override_is_not_extended(harness):
     normal_night(harness)
-    harness.email_error = OSError("SMTP connection refused")
+    harness.email_error = GatewayError("couldn't reach the gateway at gateway.parentrecap.com (ConnectionError)")
     assert harness.run() == 0
     with time_machine.travel(NOW + timedelta(days=2), tick=False):
         assert harness.run("--lookback-hours", "5") == 0
@@ -813,7 +814,7 @@ def test_event_citing_one_more_message_on_a_rerun_is_not_written_twice(harness):
     caught_up_last_night(harness)
     harness.sources["gmail"].append(msg("gmail", "1100", "2026-09-27T20:00:00+03:00",
                                         "Reminder: the retki is on Thursday.", subject="Retki"))
-    harness.email_error = OSError("SMTP connection refused")
+    harness.email_error = GatewayError("couldn't reach the gateway at gateway.parentrecap.com (ConnectionError)")
     harness.model_reply["calendar_events"][0]["refs"] = ["1101"]
     assert harness.run() == 0
 

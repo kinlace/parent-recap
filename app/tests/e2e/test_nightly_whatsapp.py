@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 import time_machine
 
-from conftest import CLASS_GROUP, NOW, PIANO_GROUP, SAYS_SOMETHING, msg
+from conftest import CLASS_GROUP, NOW, PIANO_GROUP, SAYS_SOMETHING, msg, without_unread_note
 from fake_system import LINUX
 from nights import caught_up_last_night, payload_message_ids
 
@@ -56,7 +56,7 @@ def one_gmail_message(harness) -> None:
 
 def coverage_line(harness) -> str:
     [email] = harness.sent
-    return email.text.rsplit("\n\n", 1)[1]
+    return without_unread_note(email.text).rsplit("\n\n", 1)[1]
 
 
 def test_the_picked_groups_messages_reach_the_brief_once(harness, whatsapp_only):

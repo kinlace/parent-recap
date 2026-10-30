@@ -242,22 +242,29 @@ def test_welcome_names_each_ai_s_plan_beside_it_and_nothing_comes_next():
 
 
 # What Welcome's "Have these ready" list says in each language (#298), one line each (#491): the
-# Wilma login, 2-Step Verification for the App Password, one MyClub link per Kid, and the phone
+# Wilma login, the Gateway Key from the Parent Recap team (ADR 0032), 2-Step Verification for the
+# App Password, only if school mail comes to Gmail, one MyClub link per Kid, and the phone
 # that may confirm it's you to Google, on macOS as on Windows now that setup has no WhatsApp Mac app
 # to sign in to. The last line says the rest can wait.
 READY_WORDS = {
     "en": {"wilma": ("username", "password"),
-           "gmail": ("2-Step Verification",),
+           "key": ("Gateway Key",),
+           "key.why": ("Parent Recap team",),
+           "gmail": ("Only if school mail", "2-Step Verification"),
            "myclub": ("calendar link", "each Kid"),
            "phone.why": ("Google",),
            "later": ("until later",)},
     "fi": {"wilma": ("käyttäjätunnu", "salasana"),
-           "gmail": ("Kaksivaiheinen vahvistus",),
+           "key": ("Gateway-avain",),
+           "key.why": ("Parent Recapin tiimi",),
+           "gmail": ("Vain jos koulun viestit", "Kaksivaiheinen vahvistus"),
            "myclub": ("kalenterilinkki", "lapselle"),
            "phone.why": ("Google",),
            "later": ("myöhemmäksi",)},
     "zh": {"wilma": ("用户名", "密码"),
-           "gmail": ("两步验证",),
+           "key": ("网关密钥",),
+           "key.why": ("Parent Recap 团队",),
+           "gmail": ("学校邮件发到 Gmail 时才需要", "两步验证"),
            "myclub": ("日历链接", "每个孩子"),
            "phone.why": ("Google",),
            "later": ("以后",)},
@@ -272,9 +279,11 @@ def test_welcome_has_a_folded_list_of_what_to_have_ready():
     assert folded and not re.search(r"\bopen\b", folded.group(0))
     ready = inside(page_html, "welcome-ready")
     assert '<summary data-text="welcome.ready"></summary>' in ready
-    # Each Source by the name the Source list gives it, then the phone, each with what it needs.
+    # Each Source by the name the Source list gives it, the Gateway Key every Brief is sent with
+    # (ADR 0032), then the phone, each with what it needs.
     items = re.findall(r'<dt data-text="([\w.]+)"></dt>\s*<dd data-text="([\w.]+)"></dd>', ready)
     assert items == [("source.wilma", "welcome.ready.wilma"),
+                     ("welcome.ready.key", "welcome.ready.key.why"),
                      ("source.gmail", "welcome.ready.gmail"),
                      ("source.myclub", "welcome.ready.myclub"),
                      ("welcome.ready.phone", "welcome.ready.phone.why")]

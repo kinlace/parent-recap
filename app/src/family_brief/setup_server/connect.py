@@ -45,7 +45,8 @@ class Connect(Phase):
 
     def choose_source(self, raw: Any) -> Reply:
         """Skips a Source, moving setup on to the next one to do, or opens one from the list,
-        which brings a skipped one back."""
+        which brings a skipped one back. Gmail's step also saves who gets the Brief, so Gmail can
+        be skipped only once they're saved."""
         answer = parse(SourceChoice, raw)
         listed = setup_connect.sources()
         if answer.source not in listed:  # a step this system doesn't offer
@@ -58,6 +59,10 @@ class Connect(Phase):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Open a Source, or skip one that can be skipped.",
                 errors=[f"source: skip one of {', '.join(skippable())}"])
+        if answer.source == "gmail" and self.context.setup_parent() is None:
+            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                "invalid-answers", "Save who gets the Brief on Gmail's step before skipping it.",
+                errors=["source: gmail can be skipped once the Recipients are saved"])
         return self.context.connect.skip(answer.source)
 
     def open_site(self, raw: Any) -> Reply:

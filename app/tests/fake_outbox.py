@@ -1,6 +1,6 @@
-"""Where the Brief goes out: the email it is sent as, by the Household's Gmail or by the gateway's
-Brief relay (ADR 0028), iMessage, and the Google Calendar API. Each records what it is given, or
-fails as the test says."""
+"""Where the Brief goes out: the email it is sent as by the gateway's Brief relay (ADR 0028, ADR
+0032), iMessage, and the Google Calendar API. Each records what it is given, or fails as the test
+says."""
 from __future__ import annotations
 
 import base64
@@ -14,7 +14,7 @@ import requests
 
 from fake_model import _response
 from family_brief import gateway as api
-from family_brief.actions import calendar as calendar_action, email as email_action
+from family_brief.actions import calendar as calendar_action
 
 
 @dataclass
@@ -22,10 +22,8 @@ class SentEmail:
     subject: str
     text: str
     html: str | None
-    from_addr: str | None  # the Gmail it went from; None from the gateway, whose relay picks it
     to: list[str]
     attachments: list[tuple[str, bytes, str]]
-    via: str = "gmail"     # or "gateway"
 
     def attachment(self, suffix: str) -> tuple[str, bytes, str] | None:
         return next((a for a in self.attachments if a[0].endswith(suffix)), None)
@@ -83,18 +81,9 @@ class FakeOutbox:
         self.imessages: list[tuple[str, str]] = []  # (recipient, text) actually sent
         self.imessage_error: str | None = None      # stderr of a failing osascript
         self.calendar = FakeCalendarService()
-        mp.setattr(email_action, "gmail", self._send)
         mp.setattr(api, "post_brief", self._relay)
         mp.setattr(calendar_action, "TOKEN_PATH", str(home / ".family" / "calendar_token.json"))
         mp.setattr(calendar_action, "_build_service", lambda: self.calendar)
-
-    def _send(self, from_addr: str, subject: str, body_text: str, to_addrs: list[str],
-              body_html: str | None = None,
-              attachments: list[tuple[str, bytes, str]] | None = None) -> None:
-        if self.email_error:
-            raise self.email_error
-        self.sent.append(SentEmail(subject, body_text, body_html, from_addr, list(to_addrs),
-                                   list(attachments or [])))
 
     def _relay(self, url: str, key: str, body: dict[str, Any], timeout: float = 0) -> requests.Response:
         if self.email_error:
@@ -104,9 +93,9 @@ class FakeOutbox:
         if status == 200 and not body:  # doctor's check: the relay takes the key, then the empty request is bad
             return _response(400, {"error": "`to` must be a list of addresses"})
         if status == 200:
-            self.sent.append(SentEmail(body["subject"], body["text"], body.get("html"), None, list(body["to"]),
+            self.sent.append(SentEmail(body["subject"], body["text"], body.get("html"), list(body["to"]),
                                        [(a["filename"], base64.b64decode(a["data"]), a["content_type"])
-                                        for a in body.get("attachments", [])], via="gateway"))
+                                        for a in body.get("attachments", [])]))
         return _response(status, answer)
 
     def authorize_google_calendar(self) -> None:

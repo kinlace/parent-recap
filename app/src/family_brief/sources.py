@@ -124,11 +124,11 @@ def _same_everywhere(label: str) -> dict[str, str]:
     return {"en": label, "fi": label, "zh": label}
 
 
-# A Gmail with no sender ticked only sends the Brief and is never read: reading it would search
-# the whole inbox (#361).
+# A Gmail with no sender ticked is never read: reading it would search the whole inbox (#361).
+# It never sends the Brief either (ADR 0032), so a Household can skip it.
 GMAIL = Source("gmail", _same_everywhere("Gmail"),
                lambda cfg: bool(cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders),
-               skippable=False, connect_rank=1, collect=_collector("gmail"),
+               skippable=True, connect_rank=1, collect=_collector("gmail"),
                lookback=lambda cfg: cfg.gmail, check=_in("ops", "check_gmail"),
                secrets=_in("uninstall", "gmail_secrets"), notes=_in("uninstall", "gmail_notes"),
                sent_to_everyone=_in("collectors.gmail", "sent_to_everyone"),
@@ -197,5 +197,5 @@ def unread(cfg: Config, state: State) -> dict[str, Unread]:
 
 def used(cfg: Config) -> list[Source]:
     """The Sources the Household's evening run reads, in run order. With nothing connected that's
-    Gmail, which sends the Brief and so is always set up."""
+    Gmail, the first Source setup asks about, so the run says it could read nothing."""
     return [s for s in available() if s.connected(cfg)] or [GMAIL]

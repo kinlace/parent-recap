@@ -25,10 +25,13 @@ Answers = dict[str, Any] | Callable[[Progress], dict[str, Any]]
 T = TypeVar("T", bound=BaseModel)
 # What skipping a Source also saves, so that a Household that skips it doesn't use it, whether
 # it's skipped in Connect or on Check after its check failed (#500): Wilma and WhatsApp are turned
-# off, and MyClub's links are removed, as a skipped MyClub has none to keep.
+# off, and MyClub's links are removed, as a skipped MyClub has none to keep. Gmail keeps no sender
+# ticked, so it isn't read; it never sent the Brief anyway (ADR 0032).
 SKIP_ANSWERS: dict[str, dict[str, Any]] = {
-    s.name: {"sources": {s.name: {"enabled": False}}}
-    for s in (source_registry.WILMA, source_registry.WHATSAPP, source_registry.MYCLUB)
+    **{s.name: {"sources": {s.name: {"enabled": False}}}
+       for s in (source_registry.WILMA, source_registry.WHATSAPP, source_registry.MYCLUB)},
+    source_registry.GMAIL.name: {"sources": {"gmail": {"allowlist_domains": [],
+                                                       "allowlist_senders": []}}},
 }
 
 

@@ -17,7 +17,7 @@ kids:
     myclub_ical_url: null # Personal MyClub calendar subscription link (webcal://...), or null
 
 gmail:
-  username: you@gmail.com # Used both to receive (IMAP) and to send (SMTP) the Brief
+  username: you@gmail.com # Only read (IMAP); the Brief is sent from Parent Recap's own address
   lookback_hours: 26
   allowlist_domains: # Only mail from these domains is scanned; find them with parent-recap discover gmail-senders
     - espoo.fi
@@ -48,8 +48,8 @@ google_calendar:
 
 email:
   enabled: true
-  sender: gmail # or gateway: Parent Recap's own address sends it, with the Gateway Key (ADR 0028)
-  from_addr: you@gmail.com # Gmail only
+  # Sent from brief@parentrecap.com through the gateway at llm.gateway_url, with the Gateway Key
+  # in the Keychain (ADR 0032)
   to: # Brief recipients; add a partner if you like
     - you@gmail.com # reads the Brief in summary_language
     # - address: partner@gmail.com # a Recipient who reads another language

@@ -79,6 +79,8 @@
         <dl>
           <dt data-text="source.wilma"></dt>
           <dd data-text="welcome.ready.wilma"></dd>
+          <dt data-text="welcome.ready.key"></dt>
+          <dd data-text="welcome.ready.key.why"></dd>
           <dt data-text="source.gmail"></dt>
           <dd data-text="welcome.ready.gmail"></dd>
           <dt data-text="source.myclub"></dt>
@@ -133,47 +135,42 @@
     </div>
     <div id="source-gmail" class="source" hidden>
       <h2 data-text="source.gmail"></h2>
-      <fieldset id="gmail-choice">
-        <legend data-text="gmail.choice"></legend>
-        <label><input type="radio" name="sender" value="gmail"><span data-text="gmail.choice.gmail"></span></label>
-        <label><input type="radio" name="sender" value="gateway"><span data-text="gmail.choice.gateway"></span></label>
-      </fieldset>
-      <form id="gateway-sends-form" class="details" hidden>
-        <p data-text="gmail.gateway.explain"></p>
-        <p data-text="gmail.gateway.unread"></p>
+      <form id="gmail-brief-form" class="details">
+        <p data-text="gmail.brief.explain"></p>
+        <p data-text="gmail.brief.unread"></p>
         <div class="field">
-          <label for="gateway-sends-address" data-text="gmail.gateway.address"></label>
-          <input type="email" id="gateway-sends-address" autocomplete="email" spellcheck="false" required>
+          <label for="gmail-brief-address" data-text="gmail.brief.address"></label>
+          <input type="email" id="gmail-brief-address" autocomplete="email" spellcheck="false" required>
         </div>
         <div class="field">
-          <label for="gateway-sends-language" data-text="gmail.gateway.language"></label>
-          <select id="gateway-sends-language"></select>
+          <label for="gmail-brief-language" data-text="gmail.brief.language"></label>
+          <select id="gmail-brief-language"></select>
         </div>
-        <div id="gateway-sends-partner" class="details" hidden>
+        <div id="gmail-brief-partner" class="details" hidden>
           <div class="field">
-            <label for="gateway-sends-partner-address" data-text="gmail.gateway.partner"></label>
-            <input type="email" id="gateway-sends-partner-address" autocomplete="off" spellcheck="false">
+            <label for="gmail-brief-partner-address" data-text="gmail.brief.partner"></label>
+            <input type="email" id="gmail-brief-partner-address" autocomplete="off" spellcheck="false">
           </div>
           <div class="field">
-            <label for="gateway-sends-partner-language" data-text="gmail.gateway.partner.language"></label>
-            <select id="gateway-sends-partner-language"></select>
+            <label for="gmail-brief-partner-language" data-text="gmail.brief.partner.language"></label>
+            <select id="gmail-brief-partner-language"></select>
           </div>
         </div>
-        <p id="gateway-sends-junk" class="hint" data-text="gmail.gateway.junk" hidden></p>
-        <div id="gateway-sends-key-part" hidden>
-          <p data-text="gmail.gateway.key.explain"></p>
+        <p id="gmail-brief-junk" class="hint" data-text="gmail.brief.junk" hidden></p>
+        <div id="gmail-brief-key-part" hidden>
+          <p data-text="gmail.brief.key.explain"></p>
           <div class="field">
-            <label for="gateway-sends-key" data-text="gmail.gateway.key"></label>
-            <input type="password" id="gateway-sends-key" autocomplete="off" spellcheck="false">
+            <label for="gmail-brief-key" data-text="gmail.brief.key"></label>
+            <input type="password" id="gmail-brief-key" autocomplete="off" spellcheck="false">
           </div>
         </div>
         <div class="slot" data-default></div>
         <div class="actions">
-          <button type="submit" id="gateway-sends-save" data-text="gmail.gateway.save"></button>
+          <button type="submit" id="gmail-brief-save" data-text="gmail.brief.save"></button>
         </div>
       </form>
-      <div id="gmail-own">
-        <p id="gmail-reading-only" data-text="gmail.reading-only" hidden></p>
+      <div id="gmail-own" hidden>
+        <p class="ready"><span id="gmail-brief-to"></span> <button type="button" id="gmail-brief-change" class="link" data-text="gmail.brief.change"></button></p>
         <p data-text="gmail.explain"></p>
         <p data-text="gmail.before"></p>
         <form id="gmail-form" class="details">
@@ -196,6 +193,7 @@
           <div class="slot" data-default></div>
           <div class="actions">
             <button type="submit" id="gmail-save" data-text="gmail.save"></button>
+            <button type="button" class="link" data-skip hidden></button>
           </div>
         </form>
         <details class="more">
@@ -559,6 +557,18 @@
       <p id="finish-back" hidden><button type="button" class="link" data-text="connect.back"></button></p>
     </div>
   </section>
+  <!-- The Gateway Key for sending, which Check and Finish move under the Brief sending check
+       when it says there's none (ADR 0032). -->
+  <form id="send-key-form" class="details" hidden>
+    <div class="field">
+      <label for="send-key" data-text="gmail.brief.key"></label>
+      <input type="password" id="send-key" autocomplete="off" spellcheck="false" required>
+    </div>
+    <div class="actions">
+      <button type="submit" id="send-key-save" data-text="gateway.save"></button>
+    </div>
+    <p id="send-key-message" role="status" hidden></p>
+  </form>
   <div id="chat" class="chat" hidden>
     <p class="hint"><span data-text="chat.note"></span> <button type="button" id="chat-continue" class="link" data-text="chat.continue"></button></p>
     <div id="chat-status" class="status" role="status" hidden>

@@ -12,12 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from conftest import msg
+from conftest import GATEWAY_KEY, msg
 
 from family_brief import gateway as api, install_record, ops
 from family_brief.system import secrets
 
-KEY = "sk-bf-fake-gateway-key"
+KEY = GATEWAY_KEY
 ACCOUNT = "gateway-key"
 URL = "https://gateway.example.test"
 GOOD = {"per_kid": [{"kid": "Mia", "notices": [{"text": "Retki to Nuuksio on Thu 1 Oct", "refs": ["1001"]}],

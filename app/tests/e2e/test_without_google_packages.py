@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from family_brief import google_packages
+from conftest import without_unread_note
 from nights import normal_night
 from test_nightly_google_calendar import ICS_FALLBACK
 from test_setup_save import ANSWERS, save, saved
@@ -64,7 +65,7 @@ def test_google_mode_without_them_sends_the_events_as_ics(harness, no_google):
     assert harness.run() == 0
 
     [email] = harness.sent
-    assert email.text.endswith(ICS_FALLBACK)
+    assert without_unread_note(email.text).endswith(ICS_FALLBACK)
     assert email.attachment(".ics")
     assert harness.calendar.inserted == []
 
@@ -74,6 +75,7 @@ def test_weekend_picks_without_them_still_go_out(harness, monkeypatch, no_google
     from family_brief.config import Config
     harness.config["weekend_events"] = {"enabled": True}
     harness.authorize_google_calendar()  # left from when the Household used Google Calendar
+    harness.store_gateway_key()
     harness.model_reply = {"picks": [{"ext_id": "le-1", "rank": 1, "why": "puppets"}]}
     monkeypatch.setattr(weekend_pipeline.we, "collect", lambda cfg: [candidate()])
 

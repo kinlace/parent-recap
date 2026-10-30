@@ -132,12 +132,11 @@ class Recipient(BaseModel):
 
 
 class EmailConfig(BaseModel):
-    """Email delivery: by default through the Household's Gmail over SMTP with the App Password
-    (the same Keychain entry as inbound IMAP), or from Parent Recap's own address through the
-    maintainers' gateway at llm.gateway_url, with the Gateway Key (ADR 0028)."""
+    """Email delivery, always from Parent Recap's own address through the maintainers' gateway at
+    llm.gateway_url, with the Gateway Key (ADR 0028, ADR 0032). Configs written before ADR 0032
+    may still say `sender: gmail` or give a `from_addr`; both are ignored, so such a Household
+    sends through the gateway too once it has a Gateway Key."""
     enabled: bool = True
-    sender: Literal["gmail", "gateway"] = "gmail"
-    from_addr: str | None = None                # Gmail's; falls back to gmail.username
     to: list[Recipient] = Field(default_factory=list)          # Brief Recipients
     weekend_to: list[Recipient] = Field(default_factory=list)  # Weekend Picks Recipients
 
@@ -298,18 +297,13 @@ class Config(BaseModel):
         return name
 
     def default_sources(self) -> list[str]:
-        """The Sources the evening run reads. A Gmail with no sender ticked only sends the Brief
-        when another Source brings the news (#361), and is never read: reading it would search
-        the whole inbox."""
+        """The Sources the evening run reads. A Gmail with no sender ticked is never read when
+        another Source brings the news (#361): reading it would search the whole inbox."""
         return [s.name for s in sources.used(self)]
 
     def sends_imessage(self) -> bool:
         """Whether the Brief also goes out as an iMessage: only on macOS, which has Messages."""
         return self.imessage.enabled and macos_only.offers("imessage")
-
-    def gmail_only_sends(self) -> bool:
-        """Whether Gmail has no sender ticked and another Source is connected."""
-        return not sources.GMAIL.connected(self) and bool(self.other_sources())
 
     def other_sources(self) -> list[str]:
         """The Sources connected besides Gmail, of those this system can read."""
