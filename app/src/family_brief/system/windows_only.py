@@ -97,7 +97,7 @@ def _elevation_type() -> int | None:
 
 
 # Waits for the process, then removes each path, trying again for a minute while the launchers
-# that started it (parent-recap.exe, the venv's python.exe) end too, then the folders left empty.
+# that started it (parent-recap.cmd's cmd.exe, the venv's python.exe) end too, then the folders left empty.
 _REMOVE = (
     "$ErrorActionPreference = 'SilentlyContinue'; "
     "Wait-Process -Id ([int]$env:PARENT_RECAP_PID); "

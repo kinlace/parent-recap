@@ -53,7 +53,7 @@ In a new PowerShell window, run:
 parent-recap doctor
 ```
 
-If PowerShell doesn't know `parent-recap` (an install from before 0.9.0, or a window opened before the install), paste the install line again, or use its full path: `& "$env:LOCALAPPDATA\ParentRecap\app\.venv\Scripts\parent-recap.exe" doctor`.
+If PowerShell doesn't know `parent-recap` (an install from before 0.9.0, or a window opened before the install), paste the install line again, or use its full path: `& "$env:LOCALAPPDATA\ParentRecap\app\.venv\Scripts\python.exe" -m family_brief doctor`.
 
 It checks the evening run's tasks in Task Scheduler, "Allow wake timers", signing back in after an update, and the stored passwords and AI sign-in, and says what to fix. The evening run's log is `%USERPROFILE%\ParentRecap\logs\run-stderr.log`, and the install's logs are in `%LOCALAPPDATA%\ParentRecap\logs`. Don't paste mail or message text from the logs into a chat.
 

@@ -270,18 +270,23 @@ jobs:
           $found = powershell -NoProfile -Command ('Import-Module PSReadLine; ' + $env:NEW_WINDOW + '(Get-Command parent-recap).Source; parent-recap --help | Out-Null; exit $LASTEXITCODE')
           if ($LASTEXITCODE -ne 0) { throw 'parent-recap --help failed in a new window' }
           Write-Host "parent-recap: $found"
-          if ($found -ne "$env:INSTALLED\bin\parent-recap.exe") { throw "a new window finds parent-recap at $found" }
+          # A script on the venv's Python, not pip's launcher, which Defender can block (#591).
+          if ($found -ne "$env:INSTALLED\bin\parent-recap.cmd") { throw "a new window finds parent-recap at $found" }
+          # It passes the program's exit code on: argparse's 2 for a command it doesn't know.
+          powershell -NoProfile -Command ($env:NEW_WINDOW + 'parent-recap no-such-command; exit $LASTEXITCODE')
+          if ($LASTEXITCODE -ne 2) { throw "parent-recap no-such-command exited with $LASTEXITCODE" }
           $python = powershell -NoProfile -Command ($env:NEW_WINDOW + '(Get-Command python -ErrorAction SilentlyContinue).Source')
           Write-Host "python: $python"
           if ($python -like "$env:INSTALLED*") { throw "python in a new window is Parent Recap's: $python" }
           @(Get-ChildItem "$env:INSTALLED\bin" | ForEach-Object Name) -join ',' | Tee-Object -Variable inside
-          if ($inside -ne 'parent-recap.exe') { throw "the PATH folder holds $inside" }
+          if ($inside -ne 'parent-recap.cmd') { throw "the PATH folder holds $inside" }
       # As the pasted line ends: the installed program's setup page, served on this PC, offering
       # what Windows has (WhatsApp as a Linked Device, the gateway first of the AIs).
       - name: The installed program serves the setup page with the Windows steps
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'setup-page.txt'
-          $page = Start-Process "$env:INSTALLED\app\.venv\Scripts\parent-recap.exe" -ArgumentList 'setup', 'page' `
+          # As install.ps1 opens it, on the venv's Python.
+          $page = Start-Process "$env:INSTALLED\app\.venv\Scripts\python.exe" -ArgumentList '-m', 'family_brief', 'setup', 'page' `
             -RedirectStandardOutput $out -NoNewWindow -PassThru
           try {
             $url = $null
