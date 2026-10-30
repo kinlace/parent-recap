@@ -1,6 +1,8 @@
 """The gateway's Brief relay (ops/gateway/brief_relay.py, #525) through its request handler: the
 Gateway Key checked against a fake Bifrost admin API, the daily cap, the request's shape, and the
-message handed to a fake Email Delivery SMTP server, parsed back as a mail client reads it."""
+message handed to a fake Email Delivery SMTP server, parsed back as a mail client reads it. And
+keys made on request (ADR 0033, #618): asking for one, its limits, the confirmation email and
+page, binding new addresses, and the relay sending only to the confirmed ones."""
 from __future__ import annotations
 
 import base64
@@ -28,6 +30,7 @@ _spec.loader.exec_module(br)
 
 KEY = "sk-bf-test-household-one"
 STOP = "https://gateway.example/brief/stop"
+CONFIRM = "https://gateway.example/brief/confirm"
 ICS = (b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\n"
        b"SUMMARY:Retki Nuuksioon\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
 BRIEF = {
@@ -45,17 +48,26 @@ def virtual_key(n: int, value: str, active: bool = True) -> dict:
 
 
 class FakeBifrost:
-    """Bifrost's virtual-key list as its admin API pages it: at most `limit` keys per page."""
+    """Bifrost's virtual-key list as its admin API pages it: at most `limit` keys per page. A POST
+    makes a key, as its admin API does."""
 
     def __init__(self, keys: list[dict], down: bool = False) -> None:
         self.keys = keys
         self.down = down
         self.paths: list[str] = []
+        self.made: list[dict] = []
 
-    def __call__(self, path: str) -> dict:
+    def __call__(self, path: str, body: dict | None = None) -> dict:
         self.paths.append(path)
         if self.down:
             raise urllib.error.URLError("connection refused")
+        if body is not None:
+            assert path == "/api/governance/virtual-keys"
+            key = {**body, "id": f"id-made-{len(self.made)}",
+                   "value": f"sk-bf-made-{len(self.made)}"}
+            self.made.append(body)
+            self.keys.append(key)
+            return {"message": "created", "virtual_key": key}
         query = dict(p.split("=") for p in path.split("?", 1)[1].split("&"))
         limit, offset = min(int(query["limit"]), 100), int(query["offset"])
         page = self.keys[offset:offset + limit]
@@ -105,7 +117,9 @@ def make_relay(tmp_path: Path, day: list[str], keys: list[dict] | None = None,
         keys=br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=bifrost),
         cap=br.DailyCap(tmp_path / "sent.json", limit=cap, today=lambda: day[0]),
         mailer=br.Mailer("smtp.example", 465, "user", "pass", smtp=FakeSMTP),
-        stop_url=STOP)
+        stop_url=STOP,
+        bindings=br.Bindings(tmp_path / "bindings.json", today=lambda: day[0]),
+        confirm_url=CONFIRM)
 
 
 def post(relay: Any, body: Any = BRIEF, key: str | None = KEY) -> tuple[int, dict]:
@@ -333,3 +347,264 @@ def raw_status(base: str, *lines: str) -> int:
     with socket.create_connection((host, int(port)), timeout=5) as s:
         s.sendall(("\r\n".join([*lines, "Connection: close", "", ""])).encode())
         return int(s.recv(1024).split()[1])
+
+
+# ── Keys made on request (ADR 0033)
+
+ASKED = [{"address": "Parent@Example.com", "language": "fi"},
+         {"address": "partner@example.fi", "language": "zh"}]
+
+
+def ask_key(relay: Any, recipients: Any = ASKED, caller: str = "203.0.113.7") -> tuple[int, dict]:
+    return relay.request_key(caller, json.dumps({"recipients": recipients}).encode())
+
+
+def link_in(msg: Message) -> str:
+    [link] = [w for w in msg.get_body(("plain",)).get_content().split() if w.startswith(CONFIRM)]
+    return link
+
+
+def open_link(relay: Any, link: str, post: bool = False) -> tuple[int, str]:
+    return relay.confirm(link.split("?", 1)[1], post=post)
+
+
+def test_a_key_request_makes_a_send_only_key_and_mails_each_address_a_link_in_its_language(
+        tmp_path, day):
+    bifrost = FakeBifrost([])
+    relay = make_relay(tmp_path, day, bifrost=bifrost)
+    status, body = ask_key(relay)
+    assert status == 200
+    assert body["key"] == "sk-bf-made-0"
+    assert body["recipients"] == [{"address": "parent@example.com", "confirmed": False},
+                                  {"address": "partner@example.fi", "confirmed": False}]
+    assert body["mailed"] == ["parent@example.com", "partner@example.fi"]
+    [made] = bifrost.made
+    assert made["name"].startswith("on-request-") and made["is_active"] is True
+    assert "made on request" in made["description"]
+    assert "provider_configs" not in made and "budgets" not in made  # no model behind it
+    (frm, [to_fi], fi), (_, [to_zh], zh) = FakeSMTP.sent
+    assert frm == "brief@parentrecap.com" and fi["From"] == "Parent Recap <brief@parentrecap.com>"
+    assert (to_fi, to_zh) == ("parent@example.com", "partner@example.fi")
+    assert fi["Subject"] == "Vahvista, että haluat Parent Recapin koosteen"
+    assert zh["Subject"] == "请确认接收 Parent Recap 日报"
+    # Who asked, and how to ignore it.
+    assert "parent@example.com otti Parent Recapin käyttöön" in fi.get_body(("plain",)).get_content()
+    assert "parent@example.com 设置了 Parent Recap" in zh.get_body(("plain",)).get_content()
+    assert "忽略这封邮件" in zh.get_body(("plain",)).get_content()
+    assert link_in(fi) != link_in(zh)
+
+
+def test_a_language_without_its_own_text_gets_english(tmp_path, day):
+    ask_key(make_relay(tmp_path, day), [{"address": "far@example.com", "language": "sv"}])
+    [(_, _, msg)] = FakeSMTP.sent
+    assert msg["Subject"] == "Confirm that you want the Parent Recap Brief"
+
+
+@pytest.mark.parametrize("recipients", [
+    [], "parent@example.com", [{"address": "Parent <parent@example.com>", "language": "en"}],
+    [{"address": "parent@example.com"}], [{"address": "parent@example.com", "language": "<b>"}],
+    [{"address": f"p{n}@example.com", "language": "en"} for n in range(7)],
+    [{"address": "parent@example.com", "language": "en"}, {"address": "PARENT@example.com",
+                                                           "language": "fi"}],
+])
+def test_a_malformed_key_request_gets_400_and_makes_no_key(tmp_path, day, recipients):
+    bifrost = FakeBifrost([])
+    status, body = ask_key(make_relay(tmp_path, day, bifrost=bifrost), recipients)
+    assert status == 400 and body["error"]
+    assert bifrost.made == [] and FakeSMTP.sent == []
+
+
+def test_one_caller_gets_three_keys_a_day(tmp_path, day):
+    relay = make_relay(tmp_path, day, bifrost=FakeBifrost([]))
+    statuses = [ask_key(relay, [{"address": f"p{n}@example.com", "language": "en"}])[0]
+                for n in range(4)]
+    assert statuses == [200, 200, 200, 429]
+    assert ask_key(relay, [{"address": "p9@example.com", "language": "en"}],
+                   caller="198.51.100.1")[0] == 200
+    day[0] = "2026-10-29"
+    assert ask_key(relay, [{"address": "p8@example.com", "language": "en"}])[0] == 200
+
+
+def test_one_address_gets_three_confirmation_emails_a_day_whoever_asks(tmp_path, day):
+    bifrost = FakeBifrost([])
+    relay = make_relay(tmp_path, day, bifrost=bifrost)
+    one = [{"address": "parent@example.com", "language": "en"}]
+    statuses = [ask_key(relay, one, caller=f"198.51.100.{n}")[0] for n in range(4)]
+    assert statuses == [200, 200, 200, 429]
+    assert len(bifrost.made) == 3 and len(FakeSMTP.sent) == 3
+
+
+def test_confirmation_emails_stop_at_the_days_total(tmp_path, day):
+    relay = make_relay(tmp_path, day, bifrost=FakeBifrost([]))
+    sent = 0
+    for n in range(br.MAILS_PER_DAY):
+        status, _ = ask_key(relay, [{"address": f"p{n}@example.com", "language": "en"}],
+                            caller=f"198.51.100.{n}")
+        sent += status == 200
+    assert sent == br.KEYS_PER_DAY  # the key total comes first
+    assert len(FakeSMTP.sent) == br.KEYS_PER_DAY <= br.MAILS_PER_DAY
+
+
+def test_bifrost_unreachable_while_making_a_key_gets_503(tmp_path, day):
+    status, body = ask_key(make_relay(tmp_path, day, bifrost=FakeBifrost([], down=True)))
+    assert status == 503 and "key" in body["error"]
+    assert FakeSMTP.sent == []
+
+
+def test_the_link_asks_first_and_confirms_only_when_its_button_posts(tmp_path, day):
+    relay = make_relay(tmp_path, day, bifrost=FakeBifrost([]))
+    ask_key(relay)
+    (_, _, fi), (_, _, zh) = FakeSMTP.sent
+    status, page = open_link(relay, link_in(fi))
+    assert status == 200 and '<form method="post">' in page and "Vahvista" in page
+    assert 'lang="fi"' in page and "parent@example.com" in page
+    status, page = open_link(relay, link_in(fi), post=True)
+    assert status == 200 and "Vahvistettu" in page and "<form" not in page
+    status, page = open_link(relay, link_in(zh), post=True)
+    assert "已确认" in page
+    status, page = open_link(relay, f"{CONFIRM}?t={'x' * 32}", post=True)
+    assert status == 404 and "doesn't work" in page
+    assert open_link(relay, f"{CONFIRM}?t=<script>")[0] == 404
+
+
+def test_the_key_sends_only_to_its_confirmed_addresses(tmp_path, day):
+    relay = make_relay(tmp_path, day, bifrost=FakeBifrost([]))
+    _, made = ask_key(relay)
+    (_, _, fi), _ = FakeSMTP.sent
+    FakeSMTP.sent = []
+    brief = {**BRIEF, "to": ["parent@example.com", "partner@example.fi"]}
+    status, body = post(relay, brief, key=made["key"])
+    assert (status, body) == (403, {"error": "recipient not confirmed",
+                                    "unconfirmed": ["parent@example.com", "partner@example.fi"]})
+    assert FakeSMTP.sent == []
+    open_link(relay, link_in(fi), post=True)
+    status, body = post(relay, brief, key=made["key"])
+    assert (status, body) == (200, {"sent": 1, "refused": 0, "unconfirmed": ["partner@example.fi"]})
+    [(_, to, msg)] = FakeSMTP.sent
+    assert to == ["parent@example.com"] and msg["To"] == "parent@example.com"
+    # An address never bound is refused as one not confirmed.
+    status, body = post(relay, {**BRIEF, "to": ["stranger@example.net"]}, key=made["key"])
+    assert status == 403 and body["unconfirmed"] == ["stranger@example.net"]
+
+
+def test_a_key_made_by_hand_still_sends_to_any_address(tmp_path, day):
+    assert post(make_relay(tmp_path, day), {**BRIEF, "to": ["stranger@example.net"]})[0] == 200
+
+
+def test_a_key_made_on_request_has_its_own_daily_cap(tmp_path, day):
+    relay = make_relay(tmp_path, day, bifrost=FakeBifrost([virtual_key(1, KEY)]))
+    relay.cap.on_request_limit = 1
+    _, made = ask_key(relay, [{"address": "parent@example.com", "language": "en"}])
+    open_link(relay, link_in(FakeSMTP.sent[0][2]), post=True)
+    brief = {**BRIEF, "to": ["parent@example.com"]}
+    assert [post(relay, brief, key=made["key"])[0] for _ in range(2)] == [200, 429]
+    assert post(relay)[0] == 200  # a key made by hand keeps its own
+
+
+def bind(relay: Any, key: str, recipients: list[dict], resend: bool = False) -> tuple[int, dict]:
+    return relay.rebind(key, json.dumps({"recipients": recipients, "resend": resend}).encode())
+
+
+def test_binding_a_new_address_mails_only_it_and_keeps_who_confirmed(tmp_path, day):
+    relay = make_relay(tmp_path, day, bifrost=FakeBifrost([]))
+    _, made = ask_key(relay, [{"address": "parent@example.com", "language": "en"}])
+    open_link(relay, link_in(FakeSMTP.sent[0][2]), post=True)
+    FakeSMTP.sent = []
+    now = [{"address": "parent@example.com", "language": "en"},
+           {"address": "new@example.fi", "language": "fi"}]
+    status, body = bind(relay, made["key"], now)
+    assert status == 200
+    assert body == {"recipients": [{"address": "parent@example.com", "confirmed": True},
+                                   {"address": "new@example.fi", "confirmed": False}],
+                    "mailed": ["new@example.fi"]}
+    [(_, [to], msg)] = FakeSMTP.sent
+    assert to == "new@example.fi" and "parent@example.com otti" in msg.get_body(("plain",)).get_content()
+    # The same list again only answers.
+    assert bind(relay, made["key"], now)[1]["mailed"] == []
+    # An address left out is unbound: the key no longer sends to it.
+    bind(relay, made["key"], now[1:])
+    assert post(relay, {**BRIEF, "to": ["parent@example.com"]}, key=made["key"])[0] == 403
+
+
+def test_resend_mails_each_unconfirmed_address_again_within_its_limit(tmp_path, day):
+    relay = make_relay(tmp_path, day, bifrost=FakeBifrost([]))
+    one = [{"address": "parent@example.com", "language": "en"}]
+    _, made = ask_key(relay, one)
+    first = link_in(FakeSMTP.sent[0][2])
+    statuses = [bind(relay, made["key"], one, resend=True)[0] for _ in range(3)]
+    assert statuses == [200, 200, 429]  # three emails a day to one address
+    assert link_in(FakeSMTP.sent[-1][2]) == first  # the same link, so any of them works
+    open_link(relay, first, post=True)
+    status, body = bind(relay, made["key"], one, resend=True)
+    assert (status, body["mailed"]) == (200, [])  # nothing left to confirm
+
+
+def test_binding_with_a_key_made_by_hand_changes_nothing_and_says_all_are_confirmed(tmp_path, day):
+    status, body = bind(make_relay(tmp_path, day), KEY, ASKED)
+    assert status == 200 and all(r["confirmed"] for r in body["recipients"])
+    assert FakeSMTP.sent == []
+    assert bind(make_relay(tmp_path, day), "sk-bf-unknown", ASKED)[0] == 401
+
+
+def test_the_bindings_survive_a_restart(tmp_path, day):
+    bifrost = FakeBifrost([])
+    _, made = ask_key(make_relay(tmp_path, day, bifrost=bifrost))
+    open_link(make_relay(tmp_path, day, bifrost=bifrost), link_in(FakeSMTP.sent[0][2]), post=True)
+    relay = make_relay(tmp_path, day, bifrost=bifrost)
+    assert post(relay, {**BRIEF, "to": ["parent@example.com"]}, key=made["key"])[0] == 200
+
+
+def test_requests_for_keys_log_no_address_link_or_key(tmp_path, day, caplog):
+    caplog.set_level(logging.INFO, logger="brief-relay")
+    relay = make_relay(tmp_path, day, bifrost=FakeBifrost([]))
+    _, made = ask_key(relay)
+    link = link_in(FakeSMTP.sent[0][2])
+    open_link(relay, link, post=True)
+    bind(relay, made["key"], ASKED, resend=True)
+    assert "key-request key=on-request-" in caplog.text and "outcome=made, 2 mailed" in caplog.text
+    for secret in [made["key"], link.split("=")[1], "example.com", "example.fi", "203.0.113.7"]:
+        assert secret not in caplog.text
+    # The day's counts keep no address and no caller as they are either.
+    stored = (tmp_path / "bindings.json").read_text()
+    assert "203.0.113.7" not in stored
+
+
+def test_print_keys_lists_each_key_made_on_request_with_who_confirmed(tmp_path, day, capsys):
+    relay = make_relay(tmp_path, day, bifrost=FakeBifrost([]))
+    ask_key(relay)
+    open_link(relay, link_in(FakeSMTP.sent[0][2]), post=True)
+    br.print_keys(tmp_path / "bindings.json")
+    out = capsys.readouterr().out
+    assert "on-request-" in out and "made 2026-10-28" in out
+    assert "parent@example.com (fi): confirmed" in out
+    assert "partner@example.fi (zh): not confirmed" in out
+
+
+def test_over_http_a_key_is_asked_for_and_confirmed_and_the_caller_is_caddys(tmp_path, day):
+    relay = make_relay(tmp_path, day, bifrost=FakeBifrost([]))
+    server = br.ThreadingHTTPServer(("127.0.0.1", 0), br.handler(relay))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+
+    def call(path: str, data: bytes | None = None, headers: dict | None = None) -> tuple[int, bytes]:
+        request = urllib.request.Request(base + path, data=data, headers=headers or {})
+        try:
+            with urllib.request.urlopen(request, timeout=5) as r:
+                return r.status, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+
+    try:
+        ask = json.dumps({"recipients": ASKED[:1]}).encode()
+        for n in range(3):
+            assert call("/v1/brief/key", ask, {"X-Forwarded-For": "203.0.113.7"})[0] == 200 or n
+        assert call("/v1/brief/key", ask, {"X-Forwarded-For": "203.0.113.7"})[0] == 429
+        link = link_in(FakeSMTP.sent[0][2]).removeprefix(CONFIRM)
+        status, page = call("/brief/confirm" + link)
+        assert status == 200 and b"<form" in page
+        status, page = call("/brief/confirm" + link, data=b"")
+        assert status == 200 and "Vahvistettu".encode() in page
+        assert call("/v1/brief/recipients", ask, {"x-api-key": "sk-bf-made-0"})[0] == 200
+    finally:
+        server.shutdown()
+        server.server_close()
