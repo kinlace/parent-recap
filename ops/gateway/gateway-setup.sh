@@ -73,6 +73,7 @@ systemctl restart bifrost
 # set-smtp-credentials.sh, which restarts it.
 install -d -m 0755 /usr/local/lib/brief-relay /usr/local/share/brief-relay
 install -m 0644 "$here/brief_relay.py" /usr/local/lib/brief-relay/brief_relay.py
+install -m 0755 "$here/keys.sh" /usr/local/lib/brief-relay/keys.sh
 install -m 0644 "$here/brief-stop.html" /usr/local/share/brief-relay/stop.html
 install -m 0644 "$here/brief-relay.service" /etc/systemd/system/brief-relay.service
 mkdir -p /etc/systemd/system/brief-relay.service.d

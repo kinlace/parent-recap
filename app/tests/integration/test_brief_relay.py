@@ -569,15 +569,28 @@ def test_requests_for_keys_log_no_address_link_or_key(tmp_path, day, caplog):
     assert "203.0.113.7" not in stored
 
 
-def test_print_keys_lists_each_key_made_on_request_with_who_confirmed(tmp_path, day, capsys):
-    relay = make_relay(tmp_path, day, bifrost=FakeBifrost([]))
+def test_print_keys_lists_every_key_with_what_it_can_do_and_never_its_value(
+        tmp_path, day, capsys):
+    ai = {**virtual_key(1, KEY), "name": "ai-household-1",
+          "provider_configs": [{"provider": "anthropic"}],
+          "budgets": [{"max_limit": 0.10, "current_usage": 0.03}]}
+    off = {**virtual_key(2, "sk-bf-test-send-only", active=False), "name": "send-household-2"}
+    bifrost = FakeBifrost([ai, off])
+    relay = make_relay(tmp_path, day, bifrost=bifrost)
     ask_key(relay)
     open_link(relay, link_in(FakeSMTP.sent[0][2]), post=True)
-    br.print_keys(tmp_path / "bindings.json")
-    out = capsys.readouterr().out
-    assert "on-request-" in out and "made 2026-10-28" in out
-    assert "parent@example.com (fi): confirmed" in out
-    assert "partner@example.fi (zh): not confirmed" in out
+    br.print_keys(br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=bifrost),
+                  tmp_path / "bindings.json")
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "ai-household-1  id=id-1  writes+sends  on  today $0.03 of $0.10"
+    assert lines[1] == "send-household-2  id=id-2  sends only  off  today -"
+    # A key made on request: what it can do, then who confirmed.
+    assert lines[2].startswith("on-request-") and "sends only  on" in lines[2]
+    assert lines[2].endswith("made 2026-10-28")
+    assert lines[3].startswith("  parent@example.com (fi): confirmed ")
+    assert lines[4:] == ["  partner@example.fi (zh): not confirmed"]
+    for k in bifrost.keys:
+        assert k["value"] not in "\n".join(lines)
 
 
 def test_over_http_a_key_is_asked_for_and_confirmed_and_the_caller_is_caddys(tmp_path, day):
