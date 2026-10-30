@@ -16,10 +16,13 @@ from __future__ import annotations
 import http.client
 import json
 import logging
+import re
 import stat
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 from urllib.parse import urlencode, urlparse
 
 import pytest
@@ -42,6 +45,8 @@ from test_setup_wilma import wilma_cli  # noqa: F401
 
 pytestmark = pytest.mark.posix  # the fake wilma CLI is a script on a shell-script Node
 
+REFRESH = '<meta http-equiv="refresh" content="3">'  # how the page asks again, with no script
+STEPS = ("step_setup", "step_wilma", "step_brief")
 ESPOO_TOWN = "Espoo – Espoon kaupunki / Suomenkielisen opetuksen tulosyksikkö"
 NOON = datetime(2026, 10, 30, 10, 0, tzinfo=timezone.utc)  # 12:00 in Helsinki
 MIA_LINK = "webcal://kilonpallo.myclub.fi/ical/mia-1001-token.ics"
@@ -87,6 +92,14 @@ def signup(harness, wilma_cli, tmp_path):  # noqa: F811
     yield s
     s.server.stop()
     thread.join(5)
+    made()  # nothing goes on making a Household after the test
+
+
+def made() -> None:
+    """Waits until no Household is being made, with no page asking how it went."""
+    for maker in threading.enumerate():
+        if maker.name == "household-maker":
+            maker.join(30)
 
 
 def request(url: str, path: str, method: str = "GET", fields: dict[str, str] | None = None,
@@ -112,10 +125,67 @@ def sign_in(s: SignUp, code: str, **fields: str) -> Response:
     return request(s.url, f"/join/{code}", "POST", answers)
 
 
-def links(s: SignUp, code: str, *given: str, lang: str = "en") -> Response:
+def post_links(s: SignUp, code: str, *given: str, lang: str = "en") -> Response:
     """The page's MyClub step: a link, or "" for none, for each Kid in turn."""
     return request(s.url, f"/join/{code}", "POST",
                    {"lang": lang, "step": "myclub"} | {f"m{i}": url for i, url in enumerate(given)})
+
+
+def links(s: SignUp, code: str, *given: str, lang: str = "en") -> Response:
+    """The MyClub step, then the page as it shows the steps, until it says how the sign-up
+    ended; the step's own page when it doesn't move on."""
+    r = post_links(s, code, *given, lang=lang)
+    if r.status != 303:
+        return r
+    assert r.headers["location"] == f"/join/{code}"
+    return result(s, code)
+
+
+def result(s: SignUp, code: str) -> Response:
+    """The page the sign-up shows, asked again as the browser does, until it no longer asks."""
+    deadline = time.monotonic() + 60
+    while True:
+        r = request(s.url, f"/join/{code}")
+        if REFRESH not in text(r):
+            return r
+        assert time.monotonic() < deadline, text(r)
+        time.sleep(0.05)
+
+
+def until(s: SignUp, code: str, shows: Callable[[str], bool]) -> str:
+    """The page the sign-up shows, asked again until `shows` it, while it still asks again."""
+    deadline = time.monotonic() + 30
+    while True:
+        html = text(request(s.url, f"/join/{code}"))
+        assert REFRESH in html, html
+        if shows(html):
+            return html
+        assert time.monotonic() < deadline, html
+        time.sleep(0.05)
+
+
+def marks(html: str, language: str) -> str:
+    """Each step's mark on the page, in order: ✅ ended, ⏳ going on, ❌ failed, ⬜ not begun."""
+    return "".join(re.search(rf"<li>(\S+) {re.escape(said(language, step))}</li>", html)[1]
+                   for step in STEPS)
+
+
+class Held:
+    """Holds each command run as a Household until the test lets it end, as a slow server
+    takes its time."""
+
+    def __init__(self, host: FakeHouseholdHost, monkeypatch) -> None:
+        self.ends = threading.Semaphore(0)
+        run_as = host.run_as
+
+        def held(name: str, argv: list[str], stdin: str, timeout: int) -> tuple[int, str]:
+            assert self.ends.acquire(timeout=30)
+            return run_as(name, argv, stdin, timeout)
+        monkeypatch.setattr(host, "run_as", held)
+
+    def end(self, commands: int = 1) -> None:
+        for _ in range(commands):
+            self.ends.release()
 
 
 def submit(s: SignUp, code: str, myclub: tuple[str, ...] = ("", ""), **fields: str) -> Response:
@@ -270,6 +340,93 @@ def test_the_first_step_asks_for_each_kid_s_myclub_link_and_shows_no_secret(sign
         assert loads not in html
 
 
+# ── The steps
+
+@pytest.mark.parametrize("language", ["fi", "en", "zh"])
+def test_the_page_marks_each_step_as_it_ends(signup, monkeypatch, language):
+    held = Held(signup.host, monkeypatch)
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    assert sign_in(signup, code, lang=language).status == 200
+
+    r = post_links(signup, code, "", "", lang=language)
+
+    # Answered at once, with the page that shows the steps.
+    assert (r.status, r.headers["location"]) == (303, f"/join/{code}")
+    html = until(signup, code, lambda html: marks(html, language) == "⏳⬜⬜")
+    assert f'<html lang="{language}">' in html
+    assert said(language, "updates") in html and said(language, "queued") not in html
+    for loads in ("<script", "<link", "<img", "src="):
+        assert loads not in html
+    held.end()  # install.sh
+    until(signup, code, lambda html: marks(html, language) == "✅⏳⬜")
+    held.end()  # signup household
+    until(signup, code, lambda html: marks(html, language) == "✅✅⏳")
+    held.end()  # the first Brief
+
+    r = result(signup, code)
+    assert r.status == 200
+    assert marks(text(r), language) == "✅✅✅"
+    assert said(language, "sent", time="21:00") in text(r)
+    # Seen, the steps are gone with the link.
+    _not_found(request(signup.url, f"/join/{code}"))
+
+
+def test_a_sign_up_behind_another_says_it_waits_and_starts_once_that_one_is_done(
+        signup, monkeypatch):
+    held = Held(signup.host, monkeypatch)
+    first = signup.invite(Recipient("parent@example.com", "fi"))
+    second = signup.invite(Recipient("other@example.com", "fi"))
+    assert sign_in(signup, first).status == 200
+    assert post_links(signup, first, "", "").status == 303
+    until(signup, first, lambda html: marks(html, "en") == "⏳⬜⬜")
+
+    assert sign_in(signup, second, lang="zh").status == 200
+    assert post_links(signup, second, "", "", lang="zh").status == 303
+
+    html = until(signup, second, lambda html: said("zh", "queued") in html)
+    assert marks(html, "zh") == "⬜⬜⬜"  # no step begun
+    held.end(6)
+    assert marks(text(result(signup, first)), "en") == "✅✅✅"
+    assert marks(text(result(signup, second)), "zh") == "✅✅✅"
+    assert [h.evening for h in signup.store.households()] == ["21:00", "21:05"]
+
+
+def test_a_phone_that_slept_through_the_steps_finds_how_they_ended(signup, monkeypatch):
+    held = Held(signup.host, monkeypatch)
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    assert sign_in(signup, code, lang="fi").status == 200
+    assert post_links(signup, code, "", "", lang="fi").status == 303
+    until(signup, code, lambda html: marks(html, "fi") == "⏳⬜⬜")
+
+    # The screen turns off: the page asks nothing while the Household is made.
+    held.end(3)
+    made()
+    signup.clock.now += timedelta(hours=1)
+    # It turns on, and the browser may post the form again: back to the steps, nothing new.
+    r = post_links(signup, code, "", "", lang="fi")
+
+    assert (r.status, r.headers["location"]) == (303, f"/join/{code}")
+    r = result(signup, code)
+    assert r.status == 200 and marks(text(r), "fi") == "✅✅✅"
+    assert said("fi", "sent", time="21:00") in text(r)
+    assert len(signup.host.users) == 1 and len(signup.host.commands) == 3
+    _not_found(request(signup.url, f"/join/{code}"))  # once seen, gone
+
+
+def test_how_a_sign_up_ended_is_kept_a_day_for_a_page_that_never_came_back(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    assert sign_in(signup, code).status == 200
+    signup.host.fails = "mint_key"
+    assert post_links(signup, code, "", "").status == 303
+    made()
+
+    signup.clock.now += timedelta(hours=25)
+
+    # The steps are gone, and the link, never used, shows the form again.
+    r = request(signup.url, f"/join/{code}")
+    assert r.status == 200 and 'name="password"' in text(r) and "❌" not in text(r)
+
+
 # ── MyClub
 
 @pytest.fixture
@@ -415,9 +572,11 @@ def test_a_town_only_one_wilma_has_is_taken_as_typed(signup):
     assert r.status == 200 and said("en", "wrong-password") in text(r)
 
 
-@pytest.mark.parametrize("step", ["create_user", "mint_key", "install", "jobs", "first_brief"])
+@pytest.mark.parametrize("step, marked", [("create_user", "❌⬜⬜"), ("mint_key", "❌⬜⬜"),
+                                          ("install", "❌⬜⬜"), ("jobs", "✅❌⬜"),
+                                          ("first_brief", "✅✅❌")])
 def test_a_step_that_fails_takes_back_what_was_made_and_the_link_stays_good(
-        signup, harness, step, caplog):
+        signup, harness, step, marked, caplog):
     code = signup.invite(Recipient("parent@example.com", "fi"))
     if step == "install":
         signup.host.install_exit = 1
@@ -429,7 +588,8 @@ def test_a_step_that_fails_takes_back_what_was_made_and_the_link_stays_good(
     r = submit(signup, code)
 
     assert r.status == 500
-    assert said("en", "failed") in text(r)
+    assert marks(text(r), "en") == marked  # the step that failed, then why
+    assert text(r).index("❌") < text(r).index(said("en", "failed"))
     # No user with its jobs, no key, no files.
     assert signup.host.users == {} and signup.host.keys == {}
     assert len(signup.host.removed) == 1 and signup.host.revoked == signup.host.removed
@@ -472,7 +632,7 @@ def test_a_household_the_program_couldn_t_make_is_taken_back(signup):
 
     r = submit(signup, code)
 
-    assert r.status == 500
+    assert r.status == 500 and marks(text(r), "en") == "✅❌⬜"
     assert signup.host.users == {} and signup.host.keys == {}
 
 

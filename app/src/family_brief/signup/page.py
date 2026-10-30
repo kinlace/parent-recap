@@ -2,6 +2,9 @@
 or Chinese, with no script and nothing loaded from anywhere, so it works on any phone's browser
 and a Content-Security-Policy of `default-src 'none'` holds. The Wilma password goes only into its
 own password field, posted with the form, and never comes back in a page.
+
+While the Household is made, the page lists its steps and asks the server again every few seconds
+by a `refresh` meta tag, which needs no script and picks up again when the phone wakes.
 """
 from __future__ import annotations
 
@@ -37,6 +40,14 @@ TEXT = {
         "sign_up": "Sign up",
         "wait": "Signing up takes a minute or two. Keep this page open until it says you're "
                 "signed up.",
+        "signing_up": "Signing you up",
+        "updates": "This page updates by itself. Keep it open until it says you're signed up; "
+                   "it's fine if the phone's screen turns off for a while.",
+        "queued": "Another family is signing up just now. Yours starts when theirs is done, so "
+                  "none of its steps has started yet.",
+        "step_setup": "Setting up Parent Recap for you",
+        "step_wilma": "Connecting Wilma",
+        "step_brief": "Writing and sending your first Brief",
         "wrong-password": "Wilma didn't accept that username and password. Check them and try "
                           "again.",
         "no-kids": "This Wilma account has no children in it. Sign in with a guardian's account.",
@@ -90,6 +101,14 @@ TEXT = {
         "sign_up": "Ota käyttöön",
         "wait": "Käyttöönotto kestää minuutin tai kaksi. Pidä tämä sivu auki, kunnes se kertoo, "
                 "että olet mukana.",
+        "signing_up": "Otetaan käyttöön",
+        "updates": "Sivu päivittyy itsestään. Pidä se auki, kunnes se kertoo, että olet mukana; "
+                   "puhelimen näyttö saa välillä sammua.",
+        "queued": "Toinen perhe ottaa Parent Recapia juuri nyt käyttöön. Sinun vuorosi alkaa, kun "
+                  "heidän on valmis, joten yhtäkään vaihetta ei ole vielä aloitettu.",
+        "step_setup": "Parent Recapia valmistellaan sinulle",
+        "step_wilma": "Wilma yhdistetään",
+        "step_brief": "Ensimmäinen kooste kirjoitetaan ja lähetetään",
         "wrong-password": "Wilma ei hyväksynyt käyttäjätunnusta ja salasanaa. Tarkista ne ja "
                           "yritä uudelleen.",
         "no-kids": "Tällä Wilma-tunnuksella ei ole lapsia. Kirjaudu huoltajan tunnuksella.",
@@ -139,6 +158,12 @@ TEXT = {
                        "或 https:// 开头），训练和比赛也会出现在摘要里。不需要就留空。",
         "sign_up": "开始使用",
         "wait": "开通需要一两分钟。请保持这个页面打开，直到它显示开通成功。",
+        "signing_up": "正在开通",
+        "updates": "这个页面会自动更新。请保持它打开，直到它显示开通成功；中途手机屏幕熄灭也没关系。",
+        "queued": "另一个家庭正在开通。等他们完成后才轮到你，所以你的步骤都还没有开始。",
+        "step_setup": "为你准备 Parent Recap",
+        "step_wilma": "连接 Wilma",
+        "step_brief": "撰写并发送第一份摘要",
         "wrong-password": "Wilma 没有接受这个用户名和密码。请检查后再试一次。",
         "no-kids": "这个 Wilma 账号下没有孩子。请用家长（监护人）的账号登录。",
         "sign-in-failed": "现在连不上 Wilma，所以什么都没有保存。请过一会儿再试。",
@@ -168,10 +193,14 @@ border-radius:.4rem;background:#fff}
 .row{display:flex;gap:.5rem}.row input{flex:3}.row select{flex:1;min-width:6rem}
 .hint{color:#5b5a55;font-size:.9rem;margin:.25rem 0}
 .error{background:#fde8e4;border:1px solid #e0a197;border-radius:.4rem;padding:.75rem}
+ol{list-style:none;padding:0}li{margin:.5rem 0}
 button{margin-top:1.5rem;width:100%;font:inherit;font-weight:600;padding:.8rem;border:0;
 border-radius:.4rem;background:#2d5c4f;color:#fff}
 """
 MAX_RECIPIENTS = 10  # the Brief relay's, for one message
+# What making a Household does, in the order the server does it, in words a parent understands.
+STEPS = ("step_setup", "step_wilma", "step_brief")
+REFRESH_SECONDS = 3
 
 
 @dataclass
@@ -246,31 +275,56 @@ def _recipient(i: int, r: Recipient, t: dict[str, str], last: bool) -> str:
 """
 
 
+def progress(language: str, ended: int, waiting: bool) -> str:
+    """The steps while the Household is made, `ended` of them over, or none begun while it
+    `waiting` behind another family's; asked again by itself until the page says how it ended."""
+    t = TEXT[language]
+    queued = f'<p>{escape(t["queued"])}</p>' if waiting else ""
+    return _page(language, t["signing_up"], f"""
+{queued}{_steps(t, ended, None if waiting else "⏳")}
+<p class="hint">{escape(t['updates'])}</p>""", languages=False, refresh=True)
+
+
 def done(language: str, time: str, junk: bool) -> str:
     """Signed up: the first Brief sent, and when the next ones come. `junk` when a Recipient is
     on Hotmail or Outlook.com, which may file a new sender's first mail as Junk."""
     t = TEXT[language]
     hint = f'\n<p class="hint">{escape(t["junk"])}</p>' if junk else ""
     return _page(language, t["done"], f"""
+{_steps(t, len(STEPS), None)}
 <p>{escape(t['sent'].format(time=time))}</p>{hint}""", languages=False)
 
 
-def failed(language: str) -> str:
+def failed(language: str, ended: int | None = None) -> str:
+    """Nothing kept: with the steps, the one after the `ended` ones marked as the one that
+    failed, when it was a step of making the Household."""
     t = TEXT[language]
-    return _page(language, t["title"], f'<p class="error" role="alert">{escape(t["failed"])}</p>',
+    steps = _steps(t, ended, "❌") if ended is not None else ""
+    return _page(language, t["title"],
+                 f'{steps}<p class="error" role="alert">{escape(t["failed"])}</p>',
                  languages=False)
 
 
-def _page(language: str, title: str, body: str, languages: bool = True) -> str:
+def _steps(t: dict[str, str], ended: int, now: str | None) -> str:
+    """The steps, the first `ended` marked ✅ and the next with `now`, when one goes on."""
+    marks = ["✅"] * ended + ([now] if now and ended < len(STEPS) else [])
+    marks += ["⬜"] * (len(STEPS) - len(marks))
+    return "<ol>" + "".join(f"<li>{mark} {escape(t[step])}</li>"
+                            for mark, step in zip(marks, STEPS)) + "</ol>"
+
+
+def _page(language: str, title: str, body: str, languages: bool = True,
+          refresh: bool = False) -> str:
     nav = "".join(f"<b>{NAMES[code]}</b>" if code == language
                   else f"<a href=\"?lang={code}\" hreflang=\"{code}\">{NAMES[code]}</a>"
                   for code in LANGUAGES) if languages else ""
+    again = f'\n<meta http-equiv="refresh" content="{REFRESH_SECONDS}">' if refresh else ""
     return f"""<!doctype html>
 <html lang="{language}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
+<meta name="robots" content="noindex">{again}
 <title>{escape(title)}</title>
 <style>{STYLE}</style>
 </head>
