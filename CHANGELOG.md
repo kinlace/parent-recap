@@ -4,6 +4,22 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.9.0 · 2026-10-30
+
+Parent Recap can send the Brief itself, from `brief@parentrecap.com`, so a family can set up without Gmail and an App Password, and `parent-recap` runs in a new Terminal or PowerShell window without its full path.
+
+### Added
+
+- A Household with a Gateway Key can set `email.sender: gateway`, and its Brief, its first Brief from setup and its Weekend Picks then come from `brief@parentrecap.com` through the maintainers' gateway, so any mailbox can receive them. A Household that reads no mail (Wilma, MyClub or WhatsApp only) then needs no Gmail and no App Password. Gmail stays the default.
+- A family using Parent Recap's AI can pick "Parent Recap sends the Brief" on the setup page and skip the Gmail step, with no App Password. A family whose AI is its own Claude Code or ChatGPT can do the same by pasting the Gateway Key the team sent them.
+- A Brief sent this way says at the bottom that nobody reads its address and who to write to instead; the first one to a Hotmail or Outlook.com address says to mark it "Not junk" once.
+- After WhatsApp is linked again, and on Finish at any later visit, the setup page names the WhatsApp groups Parent Recap reads and lets the family change them, and `doctor` names them too.
+- After install, `parent-recap doctor` and `parent-recap uninstall` work in a new Terminal or PowerShell window, without the full path. Uninstall takes it away again.
+
+### Changed
+
+- On a Mac older than macOS 13.5 the install line stops before downloading anything and says, in English, Finnish and Chinese, to update macOS or use another computer.
+
 ## 0.8.1 · 2026-10-28
 
 ### Fixed
