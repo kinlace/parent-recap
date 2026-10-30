@@ -79,6 +79,8 @@ class FakeSMTP:
     """smtplib.SMTP_SSL, recording each message instead of reaching Email Delivery."""
     sent: list[tuple[str, list[str], Message]] = []
     fail: Exception | None = None
+    # Addresses Email Delivery refuses, as it does one it has suppressed.
+    refuse: set[str] = set()
 
     def __init__(self, host: str, port: int, timeout: float | None = None, **_kw: Any) -> None:
         self.address = (host, port)
@@ -96,12 +98,12 @@ class FakeSMTP:
     def send_message(self, msg: EmailMessage, from_addr: str, to_addrs: list[str]) -> dict:
         parsed = email.message_from_bytes(msg.as_bytes(), policy=default)
         FakeSMTP.sent.append((from_addr, list(to_addrs), parsed))
-        return {}
+        return {a: (550, b"suppressed") for a in to_addrs if a in FakeSMTP.refuse}
 
 
 @pytest.fixture(autouse=True)
 def smtp():
-    FakeSMTP.sent, FakeSMTP.fail = [], None
+    FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.refuse = [], None, set()
     yield FakeSMTP
 
 
@@ -111,12 +113,14 @@ def day() -> list[str]:
 
 
 def make_relay(tmp_path: Path, day: list[str], keys: list[dict] | None = None,
-               bifrost: FakeBifrost | None = None, cap: int = 3) -> Any:
+               bifrost: FakeBifrost | None = None, cap: int = 3, warn_at: int = 70) -> Any:
     bifrost = bifrost or FakeBifrost([virtual_key(1, KEY)] if keys is None else keys)
     return br.Relay(
         keys=br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=bifrost),
         cap=br.DailyCap(tmp_path / "sent.json", limit=cap, today=lambda: day[0]),
-        mailer=br.Mailer("smtp.example", 465, "user", "pass", smtp=FakeSMTP),
+        mailer=br.Mailer("smtp.example", 465, "user", "pass", smtp=FakeSMTP,
+                         quota=br.Quota(tmp_path / "quota.json", warn_at=warn_at,
+                                        today=lambda: day[0])),
         stop_url=STOP,
         bindings=br.Bindings(tmp_path / "bindings.json", today=lambda: day[0]),
         confirm_url=CONFIRM)
@@ -307,6 +311,72 @@ def test_the_log_has_the_keys_name_the_count_the_size_and_the_outcome_and_no_con
     for secret in [KEY, "sk-bf-unknown", BRIEF["subject"], "Nuuksioon", "example.com",
                    "example.fi", "events.ics", BRIEF["attachments"][0]["data"][:20]]:
         assert secret not in logged
+
+
+# ── Email Delivery's quota
+
+def quota_warnings(caplog: Any) -> list[str]:
+    return [r.getMessage() for r in caplog.records
+            if r.levelno == logging.WARNING and r.getMessage().startswith("quota ")]
+
+
+def test_the_maintainers_are_warned_once_when_a_days_mail_passes_the_mark(tmp_path, day, caplog):
+    caplog.set_level(logging.INFO, logger="brief-relay")
+    relay = make_relay(tmp_path, day, cap=10, warn_at=3)
+    post(relay)
+    assert quota_warnings(caplog) == []
+    post(relay)
+    assert quota_warnings(caplog) == ["quota day=2026-10-28 sent=4 of 100: past 3, "
+                                      "see ops/gateway/README.md \"Email Delivery's quota\""]
+    post(relay)
+    assert len(quota_warnings(caplog)) == 1
+
+
+def test_the_count_starts_again_each_utc_day(tmp_path, day, caplog):
+    caplog.set_level(logging.INFO, logger="brief-relay")
+    relay = make_relay(tmp_path, day, cap=10, warn_at=3)
+    post(relay)
+    day[0] = "2026-10-29"
+    post(relay)
+    assert quota_warnings(caplog) == []
+    post(relay)
+    assert len(quota_warnings(caplog)) == 1 and "day=2026-10-29 sent=4" in quota_warnings(caplog)[0]
+
+
+def test_a_restart_keeps_the_count_and_doesnt_warn_again(tmp_path, day, caplog):
+    caplog.set_level(logging.INFO, logger="brief-relay")
+    post(make_relay(tmp_path, day, warn_at=3))
+    post(make_relay(tmp_path, day, warn_at=3))
+    post(make_relay(tmp_path, day, warn_at=3))
+    assert len(quota_warnings(caplog)) == 1
+
+
+def test_only_messages_email_delivery_took_count(tmp_path, day, smtp, caplog):
+    caplog.set_level(logging.INFO, logger="brief-relay")
+    relay = make_relay(tmp_path, day, cap=10, warn_at=1)
+    smtp.fail = OSError("connection reset")
+    post(relay)
+    smtp.fail = None
+    smtp.refuse = {"partner@example.fi"}
+    post(relay)
+    assert quota_warnings(caplog) == []
+    post(relay)
+    assert quota_warnings(caplog)
+
+
+def test_a_warning_reaches_the_journal_as_one_so_journalctl_p_warning_lists_it():
+    def line(level: int) -> str:
+        return br.JournalFormatter("%(message)s").format(
+            logging.LogRecord("brief-relay", level, __file__, 1, "quota day=…", None, None))
+    assert line(logging.WARNING) == "<4>quota day=…"
+    assert line(logging.INFO) == "quota day=…"
+
+
+def test_confirmation_emails_count_too(tmp_path, day, caplog):
+    caplog.set_level(logging.INFO, logger="brief-relay")
+    relay = make_relay(tmp_path, day, warn_at=1)
+    assert ask_key(relay)[0] == 200
+    assert quota_warnings(caplog)
 
 
 # ── HTTP
