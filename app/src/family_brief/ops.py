@@ -251,8 +251,9 @@ def _check_confirmed(status, url: str, add) -> None:
         add(WARN if status.anyone else FAIL, "gateway-sends", send_key.describe(status),
             reason="unconfirmed", groups=status.unconfirmed)
     elif status.result == send_key.NO_KEY:
-        add(FAIL, "gateway-sends", f"{send_key.describe(status)}, so the evening Brief can't be "
-            "sent: Parent Recap sends every Brief from its own address", reason="no-key")
+        again = f" {send_key.ASK_AGAIN}" if status.asks_again else ""
+        add(FAIL, "gateway-sends", f"{status.error}, so the evening Brief can't be sent: Parent "
+            f"Recap sends every Brief from its own address{again}", reason="no-key")
     else:
         add(FAIL, "gateway-sends", f"{send_key.describe(status)} (if it happens again, tell the "
             "Parent Recap maintainers)")
