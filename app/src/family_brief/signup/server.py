@@ -3,12 +3,18 @@ Invite Link, `POST /join/<code>` signs the Household up, and anything else, a co
 good any more included, gets the gateway's web server's usual 404, so the service says nothing
 of which links exist.
 
-Signing up checks the Wilma sign-in before anything is made, so a wrong password is said at once
-and the link stays good. Then the Household is made through the household host: its Linux user,
-its Gateway Key, the program installed under it, and `signup household` run as it with the
-answers, the Wilma sign-in and the key on its stdin. A step that fails takes back what the ones
-before it made, and the link stays good. Once made, the Household is listed in the store, its
-link retired, and the page says when its first Brief comes.
+Signing up takes two posts of the page. The first checks the Wilma sign-in before anything is
+made, so a wrong password is said at once and the link stays good, and answers with a MyClub
+calendar link field for each Kid Wilma listed. The answers wait in memory only, for the second,
+up to PENDING_MINUTES: the password is never written down or put back in a page. The second post
+checks each link given by downloading it once, so a link that doesn't open is said at once, and
+an empty one leaves MyClub off for that Kid. Then the Household is made through the household
+host: its Linux user, its Gateway Key, the program installed under it, `signup household` run as
+it with the answers, the Wilma sign-in, the links and the key on its stdin, and its first Brief,
+made and sent to its Recipients by `run --first-brief` as it, as the setup page's first Brief
+step makes one (ADR 0031). A step that fails takes back the user with its files and jobs and the
+key, and the link stays good. Once made, the Household is listed in the store, its link retired,
+and the page says its first Brief was sent.
 
 Sign-ups go one at a time: each takes a minute or two, which ten Households can wait, and so two
 never take the same evening slot or the same link.
@@ -26,15 +32,15 @@ import re
 import socketserver
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs
-from zoneinfo import ZoneInfo
 
-from .. import failure, setup_wilma
+from .. import failure, setup_myclub, setup_wilma
+from ..setup_server.first_brief import BRIEF_LOOKBACK_HOURS
 from . import page
 from .host import HostError, HouseholdHost, user_name
 from .invites import LANGUAGES, HouseholdRecord, Recipient, Store
@@ -45,12 +51,15 @@ PREFIX = "/join/"
 NOT_FOUND = b"Not found"  # as the Caddyfile's `respond "Not found" 404`
 HEALTH = "/health"  # for gateway-setup.sh's check on localhost; Caddy sends only /join/ here
 MAX_BODY = 16 * 1024
-TIMEZONE = "Europe/Helsinki"  # every Hosted Household's for now: they are invited in Finland
 # The Households' evening jobs, one slot each in turn, so ten runs don't all start at once on a
 # server the gateway shares (ADR 0029).
 SLOTS = tuple(f"21:{minute:02d}" for minute in range(0, 60, 5))
 INSTALL_SECONDS = 900  # install.sh downloads Python and Node and installs the packages
 HOUSEHOLD_SECONDS = 600  # `signup household` installs the wilma CLI with npm
+FIRST_BRIEF_SECONDS = 900  # as long as the setup page gives its first Brief
+PENDING_MINUTES = 30  # how long the checked answers wait for the MyClub step
+# Hotmail and Outlook.com, by their domains' first part: they may put a new sender in Junk.
+JUNK_PRONE = ("hotmail", "outlook", "live", "msn")
 EMAIL = re.compile(r"[^@\s<>,;\"']+@[^@\s<>,;\"']+\.[^@\s<>,;\"']+")
 HEADERS = {
     # The page's only style is its inline <style>, by its hash; no script at all.
@@ -74,6 +83,8 @@ class Service:
     def __post_init__(self) -> None:
         self._lock = threading.Lock()
         self._towns: dict[str, tuple[dict[str, Any], str]] | None = None
+        # Each link's checked answers, the Wilma password among them, until its MyClub step.
+        self._pending: dict[str, _Pending] = {}
 
     # ---------------------------------------------------------------- the page
 
@@ -108,10 +119,18 @@ class Service:
 
     def sign_up(self, code: str, fields: dict[str, str]) -> tuple[HTTPStatus, str | None]:
         with self._lock:
-            invite = self.store.valid(code, self.now())
+            now = self.now()
+            invite = self.store.valid(code, now)
             if invite is None:
                 return HTTPStatus.NOT_FOUND, None
+            self._pending = {c: p for c, p in self._pending.items() if p.expires > now}
             language = fields.get("lang") if fields.get("lang") in LANGUAGES else invite.language
+            if fields.get("step") == "myclub":
+                if code in self._pending:
+                    return self._make(code, fields)
+                return HTTPStatus.OK, page.form(language, page.Typed(recipients=invite.recipients),
+                                                list(self.towns()), "expired")
+            self._pending.pop(code, None)  # signing in again starts over
             typed = page.Typed(fields.get("town", "").strip(), fields.get("username", "").strip(),
                                _recipients(fields, language))
             password = fields.get("password", "")
@@ -136,10 +155,9 @@ class Service:
                             checked.get("reason") or checked["result"])
                 return again("sign-in-failed")
 
-            name = user_name()
-            evening = _evening(self.store.households())
-            answers = {
-                "language": language, "city": town, "evening": evening,
+            expires = now + timedelta(minutes=PENDING_MINUTES)
+            self._pending[code] = _Pending(language, expires, {
+                "language": language, "city": town,
                 "recipients": [{"address": r.address, "language": r.language}
                                for r in typed.recipients],
                 "kids": [{"name": k["name"],
@@ -149,20 +167,47 @@ class Service:
                 "wilma": {"tenant": {"url": tenant["url"], "name": tenant["name"]},
                           "username": typed.username, "password": password,
                           "students": students},
-            }
-            try:
-                self._create(name, answers)
-            except Exception as e:  # noqa: BLE001 - whatever it was, the family hears and it's undone
-                log.error("Household %s wasn't created, and what was made is taken back: %s",
-                          name, failure.raised(e, "Signing up"))
-                self._take_back(name)
-                return HTTPStatus.INTERNAL_SERVER_ERROR, page.failed(language)
-            self.store.add_household(HouseholdRecord(name, evening, self.now().isoformat()))
-            self.store.retire(code)
-            day = _first_day(self.now(), evening)
-            log.info("Household %s created from an Invite Link; its Brief comes at %s",
-                     name, evening)
-            return HTTPStatus.OK, page.done(language, day, evening)
+            })
+            return HTTPStatus.OK, page.myclub(language, self._pending[code].kids())
+
+    def _make(self, code: str, fields: dict[str, str]) -> tuple[HTTPStatus, str]:
+        """The MyClub step: checks each link given, then makes the Household from the answers
+        the first step checked."""
+        pending = self._pending[code]
+        language, kids = pending.language, pending.kids()
+        links: dict[str, str] = {}
+        for i, kid in enumerate(kids):
+            url = "".join(fields.get(f"m{i}", "").split())
+            if not url:
+                continue  # MyClub stays off for this Kid
+            # One link for two Kids would write every event twice, under both names (#209).
+            if any(setup_myclub.same_link(url, other) for other in links.values()):
+                result = "same-link"
+            else:
+                result, _ = setup_myclub.check_link(url)
+            if result != "checked":
+                log.info("A sign-up's MyClub link wasn't taken: %s", result)
+                return HTTPStatus.OK, page.myclub(language, kids, result, kid)
+            links[kid] = url
+        del self._pending[code]
+
+        name = user_name()
+        evening = _evening(self.store.households())
+        answers = {**pending.answers, "evening": evening, "myclub": links}
+        try:
+            self._create(name, answers)
+        except Exception as e:  # noqa: BLE001 - whatever it was, the family hears and it's undone
+            log.error("Household %s wasn't created, and what was made is taken back: %s",
+                      name, failure.raised(e, "Signing up"))
+            self._take_back(name)
+            return HTTPStatus.INTERNAL_SERVER_ERROR, page.failed(language)
+        self.store.add_household(HouseholdRecord(name, evening, self.now().isoformat()))
+        self.store.retire(code)
+        log.info("Household %s created from an Invite Link, with MyClub for %d of %d Kids; its "
+                 "first Brief was sent, and the next come at %s", name, len(links), len(kids),
+                 evening)
+        return HTTPStatus.OK, page.done(language, evening, any(
+            _junk_prone(r["address"]) for r in answers["recipients"]))
 
     def _create(self, name: str, answers: dict[str, Any]) -> None:
         home = self.host.create_user(name)
@@ -179,6 +224,11 @@ class Service:
         if code != 0 or said.get("result") != "created":
             raise HostError(f"signup household said {said.get('result', code)}"
                             + (f": {said['reason']}" if said.get("reason") else ""))
+        # Its output isn't quoted: the run's log can name a Recipient.
+        code, _ = self.host.run_as(name, [str(program), "run", "--first-brief", "--lookback-hours",
+                                          str(BRIEF_LOOKBACK_HOURS)], "", FIRST_BRIEF_SECONDS)
+        if code != 0:
+            raise HostError(f"the first Brief wasn't sent: run ended with {code}")
 
     def _take_back(self, name: str) -> None:
         for undo in (self.host.revoke_key, self.host.remove_user):
@@ -187,6 +237,17 @@ class Service:
             except Exception as e:  # noqa: BLE001 - the other is still taken back
                 log.error("%s couldn't be taken back for %s: %s", undo.__name__, name,
                           failure.raised(e, "Taking back"))
+
+
+@dataclass
+class _Pending:
+    """A sign-up between its two steps: what the first checked, waiting for the MyClub links."""
+    language: str
+    expires: datetime
+    answers: dict[str, Any]
+
+    def kids(self) -> list[str]:
+        return [k["name"] for k in self.answers["kids"]]
 
 
 def _recipients(fields: dict[str, str], language: str) -> list[Recipient]:
@@ -205,11 +266,9 @@ def _evening(households: list[HouseholdRecord]) -> str:
     return min(SLOTS, key=lambda slot: (taken.count(slot), SLOTS.index(slot)))
 
 
-def _first_day(now: datetime, evening: str) -> str:
-    """Whether the first Brief comes this evening or tomorrow, in the Household's time."""
-    local = now.astimezone(ZoneInfo(TIMEZONE))
-    hour, minute = map(int, evening.split(":"))
-    return "today" if (local.hour, local.minute) < (hour, minute) else "tomorrow"
+def _junk_prone(address: str) -> bool:
+    """Whether `address` is at Hotmail or Outlook.com (hotmail.fi, outlook.com, live.com, …)."""
+    return address.rpartition("@")[2].lower().split(".")[0] in JUNK_PRONE
 
 
 def _last_json(out: str) -> dict[str, Any]:

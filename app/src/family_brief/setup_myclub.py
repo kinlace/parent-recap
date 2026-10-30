@@ -28,35 +28,58 @@ def save_link(path: Path, kid: str, url: str,
     if other is not None:
         # One link for two Kids would write every event twice, under both names (#209).
         return "same-link", {"other_kid": other}
+    result, extra = check_link(url)
+    if result != "checked":
+        return result, extra
+    try:
+        with saving:
+            myclub.save_link(path, kid, url)
+    except (OSError, ValueError) as e:  # names the Kid and the config, never the link
+        return "save-failed", {"error": str(e)[:300]}
+    return "saved", extra
+
+
+def check_link(url: str) -> tuple[str, dict[str, Any]]:
+    """Checks the MyClub calendar link `url` by downloading it once, without saving it: `checked`
+    with the events found, or why not, in `save_link`'s results. The hosted sign-up checks a
+    Kid's link before their Household exists (ADR 0031)."""
+    from .collectors import myclub
+
+    url = "".join(url.split())
+    if not _is_myclub_link(url):
+        return "not-a-myclub-link", {}
     try:
         text = myclub.download(url)
     except myclub.FetchError as e:  # names only the server and the HTTP status
         return "link-failed", {"error": str(e)}
     if "BEGIN:VCALENDAR" not in text:
         return "not-a-calendar", {}
-    try:
-        with saving:
-            myclub.save_link(path, kid, url)
-    except (OSError, ValueError) as e:  # names the Kid and the config, never the link
-        return "save-failed", {"error": str(e)[:300]}
-    return "saved", {"events": text.count("BEGIN:VEVENT")}
+    return "checked", {"events": text.count("BEGIN:VEVENT")}
+
+
+def same_link(a: str, b: str) -> bool:
+    """Whether two MyClub links are one calendar, as a link made with several members ticked is
+    for each of them (#207)."""
+    from .collectors import myclub
+
+    def plain(url: str) -> str:
+        return myclub._normalize_url("".join(url.split())).rstrip("/")
+    return plain(a) == plain(b)
 
 
 def _kid_with_link(path: Path, kid: str, url: str) -> str | None:
     """The other Kid `url` is already saved for, if any. A link made with several members ticked
     is the same link for each of them (#207)."""
     import yaml
-    from .collectors import myclub
 
     try:
         kids = (yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}).get("kids") or []
     except (OSError, yaml.YAMLError, AttributeError):
         return None
-    same = myclub._normalize_url(url).rstrip("/")
     return next((k["name"] for k in kids
                  if isinstance(k, dict) and k.get("name") != kid
                  and isinstance(k.get("myclub_ical_url"), str)
-                 and myclub._normalize_url("".join(k["myclub_ical_url"].split())).rstrip("/") == same),
+                 and same_link(k["myclub_ical_url"], url)),
                 None)
 
 

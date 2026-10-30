@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,7 +43,9 @@ class FakeHouseholdHost:
         self.revoked: list[str] = []
         self.commands: list[list[str]] = []  # every command run as a user, with the user first
         self.install_exit = 0           # install.sh's exit code
-        self.fails: str | None = None   # "create_user" or "mint_key": that step raises
+        # "create_user" or "mint_key": that step raises; "jobs": the user's systemd doesn't
+        # take the evening jobs
+        self.fails: str | None = None
 
     def create_user(self, name: str) -> Path:
         assert USER.fullmatch(name), name
@@ -52,11 +55,16 @@ class FakeHouseholdHost:
         home = self.root / name
         home.mkdir(parents=True, mode=0o700)
         self.users[name] = User(home)
+        if self.fails == "jobs":
+            self.users[name].jobs.install_fails = "Failed to connect to bus: No medium found"
         return home
 
     def remove_user(self, name: str) -> None:
+        """As `userdel --remove`: the user's home with it, and its systemd user manager with
+        its jobs."""
         self.removed.append(name)
         self.users.pop(name, None)
+        shutil.rmtree(self.root / name, ignore_errors=True)
 
     def mint_key(self, name: str) -> str:
         if self.fails == "mint_key":

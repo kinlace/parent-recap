@@ -7,13 +7,15 @@ user once the program is installed there (ADR 0031). It reads, as JSON on stdin:
    "wilma": {"tenant": {"url": "https://espoo.inschool.fi", "name": "Espoon kaupunki"},
              "username": "mia.parent", "password": "…", "students": [{"studentNumber": "1001",
                                                                       "name": "Mia Virtanen"}]},
+   "myclub": {"Mia Virtanen": "https://…myclub.fi/…"},
    "gateway_key": "sk-bf-…"}
 
 and makes the Household: its config, through `setup save` as the setup page saves one, with the
 Kids Wilma listed, the Recipients, the gateway as its AI and its sender, Wilma on, WhatsApp off and
-the calendar as an .ics in the email; the Gateway Key in the secrets store; the wilma CLI with the
-sign-in the service checked; and the evening jobs at `evening`. It prints one line of JSON,
-`{"result": "created"}` or why not, which never holds the password or the key.
+the calendar as an .ics in the email; the MyClub link of each Kid in `myclub`, which the service
+checked, saved as `setup myclub` saves one; the Gateway Key in the secrets store; the wilma CLI
+with the sign-in the service checked; and the evening jobs at `evening`. It prints one line of
+JSON, `{"result": "created"}` or why not, which never holds the password, a link or the key.
 """
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .. import gateway, ops, setup_save, setup_wilma
+from ..collectors import myclub
 from ..config import Config
 from ..setup_report import outcome
 from ..system import jobs, secrets
@@ -55,6 +58,7 @@ class Household(_Strict):
     recipients: list[dict[str, Any]] = Field(min_length=1)
     kids: list[dict[str, Any]] = Field(min_length=1)
     wilma: WilmaSignIn
+    myclub: dict[str, str] = {}  # each link a secret (ADR 0007), by its Kid's name
     gateway_key: str = Field(pattern=r"^\S+$")
 
 
@@ -79,6 +83,11 @@ def create(config: Path, h: Household) -> dict[str, Any]:
     })
     if saved["result"] != "saved":
         return saved
+    for kid, url in h.myclub.items():
+        try:
+            myclub.save_link(config, kid, "".join(url.split()))
+        except (OSError, ValueError) as e:  # names the Kid and the config, never the link
+            return outcome("myclub-not-saved", reason=str(e)[:300])
     try:
         secrets.put(gateway.ACCOUNT, h.gateway_key)
     except secrets.SecretsError as e:

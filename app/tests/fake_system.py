@@ -97,6 +97,7 @@ class FakeJobs:
         self.running: set[str] = set()     # run_now finds these already going
         self.started: list[str] = []       # each job run_now started
         self.start_fails: str | None = None  # run_now's NotStarted reason
+        self.install_fails: str | None = None  # install's NotStarted reason, as systemctl's
         self.detached: list[list[str]] = []  # each one-off run's arguments, -c config first
         self.detached_fails: str | None = None  # the system didn't start a one-off run
         self.hangs = False                    # a one-off run doesn't finish in time
@@ -115,6 +116,8 @@ class FakeJobs:
                 self.loaded.add(name)
 
     def install(self, wanted: list[jobs.Job]) -> None:
+        if self.install_fails is not None:
+            raise jobs.NotStarted(self.install_fails)
         self.programs = {job.name: [sys.executable, "-m", "family_brief", job.subcommand]
                          for job in wanted}
         self.loaded = set(self.programs)

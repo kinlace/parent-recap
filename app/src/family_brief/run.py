@@ -32,9 +32,11 @@ log = logging.getLogger("family_brief")
 @dataclass(frozen=True)
 class Options:
     """How `parent-recap run` was asked to run. A preview is a dry run that prints, for the setup
-    page, how far it is and then the first Recipient's email."""
+    page, how far it is and then the first Recipient's email. A first Brief, the hosted sign-up's,
+    is made even on a quiet night, as a preview is, and sent to every Recipient."""
     dry_run: bool = False
     preview: bool = False
+    first: bool = False
     sources: list[str] | None = None  # the connected ones when None
     lookback_hours: int | None = None  # each Source's own, caught up, when None
     if_missed: bool = False
@@ -92,6 +94,9 @@ def plan(options: Options, *, anything_new: bool, nothing_could_be_read: bool,
     if options.preview:
         # A preview shows a quiet night's Brief too, so the family sees what one looks like.
         return Plan("brief", sends=False, shows=True)
+    if options.first:
+        # So does a first Brief, which the family is told has been sent.
+        return Plan("brief", sends=not options.dry_run)
     sends = not options.dry_run
     if not anything_new:
         # Silence would look like a quiet night, so the parents hear that nothing could be read.
@@ -527,24 +532,26 @@ def _send_nothing_read(cfg: Config, io: IO, read: _Read) -> None:
         _send(cfg, io, "email" if isinstance(item, render.Mail) else "imessage", lambda: item)
 
 
-def _deliver(cfg: Config, io: IO, state: State, written: _Written) -> tuple[bool, bool]:
-    """Send tonight's Brief to each Recipient: whether an email went out, and whether anyone got
-    it. Delivered once any enabled channel gets it out; with none enabled there is nothing to retry."""
+def _deliver(cfg: Config, io: IO, state: State, written: _Written) -> tuple[bool, bool, bool]:
+    """Send tonight's Brief to each Recipient: whether an email went out, whether anyone got it,
+    and whether everyone did. Delivered once any enabled channel gets it out; with none enabled
+    there is nothing to retry."""
     versions = _versions(cfg, written) if cfg.email.enabled else []
     night = written.night
     # Each mail is made as it goes, so one that can't be made leaves the others to go out.
     mails = [("email", lambda v=v: render.mail(night, v)) for v in versions]
     imessages = [("imessage", lambda: render.imessage(night, cfg.imessage.recipients))] \
         if cfg.sends_imessage() else []
-    email_sent = False
+    email_sent, everyone = False, True
     delivered = not (cfg.email.enabled or cfg.sends_imessage())
     for channel, make in mails + imessages:
         sent = _send(cfg, io, channel, make)
+        everyone = everyone and sent is not None
         if sent:
             email_sent = email_sent or channel == "email"
             delivered = True
             state.mark_delivered_now(sent.to)
-    return email_sent, delivered
+    return email_sent, delivered, everyone
 
 
 def _quiet_night(state: State, coverage: dict[str, dict], sends: bool) -> int:
@@ -599,7 +606,7 @@ def run(cfg: Config, options: Options, io: IO) -> int:
         log.info("DRY-RUN: body (%d chars):\n%s", len(body), body)
         return 0
 
-    email_sent, delivered = _deliver(cfg, io, state, written)
+    email_sent, delivered, everyone = _deliver(cfg, io, state, written)
     md_path = io.write_archive(cfg, night.date, read.messages, night.brief, written.notes, night.created, delivered)
     log.info("Archive written to %s", md_path)
 
@@ -615,7 +622,8 @@ def run(cfg: Config, options: Options, io: IO) -> int:
         state.forget_new_seen_messages()
     state.mark_run_now()
     state.save()
-    return 0
+    # A first Brief a Recipient didn't get fails, so the sign-up isn't said to have sent it.
+    return 1 if options.first and not everyone else 0
 
 
 def _evening_missed(cfg: Config, state: State) -> bool:
