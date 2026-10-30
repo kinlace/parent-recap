@@ -1,5 +1,7 @@
 # The Brief can be sent from Parent Recap's own address
 
+Superseded for the default by ADR 0032: every Brief is now sent from Parent Recap's own address, and Gmail is only read. The gateway transport, the mail service and the rest still follow this ADR.
+
 Today the Brief leaves the Household's own Gmail over SMTP, with the same App Password the Gmail Source reads the inbox with. A Household without a usable Gmail can't finish setup: a Gmail made for Parent Recap fails Google's verification for days (#485), and some Finnish parents only have Hotmail or a local provider. So a Household may instead have the Brief sent from Parent Recap's own address: the program posts each Brief, with its Recipients' addresses, to an endpoint on the maintainers' gateway (the same server and Household authentication as ADR 0014), which hands it to a transactional mail service and keeps nothing. Any mailbox can receive it. Sending through the Household's own Gmail stays the default; the gateway is the way out of the Gmail step for Households that read no mail (Wilma, MyClub or WhatsApp only), who then need no Gmail at all. Reading mail stays Gmail-only with the App Password; another provider's inbox (Hotmail needs OAuth) gets its own Source only when a Household needs it.
 
 ## Considered Options
