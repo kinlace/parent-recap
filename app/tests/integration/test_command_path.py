@@ -40,7 +40,11 @@ def test_puts_only_parent_recap_in_its_own_folder_on_the_path(harness, target):
 
     folder = target / "bin"
     assert [p.name for p in folder.iterdir()] == [name(harness.system)]  # no python beside it
-    assert (folder / name(harness.system)).read_bytes() == program.read_bytes()
+    placed = folder / name(harness.system)
+    if harness.system is WINDOWS:  # a script that runs it, below
+        assert b"-m family_brief" in placed.read_bytes()
+    else:
+        assert placed.read_bytes() == program.read_bytes()
     assert harness.user_path.folders == [folder]
 
 
@@ -74,7 +78,7 @@ def test_on_windows_it_is_a_script_that_runs_the_venv_s_python_not_pip_s_launche
     assert [p.name for p in (target / "bin").iterdir()] == ["parent-recap.cmd"]
     # By a path from its own folder, in ASCII whatever the home folder is called.
     assert script.read_bytes() == (
-        b'@"%~dp0..\\app\\.venv\\Scripts\\python.exe" -m family_brief %* & exit /b\r\n')
+        b'@"%~dp0..\\app\\.venv\\Scripts\\python.exe" -m family_brief %*\r\n')
 
 
 def test_on_windows_it_takes_the_place_of_0_9_0_s_launcher(harness, target):

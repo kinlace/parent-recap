@@ -23,9 +23,9 @@ NAME = "parent-recap"
 # only file of its kind, which Defender's attack surface reduction rule for programs that aren't
 # prevalent, old or trusted blocks on a PC its company manages (#591). The venv's python.exe is the
 # same file everywhere. Its path is from the script's own folder, as cmd reads the file in the
-# console's code page, which the home folder's name may not fit. `& exit /b` ends the script on the
-# line Python ran from, so cmd doesn't read the file again once uninstall has removed it.
-_SCRIPT = '@"%~dp0..\\app\\.venv\\{python}" -m family_brief %* & exit /b\r\n'
+# console's code page, which the home folder's name may not fit. Its last line is Python's, so the
+# script exits with Python's exit code.
+_SCRIPT = '@"%~dp0..\\app\\.venv\\{python}" -m family_brief %*\r\n'
 
 
 def folder(target: Path) -> Path:
