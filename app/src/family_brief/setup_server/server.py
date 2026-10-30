@@ -38,6 +38,7 @@ FILES = {  # what the page is made of, by the path under its address
     "page.js": ("page.js", "text/javascript; charset=utf-8"),
     "page.css": ("page.css", "text/css; charset=utf-8"),
     "text.json": ("text.json", "application/json; charset=utf-8"),
+    "myclub-tilaa.webp": ("myclub-tilaa.webp", "image/webp"),  # where MyClub's link is
 }
 FAVICON = "/favicon.ico"  # which the browser asks for at the root, outside the code, on every load
 STATE = "api/state"  # the page's state, which every phase adds its part to

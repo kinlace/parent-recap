@@ -75,6 +75,7 @@ function applyText() {
     el.setAttribute("aria-label",
       fill(t(el.dataset.label), el.dataset.values && JSON.parse(el.dataset.values)));
   }
+  for (const el of document.querySelectorAll("[data-alt]")) el.alt = t(el.dataset.alt);
   document.getElementById("language-switch").value = page.language;
   document.getElementById("phases").setAttribute("aria-label", t("phases.label"));
   if (page.progress) renderPhase();
