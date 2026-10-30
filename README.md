@@ -9,11 +9,13 @@ Every evening Parent Recap reads the places your kids' news comes from, has Clau
 
 The Brief is grouped by Kid and lists **Notices** (things to know) and **Action Items** (things to do, with due dates). New events come with the email as a calendar attachment you can add with one tap, or can be written straight into Google Calendar. Optional: Weekend Picks, family events in the Helsinki region recommended every Friday.
 
-The whole program runs on your own Mac. Data only moves between this Mac, the AI you chose (Claude or ChatGPT) and your mailbox; there is no other server. See [What the AI sees](#what-the-ai-sees) for what the AI gets.
+The whole program runs on your own Mac, unless the maintainers host it for you (see [What you need](#what-you-need)). Data only moves between this Mac, the AI you chose (Claude or ChatGPT) and your mailbox; there is no other server. See [What the AI sees](#what-the-ai-sees) for what the AI gets.
 
 ## What you need
 
 Have a Windows 11 PC instead of a Mac? [Parent Recap on Windows](docs/windows.md) says what it needs there, how to install it and what it doesn't do there yet.
+
+No computer that stays on? Ask the maintainers to host Parent Recap for you. They send an Invite Link, and on your phone you sign up with your Wilma login, your Recipients and, if you like, each Kid's MyClub link; the Brief then comes every evening from `brief@parentrecap.com`, written through the maintainers' gateway. You install nothing and pay nothing. Hosted, it reads Wilma and MyClub only, not WhatsApp or Gmail, and the maintainers keep your Wilma login and every Brief on their server until you ask them to remove you. [The hosted version](SECURITY.md#the-hosted-version) says exactly what they hold and who can read it. We host only the families we invite, and only a few for now.
 
 - A Mac with macOS 13.5 (Ventura) or newer: on an older macOS the install stops and asks you to update macOS or use another computer
 - A Mac that is on or asleep around 9 pm (the program wakes it up on schedule). A Mac with Apple Silicon (M1 or later) is recommended. An Intel Mac works for now, on a best-effort basis
