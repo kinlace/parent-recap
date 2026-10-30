@@ -227,6 +227,53 @@ def test_a_recipient_added_in_manage_is_bound_by_doctor_and_mailed_a_link(wilma_
     assert wilma_only.made_keys[made_key(wilma_only)][-1]["address"] == "grandma@example.fi"
 
 
+def hand_edited_before_0_10(harness) -> None:
+    """#638: a Household that sent the Brief from its own Gmail, whose AI added a second Recipient
+    to the config by hand, as the setup page took only one: it updates with no Gateway Key."""
+    harness.config["email"] = {"enabled": True, "sender": "gmail", "from_addr": "parent@gmail.com",
+                               "to": ["Parent@Hotmail.com", PARTNER]}
+    no_key(harness)
+
+
+def test_a_hand_edited_config_that_sent_from_gmail_gets_a_key_bound_to_both_recipients(
+        wilma_only, capsys, caplog):
+    hand_edited_before_0_10(wilma_only)
+    wilma_only.set_up_sources()
+
+    line = doctor(wilma_only, capsys)["Brief sending"]
+
+    assert line.startswith(ops.FAIL)
+    assert f"parent@hotmail.com, {PARTNER} have not confirmed yet" in line
+    assert "setup confirm --resend" in line and "Junk" in line
+    assert wilma_only.confirmations == [("parent@hotmail.com", "en"), (PARTNER, "en")]
+
+    wilma_only.confirm("parent@hotmail.com")
+    assert wilma_only.run() == 0
+
+    [email] = wilma_only.sent
+    assert email.to == ["Parent@Hotmail.com"]  # as written: the relay matches it in any case
+    assert f"not sent to {PARTNER}, who has not confirmed their address yet" in caplog.text
+    assert "parent@gmail.com" not in str(wilma_only.relay_keys) + str(email.__dict__)
+
+
+def test_a_key_the_gateway_cannot_make_on_an_update_says_what_to_do(wilma_only, capsys, caplog):
+    hand_edited_before_0_10(wilma_only)
+    wilma_only.set_up_sources()
+    wilma_only.key_answer = TimeoutError("timed out")
+
+    line = doctor(wilma_only, capsys)["Brief sending"]
+    wilma_only.run()
+
+    for said in (line, caplog.text):
+        assert "the gateway couldn't make one just now" in said
+        assert "`parent-recap setup confirm`" in said and "next evening" in said
+    assert wilma_only.sent == [] and api.ACCOUNT not in wilma_only.secrets
+
+    wilma_only.key_answer = None
+    assert wilma_only.cli("setup", "confirm") == 0
+    assert wilma_only.confirmations == [("parent@hotmail.com", "en"), (PARTNER, "en")]
+
+
 def test_a_key_made_by_hand_is_never_bound_or_said_to_need_confirming(wilma_only, capsys):
     wilma_only.set_up_sources()
 
