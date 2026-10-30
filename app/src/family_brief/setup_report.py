@@ -13,7 +13,7 @@ from typing import Any
 
 from .system import secrets
 
-OK = ("saved", "signed-in", "readable", "read")
+OK = ("saved", "signed-in", "readable", "read", "confirmed", "unconfirmed")
 # Where macOS lets setup save a password in the Keychain: a Terminal window in the family's own
 # desktop session. Shell → New Command… starts a command outside tmux, even when each new window
 # starts tmux.

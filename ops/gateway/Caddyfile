@@ -1,5 +1,5 @@
-# Only inference, sending the Brief (with its send-only keys) and the sign-up page are public. Bifrost's admin API and UI
-# stay on 127.0.0.1 (ssh -L). No access log: request lines are not worth keeping.
+# Only inference, sending the Brief (with its send-only keys) and the sign-up page are public.
+# Bifrost's admin API and UI stay on 127.0.0.1 (ssh -L). No access log: request lines are not worth keeping.
 {$GATEWAY_HOST} {
 	handle /v1/messages {
 		rewrite * /anthropic/v1/messages

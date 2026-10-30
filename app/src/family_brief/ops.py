@@ -207,20 +207,27 @@ def check_gmail(cfg: Config, add, config: str | None = None) -> None:
 def _check_gateway_sends(cfg: Config, add) -> None:
     """The gateway's Brief relay, which sends every Brief (ADR 0028, ADR 0032): whether it answers
     and takes the Gateway Key, from one request it refuses once it has checked the key, so nothing
-    is sent. A Household that sent through its own Gmail before has no key until the Parent Recap
-    team gives it one: `no-key`, which the setup page says as its own."""
+    is sent; then who of the Recipients has confirmed their address (ADR 0033). A Household whose
+    AI is its own Claude Code or Codex and that has no key, such as one that sent through its own
+    Gmail before, is given a send-only key here, bound to its Recipients, and the gateway mails
+    them a link to confirm: `unconfirmed`, with their addresses as the check's groups, until one
+    of them does. `no-key` when there's no key and none could be had, which the setup page says as
+    its own."""
     from . import gateway as api
+    from . import send_key
     url = cfg.llm.gateway_url
     try:
         key = api.key()
     except api.NoKey as e:
-        add(FAIL, "gateway-sends", f"{e}, so the evening Brief can't be sent: Parent Recap sends "
-            "every Brief from its own address", reason="no-key" if e.missing else None)
+        if not e.missing or not send_key.may_request(cfg):
+            add(FAIL, "gateway-sends", f"{e}, so the evening Brief can't be sent: Parent Recap sends "
+                "every Brief from its own address", reason="no-key" if e.missing else None)
+            return
+        _check_confirmed(send_key.ensure(cfg), url, add)
         return
     outcome, detail = api.send_test(url, key)
     if outcome == api.WORKS:
-        add(OK, "gateway-sends", f"the gateway at {url} sends the Brief from Parent Recap's address, "
-            "and takes the Gateway Key")
+        _check_confirmed(send_key.ensure(cfg), url, add)
     elif outcome == api.NO_ANSWER:
         add(FAIL, "gateway-sends", f"no answer from {url}: {detail} (check the computer is online "
             "and llm.gateway_url in the config)")
@@ -231,6 +238,24 @@ def _check_gateway_sends(cfg: Config, add) -> None:
     else:
         add(FAIL, "gateway-sends", f"the gateway at {url} couldn't be asked to send the Brief: {detail} "
             "(if it happens again, tell the Parent Recap maintainers)")
+
+
+def _check_confirmed(status, url: str, add) -> None:
+    """Brief sending as the Recipients' confirmation leaves it: a ❌ while nobody gets the Brief,
+    a ⚠️ while someone does but another hasn't confirmed yet."""
+    from . import send_key
+    if status.result == send_key.CONFIRMED:
+        add(OK, "gateway-sends", f"the gateway at {url} sends the Brief from Parent Recap's address, "
+            "and takes the Gateway Key")
+    elif status.result == send_key.UNCONFIRMED:
+        add(WARN if status.anyone else FAIL, "gateway-sends", send_key.describe(status),
+            reason="unconfirmed", groups=status.unconfirmed)
+    elif status.result == send_key.NO_KEY:
+        add(FAIL, "gateway-sends", f"{send_key.describe(status)}, so the evening Brief can't be "
+            "sent: Parent Recap sends every Brief from its own address", reason="no-key")
+    else:
+        add(FAIL, "gateway-sends", f"{send_key.describe(status)} (if it happens again, tell the "
+            "Parent Recap maintainers)")
 
 
 def _check_llm(cfg: Config, add) -> None:
