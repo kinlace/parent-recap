@@ -4,7 +4,7 @@ The server that invited Households' Gateway Keys go through (ADR 0014). Everythi
 
 - `host-setup.sh` sets up the VM (Ubuntu/Debian): system updates, SSH with keys only, a firewall that lets in only SSH and HTTPS, Caddy, and a login for the AI assistant that can read logs but has no sudo.
 - `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016), the Brief relay and, given a release of the program, the hosted version's sign-up service (ADR 0031) behind Caddy. It works on any systemd Linux with Caddy and `python3` installed.
-- `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile` and `bifrost.env.example` are what it installs, and for the sign-up `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers`, `household-user`, `invite.sh` and `status.sh`. The env examples hold only variable names.
+- `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile` and `bifrost.env.example` are what it installs, and for the sign-up `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers`, `household-user`, `invite.sh`, `status.sh` and `remove.sh`. The env examples hold only variable names.
 - `oci-quota.json` is the Oracle Cloud quota policy that lets the account create only Always Free resources.
 - `set-smtp-credentials.sh` puts the sending domain's SMTP credentials into their own env file, whose names are in `brief-relay.env.example` (see "The sending domain").
 
@@ -145,7 +145,7 @@ scp -r <unpacked release> ubuntu@<ip>:/tmp/parent-recap
 ssh -t ubuntu@<ip> "sudo GATEWAY_HOST=<hostname> PARENT_RECAP_RELEASE=/tmp/parent-recap bash /tmp/gateway/gateway-setup.sh"
 ```
 
-It copies the release to `/usr/local/lib/parent-recap-signup/release`, readable by all; makes the service's user `parent-recap-signup` (home `/var/lib/parent-recap-signup`) and installs the program under it with the release's `install.sh`; installs the `household-user` helper and `invite.sh` beside the release, the sudoers file and `/etc/parent-recap-signup/signup.env`; and starts the `parent-recap-signup` unit (`parent-recap signup serve`) on `127.0.0.1:8082`, which reads Bifrost's admin login from `bifrost.env`. Running it again with a newer release upgrades the service; Households already made keep the program they were installed with.
+It copies the release to `/usr/local/lib/parent-recap-signup/release`, readable by all; makes the service's user `parent-recap-signup` (home `/var/lib/parent-recap-signup`) and installs the program under it with the release's `install.sh`; installs the `household-user` helper, `invite.sh`, `status.sh` and `remove.sh` beside the release, the sudoers file and `/etc/parent-recap-signup/signup.env`; and starts the `parent-recap-signup` unit (`parent-recap signup serve`) on `127.0.0.1:8082`, which reads Bifrost's admin login from `bifrost.env`. Running it again with a newer release upgrades the service; Households already made keep the program they were installed with.
 
 **Invite a Household.** On the server, with the Recipients the family gave you and the language each reads the Brief in. It prints the link; send it over a private channel:
 
@@ -164,6 +164,14 @@ sudo bash /usr/local/lib/parent-recap-signup/status.sh
 ```
 
 For each Household in `households.json` it runs `parent-recap signup health` as the Household's user, and prints its user, the time its Brief comes, when its last run ended and how (from `last-run.json` beside its `state.json`), and each of `doctor`'s checks by its key with ✅, ⚠️ or ❌, run then without the model's test call. A last run that failed is marked ❌, a run not ended an hour after its time ⚠️ overdue, and a Household whose program is older than the command ❓. It prints no message text, subject, address or Kid's name, not even doctor's words, which name them. It exits 1 when any Household is marked.
+
+**Remove a Household.** On the server, with the Household's label, its user as `ls /home`, `status.sh` and the sign-up's log show it:
+
+```sh
+sudo bash /usr/local/lib/parent-recap-signup/remove.sh ph-0123abcd
+```
+
+It prints each step as it goes: the evening jobs removed by the Household's own program, its Gateway Key revoked on the admin API, its user deleted with its home (and so its config with its MyClub links, Wilma sign-in, key file, archive of Briefs, and the `state.json` and `last-run.json` that `status.sh` reads), and its line taken off the store's `households.json`, which frees its evening slot and takes it off `status.sh`'s list. Nothing of the Household stays on the server. A label that is no Household's is refused and nothing is touched. If a step fails, such as the admin API not answering, it stops there and says so; the Household stays on the list, and running the command again does the rest. Jobs its program couldn't remove go with its user anyway, since deleting the user ends everything running as it.
 
 **Sudo.** The service's user may run, as root, only `household-user add|remove ph-…`, which refuses any other name, and anything as a member of `parent-recap-households`, the Households' group (`signup.sudoers`). A password or key never goes on a command line.
 
@@ -207,7 +215,7 @@ curl -s -u "$ADMIN" -X PUT localhost:8080/api/governance/virtual-keys/<id> \
   -H 'content-type: application/json' -d '{"description": "<Household>, <AI backend>, <date>"}'
 ```
 
-**Revoke.** Find the key's `id` in the list, then turn it off (or `DELETE` it). `PUT` changes only the fields it is given (Bifrost has no `PATCH` here):
+**Revoke.** A Hosted Household's key goes with it (see "Remove a Household"). For any other, find the key's `id` in the list, then turn it off (or `DELETE` it). `PUT` changes only the fields it is given (Bifrost has no `PATCH` here):
 
 ```sh
 curl -s -u "$ADMIN" localhost:8080/api/governance/virtual-keys
