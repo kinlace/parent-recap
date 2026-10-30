@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from . import wake  # its names are read at call time: wake imports this module first
 
+SLEEPS = False
 OWN_SCHEDULE = False
 MANUAL_CANCEL = ""
 

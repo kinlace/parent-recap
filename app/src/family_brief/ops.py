@@ -605,6 +605,8 @@ def cmd_bg(args: argparse.Namespace) -> int:
 def _set_wake(hour: int, minute: int, replace: bool) -> None:
     """`wake.set`, saying how it went. Without a desktop session it gives the command for
     Terminal instead."""
+    if not wake.sleeps():
+        return
     if windows_only.offers("wake-timers"):
         _say_wake_timers(hour, minute)
         return
@@ -666,10 +668,11 @@ def install_jobs(cfg: Config) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     private_files.tighten(cfg)
     sc = cfg.schedule
-    wanted = [jobs.Job(jobs.DAILY, "run", None, sc.daily_hour, sc.daily_minute, log_dir)]
+    wanted = [jobs.Job(jobs.DAILY, "run", None, sc.daily_hour, sc.daily_minute, log_dir,
+                       cfg.timezone)]
     if cfg.weekend_events.enabled:
         wanted.append(jobs.Job(jobs.WEEKEND, "weekend-events", sc.weekend_weekday, sc.weekend_hour,
-                               0, log_dir))
+                               0, log_dir, cfg.timezone))
     jobs.install(wanted)
     # So a first evening missed before any run is caught up at sign-in on Windows (#386).
     from . import run_lock

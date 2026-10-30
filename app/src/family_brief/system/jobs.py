@@ -1,6 +1,6 @@
 """The evening jobs, the always-running job, and one-off runs with the evening job's permissions
 (ADR 0020). The program describes a job; each system's adapter turns it into its own scheduler's:
-launchd on macOS, Task Scheduler on Windows; none yet on Linux (#581).
+launchd on macOS, Task Scheduler on Windows, systemd user timers on Linux.
 
 The evening jobs run at their time. The always-running job, the Linked Device's (ADR 0026), runs
 from the family's sign-in on and is started again whenever it exits, unless it exits with
@@ -34,6 +34,8 @@ class Job:
     hour: int
     minute: int
     log_dir: Path          # <subcommand>-stdout.log and -stderr.log go here
+    # The Household's, for a server whose clock may keep another; None: the computer's own.
+    timezone: str | None = None
 
 
 @dataclass(frozen=True)
