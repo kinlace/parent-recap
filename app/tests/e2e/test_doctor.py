@@ -17,6 +17,7 @@ from family_brief import __main__ as cli, ops, setup_server, setup_steps
 from family_brief.llm import codex as codex_backend
 from family_brief.system import jobs
 from conftest import program
+from fake_sources import GmailFolders
 from fake_system import MACOS, WINDOWS
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
@@ -459,7 +460,7 @@ def test_discover_wilma_students_says_when_not_signed_in(harness, monkeypatch, c
 # ── A Gmail with no sender ticked (#361)
 
 
-class GmailImap:
+class GmailImap(GmailFolders):
     """Gmail's IMAP server: a sign-in, and each search doctor makes."""
 
     def __init__(self) -> None:
@@ -471,10 +472,8 @@ class GmailImap:
     def login(self, *_a) -> None:
         pass
 
-    def select(self, *_a, **_k) -> None:
-        pass
-
     def search(self, *args) -> tuple[str, list[bytes]]:
+        self.searching()
         self.searches.append(args)
         return "OK", [b"1 2 3"]
 

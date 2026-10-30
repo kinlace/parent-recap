@@ -25,6 +25,23 @@ IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = 993
 IMAP_TIMEOUT = 60  # seconds per network step; without one a stalled connection hangs the night's run
 MAX_BODY_CHARS = 8000
+ALL_MAIL = "[Gmail]/All Mail"  # its name only when the account's language is English
+
+
+def _select_all_mail(imap: imaplib.IMAP4_SSL) -> None:
+    """Selects All Mail, read-only. Gmail names its folders in the account's language (All Mail
+    is "[Gmail]/&YkBnCZCuTvY-" in Chinese), so it's found by its \\All flag (RFC 6154), and the
+    English name is only a fallback."""
+    typ, rows = imap.list()
+    name = ALL_MAIL
+    for row in rows if typ == "OK" else []:
+        m = re.match(rb'\(([^)]*)\) (?:"[^"]*"|NIL) (.+)$', row) if isinstance(row, bytes) else None
+        if m and b"\\All" in m.group(1).split():
+            name = m.group(2).strip().strip(b'"').decode("ascii", "replace")
+            break
+    typ, data = imap.select('"' + name + '"', readonly=True)
+    if typ != "OK":
+        raise RuntimeError(f"Gmail's All Mail folder couldn't be opened ({name}: {data})")
 
 
 def username_of(cfg: Config) -> str | None:
@@ -169,7 +186,7 @@ def _read_matching(state: State, username: str, password: str, query: str,
         imap.login(username, password)
         # Allow UTF-8 in commands (Finnish chars in query)
         imap._encoding = "utf-8"
-        imap.select('"[Gmail]/All Mail"', readonly=True)
+        _select_all_mail(imap)
         # IMAP quoted-string: escape \ and " inside the wrapper.
         wrapped = '"' + query.replace("\\", "\\\\").replace('"', '\\"') + '"'
         typ, data = imap.search(None, "X-GM-RAW", wrapped)
@@ -301,7 +318,11 @@ def _login(cfg: Config) -> tuple[imaplib.IMAP4_SSL, str]:
     imap = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
     imap.login(username, password)
     imap._encoding = "utf-8"
-    imap.select('"[Gmail]/All Mail"', readonly=True)
+    try:
+        _select_all_mail(imap)
+    except BaseException:
+        imap.logout()
+        raise
     return imap, username
 
 

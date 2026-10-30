@@ -12,11 +12,12 @@ from typing import Any
 import pytest
 
 from family_brief.system import wake
+from fake_sources import GmailFolders
 
 # ── discover gmail-senders
 
 
-class HeaderImap:
+class HeaderImap(GmailFolders):
     """Gmail's IMAP server for the sender scan: one search, then From: headers in batches."""
 
     def __init__(self, senders: list[str]) -> None:
@@ -28,13 +29,11 @@ class HeaderImap:
     def login(self, *_a: Any) -> None:
         pass
 
-    def select(self, *_a: Any, **_k: Any) -> None:
-        pass
-
     def logout(self) -> None:
         pass
 
     def search(self, *_a: Any) -> tuple[str, list[bytes]]:
+        self.searching()
         return "OK", [b" ".join(str(n).encode() for n in range(1, len(self.senders) + 1))]
 
     def fetch(self, ids: bytes, _what: str) -> tuple[str, list[Any]]:
@@ -58,6 +57,18 @@ def test_discover_gmail_senders_says_how_long_it_takes_and_shows_progress(harnes
     assert "200 of 450" in out and "400 of 450" in out and "450 of 450" in out
     assert out.index("450 of 450") < out.index("kilo.example.fi")
     assert "300  kilo.example.fi" in out and "150  club.example.fi" in out
+
+
+def test_discover_gmail_senders_reads_a_gmail_in_chinese(harness, monkeypatch, capsys):
+    """The sender scan finds All Mail by its flag whatever the account's language (#595)."""
+    harness.secrets["gmail-imap-parent@example.com"] = "app-password"
+    imap = HeaderImap(["Teacher <teacher@kilo.example.fi>"] * 3)
+    imap.all_mail = "[Gmail]/&YkBnCZCuTvY-"
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", imap)
+
+    assert harness.cli("discover", "gmail-senders") == 0
+
+    assert "3  kilo.example.fi" in capsys.readouterr().out
 
 
 def test_discover_gmail_senders_as_json_ticks_school_city_and_club_senders(harness, monkeypatch,

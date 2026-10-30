@@ -80,14 +80,39 @@ class SourceFake:
 
 # ── Gmail: the IMAP server
 
+class GmailFolders:
+    """Gmail's folders, as its IMAP server lists them and lets them be selected. All Mail is
+    `all_mail`, its name in the account's language ("[Gmail]/&YkBnCZCuTvY-" in Chinese), and
+    selecting a folder that isn't there fails, as on Gmail. A search before a folder is selected
+    is refused, as imaplib refuses it."""
+    all_mail = "[Gmail]/All Mail"
+    selected = False
+
+    def list(self, *_a: Any) -> tuple[str, list[bytes]]:
+        return "OK", [b'(\\HasNoChildren) "/" "INBOX"', b'(\\HasChildren \\Noselect) "/" "[Gmail]"',
+                      f'(\\All \\HasNoChildren) "/" "{self.all_mail}"'.encode(),
+                      b'(\\HasNoChildren \\Sent) "/" "[Gmail]/Sent Mail"']
+
+    def select(self, mailbox: str = "INBOX", readonly: bool = False) -> tuple[str, list[bytes]]:
+        self.selected = mailbox.strip('"') in (self.all_mail, "INBOX")
+        if self.selected:
+            return "OK", [b"1"]
+        return "NO", [b"[NONEXISTENT] Unknown Mailbox (Failure)"]
+
+    def searching(self) -> None:
+        if not self.selected:
+            raise imaplib.IMAP4.error("command SEARCH illegal in state AUTH, only allowed in states SELECTED")
+
+
 class Gmail(SourceFake):
     """Gmail's IMAP server, which takes the app password setup stored, or only `password` when
     it is set. Every Message on it matches any search, whose X-GM-RAW query is kept in
     `searches`, and its sender is what setup's sender scan reads. `connections` says what each
     next connection does instead of serving tonight's mail as it is: an exception connecting
     raises, or a dict from a Message's id to what fetching its source gives instead (raw bytes, or
-    an exception it raises, as a dropped connection does)."""
+    an exception it raises, as a dropped connection does). Its All Mail is named `all_mail`."""
     name = "gmail"
+    all_mail = GmailFolders.all_mail
 
     def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
         super().__init__(sources)
@@ -109,12 +134,13 @@ class Gmail(SourceFake):
         return _Imap(self, mail, instead)
 
 
-class _Imap:
+class _Imap(GmailFolders):
     """One connection to the fake Gmail, as imaplib.IMAP4_SSL's methods answer."""
 
     def __init__(self, server: Gmail, mail: dict[bytes, Message],
                  instead: dict[str, bytes | BaseException]) -> None:
         self.server, self.mail, self.instead = server, mail, instead
+        self.all_mail = server.all_mail
 
     def __enter__(self) -> _Imap:
         return self
@@ -127,10 +153,8 @@ class _Imap:
             raise imaplib.IMAP4.error(b"[AUTHENTICATIONFAILED] Invalid credentials (Failure)")
         return "OK", [b"LOGIN completed"]
 
-    def select(self, *_a: Any, **_k: Any) -> tuple[str, list[bytes]]:
-        return "OK", [str(len(self.mail)).encode()]
-
     def search(self, _charset: Any, *criteria: str) -> tuple[str, list[bytes]]:
+        self.searching()
         self.server.searches.append(" ".join(criteria))
         return "OK", [b" ".join(self.mail)]
 

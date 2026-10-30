@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 import fake_node
 from conftest import msg
+from fake_sources import GmailFolders
 from fake_system import FakeWake
 
 from family_brief import gateway, install_record, ops
@@ -24,7 +25,7 @@ APP_PASSWORD = "abcdabcdabcdabcd"
 CLAUDE_TOKEN = "sk-ant-oat01-secret"
 
 
-class CountingImap:
+class CountingImap(GmailFolders):
     """Gmail's IMAP server as doctor sees it: a sign-in and one search."""
 
     def __call__(self, *_a: Any, **_k: Any) -> "CountingImap":
@@ -33,10 +34,8 @@ class CountingImap:
     def login(self, *_a: Any) -> None:
         pass
 
-    def select(self, *_a: Any, **_k: Any) -> None:
-        pass
-
     def search(self, *_a: Any) -> tuple[str, list[bytes]]:
+        self.searching()
         return "OK", [b"1 2 3"]
 
     def logout(self) -> None:
