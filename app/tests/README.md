@@ -57,6 +57,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_render.py`              | Each golden night's Brief rendered, against its golden files     |
 | `test_run_plan.py`            | Quiet nights, dry runs and the preview: what tonight's run does  |
 | `test_sources.py`             | The Source registry's records, and the Sources a Household uses  |
+| `test_status_lines.py`        | The hosted status: an overdue run, a Household's line, its keys  |
 | `test_summarize_normalise.py` | The model's reply put in the schema's shape                      |
 | `test_system_profile.py`      | The systems' profiles; only `system/` checks the system          |
 | `test_weekend_pipeline.py`    | The pure parts of Weekend Picks                                  |
@@ -135,6 +136,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_new_source_doctor_uninstall.py`      | A Source added only to the registry in `doctor` and `uninstall`        |
 | `test_setup_page_browser.py`               | Main paths and each step's own, in a real browser (ADR 0024)           |
 | `test_signup.py`                           | The hosted sign-up: the page, Wilma, MyClub, the first Brief, 404s     |
+| `test_hosted_status.py`                    | `signup status`: each Household's last run and doctor, nothing private |
 
 The page's server, its calls and the steps more than one file walks through are in
 `e2e/setup_page.py`.
