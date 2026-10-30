@@ -437,7 +437,7 @@ def test_the_source_list_shows_each_entry_with_its_status(harness, page):
 
     # WhatsApp is a Linked Device on every system (ADR 0027), in the slot after the AI sign-in.
     assert [(s["name"], s["skippable"]) for s in state["connect"]["sources"]] == [
-        ("wilma", True), ("gmail", False), ("ai", False), ("whatsapp", True), ("myclub", True)]
+        ("wilma", True), ("gmail", True), ("ai", False), ("whatsapp", True), ("myclub", True)]
     assert state["progress"]["source"] == "gmail"
     assert state["progress"]["sources"] == {"wilma": "done", "gmail": "to-do", "ai": "to-do",
                                             "whatsapp": "to-do", "myclub": "to-do"}

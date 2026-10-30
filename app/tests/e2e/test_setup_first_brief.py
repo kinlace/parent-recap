@@ -16,10 +16,10 @@ from typing import Any
 import pytest
 import yaml
 
-from family_brief import feedback, run_lock, setup_save, setup_server, setup_status
+from family_brief import feedback, gateway, run_lock, setup_save, setup_server, setup_status
 from family_brief.config import Config
 from family_brief.system import jobs
-from conftest import msg
+from conftest import GATEWAY_KEY, msg
 from nights import FEEDBACK, FORM, feedback_links
 from setup_page import (APP_PASSWORD, PAGE_DIR, Response, at_the_check_step, call, config_file, connect_done,
                         more_progress, wait_for)
@@ -40,6 +40,7 @@ def at_the_first_brief(harness, **config: Any) -> None:
                                     sender="teacher@edu.espoo.fi", subject="Trip")]
     harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": BRIEF_TEXT}
     harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
+    harness.store_gateway_key()
 
 
 def make_brief(url: str) -> Response:
@@ -179,7 +180,7 @@ def test_send_it_to_me_reaches_only_the_setup_parent(harness, page):
     assert email.to == ["parent@example.com"]  # never the partner: theirs is the evening one
     assert email.html == made["html"] and BRIEF_TEXT in email.text
     assert email.subject == "Parent Recap · 2026-09-27"
-    assert email.from_addr == "parent@example.com"
+    assert harness.relay_keys == [GATEWAY_KEY]  # from Parent Recap's own address (ADR 0032)
     # The outcome check counts it as the first Brief delivered.
     state = harness.state()
     assert list(state["brief_delivered_at"]) == ["parent@example.com"]
@@ -187,26 +188,25 @@ def test_send_it_to_me_reaches_only_the_setup_parent(harness, page):
     assert next(o for o in setup_status.check(str(config_file(harness))) if o.outcome == "brief").ok
 
 
-def test_the_first_brief_goes_through_the_gateway_when_it_sends_the_brief(harness, page):
-    # A Household with a Gateway Key that has the gateway send its Brief (ADR 0028): no App
-    # Password is needed to send.
+def test_the_first_brief_goes_through_the_gateway_with_no_gmail(harness, page):
+    # Every Brief is sent from Parent Recap's own address (ADR 0032): no Gmail is needed to send.
     at_the_first_brief(harness)
     harness.config["summary_language"] = "en"
-    harness.config["email"]["sender"] = "gateway"
+    harness.config["gmail"] = {}
     harness.config["llm"]["gateway_url"] = "https://gateway.example.test"
+    harness.sources["wilma"] = harness.sources.pop("gmail")
     config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
     del harness.secrets["gmail-imap-parent@example.com"]
-    harness.secrets["gateway-key"] = "sk-bf-fake-gateway-key"
     make_brief(page.url)
     made = brief_made(page.url)
 
     assert send_it_to_me(page.url).json()["result"] == "sent"
 
     [email] = harness.sent
-    assert email.via == "gateway" and email.to == ["parent@example.com"]
+    assert email.to == ["parent@example.com"]
     assert email.html == made["html"]
     assert "This email comes from an address nobody reads" in email.html + email.text
-    assert harness.relay_keys == ["sk-bf-fake-gateway-key"]
+    assert harness.relay_keys == [GATEWAY_KEY]
     # Only Hotmail and Outlook.com junk Parent Recap's new address at first (#524).
     assert "Not junk" not in email.html + email.text
 
@@ -219,9 +219,8 @@ def test_a_first_brief_the_gateway_sends_to_hotmail_says_to_mark_it_not_junk(har
                                                                             address):
     at_the_first_brief(harness)
     harness.config["summary_language"] = "en"
-    harness.config["email"].update(sender="gateway", to=[address])
+    harness.config["email"]["to"] = [address]
     config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
-    harness.secrets["gateway-key"] = "sk-bf-fake-gateway-key"
     make_brief(page.url)
     brief_made(page.url)
 
@@ -231,10 +230,10 @@ def test_a_first_brief_the_gateway_sends_to_hotmail_says_to_mark_it_not_junk(har
     assert JUNK_NOTE in email.text and JUNK_NOTE.replace('"', "&quot;") in email.html
 
 
-def test_a_first_brief_from_the_household_s_own_gmail_says_nothing_of_junk(harness, page):
+def test_a_first_brief_to_another_mailbox_says_nothing_of_junk(harness, page):
     at_the_first_brief(harness)
     harness.config["summary_language"] = "en"
-    harness.config["email"]["to"] = ["parent@hotmail.com"]
+    harness.config["email"]["to"] = ["parent@gmail.com"]
     config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
     make_brief(page.url)
     brief_made(page.url)
@@ -247,9 +246,6 @@ def test_a_first_brief_from_the_household_s_own_gmail_says_nothing_of_junk(harne
 
 def test_a_send_the_gateway_refuses_says_so(harness, page):
     at_the_first_brief(harness)
-    harness.config["email"]["sender"] = "gateway"
-    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
-    harness.secrets["gateway-key"] = "sk-bf-fake-gateway-key"
     harness.relay_answer = (401, {"error": "missing, unknown or revoked Gateway Key"})
     make_brief(page.url)
     brief_made(page.url)
@@ -289,7 +285,7 @@ def test_a_send_that_fails_says_so_and_can_be_tried_again(harness, page):
     at_the_first_brief(harness)
     make_brief(page.url)
     brief_made(page.url)
-    harness.email_error = OSError("SMTP connection refused for parent@example.com")
+    harness.email_error = gateway.GatewayError("the gateway refused the Brief: parent@example.com bounced")
 
     r = send_it_to_me(page.url)
 

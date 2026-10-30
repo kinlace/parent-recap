@@ -5,3 +5,5 @@
 • MyClub: MyClub fetch failed for Mia: example.myclub.fi: OSError. Jos Macissa ei ollut verkkoyhteyttä, tämä korjaantuu itsestään. Jos ongelma toistuu, kirjoita Claude-avustajalle ”tarkista Parent Recap”.
 • Wilma: wilma: request timed out. Jos Macissa ei ollut verkkoyhteyttä, tämä korjaantuu itsestään. Jos ongelma toistuu, kirjoita Claude-avustajalle ”tarkista Parent Recap”.
 • WhatsApp: macOS ei antanut käyttöoikeutta. Voit korjata tämän kirjoittamalla Claude-avustajalle ”Parent Recap ei pysty lukemaan lähdettä WhatsApp”.
+
+Tämä viesti tulee osoitteesta, jota kukaan ei lue. Jos haluat vastata, kirjoita osoitteeseen parent@example.com: hän otti Parent Recapin käyttöön.

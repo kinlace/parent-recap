@@ -48,7 +48,12 @@ class GatewayError(RuntimeError):
 
 
 class NoKey(RuntimeError):
-    """No Gateway Key the evening run can read in the Keychain."""
+    """No Gateway Key the evening run can read in the Keychain: `missing` when there's none at
+    all, rather than one macOS asks about first."""
+
+    def __init__(self, message: str, missing: bool = False) -> None:
+        super().__init__(message)
+        self.missing = missing
 
 
 @dataclass
@@ -71,7 +76,8 @@ def key() -> str:
                     f"before reading it, which the evening Brief can't answer (store it again with "
                     f"{SETUP})") from None
     if not stored:
-        raise NoKey(f"no Gateway Key in the {secrets.STORE} (store one with {SETUP})")
+        raise NoKey(f"no Gateway Key in the {secrets.STORE} (ask the Parent Recap team for one, then "
+                    f"store it with {SETUP})", missing=True)
     return stored
 
 

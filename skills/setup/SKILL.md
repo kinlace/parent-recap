@@ -56,6 +56,7 @@ Each prints one line of JSON. `result` says what happened; when it isn't a succe
 | `$FB setup wilma --timeout 540 --language <code>` | `signed-in` | `kids` (name, school, class), `wilma_address`, `city` (or null)                     |
 | `$FB setup gmail --address <address>`             | `saved`     | `address`                                                                           |
 | `$FB setup claude`                                | `saved`     | `test_call: ok`                                                                     |
+| `$FB setup gateway`                               | `saved`     | `test_call: ok`                                                                     |
 | `$FB setup myclub --kid "<Kid's name>"`           | `saved`     | `events`, the number of events in the calendar                                      |
 | `$FB setup status`                                | `done`      | `outcomes`, each with `ok` and a `reason`                                           |
 | `$FB setup save` (answers as JSON on stdin)       | `saved`     | `progress`                                                                          |
@@ -89,7 +90,7 @@ EOF
 - `recipients`, `allowlist_domains` and `allowlist_senders` are whole lists too: give every ticked item, not only the new ones.
 - `language` is the Household's language code (`summary_language`); a Recipient's `language` is given only when it differs.
 - `progress`: `phase` is one of `welcome`, `connect`, `working`, `check`, `first-brief`, `finish`; `source` is the Source the parent is on (`wilma`, `gmail`, `ai`, `myclub`); `sources` gives each Source's status, `to-do`, `done` or `skipped`. Save it whenever the phase or a Source's status changes, in the same call as that step's answers when there are any.
-- A progress read back after the setup page's Welcome can also have `partner`: the partner's `address` and `language`, or `null` for "Only me". The page saves the Recipients only once it knows the parent's Gmail address, so if `recipients` aren't in the config yet, use this as the Welcome answer instead of asking again, and save `recipients` with the parent's address first once you have it.
+- A progress read back after the setup page's Welcome can also have `partner`: the partner's `address` and `language`, or `null` for "Only me". The page saves the Recipients only on Gmail's step, where the parent gives their own address, so if `recipients` aren't in the config yet, use this as the Welcome answer instead of asking again, and save `recipients` with the parent's address first once you have it.
 - On `invalid-answers`, nothing was saved: `errors` names each answer that's wrong. Fix them and save again. On `bad-config`, the existing config can't be read: run `$FB doctor` and fix what it names.
 
 ## Coming from the setup page
@@ -97,7 +98,7 @@ EOF
 Every step of the setup page has a **Continue in the chat** button, for a family that gets stuck there or would rather talk it through. In Claude Code it opens this skill in a Terminal window; in Codex the family types `$parent-recap-setup`. Either way, setup has already started: carry on from the step the page reached, keeping the answers already given, instead of starting over. Do the same for a setup that stopped part-way in an earlier chat.
 
 1. Run `$FB setup save --read`. `phase` is the phase reached, `source` the Source the parent was on in Connect (null once each is done or skipped), and `sources` each Source's status.
-2. Read the answers already given with `grep -v myclub_ical_url ~/.family/config.yaml`. `summary_language` is the language the parent picked on the page: use it from your first line, since they haven't written anything yet, and don't ask for it again. The AI (`llm.backend`), pilot feedback (`feedback.enabled`), the Recipients (`email.to`), the Gmail address (`gmail.username`), the city and the Kids are answers too. Without `llm.backend` yet (the parent left Welcome before saving it), the AI is the one whose chat you're in.
+2. Read the answers already given with `grep -v myclub_ical_url ~/.family/config.yaml`. `summary_language` is the language the parent picked on the page: use it from your first line, since they haven't written anything yet, and don't ask for it again. The AI (`llm.backend`), pilot feedback (`feedback.enabled`), the Recipients (`email.to`), the Gmail address (`gmail.username`, only when Gmail is read), the city and the Kids are answers too. Without `llm.backend` yet (the parent left Welcome before saving it), the AI is the one whose chat you're in.
 3. The progress can also have `partner`, Welcome's choice of partner (see "Saving answers and progress"), `whatsapp_chats`, the WhatsApp groups the page found, each with its `name` and a `hint` naming the Kids it seems to be about, and `gmail_senders`, the Gmail senders the page read in Working, in the same form as `senders` from `discover gmail-senders --json`, for Check. Use them instead of asking again.
 4. The program is already installed, since it serves the page: skip "Get the Mac ready first" and `install.sh` unless `$FB` is missing.
 5. In one short message, say you're carrying on from where setup got to: the phase, and in Connect the Source list with its statuses. Ask the parent to carry on here rather than on the page, which they can close. Then go straight to that step and end with its one thing to do. On Welcome, ask only what isn't answered yet. Don't redo a Source that's `done`; a `skipped` one stays skipped unless the parent asks for it. If the parent says what went wrong on the page, help with that first.
@@ -107,9 +108,9 @@ Every step of the setup page has a **Continue in the chat** button, for a family
 **Introduction.** In a few sentences: every evening Parent Recap reads the Kids' school mail, Wilma and MyClub, and emails each parent a short Brief in their own language, with new events attached for the calendar. Then say:
 
 - What a Brief looks like: the link to the demo in the invite the Parent Recap team sent them. If they don't have it, describe a Brief in a sentence: grouped by Kid, with Notices and Action Items with due dates
-- Where the data goes: it's read on this Mac. Only that night's messages from the Kids' Sources go to the AI the family already uses, to write the Brief, and the Brief goes out from their own Gmail. Nothing goes to the Parent Recap team, except the ⭐ / ❌ feedback a pilot family chooses to send.
+- Where the data goes: it's read on this Mac. Only that night's messages from the Kids' Sources go to the AI the family already uses, to write the Brief. The Brief is sent from Parent Recap's own address, `brief@parentrecap.com`, through the Parent Recap team's server, which keeps neither the Brief nor the addresses. Nobody reads that address: each Brief says to write to the parent instead. Nothing else goes to the Parent Recap team, except the ⭐ / ❌ feedback a pilot family chooses to send.
 - What it costs: Claude needs the paid plan the family already has, Claude Pro or Max. ChatGPT works on any plan, Free included. Nothing else costs money.
-- That it needs a Mac that is on in the evening, and Gmail.
+- That it needs a Mac that is on in the evening, and the Gateway Key the Parent Recap team sent with the invitation, which every Brief is sent with. Gmail is only needed if school mail arrives there, and is only read.
 
 **The defaults card.** End the introduction with the defaults, as choices the parent only changes where they're wrong:
 
@@ -127,14 +128,13 @@ The card has no calendar question: new events always come as an `.ics` attachmen
 
 Then, one message each:
 
-1. The parent's Gmail address, typed.
+1. The parent's own email address, the one their Brief goes to, typed. Any provider works.
 2. Only if they added their partner: the partner's email address, typed.
 3. Then the partner's language, as a choice with the parent's language first.
 
 Note from the answers:
 
 - The language as its two- or three-letter code, without a region (`en`, `zh`, `sv`, `fi`; not `zh-CN`). English, Chinese and Finnish are reviewed; any other works too, with the program's own text (headings, hints) translated once by the AI ("Reviewed and best-effort languages" in `PLUGIN/docs/config.md`). Say this only if they pick another language.
-- The parent's Gmail address. Parent Recap reads school mail in it and sends the Brief from it, so it's the account school mail arrives in. If the parent gives an address that isn't Gmail, ask for the Gmail address school mail arrives in, or is forwarded to ("School mail at another address" in `PLUGIN/docs/sources.md`).
 - The Recipients: the parent's address first, then the partner's if they added one, with the partner's language if it differs. The Brief is written in the first Recipient's language, and the archive and calendar events follow it.
 
 **What they'll connect.** Show the Source list below, with one line each on why it's needed, and that MyClub can be skipped and added later through `/parent-recap:manage`. Ask them to have their Wilma username and password ready, the same ones as on the Wilma website or app; if they don't remember them, they may find them in their browser's saved passwords. End with one choice: start now, or wait while they find their Wilma login.
@@ -152,16 +152,16 @@ sw_vers -productVersion; command -v claude || echo "claude (missing)"; ls ~/.loc
 - If the parent sees Claude Code's red notice "Auto-update failed" (often "no write permission to npm prefix"), or `claude` isn't in `~/.local/bin` and `npm ls -g @anthropic-ai/claude-code` lists it (an npm install), tell them the notice comes from Claude Code itself and doesn't affect Parent Recap. Setup carries on. If they want the notice gone, they can install Claude Code again with the native installer above, after setup.
 - ChatGPT: a `codex` signed in with their ChatGPT account. The program uses the codex bundled in the Codex or ChatGPT desktop app when there is one, else `~/.local/bin/codex`, which the setup page installs with OpenAI's own installer when none is found; in a chat, give the user that line to run in Terminal: `curl -fsSL https://github.com/openai/codex/releases/latest/download/install.sh | sh`, then `codex login`.
 
-Then install the program with `bash "PLUGIN/install.sh"`. It takes a few minutes. Once it's done, save the card's answers with `$FB setup save`: `language`, `ai`, `recipients`, `sources.gmail.address`, and `"progress": {"phase": "connect", "source": "wilma"}`.
+Then install the program with `bash "PLUGIN/install.sh"`. It takes a few minutes. Once it's done, save the card's answers with `$FB setup save`: `language`, `ai`, `recipients`, and `"progress": {"phase": "connect", "source": "wilma"}`.
 
 **The Source list.** Keep a status for each Source (to do, done, skipped), save it in `progress` with `$FB setup save` each time it changes (with `source` set to the Source the parent goes on to), and show the list, with the statuses, when a sub-flow changes one. Go down it in order, from the least to the most sensitive:
 
 1. **Wilma**: the Kids' names, and the school's messages and timetable
-2. **Gmail** (needed to send the Brief): school and club mail, and the Brief is sent from it
-3. **AI login** (required for Claude; for ChatGPT, only a check)
+2. **Gmail** (can be skipped): school and club mail, only read, and only from the senders the parent ticks
+3. **AI login and the Gateway Key** (required): the AI's sign-in (for ChatGPT, only a check), then the Gateway Key every Brief is sent with
 4. **MyClub** (can be skipped): the club calendars
 
-Each sub-flow: in one message, say in a sentence or two why it's needed and end with the one thing the parent does (such as what to do in the window that opens); then run its command, act on the result and mark it done. The message after a sub-flow carries its result, any short reminder from it and the list with the new status, and ends with one choice: go on to the next Source, or wait a moment. Keep the next Source's own explanation for its own message. When a command fails, say clearly what went wrong and the one thing to do about it, help with it and run it again. If the parent wants to skip MyClub, mark it skipped. Gmail and the AI login can't be skipped; neither can Wilma when the school uses it.
+Each sub-flow: in one message, say in a sentence or two why it's needed and end with the one thing the parent does (such as what to do in the window that opens); then run its command, act on the result and mark it done. The message after a sub-flow carries its result, any short reminder from it and the list with the new status, and ends with one choice: go on to the next Source, or wait a moment. Keep the next Source's own explanation for its own message. When a command fails, say clearly what went wrong and the one thing to do about it, help with it and run it again. If the parent wants to skip Gmail or MyClub, mark it skipped. The AI login and the Gateway Key can't be skipped; neither can Wilma when the school uses it.
 
 ### Wilma
 
@@ -188,7 +188,7 @@ Nothing else goes in the config in setup, including Weekend Picks: they aren't p
 
 ### Gmail
 
-Before anything else, tell the parent, in their language:
+Why: Parent Recap reads the school's and the clubs' mail in Gmail, only from the senders the parent ticks in Check. It never sends from it: the Brief comes from Parent Recap's own address. Ask whether school mail arrives in a Gmail (or is forwarded to one). If not, mark Gmail skipped and save `"sources": {"gmail": {"allowlist_domains": [], "allowlist_senders": []}}` with it, so nothing is read. Otherwise ask for that Gmail address, typed ("School mail at another address" in `PLUGIN/docs/sources.md` covers mail that arrives elsewhere), and tell the parent, in their language:
 
 - They never give Parent Recap their Google password.
 - Instead they create an App Password: a separate 16-letter password that only Parent Recap uses, and that they can delete in their Google account at any time.
@@ -198,7 +198,7 @@ Before anything else, tell the parent, in their language:
 
 Then run `$FB setup gmail --address <address>`. It opens the App passwords page and the dialog, signs in to Gmail with what was pasted, and stores it only if Gmail accepts it.
 
-- `saved`: done.
+- `saved`: done. Save `sources.gmail.address` with it.
 - `app-passwords-unavailable`: 2-Step Verification is off, or a work or school account doesn't allow App Passwords. Give the parent the 2-Step Verification link from `next`, wait for them to turn it on, then run the command again.
 - `not-an-app-password`, `rejected`, `cancelled`, `no-connection`, `keychain-failed`: tell the parent what `next` says and run it again.
 
@@ -207,6 +207,8 @@ Then run `$FB setup gmail --address <address>`. It opens the App passwords page 
 **Claude** (`llm.backend: claude`). Why: the nightly job runs in the background, where it can't use Claude Code's login, so it needs its own token, valid for a year. Tell the parent a Terminal window and Claude's sign-in page will open: they click Authorize, copy the token the Terminal window shows (it starts with `sk-ant-oat01-`), paste it into the Parent Recap dialog, and then press Enter in the Terminal window to clear it. Run `$FB setup claude`. On `saved`, it has made a test call. On `test-call-failed`, check the plan is Claude Pro or Max.
 
 **ChatGPT** (`llm.backend: codex`). There's no token step: the nightly job reuses the login Codex already has. Tell the parent so; the test call happens in Working. If Codex isn't signed in with a ChatGPT account, have them sign in in the Codex app first, or with `codex login` for a Codex the setup page or the install line above put in `~/.local/bin`.
+
+**The Gateway Key** (ADR 0032). Every Brief is sent from Parent Recap's own address through the Parent Recap team's server, with the Gateway Key the team sent with the invitation. Here it's only for sending: the family's own AI still writes the Brief. Tell the parent a dialog will open: they paste the whole key, starting with `sk-`. Run `$FB setup gateway`. It tests the key without sending anything and stores it. If the parent has no key, they ask the Parent Recap team for one; setup can't finish without it, since no Brief can be sent.
 
 ### WhatsApp
 
@@ -225,7 +227,7 @@ Mention that they can also subscribe to that link in their phone's calendar, so 
 Tell the parent they can step away for a few minutes. Save `"progress": {"phase": "working"}`. Then:
 
 1. Run `$FB language <code>` for each language in the config (`summary_language` and any Recipient's `language`). For a reviewed language it only says so; for any other, the AI translates the program's own text once. If it fails, run it again, or the preview shows English headings.
-2. Run `$FB discover gmail-senders --json`. It reads only the senders of the last 60 days, takes 1 to 2 minutes, and prints one line of JSON: `senders`, each with its `domain`, how many mails (`count`), an `example` sender name, `likely` when it looks like school, city or club mail, and `public` for a mail service anyone has an address at. If the setup page already read them, they're in the progress's `gmail_senders` (see "Coming from the setup page"): use those instead.
+2. Unless Gmail was skipped, run `$FB discover gmail-senders --json`. It reads only the senders of the last 60 days, takes 1 to 2 minutes, and prints one line of JSON: `senders`, each with its `domain`, how many mails (`count`), an `example` sender name, `likely` when it looks like school, city or club mail, and `public` for a mail service anyone has an address at. If the setup page already read them, they're in the progress's `gmail_senders` (see "Coming from the setup page"): use those instead.
 3. Run `$FB doctor`. It makes a test call to the AI, and with ChatGPT this is the check for the AI login. Fix each ❌ with the parent before going on.
 
 Wilma's Kids came back from its sub-flow; read them again only if they're lost (`$FB setup wilma --no-open`).
@@ -235,7 +237,7 @@ Wilma's Kids came back from its sub-flow; read them again only if they're lost (
 Show **one page**, with everything already ticked as you think it should be, and have the parent untick what isn't about the Kids:
 
 - **Kids**: each Kid with the everyday name the Brief will call them, guessed from the first name. The parent corrects it and adds any other names used in chats and mail (`aliases`). A Kid who shouldn't be in the Brief is unticked.
-- **Gmail senders**: the domains from `discover gmail-senders --json` with `likely`, and any others that look like the school, the teachers, clubs, hobbies and the music school, ticked; the starting allowlist ticked. **Never tick public domains** (those with `public`) like gmail.com or outlook.com, or private mail gets read; a teacher or coach writing from one goes in `allowlist_senders` as the full address. If no school senders turned up, say so on the page: school mail may arrive at another address, and it has to be forwarded to this Gmail ("School mail at another address" in `PLUGIN/docs/sources.md`). Say the Briefs come out empty only when no other Source (Wilma or MyClub) brings the news; with one, Gmail can just send the Brief.
+- **Gmail senders**, unless Gmail was skipped: the domains from `discover gmail-senders --json` with `likely`, and any others that look like the school, the teachers, clubs, hobbies and the music school, ticked; the starting allowlist ticked. **Never tick public domains** (those with `public`) like gmail.com or outlook.com, or private mail gets read; a teacher or coach writing from one goes in `allowlist_senders` as the full address. If no school senders turned up, say so on the page: school mail may arrive at another address, and it has to be forwarded to this Gmail ("School mail at another address" in `PLUGIN/docs/sources.md`). Say the Briefs come out empty only when no other Source (Wilma or MyClub) brings the news; with one, Gmail with no sender ticked is simply not read.
 
 Give each list an "all" line the parent can tick instead of going through it. The lists are too long for AskUserQuestion's few options, so in both Claude Code and Codex write the page as text with ☑ and ☐, and end it with the one thing to do: reply "ok" to keep it as ticked, "all" with a list's name (such as "all groups") to tick that whole list, or name what to change. Ask nothing else on the page; an everyday name or alias they want changed goes in the same reply.
 

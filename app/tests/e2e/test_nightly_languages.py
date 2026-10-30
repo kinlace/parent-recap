@@ -173,13 +173,14 @@ def test_failed_translation_note_is_in_the_recipients_language(harness):
 def test_the_model_writes_in_the_first_recipients_language(harness, golden):
     normal_night(harness)  # summary_language zh, which the plain second address reads
     chinese_reply = harness.model_reply
-    harness.config["email"]["to"] = [PARTNER_EN, "parent@example.com"]
+    harness.config["email"]["to"] = [{"address": "parent@example.com", "language": "en"},
+                                     "partner@example.com"]
     harness.model_reply = [copy.deepcopy(ENGLISH_REPLY), chinese_reply]
 
     assert harness.run() == 0
 
     en, zh = harness.sent
-    assert (en.to, zh.to) == (["partner@example.com"], ["parent@example.com"])
+    assert (en.to, zh.to) == (["parent@example.com"], ["partner@example.com"])
     summarize, translate = harness.model_calls
     golden("normal_night.en.masked.model.txt", model_call_for_golden(summarize))
     golden("normal_night.en.txt", en.text)

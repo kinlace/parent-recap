@@ -354,7 +354,7 @@ async function saveWelcome(event) {
     clearTimeout(ai.timer);
     page.progress = out.progress;
     page.welcome.ai = answers.ai;
-    // Gmail's step asks for the partner's address too when Parent Recap sends the Brief.
+    // Gmail's step asks for the partner's address too, with who gets the Brief.
     page.welcome.partner = { ...page.welcome.partner, add, ...answers.partner };
     show();
   } catch (e) {
@@ -400,10 +400,10 @@ const STEPS = {
     label: "Wilma",
   },
   gmail: {
-    setUp: setUpGmail, first: prepareGmail, again: showSender,
+    setUp: setUpGmail, first: prepareGmail, again: showGmailParts,
     leave: () => {
       document.getElementById("gmail-password").value = "";
-      document.getElementById("gateway-sends-key").value = "";
+      document.getElementById("gmail-brief-key").value = "";
     },
     label: "Gmail",
   },
@@ -453,13 +453,7 @@ function setUpGmail() {
   }
   document.getElementById("gmail-form").addEventListener("submit", connectGmail);
   document.getElementById("gmail-address").value = page.gmail.address || "";
-  for (const input of document.querySelectorAll('input[name="sender"]')) {
-    input.addEventListener("change", () => {
-      showSource(null);
-      showSender();
-    });
-  }
-  for (const id of ["gateway-sends-language", "gateway-sends-partner-language"]) {
+  for (const id of ["gmail-brief-language", "gmail-brief-partner-language"]) {
     const select = document.getElementById(id);
     for (const { code, name } of page.languages) {
       const option = document.createElement("option");
@@ -469,41 +463,60 @@ function setUpGmail() {
       select.append(option);
     }
   }
-  for (const id of ["gateway-sends-address", "gateway-sends-partner-address"]) {
+  for (const id of ["gmail-brief-address", "gmail-brief-partner-address"]) {
     document.getElementById(id).addEventListener("input", showJunk);
   }
-  document.getElementById("gateway-sends-form").addEventListener("submit", saveParentRecapSends);
+  document.getElementById("gmail-brief-form").addEventListener("submit", saveRecipients);
+  document.getElementById("gmail-brief-change").addEventListener("click", () => {
+    showSource(null);
+    gmailStep.changing = true;
+    showGmailParts();
+  });
 }
 
-// Gmail's step offers to have Parent Recap send the Brief from its own address instead, with no
-// Gmail at all (ADR 0028). Gmail stays the default: once Parent Recap sends, connecting Gmail only
-// has the school's mail read. With its own Claude Code or Codex as the AI, a Household gives a
-// Gateway Key for sending alone, which the gateway as the AI has on its own step.
+// Gmail's step has two parts. First who gets the Brief, which Parent Recap sends from its own
+// address (ADR 0032), with the Gateway Key for sending while the AI, which Finish can change,
+// isn't the gateway. Once they're saved, connecting Gmail, only to have the school's mail read,
+// or skipping it.
+const gmailStep = { changing: false };
+
 function prepareGmail() {
-  const sends = page.gmail.sender === "gateway";
-  pick("sender", "gmail");
-  document.getElementById("gmail-reading-only").hidden = !sends;
   const { partner } = page.welcome;
-  document.getElementById("gateway-sends-language").value = page.language;
-  document.getElementById("gateway-sends-partner").hidden = !partner.add;
-  const partnerAddress = document.getElementById("gateway-sends-partner-address");
-  partnerAddress.required = partner.add;
-  partnerAddress.value = partner.add ? partner.address : "";
-  document.getElementById("gateway-sends-partner-language").value = partner.language;
-  showSender();
+  const [parent, other] = page.gmail.to;
+  document.getElementById("gmail-brief-address").value = parent ? parent.address : "";
+  document.getElementById("gmail-brief-language").value = offered(parent?.language) || page.language;
+  const partnerShown = partner.add || Boolean(other);
+  document.getElementById("gmail-brief-partner").hidden = !partnerShown;
+  const partnerAddress = document.getElementById("gmail-brief-partner-address");
+  partnerAddress.required = partnerShown;
+  partnerAddress.value = other ? other.address : partner.add ? partner.address : "";
+  document.getElementById("gmail-brief-partner-language").value =
+    offered(other?.language) || partner.language;
+  gmailStep.changing = false;
+  showGmailParts();
 }
 
-// The Gmail form, or the Recipients' addresses for Parent Recap to send to, with the Gateway Key
-// for sending alone while the AI, which Finish can change, isn't the gateway.
-function showSender() {
-  const gateway = picked("sender") === "gateway";
-  document.getElementById("gmail-own").hidden = gateway;
-  document.getElementById("gateway-sends-form").hidden = !gateway;
+// A Recipient's language, when the page offers it: any other was saved in the chat.
+function offered(language) {
+  return page.languages.some(({ code }) => code === language) ? language : null;
+}
+
+// Who gets the Brief until they're saved, or while they're changed; then the Gmail form.
+function showGmailParts() {
+  const saved = page.gmail.to.length > 0 && !gmailStep.changing;
+  document.getElementById("gmail-brief-form").hidden = saved;
+  document.getElementById("gmail-own").hidden = !saved;
+  setText(document.getElementById("gmail-brief-to"), "gmail.brief.to",
+    { addresses: page.gmail.to.map((r) => r.address).join(", ") });
+  // The setup parent's own Gmail is the likeliest one to read.
+  const parent = page.gmail.to[0]?.address || "";
+  const field = document.getElementById("gmail-address");
+  if (!field.value && /@(gmail|googlemail)\.com$/i.test(parent)) field.value = parent;
   const asksKey = asksSendKey();
-  document.getElementById("gateway-sends-key-part").hidden = !asksKey;
-  document.getElementById("gateway-sends-key").required = asksKey;
-  setText(document.getElementById("gateway-sends-save"),
-    asksKey ? "gateway.save" : "gmail.gateway.save");
+  document.getElementById("gmail-brief-key-part").hidden = !asksKey;
+  document.getElementById("gmail-brief-key").required = asksKey;
+  setText(document.getElementById("gmail-brief-save"),
+    asksKey ? "gateway.save" : "gmail.brief.save");
   showJunk();
 }
 
@@ -511,11 +524,11 @@ function asksSendKey() {
   return page.welcome.ai !== "gateway";
 }
 
-// The addresses given for Parent Recap to send to, the setup parent's first.
-function gatewayRecipients() {
-  const rows = [["gateway-sends-address", "gateway-sends-language"]];
-  if (!document.getElementById("gateway-sends-partner").hidden) {
-    rows.push(["gateway-sends-partner-address", "gateway-sends-partner-language"]);
+// The addresses given for the Brief, the setup parent's first.
+function briefRecipients() {
+  const rows = [["gmail-brief-address", "gmail-brief-language"]];
+  if (!document.getElementById("gmail-brief-partner").hidden) {
+    rows.push(["gmail-brief-partner-address", "gmail-brief-partner-language"]);
   }
   return rows.map(([address, language]) => ({
     field: document.getElementById(address),
@@ -528,8 +541,8 @@ function gatewayRecipients() {
 const JUNKS_AT_FIRST = /@(hotmail|outlook|live|msn)\.[a-z.]+$/i;
 
 function showJunk() {
-  document.getElementById("gateway-sends-junk").hidden =
-    !gatewayRecipients().some(({ address }) => JUNKS_AT_FIRST.test(address.trim()));
+  document.getElementById("gmail-brief-junk").hidden =
+    !briefRecipients().some(({ address }) => JUNKS_AT_FIRST.test(address.trim()));
 }
 
 // How testing and storing a Gateway Key went when it didn't save, and those after which the same
@@ -538,16 +551,16 @@ const KEY_RESULTS = ["not-a-key", "rejected", "no-connection", "test-call-failed
   "keychain-not-reachable", "keychain-failed"];
 const KEY_AGAIN = ["no-connection", "test-call-failed", "keychain-failed"];
 
-async function saveParentRecapSends(event) {
+async function saveRecipients(event) {
   event.preventDefault();
   clearError();
   showSource(null);
   const button = event.submitter;
   button.disabled = true;
-  const recipients = gatewayRecipients();
-  const keyField = document.getElementById("gateway-sends-key");
+  const recipients = briefRecipients();
+  const keyField = document.getElementById("gmail-brief-key");
   try {
-    const out = await post("api/gmail/gateway", {
+    const out = await post("api/gmail/recipients", {
       recipients: recipients.map(({ address, language }) => ({ address, language })),
       ...(asksSendKey() ? { key: keyField.value } : {}),
     });
@@ -562,11 +575,13 @@ async function saveParentRecapSends(event) {
     }
     if (out.result === "saved") {
       page.progress = out.progress;
-      page.gmail.sender = "gateway";
-      renderSources();
+      page.gmail.to = recipients.map(({ address, language }) =>
+        ({ address: address.trim().toLowerCase(), language }));
+      gmailStep.changing = false;
+      showGmailParts();
     }
     // What a key the relay didn't take says is the gateway AI's key field's own.
-    showSource((KEY_RESULTS.includes(out.result) ? "gateway." : "gmail.gateway.") + out.result);
+    showSource((KEY_RESULTS.includes(out.result) ? "gateway." : "gmail.brief.") + out.result);
   } catch (e) {
     failed(e);
   } finally {
@@ -712,14 +727,14 @@ const SLOTS = [
   [[...WILMA_NOT_READY, "wilma.pick-town"], "wilma-town-slot"],
   [["myclub.added", "myclub.kid-exists"], "myclub-kid-slot"],
   // A Source just done: by the hand-off, as the next Source's step is shown.
-  [["gmail.saved", "gmail.gateway.saved", "wilma.signed-in", "claude.saved", "gateway.saved",
+  [["gmail.saved", "wilma.signed-in", "claude.saved", "gateway.saved",
     "codex.signed-in", "whatsapp.paired"], "connect-slot"],
 ];
 // The results that say something failed, shown in red.
 const FAILED = [
   "gmail.no-address", "gmail.not-an-app-password", "gmail.rejected", "gmail.no-connection",
   "gmail.keychain-not-reachable", "gmail.keychain-failed",
-  "gmail.gateway.no-address", "gmail.gateway.same-address",
+  "gmail.brief.no-address", "gmail.brief.same-address",
   ...WILMA_NOT_READY, "wilma.pick-town", "wilma.wrong-password", "wilma.sign-in-failed",
   "wilma.no-kids", "wilma.window.not-signed-in", "wilma.window.sign-in-failed",
   "wilma.window.timeout", "wilma.window.no-terminal",
@@ -1832,7 +1847,7 @@ function renderWorking() {
   const reading = workingStep.reading || { result: "reading", read: 0, total: null };
   const items = connectSteps().filter((step) => step.working && statuses[step.name] === "done")
     .map((step) => step.working());
-  // A Gmail skipped, as when Parent Recap sends the Brief, has no senders to read.
+  // A Gmail skipped has no senders to read.
   if (statuses.gmail !== "skipped") {
     items.push(reading.total ? ["working.gmail", { read: reading.read, total: reading.total }, true]
       : ["working.gmail.start", null, true]);
@@ -1890,7 +1905,7 @@ function renderCheck() {
   document.getElementById("check-whatsapp").hidden = whatsapp === null;
   document.getElementById("check-groups").replaceChildren(...(whatsapp || []).map((group) =>
     tickRow(group.name, group.ticked, group.kids.length ? { text: group.kids.join(", ") } : null)));
-  // No senders without Gmail, skipped when Parent Recap sends the Brief (ADR 0028).
+  // No senders without Gmail, which a family skips when school mail doesn't come there.
   document.getElementById("check-mail").hidden = senders === null;
   document.getElementById("check-senders").replaceChildren(...(senders || []).map((sender) =>
     tickRow(sender.domain, sender.ticked, sender.count
@@ -2121,7 +2136,50 @@ function nextStep(prefix, check, values) {
     shown.push(skip);
   }
   if (check.detail) shown.push(reasonBlock(check.reason ? own : general, check.detail));
+  if (check.check === "gateway" && check.reason === "no-key" && page.welcome.ai !== "gateway") {
+    shown.push(sendKeyForm(prefix));
+  }
   return shown;
+}
+
+// The Gateway Key for sending, where the Brief sending check says there's none: a Household that
+// sent through its own Gmail before every Brief came from Parent Recap's address (ADR 0032).
+// The form is kept here: a checklist drawn again without it leaves it out of the page.
+const sendKeyStep = { prefix: null, form: null };
+
+function sendKeyForm(prefix) {
+  if (!sendKeyStep.form) {
+    sendKeyStep.form = document.getElementById("send-key-form");
+    sendKeyStep.form.addEventListener("submit", saveSendKey);
+  }
+  const form = sendKeyStep.form;
+  sendKeyStep.prefix = prefix;
+  form.querySelector("#send-key-message").hidden = true;
+  form.hidden = false;
+  return form;
+}
+
+async function saveSendKey(event) {
+  event.preventDefault();
+  clearError();
+  const button = event.submitter;
+  button.disabled = true;
+  const field = sendKeyStep.form.querySelector("#send-key");
+  const message = sendKeyStep.form.querySelector("#send-key-message");
+  try {
+    const out = await post("api/gmail/key", { key: field.value });
+    if (!KEY_AGAIN.includes(out.result)) field.value = "";
+    const saved = out.result === "saved";
+    setText(message, saved ? "gmail.key.saved" : "gateway." + out.result);
+    message.classList.toggle("fail", !saved);
+    message.hidden = false;
+    // Finish checks its outcomes again by itself; Check runs its health check on Confirm.
+    if (saved && sendKeyStep.prefix === "finish") checkAgain();
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // Skips a Source whose check failed, as Connect's Skip does, and the server runs the health check
@@ -2252,8 +2310,7 @@ async function sendBrief(event) {
     if (out.result === "sent") {
       showSent("brief.send.sent", { to: out.to });
       // Parent Recap's new address may land in Hotmail's or Outlook.com's Junk at first (#524).
-      document.getElementById("brief-junk").hidden =
-        !(page.gmail.sender === "gateway" && JUNKS_AT_FIRST.test(out.to));
+      document.getElementById("brief-junk").hidden = !JUNKS_AT_FIRST.test(out.to);
     } else {
       showError("brief.send." + out.result);
     }

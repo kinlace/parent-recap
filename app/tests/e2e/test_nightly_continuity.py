@@ -10,7 +10,7 @@ from datetime import timedelta
 import pytest
 import time_machine
 
-from conftest import NOW, html_for_golden, msg, myclub_event
+from conftest import NOW, html_for_golden, msg, myclub_event, without_unread_note
 from fake_system import WINDOWS
 
 from nights import normal_night, payload_message_ids
@@ -198,7 +198,7 @@ def test_quiet_source_beside_a_failed_one_sends_nothing(harness):
 
 # ── A Gmail with no sender ticked (#361)
 
-def test_gmail_with_no_sender_beside_another_source_only_sends_the_brief(harness):
+def test_gmail_with_no_sender_beside_another_source_is_not_read(harness):
     normal_night(harness, "en")
     harness.config["gmail"]["allowlist_domains"] = []
 
@@ -207,7 +207,7 @@ def test_gmail_with_no_sender_beside_another_source_only_sends_the_brief(harness
     assert "gmail" not in harness.lookback_hours  # never read
     [email] = harness.sent
     coverage = "📥 Read tonight: MyClub 1 event · Wilma 1 message · WhatsApp 2 messages"
-    assert email.text.endswith("\n\n" + coverage)
+    assert without_unread_note(email.text).endswith("\n\n" + coverage)
 
 
 def test_gmail_with_no_sender_and_no_other_source_still_fails(harness):
