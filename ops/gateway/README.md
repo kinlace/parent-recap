@@ -1,6 +1,6 @@
 # The maintainers' gateway
 
-The server that invited Households' Gateway Keys go through (ADR 0014). Everything needed to rebuild it is here, and none of it is secret (ADR 0015). Where the running server is and how to reach it are in the maintainers' Bitwarden, not here.
+The server that invited Households' Gateway Keys go through (ADR 0014), and where Hosted Households run (ADR 0029). Everything needed to rebuild it is here, and none of it is secret (ADR 0015). Where the running server is and how to reach it are in the maintainers' Bitwarden, not here.
 
 - `host-setup.sh` sets up the VM (Ubuntu/Debian): system updates, SSH with keys only, a firewall that lets in only SSH and HTTPS, Caddy, and a login for the AI assistant that can read logs but has no sudo.
 - `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016), the Brief relay and, given a release of the program, the hosted version's sign-up service (ADR 0031) behind Caddy. It works on any systemd Linux with Caddy and `python3` installed.
@@ -43,6 +43,13 @@ Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`).
 
 8. **Spend limit.** In the Anthropic Console, create a workspace for the gateway, put the gateway's API key in it and set that workspace's monthly spend limit to $10 (Settings > Workspaces > Spend limits). The default workspace can't be limited.
 9. **Record it.** Keep the provider, region, IP, hostname and SSH logins in the maintainers' private notes, not here.
+10. **Hosted Households** (ADR 0029), once the gateway answers. All on the server, as in "Hosted Households" below:
+    - **The service.** Run step 7 again with `PARENT_RECAP_RELEASE` (see "Install it"). Check that `systemctl status parent-recap-signup` is active and an unknown `https://<hostname>/join/x` gets 404.
+    - **Invite.** `invite.sh` prints an Invite Link (see "Invite a Household"). Sign up your own Household with it first: it is the first to sign in to Wilma from the server.
+    - **Status.** `status.sh` lists every Household's last run and checks (see "See every Household's status").
+    - **Remove.** `remove.sh ph-…` removes a Household with its data (see "Remove a Household").
+
+    A rebuilt server has no Households: their homes, the Invite Links and `households.json` are on the old server only, and nothing backs them up. Invite each family again; its Wilma login and MyClub links come with the new sign-up, and deleting the old VM deletes the old Households with it.
 
 Both scripts are safe to run again.
 
