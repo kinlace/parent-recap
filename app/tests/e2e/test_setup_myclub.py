@@ -553,20 +553,21 @@ def test_skipping_myclub_saves_no_link_and_moves_on(harness, page, myclub_server
     assert myclub_server.downloads == []
 
 
+STEPS = ("events", "calendar", "subscribe", "members", "copy")  # "Where to find the link", in order
+
+
 def test_the_myclub_step_shows_where_the_link_is_and_takes_it_in_the_page_s_own_field(page):
     html = call(page.url).body.decode()
 
     step = re.search(r'<div id="source-myclub".*?\n    </div>\n', html, re.S).group(0)
-    # MyClub's own page (#619), served by the page itself, with what to click boxed on it.
+    # MyClub's own page (#619), served by the page itself, what to click numbered 1-3 on it.
     figure = re.search(r'<figure class="screenshot">.*?</figure>', step, re.S).group(0)
     src = re.search(r'<img src="([\w.-]+)"[^>]*data-alt="myclub.picture.alt"', figure).group(1)
     assert call(page.url, src).status == 200
-    assert re.findall(r'class="mark (\w+)"', figure) == ["events", "own", "subscribe"]
     steps = re.search(r"<ol>(.*?)</ol>", step, re.S).group(1)
-    assert re.findall(r'data-text="([\w.-]+)"', steps) == [
-        "myclub.picture.sign-in", "myclub.picture.calendar", "myclub.picture.subscribe",
-        "myclub.picture.copy"]
-    assert 'data-text="myclub.picture.one-link"' in step
+    assert re.findall(r'data-text="([\w.-]+)"', steps) == [f"myclub.picture.{s}" for s in STEPS]
+    for note in ("sign-in", "one-link"):
+        assert f'<p data-text="myclub.picture.{note}">' in step
     assert 'id="myclub-open"' in step
     field = re.search(r'<input[^>]*id="myclub-link"[^>]*>', step).group(0)
     # A text field, so the parent can check what they pasted (#209): it's their own screen.
@@ -574,14 +575,16 @@ def test_the_myclub_step_shows_where_the_link_is_and_takes_it_in_the_page_s_own_
 
 
 def test_the_steps_name_myclub_s_own_finnish_words_in_every_language():
-    # MyClub is only in Finnish, so every language names what's on its screen as it's written there.
+    # MyClub is only in Finnish, so every language names what's on its screen as it's written
+    # there, and steps 1-3 are what the picture numbers 1-3.
     for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
-        steps = " ".join(table[f"myclub.picture.{s}"]
-                         for s in ("sign-in", "calendar", "subscribe", "copy"))
-        for word in ("MyClub", "Tapahtumat", "Omat", "Tilaa kalenteri", "Valitut jäsenet", "webcal://"):
-            assert word in steps, (language, word)
-        for word in ("Tapahtumat", "Omat", "Tilaa kalenteri"):  # what the picture marks
-            assert word in table["myclub.picture.alt"], (language, word)
+        steps = [table[f"myclub.picture.{s}"] for s in STEPS]
+        for step, word in zip(steps, ("Tapahtumat", "Omat", "Tilaa kalenteri", "Valitut jäsenet",
+                                      "webcal://")):
+            assert word in step, (language, word)
+        assert "MyClub" in table["myclub.picture.sign-in"], language
+        for n, word in enumerate(("Tapahtumat", "Omat", "Tilaa kalenteri"), 1):
+            assert f"{n} {word}" in table["myclub.picture.alt"], (language, word)
 
 
 def test_every_myclub_result_is_explained_in_all_three_languages():
