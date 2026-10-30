@@ -8,6 +8,8 @@ setup claude — open Claude's sign-in for the nightly token in a Terminal windo
                token in a macOS dialog, make one test call, store it in the Keychain
 setup gateway — ask for the Gateway Key in a macOS dialog, make one test call through the gateway,
                 store it in the Keychain
+setup confirm — get a send-only Gateway Key from the gateway when there's none, bind the
+                Recipients to it, and say who still has to confirm by email (ADR 0033)
 setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, download it once,
                save it in the owner-only config
 setup save — save the Household's answers into the config, and setup's progress (in setup_save.py)
@@ -84,6 +86,13 @@ def register(sub) -> None:
     pgateway = steps.add_parser("gateway", help="Ask for the Gateway Key in a dialog, test it with "
                                 "the gateway and store it in the Keychain")
     pgateway.set_defaults(func=cmd_gateway)
+
+    pconfirm = steps.add_parser("confirm", help="Get a send-only Gateway Key when there's none, "
+                                "bind the Recipients to it and say who still has to confirm their "
+                                "address by email")
+    pconfirm.add_argument("--resend", action="store_true",
+                          help="Send the confirmation email again to each who hasn't confirmed")
+    pconfirm.set_defaults(func=cmd_confirm)
 
     pmyclub = steps.add_parser("myclub", help="Ask for a Kid's MyClub calendar link in a dialog, "
                                "download it once and save it in the config")
@@ -261,6 +270,35 @@ def cmd_gateway(args: argparse.Namespace) -> int:
     if result == "saved":
         return report("saved", test_call="ok")
     return report(result, next_, **extra)
+
+
+def cmd_confirm(args: argparse.Namespace) -> int:
+    """A send-only Gateway Key on request (ADR 0033): gets one when none is stored, binds the
+    Recipients in the config to it, and prints who still has to press the link in their
+    confirmation email. Nothing secret is printed: the key goes straight to the Keychain."""
+    from . import send_key
+    again = f"{program()} setup confirm --resend"
+    try:
+        cfg = Config.load(args.config)
+    except Exception:
+        return report("bad-config", f"The config can't be read. Run {program()} doctor, fix what it "
+                      "names, then run this again.")
+    status = send_key.ensure(cfg, resend=args.resend)
+    extra = {"recipients": status.recipients, "unconfirmed": status.unconfirmed,
+             "mailed": status.mailed, **({"key_requested": True} if status.requested else {})}
+    if status.result == send_key.CONFIRMED:
+        return report("confirmed", **extra)
+    if status.result == send_key.UNCONFIRMED:
+        return report("unconfirmed", "Each address in `unconfirmed` presses the link in the "
+                      "confirmation email from brief@parentrecap.com (it may be in Junk). The "
+                      "Brief goes only to addresses that confirmed. If the email didn't come, run: "
+                      f"{again}", **extra)
+    if status.result == send_key.NO_KEY and not send_key.may_request(cfg):
+        return report("no-key", "The gateway writes this Household's Brief, so its Gateway Key "
+                      "comes from the Parent Recap team: store it with "
+                      f"{program()} setup gateway", **extra)
+    return report(status.result, f"{status.error} Run this again later: {program()} setup confirm",
+                  **extra)
 
 
 def _gateway_use(config: str | None) -> tuple[str, bool]:

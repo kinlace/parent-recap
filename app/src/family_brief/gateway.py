@@ -1,6 +1,7 @@
 """The maintainers' gateway, which writes the Brief for a Household with a Gateway Key and no
 Claude or ChatGPT subscription (ADR 0014), and can send it from Parent Recap's own address
-(ADR 0028, `POST /v1/brief`).
+(ADR 0028, `POST /v1/brief`). A send-only key can be asked of it, bound to the Recipients, who
+confirm by email (ADR 0033, `POST /v1/brief/key` and `/v1/brief/recipients`).
 
 The program calls the gateway's Anthropic-format `POST /v1/messages` itself, so the Household
 needs neither Claude Code nor Codex. The Gateway Key lives in the Keychain and goes only into the
@@ -184,15 +185,32 @@ def post_brief(url: str, gateway_key: str, body: dict[str, Any],
     return _post(url, "/v1/brief", body, timeout, {"x-api-key": gateway_key})
 
 
-def read_sent(response: requests.Response) -> int:
-    """How many Recipients the mail service refused of a Brief the relay took (0 normally).
-    Raises GatewayError for a refused send, saying what the Household can do about it."""
+# How a send refused because no Recipient confirmed starts (ADR 0033).
+UNCONFIRMED_MESSAGE = "the Brief's Recipients haven't confirmed their email address"
+CONFIRM_HOW = ("press the link in the confirmation email Parent Recap sent them, from "
+               "brief@parentrecap.com (look in Junk too); `parent-recap setup confirm --resend` "
+               "sends it again")
+
+
+def read_sent(response: requests.Response) -> tuple[int, list[str]]:
+    """How many Recipients the mail service refused of a Brief the relay took (0 normally), and
+    the addresses it left out because they haven't confirmed (ADR 0033). Raises GatewayError for
+    a refused send, saying what the Household can do about it."""
     status = response.status_code
     if status == 200:
         try:
-            return int(response.json().get("refused") or 0)
+            data = response.json()
+            unconfirmed = [a for a in data.get("unconfirmed") or [] if isinstance(a, str)]
+            return int(data.get("refused") or 0), unconfirmed
         except (ValueError, AttributeError, TypeError):
-            return 0
+            return 0, []
+    if status == 403 and "not confirmed" in said(response):
+        try:
+            unconfirmed = [a for a in response.json().get("unconfirmed") or [] if isinstance(a, str)]
+        except (ValueError, AttributeError, TypeError):
+            unconfirmed = []
+        raise GatewayError(f"{UNCONFIRMED_MESSAGE} ({', '.join(unconfirmed) or 'any of them'}), so "
+                           f"the gateway won't send it to them yet: {CONFIRM_HOW}", status)
     if status == UNKNOWN_KEY:
         raise GatewayError("the gateway doesn't know the Gateway Key, or it was revoked (ask the "
                            f"Parent Recap maintainers for a new one and store it with {SETUP}; the "
@@ -219,6 +237,68 @@ def send_test(url: str, gateway_key: str, timeout: float = SEND_TIMEOUT) -> tupl
         return WORKS, None
     outcome = UNKNOWN if response.status_code == UNKNOWN_KEY else FAILED
     return outcome, without_key(f"the gateway answered {said(response)}", gateway_key)
+
+
+# ── A send-only key on request (ADR 0033)
+
+@dataclass
+class Confirmation:
+    """What the gateway says of the Recipients bound to a key: those who haven't confirmed yet,
+    those it just mailed a confirmation link, and the key itself when it was just made."""
+    unconfirmed: list[str]
+    mailed: list[str]
+    key: str | None = None
+
+
+def request_send_key(url: str, recipients: list[dict[str, str]],
+                     timeout: float = SEND_TIMEOUT) -> Confirmation:
+    """Asks the gateway at `url` for a send-only key bound to `recipients` ({address, language},
+    the setup parent first), which mails each a confirmation link. Raises GatewayError, or
+    TimeoutError, when it doesn't make one."""
+    response = _post(url, "/v1/brief/key", {"recipients": recipients}, timeout, {})
+    out = _confirmation(response, "make a Gateway Key")
+    if not out.key:
+        raise GatewayError("the gateway answered without a key", response.status_code)
+    return out
+
+
+def bind(url: str, gateway_key: str, recipients: list[dict[str, str]], resend: bool = False,
+         timeout: float = SEND_TIMEOUT) -> Confirmation:
+    """Binds the key to `recipients` at the gateway, which mails a confirmation link to each new
+    address, and with `resend` to each still unconfirmed one. A key made by hand isn't bound, so
+    the gateway says each is confirmed; so does a gateway from before ADR 0033 (404)."""
+    try:
+        response = _post(url, "/v1/brief/recipients", {"recipients": recipients, "resend": resend},
+                         timeout, {"x-api-key": gateway_key})
+    except GatewayError as e:
+        raise GatewayError(without_key(str(e), gateway_key), e.status) from None
+    if response.status_code == 404:
+        return Confirmation([], [])
+    try:
+        return _confirmation(response, "check who confirmed")
+    except GatewayError as e:
+        raise GatewayError(without_key(str(e), gateway_key), e.status) from None
+
+
+def _confirmation(response: requests.Response, doing: str) -> Confirmation:
+    status = response.status_code
+    if status == UNKNOWN_KEY:
+        raise GatewayError("the gateway doesn't know the Gateway Key, or it was revoked "
+                           f"(it answered {said(response)})", status)
+    if status == 429:
+        raise GatewayError("the gateway has sent all the confirmation emails it may today; try "
+                           f"again tomorrow (it answered {said(response)})", status)
+    if status != 200:
+        raise GatewayError(f"the gateway couldn't {doing} (it answered {said(response)})", status)
+    try:
+        data = response.json()
+        statuses = [r for r in data.get("recipients") or [] if isinstance(r, dict)]
+        unconfirmed = [str(r.get("address")) for r in statuses if not r.get("confirmed")]
+        mailed = [a for a in data.get("mailed") or [] if isinstance(a, str)]
+        key = data.get("key") if isinstance(data.get("key"), str) else None
+    except (ValueError, AttributeError, TypeError):
+        raise GatewayError("the gateway's answer isn't one Parent Recap reads", status) from None
+    return Confirmation(unconfirmed, mailed, key)
 
 
 def without_key(text: str, gateway_key: str) -> str:

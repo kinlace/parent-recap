@@ -1,11 +1,12 @@
 """Gmail's connect step, in two parts. First who gets the Brief: the setup parent's address, then
 anyone else's, each with their language. Parent Recap sends every Brief from its own address
 through the maintainers' gateway (ADR 0032), so a Household whose AI is its own Claude Code or
-Codex gives a Gateway Key for sending with them, which the gateway as the AI has on its own step.
-Then, only if the family wants the school's mail read, the Gmail address and its App Password
-(ADR 0007); Gmail can be skipped once the Recipients are saved. A Household that sent through its
-own Gmail before has no key for sending until the Parent Recap team gives it one: Check and Finish
-then take it with `api/gmail/key`."""
+Codex needs a Gateway Key for sending: once the Recipients are saved, the page asks the gateway for
+a send-only one bound to them, which mails each a link to confirm (ADR 0033), and `api/gmail/confirm`
+sends it again. A key pasted with the Recipients is used instead; the gateway as the AI has its key
+on its own step. Then, only if the family wants the school's mail read, the Gmail address and its
+App Password (ADR 0007); Gmail can be skipped once the Recipients are saved. Check and Finish say
+who hasn't confirmed, from doctor, and still take a pasted key with `api/gmail/key`."""
 from __future__ import annotations
 
 import re
@@ -14,7 +15,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from .. import setup_ai, setup_gmail, setup_save
+from .. import send_key, setup_ai, setup_gmail, setup_save
 from ..setup_connect import Reply, Strict, parse
 from .ai import GATEWAY_RESULTS
 from .context import Action, Context, Phase, keychain_code
@@ -45,7 +46,11 @@ class SentTo(Strict):
 
 class BriefTo(Strict):
     recipients: list[SentTo] = Field(min_length=1)  # the setup parent first
-    key: str | None = None  # the Gateway Key for sending, unless the gateway is the AI
+    key: str | None = None  # a pasted Gateway Key for sending, never when the gateway is the AI
+
+
+class Resend(Strict):
+    resend: bool = False
 
 
 class SendKey(Strict):
@@ -55,7 +60,7 @@ class SendKey(Strict):
 class Gmail(Phase):
     def routes(self) -> dict[str, Action]:
         return {"api/gmail": self.connect_gmail, "api/gmail/recipients": self.save_recipients,
-                "api/gmail/key": self.save_send_key}
+                "api/gmail/key": self.save_send_key, "api/gmail/confirm": self.confirm}
 
     def state(self, progress: dict[str, Any]) -> dict[str, Any]:
         cfg = self.context.model()
@@ -80,13 +85,15 @@ class Gmail(Phase):
 
     def save_recipients(self, raw: Any) -> Reply:
         """Saves who gets the Brief, the setup parent first, and leaves Gmail to connect or skip.
-        A Household whose AI is its own Claude Code or Codex gives a Gateway Key for sending,
-        pasted into the page's own field (ADR 0007): it's tested with the Brief relay's check,
-        which sends nothing and makes no model call, and stored, as `setup gateway` does. The
-        gateway as the AI has its key tested with a model call on the AI step instead. The key is
-        never returned, logged or put on a command line."""
+        A Household whose AI is its own Claude Code or Codex then gets a send-only Gateway Key
+        bound to them, asked of the gateway when none is stored, and the gateway mails each a
+        link to confirm (ADR 0033): `confirm` says to whom. It may paste a key instead, into the
+        page's own field (ADR 0007): that one is tested with the Brief relay's check, which sends
+        nothing and makes no model call, and stored, as `setup gateway` does. The gateway as the
+        AI has its key tested with a model call on the AI step instead. The key is never
+        returned, logged or put on a command line."""
         answer = parse(BriefTo, raw)
-        if (answer.key is None) != (self.context.model().llm.backend == "gateway"):
+        if answer.key is not None and self.context.model().llm.backend == "gateway":
             return HTTPStatus.BAD_REQUEST, _key_refused()
         addresses = [r.address.strip().lower() for r in answer.recipients]
         if not all(ADDRESS.match(a) for a in addresses):
@@ -104,7 +111,19 @@ class Gmail(Phase):
             out = setup_save.save(self.context.config, {"recipients": recipients})
         if out["result"] != "saved":
             return HTTPStatus.CONFLICT, out
+        cfg = self.context.model()
+        if send_key.may_request(cfg):
+            out = {**out, "confirm": _confirmation(send_key.ensure(cfg))}
         return HTTPStatus.OK, out
+
+    def confirm(self, raw: Any) -> Reply:
+        """Who of the Recipients hasn't confirmed yet, with `resend` mailing each of them the
+        link again; asks the gateway for a key first when none is stored."""
+        answer = parse(Resend, raw)
+        cfg = self.context.model()
+        if not send_key.may_request(cfg):
+            return HTTPStatus.BAD_REQUEST, _key_refused()
+        return HTTPStatus.OK, _confirmation(send_key.ensure(cfg, resend=answer.resend))
 
     def save_send_key(self, raw: Any) -> Reply:
         """A Gateway Key for sending alone, for a Household whose AI is its own Claude Code or Codex
@@ -124,9 +143,14 @@ class Gmail(Phase):
 
 def _key_refused() -> dict[str, Any]:
     return setup_save.outcome(
-        "invalid-answers", "Give a Gateway Key for sending, unless the gateway is the AI: the AI "
-        "step takes its key.",
-        errors=["key: should be given when, and only when, the AI isn't the gateway"])
+        "invalid-answers", "The gateway is the AI, so its key is the AI step's, and it is never "
+        "asked for here.", errors=["key: should not be given when the AI is the gateway"])
+
+
+def _confirmation(status: send_key.Status) -> dict[str, Any]:
+    """A send_key.Status as the page shows it: how it went and the addresses still to confirm and
+    just mailed. Its error stays out: the page says each result in its own words."""
+    return {"result": status.result, "unconfirmed": status.unconfirmed, "mailed": status.mailed}
 
 
 def recipients(context: Context, parent: str,

@@ -1,6 +1,6 @@
 """Where the Brief goes out: the email it is sent as by the gateway's Brief relay (ADR 0028, ADR
-0032), iMessage, and the Google Calendar API. Each records what it is given, or fails as the test
-says."""
+0032), with the send-only keys it makes on request and the Recipients who confirmed (ADR 0033),
+iMessage, and the Google Calendar API. Each records what it is given, or fails as the test says."""
 from __future__ import annotations
 
 import base64
@@ -71,7 +71,15 @@ class FakeOutbox:
     Calendar (`calendar`), which the family authorizes in `home` (authorize_google_calendar).
     The gateway's relay records the Gateway Key each request had (`relay_keys`) and answers
     `relay_answer`, a status and JSON body, after taking the email when that is 200 (doctor's
-    empty request then gets the 400 a known key gets)."""
+    empty request then gets the 400 a known key gets).
+
+    It also makes send-only keys on request (ADR 0033) as ops/gateway/brief_relay.py does: each
+    request's Recipients are in `key_requests`, the keys made in `made_keys` with the addresses
+    bound to each, and the confirmation emails in `confirmations` (address, language). An
+    address is confirmed by `confirm(address)`; until then a made key sends only to the others,
+    and to none 403. `key_answer`, when set, is the status and body the key request gets
+    instead, or an exception it raises. Any other key, such as the harness's, was made by hand:
+    it isn't bound and sends to anyone."""
 
     def __init__(self, home: Path, mp: pytest.MonkeyPatch) -> None:
         self.sent: list[SentEmail] = []
@@ -81,7 +89,17 @@ class FakeOutbox:
         self.imessages: list[tuple[str, str]] = []  # (recipient, text) actually sent
         self.imessage_error: str | None = None      # stderr of a failing osascript
         self.calendar = FakeCalendarService()
+        self.key_requests: list[list[dict[str, str]]] = []
+        self.made_keys: dict[str, list[dict[str, str]]] = {}
+        self.confirmed: set[str] = set()
+        self.confirmations: list[tuple[str, str]] = []
+        self.binds: list[dict[str, Any]] = []
+        self.key_answer: tuple[int, dict[str, Any]] | Exception | None = None
         mp.setattr(api, "post_brief", self._relay)
+        real_post = api._post
+        mp.setattr(api, "_post", lambda url, path, body, timeout, headers:
+                   self._key_desk(path, body, headers) if path in ("/v1/brief/key", "/v1/brief/recipients")
+                   else real_post(url, path, body, timeout, headers))
         mp.setattr(calendar_action, "TOKEN_PATH", str(home / ".family" / "calendar_token.json"))
         mp.setattr(calendar_action, "_build_service", lambda: self.calendar)
 
@@ -92,11 +110,55 @@ class FakeOutbox:
         status, answer = self.relay_answer
         if status == 200 and not body:  # doctor's check: the relay takes the key, then the empty request is bad
             return _response(400, {"error": "`to` must be a list of addresses"})
+        if status == 200 and key in self.made_keys:
+            bound = {r["address"] for r in self.made_keys[key]} & self.confirmed
+            unconfirmed = [a for a in body["to"] if a.lower() not in bound]
+            to = [a for a in body["to"] if a.lower() in bound]
+            if not to:
+                return _response(403, {"error": "recipient not confirmed", "unconfirmed": unconfirmed})
+            if unconfirmed:
+                body = {**body, "to": to}
+                answer = {"sent": len(to), "refused": 0, "unconfirmed": unconfirmed}
         if status == 200:
             self.sent.append(SentEmail(body["subject"], body["text"], body.get("html"), list(body["to"]),
                                        [(a["filename"], base64.b64decode(a["data"]), a["content_type"])
                                         for a in body.get("attachments", [])]))
         return _response(status, answer)
+
+    def confirm(self, *addresses: str) -> None:
+        """The Recipients press the link in their confirmation email."""
+        self.confirmed.update(addresses)
+
+    def _key_desk(self, path: str, body: dict[str, Any], headers: dict[str, str]) -> requests.Response:
+        if self.email_error:
+            raise self.email_error
+        recipients = body["recipients"]
+        if path == "/v1/brief/key":
+            self.key_requests.append(recipients)
+            if isinstance(self.key_answer, Exception):
+                raise self.key_answer
+            if self.key_answer is not None:
+                return _response(*self.key_answer)
+            key = f"sk-bf-made-on-request-{len(self.made_keys)}"
+            self.made_keys[key] = recipients
+            mailed = [r["address"] for r in recipients]
+            self.confirmations += [(r["address"], r["language"]) for r in recipients]
+            return _response(200, {"key": key, **self._statuses(recipients, mailed)})
+        key = headers.get("x-api-key", "")
+        self.binds.append({"key": key, **body})
+        if key not in self.made_keys:  # made by hand: not bound
+            return _response(200, {"recipients": [{"address": r["address"], "confirmed": True}
+                                                  for r in recipients], "mailed": []})
+        before = {r["address"] for r in self.made_keys[key]}
+        self.made_keys[key] = recipients
+        waiting = [r for r in recipients if r["address"] not in self.confirmed]
+        mail = waiting if body.get("resend") else [r for r in recipients if r["address"] not in before]
+        self.confirmations += [(r["address"], r["language"]) for r in mail]
+        return _response(200, self._statuses(recipients, [r["address"] for r in mail]))
+
+    def _statuses(self, recipients: list[dict[str, str]], mailed: list[str]) -> dict[str, Any]:
+        return {"recipients": [{"address": r["address"], "confirmed": r["address"] in self.confirmed}
+                               for r in recipients], "mailed": mailed}
 
     def authorize_google_calendar(self) -> None:
         token = Path(calendar_action.TOKEN_PATH)
