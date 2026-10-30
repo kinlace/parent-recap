@@ -1,13 +1,14 @@
 """The hosted version's sign-up (ADR 0031), driven over HTTP as a family's phone drives it: the
-page under an Invite Link, the Wilma check, the Household made under its own user, and the
-404 every other request gets.
+page under an Invite Link, the Wilma check, each Kid's MyClub link, the Household made under its
+own user with its first Brief sent, and the 404 every other request gets.
 
 The outside edges are faked: the service's wilma CLI is `test_setup_wilma`'s fake, which knows one
 Wilma account; the household host is `fake_household_host`'s, whose users each have their own
-home, secrets and jobs and run the real `signup household` in-process; the system is the
-harness's, set to Linux. The service is the real one, on a free port or through socket pairs.
-Assertions are on the pages, on what each Household's user was left with, on the store, and on
-every place the Wilma password and the Gateway Key must never reach.
+home, secrets and jobs and run the real `signup household` and `run` in-process; MyClub's server,
+the model and the gateway's Email Delivery are the harness's; the system is the harness's, set to
+Linux. The service is the real one, on a free port or through socket pairs. Assertions are on the
+pages, on what each Household's user was left with, on the email sent, on the store, and on every
+place the Wilma password, a MyClub link and the Gateway Key must never reach.
 """
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ from family_brief.signup import page
 from family_brief.signup.invites import Recipient, Store
 from family_brief.signup.server import Service, SignupServer
 from family_brief.system import jobs
+from conftest import myclub_event
 from fake_household_host import FakeHouseholdHost
 from fake_system import LINUX
 from setup_page import CAN_LISTEN, Response, _Connection, _PairedServer
@@ -39,6 +41,7 @@ pytestmark = pytest.mark.posix  # the fake wilma CLI is a script on a shell-scri
 
 ESPOO_TOWN = "Espoo – Espoon kaupunki / Suomenkielisen opetuksen tulosyksikkö"
 NOON = datetime(2026, 10, 30, 10, 0, tzinfo=timezone.utc)  # 12:00 in Helsinki
+MIA_LINK = "webcal://kilonpallo.myclub.fi/ical/mia-1001-token.ics"
 
 
 class Clock:
@@ -97,11 +100,27 @@ def request(url: str, path: str, method: str = "GET", fields: dict[str, str] | N
         conn.close()
 
 
-def submit(s: SignUp, code: str, **fields: str) -> Response:
+def sign_in(s: SignUp, code: str, **fields: str) -> Response:
+    """The page's first step: the Wilma sign-in and the Recipients."""
     answers = {"lang": "en", "town": ESPOO_TOWN, "username": "mia.parent",
                "password": WILMA_PASSWORD, "r0": "parent@example.com", "r0_language": "fi",
                "r1": "", "r1_language": "en"} | fields
     return request(s.url, f"/join/{code}", "POST", answers)
+
+
+def links(s: SignUp, code: str, *given: str, lang: str = "en") -> Response:
+    """The page's MyClub step: a link, or "" for none, for each Kid in turn."""
+    return request(s.url, f"/join/{code}", "POST",
+                   {"lang": lang, "step": "myclub"} | {f"m{i}": url for i, url in enumerate(given)})
+
+
+def submit(s: SignUp, code: str, myclub: tuple[str, ...] = ("", ""), **fields: str) -> Response:
+    """Both steps, with no MyClub link unless `myclub` gives them; the first's page when it
+    doesn't move on."""
+    r = sign_in(s, code, **fields)
+    if 'name="step" value="myclub"' not in text(r):
+        return r
+    return links(s, code, *myclub, lang=fields.get("lang", "en"))
 
 
 def text(r: Response) -> str:
@@ -156,7 +175,7 @@ def test_the_page_is_in_the_language_the_family_picks(signup, language):
 
 # ── Signing up
 
-def test_a_good_sign_up_makes_the_household_and_says_when_the_first_brief_comes(
+def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
         signup, harness, caplog, capsys):
     caplog.set_level(logging.DEBUG)
     code = signup.invite(Recipient("parent@example.com", "fi"))
@@ -165,15 +184,29 @@ def test_a_good_sign_up_makes_the_household_and_says_when_the_first_brief_comes(
 
     assert r.status == 200, text(r)
     html = text(r)
-    assert said("en", "first", day=page.TEXT["en"]["today"], time="21:00") in html
+    assert said("en", "sent", time="21:00") in html
+    assert said("en", "junk") not in html  # no Hotmail or Outlook.com address among them
     assert '<html lang="en">' in html
     name, user = signup.user()
     key = signup.host.keys[name]
-    # The program installed, then `signup household` as the Household, the key on its stdin.
+    # The program installed, then `signup household` as the Household, the key on its stdin, and
+    # its first Brief made from the last three days, as the setup page's is.
     program = str(user.home / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap")
     assert [c[1:] for c in signup.host.commands] == [
         ["bash", str(signup.server.service.release / "install.sh")],
-        [program, "signup", "household"]]
+        [program, "signup", "household"],
+        [program, "run", "--first-brief", "--lookback-hours", "72"]]
+    # The first Brief, from Parent Recap's own address with the Household's key, to each
+    # Recipient in the language they read it in.
+    assert {(tuple(m.to), m.via) for m in harness.sent} == {
+        (("parent@example.com",), "gateway"), (("partner@example.com",), "gateway")}
+    assert set(harness.relay_keys) == {key}
+    by_reader = {m.to[0]: m for m in harness.sent}
+    assert "Parent Recap su 27.9." in by_reader["parent@example.com"].text
+    assert "Parent Recap 9月27日 周日" in by_reader["partner@example.com"].text
+    assert all(m.html for m in harness.sent)
+    state = json.loads((user.home / ".family" / "state.json").read_text())
+    assert set(state["brief_delivered_at"]) == {"parent@example.com", "partner@example.com"}
     cfg = Config.load(user.home / ".family" / "config.yaml")
     assert [k.name for k in cfg.kids] == ["Mia Virtanen", "Leo Virtanen"]  # as Wilma lists them
     assert [(t.address, t.language) for t in cfg.email.to] == [
@@ -185,6 +218,7 @@ def test_a_good_sign_up_makes_the_household_and_says_when_the_first_brief_comes(
     assert (cfg.schedule.daily_hour, cfg.schedule.daily_minute) == (21, 0)
     assert user.secrets == {"gateway-key": key}
     assert user.jobs.installed() == {jobs.DAILY}
+    assert not any(k.myclub_ical_url for k in cfg.kids)  # no link given: MyClub off for both
     wilma = json.loads((user.home / ".config" / "wilmai" / "config.json").read_text())
     [profile] = wilma["profiles"]
     assert (profile["tenantUrl"], profile["username"]) == (ESPOO, "mia.parent")
@@ -205,13 +239,121 @@ def test_a_good_sign_up_makes_the_household_and_says_when_the_first_brief_comes(
     assert f"Household {name} created" in caplog.text
 
 
-def test_a_sign_up_after_the_evening_s_slot_says_the_first_brief_comes_tomorrow(signup):
-    signup.clock.now = NOON.replace(hour=19, minute=30)  # 21:30 in Helsinki
+@pytest.mark.parametrize("address", ["mia.mum@hotmail.com", "isa@outlook.com", "leo@hotmail.fi",
+                                     "dad@live.com"])
+def test_a_hotmail_or_outlook_recipient_is_told_to_look_in_junk(signup, address):
     code = signup.invite(Recipient("parent@example.com", "fi"))
 
-    html = text(submit(signup, code, lang="zh"))
+    html = text(submit(signup, code, lang="zh", r1=address, r1_language="zh"))
 
-    assert said("zh", "first", day=page.TEXT["zh"]["tomorrow"], time="21:00") in html
+    assert said("zh", "sent", time="21:00") in html
+    assert said("zh", "junk") in html
+
+
+def test_the_first_step_asks_for_each_kid_s_myclub_link_and_shows_no_secret(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    r = sign_in(signup, code, lang="fi")
+
+    assert r.status == 200
+    html = text(r)
+    assert said("fi", "myclub") in html and said("fi", "myclub_hint") in html
+    assert '<label for="m0">Mia Virtanen</label>' in html
+    assert '<label for="m1">Leo Virtanen</label>' in html
+    assert '<input type="hidden" name="step" value="myclub">' in html
+    assert WILMA_PASSWORD not in html and "mia.parent" not in html
+    assert signup.host.users == {}  # nothing made until the MyClub step
+    for loads in ("<script", "<link", "<img", "src="):
+        assert loads not in html
+
+
+# ── MyClub
+
+@pytest.fixture
+def mia_plays(harness):
+    """Mia Virtanen's MyClub calendar, at MIA_LINK on MyClub's fake server, with one practice."""
+    harness.config["kids"] = [{"name": "Mia Virtanen", "myclub_ical_url": MIA_LINK}]
+    harness.sources["myclub"] = [myclub_event("ev-1", "Kilon Pallo practice", "2026-09-28T17:00:00+03:00",
+                                    "2026-09-28T18:30:00+03:00", kid="Mia Virtanen")]
+    return harness.source_fakes["myclub"]
+
+
+def test_a_kid_s_myclub_link_is_checked_once_and_saved_for_that_kid(
+        signup, harness, mia_plays, caplog):
+    caplog.set_level(logging.DEBUG)
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    r = submit(signup, code, myclub=(f"  {MIA_LINK} ", ""))
+
+    assert r.status == 200, text(r)
+    _, user = signup.user()
+    cfg = Config.load(user.home / ".family" / "config.yaml")
+    assert {k.name: k.myclub_ical_url for k in cfg.kids} == {"Mia Virtanen": MIA_LINK,
+                                                            "Leo Virtanen": None}
+    # Downloaded once to check it, then once more by the first Brief, which reads it.
+    https = MIA_LINK.replace("webcal://", "https://")
+    assert mia_plays.gets == [https, https]
+    [first] = harness.sent
+    assert "MyClub 1 tapahtuma" in first.text  # "read tonight: MyClub 1 event"
+    # The link is a secret: on no command line and in no log.
+    assert not any(MIA_LINK in arg or https in arg for cmd in signup.host.commands for arg in cmd)
+    assert "mia-1001-token" not in caplog.text
+
+
+@pytest.mark.parametrize("given, error, status", [
+    (MIA_LINK, "link-failed", 404),
+    ("hunter2", "not-a-myclub-link", None),
+    (MIA_LINK, "not-a-calendar", "<html>MyClub sign-in</html>"),
+])
+def test_a_myclub_link_that_won_t_do_is_said_and_nothing_is_made(
+        signup, mia_plays, monkeypatch, given, error, status):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    if isinstance(status, int):
+        mia_plays.failures.append(status)
+    elif status is not None:
+        from fake_sources import _Feed
+        monkeypatch.setattr(mia_plays, "get", lambda url, *a, **k: _Feed(200, status))
+        from family_brief.collectors import myclub
+        monkeypatch.setattr(myclub.requests, "get", mia_plays.get)
+    assert sign_in(signup, code).status == 200
+
+    r = links(signup, code, given, "")
+
+    assert r.status == 200
+    html = text(r)
+    assert said("en", error, kid="Mia Virtanen") in html
+    assert said("en", "paste_again") in html
+    assert "mia-1001-token" not in html and "hunter2" not in html  # never shown back
+    assert (signup.host.users, signup.host.keys) == ({}, {})
+    # The checked sign-in still waits: leaving the link out signs up without MyClub.
+    assert links(signup, code, "", "").status == 200
+    _, user = signup.user()
+    assert not any(k.myclub_ical_url for k in
+                   Config.load(user.home / ".family" / "config.yaml").kids)
+
+
+def test_one_link_for_two_kids_is_said(signup, mia_plays):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    sign_in(signup, code)
+
+    r = links(signup, code, MIA_LINK, MIA_LINK.replace("webcal://", "https://"))
+
+    assert said("en", "same-link", kid="Leo Virtanen") in text(r)
+    assert signup.host.users == {}
+
+
+def test_a_myclub_step_left_too_long_starts_over_and_the_link_stays_good(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    sign_in(signup, code)
+    signup.clock.now += timedelta(minutes=31)
+
+    r = links(signup, code, "", "")
+
+    assert r.status == 200
+    html = text(r)
+    assert said("en", "expired") in html and 'name="password"' in html
+    assert signup.host.users == {}
+    assert submit(signup, code).status == 200  # signing in again goes through
 
 
 def test_each_household_s_evening_jobs_get_the_next_free_slot(signup):
@@ -270,11 +412,14 @@ def test_a_town_only_one_wilma_has_is_taken_as_typed(signup):
     assert r.status == 200 and said("en", "wrong-password") in text(r)
 
 
-@pytest.mark.parametrize("step", ["create_user", "mint_key", "install"])
-def test_a_step_that_fails_takes_back_what_was_made_and_the_link_stays_good(signup, step, caplog):
+@pytest.mark.parametrize("step", ["create_user", "mint_key", "install", "jobs", "first_brief"])
+def test_a_step_that_fails_takes_back_what_was_made_and_the_link_stays_good(
+        signup, harness, step, caplog):
     code = signup.invite(Recipient("parent@example.com", "fi"))
     if step == "install":
         signup.host.install_exit = 1
+    elif step == "first_brief":
+        harness.relay_answer = (502, {"error": "Email Delivery refused the message"})
     else:
         signup.host.fails = step
 
@@ -282,11 +427,39 @@ def test_a_step_that_fails_takes_back_what_was_made_and_the_link_stays_good(sign
 
     assert r.status == 500
     assert said("en", "failed") in text(r)
+    # No user with its jobs, no key, no files.
     assert signup.host.users == {} and signup.host.keys == {}
     assert len(signup.host.removed) == 1 and signup.host.revoked == signup.host.removed
+    assert not (signup.host.root / signup.host.removed[0]).exists()
     assert signup.store.households() == []
+    assert harness.sent == []
+    # The link is unused: it signs up once the step works again.
     assert request(signup.url, f"/join/{code}").status == 200
     assert "wasn't created" in caplog.text
+    signup.host.fails, signup.host.install_exit, harness.relay_answer = None, 0, (200, {"sent": 1})
+    assert submit(signup, code).status == 200
+
+
+def test_a_first_brief_one_recipient_didn_t_get_takes_the_sign_up_back(
+        signup, harness, monkeypatch):
+    from family_brief import gateway
+    from fake_model import _response
+    relay = gateway.post_brief  # the fake Email Delivery's
+
+    def refuses_partner(url, key, body, timeout=0):
+        if "partner@example.com" in body["to"]:
+            return _response(502, {"error": "Email Delivery refused the message"})
+        return relay(url, key, body, timeout)
+    monkeypatch.setattr(gateway, "post_brief", refuses_partner)
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    r = submit(signup, code, r1="partner@example.com", r1_language="zh")
+
+    # The parent's went out, but the page mustn't say the first Brief was sent to both.
+    assert [m.to for m in harness.sent] == [["parent@example.com"]]
+    assert r.status == 500 and said("en", "failed") in text(r)
+    assert signup.host.users == {} and signup.host.keys == {}
+    assert request(signup.url, f"/join/{code}").status == 200
 
 
 def test_a_household_the_program_couldn_t_make_is_taken_back(signup):

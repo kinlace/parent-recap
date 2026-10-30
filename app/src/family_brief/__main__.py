@@ -29,7 +29,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     cfg = Config.load(args.config)
     options = evening.Options(dry_run=args.dry_run or args.preview, preview=args.preview,
                               sources=args.sources.split(",") if args.sources else None,
-                              lookback_hours=args.lookback_hours, if_missed=args.if_missed)
+                              lookback_hours=args.lookback_hours, if_missed=args.if_missed,
+                              first=args.first_brief)
     io = evening.IO.real()
     if options.dry_run:  # writes nothing, so it can't clash with a run that is going
         return evening.run_unless_caught_up(cfg, options, io)
@@ -111,6 +112,9 @@ def main() -> int:
     prun.add_argument("--lookback-hours", type=int, default=None,
                       help=f"Override the {' / '.join(s.label() for s in source_registry.ALL if s.lookback)} "
                            "lookback window (default: per-source config)")
+    prun.add_argument("--first-brief", action="store_true",
+                      help="Make the Brief even on a quiet night, as --preview does, send it to "
+                           "every Recipient, and fail when it reaches none (the hosted sign-up's)")
     prun.add_argument("--if-missed", action="store_true",
                       help="Run only if the evening run's latest time went by with no run since "
                            "(the Windows sign-in task's)")
