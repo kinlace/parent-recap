@@ -467,7 +467,7 @@ function setUpGmail() {
     document.getElementById(id).addEventListener("input", showJunk);
   }
   document.getElementById("gmail-brief-partner-add").addEventListener("click", () => {
-    showBriefPartner(true);
+    showBriefPartner(true, false);
     document.getElementById("gmail-brief-partner-address").focus();
   });
   document.getElementById("gmail-brief-form").addEventListener("submit", saveRecipients);
@@ -500,10 +500,10 @@ function prepareGmail() {
 }
 
 // The partner's fields, as after Welcome's "Me and my partner", or else the link that shows them,
-// for a parent who said "Only me" there (#638).
-function showBriefPartner(shown) {
+// for a parent who said "Only me" there (#638). Shown by the link, they may be left empty.
+function showBriefPartner(shown, required = shown) {
   document.getElementById("gmail-brief-partner").hidden = !shown;
-  document.getElementById("gmail-brief-partner-address").required = shown;
+  document.getElementById("gmail-brief-partner-address").required = required;
   document.getElementById("gmail-brief-partner-add-part").hidden = shown;
 }
 
@@ -537,7 +537,9 @@ function asksSendKey() {
 // The addresses given for the Brief, the setup parent's first.
 function briefRecipients() {
   const rows = [["gmail-brief-address", "gmail-brief-language"]];
-  if (!document.getElementById("gmail-brief-partner").hidden) {
+  const partner = document.getElementById("gmail-brief-partner-address");
+  if (!document.getElementById("gmail-brief-partner").hidden &&
+      (partner.required || partner.value.trim())) {
     rows.push(["gmail-brief-partner-address", "gmail-brief-partner-language"]);
   }
   return rows.map(([address, language]) => ({
