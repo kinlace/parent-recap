@@ -255,6 +255,9 @@ def test_it_serves_only_the_page_s_own_files(page):
         assert call(page.url, path).status == 404, path
     for path in ["", "page.js", "page.css", "text.json"]:
         assert call(page.url, path).status == 200, path
+    picture = call(page.url, "myclub-tilaa.webp")
+    assert picture.status == 200 and picture.headers["content-type"] == "image/webp"
+    assert picture.body == (PAGE_DIR / "myclub-tilaa.webp").read_bytes()
 
 
 def test_the_page_loads_nothing_from_the_internet(page):
@@ -268,7 +271,7 @@ def test_the_page_loads_nothing_from_the_internet(page):
         assert "http" not in csp and "*" not in csp
         assert r.headers["referrer-policy"] == "no-referrer"  # the code stays on this Mac
     for f in PAGE_DIR.iterdir():
-        if f.name != "page.js":
+        if f.name != "page.js" and f.suffix != ".webp":
             assert not re.search(r"(?:https?:)?//[A-Za-z0-9]", f.read_text()), f.name
 
 
@@ -387,7 +390,7 @@ def test_every_page_text_exists_in_all_three_languages():
         assert set(table) == keys, language
         assert all(isinstance(v, str) and v.strip() for v in table.values()), language
     # The page's own markup; a text its script shows that isn't there throws in the browser tests.
-    used = set(re.findall(r'data-text="([\w.-]+)"', (PAGE_DIR / "index.html").read_text()))
+    used = set(re.findall(r'data-(?:text|label|alt)="([\w.-]+)"', (PAGE_DIR / "index.html").read_text()))
     assert used and used <= keys, used - keys
     for phase in ("welcome", "connect", "working", "check", "first-brief", "finish"):
         assert f"phase.{phase}" in keys
