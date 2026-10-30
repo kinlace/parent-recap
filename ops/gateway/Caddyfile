@@ -1,11 +1,14 @@
-# Only inference, sending the Brief and the sign-up page are public. Bifrost's admin API and UI
+# Only inference, sending the Brief (with its send-only keys) and the sign-up page are public. Bifrost's admin API and UI
 # stay on 127.0.0.1 (ssh -L). No access log: request lines are not worth keeping.
 {$GATEWAY_HOST} {
 	handle /v1/messages {
 		rewrite * /anthropic/v1/messages
 		reverse_proxy 127.0.0.1:8080
 	}
-	handle /v1/brief {
+	# The Brief relay: sending the Brief, asking for a send-only key and binding its Recipients,
+	# and the page their confirmation link opens (ADR 0033). It answers 404 to anything else.
+	@relay path /v1/brief /v1/brief/key /v1/brief/recipients /brief/confirm
+	handle @relay {
 		reverse_proxy 127.0.0.1:8081
 	}
 	# The hosted version's sign-up page under an Invite Link (ADR 0031). The service answers 404
