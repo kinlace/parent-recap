@@ -4,6 +4,13 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.9.3 · 2026-10-30
+
+### Fixed
+
+- If the Terminal or PowerShell window is closed during setup, the setup page says so within a few seconds on any step, instead of looking alive and getting stuck.
+- The setup page says why it reads the Gmail senders: only who sent each email, so the family can tick the school, teachers and clubs, after which Parent Recap reads only mail from them. The Gmail step no longer says Gmail sends the Brief.
+
 ## 0.9.2 · 2026-10-30
 
 ### Fixed
