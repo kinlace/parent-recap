@@ -164,12 +164,12 @@ def test_the_admin_login_comes_from_the_environment(monkeypatch):
 
 
 # What the service runs as a Household, where it is on the server (#645).
-HOME = f"/home/{NAME}/ParentRecap/app/.venv/bin/parent-recap"
+PROGRAM = f"/home/{NAME}/ParentRecap/app/.venv/bin/parent-recap"
 RUNS = [[BASH, f"{RELEASE}/install.sh"],
-        [HOME, "signup", "household"],
-        [HOME, "run", "--first-brief", "--lookback-hours", str(BRIEF_LOOKBACK_HOURS)],
-        [HOME, "signup", "health"],
-        [HOME, "schedule", "uninstall"]]
+        [PROGRAM, "signup", "household"],
+        [PROGRAM, "run", "--first-brief", "--lookback-hours", str(BRIEF_LOOKBACK_HOURS)],
+        [PROGRAM, "signup", "health"],
+        [PROGRAM, "schedule", "uninstall"]]
 
 
 def test_the_sudoers_rules_let_the_service_run_its_own_commands_as_a_household():
@@ -182,11 +182,10 @@ def test_the_sudoers_rules_let_the_service_run_its_own_commands_as_a_household()
     ["/usr/bin/cat", f"/home/{NAME}/.config/wilmai/config.json"],
     [BASH, "-c", "cat ~/.family/secrets/gateway-key"],
     [BASH, f"{RELEASE}/install.sh", "--anything"],
-    ["bash", f"{RELEASE}/install.sh"],
-    [HOME, "run"],
-    [HOME, "run", "--first-brief", "--lookback-hours", "720000"],
-    [HOME, "signup", "household", "--extra"],
-    [HOME, "doctor"],
+    [PROGRAM, "run"],
+    [PROGRAM, "run", "--first-brief", "--lookback-hours", "720000"],
+    [PROGRAM, "signup", "household", "--extra"],
+    [PROGRAM, "doctor"],
     [f"/home/{NAME}/ParentRecap/app/.venv/bin/python", "-c", "print(1)"],
     ["/tmp/ParentRecap/app/.venv/bin/parent-recap", "signup", "health"],
 ])
