@@ -1,5 +1,6 @@
 """The sign-up service's household host on Linux (ADR 0031): the commands it gives sudo, and its
-calls to Bifrost's admin API, each faked where the adapter meets it."""
+calls to Bifrost's admin API, each faked where the adapter meets it; and what ops/gateway's
+signup.sudoers lets the service run as a Household, read as sudo reads it (#645)."""
 from __future__ import annotations
 
 import json as jsonlib
@@ -10,9 +11,11 @@ from typing import Any
 import pytest
 import requests
 
+from family_brief.setup_server.first_brief import BRIEF_LOOKBACK_HOURS
 from family_brief.signup import host_linux
-from family_brief.signup.host import HostError, user_name
+from family_brief.signup.host import BASH, HostError, user_name
 from family_brief.signup.host_linux import LinuxHost
+from fake_household_host import RELEASE, SUDOERS, allowed, household_rules
 
 NAME = "ph-0123abcd"
 
@@ -158,3 +161,45 @@ def test_the_admin_login_comes_from_the_environment(monkeypatch):
     monkeypatch.setenv("BIFROST_ADMIN_PASSWORD", "x")
     with pytest.raises(HostError, match="BIFROST_ADMIN_USERNAME not set"):
         LinuxHost.from_env()
+
+
+# What the service runs as a Household, where it is on the server (#645).
+HOME = f"/home/{NAME}/ParentRecap/app/.venv/bin/parent-recap"
+RUNS = [[BASH, f"{RELEASE}/install.sh"],
+        [HOME, "signup", "household"],
+        [HOME, "run", "--first-brief", "--lookback-hours", str(BRIEF_LOOKBACK_HOURS)],
+        [HOME, "signup", "health"],
+        [HOME, "schedule", "uninstall"]]
+
+
+def test_the_sudoers_rules_let_the_service_run_its_own_commands_as_a_household():
+    rules = household_rules(SUDOERS.read_text())
+
+    assert all(allowed(argv, rules) for argv in RUNS)
+
+
+@pytest.mark.parametrize("argv", [
+    ["/usr/bin/cat", f"/home/{NAME}/.config/wilmai/config.json"],
+    [BASH, "-c", "cat ~/.family/secrets/gateway-key"],
+    [BASH, f"{RELEASE}/install.sh", "--anything"],
+    ["bash", f"{RELEASE}/install.sh"],
+    [HOME, "run"],
+    [HOME, "run", "--first-brief", "--lookback-hours", "720000"],
+    [HOME, "signup", "household", "--extra"],
+    [HOME, "doctor"],
+    [f"/home/{NAME}/ParentRecap/app/.venv/bin/python", "-c", "print(1)"],
+    ["/tmp/ParentRecap/app/.venv/bin/parent-recap", "signup", "health"],
+])
+def test_the_sudoers_rules_let_the_service_run_nothing_else_as_a_household(argv):
+    assert not allowed(argv, household_rules(SUDOERS.read_text()))
+
+
+def test_the_sudoers_rules_are_read_as_sudo_reads_them():
+    rules = household_rules("parent-recap-signup ALL=(root) NOPASSWD: /x\n"
+                            "parent-recap-signup ALL=(%parent-recap-households) NOPASSWD: /a/*/b c")
+
+    assert rules == [["/a/*/b", "c"]]
+    assert allowed(["/a/z/b", "c"], rules)
+    assert not allowed(["/a/z/y/b", "c"], rules)  # a `*` stays within one folder
+    assert not allowed(["/a/z/b"], rules) and not allowed(["/a/z/b", "c", "d"], rules)
+    assert allowed(["/anything"], [["ALL"]]) and allowed(["/a", "any"], [["/a"]])

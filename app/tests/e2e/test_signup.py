@@ -32,6 +32,7 @@ from family_brief import setup_wilma
 from family_brief.config import Config
 from family_brief.last_run import path as last_run_path
 from family_brief.signup import page, status
+from family_brief.signup.host import BASH
 from family_brief.signup.invites import Recipient, Store
 from family_brief.signup.remove import remove
 from family_brief.signup.server import Service, SignupServer
@@ -65,11 +66,11 @@ class SignUp:
 
     def __init__(self, tmp: Path) -> None:
         self.store = Store(tmp / "signup")
-        self.host = FakeHouseholdHost(tmp / "home", lambda home: WilmaCLI(home).install())
-        self.clock = Clock()
         release = tmp / "release"
         release.mkdir()
         (release / "install.sh").write_text("#!/bin/bash\n")
+        self.host = FakeHouseholdHost(tmp / "home", lambda home: WilmaCLI(home).install(), release)
+        self.clock = Clock()
         self.server = SignupServer(Service(self.store, self.host, release, now=self.clock), 0,
                                    listener=None if CAN_LISTEN else _PairedServer)
         self.url = self.server.url
@@ -267,7 +268,7 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     # its first Brief made from the last three days, as the setup page's is.
     program = str(user.home / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap")
     assert [c[1:] for c in signup.host.commands] == [
-        ["bash", str(signup.server.service.release / "install.sh")],
+        [BASH, str(signup.server.service.release / "install.sh")],
         [program, "signup", "household"],
         [program, "run", "--first-brief", "--lookback-hours", "72"]]
     # The first Brief, from Parent Recap's own address with the Household's key, to each
