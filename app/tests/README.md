@@ -169,7 +169,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_desktop_linux.py`         | Linux desktop: a printed link, the locale's languages     |
 | `test_jobs_linux.py`            | Linux jobs: systemd user timers, lingering, their limits  |
 | `test_wake_linux.py`            | Linux wake: a server never sleeps, so no wake-up line     |
-| `test_household_host_linux.py`  | The sign-up's household host: sudo, Bifrost's admin API   |
+| `test_household_host_linux.py`  | The household host: sudo, `signup.sudoers`, Bifrost's API |
 | `test_brief_by_hand_windows.py` | A Brief started by hand on Windows                        |
 | `test_setup_page_windows.py`    | The setup page from a fresh install to Finish, on Windows |
 | `test_setup_wilma_windows.py`   | The Wilma sign-in window on Windows                       |

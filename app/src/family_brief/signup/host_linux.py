@@ -6,10 +6,12 @@ The service's user may run, with sudo, only the helper (`household-user add|remo
 which takes no name but a Household's) and, as a Household's user, only the commands the service
 runs, with exactly their arguments, as the sudoers file gateway-setup.sh installs says
 (ops/gateway/signup.sudoers, #645): the release's install.sh by bash's absolute path, and the
-Household's `parent-recap` with `signup household`, `run --first-brief --lookback-hours 72`,
-`signup health` or `schedule uninstall`. So the service can't read a Household's secrets; it can
-still rewrite its config, its Recipients among them, and send its first Brief. Bifrost's admin login comes from the service's environment
-and goes only into the admin API's Authorization header.
+Household's `parent-recap` with `signup household`, `run --first-brief`, `signup health` or
+`schedule uninstall`. So the service can't read a Household's secrets; it can still rewrite its
+config, its Recipients among them, and send its first Brief.
+
+Bifrost's admin login comes from the service's environment and goes only into the admin API's
+Authorization header.
 """
 from __future__ import annotations
 

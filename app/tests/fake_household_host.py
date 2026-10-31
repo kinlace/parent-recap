@@ -33,8 +33,8 @@ from fake_system import FakeJobs, FakeSecrets
 
 
 SUDOERS = Path(__file__).resolve().parents[2] / "ops" / "gateway" / "signup.sudoers"
-HOMES = "/home"  # where household-user makes each home, and the release gateway-setup.sh unpacks
-RELEASE = "/usr/local/lib/parent-recap-signup/release"
+HOMES = "/home"  # where household-user makes each home
+RELEASE ="/usr/local/lib/parent-recap-signup/release"
 AS_HOUSEHOLD = re.compile(r"parent-recap-signup\s+ALL\s*=\s*\(%parent-recap-households\)\s+"
                           r"NOPASSWD:\s*(.+)")
 
