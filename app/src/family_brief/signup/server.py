@@ -48,7 +48,7 @@ from urllib.parse import parse_qs
 from .. import failure, setup_myclub, setup_wilma
 from ..setup_server.first_brief import BRIEF_LOOKBACK_HOURS
 from . import page
-from .host import HostError, HouseholdHost, program, user_name
+from .host import BASH, HostError, HouseholdHost, program, user_name
 from .invites import LANGUAGES, HouseholdRecord, Recipient, Store
 
 log = logging.getLogger("family_brief.signup")
@@ -278,7 +278,7 @@ class Service:
         """Makes the Household, one of page.STEPS after another, `progress.steps` of them ended."""
         home = self.host.create_user(name)
         key = self.host.mint_key(name)
-        code, out = self.host.run_as(name, ["bash", str(self.release / "install.sh")], "",
+        code, out = self.host.run_as(name, [BASH, str(self.release / "install.sh")], "",
                                      INSTALL_SECONDS)
         if code != 0:
             raise HostError(f"install.sh ended with {code}: {out.strip()[-300:]}")

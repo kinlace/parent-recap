@@ -1,5 +1,15 @@
 # /etc/sudoers.d/parent-recap-signup (root, mode 0440): what the sign-up service's user may run
-# (ADR 0031). As root, only the helper that adds and removes a Household's user; as a Household's
-# user, a member of parent-recap-households, anything, since that user can do no more than itself.
+# (ADR 0031). As root, only the helper that adds and removes a Household's user. As a Household's
+# user, a member of parent-recap-households, only the commands the service runs, with exactly
+# these arguments (#645): the release's install.sh, and the Household's own program to write its
+# config, send its first Brief, read its status and remove its evening jobs. So the service can't
+# read the files that hold a Household's secrets (its Wilma password, MyClub links and Gateway
+# Key). It can still rewrite a Household's config, its Recipients among them, through `signup
+# household`, and run its first Brief. A `*` in a path stays within one folder's name.
+# app/tests/adapters/test_household_host_linux.py reads these rules; keep one command a line.
 parent-recap-signup ALL=(root) NOPASSWD: /usr/local/lib/parent-recap-signup/household-user
-parent-recap-signup ALL=(%parent-recap-households) NOPASSWD: ALL
+parent-recap-signup ALL=(%parent-recap-households) NOPASSWD: /usr/bin/bash /usr/local/lib/parent-recap-signup/release/install.sh
+parent-recap-signup ALL=(%parent-recap-households) NOPASSWD: /home/ph-*/ParentRecap/app/.venv/bin/parent-recap signup household
+parent-recap-signup ALL=(%parent-recap-households) NOPASSWD: /home/ph-*/ParentRecap/app/.venv/bin/parent-recap run --first-brief --lookback-hours 72
+parent-recap-signup ALL=(%parent-recap-households) NOPASSWD: /home/ph-*/ParentRecap/app/.venv/bin/parent-recap signup health
+parent-recap-signup ALL=(%parent-recap-households) NOPASSWD: /home/ph-*/ParentRecap/app/.venv/bin/parent-recap schedule uninstall

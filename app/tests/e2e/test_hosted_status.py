@@ -75,7 +75,7 @@ def test_a_household_whose_last_run_failed_is_marked(signup, capsys, monkeypatch
         raise RuntimeError("the run crashed")
     with monkeypatch.context() as mp, pytest.raises(RuntimeError):
         mp.setattr(evening, "_read", crashes)
-        signup.host.run_as(name, [program(signup, name), "run"], "", 900)
+        signup.host.run_own(name, [program(signup, name), "run"])
 
     code, out = report(signup, capsys)
 

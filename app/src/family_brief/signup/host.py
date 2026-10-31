@@ -15,6 +15,8 @@ from typing import Protocol
 
 PREFIX = "ph-"  # a Hosted Household's user, as `ps` and `ls /home` show it
 USER = re.compile(rf"{PREFIX}[0-9a-f]{{8}}")
+# install.sh runs with bash by its absolute path, as the sudoers rule names it (#645).
+BASH = "/usr/bin/bash"
 
 
 class HostError(RuntimeError):

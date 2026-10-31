@@ -9,11 +9,16 @@ the install leaves, through `installs`, and the installed `parent-recap`, which 
 process's program in-process with the user's HOME, stdin, secrets and jobs. Every command is in
 `commands` and nothing is faked by patching the service's modules. `log` keeps the order of the
 steps a removal takes, and a removed user's home goes with it.
+
+A command the service runs as a user must be one ops/gateway/signup.sudoers lets it run, with its
+home and the release where they are on the server, so a new call site fails here and not only
+there (#645). What the user runs itself, as its evening timer does, goes through `run_own`.
 """
 from __future__ import annotations
 
 import contextlib
 import io
+import re
 import shutil
 import sys
 from dataclasses import dataclass, field
@@ -22,9 +27,34 @@ from typing import Callable
 
 import pytest
 
-from family_brief.signup.host import USER, HostError
+from family_brief.signup.host import BASH, USER, HostError
 from family_brief.system import jobs, secrets
 from fake_system import FakeJobs, FakeSecrets
+
+
+SUDOERS = Path(__file__).resolve().parents[2] / "ops" / "gateway" / "signup.sudoers"
+HOMES = "/home"  # where household-user makes each home, and the release gateway-setup.sh unpacks
+RELEASE = "/usr/local/lib/parent-recap-signup/release"
+AS_HOUSEHOLD = re.compile(r"parent-recap-signup\s+ALL\s*=\s*\(%parent-recap-households\)\s+"
+                          r"NOPASSWD:\s*(.+)")
+
+
+def household_rules(text: str) -> list[list[str]]:
+    """The commands a sudoers file lets the service's user run as a Household, each its path
+    and its arguments, one line a rule."""
+    return [spec.split() for line in text.splitlines()
+            if (m := AS_HOUSEHOLD.fullmatch(line.strip())) for spec in m[1].split(",")]
+
+
+def allowed(argv: list[str], rules: list[list[str]]) -> bool:
+    """Whether sudo runs `argv` under one of `rules`: ALL is anything, a path alone takes any
+    arguments, and otherwise they must be exactly the rule's. A `*` in a path is any part of one
+    folder's name, as sudo's matching keeps it within the folder."""
+    def path(pattern: str) -> re.Pattern:
+        return re.compile("[^/]*".join(map(re.escape, pattern.split("*"))))
+    return any(rule == ["ALL"]
+               or (path(rule[0]).fullmatch(argv[0]) and (len(rule) == 1 or rule[1:] == argv[1:]))
+               for rule in rules)
 
 
 @dataclass
@@ -35,8 +65,9 @@ class User:
 
 
 class FakeHouseholdHost:
-    def __init__(self, root: Path, installs: Callable[[Path], None]) -> None:
+    def __init__(self, root: Path, installs: Callable[[Path], None], release: Path) -> None:
         self.root = root
+        self.release = release          # the unpacked release whose install.sh is run
         self.installs = installs        # what install.sh leaves in a user's home
         self.users: dict[str, User] = {}
         self.keys: dict[str, str] = {}  # each Gateway Key by its name
@@ -89,16 +120,29 @@ class FakeHouseholdHost:
         return self.keys.pop(name, None) is not None
 
     def run_as(self, name: str, argv: list[str], stdin: str, timeout: int) -> tuple[int, str]:
+        on_server = [self._on_server(a) for a in argv]
+        assert allowed(on_server, household_rules(SUDOERS.read_text())), \
+            f"signup.sudoers doesn't let the service run {on_server} as a Household"
         self.commands.append([name, *argv])
         self.log.append(("run_as", name, *argv))
+        return self.run_own(name, argv, stdin)
+
+    def run_own(self, name: str, argv: list[str], stdin: str = "") -> tuple[int, str]:
+        """A command run as the user without the service's sudo, as its evening timer runs."""
         user = self.users[name]
-        if argv[0] == "bash" and Path(argv[1]).name == "install.sh":
+        if argv[:2] == [BASH, str(self.release / "install.sh")]:
             if self.install_exit == 0:
                 self.installs(user.home)
             return self.install_exit, "✅ Parent Recap installed\n"
         program = user.home / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap"
         assert argv[0] == str(program), argv
         return self._program(user, argv[1:], stdin)
+
+    def _on_server(self, arg: str) -> str:
+        for here, there in ((self.release, RELEASE), (self.root, HOMES)):
+            if arg == str(here) or arg.startswith(str(here) + "/"):
+                return there + arg[len(str(here)):]
+        return arg
 
     @staticmethod
     def _program(user: User, args: list[str], stdin: str) -> tuple[int, str]:

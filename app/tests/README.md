@@ -235,7 +235,7 @@ found as Windows finds them, on any system), `credential_manager`, and the build
 - `fake_packages.py`: packages for tests that run the real pip offline.
 - `fake_household_host.py`: the sign-up service's household host (ADR 0031): users as folders,
   each with its own secrets and jobs, removed with them, Gateway Keys as a dict, and
-  `parent-recap` run as a user in-process with that user's HOME.
+  `parent-recap` run as a user in-process with that user's HOME, only as `signup.sudoers` allows.
 - `goldens.py`: the golden files' check.
 - `no_google/`: Google's packages blocked from import. `no_pty/`: the Wilma window's
   pseudo-terminal as a socket pair, where none can be opened (a sandbox).
