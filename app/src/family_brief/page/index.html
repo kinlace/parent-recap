@@ -101,7 +101,14 @@
     <div id="connect-slot" class="slot"></div>
     <div id="source-wilma" class="source" hidden>
       <h2 data-text="source.wilma"></h2>
-      <p data-text="wilma.explain"></p>
+      <div id="wilma-signins" class="details" hidden>
+        <p data-text="wilma.signins"></p>
+        <ul id="wilma-signin-list" class="signins"></ul>
+        <div id="wilma-signins-slot" class="slot"></div>
+        <p class="hint" data-text="wilma.add.explain"></p>
+        <p><button type="button" id="wilma-add" class="secondary" data-text="wilma.add"></button></p>
+      </div>
+      <p id="wilma-explain" data-text="wilma.explain"></p>
       <form id="wilma-form" class="details">
         <div class="field">
           <label for="wilma-search" data-text="wilma.search"></label>

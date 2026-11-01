@@ -292,12 +292,20 @@ def check_wilma(cfg: Config, add, config: str | None = None) -> None:
     from . import setup_wilma
     signins = setup_wilma.profiles(setup_wilma.config_path())
     kids = {k.name.casefold() for k in cfg.kids}
+    # With several, such as a Wilma in each of two towns, each one the Kids depend on is signed in
+    # to alone, so one that fails isn't hidden by another that works.
     for p in signins if len(signins) > 1 else []:
+        who = f"{p.get('username')} at {p.get('tenantName') or p.get('tenantUrl')}"
         if not setup_wilma.for_the_household(p, kids):
-            add(WARN, "wilma", f"the wilma CLI also signs in as {p.get('username')} at "
-                f"{p.get('tenantName') or p.get('tenantUrl')} every evening, a sign-in setup didn't "
-                "make, for none of the Kids, so the Brief doesn't say when it fails. If it's no "
-                f"longer used, remove it: wilma accounts remove {p.get('username')}")
+            add(WARN, "wilma", f"the wilma CLI also signs in as {who} every evening, a sign-in "
+                "setup didn't make, for none of the Kids, so the Brief doesn't say when it fails. "
+                f"If it's no longer used, remove it: wilma accounts remove {p.get('username')}")
+        elif (why := setup_wilma.works_alone(p)) is None:
+            add(OK, "wilma", f"the sign-in as {who} works")
+        else:
+            add(FAIL, "wilma", f"the sign-in as {who} doesn't work, so the Brief misses its Kids' "
+                f"messages: {why} (sign in to it again on the setup page's Wilma step, or: "
+                "parent-recap setup wilma)")
 
 
 def check_myclub(cfg: Config, add, config: str | None = None) -> None:

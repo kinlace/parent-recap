@@ -811,6 +811,21 @@ def test_removes_only_setup_s_profile_from_the_wilma_cli_s_config(harness, monke
 
 
 @pytest.mark.macos
+def test_removes_every_wilma_setup_signed_in_to(harness, monkeypatch, tmp_path, capsys):
+    # A Household with Kids at schools in two towns signed in to both Wilmas on the setup page.
+    set_up(harness, monkeypatch)
+    config = wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=True)
+    helsinki = {"url": "https://helsinki.inschool.fi", "name": "Helsinki"}
+    setup_wilma.write_profile(config, helsinki, "dad", "another-fake-password")
+    install_record.add("wilma-profile", "https://helsinki.inschool.fi|dad")
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert not config.exists()
+    assert "dad at https://helsinki.inschool.fi" in capsys.readouterr().out
+
+
+@pytest.mark.macos
 def test_a_plugin_claude_code_did_not_remove_says_how_and_keeps_the_record(harness,
                                                                            monkeypatch, tmp_path,
                                                                            capsys):

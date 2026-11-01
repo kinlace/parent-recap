@@ -5,7 +5,7 @@ const PHASES = ["welcome", "connect", "working", "check", "first-brief", "finish
 const page = {
   text: null, language: "en", chosen: null, languages: [], system: "macos", ais: [], installs: [],
   about: null,
-  progress: null, welcome: null, connect: null, gmail: null, myclub: null,
+  progress: null, welcome: null, connect: null, gmail: null, myclub: null, wilma: null,
   check: null, brief: null, welcomeShown: false, connectShown: false, workingShown: false,
   checkShown: false, briefShown: false, finishShown: false, finished: false,
 };
@@ -394,6 +394,7 @@ const STEPS = {
     leave: () => {
       document.getElementById("wilma-password").value = "";
       clearTimeout(wilmaStep.timer);
+      wilmaStep.adding = false;
     },
     working: () => ["working.wilma",
       { kids: page.check.kids.map((k) => k.everyday_name).join(", ") }],
@@ -745,6 +746,7 @@ const WILMA_NOT_READY = [
 // What a step says right under what it's about, in place of under its main button.
 const SLOTS = [
   [[...WILMA_NOT_READY, "wilma.pick-town"], "wilma-town-slot"],
+  [["wilma.removed"], "wilma-signins-slot"],
   [["myclub.added", "myclub.kid-exists"], "myclub-kid-slot"],
   // A Source just done: by the hand-off, as the next Source's step is shown.
   [["gmail.saved", "wilma.signed-in", "claude.saved", "gateway.saved",
@@ -898,7 +900,7 @@ const SEARCH_MS = 250;
 const WINDOW_MS = 3000;
 const wilmaStep = {
   ready: false, preparing: false, found: [], searched: false, searching: 0, typing: null,
-  timer: null,
+  timer: null, adding: false,
 };
 
 function renderWilma() {
@@ -915,11 +917,63 @@ function renderWilma() {
   document.getElementById("wilma-passwords").hidden = page.system !== "macos"; // macOS's own app
   document.getElementById("wilma-terminal").addEventListener("click", openWilmaWindow);
   document.getElementById("wilma-again").addEventListener("click", getWilmaReady);
+  document.getElementById("wilma-add").addEventListener("click", () => {
+    wilmaStep.adding = true;
+    showSource(null);
+    showWilmaSignins();
+    document.getElementById("wilma-search").focus();
+  });
 }
 
-// Wilma's step, each time it's drawn: the CLI made ready, unless it is or is being made so.
+// Wilma's step, each time it's drawn: the Wilmas signed in to, and the CLI made ready, unless it
+// is or is being made so.
 function prepareWilma() {
+  showWilmaSignins();
   if (!wilmaStep.ready && !wilmaStep.preparing) getWilmaReady();
+}
+
+// Once a Wilma is signed in to, the step lists each one with the Kids it shows, and the sign-in
+// form waits behind "Add another Wilma", for Kids at a school in another town or on another
+// guardian login (#647). With two or more, each can be removed.
+function showWilmaSignins() {
+  const signins = page.wilma.signins;
+  const form = signins.length === 0 || wilmaStep.adding;
+  document.getElementById("wilma-signins").hidden = signins.length === 0;
+  document.getElementById("wilma-add").hidden = form;
+  document.getElementById("wilma-form").hidden = !form;
+  document.getElementById("wilma-explain").hidden = !form;
+  document.getElementById("wilma-signin-list").replaceChildren(...signins.map((signin) => {
+    const item = document.createElement("li");
+    const name = document.createElement("span");
+    name.textContent = `${signin.wilma} (${signin.username})` +
+      (signin.kids.length ? `: ${signin.kids.join(", ")}` : "");
+    item.append(name);
+    if (signins.length > 1) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "link";
+      setText(remove, "wilma.remove");
+      remove.addEventListener("click", () => removeWilma(signin.id, remove));
+      item.append(" ", remove);
+    }
+    return item;
+  }));
+}
+
+async function removeWilma(id, button) {
+  clearError();
+  button.disabled = true;
+  try {
+    const out = await post("api/wilma/remove", { id });
+    page.progress = out.progress;
+    page.wilma.signins = out.signins;
+    showWilmaSignins();
+    showSource("wilma.removed");
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // Gets the pinned wilma CLI ready, installing it if it isn't: the town list comes with it. While
@@ -1056,6 +1110,9 @@ async function signInWilma(event) {
 function wilmaResult(out, prefix) {
   if (out.result !== "signed-in") return showSource(prefix + out.result, { reason: out.reason });
   page.progress = out.progress;
+  page.wilma.signins = out.signins;
+  wilmaStep.adding = false;
+  showWilmaSignins();
   renderSources();
   showSource("wilma.signed-in", { kids: out.kids });
 }
@@ -2817,6 +2874,7 @@ async function start() {
   page.gmail = state.gmail;
   page.myclub = state.myclub;
   page.whatsapp = state.whatsapp;
+  page.wilma = state.wilma;
   page.check = state.check;
   page.brief = state.brief;
   // Said before the family types a password: in tmux or SSH, none can be saved.

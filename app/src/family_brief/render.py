@@ -15,7 +15,7 @@ from . import sources as source_registry
 from .actions import ics as ics_action
 from .brief import ActionItem, Brief
 from .brief_text import PRODUCT_NAME, BriefText
-from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent
+from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, failed_sign_in
 from .utils.dates import to_local
 
 
@@ -64,6 +64,9 @@ def _problem(err: str) -> Literal["unreadable", "pairing", "permission", "login"
 
 
 def _short_reason(err: str, t: BriefText) -> str:
+    if signed_in := failed_sign_in(err):  # one sign-in of several, such as one of two Wilmas
+        place, why = signed_in
+        return f"{place}: {_short_reason(why, t)}"
     return {"unreadable": t.message_unreadable,  # without the Message's id and the error, which are for the log
             "pairing": t.needs_pairing,
             "permission": t.permission_denied,

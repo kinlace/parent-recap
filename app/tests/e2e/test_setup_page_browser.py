@@ -617,6 +617,51 @@ def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(
     expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(1)
 
 
+def sign_in_to_wilma(tab, town: str, entry: str, username: str, password: str) -> None:
+    """Wilma's step: the town's Wilma picked from the list, then the guardian's login."""
+    search = tab.get_by_label(text("wilma.search"))
+    expect(search).to_be_enabled()  # once the town list is ready
+    search.fill(town)
+    tab.get_by_role("radio", name=re.compile(f"^{entry}")).check()
+    tab.get_by_label(text("wilma.username")).fill(username)
+    tab.get_by_label(text("wilma.password")).fill(password)
+    button(tab, "wilma.sign-in").click()
+
+
+def test_a_family_adds_a_second_wilma_and_removes_it(tab, family, wilma_cli):  # noqa: F811
+    # #647: Kids at schools in two towns, each on its town's Wilma.
+    espoo, helsinki = "https://espoo.inschool.fi", "https://helsinki.inschool.fi"
+    wilma_cli.accounts = {f"{espoo}|mia.parent": "Salasana-1", f"{helsinki}|leo.parent": "Salasana-2"}
+    wilma_cli.students_of = {f"{espoo}|mia.parent": [{"studentNumber": "1001", "name": "Mia Virtanen"}],
+                             f"{helsinki}|leo.parent": [{"studentNumber": "2001", "name": "Leo Virtanen"}]}
+    wilma_cli.install()
+    in_english_with_the_gateway(tab)
+    signins = tab.locator("#wilma-signin-list li")
+    sign_in_to_wilma(tab, "Espoo", "Espoon kaupunki", "mia.parent", "Salasana-1")
+    expect(source_listed(tab, "wilma", "done")).to_be_visible()
+
+    # Opened again from the list, the step lists the Wilma with its Kids, and offers another.
+    source_listed(tab, "wilma", "done").click()
+    expect(signins).to_have_count(1)
+    expect(signins.first).to_contain_text("mia.parent")
+    expect(signins.first).to_contain_text("Mia Virtanen")
+    expect(button(tab, "wilma.sign-in")).to_be_hidden()
+    expect(button(tab, "wilma.remove")).to_have_count(0)  # the only one is skipped, not removed
+    button(tab, "wilma.add").click()
+    sign_in_to_wilma(tab, "Helsinki", "Helsingin kaupunki", "leo.parent", "Salasana-2")
+    expect(tab.get_by_text(text("wilma.signed-in"))).to_be_visible()
+    assert [k.name for k in Config.load(config_file(family)).kids] == ["Mia Virtanen", "Leo Virtanen"]
+
+    source_listed(tab, "wilma", "done").click()
+    expect(signins).to_have_count(2)
+    signins.filter(has_text="leo.parent").get_by_role("button", name=text("wilma.remove")).click()
+
+    expect(tab.get_by_text(text("wilma.removed"))).to_be_visible()
+    expect(signins).to_have_count(1)
+    expect(signins.first).to_contain_text("mia.parent")
+    assert [k.name for k in Config.load(config_file(family)).kids] == ["Mia Virtanen"]
+
+
 def test_skipping_wilma_with_a_town_picked_saves_no_city(tab, family):
     in_english_with_the_gateway(tab)
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -192,7 +193,7 @@ def test_a_sign_in_that_does_not_answer_beside_one_that_does_says_wilma_was_part
 
     assert payload_ids(harness, "wilma") == ["message:818"]
     [email] = harness.sent
-    assert "Wilma 部分没读到（登录失败）" in email.text
+    assert "Wilma 部分没读到（Kuvitteellinen koulu: 登录失败）" in email.text
 
 
 def test_a_wilma_cli_kept_from_before_2_0_is_still_read(harness, cli):
@@ -331,7 +332,9 @@ def test_a_sign_in_for_none_of_the_kids_that_fails_stays_out_of_the_brief(harnes
     assert harness.run() == 0
 
     [email] = harness.sent
-    assert ("Wilma 部分没读到（登录失败）" in email.text) is in_the_brief
+    # The Brief names the Wilma that didn't answer, never the username signed in with there.
+    assert (f"Wilma 部分没读到（{OTHER['name']}: 登录失败）" in email.text) is in_the_brief
+    assert failing[1] not in email.text
     assert f"the sign-in as {failing[1]} at {OTHER['name']}" in caplog.text
 
 
@@ -346,7 +349,32 @@ def test_doctor_names_a_sign_in_setup_didnt_make_for_none_of_the_kids(harness, c
 
     lines = [l for l in capsys.readouterr().out.splitlines() if "Wilma:" in l]
     assert lines[0].startswith(ops.OK)
-    [stale] = lines[1:]
+    [stale] = [l for l in lines[1:] if "vanha.huoltaja" in l]
     assert stale.startswith(ops.WARN.strip()) and "vanha.huoltaja at Toisen kaupungin koulut" in stale
     assert "wilma accounts remove vanha.huoltaja" in stale
     assert "salasana" not in stale
+
+
+def test_doctor_names_each_of_two_wilmas_and_the_one_whose_sign_in_fails(harness, cli, capsys):
+    # The CLI's Kid list answers with the Kids of the sign-ins that work and says nothing of the
+    # others, so doctor signs in with each alone.
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    signed_in((OTHER, "huoltaja.toinen", LEO), (FIRST, "huoltaja", MIA))
+
+    def kids_list(args: list[str]) -> Any:
+        alone = json.loads(Path(cli.config).read_text())["profiles"] if cli.config else []
+        if [p["username"] for p in alone] == ["huoltaja.toinen"]:
+            return failed("login_failed", "Wilma didn't accept the saved login (has the password "
+                          "changed?).")
+        return {"students": [{**MIA, "wilma": FIRST["name"]}]}
+    cli.answers = {("kids", "list"): kids_list}
+
+    harness.cli("doctor", "--skip-llm")
+
+    lines = [l for l in capsys.readouterr().out.splitlines() if "Wilma:" in l]
+    [first] = [l for l in lines if "huoltaja at Kuvitteellisen" in l]
+    [other] = [l for l in lines if "huoltaja.toinen at Toisen kaupungin koulut" in l]
+    assert first.startswith(ops.OK) and "works" in first
+    assert other.startswith(ops.FAIL.strip()) and "login_failed" in other
+    assert "setup wilma" in other
+    assert all("salasana" not in l for l in lines)

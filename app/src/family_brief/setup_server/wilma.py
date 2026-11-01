@@ -1,5 +1,6 @@
 """Wilma's connect step (ADR 0008): the pinned CLI, the town search, the sign-in in the page's own
-fields or, when that fails, in a Terminal window."""
+fields or, when that fails, in a Terminal window, and the Wilmas signed in to, which a family with
+Kids at schools in two towns adds another to or removes one of (#647)."""
 from __future__ import annotations
 
 import threading
@@ -26,6 +27,10 @@ WILMA_WINDOW_RESULTS = ("waiting", "not-signed-in", "sign-in-failed", "timeout",
                         "not-installed")
 
 
+class WilmaRemoval(Strict):
+    id: str  # the CLI's profile id, as `api/state` lists it
+
+
 class WilmaSignIn(Strict):
     url: str
     town: str | None  # None for a Wilma whose list entry names no town
@@ -43,7 +48,11 @@ class Wilma(Phase):
         return {"api/wilma/install": self.wilma_ready, "api/towns": self.find_towns,
                 "api/wilma": self.sign_in_wilma,
                 "api/wilma/terminal": self.open_wilma_window,
-                "api/wilma/check": self.check_wilma_window}
+                "api/wilma/check": self.check_wilma_window,
+                "api/wilma/remove": self.remove_wilma}
+
+    def state(self, progress: dict[str, Any]) -> dict[str, Any]:
+        return {"wilma": {"signins": signins()}}
 
     def wilma_ready(self, raw: Any) -> Reply:
         """Installs the pinned wilma CLI unless it's there, since the town list comes with it. A
@@ -82,7 +91,7 @@ class Wilma(Phase):
             out = setup_wilma.sign_in(tenant, answer.username.strip(), answer.password)
         if out["result"] != "signed-in":
             return HTTPStatus.OK, out
-        return self._signed_in(out["kids"], answer.town)
+        return self._signed_in(out["profile"], out["kids"], answer.town)
 
     def open_wilma_window(self, raw: Any) -> Reply:
         """Opens the Terminal sign-in window (#74), for when the page's own sign-in fails for any
@@ -116,7 +125,8 @@ class Wilma(Phase):
             out = setup_wilma.sign_in_in_terminal(language, self.context.timeouts.wilma_window)
             if out["result"] == "signed-in":
                 kids = [k for k in out["kids"] if isinstance(k.get("name"), str) and k["name"]]
-                _, done = self._signed_in(kids, _city(out.get("wilma_address"), town))
+                signed_in = setup_wilma.last_profile_id(setup_wilma.config_path())
+                _, done = self._signed_in(signed_in, kids, _city(out.get("wilma_address"), town))
             else:  # with why, where it failed
                 done = {k: v for k, v in out.items() if k in ("result", "reason")}
         except Exception as e:  # never leave the page waiting
@@ -124,17 +134,63 @@ class Wilma(Phase):
                 "Wilma didn't sign in", failure.raised(e, "The Wilma window"))}
         window["result"] = done
 
-    def _signed_in(self, kids: list[dict[str, Any]], city: str | None) -> Reply:
-        """Saves the Kids Wilma lists and the town, with Wilma on and done."""
+    def remove_wilma(self, raw: Any) -> Reply:
+        """Removes one of the Wilmas signed in to, with its password, as uninstall does, and the
+        Kids only it lists, keeping the others working. The last one isn't removed here: a family
+        without Wilma skips it instead."""
+        answer = parse(WilmaRemoval, raw)
+        with self._lock:
+            path = setup_wilma.config_path()
+            removed = setup_wilma.profile(path, answer.id)
+            if removed is None or len(setup_wilma.profiles(path)) < 2:
+                return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                    "invalid-answers", "Remove one of the Wilmas listed, while there are two or "
+                    "more.", errors=["id: should be one of the Wilmas api/state lists, while it "
+                                     "lists two or more"])
+            setup_wilma.remove_profile(path, answer.id)
+            still = {n.casefold() for p in setup_wilma.profiles(path)
+                     for n in setup_wilma.student_names(p)}
+            gone = {n.casefold() for n in setup_wilma.student_names(removed)} - still
+            status, out = self.context.connect.save({"kids": [
+                {"name": k.name} for k in self.context.model().kids
+                if k.name.casefold() not in gone]})
+        if status != HTTPStatus.OK:
+            return status, out
+        return status, {**out, "result": "removed", "signins": signins()}
+
+    def _signed_in(self, profile_id: str | None, kids: list[dict[str, Any]],
+                   city: str | None) -> Reply:
+        """Saves the Kids Wilma lists and the town, with Wilma on and done. The Kids of the other
+        Wilmas signed in to stay, so a second Wilma adds its Kids to the first's, and the
+        Household's town stays the first Wilma's."""
+        others = [p for p in setup_wilma.profiles(setup_wilma.config_path())
+                  if p.get("id") != profile_id]
+        theirs = {n.casefold() for p in others for n in setup_wilma.student_names(p)}
+        new = {k["name"].casefold(): k for k in kids}
+        # In the order they were saved in, a Kid this Wilma lists too with what it says now.
+        kept = [new.pop(k.name.casefold(), {"name": k.name}) for k in self.context.model().kids
+                if k.name.casefold() in theirs or k.name.casefold() in new]
+        town = None if others and self.context.data().get("city") else city
         answers: dict[str, Any] = {
             "kids": [{"name": k["name"],
                       **({"school": k["school"]} if k.get("school") else {}),
-                      **({"class_name": k["class"]} if k.get("class") else {})} for k in kids],
+                      **({"class_name": k["class"]} if k.get("class") else {})}
+                     for k in [*kept, *new.values()]],
             "sources": {"wilma": {"enabled": True}},
-            **({"city": city} if city else {}),
+            **({"city": town} if town else {}),
         }
         return self.context.connect.complete("wilma", answers, reply={
-            "result": "signed-in", "kids": [k["name"] for k in kids], "city": city})
+            "result": "signed-in", "kids": [k["name"] for k in kids], "city": city,
+            "signins": signins()})
+
+
+def signins() -> list[dict[str, Any]]:
+    """Each Wilma the CLI signs in to, in its config's order, for the page to list: its id, its
+    name, the username and the Kids it lists. Never the password."""
+    return [{"id": p["id"], "wilma": p.get("tenantName") or p.get("tenantUrl"),
+             "username": p.get("username"), "kids": setup_wilma.student_names(p)}
+            for p in setup_wilma.profiles(setup_wilma.config_path())
+            if isinstance(p.get("id"), str)]
 
 
 def _city(address: str | None, town: str | None) -> str | None:
