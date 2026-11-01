@@ -50,9 +50,11 @@ def sign_in(address: str, password: str) -> tuple[str, str | None, dict[str, Any
             imap.login(address, password)
             imap.logout()
     except imaplib.IMAP4.error:
-        return "rejected", (f"Gmail didn't accept that App Password for {address}. Check the "
-                            "address, create a new App Password and run this again. If it still "
-                            f"fails: {TURN_ON_TWO_STEP}"), {}
+        return "rejected", (f"Gmail didn't accept that App Password for {address}. Usually "
+                            "not all 16 letters were copied from Google's window (spaces don't "
+                            "matter), or it was made in another Google account: the address at "
+                            f"the top of Google's page must be {address}. Create a new App "
+                            f"Password and run this again. If it still fails: {TURN_ON_TWO_STEP}"), {}
     except OSError:
         return "no-connection", ("Couldn't reach Gmail. Check the Mac is online and run this "
                                  "again."), {}
