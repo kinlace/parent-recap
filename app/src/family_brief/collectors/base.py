@@ -35,6 +35,25 @@ def unreadable(source: str, ext_id: str, error: Exception | str) -> str:
     return f"{UNREADABLE_MESSAGE}: {source} {ext_id} ({error})"
 
 
+# How a Source's log line starts when one of its sign-ins didn't answer while others did, such as
+# one of a Household's two Wilmas: the Brief's coverage line names that one.
+SIGN_IN_FAILED = "a sign-in didn't work at "
+
+
+def sign_in_failed(place: str, why: str, who: str) -> str:
+    """The error line for a sign-in that didn't answer: `place`, which the Brief names, such as
+    the Wilma's name, then why, then `who` signed in there, which is for the log only."""
+    return f"{SIGN_IN_FAILED}{place}: {why} [the sign-in as {who}]"
+
+
+def failed_sign_in(error: str) -> tuple[str, str] | None:
+    """The place and why of a `sign_in_failed` line, or None for any other error."""
+    if not error.startswith(SIGN_IN_FAILED):
+        return None
+    place, _, rest = error[len(SIGN_IN_FAILED):].partition(": ")
+    return place, rest.rsplit(" [the sign-in as ", 1)[0]
+
+
 @dataclass
 class Message:
     """Normalized message from any source."""

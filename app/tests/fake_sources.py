@@ -269,14 +269,16 @@ class Wilma(SourceFake):
     kid_hint), whose student number is its metadata's, and with as many addressees as its
     metadata's addressee_count. `answers` maps the start of a command (without node, the CLI and
     --json) to what the CLI prints instead: JSON, an exit status and JSON, an exception it
-    raises, or a function of the command's arguments giving one of those. `ran` is each command
-    run. Any other command lists nothing."""
+    raises, or a function of the command's arguments giving one of those, which may read the CLI's
+    config the command was given in place of its own (`config`). `ran` is each command run. Any
+    other command lists nothing."""
     name = "wilma"
 
     def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
         super().__init__(sources)
         self.answers: dict[tuple[str, ...], Any] = {}
         self.ran: list[list[str]] = []
+        self.config: str | None = None  # the running command's WILMAI_CONFIG_PATH, if any
 
     def set_up(self) -> None:
         if own_node.wilma() is None:
@@ -288,6 +290,7 @@ class Wilma(SourceFake):
             return None
         args = cmd[2:-1]
         self.ran.append(args)
+        self.config = (_k.get("env") or {}).get("WILMAI_CONFIG_PATH")
         answer = next((v for start, v in self.answers.items() if tuple(args[:len(start)]) == start),
                       self.prints)
         if callable(answer):

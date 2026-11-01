@@ -280,7 +280,7 @@ def sign_in(tenant: dict[str, Any], username: str, password: str) -> dict[str, A
     the `kids`, or `wrong-password`, `sign-in-failed`, which comes with the `reason` the CLI gave,
     for the setup page to show, `no-kids` or `not-installed`. Unless signed in, the CLI's config
     stays as it was, so a wrong password isn't kept and an earlier sign-in still works. A new
-    profile goes in setup's record."""
+    profile goes in setup's record. Signed in, it comes with the saved `profile`'s id."""
     out, students = check(tenant, username, password)
     if out["result"] != "signed-in":
         return out
@@ -289,7 +289,7 @@ def sign_in(tenant: dict[str, Any], username: str, password: str) -> dict[str, A
     # With the Kids the CLI saved in the profile it checked.
     profile_id = write_profile(path, tenant, username, password, students)
     record_profile(profile_id, profiles_before)
-    return out
+    return {**out, "profile": profile_id}
 
 
 def check(tenant: dict[str, Any], username: str,
@@ -387,9 +387,28 @@ def for_the_household(profile: dict[str, Any], kids: set[str]) -> bool:
     earlier use of it, for none of the Kids."""
     if profile.get("id") in install_record.entries("wilma-profile"):
         return True
-    names = [s.get("name") for s in profile.get("students") or [] if isinstance(s, dict)]
-    names = [n.casefold() for n in names if isinstance(n, str) and n]
+    names = [n.casefold() for n in student_names(profile)]
     return not names or not kids or any(n in kids for n in names)
+
+
+def student_names(profile: dict[str, Any]) -> list[str]:
+    """The Kids the CLI saved for its `profile`, as Wilma spells them: those it listed when it
+    last signed in with it."""
+    names = [s.get("name") for s in profile.get("students") or [] if isinstance(s, dict)]
+    return [n for n in names if isinstance(n, str) and n]
+
+
+def works_alone(profile: dict[str, Any]) -> str | None:
+    """Signs in with the CLI's saved `profile` alone, as `check` does, so another that works
+    can't answer for it. Returns why it didn't sign in, or None once it did."""
+    with tempfile.TemporaryDirectory(prefix="parent-recap-wilma-") as folder:
+        alone = Path(folder) / "config.json"
+        _write_config(alone, {"profiles": [profile], "lastProfileId": profile.get("id")})
+        try:
+            wilma.list_kids(alone)
+        except wilma.WilmaError as e:
+            return str(e)
+    return None
 
 
 def profile_ids(path: Path) -> list[str]:

@@ -711,10 +711,12 @@ for stored, password in accounts:
                                       "Wilma didn't accept the saved login (has the password changed?)."]
     else:
         sessions[stored["id"]] = dict(state="a Wilma session", savedAt=0)
-        if ctl["students"]:
+        students = ctl["students_of"].get(stored["tenantUrl"] + "|" + stored["username"],
+                                          ctl["students"])
+        if students:
             stored["students"] = [dict(studentNumber=s["studentNumber"], name=s["name"])
-                                  for s in ctl["students"]]
-        for s in ctl["students"] or [dict(studentNumber="", name="")]:
+                                  for s in students]
+        for s in students or [dict(studentNumber="", name="")]:
             if s["studentNumber"] not in [k["studentNumber"] for k in kids]:
                 kids.append(dict((k, v) for k, v in s.items() if k != "href"))
 if not sessions:
@@ -736,6 +738,8 @@ class WilmaCLI:
         self.node = fake_node.pinned_node(home)
         self.accounts = {f"{ESPOO}|mia.parent": WILMA_PASSWORD}  # tenant|username → password
         self.students: list[dict[str, Any]] = WILMA_STUDENTS
+        # An account's own Kids, by tenant|username, for one that doesn't list `students`.
+        self.students_of: dict[str, list[dict[str, Any]]] = {}
         self.fails: list[str] | None = None  # any other failure, as the CLI's code and words
         self.npm_works = True
         self.npm: Any = None  # npm's run, given the command, in place of one that works
@@ -764,7 +768,8 @@ class WilmaCLI:
             client.mkdir(parents=True, exist_ok=True)
             (client / "tenant_list.json").write_text(json.dumps(TENANTS, ensure_ascii=False))
         (package / "dist" / "wilma.json").write_text(json.dumps(
-            {"accounts": self.accounts, "students": self.students, "fails": self.fails}))
+            {"accounts": self.accounts, "students": self.students, "students_of": self.students_of,
+             "fails": self.fails}))
 
     def runs(self) -> list[dict[str, Any]]:
         """Which config each run of the CLI read, and whether it would check npm for a newer
@@ -1111,6 +1116,101 @@ def test_signing_in_again_replaces_the_account_s_profile_in_its_place_as_the_cli
     assert ours["totpSecretObfuscated"] == setup_wilma.obfuscate("JBSWY3DPEHPK3PXP")
     assert config["lastProfileId"] == ours["id"]
     assert install_record.entries("wilma-profile") == []  # there before setup
+
+
+# ── Two Wilmas: Kids at schools in two towns (#647)
+
+HELSINKI = "https://helsinki.inschool.fi"
+MIA = {"studentNumber": "1001", "name": "Mia Virtanen"}
+LEO = {"studentNumber": "2001", "name": "Leo Virtanen"}
+
+
+@pytest.fixture
+def two_towns(wilma_cli) -> WilmaCLI:
+    """Mia at a school in Espoo and Leo at one in Helsinki, each on its town's Wilma."""
+    wilma_cli.accounts = {f"{ESPOO}|mia.parent": WILMA_PASSWORD,
+                          f"{HELSINKI}|leo.parent": "Toinen-salasana-7"}
+    wilma_cli.students_of = {f"{ESPOO}|mia.parent": [MIA], f"{HELSINKI}|leo.parent": [LEO]}
+    wilma_cli.install()
+    return wilma_cli
+
+
+def sign_in_helsinki(url: str) -> Response:
+    return sign_in_wilma(url, tenant=HELSINKI, town="Helsinki", username="leo.parent",
+                         password="Toinen-salasana-7")
+
+
+def test_a_second_wilma_adds_its_kids_beside_the_first_s(harness, page, two_towns, caplog,
+                                                         capsys):
+    welcome(page.url)
+    first = sign_in_wilma(page.url)
+    assert first.json()["kids"] == ["Mia Virtanen"]
+    # Wilma's step, opened again from the list, offers another Wilma.
+    assert call(page.url, "api/source", method="POST",
+                body={"source": "wilma", "action": "open"}).status == 200
+
+    r = sign_in_helsinki(page.url)
+
+    out = r.json()
+    assert out["result"] == "signed-in" and out["kids"] == ["Leo Virtanen"]
+    assert out["progress"]["sources"]["wilma"] == "done"
+    cfg = Config.load(config_file(harness))
+    assert [k.name for k in cfg.kids] == ["Mia Virtanen", "Leo Virtanen"]
+    assert cfg.city == "Espoo"  # the Household's town stays the first Wilma's
+    assert [(s["wilma"], s["username"], s["kids"]) for s in out["signins"]] == [
+        (TENANTS["wilmat"][2]["name"], "mia.parent", ["Mia Virtanen"]),
+        ("Helsingin kaupunki", "leo.parent", ["Leo Virtanen"])]
+    assert call(page.url, "api/state").json()["wilma"]["signins"] == out["signins"]
+    # The Kids step lists the Kids of both.
+    assert [k["name"] for k in call(page.url, "api/state").json()["check"]["kids"]] == \
+        ["Mia Virtanen", "Leo Virtanen"]
+    # Both are the CLI's, so the evening run reads both, and uninstall removes both.
+    assert [p["id"] for p in two_towns.profile()["profiles"]] == \
+        [f"{ESPOO}|mia.parent", f"{HELSINKI}|leo.parent"]
+    assert install_record.entries("wilma-profile") == [f"{ESPOO}|mia.parent",
+                                                       f"{HELSINKI}|leo.parent"]
+    assert_never_leaked(harness, [first, r], caplog, capsys, WILMA_PASSWORD)
+    assert_never_leaked(harness, [first, r], caplog, capsys, "Toinen-salasana-7")
+
+
+def test_signing_in_to_a_saved_wilma_again_replaces_it_and_adds_no_kid_twice(harness, page,
+                                                                             two_towns):
+    sign_in_wilma(page.url)
+    sign_in_helsinki(page.url)
+
+    out = sign_in_wilma(page.url).json()
+
+    assert [s["username"] for s in out["signins"]] == ["mia.parent", "leo.parent"]
+    assert [k.name for k in Config.load(config_file(harness)).kids] == ["Mia Virtanen",
+                                                                        "Leo Virtanen"]
+
+
+def test_removing_one_wilma_removes_its_sign_in_and_kids_and_leaves_the_other(harness, page,
+                                                                              two_towns):
+    sign_in_wilma(page.url)
+    sign_in_helsinki(page.url)
+
+    r = call(page.url, "api/wilma/remove", method="POST", body={"id": f"{HELSINKI}|leo.parent"})
+
+    out = r.json()
+    assert r.status == 200 and out["result"] == "removed"
+    assert [s["username"] for s in out["signins"]] == ["mia.parent"]
+    assert [p["id"] for p in two_towns.profile()["profiles"]] == [f"{ESPOO}|mia.parent"]
+    assert "Toinen" not in two_towns.profile_path.read_text()
+    cfg = Config.load(config_file(harness))
+    assert [k.name for k in cfg.kids] == ["Mia Virtanen"] and cfg.wilma.enabled is True
+    assert out["progress"]["sources"]["wilma"] == "done"
+    # The one left still signs in.
+    assert sign_in_wilma(page.url).json()["result"] == "signed-in"
+
+
+def test_the_only_wilma_is_not_removed_but_skipped(harness, page, two_towns):
+    sign_in_wilma(page.url)
+
+    r = call(page.url, "api/wilma/remove", method="POST", body={"id": f"{ESPOO}|mia.parent"})
+
+    assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    assert [p["id"] for p in two_towns.profile()["profiles"]] == [f"{ESPOO}|mia.parent"]
 
 
 @pytest.mark.macos

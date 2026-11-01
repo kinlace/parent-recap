@@ -11,7 +11,7 @@ from typing import Any
 from .. import own_node
 from ..config import Config
 from ..state import State
-from .base import Collected, Message, retry_once_on_timeout, unreadable
+from .base import Collected, Message, retry_once_on_timeout, sign_in_failed, unreadable
 
 log = logging.getLogger(__name__)
 
@@ -182,8 +182,8 @@ class _Wilmas:
     def log_problems(self, payload: dict) -> None:
         """Logs each sign-in that didn't answer while others did, which the CLI lists from 2.0 on,
         by its username and Wilma. One the Household's Brief depends on is an error, so the Brief
-        says Wilma was partly read. One for none of the Kids, such as one left from an earlier use
-        of the CLI, is only a warning, and doctor names it."""
+        says Wilma was partly read, and which Wilma didn't answer. One for none of the Kids, such
+        as one left from an earlier use of the CLI, is only a warning, and doctor names it."""
         for problem in payload.get("problems") or []:
             if not isinstance(problem, dict):
                 continue
@@ -191,7 +191,8 @@ class _Wilmas:
             who = ", ".join(f"{p.get('username')} at {p.get('tenantName') or p.get('tenantUrl')}"
                             for p in signins) or str(problem.get("wilma"))
             if not signins or any(self._setup.for_the_household(p, self.kids) for p in signins):
-                log.error("wilma: %s (the sign-in as %s)", problem.get("message"), who)
+                log.error("%s", sign_in_failed(str(problem.get("wilma")),
+                                               str(problem.get("message")), who))
             else:
                 log.warning("wilma: %s (the sign-in as %s, for none of the Kids, so the Brief "
                             "doesn't say so)", problem.get("message"), who)
