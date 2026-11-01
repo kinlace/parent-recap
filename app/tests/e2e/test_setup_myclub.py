@@ -566,7 +566,7 @@ def test_the_myclub_step_shows_where_the_link_is_and_takes_it_in_the_page_s_own_
     assert call(page.url, src).status == 200
     steps = re.search(r"<ol>(.*?)</ol>", step, re.S).group(1)
     assert re.findall(r'data-text="([\w.-]+)"', steps) == [f"myclub.picture.{s}" for s in STEPS]
-    for note in ("sign-in", "one-link"):
+    for note in ("sign-in", "subscriptions", "one-link"):
         assert f'<p data-text="myclub.picture.{note}">' in step
     assert 'id="myclub-open"' in step
     field = re.search(r'<input[^>]*id="myclub-link"[^>]*>', step).group(0)
@@ -583,6 +583,9 @@ def test_the_steps_name_myclub_s_own_finnish_words_in_every_language():
                                       "webcal://")):
             assert word in step, (language, word)
         assert "MyClub" in table["myclub.picture.sign-in"], language
+        # MyClub sometimes opens its list of subscriptions instead, empty but for a small link (#649).
+        for word in ("Kalenteritilaukset", "Uusi kalenteritilaus", "webcal://"):
+            assert word in table["myclub.picture.subscriptions"], (language, word)
         for n, word in enumerate(("Tapahtumat", "Omat", "Tilaa kalenteri"), 1):
             assert f"{n} {word}" in table["myclub.picture.alt"], (language, word)
 
