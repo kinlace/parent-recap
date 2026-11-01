@@ -112,7 +112,8 @@ class Gmail(Phase):
         if out["result"] != "saved":
             return HTTPStatus.CONFLICT, out
         cfg = self.context.model()
-        if send_key.may_request(cfg):
+        # A Household that sends from its own Gmail confirms nothing (ADR 0034).
+        if send_key.may_request(cfg) and not cfg.sends_from_gmail():
             out = {**out, "confirm": confirmation(send_key.ensure(cfg))}
         return HTTPStatus.OK, out
 

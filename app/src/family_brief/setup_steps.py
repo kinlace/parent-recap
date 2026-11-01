@@ -10,6 +10,8 @@ setup gateway — ask for the Gateway Key in a macOS dialog, make one test call 
                 store it in the Keychain
 setup confirm — get a send-only Gateway Key from the gateway when there's none, bind the
                 Recipients to it, and say who still has to confirm by email (ADR 0033)
+setup sending — send the Brief from the Household's own Gmail, after checking Gmail takes the App
+                Password, or through the gateway again (ADR 0034)
 setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, download it once,
                save it in the owner-only config
 setup save — save the Household's answers into the config, and setup's progress (in setup_save.py)
@@ -93,6 +95,12 @@ def register(sub) -> None:
     pconfirm.add_argument("--resend", action="store_true",
                           help="Send the confirmation email again to each who hasn't confirmed")
     pconfirm.set_defaults(func=cmd_confirm)
+
+    psending = steps.add_parser("sending", help="Send the Brief from the Household's own Gmail, "
+                                "or through Parent Recap's gateway again (only when the AI is "
+                                "Claude or ChatGPT and Gmail is connected)")
+    psending.add_argument("to", choices=["gmail", "gateway"])
+    psending.set_defaults(func=cmd_sending)
 
     pmyclub = steps.add_parser("myclub", help="Ask for a Kid's MyClub calendar link in a dialog, "
                                "download it once and save it in the config")
@@ -284,6 +292,8 @@ def cmd_confirm(args: argparse.Namespace) -> int:
     except Exception:
         return report("bad-config", f"The config can't be read. Run {program()} doctor, fix what it "
                       "names, then run this again.")
+    if cfg.sends_from_gmail():  # nobody confirms anything for the Household's own Gmail (ADR 0034)
+        return report("not-needed", sending="gmail")
     status = send_key.ensure(cfg, resend=args.resend)
     extra = {"recipients": status.recipients, "unconfirmed": status.unconfirmed,
              "mailed": status.mailed, **({"key_requested": True} if status.requested else {})}
@@ -300,6 +310,41 @@ def cmd_confirm(args: argparse.Namespace) -> int:
                       f"{program()} setup gateway", **extra)
     return report(status.result, f"{status.error} Run this again later: {program()} setup confirm",
                   **extra)
+
+
+def cmd_sending(args: argparse.Namespace) -> int:
+    """Sends the Brief from the Household's own Gmail, or through the gateway again (ADR 0034),
+    and prints how it's sent now. Back on the gateway, it says who still has to confirm, as
+    `setup confirm` does. Nothing secret is printed."""
+    from . import send_key, sending
+    from .actions import email as email_action
+    path = Path(os.path.expanduser(os.path.expandvars(args.config or "~/.family/config.yaml")))
+    try:
+        done = sending.switch(path, args.to)
+    except Exception:
+        return report("bad-config", f"The config can't be read. Run {program()} doctor, fix what it "
+                      "names, then run this again.")
+    gmail_again = f"{program()} setup sending gmail"
+    next_ = {
+        sending.NOT_OFFERED: "Only a Household whose AI is Claude or ChatGPT and that reads its "
+                             "Gmail with an App Password can send the Brief from that Gmail.",
+        email_action.REJECTED: "Gmail didn't take the App Password, which stops reading that "
+                               f"Gmail too. Store a new one with {program()} setup gmail, then "
+                               f"run: {gmail_again}",
+        email_action.NO_PASSWORD: f"Store the Gmail App Password with {program()} setup gmail, "
+                                  f"then run: {gmail_again}",
+        email_action.NO_ANSWER: f"Check the computer is online, then run: {gmail_again}",
+        "save-failed": f"Run {program()} doctor, fix what it names, then run this again.",
+    }.get(done.result)
+    extra: dict = {"sending": done.sending, **({"error": done.detail} if done.detail else {})}
+    status = done.confirm
+    if status is not None:
+        extra.update(recipients=status.recipients, unconfirmed=status.unconfirmed,
+                     mailed=status.mailed, **({"key_requested": True} if status.requested else {}))
+        if status.result != send_key.CONFIRMED:
+            next_ = (f"{send_key.describe(status)}. {program()} setup confirm says who has "
+                     "confirmed.")
+    return report(done.result, next_, **extra)
 
 
 def _gateway_use(config: str | None) -> tuple[str, bool]:

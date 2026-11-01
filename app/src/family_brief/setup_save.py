@@ -28,9 +28,12 @@ own address is known and the Recipients can be saved with the parent first. Its 
 are the WhatsApp groups found, each with its Kid hint, and its `gmail_senders` the senders
 `discover gmail-senders --json` found, each as it reports them, kept for the check page.
 
-The Brief is always sent from Parent Recap's own address through the maintainers' gateway (ADR
-0032), so nothing here chooses how; a config written before still saying `email.sender` or
-`email.from_addr` loses them the next time answers are saved into it.
+The Brief is sent from Parent Recap's own address through the maintainers' gateway (ADR 0032),
+and setup never asks how; `"sending": "gmail"` sends it from the Household's own Gmail instead,
+an advanced setting that `setup sending` and the setup page's Finish save once Gmail took the App
+Password (ADR 0034, sending.py), and `"sending": "gateway"` goes back. A config written before ADR
+0032 still saying `email.sender` or `email.from_addr` loses them the next time answers are saved
+into it.
 
 What the answers don't mention stays as it was. The Kids given are the Household's Kids: a Kid
 left out is removed, and each one given keeps what the answers don't say about them, such as a
@@ -180,6 +183,9 @@ class Answers(_Strict):
     kids: list[KidAnswer] | None = None
     recipients: list[RecipientAnswer] | None = None
     ai: Literal["claude", "codex", "gateway"] | None = None
+    # How the Brief is sent, an advanced setting that sending.switch saves once it's checked
+    # (ADR 0034): from the Household's own Gmail, or through the gateway, the default.
+    sending: Literal["gmail", "gateway"] | None = None
     evening: str | None = None      # HH:MM, when the Brief comes
     sources: SourcesAnswer | None = None
     feedback: FeedbackAnswer | None = None
@@ -302,6 +308,10 @@ def _merge(data: dict[str, Any], a: Answers, form: dict[str, Any] | None) -> Non
     if isinstance(data.get("email"), dict):  # what chose how the Brief was sent before ADR 0032
         for gone in ("sender", "from_addr"):
             data["email"].pop(gone, None)
+    if a.sending == "gmail":
+        _section(data, "email")["from_gmail"] = True
+    elif a.sending == "gateway" and isinstance(data.get("email"), dict):
+        data["email"].pop("from_gmail", None)
     if a.ai is not None:
         _section(data, "llm")["backend"] = a.ai
     if a.evening is not None:

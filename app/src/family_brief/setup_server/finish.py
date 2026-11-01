@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import threading
 from http import HTTPStatus
-from typing import Any
+from typing import Any, Literal
 
-from .. import failure, ops, setup_connect, setup_save, setup_status
+from .. import failure, ops, sending, setup_connect, setup_save, setup_status
 from ..config import Config
+from ..setup_connect import Strict, parse
 from ..system import wake
 from .context import Action, Context, Phase, Reply, nothing_to_give
+from .gmail import confirmation
 from .health import FINISH_CHECKS, FINISH_LEAVES_OUT, health_check
 
 # `installing` while the evening job and the wake-up are installed, which waits for the Mac
@@ -18,6 +20,10 @@ from .health import FINISH_CHECKS, FINISH_LEAVES_OUT, health_check
 # couldn't be loaded, and `no-finish` when this server hasn't started one.
 FINISH_RESULTS = ("installing", "checking", "done", "not-done", "install-failed", "no-finish")
 UNDER_WAY = ("installing", "checking")  # which nothing may cut off or start again
+
+
+class SendingAnswer(Strict):
+    to: Literal["gmail", "gateway"]
 
 
 class Finish(Phase):
@@ -34,7 +40,29 @@ class Finish(Phase):
 
     def routes(self) -> dict[str, Action]:
         return {"api/finish": self.start_finish, "api/finish/outcomes": self.check_outcomes,
-                "api/finish/check": self.check_finish, "api/finish/stop": self.stop_for_now}
+                "api/finish/check": self.check_finish, "api/finish/stop": self.stop_for_now,
+                "api/finish/sending": self.switch_sending}
+
+    def state(self, progress: dict[str, Any]) -> dict[str, Any]:
+        """How the Brief is sent, for Finish's "Later, if you need it": the Household's Gmail
+        address, which the setting is offered for when the AI isn't the gateway, and whether it's
+        turned on (ADR 0034)."""
+        cfg = self.context.model()
+        return {"sending": {"address": cfg.gmail.username, "gmail": cfg.email.from_gmail}}
+
+    def switch_sending(self, raw: Any) -> Reply:
+        """"Send the Brief from my Gmail", and back: the Brief is sent from the Household's own
+        Gmail once its SMTP server took the App Password, or through the gateway again, which
+        asks for a send-only key and says who still has to confirm, as Gmail's step does (ADR
+        0033, ADR 0034). The reply leaves out why it didn't switch, which can name the address:
+        the page says each result in its own words."""
+        answer = parse(SendingAnswer, raw)
+        with self.context.connect.lock:
+            done = sending.switch(self.context.config, answer.to)
+        out: dict[str, Any] = {"result": done.result, "sending": done.sending}
+        if done.confirm is not None:
+            out["confirm"] = confirmation(done.confirm)
+        return HTTPStatus.OK, out
 
     def start_finish(self, raw: Any) -> Reply:
         """Installs the evening job and the Mac's wake-up through the schedule step, in the

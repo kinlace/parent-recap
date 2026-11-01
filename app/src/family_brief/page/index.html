@@ -514,6 +514,18 @@
         </form>
         <div id="finish-ai-sign-in" hidden></div>
       </div>
+      <!-- Sending the Brief from the Household's own Gmail (ADR 0034): offered only when the AI
+           isn't the gateway and Gmail is connected, and never during setup. -->
+      <div id="finish-sending" hidden>
+        <h3 data-text="finish.sending.title"></h3>
+        <p id="finish-sending-current"></p>
+        <p class="hint" data-text="finish.sending.about"></p>
+        <p><button type="button" id="finish-sending-switch" class="secondary"></button></p>
+        <div id="finish-sending-status" class="status" role="status" hidden>
+          <p id="finish-sending-message"></p>
+          <div id="finish-sending-confirm" class="confirm" hidden></div>
+        </div>
+      </div>
       <div id="finish-whatsapp" hidden>
         <h3 data-text="source.whatsapp"></h3>
         <div id="finish-whatsapp-picked">
