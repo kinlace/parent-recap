@@ -113,7 +113,7 @@ class Gmail(Phase):
             return HTTPStatus.CONFLICT, out
         cfg = self.context.model()
         if send_key.may_request(cfg):
-            out = {**out, "confirm": _confirmation(send_key.ensure(cfg))}
+            out = {**out, "confirm": confirmation(send_key.ensure(cfg))}
         return HTTPStatus.OK, out
 
     def confirm(self, raw: Any) -> Reply:
@@ -123,7 +123,7 @@ class Gmail(Phase):
         cfg = self.context.model()
         if not send_key.may_request(cfg):
             return HTTPStatus.BAD_REQUEST, _key_refused()
-        return HTTPStatus.OK, _confirmation(send_key.ensure(cfg, resend=answer.resend))
+        return HTTPStatus.OK, confirmation(send_key.ensure(cfg, resend=answer.resend))
 
     def save_send_key(self, raw: Any) -> Reply:
         """A Gateway Key for sending alone, for a Household whose AI is its own Claude Code or Codex
@@ -147,7 +147,7 @@ def _key_refused() -> dict[str, Any]:
         "asked for here.", errors=["key: should not be given when the AI is the gateway"])
 
 
-def _confirmation(status: send_key.Status) -> dict[str, Any]:
+def confirmation(status: send_key.Status) -> dict[str, Any]:
     """A send_key.Status as the page shows it: how it went and the addresses still to confirm and
     just mailed. Its error stays out: the page says each result in its own words."""
     return {"result": status.result, "unconfirmed": status.unconfirmed, "mailed": status.mailed}

@@ -244,13 +244,60 @@ def test_a_first_brief_to_another_mailbox_says_nothing_of_junk(harness, page):
     assert "Junk" not in email.text + email.html
 
 
-def test_a_send_the_gateway_refuses_says_so(harness, page):
+# Why it wasn't sent, from what the gateway answered (#648): each has its own advice on the page.
+
+
+def test_a_parent_who_has_not_confirmed_is_told_to_and_nothing_is_sent(harness, page, caplog):
+    # A send-only key on request (ADR 0033): the setup parent hasn't pressed Confirm yet.
     at_the_first_brief(harness)
-    harness.relay_answer = (401, {"error": "missing, unknown or revoked Gateway Key"})
+    del harness.secrets[gateway.ACCOUNT]
     make_brief(page.url)
     brief_made(page.url)
 
-    assert send_it_to_me(page.url).json()["result"] == "send-failed"
+    r = send_it_to_me(page.url)
+
+    out = r.json()
+    assert (out["result"], out["to"]) == ("unconfirmed", "parent@example.com")
+    assert out["confirm"]["result"] == "unconfirmed"
+    assert "parent@example.com" in out["confirm"]["unconfirmed"]
+    assert harness.sent == []
+    assert not any(key in r.body.decode() + caplog.text for key in harness.made_keys)
+    harness.confirm("parent@example.com")
+    assert send_it_to_me(page.url).json()["result"] == "sent"
+    assert harness.sent[0].to == ["parent@example.com"]
+
+
+@pytest.mark.parametrize("answer, result", [
+    ((403, {"error": "recipient not confirmed", "unconfirmed": ["parent@example.com"]}),
+     "unconfirmed"),
+    ((429, {"error": "this Gateway Key has sent all its Briefs today"}), "sent-all-today"),
+    ((401, {"error": "missing, unknown or revoked Gateway Key"}), "key-refused"),
+    ((503, {"error": "upstream unavailable"}), "send-failed"),
+])
+def test_a_send_the_gateway_refuses_says_why(harness, page, caplog, answer, result):
+    at_the_first_brief(harness)
+    harness.relay_answer = answer
+    make_brief(page.url)
+    brief_made(page.url)
+
+    out = send_it_to_me(page.url).json()
+
+    assert out["result"] == result
+    assert harness.sent == []
+    assert not harness.state_path.exists()
+    # The reason is in the log, though never in the reply, and never the key.
+    assert "first brief: not sent" in caplog.text and GATEWAY_KEY not in caplog.text
+
+
+def test_a_send_with_no_gateway_key_says_the_key_was_refused(harness, page):
+    at_the_first_brief(harness)
+    harness.config["llm"]["backend"] = "gateway"  # its key comes from the maintainers, never asked for
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+    del harness.secrets[gateway.ACCOUNT]
+    make_brief(page.url)
+    brief_made(page.url)
+
+    assert send_it_to_me(page.url).json() == {"result": "key-refused"}
     assert harness.sent == []
 
 

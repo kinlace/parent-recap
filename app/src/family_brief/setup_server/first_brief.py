@@ -3,22 +3,30 @@ does, without sending it, shown in the page's frame and sent to the setup parent
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from http import HTTPStatus
 from typing import Any
 
-from .. import run_lock, setup_save
+from .. import gateway, run_lock, send_key, setup_save
 from ..actions import email as email_action
 from ..state import State
 from ..system import desktop, jobs
 from .context import Action, Context, Page, Phase, Reply, Served, nothing_to_give
+from .gmail import confirmation
+
+log = logging.getLogger("family_brief")
 
 # Making it: `making` while it's made, with the Source it's reading or `writing`, then `made` or
 # `make-failed`, and `no-brief` when this server hasn't made one.
 BRIEF_RESULTS = ("making", "made", "make-failed", "no-brief")
 BRIEF_LOOKBACK_HOURS = 72  # a single day often has nothing new
 # Sending it to the setup parent: `busy` while an evening run is going, which could send it too.
-SEND_RESULTS = ("sent", "send-failed", "busy")
+# Why the gateway didn't send it, each with its own advice (#648): `unconfirmed`, the setup parent
+# hasn't pressed the button their confirmation link opens (ADR 0033); `sent-all-today`, the key's
+# Briefs for today are used up; `key-refused`, no Gateway Key or one the gateway doesn't know; and
+# `send-failed` for the rest, the gateway busy or out of reach.
+SEND_RESULTS = ("sent", "unconfirmed", "sent-all-today", "key-refused", "send-failed", "busy")
 # The Brief in the page's frame: its own inline styles and nothing else, sandboxed without
 # scripts, and its links open nothing (a sandbox without popups drops a new window).
 BRIEF_CSP = ("default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; "
@@ -110,13 +118,23 @@ class FirstBrief(Phase):
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Make the Brief first.",
                 errors=["answers: should be {}, once the Brief is made"])
+        # Asked first, so a parent who hasn't confirmed is told so instead of a send that fails.
+        status = send_key.ensure(cfg)
+        if parent in status.unconfirmed:
+            return HTTPStatus.OK, {"result": "unconfirmed", "to": parent,
+                                   "confirm": confirmation(status)}
         try:
             with run_lock.exclusive(cfg):
                 try:
                     email_action.send(cfg, subject=brief["subject"], body_text=brief["text"],
                                       body_html=brief["html"], to_addrs=[parent])
-                except Exception:  # its error can name the address
-                    return HTTPStatus.OK, {"result": "send-failed"}
+                except Exception as e:  # its error can name the address: kept out of the reply
+                    log.warning("first brief: not sent: %s", e)
+                    result = _why(e)
+                    if result != "unconfirmed":
+                        return HTTPStatus.OK, {"result": result}
+                    return HTTPStatus.OK, {"result": result, "to": parent,
+                                           "confirm": confirmation(send_key.ensure(cfg))}
                 state = State(cfg.resolved_state_path())
                 state.mark_delivered_now([parent])
                 state.save()
@@ -166,3 +184,17 @@ def _preview_lines(out: str) -> list[dict[str, Any]]:
             except ValueError:
                 continue  # cut off while it was being written
     return lines
+
+
+def _why(error: Exception) -> str:
+    """Which of SEND_RESULTS a failed send is, from what the gateway answered."""
+    if isinstance(error, gateway.NoKey):
+        return "key-refused"
+    status = getattr(error, "status", None)
+    if status == 403 and gateway.UNCONFIRMED_MESSAGE in str(error):
+        return "unconfirmed"
+    if status == 429:
+        return "sent-all-today"
+    if status == gateway.UNKNOWN_KEY:
+        return "key-refused"
+    return "send-failed"
