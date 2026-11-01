@@ -148,7 +148,8 @@ def cmd_gmail(args: argparse.Namespace) -> int:
         password = secret_dialog.ask(
             f"{warning}Paste the App Password for {address}.\n\nCreate it on Google's App "
             f"passwords page, which is open in your browser ({url}), "
-            "with the name Parent Recap, then copy the 16 letters Google shows.",
+            "with any name, such as Parent Recap, then copy the 16 letters right away: "
+            "Google shows them only once.",
             other=PAGE_UNAVAILABLE)
     except secret_dialog.Cancelled:
         return report("cancelled", "The family closed the dialog. Run this again when they're ready.")
