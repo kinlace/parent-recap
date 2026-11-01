@@ -48,16 +48,16 @@ async function saveLanguage(language) {
   page.progress = out.progress;
 }
 
-function showError(key) {
+function showError(key, values) {
   const error = document.getElementById("error");
-  error.dataset.text = key;
-  error.textContent = t(key);
+  setText(error, key, values);
   error.hidden = false;
 }
 
 function clearError() {
   const error = document.getElementById("error");
   delete error.dataset.text;
+  delete error.dataset.values;
   error.hidden = true;
 }
 
@@ -2134,8 +2134,8 @@ function healthResult(out) {
 }
 
 // Who still has to press the link in the confirmation email (ADR 0033), shown in `box` with a
-// button that has it sent again: on Gmail's step after the Recipients are saved, and under the
-// Brief sending check at Check and Finish. `resent` says it was just sent again.
+// button that has it sent again: on Gmail's step after the Recipients are saved, under the
+// Brief sending check at Check and Finish, and at First Brief when "Send it to me" couldn't send. `resent` says it was just sent again.
 function showConfirmation(box, confirm, resent) {
   const template = document.getElementById("confirm-template");
   if (!box.querySelector(".confirm-message")) {
@@ -2382,6 +2382,10 @@ async function sendBrief(event) {
       showSent("brief.send.sent", { to: out.to });
       // Parent Recap's new address may land in Hotmail's or Outlook.com's Junk at first (#524).
       document.getElementById("brief-junk").hidden = !JUNKS_AT_FIRST.test(out.to);
+    } else if (out.result === "unconfirmed") {
+      // Not sent: the setup parent hasn't pressed the button their confirmation link opens.
+      showError("brief.send.unconfirmed", { to: out.to });
+      showConfirmation(document.getElementById("brief-confirm"), out.confirm);
     } else {
       showError("brief.send." + out.result);
     }
