@@ -49,7 +49,8 @@ google_calendar:
 email:
   enabled: true
   # Sent from brief@parentrecap.com through the gateway at llm.gateway_url, with the Gateway Key
-  # in the Keychain (ADR 0032)
+  # in the Keychain (ADR 0032). With Claude or Codex as the AI, `parent-recap setup sending gmail`
+  # sends it from gmail.username instead, with its App Password (ADR 0034): from_gmail: true
   to: # Brief recipients; add a partner if you like
     - you@gmail.com # reads the Brief in summary_language
     # - address: partner@gmail.com # a Recipient who reads another language

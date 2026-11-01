@@ -132,11 +132,14 @@ class Recipient(BaseModel):
 
 
 class EmailConfig(BaseModel):
-    """Email delivery, always from Parent Recap's own address through the maintainers' gateway at
-    llm.gateway_url, with the Gateway Key (ADR 0028, ADR 0032). Configs written before ADR 0032
+    """Email delivery: from Parent Recap's own address through the maintainers' gateway at
+    llm.gateway_url, with the Gateway Key (ADR 0028, ADR 0032), unless `from_gmail` sends it from
+    the Household's own Gmail over SMTP with its App Password, which only a Household whose AI
+    isn't the gateway may (ADR 0034; Config.sends_from_gmail). Configs written before ADR 0032
     may still say `sender: gmail` or give a `from_addr`; both are ignored, so such a Household
-    sends through the gateway too once it has a Gateway Key."""
+    sends through the gateway until it turns `from_gmail` on."""
     enabled: bool = True
+    from_gmail: bool = False
     to: list[Recipient] = Field(default_factory=list)          # Brief Recipients
     weekend_to: list[Recipient] = Field(default_factory=list)  # Weekend Picks Recipients
 
@@ -307,6 +310,17 @@ class Config(BaseModel):
     def sends_imessage(self) -> bool:
         """Whether the Brief also goes out as an iMessage: only on macOS, which has Messages."""
         return self.imessage.enabled and macos_only.offers("imessage")
+
+    def may_send_from_gmail(self) -> bool:
+        """Whether sending the Brief from the Household's own Gmail is offered (ADR 0034): its AI
+        isn't the gateway, and Gmail is connected with an App Password, whose address it is."""
+        return self.llm.backend != "gateway" and bool(self.gmail.username)
+
+    def sends_from_gmail(self) -> bool:
+        """Whether the Brief, its first one and Weekend Picks go from the Household's own Gmail
+        instead of the gateway: turned on, and still offered. With the gateway as the AI it goes
+        through the gateway again, whatever `email.from_gmail` says."""
+        return self.email.from_gmail and self.may_send_from_gmail()
 
     def other_sources(self) -> list[str]:
         """The Sources connected besides Gmail, of those this system can read."""

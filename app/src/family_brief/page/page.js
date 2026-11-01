@@ -6,6 +6,7 @@ const page = {
   text: null, language: "en", chosen: null, languages: [], system: "macos", ais: [], installs: [],
   about: null,
   progress: null, welcome: null, connect: null, gmail: null, myclub: null, wilma: null,
+  sending: null,
   check: null, brief: null, welcomeShown: false, connectShown: false, workingShown: false,
   checkShown: false, briefShown: false, finishShown: false, finished: false,
 };
@@ -554,7 +555,7 @@ function briefRecipients() {
 const JUNKS_AT_FIRST = /@(hotmail|outlook|live|msn)\.[a-z.]+$/i;
 
 function showJunk() {
-  document.getElementById("gmail-brief-junk").hidden =
+  document.getElementById("gmail-brief-junk").hidden = sendsFromGmail() ||
     !briefRecipients().some(({ address }) => JUNKS_AT_FIRST.test(address.trim()));
 }
 
@@ -2437,8 +2438,9 @@ async function sendBrief(event) {
     const out = await post("api/brief/send", {});
     if (out.result === "sent") {
       showSent("brief.send.sent", { to: out.to });
-      // Parent Recap's new address may land in Hotmail's or Outlook.com's Junk at first (#524).
-      document.getElementById("brief-junk").hidden = !JUNKS_AT_FIRST.test(out.to);
+      // Parent Recap's new address may land in Hotmail's or Outlook.com's Junk at first (#524);
+      // the family's own Gmail isn't new.
+      document.getElementById("brief-junk").hidden = sendsFromGmail() || !JUNKS_AT_FIRST.test(out.to);
     } else if (out.result === "unconfirmed") {
       // Not sent: the setup parent hasn't pressed the button their confirmation link opens.
       showError("brief.send.unconfirmed", { to: out.to });
@@ -2498,6 +2500,7 @@ function enterFinish() {
   document.getElementById("finish-stop").addEventListener("click", stopForNow);
   document.getElementById("finish-ai-open").addEventListener("click", openFinishAI);
   document.getElementById("finish-ai-form").addEventListener("submit", signInFinishAI);
+  document.getElementById("finish-sending-switch").addEventListener("click", switchSending);
   document.getElementById("finish-whatsapp-off").addEventListener("click", turnWhatsAppOff);
   document.getElementById("finish-whatsapp-change").addEventListener("click",
     goBack("api/whatsapp/groups"));
@@ -2540,11 +2543,60 @@ async function turnWhatsAppOff() {
   }
 }
 
-// What depends on the Household's one AI: who writes the Briefs, and where changes go.
+// What depends on the Household's one AI: who writes the Briefs, where changes go, and whether
+// the Brief may be sent from the family's own Gmail.
 function showHouseholdAI() {
   setText(document.getElementById("finish-ai-current"), "finish.ai.current." + page.welcome.ai);
   setText(document.getElementById("finish-changes"), "finish.changes." + page.welcome.ai);
+  showSending();
   showChat();
+}
+
+// ── Finish: sending the Brief from the family's own Gmail instead of Parent Recap's address
+// (ADR 0034), offered only when the AI isn't the gateway and Gmail is connected. The server checks
+// that Gmail takes the App Password before it switches; back on the gateway, the Recipients may
+// have to confirm their address, as on Gmail's step.
+
+function offersGmailSending() {
+  return Boolean(page.sending?.address) && page.welcome?.ai !== "gateway";
+}
+
+function sendsFromGmail() {
+  return offersGmailSending() && page.sending.gmail;
+}
+
+function showSending() {
+  document.getElementById("finish-sending").hidden = !offersGmailSending();
+  const gmail = sendsFromGmail();
+  setText(document.getElementById("finish-sending-current"),
+    "finish.sending.current." + (gmail ? "gmail" : "gateway"), { address: page.sending?.address });
+  setText(document.getElementById("finish-sending-switch"),
+    gmail ? "finish.sending.off" : "finish.sending.on");
+}
+
+async function switchSending() {
+  clearError();
+  const button = document.getElementById("finish-sending-switch");
+  button.disabled = true;
+  try {
+    const out = await post("api/finish/sending", { to: sendsFromGmail() ? "gateway" : "gmail" });
+    page.sending.gmail = out.sending === "gmail";
+    const saved = out.result === "saved";
+    const message = document.getElementById("finish-sending-message");
+    setText(message, saved ? "finish.sending.saved." + out.sending : "finish.sending." + out.result);
+    message.classList.toggle("fail", !saved);
+    const confirm = document.getElementById("finish-sending-confirm");
+    confirm.hidden = true;
+    if (out.confirm) showConfirmation(confirm, out.confirm, false);
+    document.getElementById("finish-sending-status").hidden = false;
+    showSending();
+    // The Brief sending check is now the other transport's.
+    if (saved) finishResult(await post("api/finish/outcomes", {}));
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // ── Finish: changing the AI, for one that stopped working, or a new Gateway Key (ADR 0017). The
@@ -2766,7 +2818,8 @@ function closed() {
   document.getElementById("chat").hidden = true;
   for (const button of document.querySelectorAll("#finish-checklist button")) button.hidden = true;
   clearTimeout(aiStep.timer);
-  for (const id of ["finish-ai-open", "finish-ai-form", "finish-ai-sign-in", "finish-back"]) {
+  for (const id of ["finish-ai-open", "finish-ai-form", "finish-ai-sign-in", "finish-sending-switch",
+    "finish-back"]) {
     document.getElementById(id).hidden = true;
   }
   document.getElementById("finish-closed").hidden = false;
@@ -2875,6 +2928,7 @@ async function start() {
   page.myclub = state.myclub;
   page.whatsapp = state.whatsapp;
   page.wilma = state.wilma;
+  page.sending = state.sending;
   page.check = state.check;
   page.brief = state.brief;
   // Said before the family types a password: in tmux or SSH, none can be saved.

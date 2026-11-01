@@ -1160,6 +1160,37 @@ def test_finish_takes_the_key_for_sending_a_household_that_sent_from_gmail_has_n
     assert family.relay_keys == [GATEWAY_KEY] and family.sent == []
 
 
+def test_finish_sends_the_brief_from_the_familys_gmail_and_back(tab, family, health):
+    # ADR 0034: a Household on its own Claude Code that reads its Gmail, under "Later".
+    at_finish(family)
+    family.secrets["gmail-imap-parent@example.com"] = "abcdefghijklmnop"
+    tab.reload()
+    expect(tab.get_by_text(text("finish.sending.current.gateway"))).to_be_visible()
+
+    button(tab, "finish.sending.on").click()
+
+    expect(tab.get_by_text(text("finish.sending.saved.gmail"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.sending.current.gmail", address="parent@example.com"))).to_be_visible()
+    assert Config.load(config_file(family)).email.from_gmail
+    assert family.relay_keys == [] and family.key_requests == []
+
+    button(tab, "finish.sending.off").click()
+
+    expect(tab.get_by_text(text("finish.sending.saved.gateway"))).to_be_visible()
+    # Back on the gateway, the Recipients confirm their address (ADR 0033).
+    expect(button(tab, "gmail.confirm.resend")).to_be_visible()
+    assert not Config.load(config_file(family)).email.from_gmail
+
+
+def test_finish_offers_no_gmail_sending_with_the_gateway_as_the_ai(tab, family, health):
+    family.config["llm"]["backend"] = "gateway"
+    at_finish(family)
+    tab.reload()
+    expect(heading(tab, "finish.title")).to_be_visible()
+
+    expect(tab.locator("#finish-sending")).to_be_hidden()
+
+
 # ── WhatsApp, paired as a Linked Device on the page (ADR 0027)
 
 

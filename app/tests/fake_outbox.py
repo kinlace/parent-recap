@@ -1,9 +1,12 @@
 """Where the Brief goes out: the email it is sent as by the gateway's Brief relay (ADR 0028, ADR
-0032), with the send-only keys it makes on request and the Recipients who confirmed (ADR 0033),
-iMessage, and the Google Calendar API. Each records what it is given, or fails as the test says."""
+0032), with the send-only keys it makes on request and the Recipients who confirmed (ADR 0033), or
+by Gmail's SMTP server (ADR 0034), iMessage, and the Google Calendar API. Each records what it is given, or fails as the test says."""
 from __future__ import annotations
 
 import base64
+import email
+import email.policy
+import smtplib
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,6 +27,8 @@ class SentEmail:
     html: str | None
     to: list[str]
     attachments: list[tuple[str, bytes, str]]
+    via: str = "gateway"          # or "gmail", the Household's own (ADR 0034)
+    from_addr: str | None = None  # the Gmail it went from; the gateway's relay picks its own
 
     def attachment(self, suffix: str) -> tuple[str, bytes, str] | None:
         return next((a for a in self.attachments if a[0].endswith(suffix)), None)
@@ -58,6 +63,34 @@ class FakeCalendarService:
         return _Call(run)
 
 
+class _Smtp:
+    """One connection to Gmail's SMTP server, as smtplib.SMTP_SSL's methods answer."""
+
+    def __init__(self, outbox: FakeOutbox, address: tuple[str, int]) -> None:
+        assert address == ("smtp.gmail.com", 465), address
+        self.outbox = outbox
+
+    def __enter__(self) -> _Smtp:
+        return self
+
+    def __exit__(self, *_a: Any) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def login(self, _user: str, password: str) -> None:
+        self.outbox.gmail_logins += 1
+        if self.outbox.email_error:
+            raise self.outbox.email_error
+        if self.outbox.gmail_password is not None and password != self.outbox.gmail_password:
+            raise smtplib.SMTPAuthenticationError(535, b"5.7.8 Username and Password not accepted")
+
+    def sendmail(self, from_addr: str, to: list[str], raw: str) -> dict:
+        self.outbox.gmail_received(from_addr, to, raw)
+        return {}
+
+
 @dataclass
 class _Call:
     fn: Callable[[], dict]
@@ -79,7 +112,11 @@ class FakeOutbox:
     address is confirmed by `confirm(address)`; until then a made key sends only to the others,
     and to none 403. `key_answer`, when set, is the status and body the key request gets
     instead, or an exception it raises. Any other key, such as the harness's, was made by hand:
-    it isn't bound and sends to anyone."""
+    it isn't bound and sends to anyone.
+
+    Gmail's SMTP server sends what a Household that sends from its own Gmail hands it (ADR
+    0034), into `sent` too, `via` "gmail": it takes any App Password, or only `gmail_password`
+    when that is set, as a revoked one is refused. `gmail_logins` counts its sign-ins."""
 
     def __init__(self, home: Path, mp: pytest.MonkeyPatch) -> None:
         self.sent: list[SentEmail] = []
@@ -95,6 +132,9 @@ class FakeOutbox:
         self.confirmations: list[tuple[str, str]] = []
         self.binds: list[dict[str, Any]] = []
         self.key_answer: tuple[int, dict[str, Any]] | Exception | None = None
+        self.gmail_password: str | None = None
+        self.gmail_logins = 0
+        mp.setattr(smtplib, "SMTP_SSL", lambda host, port, timeout=None: _Smtp(self, (host, port)))
         mp.setattr(api, "post_brief", self._relay)
         real_post = api._post
         mp.setattr(api, "_post", lambda url, path, body, timeout, headers:
@@ -159,6 +199,17 @@ class FakeOutbox:
     def _statuses(self, recipients: list[dict[str, str]], mailed: list[str]) -> dict[str, Any]:
         return {"recipients": [{"address": r["address"], "confirmed": r["address"] in self.confirmed}
                                for r in recipients], "mailed": mailed}
+
+    def gmail_received(self, from_addr: str, to: list[str], raw: str) -> None:
+        """Gmail's SMTP server takes a message, parsed back as a mail client reads it."""
+        msg = email.message_from_string(raw, policy=email.policy.default)
+        body = {p.get_content_type(): p.get_content() for p in msg.walk()
+                if p.get_content_maintype() == "text" and not p.get_filename()}
+        attachments = [(p.get_filename(), p.get_payload(decode=True), p.get_content_type())
+                       for p in msg.walk() if p.get_filename()]
+        self.sent.append(SentEmail(str(msg["Subject"]), body.get("text/plain", ""),
+                                   body.get("text/html"), list(to), attachments, via="gmail",
+                                   from_addr=from_addr))
 
     def authorize_google_calendar(self) -> None:
         token = Path(calendar_action.TOKEN_PATH)

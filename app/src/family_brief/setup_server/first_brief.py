@@ -119,10 +119,12 @@ class FirstBrief(Phase):
                 "invalid-answers", "Make the Brief first.",
                 errors=["answers: should be {}, once the Brief is made"])
         # Asked first, so a parent who hasn't confirmed is told so instead of a send that fails.
-        status = send_key.ensure(cfg)
-        if parent in status.unconfirmed:
-            return HTTPStatus.OK, {"result": "unconfirmed", "to": parent,
-                                   "confirm": confirmation(status)}
+        # From the Household's own Gmail nobody confirms anything (ADR 0034).
+        if not cfg.sends_from_gmail():
+            status = send_key.ensure(cfg)
+            if parent in status.unconfirmed:
+                return HTTPStatus.OK, {"result": "unconfirmed", "to": parent,
+                                       "confirm": confirmation(status)}
         try:
             with run_lock.exclusive(cfg):
                 try:

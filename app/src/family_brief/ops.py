@@ -33,7 +33,7 @@ DEFAULT_CONFIG = Path.home() / ".family" / "config.yaml"
 # in its record.
 CHECK_ITEMS = (
     ("config", "Config file"), ("recipients", "Recipients"), ("language", "Language {}"),
-    ("gateway-sends", "Brief sending"),
+    ("gateway-sends", "Brief sending"), ("gmail-sends", "Brief sending"),
     ("claude", "Claude"), ("codex", "Codex"),
     ("gateway", "AI gateway"), ("gateway-key", "Gateway Key"),
     *(item for s in sources.ALL for item in s.doctor_items().items()),
@@ -138,10 +138,13 @@ def health_checks(config: str | None, skip_llm: bool = False, show: bool = False
         ready, detail = languages.describe(cfg, language, languages.TABLES if weekend else (languages.BRIEF,))
         add(OK if ready else WARN, "language", detail, subject=language)
 
-    # The Brief is sent through the gateway, whatever the AI (ADR 0032), then the AI writes it,
-    # then the Sources it's written from.
+    # How the Brief is sent: through the gateway (ADR 0032), or from the Household's own Gmail
+    # (ADR 0034); then the AI that writes it, then the Sources it's written from.
     if cfg.email.enabled:
-        _check_gateway_sends(cfg, add)
+        if cfg.sends_from_gmail():
+            _check_gmail_sends(cfg, add)
+        else:
+            _check_gateway_sends(cfg, add)
     if not skip_llm:
         _check_llm(cfg, add)
     for source in sources.in_connect_order():
@@ -168,8 +171,8 @@ def _check_source(source: sources.Source, cfg: Config, add, config: str | None) 
 
 
 def check_gmail(cfg: Config, add, config: str | None = None) -> None:
-    """Gmail, when it's read: it never sends the Brief (ADR 0032), so a Gmail with no sender
-    ticked isn't used and isn't checked."""
+    """Gmail, when it's read. A Gmail with no sender ticked isn't read and isn't checked here; one
+    that sends the Brief (ADR 0034) has its own check, `gmail-sends`."""
     if not sources.GMAIL.connected(cfg):
         return
     from .collectors import gmail
@@ -200,8 +203,10 @@ def check_gmail(cfg: Config, add, config: str | None = None) -> None:
         add(OK, "gmail", f"{username} signed in, {n} allowlisted emails in the last {days} days"
             f" (the Brief only takes the last {cfg.gmail.lookback_hours} hours of them)")
     except Exception as e:
+        also = (", and the Brief, which is sent from this Gmail, can't be sent either"
+                if cfg.sends_from_gmail() else "")
         add(FAIL, "gmail", f"IMAP login failed: {e} "
-            "(the App Password may have been revoked; create a new one and store it again)")
+            f"(the App Password may have been revoked{also}; create a new one and store it again)")
 
 
 def _check_gateway_sends(cfg: Config, add) -> None:
@@ -238,6 +243,23 @@ def _check_gateway_sends(cfg: Config, add) -> None:
     else:
         add(FAIL, "gateway-sends", f"the gateway at {url} couldn't be asked to send the Brief: {detail} "
             "(if it happens again, tell the Parent Recap maintainers)")
+
+
+def _check_gmail_sends(cfg: Config, add) -> None:
+    """The Household's own Gmail, which sends its Brief instead of the gateway (ADR 0034): whether
+    its SMTP server takes the App Password, from a sign-in that sends nothing. No Gateway Key is
+    needed and nobody confirms anything. `rejected` when Google refuses the App Password, which
+    stops reading that Gmail too; `no-password` when there's none to use."""
+    from .actions import email as email_action
+    address = cfg.gmail.username or ""
+    outcome, detail = email_action.check_gmail(address)
+    if outcome == email_action.WORKS:
+        add(OK, "gmail-sends", f"the Brief is sent from the Household's own Gmail, {address}, which "
+            "takes the App Password; the gateway isn't used")
+    elif outcome == email_action.NO_ANSWER:
+        add(FAIL, "gmail-sends", f"{detail} (check the computer is online)")
+    else:
+        add(FAIL, "gmail-sends", detail, reason=outcome)
 
 
 def _check_confirmed(status, url: str, add) -> None:
