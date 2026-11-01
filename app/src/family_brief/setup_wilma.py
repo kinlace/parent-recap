@@ -398,16 +398,21 @@ def student_names(profile: dict[str, Any]) -> list[str]:
     return [n for n in names if isinstance(n, str) and n]
 
 
-def works_alone(profile: dict[str, Any]) -> str | None:
-    """Signs in with the CLI's saved `profile` alone, as `check` does, so another that works
-    can't answer for it. Returns why it didn't sign in, or None once it did."""
+def kids_alone(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    """The Kids the CLI lists signed in with its saved `profile` alone, as `check` does, so
+    another sign-in that works can't answer for it. Raises WilmaError when it doesn't sign in."""
     with tempfile.TemporaryDirectory(prefix="parent-recap-wilma-") as folder:
         alone = Path(folder) / "config.json"
         _write_config(alone, {"profiles": [profile], "lastProfileId": profile.get("id")})
-        try:
-            wilma.list_kids(alone)
-        except wilma.WilmaError as e:
-            return str(e)
+        return wilma.list_kids(alone)
+
+
+def works_alone(profile: dict[str, Any]) -> str | None:
+    """Why the CLI's saved `profile` doesn't sign in on its own, or None when it does."""
+    try:
+        kids_alone(profile)
+    except wilma.WilmaError as e:
+        return str(e)
     return None
 
 
@@ -508,7 +513,7 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
     profiles_before = profile_ids(config)
     with tempfile.TemporaryDirectory(prefix="parent-recap-wilma-") as tmp:
         status = Path(tmp) / "exit-status"
-        seen = _mtime(config)
+        seen = opened = _mtime(config)
         if not no_open:
             if not desktop.open_terminal(sign_in_window(language, status), {}, "Wilma sign-in"):
                 return outcome("no-terminal", "Terminal didn't open. The family runs wilma in "
@@ -521,10 +526,16 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
             config_mtime = _mtime(config)
             if check_now or config_mtime != seen or exit_status is not None:
                 check_now, seen = False, config_mtime
-                try:
-                    kids = wilma.list_kids()
-                except wilma.WilmaError:
-                    kids = None
+                # The sign-in the CLI saved last, checked alone: with another Wilma signed in to
+                # already (#647), that one would answer for a window closed without signing in.
+                # From the window, it counts only once the CLI has saved it since it opened.
+                last = profile(config, last_profile_id(config) or "")
+                kids = None
+                if last is not None and (no_open or config_mtime != opened):
+                    try:
+                        kids = kids_alone(last)
+                    except wilma.WilmaError:
+                        pass
                 if kids is not None:
                     record_profile(last_profile_id(config), profiles_before)
                     address = _wilma_address(config)

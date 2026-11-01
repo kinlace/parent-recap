@@ -191,7 +191,7 @@ class _Wilmas:
             who = ", ".join(f"{p.get('username')} at {p.get('tenantName') or p.get('tenantUrl')}"
                             for p in signins) or str(problem.get("wilma"))
             if not signins or any(self._setup.for_the_household(p, self.kids) for p in signins):
-                log.error("%s", sign_in_failed(str(problem.get("wilma")),
+                log.error("%s", sign_in_failed(str(problem.get("wilma") or "Wilma"),
                                                str(problem.get("message")), who))
             else:
                 log.warning("wilma: %s (the sign-in as %s, for none of the Kids, so the Brief "
