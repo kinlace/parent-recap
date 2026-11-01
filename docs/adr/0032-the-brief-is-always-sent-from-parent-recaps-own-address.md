@@ -1,5 +1,7 @@
 # The Brief is always sent from Parent Recap's own address
 
+Amended by ADR 0034: a Household whose AI is its own Claude Code or Codex may switch to sending from its own Gmail, as an advanced setting. Gateway sending stays the default and the only path on the setup page.
+
 ADR 0028 let a Household have its Brief sent from Parent Recap's own address through the gateway, and kept sending through the Household's own Gmail over SMTP as the default. We now drop Gmail sending: every Household's Brief, its first Brief from setup and its Weekend Picks are sent through the gateway from `brief@parentrecap.com`. Gmail is only a Source, read with the App Password for mail from the senders the family picks. A Household that reads no mail needs no Gmail at all. Agreed by the maintainers at a stand-up and confirmed by Zhao on 2026-10-30.
 
 ## Considered Options
