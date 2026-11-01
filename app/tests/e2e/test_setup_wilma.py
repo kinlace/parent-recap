@@ -1200,8 +1200,51 @@ def test_removing_one_wilma_removes_its_sign_in_and_kids_and_leaves_the_other(ha
     cfg = Config.load(config_file(harness))
     assert [k.name for k in cfg.kids] == ["Mia Virtanen"] and cfg.wilma.enabled is True
     assert out["progress"]["sources"]["wilma"] == "done"
+    assert install_record.entries("wilma-profile") == [f"{ESPOO}|mia.parent"]
     # The one left still signs in.
     assert sign_in_wilma(page.url).json()["result"] == "signed-in"
+
+
+def test_removing_the_first_wilma_moves_the_town_to_the_one_left(harness, page, two_towns):
+    sign_in_wilma(page.url)
+    sign_in_helsinki(page.url)
+
+    call(page.url, "api/wilma/remove", method="POST", body={"id": f"{ESPOO}|mia.parent"})
+
+    cfg = Config.load(config_file(harness))
+    assert ([k.name for k in cfg.kids], cfg.city) == (["Leo Virtanen"], "Helsinki")
+
+
+def test_a_terminal_window_adds_a_second_wilma_and_lists_only_its_kids(harness, page,
+                                                                       two_towns):
+    sign_in_helsinki(page.url)
+
+    def in_window(window: Any) -> None:  # the CLI saves the Espoo sign-in beside Helsinki's
+        setup_wilma.write_profile(two_towns.profile_path, {"url": ESPOO, "name": "Espoo"},
+                                  "mia.parent", WILMA_PASSWORD, [MIA])
+    harness.desktop.in_window = in_window
+
+    call(page.url, "api/wilma/terminal", method="POST", body={"town": "Espoo"})
+
+    out = wilma_window_result(page.url)
+    assert (out["result"], out["kids"]) == ("signed-in", ["Mia Virtanen"])
+    cfg = Config.load(config_file(harness))
+    assert ([k.name for k in cfg.kids], cfg.city) == (["Leo Virtanen", "Mia Virtanen"], "Helsinki")
+    assert [s["username"] for s in out["signins"]] == ["leo.parent", "mia.parent"]
+
+
+def test_a_terminal_window_closed_without_signing_in_isn_t_answered_for_by_another_wilma(
+        harness, page, two_towns):
+    sign_in_helsinki(page.url)
+
+    def closed(window: Any) -> None:  # the family closes the screen without signing in
+        Path(window.argv[window.argv.index("--status") + 1]).write_text("0\n")
+    harness.desktop.in_window = closed
+
+    call(page.url, "api/wilma/terminal", method="POST", body={"town": None})
+
+    assert wilma_window_result(page.url)["result"] == "not-signed-in"
+    assert [k.name for k in Config.load(config_file(harness)).kids] == ["Leo Virtanen"]
 
 
 def test_the_only_wilma_is_not_removed_but_skipped(harness, page, two_towns):

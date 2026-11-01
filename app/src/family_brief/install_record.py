@@ -52,14 +52,29 @@ def add(kind: str, value: str) -> None:
         if value in data.setdefault(kind, []):
             return
         data[kind].append(value)
-        p = path()
-        p.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        # mkstemp opens it owner-only, which install.sh, running this without the program's umask,
-        # relies on; its own name keeps another writer's temporary file apart.
-        fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=p.name + ".", suffix=".tmp")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        Path(tmp).replace(p)
+        _write(data)
+
+
+def _write(data: dict[str, list[str]]) -> None:
+    p = path()
+    p.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # mkstemp opens it owner-only, which install.sh, running this without the program's umask,
+    # relies on; its own name keeps another writer's temporary file apart.
+    fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=p.name + ".", suffix=".tmp")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    Path(tmp).replace(p)
+
+
+def remove(kind: str, value: str) -> None:
+    """Takes `value` out of the record, once what it names is gone before uninstall, such as a
+    Wilma removed on the setup page."""
+    with _lock:
+        data = _read()
+        if value not in data.get(kind, []):
+            return
+        data[kind].remove(value)
+        _write(data)
 
 
 def _read() -> dict[str, list[str]]:

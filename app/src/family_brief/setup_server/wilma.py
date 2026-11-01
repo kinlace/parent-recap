@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 from pydantic import Field
 
-from .. import failure, setup_save, setup_wilma
+from .. import failure, install_record, setup_save, setup_wilma
 from ..setup_connect import Reply, Strict, parse
 from .context import Action, Context, Phase, nothing_to_give
 
@@ -148,12 +148,17 @@ class Wilma(Phase):
                     "more.", errors=["id: should be one of the Wilmas api/state lists, while it "
                                      "lists two or more"])
             setup_wilma.remove_profile(path, answer.id)
-            still = {n.casefold() for p in setup_wilma.profiles(path)
-                     for n in setup_wilma.student_names(p)}
+            install_record.remove("wilma-profile", answer.id)
+            left = setup_wilma.profiles(path)
+            still = {n.casefold() for p in left for n in setup_wilma.student_names(p)}
             gone = {n.casefold() for n in setup_wilma.student_names(removed)} - still
-            status, out = self.context.connect.save({"kids": [
-                {"name": k.name} for k in self.context.model().kids
-                if k.name.casefold() not in gone]})
+            answers: dict[str, Any] = {"kids": [{"name": k.name} for k in self.context.model().kids
+                                                if k.name.casefold() not in gone]}
+            # The Household's town was the removed Wilma's: it becomes the next one's.
+            if self.context.data().get("city") in _towns(removed) and \
+                    (town := _city(_host(left[0]), None)):
+                answers["city"] = town
+            status, out = self.context.connect.save(answers)
         if status != HTTPStatus.OK:
             return status, out
         return status, {**out, "result": "removed", "signins": signins()}
@@ -191,6 +196,22 @@ def signins() -> list[dict[str, Any]]:
              "username": p.get("username"), "kids": setup_wilma.student_names(p)}
             for p in setup_wilma.profiles(setup_wilma.config_path())
             if isinstance(p.get("id"), str)]
+
+
+def _host(profile: dict[str, Any]) -> str | None:
+    """The host of the Wilma the CLI's `profile` signs in to, such as espoo.inschool.fi."""
+    url = str(profile.get("tenantUrl") or "")
+    return urlparse(url if "//" in url else f"//{url}").hostname
+
+
+def _towns(profile: dict[str, Any]) -> list[str]:
+    """The towns of the Wilma the CLI's `profile` signs in to, as Wilma's list and the presets
+    name them."""
+    host = _host(profile)
+    tenant = next((t for t in setup_wilma.tenants() or [] if urlparse(t["url"]).hostname == host),
+                  None)
+    preset = setup_wilma.WILMA_CITIES.get(host or "")
+    return [*(setup_wilma.towns_of(tenant) if tenant else []), *([preset] if preset else [])]
 
 
 def _city(address: str | None, town: str | None) -> str | None:

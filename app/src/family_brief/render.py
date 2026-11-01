@@ -64,8 +64,8 @@ def _problem(err: str) -> Literal["unreadable", "pairing", "permission", "login"
 
 
 def _short_reason(err: str, t: BriefText) -> str:
-    if signed_in := failed_sign_in(err):  # one sign-in of several, such as one of two Wilmas
-        place, why = signed_in
+    if failed := failed_sign_in(err):  # one sign-in of several, such as one of two Wilmas
+        place, why = failed
         return f"{place}: {_short_reason(why, t)}"
     return {"unreadable": t.message_unreadable,  # without the Message's id and the error, which are for the log
             "pairing": t.needs_pairing,
