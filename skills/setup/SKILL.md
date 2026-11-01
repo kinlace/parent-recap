@@ -194,7 +194,7 @@ Why: Parent Recap reads the school's and the clubs' mail in Gmail, only from the
 - They never give Parent Recap their Google password.
 - Instead they create an App Password: a separate 16-letter password that only Parent Recap uses, and that they can delete in their Google account at any time.
 - Google may ask them to sign in on its own page first.
-- On Google's App passwords page, they type **Parent Recap** as the app name. It's only a label, for finding the password later. Then they click Create, copy the 16 letters right away (Google shows them only once) and paste them into the Parent Recap dialog.
+- On Google's App passwords page, they type any app name, such as **Parent Recap**. It's only a label, for finding the password later. Then they click Create, copy the 16 letters right away (Google shows them only once) and paste them into the Parent Recap dialog.
 - If the page says the setting isn't available, they click **The page isn't available** in the dialog. That usually means 2-Step Verification is off.
 
 Then run `$FB setup gmail --address <address>`. It opens the App passwords page and the dialog, signs in to Gmail with what was pasted, and stores it only if Gmail accepts it.
