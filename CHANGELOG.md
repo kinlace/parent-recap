@@ -4,6 +4,19 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.10.1 · 2026-11-01
+
+### Fixed
+
+- When the first Brief can't be sent from the setup page, the page says why and what to do: press Confirm in the email from `brief@parentrecap.com` (with a button to send that email again), today's Briefs are used up so try again tomorrow, or the Gateway Key was refused. Only a gateway that's busy or out of reach still asks to check the internet connection.
+- The MyClub step explains the "Kalenteritilaukset" page MyClub sometimes opens, and where to make the calendar link there.
+- The Gmail step says an App Password's name can be anything and its 16 letters must be copied right away because Google shows them only once, and a rejected password comes with the two usual reasons and what to do.
+
+### Added
+
+- A parent who answered "Only me" on Welcome can still add their partner's email on the setup page's Gmail step, which also says where to go for more than two people.
+- A bug in the hosted version's sign-up page can no longer read a Hosted Household's Wilma password, MyClub links or Gateway Key.
+
 ## 0.10.0 · 2026-10-30
 
 Every Brief now comes from `brief@parentrecap.com` through the Parent Recap gateway, and Gmail is only connected if the family wants the school's mail read (ADR 0032). A family whose AI is its own Claude or ChatGPT no longer asks the team for a Gateway Key: Parent Recap gets a send-only one by itself, and each person who gets the Brief confirms their address once (ADR 0033).
