@@ -15,6 +15,14 @@ A maintainer reviews and merges it once CI is green. Security problems go throug
 
 1. Clone the repo (or your fork) and run `gh auth login` (issues and PRs go through the `gh` CLI).
 2. Open the folder in Claude Code or Codex. The dev-workflow skills (`/implement`, `/tdd`, `/grill-with-docs`, ...) load automatically from `.agents/skills/`; nothing to install.
+3. Build the test environment and run the tests, before and after changing code (in the `app/` folder):
+
+   ```bash
+   python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
+   python -m pytest
+   ```
+
+   The tests compare the Brief and the prompt word for word against `app/tests/golden/`; [`app/tests/README.md`](app/tests/README.md) says how to update them on purpose.
 
 ## How work flows
 
@@ -25,6 +33,13 @@ Work is issue-driven ([GitHub Issues](https://github.com/kinlace/parent-recap/is
 - **Bug**: `/triage` to file it, or `/diagnosing-bugs` to dig in.
 
 Unsure what comes next? Ask `/ask-matt`; it knows the whole flow and stays current with the skills.
+
+To work through issues labelled `ready-for-agent` unattended, one PR at a time, use `scripts/issue-loop.sh` (macOS, Claude Code). What it needs and how to run it are at the top of that file; try `scripts/issue-loop.sh --dry-run` first.
+
+## Outside the repository
+
+- The Google app file shared with pilot families is not in the repository or the package: the Parent Recap team sends it separately to pilot families who want Google Calendar mode, and `/parent-recap:manage` saves it to `~/.family/calendar_credentials.json`.
+- The homepage at [parentrecap.com](https://parentrecap.com) lives in [kinlace/parent-recap-site](https://github.com/kinlace/parent-recap-site), which deploys it and holds the domain's DNS script. It links to the README for installing and privacy, so keep the README's `#install`, `#privacy` and `#what-the-ai-sees` headings or update its links.
 
 ## Conventions
 

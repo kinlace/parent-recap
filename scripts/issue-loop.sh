@@ -52,7 +52,7 @@
 #
 # ── How to use it
 # Needs, on macOS: `gh auth login` with write access to the repo, Claude Code logged in on a
-# plan with Opus, app/.venv with the test deps (see "For maintainers" in README.md), and a
+# plan with Opus, app/.venv with the test deps (see Setup in CONTRIBUTING.md), and a
 # clean working tree. The loop owns this checkout while it runs (it switches to main and
 # pulls), so do other git work in a separate worktree. Run from anywhere in the repo.
 #
