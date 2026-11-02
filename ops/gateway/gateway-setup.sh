@@ -108,17 +108,22 @@ if [ -n "${PARENT_RECAP_RELEASE:-}" ]; then
   # As root, with a home of its own for this run only, so what install.sh notes
   # for a family's uninstall, and its PATH line, go with it. Run again for the
   # same version, it updates that release in place.
-  setup_home=$(mktemp -d)
-  (cd / && HOME=$setup_home PARENT_RECAP_HOME=$release bash "$PARENT_RECAP_RELEASE/install.sh")
-  (cd / && HOME=$setup_home "$release/app/.venv/bin/python" -m family_brief.setup_wilma install)
-  rm -rf "$setup_home"
-  # Compiled now, as no Household's user may write beside the program's code.
-  "$release/app/.venv/bin/python" -m compileall -q "$release/app/src" >/dev/null
   # install.sh keeps a family's folder to itself; this one holds only the
   # program, which every Household's user runs. A Household's data stays in its
-  # own home.
-  chown -R root:root "$release"
-  chmod -R u=rwX,go=rX "$release"
+  # own home. Made readable again however this ends, so a failed install of the
+  # version in use doesn't lock every Household out of it.
+  setup_home=$(mktemp -d)
+  shared_readable() {
+    rm -rf "$setup_home"
+    if [ -d "$release" ]; then chown -R root:root "$release" && chmod -R u=rwX,go=rX "$release"; fi
+  }
+  trap shared_readable EXIT
+  (cd / && HOME=$setup_home PARENT_RECAP_HOME=$release bash "$PARENT_RECAP_RELEASE/install.sh")
+  (cd / && HOME=$setup_home "$release/app/.venv/bin/python" -m family_brief.setup_wilma install)
+  # Compiled now, as no Household's user may write beside the program's code.
+  "$release/app/.venv/bin/python" -m compileall -q "$release/app/src" >/dev/null
+  shared_readable
+  trap - EXIT
   install -o root -g root -m 0755 "$here/parent-recap" "$shared/bin/parent-recap"
   previous=$(readlink "$shared/current" || true)
   ln -sfn "$version" "$shared/current.incoming"

@@ -222,10 +222,10 @@ Each deploy of a new version leaves the one before it on disk. Remove one that i
 ```sh
 cd / && sudo -u ph-0123abcd -H -- /usr/local/lib/parent-recap/bin/parent-recap schedule install
 sudo cat /home/ph-0123abcd/.config/systemd/user/parent-recap-daily.service    # ExecStart is /usr/local/lib/parent-recap/current/…
-sudo rm -rf /home/ph-0123abcd/ParentRecap/{app,runtime,wilma,baileys,bin,plugin}
+sudo rm -rf /home/ph-0123abcd/ParentRecap/{app,runtime,wilma,baileys,bin,plugin} /home/ph-0123abcd/.local/bin/parent-recap
 ```
 
-The first line rewrites its evening job, at the same time, to run the shared program; the last removes its own copy and keeps its archive and logs (`ParentRecap/*.md` and `ParentRecap/logs`). Then run its evening run and read `status.sh`, as after a deploy.
+The first line rewrites its evening job, at the same time, to run the shared program; the last removes its own copy, and the link to it install.sh made, and keeps its archive and logs (`ParentRecap/*.md` and `ParentRecap/logs`). Its `~/.family/install-record.json` still names the removed copy, which nothing on the server reads first: the program looks beside itself. Then run its evening run and read `status.sh`, as after a deploy.
 
 **Mark an older Household as hosted.** A Household made before the sign-up wrote `hosted: true` (#669) reads as one on a family's own computer, so its Brief's footer says so. When you upgrade its program, add the line at the top of its config (its user's `~/.family/config.yaml`, owner-only), keeping the file's owner and mode:
 

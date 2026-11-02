@@ -1,8 +1,7 @@
 """The Linux `profile`: a server the maintainers run Households on (ADR 0029), each with its data
 in its user's home and the program shared by all (ADR 0035), laid out as install.sh lays it out.
-The gateway is its only AI, so nothing is offered to
-choose, installed by the page or continued in a chat, and the setup page asks for neither the AI
-nor Gmail."""
+The gateway is its only AI, so nothing is offered to choose, installed by the page or continued
+in a chat, and the setup page asks for neither the AI nor Gmail."""
 from __future__ import annotations
 
 import platform
