@@ -36,7 +36,7 @@ First run `parent-recap doctor` in a new Terminal window; it points out most pro
 
 ## Upgrading
 
-Updating the plugin itself: see [Updating](../README.md#updating) in the README.
+Updating the plugin itself: see [Updating](install.md#updating).
 
 After the plugin is updated, the program also needs syncing to `~/ParentRecap/app`:
 

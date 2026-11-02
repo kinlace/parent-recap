@@ -1,128 +1,64 @@
 # Kinlace Parent Recap
 
-Every evening Parent Recap reads the places your kids' news comes from, has Claude or ChatGPT summarize it, and emails you a Brief in English, Chinese, Finnish or another language, each parent in their own:
+One short email every evening about your kids' school and clubs: what to know, what to do, and by when.
 
-- **Gmail**: only mail from the schools, teachers and clubs on your allowlist
-- **Wilma**: school messages, announcements and the timetable for the next school day
-- **WhatsApp**: the parent, teacher, team and hobby groups you pick (read as a Linked Device, paired on the setup page)
+[![At nine, one short email: a Parent Recap Brief on a phone](docs/images/demo.jpg)](https://claude.ai/artifact/AtWdKfZry9Sx6HQr7jiZXD?sk=nRgkz32VNcXDXlALg8p1ng#en)
+
+▶ [Watch the 1-minute demo](https://claude.ai/artifact/AtWdKfZry9Sx6HQr7jiZXD?sk=nRgkz32VNcXDXlALg8p1ng#en) ([中文](https://claude.ai/artifact/AtWdKfZry9Sx6HQr7jiZXD?sk=nRgkz32VNcXDXlALg8p1ng#zh)) · [Quick look](https://claude.ai/artifact/HyicZbTTofcoE5yUbMD8Vn?sk=61sFyRBsncIfWgod0Fc79Q#en) ([Suomi](https://claude.ai/artifact/HyicZbTTofcoE5yUbMD8Vn?sk=61sFyRBsncIfWgod0Fc79Q#fi), [中文](https://claude.ai/artifact/HyicZbTTofcoE5yUbMD8Vn?sk=61sFyRBsncIfWgod0Fc79Q#zh))
+
+Every evening Parent Recap reads the places your kids' news comes from, has your own Claude or ChatGPT write a short Brief, and emails it to you and your partner, each in your own language:
+
+- **Wilma**: school messages, announcements and the next school day's timetable
+- **WhatsApp**: the parent, team and hobby groups you pick
 - **MyClub**: the club's training and match calendar
+- **Gmail**: mail from the schools, teachers and clubs you pick
 
-The Brief is grouped by Kid and lists **Notices** (things to know) and **Action Items** (things to do, with due dates). New events come with the email as a calendar attachment you can add with one tap, or can be written straight into Google Calendar. Optional: Weekend Picks, family events in the Helsinki region recommended every Friday.
+The Brief is grouped by Kid, with Action Items and their due dates. New events come as a calendar attachment you add with one tap.
 
-The whole program runs on your own Mac, unless the maintainers host it for you (see [What you need](#what-you-need)). Data only moves between this Mac, the AI you chose (Claude or ChatGPT) and your mailbox; there is no other server. See [What the AI sees](#what-the-ai-sees) for what the AI gets.
-
-## What you need
-
-Have a Windows 11 PC instead of a Mac? [Parent Recap on Windows](docs/windows.md) says what it needs there, how to install it and what it doesn't do there yet.
-
-No computer that stays on? Ask the maintainers to host Parent Recap for you. They send an Invite Link, and on your phone you sign up with your Wilma login, your Recipients and, if you like, each Kid's MyClub link; the Brief then comes every evening from `brief@parentrecap.com`, written through the maintainers' gateway. You install nothing. Hosted, it reads Wilma and MyClub only, not WhatsApp or Gmail, and the maintainers keep your Wilma login and every Brief on their server until you ask them to remove you. [The hosted version](SECURITY.md#the-hosted-version) says exactly what they hold and who can read it. We host only the families we invite, and only a few for now.
-
-- A Mac with macOS 13.5 (Ventura) or newer: on an older macOS the install stops and asks you to update macOS or use another computer
-- A Mac that is on or asleep around 9 pm (the program wakes it up on schedule). A Mac with Apple Silicon (M1 or later) is recommended. An Intel Mac works for now, on a best-effort basis
-- Someone logged in to that Mac in the evening, even with the screen locked. The evening job only runs while you're logged in, and after a restart (a macOS update, a power cut) no Brief goes out until someone logs in again; an SSH login doesn't count. Log in once after each restart, or turn on automatic login: "No Brief after the Mac restarted" in [troubleshooting](docs/troubleshooting.md) says what that means for security
-- Every Brief is sent from Parent Recap's own address, `brief@parentrecap.com`, to any mailbox. Setup gets the key for sending by itself, and each person who gets the Brief confirms their address once, through a link in an email from that address. Only if Parent Recap's own AI writes your Brief do you need a Gateway Key from the Parent Recap team, which comes with your invitation
-- Either a Claude Pro or Max subscription with Claude Code installed, or a ChatGPT account on any plan, Free included, with the ChatGPT desktop app installed. Install Claude Code with its [native installer](https://code.claude.com/docs/en/setup), which keeps it up to date by itself: paste `curl -fsSL https://claude.ai/install.sh | bash` into Terminal
-- Optional: a Gmail account with two-step verification turned on, only if mail from the school and clubs arrives there. Parent Recap only reads it, from the senders you tick, and never sends from it
-- Optional: a Wilma parent account, WhatsApp on your phone, a MyClub account
+- Free and open source
+- Runs on your own Mac or Windows PC, with your Claude subscription or any ChatGPT plan, Free included
+- Setup takes about 10 minutes, and your first Brief arrives during setup
 
 ## Install
 
-Open Terminal (press ⌘Space, type Terminal and press Enter), paste this line and press Enter. It's the same for every family, with Claude or ChatGPT, and needs no GitHub account:
+On a Mac, open Terminal (press ⌘Space, type Terminal and press Enter), paste this line and press Enter:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kinlace/parent-recap/stable/get.sh)"
 ```
 
-It downloads the latest stable release into `~/ParentRecap/plugin`, installs the program from it and opens the setup page in your browser. Keep the Terminal window open until setup is done: the page runs from it, on your Mac only. Once you pick Claude or ChatGPT on the page, it also installs the Parent Recap plugin in Claude Code, or the two Parent Recap skills in Codex, so you can ask for changes in the chat later.
+On a Windows 11 PC, open PowerShell (press the Windows key, type PowerShell and press Enter) and paste this line instead:
 
-The line fetches [`get.sh`](get.sh) and everything else from the `stable` branch, which only ever holds a tested release. Running it again is safe: it updates what it installed and takes you back to the step setup got to.
-
-On a Windows 11 PC, paste a PowerShell line instead: see [Install](docs/windows.md#install) in Parent Recap on Windows.
-
-### Next
-
-The page walks you through setup in Finnish, English or Chinese: a few choices with defaults, then your Sources one at a time from a list (Wilma and MyClub can be skipped and added later), one page of what was found, and a preview of your first Brief before it's sent. Setup downloads about 230 MB, mostly the Python packages the program uses and its own Python and Node, so you don't need Homebrew, Python or Node of your own. Passwords go only into the page's own fields, on your Mac, and never into a chat. If you get stuck, **Continue in the chat** on any step hands setup over to Claude Code or Codex at the same step.
-
-Once installed, if something goes wrong or you want to change a setting (a new school year, a different group, another recipient), type `/parent-recap:manage` (`$parent-recap-manage` in Codex), or just say what you want.
-
-### Other ways to install
-
-If you'd rather not paste a line from the internet into Terminal, install by hand. Installed a version before 0.4.0 in Claude Code? It was called Family Brief: first type `/plugin uninstall family-brief@family-brief` and `/plugin marketplace remove family-brief` to remove it. Your settings and Briefs in `~/.family` and `~/ParentRecap` stay as they are.
-
-In Claude Code, type these one at a time, and choose **user** when `/plugin install` asks for a scope ("project" ties the plugin to the folder Claude Code started in):
-
-```
-/plugin marketplace add kinlace/parent-recap#stable
-/plugin install parent-recap@kinlace
-/parent-recap:setup
+```powershell
+irm https://raw.githubusercontent.com/kinlace/parent-recap/stable/install.ps1 | iex
 ```
 
-Or from the package file, for Claude Code or Codex:
+A setup page opens in your browser and walks you through the rest in Finnish, English or Chinese. Keep the Terminal or PowerShell window open until setup is done.
 
-1. Download `parent-recap-<version>.zip` from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) (under **Assets**). Safari unzips it by itself into a `parent-recap` folder in Downloads; in another browser, double-click the zip in Finder
-2. Move the `parent-recap` folder to `~/ParentRecap/plugin` (create the Parent Recap folder in your home folder if it doesn't exist)
-3. In Claude Code, type `/plugin marketplace add ~/ParentRecap/plugin`, `/plugin install parent-recap@kinlace` (choose **user**) and `/parent-recap:setup`. For Codex, run `bash ~/ParentRecap/plugin/install.sh --codex` in Terminal, then type `$parent-recap-setup` in a new Codex chat
+The computer needs to be on or asleep around 9 pm, with you logged in. No computer like that? The maintainers host Parent Recap for a few invited families, reading Wilma and MyClub only.
 
-## Updating
-
-- **Installed with the line**: paste it into Terminal again. With Claude Code, also type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`
-- **Installed by hand in Claude Code**: type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`
-- **From the package file**: unzip the zip from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) over `~/ParentRecap/plugin`, then in Claude Code type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`, or for Codex run `bash ~/ParentRecap/plugin/install.sh --codex` in Terminal again
-
-After updating, tell Claude or Codex "upgrade Parent Recap"; it syncs the program and runs a check.
-
-## Uninstalling
-
-Tell Claude or Codex "uninstall Parent Recap". It lists everything setup created on your Mac, asks whether to keep the archive of past Briefs, and removes the rest once you confirm. Your Gmail, Google, Wilma, WhatsApp and MyClub accounts stay as they are. Details are in [Uninstalling](docs/troubleshooting.md#uninstalling).
+More in [Installing Parent Recap](docs/install.md): what you need, the hosted version, other ways to install, updating and uninstalling. [On Windows](docs/windows.md) says what differs there.
 
 ## Privacy
 
-- Passwords and tokens are stored in the macOS Keychain; the config file `~/.family/config.yaml` is readable only by you
-- Gmail only scans senders on your allowlist, and skips mail you sent yourself, drafts, Promotions and Social
-- WhatsApp only keeps the messages of the groups you picked
-- Every Brief and the raw data it was built from are archived in `~/ParentRecap/`
+- Parent Recap runs on your own computer. Its only server is the maintainers' gateway, which sends the Brief from `brief@parentrecap.com` and keeps no copy
+- Passwords stay in your computer's own password store: the Keychain on a Mac, Credential Manager on Windows
+- Gmail is only read, and only mail from the senders you pick; WhatsApp only keeps the groups you pick
+- Every Brief and the messages it came from are archived on your computer, in `~/ParentRecap/`
 
-The `family-brief` command still works beside `parent-recap`, and `~/.family` keeps its name. Installed an earlier version, whose folder is `~/FamilyBrief`? Uninstall it with that version first (`~/FamilyBrief/app/.venv/bin/family-brief uninstall`), then paste the install line again: the install line stops and says so.
+Where all data goes and where each password lives: [SECURITY.md](SECURITY.md).
 
 ## What the AI sees
 
-Every evening Parent Recap sends the night's messages to your own Claude or ChatGPT, which writes the Brief. Before anything leaves your Mac, the program cuts down what the AI gets:
+Your own Claude or ChatGPT writes the Brief. Before anything leaves your computer:
 
-- Phone numbers, email addresses, links and the names of the people who send the messages (teachers, other parents, the people in your WhatsApp groups) become placeholders such as ⟦N1⟧. The Mac keeps what each one stands for, for that evening only, and puts the real values back before the Brief is written, so your Brief looks the same
-- Your Kids go as Kid A and Kid B, and the Brief shows their names again
-- Messages that look sensitive, such as ones about a diagnosis, special support, bullying or child welfare, don't reach the AI at all, unless they were sent to everyone, such as a school announcement. The Brief lists each one by Source, sender and subject, so you read it where it came from
-- From Google Calendar, only Kid-related events reach the AI with their title: the ones Parent Recap added and the ones whose title names a Kid. Every other event goes as a busy time with no title or place
-- Weekend Picks are chosen with your Kids as Kid A and Kid B, not their names
+- Other people's names, phone numbers, email addresses and links become placeholders, and your Kids go as Kid A and Kid B. Your computer puts the real ones back, so your Brief looks the same
+- Messages that look sensitive, such as ones about a diagnosis, special support, bullying or child welfare, don't reach the AI at all. The Brief says where to read them
 
-The first three are the AI filter. It is on by default, and you can turn it off by asking Claude or Codex, or keep it and ask for only your Kids' names to go as they are.
-
-This reduces what reaches the AI and doesn't guarantee anything. The rest of each message's text still reaches it, and so do your Kids' school and class, and any name the program can't tell is a person's, such as one that appears only inside a message.
-
-Claude and ChatGPT process this text in the US: their consumer plans offer no processing in the EU. By default both may also use your chats to train their models, including the ones that write the Brief. Parent Recap can't check this setting, so the setup page says where to turn it off: "Help improve Claude" under Settings > Privacy in Claude, or "Improve the model for everyone" under Settings > Data controls in ChatGPT, which OpenAI says also covers Codex tasks.
-
-The details are in [What the AI sees](docs/config.md#what-the-ai-sees), and the reasons in [ADR 0013](docs/adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md).
+This cuts down what the AI gets and guarantees nothing: the rest of each message still reaches it. Claude and ChatGPT process it in the US, and by default may use it to train their models. Turn that off under "Help improve Claude" in Claude's Settings > Privacy, or "Improve the model for everyone" in ChatGPT's Settings > Data controls. The details are in [What the AI sees](docs/config.md#what-the-ai-sees).
 
 ## Disclaimer
 
-This is an open-source tool made by parents for their own use. It is not affiliated with or endorsed by Visma (Wilma), Eepos, myClub, Meta (WhatsApp) or Google. Wilma is read through the unofficial, community-maintained [wilma CLI](https://github.com/aikarjal/wilmai), not an interface provided by Visma. If a Source stops working, contact the maintainers of Parent Recap or the wilma CLI, not these companies' customer service.
+An open-source tool made by parents for their own use, not affiliated with or endorsed by Visma (Wilma), Eepos, myClub, Meta (WhatsApp) or Google. Wilma is read through the unofficial, community-maintained [wilma CLI](https://github.com/aikarjal/wilmai). If a Source stops working, contact the maintainers of Parent Recap or the wilma CLI, not these companies.
 
-How data flows, where each password is stored, and how to report a security problem privately: see [SECURITY.md](SECURITY.md). Licensed under MIT, see [LICENSE](LICENSE).
-
-## For maintainers
-
-Run the tests before and after changing code (in the `app/` folder):
-
-```bash
-python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
-python -m pytest
-```
-
-The tests compare the Brief's text, HTML, `.ics` attachment and the full prompt sent to the model, word for word, against the versions saved in `app/tests/golden/`. If you meant to change the Brief's content or the prompt, run `python -m pytest --update-goldens`, check with `git diff app/tests/golden` that the changes are what you expected, and commit them together. See `app/tests/README.md` for details.
-
-To work through issues labelled `ready-for-agent` unattended, one PR at a time, use `scripts/issue-loop.sh` (macOS, Claude Code). What it needs and how to run it are at the top of that file; try `scripts/issue-loop.sh --dry-run` first.
-
-The Google app file shared with pilot families is not in the repository or the package: the Parent Recap team sends it separately to pilot families who want Google Calendar mode, and `/parent-recap:manage` saves it to `~/.family/calendar_credentials.json`.
-
-The homepage at [parentrecap.com](https://parentrecap.com) lives in [kinlace/parent-recap-site](https://github.com/kinlace/parent-recap-site), which deploys it and holds the domain's DNS script. It links to this README for installing and privacy, so keep the `#install`, `#privacy` and `#what-the-ai-sees` headings or update its links.
-
-To contribute a fix or an idea, see [CONTRIBUTING.md](CONTRIBUTING.md).
+To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md). To report a security problem privately, see [SECURITY.md](SECURITY.md#reporting-a-security-problem). Licensed under [MIT](LICENSE).
