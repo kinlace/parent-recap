@@ -4,6 +4,12 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.10.4 · 2026-11-02
+
+### Added
+
+- A family whose AI is its own Claude or ChatGPT and who connected Gmail can choose to send the Brief from their own Gmail, so nothing goes through Parent Recap's server.
+
 ## 0.10.3 · 2026-11-02
 
 ### Changed
