@@ -93,8 +93,8 @@ def cmd_invite(args: argparse.Namespace) -> int:
     if args.days < 1:
         print("❌ --days is at least 1.", file=sys.stderr)
         return 2
-    note = " ".join(args.note.split())  # one line, as status prints it
-    invite = store().mint(recipients, args.language, datetime.now(timezone.utc), args.days, note)
+    invite = store().mint(recipients, args.language, datetime.now(timezone.utc), args.days,
+                          args.note)
     from .server import PREFIX
     print(f"{base.rstrip('/')}{PREFIX}{invite.code}")
     print(f"It works once, until {invite.expires:%Y-%m-%d %H:%M} UTC.", file=sys.stderr)
