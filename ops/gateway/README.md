@@ -228,12 +228,6 @@ sudo rm -rf /home/ph-0123abcd/ParentRecap/{app,runtime,wilma,baileys,bin,plugin}
 
 The first line rewrites its evening job, at the same time, to run the shared program. The second adds `hosted: true` at the top of its config (`~/.family/config.yaml`, owner-only) when the line isn't there, as its user so the file keeps its owner and mode: a Household made before the sign-up wrote it (#669) reads as one on a family's own computer, and its Brief's footer says so. The last removes its own copy, and the link to it install.sh made, and keeps its archive and logs (`ParentRecap/*.md` and `ParentRecap/logs`). Its `~/.family/install-record.json` still names the removed copy, which nothing on the server reads first: the program looks beside itself. Then run its evening run and read `status.sh`, as after a deploy.
 
-**Mark an older Household as hosted.** A Household made before the sign-up wrote `hosted: true` (#669) reads as one on a family's own computer, so its Brief's footer says so. When you upgrade its program, add the line at the top of its config (its user's `~/.family/config.yaml`, owner-only), keeping the file's owner and mode:
-
-```sh
-sudo -u ph-0123abcd sed -i '1i hosted: true' /home/ph-0123abcd/.family/config.yaml
-```
-
 **Invite a Household.** On the server, with the Recipients the family gave you and the language each reads the Brief in. It prints the link; send it over a private channel:
 
 ```sh
