@@ -4,6 +4,16 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.10.2 · 2026-11-02
+
+### Added
+
+- A family whose Kids go to school in two towns, or who use two Wilma logins, can add both Wilmas on the setup page. The Brief reads both and says which one couldn't be read.
+
+### Changed
+
+- The README is now a short page with the 1-minute demo, the install line for Mac and Windows, and the privacy points; the install details moved to docs/install.md.
+
 ## 0.10.1 · 2026-11-01
 
 ### Fixed
