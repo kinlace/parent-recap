@@ -162,9 +162,10 @@ def test_a_night_nothing_could_be_read_says_to_pair_again():
     t = TEXT["en"]
 
     [mail] = mails(render.nothing_read({**NOTHING_READ, "whatsapp": NEEDS_PAIRING}, DATE, "Claude", t,
-                                       [(t, [PARENT])], PARENT, []))
+                                       [(t, [PARENT])], None, []))
 
-    assert without_unread_note(mail.text).endswith("\n• WhatsApp: needs a new pairing. Tell Claude “pair WhatsApp again” to fix it.")
+    assert mail.text.endswith("\n• WhatsApp: needs a new pairing. Tell Claude “pair WhatsApp again” to fix it."
+                              "\n\nParent Recap, running on your own computer")
 
 
 def fallback(t: BriefText) -> Brief:
