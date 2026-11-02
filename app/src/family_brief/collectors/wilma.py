@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -127,12 +127,12 @@ def list_kids(config: Path | None = None) -> list[dict[str, Any]]:
 
 # What a student's block lists its items under: `items` in wilma CLI 1.x, and from 2.0 what the
 # command lists.
-_ITEMS = ("items", "messages", "news", "lessons")
+_ITEMS = ("items", "messages", "news", "lessons", "exams")
 
 
 def _walk_students(payload: Any) -> list[tuple[dict, list[dict]]]:
     """Parse `{students: [{student: {...}, items: [...]}]}` shape, whose items are `messages`,
-    `news` or `lessons` from wilma CLI 2.0. Returns [(student_info, items), ...]."""
+    `news`, `lessons` or `exams` from wilma CLI 2.0. Returns [(student_info, items), ...]."""
     if not isinstance(payload, dict):
         return []
     out: list[tuple[dict, list[dict]]] = []
@@ -381,6 +381,75 @@ def _collect_schedule(state: State, wilmas: _Wilmas | None = None) -> list[Messa
     )]
 
 
+# How far ahead an exam reaches the Brief: the coming week (#5).
+EXAM_DAYS_AHEAD = 7
+
+
+def _collect_exams(state: State, wilmas: _Wilmas | None = None) -> list[Message]:
+    """Each upcoming exam in Wilma's exam list as a Message of its own, twice at most: the first
+    evening it is within EXAM_DAYS_AHEAD days, and again the evening before the school day it falls
+    on, so a Brief cites it like any other Wilma item. Its header carries the date, as the
+    timetable's does."""
+    payload = _run_or_log(["exams", "--limit", "30"])
+    if payload is None:
+        return []
+    wilmas = wilmas or _Wilmas(set())
+    if isinstance(payload, dict):
+        wilmas.log_problems(payload)
+    from datetime import date as _date, datetime as _dt
+    today = _dt.now().astimezone().date()
+    next_school_day = next(today + timedelta(days=n) for n in range(1, 8)
+                           if (today + timedelta(days=n)).weekday() < 5)
+    results: list[Message] = []
+    for student, items in _walk_students(payload):
+        scope = _scope(wilmas.of(student))
+        for it in items:
+            try:
+                day = _date.fromisoformat(str(_first(it, "date", default="")))
+            except ValueError:
+                continue
+            days_ahead = (day - today).days
+            if not 0 < days_ahead <= EXAM_DAYS_AHEAD:
+                continue
+            subject = _first(it, "subject", default="") or ""
+            name = _first(it, "name", default="") or ""
+            exam_id = _first(it, "examId", "id", default=None) or f"{day}:{subject}:{name}"
+            first_key = f"exam:{scope}:{exam_id}" if scope else f"exam:{exam_id}"
+            eve_key = f"{first_key}:eve"
+            if not state.has_seen_message("wilma", first_key):
+                key, reminder = first_key, False
+            elif day == next_school_day and not state.has_seen_message("wilma", eve_key):
+                key, reminder = eve_key, True
+            else:
+                continue
+            rel = {1: "tomorrow", 2: "day after tomorrow"}.get(days_ahead, f"in {days_ahead} days")
+            lines = [f"[{day.isoformat()} {_WEEKDAYS[day.weekday()]} · {rel}]"]
+            for label, value in (("Subject", subject), ("Exam", name),
+                                 ("Time", _first(it, "time", default=None)),
+                                 ("What to study", _first(it, "topic", default=None)),
+                                 ("Teacher", _first(it, "teacher", default=None))):
+                if value:
+                    lines.append(f"{label}: {value}")
+            if reminder:
+                lines.append("(Reminder: this exam was in an earlier Brief; it is on the next school day.)")
+            results.append(Message(
+                source="wilma",
+                external_id=key,
+                timestamp=datetime.now(timezone.utc),
+                subject=f"Exam: {subject}" + (f" – {name}" if name else ""),
+                body="\n".join(lines)[:MAX_BODY_CHARS],
+                chat_name="exams",
+                kid_hint=student.get("name"),
+                metadata={"wilma_kind": "exam", "raw_id": exam_id,
+                          "student_number": student.get("studentNumber"),
+                          "wilma_url": wilmas.of(student), "exam_date": day.isoformat(),
+                          "reminder": reminder},
+            ))
+            state.mark_message_seen("wilma", key)
+    log.info("wilma exams: %d to tell", len(results))
+    return results
+
+
 # How many people a Wilma message must be addressed to, by the names Wilma lists, to count as sent
 # to everyone (ADR 0013). A message about one child goes to its guardians (usually two, rarely
 # four), its teachers and the school's student welfare staff (principal, school social worker,
@@ -422,7 +491,6 @@ def link(m: Message) -> str | None:
 
 
 def collect(cfg: Config, state: State, kid_terms: list[str]) -> Collected:
-    from datetime import timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=cfg.wilma.lookback_hours)
     wilmas = _Wilmas({k.name.casefold() for k in cfg.kids})
     msgs = _collect_list(
@@ -442,4 +510,5 @@ def collect(cfg: Config, state: State, kid_terms: list[str]) -> Collected:
         wilmas=wilmas,
     )
     schedule = _collect_schedule(state, wilmas)
-    return Collected(messages=[*msgs, *news, *schedule])
+    exams = _collect_exams(state, wilmas)
+    return Collected(messages=[*msgs, *news, *schedule, *exams])
