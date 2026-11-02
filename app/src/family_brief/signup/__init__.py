@@ -46,6 +46,9 @@ def register(sub) -> None:
     invite.add_argument("--days", type=int, default=DAYS, help="How many days the link works")
     invite.add_argument("--url", default=None, help="The address the link starts with "
                         "(default: https://$GATEWAY_HOST)")
+    invite.add_argument("--note", default="", help="The maintainers' own note, such as whose "
+                        "the link is: signup status shows it beside the Household, the family's "
+                        "page never")
     invite.set_defaults(func=cmd_invite)
 
     from .status import cmd_health, cmd_status
@@ -90,7 +93,8 @@ def cmd_invite(args: argparse.Namespace) -> int:
     if args.days < 1:
         print("❌ --days is at least 1.", file=sys.stderr)
         return 2
-    invite = store().mint(recipients, args.language, datetime.now(timezone.utc), args.days)
+    note = " ".join(args.note.split())  # one line, as status prints it
+    invite = store().mint(recipients, args.language, datetime.now(timezone.utc), args.days, note)
     from .server import PREFIX
     print(f"{base.rstrip('/')}{PREFIX}{invite.code}")
     print(f"It works once, until {invite.expires:%Y-%m-%d %H:%M} UTC.", file=sys.stderr)

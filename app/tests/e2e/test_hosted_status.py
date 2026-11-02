@@ -64,6 +64,16 @@ def test_each_household_is_listed_with_its_last_run_and_doctor_s_statuses(signup
                                          [second, PROGRAM, "signup", "health"]]
 
 
+def test_the_note_the_invite_carried_is_beside_its_household(signup, capsys):
+    code = signup.invite(Recipient("parent@example.com", "fi"), note="Zhao Hanbo, test family")
+    assert submit(signup, code).status == 200
+    name = signup.store.households()[-1].user
+
+    _, out = report(signup, capsys)
+
+    assert out.startswith(f"✅ {name} (Zhao Hanbo, test family)  21:00  {FIRST_RUN}")
+
+
 def test_a_household_whose_last_run_failed_is_marked(signup, capsys, monkeypatch):
     name = sign_up(signup)
     from family_brief import run as evening
