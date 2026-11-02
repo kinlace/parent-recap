@@ -43,9 +43,9 @@ More in [Installing Parent Recap](docs/install.md): what you need, the hosted ve
 
 ## Privacy
 
-- Parent Recap runs on your own computer. Its only server is the maintainers' gateway, which sends the Brief from `brief@parentrecap.com` and keeps no copy
+- Parent Recap runs on your own computer. Its only server is the maintainers' gateway, which sends the Brief from `brief@parentrecap.com` and keeps no copy. If Claude or ChatGPT writes your Brief and you connected Gmail, you can send it from your own Gmail instead, and then no server of ours is used
 - Passwords stay in your computer's own password store: the Keychain on a Mac, Credential Manager on Windows
-- Gmail is only read, and only mail from the senders you pick; WhatsApp only keeps the groups you pick
+- Gmail is read only for mail from the senders you pick, and sends the Brief only if you choose that; WhatsApp only keeps the groups you pick
 - Every Brief and the messages it came from are archived on your computer, in `~/ParentRecap/`
 
 Where all data goes and where each password lives: [SECURITY.md](SECURITY.md).
