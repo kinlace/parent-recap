@@ -23,6 +23,7 @@ import base64
 import json
 import math
 import os
+import re
 import select
 import signal
 import subprocess
@@ -60,6 +61,9 @@ SESSIONS = "wilmai-sessions.json"
 VERSION_CHECK = "version-check.json"
 MIN_QUERY = 2
 MAX_TOWNS = 20
+# A town's own Wilma, which all its schools sign in through, is named after the town in its
+# list entry: "Espoon kaupunki", "Esbo stad", "Sipoon kunta". A school's own Wilma isn't (#688).
+TOWN_WILMA = re.compile(r"\b(kaupunki|kunta|stad|kommun)\b", re.IGNORECASE)
 # The Wilma address of each city in "City presets" in docs/config.md.
 WILMA_CITIES = {
     "espoo.inschool.fi": "Espoo",
@@ -239,7 +243,8 @@ def _tenant(raw: Any) -> dict[str, Any] | None:
 
 def search(listed: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
     """The entries `query` finds, by town in Finnish or Swedish first, then by name, each with
-    the town it's for: the one found, or the entry's first."""
+    the town it's for: the one found, or the entry's first. The towns' own Wilmas come first
+    among those found by town, marked `town_wide`, so nobody takes them for a single school."""
     needle = _fold(query)
     if len(needle) < MIN_QUERY:
         return []
@@ -248,10 +253,13 @@ def search(listed: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
         town = next((fi for fi, sv in t["towns"] if needle in _fold(fi) or needle in _fold(sv)),
                     None)
         if town is not None:
-            by_town.append({"url": t["url"], "name": t["name"], "town": town})
+            by_town.append({"url": t["url"], "name": t["name"], "town": town,
+                            "town_wide": bool(TOWN_WILMA.search(t["name"]))})
         elif needle in _fold(t["name"]):
             by_name.append({"url": t["url"], "name": t["name"],
-                            "town": t["towns"][0][0] if t["towns"] else None})
+                            "town": t["towns"][0][0] if t["towns"] else None,
+                            "town_wide": bool(TOWN_WILMA.search(t["name"]))})
+    by_town.sort(key=lambda t: not t["town_wide"])  # stable: the list's own order otherwise
     return (by_town + by_name)[:MAX_TOWNS]
 
 

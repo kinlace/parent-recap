@@ -4,6 +4,10 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+### Changed
+
+- In the Wilma step's town search, a town's own Wilma comes first and says that all the town's schools sign in through it, so nobody takes the list for a list of schools.
+
 ## 0.10.4 · 2026-11-02
 
 ### Added

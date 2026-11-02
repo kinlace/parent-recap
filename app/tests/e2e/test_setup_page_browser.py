@@ -177,6 +177,9 @@ def without_wilma_in_espoo(tab) -> None:
     town.fill("Espoo")
     # Each entry's name beside its radio button, where a long one wraps, with its town.
     expect(tab.locator("#wilma-towns label .name")).to_have_count(4)
+    # The town's own Wilma says all its schools use it, so nobody looks for their school (#688).
+    expect(tab.locator("#wilma-towns label").first).to_contain_text(text("wilma.town-wide"))
+    expect(tab.locator("#wilma-towns .town-wide")).to_have_count(2)
     tab.get_by_role("radio", name=re.compile("^Espoon kaupunki")).check()
     skip(tab, "wilma").click()
     expect(source_listed(tab, "wilma", "skipped")).to_be_visible()

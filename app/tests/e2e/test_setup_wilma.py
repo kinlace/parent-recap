@@ -867,6 +867,20 @@ def wilma_window_result(url: str) -> dict[str, Any]:
     return out
 
 
+def test_a_towns_own_wilmas_come_first_and_are_marked_as_the_whole_towns(harness, page,
+                                                                          wilma_cli):
+    """A tester took the four Espoo entries for four schools and missed their own (#688): the
+    town's own Wilmas, named after the town, come first and say all its schools use them."""
+    wilma_cli.install()
+
+    found = towns(page.url, "Espoo").json()["towns"]
+
+    assert [(t["url"], t["town_wide"]) for t in found] == [
+        ("https://esbosv.inschool.fi", True), (ESPOO, True),
+        ("https://espoonsteiner.inschool.fi", False), ("https://omnia.inschool.fi", False)]
+    assert [t["town_wide"] for t in towns(page.url, "steiner").json()["towns"]] == [False]
+
+
 @pytest.mark.parametrize("query", ["Espoo", "Esbo", "espoo", "ESBO", " Esbo "])
 def test_searching_espoo_or_esbo_finds_the_espoo_entries(harness, page, wilma_cli, query):
     wilma_cli.install()
