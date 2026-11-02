@@ -255,9 +255,9 @@ def test_it_serves_only_the_page_s_own_files(page):
         assert call(page.url, path).status == 404, path
     for path in ["", "page.js", "page.css", "text.json"]:
         assert call(page.url, path).status == 200, path
-    picture = call(page.url, "myclub-tilaa.webp")
+    picture = call(page.url, "myclub-uusi.webp")
     assert picture.status == 200 and picture.headers["content-type"] == "image/webp"
-    assert picture.body == (PAGE_DIR / "myclub-tilaa.webp").read_bytes()
+    assert picture.body == (PAGE_DIR / "myclub-uusi.webp").read_bytes()
 
 
 def test_the_page_loads_nothing_from_the_internet(page):

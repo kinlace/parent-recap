@@ -86,7 +86,7 @@ def test_builds_versioned_zip_with_the_plugin_root_under_one_folder(repo):
         # The Linked Device's own program, which the pinned Node runs on that tree.
         "parent-recap/app/src/family_brief/baileys/linked_device.mjs",
         # The setup page's picture of MyClub's page, which isn't text.
-        "parent-recap/app/src/family_brief/page/myclub-tilaa.webp",
+        "parent-recap/app/src/family_brief/page/myclub-uusi.webp",
         "parent-recap/skills/setup/SKILL.md",
         "parent-recap/skills/manage/SKILL.md",
     ):

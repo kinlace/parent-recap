@@ -336,10 +336,10 @@ def cmd_myclub(args: argparse.Namespace) -> int:
 
     try:
         url = secret_dialog.ask(
-            f"Paste {args.kid}'s MyClub calendar link.\n\nSign in to MyClub in your browser "
-            f"({setup_myclub.MYCLUB_URL}), open {args.kid}'s calendar, choose Calendar subscription "
-            f"(Tilaa kalenteri), choose Valitut jäsenet with only {args.kid} ticked, save, and "
-            "copy the link starting with webcal://.")
+            f"Paste {args.kid}'s MyClub calendar link.\n\nIn MyClub's New calendar subscription "
+            f"form ({setup_myclub.MYCLUB_URL}, after signing in), type any name, choose Selected "
+            f"member accounts (Valitut jäsentilit) with only {args.kid} ticked, leave Indication on "
+            "All, press Create, then Copy link, and copy the link starting with webcal://.")
     except secret_dialog.Cancelled:
         return report("cancelled", "The family closed the dialog. Run this again when they're "
                       f"ready: {again}")
@@ -349,18 +349,18 @@ def cmd_myclub(args: argparse.Namespace) -> int:
 
     result, extra = setup_myclub.save_link(path, args.kid, url)
     next_ = {
-        "not-a-myclub-link": "That wasn't a MyClub calendar link. Copy the link from Calendar "
-                             "subscription (Tilaa kalenteri) on the Kid's MyClub calendar, starting "
+        "not-a-myclub-link": "That wasn't a MyClub calendar link. Copy it with Copy link "
+                             "(Kopioi linkki) on MyClub's Calendar subscriptions page, starting "
                              f"with webcal://, and run this again: {again} --no-open",
         "link-failed": "The link didn't open, so it wasn't saved. Copy it again from MyClub and "
                        f"run this again: {again} --no-open",
-        "not-a-calendar": "The link opened a page, not a calendar, so it wasn't saved. Copy the "
-                          "link from Calendar subscription (Tilaa kalenteri) on the Kid's MyClub "
-                          f"calendar, not the browser's address bar: {again} --no-open",
+        "not-a-calendar": "The link opened a page, not a calendar, so it wasn't saved. Copy it "
+                          "with Copy link (Kopioi linkki) on MyClub's Calendar subscriptions "
+                          f"page, not from the browser's address bar: {again} --no-open",
         "save-failed": "The link works, but it couldn't be saved in the config (see error).",
         "same-link": f"That link is already saved for {extra.get('other_kid')}, so it wasn't saved "
-                     f"again. Each Kid needs their own link: in MyClub's Calendar subscription, "
-                     f"choose Valitut jäsenet, tick only {args.kid}, save, and copy that link: "
+                     f"again. Each Kid needs their own link: make a new calendar subscription, "
+                     f"choose Valitut jäsentilit, tick only {args.kid}, and copy that link: "
                      f"{again} --no-open",
     }.get(result)
     return report(result, next_, **({"kid": args.kid} if result == "saved" else {}), **extra)

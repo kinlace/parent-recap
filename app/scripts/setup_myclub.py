@@ -2,7 +2,7 @@
 """Save a Kid's MyClub calendar subscription link in ~/.family/config.yaml.
 
 The link carries a personal token, so it is pasted here in Terminal rather than in the agent chat.
-Find it in MyClub on the web: the Kid's calendar page → "Tilaa kalenteri / Calendar subscription".
+Make it in MyClub on the web: Calendar subscriptions → New calendar subscription, then Copy link.
 
 Usage:
   python scripts/setup_myclub.py "<Kid's name as in the config>" [--config PATH]

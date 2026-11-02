@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-MYCLUB_URL = "https://id.myclub.fi/flow/login"
+# MyClub's New calendar subscription form. Signed out, MyClub shows its sign-in page instead, and
+# after signing in its front page, so the steps say to open this again.
+MYCLUB_URL = "https://id.myclub.fi/flow/calendar_subscriptions/new"
 
 
 def save_link(path: Path, kid: str, url: str,
