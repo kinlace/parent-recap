@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import email
+import io
 import importlib.util
 import json
 import logging
@@ -51,11 +52,14 @@ class FakeBifrost:
     """Bifrost's virtual-key list as its admin API pages it: at most `limit` keys per page. A POST
     makes a key, as its admin API does."""
 
-    def __init__(self, keys: list[dict], down: bool = False) -> None:
+    def __init__(self, keys: list[dict], down: bool = False, refuse: dict | None = None) -> None:
         self.keys = keys
         self.down = down
+        self.refuse = refuse
         self.paths: list[str] = []
         self.made: list[dict] = []
+
+    base = "http://127.0.0.1:8080"
 
     def __call__(self, path: str, body: dict | None = None) -> dict:
         self.paths.append(path)
@@ -63,6 +67,9 @@ class FakeBifrost:
             raise urllib.error.URLError("connection refused")
         if body is not None:
             assert path == "/api/governance/virtual-keys"
+            if self.refuse is not None:
+                raise urllib.error.HTTPError(self.base + path, 400, "Bad Request", None,
+                                             io.BytesIO(json.dumps(self.refuse).encode()))
             key = {**body, "id": f"id-made-{len(self.made)}",
                    "value": f"sk-bf-made-{len(self.made)}"}
             self.made.append(body)
@@ -671,6 +678,75 @@ def test_print_keys_lists_every_key_with_what_it_can_do_and_never_its_value(
     for k in bifrost.keys:
         assert k["value"] not in "\n".join(lines)
 
+
+
+def test_new_key_makes_an_ai_key_with_the_readmes_provider_and_budget(capsys):
+    bifrost = FakeBifrost([])
+    admin = br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=bifrost)
+    br.new_key(admin, ["pilot-a", "Virtanen family"], today="2026-11-02")
+    assert bifrost.made == [{
+        "name": "ai-pilot-a",
+        "description": "Virtanen family, gateway AI, 2026-11-02",
+        "is_active": True,
+        "provider_configs": [{"provider": "anthropic", "weight": 1,
+                              "allowed_models": ["parent-recap"], "key_ids": ["*"]}],
+        "budgets": [{"max_limit": 0.10, "reset_duration": "1d"}],
+    }]
+    assert capsys.readouterr().out == "ai-pilot-a  sk-bf-made-0\n"
+
+
+def test_new_key_send_only_has_no_provider_and_no_budget(capsys):
+    bifrost = FakeBifrost([])
+    admin = br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=bifrost)
+    br.new_key(admin, ["pilot-b", "Korhonen family", "--send-only"], today="2026-11-02")
+    assert bifrost.made == [{"name": "send-pilot-b",
+                             "description": "Korhonen family, own Claude Code or Codex, 2026-11-02",
+                             "is_active": True}]
+    assert capsys.readouterr().out == "send-pilot-b  sk-bf-made-0\n"
+
+
+def test_new_key_fails_with_bifrosts_reply_when_no_key_was_made(capsys):
+    reply = {"error": {"message": "virtual key with name ai-pilot-a already exists"}}
+    admin = br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=FakeBifrost([], refuse=reply))
+    with pytest.raises(SystemExit) as failed:
+        br.new_key(admin, ["pilot-a", "Virtanen family"], today="2026-11-02")
+    assert "400" in str(failed.value.code) and "already exists" in str(failed.value.code)
+    assert capsys.readouterr().out == ""
+
+
+def test_new_key_fails_when_the_reply_has_no_key(capsys):
+    def fetch(path: str, body: dict | None = None) -> dict:
+        return {"message": "created"}
+    admin = br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=fetch)
+    with pytest.raises(SystemExit) as failed:
+        br.new_key(admin, ["pilot-a", "Virtanen family"], today="2026-11-02")
+    assert "created" in str(failed.value.code)
+    assert capsys.readouterr().out == ""
+
+
+def test_new_key_fails_when_bifrost_is_down():
+    admin = br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=FakeBifrost([], down=True))
+    with pytest.raises(SystemExit) as failed:
+        br.new_key(admin, ["pilot-a", "Virtanen family"], today="2026-11-02")
+    assert "connection refused" in str(failed.value.code)
+
+
+@pytest.mark.parametrize("label", ["", "Virtanen family", "pilot/a", "a" * 41])
+def test_new_key_takes_only_a_short_neutral_label(label):
+    bifrost = FakeBifrost([])
+    admin = br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=bifrost)
+    with pytest.raises(SystemExit):
+        br.new_key(admin, [label, "Virtanen family"], today="2026-11-02")
+    assert bifrost.made == []
+
+
+@pytest.mark.parametrize("holder", ["", "two\nlines"])
+def test_new_key_takes_who_holds_it_on_one_line(holder):
+    bifrost = FakeBifrost([])
+    admin = br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=bifrost)
+    with pytest.raises(SystemExit):
+        br.new_key(admin, ["pilot-a", holder], today="2026-11-02")
+    assert bifrost.made == []
 
 def test_over_http_a_key_is_asked_for_and_confirmed_and_the_caller_is_caddys(tmp_path, day):
     relay = make_relay(tmp_path, day, bifrost=FakeBifrost([]))
