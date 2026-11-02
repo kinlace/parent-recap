@@ -1,10 +1,12 @@
 # Kinlace Parent Recap
 
+**English** · [Suomi](README.fi.md) · [简体中文](README.zh-CN.md)
+
 One short email every evening about your kids' school and clubs: what to know, what to do, and by when.
 
 [![At nine, one short email: a Parent Recap Brief on a phone](docs/images/demo.jpg)](https://parentrecap.com/?lang=en#demo)
 
-▶ [Watch the 1-minute demo](https://parentrecap.com/?lang=en#demo) ([中文](https://parentrecap.com/?lang=zh#demo)) on [parentrecap.com](https://parentrecap.com), in English, Suomi and 中文
+▶ [Watch the 1-minute demo](https://parentrecap.com/?lang=en#demo) on [parentrecap.com](https://parentrecap.com/?lang=en)
 
 Every evening Parent Recap reads the places your kids' news comes from, has your own Claude or ChatGPT write a short Brief, and emails it to you and your partner, each in your own language:
 
