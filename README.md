@@ -2,9 +2,9 @@
 
 One short email every evening about your kids' school and clubs: what to know, what to do, and by when.
 
-[![At nine, one short email: a Parent Recap Brief on a phone](docs/images/demo.jpg)](https://claude.ai/artifact/AtWdKfZry9Sx6HQr7jiZXD?sk=nRgkz32VNcXDXlALg8p1ng#en)
+[![At nine, one short email: a Parent Recap Brief on a phone](docs/images/demo.jpg)](https://parentrecap.com/?lang=en#demo)
 
-▶ [Watch the 1-minute demo](https://claude.ai/artifact/AtWdKfZry9Sx6HQr7jiZXD?sk=nRgkz32VNcXDXlALg8p1ng#en) ([中文](https://claude.ai/artifact/AtWdKfZry9Sx6HQr7jiZXD?sk=nRgkz32VNcXDXlALg8p1ng#zh)) · [Quick look](https://claude.ai/artifact/HyicZbTTofcoE5yUbMD8Vn?sk=61sFyRBsncIfWgod0Fc79Q#en) ([Suomi](https://claude.ai/artifact/HyicZbTTofcoE5yUbMD8Vn?sk=61sFyRBsncIfWgod0Fc79Q#fi), [中文](https://claude.ai/artifact/HyicZbTTofcoE5yUbMD8Vn?sk=61sFyRBsncIfWgod0Fc79Q#zh))
+▶ [Watch the 1-minute demo](https://parentrecap.com/?lang=en#demo) ([中文](https://parentrecap.com/?lang=zh#demo)) on [parentrecap.com](https://parentrecap.com), in English, Suomi and 中文
 
 Every evening Parent Recap reads the places your kids' news comes from, has your own Claude or ChatGPT write a short Brief, and emails it to you and your partner, each in your own language:
 
