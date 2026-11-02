@@ -1,5 +1,7 @@
 # A Hosted Household is created by a sign-up form on the maintainers' server, as its own Linux user
 
+Superseded for where the program is installed by ADR 0035: every Hosted Household runs one shared copy, so a redeploy upgrades them all. Its own user, sign-up and data still follow this ADR.
+
 The setup page (ADR 0006) runs on the Household's own computer, bound to localhost with a one-time code, and walks through steps a Hosted Household doesn't have: the AI, Gmail, WhatsApp, the wake-up, the chat. A Hosted Household instead signs up on one page served from the maintainers' server under an Invite Link, which the maintainers mint and send. The page asks only what the maintainers can't know: the language, the Wilma town and login, the Recipients' addresses and languages, and optionally each Kid's MyClub link. The service behind it signs in to Wilma with that login and reads the Kids before anything is created, so a wrong password is said at once; then it creates the Household's own Linux user, mints its Gateway Key, writes its config and the wilma CLI's sign-in, installs its evening job with CPU and memory limits, has the first Brief made and sent to the Household, and retires the Invite Link. The family pastes no key: the Invite Link stands for the Household. Decided 2026-10-30.
 
 ## Considered Options
