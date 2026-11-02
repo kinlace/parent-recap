@@ -998,6 +998,23 @@ def test_footer_names_the_codex_backend(harness, tmp_path):
     assert {answers["backend"] for _, answers, _ in feedback_links(email.html)} == {"codex"}
 
 
+@pytest.mark.parametrize("hosted, line", [
+    (None, "Parent Recap, running on your own computer"),  # a config from before #669 has no `hosted`
+    (False, "Parent Recap, running on your own computer"),
+    (True, "Parent Recap hosted version, running on the parentrecap.com server"),
+])
+def test_footer_says_whether_the_brief_comes_from_the_hosted_version(harness, hosted, line):
+    normal_night(harness, "en")
+    if hosted is not None:
+        harness.config["hosted"] = hosted
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert email.text.rsplit("\n\n", 1)[1].startswith(line + "\n")
+    assert f">{line}</p>" in email.html
+
+
 def test_feedback_verdicts_match_the_forms_choices():
     script = (Path(__file__).resolve().parents[3] / "ops" / "feedback-form" / "create_feedback_form.gs").read_text()
     [choices] = re.findall(r"const VERDICTS = \[(.*?)\];", script, re.S)

@@ -228,6 +228,9 @@ class Config(BaseModel):
     timezone: str = "Europe/Helsinki"
     summary_language: Language = "en"   # the language of Recipients who haven't picked one
     city: str | None = None             # the Household's town, in Finnish, as in Wilma's list
+    # A Hosted Household, which `signup household` makes (ADR 0031), rather than one on the family's
+    # own computer; the Brief's footer says which (#669)
+    hosted: bool = False
     kids: list[Kid]
     gmail: GmailConfig = GmailConfig()
     wilma: WilmaConfig = WilmaConfig()

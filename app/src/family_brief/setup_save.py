@@ -184,6 +184,7 @@ class Answers(_Strict):
     sources: SourcesAnswer | None = None
     feedback: FeedbackAnswer | None = None
     progress: ProgressAnswer | None = None
+    hosted: bool | None = None      # only the hosted sign-up's `signup household` says so (#669)
 
     @field_validator("evening")
     @classmethod
@@ -289,6 +290,8 @@ def _merge(data: dict[str, Any], a: Answers, form: dict[str, Any] | None) -> Non
         data["summary_language"] = a.language
     if a.city is not None:
         data["city"] = a.city
+    if a.hosted is not None:
+        data["hosted"] = a.hosted
     if a.kids is not None:
         before = {k.get("name"): k for k in data.get("kids") or [] if isinstance(k, dict)}
         data["kids"] = [{**before.get(k.name, {}), **_given(k)} for k in a.kids]

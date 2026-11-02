@@ -162,9 +162,9 @@ def test_a_night_nothing_could_be_read_says_to_pair_again():
     t = TEXT["en"]
 
     [mail] = mails(render.nothing_read({**NOTHING_READ, "whatsapp": NEEDS_PAIRING}, DATE, "Claude", t,
-                                       [(t, [PARENT])], None, []))
+                                       [(t, [PARENT])], PARENT, []))
 
-    assert mail.text.endswith("\n• WhatsApp: needs a new pairing. Tell Claude “pair WhatsApp again” to fix it.")
+    assert without_unread_note(mail.text).endswith("\n• WhatsApp: needs a new pairing. Tell Claude “pair WhatsApp again” to fix it.")
 
 
 def fallback(t: BriefText) -> Brief:
@@ -251,6 +251,39 @@ def test_night_its_translation_failed(golden):
     check(golden, "normal_night.zh", first)
     check(golden, "failed_translation.en", partner)
     golden("normal_night.zh.ics", ics_for_golden(partner.attachments[0][1]))
+
+
+def every_kind(t: BriefText, hosted: bool) -> dict[str, tuple[str, str]]:
+    """Each kind of Brief, by name, as its first Recipient gets it, text and HTML: the normal one,
+    the fallback list, the nothing-read one and the first one, from setup."""
+    reply, sources = the_normal_night("en")
+    normal = brief_of(written(reply, sources), t, hosted=hosted)
+    failed = brief_of(fallback(t), t, model_wrote=False, hosted=hosted)
+    [normal_mail] = mails(render.brief(normal, [render.Version(t, [PARENT], normal.brief)], []))
+    [failed_mail] = mails(render.brief(failed, [render.Version(t, [PARENT], failed.brief)], []))
+    [nothing] = mails(render.nothing_read(NOTHING_READ, DATE, "Claude", t, [(t, [PARENT])], PARENT, [],
+                                          hosted))
+    first = render.preview(normal)
+    return {"normal": (normal_mail.text, normal_mail.html), "fallback": (failed_mail.text, failed_mail.html),
+            "nothing read": (nothing.text, nothing.html), "first": (first["text"], first["html"])}
+
+
+@pytest.mark.parametrize("language, hosted, line", [
+    ("en", False, "Parent Recap, running on your own computer"),
+    ("zh", False, "Parent Recap，在你家的电脑上运行"),
+    ("fi", False, "Parent Recap, joka toimii omalla tietokoneellasi"),
+    ("en", True, "Parent Recap hosted version, running on the parentrecap.com server"),
+    ("zh", True, "Parent Recap 托管版，在 parentrecap.com 的服务器上运行"),
+    ("fi", True, "Parent Recapin ylläpidetty versio, joka toimii parentrecap.com-palvelimella"),
+])
+def test_every_kind_of_brief_ends_saying_which_version_sent_it(language, hosted, line):
+    t = TEXT[language]
+    other = t.runs_on_own_computer if hosted else t.runs_hosted
+
+    for kind, (text, page) in every_kind(t, hosted).items():
+        assert text.rsplit("\n\n", 1)[1].startswith(line + "\n" + t.unread_sender.format(address=PARENT)), kind
+        assert f"<p style='color:#888;font-size:12px'>{html.escape(line)}</p>" in page, kind
+        assert other not in text and html.escape(other) not in page, kind
 
 
 def test_the_imessage_is_the_plain_text_brief_in_the_brief_language(golden):

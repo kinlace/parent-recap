@@ -29,6 +29,7 @@ import pytest
 import yaml
 
 from family_brief import setup_wilma
+from family_brief.brief_text import TEXT
 from family_brief.config import Config
 from family_brief.last_run import path as last_run_path
 from family_brief.signup import page, status
@@ -279,6 +280,9 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     assert "Parent Recap su 27.9." in by_reader["parent@example.com"].text
     assert "Parent Recap 9月27日 周日" in by_reader["partner@example.com"].text
     assert all(m.html for m in harness.sent)
+    # Each says, in its reader's language, that it comes from the hosted version.
+    assert TEXT["fi"].runs_hosted + "\n" in by_reader["parent@example.com"].text
+    assert TEXT["zh"].runs_hosted + "\n" in by_reader["partner@example.com"].text
     state = json.loads((user.home / ".family" / "state.json").read_text())
     assert set(state["brief_delivered_at"]) == {"parent@example.com", "partner@example.com"}
     cfg = Config.load(user.home / ".family" / "config.yaml")
@@ -286,6 +290,7 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     assert [(t.address, t.language) for t in cfg.email.to] == [
         ("parent@example.com", "fi"), ("partner@example.com", "zh")]
     assert cfg.summary_language == "en" and cfg.city == "Espoo"
+    assert cfg.hosted
     assert cfg.llm.backend == "gateway"
     assert cfg.wilma.enabled and not cfg.whatsapp.enabled
     assert cfg.google_calendar.mode == "ics"
