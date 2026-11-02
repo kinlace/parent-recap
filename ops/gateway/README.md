@@ -318,7 +318,7 @@ curl -s -u "$ADMIN" -X PUT localhost:8080/api/governance/virtual-keys/<id> \
   -H 'content-type: application/json' -d '{"description": "<Household>, <AI backend>, <date>"}'
 ```
 
-**See every key.** On the server, without the tunnel. One line a key: its name and `id`, `writes+sends` or `sends only` (whether Bifrost has a provider behind it), `on` or `off`, and today's spend against its daily budget. A key made on request (name `on-request-…`, description `made on request <date>`) is followed by the addresses bound to it and who confirmed. It prints no key's value:
+**See every key.** On the server, without the tunnel. One line a key: its name, who holds it (its `description`, in brackets) and its `id`, `writes+sends` or `sends only` (whether Bifrost has a provider behind it), `on` or `off`, and today's spend against its daily budget. A key made on request (name `on-request-…`, description `made on request <date>`) is followed by the addresses bound to it and who confirmed. It prints no key's value:
 
 ```sh
 sudo bash /usr/local/lib/brief-relay/keys.sh

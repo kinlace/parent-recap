@@ -918,8 +918,9 @@ def main() -> None:
 
 def print_keys(keys: Bifrost, path: Path) -> None:
     """`brief_relay.py keys`: every Gateway Key, one line each, for the maintainers (README
-    "Runbook"): its name and id, what it can do, whether it is on, and its spend today. A key made on
-    request is followed by its addresses and whether each confirmed. Never a key's value."""
+    "Runbook"): its name, who holds it and its id, what it can do, whether it is on, and its spend
+    today. A key made on request is followed by its addresses and whether each confirmed. Never a
+    key's value."""
     try:
         bound = json.loads(path.read_text(encoding="utf-8")).get("keys") or {}
     except (OSError, ValueError):
@@ -934,7 +935,11 @@ def print_keys(keys: Bifrost, path: Path) -> None:
                           for b in budgets) or "-"
         entry = bound.get(str(k.get("id")))
         made = f"  made {entry['made']}" if entry else ""
-        print(f"{k.get('name') or k.get('id')}  id={k.get('id')}  {kind}  {state}  "
+        # Who holds it is in its description, which only the admin API returns; the name stays a
+        # neutral label, as it is logged (README "Create a Gateway Key"). A key made on request
+        # says when it was made instead, and its addresses below.
+        holder = f" ({k['description']})" if k.get("description") and not entry else ""
+        print(f"{k.get('name') or k.get('id')}{holder}  id={k.get('id')}  {kind}  {state}  "
               f"today {spend}{made}")
         for r in (entry or {}).get("recipients", []):
             print(f"  {r['address']} ({r['language']}): "

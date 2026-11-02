@@ -658,6 +658,7 @@ def test_requests_for_keys_log_no_address_link_or_key(tmp_path, day, caplog):
 def test_print_keys_lists_every_key_with_what_it_can_do_and_never_its_value(
         tmp_path, day, capsys):
     ai = {**virtual_key(1, KEY), "name": "ai-household-1",
+          "description": "Virtanen family, gateway AI, 2026-10-20",
           "provider_configs": [{"provider": "anthropic"}],
           "budgets": [{"max_limit": 0.10, "current_usage": 0.03}]}
     off = {**virtual_key(2, "sk-bf-test-send-only", active=False), "name": "send-household-2"}
@@ -668,7 +669,9 @@ def test_print_keys_lists_every_key_with_what_it_can_do_and_never_its_value(
     br.print_keys(br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=bifrost),
                   tmp_path / "bindings.json")
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0] == "ai-household-1  id=id-1  writes+sends  on  today $0.03 of $0.10"
+    # Who holds it, from its description; a key made without one shows none.
+    assert lines[0] == ("ai-household-1 (Virtanen family, gateway AI, 2026-10-20)  id=id-1  "
+                        "writes+sends  on  today $0.03 of $0.10")
     assert lines[1] == "send-household-2  id=id-2  sends only  off  today -"
     # A key made on request: what it can do, then who confirmed.
     assert lines[2].startswith("on-request-") and "sends only  on" in lines[2]
