@@ -725,9 +725,19 @@ def _wilma_address(config: Path) -> str | None:
 
 def main(argv: list[str]) -> int:
     """`python -m family_brief.setup_wilma update`, which install.sh runs. It says what changed,
-    if anything, and never fails the install: a CLI that couldn't be updated keeps working."""
+    if anything, and never fails the install: a CLI that couldn't be updated keeps working.
+    `install` installs the CLI whether or not Wilma was connected, as the gateway's setup does
+    for the program every Hosted Household runs (ADR 0035), and fails when it couldn't."""
+    if argv == ["install"]:
+        got = install()
+        if got["result"] != "installed":
+            print(f"❌ The wilma CLI couldn't be installed: {got.get('reason') or got['result']}",
+                  file=sys.stderr)
+            return 1
+        print(f"✅ The wilma CLI {WILMA_CLI_VERSION} is installed.")
+        return 0
     if argv != ["update"]:
-        print("Usage: python -m family_brief.setup_wilma update", file=sys.stderr)
+        print("Usage: python -m family_brief.setup_wilma update|install", file=sys.stderr)
         return 2
     private_files.restrict_new_files()  # install.sh runs this with the shell's umask
     try:

@@ -6,10 +6,10 @@ which lists every Household's last run and doctor's statuses (ops/gateway/status
 `signup health` run as each; and `signup remove`, which removes a Household with everything of it
 (ops/gateway/remove.sh).
 
-The service runs as its own user, with Parent Recap installed under it for the wilma CLI that
-checks a family's sign-in. It reads from its environment (ops/gateway/signup.env.example):
-SIGNUP_RELEASE, the unpacked release whose install.sh installs the program for each Household,
-and Bifrost's admin login, which mints the Gateway Keys. The store, the Invite Links and the list
+The service runs as its own user, on the server's shared copy of the program (ADR 0035), whose
+wilma CLI checks a family's sign-in; every Household runs the same copy as its own user. It reads
+Bifrost's admin login, which mints the Gateway Keys, from its environment
+(ops/gateway/signup.env.example). The store, the Invite Links and the list
 of Households, is in `~/signup`, owner-only, unless SIGNUP_STORE says otherwise.
 """
 from __future__ import annotations
@@ -113,22 +113,18 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from .host import HostError
     from .host_linux import LinuxHost
     from .server import Service, SignupServer
-    release = os.environ.get("SIGNUP_RELEASE")
-    if not release or not (Path(release) / "install.sh").is_file():
-        log.error("SIGNUP_RELEASE isn't the folder of an unpacked release with its install.sh")
-        return 78  # a setting is missing, which restarting won't fix
     try:
         host = LinuxHost.from_env()
     except HostError as e:
         log.error("%s", e)
         return 78
-    # The service's own wilma CLI checks each family's sign-in.
+    # The shared copy's wilma CLI, which gateway-setup.sh installed, checks each family's sign-in.
     got = setup_wilma.install()
     if got["result"] != "installed":
         log.error("The wilma CLI didn't install, so no sign-in can be checked: %s",
                   got.get("reason") or got["result"])
         return 1
-    server = SignupServer(Service(store(), host, Path(release)), args.port)
+    server = SignupServer(Service(store(), host), args.port)
     log.info("The sign-up page is served on %s", server.url)
     server.serve_forever()
     return 0

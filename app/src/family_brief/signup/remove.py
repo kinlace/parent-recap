@@ -1,8 +1,9 @@
 """Removing a Hosted Household (ADR 0031): `parent-recap signup remove <user>`, which
 ops/gateway/remove.sh runs as the sign-up service's user, through the household host.
 
-In order: its evening jobs are removed by its own program as its own user, its Gateway Key is
-revoked, its user is deleted with its home, and it is taken off the store's list. The list goes
+In order: its evening jobs are removed by the shared program (ADR 0035) as its own user, its
+Gateway Key is revoked, its user is deleted with its home, and it is taken off the store's list.
+The shared program stays for the other Households. The list goes
 last, so a removal that stopped half-way still knows the Household and, run again, does the rest.
 """
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from .host import USER, HostError, HouseholdHost, program
+from .host import PROGRAM, USER, HostError, HouseholdHost
 from .invites import Store
 
 JOBS_SECONDS = 120
@@ -55,8 +56,7 @@ def _jobs(label: str, home: Path | None, host: HouseholdHost) -> None:
         print(f"{NONE} {label}: no user, so no jobs to stop")
         return
     try:
-        code, out = host.run_as(label, [str(program(home)), "schedule", "uninstall"], "",
-                                JOBS_SECONDS)
+        code, out = host.run_as(label, [PROGRAM, "schedule", "uninstall"], "", JOBS_SECONDS)
     except HostError as e:
         code, out = None, str(e)
     if code == 0:

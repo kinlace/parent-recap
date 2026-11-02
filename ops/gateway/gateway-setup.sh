@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Installs or upgrades Bifrost, the Brief relay and, given PARENT_RECAP_RELEASE,
-# the hosted version's sign-up service behind Caddy on any systemd Linux with
-# Caddy and python3 already installed (host-setup.sh does that on Ubuntu). Safe
-# to run again.
+# the program every Hosted Household runs and the hosted version's sign-up
+# service behind Caddy on any systemd Linux with Caddy and python3 already
+# installed (host-setup.sh does that on Ubuntu). Safe to run again.
 #
 #   scp -r ops/gateway <vm>:/tmp/
 #   ssh -t <vm> "sudo GATEWAY_HOST=<hostname> bash /tmp/gateway/gateway-setup.sh"
 #
-# With the sign-up service, from an unpacked release (or a checkout) copied over:
+# With the program and the sign-up service, from an unpacked release (or a
+# checkout) copied over:
 #
 #   ssh -t <vm> "sudo GATEWAY_HOST=<hostname> PARENT_RECAP_RELEASE=/tmp/parent-recap bash /tmp/gateway/gateway-setup.sh"
 #
@@ -82,30 +83,59 @@ systemctl daemon-reload
 systemctl enable brief-relay
 systemctl restart brief-relay
 
-# ── Sign-up service (/join/, README "Hosted Households", ADR 0031)
+# ── The shared program and the sign-up service (/join/, README "Hosted
+# Households", ADR 0031, ADR 0035)
 # Installed from PARENT_RECAP_RELEASE, the folder of an unpacked release of the
-# program (or a checkout): its install.sh installs the program under the
-# service's user and, for each new Household, under the Household's. Without it
-# the service is left as it is, and the Caddyfile's /join/ route answers 502.
+# program (or a checkout), once for the whole server: its install.sh puts it in
+# /usr/local/lib/parent-recap/<version> with its own Python and Node, and the
+# wilma CLI goes beside them. `current` then points at that release, and
+# bin/parent-recap runs the program through it: the sign-up service now, and
+# every Hosted Household from its next run. The release `current` pointed at
+# before stays, to switch back to. Without PARENT_RECAP_RELEASE both are left as
+# they are, and with no service yet the Caddyfile's /join/ route answers 502.
+shared=/usr/local/lib/parent-recap
 signup_lib=/usr/local/lib/parent-recap-signup
 signup_home=/var/lib/parent-recap-signup
 signup=no
 if [ -n "${PARENT_RECAP_RELEASE:-}" ]; then
   [ -f "$PARENT_RECAP_RELEASE/install.sh" ] || { echo "PARENT_RECAP_RELEASE has no install.sh" >&2; exit 1; }
+  version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$PARENT_RECAP_RELEASE/.claude-plugin/plugin.json" | head -1)
+  [[ "$version" =~ ^[0-9][0-9A-Za-z.+-]*$ ]] ||
+    { echo "PARENT_RECAP_RELEASE's .claude-plugin/plugin.json has no version" >&2; exit 1; }
   signup=yes
+  release=$shared/$version
+  install -d -m 0755 "$shared" "$shared/bin"
+  # As root, with a home of its own for this run only, so what install.sh notes
+  # for a family's uninstall, and its PATH line, go with it. Run again for the
+  # same version, it updates that release in place.
+  setup_home=$(mktemp -d)
+  (cd / && HOME=$setup_home PARENT_RECAP_HOME=$release bash "$PARENT_RECAP_RELEASE/install.sh")
+  (cd / && HOME=$setup_home "$release/app/.venv/bin/python" -m family_brief.setup_wilma install)
+  rm -rf "$setup_home"
+  # Compiled now, as no Household's user may write beside the program's code.
+  "$release/app/.venv/bin/python" -m compileall -q "$release/app/src" >/dev/null
+  # install.sh keeps a family's folder to itself; this one holds only the
+  # program, which every Household's user runs. A Household's data stays in its
+  # own home.
+  chown -R root:root "$release"
+  chmod -R u=rwX,go=rX "$release"
+  install -o root -g root -m 0755 "$here/parent-recap" "$shared/bin/parent-recap"
+  previous=$(readlink "$shared/current" || true)
+  ln -sfn "$version" "$shared/current.incoming"
+  mv -T "$shared/current.incoming" "$shared/current"
+  if [ -n "$previous" ] && [ "$previous" != "$version" ]; then
+    echo "the shared program is now $version, was $previous; to switch back: sudo ln -sfn $previous $shared/current"
+  fi
+
   getent group parent-recap-households >/dev/null || groupadd --system parent-recap-households
   id parent-recap-signup >/dev/null 2>&1 ||
     useradd --system --create-home --home-dir "$signup_home" --shell /usr/sbin/nologin parent-recap-signup
   chmod 700 "$signup_home"
-  # Root-owned and readable by all: every Household's install.sh runs from it.
+  # Before ADR 0035: the copy of the release each Household's install.sh ran
+  # from, and the program that installed under the service's own user. Households
+  # made then keep theirs until moved (README "Hosted Households").
+  rm -rf "$signup_lib/release" "$signup_home/ParentRecap"
   install -d -m 0755 "$signup_lib"
-  rm -rf "$signup_lib/release.incoming"
-  cp -R "$PARENT_RECAP_RELEASE" "$signup_lib/release.incoming"
-  rm -rf "$signup_lib/release.incoming/.git"
-  chown -R root:root "$signup_lib/release.incoming"
-  chmod -R u=rwX,go=rX "$signup_lib/release.incoming"
-  rm -rf "$signup_lib/release"
-  mv "$signup_lib/release.incoming" "$signup_lib/release"
   install -o root -g root -m 0755 "$here/household-user" "$signup_lib/household-user"
   install -o root -g root -m 0755 "$here/invite.sh" "$signup_lib/invite.sh"
   install -o root -g root -m 0755 "$here/status.sh" "$signup_lib/status.sh"
@@ -114,10 +144,7 @@ if [ -n "${PARENT_RECAP_RELEASE:-}" ]; then
   visudo -cf /etc/sudoers.d/parent-recap-signup.incoming
   mv /etc/sudoers.d/parent-recap-signup.incoming /etc/sudoers.d/parent-recap-signup
   install -d -m 0755 /etc/parent-recap-signup
-  (umask 077 && printf 'SIGNUP_RELEASE=%s\nGATEWAY_HOST=%s\n' "$signup_lib/release" "$GATEWAY_HOST" \
-    >/etc/parent-recap-signup/signup.env)
-  # The program under the service's own user, as a Household gets it.
-  (cd / && sudo -u parent-recap-signup -H -- bash "$signup_lib/release/install.sh")
+  (umask 077 && printf 'GATEWAY_HOST=%s\n' "$GATEWAY_HOST" >/etc/parent-recap-signup/signup.env)
   install -m 0644 "$here/parent-recap-signup.service" /etc/systemd/system/parent-recap-signup.service
   systemctl daemon-reload
   systemctl enable parent-recap-signup
@@ -151,8 +178,7 @@ fi
 up 8081 || { echo "brief-relay did not answer on /health; see: journalctl -u brief-relay" >&2; exit 1; }
 echo "brief-relay is up"
 if [ "$signup" = yes ]; then
-  # Its first start installs the wilma CLI with npm, which takes a while.
-  for _ in $(seq 1 10); do up 8082 && break; done
   up 8082 || { echo "the sign-up service did not answer on /health; see: journalctl -u parent-recap-signup" >&2; exit 1; }
-  echo "the sign-up service is up; mint an Invite Link with: sudo bash $signup_lib/invite.sh --help"
+  echo "the sign-up service is up on Parent Recap $version; mint an Invite Link with: sudo bash $signup_lib/invite.sh --help"
+  echo "every Hosted Household runs $version from its next run: run your own Household's now, before 21:00 (README \"Hosted Households\")"
 fi

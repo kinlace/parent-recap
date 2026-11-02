@@ -1,0 +1,10 @@
+#!/bin/sh
+# The program every Hosted Household runs as its own user, and the sign-up service as its own
+# (ADR 0035). gateway-setup.sh installs it as /usr/local/lib/parent-recap/bin/parent-recap, beside
+# the releases it installed and `current`, the link to the one in use; run it by that full path,
+# as signup.sudoers names it.
+#
+# It runs the program on its own venv's Python through `current`, not the release's own folder,
+# so the evening jobs `signup household` writes, which run that Python as this one was run, go
+# through `current` too: pointing it at another release switches every Household's next run.
+exec "${0%/bin/*}/current/app/.venv/bin/python" -m family_brief "$@"

@@ -17,6 +17,7 @@ import http.client
 import json
 import logging
 import re
+import shutil
 import stat
 import threading
 import time
@@ -33,7 +34,7 @@ from family_brief.brief_text import TEXT
 from family_brief.config import Config
 from family_brief.last_run import path as last_run_path
 from family_brief.signup import page, status
-from family_brief.signup.host import BASH
+from family_brief.signup.host import PROGRAM
 from family_brief.signup.invites import Recipient, Store
 from family_brief.signup.remove import remove
 from family_brief.signup.server import Service, SignupServer
@@ -67,12 +68,14 @@ class SignUp:
 
     def __init__(self, tmp: Path) -> None:
         self.store = Store(tmp / "signup")
-        release = tmp / "release"
-        release.mkdir()
-        (release / "install.sh").write_text("#!/bin/bash\n")
-        self.host = FakeHouseholdHost(tmp / "home", lambda home: WilmaCLI(home).install(), release)
+        # The server's shared copy (ADR 0035), as gateway-setup.sh leaves it: its venv, its own
+        # Node and the wilma CLI installed with it.
+        WilmaCLI(tmp / "lib").install()
+        shared = tmp / "lib" / "ParentRecap"
+        (shared / "app" / ".venv" / "bin").mkdir(parents=True)
+        self.host = FakeHouseholdHost(tmp / "home", shared)
         self.clock = Clock()
-        self.server = SignupServer(Service(self.store, self.host, release, now=self.clock), 0,
+        self.server = SignupServer(Service(self.store, self.host, now=self.clock), 0,
                                    listener=None if CAN_LISTEN else _PairedServer)
         self.url = self.server.url
 
@@ -173,16 +176,21 @@ def marks(html: str, language: str) -> str:
 
 
 class Held:
-    """Holds each command run as a Household until the test lets it end, as a slow server
-    takes its time."""
+    """Holds the Gateway Key's minting and each command run as a Household until the test lets
+    it end, as a slow server takes its time."""
 
     def __init__(self, host: FakeHouseholdHost, monkeypatch) -> None:
         self.ends = threading.Semaphore(0)
-        run_as = host.run_as
+        mint_key, run_as = host.mint_key, host.run_as
+
+        def held_key(name: str) -> str:
+            assert self.ends.acquire(timeout=30)
+            return mint_key(name)
 
         def held(name: str, argv: list[str], stdin: str, timeout: int) -> tuple[int, str]:
             assert self.ends.acquire(timeout=30)
             return run_as(name, argv, stdin, timeout)
+        monkeypatch.setattr(host, "mint_key", held_key)
         monkeypatch.setattr(host, "run_as", held)
 
     def end(self, commands: int = 1) -> None:
@@ -265,13 +273,14 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     assert '<html lang="en">' in html
     name, user = signup.user()
     key = signup.host.keys[name]
-    # The program installed, then `signup household` as the Household, the key on its stdin, and
-    # its first Brief made from the last three days, as the setup page's is.
-    program = str(user.home / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap")
+    # Nothing installed for it: the shared program's `signup household` as the Household, the key
+    # on its stdin, and its first Brief made from the last three days, as the setup page's is.
     assert [c[1:] for c in signup.host.commands] == [
-        [BASH, str(signup.server.service.release / "install.sh")],
-        [program, "signup", "household"],
-        [program, "run", "--first-brief", "--lookback-hours", "72"]]
+        [PROGRAM, "signup", "household"],
+        [PROGRAM, "run", "--first-brief", "--lookback-hours", "72"]]
+    assert sorted(p.name for p in user.home.iterdir()) == [".config", ".family", "ParentRecap"]
+    assert not (user.home / "ParentRecap" / "app").exists()  # its archive and logs only
+    assert not (user.home / "ParentRecap" / "runtime").exists()
     # The first Brief, from Parent Recap's own address with the Household's key, to each
     # Recipient in the language they read it in.
     assert {tuple(m.to) for m in harness.sent} == {("parent@example.com",), ("partner@example.com",)}
@@ -297,6 +306,8 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     assert (cfg.schedule.daily_hour, cfg.schedule.daily_minute) == (21, 0)
     assert user.secrets == {"gateway-key": key}
     assert user.jobs.installed() == {jobs.DAILY}
+    # Its evening job runs the shared copy's Python, so a redeploy upgrades its next run.
+    assert user.jobs.program(jobs.DAILY) == [str(signup.host.python), "-m", "family_brief", "run"]
     assert not any(k.myclub_ical_url for k in cfg.kids)  # no link given: MyClub off for both
     wilma = json.loads((user.home / ".config" / "wilmai" / "config.json").read_text())
     [profile] = wilma["profiles"]
@@ -363,7 +374,7 @@ def test_the_page_marks_each_step_as_it_ends(signup, monkeypatch, language):
     assert said(language, "updates") in html and said(language, "queued") not in html
     for loads in ("<script", "<link", "<img", "src="):
         assert loads not in html
-    held.end()  # install.sh
+    held.end()  # the Gateway Key
     until(signup, code, lambda html: marks(html, language) == "✅⏳⬜")
     held.end()  # signup household
     until(signup, code, lambda html: marks(html, language) == "✅✅⏳")
@@ -421,7 +432,7 @@ def test_a_phone_that_slept_through_the_steps_finds_how_they_ended(signup, monke
     r = result(signup, code)
     assert r.status == 200 and marks(text(r), "fi") == "✅✅✅"
     assert said("fi", "sent", time="21:00") in text(r)
-    assert len(signup.host.users) == 1 and len(signup.host.commands) == 3
+    assert len(signup.host.users) == 1 and len(signup.host.commands) == 2
     _not_found(request(signup.url, f"/join/{code}"))  # once seen, gone
 
 
@@ -585,14 +596,11 @@ def test_a_town_only_one_wilma_has_is_taken_as_typed(signup):
 
 
 @pytest.mark.parametrize("step, marked", [("create_user", "❌⬜⬜"), ("mint_key", "❌⬜⬜"),
-                                          ("install", "❌⬜⬜"), ("jobs", "✅❌⬜"),
-                                          ("first_brief", "✅✅❌")])
+                                          ("jobs", "✅❌⬜"), ("first_brief", "✅✅❌")])
 def test_a_step_that_fails_takes_back_what_was_made_and_the_link_stays_good(
         signup, harness, step, marked, caplog):
     code = signup.invite(Recipient("parent@example.com", "fi"))
-    if step == "install":
-        signup.host.install_exit = 1
-    elif step == "first_brief":
+    if step == "first_brief":
         harness.relay_answer = (502, {"error": "Email Delivery refused the message"})
     else:
         signup.host.fails = step
@@ -611,7 +619,7 @@ def test_a_step_that_fails_takes_back_what_was_made_and_the_link_stays_good(
     # The link is unused: it signs up once the step works again.
     assert request(signup.url, f"/join/{code}").status == 200
     assert "wasn't created" in caplog.text
-    signup.host.fails, signup.host.install_exit, harness.relay_answer = None, 0, (200, {"sent": 1})
+    signup.host.fails, harness.relay_answer = None, (200, {"sent": 1})
     assert submit(signup, code).status == 200
 
 
@@ -639,8 +647,9 @@ def test_a_first_brief_one_recipient_didn_t_get_takes_the_sign_up_back(
 
 def test_a_household_the_program_couldn_t_make_is_taken_back(signup):
     code = signup.invite(Recipient("parent@example.com", "fi"))
-    # The install left no wilma CLI and no Node, so `signup household` can't install it.
-    signup.host.installs = lambda home: None
+    # A shared copy without its Node and wilma CLI, so `signup household` can't install it.
+    shutil.rmtree(signup.host.shared / "runtime")
+    shutil.rmtree(signup.host.shared / "wilma")
 
     r = submit(signup, code)
 
@@ -758,12 +767,12 @@ def test_a_household_is_removed_jobs_key_user_and_home_in_that_order(signup, cap
 
     assert remove(name, signup.store, signup.host) == 0
 
-    program = str(user.home / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap")
-    assert signup.host.log == [("run_as", name, program, "schedule", "uninstall"),
+    assert signup.host.log == [("run_as", name, PROGRAM, "schedule", "uninstall"),
                                ("revoke_key", name), ("remove_user", name)]
     assert user.jobs.installed() == set()
     assert not user.home.exists()
-    # Nothing of it stays; the other Household is as it was.
+    # Nothing of it stays; the other Household and the shared copy are as they were.
+    assert signup.host.python.parent.is_dir() and (signup.host.shared / "wilma").is_dir()
     assert list(signup.host.users) == [other] and list(signup.host.keys) == [other]
     assert signup.host.users[other].jobs.installed() == {jobs.DAILY}
     assert [h.user for h in signup.store.households()] == [other]
@@ -771,7 +780,7 @@ def test_a_household_is_removed_jobs_key_user_and_home_in_that_order(signup, cap
     assert [line.split(" ", 1)[0] for line in out] == ["✅"] * 4, out
     assert "jobs" in out[0] and "Gateway Key" in out[1] and str(user.home) in out[2]
     assert all(name in line for line in out)
-    assert status.report(signup.store, signup.host, homes=signup.host.root) == 0
+    assert status.report(signup.store, signup.host) == 0
     listed = capsys.readouterr().out
     assert f" {other} " in listed and name not in listed
 

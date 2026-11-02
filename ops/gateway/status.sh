@@ -12,4 +12,4 @@ set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)" >&2; exit 1; }
 cd /
 exec sudo -u parent-recap-signup -H -- \
-  /var/lib/parent-recap-signup/ParentRecap/app/.venv/bin/parent-recap signup status "$@"
+  /usr/local/lib/parent-recap/bin/parent-recap signup status "$@"
