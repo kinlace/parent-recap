@@ -44,6 +44,7 @@ To work through issues labelled `ready-for-agent` unattended, one PR at a time, 
 ## Conventions
 
 - Conventional commits: `type: concise description` (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`).
+- `README.fi.md` and `README.zh-CN.md` translate the README for Finnish and Chinese families: change them together with it. The demo video is in English and Chinese, so the Finnish README links to the English one.
 - Tests and golden regeneration: see [`app/tests/README.md`](app/tests/README.md).
 - Coverage, as CI's macOS job reports it (lines and branches per module, no threshold): from `app/`, `python -m pytest --cov --cov-report=term`.
 
