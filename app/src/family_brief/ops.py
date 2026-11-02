@@ -252,7 +252,7 @@ def _check_gmail_sends(cfg: Config, add) -> None:
     stops reading that Gmail too; `no-password` when there's none to use."""
     from .actions import email as email_action
     address = cfg.gmail.username or ""
-    outcome, detail = email_action.check_gmail(address)
+    outcome, detail = email_action.check_gmail_sends(address)
     if outcome == email_action.WORKS:
         add(OK, "gmail-sends", f"the Brief is sent from the Household's own Gmail, {address}, which "
             "takes the App Password; the gateway isn't used")

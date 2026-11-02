@@ -145,7 +145,7 @@ def gmail(from_addr: str, subject: str, body_text: str, to_addrs: list[str],
              "%d attachments)", subject, len(to_addrs), len(body_text), len(attachments or []))
 
 
-def check_gmail(from_addr: str) -> tuple[str, str]:
+def check_gmail_sends(from_addr: str) -> tuple[str, str]:
     """Whether Gmail would send from `from_addr`: signs in to its SMTP server with the App
     Password and out again, sending nothing. WORKS, REJECTED, NO_PASSWORD or NO_ANSWER, with what
     was found."""

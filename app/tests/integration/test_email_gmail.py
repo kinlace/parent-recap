@@ -239,7 +239,7 @@ def test_with_no_recipients_nothing_is_sent(smtp, system, monkeypatch):
 
 
 def test_the_check_signs_in_and_out_sending_nothing(smtp):
-    assert email_action.check_gmail(SENDER)[0] == email_action.WORKS
+    assert email_action.check_gmail_sends(SENDER)[0] == email_action.WORKS
 
     [conn] = smtp.connections
     assert conn.calls == ["login", "quit"]
@@ -248,7 +248,7 @@ def test_the_check_signs_in_and_out_sending_nothing(smtp):
 def test_the_check_says_a_refused_app_password(smtp):
     smtp.refuse_login = True
 
-    outcome, detail = email_action.check_gmail(SENDER)
+    outcome, detail = email_action.check_gmail_sends(SENDER)
 
     assert outcome == email_action.REJECTED
     assert "neither read that Gmail nor send the Brief from it" in detail

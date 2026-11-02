@@ -124,6 +124,8 @@ class Gmail(Phase):
         cfg = self.context.model()
         if not send_key.may_request(cfg):
             return HTTPStatus.BAD_REQUEST, _key_refused()
+        if cfg.sends_from_gmail():  # nobody confirms anything for its own Gmail (ADR 0034)
+            return HTTPStatus.OK, {"result": "not-needed", "unconfirmed": [], "mailed": []}
         return HTTPStatus.OK, confirmation(send_key.ensure(cfg, resend=answer.resend))
 
     def save_send_key(self, raw: Any) -> Reply:
