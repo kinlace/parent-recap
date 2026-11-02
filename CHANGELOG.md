@@ -7,6 +7,7 @@ What changes for families in each release, collected from the `What changes for 
 ### Added
 
 - The Brief tells each Wilma exam in the coming week, with its date, time when the school gives one, subject and what to study, and reminds you again the evening before.
+- The Brief tells the lesson notes teachers record in Wilma: unexplained absences and remarks such as forgotten books or homework, with a short line for explained absences. Praise is left out, and a note recorded the day after the lesson still reaches the next Brief.
 
 ### Changed
 

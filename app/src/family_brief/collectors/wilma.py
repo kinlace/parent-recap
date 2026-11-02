@@ -127,12 +127,12 @@ def list_kids(config: Path | None = None) -> list[dict[str, Any]]:
 
 # What a student's block lists its items under: `items` in wilma CLI 1.x, and from 2.0 what the
 # command lists.
-_ITEMS = ("items", "messages", "news", "lessons", "exams")
+_ITEMS = ("items", "messages", "news", "lessons", "exams", "notes")
 
 
 def _walk_students(payload: Any) -> list[tuple[dict, list[dict]]]:
     """Parse `{students: [{student: {...}, items: [...]}]}` shape, whose items are `messages`,
-    `news`, `lessons` or `exams` from wilma CLI 2.0. Returns [(student_info, items), ...]."""
+    `news`, `lessons`, `exams` or `notes` from wilma CLI 2.0. Returns [(student_info, items), ...]."""
     if not isinstance(payload, dict):
         return []
     out: list[tuple[dict, list[dict]]] = []
@@ -450,6 +450,76 @@ def _collect_exams(state: State, wilmas: _Wilmas | None = None) -> list[Message]
     return results
 
 
+# How many days back lesson notes are read: teachers often record a lesson the next day (#697).
+NOTE_DAYS_BACK = 2
+
+
+def _collect_notes(state: State, wilmas: _Wilmas | None = None) -> list[Message]:
+    """Each lesson note (merkintä) teachers recorded in the last NOTE_DAYS_BACK days, such as an
+    absence, lateness, missing books or praise, as a Message of its own, once. A note is known by
+    its date, lesson, subject, kind and first words, so one recorded the day after its lesson still
+    reaches the next Brief, and none comes twice."""
+    from datetime import date as _date, datetime as _dt
+    today = _dt.now().astimezone().date()
+    since = today - timedelta(days=NOTE_DAYS_BACK)
+    payload = _run_or_log(["notes", "--from", since.isoformat(), "--to", today.isoformat()])
+    if payload is None:
+        return []
+    wilmas = wilmas or _Wilmas(set())
+    if isinstance(payload, dict):
+        wilmas.log_problems(payload)
+    results: list[Message] = []
+    for student, items in _walk_students(payload):
+        scope = _scope(wilmas.of(student))
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            try:
+                day = _date.fromisoformat(str(_first(it, "date", default="")))
+            except ValueError:
+                continue
+            if not since <= day <= today:
+                continue
+            start = str(_first(it, "start", default="") or "")
+            subject = str(_first(it, "subject", default="") or "")
+            kind = str(_first(it, "typeLabel", default="") or "")
+            text = " ".join(str(_first(it, "note", default="") or "").split())
+            fingerprint = "|".join((str(student.get("studentNumber") or student.get("name") or ""),
+                                    day.isoformat(), start, subject, kind, text[:60]))
+            note_id = hashlib.sha1(fingerprint.encode()).hexdigest()[:12]
+            key = f"note:{scope}:{note_id}" if scope else f"note:{note_id}"
+            if state.has_seen_message("wilma", key):
+                continue
+            ago = (today - day).days
+            rel = {0: "today", 1: "yesterday"}.get(ago, f"{ago} days ago")
+            end = _first(it, "end", default=None)
+            lesson = f"{start}–{end}" if start and end else start
+            teacher = _first(it, "teacher", default=None)
+            lines = [f"[{day.isoformat()} {_WEEKDAYS[day.weekday()]} · {rel}]"]
+            for label, value in (("Lesson", lesson), ("Subject", subject), ("Kind", kind),
+                                 ("Teacher", teacher)):
+                if value:
+                    lines.append(f"{label}: {value}")
+            lines.append(f"Note: {text}" if text else
+                         "Note: (no text in Wilma; the note is on Wilma's attendance page)")
+            results.append(Message(
+                source="wilma",
+                external_id=key,
+                timestamp=datetime.now(timezone.utc),
+                sender=str(teacher) if teacher else None,
+                subject=f"Lesson note: {subject}" + (f" – {kind}" if kind else ""),
+                body="\n".join(lines)[:MAX_BODY_CHARS],
+                chat_name="notes",
+                kid_hint=student.get("name"),
+                metadata={"wilma_kind": "note", "raw_id": note_id,
+                          "student_number": student.get("studentNumber"),
+                          "wilma_url": wilmas.of(student), "note_date": day.isoformat()},
+            ))
+            state.mark_message_seen("wilma", key)
+    log.info("wilma lesson notes: %d to tell", len(results))
+    return results
+
+
 # How many people a Wilma message must be addressed to, by the names Wilma lists, to count as sent
 # to everyone (ADR 0013). A message about one child goes to its guardians (usually two, rarely
 # four), its teachers and the school's student welfare staff (principal, school social worker,
@@ -511,4 +581,5 @@ def collect(cfg: Config, state: State, kid_terms: list[str]) -> Collected:
     )
     schedule = _collect_schedule(state, wilmas)
     exams = _collect_exams(state, wilmas)
-    return Collected(messages=[*msgs, *news, *schedule, *exams])
+    notes = _collect_notes(state, wilmas)
+    return Collected(messages=[*msgs, *news, *schedule, *exams, *notes])
