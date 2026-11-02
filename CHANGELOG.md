@@ -10,6 +10,8 @@ What changes for families in each release, collected from the `What changes for 
 
 ### Changed
 
+- The Brief always says when tomorrow's school day starts and ends, from Wilma's timetable.
+- Events from MyClub and other Sources are told in the Brief's text on the evening before they happen, even when an earlier Brief already told them; events further ahead are only in the calendar.
 - In the Wilma step's town search, a town's own Wilma comes first and says that all the town's schools sign in through it, so nobody takes the list for a list of schools.
 
 ## 0.10.4 · 2026-11-02
