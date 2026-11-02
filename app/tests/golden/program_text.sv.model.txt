@@ -91,6 +91,8 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "new_events": "📅 New calendar events",
   "new_events_line": "📅 New calendar events:",
   "written_by": "Written by {assistant}",
+  "runs_hosted": "Parent Recap hosted version, running on the parentrecap.com server",
+  "runs_on_own_computer": "Parent Recap, running on your own computer",
   "unread_sender": "This email comes from an address nobody reads. To reply, write to {address}, who set up Parent Recap.",
   "junk_at_first": "Found this in Junk? Mark it \"Not junk\" once, and the rest arrive in the inbox: Parent Recap's address is new, so Hotmail and Outlook.com may junk its first Brief.",
   "untitled": "(untitled)",

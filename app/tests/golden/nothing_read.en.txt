@@ -6,4 +6,5 @@
 • Wilma: wilma: request timed out. If the Mac was offline, this fixes itself. If it happens again, tell Claude “check Parent Recap”.
 • WhatsApp: macOS permission denied. Tell Claude “Parent Recap can't read WhatsApp” to fix it.
 
+Parent Recap, running on your own computer
 This email comes from an address nobody reads. To reply, write to parent@example.com, who set up Parent Recap.

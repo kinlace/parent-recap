@@ -112,15 +112,16 @@ def nothing_read_text(coverage: dict[str, dict], t: BriefText, assistant: str) -
 
 def nothing_read(coverage: dict[str, dict], date_str: str, assistant: str, t: BriefText,
                  readers: list[tuple[BriefText, list[str]]], write_to: str | None,
-                 imessage_to: list[str]) -> list[Outgoing]:
+                 imessage_to: list[str], hosted: bool = False) -> list[Outgoing]:
     """What goes out on a night when no Source could be read: a mail to the Recipients of each
-    language among the `readers` saying so in it, and the iMessage in the Brief's language `t`."""
+    language among the `readers` saying so in it, and the iMessage in the Brief's language `t`.
+    Each mail's footer says which version sent it, the hosted one if `hosted`."""
     def whole(t: BriefText) -> str:
         return f"👨‍👩‍👧‍👦 {PRODUCT_NAME} {_header_date(date_str, t)}\n\n" + nothing_read_text(coverage, t, assistant)
     out: list[Outgoing] = []
     for reader_t, to in readers:
         note = _h.escape(nothing_read_text(coverage, reader_t, assistant)).replace("\n", "<br>")
-        sender = unread_sender(reader_t, write_to)
+        sender = end_note(reader_t, hosted, unread_sender(reader_t, write_to))
         out.append(Mail(to=to, subject=f"{PRODUCT_NAME} · {date_str}", text=_with_note(whole(reader_t), sender),
                         html=_HTML_PAGE
                         + f"<h2>👨‍👩‍👧‍👦 {PRODUCT_NAME} · {_h.escape(_header_date(date_str, reader_t))}</h2>"
@@ -330,8 +331,8 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
 
 
 def _small(text: str) -> str:
-    """A footer line, or nothing for none."""
-    return f"<p style='color:#888;font-size:12px'>{_h.escape(text)}</p>" if text else ""
+    """Footer lines, each its own paragraph, or nothing for none."""
+    return "".join(f"<p style='color:#888;font-size:12px'>{_h.escape(line)}</p>" for line in text.splitlines())
 
 
 def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: str,
@@ -422,6 +423,7 @@ class Night:
     # Where a Recipient writes instead of replying, when the Brief comes from an address nobody
     # reads (the gateway's, ADR 0028); None when the Household's own Gmail sends it.
     write_to: str | None = None
+    hosted: bool = False  # a Hosted Household's, which the footer says, or the family's own computer's
 
     @property
     def subject(self) -> str:
@@ -462,6 +464,12 @@ def unread_sender(t: BriefText, write_to: str | None) -> str:
     return t.unread_sender.format(address=write_to) if write_to else ""
 
 
+def end_note(t: BriefText, hosted: bool, sender: str) -> str:
+    """The last lines of every Brief: which version sent it, the hosted one or the family's own
+    computer's, then the `sender` line, if any."""
+    return "\n".join(line for line in (t.runs_hosted if hosted else t.runs_on_own_computer, sender) if line)
+
+
 # Hotmail and Outlook.com junk mail from Parent Recap's new address at first (#524). The setup
 # page's script says so beside an address it matches too (JUNKS_AT_FIRST in page.js).
 JUNKS_AT_FIRST = re.compile(r"@(hotmail|outlook|live|msn)\.[a-z.]+$", re.I)
@@ -491,16 +499,15 @@ def mail(night: Night, v: Version) -> Mail:
                     ics_action.build(night.ics_events, night.tz, night.stamp, v.translated_event),
                     "text/calendar")] if night.ics_events else []
     links = night.form.link if night.form and night.model_wrote else None
+    note = end_note(t, night.hosted, unread_sender(t, night.write_to))
     html = _daily_brief_html(v.brief, listed, night.date, t, night.tz, calendar_note,
                              ics_attached=bool(attachments), coverage=coverage_note,
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
                              feedback_link=links, original=night.brief, top_note=top_note,
-                             held_back=night.held_back, assistant=assistant,
-                             sender_note=unread_sender(t, night.write_to))
+                             held_back=night.held_back, assistant=assistant, sender_note=note)
     return Mail(to=v.to, subject=night.subject,
                 text=_with_note(_brief_text(v.brief, listed, night.date, t, night.tz, coverage_note,
-                                            calendar_note, top_note, night.held_back, assistant),
-                                unread_sender(t, night.write_to)),
+                                            calendar_note, top_note, night.held_back, assistant), note),
                 html=html, attachments=attachments)
 
 
@@ -524,7 +531,7 @@ def preview(night: Night) -> dict[str, str | None]:
     subject, text and HTML, and for a pilot Household (with its Form links) the Digest's
     feedback link. It is the first Brief, which setup sends to the setup parent only."""
     t, assistant, form = night.t, night.assistant, night.form
-    sender_note = first_sender_note(t, night.write_to)
+    sender_note = end_note(t, night.hosted, first_sender_note(t, night.write_to))
     html = _daily_brief_html(night.brief, night.created, night.date, t, night.tz,
                              coverage=_coverage_note(night.coverage, t),
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",

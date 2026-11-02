@@ -429,7 +429,8 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         # The rule-based fallback is a raw message list the model never wrote, and a night with only
         # MyClub events or Held-back Messages asks no model: nothing to judge and no model to credit.
         model_wrote=bool(for_ai or read.due_soon) and notes.error is None, form=form,
-        stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg))
+        stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg),
+        hosted=cfg.hosted)
     return _Written(night, notes, for_ai, held, model_events, placeholders)
 
 
@@ -528,7 +529,7 @@ def _send_nothing_read(cfg: Config, io: IO, read: _Read) -> None:
                for language, to in cfg.brief_recipients_by_language().items()] if cfg.email.enabled else []
     for item in render.nothing_read(read.coverage, today_str(cfg.timezone), llm.backend(cfg).display_name,
                                     languages.text(cfg, cfg.brief_language()), readers, email_action.write_to(cfg),
-                                    cfg.imessage.recipients if cfg.sends_imessage() else []):
+                                    cfg.imessage.recipients if cfg.sends_imessage() else [], cfg.hosted):
         _send(cfg, io, "email" if isinstance(item, render.Mail) else "imessage", lambda: item)
 
 
