@@ -470,6 +470,7 @@ fieldset .field label {
 .towns .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 .towns .town { color: var(--muted); font-size: 13px; margin-left: auto; }
+.towns .town-wide { display: block; color: var(--muted); font-size: 13px; }
 
 
 /* Why the town box is still greyed out, right under it, turning while the wilma CLI installs. */

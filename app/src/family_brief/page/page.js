@@ -1065,6 +1065,12 @@ function renderTowns() {
     name.className = "name";
     name.textContent = entry.name;
     label.append(input, name);
+    if (entry.town_wide) {
+      const wide = document.createElement("span");
+      wide.className = "town-wide";
+      wide.textContent = t("wilma.town-wide");
+      name.append(wide);
+    }
     if (entry.town) {
       const town = document.createElement("span");
       town.className = "town";
