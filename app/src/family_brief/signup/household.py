@@ -11,8 +11,8 @@ user once the program is installed there (ADR 0031). It reads, as JSON on stdin:
    "gateway_key": "sk-bf-…"}
 
 and makes the Household: its config, through `setup save` as the setup page saves one, marked
-`hosted` so its Brief's footer says it comes from the hosted version, with the Kids Wilma listed, the Recipients, the gateway as its AI, Wilma on, WhatsApp off and
-the calendar as an .ics in the email; the MyClub link of each Kid in `myclub`, which the service
+`hosted` so its Brief's footer says it comes from the hosted version, with the Kids Wilma
+listed, the Recipients, the gateway as its AI, Wilma on, WhatsApp off and the calendar as an .ics in the email; the MyClub link of each Kid in `myclub`, which the service
 checked, saved as `setup myclub` saves one; the Gateway Key in the secrets store; the wilma CLI
 with the sign-in the service checked; and the evening jobs at `evening`. It prints one line of
 JSON, `{"result": "created"}` or why not, which never holds the password, a link or the key.

@@ -97,10 +97,9 @@ class BriefText:
     new_events: str
     new_events_line: str                # the plain-text heading
     written_by: str                     # {assistant}
-    # Which version sent the Brief, on every one, so a Recipient of both tells them apart (#669)
-    runs_hosted: str
-    runs_on_own_computer: str
-    unread_sender: str                 # {address}, when the gateway's address nobody reads sent it
+    runs_hosted: str                    # every Brief's footer, from a Hosted Household (#669)
+    runs_on_own_computer: str           # every Brief's footer, from the family's own computer
+    unread_sender: str                  # {address}, when the gateway's address nobody reads sent it
     junk_at_first: str                  # the first Brief from that address, to Hotmail or Outlook.com
     untitled: str
 
