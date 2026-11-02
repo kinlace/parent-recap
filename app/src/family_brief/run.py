@@ -322,7 +322,8 @@ def _ics_candidates(cfg: Config, state: State, events: list) -> list:
 
 def _as_created(events: list) -> list[dict]:
     """Events the Brief lists without a Google write, shaped like `create_events` results."""
-    return [{"title": e.title, "start": e.start_iso(), "kid": e.kid} for e in events]
+    return [{"title": e.title, "start": e.start_iso(), "kid": e.kid, "location": e.location,
+             "description": e.description} for e in events]
 
 
 @dataclass

@@ -228,6 +228,7 @@ def create_events(cfg: Config, state: State, events: list[CalendarEvent],
         ).execute()
         state.mark_event_created(h, resp["id"])
         created.append({"title": ev.title, "start": ev.start_iso(),
-                        "kid": ev.kid, "google_event_id": resp["id"],
+                        "kid": ev.kid, "location": ev.location, "description": ev.description,
+                        "google_event_id": resp["id"],
                         "htmlLink": resp.get("htmlLink")})
         log.info("Created event: %s @ %s", ev.title, ev.start_iso())

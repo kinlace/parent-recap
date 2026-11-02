@@ -51,7 +51,8 @@ def brief_of(brief: Brief, t: BriefText, **more) -> render.Night:
     """Tonight's Night for `brief`, its model-written events attached as .ics, as in ics mode, from
     Parent Recap's own address, which says to write to the setup parent (ADR 0032)."""
     events = extract_calendar_events(brief, TZ, t.untitled)
-    created = [{"title": e.title, "start": e.start_iso(), "kid": e.kid} for e in events]
+    created = [{"title": e.title, "start": e.start_iso(), "kid": e.kid, "location": e.location,
+                "description": e.description} for e in events]  # as the run lists them
     return render.Night(**{"date": DATE, "tz": TZ, "t": t, "assistant": "Claude", "brief": brief,
                            "coverage": COVERAGE, "created": created, "ics_events": events, "stamp": STAMP,
                            "write_to": PARENT, **more})
