@@ -24,9 +24,12 @@ BRIEF_LOOKBACK_HOURS = 72  # a single day often has nothing new
 # Sending it to the setup parent: `busy` while an evening run is going, which could send it too.
 # Why the gateway didn't send it, each with its own advice (#648): `unconfirmed`, the setup parent
 # hasn't pressed the button their confirmation link opens (ADR 0033); `sent-all-today`, the key's
-# Briefs for today are used up; `key-refused`, no Gateway Key or one the gateway doesn't know; and
-# `send-failed` for the rest, the gateway busy or out of reach.
-SEND_RESULTS = ("sent", "unconfirmed", "sent-all-today", "key-refused", "send-failed", "busy")
+# Briefs for today are used up; `key-refused`, no Gateway Key or one the gateway doesn't know;
+# `gmail-refused`, the Household's own Gmail, which sends it (ADR 0034), has no App Password or
+# refuses it, which stops reading it too; and `send-failed` for the rest, the gateway or Gmail busy
+# or out of reach.
+SEND_RESULTS = ("sent", "unconfirmed", "sent-all-today", "key-refused", "gmail-refused",
+                "send-failed", "busy")
 # The Brief in the page's frame: its own inline styles and nothing else, sandboxed without
 # scripts, and its links open nothing (a sandbox without popups drops a new window).
 BRIEF_CSP = ("default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; "
@@ -189,7 +192,9 @@ def _preview_lines(out: str) -> list[dict[str, Any]]:
 
 
 def _why(error: Exception) -> str:
-    """Which of SEND_RESULTS a failed send is, from what the gateway answered."""
+    """Which of SEND_RESULTS a failed send is, from what the gateway or Gmail answered."""
+    if isinstance(error, email_action.GmailError) and error.reason != email_action.NO_ANSWER:
+        return "gmail-refused"
     if isinstance(error, gateway.NoKey):
         return "key-refused"
     status = getattr(error, "status", None)

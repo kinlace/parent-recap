@@ -295,8 +295,7 @@ def cmd_confirm(args: argparse.Namespace) -> int:
     if cfg.sends_from_gmail():  # nobody confirms anything for the Household's own Gmail (ADR 0034)
         return report("not-needed", sending="gmail")
     status = send_key.ensure(cfg, resend=args.resend)
-    extra = {"recipients": status.recipients, "unconfirmed": status.unconfirmed,
-             "mailed": status.mailed, **({"key_requested": True} if status.requested else {})}
+    extra = _confirmation(status)
     if status.result == send_key.CONFIRMED:
         return report("confirmed", **extra)
     if status.result == send_key.UNCONFIRMED:
@@ -320,10 +319,11 @@ def cmd_sending(args: argparse.Namespace) -> int:
     from .actions import email as email_action
     path = Path(os.path.expanduser(os.path.expandvars(args.config or "~/.family/config.yaml")))
     try:
-        done = sending.switch(path, args.to)
+        Config.load(path)
     except Exception:
         return report("bad-config", f"The config can't be read. Run {program()} doctor, fix what it "
                       "names, then run this again.")
+    done = sending.switch(path, args.to)
     gmail_again = f"{program()} setup sending gmail"
     next_ = {
         sending.NOT_OFFERED: "Only a Household whose AI is Claude or ChatGPT and that reads its "
@@ -339,12 +339,18 @@ def cmd_sending(args: argparse.Namespace) -> int:
     extra: dict = {"sending": done.sending, **({"error": done.detail} if done.detail else {})}
     status = done.confirm
     if status is not None:
-        extra.update(recipients=status.recipients, unconfirmed=status.unconfirmed,
-                     mailed=status.mailed, **({"key_requested": True} if status.requested else {}))
+        extra.update(_confirmation(status))
         if status.result != send_key.CONFIRMED:
             next_ = (f"{send_key.describe(status)}. {program()} setup confirm says who has "
                      "confirmed.")
     return report(done.result, next_, **extra)
+
+
+def _confirmation(status) -> dict:
+    """Who a send_key.Status bound and who still has to confirm, as `setup confirm` and `setup
+    sending` print them."""
+    return {"recipients": status.recipients, "unconfirmed": status.unconfirmed,
+            "mailed": status.mailed, **({"key_requested": True} if status.requested else {})}
 
 
 def _gateway_use(config: str | None) -> tuple[str, bool]:

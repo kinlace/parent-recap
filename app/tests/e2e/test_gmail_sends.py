@@ -319,8 +319,12 @@ def test_finish_checks_the_gmail_the_brief_is_sent_from(harness, page, schedule,
     assert (sending_check["check"], sending_check["status"], sending_check["reason"]) == \
         ("gmail-sends", "fail", "rejected")
     never_through_the_gateway(harness)
+
+
+def test_the_page_has_its_words_for_gmail_sending_in_every_language():
     text = json.loads((PAGE_DIR / "text.json").read_text())
     for table in text.values():
+        assert table["brief.send.gmail-refused"]
         assert table["health.check.gmail-sends"]
         for prefix in ("health", "finish"):
             for key in ("", ".rejected", ".no-password"):
@@ -343,6 +347,32 @@ def test_send_it_to_me_goes_from_the_households_gmail(harness, page):
     assert (email.via, email.from_addr, email.to) == ("gmail", PARENT, [PARENT])
     assert email.html == made["html"]
     assert "nobody reads" not in email.html
+    never_through_the_gateway(harness)
+
+
+def test_send_it_to_me_says_when_gmail_refuses_the_app_password(harness, page):
+    no_key(harness)
+    harness.config["email"]["from_gmail"] = True
+    at_the_first_brief(harness)
+    make_brief(page.url)
+    brief_made(page.url)
+    harness.outbox.gmail_password = REVOKED
+
+    r = send_it_to_me(page.url)
+
+    assert r.json() == {"result": "gmail-refused"}
+    assert harness.sent == []
+    never_through_the_gateway(harness)
+
+
+def test_asking_who_confirmed_asks_the_gateway_nothing_when_gmail_sends(harness, page):
+    no_key(harness)
+    harness.config["email"]["from_gmail"] = True
+    at_finish(harness)
+
+    r = call(page.url, "api/gmail/confirm", method="POST", body={"resend": True})
+
+    assert r.json() == {"result": "not-needed", "unconfirmed": [], "mailed": []}
     never_through_the_gateway(harness)
 
 

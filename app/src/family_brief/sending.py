@@ -19,11 +19,9 @@ from .actions import email as email_action
 from .config import Config
 
 GMAIL, GATEWAY = "gmail", "gateway"
-# What switching can say besides `saved`: not offered to this Household, Gmail refused the App
-# Password, there's none to use, Gmail couldn't be reached, or the config couldn't be written.
+# What switching can say besides `saved`: not offered to this Household, one of the email
+# Action's REJECTED, NO_PASSWORD or NO_ANSWER from Gmail, or `save-failed` for the config.
 NOT_OFFERED = "not-offered"
-RESULTS = ("saved", NOT_OFFERED, email_action.REJECTED, email_action.NO_PASSWORD,
-           email_action.NO_ANSWER, "save-failed")
 
 
 @dataclass
@@ -48,7 +46,7 @@ def switch(config: Path, to: str) -> Switched:
             why = ("the gateway writes this Household's Brief" if cfg.llm.backend == "gateway"
                    else "no Gmail is connected")
             return Switched(NOT_OFFERED, current(cfg), f"{why}, so it's sent through the gateway")
-        outcome, detail = email_action.check_gmail(cfg.gmail.username or "")
+        outcome, detail = email_action.check_gmail_sends(cfg.gmail.username or "")
         if outcome != email_action.WORKS:
             return Switched(outcome, current(cfg), detail)
     out = setup_save.save(config, {"sending": to})
