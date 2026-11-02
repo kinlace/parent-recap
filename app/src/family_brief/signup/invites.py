@@ -71,9 +71,10 @@ class Store:
 
     def mint(self, recipients: list[Recipient], language: Language, now: datetime,
              days: int = DAYS, note: str = "") -> Invite:
-        """A new Invite Link's, written to the store, good for `days` from `now`."""
+        """A new Invite Link's, written to the store, good for `days` from `now`, its note on one
+        line, as status prints it."""
         invite = Invite(secrets.token_urlsafe(24), now + timedelta(days=days), recipients, language,
-                        note)
+                        " ".join(note.split()))
         self._write(self._invites / f"{invite.code}.json", json.dumps(invite.to_json(), indent=2))
         return invite
 
