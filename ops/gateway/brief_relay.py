@@ -14,6 +14,9 @@ addresses are bound to which key, and whether they confirmed, is the one thing k
 (STATE_DIRECTORY/bindings.json), with per-day counts that rate-limit the requests. Keys made by
 hand aren't in that file and send as before.
 
+`brief_relay.py keys` and `brief_relay.py new-key` are the maintainers' `keys.sh` and `new-key.sh`:
+they list the Gateway Keys and make one, on Bifrost's admin API.
+
 Everything the relay sends counts against Email Delivery's 100 a day for the whole tenancy; once a
 UTC day's count passes QUOTA_WARN_AT, the relay logs a warning for the maintainers (#627).
 
@@ -21,6 +24,7 @@ Python's standard library only, so it runs on the host's own python3 with nothin
 """
 from __future__ import annotations
 
+import argparse
 import base64
 import binascii
 import json
@@ -34,6 +38,7 @@ import smtplib
 import ssl
 import sys
 import threading
+import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -60,6 +65,13 @@ MAX_REQUEST_BYTES = 2_000_000
 EX_CONFIG = 78
 # Bifrost's virtual-key list returns at most 100 keys a page.
 PAGE = 100
+# What a key that writes the Brief may call, and its daily budget (README "Create a Gateway Key").
+AI_KEY = {"provider_configs": [{"provider": "anthropic", "weight": 1,
+                                "allowed_models": ["parent-recap"], "key_ids": ["*"]}],
+          "budgets": [{"max_limit": 0.10, "reset_duration": "1d"}]}
+# A key's label is written to Bifrost's request log and the relay's journal, so it stays short and
+# neutral: no names, nothing a log line could be split on.
+LABEL = re.compile(r"[a-z0-9][a-z0-9-]{0,39}", re.ASCII)
 
 # Strict on purpose: no display names, no commas, nothing a header could be split on, and ASCII
 # only, as Email Delivery's SMTP takes no internationalized addresses.
@@ -881,6 +893,8 @@ def main() -> None:
                     env.get("BIFROST_ADMIN_USERNAME", ""), env.get("BIFROST_ADMIN_PASSWORD", ""))
     if sys.argv[1:] == ["keys"]:
         return print_keys(admin, state / "bindings.json")
+    if sys.argv[1:2] == ["new-key"]:
+        return new_key(admin, sys.argv[2:], today=datetime.now(UTC).date().isoformat())
     missing = [v for v in ("BRIEF_SMTP_USERNAME", "BRIEF_SMTP_PASSWORD", "BIFROST_ADMIN_USERNAME",
                            "BIFROST_ADMIN_PASSWORD", "GATEWAY_HOST") if not env.get(v)]
     if missing:
@@ -925,6 +939,43 @@ def print_keys(keys: Bifrost, path: Path) -> None:
         for r in (entry or {}).get("recipients", []):
             print(f"  {r['address']} ({r['language']}): "
                   f"{'confirmed ' + r['confirmed'] if r['confirmed'] else 'not confirmed'}")
+
+
+
+def new_key(keys: Bifrost, args: list[str], today: str) -> None:
+    """`brief_relay.py new-key <label> "<who holds it>" [--send-only]`: makes a Gateway Key for a
+    Household on its own computer and prints its name and value, for the maintainers (README
+    "Create a Gateway Key"). Exits with Bifrost's reply when no key was made."""
+    parser = argparse.ArgumentParser(prog="new-key.sh")
+    parser.add_argument("label", help="a neutral label, such as pilot-a; it goes into the logs")
+    parser.add_argument("holder", help="who holds the key; only the admin API shows it")
+    parser.add_argument("--send-only", action="store_true",
+                        help="a key that only sends the Brief, for a Household's own Claude Code "
+                             "or Codex")
+    a = parser.parse_args(args)
+    if not LABEL.fullmatch(a.label):
+        parser.error("the label is up to 40 lowercase letters, digits and dashes, such as pilot-a")
+    holder = a.holder.strip()
+    if not holder or not holder.isprintable():
+        parser.error("say who holds the key, on one line")
+    if a.send_only:
+        body = {"name": f"send-{a.label}",
+                "description": f"{holder}, own Claude Code or Codex, {today}", "is_active": True}
+    else:
+        body = {"name": f"ai-{a.label}", "description": f"{holder}, gateway AI, {today}",
+                "is_active": True, **AI_KEY}
+    try:
+        reply = keys.fetch("/api/governance/virtual-keys", body)
+    except urllib.error.HTTPError as e:
+        sys.exit(f"no key made: Bifrost answered {e.code}: "
+                 f"{e.read().decode('utf-8', errors='replace').strip()}")
+    except (OSError, ValueError) as e:
+        sys.exit(f"no key made: Bifrost's admin API: {e}")
+    k = reply.get("virtual_key") if isinstance(reply, dict) else None
+    value = k.get("value") if isinstance(k, dict) else None
+    if not isinstance(value, str) or not value:
+        sys.exit(f"no key made: Bifrost answered {json.dumps(reply)}")
+    print(f"{k.get('name') or body['name']}  {value}")
 
 
 if __name__ == "__main__":
