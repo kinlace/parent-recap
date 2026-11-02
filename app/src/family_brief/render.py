@@ -317,7 +317,9 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
             kid = _h.escape(str(ev.get("kid") or ""))
             link = ev.get("htmlLink") or ""
             head = f'<a href="{_h.escape(link)}">{title}</a>' if link else title
-            parts.append(f"<li>{head} — {start} {('('+kid+')') if kid else ''}</li>")
+            about = _h.escape(_place_and_details(ev))
+            parts.append(f"<li>{head} — {start} {('('+kid+')') if kid else ''}"
+                         + (f"<br><small style='color:#666'>{about}</small>" if about else "") + "</li>")
         parts.append("</ul>")
     if note:
         parts.append(f"<p style='color:#a33'>{_h.escape(note)}</p>")
@@ -328,6 +330,20 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
         parts.append(_small(footer))
     parts.append(_small(sender_note))
     return _HTML_PAGE + "".join(parts) + "</body></html>"
+
+
+# How much of an event's details the list shows under it: the first line, cut at this length.
+DETAILS_CHARS = 120
+
+
+def _place_and_details(ev: dict) -> str:
+    """The line under a listed event: its place and the first line of its details, as the Source
+    or the model gave them, or nothing when it has neither."""
+    details = next((line.strip() for line in str(ev.get("description") or "").splitlines()
+                    if line.strip()), "")
+    if len(details) > DETAILS_CHARS:
+        details = details[:DETAILS_CHARS].rstrip() + "…"
+    return " · ".join(x for x in (str(ev.get("location") or "").strip(), details) if x)
 
 
 def _small(text: str) -> str:
@@ -355,6 +371,8 @@ def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: 
         for ev in calendar_created[:10]:
             tag = f" ({ev['kid']})" if ev.get("kid") else ""
             parts.append(f"• {ev['title']} — {_start(ev['start'], t, tz)}{tag}")
+            if about := _place_and_details(ev):
+                parts.append(f"   {about}")
     return "\n".join(parts)
 
 
@@ -455,7 +473,8 @@ class Version:
         out = []
         for c in created:
             ev = self.events.get((c["title"], c["start"]))
-            out.append({**c, "title": ev.title, "kid": ev.kid} if ev else c)
+            out.append({**c, "title": ev.title, "kid": ev.kid, "description": ev.description}
+                       if ev else c)
         return out
 
 
