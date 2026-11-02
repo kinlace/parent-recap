@@ -560,7 +560,7 @@ def test_myclub_s_link_is_shown_on_its_own_page_in_each_language_and_at_phone_wi
         assert picture.evaluate("img => img.complete && img.naturalWidth") > 0  # served, decoded
         expect(tab.locator("#source-myclub details ol li")).to_have_text(
             [text(f"myclub.picture.{s}", language=language) for s in MYCLUB_STEPS])
-        for note in ("sign-in", "one-link"):
+        for note in ("sign-in", "language", "one-link"):
             expect(tab.get_by_text(text(f"myclub.picture.{note}", language=language))).to_be_visible()
 
     # On a phone the picture shrinks to the screen.

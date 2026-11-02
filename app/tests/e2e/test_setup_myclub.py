@@ -124,7 +124,7 @@ def test_a_link_pasted_in_the_dialog_is_downloaded_and_saved(harness, server, ca
 
     res, printed = result(capsys)
     assert res == {"result": "saved", "kid": "Mia", "events": 2}
-    assert harness.desktop.opened == ["https://id.myclub.fi/flow/login"]
+    assert harness.desktop.opened == ["https://id.myclub.fi/flow/calendar_subscriptions/new"]
     assert len(harness.dialog.shown) == 1
     assert "Mia" in harness.dialog.shown[0]
     assert server.downloads == [LINK.replace("webcal://", "https://")]
@@ -159,7 +159,7 @@ def test_a_link_already_saved_for_another_kid_is_not_saved_again(harness, server
     harness.cli("setup", "myclub", "--kid", "Leo")
 
     res, printed = result(capsys)
-    assert res["result"] == "same-link" and "Mia" in res["next"] and "Valitut jäsenet" in res["next"]
+    assert res["result"] == "same-link" and "Mia" in res["next"] and "Valitut jäsentilit" in res["next"]
     assert saved_links(harness) == {"Mia": LINK, "Leo": None}
     assert server.downloads == []
     assert LINK not in printed
@@ -381,7 +381,7 @@ def test_the_button_opens_myclub_s_site(harness, page):
     r = call(page.url, "api/open", method="POST", body={"site": "myclub"})
 
     assert r.status == 200 and r.json()["result"] == "opened"
-    assert harness.desktop.opened == ["https://id.myclub.fi/flow/login"]
+    assert harness.desktop.opened == ["https://id.myclub.fi/flow/calendar_subscriptions/new"]
 
 
 def test_each_kid_known_so_far_is_listed_without_its_link(harness, page, myclub_server):
@@ -553,20 +553,21 @@ def test_skipping_myclub_saves_no_link_and_moves_on(harness, page, myclub_server
     assert myclub_server.downloads == []
 
 
-STEPS = ("events", "calendar", "subscribe", "members", "copy")  # "Where to find the link", in order
+STEPS = ("name", "members", "indication", "create", "copy")  # "Where to find the link", in order
 
 
 def test_the_myclub_step_shows_where_the_link_is_and_takes_it_in_the_page_s_own_field(page):
     html = call(page.url).body.decode()
 
     step = re.search(r'<div id="source-myclub".*?\n    </div>\n', html, re.S).group(0)
-    # MyClub's own page (#619), served by the page itself, what to click numbered 1-3 on it.
+    # MyClub's New calendar subscription form (#678), served by the page itself, what to fill
+    # in numbered 1-4 on it.
     figure = re.search(r'<figure class="screenshot">.*?</figure>', step, re.S).group(0)
     src = re.search(r'<img src="([\w.-]+)"[^>]*data-alt="myclub.picture.alt"', figure).group(1)
     assert call(page.url, src).status == 200
     steps = re.search(r"<ol>(.*?)</ol>", step, re.S).group(1)
     assert re.findall(r'data-text="([\w.-]+)"', steps) == [f"myclub.picture.{s}" for s in STEPS]
-    for note in ("sign-in", "subscriptions", "one-link"):
+    for note in ("sign-in", "language", "one-link"):
         assert f'<p data-text="myclub.picture.{note}">' in step
     assert 'id="myclub-open"' in step
     field = re.search(r'<input[^>]*id="myclub-link"[^>]*>', step).group(0)
@@ -575,18 +576,21 @@ def test_the_myclub_step_shows_where_the_link_is_and_takes_it_in_the_page_s_own_
 
 
 def test_the_steps_name_myclub_s_own_finnish_words_in_every_language():
-    # MyClub is only in Finnish, so every language names what's on its screen as it's written
-    # there, and steps 1-3 are what the picture numbers 1-3.
+    # MyClub shows Finnish unless the parent switches it, so every language names what's on its
+    # screen as it's written there, and steps 1-4 are what the picture numbers 1-4 (#678).
     for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
         steps = [table[f"myclub.picture.{s}"] for s in STEPS]
-        for step, word in zip(steps, ("Tapahtumat", "Omat", "Tilaa kalenteri", "Valitut jäsenet",
-                                      "webcal://")):
+        for step, word in zip(steps, ("Nimi", "Valitut jäsentilit", "Kaikki", "Luo", "Kopioi linkki")):
             assert word in step, (language, word)
+        assert "webcal://" in table["myclub.picture.copy"], language
         assert "MyClub" in table["myclub.picture.sign-in"], language
-        # MyClub sometimes opens its list of subscriptions instead, empty but for a small link (#649).
-        for word in ("Kalenteritilaukset", "Uusi kalenteritilaus", "webcal://"):
-            assert word in table["myclub.picture.subscriptions"], (language, word)
-        for n, word in enumerate(("Tapahtumat", "Omat", "Tilaa kalenteri"), 1):
+        # The picture is MyClub in English, so the steps name its English labels too.
+        if language != "fi":
+            for step, word in zip(steps, ("Name", "Selected member accounts", "All", "Create",
+                                          "Copy link")):
+                assert word in step, (language, word)
+            assert "In English" in table["myclub.picture.language"], language
+        for n, word in enumerate(("Name", "Selected member accounts", "Indication", "Create"), 1):
             assert f"{n} {word}" in table["myclub.picture.alt"], (language, word)
 
 
