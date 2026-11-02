@@ -145,26 +145,8 @@
       <form id="gmail-brief-form" class="details">
         <p data-text="gmail.brief.explain"></p>
         <p data-text="gmail.brief.unread"></p>
-        <div class="field">
-          <label for="gmail-brief-address" data-text="gmail.brief.address"></label>
-          <input type="email" id="gmail-brief-address" autocomplete="email" spellcheck="false" required>
-        </div>
-        <div class="field">
-          <label for="gmail-brief-language" data-text="gmail.brief.language"></label>
-          <select id="gmail-brief-language"></select>
-        </div>
-        <div id="gmail-brief-partner" class="details" hidden>
-          <div class="field">
-            <label for="gmail-brief-partner-address" data-text="gmail.brief.partner"></label>
-            <input type="email" id="gmail-brief-partner-address" autocomplete="off" spellcheck="false">
-          </div>
-          <div class="field">
-            <label for="gmail-brief-partner-language" data-text="gmail.brief.partner.language"></label>
-            <select id="gmail-brief-partner-language"></select>
-          </div>
-        </div>
-        <p id="gmail-brief-partner-add-part"><button type="button" id="gmail-brief-partner-add" class="link" data-text="gmail.brief.partner.add"></button></p>
-        <p id="gmail-brief-more" class="hint"></p>
+        <div id="gmail-brief-rows" class="recipients" data-add="gmail-brief-add"></div>
+        <p class="add-recipient"><button type="button" id="gmail-brief-add" class="link" data-text="recipients.add"></button></p>
         <p id="gmail-brief-junk" class="hint" data-text="gmail.brief.junk" hidden></p>
         <details id="gmail-brief-key-part" class="more" hidden>
           <summary data-text="gmail.brief.key.have"></summary>
@@ -513,6 +495,23 @@
           <button type="submit" id="finish-ai-continue" data-text="finish.ai.continue"></button>
         </form>
         <div id="finish-ai-sign-in" hidden></div>
+      </div>
+      <!-- Who gets the Brief, added or removed later as on Gmail's step, which saves them. -->
+      <div id="finish-recipients" hidden>
+        <h3 data-text="finish.recipients.title"></h3>
+        <p id="finish-recipients-current"></p>
+        <p><button type="button" id="finish-recipients-open" class="secondary" data-text="gmail.brief.change"></button></p>
+        <form id="finish-recipients-form" hidden>
+          <div id="finish-recipients-rows" class="recipients" data-add="finish-recipients-add"></div>
+          <p class="add-recipient"><button type="button" id="finish-recipients-add" class="link" data-text="recipients.add"></button></p>
+          <div class="actions">
+            <button type="submit" id="finish-recipients-save" data-text="gmail.brief.save"></button>
+          </div>
+        </form>
+        <div id="finish-recipients-status" class="status" role="status" hidden>
+          <p id="finish-recipients-message"></p>
+          <div id="finish-recipients-confirm" class="confirm" hidden></div>
+        </div>
       </div>
       <!-- Sending the Brief from the Household's own Gmail (ADR 0034): offered only when the AI
            isn't the gateway and Gmail is connected, and never during setup. -->

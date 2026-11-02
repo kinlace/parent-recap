@@ -455,23 +455,9 @@ function setUpGmail() {
   }
   document.getElementById("gmail-form").addEventListener("submit", connectGmail);
   document.getElementById("gmail-address").value = page.gmail.address || "";
-  for (const id of ["gmail-brief-language", "gmail-brief-partner-language"]) {
-    const select = document.getElementById(id);
-    for (const { code, name } of page.languages) {
-      const option = document.createElement("option");
-      option.value = code;
-      option.lang = code;
-      option.textContent = name;
-      select.append(option);
-    }
-  }
-  for (const id of ["gmail-brief-address", "gmail-brief-partner-address"]) {
-    document.getElementById(id).addEventListener("input", showJunk);
-  }
-  document.getElementById("gmail-brief-partner-add").addEventListener("click", () => {
-    showBriefPartner(true, false);
-    document.getElementById("gmail-brief-partner-address").focus();
-  });
+  const rows = document.getElementById("gmail-brief-rows");
+  rows.addEventListener("input", showJunk);
+  document.getElementById("gmail-brief-add").addEventListener("click", () => addRecipientRow(rows));
   document.getElementById("gmail-brief-form").addEventListener("submit", saveRecipients);
   document.getElementById("gmail-brief-change").addEventListener("click", () => {
     showSource(null);
@@ -487,31 +473,115 @@ function setUpGmail() {
 // Gmail, only to have the school's mail read, or skipping it.
 const gmailStep = { changing: false, confirm: null };
 
+// The Recipients as saved; before they are, an empty row for the parent's own address, and the
+// partner's after it when Welcome said "Me and my partner".
 function prepareGmail() {
   const { partner } = page.welcome;
-  const [parent, other] = page.gmail.to;
-  document.getElementById("gmail-brief-address").value = parent ? parent.address : "";
-  document.getElementById("gmail-brief-language").value = offered(parent?.language) || page.language;
-  showBriefPartner(partner.add || Boolean(other));
-  document.getElementById("gmail-brief-partner-address").value =
-    other ? other.address : partner.add ? partner.address : "";
-  document.getElementById("gmail-brief-partner-language").value =
-    offered(other?.language) || partner.language;
+  const first = [{ address: "", language: page.language }];
+  if (partner.add) first.push({ address: partner.address, language: partner.language });
+  renderRecipientRows(document.getElementById("gmail-brief-rows"),
+    page.gmail.to.length ? page.gmail.to : first);
   gmailStep.changing = false;
   showGmailParts();
 }
 
-// The partner's fields, as after Welcome's "Me and my partner", or else the link that shows them,
-// for a parent who said "Only me" there (#638). Shown by the link, they may be left empty.
-function showBriefPartner(shown, required = shown) {
-  document.getElementById("gmail-brief-partner").hidden = !shown;
-  document.getElementById("gmail-brief-partner-address").required = required;
-  document.getElementById("gmail-brief-partner-add-part").hidden = shown;
+// ── Who gets the Brief, as rows the family adds and removes, on Gmail's step and at Finish: an
+// address and the language of their Brief in each. At least one row, and at most as many as the
+// gateway binds a key to (ADR 0033). A row left empty is left out, so the first is required only
+// while every one is empty.
+
+let recipientFields = 0; // each field's own id
+
+function renderRecipientRows(list, recipients) {
+  list.replaceChildren(...recipients.map((recipient) => recipientField(list, recipient)));
+  syncRecipientRows(list);
 }
 
-// A Recipient's language, when the page offers it: any other was saved in the chat.
-function offered(language) {
-  return page.languages.some(({ code }) => code === language) ? language : null;
+function addRecipientRow(list) {
+  const row = recipientField(list, { address: "", language: page.language });
+  list.append(row);
+  syncRecipientRows(list);
+  row.querySelector("input").focus();
+}
+
+function recipientField(list, { address, language }) {
+  const n = ++recipientFields;
+  const row = document.createElement("div");
+  row.className = "recipient";
+  const input = document.createElement("input");
+  input.type = "email";
+  input.id = `recipient-address-${n}`;
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.value = address;
+  input.addEventListener("input", () => syncRecipientRows(list));
+  const select = document.createElement("select");
+  select.id = `recipient-language-${n}`;
+  // A language the page doesn't offer was saved in the chat, and is kept.
+  const offered = [...page.languages];
+  if (!offered.some(({ code }) => code === language)) offered.push({ code: language, name: language });
+  for (const { code, name } of offered) {
+    const option = document.createElement("option");
+    option.value = code;
+    option.lang = code;
+    option.textContent = name;
+    select.append(option);
+  }
+  select.value = language;
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "link remove";
+  setText(remove, "recipients.remove");
+  remove.addEventListener("click", () => {
+    row.remove();
+    syncRecipientRows(list);
+    list.querySelector("input").focus();
+    list.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  row.append(labelled(input, "recipients.address"), labelled(select, "recipients.language"), remove);
+  return row;
+}
+
+function labelled(control, key) {
+  const field = document.createElement("div");
+  field.className = "field";
+  const label = document.createElement("label");
+  label.htmlFor = control.id;
+  setText(label, key);
+  field.append(label, control);
+  return field;
+}
+
+function syncRecipientRows(list) {
+  const rows = [...list.querySelectorAll(".recipient")];
+  const empty = rows.every((row) => !row.querySelector("input").value.trim());
+  rows.forEach((row, i) => {
+    row.querySelector(".remove").hidden = rows.length < 2;
+    row.querySelector("input").required = empty && i === 0;
+  });
+  document.getElementById(list.dataset.add).hidden = rows.length >= page.gmail.most;
+}
+
+// The rows given, in order, each with its address field.
+function readRecipientRows(list) {
+  return [...list.querySelectorAll(".recipient")]
+    .map((row) => ({
+      field: row.querySelector("input"),
+      address: row.querySelector("input").value,
+      language: row.querySelector("select").value,
+    }))
+    .filter(({ address }) => address.trim() !== "");
+}
+
+// Marks the fields the server's `result` was about: an address that isn't one, or one given twice.
+function markRecipients(recipients, result) {
+  const seen = new Set();
+  for (const { field, address } of recipients) {
+    const key = address.trim().toLowerCase();
+    field.toggleAttribute("aria-invalid", (result === "no-address" && !field.checkValidity()) ||
+      (result === "same-address" && seen.has(key)));
+    seen.add(key);
+  }
 }
 
 // Who gets the Brief until they're saved, or while they're changed; then the Gmail form.
@@ -521,8 +591,6 @@ function showGmailParts() {
   document.getElementById("gmail-own").hidden = !saved;
   setText(document.getElementById("gmail-brief-to"), "gmail.brief.to",
     { addresses: page.gmail.to.map((r) => r.address).join(", ") });
-  // More than two stay the chat's (manage), or the team's where there's none: as Finish says it.
-  setText(document.getElementById("gmail-brief-more"), "gmail.brief.more." + page.welcome.ai);
   // The setup parent's own Gmail is the likeliest one to read.
   const parent = page.gmail.to[0]?.address || "";
   const field = document.getElementById("gmail-address");
@@ -536,19 +604,9 @@ function asksSendKey() {
   return page.welcome.ai !== "gateway";
 }
 
-// The addresses given for the Brief, the setup parent's first.
+// The addresses given for the Brief, in order.
 function briefRecipients() {
-  const rows = [["gmail-brief-address", "gmail-brief-language"]];
-  const partner = document.getElementById("gmail-brief-partner-address");
-  if (!document.getElementById("gmail-brief-partner").hidden &&
-      (partner.required || partner.value.trim())) {
-    rows.push(["gmail-brief-partner-address", "gmail-brief-partner-language"]);
-  }
-  return rows.map(([address, language]) => ({
-    field: document.getElementById(address),
-    address: document.getElementById(address).value,
-    language: document.getElementById(language).value,
-  }));
+  return readRecipientRows(document.getElementById("gmail-brief-rows"));
 }
 
 // Hotmail and Outlook.com junk mail from Parent Recap's new address at first (#524).
@@ -572,9 +630,7 @@ async function saveRecipients(event) {
   const button = event.submitter;
   button.disabled = true;
   const recipients = briefRecipients();
-  // Those after the first two were added in the chat, or by hand, and stay as they are.
-  const kept = page.gmail.to.slice(2);
-  const sent = [...recipients.map(({ address, language }) => ({ address, language })), ...kept];
+  const sent = recipients.map(({ address, language }) => ({ address, language }));
   const keyField = document.getElementById("gmail-brief-key");
   const pasted = asksSendKey() && keyField.value.trim() !== "";
   try {
@@ -584,13 +640,7 @@ async function saveRecipients(event) {
     });
     // The key stays in the field only when it wasn't tried, or the same key can be tried again.
     if (!["no-address", "same-address", ...KEY_AGAIN].includes(out.result)) keyField.value = "";
-    const seen = new Set(kept.map(({ address }) => address.toLowerCase()));
-    for (const { field, address } of recipients) {
-      const key = address.trim().toLowerCase();
-      field.toggleAttribute("aria-invalid", (out.result === "no-address" && !field.checkValidity()) ||
-        (out.result === "same-address" && seen.has(key)));
-      seen.add(key);
-    }
+    markRecipients(recipients, out.result);
     if (out.result === "saved") {
       page.progress = out.progress;
       page.gmail.to = sent.map(({ address, language }) =>
@@ -2507,6 +2557,7 @@ function enterFinish() {
   document.getElementById("finish-ai-open").addEventListener("click", openFinishAI);
   document.getElementById("finish-ai-form").addEventListener("submit", signInFinishAI);
   document.getElementById("finish-sending-switch").addEventListener("click", switchSending);
+  setUpFinishRecipients();
   document.getElementById("finish-whatsapp-off").addEventListener("click", turnWhatsAppOff);
   document.getElementById("finish-whatsapp-change").addEventListener("click",
     goBack("api/whatsapp/groups"));
@@ -2519,6 +2570,64 @@ function enterFinish() {
   showBackToConnect("finish-back");
   showHouseholdAI();
   checkFinish();
+}
+
+// ── Finish: who gets the Brief, with Recipients added or removed later in the same rows as on
+// Gmail's step, saved through it: a new address gets its link to confirm (ADR 0033).
+
+function setUpFinishRecipients() {
+  const rows = document.getElementById("finish-recipients-rows");
+  document.getElementById("finish-recipients").hidden = page.gmail.to.length === 0;
+  showFinishRecipients();
+  document.getElementById("finish-recipients-open").addEventListener("click", () => {
+    clearError();
+    renderRecipientRows(rows, page.gmail.to);
+    document.getElementById("finish-recipients-open").hidden = true;
+    document.getElementById("finish-recipients-form").hidden = false;
+    document.getElementById("finish-recipients-status").hidden = true;
+  });
+  document.getElementById("finish-recipients-add").addEventListener("click",
+    () => addRecipientRow(rows));
+  document.getElementById("finish-recipients-form").addEventListener("submit", saveFinishRecipients);
+}
+
+function showFinishRecipients() {
+  setText(document.getElementById("finish-recipients-current"), "gmail.brief.to",
+    { addresses: page.gmail.to.map((r) => r.address).join(", ") });
+}
+
+async function saveFinishRecipients(event) {
+  event.preventDefault();
+  clearError();
+  const button = event.submitter;
+  button.disabled = true;
+  const recipients = readRecipientRows(document.getElementById("finish-recipients-rows"));
+  const sent = recipients.map(({ address, language }) => ({ address, language }));
+  try {
+    const out = await post("api/gmail/recipients", { recipients: sent });
+    markRecipients(recipients, out.result);
+    const saved = out.result === "saved";
+    const message = document.getElementById("finish-recipients-message");
+    setText(message, saved ? "finish.recipients.saved" : "gmail.brief." + out.result);
+    message.classList.toggle("fail", !saved);
+    const confirm = document.getElementById("finish-recipients-confirm");
+    confirm.hidden = true;
+    if (out.confirm) showConfirmation(confirm, out.confirm, false);
+    document.getElementById("finish-recipients-status").hidden = false;
+    if (saved) {
+      page.gmail.to = sent.map(({ address, language }) =>
+        ({ address: address.trim().toLowerCase(), language }));
+      showFinishRecipients();
+      document.getElementById("finish-recipients-form").hidden = true;
+      document.getElementById("finish-recipients-open").hidden = false;
+      // The Brief sending check now names who has still to confirm.
+      finishResult(await post("api/finish/outcomes", {}));
+    }
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // ── Finish: turning WhatsApp off. The server removes the job, the pairing and the messages
@@ -2825,7 +2934,7 @@ function closed() {
   for (const button of document.querySelectorAll("#finish-checklist button")) button.hidden = true;
   clearTimeout(aiStep.timer);
   for (const id of ["finish-ai-open", "finish-ai-form", "finish-ai-sign-in", "finish-sending-switch",
-    "finish-back"]) {
+    "finish-recipients-open", "finish-recipients-form", "finish-back"]) {
     document.getElementById(id).hidden = true;
   }
   document.getElementById("finish-closed").hidden = false;

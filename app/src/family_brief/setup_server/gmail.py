@@ -1,5 +1,5 @@
-"""Gmail's connect step, in two parts. First who gets the Brief: the setup parent's address, then
-anyone else's, each with their language. Parent Recap sends every Brief from its own address
+"""Gmail's connect step, in two parts. First who gets the Brief: one or more Recipients, each with
+their language, as rows the family adds and removes; Finish changes them the same way later. Parent Recap sends every Brief from its own address
 through the maintainers' gateway (ADR 0032), so a Household whose AI is its own Claude Code or
 Codex needs a Gateway Key for sending: once the Recipients are saved, the page asks the gateway for
 a send-only one bound to them, which mails each a link to confirm (ADR 0033), and `api/gmail/confirm`
@@ -32,6 +32,9 @@ RECIPIENTS_RESULTS = ("saved", "no-address", "same-address")
 # gateway AI's key field does.
 SEND_KEY_RESULTS = tuple(r for r in GATEWAY_RESULTS if r != "saved")
 ADDRESS = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# The most Recipients the page takes: the gateway binds a key made on request to at most this many
+# addresses (ADR 0033, ops/gateway/brief_relay.py's MAX_BOUND).
+MAX_RECIPIENTS = 6
 
 
 class GmailSignIn(Strict):
@@ -45,7 +48,8 @@ class SentTo(Strict):
 
 
 class BriefTo(Strict):
-    recipients: list[SentTo] = Field(min_length=1)  # the setup parent first
+    # In order: the first one's language is the Brief's, which the archive and calendar follow.
+    recipients: list[SentTo] = Field(min_length=1, max_length=MAX_RECIPIENTS)
     key: str | None = None  # a pasted Gateway Key for sending, never when the gateway is the AI
 
 
@@ -66,7 +70,8 @@ class Gmail(Phase):
         cfg = self.context.model()
         return {"gmail": {"address": self.context.gmail_address(),
                           "to": [{"address": r.address, "language": cfg.language_of(r)}
-                                 for r in cfg.email.to]}}
+                                 for r in cfg.email.to],
+                          "most": MAX_RECIPIENTS}}
 
     def connect_gmail(self, raw: Any) -> Reply:
         """Tests the App Password pasted into the page's own field with Gmail and stores it in
@@ -84,8 +89,8 @@ class Gmail(Phase):
             "gmail", {"sources": {"gmail": {"address": address}}}, reply={"address": address})
 
     def save_recipients(self, raw: Any) -> Reply:
-        """Saves who gets the Brief, the setup parent first, and leaves Gmail to connect or skip.
-        A Household whose AI is its own Claude Code or Codex then gets a send-only Gateway Key
+        """Saves who gets the Brief, every Recipient in the order given, and leaves Gmail to connect
+        or skip; Finish saves them here too, to add or remove one later. A Household whose AI is its own Claude Code or Codex then gets a send-only Gateway Key
         bound to them, asked of the gateway when none is stored, and the gateway mails each a
         link to confirm (ADR 0033): `confirm` says to whom. It may paste a key instead, into the
         page's own field (ADR 0007): that one is tested with the Brief relay's check, which sends
@@ -156,12 +161,19 @@ def confirmation(status: send_key.Status) -> dict[str, Any]:
     return {"result": status.result, "unconfirmed": status.unconfirmed, "mailed": status.mailed}
 
 
-def recipients(context: Context, parent: str,
-               partner: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """The setup parent first, keeping the language saved for them, then the partner."""
+def with_partner(context: Context, partner: dict[str, Any] | None) -> list[dict[str, Any]] | None:
+    """The Recipients as saved, with Welcome's answer: for "Only me", the first of them alone, the
+    setup parent's in a config the chat setup wrote; for the partner, every one saved, with the
+    partner's own row given their language, or the partner after them. None while none are saved,
+    since the partner mustn't be the first."""
     to = context.section("email").get("to")
-    first = to[0] if isinstance(to, list) and to else None
-    first = {"address": first} if isinstance(first, str) else first
-    same = isinstance(first, dict) and first.get("address") == parent
-    also = partner and partner["address"].lower() != parent.lower()  # not the parent twice
-    return [first if same else {"address": parent}, *([partner] if also else [])]
+    if not isinstance(to, list) or not to:
+        return None
+    saved = [{"address": r} if isinstance(r, str) else r for r in to]
+    if partner is None:
+        return saved[:1]
+    same = [isinstance(r, dict) and str(r.get("address", "")).lower() == partner["address"].lower()
+            for r in saved]
+    if any(same):
+        return [{**partner, "address": r["address"]} if s else r for r, s in zip(saved, same)]
+    return [*saved, partner]

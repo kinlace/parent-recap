@@ -80,7 +80,9 @@ class Welcome(Phase):
 
     def save_welcome(self, raw: Any) -> Reply:
         """Saves Welcome's choices: the AI, the partner or only me, and pilot feedback, and moves
-        setup on to Connect. The Recipients are saved once the setup parent's address is known."""
+        setup on to Connect. The partner waits in the progress for Gmail's step, where the
+        Recipients are saved; once they are, as the chat setup may have, the answer changes them
+        (gmail.with_partner), and no Recipient but the first is dropped unless it's "Only me"."""
         try:
             answer = WelcomeAnswer.model_validate(raw)
         except ValidationError as e:
@@ -94,9 +96,9 @@ class Welcome(Phase):
         }
         if answer.feedback or feedback.pilot_form():  # without a pilot Form, setup save refuses yes
             answers["feedback"] = {"enabled": answer.feedback}
-        parent = self.context.setup_parent()
-        if parent:
-            answers["recipients"] = gmail.recipients(self.context, parent, partner)
+        recipients = gmail.with_partner(self.context, partner)
+        if recipients:
+            answers["recipients"] = recipients
         with self.context.connect.lock:
             out = setup_save.save(self.context.config, answers)
         if out["result"] != "saved":

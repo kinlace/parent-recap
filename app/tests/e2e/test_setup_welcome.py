@@ -100,6 +100,25 @@ def test_only_me_leaves_the_parent_as_the_only_recipient(harness, page):
     assert call(page.url, "api/state").json()["welcome"]["partner"]["add"] is False
 
 
+def test_the_partner_keeps_every_recipient_the_chat_saved_beyond_two(harness, page):
+    # #699: Welcome changes the partner's row, or adds them, and drops nobody else.
+    harness.config["email"]["to"] = ["parent@example.com", "partner@example.com",
+                                     {"address": "grandma@example.fi", "language": "fi"}]
+    config_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+
+    welcome(page.url, partner={"address": "Partner@example.com", "language": "zh"})
+
+    to = Config.load(config_file(harness)).email.to
+    assert [(r.address, r.language) for r in to] == [
+        ("parent@example.com", None), ("partner@example.com", "zh"), ("grandma@example.fi", "fi")]
+
+    welcome(page.url, partner={"address": "other@example.com", "language": "en"})
+
+    assert [r.address for r in Config.load(config_file(harness)).email.to] == [
+        "parent@example.com", "partner@example.com", "grandma@example.fi", "other@example.com"]
+
+
 def test_before_the_parent_s_gmail_is_known_no_recipient_is_written(harness, page):
     welcome(page.url, partner={"address": "partner@example.com", "language": "fi"})
 
