@@ -7,7 +7,8 @@ minted, or until a Household is created from it, which retires it: its file goes
 Recipients' addresses. A link that fails, such as for a wrong Wilma password, stays good.
 
 The Households' list holds only what the service needs to place the next one's evening jobs: each
-Household's user and the time its Brief comes, never the family's addresses or Kids.
+Household's user and the time its Brief comes, never the family's addresses or Kids; and the note
+the maintainers gave its Invite Link, if any, so they can tell whose it is.
 """
 from __future__ import annotations
 
@@ -39,11 +40,13 @@ class Invite:
     expires: datetime
     recipients: list[Recipient] = field(default_factory=list)
     language: Language = "fi"  # the page's until the family picks another
+    note: str = ""  # the maintainers' own, which the family never sees
 
     def to_json(self) -> dict[str, Any]:
         return {"expires": self.expires.isoformat(), "language": self.language,
                 "recipients": [{"address": r.address, "language": r.language}
-                               for r in self.recipients]}
+                               for r in self.recipients],
+                **({"note": self.note} if self.note else {})}
 
 
 @dataclass(frozen=True)
@@ -51,6 +54,7 @@ class HouseholdRecord:
     user: str
     evening: str  # HH:MM, when its Brief comes
     created: str
+    note: str = ""  # the maintainers' note its Invite Link carried, such as whose it is
 
 
 class Store:
@@ -66,9 +70,10 @@ class Store:
         return self.folder / "households.json"
 
     def mint(self, recipients: list[Recipient], language: Language, now: datetime,
-             days: int = DAYS) -> Invite:
+             days: int = DAYS, note: str = "") -> Invite:
         """A new Invite Link's, written to the store, good for `days` from `now`."""
-        invite = Invite(secrets.token_urlsafe(24), now + timedelta(days=days), recipients, language)
+        invite = Invite(secrets.token_urlsafe(24), now + timedelta(days=days), recipients, language,
+                        note)
         self._write(self._invites / f"{invite.code}.json", json.dumps(invite.to_json(), indent=2))
         return invite
 
@@ -80,7 +85,7 @@ class Store:
             raw = json.loads((self._invites / f"{code}.json").read_text(encoding="utf-8"))
             invite = Invite(code, datetime.fromisoformat(raw["expires"]),
                             [Recipient(r["address"], r["language"]) for r in raw["recipients"]],
-                            raw.get("language") or "fi")
+                            raw.get("language") or "fi", str(raw.get("note") or ""))
         except (OSError, ValueError, KeyError, TypeError):
             return None
         return invite if now < invite.expires else None
@@ -92,7 +97,8 @@ class Store:
     def households(self) -> list[HouseholdRecord]:
         try:
             raw = json.loads(self._households.read_text(encoding="utf-8"))
-            return [HouseholdRecord(h["user"], h["evening"], h["created"]) for h in raw]
+            return [HouseholdRecord(h["user"], h["evening"], h["created"], str(h.get("note") or ""))
+                    for h in raw]
         except (OSError, ValueError, KeyError, TypeError):
             return []
 

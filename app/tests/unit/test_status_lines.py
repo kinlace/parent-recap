@@ -67,3 +67,13 @@ def test_a_household_s_line():
         "⚠️ ph-0123abcd  21:05  no run yet, overdue\n")
     assert line(Status("ph-0123abcd", "21:05", unknown="sudo couldn't be run")) == \
         "❓ ph-0123abcd  21:05  status unknown: sudo couldn't be run"
+
+
+def test_a_household_s_note_is_beside_its_user():
+    ran = datetime(2026, 10, 30, 18, 4, tzinfo=timezone.utc)
+
+    assert line(Status("ph-0123abcd", "21:05", ran, 0, note="赵晗博, test family")).startswith(
+        "✅ ph-0123abcd (赵晗博, test family)  21:05  last run 2026-10-30 18:04 UTC, ok\n")
+    assert line(Status("ph-0123abcd", "21:05", unknown="sudo couldn't be run",
+                       note="赵晗博")) == \
+        "❓ ph-0123abcd (赵晗博)  21:05  status unknown: sudo couldn't be run"

@@ -198,7 +198,7 @@ class Service:
                 "wilma": {"tenant": {"url": tenant["url"], "name": tenant["name"]},
                           "username": typed.username, "password": password,
                           "students": students},
-            })
+            }, invite.note)
             return HTTPStatus.OK, page.myclub(language, self._pending[code].kids())
 
     def _make(self, code: str, fields: dict[str, str]) -> tuple[HTTPStatus, str]:
@@ -263,7 +263,8 @@ class Service:
             progress.end(self.now(), HTTPStatus.INTERNAL_SERVER_ERROR,
                          page.failed(language, progress.steps))
             return
-        self.store.add_household(HouseholdRecord(name, evening, self.now().isoformat()))
+        self.store.add_household(HouseholdRecord(name, evening, self.now().isoformat(),
+                                                 pending.note))
         self.store.retire(code)
         log.info("Household %s created from an Invite Link, with MyClub for %d of %d Kids; its "
                  "first Brief was sent, and the next come at %s", name, len(links), len(kids),
@@ -306,6 +307,7 @@ class _Pending:
     language: str
     expires: datetime
     answers: dict[str, Any]
+    note: str = ""  # the Invite Link's, for the Household's record
 
     def kids(self) -> list[str]:
         return [k["name"] for k in self.answers["kids"]]

@@ -35,7 +35,7 @@ from family_brief.config import Config
 from family_brief.last_run import path as last_run_path
 from family_brief.signup import page, status
 from family_brief.signup.host import PROGRAM
-from family_brief.signup.invites import Recipient, Store
+from family_brief.signup.invites import HouseholdRecord, Recipient, Store
 from family_brief.signup.remove import remove
 from family_brief.signup.server import Service, SignupServer
 from family_brief.system import jobs
@@ -79,8 +79,9 @@ class SignUp:
                                    listener=None if CAN_LISTEN else _PairedServer)
         self.url = self.server.url
 
-    def invite(self, *recipients: Recipient, language: str = "fi", days: int = 14) -> str:
-        return self.store.mint(list(recipients), language, self.clock.now, days).code
+    def invite(self, *recipients: Recipient, language: str = "fi", days: int = 14,
+               note: str = "") -> str:
+        return self.store.mint(list(recipients), language, self.clock.now, days, note).code
 
     def user(self):
         assert len(self.host.users) == 1, self.host.users
@@ -316,7 +317,7 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     assert [s["name"] for s in profile["students"]] == ["Mia Virtanen", "Leo Virtanen"]
     # Listed, without the family's addresses, and the link retired with its Recipients.
     [household] = signup.store.households()
-    assert (household.user, household.evening) == (name, "21:00")
+    assert (household.user, household.evening, household.note) == (name, "21:00", "")
     assert "parent@example.com" not in (signup.store.folder / "households.json").read_text()
     assert not list((signup.store.folder / "invites").iterdir())
     # The password and the key: on no command line, in no log or output, in no page.
@@ -327,6 +328,18 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
                        for arg in cmd)
     assert "mia.parent" not in caplog.text and "partner@example.com" not in caplog.text
     assert f"Household {name} created" in caplog.text
+
+
+def test_the_maintainers_note_goes_to_the_household_s_record_and_never_to_the_family(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"), note="Zhao Hanbo, test family")
+
+    shown = text(request(signup.url, f"/join/{code}"))
+    r = submit(signup, code)
+
+    assert r.status == 200, text(r)
+    assert "Zhao Hanbo" not in shown and "Zhao Hanbo" not in text(r)
+    [household] = signup.store.households()
+    assert household.note == "Zhao Hanbo, test family"
 
 
 @pytest.mark.parametrize("address", ["mia.mum@hotmail.com", "isa@outlook.com", "leo@hotmail.fi",
@@ -724,10 +737,35 @@ def test_the_invite_command_writes_an_owner_only_invite_and_prints_its_link(
     assert invite.recipients == [Recipient("parent@example.com", "en"),
                                  Recipient("isa@example.com", "zh")]
     assert invite.expires - datetime.now(timezone.utc) == timedelta(days=3)
+    assert invite.note == ""  # none given
     [written] = (tmp_path / "store" / "invites").iterdir()
     for p in (tmp_path / "store", written.parent, written):
         assert stat.S_IMODE(p.stat().st_mode) & 0o077 == 0, p
     assert store.valid(invite.code, datetime.now(timezone.utc) + timedelta(days=3)) is None
+
+
+def test_the_invite_command_keeps_the_maintainers_note_on_one_line(
+        harness, monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("SIGNUP_STORE", str(tmp_path / "store"))
+
+    assert harness.cli("signup", "invite", "--url", "https://g.example",
+                       "--note", " 赵晗博,\n test   family ") == 0
+
+    code = capsys.readouterr().out.strip().rsplit("/", 1)[1]
+    invite = Store(tmp_path / "store").valid(code, datetime.now(timezone.utc))
+    assert invite is not None and invite.note == "赵晗博, test family"
+
+
+def test_a_household_record_round_trips_and_one_written_before_notes_still_loads(tmp_path):
+    store = Store(tmp_path)
+    store.add_household(HouseholdRecord("ph-0123abcd", "21:00", "2026-10-30T12:00:00+00:00",
+                                        "赵晗博, test family"))
+    assert store.households()[0].note == "赵晗博, test family"
+
+    (tmp_path / "households.json").write_text(json.dumps(
+        [{"user": "ph-0123abcd", "evening": "21:00", "created": "2026-10-30T12:00:00+00:00"}]))
+    assert store.households() == [
+        HouseholdRecord("ph-0123abcd", "21:00", "2026-10-30T12:00:00+00:00")]
 
 
 def test_two_invites_get_different_codes(tmp_path):

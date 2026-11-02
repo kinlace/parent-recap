@@ -1,9 +1,10 @@
 """`parent-recap signup status`: every Hosted Household's status in one place, for the maintainers
 on the server (ops/gateway/status.sh runs it as the sign-up service's user). For each Household in
 the store it runs `signup health` with the shared program (ADR 0035) as that Household's user,
-through the household host, and prints one line: its user, the time its Brief comes, when its
-last run ended and how, how long it took and its peak memory, each of doctor's checks by its key
-with its status, and a mark when the last run failed or is overdue.
+through the household host, and prints one line: its user with the note its Invite Link carried,
+the time its Brief comes, when its last run ended and how, how long it took and its peak memory,
+each of doctor's checks by its key with its status, and a mark when the last run failed or is
+overdue.
 
 `signup health` is the Household's side: it reads its own last-run.json and state.json, runs
 doctor's checks without the model's test call (which spends the Household's budget), and prints
@@ -89,6 +90,7 @@ class Status:
     seconds: int | None = None  # how long the last run took
     peak_mb: int | None = None  # and the most memory it used
     unknown: str | None = None  # why the Household's status couldn't be read
+    note: str = ""  # the maintainers' note its Invite Link carried
 
     @property
     def failed(self) -> bool:
@@ -100,17 +102,17 @@ def status(host: HouseholdHost, household: HouseholdRecord) -> Status:
         code, out = host.run_as(household.user, [PROGRAM, "signup", "health"], "",
                                 HEALTH_SECONDS)
     except HostError as e:
-        return Status(household.user, household.evening, unknown=str(e))
+        return Status(household.user, household.evening, unknown=str(e), note=household.note)
     # Its output isn't quoted: doctor's log lines can name a Recipient or a Kid.
     said = _last_json(out)
     if code != 0 or "checks" not in said:
         return Status(household.user, household.evening,
                       unknown=f"signup health ended with {code} and said no status (a program "
-                              "older than this command?)")
+                              "older than this command?)", note=household.note)
     return Status(household.user, household.evening, last_run=_time(said.get("last_run")),
                   exit=last_run.number(said.get("exit")), overdue=said.get("overdue") is True,
                   checks=_checks(said["checks"]), seconds=last_run.number(said.get("seconds")),
-                  peak_mb=last_run.number(said.get("peak_mb")))
+                  peak_mb=last_run.number(said.get("peak_mb")), note=household.note)
 
 
 def _time(value: Any) -> datetime | None:
@@ -134,8 +136,9 @@ def _checks(given: Any) -> dict[str, str]:
 
 
 def line(s: Status) -> str:
+    who = f"{s.user} ({s.note})" if s.note else s.user
     if s.unknown:
-        return f"❓ {s.user}  {s.evening}  status unknown: {s.unknown}"
+        return f"❓ {who}  {s.evening}  status unknown: {s.unknown}"
     mark = MARKS["fail" if s.failed else "warn" if s.overdue else "ok"]
     if s.last_run is None:
         run = "no run yet"
@@ -146,7 +149,7 @@ def line(s: Status) -> str:
         run += "".join(f", {n} {unit}" for n, unit in ((s.seconds, "s"), (s.peak_mb, "MB"))
                        if n is not None)
     doctor = "  ".join(f"{MARKS[level]} {key}" for key, level in s.checks.items())
-    return (f"{mark} {s.user}  {s.evening}  {run}" + (", overdue" if s.overdue else "")
+    return (f"{mark} {who}  {s.evening}  {run}" + (", overdue" if s.overdue else "")
             + f"\n   doctor: {doctor or '(no checks)'}")
 
 
