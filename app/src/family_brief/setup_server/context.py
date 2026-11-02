@@ -158,8 +158,9 @@ class Context:
         return address if isinstance(address, str) and address else None
 
     def setup_parent(self) -> str | None:
-        """The setup parent's address, first among the Recipients, once Gmail's step has saved
-        them: given there with whoever else gets the Brief (ADR 0032), never taken from Gmail."""
+        """The first Recipient's address, once Gmail's step has saved them: given there with
+        whoever else gets the Brief (ADR 0032), never taken from Gmail. Usually the setup
+        parent's own, though nothing makes it so."""
         email = self.model().email
         return email.to[0].address if email.to else None
 

@@ -420,7 +420,8 @@ def test_a_valid_app_password_is_tested_stored_and_gmail_turns_done(harness, pag
     assert call(page.url, "api/state").json()["gmail"] == {
         "address": "parent@example.com",
         "to": [{"address": "parent@hotmail.com", "language": household},
-               {"address": "partner@example.com", "language": "fi"}]}
+               {"address": "partner@example.com", "language": "fi"}],
+        "most": setup_server.gmail.MAX_RECIPIENTS}
     assert_never_leaked_by_page(harness, [r], caplog, capsys, TYPED)
 
 
@@ -674,6 +675,26 @@ def test_each_recipient_needs_an_address_of_their_own(harness, page):
         r = call(page.url, "api/gmail/recipients", method="POST", body=body)
         assert r.status == 400 and r.json()["result"] == "invalid-answers", body
     assert Config.load(config_file(harness)).email.to == []
+
+
+def test_any_number_of_recipients_up_to_the_most_a_key_binds_are_saved_in_order(harness, page):
+    # #699: three or more, and nobody's address has to come first.
+    with_the_gateway_as_the_ai(page.url)
+    three = [{"address": "grandma@example.fi", "language": "fi"},
+             {"address": "parent@hotmail.com", "language": "en"},
+             {"address": "partner@example.com", "language": "zh"}]
+
+    r = save_recipients(page.url, *three)
+
+    assert r.json()["result"] == "saved"
+    assert [(t.address, t.language) for t in Config.load(config_file(harness)).email.to] == [
+        ("grandma@example.fi", "fi"), ("parent@hotmail.com", None), ("partner@example.com", "zh")]
+    most = [{"address": f"p{i}@example.com", "language": "en"}
+            for i in range(setup_server.gmail.MAX_RECIPIENTS)]
+    assert save_recipients(page.url, *most).json()["result"] == "saved"
+    r = save_recipients(page.url, *most, {"address": "one-more@example.com", "language": "en"})
+    assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    assert len(Config.load(config_file(harness)).email.to) == setup_server.gmail.MAX_RECIPIENTS
 
 
 def test_gmail_opened_again_after_it_was_skipped_only_adds_reading(harness, page, gmail):

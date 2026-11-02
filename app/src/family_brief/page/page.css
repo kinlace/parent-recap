@@ -258,6 +258,20 @@ fieldset .field label {
 /* The partner's address and language side by side. */
 #partner-details { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
 
+/* Who gets the Brief, one row each: the address, the language and Remove side by side. */
+.recipients { display: grid; gap: 12px; }
+
+.recipient {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.recipient .remove { min-height: 38px; }
+
+.add-recipient { margin: 0; }
+
 /* ── Welcome's "Have these ready": a quiet box, folded until the parent opens it. */
 
 .have-ready {
@@ -649,6 +663,8 @@ iframe.brief {
   h1 { font-size: 24px; }
   .phases { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #partner-details { grid-template-columns: minmax(0, 1fr); }
+  .recipient { grid-template-columns: minmax(0, 1fr); }
+  .recipient .remove { justify-self: start; min-height: 0; }
   .have-ready dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .have-ready dd + dt { margin-top: 8px; }
   .install { flex-direction: column; align-items: stretch; }

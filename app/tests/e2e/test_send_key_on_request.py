@@ -73,6 +73,25 @@ def test_saving_the_recipients_gets_a_key_and_mails_each_a_link_in_their_languag
     assert_made_key_never_leaked(harness, r.body.decode(), caplog.text)
 
 
+def test_the_key_is_bound_to_every_recipient_however_many(harness, page):
+    # #699: three Recipients, all in the request; a fourth added later gets a link of their own.
+    welcome(page.url, ai="claude")
+    source(page.url, "wilma", "skip")
+    three = [{"address": PARENT, "language": "en"}, {"address": PARTNER, "language": "fi"},
+             {"address": "grandma@example.fi", "language": "zh"}]
+
+    r = save_recipients(page.url, *three)
+
+    assert harness.key_requests == [three]
+    assert r.json()["confirm"]["unconfirmed"] == [PARENT, PARTNER, "grandma@example.fi"]
+    assert harness.confirmations == [(PARENT, "en"), (PARTNER, "fi"), ("grandma@example.fi", "zh")]
+
+    r = save_recipients(page.url, *three, {"address": "grandpa@example.fi", "language": "fi"})
+
+    assert r.json()["confirm"]["mailed"] == ["grandpa@example.fi"]
+    assert len(harness.key_requests) == 1
+
+
 def test_the_page_sends_the_link_again_and_says_once_everyone_confirmed(harness, page):
     welcome(page.url, ai="claude")
     source(page.url, "wilma", "skip")

@@ -21,6 +21,7 @@ from conftest import REAL_RUN, msg
 from family_brief import gateway, ops
 from family_brief.collectors import myclub
 from family_brief.config import Config
+from family_brief.setup_server.gmail import MAX_RECIPIENTS
 from family_brief.system import jobs, jobs_windows, secrets, wake, wake_windows, windows_only
 from setup_page import (APP_PASSWORD, call, check_page, clock, config_file,  # noqa: F401
                         finish, finished, health_result, page, source)
@@ -254,7 +255,8 @@ def a_key_for_sending_is_saved(harness, url: str) -> None:
     assert out["result"] == "saved" and out["progress"]["sources"]["gmail"] == "to-do"
     assert gateway.key() == GATEWAY_KEY
     state = call(url, "api/state").json()
-    assert state["gmail"] == {"address": None, "to": [{"address": PARENT, "language": "en"}]}
+    assert state["gmail"] == {"address": None, "to": [{"address": PARENT, "language": "en"}],
+                              "most": MAX_RECIPIENTS}
     assert state["progress"]["sources"]["ai"] == "to-do"  # Codex's own sign-in is still to come
     assert harness.relay_keys == [GATEWAY_KEY] and harness.sent == []
     [sending] = [c for c in ops.health_checks(str(config_file(harness)), skip_llm=True,
