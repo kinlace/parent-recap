@@ -998,19 +998,15 @@ def test_footer_names_the_codex_backend(harness, tmp_path):
     assert {answers["backend"] for _, answers, _ in feedback_links(email.html)} == {"codex"}
 
 
-@pytest.mark.parametrize("hosted, line", [
-    (None, "Parent Recap, running on your own computer"),  # a config from before #669 has no `hosted`
-    (False, "Parent Recap, running on your own computer"),
-    (True, "Parent Recap hosted version, running on the parentrecap.com server"),
-])
-def test_footer_says_whether_the_brief_comes_from_the_hosted_version(harness, hosted, line):
+def test_a_config_from_before_hosted_existed_reads_as_the_family_s_own_computer(harness):
+    # A config written before #669 has no `hosted`; the sign-up's say so (test_signup).
     normal_night(harness, "en")
-    if hosted is not None:
-        harness.config["hosted"] = hosted
+    assert "hosted" not in harness.config
 
     assert harness.run() == 0
 
     [email] = harness.sent
+    line = "Parent Recap, running on your own computer"
     assert email.text.rsplit("\n\n", 1)[1].startswith(line + "\n")
     assert f">{line}</p>" in email.html
 

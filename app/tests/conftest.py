@@ -194,8 +194,9 @@ def golden(request: pytest.FixtureRequest) -> Callable[[str, str], None]:
 
 
 def without_unread_note(text: str) -> str:
-    """The Brief's text without its last paragraph, which says the address it comes from, Parent
-    Recap's own, is unread and whom to write to instead (ADR 0032)."""
+    """The Brief's text without its last paragraph, which says which version sent it (#669) and
+    that the address it comes from, Parent Recap's own, is unread and whom to write to instead
+    (ADR 0032)."""
     body, last = text.rsplit("\n\n", 1)
     assert "parent@example.com" in last, last
     return body
