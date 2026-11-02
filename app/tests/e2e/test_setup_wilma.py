@@ -554,6 +554,29 @@ def test_a_household_without_the_wilma_cli_gets_none_from_an_update(harness, wil
 
 
 @pytest.mark.macos
+def test_the_gateway_s_shared_copy_gets_the_wilma_cli_with_no_household_connected(
+        harness, wilma, capsys):
+    # gateway-setup.sh installs it for every Hosted Household at once (ADR 0035).
+    assert setup_wilma.main(["install"]) == 0
+
+    npm = [c for c in harness.commands if fake_node.is_npm(c)]
+    assert [pinned_install(c) for c in npm] == [True]
+    assert package_version(harness) == setup_wilma.WILMA_CLI_VERSION
+    assert capsys.readouterr().out == "✅ The wilma CLI 2.1.2 is installed.\n"
+    wilma.npm_works = False
+    assert setup_wilma.main(["install"]) == 0  # already there
+
+
+@pytest.mark.macos
+def test_a_wilma_cli_the_gateway_couldn_t_install_fails_its_setup(harness, wilma, capsys):
+    wilma.npm_works = False
+
+    assert setup_wilma.main(["install"]) == 1
+
+    assert "❌ The wilma CLI couldn't be installed" in capsys.readouterr().err
+
+
+@pytest.mark.macos
 def test_a_wilma_cli_that_cannot_be_updated_keeps_working_and_the_install_goes_on(harness, wilma,
                                                                                capsys, caplog):
     wilma.install("1.6.2")

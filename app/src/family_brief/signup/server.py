@@ -9,8 +9,8 @@ calendar link field for each Kid Wilma listed. The answers wait in memory only, 
 up to PENDING_MINUTES: the password is never written down or put back in a page. The second post
 checks each link given by downloading it once, so a link that doesn't open is said at once, and
 an empty one leaves MyClub off for that Kid. Then the Household is made through the household
-host: its Linux user, its Gateway Key, the program installed under it, `signup household` run as
-it with the answers, the Wilma sign-in, the links and the key on its stdin, and its first Brief,
+host: its Linux user, its Gateway Key, `signup household` run as it, by the server's shared copy
+of the program (ADR 0035), with the answers, the Wilma sign-in, the links and the key on its stdin, and its first Brief,
 made and sent to its Recipients by `run --first-brief` as it, as the setup page's first Brief
 step makes one (ADR 0031). A step that fails takes back the user with its files and jobs and the
 key, and the link stays good. Once made, the Household is listed in the store, its link retired,
@@ -41,14 +41,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs
 
 from .. import failure, setup_myclub, setup_wilma
 from ..setup_server.first_brief import BRIEF_LOOKBACK_HOURS
 from . import page
-from .host import BASH, HostError, HouseholdHost, program, user_name
+from .host import PROGRAM, HostError, HouseholdHost, user_name
 from .invites import LANGUAGES, HouseholdRecord, Recipient, Store
 
 log = logging.getLogger("family_brief.signup")
@@ -60,8 +59,7 @@ MAX_BODY = 16 * 1024
 # The Households' evening jobs, one slot each in turn, so ten runs don't all start at once on a
 # server the gateway shares (ADR 0029).
 SLOTS = tuple(f"21:{minute:02d}" for minute in range(0, 60, 5))
-INSTALL_SECONDS = 900  # install.sh downloads Python and Node and installs the packages
-HOUSEHOLD_SECONDS = 600  # `signup household` installs the wilma CLI with npm
+HOUSEHOLD_SECONDS = 600  # `signup household` signs in to Wilma and installs the evening jobs
 FIRST_BRIEF_SECONDS = 900  # as long as the setup page gives its first Brief
 PENDING_MINUTES = 30  # how long the checked answers wait for the MyClub step
 RESULT_HOURS = 24  # how long how a sign-up ended waits for its page to see it
@@ -84,7 +82,6 @@ HEADERS = {
 class Service:
     store: Store
     host: HouseholdHost
-    release: Path  # the unpacked release whose install.sh installs the program for a Household
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
 
     def __post_init__(self) -> None:
@@ -276,14 +273,10 @@ class Service:
 
     def _create(self, name: str, answers: dict[str, Any], progress: _Progress) -> None:
         """Makes the Household, one of page.STEPS after another, `progress.steps` of them ended."""
-        home = self.host.create_user(name)
+        self.host.create_user(name)
         key = self.host.mint_key(name)
-        code, out = self.host.run_as(name, [BASH, str(self.release / "install.sh")], "",
-                                     INSTALL_SECONDS)
-        if code != 0:
-            raise HostError(f"install.sh ended with {code}: {out.strip()[-300:]}")
         progress.steps += 1
-        code, out = self.host.run_as(name, [str(program(home)), "signup", "household"],
+        code, out = self.host.run_as(name, [PROGRAM, "signup", "household"],
                                      json.dumps({**answers, "gateway_key": key}),
                                      HOUSEHOLD_SECONDS)
         said = _last_json(out)
@@ -292,7 +285,7 @@ class Service:
                             + (f": {said['reason']}" if said.get("reason") else ""))
         progress.steps += 1
         # Its output isn't quoted: the run's log can name a Recipient.
-        code, _ = self.host.run_as(name, [str(program(home)), "run", "--first-brief", "--lookback-hours",
+        code, _ = self.host.run_as(name, [PROGRAM, "run", "--first-brief", "--lookback-hours",
                                           str(BRIEF_LOOKBACK_HOURS)], "", FIRST_BRIEF_SECONDS)
         if code != 0:
             raise HostError(f"the first Brief wasn't sent: run ended with {code}")

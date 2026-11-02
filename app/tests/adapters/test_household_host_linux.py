@@ -4,6 +4,7 @@ signup.sudoers lets the service run as a Household, read as sudo reads it (#645)
 from __future__ import annotations
 
 import json as jsonlib
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -13,9 +14,9 @@ import requests
 
 from family_brief.setup_server.first_brief import BRIEF_LOOKBACK_HOURS
 from family_brief.signup import host_linux
-from family_brief.signup.host import BASH, HostError, user_name
+from family_brief.signup.host import PROGRAM, HostError, user_name
 from family_brief.signup.host_linux import LinuxHost
-from fake_household_host import RELEASE, SUDOERS, allowed, household_rules
+from fake_household_host import SUDOERS, allowed, household_rules
 
 NAME = "ph-0123abcd"
 
@@ -163,10 +164,8 @@ def test_the_admin_login_comes_from_the_environment(monkeypatch):
         LinuxHost.from_env()
 
 
-# What the service runs as a Household, where it is on the server (#645).
-PROGRAM = f"/home/{NAME}/ParentRecap/app/.venv/bin/parent-recap"
-RUNS = [[BASH, f"{RELEASE}/install.sh"],
-        [PROGRAM, "signup", "household"],
+# What the service runs as a Household, where it is on the server (#645, ADR 0035).
+RUNS = [[PROGRAM, "signup", "household"],
         [PROGRAM, "run", "--first-brief", "--lookback-hours", str(BRIEF_LOOKBACK_HOURS)],
         [PROGRAM, "signup", "health"],
         [PROGRAM, "schedule", "uninstall"]]
@@ -180,17 +179,43 @@ def test_the_sudoers_rules_let_the_service_run_its_own_commands_as_a_household()
 
 @pytest.mark.parametrize("argv", [
     ["/usr/bin/cat", f"/home/{NAME}/.config/wilmai/config.json"],
-    [BASH, "-c", "cat ~/.family/secrets/gateway-key"],
-    [BASH, f"{RELEASE}/install.sh", "--anything"],
+    ["/usr/bin/bash", "-c", "cat ~/.family/secrets/gateway-key"],
+    ["/usr/bin/bash", "/usr/local/lib/parent-recap-signup/release/install.sh"],
     [PROGRAM, "run"],
     [PROGRAM, "run", "--first-brief", "--lookback-hours", "720000"],
     [PROGRAM, "signup", "household", "--extra"],
     [PROGRAM, "doctor"],
-    [f"/home/{NAME}/ParentRecap/app/.venv/bin/python", "-c", "print(1)"],
-    ["/tmp/ParentRecap/app/.venv/bin/parent-recap", "signup", "health"],
+    ["/usr/local/lib/parent-recap/current/app/.venv/bin/python", "-c", "print(1)"],
+    [f"/home/{NAME}/ParentRecap/app/.venv/bin/parent-recap", "signup", "health"],
 ])
 def test_the_sudoers_rules_let_the_service_run_nothing_else_as_a_household(argv):
     assert not allowed(argv, household_rules(SUDOERS.read_text()))
+
+
+@pytest.mark.posix  # a shell script, as on the server
+def test_the_shared_program_runs_the_release_current_points_at_through_current(tmp_path):
+    # As gateway-setup.sh lays it out (ADR 0035), each release's Python a stand-in that says how
+    # it was run: the path it was run by is the one the evening jobs are written with.
+    shared = tmp_path / "parent-recap"
+    (shared / "bin").mkdir(parents=True)
+    wrapper = shared / "bin" / "parent-recap"
+    shutil.copy2(SUDOERS.with_name("parent-recap"), wrapper)
+    for release in ("0.10.2", "0.11.0"):
+        python = shared / release / "app" / ".venv" / "bin" / "python"
+        python.parent.mkdir(parents=True)
+        python.write_text(f'#!/bin/sh\necho {release} "$0" "$@"\n')
+        python.chmod(0o755)
+    current = shared / "current"
+    ran = []
+    for release in ("0.10.2", "0.11.0", "0.10.2"):  # deployed, upgraded, rolled back
+        current.unlink(missing_ok=True)
+        current.symlink_to(release)
+        ran.append(subprocess.run([str(wrapper), "signup", "health"], capture_output=True,
+                                  text=True, check=True).stdout.split())
+
+    via = str(current / "app" / ".venv" / "bin" / "python")
+    assert ran == [[release, via, "-m", "family_brief", "signup", "health"]
+                   for release in ("0.10.2", "0.11.0", "0.10.2")]
 
 
 def test_the_sudoers_rules_are_read_as_sudo_reads_them():

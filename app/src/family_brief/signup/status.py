@@ -1,6 +1,7 @@
 """`parent-recap signup status`: every Hosted Household's status in one place, for the maintainers
 on the server (ops/gateway/status.sh runs it as the sign-up service's user). For each Household in
-the store it runs `signup health` as that Household's user, through the household host, and prints
+the store it runs `signup health` with the shared program (ADR 0035) as that Household's user,
+through the household host, and prints
 one line: its user, the time its Brief comes, when its last run ended and how, how long it took
 and its peak memory, each of doctor's checks by its key with its status, and a mark when the last
 run failed or is overdue.
@@ -27,11 +28,10 @@ from zoneinfo import ZoneInfo
 from .. import last_run, ops
 from ..config import Config
 from ..state import State
-from .host import HostError, HouseholdHost
+from .host import PROGRAM, HostError, HouseholdHost
 from .invites import HouseholdRecord, Store
 from .server import _last_json
 
-HOMES = Path("/home")  # where household-user makes each Household's home
 HEALTH_SECONDS = 300  # doctor signs in to Wilma and downloads each MyClub calendar
 # A run that started at its time is given this long to end before it counts as overdue.
 GRACE = timedelta(hours=1)
@@ -96,10 +96,9 @@ class Status:
         return self.exit not in (None, 0)
 
 
-def status(host: HouseholdHost, household: HouseholdRecord, homes: Path) -> Status:
-    program = homes / household.user / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap"
+def status(host: HouseholdHost, household: HouseholdRecord) -> Status:
     try:
-        code, out = host.run_as(household.user, [str(program), "signup", "health"], "",
+        code, out = host.run_as(household.user, [PROGRAM, "signup", "health"], "",
                                 HEALTH_SECONDS)
     except HostError as e:
         return Status(household.user, household.evening, unknown=str(e))
@@ -152,7 +151,7 @@ def line(s: Status) -> str:
             + f"\n   doctor: {doctor or '(no checks)'}")
 
 
-def report(store: Store, host: HouseholdHost, homes: Path = HOMES) -> int:
+def report(store: Store, host: HouseholdHost) -> int:
     """Prints each Household's status as it's read; 1 when any is marked or unknown."""
     households = store.households()
     if not households:
@@ -160,7 +159,7 @@ def report(store: Store, host: HouseholdHost, homes: Path = HOMES) -> int:
         return 0
     found = []
     for household in households:
-        s = status(host, household, homes)
+        s = status(host, household)
         found.append(s)
         print(line(s), flush=True)
     failed = sum(s.failed for s in found if not s.unknown)

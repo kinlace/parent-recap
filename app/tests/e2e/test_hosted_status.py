@@ -18,6 +18,7 @@ import time_machine
 from family_brief.config import Config
 from family_brief.last_run import path as last_run_path
 from family_brief.signup import status
+from family_brief.signup.host import PROGRAM
 from family_brief.signup.invites import Recipient
 from conftest import NOW
 from test_signup import signup, submit, wilma_cli  # noqa: F401
@@ -36,12 +37,8 @@ def sign_up(s, address: str = "parent@example.com", **fields: str) -> str:
 
 def report(s, capsys) -> tuple[int, str]:
     capsys.readouterr()
-    code = status.report(s.store, s.host, homes=s.host.root)
+    code = status.report(s.store, s.host)
     return code, capsys.readouterr().out
-
-
-def program(s, name: str) -> str:
-    return str(s.host.users[name].home / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap")
 
 
 def test_each_household_is_listed_with_its_last_run_and_doctor_s_statuses(signup, capsys):
@@ -63,8 +60,8 @@ def test_each_household_is_listed_with_its_last_run_and_doctor_s_statuses(signup
         assert " claude" not in doctor and " gateway " not in doctor  # no test call to the model
     assert lines[-1] == "2 Households: 0 failed, 0 overdue, 0 unknown"
     # Only `signup health`, run as each Household's own user.
-    assert signup.host.commands[-2:] == [[first, program(signup, first), "signup", "health"],
-                                         [second, program(signup, second), "signup", "health"]]
+    assert signup.host.commands[-2:] == [[first, PROGRAM, "signup", "health"],
+                                         [second, PROGRAM, "signup", "health"]]
 
 
 def test_a_household_whose_last_run_failed_is_marked(signup, capsys, monkeypatch):
@@ -75,7 +72,7 @@ def test_a_household_whose_last_run_failed_is_marked(signup, capsys, monkeypatch
         raise RuntimeError("the run crashed")
     with monkeypatch.context() as mp, pytest.raises(RuntimeError):
         mp.setattr(evening, "_read", crashes)
-        signup.host.run_own(name, [program(signup, name), "run"])
+        signup.host.run_own(name, [PROGRAM, "run"])
 
     code, out = report(signup, capsys)
 
@@ -97,7 +94,7 @@ def test_a_household_whose_run_is_overdue_is_marked(signup, capsys):
 
 
 def health_of(s, name: str) -> dict:
-    _, said = s.host.run_as(name, [program(s, name), "signup", "health"], "", 300)
+    _, said = s.host.run_as(name, [PROGRAM, "signup", "health"], "", 300)
     return json.loads(said.strip().splitlines()[-1])
 
 
@@ -175,7 +172,7 @@ def test_nothing_of_a_household_s_messages_kids_or_addresses_is_printed(
         f"21:00:04 INFO family_brief | {body}\n"
         "21:01:10 INFO family_brief | Brief sent to parent@example.com, partner@example.com\n")
     # Its own `signup health` line says nothing of them either.
-    _, said = signup.host.run_as(name, [program(signup, name), "signup", "health"], "", 300)
+    _, said = signup.host.run_as(name, [PROGRAM, "signup", "health"], "", 300)
     health = said.strip().splitlines()[-1]
 
     code, out = report(signup, capsys)

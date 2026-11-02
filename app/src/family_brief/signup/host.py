@@ -15,8 +15,9 @@ from typing import Protocol
 
 PREFIX = "ph-"  # a Hosted Household's user, as `ps` and `ls /home` show it
 USER = re.compile(rf"{PREFIX}[0-9a-f]{{8}}")
-# install.sh runs with bash by its absolute path, as the sudoers rule names it (#645).
-BASH = "/usr/bin/bash"
+# The program every Hosted Household runs as its own user (ADR 0035): gateway-setup.sh installs
+# it once, root-owned and readable by all, and this command runs the release `current` points at.
+PROGRAM = "/usr/local/lib/parent-recap/bin/parent-recap"
 
 
 class HostError(RuntimeError):
@@ -47,11 +48,6 @@ class HouseholdHost(Protocol):
     def revoke_key(self, name: str) -> bool:
         """Deletes the Gateway Key named `name`, and says whether there was one; one that isn't
         there is fine."""
-
-
-def program(home: Path) -> Path:
-    """The `parent-recap` the release's install.sh puts in a Household's home."""
-    return home / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap"
 
 
 def user_name() -> str:

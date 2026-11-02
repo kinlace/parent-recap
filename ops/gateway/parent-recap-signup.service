@@ -7,13 +7,13 @@ Wants=network-online.target
 User=parent-recap-signup
 Group=parent-recap-signup
 # Bifrost's admin login, to mint each Household's Gateway Key; the provider key in the same file is
-# not this service's to see. signup.env says where the release is (signup.env.example).
+# not this service's to see. signup.env holds the gateway's hostname (signup.env.example).
 EnvironmentFile=/etc/bifrost/bifrost.env
 EnvironmentFile=/etc/parent-recap-signup/signup.env
 UnsetEnvironment=ANTHROPIC_API_KEY
-# The program install.sh put under the service's own user, with the wilma CLI that checks a
+# The shared program every Hosted Household runs (ADR 0035), with the wilma CLI that checks a
 # family's sign-in.
-ExecStart=/var/lib/parent-recap-signup/ParentRecap/app/.venv/bin/parent-recap signup serve
+ExecStart=/usr/local/lib/parent-recap/bin/parent-recap signup serve
 WorkingDirectory=/var/lib/parent-recap-signup
 UMask=0077
 Restart=on-failure

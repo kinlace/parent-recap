@@ -18,6 +18,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Callable
@@ -29,10 +30,24 @@ WILMA_PACKAGE = "@wilm-ai/wilma-cli"
 
 
 def home() -> Path:
-    """Parent Recap's own folder: the one the install put the program in. Only installs from
-    before setup's record, all on macOS, have none."""
+    """Parent Recap's own folder: the one the install put the running program in. A Hosted
+    Household runs the server's shared copy (ADR 0035), which its user's record doesn't name,
+    so the program's own folder comes first. Run from elsewhere, as from a checkout, it's the
+    one setup's record names; only installs from before the record, all on macOS, have none."""
+    if (running := running_from()) is not None:
+        return running
     programs = install_record.entries("program")
     return Path(programs[-1]).parent if programs else Path.home() / "ParentRecap"
+
+
+def running_from() -> Path | None:
+    """The folder the install put the running program in, from its venv (`<folder>/app/.venv`
+    beside `<folder>/runtime`), or None when it runs from anywhere else."""
+    venv = Path(sys.prefix)
+    folder = venv.parent.parent
+    if venv.name == ".venv" and venv.parent.name == "app" and (folder / "runtime").is_dir():
+        return folder
+    return None
 
 
 def _program(folder: Path) -> Path:

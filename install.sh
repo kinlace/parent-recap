@@ -1,6 +1,7 @@
 #!/bin/bash
 # Install or update Parent Recap into ~/ParentRecap/app, on a Mac or, for the hosted version
-# (ADR 0029), on a Linux server under the Household's own user, without root.
+# (ADR 0029), on a Linux server, where ops/gateway/gateway-setup.sh runs it as root into the one
+# copy every Hosted Household runs (ADR 0035).
 # Safe to re-run: never touches the config, tokens or Keychain. It only adds what it creates to
 # setup's record (~/.family/install-record.json), so `parent-recap uninstall` can remove it.
 set -euo pipefail

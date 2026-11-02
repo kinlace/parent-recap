@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -192,3 +193,23 @@ def test_parent_recaps_folder_is_the_one_install_sh_put_the_program_in(harness, 
     assert own_node.node() == elsewhere / node
     assert own_node.wilma_folder() == elsewhere / "wilma"
     assert own_node.wilma() is None  # not installed there
+
+
+def test_a_program_installed_elsewhere_runs_its_own_node_whatever_the_record_says(
+        harness, tmp_path, monkeypatch):
+    # A Hosted Household runs the server's shared copy (ADR 0035), which its own record doesn't
+    # name: one made before it still names the copy install.sh put in its home.
+    from family_brief import install_record
+    install_record.add("program", str(harness.home / "ParentRecap" / "app"))
+    fake_node.pinned_node(harness.home)
+    fake_node.install_wilma(harness.home, "#!/bin/sh\n")
+    shared = tmp_path / "lib" / "ParentRecap"
+    node = fake_node.pinned_node(tmp_path / "lib")
+    cli = fake_node.install_wilma(tmp_path / "lib", "#!/bin/sh\n")
+    monkeypatch.setattr(sys, "prefix", str(shared / "app" / ".venv"))
+
+    assert own_node.home() == shared
+    assert own_node.wilma() == [str(node), str(cli)]
+    # Run from a checkout, with no runtime/ beside it, the record's folder counts.
+    shutil.rmtree(shared / "runtime")
+    assert own_node.home() == harness.home / "ParentRecap"

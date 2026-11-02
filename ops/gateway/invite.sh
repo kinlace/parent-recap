@@ -15,5 +15,4 @@ set -euo pipefail
 : "${GATEWAY_HOST:?GATEWAY_HOST is missing from /etc/parent-recap-signup/signup.env}"
 cd /
 exec sudo -u parent-recap-signup -H -- \
-  /var/lib/parent-recap-signup/ParentRecap/app/.venv/bin/parent-recap \
-  signup invite --url "https://$GATEWAY_HOST" "$@"
+  /usr/local/lib/parent-recap/bin/parent-recap signup invite --url "https://$GATEWAY_HOST" "$@"
