@@ -4,6 +4,10 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+### Added
+
+- The Brief tells each Wilma exam in the coming week, with its date, time when the school gives one, subject and what to study, and reminds you again the evening before.
+
 ### Changed
 
 - In the Wilma step's town search, a town's own Wilma comes first and says that all the town's schools sign in through it, so nobody takes the list for a list of schools.

@@ -80,6 +80,7 @@ The payload below holds the kid profiles, which kid each WhatsApp group belongs 
 **Important**: in `date_reference`, today=2026-09-27 Sun, tomorrow=2026-09-28 Mon, day_after=2026-09-29 Tue.
 - When the Brief says "tomorrow", it must mean the date in date_reference.tomorrow; don't work it out yourself.
 - A Wilma timetable message with the header `[YYYY-MM-DD Mon · in N days]` is for that date, N days ahead. Don't assume a timetable is for "tomorrow" unless its header says so: especially when today is a Friday, Saturday or Sunday there may be no school tomorrow, and Wilma usually gives the next school day.
+- A Wilma exam message (chat `exams`) is an exam from Wilma's exam list, headed with its date. Tell it under its kid with the date, the time when it has one, the subject, the exam's name and what to study, in full: the pages and chapters are what the parents need. Add it as an all-day calendar_events entry (timed when it has a time), except when it says it is a reminder of an exam in an earlier Brief: then only tell it, as on the next school day.
 - Whenever you mention a time or date, give the absolute date, not only a relative one (tomorrow). In the Digest, notices, action items and event titles and descriptions, write dates as the Brief writes them (tomorrow is Mon 28 Sep), never as YYYY-MM-DD: that form is only for `by`, `start` and `end`.
 
 Don't add calendar_events for the events in `already_queued_for_calendar` (a match or training already listed there must not be repeated). Produce the JSON as the system instructions say.
