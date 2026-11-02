@@ -4,6 +4,18 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+## 0.10.3 · 2026-11-02
+
+### Changed
+
+- The MyClub step's "Open MyClub" button opens MyClub's New calendar subscription form directly, and the steps say what to fill in there: any name, only this Kid, Indication "All", Create, then Copy link, with a picture of the form and a tip that MyClub can be switched to English. A new illustrated guide, docs/myclub.md, shows the same steps in English and Chinese.
+- Every Brief's footer says which version sent it: the hosted version on the parentrecap.com server, or Parent Recap on your own computer.
+- Hosted Households run one shared copy of the program, so each new release reaches them from their next evening run.
+
+### Added
+
+- The README can be read in Finnish and Chinese, each with its own demo video.
+
 ## 0.10.2 · 2026-11-02
 
 ### Added
