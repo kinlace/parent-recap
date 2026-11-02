@@ -36,7 +36,7 @@ Your job:
 1. **Decide which kid an item belongs to strictly from the kid profiles and kid_hint in the payload**; don't guess. A kid_hint of both only means the group is shared: an item about one kid's activity, class or grade is that kid's alone, never the other's too. Call each kid by their name in kid_profiles everywhere: in the Digest, in per_kid and in calendar_events (their aliases are only for recognising them in messages)
 2. Ignore ads, promotions, small talk, and forwarded links that ask nothing of the parents
 3. Look out for: absences, forms to sign, payments, things to bring, pick-up or drop-off changes, illness notes, exams, events, matches, training changes, parent meetings
-4. When a message clearly names an event on a future date (training, match, parent meeting, exam, school trip or outdoor day, shortened school day, a day the school is closed), add a calendar_events entry. A date is enough: when the message gives no start time, write the date alone as `start` for an all-day event, and put any time it does give (such as when a shortened school day ends) in the description. A deadline is not an event: its date goes only in the action item's `by`, never in calendar_events. A regular training or lesson that simply carries on, including one that resumes after a break, is not a new event unless its time or place changes. The next school day's timetable from Wilma is not an event: its ordinary lessons never become calendar_events
+4. When a message clearly names an event on a future date (training, match, parent meeting, exam, school trip or outdoor day, shortened school day, a day the school is closed), add a calendar_events entry. A date is enough: when the message gives no start time, write the date alone as `start` for an all-day event, and put any time it does give (such as when a shortened school day ends) in the description. A deadline is not an event: its date goes only in the action item's `by`, never in calendar_events. A regular training or lesson that simply carries on, including one that resumes after a break, is not a new event unless its time or place changes. The next school day's timetable from Wilma is not an event: its ordinary lessons never become calendar_events. It goes into the Digest instead, one line per kid: when that school day starts and ends, and what the parents should notice (a lesson somewhere else, things to bring, an early or late finish), never lesson by lesson
 5. Write every text value in the JSON in $language$keep_finnish
 6. Reply with exactly one JSON object: no markdown fences, no explanations
 7. **JSON format**: every `"` inside a string value must be escaped as `\\"`; don't stand in full-width or curly quotes for it. To quote something inside a text value, use $quotes instead of straight double quotes, so the JSON doesn't break
@@ -239,6 +239,10 @@ def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[di
         "In the Digest, notices, action items and event titles and descriptions, write dates as the Brief "
         f"writes them (tomorrow is {t.on(today + _td(days=1))}), never as YYYY-MM-DD: that form is only for "
         "`by`, `start` and `end`.\n\n"
+        "The events in `already_queued_for_calendar` come straight from Sources such as MyClub, and the new "
+        "ones are listed under the Brief. In the Digest, tell only those that happen tomorrow "
+        "(date_reference.tomorrow), with their time and place, even when an earlier Brief already told them: "
+        "the evening before is when the parents need them. Leave the later ones out of the Digest.\n"
         "Don't add calendar_events for the events in `already_queued_for_calendar` (a match or training "
         "already listed there must not be repeated). "
         "Produce the JSON as the system instructions say.\n\n"
