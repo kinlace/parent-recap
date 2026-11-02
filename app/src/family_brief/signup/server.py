@@ -10,9 +10,9 @@ up to PENDING_MINUTES: the password is never written down or put back in a page.
 checks each link given by downloading it once, so a link that doesn't open is said at once, and
 an empty one leaves MyClub off for that Kid. Then the Household is made through the household
 host: its Linux user, its Gateway Key, `signup household` run as it, by the server's shared copy
-of the program (ADR 0035), with the answers, the Wilma sign-in, the links and the key on its stdin, and its first Brief,
-made and sent to its Recipients by `run --first-brief` as it, as the setup page's first Brief
-step makes one (ADR 0031). A step that fails takes back the user with its files and jobs and the
+of the program (ADR 0035), with the answers, the Wilma sign-in, the links and the key on its
+stdin, and its first Brief, made and sent to its Recipients by `run --first-brief` as it, as the
+setup page's first Brief step makes one (ADR 0031). A step that fails takes back the user with its files and jobs and the
 key, and the link stays good. Once made, the Household is listed in the store, its link retired,
 and the page says its first Brief was sent.
 

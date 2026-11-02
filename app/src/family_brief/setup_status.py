@@ -22,7 +22,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import install_record, ops
+from . import install_record, ops, own_node
 from .config import Config
 from .state import State
 from .system import jobs, profile, wake
@@ -80,8 +80,10 @@ def check(config: str | None) -> list[Outcome]:
 
 
 def _installed() -> Outcome:
-    programs = [Path(p) for p in install_record.entries("program")] or \
-        [Path.home() / "ParentRecap" / "app"]
+    # A Hosted Household's program is the server's shared copy, which its record doesn't name.
+    running = own_node.running_from()
+    programs = ([running / "app"] if running else []) + (
+        [Path(p) for p in install_record.entries("program")] or [Path.home() / "ParentRecap" / "app"])
     for program in programs:
         try:
             ours = re.search(r'^name\s*=\s*"family-brief"', (program / "pyproject.toml").read_text(encoding="utf-8"),

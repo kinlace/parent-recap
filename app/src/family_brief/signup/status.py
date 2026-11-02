@@ -1,10 +1,9 @@
 """`parent-recap signup status`: every Hosted Household's status in one place, for the maintainers
 on the server (ops/gateway/status.sh runs it as the sign-up service's user). For each Household in
 the store it runs `signup health` with the shared program (ADR 0035) as that Household's user,
-through the household host, and prints
-one line: its user, the time its Brief comes, when its last run ended and how, how long it took
-and its peak memory, each of doctor's checks by its key with its status, and a mark when the last
-run failed or is overdue.
+through the household host, and prints one line: its user, the time its Brief comes, when its
+last run ended and how, how long it took and its peak memory, each of doctor's checks by its key
+with its status, and a mark when the last run failed or is overdue.
 
 `signup health` is the Household's side: it reads its own last-run.json and state.json, runs
 doctor's checks without the model's test call (which spends the Household's budget), and prints

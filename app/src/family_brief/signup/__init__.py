@@ -118,11 +118,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except HostError as e:
         log.error("%s", e)
         return 78
-    # The shared copy's wilma CLI, which gateway-setup.sh installed, checks each family's sign-in.
-    got = setup_wilma.install()
-    if got["result"] != "installed":
-        log.error("The wilma CLI didn't install, so no sign-in can be checked: %s",
-                  got.get("reason") or got["result"])
+    # The shared copy's wilma CLI, which gateway-setup.sh installed, checks each family's sign-in;
+    # the service can't install one in a copy root owns.
+    if not setup_wilma.installed():
+        log.error("The shared program has no wilma CLI, so no sign-in can be checked: run "
+                  "gateway-setup.sh with PARENT_RECAP_RELEASE again")
         return 1
     server = SignupServer(Service(store(), host), args.port)
     log.info("The sign-up page is served on %s", server.url)
