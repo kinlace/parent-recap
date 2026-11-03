@@ -765,8 +765,10 @@ def test_who_gets_the_brief_and_the_key_s_results_are_explained_in_all_three_lan
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for result in setup_server.gmail.RECIPIENTS_RESULTS:
+        # Saved, Connect says to whom above the Source list, and Finish in its own words.
+        for result in set(setup_server.gmail.RECIPIENTS_RESULTS) - {"saved"}:
             assert table.get(f"recipients.{result}", "").strip(), (language, result)
+        assert table["finish.recipients.saved"].strip(), language
         for key in ("recipients.title", "recipients.explain", "recipients.unread",
                     "recipients.junk", "brief.junk", "recipients.to", "recipients.change",
                     "gmail.key.saved", "recipients.key", "recipients.key.explain",
@@ -779,8 +781,7 @@ def test_who_gets_the_brief_and_the_key_s_results_are_explained_in_all_three_lan
         assert "sk-" in table["recipients.key.explain"], language
         assert "brief@parentrecap.com" in table["recipients.explain"], language
         # Who gets the Brief names no Source (#708).
-        for key in ("recipients.title", "recipients.explain", "recipients.unread",
-                    "recipients.saved"):
+        for key in ("recipients.title", "recipients.explain", "recipients.unread"):
             assert "Gmail" not in table[key], (language, key)
         # Whom the confirmation email went to (ADR 0033).
         for key in ("gmail.confirm.sent", "gmail.confirm.resent"):
