@@ -45,33 +45,34 @@ pin() {
   sed -n "s/^$1=//p" "$INSTALL"
 }
 
-# Prints the published line for a pin that doesn't match, so a bump can copy it.
+# A line for a checksum pin that isn't the published one, so a bump can copy the published line;
+# nothing when it is. $1 the pin's name, $2 the published list, $3 the file.
+mismatch() {
+  local pinned line
+  pinned="$(pin "$1")"
+  # The file name as it is: its + and . would be patterns to grep -E.
+  line="$(awk -v file="$3" '$2 == file || $2 == "*" file' "$2")"
+  [ "$pinned" = "${line%% *}" ] || echo "$3: install.sh pins $1=$pinned, the published list says: $line"
+}
+
 check_pins() {
-  local py build node sums wrong=""
-  py="$(pin PYTHON_VERSION)"
+  local python build node sums wrong
+  python="$(pin PYTHON_VERSION)"
   build="$(pin PYTHON_BUILD)"
   node="$(pin NODE_VERSION)"
-  [ -n "$py" ] && [ -n "$build" ] && [ -n "$node" ] ||
-    fail "install.sh pins PYTHON_VERSION=$py PYTHON_BUILD=$build NODE_VERSION=$node"
+  [ -n "$python" ] && [ -n "$build" ] && [ -n "$node" ] ||
+    fail "install.sh pins PYTHON_VERSION=$python PYTHON_BUILD=$build NODE_VERSION=$node"
   sums="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/sums.XXXXXX")"
   curl -fsSL "https://github.com/astral-sh/python-build-standalone/releases/download/$build/SHA256SUMS" > "$sums/python"
   curl -fsSL "https://nodejs.org/dist/v$node/SHASUMS256.txt" > "$sums/node"
-  # $1 the pin's name, $2 the published list, $3 the file
-  published() {
-    local pinned line
-    pinned="$(pin "$1")"
-    # The file name as it is: its + and . would be patterns to grep -E.
-    line="$(awk -v file="$3" '$2 == file || $2 == "*" file' "$2")"
-    if [ "$pinned" != "${line%% *}" ]; then
-      wrong+="$3: install.sh pins $1=$pinned, the published list says: $line"$'\n'
-    fi
-  }
-  published PYTHON_SHA256_LINUX_AARCH64 "$sums/python" "cpython-$py+$build-aarch64-unknown-linux-gnu-install_only.tar.gz"
-  published PYTHON_SHA256_LINUX_X86_64 "$sums/python" "cpython-$py+$build-x86_64-unknown-linux-gnu-install_only.tar.gz"
-  published NODE_SHA256_LINUX_ARM64 "$sums/node" "node-v$node-linux-arm64.tar.xz"
-  published NODE_SHA256_LINUX_X64 "$sums/node" "node-v$node-linux-x64.tar.xz"
+  wrong="$(
+    mismatch PYTHON_SHA256_LINUX_AARCH64 "$sums/python" "cpython-$python+$build-aarch64-unknown-linux-gnu-install_only.tar.gz"
+    mismatch PYTHON_SHA256_LINUX_X86_64 "$sums/python" "cpython-$python+$build-x86_64-unknown-linux-gnu-install_only.tar.gz"
+    mismatch NODE_SHA256_LINUX_ARM64 "$sums/node" "node-v$node-linux-arm64.tar.xz"
+    mismatch NODE_SHA256_LINUX_X64 "$sums/node" "node-v$node-linux-x64.tar.xz"
+  )"
   rm -r "$sums"
-  [ -z "$wrong" ] || fail "${wrong%$'\n'}"
+  [ -z "$wrong" ] || fail "$wrong"
 }
 
 check_install() {
