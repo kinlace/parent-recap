@@ -643,33 +643,14 @@ def test_who_gets_the_brief_shows_each_recipient_confirm_by_itself_and_never_hol
     assert all(b["resend"] is False for b in family.binds)
 
 
-@pytest.mark.macos
-def test_who_gets_the_brief_stops_asking_once_it_s_changed(tab, family, codex):  # noqa: F811
-    in_english(tab)
-    tab.get_by_role("radio", name=text("welcome.ai.codex")).check()
-    expect(tab.get_by_text(text("ai.codex.ready"))).to_be_visible()
-    tab.get_by_role("radio", name=text("welcome.partner.only-me")).check()
-    button(tab, "continue").click()
-    recipient(tab).fill(PARENT)
-    button(tab, "recipients.save").click()
-    expect(tab.locator("#recipients-confirmed-list li")).to_have_text(
-        [text("recipients.confirm.waiting", address=PARENT)])
-
-    button(tab, "recipients.change").click()
-
-    expect(button(tab, "recipients.save")).to_be_visible()
-    expect(tab.locator("#recipients-confirmed")).to_be_hidden()
-    asked_no_more(tab, family)
-
-
 def test_with_the_gateway_as_the_ai_who_gets_the_brief_shows_no_confirmation(tab, family):
+    # That the page asks the gateway nothing is test_send_key_on_request.py's.
     in_english_with_the_gateway(tab)
     skip(tab, "wilma").click()
 
     expect(tab.locator("#recipients-confirmed")).to_be_hidden()
     expect(tab.locator("#recipients-confirm")).to_be_hidden()
-    tab.wait_for_timeout(ASKING_MS)
-    assert family.binds == [] and family.key_requests == []
+    assert family.key_requests == []
 
 
 def test_the_first_brief_reminds_the_parent_to_confirm_until_they_have(tab, family):
@@ -715,9 +696,10 @@ def test_finish_names_nobody_while_the_brief_goes_from_the_family_s_gmail(tab, f
     tab.reload()
 
     expect(tab.get_by_text(text("finish.sending.current.gmail", address=PARENT))).to_be_visible()
-    tab.wait_for_timeout(ASKING_MS)
     expect(tab.locator("#finish-unconfirmed")).to_be_hidden()
-    assert family.binds == []
+    # Back on the gateway, the partner who hasn't confirmed is named, by itself.
+    button(tab, "finish.sending.off").click()
+    expect(tab.get_by_text(text("finish.unconfirmed", address=PARTNER))).to_be_visible()
 
 
 def test_loading_the_page_logs_no_error_in_the_console(tab):

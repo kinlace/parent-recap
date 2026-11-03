@@ -2497,8 +2497,13 @@ async function askConfirmed(round) {
   }
   const waits = out.result === "failed" ||
     (out.result === "unconfirmed" && !shown.enough?.(out));
-  if (waits) confirmWatch.timer = setTimeout(() => askConfirmed(round), CONFIRM_MS);
-  else confirmWatch.asking = false;
+  if (waits) {
+    confirmWatch.timer = setTimeout(() => askConfirmed(round), CONFIRM_MS);
+  } else {
+    // Done: the page coming back into view doesn't ask again; saving or "Send it again" does.
+    confirmWatch.asking = false;
+    confirmWatch.where = null;
+  }
 }
 
 document.addEventListener("visibilitychange", () => {
@@ -2523,8 +2528,12 @@ function showRecipientsConfirmed(out) {
     }));
   part.querySelector(".hint").hidden = out.result === "confirmed";
   const waiting = out.recipients.filter((r) => !r.confirmed).map((r) => r.address);
-  // After a reload, the email was sent before: the box says to whom, with "Send it again".
-  if (out.result === "confirmed" || !recipientsStep.confirm) {
+  // The box above says to whom the email went and who still waits, with "Send it again": after
+  // a reload it was sent before, and someone who confirmed since is left out.
+  const was = recipientsStep.confirm;
+  const changed = !was || (was.result === "unconfirmed" &&
+    (was.unconfirmed || []).join() !== waiting.join());
+  if (out.result === "confirmed" || changed) {
     recipientsStep.confirm = { result: out.result, unconfirmed: waiting, mailed: [] };
     showConfirmation(document.getElementById("recipients-confirm"), recipientsStep.confirm, false);
   }
@@ -2567,7 +2576,7 @@ async function resendFrom(prefix, where) {
     const mailed = (out.mailed || []).join(", ");
     if (mailed) setText(resent, "gmail.confirm.resent", { addresses: mailed });
     else setText(resent, "gmail.confirm.no-key");
-    resent.hidden = !mailed && out.result === "confirmed";
+    resent.hidden = !mailed && ["confirmed", "not-needed"].includes(out.result);
     resent.classList.toggle("fail", !mailed);
     watchConfirmation(where);
   } catch (e) {
