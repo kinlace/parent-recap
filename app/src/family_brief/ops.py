@@ -312,7 +312,7 @@ def check_wilma(cfg: Config, add, config: str | None = None) -> None:
     # From 2.0 the CLI signs in with every saved profile, so a stale one fails every evening. The
     # evening run doesn't put that in the Brief when the profile is for none of the Kids.
     from . import setup_wilma
-    signins = setup_wilma.profiles(setup_wilma.config_path())
+    signins = setup_wilma.signins()
     kids = {k.name.casefold() for k in cfg.kids}
     # With several, such as a Wilma in each of two towns, each one the Kids depend on is signed in
     # to alone, so one that fails isn't hidden by another that works.

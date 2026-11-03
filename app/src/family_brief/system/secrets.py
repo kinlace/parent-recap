@@ -1,5 +1,5 @@
-"""Reading, storing and deleting Parent Recap's secrets: the Gmail App Password, the Claude token
-and the Gateway Key (ADR 0020). Each system has its adapter: the Keychain on macOS, Credential
+"""Reading, storing and deleting Parent Recap's secrets: the Gmail App Password, the Claude token,
+the Gateway Key and setup's Wilma passwords (ADR 0020, #710). Each system has its adapter: the Keychain on macOS, Credential
 Manager on Windows, owner-only files on Linux (ADR 0030)."""
 from __future__ import annotations
 

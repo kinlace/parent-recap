@@ -279,7 +279,7 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     assert [c[1:] for c in signup.host.commands] == [
         [PROGRAM, "signup", "household"],
         [PROGRAM, "run", "--first-brief", "--lookback-hours", "72"]]
-    assert sorted(p.name for p in user.home.iterdir()) == [".config", ".family", "ParentRecap"]
+    assert sorted(p.name for p in user.home.iterdir()) == [".family", "ParentRecap"]
     assert not (user.home / "ParentRecap" / "app").exists()  # its archive and logs only
     assert not (user.home / "ParentRecap" / "runtime").exists()
     # The first Brief, from Parent Recap's own address with the Household's key, to each
@@ -305,16 +305,22 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     assert cfg.wilma.enabled and not cfg.whatsapp.enabled
     assert cfg.google_calendar.mode == "ics"
     assert (cfg.schedule.daily_hour, cfg.schedule.daily_minute) == (21, 0)
-    assert user.secrets == {"gateway-key": key}
+    account = setup_wilma.secret_name(f"{ESPOO}|mia.parent")
+    assert set(user.secrets) == {"gateway-key", account}
+    assert user.secrets["gateway-key"] == key
     assert user.jobs.installed() == {jobs.DAILY}
     # Its evening job runs the shared copy's Python, so a redeploy upgrades its next run.
     assert user.jobs.program(jobs.DAILY) == [str(signup.host.python), "-m", "family_brief", "run"]
     assert not any(k.myclub_ical_url for k in cfg.kids)  # no link given: MyClub off for both
-    wilma = json.loads((user.home / ".config" / "wilmai" / "config.json").read_text())
+    # The Wilma sign-in: its password in the secret store, the rest in setup's own file, and
+    # nothing left of the config the first Brief's run read Wilma with (#710).
+    wilma = json.loads((user.home / ".family" / "wilma-signins.json").read_text())
     [profile] = wilma["profiles"]
     assert (profile["tenantUrl"], profile["username"]) == (ESPOO, "mia.parent")
-    assert profile["passwordObfuscated"] == setup_wilma.obfuscate(WILMA_PASSWORD)
+    assert "passwordObfuscated" not in profile
+    assert user.secrets[account] == setup_wilma.obfuscate(WILMA_PASSWORD)
     assert [s["name"] for s in profile["students"]] == ["Mia Virtanen", "Leo Virtanen"]
+    assert not list((user.home / ".family" / "wilma-runs").iterdir())
     # Listed, without the family's addresses, and the link retired with its Recipients.
     [household] = signup.store.households()
     assert (household.user, household.evening, household.note) == (name, "21:00", "")

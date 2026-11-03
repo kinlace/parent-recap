@@ -9,9 +9,15 @@ profile written against that version's way of reading it.
 
 The CLI is installed and run with Parent Recap's own Node, in its own folder (`own_node`, ADR 0011).
 The town list is Wilma's public tenant list, the copy the CLI ships inside its wilma-client.
-The password goes only into the CLI's own owner-only file, lightly encoded as the CLI keeps it,
-and for the check into an owner-only copy of it that goes right after, never onto a command
-line, into a log or back to the page.
+
+Setup's sign-ins aren't kept in the CLI's own file (#710): each one's password and two-step key
+go into the system's secret store (`system/secrets`), and the rest of its profile into
+~/.family/wilma-signins.json. Each run of the CLI reads a config written for it alone
+(`run_config`): those profiles with their secrets, beside the CLI's own sign-ins, in an owner-only
+folder that goes when the run ends. The password is never put on a command line, into a log or
+back to the page. A sign-in the family made with the CLI themselves, before setup, stays in the
+CLI's file; one setup wrote there before #710, or the Terminal window signed in with, moves to the
+store on the next run (`move_to_store`).
 
 The Terminal sign-in window runs the CLI's own screens instead, with a guide in the family's
 language: `setup wilma` opens it, and the page offers it when its own sign-in fails for any reason
@@ -20,27 +26,31 @@ but a wrong password.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import logging
 import math
 import os
 import re
 import select
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unicodedata
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 from urllib.parse import urlsplit
 
-from . import failure, install_record, own_node, private_files
+from . import failure, install_record, own_node, private_files, run_lock
 from .collectors import wilma
 from .setup_report import outcome, program
-from .system import desktop
+from .system import desktop, secrets
 from .system import profile as system_profile  # `profile` is the wilma CLI's here
 
 try:  # the Wilma window's pseudo-terminal, which Windows doesn't have yet
@@ -51,6 +61,8 @@ try:  # the Wilma window's pseudo-terminal, which Windows doesn't have yet
 except ImportError:
     pass
 
+log = logging.getLogger(__name__)
+
 WILMA_CLI_VERSION = "2.1.2"
 PACKAGE = own_node.WILMA_PACKAGE
 INSTALL_SECONDS = 300
@@ -59,6 +71,15 @@ SALT = "wilmai::"  # the CLI's own, in front of the password before it's Base64-
 # and its note of the newest version on npm.
 SESSIONS = "wilmai-sessions.json"
 VERSION_CHECK = "version-check.json"
+# What of a profile goes into the secret store, as the CLI keeps it: the password and the two-step
+# key, each Base64 after SALT. The secret is them in this order, with a space between, the key left
+# out when there is none: Base64 has no space, and a store's own prompt takes no quotes.
+SECRET_FIELDS = ("passwordObfuscated", "totpSecretObfuscated")
+# Each run of the CLI's folder (`run_folder`) holds this file locked while the run lasts, so a
+# later run removes only one whose run has ended, also when it was killed. One without it yet is
+# being made, unless it's older than this.
+RUN_LOCK = "run.lock"
+UNLOCKED_SECONDS = 60
 MIN_QUERY = 2
 MAX_TOWNS = 20
 # A town's own Wilma, which all its schools sign in through, is named after the town in its
@@ -169,10 +190,10 @@ def update() -> str:
 
 def _half_there() -> bool:
     """Whether the CLI's folder is there, or setup's record has it, without a CLI that runs, while
-    the CLI's config has a sign-in: Wilma was connected, and the CLI broke."""
+    there is a sign-in: Wilma was connected, and the CLI broke."""
     folder = own_node.wilma_folder()
     return (folder.exists() or str(folder) in install_record.entries("wilma-cli")) \
-        and bool(profile_ids(config_path()))
+        and bool(signins())
 
 
 def _npm_install(npm: list[str]) -> str | None:
@@ -284,18 +305,21 @@ def obfuscate(password: str) -> str:
 
 def sign_in(tenant: dict[str, Any], username: str, password: str) -> dict[str, Any]:
     """Writes the CLI's profile for `username` at the Wilma `tenant`, checks it with the CLI's Kid
-    list, and once that works saves it in the CLI's config. Returns its `result`: `signed-in` with
-    the `kids`, or `wrong-password`, `sign-in-failed`, which comes with the `reason` the CLI gave,
-    for the setup page to show, `no-kids` or `not-installed`. Unless signed in, the CLI's config
-    stays as it was, so a wrong password isn't kept and an earlier sign-in still works. A new
-    profile goes in setup's record. Signed in, it comes with the saved `profile`'s id."""
+    list, and once that works saves it as one of setup's sign-ins (`save_signin`). Returns its
+    `result`: `signed-in` with the `kids`, or `wrong-password`, `sign-in-failed`, which comes with
+    the `reason` the CLI gave, for the setup page to show, `no-kids` or `not-installed`. Unless
+    signed in, nothing is saved, so a wrong password isn't kept and an earlier sign-in still works.
+    A new profile goes in setup's record. Signed in, it comes with the saved `profile`'s id."""
     out, students = check(tenant, username, password)
     if out["result"] != "signed-in":
         return out
-    path = config_path()
-    profiles_before = profile_ids(path)
+    profiles_before = [p["id"] for p in signins() if isinstance(p.get("id"), str)]
     # With the Kids the CLI saved in the profile it checked.
-    profile_id = write_profile(path, tenant, username, password, students)
+    try:
+        profile_id = save_signin(tenant, username, password, students)
+    except secrets.SecretsError as e:
+        return {"result": "sign-in-failed", "reason": failure.logged(
+            "The Wilma password wasn't stored", f"{secrets.STORE}: {e}")}
     record_profile(profile_id, profiles_before)
     return {**out, "profile": profile_id}
 
@@ -311,8 +335,8 @@ def check(tenant: dict[str, Any], username: str,
     # From 2.0 the CLI's commands read every profile in its config, so an earlier one that works
     # would hide a wrong password. The new one is checked alone, in a config of its own in an
     # owner-only folder, which also takes the session the CLI saves next to it and goes with it.
-    with tempfile.TemporaryDirectory(prefix="parent-recap-wilma-") as folder:
-        alone = Path(folder) / "config.json"
+    with run_folder() as folder:
+        alone = folder / "config.json"
         checked_id = write_profile(alone, tenant, username, password)
         out: dict[str, Any]
         try:
@@ -340,20 +364,27 @@ def write_profile(path: Path, tenant: dict[str, Any], username: str, password: s
     its place and its two-step key, or else after the others, and the one its commands use first.
     `students` are the Kids the CLI listed for it, as it saves them. Returns its id."""
     config = _read(path)
-    url = normalized(tenant["url"])
+    stored = _profile(config["profiles"], tenant, username, password, students)
+    _put_in_place(config, stored)
+    config["lastProfileId"] = stored["id"]
+    _write_config(path, config)
+    return stored["id"]
 
-    def same(p: Any) -> bool:
-        return isinstance(p, dict) and normalized(str(p.get("tenantUrl", ""))) == url \
-            and str(p.get("username", "")).lower() == username.lower()
-    at = next((i for i, p in enumerate(config["profiles"]) if same(p)), None)
-    previous = config["profiles"][at] if at is not None else None
+
+def _profile(listed: list[Any], tenant: dict[str, Any], username: str, password: str,
+             students: Any) -> dict[str, Any]:
+    """The profile the CLI would save for `username` at `tenant`, keeping the id, the two-step key
+    and the last Kid of the one for the same account among `listed`, if any."""
+    url = normalized(tenant["url"])
+    probe = {"tenantUrl": url, "username": username}
+    previous = next((p for p in listed if same_account(p, probe)), None)
     kids = [{"studentNumber": s["studentNumber"], "name": s["name"]} for s in students or []
             if isinstance(s, dict) and isinstance(s.get("studentNumber"), str)
             and isinstance(s.get("name"), str)]
     last = next((s for s in kids
                  if previous and s["studentNumber"] == previous.get("lastStudentNumber")),
                 kids[0] if kids else None)
-    stored = {
+    return {
         "id": previous["id"] if previous and isinstance(previous.get("id"), str)
         else f"{url}|{username}",
         "tenantUrl": url,
@@ -367,11 +398,22 @@ def write_profile(path: Path, tenant: dict[str, Any], username: str, password: s
         "lastUsedAt": datetime.now(timezone.utc).isoformat(timespec="milliseconds")
                               .replace("+00:00", "Z"),
     }
-    others = [p for p in config["profiles"] if not same(p)]
+
+
+def same_account(a: Any, b: Any) -> bool:
+    """Whether two profiles are one account, as the CLI tells (from 2.0): the same Wilma, and the
+    same username in any case."""
+    return isinstance(a, dict) and isinstance(b, dict) \
+        and normalized(str(a.get("tenantUrl", ""))) == normalized(str(b.get("tenantUrl", ""))) \
+        and str(a.get("username", "")).lower() == str(b.get("username", "")).lower()
+
+
+def _put_in_place(config: dict[str, Any], stored: dict[str, Any]) -> None:
+    """Puts `stored` in `config`'s profiles in place of the one for the same account, or after
+    the others."""
+    at = next((i for i, p in enumerate(config["profiles"]) if same_account(p, stored)), None)
+    others = [p for p in config["profiles"] if not same_account(p, stored)]
     config["profiles"] = [*others, stored] if at is None else [*others[:at], stored, *others[at:]]
-    config["lastProfileId"] = stored["id"]
-    _write_config(path, config)
-    return stored["id"]
 
 
 def normalized(url: str) -> str:
@@ -393,7 +435,8 @@ def for_the_household(profile: dict[str, Any], kids: set[str]) -> bool:
     one the CLI saved one of `kids` for (their names as Wilma spells them, case folded), or one
     whose Kids aren't known. From 2.0 the CLI signs in with every profile, also one left from an
     earlier use of it, for none of the Kids."""
-    if profile.get("id") in install_record.entries("wilma-profile"):
+    if profile.get("id") in install_record.entries("wilma-profile") \
+            or profile.get("id") in profile_ids(signins_path()):
         return True
     names = [n.casefold() for n in student_names(profile)]
     return not names or not kids or any(n in kids for n in names)
@@ -407,11 +450,9 @@ def student_names(profile: dict[str, Any]) -> list[str]:
 
 
 def kids_alone(profile: dict[str, Any]) -> list[dict[str, Any]]:
-    """The Kids the CLI lists signed in with its saved `profile` alone, as `check` does, so
-    another sign-in that works can't answer for it. Raises WilmaError when it doesn't sign in."""
-    with tempfile.TemporaryDirectory(prefix="parent-recap-wilma-") as folder:
-        alone = Path(folder) / "config.json"
-        _write_config(alone, {"profiles": [profile], "lastProfileId": profile.get("id")})
+    """The Kids the CLI lists signed in with the `profile` alone, as `check` does, so another
+    sign-in that works can't answer for it. Raises WilmaError when it doesn't sign in."""
+    with run_config([profile]) as alone:
         return wilma.list_kids(alone)
 
 
@@ -497,6 +538,242 @@ def _write(path: Path, data: bytes) -> None:
     tmp.replace(path)
 
 
+# ---------------------------------------------------------------- setup's sign-ins (#710)
+
+def signins_path() -> Path:
+    """Setup's sign-ins, as the CLI's config holds profiles but without their secrets."""
+    return Path.home() / ".family" / "wilma-signins.json"
+
+
+def secret_name(profile_id: str) -> str:
+    """The name of the secret that holds the password and two-step key of setup's sign-in
+    `profile_id`. A profile's id has the Wilma's address in it, which no store's name may have."""
+    return "wilma-signin-" + hashlib.sha256(profile_id.encode()).hexdigest()[:16]
+
+
+def signins() -> list[dict[str, Any]]:
+    """Every sign-in the CLI reads Wilma with, in the order its config would list them: those in
+    the CLI's own config, with their passwords, each in its place unless setup has one for the same
+    account, which takes it, then setup's others, without theirs."""
+    own = profiles(signins_path())
+    listed = []
+    for p in profiles(config_path()):
+        ours = next((o for o in own if same_account(o, p)), None)
+        if ours is not None:
+            own.remove(ours)
+        listed.append(ours or p)
+    return [*listed, *own]
+
+
+def signin(profile_id: str) -> dict[str, Any] | None:
+    """The sign-in `signins` lists with that id, or None."""
+    return next((p for p in signins() if p.get("id") == profile_id), None)
+
+
+def last_signin_id() -> str | None:
+    """The sign-in the CLI's commands use first: the one signed in with last, setup's or one in
+    the CLI's own config."""
+    candidates = [p for p in (profile(signins_path(), last_profile_id(signins_path()) or ""),
+                              profile(config_path(), last_profile_id(config_path()) or ""))
+                  if p is not None]
+    listed = {p.get("id") for p in signins()}
+    candidates = [p for p in candidates if p.get("id") in listed]
+    if not candidates:
+        return None
+    # Setup's first among those signed in with at the same time, or at an unknown time.
+    return max(candidates, key=lambda p: str(p.get("lastUsedAt") or ""))["id"]
+
+
+def save_signin(tenant: dict[str, Any], username: str, password: str, students: Any = None) -> str:
+    """Saves the sign-in as one of setup's: as `write_profile` saves the CLI's profile, with its
+    password in the secret store, and as the one the CLI's commands use first. A sign-in in the
+    CLI's own config for the same account stays there, as the family made it. Returns its id.
+    Raises secrets.SecretsError when the store can't be written, saving nothing."""
+    probe = {"tenantUrl": tenant["url"], "username": username}
+    listed = [_with_secrets(p) if same_account(p, probe) else p for p in signins()]
+    stored = _profile(listed, tenant, username, password, students)
+    _keep(stored, last=True)
+    return stored["id"]
+
+
+def _keep(stored: dict[str, Any], last: bool) -> None:
+    """Keeps the profile `stored` as one of setup's: its secrets in the store, then the rest in
+    setup's own file, in place of the one for the same account. `last`: as the one signed in with
+    last."""
+    secret = [stored.get(k) for k in SECRET_FIELDS]
+    secrets.put(secret_name(stored["id"]), " ".join(v for v in secret if isinstance(v, str) and v))
+    config = _read(signins_path())
+    replaced = next((p for p in config["profiles"] if same_account(p, stored)), None)
+    if isinstance(replaced, dict) and isinstance(replaced.get("id"), str) \
+            and replaced["id"] != stored["id"]:
+        with suppress(secrets.SecretsError):  # its name is the old id's
+            secrets.delete(secret_name(replaced["id"]))
+    _put_in_place(config, {k: v for k, v in stored.items() if k not in SECRET_FIELDS})
+    if last or not config.get("lastProfileId"):
+        config["lastProfileId"] = stored["id"]
+    _write_config(signins_path(), config)
+
+
+def _with_secrets(profile: dict[str, Any]) -> dict[str, Any]:
+    """`profile` with its password and two-step key: from the store when it's one of setup's
+    sign-ins without them. One whose secret can't be read goes without, so the CLI says it isn't
+    signed in, which `doctor` and the Brief's coverage line show."""
+    if profile.get("passwordObfuscated") or profile.get("id") not in profile_ids(signins_path()):
+        return profile
+    try:
+        raw = secrets.get(secret_name(profile["id"]))
+    except secrets.SecretsError as e:
+        log.error("The Wilma password of %s couldn't be read from the %s: %s",
+                  profile.get("username"), secrets.STORE, e)
+        return profile
+    parts = (raw or "").split()
+    if not parts:
+        log.error("The %s has no Wilma password for %s: sign in to Wilma again",
+                  secrets.STORE, profile.get("username"))
+        return profile
+    return {**profile, "passwordObfuscated": parts[0],
+            "totpSecretObfuscated": parts[1] if len(parts) > 1 else None}
+
+
+def remove_signin(profile_id: str) -> None:
+    """Removes setup's sign-in `profile_id`: its secret from the store, then the rest. Setup's file
+    goes once it lists none. Raises secrets.SecretsError when the store didn't let the secret go,
+    keeping the sign-in."""
+    secrets.delete(secret_name(profile_id))
+    path = signins_path()
+    config = _read(path)
+    config["profiles"] = [p for p in config["profiles"]
+                          if not (isinstance(p, dict) and p.get("id") == profile_id)]
+    if not config["profiles"]:
+        path.unlink(missing_ok=True)
+        return
+    if config.get("lastProfileId") == profile_id:
+        config["lastProfileId"] = next((p["id"] for p in config["profiles"] if isinstance(p, dict)
+                                        and isinstance(p.get("id"), str)), None)
+    _write_config(path, config)
+
+
+def move_to_store() -> None:
+    """Moves each sign-in setup made that is still in the CLI's own config into setup's, password
+    and two-step key into the secret store, and removes it from the CLI's config with the sessions
+    the CLI saved, as uninstall does: every sign-in before #710, and one the Terminal window signed
+    in with. The family doesn't sign in again. One that was there before setup isn't setup's and
+    stays (setup's record tells them apart). One the store can't take stays too, and still works,
+    until a later run."""
+    path = config_path()
+    recorded = set(install_record.entries("wilma-profile"))
+    last = last_profile_id(path)
+    for p in profiles(path):
+        if p.get("id") not in recorded or not isinstance(p.get("tenantUrl"), str) \
+                or not isinstance(p.get("username"), str):
+            continue
+        try:
+            _keep(p, last=p.get("id") == last)
+        except secrets.SecretsError as e:
+            log.warning("The Wilma sign-in of %s stays in the wilma CLI's config for now: the %s "
+                        "couldn't take its password: %s", p.get("username"), secrets.STORE, e)
+            continue
+        remove_profile(path, p["id"])
+
+
+@contextmanager
+def run_config(listed: list[dict[str, Any]] | None = None) -> Iterator[Path]:
+    """A config for a run of the CLI, at the path given for the block: `listed`, else every
+    sign-in (`signins`) after `move_to_store`, with their secrets, the one signed in with last
+    first. It's in an owner-only folder of its own (`run_folder`), which takes the Wilma session the
+    CLI saves beside it and goes when the block ends. The Kids the CLI saves back for one of
+    setup's sign-ins are kept."""
+    if listed is None:
+        move_to_store()
+        listed, last = signins(), last_signin_id()
+    else:
+        last = listed[0].get("id") if listed else None
+    with run_folder() as folder:
+        path = folder / "config.json"
+        _write_config(path, {"profiles": [_with_secrets(p) for p in listed], "lastProfileId": last})
+        try:
+            yield path
+        finally:
+            _keep_students(path)
+
+
+def _keep_students(path: Path) -> None:
+    """Saves in setup's file the Kids the CLI saved back into the run's config `path` for setup's
+    sign-ins, when Wilma listed others than it had."""
+    ours = _read(signins_path())
+    changed = False
+    for p in profiles(path):
+        mine = next((o for o in ours["profiles"]
+                     if isinstance(o, dict) and o.get("id") == p.get("id")), None)
+        if mine is not None and isinstance(p.get("students"), list) \
+                and p["students"] != mine.get("students"):
+            mine["students"], changed = p["students"], True
+    if changed:
+        _write_config(signins_path(), ours)
+
+
+def runs_folder() -> Path:
+    return Path.home() / ".family" / "wilma-runs"
+
+
+@contextmanager
+def run_folder() -> Iterator[Path]:
+    """An owner-only folder of its own for a run of the CLI, in ~/.family/wilma-runs, removed
+    when the block ends, also by an error or a stop (SIGTERM). One left by a run killed outright
+    is removed by the next run: the folder's RUN_LOCK, locked while the run lasts, tells them
+    apart from another run's."""
+    runs = runs_folder()
+    runs.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _remove_left_behind(runs)
+    folder = Path(tempfile.mkdtemp(prefix="run-", dir=runs))  # owner-only
+    lock = open(folder / RUN_LOCK, "a", encoding="utf-8")
+    try:
+        run_lock.lock_file(lock)
+        with _stopping_ends_the_block():
+            yield folder
+    finally:
+        lock.close()
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def _remove_left_behind(runs: Path) -> None:
+    """Removes the run folders in `runs` whose run has ended without removing them."""
+    for folder in runs.iterdir():
+        if not folder.is_dir() or folder.is_symlink():
+            continue
+        ended = False
+        try:
+            with open(folder / RUN_LOCK, "r+", encoding="utf-8") as lock:
+                ended = run_lock.lock_file(lock)
+        except FileNotFoundError:  # being made, or made by a run killed right then
+            with suppress(OSError):
+                ended = time.time() - folder.stat().st_mtime > UNLOCKED_SECONDS
+        except OSError:
+            continue
+        if ended:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
+@contextmanager
+def _stopping_ends_the_block() -> Iterator[None]:
+    """Python skips `finally` on SIGTERM (and SIGHUP), so while the block runs they end the program
+    as an error would, and the block's cleanup runs. Only the main thread can catch them, so the
+    setup page's reads, from its own threads, leave them be."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    stops = [getattr(signal, name) for name in ("SIGTERM", "SIGHUP") if hasattr(signal, name)]
+
+    def stop(signum: int, _frame: Any) -> None:
+        raise SystemExit(128 + signum)
+    before = {s: signal.signal(s, stop) for s in stops}
+    try:
+        yield
+    finally:
+        for s, handler in before.items():
+            signal.signal(s, signal.SIG_DFL if handler is None else handler)  # None: set outside Python
+
+
 # ---------------------------------------------------------------- the Terminal sign-in window
 
 def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -> dict[str, Any]:
@@ -547,6 +824,7 @@ def sign_in_in_terminal(language: str, timeout: int, *, no_open: bool = False) -
                 if kids is not None:
                     record_profile(last_profile_id(config), profiles_before)
                     address = _wilma_address(config)
+                    move_to_store()  # the password the CLI saved, when the sign-in is setup's
                     return outcome("signed-in", city=WILMA_CITIES.get(address or ""),
                                    wilma_address=address, kids=kids)
                 if exit_status == 0:

@@ -258,8 +258,8 @@ def assert_never_leaked(harness, responses: list[Response], caplog, capsys, secr
         assert value not in printed
         assert value not in caplog.text
         assert not any(value in arg for cmd in harness.commands for arg in cmd)
-        for f in (harness.home / ".family").glob("*"):
-            assert value not in f.read_text(), f.name
+        for f in (harness.home / ".family").rglob("*"):
+            assert not f.is_file() or value not in f.read_text(), f.name
 
 
 def towns(url: str, query: str) -> Response:

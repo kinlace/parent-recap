@@ -22,7 +22,7 @@ from family_brief import (__main__ as cli, command_path, install_record, run_loc
                           setup_wilma, tools)
 from family_brief.collectors import gmail
 from family_brief.config import Config
-from family_brief.system import jobs, profile, wake, windows_only
+from family_brief.system import jobs, profile, secrets, wake, windows_only
 from family_brief.system.secrets_error import SecretsError
 from fake_system import LINUX, WINDOWS
 
@@ -823,6 +823,42 @@ def test_removes_every_wilma_setup_signed_in_to(harness, monkeypatch, tmp_path, 
 
     assert not config.exists()
     assert "dad at https://helsinki.inschool.fi" in capsys.readouterr().out
+
+
+@pytest.mark.macos
+def test_removes_setup_s_wilma_sign_ins_with_their_passwords_from_the_secret_store(
+        harness, monkeypatch, tmp_path, capsys):
+    # Since #710 setup keeps the password in the secret store and the rest in its own file, and a
+    # sign-in the family made before setup stays in the CLI's config.
+    set_up(harness, monkeypatch)
+    config = wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=False)
+    theirs = config.read_text()
+    helsinki = {"url": "https://helsinki.inschool.fi", "name": "Helsinki"}
+    for tenant, username in ((ESPOO, "mia.parent"), (helsinki, "dad")):  # as the setup page does
+        before = [p["id"] for p in setup_wilma.signins()]
+        setup_wilma.record_profile(setup_wilma.save_signin(tenant, username, WILMA_PASSWORD),
+                                   before)
+    accounts = [setup_wilma.secret_name(OUR_PROFILE),
+                setup_wilma.secret_name("https://helsinki.inschool.fi|dad")]
+    assert all(a in harness.secrets for a in accounts)
+    with setup_wilma.run_folder():  # one a run killed outright left
+        pass
+    (setup_wilma.runs_folder() / "run-left").mkdir()
+
+    assert uninstall(harness) == 0
+
+    removes = capsys.readouterr().out.split("Uninstall removes:", 1)[1].split("\n\n", 1)[0]
+    assert f"Wilma sign-in: dad at https://helsinki.inschool.fi, its password in the " \
+           f"{secrets.STORE} (Parent Recap / {accounts[1]})" in removes
+    assert "mia.parent at https://espoo.inschool.fi, its password in" in removes
+    assert "~/.family/wilma-signins.json" in removes and "~/.family/wilma-runs" in removes
+    assert all(a in harness.secrets for a in accounts)  # only listed
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert not any(a in harness.secrets for a in accounts)
+    assert not setup_wilma.signins_path().exists() and not setup_wilma.runs_folder().exists()
+    assert config.read_text() == theirs  # the family's own sign-in, as it was
 
 
 @pytest.mark.macos

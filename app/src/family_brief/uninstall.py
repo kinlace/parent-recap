@@ -278,9 +278,24 @@ def _delete_secret(account: str) -> None:
 
 
 def survey_wilma(s: Survey, programs: list[Path]) -> None:
-    """The profile, with the Wilma password, that setup's record has, since one that was there
-    before setup isn't Parent Recap's to remove, and the wilma CLI setup installed in Parent
+    """Setup's Wilma sign-ins, with their passwords in the secret store (#710), and a profile setup's
+    record has that is still in the wilma CLI's own config, from before that, since one that was
+    there before setup isn't Parent Recap's to remove, and the wilma CLI setup installed in Parent
     Recap's folder (ADR 0011). A wilma CLI of the Mac's own isn't touched."""
+    signins = setup_wilma.signins_path()
+    for p in setup_wilma.profiles(signins):
+        if isinstance(p.get("id"), str):
+            account = setup_wilma.secret_name(p["id"])
+            s.items.append(Item("Wilma sign-in", f"{p.get('username')} at {p.get('tenantUrl')}, "
+                                f"its password in the {secrets.STORE} ({secrets.where(account)})",
+                                partial(setup_wilma.remove_signin, p["id"]), account=account,
+                                asks=secrets.deleting_asks()))
+    if signins.exists():  # gone with the last sign-in, unless one stays
+        s.items.append(Item("Setup's list of Wilma sign-ins", _show(signins),
+                            partial(signins.unlink, missing_ok=True), path=signins))
+    runs = setup_wilma.runs_folder()
+    if runs.is_dir() and not runs.is_symlink():
+        s.items.append(_file("The wilma CLI's folder for each run", runs))
     config = setup_wilma.config_path()
     for profile_id in install_record.entries("wilma-profile"):
         profile = setup_wilma.profile(config, profile_id)

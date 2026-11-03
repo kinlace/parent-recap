@@ -20,7 +20,7 @@ from conftest import REAL_RUN, program
 from nights import caught_up_last_night
 from test_source_failures import payload_ids
 
-from family_brief import ops, own_node
+from family_brief import ops, own_node, setup_wilma
 
 STUDENT = {"studentNumber": "7", "name": "Virtanen Mia"}
 LISTED = {"students": [{"student": STUDENT, "messages": [
@@ -110,7 +110,10 @@ def test_the_wilma_cli_never_checks_npm_for_a_newer_version(harness, no_node, ca
 
     assert len(no_node.envs) == len(no_node) > 1
     assert all(env and env["WILMAI_NO_UPDATE_CHECK"] == "1" for env in no_node.envs)
-    assert all("WILMAI_CONFIG_PATH" not in env for env in no_node.envs)  # the CLI's own config
+    # Never the CLI's own config: one of each reading's own, gone once it ended (#710).
+    runs = setup_wilma.runs_folder()
+    assert all(Path(env["WILMAI_CONFIG_PATH"]).parent.parent == runs for env in no_node.envs)
+    assert not list(runs.iterdir())
 
 
 @pytest.mark.macos
