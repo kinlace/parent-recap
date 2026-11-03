@@ -219,7 +219,7 @@ function Test-Uninstall {
     "the program doesn't run the evening Brief and Weekend Picks"
   # Whichever tasks those take (the evening Brief, its sign-in catch-up and Weekend Picks today),
   # Task Scheduler holds those the program says it keeps, so uninstall has them to remove.
-  $kept = @(Invoke-Py "from family_brief.system import jobs; print('\n'.join(sorted(f.name for f in jobs.found())))" `
+  $kept = @(Invoke-Py "from family_brief.system import jobs; print('\n'.join(sorted(f.system_name for f in jobs.found())))" `
     "the program didn't list its tasks")
   $tasks = @(Get-OurTasks | Sort-Object)
   Write-Host "Task Scheduler holds: $($tasks -join ', '); the program keeps: $($kept -join ', ')"
