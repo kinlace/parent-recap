@@ -5,7 +5,9 @@ persisted state."""
 from __future__ import annotations
 
 import json
+import time
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 import time_machine
@@ -95,6 +97,18 @@ def test_night_with_only_later_myclub_events_asks_no_model(harness):
     assert harness.run() == 0
 
     assert harness.model_calls == []
+
+
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="time_machine sets the computer's zone with tzset")
+def test_the_model_s_tomorrow_is_the_household_s_on_a_computer_in_another_zone(harness):
+    # A hosted computer keeps UTC (a ZoneInfo destination sets it): 01:00 on the 28th in Helsinki
+    # is still the 27th there.
+    harness.sources = {"myclub": [myclub_event("mc-1", "Football training", "2026-09-29T15:15:00+00:00",
+                                               "2026-09-29T16:45:00+00:00")]}
+    with time_machine.travel((NOW + timedelta(hours=4)).astimezone(ZoneInfo("UTC")), tick=False):
+        assert harness.run() == 0
+
+    assert harness.model_payload()["date_reference"]["tomorrow"].startswith("2026-09-29")
 
 
 def test_setup_preview_shows_a_night_the_model_finds_nothing_to_say_about(harness, capsys):
