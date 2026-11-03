@@ -73,9 +73,9 @@ def _short_reason(err: str, t: BriefText) -> str:
             "login": t.login_failed}.get(_problem(err)) or err.splitlines()[0][:60]
 
 
-def _coverage_note(coverage: dict[str, dict], t: BriefText) -> str:
-    """One line saying what was read tonight, plus a warning for any source that failed, and on
-    the hosted version which Sources it never reads, so their absence isn't taken for quiet."""
+def _coverage_note(coverage: dict[str, dict], t: BriefText, hosted: bool) -> str:
+    """One line saying what was read tonight, plus a warning for any source that failed, and for
+    a Hosted Household which Sources it can't have, so their absence isn't taken for quiet."""
     if not coverage:
         return ""
     read, missed = [], []
@@ -92,9 +92,8 @@ def _coverage_note(coverage: dict[str, dict], t: BriefText) -> str:
     note = t.read_tonight.format(counts=" · ".join(read))
     if missed:
         note += "\n" + t.may_be_incomplete.format(missed=t.missed_sep.join(missed))
-    if not_read := source_registry.unavailable():
-        note += "\n" + t.not_hosted.format(sources=t.missed_sep.join(source_name(s.name)
-                                                                     for s in not_read))
+    if hosted and (not_read := [s.name for s in source_registry.not_hosted() if s.name not in coverage]):
+        note += "\n" + t.not_hosted(len(not_read), sources=t.sources_sep.join(map(source_name, not_read)))
     return note
 
 
@@ -450,7 +449,7 @@ class Night:
     def text(self) -> str:
         """The plain-text Brief in the Brief's language: the iMessage, and what a dry run logs."""
         return _brief_text(self.brief, self.created, self.date, self.t, self.tz,
-                           _coverage_note(self.coverage, self.t),
+                           _coverage_note(self.coverage, self.t, self.hosted),
                            _calendar_note(self.calendar_problem, bool(self.ics_events), self.t, self.assistant),
                            _top_note(self.incomplete, self.t, self.assistant), self.held_back, self.assistant)
 
@@ -511,7 +510,7 @@ def mail(night: Night, v: Version) -> Mail:
     """Tonight's mail to the Recipients of version `v`."""
     t, assistant = v.t, night.assistant
     listed = v.translated_list(night.created)
-    coverage_note = _coverage_note(night.coverage, t)
+    coverage_note = _coverage_note(night.coverage, t, night.hosted)
     calendar_note = _calendar_note(night.calendar_problem, bool(night.ics_events), t, assistant)
     top_note = _top_note(night.incomplete, t, assistant, v.translation_note)
     attachments = [(f"parent-recap-{night.date}.ics",
@@ -552,7 +551,7 @@ def preview(night: Night) -> dict[str, str | None]:
     t, assistant, form = night.t, night.assistant, night.form
     sender_note = end_note(t, night.hosted, first_sender_note(t, night.write_to))
     html = _daily_brief_html(night.brief, night.created, night.date, t, night.tz,
-                             coverage=_coverage_note(night.coverage, t),
+                             coverage=_coverage_note(night.coverage, t, night.hosted),
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
                              feedback_link=form.link if form and night.model_wrote else None,
                              top_note=_top_note(night.incomplete, t, assistant), held_back=night.held_back,

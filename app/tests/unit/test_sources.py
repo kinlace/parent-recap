@@ -34,7 +34,6 @@ def test_a_family_s_own_computer_reads_every_source(system, profile):
     system.profile = profile
 
     assert sources.available() == list(sources.ALL)
-    assert sources.unavailable() == []
 
 
 def test_the_hosted_version_never_reads_whatsapp(system):
@@ -42,10 +41,16 @@ def test_the_hosted_version_never_reads_whatsapp(system):
     cfg = Config(kids=[_KID], wilma={"enabled": True})
 
     assert [s.name for s in sources.available()] == ["gmail", "myclub", "wilma"]
-    assert sources.unavailable() == [sources.WHATSAPP]
     assert [s.name for s in sources.in_connect_order()] == ["wilma", "myclub", "gmail"]
     assert [s.name for s in sources.used(cfg)] == ["wilma"]
     assert cfg.other_sources() == ["wilma"]
+
+
+@pytest.mark.parametrize("profile", [MACOS, WINDOWS, LINUX], ids=["macos", "windows", "linux"])
+def test_a_hosted_household_can_t_have_whatsapp_or_gmail_wherever_it_s_asked(system, profile):
+    system.profile = profile  # ADR 0029: no WhatsApp on its server; ADR 0031: no Gmail step
+
+    assert sources.not_hosted() == [sources.WHATSAPP, sources.GMAIL]
 
 
 def test_a_source_is_found_by_its_name_and_any_other_name_is_its_own_label():
