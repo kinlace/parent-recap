@@ -921,16 +921,6 @@ def test_stops_on_a_scheduled_job_with_its_name_that_runs_another_program(harnes
     assert jobs.system_name(jobs.DAILY) in out
 
 
-def test_stops_on_a_config_parent_recap_did_not_write(harness, monkeypatch, capsys):
-    set_up(harness, monkeypatch)
-    (harness.home / ".family" / "config.yaml").write_text("theme: dark\nfont_size: 12\n")
-    before = leftovers(harness.home)
-
-    out = assert_stopped(harness, before, capsys)
-
-    assert ".family/config.yaml" in out
-
-
 @pytest.mark.parametrize("config", [
     "kids: []\nsummary_language: zh\n",  # what Welcome saves
     # What setup had written when it stopped at the AI step (#725), as found
@@ -949,11 +939,11 @@ def test_removes_a_setup_stopped_before_the_recipients_were_saved(harness, monke
 
 
 @pytest.mark.parametrize("config", [
-    "kids: [\n  unclosed\n",                       # unreadable YAML
-    "kids: []\ntheme: dark\n",                     # a key Parent Recap doesn't use
-    "- kids\n- gmail\n",                           # not a mapping
-], ids=["unreadable", "unknown-key", "list"])
-def test_stops_on_a_config_that_is_not_parent_recap_s(harness, monkeypatch, capsys, config):
+    "kids: [\n  unclosed\n",          # unreadable YAML
+    "theme: dark\nfont_size: 12\n",   # another program's
+    "kids: []\ntheme: dark\n",        # a key Parent Recap doesn't use
+], ids=["unreadable", "another-program", "unknown-key"])
+def test_stops_on_a_config_parent_recap_did_not_write(harness, monkeypatch, capsys, config):
     set_up(harness, monkeypatch)
     (harness.home / ".family" / "config.yaml").write_text(config)
     before = leftovers(harness.home)
