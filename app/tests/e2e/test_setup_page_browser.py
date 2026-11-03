@@ -994,6 +994,67 @@ def test_while_chatgpt_s_sign_in_waits_the_step_offers_to_sign_in_again(tab, fam
     expect(button(tab, "codex.login-again")).to_be_visible()
 
 
+def at_chatgpt_s_waiting_sign_in(tab, family) -> None:
+    """Connect's AI step with ChatGPT picked on Welcome, whose sign-in waits for good: OpenAI asks
+    for a phone number the family can't give. Codex's own answers are played."""
+    in_english_with_the_gateway(tab)
+    data = yaml.safe_load(config_file(family).read_text())
+    data["llm"] = {"backend": "codex"}
+    config_file(family).write_text(yaml.safe_dump(data))
+    save_progress(family, {**json.loads(progress_file(family).read_text()), "source": "ai",
+                           "sources": {"wilma": "done", "gmail": "done"}})
+    tab.route(re.compile(r"/api/codex$"), lambda route: route.fulfill(json={"result": "waiting"}))
+    tab.reload()
+    expect(tab.get_by_text(text("codex.waiting"))).to_be_visible()
+
+
+@pytest.mark.parametrize("language", ["fi", "en", "zh"])
+def test_a_family_stuck_on_chatgpt_s_sign_in_uses_the_gateway_instead(tab, family, language):
+    """#706: Connect has no way back to Welcome, so its AI step offers Welcome's choices itself."""
+    at_chatgpt_s_waiting_sign_in(tab, family)
+    tab.locator("#language-switch").select_option(language)
+
+    def said(key: str):
+        return tab.get_by_text(text(key, language=language), exact=True)
+
+    def pressed(key: str):
+        return tab.get_by_role("button", name=text(key, language=language), exact=True)
+    pressed("connect.ai.other").click()
+    tab.get_by_role("radio", name=re.compile("^" + re.escape(
+        text("welcome.ai.gateway", language=language)))).check()
+    with tab.expect_request(lambda r: r.method == "POST" and r.url.endswith("api/connect/ai")):
+        pressed("finish.ai.continue").click()
+
+    key = tab.get_by_label(text("gateway.key", language=language), exact=True)
+    expect(key).to_be_visible()
+    expect(said("codex.waiting")).to_be_hidden()
+    expect(pressed("codex.login-again")).to_be_hidden()
+    assert Config.load(config_file(family)).llm.backend == "gateway"
+    # A page loaded again on Connect shows the new AI's sign-in.
+    tab.reload()
+    expect(key).to_be_visible()
+    expect(pressed("connect.ai.other")).to_be_visible()
+    key.fill(GATEWAY_KEY)
+    pressed("gateway.save").click()
+    expect(source_listed(tab, "ai", "done", language)).to_be_visible()
+
+
+def test_a_family_stuck_on_chatgpt_s_sign_in_can_pick_claude_instead(tab, family):
+    at_chatgpt_s_waiting_sign_in(tab, family)
+
+    button(tab, "connect.ai.other").click()
+    # Welcome's choices, with the one picked there checked.
+    expect(tab.get_by_role("radio", name=re.compile("^" + re.escape(
+        text("welcome.ai.codex"))))).to_be_checked()
+    tab.get_by_role("radio", name=re.compile("^" + re.escape(text("welcome.ai.claude")))).check()
+    button(tab, "finish.ai.continue").click()
+
+    expect(button(tab, "claude.start")).to_be_visible()
+    expect(button(tab, "connect.ai.other")).to_be_visible()  # and back again, if Claude fails too
+    expect(tab.get_by_text(text("codex.waiting"))).to_be_hidden()
+    assert Config.load(config_file(family)).llm.backend == "claude"
+
+
 @pytest.mark.parametrize("on, asks", [("macos", "api/claude"),
                                       ("windows", "api/claude/install")])
 def test_claude_s_step_installs_claude_code_on_windows_and_signs_in_on_a_mac(

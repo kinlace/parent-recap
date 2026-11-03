@@ -1,6 +1,7 @@
 """The AI sign-in for the evening Brief: Claude's token, Codex's ChatGPT sign-in and the Gateway
-Key, and installing the Codex CLI first, or on Windows Claude Code too. At Finish, signing in to
-another AI switches the Household to it (ADR 0017)."""
+Key, and installing the Codex CLI first, or on Windows Claude Code too. On Connect, "Use another
+AI" picks another one in Welcome's place, for a family whose sign-in can't finish (#706). At
+Finish, signing in to another AI switches the Household to it (ADR 0017)."""
 from __future__ import annotations
 
 import subprocess
@@ -11,8 +12,8 @@ from typing import Any
 from .. import failure, llm, setup_ai, setup_save
 from ..setup_connect import Nothing, Reply, Strict, parse
 from ..system import desktop, profile
-from .context import (Action, Context, Phase, chats, claude, claude_missing, keychain_code,
-                      nothing_to_give)
+from .context import (Action, Context, Phase, ais, chats, claude, claude_missing, keychain_code,
+                      not_offered, nothing_to_give)
 
 # Claude's token for the evening Brief: while the family authorizes in the browser, and how the
 # sign-in, or the token pasted after the Terminal window, ended. `sign-in-failed` and `timeout`
@@ -41,6 +42,10 @@ class GatewayKey(Strict):
     key: str
 
 
+class AnotherAI(Strict):
+    ai: str
+
+
 class AISignIn(Phase):
     def __init__(self, context: Context) -> None:
         super().__init__(context)
@@ -63,7 +68,7 @@ class AISignIn(Phase):
                 "api/claude/install": self.install_claude,
                 "api/codex": self.check_codex, "api/codex/login": self.sign_in_codex,
                 "api/codex/install": self.install_codex,
-                "api/gateway": self.save_gateway_key}
+                "api/gateway": self.save_gateway_key, "api/connect/ai": self.use_another_ai}
 
     def stop(self) -> None:
         with self._lock:
@@ -74,6 +79,32 @@ class AISignIn(Phase):
         """Stops the `codex login` still running, if one is. Called with the lock held."""
         if self._codex is not None:
             setup_ai.end_codex_login(self._codex)
+
+    def use_another_ai(self, raw: Any) -> Reply:
+        """Picks another AI on Connect, as Welcome would have: it's saved as the Household's AI,
+        whose chat is installed, and the AI step waits for its sign-in, even one done already. A
+        Codex sign-in still waiting is stopped, since nothing would end it. Only on Connect: before
+        it, Welcome picks the AI, and at Finish signing in to another switches it (ADR 0017)."""
+        answer = parse(AnotherAI, raw)
+        if answer.ai not in ais():
+            return HTTPStatus.BAD_REQUEST, not_offered()
+        connect = self.context.connect
+        with connect.lock:
+            if connect.progress()["phase"] != "connect":
+                return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                    "invalid-answers", "Only Connect's AI step picks another AI.",
+                    errors=["answers: Welcome picks the AI, and Finish changes it"])
+            status, out = connect.save({"ai": answer.ai, "progress": {
+                "source": "ai", "sources": {"ai": "to-do"}}})
+        if status != HTTPStatus.OK:
+            return status, out
+        if answer.ai != "codex":
+            with self._lock:
+                self._end_codex_login()
+                self._codex = None
+        if answer.ai in chats():  # the gateway has no chat to install, nor Windows yet
+            self.context.chat.install(answer.ai)
+        return status, {**out, "ai": answer.ai}
 
     # ── Claude
 
