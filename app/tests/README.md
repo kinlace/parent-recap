@@ -104,6 +104,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_send_key_on_request.py`     | A send-only key on request (ADR 0033): setup page, `setup confirm`, doctor, the run     |
 | `test_source_failures.py`         | A Source's transport failing partway or timing out                                      |
 | `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON                           |
+| `test_wilma_signins.py`           | Wilma read through a config of each run's own, passwords from the store (#710)          |
 | `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing                       |
 | `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish                                |
 | `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                                       |

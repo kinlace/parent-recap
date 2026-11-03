@@ -261,6 +261,13 @@ def test_signing_in_reports_each_kid_and_the_city(harness, wilma, capsys, caplog
     assert install_record.entries("wilma-profile") == ["https://espoo.inschool.fi|parent@example.com"]
     assert install_record.entries("wilma-cli") == []  # installed before this ran
     assert PASSWORD not in install_record.path().read_text()
+    # The password the CLI saved moved to the secret store, out of the CLI's own config (#710).
+    assert not wilma.config_path.exists()
+    assert [p["id"] for p in setup_wilma.signins()] == [
+        "https://espoo.inschool.fi|parent@example.com"]
+    assert PASSWORD not in setup_wilma.signins_path().read_text()
+    secret = harness.secrets[setup_wilma.secret_name("https://espoo.inschool.fi|parent@example.com")]
+    assert secret == setup_wilma.obfuscate(PASSWORD)
 
 
 @pytest.mark.macos
@@ -272,6 +279,7 @@ def test_a_profile_from_before_setup_is_not_recorded(harness, wilma, capsys):
 
     assert result(capsys)[0]["result"] == "signed-in"
     assert install_record.entries("wilma-profile") == []
+    assert wilma.config_path.exists() and not setup_wilma.signins_path().exists()  # the family's
 
 
 @pytest.mark.macos
@@ -782,6 +790,14 @@ class WilmaCLI:
     def profile(self) -> dict[str, Any]:
         return json.loads(self.profile_path.read_text())
 
+    def stored(self) -> dict[str, Any]:
+        """Setup's sign-ins, as its own file keeps them, without their secrets (#710)."""
+        return json.loads(setup_wilma.signins_path().read_text())
+
+    def reads(self) -> list[str]:
+        """The ids of the sign-ins each run of the CLI reads, in its config's order."""
+        return [p["id"] for p in setup_wilma.signins()]
+
     def install(self, prefix: Path | None = None) -> None:
         """The fake CLI, in Parent Recap's folder or in npm's `prefix`."""
         package = fake_node.install_wilma(self.home, FAKE_WILMA_CLI.format(python=sys.executable),
@@ -1049,30 +1065,30 @@ def test_a_good_login_writes_the_cli_profile_and_lists_the_kids(harness, page, w
     assert out["result"] == "signed-in"
     assert out["kids"] == ["Mia Virtanen", "Leo Virtanen"] and out["city"] == "Espoo"
     assert out["progress"]["sources"]["wilma"] == "done" and out["progress"]["source"] == "gmail"
-    # The profile, as the pinned CLI writes it after its own sign-in, which its Kid list read.
-    profile = wilma_cli.profile()
+    # The profile, as the pinned CLI writes it after its own sign-in, which its Kid list read:
+    # its password and two-step key in the secret store, the rest in setup's own file, and
+    # nothing in the CLI's own config (#710).
+    profile = wilma_cli.stored()
     stored = profile["profiles"][0]
     assert profile["lastProfileId"] == stored["id"] == f"{ESPOO}|mia.parent"
-    assert set(stored) == {"id", "tenantUrl", "tenantName", "username", "passwordObfuscated",
-                           "totpSecretObfuscated", "students", "lastStudentNumber",
-                           "lastStudentName", "lastUsedAt"}
+    assert set(stored) == {"id", "tenantUrl", "tenantName", "username", "students",
+                           "lastStudentNumber", "lastStudentName", "lastUsedAt"}
     assert (stored["tenantUrl"], stored["tenantName"], stored["username"]) == \
         (ESPOO, TENANTS["wilmat"][2]["name"], "mia.parent")
-    assert stored["passwordObfuscated"] == \
+    # As the CLI keeps it, Base64, and no two-step key.
+    assert harness.secrets[setup_wilma.secret_name(stored["id"])] == \
         base64.b64encode(f"wilmai::{WILMA_PASSWORD}".encode()).decode()
-    assert stored["totpSecretObfuscated"] is None
     assert stored["students"] == [{"studentNumber": "1001", "name": "Mia Virtanen"},
                                   {"studentNumber": "1002", "name": "Leo Virtanen"}]
     assert (stored["lastStudentNumber"], stored["lastStudentName"]) == ("1001", "Mia Virtanen")
+    assert not wilma_cli.profile_path.parent.exists()
     # The CLI checked it on its own, in a config of its own that is gone with the session the CLI
     # saved next to it, and never looked for a newer version of itself.
     [run] = wilma_cli.runs()
     assert run["config"] != str(wilma_cli.profile_path) and not Path(run["config"]).parent.exists()
     assert run["update_check"] is False
-    assert sorted(p.name for p in wilma_cli.profile_path.parent.iterdir()) == ["config.json"]
     if not fake_node.WINDOWS:  # where a file's mode says nothing of who can read it
-        assert wilma_cli.profile_path.stat().st_mode & 0o777 == 0o600
-        assert wilma_cli.profile_path.parent.stat().st_mode & 0o777 == 0o700
+        assert setup_wilma.signins_path().stat().st_mode & 0o777 == 0o600
     # The Household's answers: the Kids as Wilma spells them, its city, and Wilma on.
     cfg = Config.load(config_file(harness))
     assert [k.name for k in cfg.kids] == ["Mia Virtanen", "Leo Virtanen"]
@@ -1086,13 +1102,12 @@ def test_a_good_login_writes_the_cli_profile_and_lists_the_kids(harness, page, w
 @pytest.mark.macos
 def test_signing_in_keeps_the_cli_s_other_profiles(harness, page, wilma_cli):
     wilma_cli.install()
-    wilma_cli.signed_in_before("https://helsinki.inschool.fi")
+    theirs = wilma_cli.signed_in_before("https://helsinki.inschool.fi")
 
     assert sign_in_wilma(page.url).json()["result"] == "signed-in"
 
-    profiles = wilma_cli.profile()["profiles"]
-    assert [p["id"] for p in profiles] == ["https://helsinki.inschool.fi|old.parent",
-                                           f"{ESPOO}|mia.parent"]
+    assert wilma_cli.reads() == ["https://helsinki.inschool.fi|old.parent", f"{ESPOO}|mia.parent"]
+    assert wilma_cli.profile_path.read_text() == theirs  # the family's own, as it was
     assert install_record.entries("wilma-profile") == [f"{ESPOO}|mia.parent"]
 
 
@@ -1141,17 +1156,18 @@ def test_signing_in_again_replaces_the_account_s_profile_in_its_place_as_the_cli
          "username": "mia.parent", "passwordObfuscated": setup_wilma.obfuscate("older-password"),
          "totpSecretObfuscated": setup_wilma.obfuscate("JBSWY3DPEHPK3PXP"), "students": []},
         helsinki], "lastProfileId": helsinki["id"]}))
+    theirs = wilma_cli.profile_path.read_text()
 
     assert sign_in_wilma(page.url, username="Mia.Parent").json()["result"] == "signed-in"
 
-    config = wilma_cli.profile()
-    assert [p["id"] for p in config["profiles"]] == [f"{ESPOO}/|mia.parent",
-                                                     "https://helsinki.inschool.fi|old.parent"]
-    ours = config["profiles"][0]
+    # Setup's sign-in takes the family's own one's place, which stays as it was (#710).
+    assert wilma_cli.reads() == [f"{ESPOO}/|mia.parent", "https://helsinki.inschool.fi|old.parent"]
+    assert wilma_cli.profile_path.read_text() == theirs
+    ours = setup_wilma.signin(f"{ESPOO}/|mia.parent")
     assert (ours["tenantUrl"], ours["username"]) == (ESPOO, "Mia.Parent")
-    assert ours["passwordObfuscated"] == setup_wilma.obfuscate(WILMA_PASSWORD)
-    assert ours["totpSecretObfuscated"] == setup_wilma.obfuscate("JBSWY3DPEHPK3PXP")
-    assert config["lastProfileId"] == ours["id"]
+    assert harness.secrets[setup_wilma.secret_name(ours["id"])] == \
+        f"{setup_wilma.obfuscate(WILMA_PASSWORD)} {setup_wilma.obfuscate('JBSWY3DPEHPK3PXP')}"
+    assert setup_wilma.last_signin_id() == ours["id"]
     assert install_record.entries("wilma-profile") == []  # there before setup
 
 
@@ -1201,9 +1217,8 @@ def test_a_second_wilma_adds_its_kids_beside_the_first_s(harness, page, two_town
     # The Kids step lists the Kids of both.
     assert [k["name"] for k in call(page.url, "api/state").json()["check"]["kids"]] == \
         ["Mia Virtanen", "Leo Virtanen"]
-    # Both are the CLI's, so the evening run reads both, and uninstall removes both.
-    assert [p["id"] for p in two_towns.profile()["profiles"]] == \
-        [f"{ESPOO}|mia.parent", f"{HELSINKI}|leo.parent"]
+    # Both are setup's, so the evening run reads both, and uninstall removes both.
+    assert two_towns.reads() == [f"{ESPOO}|mia.parent", f"{HELSINKI}|leo.parent"]
     assert install_record.entries("wilma-profile") == [f"{ESPOO}|mia.parent",
                                                        f"{HELSINKI}|leo.parent"]
     assert_never_leaked(harness, [first, r], caplog, capsys, WILMA_PASSWORD)
@@ -1232,8 +1247,8 @@ def test_removing_one_wilma_removes_its_sign_in_and_kids_and_leaves_the_other(ha
     out = r.json()
     assert r.status == 200 and out["result"] == "removed"
     assert [s["username"] for s in out["signins"]] == ["mia.parent"]
-    assert [p["id"] for p in two_towns.profile()["profiles"]] == [f"{ESPOO}|mia.parent"]
-    assert "Toinen" not in two_towns.profile_path.read_text()
+    assert two_towns.reads() == [f"{ESPOO}|mia.parent"]
+    assert setup_wilma.secret_name(f"{HELSINKI}|leo.parent") not in harness.secrets
     cfg = Config.load(config_file(harness))
     assert [k.name for k in cfg.kids] == ["Mia Virtanen"] and cfg.wilma.enabled is True
     assert out["progress"]["sources"]["wilma"] == "done"
@@ -1290,7 +1305,7 @@ def test_the_only_wilma_is_not_removed_but_skipped(harness, page, two_towns):
     r = call(page.url, "api/wilma/remove", method="POST", body={"id": f"{ESPOO}|mia.parent"})
 
     assert r.status == 400 and r.json()["result"] == "invalid-answers"
-    assert [p["id"] for p in two_towns.profile()["profiles"]] == [f"{ESPOO}|mia.parent"]
+    assert two_towns.reads() == [f"{ESPOO}|mia.parent"]
 
 
 @pytest.mark.macos
@@ -1412,6 +1427,10 @@ def test_the_terminal_window_signs_in_and_the_page_lists_the_kids(harness, page,
     cfg = Config.load(config_file(harness))
     assert [k.name for k in cfg.kids] == ["Mia Virtanen", "Leo Virtanen"]
     assert cfg.city == "Espoo" and cfg.wilma.enabled is True
+    # The password the CLI saved in the window moved to the secret store (#710).
+    assert not wilma_cli.profile_path.exists()
+    assert wilma_cli.reads() == [f"{ESPOO}|mia.parent"]
+    assert [s["username"] for s in out["signins"]] == ["mia.parent"]
     assert_never_leaked(harness, [r], caplog, capsys, WILMA_PASSWORD)
 
 

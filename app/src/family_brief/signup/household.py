@@ -98,10 +98,12 @@ def create(config: Path, h: Household) -> dict[str, Any]:
     got = setup_wilma.install()
     if got["result"] != "installed":
         return outcome("wilma-not-installed", reason=got.get("reason") or got["result"])
-    path = setup_wilma.config_path()
-    before = setup_wilma.profile_ids(path)
-    profile_id = setup_wilma.write_profile(path, h.wilma.tenant.model_dump(), h.wilma.username,
-                                           h.wilma.password, h.wilma.students)
+    before = [p["id"] for p in setup_wilma.signins() if isinstance(p.get("id"), str)]
+    try:
+        profile_id = setup_wilma.save_signin(h.wilma.tenant.model_dump(), h.wilma.username,
+                                             h.wilma.password, h.wilma.students)
+    except secrets.SecretsError as e:
+        return outcome("wilma-not-stored", reason=str(e))
     setup_wilma.record_profile(profile_id, before)
     try:
         ops.install_jobs(Config.load(config))

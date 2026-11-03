@@ -4,9 +4,11 @@ import hashlib
 import json
 import logging
 import subprocess
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from .. import own_node
 from ..config import Config
@@ -17,6 +19,8 @@ log = logging.getLogger(__name__)
 
 MAX_BODY_CHARS = 8000
 NOT_INSTALLED = "the wilma CLI isn't installed (connect Wilma again: parent-recap setup wilma)"
+# The CLI's config of the reading in progress (`signed_in`), which each command reads.
+_reading: ContextVar[Path | None] = ContextVar("wilma_reading", default=None)
 
 
 class WilmaError(Exception):
@@ -34,12 +38,34 @@ class WilmaError(Exception):
         return self.code == "login_failed" or "Wilma login failed" in str(self)
 
 
+@contextmanager
+def signed_in() -> Iterator[Path]:
+    """The CLI's config every command in the block reads, so they carry on with the one Wilma
+    session the CLI saves beside it: every sign-in with its password, in an owner-only folder that
+    goes when the block ends (`setup_wilma.run_config`, #710). Inside another, that one."""
+    current = _reading.get()
+    if current is not None:
+        yield current
+        return
+    from .. import setup_wilma  # it reads this module's Kid list, so it is imported only here
+    with setup_wilma.run_config() as config:
+        token = _reading.set(config)
+        try:
+            yield config
+        finally:
+            _reading.reset(token)
+
+
 def _run(args: list[str], config: Path | None = None) -> Any:
     """`wilma <args> --json` on Parent Recap's own Node (ADR 0011), as JSON. `config` is the CLI's
-    config file to read instead of its own."""
+    config file to read; without one, that of the reading in progress (`signed_in`), or one of
+    its own."""
     command = own_node.wilma()
     if command is None:
         raise WilmaError(NOT_INSTALLED)
+    if config is None:
+        with signed_in() as reading:
+            return _run(args, reading)
     try:
         proc = retry_once_on_timeout(
             lambda: subprocess.run([*command, *args, "--json"], capture_output=True, text=True, encoding="utf-8",
@@ -146,16 +172,15 @@ def _walk_students(payload: Any) -> list[tuple[dict, list[dict]]]:
 
 
 class _Wilmas:
-    """The Wilmas the CLI's saved sign-ins are for, from its config. From 2.0 the CLI signs in with
+    """The Wilmas the CLI's sign-ins are for (`setup_wilma.signins`). From 2.0 the CLI signs in with
     every one of them, labels each student with their Wilma when there are several, and a message
     or news id is unique only within one Wilma."""
 
     def __init__(self, kids: set[str]) -> None:
         from .. import setup_wilma  # it reads this module's Kid list, so it is imported only here
         self._setup = setup_wilma
-        path = setup_wilma.config_path()
-        self.profiles = setup_wilma.profiles(path)
-        last = setup_wilma.last_profile_id(path)
+        self.profiles = setup_wilma.signins()
+        last = setup_wilma.last_signin_id()
         first = next((p for p in self.profiles if p.get("id") == last),
                      self.profiles[0] if len(self.profiles) == 1 else None)
         # The Wilma the CLI's commands sign in to first: before 2.0, the only one.
@@ -550,8 +575,7 @@ def link(m: Message) -> str | None:
     raw_id = m.metadata.get("raw_id")
     tenant = m.metadata.get("wilma_url")
     if not tenant:
-        path = setup_wilma.config_path()
-        profile = setup_wilma.profile(path, setup_wilma.last_profile_id(path) or "")
+        profile = setup_wilma.signin(setup_wilma.last_signin_id() or "")
         tenant = profile.get("tenantUrl") if profile else None
     if not (kind and raw_id and isinstance(tenant, str) and tenant.startswith("https://")):
         return None
@@ -561,6 +585,11 @@ def link(m: Message) -> str | None:
 
 
 def collect(cfg: Config, state: State, kid_terms: list[str]) -> Collected:
+    with signed_in():  # one Wilma session for the evening's commands
+        return _collect(cfg, state)
+
+
+def _collect(cfg: Config, state: State) -> Collected:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=cfg.wilma.lookback_hours)
     wilmas = _Wilmas({k.name.casefold() for k in cfg.kids})
     msgs = _collect_list(

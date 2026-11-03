@@ -125,7 +125,7 @@ class Wilma(Phase):
             out = setup_wilma.sign_in_in_terminal(language, self.context.timeouts.wilma_window)
             if out["result"] == "signed-in":
                 kids = [k for k in out["kids"] if isinstance(k.get("name"), str) and k["name"]]
-                signed_in = setup_wilma.last_profile_id(setup_wilma.config_path())
+                signed_in = setup_wilma.last_signin_id()
                 _, done = self._signed_in(signed_in, kids, _city(out.get("wilma_address"), town))
             else:  # with why, where it failed
                 done = {k: v for k, v in out.items() if k in ("result", "reason")}
@@ -140,16 +140,20 @@ class Wilma(Phase):
         without Wilma skips it instead."""
         answer = parse(WilmaRemoval, raw)
         with self._lock:
-            path = setup_wilma.config_path()
-            removed = setup_wilma.profile(path, answer.id)
-            if removed is None or len(setup_wilma.profiles(path)) < 2:
+            removed = setup_wilma.signin(answer.id)
+            if removed is None or len(setup_wilma.signins()) < 2:
                 return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                     "invalid-answers", "Remove one of the Wilmas listed, while there are two or "
                     "more.", errors=["id: should be one of the Wilmas api/state lists, while it "
                                      "lists two or more"])
-            setup_wilma.remove_profile(path, answer.id)
+            if answer.id in setup_wilma.profile_ids(setup_wilma.signins_path()):
+                setup_wilma.remove_signin(answer.id)
+            # One the CLI's own config has for the account too would take its place.
+            cli = setup_wilma.config_path()
+            if answer.id in setup_wilma.profile_ids(cli):
+                setup_wilma.remove_profile(cli, answer.id)
             install_record.remove("wilma-profile", answer.id)
-            left = setup_wilma.profiles(path)
+            left = setup_wilma.signins()
             still = {n.casefold() for p in left for n in setup_wilma.student_names(p)}
             gone = {n.casefold() for n in setup_wilma.student_names(removed)} - still
             answers: dict[str, Any] = {"kids": [{"name": k.name} for k in self.context.model().kids
@@ -168,8 +172,7 @@ class Wilma(Phase):
         """Saves the Kids Wilma lists and the town, with Wilma on and done. The Kids of the other
         Wilmas signed in to stay, so a second Wilma adds its Kids to the first's, and the
         Household's town stays the first Wilma's."""
-        others = [p for p in setup_wilma.profiles(setup_wilma.config_path())
-                  if p.get("id") != profile_id]
+        others = [p for p in setup_wilma.signins() if p.get("id") != profile_id]
         theirs = {n.casefold() for p in others for n in setup_wilma.student_names(p)}
         new = {k["name"].casefold(): k for k in kids}
         # In the order they were saved in, a Kid this Wilma lists too with what it says now.
@@ -190,12 +193,11 @@ class Wilma(Phase):
 
 
 def signins() -> list[dict[str, Any]]:
-    """Each Wilma the CLI signs in to, in its config's order, for the page to list: its id, its
-    name, the username and the Kids it lists. Never the password."""
+    """Each Wilma the CLI signs in to, in `setup_wilma.signins`' order, for the page to list: its
+    id, its name, the username and the Kids it lists. Never the password."""
     return [{"id": p["id"], "wilma": p.get("tenantName") or p.get("tenantUrl"),
              "username": p.get("username"), "kids": setup_wilma.student_names(p)}
-            for p in setup_wilma.profiles(setup_wilma.config_path())
-            if isinstance(p.get("id"), str)]
+            for p in setup_wilma.signins() if isinstance(p.get("id"), str)]
 
 
 def _host(profile: dict[str, Any]) -> str | None:

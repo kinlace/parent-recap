@@ -44,7 +44,7 @@ Lisää ohjeessa [Installing Parent Recap](docs/install.md) (englanniksi): mitä
 ## Yksityisyys
 
 - Parent Recap toimii omalla tietokoneellasi. Sen ainoa palvelin on ylläpitäjien yhdyskäytävä, joka lähettää koosteen osoitteesta `brief@parentrecap.com` eikä säilytä siitä kopiota. Jos koosteen kirjoittaa Claude tai ChatGPT ja olet yhdistänyt Gmailin, voit lähettää sen sen sijaan omasta Gmailistasi, jolloin palvelintamme ei käytetä lainkaan
-- Salasanat pysyvät tietokoneesi omassa salasanasäilössä: Macilla avainnipussa, Windowsissa tunnistetietojen hallinnassa
+- Salasanat, myös Wilman, pysyvät tietokoneesi omassa salasanasäilössä: Macilla avainnipussa, Windowsissa tunnistetietojen hallinnassa
 - Gmailista luetaan vain valitsemiesi lähettäjien viestit, ja sen kautta lähetetään kooste vain, jos itse valitset niin; WhatsAppista säilytetään vain valitsemasi ryhmät
 - Jokainen kooste ja viestit, joista se tehtiin, arkistoidaan tietokoneellesi kansioon `~/ParentRecap/`
 

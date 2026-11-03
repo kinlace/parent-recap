@@ -41,13 +41,14 @@ def is_busy(cfg: Config) -> bool:
     if not path.exists():
         return False
     with path.open("a", encoding="utf-8") as f:
-        if not _lock(f):
+        if not lock_file(f):
             return True
     return False  # closing the file let go of the lock
 
 
-def _lock(f: IO[str]) -> bool:
-    """Locks the open lock file without waiting; False if another run holds it."""
+def lock_file(f: IO[str]) -> bool:
+    """Locks the open file `f` without waiting; False if another process holds it. The system
+    lets go of it when `f` is closed or the process ends, however it ends."""
     if WINDOWS:
         f.seek(0)  # Windows locks a byte range from here; the file stays empty
         try:
@@ -67,7 +68,7 @@ def _take(cfg: Config) -> IO[str] | None:
     path = lock_path(cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
     f = path.open("a", encoding="utf-8")
-    if not _lock(f):
+    if not lock_file(f):
         f.close()
         return None
     return f

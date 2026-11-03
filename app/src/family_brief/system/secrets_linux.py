@@ -2,8 +2,8 @@
 config folder, which only its own user may read (ADR 0030). A server has no Keychain or Credential
 Manager, and libsecret needs a desktop session the evening job's user doesn't have.
 
-The files get the protection the wilma CLI's sign-in already has, no more: whoever reads the disk
-as root reads them too. Each secret is written whole to a new file and then moved into place, so a
+The files get the protection of a file only its owner can read, as the wilma CLI's own sign-in
+has, no more: whoever reads the disk as root reads them too. Each secret is written whole to a new file and then moved into place, so a
 run cut off halfway leaves the old secret, never half of a new one."""
 from __future__ import annotations
 
