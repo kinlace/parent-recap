@@ -219,73 +219,31 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     # install.sh on a clean Ubuntu, as the gateway server runs, on both chips, from this checkout,
-    # with the real downloads and no root (ADR 0029).
+    # with the real downloads and no root (ADR 0029). Each step is one check of
+    # scripts/linux-install-checks.sh, which holds what it expects of the program, so a program
+    # change edits nothing here (#721).
     strategy:
       fail-fast: false
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
-    env:
-      INSTALLED: /home/runner/ParentRecap
     steps:
       - uses: actions/checkout@v7
-      # Prints the published line for a pin that doesn't match, so a bump can copy it.
       - name: The pinned Linux Python and Node are the ones their projects published
-        run: |
-          pin() (sed -n "s/^$1=//p" install.sh)
-          py=$(pin PYTHON_VERSION) build=$(pin PYTHON_BUILD) node=$(pin NODE_VERSION)
-          curl -fsSL "https://github.com/astral-sh/python-build-standalone/releases/download/$build/SHA256SUMS" > python.sums
-          curl -fsSL "https://nodejs.org/dist/v$node/SHASUMS256.txt" > node.sums
-          # $1 the pin's name, $2 the published list, $3 the file
-          check() (
-            # The file name as it is: its + and . would be patterns to grep -E.
-            line=$(awk -v file="$3" '$2 == file || $2 == "*" file' "$2")
-            [ "$(pin "$1")" = "$(echo "$line" | cut -d' ' -f1)" ] ||
-              ! echo "$3: install.sh pins $1=$(pin "$1"), the published list says: $line"
-          )
-          wrong=0
-          check PYTHON_SHA256_LINUX_AARCH64 python.sums "cpython-$py+$build-aarch64-unknown-linux-gnu-install_only.tar.gz" || wrong=1
-          check PYTHON_SHA256_LINUX_X86_64 python.sums "cpython-$py+$build-x86_64-unknown-linux-gnu-install_only.tar.gz" || wrong=1
-          check NODE_SHA256_LINUX_ARM64 node.sums "node-v$node-linux-arm64.tar.xz" || wrong=1
-          check NODE_SHA256_LINUX_X64 node.sums "node-v$node-linux-x64.tar.xz" || wrong=1
-          rm python.sums node.sums
-          exit $wrong
+        run: scripts/linux-install-checks.sh pins
       - name: Install
-        run: |
-          bash install.sh
-          head -1 "$INSTALLED"/logs/install-*.log
+        run: scripts/linux-install-checks.sh install
       - name: The installed program runs on its own Python and Node
-        run: |
-          py="$INSTALLED/app/.venv/bin/python"
-          "$INSTALLED/app/.venv/bin/parent-recap" --help > /dev/null
-          "$py" -c "import sys; from family_brief import own_node; n = own_node.node(); print(n, own_node.npm()); sys.exit(n is None or own_node.npm() is None)"
-          "$py" -c "import os, sys; p = os.path.realpath(sys._base_executable); print(p); sys.exit('ParentRecap' not in p)"
+        run: scripts/linux-install-checks.sh own-runtimes
       - name: A new login shell runs parent-recap
-        run: |
-          found=$(bash -l -c 'command -v parent-recap')
-          echo "parent-recap: $found"
-          [ "$(readlink -f "$found")" = "$(readlink -f "$INSTALLED/app/.venv/bin/parent-recap")" ]
-          bash -l -c 'parent-recap --help' > /dev/null
-      # As the setup page's Wilma step installs it, from npm, with the program's own Node.
+        run: scripts/linux-install-checks.sh login-shell
       - name: The wilma CLI installs and runs on the program's own Node
-        run: |
-          py="$INSTALLED/app/.venv/bin/python"
-          "$py" -c "import sys; from family_brief import setup_wilma; r = setup_wilma.install(); print(r); sys.exit(r['result'] != 'installed')"
-          "$py" -c "import subprocess, sys; from family_brief import own_node; c = own_node.wilma(); print(c); sys.exit(subprocess.run([*c, '--help'], env=own_node.wilma_env()).returncode)"
-      # ADR 0030: the file is the Household user's alone.
+        run: scripts/linux-install-checks.sh wilma
       - name: A secret is stored in an owner-only file under the config folder
-        run: |
-          py="$INSTALLED/app/.venv/bin/python"
-          where=$("$py" -c "from family_brief import gateway; from family_brief.system import secrets; secrets.put(gateway.ACCOUNT, 'sk-ci-not-a-real-key'); print(secrets.where(gateway.ACCOUNT))")
-          echo "$where"
-          [ "$(stat -c %a "$where")" = 600 ] && [ "$(stat -c %a "$(dirname "$where")")" = 700 ]
-          [[ "$where" == "$HOME/.family/secrets/"* ]]
+        run: scripts/linux-install-checks.sh secret-file
       - name: A second install downloads nothing
-        run: |
-          before=$(stat -c %Y "$INSTALLED"/runtime/*)
-          bash install.sh
-          [ "$(stat -c %Y "$INSTALLED"/runtime/*)" = "$before" ]
+        run: scripts/linux-install-checks.sh second-install
 
   windows-install:
     needs: changes

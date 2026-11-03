@@ -3,7 +3,9 @@ no jobs. A tests workflow that doesn't parse reports no check at all, and PRs th
 other checks alone (#128)."""
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -13,8 +15,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 WORKFLOWS = sorted(WORKFLOW_DIR.glob("*.yml"))
-# What the windows-install job runs, one check a step (#720).
+# What the windows-install and linux-install jobs run, one check a step (#720, #721).
 CHECKS = ROOT / "scripts" / "windows-install-checks.ps1"
+LINUX_CHECKS = ROOT / "scripts" / "linux-install-checks.sh"
 
 
 def test_there_are_workflows():
@@ -103,6 +106,46 @@ def test_each_windows_install_step_runs_one_check_of_the_checks_script():
         assert f"'{check}' = {{" in script, f"{check} runs nothing"
 
 
+def test_each_linux_install_step_runs_one_check_of_the_checks_script():
+    # As the windows-install job: the expected values about the program live in the script, so a
+    # program change edits no file under .github/ (#721).
+    steps = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]["linux-install"]["steps"]
+    script = LINUX_CHECKS.read_text()
+    known = set(re.findall(r"(?m)^\s+([a-z-]+)\) check_", script))
+    runs = [step for step in steps if "run" in step]
+    called = [re.fullmatch(r"scripts/linux-install-checks\.sh ([a-z-]+)", step["run"].strip())
+              for step in runs]
+
+    assert known
+    assert all(called), [step["run"] for step, call in zip(runs, called) if not call]
+    assert all(step.get("name") for step in runs)
+    names = [call.group(1) for call in called if call]
+    assert len(names) == len(set(names)) and set(names) == known
+    assert os.access(LINUX_CHECKS, os.X_OK)
+
+
+@pytest.mark.posix
+def test_a_failed_linux_install_check_says_which_check_and_what_it_saw(tmp_path: Path):
+    # Nothing installed in this home, so the installed program can't run.
+    env = {**os.environ, "HOME": str(tmp_path)}
+    result = subprocess.run(["bash", str(LINUX_CHECKS), "own-runtimes"], env=env,
+                            capture_output=True, text=True)
+
+    assert result.returncode == 1
+    annotation = next(line for line in result.stdout.splitlines() if line.startswith("::error"))
+    assert annotation.startswith("::error title=linux-install own-runtimes::")
+    assert "parent-recap --help" in annotation
+
+
+@pytest.mark.posix
+def test_an_unknown_linux_install_check_fails_and_lists_the_checks():
+    result = subprocess.run(["bash", str(LINUX_CHECKS), "no-such-check"],
+                            capture_output=True, text=True)
+
+    assert result.returncode == 2
+    assert "own-runtimes" in result.stderr
+
+
 def test_the_windows_install_checks_are_ascii_for_windows_powershell():
     # Windows PowerShell 5.1 reads a file without a BOM in the PC's code page.
     CHECKS.read_bytes().decode("ascii")
@@ -115,3 +158,4 @@ def test_a_change_to_a_script_still_runs_the_tests():
     docs_only = re.search(r"grep -v -E \\\n\s*'([^']*)'", run).group(1)
     assert re.search(docs_only, "docs/adr/0001-x.md")
     assert not re.search(docs_only, "scripts/windows-install-checks.ps1")
+    assert not re.search(docs_only, "scripts/linux-install-checks.sh")
