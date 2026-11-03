@@ -170,6 +170,23 @@ def start_codex_login(program: str) -> subprocess.Popen | None:
         return None
 
 
+def end_codex_login(proc: subprocess.Popen) -> None:
+    """Ends a `codex login` still running, with what it started: a `codex` that npm put there
+    is a wrapper, and the real sign-in under it would go on holding the browser's callback."""
+    if proc.poll() is None:
+        try:
+            if hasattr(os, "killpg"):  # it started in a session of its own
+                os.killpg(proc.pid, signal.SIGKILL)
+            else:  # Windows: the process and its tree
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                               capture_output=True, timeout=10, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        if proc.poll() is None:
+            proc.kill()
+    proc.wait()
+
+
 def claude_token_sign_in(typed: str) -> tuple[str, dict[str, Any]]:
     """Makes one test call with the Claude token `typed` and stores it in the Keychain. Returns
     the step's result, `saved`, `not-a-token`, `test-call-failed`, `keychain-not-reachable` or

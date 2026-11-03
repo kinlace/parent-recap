@@ -310,12 +310,18 @@ def test_the_claude_calls_take_only_what_they_need(harness, page, claude):
 
 # `login` stays open as the real one does while the sign-in is open in the browser, unless
 # FAKE_CODEX_LOGIN_EXIT ends it at once: one that ended signed out is the page's login-failed.
+# With FAKE_CODEX_LOGIN_CHILD it runs under a wrapper's child, as npm's `codex` does, whose id
+# it writes to codex-login.child.
 FAKE_CODEX = """#!{python}
-import os, pathlib, sys, time
+import os, pathlib, subprocess, sys, time
 if sys.argv[1:] == ["login"]:
-    (pathlib.Path(os.path.realpath(__file__)).parent / "codex-login.ran").write_text("")
+    here = pathlib.Path(os.path.realpath(__file__)).parent
+    (here / "codex-login.ran").write_text("")
     if "FAKE_CODEX_LOGIN_EXIT" in os.environ:
         sys.exit(int(os.environ["FAKE_CODEX_LOGIN_EXIT"]))
+    if "FAKE_CODEX_LOGIN_CHILD" in os.environ:
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        (here / "codex-login.child").write_text(str(child.pid))
     time.sleep(30)
     sys.exit(0)
 sys.exit(2)
@@ -378,27 +384,40 @@ def test_a_codex_sign_in_that_ends_signed_out_says_so(harness, page, codex, monk
     assert statuses(page.url)["ai"] == "to-do"
 
 
+def running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
 @pytest.mark.macos
 def test_signing_in_to_codex_again_ends_the_waiting_sign_in(harness, page, codex, monkeypatch):
     # OpenAI's page failed in the browser, or its tab was closed: `codex login` waits for good.
     logins: list[subprocess.Popen] = []
-    start = setup_ai.start_codex_login
+    popen = subprocess.Popen  # the codex fixture's recorder
 
-    def started(program: str) -> subprocess.Popen | None:
-        login = start(program)
-        logins.append(login)
-        return login
-    monkeypatch.setattr(setup_ai, "start_codex_login", started)
+    def recorded_login(cmd: list[str], *a: Any, **k: Any) -> Any:
+        proc = popen(cmd, *a, **k)
+        if list(cmd)[1:] == ["login"]:
+            logins.append(proc)
+        return proc
+    monkeypatch.setattr(subprocess, "Popen", recorded_login)
+    monkeypatch.setenv("FAKE_CODEX_LOGIN_CHILD", "")
     at_the_ai_step(harness, page.url, "codex")
     harness.signed_in["codex"] = False
     assert call(page.url, "api/codex/login", method="POST", body={}).json() == {"result": "waiting"}
+    wait_for(lambda: (codex / "codex-login.child").exists())
+    child = int((codex / "codex-login.child").read_text())
     assert codex_check(page.url) == {"result": "waiting"}
 
     r = call(page.url, "api/codex/login", method="POST", body={})
 
     assert r.status == 200 and r.json() == {"result": "waiting"}
     first, again = logins
-    assert first.poll() is not None  # the old one is ended
+    assert first.poll() is not None  # the old one is ended, with the sign-in under it
+    wait_for(lambda: not running(child))
     assert again.poll() is None  # a new one opens a fresh sign-in page
     assert codex_check(page.url) == {"result": "waiting"}
     harness.signed_in["codex"] = True
