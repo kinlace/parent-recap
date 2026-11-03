@@ -412,7 +412,7 @@ jobs:
             $ais = @($state.ais) -join ','
             Write-Host "system $($state.system), Sources $sources, AIs $ais"
             if ($state.system -ne 'windows') { throw "the page words itself for $($state.system)" }
-            if ($sources -ne 'wilma,gmail,ai,whatsapp,myclub') { throw "the page lists $sources" }
+            if ($sources -ne 'wilma,ai,whatsapp,myclub,gmail') { throw "the page lists $sources" }
             if ($ais -ne 'gateway,codex,claude') { throw "the page offers $ais" }
           } finally {
             Stop-Process -Id $page.Id -Force -ErrorAction SilentlyContinue
