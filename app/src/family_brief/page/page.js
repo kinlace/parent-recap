@@ -470,6 +470,7 @@ function setUpRecipients() {
   document.getElementById("recipients-form").addEventListener("submit", saveRecipients);
   document.getElementById("recipients-change").addEventListener("click", () => {
     showSource(null);
+    document.getElementById("gmail-password").value = ""; // never kept out of sight
     recipientsStep.changing = true;
     renderSources();
   });
@@ -693,7 +694,10 @@ async function saveRecipients(event) {
       if (out.confirm) {
         showConfirmation(document.getElementById("recipients-confirm"), out.confirm, false);
       }
+      // Saved, the line above the Source list says to whom; the first Source's step may say
+      // something of its own at once, such as Wilma's program getting ready.
       renderSources();
+      return;
     }
     // What a key the relay didn't take says is the gateway AI's key field's own.
     showSource((KEY_RESULTS.includes(out.result) ? "gateway." : "recipients.") + out.result);
@@ -845,7 +849,7 @@ const SLOTS = [
   [["myclub.added", "myclub.kid-exists"], "myclub-kid-slot"],
   // A Source just done: by the hand-off, as the next Source's step is shown.
   [["gmail.saved", "wilma.signed-in", "claude.saved", "gateway.saved",
-    "codex.signed-in", "whatsapp.paired", "recipients.saved"], "connect-slot"],
+    "codex.signed-in", "whatsapp.paired"], "connect-slot"],
 ];
 // The results that say something failed, shown in red.
 const FAILED = [

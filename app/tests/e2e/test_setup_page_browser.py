@@ -317,13 +317,17 @@ def test_a_family_that_reads_no_mail_skips_gmail_and_setup_finishes_without_it(t
     expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
     expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(0)
     expect(tab.get_by_text(text("recipients.junk"))).to_be_hidden()
+    # A page loaded again before they're saved comes back to this step.
+    tab.reload()
+    expect(heading(tab, "recipients.title")).to_be_visible()
+    expect(source_listed(tab, "wilma", "to-do")).to_be_hidden()
     recipient(tab).fill(hotmail)
     expect(tab.get_by_text(text("recipients.junk"))).to_be_visible()
 
     button(tab, "recipients.save").click()
 
-    expect(tab.get_by_text(text("recipients.saved"))).to_be_visible()
     expect(tab.get_by_text(text("recipients.to", addresses=hotmail))).to_be_visible()
+    expect(heading(tab, "recipients.title")).to_be_hidden()
     expect(source_listed(tab, "wilma", "to-do")).to_be_visible()
     without_wilma_in_espoo(tab)
     tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
@@ -335,11 +339,21 @@ def test_a_family_that_reads_no_mail_skips_gmail_and_setup_finishes_without_it(t
     expect(tab.get_by_role("radio", name=re.compile("^Mia"))).to_be_checked()
     tab.get_by_label(text("myclub.link")).fill(MYCLUB_LINK)
     button(tab, "myclub.save").click()
+    expect(tab.get_by_text(text("gmail.explain"))).to_be_visible()
+    # Loaded again, the page is back at Gmail, the step reached, not at who gets the Brief.
+    tab.reload()
+    expect(source_listed(tab, "myclub", "done")).to_be_visible()
+    expect(heading(tab, "recipients.title")).to_be_hidden()
     # Gmail, last, says what it reads, with Connect and Skip side by side and no App Password.
     expect(tab.get_by_text(text("gmail.explain"))).to_be_visible()
     expect(button(tab, "gmail.connect")).to_be_visible()
     expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
     expect(tab.get_by_text(text("gmail.open"))).to_be_hidden()
+    for language in ("fi", "zh", "en"):
+        tab.locator("#language-switch").select_option(language)
+        for key, values in (("gmail.connect", {}), ("source.skip", {"source": "Gmail"})):
+            expect(tab.get_by_role("button", name=text(key, language=language, **values),
+                                   exact=True)).to_be_visible()
     skip(tab, "gmail").click()
     expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
     expect(tab.get_by_text(text("connect.done"))).to_be_visible()
