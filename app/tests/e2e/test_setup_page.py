@@ -650,7 +650,7 @@ def test_on_windows_chatgpt_s_texts_say_the_page_installs_codex_in_all_three_lan
 def test_a_signed_out_codex_is_left_to_the_ai_step_on_every_system_in_all_three_languages():
     """Codex's step signs in on a Mac as on Windows, and the Mac may have no Codex app (#707):
     Welcome says the same on both and names no app."""
-    app = {"en": "app", "fi": "sovellu", "zh": "应用"}
+    app = {"en": "app", "fi": "sovellu", "zh": "应用"}  # fi: the stem of sovellus, sovellusta…
     for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
         assert "ai.codex.signed-out.windows" not in table, language
         said = table["ai.codex.signed-out"]
