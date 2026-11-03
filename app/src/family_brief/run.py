@@ -10,7 +10,7 @@ import re
 import time
 import traceback
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Literal
 from zoneinfo import ZoneInfo
@@ -224,13 +224,14 @@ def _nothing_could_be_read(cfg: Config, coverage: dict[str, dict]) -> bool:
 
 @dataclass
 class _Read:
-    """What tonight's run read: the Sources' Messages and events, what each Source gave
-    (`coverage`), and the earlier Briefs' points, some perhaps due soon."""
+    """What tonight's run read: the Sources' Messages and events, whether one of those events is
+    tomorrow, what each Source gave (`coverage`), and the earlier Briefs' points, some perhaps due soon."""
     messages: list[Message]
     direct_events: list[CalendarEvent]
     coverage: dict[str, dict]
     earlier: list[EarlierBrief]
     due_soon: bool
+    event_tomorrow: bool
 
     @property
     def anything_new(self) -> bool:
@@ -253,9 +254,11 @@ def _read(cfg: Config, options: Options, io: IO, state: State) -> _Read:
         log.warning("%s not read: %s", source, why.reason)
         since = why.since.astimezone(ZoneInfo(cfg.timezone)).isoformat() if why.since else None
         coverage[source] = {"count": 0, "error": why.reason, "since": since}
-    earlier = io.recent_points(cfg, today_str(cfg.timezone))
-    return _Read(messages, direct_events, coverage, earlier,
-                 archive.has_due_soon(earlier, today_str(cfg.timezone)))
+    today = today_str(cfg.timezone)
+    earlier = io.recent_points(cfg, today)
+    tomorrow = date.fromisoformat(today) + timedelta(days=1)
+    return _Read(messages, direct_events, coverage, earlier, archive.has_due_soon(earlier, today),
+                 any(e.start.date() == tomorrow for e in direct_events))
 
 
 # ── Writing the Brief
@@ -400,7 +403,9 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
     placeholders = placeholders_for(cfg)
     # Messages that look sensitive reach no model call: the Brief lists them itself (ADR 0013).
     for_ai, held = for_the_ai(cfg, read.messages)
-    if for_ai or read.due_soon:
+    # Only the model tells a Source's event on the evening before it (#696), so tomorrow's asks it.
+    asks_model = bool(for_ai or read.due_soon or read.event_tomorrow)
+    if asks_model:
         if options.preview:
             _preview_step("writing")
         try:
@@ -428,8 +433,8 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         coverage=read.coverage, created=calendar.created, held_back=_held_back(held),
         calendar_problem=calendar.problem, ics_events=calendar.ics_events,
         # The rule-based fallback is a raw message list the model never wrote, and a night with only
-        # MyClub events or Held-back Messages asks no model: nothing to judge and no model to credit.
-        model_wrote=bool(for_ai or read.due_soon) and notes.error is None, form=form,
+        # later MyClub events or Held-back Messages asks no model: nothing to judge and no model to credit.
+        model_wrote=asks_model and notes.error is None, form=form,
         stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg),
         hosted=cfg.hosted)
     return _Written(night, notes, for_ai, held, model_events, placeholders)
