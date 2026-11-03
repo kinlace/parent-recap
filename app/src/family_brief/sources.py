@@ -5,8 +5,8 @@ line counts of it, which systems can read it, whether the setup page lets a fami
 mail it sends of its own news, which of its messages went to everyone and how the Brief lists one
 held back (ADR 0013), how the calendar treats its events, what `doctor` checks of it, why one the
 Household set up can't be read tonight, whether a Hosted Household can have it, and what
-uninstall removes for it. A new Source is its
-collector module, its config model and its record here."""
+uninstall removes for it. A new Source is its collector module, its config model and its record
+here."""
 from __future__ import annotations
 
 import importlib
@@ -55,7 +55,7 @@ def _never_unread(*_args: Any) -> Unread | None:
 
 
 EVERY_SYSTEM = frozenset({"macos", "windows", "linux"})
-HOSTED_SYSTEM = "linux"  # the hosted version's server's (ADR 0029)
+HOSTED_SYSTEM = "linux"  # the system the hosted version's server runs (ADR 0029)
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ class Source:
     systems: frozenset[str] = EVERY_SYSTEM
     # whether the hosted sign-up sets it up (ADR 0031); a Hosted Household's Brief says the hosted
     # version doesn't read one it doesn't, or one its system can't read
-    hosted: bool = True
+    hosted_signup: bool = True
     lookback: Callable[[Config], Window] | None = None  # its section with lookback_hours, if any
     # why it isn't read tonight though the Household set it up, given the config and the state
     unread: Callable[[Config, State], Unread | None] = _never_unread
@@ -135,7 +135,7 @@ def _same_everywhere(label: str) -> dict[str, str]:
 # sign-up has no Gmail step yet (ADR 0029, 0031).
 GMAIL = Source("gmail", _same_everywhere("Gmail"),
                lambda cfg: bool(cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders),
-               skippable=True, connect_rank=5, collect=_collector("gmail"), hosted=False,
+               skippable=True, connect_rank=5, collect=_collector("gmail"), hosted_signup=False,
                lookback=lambda cfg: cfg.gmail, check=_in("ops", "check_gmail"),
                secrets=_in("uninstall", "gmail_secrets"), notes=_in("uninstall", "gmail_notes"),
                sent_to_everyone=_in("collectors.gmail", "sent_to_everyone"),
@@ -190,7 +190,7 @@ def not_hosted() -> list[Source]:
     """The Sources a Hosted Household can't have: those the hosted version's system can't read and
     those its sign-up doesn't set up (ADR 0029, 0031), in the order the setup page's Connect list
     shows them."""
-    return sorted((s for s in ALL if not s.hosted or HOSTED_SYSTEM not in s.systems),
+    return sorted((s for s in ALL if not s.hosted_signup or HOSTED_SYSTEM not in s.systems),
                   key=lambda s: s.connect_rank)
 
 
