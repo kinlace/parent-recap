@@ -951,6 +951,32 @@ def test_welcome_offers_to_check_again_only_while_it_can_t_go_on(tab, ai, on, na
 
 
 @pytest.mark.parametrize("on", ["macos", "windows"])
+@pytest.mark.parametrize("name", ["claude", "codex"])
+def test_welcome_goes_on_with_a_signed_out_ai_whose_own_step_signs_it_in(tab, on, name):
+    """Codex's step signs in with `codex login` on both systems, so Welcome needn't wait for it,
+    and on a Mac doesn't send the family to a Codex app it may not have (#707). Claude Code's
+    sign-in on a Mac needs it installed from Terminal first (#475), so there Welcome waits."""
+    as_on(tab, on)
+    tab.route(re.compile(r"/api/ai$"), lambda route: route.fulfill(json={"result": "signed-out"}))
+    in_english(tab)
+    again = button(tab, "welcome.ai.again", system=on)
+    go_on = button(tab, "continue", system=on)
+
+    tab.get_by_role("radio", name=text(f"welcome.ai.{name}", system=on)).check()
+
+    said = tab.locator("#ai-message")
+    expect(said).to_have_text(text(f"ai.{name}.signed-out", system=on))
+    if on == "windows" or name == "codex":
+        expect(again).to_be_hidden()
+        expect(go_on).to_be_enabled()
+    else:
+        expect(again).to_be_visible()
+        expect(go_on).to_be_disabled()
+    if name == "codex":
+        expect(said).not_to_contain_text("app")
+
+
+@pytest.mark.parametrize("on", ["macos", "windows"])
 def test_chatgpt_s_step_installs_codex_and_offers_the_button_again_when_that_fails(
         tab, family, ai, on):
     """Install Codex on a Mac as on Windows (#473); OpenAI's installer itself isn't run here, the

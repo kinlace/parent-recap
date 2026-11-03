@@ -643,9 +643,18 @@ def test_the_page_knows_parent_recap_s_version_and_the_system_for_a_failure_s_re
 
 def test_on_windows_chatgpt_s_texts_say_the_page_installs_codex_in_all_three_languages():
     for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
-        for key in ("ai.codex.not-installed", "ai.codex.signed-out", "codex.not-installed",
-                    "codex.install-failed"):
+        for key in ("ai.codex.not-installed", "codex.not-installed", "codex.install-failed"):
             assert f"{key}.windows" in table, (language, key)
+
+
+def test_a_signed_out_codex_is_left_to_the_ai_step_on_every_system_in_all_three_languages():
+    """Codex's step signs in on a Mac as on Windows, and the Mac may have no Codex app (#707):
+    Welcome says the same on both and names no app."""
+    app = {"en": "app", "fi": "sovellu", "zh": "应用"}
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        assert "ai.codex.signed-out.windows" not in table, language
+        said = table["ai.codex.signed-out"]
+        assert "ChatGPT" in said and app[language] not in said, (language, said)
 
 
 def test_on_a_mac_chatgpt_s_texts_say_the_page_installs_codex_and_offer_no_download(

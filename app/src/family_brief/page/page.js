@@ -303,12 +303,14 @@ async function checkAI() {
 }
 
 // Welcome goes on once the AI picked is ready, or when its own step after Welcome installs it,
-// as the server says it does here (Codex on both systems, Claude Code on Windows). On Windows
-// those steps also sign in, so Welcome needn't wait for that either.
+// as the server says it does here (Codex on both systems, Claude Code on Windows). Codex's step
+// signs in on both systems too, and Claude Code's on Windows, so Welcome needn't wait for that
+// either; on a Mac Claude Code's sign-in needs it installed from Terminal first (#475).
 function welcomeGoesOn(name, result) {
   if (result === "ready") return true;
   if (result === "not-installed") return page.installs.includes(name);
-  return result === "signed-out" && page.system === "windows" && ["codex", "claude"].includes(name);
+  if (result !== "signed-out") return false;
+  return name === "codex" || (name === "claude" && page.system === "windows");
 }
 
 function showAI(name, result, install, reason) {
