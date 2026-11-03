@@ -2,6 +2,12 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## Unreleased
+
+### Changed
+
+- On the setup page, who gets the Brief is its own first step, before the Sources, and says nothing about Gmail. Gmail comes last on the list, with "Connect Gmail" and "Skip Gmail" side by side: its App Password steps show only after Connect, and Google's requirements fold under one line. Gmail can be skipped like any other Source.
+
 ## 0.11.0 · 2026-11-03
 
 ### Added

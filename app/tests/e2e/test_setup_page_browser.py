@@ -152,8 +152,9 @@ def in_english(tab) -> None:
     expect(heading(tab, "welcome.title")).to_be_visible()
 
 
-def in_english_with_the_gateway(tab) -> None:
-    """The language, then Welcome with the Gateway Key's AI and the Brief only for the parent."""
+def in_english_with_the_gateway(tab, brief_to: str | None = PARENT) -> None:
+    """The language, then Welcome with the Gateway Key's AI and the Brief only for the parent,
+    then Connect's first step, who gets the Brief: `brief_to`, or left to the test with None."""
     in_english(tab)
     tab.get_by_role("radio", name=text("welcome.ai.gateway")).check()
     expect(tab.get_by_text(text("ai.gateway.ready"))).to_be_visible()
@@ -162,6 +163,8 @@ def in_english_with_the_gateway(tab) -> None:
     expect(button(tab, "continue")).to_be_enabled()
     button(tab, "continue").click()
     expect(heading(tab, "connect.title")).to_be_visible()
+    if brief_to is not None:
+        brief_goes_to(tab, brief_to)
 
 
 def skip(tab, source: str):
@@ -185,21 +188,31 @@ def without_wilma_in_espoo(tab) -> None:
     expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
 
 
-def recipient(tab, i: int = 0, within: str = "#source-gmail"):
-    """The address field of the `i`th row of who gets the Brief, on Gmail's step or at Finish."""
+def recipient(tab, i: int = 0, within: str = "#recipients"):
+    """The address field of the `i`th row of who gets the Brief, on Connect's step or at Finish."""
     return tab.locator(within).get_by_label(text("recipients.address"), exact=True).nth(i)
 
 
-def recipient_language(tab, i: int, within: str = "#source-gmail"):
+def recipient_language(tab, i: int, within: str = "#recipients"):
     return tab.locator(within).get_by_label(text("recipients.language"), exact=True).nth(i)
 
 
 def brief_goes_to(tab, address: str = PARENT) -> None:
-    """Gmail's step, first part: who gets the Brief, which Parent Recap sends (ADR 0032), saved
-    with no key asked for, as for a Household on the gateway."""
+    """Connect's first step: who gets the Brief, which Parent Recap sends (ADR 0032), saved with
+    no key asked for, as for a Household on the gateway; then the Source list (#708)."""
     recipient(tab).fill(address)
-    button(tab, "gmail.brief.save").click()
-    expect(tab.get_by_text(text("gmail.brief.to", addresses=address))).to_be_visible()
+    button(tab, "recipients.save").click()
+    expect(tab.get_by_text(text("recipients.to", addresses=address))).to_be_visible()
+
+
+def connect_gmail_at_last(tab) -> None:
+    """Gmail's step, last on the list (#708): Connect Gmail, beside its Skip, shows the App
+    Password's steps."""
+    expect(tab.get_by_text(text("gmail.explain"))).to_be_visible()
+    expect(skip(tab, "gmail")).to_be_visible()
+    expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
+    button(tab, "gmail.connect").click()
+    expect(tab.get_by_label(text("gmail.password"))).to_be_visible()
 
 
 def sign_in_to_gmail(tab, password: str) -> None:
@@ -218,17 +231,14 @@ def source_listed(tab, source: str, status: str, language: str = "en"):
 
 
 def connect_up_to_myclub(tab) -> None:
-    """Without Wilma, then Gmail and the Gateway Key, then WhatsApp skipped, which comes after the
-    AI sign-in on every system (ADR 0027)."""
+    """Who gets the Brief, then without Wilma, then the Gateway Key, then WhatsApp skipped, which
+    comes after the AI sign-in on every system (ADR 0027)."""
     in_english_with_the_gateway(tab)
     without_wilma_in_espoo(tab)
-    brief_goes_to(tab)
-    sign_in_to_gmail(tab, TYPED)
-    expect(tab.get_by_text(text("gmail.saved"))).to_be_visible()
-    expect(tab.get_by_text(text("connect.handoff", done=text("source.gmail"),
-                                next=text("source.ai")))).to_be_visible()
     tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
     button(tab, "gateway.save").click()
+    expect(tab.get_by_text(text("connect.handoff", done=text("source.ai"),
+                                next=text("source.whatsapp")))).to_be_visible()
     expect(source_listed(tab, "ai", "done")).to_be_visible()
     expect(tab.get_by_text(text("whatsapp.step.link"))).to_be_visible()
     skip(tab, "whatsapp").click()
@@ -257,7 +267,13 @@ def test_a_family_goes_from_the_language_to_finish_in_the_browser(tab):
     tab.get_by_label(text("myclub.link")).fill(MYCLUB_LINK)
     button(tab, "myclub.save").click()
     expect(tab.get_by_text(text("myclub.saved"))).to_be_visible()
-    for source in ("gmail", "ai", "myclub"):
+    # Gmail comes last (#708).
+    expect(tab.get_by_text(text("connect.handoff", done=text("source.myclub"),
+                                next=text("source.gmail")))).to_be_visible()
+    connect_gmail_at_last(tab)
+    sign_in_to_gmail(tab, TYPED)
+    expect(tab.get_by_text(text("gmail.saved"))).to_be_visible()
+    for source in ("ai", "myclub", "gmail"):
         expect(source_listed(tab, source, "done")).to_be_visible()
     expect(tab.get_by_text(text("connect.done"))).to_be_visible()
     button(tab, "continue").click()
@@ -291,25 +307,25 @@ def test_a_family_goes_from_the_language_to_finish_in_the_browser(tab):
 def test_a_family_that_reads_no_mail_skips_gmail_and_setup_finishes_without_it(tab, family):
     # ADR 0032: a Hotmail family, whose Brief comes from Parent Recap's own address.
     hotmail = "parent@hotmail.com"
-    in_english_with_the_gateway(tab)
-    without_wilma_in_espoo(tab)
-    # Who gets the Brief comes first; Gmail's own form waits until they're saved.
-    expect(tab.get_by_text(text("gmail.brief.explain"))).to_be_visible()
-    expect(tab.get_by_text(text("gmail.brief.unread"))).to_be_visible()
+    in_english_with_the_gateway(tab, brief_to=None)
+    # Who gets the Brief is Connect's first step, before any Source and naming none (#708).
+    expect(heading(tab, "recipients.title")).to_be_visible()
+    expect(tab.get_by_text(text("recipients.explain"))).to_be_visible()
+    expect(tab.get_by_text(text("recipients.unread"))).to_be_visible()
+    expect(source_listed(tab, "wilma", "to-do")).to_be_hidden()
+    expect(tab.get_by_label(text("wilma.username"))).to_be_hidden()
     expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
-    expect(skip(tab, "gmail")).to_be_hidden()
-    expect(tab.get_by_text(text("gmail.brief.junk"))).to_be_hidden()
+    expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(0)
+    expect(tab.get_by_text(text("recipients.junk"))).to_be_hidden()
     recipient(tab).fill(hotmail)
-    expect(tab.get_by_text(text("gmail.brief.junk"))).to_be_visible()
+    expect(tab.get_by_text(text("recipients.junk"))).to_be_visible()
 
-    button(tab, "gmail.brief.save").click()
+    button(tab, "recipients.save").click()
 
-    expect(tab.get_by_text(text("gmail.brief.saved"))).to_be_visible()
-    expect(tab.get_by_text(text("gmail.brief.to", addresses=hotmail))).to_be_visible()
-    expect(tab.get_by_text(text("gmail.explain"))).to_be_visible()
-    expect(source_listed(tab, "gmail", "to-do")).to_be_visible()
-    skip(tab, "gmail").click()
-    expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
+    expect(tab.get_by_text(text("recipients.saved"))).to_be_visible()
+    expect(tab.get_by_text(text("recipients.to", addresses=hotmail))).to_be_visible()
+    expect(source_listed(tab, "wilma", "to-do")).to_be_visible()
+    without_wilma_in_espoo(tab)
     tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
     button(tab, "gateway.save").click()
     expect(source_listed(tab, "ai", "done")).to_be_visible()
@@ -319,6 +335,13 @@ def test_a_family_that_reads_no_mail_skips_gmail_and_setup_finishes_without_it(t
     expect(tab.get_by_role("radio", name=re.compile("^Mia"))).to_be_checked()
     tab.get_by_label(text("myclub.link")).fill(MYCLUB_LINK)
     button(tab, "myclub.save").click()
+    # Gmail, last, says what it reads, with Connect and Skip side by side and no App Password.
+    expect(tab.get_by_text(text("gmail.explain"))).to_be_visible()
+    expect(button(tab, "gmail.connect")).to_be_visible()
+    expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
+    expect(tab.get_by_text(text("gmail.open"))).to_be_hidden()
+    skip(tab, "gmail").click()
+    expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
     expect(tab.get_by_text(text("connect.done"))).to_be_visible()
     button(tab, "continue").click()
 
@@ -340,16 +363,16 @@ def test_a_family_that_reads_no_mail_skips_gmail_and_setup_finishes_without_it(t
 
 
 def test_gmail_opened_again_after_it_was_skipped_is_only_read(tab, family):
-    in_english_with_the_gateway(tab)
-    skip(tab, "wilma").click()
-    brief_goes_to(tab, "parent@hotmail.com")
+    in_english_with_the_gateway(tab, "parent@hotmail.com")
+    source_listed(tab, "gmail", "to-do").click()
     skip(tab, "gmail").click()
     expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
 
     source_listed(tab, "gmail", "skipped").click()
 
-    # Who gets the Brief stays as saved, and can be changed from here.
-    expect(tab.get_by_text(text("gmail.brief.to", addresses="parent@hotmail.com"))).to_be_visible()
+    # Who gets the Brief stays as saved, and can be changed from the list.
+    expect(tab.get_by_text(text("recipients.to", addresses="parent@hotmail.com"))).to_be_visible()
+    connect_gmail_at_last(tab)
     sign_in_to_gmail(tab, TYPED)
     expect(source_listed(tab, "gmail", "done")).to_be_visible()
     cfg = Config.load(config_file(family))
@@ -357,28 +380,30 @@ def test_gmail_opened_again_after_it_was_skipped_is_only_read(tab, family):
     assert [t.address for t in cfg.email.to] == ["parent@hotmail.com"]
 
 
-def test_who_gets_the_brief_can_be_changed_before_gmail_is_connected(tab, family):
-    in_english_with_the_gateway(tab)
-    skip(tab, "wilma").click()
-    brief_goes_to(tab, "parent@hotmail.com")
+def test_who_gets_the_brief_can_be_changed_from_the_source_list(tab, family):
+    in_english_with_the_gateway(tab, "parent@hotmail.com")
 
-    button(tab, "gmail.brief.change").click()
+    button(tab, "recipients.change").click()
 
-    expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
+    # Their own step again, with the Source list out of the way.
+    expect(source_listed(tab, "wilma", "to-do")).to_be_hidden()
+    expect(tab.get_by_label(text("wilma.username"))).to_be_hidden()
     address = recipient(tab)
     expect(address).to_have_value("parent@hotmail.com")
     brief_goes_to(tab, "parent@gmail.com")
     assert [t.address for t in Config.load(config_file(family)).email.to] == ["parent@gmail.com"]
-    # The setup parent's own Gmail is the likeliest one to read.
+    expect(tab.get_by_label(text("wilma.username"))).to_be_visible()
+    # The Brief's own address is the likeliest Gmail to read, suggested only on Gmail's step.
+    source_listed(tab, "gmail", "to-do").click()
+    connect_gmail_at_last(tab)
     expect(tab.get_by_label(text("gmail.address"))).to_have_value("parent@gmail.com")
 
 
-def test_after_only_me_on_welcome_gmail_s_step_adds_as_many_as_the_gateway_binds(tab, family):
-    # #638, #699: Welcome said "Only me", and anyone else's address goes in on Gmail's step, in
-    # rows added one by one.
-    in_english_with_the_gateway(tab)
-    skip(tab, "wilma").click()
-    rows = tab.locator("#gmail-brief-rows .recipient")
+def test_after_only_me_on_welcome_who_gets_the_brief_adds_as_many_as_the_gateway_binds(tab, family):
+    # #638, #699: Welcome said "Only me", and anyone else's address goes in on Connect's step for
+    # who gets the Brief, in rows added one by one.
+    in_english_with_the_gateway(tab, brief_to=None)
+    rows = tab.locator("#recipients-rows .recipient")
     expect(rows).to_have_count(1)
     expect(button(tab, "recipients.remove")).to_be_hidden()  # at least one
 
@@ -393,15 +418,15 @@ def test_after_only_me_on_welcome_gmail_s_step_adds_as_many_as_the_gateway_binds
     recipient_language(tab, 1).select_option("fi")
     recipient(tab, 2).fill("grandma@example.fi")
     recipient_language(tab, 2).select_option("zh")
-    button(tab, "gmail.brief.save").click()
-    expect(tab.get_by_text(text("gmail.brief.to", addresses="parent@hotmail.com, "
+    button(tab, "recipients.save").click()
+    expect(tab.get_by_text(text("recipients.to", addresses="parent@hotmail.com, "
                                 "partner@gmail.com, grandma@example.fi"))).to_be_visible()
     to = Config.load(config_file(family)).email.to
     assert [(t.address, t.language) for t in to] == [
         ("parent@hotmail.com", None), ("partner@gmail.com", "fi"), ("grandma@example.fi", "zh")]
 
     # Up to the most the gateway binds a key to (ADR 0033), and no more.
-    button(tab, "gmail.brief.change").click()
+    button(tab, "recipients.change").click()
     for _ in range(3):
         button(tab, "recipients.add").click()
     expect(rows).to_have_count(6)
@@ -411,8 +436,7 @@ def test_after_only_me_on_welcome_gmail_s_step_adds_as_many_as_the_gateway_binds
 
 
 def test_a_row_added_by_mistake_may_be_left_empty(tab, family):
-    in_english_with_the_gateway(tab)
-    skip(tab, "wilma").click()
+    in_english_with_the_gateway(tab, brief_to=None)
     button(tab, "recipients.add").click()
 
     brief_goes_to(tab, "parent@hotmail.com")
@@ -429,40 +453,37 @@ def test_welcome_s_partner_is_the_second_row_and_the_first_may_be_removed(tab, f
     tab.get_by_label(text("welcome.partner.language")).select_option("fi")
     button(tab, "continue").click()
     expect(heading(tab, "connect.title")).to_be_visible()
-    skip(tab, "wilma").click()
     expect(recipient(tab, 0)).to_have_value("")
     expect(recipient(tab, 1)).to_have_value("partner@gmail.com")
     expect(recipient_language(tab, 1)).to_have_value("fi")
 
     button(tab, "recipients.remove").first.click()
 
-    expect(tab.locator("#gmail-brief-rows .recipient")).to_have_count(1)
+    expect(tab.locator("#recipients-rows .recipient")).to_have_count(1)
     expect(button(tab, "recipients.remove")).to_be_hidden()
-    button(tab, "gmail.brief.save").click()
-    expect(tab.get_by_text(text("gmail.brief.to", addresses="partner@gmail.com"))).to_be_visible()
+    button(tab, "recipients.save").click()
+    expect(tab.get_by_text(text("recipients.to", addresses="partner@gmail.com"))).to_be_visible()
     to = Config.load(config_file(family)).email.to
     assert [(t.address, t.language) for t in to] == [("partner@gmail.com", "fi")]
 
 
 def test_recipients_added_in_the_chat_are_rows_the_page_changes(tab, family):
-    in_english_with_the_gateway(tab)
-    skip(tab, "wilma").click()
-    brief_goes_to(tab, "parent@hotmail.com")
+    in_english_with_the_gateway(tab, "parent@hotmail.com")
     # A second and third added in the chat (manage), or by hand.
     saved = yaml.safe_load(config_file(family).read_text())
     saved["email"]["to"] += [{"address": "partner@gmail.com", "language": "fi"},
                              "grandma@example.fi"]
     config_file(family).write_text(yaml.safe_dump(saved, allow_unicode=True, sort_keys=False))
     tab.reload()
-    expect(tab.get_by_text(text("gmail.brief.to", addresses="parent@hotmail.com, "
+    expect(tab.get_by_text(text("recipients.to", addresses="parent@hotmail.com, "
                                 "partner@gmail.com, grandma@example.fi"))).to_be_visible()
 
-    button(tab, "gmail.brief.change").click()
-    expect(tab.locator("#gmail-brief-rows .recipient")).to_have_count(3)
+    button(tab, "recipients.change").click()
+    expect(tab.locator("#recipients-rows .recipient")).to_have_count(3)
     recipient(tab, 1).fill("partner@outlook.com")
-    button(tab, "gmail.brief.save").click()
+    button(tab, "recipients.save").click()
 
-    expect(tab.get_by_text(text("gmail.brief.to", addresses="parent@hotmail.com, "
+    expect(tab.get_by_text(text("recipients.to", addresses="parent@hotmail.com, "
                                 "partner@outlook.com, grandma@example.fi"))).to_be_visible()
     to = Config.load(config_file(family)).email.to
     assert [(t.address, t.language) for t in to] == [
@@ -470,12 +491,11 @@ def test_recipients_added_in_the_chat_are_rows_the_page_changes(tab, family):
 
 
 def test_with_the_gateway_as_the_ai_no_key_is_asked_for_sending(tab):
-    in_english_with_the_gateway(tab)
-    skip(tab, "wilma").click()
+    in_english_with_the_gateway(tab, brief_to=None)
 
-    expect(tab.get_by_text(text("gmail.brief.unread"))).to_be_visible()
-    expect(tab.locator("#source-gmail").get_by_label(text("gmail.brief.key"))).to_be_hidden()
-    expect(button(tab, "gmail.brief.save")).to_be_visible()
+    expect(tab.get_by_text(text("recipients.unread"))).to_be_visible()
+    expect(tab.locator("#recipients").get_by_label(text("recipients.key"))).to_be_hidden()
+    expect(button(tab, "recipients.save")).to_be_visible()
 
 
 @pytest.mark.macos
@@ -493,34 +513,32 @@ def test_with_codex_parent_recap_gets_a_key_for_sending_and_setup_finishes(tab, 
     tab.get_by_role("radio", name=text("welcome.partner.only-me")).check()
     button(tab, "continue").click()
     expect(heading(tab, "connect.title")).to_be_visible()
-    without_wilma_in_espoo(tab)
 
-    expect(tab.get_by_text(text("gmail.brief.unread"))).to_be_visible()
+    expect(tab.get_by_text(text("recipients.unread"))).to_be_visible()
     recipient(tab).fill(hotmail)
     # A key from the team can be pasted in the fold; one the relay doesn't know is said as the
     # gateway AI's field says it, and not kept.
-    expect(tab.get_by_text(text("gmail.brief.key.explain"))).to_be_hidden()
-    tab.get_by_text(text("gmail.brief.key.have")).click()
-    expect(tab.get_by_text(text("gmail.brief.key.explain"))).to_be_visible()
-    key = tab.locator("#source-gmail").get_by_label(text("gmail.brief.key"), exact=True)
+    expect(tab.get_by_text(text("recipients.key.explain"))).to_be_hidden()
+    tab.get_by_text(text("recipients.key.have")).click()
+    expect(tab.get_by_text(text("recipients.key.explain"))).to_be_visible()
+    key = tab.locator("#recipients").get_by_label(text("recipients.key"), exact=True)
     family.relay_answer = (401, {"error": "missing, unknown or revoked Gateway Key"})
     key.fill(GATEWAY_KEY)
-    button(tab, "gmail.brief.save").click()
+    button(tab, "recipients.save").click()
     expect(tab.get_by_text(text("gateway.rejected"))).to_be_visible()
     expect(key).to_have_value("")
-    expect(source_listed(tab, "gmail", "to-do")).to_be_visible()
+    expect(recipient(tab)).to_be_visible()  # still who gets the Brief
     # Without one, saving gets a send-only key from the gateway, which mails a link (ADR 0033).
     family.relay_answer = (200, {"sent": 1, "refused": 0})
-    button(tab, "gmail.brief.save").click()
-    expect(tab.get_by_text(text("gmail.brief.to", addresses=hotmail))).to_be_visible()
+    button(tab, "recipients.save").click()
+    expect(tab.get_by_text(text("recipients.to", addresses=hotmail))).to_be_visible()
     expect(tab.get_by_text(text("gmail.confirm.sent", addresses=hotmail))).to_be_visible()
     assert family.confirmations == [(hotmail, "en")]
     button(tab, "gmail.confirm.resend").click()
     expect(tab.get_by_text(text("gmail.confirm.resent", addresses=hotmail))).to_be_visible()
     assert family.confirmations == [(hotmail, "en")] * 2
     family.confirm(hotmail)
-    skip(tab, "gmail").click()
-    expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
+    without_wilma_in_espoo(tab)
     # Codex's own sign-in, unchanged: it's signed in already, which its step checks at once.
     expect(source_listed(tab, "ai", "done")).to_be_visible()
     skip(tab, "whatsapp").click()
@@ -529,6 +547,8 @@ def test_with_codex_parent_recap_gets_a_key_for_sending_and_setup_finishes(tab, 
     expect(tab.get_by_role("radio", name=re.compile("^Mia"))).to_be_checked()
     tab.get_by_label(text("myclub.link")).fill(MYCLUB_LINK)
     button(tab, "myclub.save").click()
+    skip(tab, "gmail").click()
+    expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
     expect(tab.get_by_text(text("connect.done"))).to_be_visible()
     button(tab, "continue").click()
 
@@ -570,10 +590,10 @@ def test_the_steps_are_in_the_order_the_server_sends_them(tab, monkeypatch):
     expect(tab.locator("#sources li button > span:first-child")).to_have_text(
         [text(f"source.{s}") for s in reordered])
     without_wilma_in_espoo(tab)
-    # Without Wilma, MyClub's step is next, not Gmail's.
+    # Without Wilma, MyClub's step is next, not the AI sign-in.
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_visible()
     expect(skip(tab, "myclub")).to_be_visible()
-    expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
+    expect(tab.get_by_label(text("gateway.key"), exact=True)).to_be_hidden()
 
 
 def test_a_skipped_source_is_listed_as_skipped_and_can_be_opened_again(tab):
@@ -583,6 +603,7 @@ def test_a_skipped_source_is_listed_as_skipped_and_can_be_opened_again(tab):
 
     expect(source_listed(tab, "myclub", "skipped")).to_be_visible()
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_hidden()
+    skip(tab, "gmail").click()
     expect(tab.get_by_text(text("connect.done"))).to_be_visible()
     expect(button(tab, "continue")).to_be_enabled()
 
@@ -621,6 +642,7 @@ def test_myclub_s_link_is_shown_on_its_own_page_in_each_language_and_at_phone_wi
 def test_the_check_page_links_back_to_connect_s_list_while_a_source_is_skipped(tab):
     connect_up_to_myclub(tab)
     skip(tab, "myclub").click()
+    skip(tab, "gmail").click()
     button(tab, "continue").click()
     expect(heading(tab, "check.title")).to_be_visible()
 
@@ -631,10 +653,13 @@ def test_the_check_page_links_back_to_connect_s_list_while_a_source_is_skipped(t
 
 
 def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(tab):
-    # #491: Wilma, Gmail, WhatsApp and MyClub each say "Skip <Source> for now" beside the step's
-    # main button; Gmail once who gets the Brief is saved (ADR 0032). The AI sign-in can't be
+    # #491: Wilma, WhatsApp, MyClub and Gmail each say "Skip <Source> for now" beside the step's
+    # main button. Who gets the Brief, Connect's first step (#708), and the AI sign-in can't be
     # skipped.
-    in_english_with_the_gateway(tab)
+    in_english_with_the_gateway(tab, brief_to=None)
+    expect(recipient(tab)).to_be_visible()
+    expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(0)
+    brief_goes_to(tab)
     actions = tab.locator("#wilma-form .actions")
     expect(actions.get_by_role("button", name=text("wilma.sign-in"))).to_be_visible()
     expect(actions.get_by_role("button", name=text("source.skip", source="Wilma"))).to_be_visible()
@@ -642,14 +667,7 @@ def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(
     skip(tab, "wilma").click()
 
     expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
-    expect(recipient(tab)).to_be_visible()
-    expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(0)
-    brief_goes_to(tab)
-    actions = tab.locator("#gmail-form .actions")
-    expect(actions.get_by_role("button", name=text("gmail.save"))).to_be_visible()
-    expect(actions.get_by_role("button", name=text("source.skip", source="Gmail"))).to_be_visible()
-    sign_in_to_gmail(tab, TYPED)
-    expect(source_listed(tab, "gmail", "done")).to_be_visible()
+    expect(tab.get_by_label(text("gateway.key"), exact=True)).to_be_visible()
     expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(0)
     tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
     button(tab, "gateway.save").click()
@@ -663,6 +681,21 @@ def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(
     expect(kid_form.get_by_role("button", name=text("myclub.add"))).to_be_visible()
     expect(kid_form.get_by_role("button", name=text("source.skip", source="MyClub"))).to_be_visible()
     expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(1)
+    skip(tab, "myclub").click()
+    # Gmail's Connect and Skip side by side, the same kind of button (#708).
+    actions = tab.locator("#source-gmail > .actions")
+    connect = actions.get_by_role("button", name=text("gmail.connect"))
+    skip_gmail = actions.get_by_role("button", name=text("source.skip", source="Gmail"))
+    expect(connect).to_be_visible()
+    expect(skip_gmail).to_be_visible()
+    assert connect.get_attribute("class") == skip_gmail.get_attribute("class")
+    expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(1)
+    connect.click()
+    expect(button(tab, "gmail.save")).to_be_visible()
+    expect(skip_gmail).to_be_visible()
+    sign_in_to_gmail(tab, TYPED)
+    expect(source_listed(tab, "gmail", "done")).to_be_visible()
+    expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(0)
 
 
 def sign_in_to_wilma(tab, town: str, entry: str, username: str, password: str) -> None:
@@ -715,7 +748,7 @@ def test_skipping_wilma_with_a_town_picked_saves_no_city(tab, family):
 
     without_wilma_in_espoo(tab)
 
-    expect(recipient(tab)).to_be_visible()
+    expect(tab.get_by_label(text("gateway.key"), exact=True)).to_be_visible()
     progress = json.loads(progress_file(family).read_text())
     assert progress["sources"]["wilma"] == "skipped"
     cfg = Config.load(config_file(family))
@@ -725,12 +758,16 @@ def test_skipping_wilma_with_a_town_picked_saves_no_city(tab, family):
 def test_the_app_passwords_button_asks_for_the_gmail_address_first(tab, family):
     # #501: the page opens in the family's Gmail, so the address comes before the button.
     in_english_with_the_gateway(tab)
-    skip(tab, "wilma").click()
-    brief_goes_to(tab)
+    source_listed(tab, "gmail", "to-do").click()
+    connect_gmail_at_last(tab)
     address = tab.get_by_label(text("gmail.address"))
     expect(tab.get_by_text(text("gmail.account"))).to_be_visible()
-    # #528: where the first outside tester got stuck, said before the parent goes to Google.
+    # #528: where the first outside tester got stuck, said before the parent goes to Google, in
+    # one line with the rest folded under it (#708).
     expect(tab.get_by_text(text("gmail.before"))).to_be_visible()
+    expect(tab.get_by_text(text("gmail.before.reset"))).to_be_hidden()
+    tab.get_by_text(text("gmail.before")).click()
+    expect(tab.get_by_text(text("gmail.before.reset"))).to_be_visible()
     address.fill("")
 
     button(tab, "gmail.open").click()
@@ -752,7 +789,8 @@ def test_the_app_passwords_button_asks_for_the_gmail_address_first(tab, family):
 def test_an_app_password_gmail_rejects_shows_why_and_the_way_to_fix_it(tab):
     in_english_with_the_gateway(tab)
     without_wilma_in_espoo(tab)
-    brief_goes_to(tab)
+    source_listed(tab, "gmail", "to-do").click()
+    connect_gmail_at_last(tab)
 
     sign_in_to_gmail(tab, "zyxw vuts rqpo nmlk")  # an App Password, but not this address's
 
@@ -836,7 +874,7 @@ def test_a_wilma_program_that_doesn_t_install_offers_to_skip_wilma_and_go_on(
     skip_wilma.click()
 
     expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
-    expect(recipient(tab)).to_be_visible()
+    expect(tab.get_by_label(text("gateway.key"), exact=True)).to_be_visible()
     expect(status).to_be_hidden()
 
 
@@ -1320,7 +1358,7 @@ def test_finish_takes_the_key_for_sending_a_household_that_sent_from_gmail_has_n
     expect(form).to_be_visible()
 
     health.results.pop()  # doctor finds the key once it's stored
-    form.get_by_label(text("gmail.brief.key"), exact=True).fill(GATEWAY_KEY)
+    form.get_by_label(text("recipients.key"), exact=True).fill(GATEWAY_KEY)
     form.get_by_role("button", name=text("gateway.save"), exact=True).click()
 
     expect(tab.locator("#finish-status")).to_have_attribute("data-result", "finish.done")
@@ -1357,18 +1395,18 @@ def test_a_household_that_said_only_me_adds_and_removes_a_recipient_at_finish(ta
     at_finish(family)
     tab.reload()
     finish = "#finish-recipients"
-    expect(tab.locator(finish).get_by_text(text("gmail.brief.to", addresses=PARENT))).to_be_visible()
+    expect(tab.locator(finish).get_by_text(text("recipients.to", addresses=PARENT))).to_be_visible()
     expect(recipient(tab, 0, finish)).to_be_hidden()
 
-    tab.locator(finish).get_by_role("button", name=text("gmail.brief.change"), exact=True).click()
+    tab.locator(finish).get_by_role("button", name=text("recipients.change"), exact=True).click()
     expect(recipient(tab, 0, finish)).to_have_value(PARENT)
     tab.locator(finish).get_by_role("button", name=text("recipients.add"), exact=True).click()
     recipient(tab, 1, finish).fill("grandma@example.fi")
     recipient_language(tab, 1, finish).select_option("fi")
-    tab.locator(finish).get_by_role("button", name=text("gmail.brief.save"), exact=True).click()
+    tab.locator(finish).get_by_role("button", name=text("recipients.save"), exact=True).click()
 
     expect(tab.locator(finish).get_by_text(text("finish.recipients.saved"))).to_be_visible()
-    expect(tab.locator(finish).get_by_text(text("gmail.brief.to", addresses=f"{PARENT}, grandma@example.fi"))) \
+    expect(tab.locator(finish).get_by_text(text("recipients.to", addresses=f"{PARENT}, grandma@example.fi"))) \
         .to_be_visible()
     expect(tab.locator(finish).get_by_text(text(
         "gmail.confirm.sent", addresses=f"{PARENT}, grandma@example.fi"))).to_be_visible()
@@ -1377,12 +1415,12 @@ def test_a_household_that_said_only_me_adds_and_removes_a_recipient_at_finish(ta
     assert family.key_requests == [[{"address": PARENT, "language": "en"},
                                     {"address": "grandma@example.fi", "language": "fi"}]]
 
-    tab.locator(finish).get_by_role("button", name=text("gmail.brief.change"), exact=True).click()
+    tab.locator(finish).get_by_role("button", name=text("recipients.change"), exact=True).click()
     tab.locator(finish).get_by_role("button", name=text("recipients.remove"), exact=True).first \
         .click()
-    tab.locator(finish).get_by_role("button", name=text("gmail.brief.save"), exact=True).click()
+    tab.locator(finish).get_by_role("button", name=text("recipients.save"), exact=True).click()
 
-    expect(tab.locator(finish).get_by_text(text("gmail.brief.to", addresses="grandma@example.fi"))).to_be_visible()
+    expect(tab.locator(finish).get_by_text(text("recipients.to", addresses="grandma@example.fi"))).to_be_visible()
     assert [t.address for t in Config.load(config_file(family)).email.to] == ["grandma@example.fi"]
 
 

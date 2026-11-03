@@ -1,11 +1,12 @@
-"""Gmail's connect step, in two parts. First who gets the Brief: one or more Recipients, each with
-their language, as rows the family adds and removes; Finish changes them the same way later. Parent Recap sends every Brief from its own address
+"""Who gets the Brief, Connect's first step (#708), and Gmail's own step, last on its list. Who gets
+the Brief: one or more Recipients, each with their language, as rows the family adds and removes;
+Finish changes them the same way later. Parent Recap sends every Brief from its own address
 through the maintainers' gateway (ADR 0032), so a Household whose AI is its own Claude Code or
 Codex needs a Gateway Key for sending: once the Recipients are saved, the page asks the gateway for
 a send-only one bound to them, which mails each a link to confirm (ADR 0033), and `api/gmail/confirm`
 sends it again. A key pasted with the Recipients is used instead; the gateway as the AI has its key
-on its own step. Then, only if the family wants the school's mail read, the Gmail address and its
-App Password (ADR 0007); Gmail can be skipped once the Recipients are saved. Check and Finish say
+on its own step. Gmail's step, only if the family wants the school's mail read, takes the Gmail
+address and its App Password (ADR 0007), and is skipped like any other Source. Check and Finish say
 who hasn't confirmed, from doctor, and still take a pasted key with `api/gmail/key`."""
 from __future__ import annotations
 
@@ -89,8 +90,8 @@ class Gmail(Phase):
             "gmail", {"sources": {"gmail": {"address": address}}}, reply={"address": address})
 
     def save_recipients(self, raw: Any) -> Reply:
-        """Saves who gets the Brief, every Recipient in the order given, and leaves Gmail to connect
-        or skip; Finish saves them here too, to add or remove one later. A Household whose AI is its own Claude Code or Codex then gets a send-only Gateway Key
+        """Saves who gets the Brief, every Recipient in the order given, and moves no Source on;
+        Finish saves them here too, to add or remove one later. A Household whose AI is its own Claude Code or Codex then gets a send-only Gateway Key
         bound to them, asked of the gateway when none is stored, and the gateway mails each a
         link to confirm (ADR 0033): `confirm` says to whom. It may paste a key instead, into the
         page's own field (ADR 0007): that one is tested with the Brief relay's check, which sends
@@ -137,7 +138,7 @@ class Gmail(Phase):
         """A Gateway Key for sending alone, for a Household whose AI is its own Claude Code or Codex
         and which has none yet, such as one that sent through its own Gmail before ADR 0032: Check
         and Finish take it when the Brief sending check says it's missing. Tested and stored as on
-        Gmail's step; nothing else is saved."""
+        with the Recipients; nothing else is saved."""
         answer = parse(SendKey, raw)
         if self.context.model().llm.backend == "gateway":
             return HTTPStatus.BAD_REQUEST, _key_refused()

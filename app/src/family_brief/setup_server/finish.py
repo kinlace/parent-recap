@@ -53,7 +53,7 @@ class Finish(Phase):
     def switch_sending(self, raw: Any) -> Reply:
         """"Send the Brief from my Gmail", and back: the Brief is sent from the Household's own
         Gmail once its SMTP server took the App Password, or through the gateway again, which
-        asks for a send-only key and says who still has to confirm, as Gmail's step does (ADR
+        asks for a send-only key and says who still has to confirm, as saving the Recipients does (ADR
         0033, ADR 0034). The reply leaves out why it didn't switch, which can name the address:
         the page says each result in its own words."""
         answer = parse(SendingAnswer, raw)

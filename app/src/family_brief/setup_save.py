@@ -71,9 +71,9 @@ from .system import profile
 
 Phase = Literal["welcome", "connect", "working", "check", "first-brief", "finish"]
 # The setup page's Source list on any system: every Source in the registry's connect order, with
-# the AI's step right after Gmail's. steps() has those this system offers.
+# the AI's step right after Wilma's. steps() has those this system offers.
 _CONNECT = [s.name for s in sorted(source_registry.ALL, key=lambda s: s.connect_rank)]
-_AI_AT = _CONNECT.index(source_registry.GMAIL.name) + 1
+_AI_AT = _CONNECT.index(source_registry.WILMA.name) + 1
 SOURCES: tuple[str, ...] = (*_CONNECT[:_AI_AT], "ai", *_CONNECT[_AI_AT:])
 SourceName = Literal[SOURCES]
 Status = Literal["to-do", "done", "skipped"]

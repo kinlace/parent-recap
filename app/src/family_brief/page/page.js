@@ -357,7 +357,7 @@ async function saveWelcome(event) {
     clearTimeout(ai.timer);
     page.progress = out.progress;
     page.welcome.ai = answers.ai;
-    // Gmail's step asks for the partner's address too, with who gets the Brief.
+    // Connect's first step asks for the partner's address too, with who gets the Brief.
     page.welcome.partner = { ...page.welcome.partner, add, ...answers.partner };
     show();
   } catch (e) {
@@ -407,7 +407,7 @@ const STEPS = {
     setUp: setUpGmail, first: prepareGmail, again: showGmailParts,
     leave: () => {
       document.getElementById("gmail-password").value = "";
-      document.getElementById("gmail-brief-key").value = "";
+      gmailStep.connecting = false;
     },
     label: "Gmail",
   },
@@ -446,9 +446,74 @@ function renderConnect() {
   document.getElementById("source-copy").addEventListener("click", () => {
     navigator.clipboard.writeText(document.getElementById("source-install-line").textContent);
   });
+  setUpRecipients();
   for (const step of connectSteps()) step.setUp?.();
   document.getElementById("connect-continue").addEventListener("click", startReading);
 }
+
+// ── Connect's first step: who gets the Brief, which Parent Recap sends from its own address
+// (ADR 0032), before any Source and naming none (#708). It's the step shown while none are saved,
+// or while they're changed; then the Source list, with who gets the Brief above it. While the AI,
+// which Finish can change, isn't the gateway, saving them gets a send-only Gateway Key from the
+// gateway, which mails each a link to confirm (ADR 0033); a key from the Parent Recap team can be
+// pasted in a fold instead.
+const recipientsStep = { changing: false, confirm: null, shown: false };
+
+function onRecipients() {
+  return page.gmail.to.length === 0 || recipientsStep.changing;
+}
+
+function setUpRecipients() {
+  const rows = document.getElementById("recipients-rows");
+  rows.addEventListener("input", showJunk);
+  document.getElementById("recipients-add").addEventListener("click", () => addRecipientRow(rows));
+  document.getElementById("recipients-form").addEventListener("submit", saveRecipients);
+  document.getElementById("recipients-change").addEventListener("click", () => {
+    showSource(null);
+    recipientsStep.changing = true;
+    renderSources();
+  });
+}
+
+// The Recipients as saved; before they are, an empty row for the parent's own address, and the
+// partner's after it when Welcome said "Me and my partner".
+function prepareRecipients() {
+  const { partner } = page.welcome;
+  const first = [{ address: "", language: page.language }];
+  if (partner.add) first.push({ address: partner.address, language: partner.language });
+  renderRecipientRows(document.getElementById("recipients-rows"),
+    page.gmail.to.length ? page.gmail.to : first);
+  document.getElementById("recipients-key").value = "";
+  document.getElementById("recipients-key-part").hidden = !asksSendKey();
+  showJunk();
+}
+
+// The step while it's the one shown, else who gets the Brief above the Source list: false once
+// the Source list is to be drawn.
+function renderRecipients() {
+  const asking = onRecipients();
+  document.getElementById("recipients").hidden = !asking;
+  document.getElementById("recipients-saved").hidden = asking;
+  // The hand-off and Connect's end, when shown, are renderSources' own to show again.
+  for (const id of ["connect-intro", "sources", "source-handoff", "connect-done"]) {
+    document.getElementById(id).hidden = asking;
+  }
+  if (asking) {
+    for (const name of Object.keys(STEPS)) document.getElementById("source-" + name).hidden = true;
+    if (!recipientsStep.shown) prepareRecipients();
+    recipientsStep.shown = true;
+    return true;
+  }
+  recipientsStep.shown = false;
+  setText(document.getElementById("recipients-to"), "recipients.to",
+    { addresses: page.gmail.to.map((r) => r.address).join(", ") });
+  document.getElementById("recipients-confirm").hidden = !recipientsStep.confirm;
+  return false;
+}
+
+// Gmail's step: what it reads, with Connect Gmail and Skip side by side, and the App Password's
+// steps only once the parent chooses to connect it, only to have the school's mail read.
+const gmailStep = { connecting: false };
 
 function setUpGmail() {
   document.getElementById("gmail-open").addEventListener("click", openAppPasswords);
@@ -457,37 +522,29 @@ function setUpGmail() {
   }
   document.getElementById("gmail-form").addEventListener("submit", connectGmail);
   document.getElementById("gmail-address").value = page.gmail.address || "";
-  const rows = document.getElementById("gmail-brief-rows");
-  rows.addEventListener("input", showJunk);
-  document.getElementById("gmail-brief-add").addEventListener("click", () => addRecipientRow(rows));
-  document.getElementById("gmail-brief-form").addEventListener("submit", saveRecipients);
-  document.getElementById("gmail-brief-change").addEventListener("click", () => {
+  document.getElementById("gmail-connect").addEventListener("click", () => {
     showSource(null);
-    gmailStep.changing = true;
+    gmailStep.connecting = true;
     showGmailParts();
+    document.getElementById("gmail-address").focus();
   });
 }
 
-// Gmail's step has two parts. First who gets the Brief, which Parent Recap sends from its own
-// address (ADR 0032). While the AI, which Finish can change, isn't the gateway, saving them gets a
-// send-only Gateway Key from the gateway, which mails each a link to confirm (ADR 0033); a key
-// from the Parent Recap team can be pasted in a fold instead. Once they're saved, connecting
-// Gmail, only to have the school's mail read, or skipping it.
-const gmailStep = { changing: false, confirm: null };
-
-// The Recipients as saved; before they are, an empty row for the parent's own address, and the
-// partner's after it when Welcome said "Me and my partner".
 function prepareGmail() {
-  const { partner } = page.welcome;
-  const first = [{ address: "", language: page.language }];
-  if (partner.add) first.push({ address: partner.address, language: partner.language });
-  renderRecipientRows(document.getElementById("gmail-brief-rows"),
-    page.gmail.to.length ? page.gmail.to : first);
-  gmailStep.changing = false;
+  gmailStep.connecting = false;
   showGmailParts();
 }
 
-// ── Who gets the Brief, as rows the family adds and removes, on Gmail's step and at Finish: an
+function showGmailParts() {
+  document.getElementById("gmail-connect").hidden = gmailStep.connecting;
+  document.getElementById("gmail-own").hidden = !gmailStep.connecting;
+  // The Brief's own address is the likeliest Gmail to read, when it is a Gmail.
+  const parent = page.gmail.to[0]?.address || "";
+  const field = document.getElementById("gmail-address");
+  if (!field.value && /@(gmail|googlemail)\.com$/i.test(parent)) field.value = parent;
+}
+
+// ── Who gets the Brief, as rows the family adds and removes, on Connect's step and at Finish: an
 // address and the language of their Brief in each. At least one row, and at most as many as the
 // gateway binds a key to (ADR 0033). A row left empty is left out, so the first is required only
 // while every one is empty.
@@ -586,36 +643,20 @@ function markRecipients(recipients, result) {
   }
 }
 
-// Who gets the Brief until they're saved, or while they're changed; then the Gmail form.
-function showGmailParts() {
-  const saved = page.gmail.to.length > 0 && !gmailStep.changing;
-  document.getElementById("gmail-brief-form").hidden = saved;
-  document.getElementById("gmail-own").hidden = !saved;
-  setText(document.getElementById("gmail-brief-to"), "gmail.brief.to",
-    { addresses: page.gmail.to.map((r) => r.address).join(", ") });
-  // The setup parent's own Gmail is the likeliest one to read.
-  const parent = page.gmail.to[0]?.address || "";
-  const field = document.getElementById("gmail-address");
-  if (!field.value && /@(gmail|googlemail)\.com$/i.test(parent)) field.value = parent;
-  document.getElementById("gmail-brief-key-part").hidden = !asksSendKey();
-  document.getElementById("gmail-confirm").hidden = saved ? !gmailStep.confirm : true;
-  showJunk();
-}
-
 function asksSendKey() {
   return page.welcome.ai !== "gateway";
 }
 
 // The addresses given for the Brief, in order.
 function briefRecipients() {
-  return readRecipientRows(document.getElementById("gmail-brief-rows"));
+  return readRecipientRows(document.getElementById("recipients-rows"));
 }
 
 // Hotmail and Outlook.com junk mail from Parent Recap's new address at first (#524).
 const JUNKS_AT_FIRST = /@(hotmail|outlook|live|msn)\.[a-z.]+$/i;
 
 function showJunk() {
-  document.getElementById("gmail-brief-junk").hidden = sendsFromGmail() ||
+  document.getElementById("recipients-junk").hidden = sendsFromGmail() ||
     !briefRecipients().some(({ address }) => JUNKS_AT_FIRST.test(address.trim()));
 }
 
@@ -633,7 +674,7 @@ async function saveRecipients(event) {
   button.disabled = true;
   const recipients = briefRecipients();
   const sent = recipients.map(({ address, language }) => ({ address, language }));
-  const keyField = document.getElementById("gmail-brief-key");
+  const keyField = document.getElementById("recipients-key");
   const pasted = asksSendKey() && keyField.value.trim() !== "";
   try {
     const out = await post("api/gmail/recipients", {
@@ -647,15 +688,15 @@ async function saveRecipients(event) {
       page.progress = out.progress;
       page.gmail.to = sent.map(({ address, language }) =>
         ({ address: address.trim().toLowerCase(), language }));
-      gmailStep.changing = false;
-      gmailStep.confirm = out.confirm || null;
+      recipientsStep.changing = false;
+      recipientsStep.confirm = out.confirm || null;
       if (out.confirm) {
-        showConfirmation(document.getElementById("gmail-confirm"), out.confirm, false);
+        showConfirmation(document.getElementById("recipients-confirm"), out.confirm, false);
       }
-      showGmailParts();
+      renderSources();
     }
     // What a key the relay didn't take says is the gateway AI's key field's own.
-    showSource((KEY_RESULTS.includes(out.result) ? "gateway." : "gmail.brief.") + out.result);
+    showSource((KEY_RESULTS.includes(out.result) ? "gateway." : "recipients.") + out.result);
   } catch (e) {
     failed(e);
   } finally {
@@ -676,6 +717,7 @@ function currentSource() {
 const connectStep = { current: undefined, handoff: null, shown: new Set() };
 
 function renderSources() {
+  if (renderRecipients()) return;
   const current = currentSource();
   const statuses = page.progress.sources;
   const moved = connectStep.current !== undefined && current !== connectStep.current;
@@ -803,13 +845,13 @@ const SLOTS = [
   [["myclub.added", "myclub.kid-exists"], "myclub-kid-slot"],
   // A Source just done: by the hand-off, as the next Source's step is shown.
   [["gmail.saved", "wilma.signed-in", "claude.saved", "gateway.saved",
-    "codex.signed-in", "whatsapp.paired"], "connect-slot"],
+    "codex.signed-in", "whatsapp.paired", "recipients.saved"], "connect-slot"],
 ];
 // The results that say something failed, shown in red.
 const FAILED = [
   "gmail.no-address", "gmail.not-an-app-password", "gmail.rejected", "gmail.no-connection",
   "gmail.keychain-not-reachable", "gmail.keychain-failed",
-  "gmail.brief.no-address", "gmail.brief.same-address",
+  "recipients.no-address", "recipients.same-address",
   ...WILMA_NOT_READY, "wilma.pick-town", "wilma.wrong-password", "wilma.sign-in-failed",
   "wilma.no-kids", "wilma.window.not-signed-in", "wilma.window.sign-in-failed",
   "wilma.window.timeout", "wilma.window.no-terminal",
@@ -831,7 +873,8 @@ function statusSlot(key) {
   const named = SLOTS.find(([keys]) => keys.includes(key));
   if (named) return document.getElementById(named[1]);
   const step = page.progress.phase === "finish" ? "ai" : currentSource();
-  const panel = step && document.getElementById("source-" + step);
+  const panel = page.progress.phase === "connect" && onRecipients()
+    ? document.getElementById("recipients") : step && document.getElementById("source-" + step);
   const shown = (slot) => {
     for (let el = slot.parentElement; el && el !== panel; el = el.parentElement) {
       if (el.hidden) return false;
@@ -2331,7 +2374,7 @@ function healthResult(out) {
 }
 
 // Who still has to press the link in the confirmation email (ADR 0033), shown in `box` with a
-// button that has it sent again: on Gmail's step after the Recipients are saved, under the
+// button that has it sent again: on Connect once the Recipients are saved, under the
 // Brief sending check at Check and Finish, and at First Brief when "Send it to me" couldn't send. `resent` says it was just sent again.
 function showConfirmation(box, confirm, resent) {
   const template = document.getElementById("confirm-template");
@@ -2363,7 +2406,7 @@ async function resendConfirmation(box) {
   button.disabled = true;
   try {
     const out = await post("api/gmail/confirm", { resend: true });
-    if (box.id === "gmail-confirm") gmailStep.confirm = out;
+    if (box.id === "recipients-confirm") recipientsStep.confirm = out;
     showConfirmation(box, out, true);
     box.querySelector(".confirm-message").hidden = false;
   } catch (e) {
@@ -2656,7 +2699,7 @@ function enterFinish() {
 }
 
 // ── Finish: who gets the Brief, with Recipients added or removed later in the same rows as on
-// Gmail's step, saved through it: a new address gets its link to confirm (ADR 0033).
+// Connect's step for them, saved the same way: a new address gets its link to confirm (ADR 0033).
 
 function setUpFinishRecipients() {
   const rows = document.getElementById("finish-recipients-rows");
@@ -2675,7 +2718,7 @@ function setUpFinishRecipients() {
 }
 
 function showFinishRecipients() {
-  setText(document.getElementById("finish-recipients-current"), "gmail.brief.to",
+  setText(document.getElementById("finish-recipients-current"), "recipients.to",
     { addresses: page.gmail.to.map((r) => r.address).join(", ") });
 }
 
@@ -2691,7 +2734,7 @@ async function saveFinishRecipients(event) {
     markRecipients(recipients, out.result);
     const saved = out.result === "saved";
     const message = document.getElementById("finish-recipients-message");
-    setText(message, saved ? "finish.recipients.saved" : "gmail.brief." + out.result);
+    setText(message, saved ? "finish.recipients.saved" : "recipients." + out.result);
     message.classList.toggle("fail", !saved);
     const confirm = document.getElementById("finish-recipients-confirm");
     confirm.hidden = true;
@@ -2753,7 +2796,7 @@ function showHouseholdAI() {
 // ── Finish: sending the Brief from the family's own Gmail instead of Parent Recap's address
 // (ADR 0034), offered only when the AI isn't the gateway and Gmail is connected. The server checks
 // that Gmail takes the App Password before it switches; back on the gateway, the Recipients may
-// have to confirm their address, as on Gmail's step.
+// have to confirm their address, as on Connect's step for them.
 
 function offersGmailSending() {
   return Boolean(page.sending?.address) && page.welcome?.ai !== "gateway";

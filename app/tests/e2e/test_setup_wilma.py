@@ -1064,7 +1064,7 @@ def test_a_good_login_writes_the_cli_profile_and_lists_the_kids(harness, page, w
     out = r.json()
     assert out["result"] == "signed-in"
     assert out["kids"] == ["Mia Virtanen", "Leo Virtanen"] and out["city"] == "Espoo"
-    assert out["progress"]["sources"]["wilma"] == "done" and out["progress"]["source"] == "gmail"
+    assert out["progress"]["sources"]["wilma"] == "done" and out["progress"]["source"] == "ai"
     # The profile, as the pinned CLI writes it after its own sign-in, which its Kid list read:
     # its password and two-step key in the secret store, the rest in setup's own file, and
     # nothing in the CLI's own config (#710).
@@ -1499,7 +1499,7 @@ def test_off_macos_the_page_offers_whatsapp_but_not_the_passwords_app(harness, p
     harness.system = WINDOWS
 
     sources = [s["name"] for s in call(page.url, "api/state").json()["connect"]["sources"]]
-    assert sources == ["wilma", "gmail", "ai", "whatsapp", "myclub"]
+    assert sources == ["wilma", "ai", "whatsapp", "myclub", "gmail"]
     r = call(page.url, "api/open", method="POST", body={"site": "passwords"})
     assert r.status == 400 and harness.opened == []
 

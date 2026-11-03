@@ -498,18 +498,30 @@ def test_every_gmail_result_is_explained_in_all_three_languages():
 
 
 def test_the_gmail_step_warns_before_google_and_its_fold_names_the_likely_causes_in_order(page):
-    # #528: where the first outside tester got stuck, said before the parent goes to Google.
+    # #528: where the first outside tester got stuck, said before the parent goes to Google, in
+    # one line with the rest under it (#708).
     html = call(page.url).body.decode()
     step = html[html.index('id="source-gmail"'):html.index('id="source-ai"')]
 
+    # What Gmail is for comes first, then Connect and Skip side by side; the App Password after.
+    assert (step.index('data-text="gmail.explain"') < step.index('id="gmail-connect"')
+            < step.index("data-skip") < step.index('id="gmail-own"'))
     assert step.index('data-text="gmail.before"') < step.index('id="gmail-open"')
+    before = step[step.index('<summary data-text="gmail.before"'):step.index("</details>")]
+    assert (before.index('data-text="gmail.before.age"')
+            < before.index('data-text="gmail.before.reset"')
+            < before.index('data-text="gmail.before.two-step"'))
     fold = step[step.index('data-text="gmail.unavailable"'):]
     assert (fold.index('data-text="gmail.unavailable.account"')
             < fold.index('data-text="gmail.unavailable.two-step"')
             < fold.index('id="gmail-two-step-more"'))
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        for key in ("gmail.connect", "gmail.before", "gmail.before.age", "gmail.before.reset",
+                    "gmail.before.two-step"):
+            assert table.get(key, "").strip(), (language, key)
     english = json.loads((PAGE_DIR / "text.json").read_text())["en"]
-    assert "2-Step Verification" in english["gmail.before"]
-    assert "password reset" in english["gmail.before"]
+    assert "2-Step Verification" in english["gmail.before.two-step"]
+    assert "password reset" in english["gmail.before.reset"]
     assert "Switch account" in english["gmail.unavailable.account"]
 
 
@@ -545,7 +557,8 @@ def test_with_the_gateway_as_the_ai_the_recipients_are_saved_and_gmail_waits_to_
 
     assert r.status == 200 and r.json()["result"] == "saved"
     progress = r.json()["progress"]
-    assert (progress["source"], progress["sources"]["gmail"]) == ("gmail", "to-do")
+    # Their own step (#708): saving them moves no Source on.
+    assert (progress["source"], progress["sources"]["gmail"]) == ("ai", "to-do")
     cfg = Config.load(config_file(harness))
     # The setup parent first; a language the same as the Household's isn't saved twice.
     assert [(t.address, t.language) for t in cfg.email.to] == \
@@ -562,13 +575,14 @@ def test_with_the_gateway_as_the_ai_the_recipients_are_saved_and_gmail_waits_to_
     assert [t.address for t in cfg.email.to] == ["parent@hotmail.com", "partner@example.com"]
 
 
-def test_gmail_cannot_be_skipped_before_who_gets_the_brief_is_saved(harness, page):
+def test_gmail_is_skipped_like_any_other_source_before_who_gets_the_brief_is_saved(harness, page):
+    # #708: who gets the Brief is its own step, and Gmail only one of the Sources.
     with_the_gateway_as_the_ai(page.url)
 
     r = source(page.url, "gmail", "skip")
 
-    assert r.status == 400 and r.json()["result"] == "invalid-answers"
-    assert statuses(page.url)["gmail"] == "to-do"
+    assert r.status == 200 and r.json()["result"] == "saved"
+    assert statuses(page.url)["gmail"] == "skipped"
 
 
 def test_with_the_gateway_as_the_ai_its_key_is_not_asked_for_again(harness, page):
@@ -752,26 +766,30 @@ def test_who_gets_the_brief_and_the_key_s_results_are_explained_in_all_three_lan
 
     for language, table in text.items():
         for result in setup_server.gmail.RECIPIENTS_RESULTS:
-            assert table.get(f"gmail.brief.{result}", "").strip(), (language, result)
-        for key in ("gmail.brief.explain", "gmail.brief.unread", "gmail.brief.junk", "brief.junk",
-                    "gmail.brief.to", "gmail.brief.change", "gmail.key.saved",
-                    "gmail.brief.key", "gmail.brief.key.explain",
-                    "gmail.brief.key.explain.windows", "gmail.brief.key.have",
+            assert table.get(f"recipients.{result}", "").strip(), (language, result)
+        for key in ("recipients.title", "recipients.explain", "recipients.unread",
+                    "recipients.junk", "brief.junk", "recipients.to", "recipients.change",
+                    "gmail.key.saved", "recipients.key", "recipients.key.explain",
+                    "recipients.key.explain.windows", "recipients.key.have",
                     "gmail.confirm.resend", "gmail.confirm.confirmed", "gmail.confirm.no-key"):
             assert table.get(key, "").strip(), (language, key)
         # A key the relay doesn't take is said as the gateway AI's key field says it.
         for result in setup_server.gmail.SEND_KEY_RESULTS:
             assert table.get(f"gateway.{result}", "").strip(), (language, result)
-        assert "sk-" in table["gmail.brief.key.explain"], language
-        assert "brief@parentrecap.com" in table["gmail.brief.explain"], language
+        assert "sk-" in table["recipients.key.explain"], language
+        assert "brief@parentrecap.com" in table["recipients.explain"], language
+        # Who gets the Brief names no Source (#708).
+        for key in ("recipients.title", "recipients.explain", "recipients.unread",
+                    "recipients.saved"):
+            assert "Gmail" not in table[key], (language, key)
         # Whom the confirmation email went to (ADR 0033).
         for key in ("gmail.confirm.sent", "gmail.confirm.resent"):
             assert "{addresses}" in table[key], (language, key)
         # No choice of how the Brief is sent is left (ADR 0032).
         assert not any(k.startswith(("gmail.choice", "gmail.gateway.")) for k in table), language
     english = text["en"]
-    assert "gets a key for sending by itself" in english["gmail.brief.key.explain"]
-    assert "Nobody reads" in english["gmail.brief.unread"]
+    assert "gets a key for sending by itself" in english["recipients.key.explain"]
+    assert "Nobody reads" in english["recipients.unread"]
     assert "never sends from your Gmail" in english["gmail.explain"]
     # #602: the Gmail step says Gmail is read for the school's mail, only from the senders ticked.
     assert "reads the school's mail" in english["gmail.explain"]
