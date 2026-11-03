@@ -1276,6 +1276,7 @@ async function useAnotherAI(event) {
   button.disabled = true;
   try {
     const out = await post("api/connect/ai", { ai: picked("connect-ai") });
+    // A check sent meanwhile is the old AI's, which the server no longer takes as the step's.
     clearTimeout(aiStep.timer);
     page.welcome.ai = out.ai;
     page.progress = out.progress;

@@ -489,7 +489,19 @@ def test_a_switch_after_the_ai_step_is_done_asks_for_the_new_ai_s_sign_in(harnes
     assert state_ai(page.url) == other
 
 
-def test_another_ai_is_only_one_offered_and_only_on_connect(harness, page, ai):
+@pytest.mark.macos
+def test_a_sign_in_of_the_ai_switched_away_from_that_ends_later_doesn_t_finish_the_step(
+        harness, page, codex):
+    # A check the page sent just before the switch, or Codex signed in in the browser after it.
+    at_the_ai_step(harness, page.url, "codex")
+    assert use_another_ai(page.url, "gateway").json()["result"] == "saved"
+
+    assert codex_check(page.url) == {"result": "another-ai"}
+
+    assert statuses(page.url)["ai"] == "to-do" and backend(harness) == "gateway"
+
+
+def test_only_an_offered_ai_is_taken_and_only_on_connect(harness, page, ai):
     for body in ({"ai": "gemini"}, {"ai": "gateway", "x": 1}, {}, ["gateway"]):
         assert call(page.url, "api/connect/ai", method="POST", body=body).status == 400, body
     # Before Welcome is saved, Welcome itself picks the AI; at Finish, Change the AI does.
