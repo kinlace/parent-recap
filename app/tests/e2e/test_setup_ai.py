@@ -378,6 +378,34 @@ def test_a_codex_sign_in_that_ends_signed_out_says_so(harness, page, codex, monk
     assert statuses(page.url)["ai"] == "to-do"
 
 
+@pytest.mark.macos
+def test_signing_in_to_codex_again_ends_the_waiting_sign_in(harness, page, codex, monkeypatch):
+    # OpenAI's page failed in the browser, or its tab was closed: `codex login` waits for good.
+    logins: list[subprocess.Popen] = []
+    start = setup_ai.start_codex_login
+
+    def started(program: str) -> subprocess.Popen | None:
+        login = start(program)
+        logins.append(login)
+        return login
+    monkeypatch.setattr(setup_ai, "start_codex_login", started)
+    at_the_ai_step(harness, page.url, "codex")
+    harness.signed_in["codex"] = False
+    assert call(page.url, "api/codex/login", method="POST", body={}).json() == {"result": "waiting"}
+    assert codex_check(page.url) == {"result": "waiting"}
+
+    r = call(page.url, "api/codex/login", method="POST", body={})
+
+    assert r.status == 200 and r.json() == {"result": "waiting"}
+    first, again = logins
+    assert first.poll() is not None  # the old one is ended
+    assert again.poll() is None  # a new one opens a fresh sign-in page
+    assert codex_check(page.url) == {"result": "waiting"}
+    harness.signed_in["codex"] = True
+    out = codex_check(page.url)
+    assert out["result"] == "signed-in" and out["progress"]["sources"]["ai"] == "done"
+
+
 def test_without_codex_its_sign_in_says_so(harness, page, ai):
     assert codex_check(page.url) == {"result": "not-installed"}
     assert call(page.url, "api/codex/login", method="POST", body={}).json() == \

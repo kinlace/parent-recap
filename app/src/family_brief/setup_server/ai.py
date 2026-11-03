@@ -67,10 +67,14 @@ class AISignIn(Phase):
 
     def stop(self) -> None:
         with self._lock:
-            if self._codex is not None and self._codex.poll() is None:
-                self._codex.kill()
-                self._codex.wait()
+            self._end_codex_login()
             desktop.forget_terminal(setup_ai.CLAUDE_WINDOW)
+
+    def _end_codex_login(self) -> None:
+        """Stops the `codex login` still running, if one is. Called with the lock held."""
+        if self._codex is not None and self._codex.poll() is None:
+            self._codex.kill()
+            self._codex.wait()
 
     # ── Claude
 
@@ -257,15 +261,16 @@ class AISignIn(Phase):
 
     def sign_in_codex(self, raw: Any) -> Reply:
         """Starts `codex login`, which opens the ChatGPT sign-in in the browser. The page then
-        checks with `check_codex` until it's signed in."""
+        checks with `check_codex` until it's signed in. One still waiting is stopped first: its
+        page in the browser may have failed or been closed, and it would wait for it for good."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
         codex = program(self.context, "codex")
         if codex is None:
             return HTTPStatus.OK, {"result": "not-installed"}
         with self._lock:
-            if self._codex is None or self._codex.poll() is not None:
-                self._codex = setup_ai.start_codex_login(codex)
+            self._end_codex_login()
+            self._codex = setup_ai.start_codex_login(codex)
             started = self._codex is not None
         return HTTPStatus.OK, {"result": "waiting" if started else "login-failed"}
 

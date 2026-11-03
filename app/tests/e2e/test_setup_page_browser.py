@@ -973,6 +973,27 @@ def test_chatgpt_s_step_installs_codex_and_offers_the_button_again_when_that_fai
     expect(install).to_be_visible()
 
 
+def test_while_chatgpt_s_sign_in_waits_the_step_offers_to_sign_in_again(tab, family, ai):
+    """OpenAI's page can fail in the browser, or its tab be closed, while `codex login` waits on:
+    the step offers a fresh sign-in (#705). The server's answers are played."""
+    at_the_ai_step(tab, family, "codex", SYSTEM)
+    tab.route(re.compile(r"/api/codex$"), lambda route: route.fulfill(json={"result": "waiting"}))
+    tab.route(re.compile(r"/api/codex/login$"),
+              lambda route: route.fulfill(json={"result": "waiting"}))
+
+    for language in ("en", "fi", "zh"):
+        tab.locator("#language-switch").select_option(language)
+        expect(tab.get_by_text(text("codex.waiting", language=language))).to_be_visible()
+        expect(tab.get_by_role("button", name=text("codex.login-again", language=language),
+                               exact=True)).to_be_visible()
+
+    tab.locator("#language-switch").select_option("en")
+    with tab.expect_request(lambda r: r.method == "POST" and r.url.endswith("api/codex/login")):
+        button(tab, "codex.login-again").click()
+    expect(tab.get_by_text(text("codex.waiting"))).to_be_visible()
+    expect(button(tab, "codex.login-again")).to_be_visible()
+
+
 @pytest.mark.parametrize("on, asks", [("macos", "api/claude"),
                                       ("windows", "api/claude/install")])
 def test_claude_s_step_installs_claude_code_on_windows_and_signs_in_on_a_mac(
