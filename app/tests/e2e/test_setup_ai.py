@@ -425,6 +425,80 @@ def test_signing_in_to_codex_again_ends_the_waiting_sign_in(harness, page, codex
     assert out["result"] == "signed-in" and out["progress"]["sources"]["ai"] == "done"
 
 
+def use_another_ai(url: str, name: str) -> Response:
+    return call(url, "api/connect/ai", method="POST", body={"ai": name})
+
+
+def state_ai(url: str) -> str:
+    return call(url, "api/state").json()["welcome"]["ai"]
+
+
+@pytest.mark.macos
+def test_a_family_whose_chatgpt_sign_in_waits_switches_to_the_gateway_and_finishes_with_it(
+        harness, page, codex, monkeypatch):
+    # OpenAI asks for a phone number the family can't give: `codex login` waits for good (#706).
+    logins: list[subprocess.Popen] = []
+    popen = subprocess.Popen  # the codex fixture's recorder
+
+    def recorded_login(cmd: list[str], *a: Any, **k: Any) -> Any:
+        proc = popen(cmd, *a, **k)
+        if list(cmd)[1:] == ["login"]:
+            logins.append(proc)
+        return proc
+    monkeypatch.setattr(subprocess, "Popen", recorded_login)
+    at_the_ai_step(harness, page.url, "codex")
+    harness.signed_in["codex"] = False
+    assert call(page.url, "api/codex/login", method="POST", body={}).json() == {"result": "waiting"}
+
+    r = use_another_ai(page.url, "gateway")
+
+    assert r.status == 200 and r.json()["result"] == "saved"
+    [login] = logins
+    wait_for(lambda: login.poll() is not None)  # the waiting sign-in is stopped
+    assert backend(harness) == "gateway" and state_ai(page.url) == "gateway"
+    progress = call(page.url, "api/state").json()["progress"]
+    assert progress["phase"] == "connect" and progress["source"] == "ai"
+    assert progress["sources"]["ai"] == "to-do"
+    out = save_gateway_key(page.url, GATEWAY_KEY).json()
+    assert out["result"] == "saved" and out["progress"]["sources"]["ai"] == "done"
+    assert backend(harness) == "gateway"
+
+
+@pytest.mark.macos
+def test_switching_to_claude_on_connect_installs_its_chat_as_welcome_would(harness, page, codex,
+                                                                           claude):
+    claude.install()
+    at_the_ai_step(harness, page.url, "codex")
+
+    assert use_another_ai(page.url, "claude").json()["result"] == "saved"
+
+    assert backend(harness) == "claude" and state_ai(page.url) == "claude"
+    assert chat_installed(page.url, "claude") == "installed"
+
+
+def test_a_switch_after_the_ai_step_is_done_asks_for_the_new_ai_s_sign_in(harness, page, ai):
+    at_the_ai_step(harness, page.url, "gateway")
+    harness.secrets["gateway-key"] = GATEWAY_KEY
+    save_progress(harness, {**json.loads(progress_file(harness).read_text()), "source": "whatsapp",
+                            "sources": {"wilma": "done", "gmail": "done", "ai": "done"}})
+    other = next(name for name in setup_server.context.ais() if name != "gateway")
+
+    out = use_another_ai(page.url, other).json()
+
+    assert out["progress"]["sources"]["ai"] == "to-do" and out["progress"]["source"] == "ai"
+    assert state_ai(page.url) == other
+
+
+def test_another_ai_is_only_one_offered_and_only_on_connect(harness, page, ai):
+    for body in ({"ai": "gemini"}, {"ai": "gateway", "x": 1}, {}, ["gateway"]):
+        assert call(page.url, "api/connect/ai", method="POST", body=body).status == 400, body
+    # Before Welcome is saved, Welcome itself picks the AI; at Finish, Change the AI does.
+    assert use_another_ai(page.url, "gateway").status == 400
+    at_finish(harness)
+    assert use_another_ai(page.url, "gateway").status == 400
+    assert backend(harness) == "claude"
+
+
 def test_without_codex_its_sign_in_says_so(harness, page, ai):
     assert codex_check(page.url) == {"result": "not-installed"}
     assert call(page.url, "api/codex/login", method="POST", body={}).json() == \

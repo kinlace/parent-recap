@@ -248,6 +248,19 @@
           <p data-text="gateway.privacy"></p>
         </details>
       </div>
+      <!-- Only on Connect: Welcome's AI choices, for a family whose sign-in can't finish (#706). -->
+      <div id="ai-other" hidden>
+        <p><button type="button" id="ai-other-open" class="secondary" data-text="connect.ai.other"></button></p>
+        <form id="ai-other-form" hidden>
+          <fieldset>
+            <legend data-text="welcome.ai"></legend>
+            <label><input type="radio" name="connect-ai" value="claude"><span><span data-text="welcome.ai.claude"></span> <span class="plan" data-text="welcome.ai.claude.plan"></span></span></label>
+            <label><input type="radio" name="connect-ai" value="codex"><span><span data-text="welcome.ai.codex"></span> <span class="plan" data-text="welcome.ai.codex.plan"></span></span></label>
+            <label><input type="radio" name="connect-ai" value="gateway"><span><span data-text="welcome.ai.gateway"></span> <span class="plan" data-text="welcome.ai.gateway.plan"></span></span></label>
+          </fieldset>
+          <button type="submit" id="ai-other-continue" data-text="finish.ai.continue"></button>
+        </form>
+      </div>
     </div>
     <div id="source-whatsapp" class="source" hidden>
       <h2 data-text="source.whatsapp"></h2>

@@ -1236,19 +1236,62 @@ function renderAI() {
   document.getElementById("codex-login").addEventListener("click", signInCodex);
   document.getElementById("codex-install").addEventListener("click", installCodex);
   document.getElementById("gateway-form").addEventListener("submit", saveGatewayKey);
+  document.getElementById("ai-other-open").addEventListener("click", openAnotherAI);
+  document.getElementById("ai-other-form").addEventListener("submit", useAnotherAI);
 }
 
 // The sign-in of the Household's AI, as its step opens: Codex's checks by itself, and Claude's
-// picks up a sign-in still running.
+// picks up a sign-in still running. On Connect, "Use another AI" is offered with it.
 function showAISignIn() {
   document.getElementById("ai-claude").hidden = page.welcome.ai !== "claude";
   document.getElementById("ai-codex").hidden = page.welcome.ai !== "codex";
   document.getElementById("ai-gateway").hidden = page.welcome.ai !== "gateway";
+  document.getElementById("ai-other").hidden = page.progress.phase !== "connect";
+  document.getElementById("ai-other-open").hidden = false;
+  document.getElementById("ai-other-form").hidden = true;
   if (page.welcome.ai === "codex" && page.progress.sources.ai === "to-do") {
     showSource("codex.checking");
     checkCodex();
   }
   if (page.welcome.ai === "claude") resumeClaude();
+}
+
+// "Use another AI": Welcome's choices in place, for a family whose sign-in can't finish, such as
+// ChatGPT's asking for a phone number they can't give (#706). Connect has no way back to Welcome.
+function openAnotherAI() {
+  clearError();
+  offerAIs("connect-ai");
+  pick("connect-ai", page.welcome.ai);
+  document.getElementById("ai-other-open").hidden = true;
+  document.getElementById("ai-other-form").hidden = false;
+}
+
+// The AI picked is saved as the Household's, as Welcome would have saved it, so the chat, Finish
+// and the evening Brief follow it; the server stops a ChatGPT sign-in still waiting. Then its
+// sign-in is shown, as the step's own.
+async function useAnotherAI(event) {
+  event.preventDefault();
+  clearError();
+  const button = event.submitter;
+  button.disabled = true;
+  try {
+    const out = await post("api/connect/ai", { ai: picked("connect-ai") });
+    clearTimeout(aiStep.timer);
+    page.welcome.ai = out.ai;
+    page.progress = out.progress;
+    STEPS.ai.leave();
+    showSource(null);
+    document.getElementById("claude-form").hidden = true;
+    document.getElementById("codex-login").hidden = true;
+    document.getElementById("codex-install").hidden = true;
+    connectStep.shown.delete("ai"); // its step opens again, with the new AI's sign-in
+    renderSources();
+    showChat();
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // Once the AI sign-in is done, setup moves on to the next Source. On Finish, the AI picked there
@@ -1299,6 +1342,7 @@ async function resumeClaude() {
 }
 
 function claudeResult(out) {
+  if (!signingIn("claude")) return;
   clearTimeout(aiStep.timer);
   if (out.result === "waiting") aiStep.timer = setTimeout(checkClaude, AI_MS);
   if (out.result === "saved") return aiDone(out, "claude.saved");
@@ -1339,6 +1383,7 @@ async function checkClaudeInstall() {
 }
 
 function claudeInstallResult(out) {
+  if (!signingIn("claude")) return;
   clearTimeout(aiStep.timer);
   if (out.result === "installing") aiStep.timer = setTimeout(checkClaudeInstall, AI_MS);
   if (["installing", "install-failed"].includes(out.result)) {
@@ -1395,7 +1440,13 @@ async function installCodex() {
   }
 }
 
+// A check still on its way once the family has picked another AI says nothing.
+function signingIn(name) {
+  return !document.getElementById("ai-" + name).hidden;
+}
+
 function codexResult(out) {
+  if (!signingIn("codex")) return;
   const key = "codex." + out.result;
   // While a sign-in waits, its page in the browser may have failed or been closed: the button
   // starts a fresh one.
@@ -2736,6 +2787,7 @@ function openFinishAI() {
   }
   finishAI.ready = true;
   document.getElementById("finish-ai-sign-in").append(document.getElementById("source-ai"));
+  document.getElementById("ai-other").hidden = true; // Finish's own choices are above it
   offerAIs("finish-ai");
   pick("finish-ai", page.welcome.ai);
   document.getElementById("finish-ai-open").hidden = true;
