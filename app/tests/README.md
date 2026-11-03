@@ -50,6 +50,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_eval_scoring.py`        | The eval's deterministic scoring                                 |
 | `test_failure.py`             | Why a setup step failed, as the setup page shows and copies it   |
 | `test_held_back.py`           | Which texts look sensitive, against `sensitive_words.yaml`       |
+| `test_install_share.py`       | An AI installer's download share, read from what it prints       |
 | `test_kid_placeholders.py`    | Each Kid as Kid A, Kid B and back                                |
 | `test_last_run.py`            | A run's peak memory, from the run's and its children's sizes     |
 | `test_llm_memory.py`          | The llm package's in-memory adapter (ADR 0023)                   |

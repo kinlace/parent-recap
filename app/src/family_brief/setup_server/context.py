@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from .. import chat_install, failure, llm, setup_connect, setup_save
+from .. import chat_install, failure, llm, setup_ai, setup_connect, setup_save
 from ..config import Config, LLMConfig
 from ..setup_connect import Reply
 from ..system import profile
@@ -45,6 +45,7 @@ class Timeouts:
     poll: float = 1.0  # how often the server looks for a stop or the idle time
     ai_check: float = 20  # an AI's own status check
     claude_sign_in: float = 600  # Claude's sign-in in the browser
+    ai_install: float = setup_ai.CODEX_INSTALL_SECONDS  # the page installing Codex or Claude Code
     wilma_window: float = 600  # the Terminal window Wilma's sign-in falls back to
     whatsapp_pair: int = 300  # the phone scanning WhatsApp's QR code
     brief: float = 900  # making the first Brief, reading the Sources included

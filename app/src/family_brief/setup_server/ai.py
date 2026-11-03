@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import subprocess
 import threading
+from collections.abc import Callable
 from http import HTTPStatus
 from typing import Any, Literal
 
@@ -19,6 +20,7 @@ from .context import (Action, Context, Phase, ais, chats, claude, claude_missing
 # sign-in, or the token pasted after the Terminal window, ended. `sign-in-failed` and `timeout`
 # offer the Terminal window, whose token the page takes in a field. On Windows, which signs in
 # only in that window, the page installs Claude Code first: `installing`, and `install-failed` once.
+# `installing` comes with how far the install has got, as `Installing.reply` gives it.
 CLAUDE_RESULTS = ("waiting", "saved", "not-installed", "sign-in-failed", "timeout", "not-a-token",
                   "test-call-failed", "keychain-not-reachable", "keychain-failed", "installing",
                   "install-failed")
@@ -26,7 +28,7 @@ CLAUDE_WINDOW_RESULTS = ("opened", "no-terminal", "not-installed")
 # Codex's ChatGPT sign-in: signed in, signed out, `waiting` while its sign-in is open in the
 # browser, and `login-failed` when that ended without signing in or didn't start. At Finish,
 # `test-call-failed` when a signed-in Codex didn't answer the test call a switch needs. While the
-# page installs the Codex CLI, `installing`, and `install-failed` once.
+# page installs the Codex CLI, `installing`, with how far it has got, and `install-failed` once.
 CODEX_RESULTS = ("signed-in", "signed-out", "waiting", "login-failed", "not-installed",
                  "check-failed", "test-call-failed", "installing", "install-failed")
 # The Gateway Key pasted into the page, tested and stored as `setup gateway` does.
@@ -46,6 +48,30 @@ class AnotherAI(Strict):
     ai: Literal["claude", "codex", "gateway"]
 
 
+class Installing:
+    """How far an install the page started has got (#709): how long it has run, by the server's
+    clock, and the share of its download once the installer has printed one. Only these numbers
+    go to the page, never what the installer printed: it can name the computer's paths."""
+
+    def __init__(self, clock: Callable[[], float], limit: float) -> None:
+        self.clock = clock
+        self.started = clock()
+        self.limit = limit
+        self.percent: int | None = None
+
+    def share(self, percent: int) -> None:  # from the installer's output, as it comes
+        self.percent = percent
+
+    def reply(self) -> dict[str, Any]:
+        """`installing`, with the `seconds` it has run, the `usual` time an install takes, after
+        which the page says the connection may be slow, the `limit` it may take, and its download's
+        `percent` once known."""
+        percent = self.percent
+        return {"result": "installing", "seconds": int(max(0, self.clock() - self.started)),
+                "usual": setup_ai.USUAL_INSTALL_SECONDS, "limit": int(self.limit),
+                **({} if percent is None else {"percent": percent})}
+
+
 class AISignIn(Phase):
     def __init__(self, context: Context) -> None:
         super().__init__(context)
@@ -60,6 +86,8 @@ class AISignIn(Phase):
         self._codex_install: str | None = None
         # Why the last install of either failed, which the check says with it.
         self._install_reason: dict[str, str] = {}
+        # How far the install of either under way, or the last one, has got.
+        self._installing: dict[str, Installing] = {}
 
     def routes(self) -> dict[str, Action]:
         return {"api/claude": self.sign_in_claude, "api/claude/check": self.check_claude,
@@ -145,6 +173,8 @@ class AISignIn(Phase):
                 self._claude_install = None  # said once, and the family can start it again
             why = {"reason": self._install_reason.pop("claude")} \
                 if install == "install-failed" else {}
+        if install == "installing":
+            return HTTPStatus.OK, self._installing["claude"].reply()
         if install is not None:
             return HTTPStatus.OK, {"result": install, **why}
         sign_in = self._claude
@@ -193,13 +223,18 @@ class AISignIn(Phase):
         with self._lock:
             if self._claude_install != "installing":
                 self._claude_install = "installing"
-                threading.Thread(target=self._installing_claude, daemon=True).start()
-        return HTTPStatus.OK, {"result": "installing"}
+                installing = self._installing["claude"] = self._started_install()
+                threading.Thread(target=self._installing_claude, args=(installing,),
+                                 daemon=True).start()
+            return HTTPStatus.OK, self._installing["claude"].reply()
 
-    def _installing_claude(self) -> None:
+    def _started_install(self) -> Installing:
+        return Installing(self.context.clock, self.context.timeouts.ai_install)
+
+    def _installing_claude(self, installing: Installing) -> None:
         result = "install-failed"
         try:
-            reason = setup_ai.install_claude()
+            reason = setup_ai.install_claude(installing.limit, installing.share)
             program = None if reason else claude().program()
             if program is not None:
                 result = _open_claude_window(program)
@@ -256,7 +291,7 @@ class AISignIn(Phase):
         with self._lock:
             install = self._codex_install
             if install == "installing":
-                return {"result": install}
+                return self._installing["codex"].reply()
             if install != "install-failed":
                 return None
             self._codex_install = None  # said once, and the family can start it again
@@ -321,13 +356,15 @@ class AISignIn(Phase):
         with self._lock:
             if self._codex_install != "installing":
                 self._codex_install = "installing"
-                threading.Thread(target=self._installing_codex, daemon=True).start()
-        return HTTPStatus.OK, {"result": "installing"}
+                installing = self._installing["codex"] = self._started_install()
+                threading.Thread(target=self._installing_codex, args=(installing,),
+                                 daemon=True).start()
+            return HTTPStatus.OK, self._installing["codex"].reply()
 
-    def _installing_codex(self) -> None:
+    def _installing_codex(self, installing: Installing) -> None:
         codex = None
         try:
-            reason = setup_ai.install_codex()
+            reason = setup_ai.install_codex(installing.limit, installing.share)
             if not reason:
                 codex = program(self.context, "codex")
                 if codex is None:

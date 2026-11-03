@@ -349,6 +349,11 @@
     </div>
     <div id="source-status" class="status" role="status" hidden>
       <p id="source-message"></p>
+      <div id="source-install-progress" class="install-progress" hidden>
+        <progress id="source-install-bar" max="100" aria-labelledby="source-message"></progress>
+        <p id="source-install-time" class="hint"></p>
+        <p id="source-install-slow" class="hint" data-text="install.slow" hidden></p>
+      </div>
       <code id="source-url" hidden></code>
       <ul id="source-kids" class="kids" hidden></ul>
       <div id="source-install" class="install" hidden>
