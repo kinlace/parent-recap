@@ -1225,6 +1225,8 @@ const CODEX_AGAIN = [
 // Codex's results after which the page offers to install the Codex CLI itself. A Mac's Codex or
 // ChatGPT desktop app brings one too, which is found first.
 const CODEX_INSTALL = ["codex.not-installed", "codex.install-failed"];
+// Codex's results after which the page offers ChatGPT's sign-in, again while one is waiting.
+const CODEX_LOGIN = ["codex.signed-out", "codex.login-failed", "codex.waiting"];
 
 function renderAI() {
   document.getElementById("claude-start").addEventListener("click", startClaude);
@@ -1395,8 +1397,11 @@ async function installCodex() {
 
 function codexResult(out) {
   const key = "codex." + out.result;
-  document.getElementById("codex-login").hidden =
-    !["codex.signed-out", "codex.login-failed"].includes(key);
+  // While a sign-in waits, its page in the browser may have failed or been closed: the button
+  // starts a fresh one.
+  const login = document.getElementById("codex-login");
+  login.hidden = !CODEX_LOGIN.includes(key);
+  setText(login, key === "codex.waiting" ? "codex.login-again" : "codex.login");
   document.getElementById("codex-install").hidden = !CODEX_INSTALL.includes(key);
   if (out.result === "signed-in") return aiDone(out, key);
   showSource(key, { reason: out.reason });
