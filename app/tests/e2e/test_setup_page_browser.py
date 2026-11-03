@@ -1517,8 +1517,10 @@ def test_finish_sends_the_brief_from_the_familys_gmail_and_back(tab, family, hea
     button(tab, "finish.sending.off").click()
 
     expect(tab.get_by_text(text("finish.sending.saved.gateway"))).to_be_visible()
-    # Back on the gateway, the Recipients confirm their address (ADR 0033).
-    expect(button(tab, "gmail.confirm.resend")).to_be_visible()
+    # Back on the gateway, the Recipients confirm their address (ADR 0033), under the switch and,
+    # for each who hasn't, at the top of Finish (#712).
+    expect(tab.locator("#finish-sending-confirm").get_by_role(
+        "button", name=text("gmail.confirm.resend"), exact=True)).to_be_visible()
     assert not Config.load(config_file(family)).email.from_gmail
 
 
