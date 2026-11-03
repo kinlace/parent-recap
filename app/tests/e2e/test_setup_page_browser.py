@@ -37,6 +37,7 @@ from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, conf
 from setup_page import ai, clock, health, page, schedule  # noqa: F401
 from test_setup_ai import GATEWAY_KEY
 from test_setup_ai import codex  # noqa: F401
+from test_setup_first_brief import at_the_first_brief
 from test_setup_gmail import TYPED
 from test_setup_myclub import LINK as MYCLUB_LINK, STEPS as MYCLUB_STEPS
 from test_setup_page_windows import Web, school_mail
@@ -580,6 +581,143 @@ def test_with_codex_parent_recap_gets_a_key_for_sending_and_setup_finishes(tab, 
     assert (cfg.llm.backend, cfg.gmail.username) == ("codex", None)
     assert family.secrets[gateway.ACCOUNT] == next(iter(family.made_keys))
     assert family.model.reached and "gateway.parentrecap.com" not in family.model.reached
+
+
+# ── Each Recipient's confirmation as it happens (#712): the page asks every few seconds, and
+# asking mails nobody.
+
+PARTNER = "partner@example.com"
+# The page asks every five seconds: a few rounds of it.
+ASKING_MS = 12_000
+
+
+def bound_key(family, *addresses: str) -> None:
+    """A Gateway Key the gateway made on request (ADR 0033), bound to `addresses`, none of whom
+    has confirmed yet."""
+    key = "sk-bf-made-on-request-712"
+    family.made_keys[key] = [{"address": a, "language": "en"} for a in addresses]
+    family.secrets[gateway.ACCOUNT] = key
+
+
+def asked_no_more(tab, family) -> None:
+    """The page has stopped asking the gateway who confirmed."""
+    asked = len(family.binds)
+    tab.wait_for_timeout(ASKING_MS)
+    assert len(family.binds) == asked
+
+
+@pytest.mark.macos
+def test_who_gets_the_brief_shows_each_recipient_confirm_by_itself_and_never_holds_setup_back(
+        tab, family, codex):  # noqa: F811
+    in_english(tab)
+    tab.get_by_role("radio", name=text("welcome.ai.codex")).check()
+    expect(tab.get_by_text(text("ai.codex.ready"))).to_be_visible()
+    tab.get_by_role("radio", name=text("welcome.partner.only-me")).check()
+    button(tab, "continue").click()
+    expect(heading(tab, "connect.title")).to_be_visible()
+    recipient(tab).fill(PARENT)
+    button(tab, "recipients.add").click()
+    recipient(tab, 1).fill(PARTNER)
+
+    button(tab, "recipients.save").click()
+
+    # Under who gets the Brief, above the Source list (#708).
+    waiting = tab.locator("#recipients-confirmed-list li")
+    expect(waiting).to_have_text([text("recipients.confirm.waiting", address=PARENT),
+                                  text("recipients.confirm.waiting", address=PARTNER)])
+    expect(tab.get_by_text(text("recipients.confirm.later"))).to_be_visible()
+    # Nothing waits for it: the first Source's step goes on at once, and the list stays current.
+    without_wilma_in_espoo(tab)
+    expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
+    family.confirm(PARTNER)
+    expect(waiting).to_have_text([text("recipients.confirm.waiting", address=PARENT),
+                                  text("recipients.confirm.done", address=PARTNER)])
+    family.confirm(PARENT)
+    expect(waiting).to_have_text([text("recipients.confirm.done", address=PARENT),
+                                  text("recipients.confirm.done", address=PARTNER)])
+    expect(tab.get_by_text(text("gmail.confirm.confirmed"))).to_be_visible()
+    expect(tab.get_by_text(text("recipients.confirm.later"))).to_be_hidden()
+    # Once everyone has, the page stops asking; asking mailed nobody.
+    asked_no_more(tab, family)
+    assert family.confirmations == [(PARENT, "en"), (PARTNER, "en")]
+    assert all(b["resend"] is False for b in family.binds)
+
+
+@pytest.mark.macos
+def test_who_gets_the_brief_stops_asking_once_it_s_changed(tab, family, codex):  # noqa: F811
+    in_english(tab)
+    tab.get_by_role("radio", name=text("welcome.ai.codex")).check()
+    expect(tab.get_by_text(text("ai.codex.ready"))).to_be_visible()
+    tab.get_by_role("radio", name=text("welcome.partner.only-me")).check()
+    button(tab, "continue").click()
+    recipient(tab).fill(PARENT)
+    button(tab, "recipients.save").click()
+    expect(tab.locator("#recipients-confirmed-list li")).to_have_text(
+        [text("recipients.confirm.waiting", address=PARENT)])
+
+    button(tab, "recipients.change").click()
+
+    expect(button(tab, "recipients.save")).to_be_visible()
+    expect(tab.locator("#recipients-confirmed")).to_be_hidden()
+    asked_no_more(tab, family)
+
+
+def test_with_the_gateway_as_the_ai_who_gets_the_brief_shows_no_confirmation(tab, family):
+    in_english_with_the_gateway(tab)
+    skip(tab, "wilma").click()
+
+    expect(tab.locator("#recipients-confirmed")).to_be_hidden()
+    expect(tab.locator("#recipients-confirm")).to_be_hidden()
+    tab.wait_for_timeout(ASKING_MS)
+    assert family.binds == [] and family.key_requests == []
+
+
+def test_the_first_brief_reminds_the_parent_to_confirm_until_they_have(tab, family):
+    at_the_first_brief(family)
+    bound_key(family, PARENT, PARTNER)
+    tab.reload()
+    reminder = tab.get_by_text(text("brief.confirm.reminder", to=PARENT))
+
+    # Before "Send it to me" is pressed, and above it.
+    expect(reminder).to_be_visible()
+    expect(tab.get_by_text(text("brief.made"))).to_be_visible()
+    assert tab.locator("#brief-reminder ~ #brief-actions").count() == 1
+    tab.locator("#brief-reminder").get_by_role("button", name=text("gmail.confirm.resend")).click()
+    expect(tab.get_by_text(text("gmail.confirm.resent", addresses=f"{PARENT}, {PARTNER}"))).to_be_visible()
+    family.confirm(PARENT)
+    expect(reminder).to_be_hidden()
+    button(tab, "brief.send").click()
+    expect(tab.get_by_text(text("brief.send.sent", to=PARENT))).to_be_visible()
+    # The partner's confirmation doesn't matter here: the page asks no more.
+    asked_no_more(tab, family)
+
+
+def test_finish_names_each_recipient_who_won_t_get_tonight_s_brief(tab, family, health):  # noqa: F811
+    at_finish(family)
+    bound_key(family, PARENT, PARTNER)
+    family.confirm(PARENT)
+    tab.reload()
+    partner = tab.get_by_text(text("finish.unconfirmed", address=PARTNER))
+
+    expect(partner).to_be_visible()
+    expect(tab.get_by_text(text("finish.unconfirmed", address=PARENT))).to_be_hidden()
+    family.confirm(PARTNER)
+    expect(partner).to_be_hidden()
+    asked_no_more(tab, family)
+
+
+def test_finish_names_nobody_while_the_brief_goes_from_the_family_s_gmail(tab, family, health):  # noqa: F811
+    # ADR 0034: nobody confirms anything for the Household's own Gmail.
+    family.config["email"]["from_gmail"] = True
+    at_finish(family)
+    family.secrets["gmail-imap-parent@example.com"] = "abcdefghijklmnop"
+    bound_key(family, PARENT, PARTNER)
+    tab.reload()
+
+    expect(tab.get_by_text(text("finish.sending.current.gmail", address=PARENT))).to_be_visible()
+    tab.wait_for_timeout(ASKING_MS)
+    expect(tab.locator("#finish-unconfirmed")).to_be_hidden()
+    assert family.binds == []
 
 
 def test_loading_the_page_logs_no_error_in_the_console(tab):

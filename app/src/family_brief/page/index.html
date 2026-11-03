@@ -121,6 +121,11 @@
     <div id="recipients-saved" hidden>
       <p class="ready"><span id="recipients-to"></span> <button type="button" id="recipients-change" class="link" data-text="recipients.change"></button></p>
       <div id="recipients-confirm" class="status" role="status" hidden></div>
+      <!-- Each Recipient's confirmation, updated by itself while Connect is open (#712). -->
+      <div id="recipients-confirmed" hidden>
+        <ul id="recipients-confirmed-list" class="groups"></ul>
+        <p class="hint" data-text="recipients.confirm.later"></p>
+      </div>
     </div>
     <p id="connect-intro" class="note" data-text="connect.intro"></p>
     <ol id="sources" class="sources"></ol>
@@ -470,6 +475,12 @@
       <button type="button" id="brief-again" class="secondary" data-text="brief.again" hidden></button>
     </div>
     <iframe id="brief-frame" class="brief" data-label="brief.frame" sandbox hidden></iframe>
+    <!-- While the setup parent's own address isn't confirmed, before "Send it to me" (#712). -->
+    <div id="brief-reminder" class="status" role="status" hidden>
+      <p id="brief-reminder-message"></p>
+      <p><button type="button" id="brief-reminder-resend" class="secondary" data-text="gmail.confirm.resend"></button></p>
+      <p id="brief-reminder-resent" hidden></p>
+    </div>
     <div id="brief-actions" class="actions" hidden>
       <button type="button" id="brief-send" data-text="brief.send"></button>
       <button type="button" id="brief-feedback-open" class="link" data-text="brief.feedback" hidden></button>
@@ -483,6 +494,13 @@
   </section>
   <section id="finish" hidden>
     <h1 data-text="finish.title"></h1>
+    <!-- Each Recipient who hasn't confirmed, updated by itself (#712). -->
+    <div id="finish-unconfirmed" class="status" role="status" hidden>
+      <ul id="finish-unconfirmed-list" class="groups"></ul>
+      <p class="hint" data-text="finish.unconfirmed.how"></p>
+      <p><button type="button" id="finish-unconfirmed-resend" class="secondary" data-text="gmail.confirm.resend"></button></p>
+      <p id="finish-unconfirmed-resent" hidden></p>
+    </div>
     <div id="finish-install" hidden>
       <p class="note" data-text="finish.intro"></p>
       <div class="actions">

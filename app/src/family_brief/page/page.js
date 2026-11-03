@@ -457,7 +457,8 @@ function renderConnect() {
 // which Finish can change, isn't the gateway, saving them gets a send-only Gateway Key from the
 // gateway, which mails each a link to confirm (ADR 0033); a key from the Parent Recap team can be
 // pasted in a fold instead.
-const recipientsStep = { changing: false, confirm: null, shown: false };
+// allConfirmed: every Recipient saved has confirmed, so drawing the line again asks no more (#712).
+const recipientsStep = { changing: false, confirm: null, shown: false, allConfirmed: false };
 
 function onRecipients() {
   return page.gmail.to.length === 0 || recipientsStep.changing;
@@ -503,12 +504,15 @@ function renderRecipients() {
     for (const name of Object.keys(STEPS)) document.getElementById("source-" + name).hidden = true;
     if (!recipientsStep.shown) prepareRecipients();
     recipientsStep.shown = true;
+    document.getElementById("recipients-confirmed").hidden = true;
+    if (confirmWatch.where === "recipients") watchConfirmation(null);
     return true;
   }
   recipientsStep.shown = false;
   setText(document.getElementById("recipients-to"), "recipients.to",
     { addresses: page.gmail.to.map((r) => r.address).join(", ") });
   document.getElementById("recipients-confirm").hidden = !recipientsStep.confirm;
+  if (!recipientsStep.allConfirmed) watchConfirmation("recipients");
   return false;
 }
 
@@ -691,6 +695,8 @@ async function saveRecipients(event) {
         ({ address: address.trim().toLowerCase(), language }));
       recipientsStep.changing = false;
       recipientsStep.confirm = out.confirm || null;
+      recipientsStep.allConfirmed = false;
+      watchConfirmation(null); // asked again for the Recipients just saved
       if (out.confirm) {
         showConfirmation(document.getElementById("recipients-confirm"), out.confirm, false);
       }
@@ -2420,6 +2426,157 @@ async function resendConfirmation(box) {
   }
 }
 
+// ── Each Recipient's confirmation, shown as it happens (#712): under who gets the Brief, on
+// Connect once they're saved; as a reminder above "Send it to me" while the setup parent's own
+// address waits; and at Finish for each who won't get tonight's Brief. The page asks the server
+// every few seconds while such a step is open and the page is in view, and stops once everyone it
+// shows has confirmed.
+// Asking mails nobody and counts toward none of the gateway's limits. Nothing holds the step
+// back. Nobody confirms anything with the gateway as the AI, which the hosted version's always
+// is, nor while the Brief goes from the Household's own Gmail (ADR 0034).
+
+const CONFIRM_MS = 5000;
+// The step asking (null for none), each start's own number, so an answer to an earlier one is
+// dropped, and whether one is asking now or will in a moment.
+const confirmWatch = { where: null, round: 0, timer: null, asking: false };
+// Each step that shows it: whether it's open, how it shows an answer (null hides it), and, for
+// one that shows only some of the Recipients, whether it has all it waits for.
+const CONFIRM_SHOWN = {
+  recipients: {
+    open: () => page.progress.phase === "connect" && !onRecipients(),
+    show: showRecipientsConfirmed,
+  },
+  brief: {
+    open: () => page.progress.phase === "first-brief",
+    show: showBriefReminder,
+    enough: (out) => Boolean(out.recipients[0]?.confirmed),
+  },
+  finish: {
+    open: () => page.progress.phase === "finish" && !page.finished,
+    show: showFinishUnconfirmed,
+  },
+};
+
+function confirmsRecipients() {
+  return page.welcome.ai !== "gateway" && !sendsFromGmail();
+}
+
+// Starts asking for the step `where`, or stops with null. Asking for the same step goes on.
+function watchConfirmation(where) {
+  if (where && where === confirmWatch.where && confirmWatch.asking) return;
+  clearTimeout(confirmWatch.timer);
+  confirmWatch.where = where;
+  confirmWatch.asking = false;
+  const round = ++confirmWatch.round;
+  if (where) askConfirmed(round);
+}
+
+async function askConfirmed(round) {
+  const shown = CONFIRM_SHOWN[confirmWatch.where];
+  confirmWatch.asking = false;
+  // A step left stops asking; what it showed goes with it, or stays at a Finish that's done.
+  if (!shown || !shown.open()) return;
+  if (!confirmsRecipients()) return shown.show(null);
+  if (document.hidden) return; // asked again once the page is in view
+  confirmWatch.asking = true;
+  let out;
+  try {
+    out = await post("api/gmail/confirmed", {});
+  } catch {
+    if (round === confirmWatch.round) confirmWatch.asking = false;
+    return; // the server's gone, which watchServer says
+  }
+  if (round !== confirmWatch.round) return;
+  if (!shown.open()) {
+    confirmWatch.asking = false;
+    return;
+  }
+  // The gateway out of reach for a moment changes nothing shown, and is asked again.
+  if (out.result !== "failed") {
+    shown.show(["confirmed", "unconfirmed"].includes(out.result) && confirmsRecipients() ? out : null);
+  }
+  const waits = out.result === "failed" ||
+    (out.result === "unconfirmed" && !shown.enough?.(out));
+  if (waits) confirmWatch.timer = setTimeout(() => askConfirmed(round), CONFIRM_MS);
+  else confirmWatch.asking = false;
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && confirmWatch.where && !confirmWatch.asking) {
+    askConfirmed(++confirmWatch.round);
+  }
+});
+
+// Connect, under who gets the Brief: each Recipient, waiting or confirmed. Once everyone has, the
+// box above says so.
+function showRecipientsConfirmed(out) {
+  const part = document.getElementById("recipients-confirmed");
+  part.hidden = !out;
+  if (!out) return;
+  recipientsStep.allConfirmed = out.result === "confirmed";
+  document.getElementById("recipients-confirmed-list").replaceChildren(
+    ...out.recipients.map(({ address, confirmed }) => {
+      const item = document.createElement("li");
+      item.dataset.status = confirmed ? "ok" : "waiting";
+      setText(item, confirmed ? "recipients.confirm.done" : "recipients.confirm.waiting", { address });
+      return item;
+    }));
+  part.querySelector(".hint").hidden = out.result === "confirmed";
+  const waiting = out.recipients.filter((r) => !r.confirmed).map((r) => r.address);
+  // After a reload, the email was sent before: the box says to whom, with "Send it again".
+  if (out.result === "confirmed" || !recipientsStep.confirm) {
+    recipientsStep.confirm = { result: out.result, unconfirmed: waiting, mailed: [] };
+    showConfirmation(document.getElementById("recipients-confirm"), recipientsStep.confirm, false);
+  }
+}
+
+// First Brief: the reminder above "Send it to me", while the setup parent's own address waits.
+function showBriefReminder(out) {
+  const parent = out?.recipients[0];
+  const waiting = Boolean(parent && !parent.confirmed);
+  document.getElementById("brief-reminder").hidden = !waiting;
+  if (waiting) {
+    setText(document.getElementById("brief-reminder-message"), "brief.confirm.reminder",
+      { to: parent.address });
+  } else if (parent) {
+    // Confirmed: what a refused send said is done with too.
+    document.getElementById("brief-confirm").hidden = true;
+  }
+}
+
+// Finish: each Recipient tonight's Brief won't go to.
+function showFinishUnconfirmed(out) {
+  const waiting = (out?.recipients || []).filter((r) => !r.confirmed);
+  document.getElementById("finish-unconfirmed").hidden = waiting.length === 0;
+  document.getElementById("finish-unconfirmed-list").replaceChildren(...waiting.map(({ address }) => {
+    const item = document.createElement("li");
+    setText(item, "finish.unconfirmed", { address });
+    return item;
+  }));
+}
+
+// "Send it again" in the reminder at First Brief and at Finish: says whom it went to, and asking
+// starts again, for a step that had stopped.
+async function resendFrom(prefix, where) {
+  clearError();
+  const button = document.getElementById(prefix + "-resend");
+  button.disabled = true;
+  try {
+    const out = await post("api/gmail/confirm", { resend: true });
+    const resent = document.getElementById(prefix + "-resent");
+    const mailed = (out.mailed || []).join(", ");
+    if (mailed) setText(resent, "gmail.confirm.resent", { addresses: mailed });
+    else setText(resent, "gmail.confirm.no-key");
+    resent.hidden = !mailed && out.result === "confirmed";
+    resent.classList.toggle("fail", !mailed);
+    watchConfirmation(where);
+  } catch (e) {
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 // What to do about a check that isn't OK, as the check page ("health") or Finish ("finish") says
 // it: the text for why it isn't, where the check says why, else the check's own. On the check
 // page, a failed check of a Source the family can do without also offers to skip it for now.
@@ -2554,8 +2711,11 @@ function enterBrief() {
   document.getElementById("brief-send").addEventListener("click", sendBrief);
   document.getElementById("brief-feedback-open").addEventListener("click", openFeedback);
   document.getElementById("brief-done").addEventListener("click", briefDone);
+  document.getElementById("brief-reminder-resend").addEventListener("click",
+    () => resendFrom("brief-reminder", "brief"));
   if (page.brief.sent) showSent("brief.sent"); // after a reload, once it has reached them
   checkBrief();
+  watchConfirmation("brief");
 }
 
 async function makeBrief() {
@@ -2698,6 +2858,8 @@ function enterFinish() {
     picked.length ? "finish.whatsapp.groups" : "finish.whatsapp.none");
   showList(document.getElementById("finish-whatsapp-groups"), picked);
   showBackToConnect("finish-back");
+  document.getElementById("finish-unconfirmed-resend").addEventListener("click",
+    () => resendFrom("finish-unconfirmed", "finish"));
   showHouseholdAI();
   checkFinish();
 }
@@ -2750,6 +2912,7 @@ async function saveFinishRecipients(event) {
       showFinishRecipients();
       document.getElementById("finish-recipients-form").hidden = true;
       document.getElementById("finish-recipients-open").hidden = false;
+      rewatchFinish();
       // The Brief sending check now names who has still to confirm.
       finishResult(await post("api/finish/outcomes", {}));
     }
@@ -2795,6 +2958,14 @@ function showHouseholdAI() {
   setText(document.getElementById("finish-changes"), "finish.changes." + page.welcome.ai);
   showSending();
   showChat();
+  rewatchFinish();
+}
+
+// At Finish, after the AI, the sending or the Recipients changed, who has to confirm is asked
+// again from the start.
+function rewatchFinish() {
+  watchConfirmation(null);
+  watchConfirmation("finish");
 }
 
 // ── Finish: sending the Brief from the family's own Gmail instead of Parent Recap's address
@@ -2835,6 +3006,7 @@ async function switchSending() {
     if (out.confirm) showConfirmation(confirm, out.confirm, false);
     document.getElementById("finish-sending-status").hidden = false;
     showSending();
+    if (saved) rewatchFinish();
     // The Brief sending check is now the other transport's.
     if (saved) finishResult(await post("api/finish/outcomes", {}));
   } catch (e) {
