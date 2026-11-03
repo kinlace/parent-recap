@@ -73,6 +73,30 @@ def test_night_the_model_finds_nothing_to_say_about_still_sends_its_events(harne
     assert "FC Kilo P2017 vs HJK" in email.text
 
 
+def test_night_with_only_a_myclub_event_tomorrow_tells_it_in_the_digest(harness):
+    # #734: the rule that tells tomorrow's Source events is the model's, so such a night asks it.
+    harness.sources = {"myclub": [myclub_event("mc-1", "Football training", "2026-09-28T15:15:00+00:00",
+                                               "2026-09-28T16:45:00+00:00")]}
+    harness.model_reply = {"per_kid": [], "calendar_events": [],
+                           "message_digest": "**Mia**\n- 9月28日 周一 18:15 足球训练，Leppävaara field"}
+
+    assert harness.run() == 0
+
+    [call] = harness.model_calls
+    assert "Football training" in call.prompt
+    [email] = harness.sent
+    assert "9月28日 周一 18:15 足球训练，Leppävaara field" in email.text
+
+
+def test_night_with_only_later_myclub_events_asks_no_model(harness):
+    harness.sources = {"myclub": [myclub_event("mc-1", "Football training", "2026-09-29T15:15:00+00:00",
+                                               "2026-09-29T16:45:00+00:00")]}
+
+    assert harness.run() == 0
+
+    assert harness.model_calls == []
+
+
 def test_setup_preview_shows_a_night_the_model_finds_nothing_to_say_about(harness, capsys):
     only_the_timetable(harness)
 

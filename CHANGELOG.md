@@ -2,6 +2,12 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## Unreleased
+
+### Fixed
+
+- On an evening with nothing new from Wilma, Gmail or WhatsApp, an event from MyClub or another Source happening tomorrow is still told in the Brief, with its time and place.
+
 ## 0.11.1 · 2026-11-03
 
 ### Added
