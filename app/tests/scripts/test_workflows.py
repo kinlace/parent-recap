@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 WORKFLOWS = sorted(WORKFLOW_DIR.glob("*.yml"))
 # What the windows-install and linux-install jobs run, one check a step (#720, #721).
-CHECKS = ROOT / "scripts" / "windows-install-checks.ps1"
+WINDOWS_CHECKS = ROOT / "scripts" / "windows-install-checks.ps1"
 LINUX_CHECKS = ROOT / "scripts" / "linux-install-checks.sh"
 
 
@@ -91,7 +91,7 @@ def test_each_windows_install_step_runs_one_check_of_the_checks_script():
     # The expected values about the program live in the script, which asks the installed program
     # where it can, so a program change edits no file under .github/ (#720).
     steps = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]["windows-install"]["steps"]
-    script = CHECKS.read_text()
+    script = WINDOWS_CHECKS.read_text()
     offered = re.search(r"ValidateSet\(([^)]*)\)", script).group(1)
     known = set(re.findall(r"'([a-z-]+)'", offered))
     runs = [step for step in steps if "run" in step]
@@ -148,7 +148,7 @@ def test_an_unknown_linux_install_check_fails_and_lists_the_checks():
 
 def test_the_windows_install_checks_are_ascii_for_windows_powershell():
     # Windows PowerShell 5.1 reads a file without a BOM in the PC's code page.
-    CHECKS.read_bytes().decode("ascii")
+    WINDOWS_CHECKS.read_bytes().decode("ascii")
 
 
 def test_a_change_to_a_script_still_runs_the_tests():
