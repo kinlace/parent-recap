@@ -72,9 +72,8 @@ class AISignIn(Phase):
 
     def _end_codex_login(self) -> None:
         """Stops the `codex login` still running, if one is. Called with the lock held."""
-        if self._codex is not None and self._codex.poll() is None:
-            self._codex.kill()
-            self._codex.wait()
+        if self._codex is not None:
+            setup_ai.end_codex_login(self._codex)
 
     # ── Claude
 
