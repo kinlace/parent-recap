@@ -57,6 +57,13 @@ def may_request(cfg: Config) -> bool:
     return cfg.llm.backend != "gateway"
 
 
+def confirms(cfg: Config) -> bool:
+    """Whether the Household's Recipients confirm their address: not with the gateway as the AI,
+    not while its own Gmail sends the Brief (ADR 0034), and not for a Hosted Household, whose key
+    the sign-up made bound to nobody (ADR 0031)."""
+    return may_request(cfg) and not cfg.sends_from_gmail() and not cfg.hosted
+
+
 def ensure(cfg: Config, resend: bool = False, ask: bool = True) -> Status:
     """Makes sure the Household has a Gateway Key bound to its Recipients, asking the gateway for
     one when none is stored, and says who still has to confirm. With `resend`, each of them is
