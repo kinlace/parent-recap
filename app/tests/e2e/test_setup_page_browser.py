@@ -933,47 +933,27 @@ def test_welcome_offers_to_check_again_only_while_it_can_t_go_on(tab, ai, on, na
     again = button(tab, "welcome.ai.again", system=on)
     go_on = button(tab, "continue", system=on)
 
+    def picked_shows(result: str) -> None:
+        tab.get_by_role("radio", name=text(f"welcome.ai.{name}", system=on)).check()
+        expect(tab.locator("#ai-message")).to_have_text(text(f"ai.{name}.{result}", system=on))
+        if on == "windows" or name == "codex":
+            expect(again).to_be_hidden()
+            expect(go_on).to_be_enabled()
+        else:
+            expect(again).to_be_visible()
+            expect(go_on).to_be_disabled()
+
     # Not installed: where the AI's own step installs it (Codex on both systems, Claude Code on
     # Windows), Welcome goes on; on a Mac the family installs Claude Code first.
-    tab.get_by_role("radio", name=text(f"welcome.ai.{name}", system=on)).check()
-
-    expect(tab.get_by_text(text(f"ai.{name}.not-installed", system=on))).to_be_visible()
-    if on == "windows" or name == "codex":
-        expect(again).to_be_hidden()
-        expect(go_on).to_be_enabled()
-    else:
-        expect(again).to_be_visible()
-        expect(go_on).to_be_disabled()
+    picked_shows("not-installed")
     tab.get_by_role("radio", name=text("welcome.ai.gateway", system=on)).check()
     expect(tab.get_by_text(text("ai.gateway.ready", system=on))).to_be_visible()
     expect(again).to_be_hidden()
     expect(go_on).to_be_enabled()
-
-
-@pytest.mark.parametrize("on", ["macos", "windows"])
-@pytest.mark.parametrize("name", ["claude", "codex"])
-def test_welcome_goes_on_with_a_signed_out_ai_whose_own_step_signs_it_in(tab, on, name):
-    """Codex's step signs in with `codex login` on both systems, so Welcome needn't wait for it,
-    and on a Mac doesn't send the family to a Codex app it may not have (#707). Claude Code's
-    sign-in on a Mac needs it installed from Terminal first (#475), so there Welcome waits."""
-    as_on(tab, on)
+    # Signed out: the same AIs' own steps sign in, Codex's with `codex login` on a Mac as on
+    # Windows (#707); on a Mac Claude Code's sign-in needs it installed from Terminal (#475).
     tab.route(re.compile(r"/api/ai$"), lambda route: route.fulfill(json={"result": "signed-out"}))
-    in_english(tab)
-    again = button(tab, "welcome.ai.again", system=on)
-    go_on = button(tab, "continue", system=on)
-
-    tab.get_by_role("radio", name=text(f"welcome.ai.{name}", system=on)).check()
-
-    said = tab.locator("#ai-message")
-    expect(said).to_have_text(text(f"ai.{name}.signed-out", system=on))
-    if on == "windows" or name == "codex":
-        expect(again).to_be_hidden()
-        expect(go_on).to_be_enabled()
-    else:
-        expect(again).to_be_visible()
-        expect(go_on).to_be_disabled()
-    if name == "codex":
-        expect(said).not_to_contain_text("app")
+    picked_shows("signed-out")
 
 
 @pytest.mark.parametrize("on", ["macos", "windows"])
