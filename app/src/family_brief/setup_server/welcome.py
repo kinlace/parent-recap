@@ -80,8 +80,8 @@ class Welcome(Phase):
 
     def save_welcome(self, raw: Any) -> Reply:
         """Saves Welcome's choices: the AI, the partner or only me, and pilot feedback, and moves
-        setup on to Connect. The partner waits in the progress for Gmail's step, where the
-        Recipients are saved; once they are, as the chat setup may have, the answer changes them
+        setup on to Connect. The partner waits in the progress for Connect's first step, where
+        the Recipients are saved; once they are, as the chat setup may have, the answer changes them
         (gmail.with_partner), and no Recipient but the first is dropped unless it's "Only me"."""
         try:
             answer = WelcomeAnswer.model_validate(raw)

@@ -55,17 +55,20 @@ class Check(Phase):
     # ── Working
 
     def start_reading(self, raw: Any) -> Reply:
-        """Once every Source is done or skipped, moves setup on to Working and reads the Gmail
-        senders in the background, as `discover gmail-senders --json` does: the page asks how far
-        it is with `check_reading`, and once they're read setup moves on to Check by itself."""
+        """Once who gets the Brief is saved and every Source is done or skipped, moves setup on to
+        Working and reads the Gmail senders in the background, as `discover gmail-senders --json`
+        does: the page asks how far it is with `check_reading`, and once they're read setup moves
+        on to Check by itself."""
         context = self.context
         with context.connect.lock:
             progress = context.progress()
             if raw != {} or progress["phase"] not in ("connect", "working") \
-                    or setup_connect.next_source(progress["sources"]) is not None:
+                    or setup_connect.next_source(progress["sources"]) is not None \
+                    or context.setup_parent() is None:
                 return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                    "invalid-answers", "Connect each Source, or skip it, first.",
-                    errors=["answers: should be {}, once every Source is done or skipped"])
+                    "invalid-answers", "Save who gets the Brief, and connect each Source or skip "
+                    "it, first.", errors=["answers: should be {}, once the Recipients are saved "
+                                          "and every Source is done or skipped"])
             out = setup_save.save(context.config, {"progress": {"phase": "working"}})
         if out["result"] != "saved":
             return HTTPStatus.CONFLICT, out

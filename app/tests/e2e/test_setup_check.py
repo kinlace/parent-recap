@@ -125,6 +125,17 @@ def test_reading_waits_until_every_source_is_done_or_skipped(harness, page, send
         assert call(page.url, "api/working", method="POST", body=body).status == 400
 
 
+def test_reading_waits_until_who_gets_the_brief_is_saved(harness, page, senders):
+    # #708: every Source may be skipped, Gmail too, but the Brief needs someone to go to.
+    connect_done(harness, email={"enabled": True, "to": []})
+
+    r = start_reading(page.url)
+
+    assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    assert setup_save.read(config_file(harness))["progress"]["phase"] == "connect"
+    assert senders.batches == 0
+
+
 def test_reading_picks_up_again_after_the_page_was_restarted(harness, page, senders):
     connect_done(harness)
     more_progress(harness, phase="working")

@@ -117,23 +117,22 @@ def windows_pc(fresh_install, credential_manager, monkeypatch):
 def walk_to_finish(harness, url: str, reads_gmail: bool = True) -> dict[str, Any]:
     """Every step a family without Wilma takes, with a Gateway Key: the language, Welcome, each
     Source the page lists, Working, Check and the first Brief, then Finish, with Weekend Picks
-    turned on as manage turns them on. Gmail's step saves who gets the Brief, which Parent Recap
-    sends (ADR 0032), then connects Gmail, or skips it without `reads_gmail`. Returns how Finish
-    ended."""
+    turned on as manage turns them on. Connect's first step saves who gets the Brief, which
+    Parent Recap sends (ADR 0032); Gmail, last, is connected, or skipped without `reads_gmail`
+    (#708). Returns how Finish ended."""
     state = call(url, "api/state").json()
     assert state["system"] == ("windows" if sys.platform == "win32" else "macos")
     assert call(url, "api/language", method="POST", body={"language": "en"}).status == 200
     assert call(url, "api/welcome", method="POST",
                 body={"ai": "gateway", "partner": None, "feedback": False}).status == 200
+    assert save_recipients(url, {"address": PARENT, "language": "en"}).json()["result"] == "saved"
 
     listed = [s["name"] for s in call(url, "api/state").json()["connect"]["sources"]]
-    assert listed == ["wilma", "gmail", "ai", "whatsapp", "myclub"]
+    assert listed == ["wilma", "ai", "whatsapp", "myclub", "gmail"]
     for name in listed:
         if name in ("wilma", "whatsapp"):  # the school has no Wilma, the family skips WhatsApp
             assert source(url, name, "skip").status == 200, name
         elif name == "gmail":
-            out = save_recipients(url, {"address": PARENT, "language": "en"}).json()
-            assert out["result"] == "saved"
             if reads_gmail:
                 assert connect_gmail(url, PARENT, TYPED).json()["result"] == "saved"
             else:
@@ -143,7 +142,8 @@ def walk_to_finish(harness, url: str, reads_gmail: bool = True) -> dict[str, Any
         elif name == "myclub":
             assert add_kid(url, "Mia").json()["result"] == "added"
             out = save_link(url, "Mia", MYCLUB_LINK).json()
-            assert out["result"] == "saved" and out["progress"]["source"] is None
+            assert out["result"] == "saved" and out["progress"]["source"] == "gmail"
+    assert call(url, "api/state").json()["progress"]["source"] is None
     statuses = call(url, "api/state").json()["progress"]["sources"]
     assert {statuses[s] for s in ("ai", "myclub")} == {"done"}
     assert statuses["gmail"] == ("done" if reads_gmail else "skipped")

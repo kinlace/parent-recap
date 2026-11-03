@@ -435,9 +435,10 @@ def test_the_source_list_shows_each_entry_with_its_status(harness, page):
 
     state = call(page.url, "api/state").json()
 
-    # WhatsApp is a Linked Device on every system (ADR 0027), in the slot after the AI sign-in.
+    # WhatsApp is a Linked Device on every system (ADR 0027), in the slot after the AI sign-in,
+    # and Gmail comes last (#708).
     assert [(s["name"], s["skippable"]) for s in state["connect"]["sources"]] == [
-        ("wilma", True), ("gmail", True), ("ai", False), ("whatsapp", True), ("myclub", True)]
+        ("wilma", True), ("ai", False), ("whatsapp", True), ("myclub", True), ("gmail", True)]
     assert state["progress"]["source"] == "gmail"
     assert state["progress"]["sources"] == {"wilma": "done", "gmail": "to-do", "ai": "to-do",
                                             "whatsapp": "to-do", "myclub": "to-do"}
@@ -485,7 +486,7 @@ def test_a_skipped_source_moves_setup_on_and_can_be_come_back_to(harness, page):
     r = source(page.url, "wilma", "skip")
 
     assert r.status == 200 and r.json()["result"] == "saved"
-    assert r.json()["progress"]["source"] == "gmail"
+    assert r.json()["progress"]["source"] == "ai"
     assert statuses(page.url)["wilma"] == "skipped"
 
     r = source(page.url, "wilma", "open")
@@ -495,25 +496,24 @@ def test_a_skipped_source_moves_setup_on_and_can_be_come_back_to(harness, page):
 
 
 def test_skipping_the_last_source_leaves_none_to_do(harness, page):
-    save_progress(harness, {"phase": "connect", "source": "myclub",
-                            "sources": {"wilma": "done", "gmail": "done", "ai": "done",
+    save_progress(harness, {"phase": "connect", "source": "gmail",
+                            "sources": {"wilma": "done", "myclub": "done", "ai": "done",
                                         "whatsapp": "skipped"}})
 
-    assert source(page.url, "myclub", "skip").json()["progress"]["source"] is None
+    assert source(page.url, "gmail", "skip").json()["progress"]["source"] is None
 
 
 def test_skipping_wilma_turns_it_off_for_a_household_that_does_not_use_it(harness, page):
     r = source(page.url, "wilma", "skip")
 
-    assert r.json()["progress"]["source"] == "gmail"
+    assert r.json()["progress"]["source"] == "ai"
     assert statuses(page.url)["wilma"] == "skipped"
     assert Config.load(config_file(harness)).wilma.enabled is False
 
 
-def test_gmail_and_the_ai_sign_in_cannot_be_skipped(harness, page):
-    for name in ("gmail", "ai"):
-        r = source(page.url, name, "skip")
-        assert r.status == 400 and r.json()["result"] == "invalid-answers", name
+def test_the_ai_sign_in_cannot_be_skipped(harness, page):
+    r = source(page.url, "ai", "skip")
+    assert r.status == 400 and r.json()["result"] == "invalid-answers"
     for body in [{"source": "telegram", "action": "open"}, {"source": "gmail", "action": "done"},
                  {"source": "gmail"}, {"source": "gmail", "action": "open", "x": 1}, ["gmail"]]:
         assert call(page.url, "api/source", method="POST", body=body).status == 400, body

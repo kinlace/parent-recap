@@ -95,7 +95,34 @@
   </section>
   <section id="connect" hidden>
     <h1 data-text="connect.title"></h1>
-    <p class="note" data-text="connect.intro"></p>
+    <!-- Who gets the Brief, its own step before the Sources (#708): it names none of them. -->
+    <div id="recipients" class="source" hidden>
+      <h2 data-text="recipients.title"></h2>
+      <form id="recipients-form" class="details">
+        <p data-text="recipients.explain"></p>
+        <p data-text="recipients.unread"></p>
+        <div id="recipients-rows" class="recipients" data-add="recipients-add"></div>
+        <p class="add-recipient"><button type="button" id="recipients-add" class="link" data-text="recipients.add"></button></p>
+        <p id="recipients-junk" class="hint" data-text="recipients.junk" hidden></p>
+        <details id="recipients-key-part" class="more" hidden>
+          <summary data-text="recipients.key.have"></summary>
+          <p data-text="recipients.key.explain"></p>
+          <div class="field">
+            <label for="recipients-key" data-text="recipients.key"></label>
+            <input type="password" id="recipients-key" autocomplete="off" spellcheck="false">
+          </div>
+        </details>
+        <div class="slot" data-default></div>
+        <div class="actions">
+          <button type="submit" id="recipients-save" data-text="recipients.save"></button>
+        </div>
+      </form>
+    </div>
+    <div id="recipients-saved" hidden>
+      <p class="ready"><span id="recipients-to"></span> <button type="button" id="recipients-change" class="link" data-text="recipients.change"></button></p>
+      <div id="recipients-confirm" class="status" role="status" hidden></div>
+    </div>
+    <p id="connect-intro" class="note" data-text="connect.intro"></p>
     <ol id="sources" class="sources"></ol>
     <p id="source-handoff" class="handoff" role="status" hidden></p>
     <div id="connect-slot" class="slot"></div>
@@ -142,30 +169,22 @@
     </div>
     <div id="source-gmail" class="source" hidden>
       <h2 data-text="source.gmail"></h2>
-      <form id="gmail-brief-form" class="details">
-        <p data-text="gmail.brief.explain"></p>
-        <p data-text="gmail.brief.unread"></p>
-        <div id="gmail-brief-rows" class="recipients" data-add="gmail-brief-add"></div>
-        <p class="add-recipient"><button type="button" id="gmail-brief-add" class="link" data-text="recipients.add"></button></p>
-        <p id="gmail-brief-junk" class="hint" data-text="gmail.brief.junk" hidden></p>
-        <details id="gmail-brief-key-part" class="more" hidden>
-          <summary data-text="gmail.brief.key.have"></summary>
-          <p data-text="gmail.brief.key.explain"></p>
-          <div class="field">
-            <label for="gmail-brief-key" data-text="gmail.brief.key"></label>
-            <input type="password" id="gmail-brief-key" autocomplete="off" spellcheck="false">
-          </div>
-        </details>
-        <div class="slot" data-default></div>
-        <div class="actions">
-          <button type="submit" id="gmail-brief-save" data-text="gmail.brief.save"></button>
-        </div>
-      </form>
+      <p data-text="gmail.explain"></p>
+      <!-- Connect and Skip side by side, equally plain (#708): the App Password's steps show only
+           once the parent chooses to connect Gmail. -->
+      <div class="actions">
+        <button type="button" id="gmail-connect" class="secondary" data-text="gmail.connect"></button>
+        <button type="button" class="secondary" data-skip hidden></button>
+      </div>
       <div id="gmail-own" hidden>
-        <p class="ready"><span id="gmail-brief-to"></span> <button type="button" id="gmail-brief-change" class="link" data-text="gmail.brief.change"></button></p>
-        <div id="gmail-confirm" class="status" role="status" hidden></div>
-        <p data-text="gmail.explain"></p>
-        <p data-text="gmail.before"></p>
+        <details class="more">
+          <summary data-text="gmail.before"></summary>
+          <ul>
+            <li data-text="gmail.before.age"></li>
+            <li data-text="gmail.before.reset"></li>
+            <li data-text="gmail.before.two-step"></li>
+          </ul>
+        </details>
         <form id="gmail-form" class="details">
           <div class="field">
             <label for="gmail-address" data-text="gmail.address"></label>
@@ -186,7 +205,6 @@
           <div class="slot" data-default></div>
           <div class="actions">
             <button type="submit" id="gmail-save" data-text="gmail.save"></button>
-            <button type="button" class="link" data-skip hidden></button>
           </div>
         </form>
         <details class="more">
@@ -514,16 +532,16 @@
         </form>
         <div id="finish-ai-sign-in" hidden></div>
       </div>
-      <!-- Who gets the Brief, added or removed later as on Gmail's step, which saves them. -->
+      <!-- Who gets the Brief, added or removed later as on Connect's own step for them. -->
       <div id="finish-recipients" hidden>
         <h3 data-text="finish.recipients.title"></h3>
         <p id="finish-recipients-current"></p>
-        <p><button type="button" id="finish-recipients-open" class="secondary" data-text="gmail.brief.change"></button></p>
+        <p><button type="button" id="finish-recipients-open" class="secondary" data-text="recipients.change"></button></p>
         <form id="finish-recipients-form" hidden>
           <div id="finish-recipients-rows" class="recipients" data-add="finish-recipients-add"></div>
           <p class="add-recipient"><button type="button" id="finish-recipients-add" class="link" data-text="recipients.add"></button></p>
           <div class="actions">
-            <button type="submit" id="finish-recipients-save" data-text="gmail.brief.save"></button>
+            <button type="submit" id="finish-recipients-save" data-text="recipients.save"></button>
           </div>
         </form>
         <div id="finish-recipients-status" class="status" role="status" hidden>
@@ -566,7 +584,7 @@
   </section>
   <!-- The Gateway Key for sending, which Check and Finish move under the Brief sending check
        when it says there's none (ADR 0032). -->
-  <!-- The way to have the confirmation email sent again (ADR 0033), which Gmail's step, Check and
+  <!-- The way to have the confirmation email sent again (ADR 0033), which Connect, Check and
        Finish show where a Recipient hasn't confirmed: its message, and the button. -->
   <div id="confirm-template" hidden>
     <p class="confirm-message"></p>
@@ -574,7 +592,7 @@
   </div>
   <form id="send-key-form" class="details" hidden>
     <div class="field">
-      <label for="send-key" data-text="gmail.brief.key"></label>
+      <label for="send-key" data-text="recipients.key"></label>
       <input type="password" id="send-key" autocomplete="off" spellcheck="false" required>
     </div>
     <div class="actions">

@@ -237,7 +237,7 @@ def test_the_chat_reads_the_progress_and_answers_the_page_saved(harness, page, c
 
     read = json.loads(capsys.readouterr().out)
     assert read["progress"] == shown
-    assert (read["progress"]["phase"], read["progress"]["source"]) == ("connect", "gmail")
+    assert (read["progress"]["phase"], read["progress"]["source"]) == ("connect", "ai")
     assert read["progress"]["partner"] == {"address": "partner@example.com", "language": "zh"}
     cfg = Config.load(config_file(harness))
     assert (cfg.summary_language, cfg.llm.backend, cfg.wilma.enabled) == ("fi", "codex", False)

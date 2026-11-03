@@ -24,8 +24,9 @@ def test_a_language_without_reviewed_text_gets_the_english_label():
     assert sources.WHATSAPP.label("sv") == sources.WHATSAPP.label("en") == "WhatsApp"
 
 
-def test_the_connect_list_puts_wilma_first_and_myclub_last():
-    assert [s.name for s in sources.in_connect_order()] == ["wilma", "gmail", "whatsapp", "myclub"]
+def test_the_connect_list_puts_wilma_first_and_gmail_last():
+    # #708: few families read Gmail, and its App Password is where setup gets stuck.
+    assert [s.name for s in sources.in_connect_order()] == ["wilma", "whatsapp", "myclub", "gmail"]
 
 
 @pytest.mark.parametrize("profile", [MACOS, WINDOWS], ids=["macos", "windows"])
@@ -42,7 +43,7 @@ def test_the_hosted_version_never_reads_whatsapp(system):
 
     assert [s.name for s in sources.available()] == ["gmail", "myclub", "wilma"]
     assert sources.unavailable() == [sources.WHATSAPP]
-    assert [s.name for s in sources.in_connect_order()] == ["wilma", "gmail", "myclub"]
+    assert [s.name for s in sources.in_connect_order()] == ["wilma", "myclub", "gmail"]
     assert [s.name for s in sources.used(cfg)] == ["wilma"]
     assert cfg.other_sources() == ["wilma"]
 
