@@ -2,7 +2,7 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
-## Unreleased
+## 0.11.0 · 2026-11-03
 
 ### Added
 
@@ -17,6 +17,10 @@ What changes for families in each release, collected from the `What changes for 
 - Each new calendar event listed in the Brief shows its place and the first line of its details under it, such as a MyClub training's hall.
 - In the Wilma step's town search, a town's own Wilma comes first and says that all the town's schools sign in through it, so nobody takes the list for a list of schools.
 - The Wilma password is kept in your computer's own password store (the Keychain on a Mac, Credential Manager on Windows), like the other passwords, and no longer in the wilma CLI's file, where it was only lightly encoded. An existing install moves it there on its next run, without signing in again.
+- If ChatGPT's sign-in page fails or gets closed during setup, the AI step has a "Sign in to ChatGPT again" button that opens a new one, so you no longer have to close the browser and run the install line again.
+- A family whose ChatGPT sign-in can't finish can pick Claude or a Gateway Key on the same step instead, without going back to Welcome.
+- While the setup page installs Codex or Claude Code, it shows a moving bar and how long the install has run, and says the connection may be slow when it takes longer than usual, instead of one still line for minutes.
+- On a Mac whose Codex isn't signed in yet, Welcome lets you go on with ChatGPT and says you'll sign in at the AI step, instead of sending you to a Codex app you may not have.
 
 ## 0.10.4 · 2026-11-02
 
