@@ -7,7 +7,7 @@ from __future__ import annotations
 import subprocess
 import threading
 from http import HTTPStatus
-from typing import Any
+from typing import Any, Literal
 
 from .. import failure, llm, setup_ai, setup_save
 from ..setup_connect import Nothing, Reply, Strict, parse
@@ -43,7 +43,7 @@ class GatewayKey(Strict):
 
 
 class AnotherAI(Strict):
-    ai: str
+    ai: Literal["claude", "codex", "gateway"]
 
 
 class AISignIn(Phase):
@@ -93,7 +93,7 @@ class AISignIn(Phase):
             if connect.progress()["phase"] != "connect":
                 return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                     "invalid-answers", "Only Connect's AI step picks another AI.",
-                    errors=["answers: Welcome picks the AI, and Finish changes it"])
+                    errors=["answers: should be {\"ai\": ...}, once setup is at Connect"])
             status, out = connect.save({"ai": answer.ai, "progress": {
                 "source": "ai", "sources": {"ai": "to-do"}}})
         if status != HTTPStatus.OK:
@@ -102,6 +102,8 @@ class AISignIn(Phase):
             with self._lock:
                 self._end_codex_login()
                 self._codex = None
+        if answer.ai != "claude":  # its window, if one was opened, is no use now
+            desktop.forget_terminal(setup_ai.CLAUDE_WINDOW)
         if answer.ai in chats():  # the gateway has no chat to install, nor Windows yet
             self.context.chat.install(answer.ai)
         return status, {**out, "ai": answer.ai}
@@ -333,7 +335,8 @@ class AISignIn(Phase):
         except Exception as e:  # never leave the page installing
             reason = failure.logged("Codex didn't install", failure.of(e, "The Codex install"))
         with self._lock:
-            if codex is not None and (self._codex is None or self._codex.poll() is not None):
+            if codex is not None and not self._another_ai_picked("codex") and \
+                    (self._codex is None or self._codex.poll() is not None):
                 self._codex = setup_ai.start_codex_login(codex)
             self._codex_install = "installed" if codex else "install-failed"
             if codex is None:  # every way it fails says why
@@ -351,12 +354,21 @@ class AISignIn(Phase):
             return HTTPStatus.OK, {"result": result, **keychain_code(extra)}
         return self._signed_in("gateway")
 
+    def _another_ai_picked(self, name: str) -> bool:
+        """Whether "Use another AI" picked another AI than `name` on Connect: a sign-in or install
+        of `name` that ends after it isn't the AI step's. The page has gone on to the new one's."""
+        backend = self.context.section("llm").get("backend")
+        return self.context.connect.progress()["phase"] == "connect" and \
+            isinstance(backend, str) and backend != name
+
     def _signed_in(self, name: str, reply: dict[str, Any] | None = None) -> Reply:
         """Saves the AI sign-in as done, moving setup on to the next Source. Once setup is at
         Finish, it's a switch: `name`, whose test call has just passed, becomes the Household's
         one AI (ADR 0017), and its chat is installed as when Welcome picks it."""
         connect = self.context.connect
         with connect.lock:
+            if self._another_ai_picked(name):
+                return HTTPStatus.OK, {"result": "another-ai"}
             switch = connect.progress()["phase"] == "finish"
             status, out = connect.save({"ai": name}, reply) if switch \
                 else connect.complete("ai", reply=reply)
