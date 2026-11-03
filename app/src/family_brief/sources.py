@@ -4,7 +4,8 @@ config connects it, how the evening run reads it and widens its lookback, what t
 line counts of it, which systems can read it, whether the setup page lets a family skip it, the
 mail it sends of its own news, which of its messages went to everyone and how the Brief lists one
 held back (ADR 0013), how the calendar treats its events, what `doctor` checks of it, why one the
-Household set up can't be read tonight, and what uninstall removes for it. A new Source is its
+Household set up can't be read tonight, whether a Hosted Household can have it, and what
+uninstall removes for it. A new Source is its
 collector module, its config model and its record here."""
 from __future__ import annotations
 
@@ -54,6 +55,7 @@ def _never_unread(*_args: Any) -> Unread | None:
 
 
 EVERY_SYSTEM = frozenset({"macos", "windows", "linux"})
+HOSTED_SYSTEM = "linux"  # the hosted version's server's (ADR 0029)
 
 
 @dataclass(frozen=True)
@@ -67,8 +69,11 @@ class Source:
     collect: Callable[[Config, State, list[str]], Collected]  # reads it, given the Kids' terms
     counts_events: bool = False         # the coverage line counts its events rather than its Messages
     # the systems it can be read on, by their profile's name; elsewhere nothing offers, reads,
-    # checks or removes it, and the Brief's coverage line says the hosted version doesn't read it
+    # checks or removes it
     systems: frozenset[str] = EVERY_SYSTEM
+    # whether the hosted sign-up sets it up (ADR 0031); a Hosted Household's Brief says the hosted
+    # version doesn't read one it doesn't, or one its system can't read
+    hosted: bool = True
     lookback: Callable[[Config], Window] | None = None  # its section with lookback_hours, if any
     # why it isn't read tonight though the Household set it up, given the config and the state
     unread: Callable[[Config, State], Unread | None] = _never_unread
@@ -126,10 +131,11 @@ def _same_everywhere(label: str) -> dict[str, str]:
 
 # A Gmail with no sender ticked is never read: reading it would search the whole inbox (#361).
 # It never sends the Brief either (ADR 0032), so a Household can skip it. Last on Connect's list:
-# few families read it, and its App Password is where setup gets stuck most (#708).
+# few families read it, and its App Password is where setup gets stuck most (#708). The hosted
+# sign-up has no Gmail step yet (ADR 0029, 0031).
 GMAIL = Source("gmail", _same_everywhere("Gmail"),
                lambda cfg: bool(cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders),
-               skippable=True, connect_rank=5, collect=_collector("gmail"),
+               skippable=True, connect_rank=5, collect=_collector("gmail"), hosted=False,
                lookback=lambda cfg: cfg.gmail, check=_in("ops", "check_gmail"),
                secrets=_in("uninstall", "gmail_secrets"), notes=_in("uninstall", "gmail_notes"),
                sent_to_everyone=_in("collectors.gmail", "sent_to_everyone"),
@@ -180,10 +186,12 @@ def available() -> list[Source]:
     return [s for s in ALL if s.available()]
 
 
-def unavailable() -> list[Source]:
-    """The Sources the system the program runs on can't read, which the hosted version leaves out
-    (ADR 0029), in run order."""
-    return [s for s in ALL if not s.available()]
+def not_hosted() -> list[Source]:
+    """The Sources a Hosted Household can't have: those the hosted version's system can't read and
+    those its sign-up doesn't set up (ADR 0029, 0031), in the order the setup page's Connect list
+    shows them."""
+    return sorted((s for s in ALL if not s.hosted or HOSTED_SYSTEM not in s.systems),
+                  key=lambda s: s.connect_rank)
 
 
 def in_connect_order() -> list[Source]:

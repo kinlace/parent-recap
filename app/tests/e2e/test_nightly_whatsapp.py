@@ -118,7 +118,8 @@ def test_records_past_the_longest_lookback_and_a_margin_are_pruned(harness, what
 @pytest.mark.parametrize("paired", [True, False], ids=["paired", "needs-pairing"])
 def test_the_hosted_version_never_reads_whatsapp_and_says_so(harness, whatsapp_only, paired):
     harness.system = LINUX  # ADR 0029
-    one_gmail_message(harness)
+    harness.config["hosted"] = True
+    one_gmail_message(harness)  # which the sign-up doesn't set up, but a hand-made config can
     if not paired:  # which elsewhere is a Source not read since then
         harness.source_fakes["whatsapp"].status(paired=False, connected_since=None,
                                                 last_connected="2026-09-26T05:30:00.000Z",

@@ -43,7 +43,7 @@ _SYSTEM_PROMPT = Template("""You translate the fixed text of a program that emai
 4. quotes: the quotation marks the language uses, shown around a word or two; never straight double quotes
 5. weekdays: short weekday names, Monday first; who: the words for mom, dad and either parent
 6. months: short month names, January first; date and date_time: a date, and a date with its time, the way people write them in a message in this language (order, separators, 24-hour clock), with {day}, the month as {month_name} or as its number {month}, {weekday} if the language usually writes it, and in date_time {hour} and {minute}
-7. messages and events: "one" for a single one and "other" for several, with {n} for the number
+7. messages and events: "one" for a single one and "other" for several, with {n} for the number; not_hosted: "one" for a single Source in {sources} and "other" for several
 8. The Brief is the daily message. Its Digest, Notices and Action Items, the Household and each Kid are what it is about: use the everyday words a parent reading this language would use
 9. No markdown fences, no explanations
 """)

@@ -129,23 +129,51 @@ def test_a_linked_device_that_needs_a_new_pairing_is_not_read_since_then(languag
 
 @pytest.mark.parametrize("language, lines", [
     ("en", "📥 Read tonight: MyClub 1 event · Wilma 2 messages\n"
-           "WhatsApp isn't read in the hosted version."),
-    ("zh", "📥 今晚读取：MyClub 1 个日程 · Wilma 2 条\n托管版不读取 WhatsApp。"),
+           "WhatsApp and Gmail aren't read in the hosted version."),
+    ("zh", "📥 今晚读取：MyClub 1 个日程 · Wilma 2 条\n托管版不读取 WhatsApp 和 Gmail。"),
     ("fi", "📥 Luettu tänä iltana: MyClub 1 tapahtuma · Wilma 2 viestiä\n"
-           "WhatsApp ei ole mukana ylläpidetyssä versiossa."),
+           "WhatsApp ja Gmail eivät ole mukana ylläpidetyssä versiossa."),
 ])
-def test_the_hosted_version_s_coverage_line_says_whatsapp_isn_t_read_there(system, language,
-                                                                           lines):
+def test_a_hosted_household_s_coverage_line_names_every_source_it_can_t_have(system, language,
+                                                                              lines):
     system.profile = LINUX
     reply, sources = the_normal_night(language)
     t = TEXT[language]
     coverage = {"myclub": {"count": 1, "error": None}, "wilma": {"count": 2, "error": None}}
-    night = brief_of(written(reply, sources), t, coverage=coverage)
+    night = brief_of(written(reply, sources), t, coverage=coverage, hosted=True)
 
     [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
 
     assert without_unread_note(mail.text).endswith("\n" + lines)
     assert html.escape(lines.splitlines()[-1]) in mail.html
+
+
+@pytest.mark.parametrize("language, line", [
+    ("en", "WhatsApp isn't read in the hosted version."),
+    ("zh", "托管版不读取 WhatsApp。"),
+    ("fi", "WhatsApp ei ole mukana ylläpidetyssä versiossa."),
+])
+def test_a_source_a_hosted_household_read_tonight_is_not_named_as_unread(system, language, line):
+    system.profile = LINUX
+    reply, sources = the_normal_night(language)
+    t = TEXT[language]
+    coverage = {"gmail": {"count": 1, "error": None}, "wilma": {"count": 2, "error": None}}
+    night = brief_of(written(reply, sources), t, coverage=coverage, hosted=True)
+
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
+
+    assert without_unread_note(mail.text).endswith("\n" + line)
+
+
+def test_a_family_s_own_computer_names_no_source_as_unread_in_the_hosted_version():
+    reply, sources = the_normal_night("en")
+    t = TEXT["en"]
+    coverage = {"myclub": {"count": 1, "error": None}, "wilma": {"count": 2, "error": None}}
+    night = brief_of(written(reply, sources), t, coverage=coverage)
+
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
+
+    assert without_unread_note(mail.text).endswith("📥 Read tonight: MyClub 1 event · Wilma 2 messages")
 
 
 def test_one_never_paired_since_an_unknown_time_is_not_read_for_that_reason():
