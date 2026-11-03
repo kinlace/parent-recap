@@ -415,7 +415,9 @@ def test_follow_reconnects_after_a_drop_with_a_growing_pause(device, tmp_path):
     opened = [c["at"] for c in run.calls if c["call"] == "makeWASocket"]
     assert len(opened) == 3
     first, second = opened[1] - opened[0], opened[2] - opened[1]
-    assert first >= 1900 and second >= 2 * first - 200, (first, second)
+    # The pause doubles, 2 then 4 seconds; each gap adds its own start-up time, which doubling
+    # first would double too (main at a1417e6: 2148 then 4074).
+    assert first >= 1900 and second >= 3900, (first, second)
     assert [r["text"] for r in stored(tmp_path)] == [TEXT]
     assert_only_reads(run)
 
