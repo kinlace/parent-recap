@@ -973,6 +973,38 @@ def test_chatgpt_s_step_installs_codex_and_offers_the_button_again_when_that_fai
     expect(install).to_be_visible()
 
 
+def test_while_codex_installs_its_step_shows_a_bar_and_the_time_so_far_in_each_language(
+        tab, family, ai):
+    """A slow install shows how far it has got (#709): a moving bar until the installer prints a
+    share, the time so far, and past the usual time that it's still working. The server's answers
+    are played, each until the test moves on."""
+    at_the_ai_step(tab, family, "codex", SYSTEM)
+    started = {"result": "installing", "seconds": 0, "usual": 120, "limit": 600}
+    answer = {"out": started}
+    tab.route(re.compile(r"/api/codex/install$"), lambda route: route.fulfill(json=answer["out"]))
+    tab.route(re.compile(r"/api/codex$"), lambda route: route.fulfill(json=answer["out"]))
+    bar = tab.locator("#source-install-bar")
+    slow = tab.locator("#source-install-slow")
+
+    button(tab, "codex.install").click()
+
+    expect(bar).to_be_visible()
+    expect(bar).not_to_have_attribute("value", re.compile(".*"))  # the browser's moving bar
+    expect(tab.get_by_text(text("install.under-a-minute", limit=10))).to_be_visible()
+    expect(slow).to_be_hidden()
+    answer["out"] = {**started, "seconds": 150, "percent": 45}  # the next check, a few seconds on
+    expect(bar).to_have_js_property("value", 45)
+    for language in ("en", "fi", "zh"):
+        tab.locator("#language-switch").select_option(language)
+        expect(tab.get_by_text(text("install.so-far", language=language, minutes=2,
+                                    limit=10))).to_be_visible()
+        expect(tab.get_by_text(text("install.slow", language=language))).to_be_visible()
+    answer["out"] = {"result": "install-failed", "reason": "The Codex installer ended with exit "
+                                                           "code 1."}
+    expect(tab.get_by_text(text("codex.install-failed", language="zh"))).to_be_visible()
+    expect(tab.locator("#source-install-progress")).to_be_hidden()
+
+
 def test_while_chatgpt_s_sign_in_waits_the_step_offers_to_sign_in_again(tab, family, ai):
     """OpenAI's page can fail in the browser, or its tab be closed, while `codex login` waits on:
     the step offers a fresh sign-in (#705). The server's answers are played."""

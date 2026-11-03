@@ -324,6 +324,11 @@ fieldset .field label {
 
 .status button { margin-top: 10px; margin-right: 6px; }
 
+/* How far an install of Codex or Claude Code has got: without a share, the browser's moving bar. */
+.install-progress progress { display: block; width: 100%; margin: 10px 0 6px; accent-color: var(--accent); }
+
+.install-progress p + p { margin-top: 4px; }
+
 .status[data-result="ready"],
 .status[data-result="gmail.saved"],
 .status[data-result="wilma.signed-in"],

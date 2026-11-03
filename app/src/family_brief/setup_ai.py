@@ -28,6 +28,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from typing import Any
 
 from . import failure, install_record, llm
@@ -53,6 +54,15 @@ READ_SECONDS = 0.2
 QUIET_SECONDS = 1.0
 # Downloading and unpacking the Codex CLI or Claude Code, on a slow line.
 CODEX_INSTALL_SECONDS = 10 * 60
+# How long such an install usually takes: past it, the page says the connection may be slow.
+USUAL_INSTALL_SECONDS = 2 * 60
+# A download's share as an installer prints it while it runs (#709): curl's progress meter, on
+# stderr when it writes to a file or a pipe, whose first column is the share of the total; or a
+# line that ends in a percentage, as curl's --progress-bar and others print it.
+CURL_METER = re.compile(r"^\s*(\d{1,3})\s+\d+(?:\.\d+)?[kMGTP]?\s+\d{1,3}\s+\d+(?:\.\d+)?[kMGTP]?\s")
+SHARE_AT_END = re.compile(r"(?<![\d.,])(\d{1,3}(?:[.,]\d+)?)\s?%\s*$")
+# How long an install's output is still read once the installer has ended, for what it said.
+READ_AFTER_SECONDS = 5
 # Escape sequences a terminal program draws its screen with: CSI, OSC, and the two-byte ones.
 ESCAPES = re.compile(rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])")
 
@@ -123,32 +133,34 @@ def _token(shown: bytes, *, ended: bool) -> str | None:
     return found[-1].group(0) if found else None
 
 
-def install_codex() -> str | None:
+Share = Callable[[int], None]  # what an install's download's share, in percent, is given to
+
+
+def install_codex(timeout: float = CODEX_INSTALL_SECONDS, share: Share | None = None) -> str | None:
     """Installs the Codex CLI with OpenAI's own installer, as their instructions say to: the
     system's shell downloads and runs it. Returns why it didn't run through, which is also
-    logged, or None once it did."""
+    logged, or None once it did. Each share of its download it prints goes to `share`."""
     # Out of the Terminal the setup page runs in, where the installer would otherwise ask on
     # the tty whether to start Codex, and wait for an answer.
-    return _install("codex", "Codex", {"CODEX_NON_INTERACTIVE": "1"})
+    return _install("codex", "Codex", {"CODEX_NON_INTERACTIVE": "1"}, timeout, share)
 
 
-def install_claude() -> str | None:
+def install_claude(timeout: float = CODEX_INSTALL_SECONDS, share: Share | None = None) -> str | None:
     """Installs Claude Code with Anthropic's own installer, the same way, where the page installs
     it (Windows): on a Mac the family pastes its line into Terminal."""
-    return _install("claude", "Claude Code", {})
+    return _install("claude", "Claude Code", {}, timeout, share)
 
 
-def _install(name: str, called: str, env: dict[str, str]) -> str | None:
+def _install(name: str, called: str, env: dict[str, str], timeout: float,
+             share: Share | None) -> str | None:
     system = profile.current()
     line = llm.named(name).install_line()
     if name not in system.page_installs or line is None:  # the family installs it
         return failure.logged(f"{called} didn't install",
                               f"The setup page doesn't install {called} on this system.")
     try:
-        proc = subprocess.run([*system.installer, line], capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", timeout=CODEX_INSTALL_SECONDS,
-                              stdin=subprocess.DEVNULL, env={**os.environ, **env},
-                              start_new_session=True)  # no tty of the Terminal's to ask on
+        proc = run_installer([*system.installer, line], {**os.environ, **env}, timeout,
+                             share or (lambda _: None))
     except (OSError, subprocess.SubprocessError) as e:
         reason = failure.of(e, f"The {called} install", f"The {called} installer")
     else:
@@ -157,6 +169,88 @@ def _install(name: str, called: str, env: dict[str, str]) -> str | None:
         reason = failure.exited(f"The {called} installer", proc.returncode, proc.stderr,
                                 proc.stdout)
     return failure.logged(f"{called} didn't install", reason)
+
+
+def run_installer(cmd: list[str], env: dict[str, str], timeout: float,
+                  share: Share) -> subprocess.CompletedProcess:
+    """Runs an installer as `subprocess.run` would, keeping what it prints, and reads that as it
+    comes for its download's share, which goes to `share`: only the number goes to the page, as
+    what it prints can name the computer's paths. Out of time, it's ended with what it started
+    and `subprocess.TimeoutExpired` is raised."""
+    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, env=env,
+                            start_new_session=True)  # no tty of the Terminal's to ask on
+    said = {"out": bytearray(), "err": bytearray()}
+    readers = [threading.Thread(target=_read, args=(stream, said[name], ShareReader(share)),
+                                daemon=True)
+               for name, stream in (("out", proc.stdout), ("err", proc.stderr))]
+    for reader in readers:
+        reader.start()
+    try:
+        proc.wait(timeout)
+    except subprocess.TimeoutExpired:
+        end_tree(proc)
+        raise subprocess.TimeoutExpired(cmd, timeout) from None
+    finally:
+        # Something it started in the background may hold its output open: not waited for long.
+        for reader in readers:
+            reader.join(READ_AFTER_SECONDS)
+    return subprocess.CompletedProcess(cmd, proc.returncode,
+                                       bytes(said["out"]).decode("utf-8", "replace"),
+                                       bytes(said["err"]).decode("utf-8", "replace"))
+
+
+def _read(stream: Any, kept: bytearray, reader: ShareReader) -> None:
+    try:
+        while chunk := stream.read1(65536):
+            kept += chunk
+            reader.feed(chunk)
+    except (OSError, ValueError):  # it was closed
+        pass
+
+
+class ShareReader:
+    """Reads an installer's output piece by piece, as it comes, and gives `share` the download's
+    share each whole line says. curl redraws its meter after a carriage return, so a line ends at
+    either; one not over yet may still be missing its columns."""
+
+    def __init__(self, share: Share) -> None:
+        self.share = share
+        self.rest = b""
+
+    def feed(self, piece: bytes) -> None:
+        lines = re.split(rb"[\r\n]", self.rest + piece)
+        self.rest = lines.pop()[-1000:]  # a line that never ends isn't kept whole
+        for line in lines:
+            found = download_share(ESCAPES.sub(b"", line).decode("utf-8", "replace"))
+            if found is not None:
+                self.share(found)
+
+
+def download_share(line: str) -> int | None:
+    """The share of its download, in whole percent, that a line an installer printed says, or
+    None if it says none."""
+    found = CURL_METER.match(line) or SHARE_AT_END.search(line)
+    if not found:
+        return None
+    share = float(found.group(1).replace(",", "."))
+    return int(share) if share <= 100 else None
+
+
+def end_tree(proc: subprocess.Popen) -> None:
+    """Ends a program still running, with what it started, and waits for it."""
+    if proc.poll() is None:
+        try:
+            if hasattr(os, "killpg"):  # it started in a session of its own
+                os.killpg(proc.pid, signal.SIGKILL)
+            else:  # Windows: the process and its tree
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                               capture_output=True, timeout=10, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        if proc.poll() is None:
+            proc.kill()
+    proc.wait()
 
 
 def start_codex_login(program: str) -> subprocess.Popen | None:
@@ -173,18 +267,7 @@ def start_codex_login(program: str) -> subprocess.Popen | None:
 def end_codex_login(proc: subprocess.Popen) -> None:
     """Ends a `codex login` still running, with what it started: a `codex` that npm put there
     is a wrapper, and the real sign-in under it would go on holding the browser's callback."""
-    if proc.poll() is None:
-        try:
-            if hasattr(os, "killpg"):  # it started in a session of its own
-                os.killpg(proc.pid, signal.SIGKILL)
-            else:  # Windows: the process and its tree
-                subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                               capture_output=True, timeout=10, stdin=subprocess.DEVNULL)
-        except (OSError, subprocess.SubprocessError):
-            pass
-        if proc.poll() is None:
-            proc.kill()
-    proc.wait()
+    end_tree(proc)
 
 
 def claude_token_sign_in(typed: str) -> tuple[str, dict[str, Any]]:

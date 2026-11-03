@@ -536,27 +536,73 @@ def fake_codex(folder: Path) -> Path:
     return folder / "codex.cmd"
 
 
+# An AI's installer as the page runs it, in place of the system's shell running the real one: it
+# prints curl's progress meter on stderr, redrawn after a carriage return, for each of `shares`,
+# holds while the file `hold` names isn't there, sleeps `sleep` seconds, then prints `out` and
+# `err` and ends with `code`.
+FAKE_INSTALLER = r"""
+import json, pathlib, sys, time
+plan = json.loads(sys.argv[1])
+for share in plan["shares"]:
+    sys.stderr.write("\r%3d 12.3M  %3d 5612k    0     0  1234k      0  0:00:10  0:00:04  "
+                     "0:00:06 1300k" % (share, share))
+    sys.stderr.flush()
+    time.sleep(0.05)
+if plan["shares"]:
+    sys.stderr.write("\n")
+    sys.stderr.flush()
+while plan["hold"] and not pathlib.Path(plan["hold"]).exists():
+    time.sleep(0.01)
+time.sleep(plan["sleep"])
+sys.stdout.write(plan["out"])
+sys.stderr.write(plan["err"])
+sys.exit(plan["code"])
+"""
+
+
+def fake_installer(monkeypatch, tmp_path: Path, shell: str, puts: Any, said: str, error: str
+                   ) -> dict[str, Any]:
+    """The installer the system's `shell` runs, faked as FAKE_INSTALLER: unless `fails`, `puts()`
+    puts the program in place as it starts, and it ends saying `said`; if it `fails`, it says
+    `error` and ends with 1. `run(cmd)`, if set, is the installer's run in place of one that
+    works, as changes to FAKE_INSTALLER's plan or an exception raised. While `holds`, it waits
+    after printing `shares` until `go()`. Each command run is in `ran`, its environment in
+    `envs`."""
+    hold = tmp_path / "installer-go"
+    installer: dict[str, Any] = {"fails": False, "ran": [], "envs": [], "run": None,
+                                 "shares": [], "holds": False, "go": lambda: hold.write_text("")}
+    popen = subprocess.Popen
+
+    def started(cmd: list[str], *a: Any, **k: Any) -> Any:
+        if cmd[0] != shell:
+            return popen(cmd, *a, **k)
+        installer["ran"].append(cmd)
+        installer["envs"].append(k.get("env"))
+        plan = {"shares": installer["shares"], "hold": str(hold) if installer["holds"] else "",
+                "sleep": 0, "out": "", "err": "", "code": 0}
+        if installer["run"] is not None:
+            plan.update(installer["run"](cmd))
+        elif installer["fails"]:
+            plan.update(err=error, code=1)
+        else:
+            puts()
+            plan.update(out=said)
+        return popen([sys.executable, "-c", FAKE_INSTALLER, json.dumps(plan)], *a, **k)
+    monkeypatch.setattr(subprocess, "Popen", started)
+    return installer
+
+
 @pytest.fixture
-def codex_installer(harness, ai, windows_programs, monkeypatch) -> dict[str, Any]:
+def codex_installer(harness, ai, windows_programs, monkeypatch, tmp_path) -> dict[str, Any]:
     """A Windows PC without Codex, and OpenAI's installer, which PowerShell runs: the fake puts
     `codex` where the real one puts codex.exe, under %LOCALAPPDATA%, unless `fails`. The PC's
     PATH doesn't lead there: the installer adds it only for windows opened after it ran."""
-    installer = {"fails": False, "ran": [], "run": None,
-                 "folder": windows_programs / "Programs" / "OpenAI" / "Codex" / "bin"}
+    folder = windows_programs / "Programs" / "OpenAI" / "Codex" / "bin"
     record_background_processes(harness, monkeypatch, [])
-    run = subprocess.run
-
-    def powershell(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if cmd[0] != "powershell.exe":
-            return run(cmd, *a, **k)
-        installer["ran"].append(cmd)
-        if installer["run"] is not None:  # the installer's run, in place of one that works
-            return installer["run"](cmd)
-        if installer["fails"]:
-            return subprocess.CompletedProcess(cmd, 1, "", "Invoke-WebRequest: no network")
-        fake_codex(installer["folder"])
-        return subprocess.CompletedProcess(cmd, 0, "Codex CLI installed successfully.\n", "")
-    monkeypatch.setattr(subprocess, "run", powershell)
+    installer = fake_installer(monkeypatch, tmp_path, "powershell.exe", lambda: fake_codex(folder),
+                               "Codex CLI installed successfully.\n",
+                               "Invoke-WebRequest: no network")
+    installer["folder"] = folder
     return installer
 
 
@@ -571,6 +617,41 @@ def codex_installed(url: str) -> dict[str, Any]:
     return out
 
 
+# An install as it starts: no time yet, how long one usually takes and may take, no share yet.
+JUST_STARTED = {"result": "installing", "seconds": 0, "usual": 120, "limit": 600}
+
+
+def test_while_codex_installs_its_check_says_how_long_it_has_run_and_its_download_s_share(
+        harness, page, codex_installer, clock):
+    at_the_ai_step(harness, page.url, "codex")
+    harness.signed_in["codex"] = False
+    codex_installer["shares"] = [0, 12, 45]
+    codex_installer["holds"] = True
+
+    assert call(page.url, "api/codex/install", method="POST", body={}).json() == JUST_STARTED
+
+    wait_for(lambda: codex_check(page.url).get("percent") == 45)
+    clock.now += 150  # past the usual time: the page says the connection may be slow
+    r = call(page.url, "api/codex", method="POST", body={})
+    assert r.json() == {**JUST_STARTED, "seconds": 150, "percent": 45}
+    assert b"12.3M" not in r.body  # only the numbers: what the installer prints can name paths
+    codex_installer["go"]()
+    assert codex_installed(page.url) == {"result": "waiting"}  # ended as before
+
+
+def test_while_claude_code_installs_its_check_says_how_long_it_has_run_without_a_share_unknown(
+        harness, page, claude_installer, clock):
+    at_the_ai_step(harness, page.url)
+    claude_installer["holds"] = True  # and prints no share, as PowerShell's progress isn't printed
+
+    assert call(page.url, "api/claude/install", method="POST", body={}).json() == JUST_STARTED
+    clock.now += 61
+    assert call(page.url, "api/claude/check", method="POST", body={}).json() == \
+        {**JUST_STARTED, "seconds": 61}  # the page shows a moving bar
+    claude_installer["go"]()
+    assert claude_installed(page.url) == {"result": "opened"}  # ended as before
+
+
 def test_on_windows_the_page_installs_codex_with_openai_s_installer_and_opens_its_sign_in(
         harness, page, codex_installer):
     at_the_ai_step(harness, page.url, "codex")
@@ -579,7 +660,7 @@ def test_on_windows_the_page_installs_codex_with_openai_s_installer_and_opens_it
 
     r = call(page.url, "api/codex/install", method="POST", body={})
 
-    assert r.status == 200 and r.json() == {"result": "installing"}
+    assert r.status == 200 and r.json() == JUST_STARTED
     assert codex_installed(page.url) == {"result": "waiting"}  # the sign-in is open in the browser
     [cmd] = codex_installer["ran"]
     assert cmd[-1] == "irm https://github.com/openai/codex/releases/latest/download/install.ps1 | iex"
@@ -599,7 +680,7 @@ def test_on_windows_an_install_of_codex_that_fails_says_so_and_can_be_tried_agai
     codex_installer["fails"] = True
 
     assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
-        {"result": "installing"}
+        JUST_STARTED
 
     # With what the installer said last, for the page to show.
     reason = "The Codex installer ended with exit code 1:\nInvoke-WebRequest: no network"
@@ -608,17 +689,17 @@ def test_on_windows_an_install_of_codex_that_fails_says_so_and_can_be_tried_agai
     assert codex_check(page.url) == {"result": "not-installed"}  # said once
     codex_installer["fails"] = False
     assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
-        {"result": "installing"}
+        JUST_STARTED
     assert codex_installed(page.url)["result"] == "signed-in"
     assert len(codex_installer["ran"]) == 2
 
 
 def installer_times_out(cmd: list[str]) -> Any:
-    raise subprocess.TimeoutExpired(cmd, setup_ai.CODEX_INSTALL_SECONDS)
+    return {"sleep": 30}  # past the page's time limit, which the test sets to 1 second
 
 
 def installer_leaves_nothing(cmd: list[str]) -> Any:
-    return subprocess.CompletedProcess(cmd, 0, "Codex CLI installed successfully.\n", "")
+    return {"out": "Codex CLI installed successfully.\n"}
 
 
 def installer_cannot_run(cmd: list[str]) -> Any:
@@ -626,8 +707,7 @@ def installer_cannot_run(cmd: list[str]) -> Any:
 
 
 @pytest.mark.parametrize("run, said", [
-    (installer_times_out,
-     f"The Codex installer didn't finish within {setup_ai.CODEX_INSTALL_SECONDS} seconds."),
+    (installer_times_out, "The Codex installer didn't finish within 1 seconds."),
     (installer_leaves_nothing,
      "The Codex installer finished, but codex isn't where the setup page looks for it."),
     (installer_cannot_run, "The Codex install stopped: FileNotFoundError: [Errno 2] The system "
@@ -637,6 +717,7 @@ def test_each_other_way_an_install_of_codex_fails_says_which_in_one_line(
         harness, page, codex_installer, run, said):
     at_the_ai_step(harness, page.url, "codex")
     codex_installer["run"] = run
+    page.context.timeouts.ai_install = 1
 
     call(page.url, "api/codex/install", method="POST", body={})
 
@@ -655,23 +736,17 @@ def test_on_windows_installing_codex_that_is_there_already_only_opens_its_sign_i
 
 
 @pytest.fixture
-def mac_codex_installer(harness, ai, monkeypatch) -> dict[str, Any]:
+def mac_codex_installer(harness, ai, monkeypatch, tmp_path) -> dict[str, Any]:
     """A Mac without Codex, and OpenAI's installer for macOS, which sh runs: the fake puts `codex`
     where the real one does, in ~/.local/bin, unless `fails`. The Mac's PATH doesn't lead there:
     the installer adds it only for windows opened after it ran."""
-    installer = {"fails": False, "ran": [], "folder": harness.home / ".local" / "bin"}
+    folder = harness.home / ".local" / "bin"
     record_background_processes(harness, monkeypatch, [])
-    run = subprocess.run
-
-    def sh(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if cmd[:2] != ["/bin/sh", "-c"]:
-            return run(cmd, *a, **k)
-        installer["ran"].append((cmd, k.get("env")))
-        if installer["fails"]:
-            return subprocess.CompletedProcess(cmd, 1, "", "curl: (6) Could not resolve host")
-        program(installer["folder"], "codex", FAKE_CODEX.format(python=sys.executable))
-        return subprocess.CompletedProcess(cmd, 0, "Codex CLI 0.1.0 installed successfully.\n", "")
-    monkeypatch.setattr(subprocess, "run", sh)
+    installer = fake_installer(
+        monkeypatch, tmp_path, "/bin/sh",
+        lambda: program(folder, "codex", FAKE_CODEX.format(python=sys.executable)),
+        "Codex CLI 0.1.0 installed successfully.\n", "curl: (6) Could not resolve host")
+    installer["folder"] = folder
     return installer
 
 
@@ -684,9 +759,10 @@ def test_on_a_mac_the_page_installs_codex_with_openai_s_installer_and_opens_its_
 
     r = call(page.url, "api/codex/install", method="POST", body={})
 
-    assert r.status == 200 and r.json() == {"result": "installing"}
+    assert r.status == 200 and r.json() == JUST_STARTED
     assert codex_installed(page.url) == {"result": "waiting"}  # the sign-in is open in the browser
-    [(cmd, env)] = mac_codex_installer["ran"]
+    [cmd] = mac_codex_installer["ran"]
+    [env] = mac_codex_installer["envs"]
     assert cmd == ["/bin/sh", "-c",
                    "curl -fsSL https://github.com/openai/codex/releases/latest/download/install.sh | sh"]
     # Run from Terminal, the installer would ask on its tty whether to start Codex, and wait.
@@ -706,7 +782,7 @@ def test_on_a_mac_an_install_of_codex_that_fails_says_so_and_can_be_tried_again(
     mac_codex_installer["fails"] = True
 
     assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
-        {"result": "installing"}
+        JUST_STARTED
 
     assert codex_installed(page.url) == {
         "result": "install-failed",
@@ -714,7 +790,7 @@ def test_on_a_mac_an_install_of_codex_that_fails_says_so_and_can_be_tried_again(
     assert codex_check(page.url) == {"result": "not-installed"}  # said once
     mac_codex_installer["fails"] = False
     assert call(page.url, "api/codex/install", method="POST", body={}).json() == \
-        {"result": "installing"}
+        JUST_STARTED
     assert codex_installed(page.url)["result"] == "signed-in"
     assert len(mac_codex_installer["ran"]) == 2
 
@@ -735,22 +811,16 @@ def test_on_a_mac_with_the_chatgpt_app_installing_codex_only_opens_the_app_s_cod
 
 
 @pytest.fixture
-def claude_installer(harness, ai, windows_programs, monkeypatch) -> dict[str, Any]:
+def claude_installer(harness, ai, windows_programs, monkeypatch, tmp_path) -> dict[str, Any]:
     """A Windows PC without Claude Code, and its own Windows installer, which PowerShell runs:
     the fake puts claude.exe where the real one does, in %USERPROFILE%\\.local\\bin, unless
     `fails`. The PC's PATH doesn't lead there. The test call is the harness's."""
-    installer = {"fails": False, "ran": [], "claude": harness.home / ".local" / "bin" / "claude.exe"}
-    run = subprocess.run
-
-    def powershell(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess:
-        if cmd[0] != "powershell.exe":
-            return run(cmd, *a, **k)
-        installer["ran"].append(cmd)
-        if installer["fails"]:
-            return subprocess.CompletedProcess(cmd, 1, "", "Invoke-RestMethod: no network")
-        program(installer["claude"].parent, installer["claude"].name)
-        return subprocess.CompletedProcess(cmd, 0, "Claude Code successfully installed!\n", "")
-    monkeypatch.setattr(subprocess, "run", powershell)
+    claude = harness.home / ".local" / "bin" / "claude.exe"
+    installer = fake_installer(monkeypatch, tmp_path, "powershell.exe",
+                               lambda: program(claude.parent, claude.name),
+                               "Claude Code successfully installed!\n",
+                               "Invoke-RestMethod: no network")
+    installer["claude"] = claude
     return installer
 
 
@@ -774,7 +844,7 @@ def test_on_windows_the_page_installs_claude_code_opens_its_window_and_stores_th
 
     r = call(page.url, "api/claude/install", method="POST", body={})
 
-    assert r.status == 200 and r.json() == {"result": "installing"}
+    assert r.status == 200 and r.json() == JUST_STARTED
     assert claude_installed(page.url) == {"result": "opened"}
     [cmd] = claude_installer["ran"]
     assert cmd[-1] == "irm https://claude.ai/install.ps1 | iex"
@@ -799,7 +869,7 @@ def test_on_windows_an_install_of_claude_code_that_fails_says_so_and_can_be_trie
     claude_installer["fails"] = True
 
     assert call(page.url, "api/claude/install", method="POST", body={}).json() == \
-        {"result": "installing"}
+        JUST_STARTED
 
     assert claude_installed(page.url) == {
         "result": "install-failed",

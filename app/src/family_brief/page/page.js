@@ -842,7 +842,7 @@ function statusSlot(key) {
 
 // What the last step said, under what it's about: a text key, or null for nothing, with why it
 // failed, an address to open, the Kids found or a line to install something.
-function showSource(key, { reason, url, kids, install, values } = {}) {
+function showSource(key, { reason, url, kids, install, values, installing } = {}) {
   const status = document.getElementById("source-status");
   const message = document.getElementById("source-message");
   if (key) statusSlot(key).append(status);
@@ -871,6 +871,25 @@ function showSource(key, { reason, url, kids, install, values } = {}) {
   document.getElementById("wilma-again").hidden = !TRY_AGAIN.includes(key);
   document.getElementById("claude-terminal").hidden = !CLAUDE_TERMINAL.includes(key);
   document.getElementById("claude-again").hidden = !CLAUDE_AGAIN.includes(key);
+  showInstallProgress(installing);
+}
+
+// How far an install of Codex or Claude Code has got, as the server's check says it (#709): a bar
+// with its download's share once the installer has printed one, else a moving bar, with the time
+// so far and, past the time an install usually takes, that it's still working.
+function showInstallProgress(installing) {
+  const shown = document.getElementById("source-install-progress");
+  shown.hidden = !installing;
+  if (!installing) return;
+  const { seconds, usual, limit, percent } = installing;
+  const bar = document.getElementById("source-install-bar");
+  if (percent === undefined) bar.removeAttribute("value");
+  else bar.value = percent;
+  const minutes = Math.floor(seconds / 60);
+  setText(document.getElementById("source-install-time"),
+    minutes < 1 ? "install.under-a-minute" : "install.so-far",
+    { minutes, limit: Math.round(limit / 60) });
+  document.getElementById("source-install-slow").hidden = seconds < usual;
 }
 
 // `names` as the items of `list`, hidden while there are none.
@@ -1388,7 +1407,7 @@ function claudeInstallResult(out) {
   clearTimeout(aiStep.timer);
   if (out.result === "installing") aiStep.timer = setTimeout(checkClaudeInstall, AI_MS);
   if (["installing", "install-failed"].includes(out.result)) {
-    return showSource("claude." + out.result, { reason: out.reason });
+    return showSource("claude." + out.result, { reason: out.reason, installing: installing(out) });
   }
   if (out.result !== "no-sign-in") claudeWindowResult(out);
 }
@@ -1441,6 +1460,11 @@ async function installCodex() {
   }
 }
 
+// How far an install has got, while the check says it's `installing`.
+function installing(out) {
+  return out.result === "installing" ? out : null;
+}
+
 // A check still on its way once the family has picked another AI says nothing.
 function signingIn(name) {
   return !document.getElementById("ai-" + name).hidden;
@@ -1456,7 +1480,7 @@ function codexResult(out) {
   setText(login, key === "codex.waiting" ? "codex.login-again" : "codex.login");
   document.getElementById("codex-install").hidden = !CODEX_INSTALL.includes(key);
   if (out.result === "signed-in") return aiDone(out, key);
-  showSource(key, { reason: out.reason });
+  showSource(key, { reason: out.reason, installing: installing(out) });
   if (CODEX_AGAIN.includes(key)) aiStep.timer = setTimeout(checkCodex, AI_MS);
 }
 
