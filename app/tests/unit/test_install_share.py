@@ -11,7 +11,7 @@ from family_brief import setup_ai
     # curl's progress meter, on stderr when it writes to a file or a pipe: the first column.
     (" 45 12.3M   45 5612k    0     0  1234k      0  0:00:10  0:00:04  0:00:06 1300k", 45),
     ("100 12.3M  100 12.3M    0     0  2468k      0  0:00:05  0:00:05 --:--:-- 2600k", 100),
-    ("  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0", 0),
+    ("  0 12.3M    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0", 0),
     # curl's --progress-bar, and any other installer that ends a line with its percentage.
     ("##########################                                              37.5%", 37),
     ("Downloading codex-aarch64-apple-darwin.tar.gz 62 %", 62),
@@ -25,11 +25,13 @@ def test_a_progress_line_gives_the_download_s_share(line, share):
     "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current",
     "                                 Dload  Upload   Total   Spent    Left  Speed",
     "Codex CLI 0.1.0 installed successfully.",
+    # curl's meter before it knows the size, as on GitHub's redirect: no share yet.
+    "  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0",
     "Writing web request",
     "Faster: 250%",
     "Step 1.2.75%",
     "",
-], ids=["meter-head", "meter-head-2", "done", "powershell", "over-100", "dotted", "empty"])
+], ids=["meter-head", "meter-head-2", "done", "size-unknown", "powershell", "over-100", "dotted", "empty"])
 def test_any_other_line_gives_none(line):
     assert setup_ai.download_share(line) is None
 

@@ -59,7 +59,8 @@ USUAL_INSTALL_SECONDS = 2 * 60
 # A download's share as an installer prints it while it runs (#709): curl's progress meter, on
 # stderr when it writes to a file or a pipe, whose first column is the share of the total; or a
 # line that ends in a percentage, as curl's --progress-bar and others print it.
-CURL_METER = re.compile(r"^\s*(\d{1,3})\s+\d+(?:\.\d+)?[kMGTP]?\s+\d{1,3}\s+\d+(?:\.\d+)?[kMGTP]?\s")
+CURL_METER = re.compile(
+    r"^\s*(\d{1,3})\s+(\d+(?:\.\d+)?)[kMGTP]?\s+\d{1,3}\s+\d+(?:\.\d+)?[kMGTP]?\s")
 SHARE_AT_END = re.compile(r"(?<![\d.,])(\d{1,3}(?:[.,]\d+)?)\s?%\s*$")
 # How long an install's output is still read once the installer has ended, for what it said.
 READ_AFTER_SECONDS = 5
@@ -193,8 +194,9 @@ def run_installer(cmd: list[str], env: dict[str, str], timeout: float,
         raise subprocess.TimeoutExpired(cmd, timeout) from None
     finally:
         # Something it started in the background may hold its output open: not waited for long.
+        deadline = time.monotonic() + READ_AFTER_SECONDS
         for reader in readers:
-            reader.join(READ_AFTER_SECONDS)
+            reader.join(max(0, deadline - time.monotonic()))
     return subprocess.CompletedProcess(cmd, proc.returncode,
                                        bytes(said["out"]).decode("utf-8", "replace"),
                                        bytes(said["err"]).decode("utf-8", "replace"))
@@ -230,7 +232,10 @@ class ShareReader:
 def download_share(line: str) -> int | None:
     """The share of its download, in whole percent, that a line an installer printed says, or
     None if it says none."""
-    found = CURL_METER.match(line) or SHARE_AT_END.search(line)
+    meter = CURL_METER.match(line)
+    if meter and float(meter.group(2)) == 0:
+        return None  # its size isn't known yet, so neither is its share: the bar keeps moving
+    found = meter or SHARE_AT_END.search(line)
     if not found:
         return None
     share = float(found.group(1).replace(",", "."))
