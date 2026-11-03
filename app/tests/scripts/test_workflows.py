@@ -72,3 +72,45 @@ def test_coverage_measures_lines_and_branches_of_the_package_with_no_threshold()
     coverage = pyproject["tool"]["coverage"]
     assert coverage["run"]["source"] == ["family_brief"] and coverage["run"]["branch"] is True
     assert "fail_under" not in coverage.get("report", {})
+
+
+def test_the_tests_workflow_gets_a_read_only_token_of_its_own_accord():
+    # Its PR jobs run repo scripts an unattended agent may change (#720), which is safe only while
+    # they get no write token; the repo's default says so today, the workflow says it itself.
+    workflow = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())
+    assert workflow["permissions"] == {"contents": "read"}
+
+
+CHECKS = WORKFLOW_DIR.parents[1] / "scripts" / "windows-install-checks.ps1"
+
+
+def test_each_windows_install_step_runs_one_of_the_script_s_checks():
+    # The expected values about the program live in the script, which asks the installed program
+    # where it can, so a program change edits no file under .github/ (#720).
+    steps = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]["windows-install"]["steps"]
+    script = CHECKS.read_text()
+    offered = re.search(r"ValidateSet\(([^)]*)\)", script).group(1)
+    known = set(re.findall(r"'([a-z-]+)'", offered))
+    runs = [step for step in steps if "run" in step]
+    called = [re.fullmatch(r"scripts\\windows-install-checks\.ps1 ([a-z-]+)", step["run"].strip())
+              for step in runs]
+
+    assert all(called), [step["run"] for step, call in zip(runs, called) if not call]
+    assert all(step.get("name") for step in runs)
+    names = [call.group(1) for call in called if call]
+    assert len(names) == len(set(names)) and set(names) == known
+    for check in known:
+        assert f"'{check}' = {{" in script, f"{check} runs nothing"
+
+
+def test_the_windows_install_checks_are_ascii_for_windows_powershell():
+    # Windows PowerShell 5.1 reads a file without a BOM in the PC's code page.
+    CHECKS.read_bytes().decode("ascii")
+
+
+def test_a_change_to_a_script_still_runs_the_tests():
+    # The `changes` job skips the tests only for the docs its grep leaves out.
+    run = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]["changes"]["steps"][1]["run"]
+    docs_only = re.search(r"grep -v -E \\\n\s*'([^']*)'", run).group(1)
+    assert re.search(docs_only, "docs/adr/0001-x.md")
+    assert not re.search(docs_only, "scripts/windows-install-checks.ps1")

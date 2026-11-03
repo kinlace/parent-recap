@@ -180,17 +180,17 @@ slowest tests, so add one for a main path, not for each result.
 
 ## Script tests
 
-| File                       | What it covers                                               |
-| -------------------------- | ------------------------------------------------------------ |
-| `test_install.py`          | `install.sh`: pinned Python and Node, prebuilt packages only |
-| `test_install_ps1.py`      | `install.ps1` stays in step with `install.sh`                |
-| `test_one_line_install.py` | `get.sh`, the line a family pastes                           |
-| `test_codex_install.py`    | `install.sh --codex` installs the skills for Codex           |
-| `test_release.py`          | The release zip built from a tag                             |
-| `test_version.py`          | The plugin and the package ship the same version             |
-| `test_workflows.py`        | Every GitHub Actions workflow parses                         |
-| `test_issue_loop.py`       | `issue-loop.sh`'s merge step and its checker                 |
-| `test_tests_readme.py`     | This page lists every test file, in short sections           |
+| File                       | What it covers                                                  |
+| -------------------------- | --------------------------------------------------------------- |
+| `test_install.py`          | `install.sh`: pinned Python and Node, prebuilt packages only    |
+| `test_install_ps1.py`      | `install.ps1` stays in step with `install.sh`                   |
+| `test_one_line_install.py` | `get.sh`, the line a family pastes                              |
+| `test_codex_install.py`    | `install.sh --codex` installs the skills for Codex              |
+| `test_release.py`          | The release zip built from a tag                                |
+| `test_version.py`          | The plugin and the package ship the same version                |
+| `test_workflows.py`        | Every GitHub Actions workflow parses, and what `tests.yml` runs |
+| `test_issue_loop.py`       | `issue-loop.sh`'s merge step and its checker                    |
+| `test_tests_readme.py`     | This page lists every test file, in short sections              |
 
 ## Fixtures
 
