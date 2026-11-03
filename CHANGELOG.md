@@ -2,7 +2,11 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
-## Unreleased
+## 0.11.1 · 2026-11-03
+
+### Added
+
+- The setup page shows each person's email confirmation as it happens, under "The Brief goes to …", without holding up Next. It reminds you to confirm your own address before "Send it to me", and Finish names anyone who won't get tonight's Brief yet, with "Send it again".
 
 ### Changed
 
