@@ -57,10 +57,11 @@ def may_request(cfg: Config) -> bool:
     return cfg.llm.backend != "gateway"
 
 
-def ensure(cfg: Config, resend: bool = False) -> Status:
+def ensure(cfg: Config, resend: bool = False, ask: bool = True) -> Status:
     """Makes sure the Household has a Gateway Key bound to its Recipients, asking the gateway for
     one when none is stored, and says who still has to confirm. With `resend`, each of them is
-    mailed the link again."""
+    mailed the link again. Without `ask`, a missing key is NO_KEY rather than asked for, so only
+    asking who confirmed mails nobody and counts toward none of the gateway's daily limits."""
     to = recipients(cfg)
     addresses = [r["address"] for r in to]
     if not to:
@@ -69,7 +70,7 @@ def ensure(cfg: Config, resend: bool = False) -> Status:
     try:
         key = gateway.key()
     except gateway.NoKey as e:
-        if not e.missing or not may_request(cfg):
+        if not e.missing or not may_request(cfg) or not ask:
             return Status(NO_KEY, addresses, error=str(e))
         return _request(url, to)
     try:

@@ -22,7 +22,7 @@ from conftest import NOW
 from nights import caught_up_last_night
 from family_brief import gateway as api, install_record, ops
 from family_brief.config import Config
-from setup_page import call, config_file, source, welcome
+from setup_page import at_finish, call, config_file, source, welcome
 from setup_page import clock, page  # noqa: F401
 from test_gateway import KEY
 from test_gateway_sends import doctor, no_key, wilma_only  # noqa: F401
@@ -108,6 +108,73 @@ def test_the_page_sends_the_link_again_and_says_once_everyone_confirmed(harness,
 
     assert out == {"result": "confirmed", "unconfirmed": [], "mailed": []}
     assert len(harness.confirmations) == 2
+
+
+def confirmed(url: str):
+    return call(url, "api/gmail/confirmed", method="POST", body={})
+
+
+def test_the_page_asks_who_confirmed_without_mailing_anyone_or_counting_against_a_limit(
+        harness, page):
+    # #712: the page asks this every few seconds while it waits, so it binds the same Recipients
+    # with `resend` off, which mails nobody and counts toward none of the gateway's daily limits.
+    welcome(page.url, ai="claude", partner={"address": PARTNER, "language": "fi"})
+    source(page.url, "wilma", "skip")
+    save_recipients(page.url, {"address": PARENT, "language": "en"},
+                    {"address": PARTNER, "language": "fi"})
+    mailed = list(harness.confirmations)
+
+    out = confirmed(page.url).json()
+
+    assert out == {"result": "unconfirmed",
+                   "recipients": [{"address": PARENT, "confirmed": False},
+                                  {"address": PARTNER, "confirmed": False}]}
+    harness.confirm(PARTNER)
+    assert confirmed(page.url).json()["recipients"] == [{"address": PARENT, "confirmed": False},
+                                                        {"address": PARTNER, "confirmed": True}]
+    harness.confirm(PARENT)
+    assert confirmed(page.url).json() == {
+        "result": "confirmed", "recipients": [{"address": PARENT, "confirmed": True},
+                                              {"address": PARTNER, "confirmed": True}]}
+    assert harness.confirmations == mailed
+    assert len(harness.key_requests) == 1
+    assert [b["resend"] for b in harness.binds] == [False] * 3
+
+
+def test_asking_who_confirmed_never_asks_for_a_key(harness, page):
+    # Only saving the Recipients, or "Send it again", may make the gateway mail a link.
+    welcome(page.url, ai="claude")
+    source(page.url, "wilma", "skip")
+    harness.key_answer = (429, {"error": "too many keys asked for today; try again tomorrow"})
+    save_recipients(page.url, {"address": PARENT, "language": "en"})
+    harness.key_answer = None
+
+    assert confirmed(page.url).json() == {"result": "no-key", "recipients": []}
+    assert len(harness.key_requests) == 1 and harness.secrets == {}
+    assert harness.confirmations == []
+
+
+def test_asking_who_confirmed_with_the_gateway_as_the_ai_asks_the_gateway_nothing(harness, page):
+    welcome(page.url, ai="gateway")
+    source(page.url, "wilma", "skip")
+    save_recipients(page.url, {"address": PARENT, "language": "en"})
+
+    assert confirmed(page.url).json() == {"result": "not-needed", "recipients": []}
+    assert harness.binds == [] and harness.key_requests == []
+
+
+def test_a_hosted_household_confirms_nothing(harness, page):
+    # Its key is the sign-up's, bound to nobody (ADR 0031): the gateway mails it no link.
+    harness.secrets[api.ACCOUNT] = KEY
+    harness.config["llm"]["backend"] = "claude"
+    at_finish(harness)
+    assert confirmed(page.url).json()["result"] == "confirmed"  # asked, as a local install is
+    harness.binds.clear()
+    harness.config["hosted"] = True
+    at_finish(harness)
+
+    assert confirmed(page.url).json() == {"result": "not-needed", "recipients": []}
+    assert harness.binds == [] and harness.key_requests == []
 
 
 def test_a_changed_recipient_on_the_page_is_bound_and_gets_a_link_of_their_own(harness, page):

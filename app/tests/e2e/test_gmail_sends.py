@@ -373,6 +373,9 @@ def test_asking_who_confirmed_asks_the_gateway_nothing_when_gmail_sends(harness,
     r = call(page.url, "api/gmail/confirm", method="POST", body={"resend": True})
 
     assert r.json() == {"result": "not-needed", "unconfirmed": [], "mailed": []}
+    # Nor does the page's asking every few seconds while it waits (#712).
+    r = call(page.url, "api/gmail/confirmed", method="POST", body={})
+    assert r.json() == {"result": "not-needed", "recipients": []}
     never_through_the_gateway(harness)
 
 

@@ -19,7 +19,7 @@ from pydantic import Field
 from .. import send_key, setup_ai, setup_gmail, setup_save
 from ..setup_connect import Reply, Strict, parse
 from .ai import GATEWAY_RESULTS
-from .context import Action, Context, Phase, keychain_code
+from .context import Action, Context, Phase, keychain_code, nothing_to_give
 
 # What connecting Gmail on the page can say: the chat's `setup gmail` results, and `no-address`
 # for an address that isn't one. What to do when Google offers no App Passwords is folded under the
@@ -65,7 +65,8 @@ class SendKey(Strict):
 class Gmail(Phase):
     def routes(self) -> dict[str, Action]:
         return {"api/gmail": self.connect_gmail, "api/gmail/recipients": self.save_recipients,
-                "api/gmail/key": self.save_send_key, "api/gmail/confirm": self.confirm}
+                "api/gmail/key": self.save_send_key, "api/gmail/confirm": self.confirm,
+                "api/gmail/confirmed": self.confirmed}
 
     def state(self, progress: dict[str, Any]) -> dict[str, Any]:
         cfg = self.context.model()
@@ -133,6 +134,24 @@ class Gmail(Phase):
         if cfg.sends_from_gmail():  # nobody confirms anything for its own Gmail (ADR 0034)
             return HTTPStatus.OK, {"result": "not-needed", "unconfirmed": [], "mailed": []}
         return HTTPStatus.OK, confirmation(send_key.ensure(cfg, resend=answer.resend))
+
+    def confirmed(self, raw: Any) -> Reply:
+        """Who of the Recipients has confirmed, each in order, the setup parent first, which the
+        page asks every few seconds while one hasn't (#712). It only binds the same Recipients
+        again without `resend`, so it mails nobody, never asks for a key, and counts toward none
+        of the gateway's daily limits. `not-needed` where nobody confirms anything: the gateway
+        as the AI, the Household's own Gmail sending (ADR 0034), and a Hosted Household, whose
+        key the sign-up made bound to nobody (ADR 0031)."""
+        if raw != {}:
+            return HTTPStatus.BAD_REQUEST, nothing_to_give()
+        cfg = self.context.model()
+        if cfg.hosted or not send_key.may_request(cfg) or cfg.sends_from_gmail():
+            return HTTPStatus.OK, {"result": "not-needed", "recipients": []}
+        status = send_key.ensure(cfg, ask=False)
+        if status.result not in (send_key.CONFIRMED, send_key.UNCONFIRMED):
+            return HTTPStatus.OK, {"result": status.result, "recipients": []}
+        return HTTPStatus.OK, {"result": status.result, "recipients": [
+            {"address": a, "confirmed": a not in status.unconfirmed} for a in status.recipients]}
 
     def save_send_key(self, raw: Any) -> Reply:
         """A Gateway Key for sending alone, for a Household whose AI is its own Claude Code or Codex
