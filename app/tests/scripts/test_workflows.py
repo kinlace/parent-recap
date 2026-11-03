@@ -10,8 +10,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-WORKFLOW_DIR = Path(__file__).resolve().parents[3] / ".github" / "workflows"
+ROOT = Path(__file__).resolve().parents[3]
+WORKFLOW_DIR = ROOT / ".github" / "workflows"
 WORKFLOWS = sorted(WORKFLOW_DIR.glob("*.yml"))
+# What the windows-install job runs, one check a step (#720).
+CHECKS = ROOT / "scripts" / "windows-install-checks.ps1"
 
 
 def test_there_are_workflows():
@@ -81,10 +84,7 @@ def test_the_tests_workflow_gets_a_read_only_token_of_its_own_accord():
     assert workflow["permissions"] == {"contents": "read"}
 
 
-CHECKS = WORKFLOW_DIR.parents[1] / "scripts" / "windows-install-checks.ps1"
-
-
-def test_each_windows_install_step_runs_one_of_the_script_s_checks():
+def test_each_windows_install_step_runs_one_check_of_the_checks_script():
     # The expected values about the program live in the script, which asks the installed program
     # where it can, so a program change edits no file under .github/ (#720).
     steps = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]["windows-install"]["steps"]
@@ -110,7 +110,8 @@ def test_the_windows_install_checks_are_ascii_for_windows_powershell():
 
 def test_a_change_to_a_script_still_runs_the_tests():
     # The `changes` job skips the tests only for the docs its grep leaves out.
-    run = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]["changes"]["steps"][1]["run"]
+    steps = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]["changes"]["steps"]
+    run = next(step["run"] for step in steps if step.get("id") == "diff")
     docs_only = re.search(r"grep -v -E \\\n\s*'([^']*)'", run).group(1)
     assert re.search(docs_only, "docs/adr/0001-x.md")
     assert not re.search(docs_only, "scripts/windows-install-checks.ps1")

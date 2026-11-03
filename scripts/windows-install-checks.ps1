@@ -27,6 +27,19 @@ $NewWindow = "`$env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machin
 # For the PowerShells a check starts, which read it themselves.
 $env:PARENT_RECAP = $Install
 
+# Runs Python code on the installed program's Python, its output passed on, and throws `Failure`
+# when it exits with an error.
+function Invoke-Py([string]$Code, [string]$Failure) {
+  & $Py -c $Code
+  if ($LASTEXITCODE -ne 0) { throw $Failure }
+}
+
+# Runs PowerShell code in a new window's PATH, its output passed on.
+function Invoke-NewWindow([string]$Code, [switch]$PSReadLine) {
+  $first = if ($PSReadLine) { 'Import-Module PSReadLine; ' } else { '' }
+  powershell -NoProfile -Command ($first + $NewWindow + $Code)
+}
+
 # ---------------------------------------------------------------- the checks
 
 # Prints the published line for a pin that doesn't match, so a bump can copy it.
@@ -102,24 +115,24 @@ function Test-Install {
 function Test-OwnRuntimes {
   & "$Installed\app\.venv\Scripts\parent-recap.exe" --help
   if ($LASTEXITCODE -ne 0) { throw 'parent-recap --help failed' }
-  & $Py -c "import sys; from family_brief import own_node; n = own_node.node(); print(n, own_node.npm()); sys.exit(n is None or own_node.npm() is None)"
-  if ($LASTEXITCODE -ne 0) { throw "the program doesn't find its own Node" }
-  & $Py -c "import sys; print(sys._base_executable); sys.exit('ParentRecap' not in sys._base_executable)"
-  if ($LASTEXITCODE -ne 0) { throw "the venv isn't on Parent Recap's own Python" }
-  & $Py -c "import sys; from family_brief import baileys_install as b; print(b.folder(), b.installed_version()); sys.exit(not b.up_to_date())"
-  if ($LASTEXITCODE -ne 0) { throw "the install didn't leave the pinned Baileys tree" }
+  Invoke-Py "import sys; from family_brief import own_node; n = own_node.node(); print(n, own_node.npm()); sys.exit(n is None or own_node.npm() is None)" `
+    "the program doesn't find its own Node"
+  Invoke-Py "import sys; print(sys._base_executable); sys.exit('ParentRecap' not in sys._base_executable)" `
+    "the venv isn't on Parent Recap's own Python"
+  Invoke-Py "import sys; from family_brief import baileys_install as b; print(b.folder(), b.installed_version()); sys.exit(not b.up_to_date())" `
+    "the install didn't leave the pinned Baileys tree"
 }
 
 function Test-NewWindow {
-  $found = powershell -NoProfile -Command ('Import-Module PSReadLine; ' + $NewWindow + '(Get-Command parent-recap).Source; parent-recap --help | Out-Null; exit $LASTEXITCODE')
+  $found = Invoke-NewWindow -PSReadLine '(Get-Command parent-recap).Source; parent-recap --help | Out-Null; exit $LASTEXITCODE'
   if ($LASTEXITCODE -ne 0) { throw 'parent-recap --help failed in a new window' }
   Write-Host "parent-recap: $found"
   # A script on the venv's Python, not pip's launcher, which Defender can block (#591).
   if ($found -ne "$Installed\bin\parent-recap.cmd") { throw "a new window finds parent-recap at $found" }
   # It passes the program's exit code on: argparse's 2 for a command it doesn't know.
-  powershell -NoProfile -Command ($NewWindow + 'parent-recap no-such-command; exit $LASTEXITCODE')
+  Invoke-NewWindow 'parent-recap no-such-command; exit $LASTEXITCODE'
   if ($LASTEXITCODE -ne 2) { throw "parent-recap no-such-command exited with $LASTEXITCODE" }
-  $python = powershell -NoProfile -Command ($NewWindow + '(Get-Command python -ErrorAction SilentlyContinue).Source')
+  $python = Invoke-NewWindow '(Get-Command python -ErrorAction SilentlyContinue).Source'
   Write-Host "python: $python"
   if ($python -like "$Installed*") { throw "python in a new window is Parent Recap's: $python" }
   $inside = @(Get-ChildItem "$Installed\bin" | ForEach-Object Name) -join ','
@@ -130,9 +143,8 @@ function Test-NewWindow {
 # As the pasted line ends: the installed program's setup page, served on this PC, worded for
 # Windows and listing the Sources and AIs the program offers on Windows, in its order.
 function Test-SetupPage {
-  $offered = & $Py -c "import json; from family_brief import setup_connect; from family_brief.setup_server import context; print(json.dumps({'sources': setup_connect.sources(), 'ais': list(context.ais())}))"
-  if ($LASTEXITCODE -ne 0) { throw "the program didn't say which Sources and AIs it offers" }
-  $expected = $offered | ConvertFrom-Json
+  $expected = Invoke-Py "import json; from family_brief import setup_connect; from family_brief.setup_server import context; print(json.dumps({'sources': setup_connect.sources(), 'ais': list(context.ais())}))" `
+    "the program didn't say which Sources and AIs it offers" | ConvertFrom-Json
   $wantSources = @($expected.sources) -join ','
   $wantAis = @($expected.ais) -join ','
   $out = Join-Path $env:RUNNER_TEMP 'setup-page.txt'
@@ -175,13 +187,13 @@ function Test-SecondInstall {
 
 # As the setup page's Wilma step installs it, from npm, with the program's own Node.
 function Test-Wilma {
-  & $Py -c "import sys; from family_brief import setup_wilma; r = setup_wilma.install(); print(r); sys.exit(r['result'] != 'installed')"
-  if ($LASTEXITCODE -ne 0) { throw "the wilma CLI didn't install" }
-  & $Py -c "import subprocess, sys; from family_brief import own_node, setup_wilma; c = own_node.wilma(); print(c, setup_wilma.installed_version()); sys.exit(subprocess.run([*c, '--help'], env=own_node.wilma_env()).returncode)"
-  if ($LASTEXITCODE -ne 0) { throw 'wilma --help failed' }
+  Invoke-Py "import sys; from family_brief import setup_wilma; r = setup_wilma.install(); print(r); sys.exit(r['result'] != 'installed')" `
+    "the wilma CLI didn't install"
+  Invoke-Py "import subprocess, sys; from family_brief import own_node, setup_wilma; c = own_node.wilma(); print(c, setup_wilma.installed_version()); sys.exit(subprocess.run([*c, '--help'], env=own_node.wilma_env()).returncode)" `
+    'wilma --help failed'
   # The town list the page searches comes with the CLI.
-  & $Py -c "import sys; from family_brief import setup_wilma; t = setup_wilma.tenants(); print(len(t or [])); sys.exit(not t)"
-  if ($LASTEXITCODE -ne 0) { throw "the wilma CLI came without Wilma's town list" }
+  Invoke-Py "import sys; from family_brief import setup_wilma; t = setup_wilma.tenants(); print(len(t or [])); sys.exit(not t)" `
+    "the wilma CLI came without Wilma's town list"
 }
 
 # Parent Recap's tasks in Task Scheduler's root folder, as PowerShell sees them.
@@ -198,22 +210,24 @@ function Test-Uninstall {
   New-Item -ItemType Directory -Force "$HOME\.family" | Out-Null
   $config = "kids:`n- name: Mia`ngmail:`n  username: parent@example.com`nemail:`n  to: [parent@example.com]`nweekend_events:`n  enabled: true`n"
   [IO.File]::WriteAllText("$HOME\.family\config.yaml", $config)
-  & $Py -c "from family_brief import gateway, install_record; from family_brief.system import secrets; secrets.put(gateway.ACCOUNT, 'sk-ci-not-a-real-key'); install_record.add('keychain', gateway.ACCOUNT)"
-  if ($LASTEXITCODE -ne 0) { throw "the Gateway Key wasn't stored" }
+  Invoke-Py "from family_brief import gateway, install_record; from family_brief.system import secrets; secrets.put(gateway.ACCOUNT, 'sk-ci-not-a-real-key'); install_record.add('keychain', gateway.ACCOUNT)" `
+    "the Gateway Key wasn't stored"
   & $pr schedule install
   if ($LASTEXITCODE -ne 0) { throw 'schedule install failed' }
-  # Whichever tasks the program installs (the evening Brief, its sign-in catch-up and Weekend
-  # Picks today), Task Scheduler holds those the program says it keeps, so uninstall has them
-  # to remove.
-  $kept = @(& $Py -c "from family_brief.system import jobs; print('\n'.join(sorted(f.name for f in jobs.found())))")
-  if ($LASTEXITCODE -ne 0) { throw "the program didn't list its tasks" }
+  # The config above turns Weekend Picks on, so the program runs both its evening jobs.
+  Invoke-Py "import sys; from family_brief.system import jobs; i = jobs.installed(); print(sorted(i)); sys.exit(not {jobs.DAILY, jobs.WEEKEND} <= i)" `
+    "the program doesn't run the evening Brief and Weekend Picks"
+  # Whichever tasks those take (the evening Brief, its sign-in catch-up and Weekend Picks today),
+  # Task Scheduler holds those the program says it keeps, so uninstall has them to remove.
+  $kept = @(Invoke-Py "from family_brief.system import jobs; print('\n'.join(sorted(f.name for f in jobs.found())))" `
+    "the program didn't list its tasks")
   $tasks = @(Get-OurTasks | Sort-Object)
   Write-Host "Task Scheduler holds: $($tasks -join ', '); the program keeps: $($kept -join ', ')"
   if (-not $tasks) { throw 'no tasks to remove' }
   if (($tasks -join ',') -ne (@($kept | Sort-Object) -join ',')) { throw 'Task Scheduler and the program list different tasks' }
 
   # From a new window's PATH, as the family types it.
-  $out = powershell -NoProfile -Command ($NewWindow + 'parent-recap uninstall --confirm --remove-archive; exit $LASTEXITCODE') | Out-String
+  $out = Invoke-NewWindow 'parent-recap uninstall --confirm --remove-archive; exit $LASTEXITCODE' | Out-String
   $code = $LASTEXITCODE
   Write-Host $out
   if ($code -ne 0) { throw "uninstall exited with $code" }
