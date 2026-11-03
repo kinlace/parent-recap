@@ -193,7 +193,9 @@ def _config(path: Path, s: Survey) -> Config | None:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         cfg = Config.model_validate(data)
-        if isinstance(data, dict) and ("gmail" in data or "email" in data):
+        # A setup stopped before the Recipients saves no gmail or email, only keys of its own (#725)
+        if isinstance(data, dict) and ("gmail" in data or "email" in data
+                                       or data.keys() <= Config.model_fields.keys()):
             return cfg
     except (OSError, yaml.YAMLError, ValidationError):
         pass

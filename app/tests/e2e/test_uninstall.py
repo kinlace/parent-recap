@@ -931,6 +931,38 @@ def test_stops_on_a_config_parent_recap_did_not_write(harness, monkeypatch, caps
     assert ".family/config.yaml" in out
 
 
+@pytest.mark.parametrize("config", [
+    "kids: []\nsummary_language: zh\n",  # what Welcome saves
+    # What setup had written when it stopped at the AI step (#725), as found
+    "kids: []\nsummary_language: zh\nllm:\n  backend: codex\nfeedback:\n  enabled: false\n"
+    "wilma:\n  enabled: false\n",
+], ids=["welcome", "ai-step"])
+def test_removes_a_setup_stopped_before_the_recipients_were_saved(harness, monkeypatch,
+                                                                  capsys, config):
+    set_up(harness, monkeypatch)
+    (harness.home / ".family" / "config.yaml").write_text(config)
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert "❌" not in capsys.readouterr().out
+    assert leftovers(harness.home) == []
+
+
+@pytest.mark.parametrize("config", [
+    "kids: [\n  unclosed\n",                       # unreadable YAML
+    "kids: []\ntheme: dark\n",                     # a key Parent Recap doesn't use
+    "- kids\n- gmail\n",                           # not a mapping
+], ids=["unreadable", "unknown-key", "list"])
+def test_stops_on_a_config_that_is_not_parent_recap_s(harness, monkeypatch, capsys, config):
+    set_up(harness, monkeypatch)
+    (harness.home / ".family" / "config.yaml").write_text(config)
+    before = leftovers(harness.home)
+
+    out = assert_stopped(harness, before, capsys)
+
+    assert ".family/config.yaml isn't a Parent Recap config" in out
+
+
 def test_stops_on_a_program_folder_that_is_not_parent_recap(harness, monkeypatch, capsys):
     set_up(harness, monkeypatch)
     (harness.home / "ParentRecap" / "app" / "pyproject.toml").write_text(
