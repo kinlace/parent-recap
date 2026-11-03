@@ -307,7 +307,8 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
     AI filter with the run's `placeholders`, if given, so citations check the real links. The people
     tonight's messages come from, and those of the earlier Briefs' nights, are masked from here on."""
     already_captured = already_captured or []
-    now = now or datetime.now().astimezone()
+    # The Household's today and tomorrow, as the run's, on a computer kept in any zone.
+    now = now or datetime.now(ZoneInfo(cfg.timezone))
     intro, payload = _build_prompt(cfg, messages, upcoming_events, already_captured, now, earlier_briefs)
     log.info("Summarizing %d messages via %s", len(messages), cfg.llm.backend)
     placeholders = placeholders_for(cfg, placeholders)
