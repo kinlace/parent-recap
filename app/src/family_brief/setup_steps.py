@@ -14,13 +14,16 @@ setup sending — send the Brief from the Household's own Gmail, after checking 
                 Password, or through the gateway again (ADR 0034)
 setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, download it once,
                save it in the owner-only config
+setup eepos — have an Eepos school's guardian password typed at the secret store's own prompt in
+              the terminal, sign in with it, match the students to the Kids and save the sign-in
+              (for the maintainers, until the setup page has an Eepos step)
 setup save — save the Household's answers into the config, and setup's progress (in setup_save.py)
 setup status — whether setup is done (in setup_status.py)
 setup page — serve the setup page on this Mac and open it in the browser (in setup_server/)
 
 This module is the chat's side only: the arguments, the dialogs and what each command prints. What
 a step does, which the setup page does too, is in its own module: setup_gmail, setup_wilma,
-setup_ai and setup_myclub.
+setup_ai, setup_myclub and setup_eepos.
 
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
@@ -109,6 +112,15 @@ def register(sub) -> None:
     pmyclub.add_argument("--no-open", action="store_true",
                          help="Don't open MyClub's page again, only ask for the link")
     pmyclub.set_defaults(func=cmd_myclub)
+
+    peepos = steps.add_parser("eepos", help="Add a guardian's sign-in at an Eepos school: the "
+                              "password typed at the secret store's own prompt, checked at once, "
+                              "the students matched to the Kids by name")
+    peepos.add_argument("--school", required=True,
+                        help="The school's Eepos address, or its part before .eepos.fi: emo for "
+                             "emo.eepos.fi")
+    peepos.add_argument("--username", required=True, help="The guardian's Eepos username")
+    peepos.set_defaults(func=cmd_eepos)
 
     from . import setup_save, setup_server, setup_status
     setup_save.register(steps)
@@ -415,3 +427,13 @@ def cmd_myclub(args: argparse.Namespace) -> int:
                      f"{again} --no-open",
     }.get(result)
     return report(result, next_, **({"kid": args.kid} if result == "saved" else {}), **extra)
+
+
+# ---------------------------------------------------------------- eepos
+
+def cmd_eepos(args: argparse.Namespace) -> int:
+    """The password is typed at the secret store's own prompt in this terminal, so it reaches no
+    dialog, chat or command line, and the one line of JSON never has it."""
+    from . import setup_eepos
+    result, next_, extra = setup_eepos.cmd(args)
+    return report(result, next_, **extra)

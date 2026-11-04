@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from family_brief import sources
+from family_brief import setup_save, sources
 from family_brief.brief_text import TEXT
 from family_brief.config import Config
 from fake_system import LINUX, MACOS, WINDOWS
@@ -26,7 +26,14 @@ def test_a_language_without_reviewed_text_gets_the_english_label():
 
 def test_the_connect_list_puts_wilma_first_and_gmail_last():
     # #708: few families read Gmail, and its App Password is where setup gets stuck.
-    assert [s.name for s in sources.in_connect_order()] == ["wilma", "whatsapp", "myclub", "gmail"]
+    assert [s.name for s in sources.in_connect_order() if s.setup_page] == \
+        ["wilma", "whatsapp", "myclub", "gmail"]
+
+
+def test_eepos_has_no_step_on_the_setup_page_yet_and_doctor_checks_it_last():
+    # #755: the maintainers add an Eepos sign-in from a terminal, with `setup eepos`.
+    assert [s.name for s in sources.in_connect_order()][-1] == "eepos"
+    assert "eepos" not in setup_save.SOURCES
 
 
 @pytest.mark.parametrize("profile", [MACOS, WINDOWS], ids=["macos", "windows"])
@@ -40,17 +47,18 @@ def test_the_hosted_version_never_reads_whatsapp(system):
     system.profile = LINUX
     cfg = Config(kids=[_KID], wilma={"enabled": True})
 
-    assert [s.name for s in sources.available()] == ["gmail", "myclub", "wilma"]
-    assert [s.name for s in sources.in_connect_order()] == ["wilma", "myclub", "gmail"]
+    assert [s.name for s in sources.available()] == ["gmail", "myclub", "wilma", "eepos"]
+    assert [s.name for s in sources.in_connect_order()] == ["wilma", "myclub", "gmail", "eepos"]
     assert [s.name for s in sources.used(cfg)] == ["wilma"]
     assert cfg.other_sources() == ["wilma"]
 
 
 @pytest.mark.parametrize("profile", [MACOS, WINDOWS, LINUX], ids=["macos", "windows", "linux"])
-def test_a_hosted_household_can_t_have_whatsapp_or_gmail_wherever_it_s_asked(system, profile):
+def test_a_hosted_household_can_t_have_whatsapp_gmail_or_eepos_wherever_it_s_asked(system, profile):
     system.profile = profile  # ADR 0029: no WhatsApp on its server; ADR 0031: no Gmail step
+    # #755: nor an Eepos step yet, though the maintainers can add an Eepos sign-in by hand
 
-    assert sources.not_hosted() == [sources.WHATSAPP, sources.GMAIL]
+    assert sources.not_hosted() == [sources.WHATSAPP, sources.GMAIL, sources.EEPOS]
 
 
 def test_a_source_is_found_by_its_name_and_any_other_name_is_its_own_label():
@@ -73,7 +81,9 @@ _KID = {"name": "Mia Virtanen"}
     ({"whatsapp": {"enabled": True, "chats": [{"name": "3B"}]}}, ["gmail"]),
     ({"kids": [{**_KID, "myclub_ical_url": "https://myclub.fi/x.ics"}], "wilma": {"enabled": True},
       "whatsapp": {"enabled": True, "chats": [{"name": "3B"}]}}, ["myclub", "wilma"]),
-], ids=["nothing", "gmail", "wilma", "gmail-and-wilma", "whatsapp-no-groups", "whatsapp", "all-but-gmail"])
+    ({"eepos": {"signins": [{"school": "emo", "username": "parent"}]}}, ["eepos"]),
+], ids=["nothing", "gmail", "wilma", "gmail-and-wilma", "whatsapp-no-groups", "whatsapp", "all-but-gmail",
+        "eepos"])
 def test_the_household_uses_the_connected_sources_in_run_order(config, used):
     cfg = Config(**{"kids": [_KID], **config})
 

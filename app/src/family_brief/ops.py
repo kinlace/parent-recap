@@ -348,6 +348,34 @@ def _check_myclub(kid: str, url: str, add) -> None:
             f"parent-recap setup myclub --kid {shlex.quote(kid)})", subject=kid)
 
 
+def check_eepos(cfg: Config, add, config: str | None = None) -> None:
+    """Each Eepos sign-in, one school each: signs in with the password in the secret store and
+    reads the students and the coming calendar, as the evening run does. A student who is none of
+    the Kids is a warning: their lessons go to the whole Household."""
+    from . import setup_eepos
+    from .collectors import eepos
+    for signin in cfg.eepos.signins:
+        where, again = eepos.address(signin.school), setup_eepos.again(signin.school, signin.username)
+        try:
+            checked = setup_eepos.check(cfg, signin, eepos.password_of(signin))
+        except eepos.WrongPassword as e:
+            add(FAIL, "eepos", f"the sign-in as {signin.username} doesn't work: {e} (type the password "
+                f"again: {again})", subject=where)
+            continue
+        except eepos.EeposError as e:
+            add(FAIL, "eepos", f"couldn't be read: {e}", subject=where)
+            continue
+        named = [f"{s.called()} ({kid})" if kid else s.called() for s, kid in checked["students"]]
+        detail = (f"signed in as {signin.username}, {checked['events']} events in the next "
+                  f"{eepos.LOOKAHEAD_DAYS} days; students: {', '.join(named) or '(none)'}")
+        if unmatched := [s.called() for s, kid in checked["students"] if not kid]:
+            add(WARN, "eepos", f"{detail}. {', '.join(unmatched)} match no Kid in the config, so "
+                "their lessons go to the whole Household (add the name as one of the Kid's aliases)",
+                subject=where)
+        else:
+            add(OK, "eepos", detail, subject=where)
+
+
 def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:
     """The Linked Device's link, once groups are picked: connected, last connected, or needs a new
     pairing, as the always-running job's status file has it, with the picked groups by name.

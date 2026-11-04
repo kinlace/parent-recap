@@ -47,6 +47,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_brief.py`               | The Brief read from the archive and written back; old archives   |
 | `test_brief_text.py`          | The program's own Brief and Weekend Picks text                   |
 | `test_citations.py`           | The model's citations checked against what the program supplied  |
+| `test_eepos.py`               | Eepos: a school's address, a student as a Kid, entries as events |
 | `test_eval_scoring.py`        | The eval's deterministic scoring                                 |
 | `test_failure.py`             | Why a setup step failed, as the setup page shows and copies it   |
 | `test_held_back.py`           | Which texts look sensitive, against `sensitive_words.yaml`       |
@@ -75,6 +76,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request                       |
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                                               |
 | `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                                         |
+| `test_eepos_collector.py`       | Eepos's collector on a fake portal: the sign-in, the calendar, failures, two schools                         |
 | `test_email_gateway.py`         | The Brief sent through the gateway's relay: the request, refusals, a key, binding, doctor                    |
 | `test_email_gmail.py`           | The Brief sent from the Household's own Gmail (ADR 0034): the message, which way, refusals                   |
 | `test_eval_runner.py`           | The eval runner end to end, only the model process faked                                                     |
@@ -109,6 +111,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_source_failures.py`         | A Source's transport failing partway or timing out                                      |
 | `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON                           |
 | `test_wilma_signins.py`           | Wilma read through a config of each run's own, passwords from the store (#710)          |
+| `test_eepos_source.py`            | Eepos lessons in the Brief, a wrong password or a changed portal, two schools (#755)    |
 | `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing                       |
 | `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish                                |
 | `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                                       |
@@ -126,6 +129,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_setup_welcome.py`                    | Welcome                                                                |
 | `test_setup_ai.py`                         | The AI sign-in, the gateway, changing the AI on Finish                 |
 | `test_setup_gmail.py`, `_wilma`, `_myclub` | Each Source's `setup` command, then its step on the page               |
+| `test_setup_eepos.py`                      | `setup eepos` from a terminal, doctor's check of it, uninstall         |
 | `test_setup_whatsapp.py`                   | WhatsApp's step: the Linked Device's `pair` on a real Node, the job    |
 | `test_setup_back_to_connect.py`            | The way back from Check and Finish to Connect, for a skipped Source    |
 | `test_setup_claude.py`                     | `setup claude` and its terminal window                                 |
@@ -201,8 +205,9 @@ The shared fakes stay in `tests/`, beside the golden files. `conftest.py` has fo
 per outside edge of the program, each with its fakes in a module of its own:
 
 - `sources` (`fake_sources.py`): each Source's fake at its transport (Gmail's IMAP server, the
-  MyClub feed, the wilma CLI, the Linked Device's store and status file), as `sources.fakes[name]`, serving what
-  `sources.tonight[name]` holds to the real collector. One is installed for each Source in the
+  MyClub feed, the wilma CLI, the Linked Device's store and status file, each Eepos school's
+  portal), as `sources.fakes[name]`, serving what `sources.tonight[name]` holds to the real
+  collector. One is installed for each Source in the
   registry (ADR 0022), so a new Source adds its fake to `FAKES`. A test gives each Message the id
   its Source makes of it, and only the fields its transport carries.
 - `model` (`fake_model.py`): every backend's model calls go to the llm package's in-memory
@@ -229,8 +234,8 @@ the harness's one `subprocess.run` fake (`Processes`): the macOS-only features A
 out (iMessage, `open` for the Passwords app), the Sources' own programs, and Claude Code's and
 Codex's sign-in and plugin commands. A model call never does. `conftest.py` also has `pauses`
 (a busy model's pauses, on a fake clock), `golden`, `login_shell`, `windows_programs` (programs
-found as Windows finds them, on any system), `credential_manager`, and the builders `msg` and
-`myclub_event`.
+found as Windows finds them, on any system), `credential_manager`, and the builders `msg`,
+`myclub_event`, `eepos_entry` and `eepos_student`.
 
 ## Other fakes and helpers
 

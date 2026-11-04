@@ -1,6 +1,6 @@
 """Each Source's fake, at its transport, where the real thing varies (ADR 0022): Gmail's IMAP
-server, the MyClub feed over HTTP, the wilma CLI on Parent Recap's own Node, and the Linked
-Device's message store and status file. FakeSources, the `sources` fixture, installs the fake of
+server, the MyClub feed over HTTP, the wilma CLI on Parent Recap's own Node, the Linked
+Device's message store and status file, and each Eepos school's portal over HTTP. FakeSources, the `sources` fixture, installs the fake of
 each Source in the registry, so the real collectors run in every test of the evening run; FAKES is
 the list it reads.
 
@@ -11,7 +11,8 @@ only the fields its transport carries, and the id the collector makes of it:
   - Gmail: its X-GM-MSGID, digits only;
   - Wilma: `message:<id>` or `news:<id>`, or `message:<tag>:<id>` once a Wilma is signed in to;
   - WhatsApp: its message id;
-  - MyClub: the event's UID.
+  - MyClub: the event's UID;
+  - Eepos: a calendar entry as its portal's JSON has it (conftest's eepos_entry), not an event.
 A Message older than the Source's lookback is skipped, as the collector skips it.
 """
 from __future__ import annotations
@@ -20,11 +21,13 @@ import imaplib
 import json
 import re
 import subprocess
-from datetime import datetime, timezone
+import secrets as tokens
+from datetime import date, datetime, timezone
 from email.message import EmailMessage
 from email.utils import format_datetime
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import parse_qs, urlsplit
 
 import icalendar
 import pytest
@@ -32,7 +35,7 @@ import requests
 
 import fake_node
 from family_brief import linked_device, own_node, sources as registry
-from family_brief.collectors import gmail, myclub
+from family_brief.collectors import eepos, gmail, myclub
 from family_brief.collectors.base import CalendarEvent, Collected, Message
 from fake_system import FakeSecrets
 
@@ -408,9 +411,112 @@ class WhatsApp(SourceFake):
         return path
 
 
+# ── Eepos: each school's guardian portal over HTTP
+
+EEPOS_PASSWORD = "eepos-password"
+
+
+class EeposSchool:
+    """One school's portal: its guardians' passwords by username, and the students it lists to each
+    of them, as the portal lists them, the whole person with address and all."""
+
+    def __init__(self) -> None:
+        self.accounts: dict[str, str] = {}
+        self.students: list[dict[str, Any]] = []
+
+
+class Eepos(SourceFake):
+    """Each school's guardian portal at <school>.eepos.fi (`schools`, by the part before
+    .eepos.fi), as its JSON API answers, every answer behind Angular's `)]}',` line. A session
+    signs in with POST auth/login, a JSON body of the username and the password, which the
+    school's `accounts` must have, and gets a cookie; with it, guardian/students lists the
+    school's `students`, and calendar-events/all-by-date-range tonight's entries at that school
+    from its startDate to its endDate, each sent as JSON ("2026-09-27", quotes and all), as the
+    portal's script sends them. Without it, or with another school's, the portal answers 401.
+
+    Tonight's items are calendar entries as the portal gives them (conftest's eepos_entry), each
+    with the `school` it is at, which the portal's own entries don't carry and the fake leaves out.
+    `answers` maps a school and a path to what the portal answers there instead: an HTTP status
+    and the text, or an exception the request raises. `requests` records each request: its
+    method, school, path, JSON body and query. Any other address goes to requests as before."""
+    name = "eepos"
+
+    def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
+        super().__init__(sources)
+        self.schools: dict[str, EeposSchool] = {}
+        self.answers: dict[tuple[str, str], tuple[int, str] | BaseException] = {}
+        self.requests: list[dict[str, Any]] = []
+        self._cookies: dict[str, tuple[str, str]] = {}  # a session cookie: its school and username
+        other = requests.Session.request
+
+        def request(session: requests.Session, method: str, url: str, **k: Any) -> requests.Response:
+            host = urlsplit(url).hostname or ""
+            if not host.endswith("." + eepos.DOMAIN):
+                return other(session, method, url, **k)
+            return self.answer(session, method, url, **k)
+        mp.setattr(requests.Session, "request", request)
+
+    def school(self, school: str) -> EeposSchool:
+        return self.schools.setdefault(school, EeposSchool())
+
+    def set_up(self) -> None:
+        for signin in (self.sources.config.get("eepos") or {}).get("signins") or []:
+            school = eepos.school_of(signin["school"]) or signin["school"]
+            self.school(school).accounts.setdefault(signin["username"], EEPOS_PASSWORD)
+            self.sources.secrets.setdefault(eepos.secret_name(school, signin["username"]), EEPOS_PASSWORD)
+
+    def answer(self, session: requests.Session, method: str, url: str, **k: Any) -> requests.Response:
+        parts = urlsplit(requests.Request(method, url, params=k.get("params")).prepare().url)
+        school = (parts.hostname or "").removesuffix("." + eepos.DOMAIN)
+        assert parts.path.startswith("/portal/api/"), f"the guardian portal's API is under /portal/api/: {url}"
+        path = parts.path.removeprefix("/portal/api/")
+        query = {key: json.loads(v) for key, [v] in parse_qs(parts.query).items()}
+        self.requests.append({"method": method, "school": school, "path": path, "body": k.get("json"),
+                              "query": query, "headers": dict(session.headers)})
+        instead = self.answers.get((school, path))
+        if isinstance(instead, BaseException):
+            raise instead
+        if instead is not None:
+            return _response(*instead)
+        portal = self.schools.get(school)
+        if portal is None:
+            return _response(404, "<html>Not found</html>")
+        if (method, path) == ("POST", "auth/login"):
+            body = k.get("json") or {}
+            if portal.accounts.get(body.get("username")) != body.get("password") or not body.get("password"):
+                return _response(401, json.dumps({"error": "loginFailed"}))
+            cookie = tokens.token_hex(8)
+            self._cookies[cookie] = (school, body["username"])
+            session.cookies.set("eepos_session", cookie, domain=parts.hostname)
+            return _portal({"success": True})
+        signed_in = self._cookies.get(session.cookies.get("eepos_session", domain=parts.hostname) or "")
+        if signed_in is None or signed_in[0] != school:
+            return _response(401, json.dumps({"error": "noauth"}))
+        if (method, path) == ("GET", "auth/status"):
+            return _portal({"authenticated": True, "type": 3})
+        if (method, path) == ("GET", "guardian/students"):
+            return _portal(portal.students)
+        if (method, path) == ("GET", "calendar-events/all-by-date-range"):
+            first, last = date.fromisoformat(query["startDate"]), date.fromisoformat(query["endDate"])
+            return _portal([{k: v for k, v in e.items() if k != "school"} for e in self.tonight()
+                            if e["school"] == school and first <= date.fromisoformat(e["date"]) <= last])
+        return _response(404, "<html>Not found</html>")
+
+
+def _portal(data: Any) -> requests.Response:
+    """A JSON answer of the portal, behind Angular's guard."""
+    return _response(200, ")]}',\n" + json.dumps(data, ensure_ascii=False))
+
+
+def _response(status: int, text: str) -> requests.Response:
+    r = requests.Response()
+    r.status_code, r._content, r.encoding = status, text.encode(), "utf-8"
+    return r
+
+
 # The fake of each Source, by its name in the registry.
 FAKES: dict[str, Callable[[FakeSources, pytest.MonkeyPatch], SourceFake]] = {
-    f.name: f for f in (Gmail, MyClub, Wilma, WhatsApp)}
+    f.name: f for f in (Gmail, MyClub, Wilma, WhatsApp, Eepos)}
 
 
 class FakeSources:
