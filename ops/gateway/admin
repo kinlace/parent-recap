@@ -12,6 +12,12 @@ commit's gateway-setup.sh with it, and notes each deploy in its record, which `h
 to say which commit runs; `rollback` runs the deploy before's gateway-setup.sh again, and with
 --restore first brings back the snapshot taken before the deploy it leaves.
 
+`check --mail` is the nightly check (#745), which parent-recap-check.timer runs after the evening
+runs: the Households' status, the gateway's services and a pending reboot, mailed to the
+maintainers from the Brief's address through Email Delivery, as the relay sends, only when
+something is wrong. The mail holds only the status lines of the Households marked ❌, ⚠️ or ❓,
+the services' names and the reboot.
+
 Python's standard library only, so it runs on the host's own python3.
 """
 from __future__ import annotations
@@ -32,6 +38,8 @@ import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
 from pathlib import Path
 from typing import Any, NoReturn
 from zoneinfo import ZoneInfo
@@ -55,10 +63,15 @@ usage: sudo admin <task> [arguments]
   rollback [--restore]                       switch back whole to the deploy before the one that
                                              runs; --restore also brings back the state from the
                                              snapshot taken before the one that runs
+  check [--mail]                             what is wrong tonight; --mail mails it, as nightly
 
 Every task needs root. ops/gateway/README.md says more of each."""
 
 SERVICE = "parent-recap-signup"
+# The gateway's own services the nightly check expects running, each only when it is enabled.
+CHECKED = ("caddy", "bifrost", "brief-relay", SERVICE)
+# A line of `signup status` that begins a Household's: its mark, then its label.
+HOUSEHOLD_LINE = re.compile(r"(✅|⚠️|❌|❓) ph-[0-9a-f]{8}\b")
 LABEL = re.compile(r"ph-[0-9a-f]{8}")
 ADMIN_LOGIN = ("BIFROST_ADMIN_USERNAME", "BIFROST_ADMIN_PASSWORD")
 # What a Household's config holds its Recipients in, read with the shared program's Python, which
@@ -107,6 +120,12 @@ class Paths:
     state: tuple[Path, ...] = (Path("/var/lib/bifrost"), Path("/var/lib/private/brief-relay"),
                                Path("/var/lib/parent-recap-signup"), Path("/etc/bifrost"),
                                Path("/etc/brief-relay"), Path("/etc/parent-recap-signup"))
+    # The SMTP credentials set-smtp-credentials.sh writes, and the address the nightly check
+    # mails, which gateway-setup.sh asks for.
+    smtp_env: Path = Path("/etc/brief-relay/brief-relay.env")
+    maintainers_env: Path = Path("/etc/brief-relay/maintainers.env")
+    # Ubuntu's updates leave it when one waits for a reboot (as `signup status` reads it).
+    reboot_required: Path = Path("/run/reboot-required")
 
 
 class Usage(Exception):
@@ -117,7 +136,9 @@ def main(argv: list[str], paths: Paths | None = None,
          is_root: Callable[[], bool] = lambda: os.geteuid() == 0,
          exec_as: Callable[[list[str], dict], int] | None = None,
          fetch: Callable[..., dict] | None = None, today: str | None = None,
-         edge: Edge | None = None) -> int:
+         edge: Edge | None = None,
+         run: Callable[[list[str], dict], tuple[int, str]] | None = None,
+         smtp: Callable[..., Any] | None = None) -> int:
     paths = paths or Paths()
     exec_as = exec_as or _exec
     if not is_root():
@@ -170,6 +191,11 @@ def main(argv: list[str], paths: Paths | None = None,
             if len(args) != 1:
                 raise Usage("find ADDRESS")
             return _find(paths, args[0])
+        if task == "check":
+            if args not in ([], ["--mail"]):
+                raise Usage("check [--mail]")
+            return _check(paths, run or _run, mail=bool(args), smtp=smtp,
+                          today=today or _today())
     except Usage as e:
         print(f"usage: sudo admin {e}", file=sys.stderr)
         return 2
@@ -1054,6 +1080,13 @@ def _notes(path: Path) -> dict[str, str]:
 def _keys(paths: Paths, fetch: Callable[..., dict] | None) -> tuple[Any, Any]:
     """The Brief relay's module, and Bifrost's admin API with the admin login."""
     login = _admin_login(paths)
+    relay = _relay(paths)
+    return relay, relay.Bifrost(paths.bifrost_url, login[ADMIN_LOGIN[0]], login[ADMIN_LOGIN[1]],
+                                fetch=fetch)
+
+
+def _relay(paths: Paths) -> Any:
+    """The Brief relay's module, as gateway-setup.sh installs it."""
     relay = sys.modules.get("brief_relay")
     if relay is None:
         spec = importlib.util.spec_from_file_location("brief_relay", paths.relay)
@@ -1061,8 +1094,108 @@ def _keys(paths: Paths, fetch: Callable[..., dict] | None) -> tuple[Any, Any]:
             sys.exit(f"{paths.relay} is missing: run gateway-setup.sh")
         relay = sys.modules["brief_relay"] = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(relay)
-    return relay, relay.Bifrost(paths.bifrost_url, login[ADMIN_LOGIN[0]], login[ADMIN_LOGIN[1]],
-                                fetch=fetch)
+    return relay
+
+
+# ── The nightly check (#745)
+
+def _check(paths: Paths, run: Callable[[list[str], dict], tuple[int, str]], mail: bool,
+           smtp: Callable[..., Any] | None, today: str) -> int:
+    """Prints what is wrong, or that nothing is; with `mail`, mails it to the maintainers when
+    something is, and fails only when that mail couldn't go. Without, 1 when something is."""
+    found = _problems(paths, run)
+    if not found:
+        print("nothing wrong")
+        return 0
+    host = _env(paths.signup_env).get("GATEWAY_HOST")
+    text = (f"The nightly check{f' on {host}' if host else ''} found:\n\n"
+            + "\n\n".join(found)
+            + "\n\nSSH in and run sudo admin households for every Household's status; "
+              'ops/gateway/README.md "The nightly check" says what each means.\n')
+    print(text, end="")
+    if not mail:
+        return 1
+    _mail(paths, f"Parent Recap server: something is wrong ({today})", text, smtp)
+    return 0
+
+
+def _problems(paths: Paths, run: Callable[[list[str], dict], tuple[int, str]]) -> list[str]:
+    """What is wrong, one paragraph each: the Households marked, the services down, a reboot."""
+    found = []
+    enabled = [u for u in CHECKED if run(["systemctl", "is-enabled", "--quiet", u], {})[0] == 0]
+    if SERVICE in enabled:
+        code, out = run(_as_service(paths, [], "signup", "status"), _clean_env())
+        marked = _marked(out)
+        if code == 1 and marked:
+            found.append("Households marked in their status:\n" + "\n".join(marked))
+        elif code != 0:
+            # Not its output, which says nothing private but isn't the status either.
+            found.append(f"The Households' status couldn't be read: signup status ended with "
+                         f"{code}.")
+    down = [u for u in enabled if run(["systemctl", "is-active", "--quiet", u], {})[0] != 0]
+    if down:
+        found.append(f"Not running: {', '.join(down)} (systemctl status {' '.join(down)}).")
+    if paths.reboot_required.exists():
+        found.append("Reboot pending: the server waits for a reboot to apply updates.")
+    return found
+
+
+def _marked(out: str) -> list[str]:
+    """The lines of each Household `signup status` marked ❌, ⚠️ or ❓: its own and its doctor's."""
+    kept, keep = [], False
+    for said in out.splitlines():
+        if HOUSEHOLD_LINE.match(said):
+            keep = not said.startswith("✅")
+        elif not said.startswith("   "):
+            keep = False
+        if keep:
+            kept.append(said)
+    return kept
+
+
+def _mail(paths: Paths, subject: str, text: str, smtp: Callable[..., Any] | None) -> None:
+    """Sends `text` to the maintainers from the Brief's address, as the relay sends, counted in
+    the relay's day of Email Delivery's quota."""
+    relay = _relay(paths)
+    to = [a.strip() for a in _env(paths.maintainers_env).get("MAINTAINERS_ADDRESS", "").split(",")
+          if a.strip()]
+    if not to:
+        sys.exit(f"no MAINTAINERS_ADDRESS in {paths.maintainers_env}, so nobody was mailed: run "
+                 "gateway-setup.sh with MAINTAINERS_ADDRESS=<address>")
+    if not all(relay.ADDRESS.fullmatch(a) for a in to):
+        sys.exit(f"MAINTAINERS_ADDRESS in {paths.maintainers_env} must be plain name@domain "
+                 "addresses, separated by commas")
+    login = _env(paths.smtp_env)
+    if not (login.get("BRIEF_SMTP_USERNAME") and login.get("BRIEF_SMTP_PASSWORD")):
+        sys.exit(f"{paths.smtp_env} has no SMTP credentials: run set-smtp-credentials.sh")
+    msg = EmailMessage()
+    msg["From"] = relay.FROM
+    msg["To"] = ", ".join(to)
+    msg["Subject"] = subject
+    msg["Date"] = formatdate(usegmt=True)
+    msg["Message-ID"] = make_msgid(domain=relay.FROM_ADDR.split("@")[1])
+    msg.set_content(text)
+    quota = paths.relay_state / "quota.json"
+    mailer = relay.Mailer(login.get("BRIEF_SMTP_HOST") or relay.SMTP_HOST, 465,
+                          login["BRIEF_SMTP_USERNAME"], login["BRIEF_SMTP_PASSWORD"],
+                          quota=relay.Quota(quota), **({"smtp": smtp} if smtp else {}))
+    try:
+        mailer.send(msg, to)
+    except relay.Refused as e:
+        sys.exit(f"the check's mail wasn't sent: {e.reason}")
+    # Written as root: given back to the relay's user, whose directory it is.
+    try:
+        owner = paths.relay_state.stat()
+        os.chown(quota, owner.st_uid, owner.st_gid)
+    except OSError:
+        pass
+    print(f"mailed to {len(to)} maintainer address{'es' if len(to) > 1 else ''}")
+
+
+def _run(argv: list[str], env: dict) -> tuple[int, str]:
+    """Its exit and output; what it says on stderr isn't kept."""
+    r = subprocess.run(argv, env=env or None, capture_output=True, text=True, cwd="/")
+    return r.returncode, r.stdout
 
 
 def _today() -> str:

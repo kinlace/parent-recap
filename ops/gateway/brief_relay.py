@@ -21,7 +21,8 @@ Bifrost's admin API. For a key's last use the relay keeps one thing more: the da
 sent a Brief (STATE_DIRECTORY/last-sent.json, #742).
 
 Everything the relay sends counts against Email Delivery's 100 a day for the whole tenancy; once a
-UTC day's count passes QUOTA_WARN_AT, the relay logs a warning for the maintainers (#627).
+UTC day's count passes QUOTA_WARN_AT, the relay logs a warning for the maintainers (#627). The
+nightly check (`admin check --mail`, #745) sends through `Mailer` too, so its mail is counted.
 
 Python's standard library only, so it runs on the host's own python3 with nothing to install.
 """
@@ -631,6 +632,9 @@ def confirm_page(language: str, *texts: str, button: str | None = None) -> str:
 
 # ── Email Delivery
 
+SMTP_HOST = "smtp.email.eu-stockholm-1.oci.oraclecloud.com"
+
+
 class Mailer:
     """OCI Email Delivery over SMTP with implicit TLS (port 465), AUTH PLAIN. Every message the
     relay sends goes through here, so the day's `quota` is counted here."""
@@ -950,7 +954,7 @@ def main() -> None:
     relay = Relay(
         keys=admin,
         cap=DailyCap(state / "sent.json", limit=DAILY_CAP, on_request_limit=ON_REQUEST_DAILY_CAP),
-        mailer=Mailer(env.get("BRIEF_SMTP_HOST", "smtp.email.eu-stockholm-1.oci.oraclecloud.com"),
+        mailer=Mailer(env.get("BRIEF_SMTP_HOST", SMTP_HOST),
                       465, env["BRIEF_SMTP_USERNAME"], env["BRIEF_SMTP_PASSWORD"],
                       quota=Quota(state / "quota.json")),
         stop_url=f"https://{env['GATEWAY_HOST']}/brief/stop",
