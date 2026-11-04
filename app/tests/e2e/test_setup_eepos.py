@@ -96,6 +96,17 @@ def test_what_isn_t_a_sign_in_is_refused_before_the_password_is_asked(harness, p
     assert portal.requests == []
 
 
+def test_a_keychain_tmux_or_ssh_can_t_reach_is_said_before_the_password_is_asked(harness, portal, capsys):
+    harness.secrets.reachable_here = False  # macOS over SSH or in tmux
+
+    code, out = setup_eepos(harness, capsys, "--school", "emo", "--username", USERNAME)
+
+    assert code == 1 and out["result"] == "keychain-not-reachable"
+    assert "tmux or SSH" in out["next"] and "setup eepos --school emo --username" in out["next"]
+    assert harness.secrets.typed == EEPOS_PASSWORD and eepos.TYPED not in harness.secrets
+    assert portal.requests == [] and "eepos" not in saved_config(harness)
+
+
 def test_a_portal_that_changed_saves_nothing_and_says_so(harness, portal, capsys):
     portal.answers[("emo", "guardian/students")] = (200, "<html>Eepos</html>")
 

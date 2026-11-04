@@ -71,9 +71,10 @@ class Source:
     # the systems it can be read on, by their profile's name; elsewhere nothing offers, reads,
     # checks or removes it
     systems: frozenset[str] = EVERY_SYSTEM
-    # whether the hosted sign-up sets it up (ADR 0031); a Hosted Household's Brief says the hosted
-    # version doesn't read one it doesn't, or one its system can't read
-    hosted_signup: bool = True
+    # whether a Hosted Household can have it: its sign-up sets it up (ADR 0031) or, as Eepos for
+    # now, the maintainers can; a Hosted Household's Brief says the hosted version doesn't read
+    # one it can't have, or one its system can't read
+    hosted: bool = True
     # whether the setup page has a step for it; one without is set up from a terminal, by its
     # `setup` command, and the page's Connect list leaves it out
     setup_page: bool = True
@@ -138,7 +139,7 @@ def _same_everywhere(label: str) -> dict[str, str]:
 # sign-up has no Gmail step yet (ADR 0029, 0031).
 GMAIL = Source("gmail", _same_everywhere("Gmail"),
                lambda cfg: bool(cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders),
-               skippable=True, connect_rank=5, collect=_collector("gmail"), hosted_signup=False,
+               skippable=True, connect_rank=5, collect=_collector("gmail"), hosted=False,
                lookback=lambda cfg: cfg.gmail, check=_in("ops", "check_gmail"),
                secrets=_in("uninstall", "gmail_secrets"), notes=_in("uninstall", "gmail_notes"),
                sent_to_everyone=_in("collectors.gmail", "sent_to_everyone"),
@@ -173,10 +174,11 @@ WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), _in("collectors.what
 # A music or art school's calendar, read through its portal's own JSON API with a password in the
 # secret store (ADR 0038). Its lessons and holidays are events, which nothing else puts in a
 # calendar, so they go into the .ics. Set up from a terminal for now, one sign-in per school
-# (`setup eepos`): neither the setup page nor the hosted sign-up has a step for it yet (#755).
+# (`setup eepos`): neither the setup page nor the hosted sign-up has a step for it yet (#755),
+# but the maintainers can add a Hosted Household's, so its Brief doesn't call it unread there.
 EEPOS = Source("eepos", _same_everywhere("Eepos"), lambda cfg: bool(cfg.eepos.signins),
                skippable=True, connect_rank=6, collect=_collector("eepos"), counts_events=True,
-               hosted_signup=False, setup_page=False, check=_in("ops", "check_eepos"),
+               setup_page=False, check=_in("ops", "check_eepos"),
                check_items={"eepos": "Eepos ({})"}, secrets=_in("collectors.eepos", "secrets_of"))
 
 ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP, EEPOS)
@@ -200,9 +202,9 @@ def available() -> list[Source]:
 
 def not_hosted() -> list[Source]:
     """The Sources a Hosted Household can't have: those the hosted version's system can't read and
-    those its sign-up doesn't set up (ADR 0029, 0031), in the order the setup page's Connect list
+    those neither its sign-up nor the maintainers set up (ADR 0029, 0031), in the order the setup page's Connect list
     shows them."""
-    return sorted((s for s in ALL if not s.hosted_signup or HOSTED_SYSTEM not in s.systems),
+    return sorted((s for s in ALL if not s.hosted or HOSTED_SYSTEM not in s.systems),
                   key=lambda s: s.connect_rank)
 
 

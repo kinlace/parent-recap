@@ -119,6 +119,15 @@ def _json(text: str, what: str, where: str) -> Any:
         raise Changed(f"{where}'s {what} wasn't JSON") from None
 
 
+def _login_failed(text: str) -> bool:
+    """Whether a sign-in's answer is the portal's `{"error": "loginFailed"}`."""
+    try:
+        answer = _json(text, "sign-in", "")
+    except Changed:
+        return False
+    return isinstance(answer, dict) and answer.get("error") == "loginFailed"
+
+
 class Portal:
     """One school's guardian portal, signed in to over a session of its own."""
 
@@ -143,7 +152,8 @@ class Portal:
             r = retry_once_on_timeout(call, (requests.Timeout,), f"Eepos {self.where}")
         except requests.RequestException as e:
             raise EeposError(f"{self.where} didn't answer ({type(e).__name__})") from None
-        if path == SIGN_IN and 400 <= r.status_code < 500 and r.status_code not in (404, 429):
+        if path == SIGN_IN and r.status_code == 400 and _login_failed(r.text):
+            # What the portal answers a wrong username or password (tried 2026-11-04).
             raise WrongPassword(f"login failed at {self.where}")
         if r.status_code in (401, 403):
             raise EeposError(f"{self.where} signed the session out (HTTP {r.status_code})")
@@ -158,9 +168,6 @@ class Portal:
         answer = self._call("POST", SIGN_IN, "sign-in",
                             json={"username": username, "password": password})
         if not (isinstance(answer, dict) and answer.get("success") is True):
-            # The portal treats anything but success as a failed sign-in.
-            if isinstance(answer, dict) and ("success" in answer or "error" in answer):
-                raise WrongPassword(f"login failed at {self.where}")
             raise Changed(f"{self.where}'s sign-in answered in a way it didn't before")
 
     def students(self) -> list[Student]:

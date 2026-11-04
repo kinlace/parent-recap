@@ -129,10 +129,10 @@ def test_a_linked_device_that_needs_a_new_pairing_is_not_read_since_then(languag
 
 @pytest.mark.parametrize("language, lines", [
     ("en", "📥 Read tonight: MyClub 1 event · Wilma 2 messages\n"
-           "WhatsApp, Gmail and Eepos aren't read in the hosted version."),
-    ("zh", "📥 今晚读取：MyClub 1 个日程 · Wilma 2 条\n托管版不读取 WhatsApp，Gmail 和 Eepos。"),
+           "WhatsApp and Gmail aren't read in the hosted version."),
+    ("zh", "📥 今晚读取：MyClub 1 个日程 · Wilma 2 条\n托管版不读取 WhatsApp 和 Gmail。"),
     ("fi", "📥 Luettu tänä iltana: MyClub 1 tapahtuma · Wilma 2 viestiä\n"
-           "WhatsApp, Gmail ja Eepos eivät ole mukana ylläpidetyssä versiossa."),
+           "WhatsApp ja Gmail eivät ole mukana ylläpidetyssä versiossa."),
 ])
 def test_a_hosted_household_s_coverage_line_names_every_source_it_can_t_have(system, language,
                                                                               lines):
@@ -157,7 +157,7 @@ def test_a_source_a_hosted_household_read_tonight_is_not_named_as_unread(system,
     system.profile = LINUX
     reply, sources = the_normal_night(language)
     t = TEXT[language]
-    # Eepos is set up by hand for a Hosted Household, which its sign-up doesn't do yet (#755).
+    # The maintainers set up Eepos by hand for a Hosted Household, as its sign-up can't yet (#755).
     coverage = {"gmail": {"count": 1, "error": None}, "wilma": {"count": 2, "error": None},
                 "eepos": {"count": 3, "error": None}}
     night = brief_of(written(reply, sources), t, coverage=coverage, hosted=True)

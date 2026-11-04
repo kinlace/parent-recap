@@ -102,12 +102,26 @@ def collect_without_set_up(sources) -> list:
     ("calendar-events/all-by-date-range", (404, "<html>Not found</html>"), "has no calendar where it was"),
     ("guardian/students", (200, ")]}',\n[{\"id\": 11}]"), "list of students has no names"),
     ("auth/login", (200, ")]}',\n{\"token\": \"abc\"}"), "sign-in answered in a way"),
-], ids=["html", "not-a-list", "moved", "no-names", "sign-in"])
+    ("auth/login", (200, ")]}',\n{\"success\": false}"), "sign-in answered in a way"),
+    ("auth/login", (404, "<html>Not found</html>"), "has no sign-in where it was"),
+], ids=["html", "not-a-list", "moved", "no-names", "sign-in", "sign-in-not-a-success", "sign-in-moved"])
 def test_a_portal_that_changed_says_so(sources, portal, path, answer, says):
     portal.answers[("emo", path)] = answer
 
     with pytest.raises(eepos.Changed, match=says):
         collect(sources)
+
+
+@pytest.mark.parametrize("answer", [(400, '{"error": "validation"}'), (401, '{"error": "loginFailed"}'),
+                                    (422, "<html>Eepos</html>")], ids=["other-error", "401", "html"])
+def test_only_the_portal_s_own_login_failed_is_a_wrong_password(sources, portal, answer):
+    # A changed login API mustn't tell the family their password is wrong.
+    portal.answers[("emo", "auth/login")] = answer
+
+    with pytest.raises(eepos.EeposError) as e:
+        collect(sources)
+
+    assert not isinstance(e.value, eepos.WrongPassword)
 
 
 def test_a_portal_that_doesn_t_answer_says_which_school(sources, portal):
