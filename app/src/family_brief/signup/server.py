@@ -8,7 +8,11 @@ made, so a wrong password is said at once and the link stays good, and answers w
 calendar link field for each Kid Wilma listed. The answers wait in memory only, for the second,
 up to PENDING_MINUTES: the password is never written down or put back in a page. The second post
 checks each link given by downloading it once, so a link that doesn't open is said at once, and
-an empty one leaves MyClub off for that Kid. Then the Household is made through the household
+an empty one leaves MyClub off for that Kid.
+
+A family without Wilma, such as at a private school, leaves the Wilma fields empty and gives the
+Kids' names instead (#760): nothing is checked at the first post, and the second needs at least one
+MyClub link, the only thing its Brief would read. Then the Household is made through the household
 host: its Linux user, its Gateway Key, `signup household` run as it, by the server's shared copy
 of the program (ADR 0035), with the answers, the Wilma sign-in, the links and the key on its
 stdin, and its first Brief, made and sent to its Recipients by `run --first-brief` as it, as the
@@ -141,7 +145,7 @@ class Service:
                 return None
             if progress.page is None:
                 return HTTPStatus.OK, page.progress(progress.language, progress.steps,
-                                                    not progress.started)
+                                                    not progress.started, progress.names)
             del self._progress[code]
             return progress.page
 
@@ -163,20 +167,32 @@ class Service:
                                                 list(self.towns()), "expired")
             self._pending.pop(code, None)  # signing in again starts over
             typed = page.Typed(fields.get("town", "").strip(), fields.get("username", "").strip(),
-                               _recipients(fields, language))
+                               _recipients(fields, language), _kids(fields))
             password = fields.get("password", "")
 
             def again(error: str, status: HTTPStatus = HTTPStatus.OK) -> tuple[HTTPStatus, str]:
                 log.info("A sign-up wasn't taken: %s", error)
                 return status, page.form(language, typed, list(self.towns()), error)
-            picked = self._picked(typed.town)
-            if picked is None:
+            without_wilma = not (typed.town or typed.username or password)
+            if without_wilma and not typed.kids:
+                return again("invalid-sign-in", HTTPStatus.BAD_REQUEST)
+            picked = None if without_wilma else self._picked(typed.town)
+            if not without_wilma and picked is None:
                 return again("invalid-town", HTTPStatus.BAD_REQUEST)
-            if not typed.username or not password:
+            if not without_wilma and (not typed.username or not password):
                 return again("invalid-sign-in", HTTPStatus.BAD_REQUEST)
             if not typed.recipients or any(not EMAIL.fullmatch(r.address)
                                            for r in typed.recipients):
                 return again("invalid-recipients", HTTPStatus.BAD_REQUEST)
+            expires = now + timedelta(minutes=PENDING_MINUTES)
+            recipients = [{"address": r.address, "language": r.language}
+                          for r in typed.recipients]
+            if picked is None:
+                self._pending[code] = _Pending(language, expires, {
+                    "language": language, "recipients": recipients,
+                    "kids": [{"name": name} for name in typed.kids],
+                }, invite.note)
+                return HTTPStatus.OK, page.myclub(language, typed.kids, wilma=False)
             tenant, town = picked
             checked, students = setup_wilma.check(tenant, typed.username, password)
             if checked["result"] in ("wrong-password", "no-kids"):
@@ -186,11 +202,8 @@ class Service:
                             checked.get("reason") or checked["result"])
                 return again("sign-in-failed")
 
-            expires = now + timedelta(minutes=PENDING_MINUTES)
             self._pending[code] = _Pending(language, expires, {
-                "language": language, "city": town,
-                "recipients": [{"address": r.address, "language": r.language}
-                               for r in typed.recipients],
+                "language": language, "city": town, "recipients": recipients,
                 "kids": [{"name": k["name"],
                           **({"school": k["school"]} if k.get("school") else {}),
                           **({"class_name": k["class"]} if k.get("class") else {})}
@@ -205,7 +218,7 @@ class Service:
         """The MyClub step: checks each link given, then has the Household made from the answers
         the first step checked, and sends the page to its steps."""
         pending = self._pending[code]
-        language, kids = pending.language, pending.kids()
+        language, kids, wilma = pending.language, pending.kids(), pending.wilma()
         links: dict[str, str] = {}
         for i, kid in enumerate(kids):
             url = "".join(fields.get(f"m{i}", "").split())
@@ -218,10 +231,13 @@ class Service:
                 result, _ = setup_myclub.check_link(url)
             if result != "checked":
                 log.info("A sign-up's MyClub link wasn't taken: %s", result)
-                return HTTPStatus.OK, page.myclub(language, kids, result, kid)
+                return HTTPStatus.OK, page.myclub(language, kids, result, kid, wilma)
             links[kid] = url
+        if not wilma and not links:  # nothing for its Brief to read
+            log.info("A sign-up without Wilma gave no MyClub link")
+            return HTTPStatus.OK, page.myclub(language, kids, "need-myclub", None, wilma)
         del self._pending[code]
-        progress = _Progress(language)
+        progress = _Progress(language, page.STEPS if wilma else page.NO_WILMA_STEPS)
         with self._progress_lock:
             self._progress[code] = progress
         threading.Thread(target=self._make_in_turn, args=(code, pending, links, progress),
@@ -241,7 +257,7 @@ class Service:
         finally:
             if progress.page is None:  # stopped by what no step expects
                 progress.end(self.now(), HTTPStatus.INTERNAL_SERVER_ERROR,
-                             page.failed(pending.language))
+                             page.failed(pending.language, steps=progress.names))
             with self._turns:
                 self._queue.pop(0)
                 self._turns.notify_all()
@@ -261,19 +277,20 @@ class Service:
                       name, failure.raised(e, "Signing up"))
             self._take_back(name)
             progress.end(self.now(), HTTPStatus.INTERNAL_SERVER_ERROR,
-                         page.failed(language, progress.steps))
+                         page.failed(language, progress.steps, progress.names))
             return
         self.store.add_household(HouseholdRecord(name, evening, self.now().isoformat(),
                                                  pending.note))
         self.store.retire(code)
-        log.info("Household %s created from an Invite Link, with MyClub for %d of %d Kids; its "
-                 "first Brief was sent, and the next come at %s", name, len(links), len(kids),
+        log.info("Household %s created from an Invite Link, %s, with MyClub for %d of %d Kids; "
+                 "its first Brief was sent, and the next come at %s", name,
+                 "with Wilma" if pending.wilma() else "without Wilma", len(links), len(kids),
                  evening)
         progress.end(self.now(), HTTPStatus.OK, page.done(language, evening, any(
-            _junk_prone(r["address"]) for r in answers["recipients"])))
+            _junk_prone(r["address"]) for r in answers["recipients"]), progress.names))
 
     def _create(self, name: str, answers: dict[str, Any], progress: _Progress) -> None:
-        """Makes the Household, one of page.STEPS after another, `progress.steps` of them ended."""
+        """Makes the Household, one of its steps after another, `progress.steps` of them ended."""
         self.host.create_user(name)
         key = self.host.mint_key(name)
         progress.steps += 1
@@ -312,14 +329,18 @@ class _Pending:
     def kids(self) -> list[str]:
         return [k["name"] for k in self.answers["kids"]]
 
+    def wilma(self) -> bool:
+        return "wilma" in self.answers
+
 
 @dataclass
 class _Progress:
     """A Household being made: how many of its steps have ended, and, once it has, the page
     that says how. Nothing secret, so the page may ask for it as often as it likes."""
     language: str
+    names: tuple[str, ...] = page.STEPS  # its steps, which page.NO_WILMA_STEPS are without Wilma
     started: bool = False  # False while it waits its turn
-    steps: int = 0  # of page.STEPS
+    steps: int = 0  # of `names`
     page: tuple[HTTPStatus, str] | None = None
     ended: datetime | None = None
 
@@ -335,6 +356,12 @@ def _recipients(fields: dict[str, str], language: str) -> list[Recipient]:
         if address:
             out.append(Recipient(address, chosen if chosen in LANGUAGES else language))
     return out
+
+
+def _kids(fields: dict[str, str]) -> list[str]:
+    """The names a family without Wilma gave, each once, in the order given."""
+    names = [" ".join(fields.get(f"k{i}", "").split())[:60] for i in range(page.MAX_KIDS)]
+    return list(dict.fromkeys(n for n in names if n))
 
 
 def _evening(households: list[HouseholdRecord]) -> str:

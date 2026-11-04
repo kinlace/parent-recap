@@ -17,3 +17,4 @@ The setup page (ADR 0006) runs on the Household's own computer, bound to localho
 - Creating and removing a Linux user, running a command as it and minting a Gateway Key on the gateway's admin API go behind one interface with an in-memory fake, so the service is tested without a root shell.
 - A Hosted Household has no way to change its own settings at first: the maintainers edit the config. A change form comes with more Households.
 - The first Brief is emailed rather than previewed on the page, so the service needs no long-lived session with the browser.
+- Amended 2026-11-04 (#760, after a pilot family at a private school had no Wilma): Wilma is optional at sign-up. A family without it leaves the Wilma fields empty and types the Kids' names, and the MyClub step then needs at least one link, since that is all the Brief would read. Such a Household has Wilma off and no Wilma sign-in, and the Wilma check gates a sign-up only when Wilma is given.

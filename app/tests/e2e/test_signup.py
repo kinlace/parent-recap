@@ -50,6 +50,7 @@ pytestmark = pytest.mark.posix  # the fake wilma CLI is a script on a shell-scri
 
 REFRESH = '<meta http-equiv="refresh" content="3">'  # how the page asks again, with no script
 STEPS = ("step_setup", "step_wilma", "step_brief")
+NO_WILMA = {"town": "", "username": "", "password": ""}  # the Wilma fields left empty
 ESPOO_TOWN = "Espoo – Espoon kaupunki / Suomenkielisen opetuksen tulosyksikkö"
 NOON = datetime(2026, 10, 30, 10, 0, tzinfo=timezone.utc)  # 12:00 in Helsinki
 MIA_LINK = "webcal://kilonpallo.myclub.fi/ical/mia-1001-token.ics"
@@ -170,10 +171,10 @@ def until(s: SignUp, code: str, shows: Callable[[str], bool]) -> str:
         time.sleep(0.05)
 
 
-def marks(html: str, language: str) -> str:
+def marks(html: str, language: str, steps: tuple[str, ...] = STEPS) -> str:
     """Each step's mark on the page, in order: ✅ ended, ⏳ going on, ❌ failed, ⬜ not begun."""
     return "".join(re.search(rf"<li>(\S+) {re.escape(said(language, step))}</li>", html)[1]
-                   for step in STEPS)
+                   for step in steps)
 
 
 class Held:
@@ -233,8 +234,11 @@ def test_the_page_is_a_phone_sized_form_with_the_invite_s_recipients_and_loads_n
     assert f'<option value="{ESPOO_TOWN}">' in html  # the towns of the CLI's own tenant list
     # The password only in its own field, which never has a value.
     assert html.count('type="password"') == 1
-    assert '<input id="password" name="password" type="password" required ' \
+    assert '<input id="password" name="password" type="password" ' \
            'autocomplete="current-password">' in html
+    # A family without Wilma gives the Kids' names instead, behind a part they open (#760).
+    assert f"<details><summary>{said('fi', 'no_wilma')}</summary>" in html
+    assert '<input id="k0" name="k0"' in html
     # Nothing to load: no script, no stylesheet, image or font, from anywhere.
     for loads in ("<script", "<link", "<img", "src=", "url(", "http://", "https://"):
         assert loads not in html
@@ -542,6 +546,73 @@ def test_one_link_for_two_kids_is_said(signup, mia_plays):
 
     assert said("en", "same-link", kid="Leo Virtanen") in text(r)
     assert signup.host.users == {}
+
+
+# ── Without Wilma (#760)
+
+def test_a_family_without_wilma_signs_up_with_its_kids_names_and_a_myclub_link(
+        signup, harness, mia_plays, caplog):
+    caplog.set_level(logging.DEBUG)
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    first = sign_in(signup, code, **NO_WILMA, k0=" Mia  Virtanen ", k1="Leo", k2="Mia Virtanen")
+
+    assert first.status == 200, text(first)
+    html = text(first)
+    assert said("en", "myclub_needed") in html and said("en", "myclub") not in html
+    assert '<label for="m0">Mia Virtanen</label>' in html
+    assert '<label for="m1">Leo</label>' in html and 'for="m2"' not in html  # each name once
+    r = links(signup, code, MIA_LINK, "")
+
+    assert r.status == 200, text(r)
+    assert marks(text(r), "en", page.NO_WILMA_STEPS) == "✅✅✅"
+    assert said("en", "step_wilma") not in text(r)
+    _, user = signup.user()
+    cfg = Config.load(user.home / ".family" / "config.yaml")
+    assert {k.name: k.myclub_ical_url for k in cfg.kids} == {"Mia Virtanen": MIA_LINK, "Leo": None}
+    assert not cfg.wilma.enabled and not cfg.whatsapp.enabled and cfg.hosted
+    assert cfg.city is None
+    # No Wilma sign-in anywhere: only the key in the secret store, and no sign-in file.
+    assert set(user.secrets) == {"gateway-key"}
+    assert not (user.home / ".family" / "wilma-signins.json").exists()
+    [sent] = harness.sent
+    assert "MyClub 1 tapahtuma" in sent.text
+    assert "Wilma" not in sent.text.split("📥")[-1].splitlines()[0]  # read tonight: MyClub only
+    assert "without Wilma" in caplog.text
+    [household] = signup.store.households()
+    assert household.user == signup.user()[0]
+
+
+def test_without_wilma_a_myclub_link_is_needed_and_nothing_is_made_without_one(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    assert sign_in(signup, code, **NO_WILMA, lang="zh", k0="Mia").status == 200
+
+    r = links(signup, code, "", lang="zh")
+
+    assert r.status == 200
+    assert said("zh", "need-myclub") in text(r)
+    assert 'name="step" value="myclub"' in text(r)
+    assert (signup.host.users, signup.host.keys) == ({}, {})
+    assert request(signup.url, f"/join/{code}").status == 200  # the link still works
+
+
+def test_neither_wilma_nor_names_is_said_and_nothing_is_made(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    r = sign_in(signup, code, **NO_WILMA, lang="fi")
+
+    assert r.status == 400
+    assert said("fi", "invalid-sign-in") in text(r)
+    assert (signup.host.users, signup.host.keys) == ({}, {})
+
+
+def test_names_given_beside_a_wilma_sign_in_are_left_to_wilma(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    r = sign_in(signup, code, k0="Somebody Else")
+
+    html = text(r)
+    assert '<label for="m0">Mia Virtanen</label>' in html and "Somebody Else" not in html
 
 
 def test_a_myclub_step_left_too_long_starts_over_and_the_link_stays_good(signup):
