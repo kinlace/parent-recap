@@ -8,7 +8,6 @@ is a real git repo; gateway-setup.sh, systemctl and HTTP are faked as in test_ad
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 import tarfile
@@ -267,7 +266,7 @@ def test_rollback_to_a_deploy_no_longer_on_disk_is_refused(deploy, capsys):
     deploy.fake.checks[deploy.origin.unreleased] = [{"name": "test", "conclusion": "success"}]
     assert deploy("deploy", "v1.0.0") == 0
     assert deploy("deploy", "main") == 0
-    shutil.rmtree(deploy.server.paths.sources / deploy.origin.release[:12])
+    admin._rmtree(deploy.server.paths.sources / deploy.origin.release[:12])
     err = refused(deploy, capsys)
     assert "is no longer on disk" in err and f"admin deploy {deploy.origin.release}" in err
 
