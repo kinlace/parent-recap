@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 from test_admin import admin
 from test_admin_deploy import (  # noqa: F401  (fixtures)
-    _symlinks, deploy, git, household, nothing_changed, origin, records)
+    OWNER, _symlinks, deploy, git, household, nothing_changed, origin, records)
 
 
 def later(deploy, hours: int = 1) -> None:
@@ -327,6 +327,47 @@ def test_restore_brings_back_the_state_from_before_the_current_deploy(deploy, ca
     assert "restored " in capsys.readouterr().out
     # No leftover beside what was put back.
     assert sorted(p.name for p in deploy.server.homes.iterdir()) == ["ph-30d2afe0"]
+
+
+def a_restore_after_a_removal(deploy) -> None:
+    """Two Households in the snapshot before the current deploy; ph-11112222 is removed after."""
+    household(deploy)
+    household(deploy, "ph-11112222", check=False)
+    (home(deploy) / "2026-11-03.md").write_text("Brief as it was\n")
+    (home(deploy, "ph-11112222") / "2026-11-03.md").write_text("removed family's Brief\n")
+    deploy.fake.checks[deploy.origin.unreleased] = [{"name": "test", "conclusion": "success"}]
+    assert deploy("deploy", "v1.0.0") == 0
+    later(deploy)
+    assert deploy("deploy", "main") == 0
+    admin._rmtree(deploy.server.homes / "ph-11112222")  # admin remove deletes its user and home
+    del deploy.fake.users["ph-11112222"]
+    (home(deploy) / "2026-11-03.md").write_text("rewritten\n")
+    later(deploy)
+
+
+def test_restore_leaves_out_a_removed_household_s_home_and_says_so(deploy, capsys):
+    a_restore_after_a_removal(deploy)
+    capsys.readouterr()
+    assert deploy("rollback", "--restore") == 0
+    assert not (deploy.server.homes / "ph-11112222").exists()
+    # A Household still on the server is restored as before.
+    assert (home(deploy) / "2026-11-03.md").read_text() == "Brief as it was\n"
+    out = capsys.readouterr().out
+    assert "ph-11112222's home isn't restored: its user no longer exists" in out
+    assert "removed family's Brief" not in out and "2026-11-03.md" not in out
+    assert sorted(p.name for p in deploy.server.homes.iterdir()) == ["ph-30d2afe0"]
+
+
+def test_restore_leaves_out_a_home_whose_uid_another_user_now_holds(deploy, capsys):
+    a_restore_after_a_removal(deploy)
+    # Its label holds another uid now, and the one its home was owned by is another user's.
+    deploy.fake.users["ph-11112222"] = OWNER + 1
+    capsys.readouterr()
+    assert deploy("rollback", "--restore") == 0
+    assert not (deploy.server.homes / "ph-11112222").exists()
+    assert (home(deploy) / "2026-11-03.md").read_text() == "Brief as it was\n"
+    assert "ph-11112222's home isn't restored: the uid it was owned by now belongs to another " \
+        "user" in capsys.readouterr().out
 
 
 def test_restore_answered_no_changes_nothing(deploy, capsys):
