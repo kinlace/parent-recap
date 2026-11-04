@@ -52,10 +52,13 @@ usage: sudo admin <task> [arguments]
   keys                                       every Gateway Key: who holds it, what it can do, on
                                              or off, made, last used, spend
   cost                                       this month's model spend per key and in all
-  key new LABEL "WHO HOLDS IT" [--send-only] make a Gateway Key and print its value, once
+  key new LABEL "WHO HOLDS IT" [--send-only] make a Gateway Key and print its value, once;
+                                             asks for the holder's email
   key off NAME-OR-ID                         turn a Gateway Key off: it neither writes nor sends
   key on NAME-OR-ID                          turn a Gateway Key back on
-  find ADDRESS                               which Households have this Recipient
+  find TEXT                                  which Households have this Recipient, and which
+                                             Gateway Keys hold TEXT in who holds them or in
+                                             their addresses
   remove ph-XXXXXXXX                         remove a Hosted Household with everything of it
   deploy vX.Y.Z|main|COMMIT [--anyway]       snapshot the server's state, then fetch that commit
                                              of the repo and install it all
@@ -139,7 +142,8 @@ def main(argv: list[str], paths: Paths | None = None,
          fetch: Callable[..., dict] | None = None, today: str | None = None,
          edge: Edge | None = None,
          run: Callable[[list[str], dict], tuple[int, str]] | None = None,
-         smtp: Callable[..., Any] | None = None) -> int:
+         smtp: Callable[..., Any] | None = None,
+         ask: Callable[[str], str] | None = None) -> int:
     paths = paths or Paths()
     exec_as = exec_as or _exec
     if not is_root():
@@ -187,11 +191,11 @@ def main(argv: list[str], paths: Paths | None = None,
             relay.print_cost(keys, today=today or _today())
             return 0
         if task == "key":
-            return _key(paths, args, fetch, today)
+            return _key(paths, args, fetch, today, ask)
         if task == "find":
-            if len(args) != 1:
-                raise Usage("find ADDRESS")
-            return _find(paths, args[0])
+            if len(args) != 1 or not args[0].strip():
+                raise Usage("find TEXT")
+            return _find(paths, args[0], fetch, run or _run, today or _today())
         if task == "check":
             if args not in ([], ["--mail"]):
                 raise Usage("check [--mail]")
@@ -205,11 +209,11 @@ def main(argv: list[str], paths: Paths | None = None,
 
 
 def _key(paths: Paths, args: list[str], fetch: Callable[..., dict] | None,
-         today: str | None) -> int:
+         today: str | None, ask: Callable[[str], str] | None) -> int:
     verb, rest = (args[0], args[1:]) if args else ("", [])
     if verb == "new":
         relay, keys = _keys(paths, fetch)
-        relay.new_key(keys, rest, today=today or _today())
+        relay.new_key(keys, rest, today=today or _today(), ask=ask)
         return 0
     if verb in ("off", "on"):
         if len(rest) != 1:
@@ -221,14 +225,70 @@ def _key(paths: Paths, args: list[str], fetch: Callable[..., dict] | None,
                 "key on NAME-OR-ID")
 
 
-def _find(paths: Paths, address: str) -> int:
+def _find(paths: Paths, text: str, fetch: Callable[..., dict] | None,
+          run: Callable[[list[str], dict], tuple[int, str]], today: str) -> int:
+    """Each Household with `text` among its Recipients, then each Gateway Key holding it in its
+    description or its bound addresses (#758), with a Hosted Household's key followed by that
+    Household's status. 1 only when nothing matched. One half that can't be searched says why
+    and doesn't stop the other."""
+    households = _searched("no Household searched", lambda: _find_households(paths, text))
+    keys = _searched("no Gateway Key searched", lambda: _find_keys(paths, text, fetch, run, today))
+    if households or keys:
+        return 0
+    print(f"nothing matched {text}: no Household has it among its Recipients, and no Gateway "
+          "Key in who holds it or its addresses", file=sys.stderr)
+    return 1
+
+
+def _searched(failed: str, search: Callable[[], int]) -> int:
+    """How many `search` found; 0, saying why, when it exited."""
+    try:
+        return search()
+    except SystemExit as e:
+        if e.code not in (None, 0):
+            print(f"{failed}: {e.code}", file=sys.stderr)
+        return 0
+
+
+def _find_keys(paths: Paths, text: str, fetch: Callable[..., dict] | None,
+               run: Callable[[list[str], dict], tuple[int, str]], today: str) -> int:
+    """Each Gateway Key matching `text`, by its `admin keys` line; a Hosted Household's key, named
+    by its label, also by that Household's `admin households` lines."""
+    relay, keys = _keys(paths, fetch)
+    printed = relay.print_keys(keys, paths.relay_state, today=today, find=text)
+    hosted = [name for name in printed if LABEL.fullmatch(name)]
+    if hosted:
+        code, out = run(_as_service(paths, [], "signup", "status"), _clean_env())
+        for label in hosted:
+            lines = _household_lines(out, label)
+            if lines:
+                print("\n".join(lines))
+            else:
+                # Not its output, as for the nightly check.
+                print(f"{label}: signup status (exit {code}) has no line for it", file=sys.stderr)
+    return len(printed)
+
+
+def _household_lines(out: str, label: str) -> list[str]:
+    """The lines `signup status` printed for the Household `label`: its own and its doctor's."""
+    kept, keep = [], False
+    for said in out.splitlines():
+        if HOUSEHOLD_LINE.match(said):
+            keep = LABEL.search(said).group() == label
+        elif not said.startswith("   "):
+            keep = False
+        if keep:
+            kept.append(said)
+    return kept
+
+
+def _find_households(paths: Paths, address: str) -> int:
     """Each Household whose Recipients include `address`, by its label and its Invite Link's note,
     and nothing else of its config."""
     want = address.strip().lower()
     configs = _configs(paths)
     if not configs:
-        print("no Household on this server", file=sys.stderr)
-        return 1
+        return 0
     if not Path(paths.python).exists():
         sys.exit(f"{paths.python} is missing: the shared program isn't installed")
     failed = f"couldn't read the Households' configs with {paths.python}"
@@ -253,10 +313,7 @@ def _find(paths: Paths, address: str) -> int:
         if any(isinstance(a, str) and a.strip().lower() == want for a in addresses):
             found += 1
             print(f"{label} ({notes[label]})" if notes.get(label) else label)
-    if not found:
-        print(f"no Household has {address} among its Recipients", file=sys.stderr)
-        return 1
-    return 0
+    return found
 
 
 def _configs(paths: Paths) -> list[Path]:

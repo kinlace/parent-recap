@@ -188,6 +188,14 @@ class Server:
         self.down: set[str] = set()
         self.checked: list[list[str]] = []
         self.smtp = FakeSMTP()
+        # What the maintainer types at `key new`'s question, one answer each time it asks; None
+        # is no terminal to ask on.
+        self.answers: list[str] | None = None
+        self.asked: list[str] = []
+
+    def ask(self, prompt: str) -> str:
+        self.asked.append(prompt)
+        return self.answers.pop(0)
 
     def run(self, argv: list[str], env: dict) -> tuple[int, str]:
         self.checked.append(argv)
@@ -219,7 +227,8 @@ class Server:
         try:
             return admin.main(list(args), paths=self.paths, is_root=lambda: self.root_user,
                               exec_as=exec_as, fetch=self.bifrost, today="2026-11-04",
-                              run=self.run, smtp=self.smtp)
+                              run=self.run, smtp=self.smtp,
+                              ask=self.ask if self.answers is not None else None)
         except SystemExit as e:
             if isinstance(e.code, str):
                 print(e.code, file=sys.stderr)
@@ -442,6 +451,38 @@ def test_key_new_keeps_its_safeguards(server):
     assert server.bifrost.made == []
 
 
+def test_key_new_keeps_the_holder_s_email_typed_after_who_holds_it(server, capsys):
+    server.answers = ["  parent@example.com  "]
+    assert server.admin("key", "new", "pilot-c", "Korhonen family", "--send-only") == 0
+    assert server.bifrost.made[0]["description"] == (
+        "Korhonen family, parent@example.com, own Claude Code or Codex, 2026-11-04")
+    assert len(server.asked) == 1 and "email" in server.asked[0]
+    # Kept only in the description: the key's name and its printed line don't hold it.
+    assert server.bifrost.made[0]["name"] == "send-pilot-c"
+    assert capsys.readouterr().out == "send-pilot-c  sk-bf-made-0\n"
+
+
+def test_key_new_skips_the_email_on_enter(server):
+    server.answers = [""]
+    assert server.admin("key", "new", "pilot-c", "Korhonen family") == 0
+    assert server.bifrost.made[0]["description"] == "Korhonen family, gateway AI, 2026-11-04"
+
+
+def test_key_new_asks_again_for_an_email_that_isn_t_plain(server, capsys):
+    server.answers = ["Parent <parent@example.com>", "parent", "parent@example.com"]
+    assert server.admin("key", "new", "pilot-c", "Korhonen family") == 0
+    assert len(server.asked) == 3
+    assert "name@domain" in capsys.readouterr().err
+    assert server.bifrost.made[0]["description"] == (
+        "Korhonen family, parent@example.com, gateway AI, 2026-11-04")
+
+
+def test_key_new_without_a_terminal_doesn_t_ask(server, monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+    assert server.admin("key", "new", "pilot-c", "Korhonen family") == 0
+    assert server.bifrost.made[0]["description"] == "Korhonen family, gateway AI, 2026-11-04"
+
+
 @pytest.mark.parametrize("ref", ["ai-pilot-a", "id-1"])
 def test_key_off_turns_a_key_off_by_name_or_id_and_says_so(server, capsys, ref):
     assert server.admin("key", "off", ref) == 0
@@ -607,7 +648,75 @@ def test_find_says_why_the_shared_program_couldn_t_read_the_configs(
     assert "No module named 'yaml'" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("args", [(), ("a@b.fi", "c@d.fi")])
+def test_find_finds_a_key_by_part_of_who_holds_it_and_prints_no_value(server, capsys):
+    assert server.admin("find", "korhonen") == 0
+    out = capsys.readouterr().out
+    assert out.splitlines() == [
+        "ai-pilot-a  id=id-1  Korhonen family, gateway AI, 2026-10-01  writes+sends  on  "
+        "made 2026-10-01  last used 2026-11-04  today $0.02 of $0.10  30 days $0.33"]
+    assert "sk-bf-" not in out
+
+
+def test_find_finds_a_key_by_its_holder_s_email(server, capsys):
+    server.bifrost.keys.append({"id": "id-4", "name": "send-pilot-d", "value": "sk-bf-four",
+                                "is_active": True,
+                                "description": "Lahti family, Parent@Example.com, own Claude "
+                                               "Code or Codex, 2026-11-04"})
+    assert server.admin("find", "parent@example.com") == 0
+    out = capsys.readouterr().out
+    assert out.startswith("send-pilot-d  id=id-4  Lahti family, Parent@Example.com, ")
+    assert len(out.splitlines()) == 1 and "sk-bf-" not in out
+
+
+def test_find_finds_a_key_made_on_request_by_an_address_bound_to_it(server, capsys):
+    (server.paths.relay_state / "bindings.json").write_text(json.dumps({"keys": {"id-2": {
+        "name": "send-pilot-b", "made": "2026-10-20",
+        "recipients": [{"address": "Grandma@Example.com", "language": "fi", "token": "t-secret",
+                        "confirmed": None}]}}}))
+    assert server.admin("find", "grandma@example.com") == 0
+    out = capsys.readouterr().out
+    assert out.splitlines() == [
+        "send-pilot-b  id=id-2  sends only  off  made 2026-10-20  last used never  "
+        "today $0.00  30 days $0.00",
+        "  Grandma@Example.com (fi): not confirmed"]
+    assert "t-secret" not in out and "sk-bf-" not in out
+
+
+def test_find_prints_a_hosted_household_s_key_with_its_household_s_lines(server, capsys):
+    server.bifrost.keys.append({"id": "id-5", "name": FAILED.user, "value": "sk-bf-five",
+                                "is_active": True, "description": "Virtanen hosted"})
+    server.status = status_of(OK, FAILED)
+    assert server.admin("find", "virtanen") == 0
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    assert lines[0].startswith(f"{FAILED.user}  id=id-5  Virtanen hosted  ")
+    assert lines[1:] == line(FAILED).splitlines()
+    assert OK.user not in out and "sk-bf-" not in out
+
+
+def test_find_prints_both_a_household_and_a_key_that_match(server, capsys):
+    server.household("ph-0123abcd", ["parent@example.com"])
+    server.bifrost.keys.append({"id": "id-4", "name": "send-pilot-d", "value": "sk-bf-four",
+                                "is_active": True, "description": "Lahti, parent@example.com"})
+    assert server.admin("find", "parent@example.com") == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "ph-0123abcd" and lines[1].startswith("send-pilot-d  id=id-4  ")
+
+
+def test_find_with_bifrost_down_still_finds_a_household_and_says_why(server, capsys):
+    server.household("ph-0123abcd", ["parent@example.com"])
+    server.bifrost.down = True
+    assert server.admin("find", "parent@example.com") == 0
+    captured = capsys.readouterr()
+    assert captured.out == "ph-0123abcd\n" and "Gateway Key" in captured.err
+
+
+def test_find_with_no_household_on_the_server_still_finds_a_key(server, capsys):
+    assert server.admin("find", "Korhonen") == 0
+    assert capsys.readouterr().out.startswith("ai-pilot-a  id=id-1  ")
+
+
+@pytest.mark.parametrize("args", [(), ("a@b.fi", "c@d.fi"), (" ",)])
 def test_find_takes_exactly_one_address(server, capsys, args):
     assert server.admin("find", *args) == 2
     assert "usage" in capsys.readouterr().err

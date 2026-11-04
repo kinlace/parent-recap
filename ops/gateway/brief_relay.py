@@ -1038,11 +1038,13 @@ def _one_line(text: Any) -> str:
     return " ".join("".join(c if c.isprintable() else " " for c in str(text or "")).split())
 
 
-def print_keys(keys: Bifrost, state: Path, today: str) -> None:
+def print_keys(keys: Bifrost, state: Path, today: str, find: str | None = None) -> list[str]:
     """`admin keys`: every Gateway Key, one line each, for the maintainers (README "See every
     key"): its name and id, who holds it, what it can do, whether it is on, when it was made and
     last used, and its spend today and over the last 30 days. A key made on request is followed by
-    its addresses and whether each confirmed. Never a key's value.
+    its addresses and whether each confirmed. Never a key's value. With `find` (`admin find`),
+    only the keys whose description (who holds it) or bound addresses hold that text, ignoring
+    case. Returns the names of the keys printed.
 
     "Last used" is the later of its last model call in Bifrost's request log (which keeps 90 days)
     and the last Brief the relay sent with it (`LastSent`). Days are UTC days."""
@@ -1067,14 +1069,18 @@ def print_keys(keys: Bifrost, state: Path, today: str) -> None:
         print(f"couldn't read Bifrost's request log ({_why(e)}): last use and spend are ?",
               file=sys.stderr)
         use = None
+    want = (find or "").strip().lower()
+    printed = []
     for k in listed:
         key_id = str(k.get("id"))
+        entry = bound.get(key_id)
+        if find is not None and not _holds(k, entry, want):
+            continue
         # What a key can do is what Bifrost holds for it, not its name: with a provider it
         # writes the Brief too (README "Create a Gateway Key"), without one it only sends.
         kind = "writes+sends" if k.get("provider_configs") else "sends only"
         on = "on" if k.get("is_active") is True else "off"
         holder = _one_line(k.get("description"))
-        entry = bound.get(key_id)
         made = _utc_day(k.get("created_at")) or (entry or {}).get("made") or "-"
         budgets = k.get("budgets") or ([k["budget"]] if k.get("budget") else [])
         limit = "".join(f" of ${b['max_limit']:.2f}" for b in budgets[:1]
@@ -1088,9 +1094,19 @@ def print_keys(keys: Bifrost, state: Path, today: str) -> None:
             spend = f"today ${u.today:.2f}{limit}  30 days ${u.days_30:.2f}"
         print(f"{k.get('name') or key_id}  id={key_id}  {holder + '  ' if holder else ''}{kind}  "
               f"{on}  made {made}  last used {last}  {spend}")
+        printed.append(str(k.get("name") or key_id))
         for r in (entry or {}).get("recipients", []):
             print(f"  {r['address']} ({r['language']}): "
                   f"{'confirmed ' + r['confirmed'] if r['confirmed'] else 'not confirmed'}")
+    return printed
+
+
+def _holds(key: dict, entry: dict | None, want: str) -> bool:
+    """Whether `want`, lowercased, is in the key's description or an address bound to it."""
+    texts = [_one_line(key.get("description")),
+             *(str(r.get("address") or "") for r in (entry or {}).get("recipients", [])
+               if isinstance(r, dict))]
+    return bool(want) and any(want in t.lower() for t in texts)
 
 
 def print_cost(keys: Bifrost, today: str) -> None:
@@ -1118,10 +1134,15 @@ def print_cost(keys: Bifrost, today: str) -> None:
 
 
 
-def new_key(keys: Bifrost, args: list[str], today: str) -> None:
+def new_key(keys: Bifrost, args: list[str], today: str,
+            ask: Callable[[str], str] | None = None) -> None:
     """`admin key new <label> "<who holds it>" [--send-only]`: makes a Gateway Key for a
     Household on its own computer and prints its name and value, for the maintainers (README
-    "Create a Gateway Key"). Exits with Bifrost's reply when no key was made."""
+    "Create a Gateway Key"). Exits with Bifrost's reply when no key was made.
+
+    It asks for the holder's email on the terminal (`ask`), never on the command line, which sudo
+    writes to the journal; Enter, or no terminal to ask on, skips it. The email is kept only in
+    the key's description, after who holds it, so `admin find` finds the key by it (#758)."""
     parser = argparse.ArgumentParser(prog="sudo admin key new")
     parser.add_argument("label", help="a neutral label, such as pilot-a; it goes into the logs")
     parser.add_argument("holder", help="who holds the key; only the admin API shows it")
@@ -1134,6 +1155,9 @@ def new_key(keys: Bifrost, args: list[str], today: str) -> None:
     holder = a.holder.strip()
     if not holder or not holder.isprintable():
         parser.error("say who holds the key, on one line")
+    email = _holder_email(ask)
+    if email:
+        holder = f"{holder}, {email}"
     if a.send_only:
         body = {"name": f"send-{a.label}",
                 "description": f"{holder}, own Claude Code or Codex, {today}", "is_active": True}
@@ -1152,6 +1176,27 @@ def new_key(keys: Bifrost, args: list[str], today: str) -> None:
     if not isinstance(value, str) or not value:
         sys.exit(f"no key made: Bifrost answered {json.dumps(reply)}")
     print(f"{k.get('name') or body['name']}  {value}")
+
+
+def _holder_email(ask: Callable[[str], str] | None) -> str | None:
+    """The holder's email, asked for until it is a plain name@domain or Enter skips it; None
+    without a terminal to ask on."""
+    if ask is None:
+        if not sys.stdin.isatty():
+            return None
+        ask = input
+    while True:
+        try:
+            answer = ask("The holder's email, so admin find finds the key by it "
+                         "(Enter skips): ").strip()
+        except EOFError:
+            return None
+        if not answer:
+            return None
+        if ADDRESS.fullmatch(answer):
+            return answer
+        print("that isn't a plain name@domain address; try again, or Enter to skip",
+              file=sys.stderr)
 
 
 def switch_key(keys: Bifrost, ref: str, on: bool) -> None:
