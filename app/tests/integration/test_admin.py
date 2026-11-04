@@ -477,6 +477,16 @@ def test_key_new_asks_again_for_an_email_that_isn_t_plain(server, capsys):
         "Korhonen family, parent@example.com, gateway AI, 2026-11-04")
 
 
+def test_key_new_asks_on_the_terminal_with_the_question_off_stdout(server, capsys, monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda *prompt: "parent@example.com")
+    assert server.admin("key", "new", "pilot-c", "Korhonen family") == 0
+    captured = capsys.readouterr()
+    # stdout holds the key alone, so it can go to a file; the question is on stderr.
+    assert captured.out == "ai-pilot-c  sk-bf-made-0\n" and "email" in captured.err
+    assert "parent@example.com" in server.bifrost.made[0]["description"]
+
+
 def test_key_new_without_a_terminal_doesn_t_ask(server, monkeypatch):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
     assert server.admin("key", "new", "pilot-c", "Korhonen family") == 0
@@ -680,6 +690,13 @@ def test_find_finds_a_key_made_on_request_by_an_address_bound_to_it(server, caps
         "today $0.00  30 days $0.00",
         "  Grandma@Example.com (fi): not confirmed"]
     assert "t-secret" not in out and "sk-bf-" not in out
+
+
+def test_find_says_when_it_couldn_t_read_the_bound_addresses(server, capsys):
+    (server.paths.relay_state / "bindings.json").write_text("{not json")
+    assert server.admin("find", "grandma@example.com") == 1
+    err = capsys.readouterr().err
+    assert "bindings.json" in err and "nothing matched" in err
 
 
 def test_find_prints_a_hosted_household_s_key_with_its_household_s_lines(server, capsys):
