@@ -67,27 +67,27 @@ the import path, so a test may import a helper from a test in another layer.
 
 ## Integration tests
 
-| File                            | What it covers                                                                                      |
-| ------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `test_admin.py`                 | The gateway's `admin` command: each task, root only, key off/on, a Household found                  |
-| `test_admin_deploy.py`          | `admin deploy`: what is refused, the evening window, each deploy kept, recorded, checked            |
-| `test_admin_rollback.py`        | Each deploy's snapshot and its pruning, `admin deploys`, which deploy `rollback` picks, `--restore` |
-| `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request              |
-| `test_collector_labels.py`      | The labels Sources add to Messages are English                                                      |
-| `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                                |
-| `test_email_gateway.py`         | The Brief sent through the gateway's relay: the request, refusals, a key, binding, doctor           |
-| `test_email_gmail.py`           | The Brief sent from the Household's own Gmail (ADR 0034): the message, which way, refusals          |
-| `test_eval_runner.py`           | The eval runner end to end, only the model process faked                                            |
-| `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was                                     |
-| `test_goldens.py`               | The golden files' check and `--update-goldens`                                                      |
-| `test_linked_device.py`         | The Linked Device's Node program's four modes on a fake Baileys                                     |
-| `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code                                  |
-| `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses                                        |
-| `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks                                   |
-| `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token                                              |
-| `test_setup_google_calendar.py` | The Google Calendar authorization script                                                            |
-| `test_weekend_picks.py`         | Weekend Picks through the same backend as the Brief                                                 |
-| `test_whatsapp_source.py`       | WhatsApp's collector: the Linked Device's store read, mapped to Messages, pruned                    |
+| File                            | What it covers                                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `test_admin.py`                 | The gateway's `admin` command: each task, root only, key off/on, a Household found, the nightly check's mail |
+| `test_admin_deploy.py`          | `admin deploy`: what is refused, the evening window, each deploy kept, recorded, checked                     |
+| `test_admin_rollback.py`        | Each deploy's snapshot and its pruning, `admin deploys`, which deploy `rollback` picks, `--restore`          |
+| `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request                       |
+| `test_collector_labels.py`      | The labels Sources add to Messages are English                                                               |
+| `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                                         |
+| `test_email_gateway.py`         | The Brief sent through the gateway's relay: the request, refusals, a key, binding, doctor                    |
+| `test_email_gmail.py`           | The Brief sent from the Household's own Gmail (ADR 0034): the message, which way, refusals                   |
+| `test_eval_runner.py`           | The eval runner end to end, only the model process faked                                                     |
+| `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was                                              |
+| `test_goldens.py`               | The golden files' check and `--update-goldens`                                                               |
+| `test_linked_device.py`         | The Linked Device's Node program's four modes on a fake Baileys                                              |
+| `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code                                           |
+| `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses                                                 |
+| `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks                                            |
+| `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token                                                       |
+| `test_setup_google_calendar.py` | The Google Calendar authorization script                                                                     |
+| `test_weekend_picks.py`         | Weekend Picks through the same backend as the Brief                                                          |
+| `test_whatsapp_source.py`       | WhatsApp's collector: the Linked Device's store read, mapped to Messages, pruned                             |
 
 ## End-to-end tests: the evening run
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Parent Recap nightly check: mails the maintainers when a Household or the server is wrong (#745)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# As root, as `sudo admin` runs: it reads the Households' status as the sign-up service's user and
+# the SMTP credentials the relay sends with. It mails only when something is wrong, to the address
+# in /etc/brief-relay/maintainers.env (README "The nightly check").
+ExecStart=/usr/local/sbin/admin check --mail

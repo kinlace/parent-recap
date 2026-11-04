@@ -1,0 +1,10 @@
+[Unit]
+Description=Parent Recap nightly check, after the evening runs (#745)
+
+[Timer]
+# The Households' evening slots are 21:00 to 21:55, Finnish time; `signup status` calls a run
+# overdue an hour after its slot, so by 23:00 every run of the evening has ended or is overdue.
+OnCalendar=*-*-* 23:00:00 Europe/Helsinki
+
+[Install]
+WantedBy=timers.target

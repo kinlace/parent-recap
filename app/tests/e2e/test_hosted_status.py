@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import timedelta, timezone
+from pathlib import Path
 
 import pytest
 import time_machine
@@ -27,6 +28,7 @@ pytestmark = pytest.mark.posix  # the fake wilma CLI is a script on a shell-scri
 
 FIRST_RUN = f"last run {NOW.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC, ok"
 MEASURED = r", \d+ s, \d+ MB"  # how long the run took and its peak memory
+NO_REBOOT = Path(__file__).with_name("no-such-reboot-required")
 
 
 def sign_up(s, address: str = "parent@example.com", **fields: str) -> str:
@@ -35,9 +37,11 @@ def sign_up(s, address: str = "parent@example.com", **fields: str) -> str:
     return s.store.households()[-1].user
 
 
-def report(s, capsys) -> tuple[int, str]:
+def report(s, capsys, reboot_required=None) -> tuple[int, str]:
     capsys.readouterr()
-    code = status.report(s.store, s.host)
+    # Not the test machine's own /run/reboot-required, which a CI runner may have.
+    code = status.report(s.store, s.host,
+                         reboot_required=reboot_required or NO_REBOOT)
     return code, capsys.readouterr().out
 
 
@@ -161,6 +165,25 @@ def test_a_household_without_the_health_command_is_said_to_be_unknown(
 
 def test_no_households_yet(signup, capsys):
     assert report(signup, capsys) == (0, "No Hosted Households yet.\n")
+
+
+def test_a_reboot_the_server_waits_for_is_said_last(signup, capsys, tmp_path):
+    name = sign_up(signup)
+    flag = tmp_path / "reboot-required"
+    flag.write_text("*** System restart required ***\n")
+
+    code, out = report(signup, capsys, reboot_required=flag)
+
+    assert code == 0, out  # a reboot is the server's, not a Household's
+    assert f"✅ {name}  21:00" in out
+    assert out.splitlines()[-1] == status.REBOOT_PENDING
+
+
+def test_a_reboot_is_said_with_no_households_too(signup, capsys, tmp_path):
+    flag = tmp_path / "reboot-required"
+    flag.write_text("")
+    assert report(signup, capsys, reboot_required=flag) == (
+        0, f"No Hosted Households yet.\n\n{status.REBOOT_PENDING}\n")
 
 
 def test_nothing_of_a_household_s_messages_kids_or_addresses_is_printed(

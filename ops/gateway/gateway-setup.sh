@@ -90,6 +90,29 @@ systemctl daemon-reload
 systemctl enable brief-relay
 systemctl restart brief-relay
 
+# ── The nightly check (README "The nightly check", #745)
+# `admin check --mail` at 23:00 Finnish time, after the evening runs: it mails
+# the maintainers, from the Brief's address, only when something is wrong. Their
+# address is the server's, never the repo's: MAINTAINERS_ADDRESS sets or changes
+# it; the first run asks for it.
+maintainers=/etc/brief-relay/maintainers.env
+install -d -m 0700 /etc/brief-relay
+if [ -z "${MAINTAINERS_ADDRESS:-}" ] && [ ! -f "$maintainers" ] && [ -t 0 ]; then
+  read -r -p "Maintainers' address for the nightly check's mail (commas between several): " MAINTAINERS_ADDRESS
+fi
+if [ -n "${MAINTAINERS_ADDRESS:-}" ]; then
+  address='[^@[:space:],]+@[^@[:space:],]+\.[^@[:space:],]+'
+  [[ "$MAINTAINERS_ADDRESS" =~ ^$address(,$address)*$ ]] ||
+    { echo "MAINTAINERS_ADDRESS must be name@domain addresses with commas between them" >&2; exit 1; }
+  (umask 077 && printf 'MAINTAINERS_ADDRESS=%s\n' "$MAINTAINERS_ADDRESS" >"$maintainers")
+fi
+grep -qs '^MAINTAINERS_ADDRESS=.' "$maintainers" ||
+  echo "the nightly check mails nobody: run this again with MAINTAINERS_ADDRESS=<address>"
+install -m 0644 "$here/parent-recap-check.service" /etc/systemd/system/parent-recap-check.service
+install -m 0644 "$here/parent-recap-check.timer" /etc/systemd/system/parent-recap-check.timer
+systemctl daemon-reload
+systemctl enable --now parent-recap-check.timer
+
 # ── The shared program and the sign-up service (/join/, README "Hosted
 # Households", ADR 0031, ADR 0035)
 # Installed from PARENT_RECAP_RELEASE, the folder of an unpacked release of the

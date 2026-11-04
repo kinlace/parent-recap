@@ -2,20 +2,26 @@
 refused without root; the tasks that run the shared program as the sign-up service's user, with
 the same arguments and safeguards as the scripts they replaced; the Gateway Keys listed, made and
 turned off or on through Bifrost's admin API, which is faked here, with no key's value printed but
-by `key new`; and a Household found from a Recipient's address."""
+by `key new`; a Household found from a Recipient's address; and the nightly check (#745), with
+the Households' status, systemd and Email Delivery's SMTP faked: nothing wrong mails nothing, and
+each kind of problem is in the mail, which holds only what the status prints."""
 from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
 import io
 import json
+import smtplib
 import sys
 import urllib.error
 from datetime import datetime
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+from family_brief.signup.status import REBOOT_PENDING, Status, line
 
 GATEWAY = Path(__file__).resolve().parents[3] / "ops" / "gateway"
 
@@ -109,6 +115,34 @@ class FakeBifrost:
         return {"virtual_keys": page, "total_count": len(self.keys)}
 
 
+class FakeSMTP:
+    """Email Delivery's SMTP as smtplib.SMTP_SSL is called: each message it took, or `refuse`."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[EmailMessage, list[str]]] = []
+        self.logins: list[tuple[str, str]] = []
+        self.refuse = False
+
+    def __call__(self, host: str, port: int, **_kw: Any) -> "FakeSMTP":
+        assert port == 465
+        return self
+
+    def __enter__(self) -> "FakeSMTP":
+        return self
+
+    def __exit__(self, *_exc: Any) -> None:
+        return None
+
+    def login(self, user: str, password: str) -> None:
+        if self.refuse:
+            raise smtplib.SMTPAuthenticationError(535, b"no")
+        self.logins.append((user, password))
+
+    def send_message(self, msg: EmailMessage, from_addr: str, to_addrs: list[str]) -> dict:
+        self.sent.append((msg, to_addrs))
+        return {}
+
+
 class Server:
     """The server's files as gateway-setup.sh leaves them, under tmp_path, and what `admin` ran."""
 
@@ -121,6 +155,12 @@ class Server:
             "BIFROST_ADMIN_PASSWORD=pa=ss\n")
         (etc / "signup").mkdir()
         (etc / "signup" / "signup.env").write_text("GATEWAY_HOST=gateway.example\n")
+        (etc / "brief-relay").mkdir()
+        (etc / "brief-relay" / "brief-relay.env").write_text(
+            "BRIEF_SMTP_USERNAME=smtp-user\nBRIEF_SMTP_PASSWORD=smtp-pass\n")
+        (etc / "brief-relay" / "maintainers.env").write_text(
+            "MAINTAINERS_ADDRESS=ops@example.com,second@example.com\n")
+        (tmp_path / "relay").mkdir()
         self.store = tmp_path / "store"
         self.store.mkdir()
         self.homes = tmp_path / "home"
@@ -134,10 +174,28 @@ class Server:
             python=sys.executable,
             homes=self.homes,
             store=self.store,
+            smtp_env=etc / "brief-relay" / "brief-relay.env",
+            maintainers_env=etc / "brief-relay" / "maintainers.env",
+            reboot_required=tmp_path / "run" / "reboot-required",
         )
         self.bifrost = FakeBifrost([AI, SEND], logs=LOGS)
         self.ran: list[tuple[list[str], dict]] = []
         self.root_user = True
+        # What the nightly check reads: `signup status`'s exit and output, and systemd's units.
+        self.status = (0, "")
+        self.enabled = {"caddy", "bifrost", "brief-relay", "parent-recap-signup"}
+        self.down: set[str] = set()
+        self.checked: list[list[str]] = []
+        self.smtp = FakeSMTP()
+
+    def run(self, argv: list[str], env: dict) -> tuple[int, str]:
+        self.checked.append(argv)
+        if argv[:2] == ["systemctl", "is-enabled"]:
+            return (0 if argv[-1] in self.enabled else 1), ""
+        if argv[:2] == ["systemctl", "is-active"]:
+            return (3 if argv[-1] in self.down else 0), ""
+        assert "BIFROST_ADMIN_PASSWORD" not in env
+        return self.status
 
     def household(self, label: str, recipients: list[Any], note: str = "",
                   weekend: list[Any] | None = None) -> None:
@@ -159,7 +217,8 @@ class Server:
             return 0
         try:
             return admin.main(list(args), paths=self.paths, is_root=lambda: self.root_user,
-                              exec_as=exec_as, fetch=self.bifrost, today="2026-11-04")
+                              exec_as=exec_as, fetch=self.bifrost, today="2026-11-04",
+                              run=self.run, smtp=self.smtp)
         except SystemExit as e:
             if isinstance(e.code, str):
                 print(e.code, file=sys.stderr)
@@ -179,7 +238,7 @@ def test_help_lists_every_task_one_line_each(server, capsys):
     assert server.admin("--help") == 0
     out = capsys.readouterr().out
     for task in ("invite", "households", "keys", "cost", "key new", "key off", "key on", "find",
-                 "remove"):
+                 "remove", "check"):
         assert sum(line.lstrip().startswith(task + " ") for line in out.splitlines()) == 1, task
 
 
@@ -529,4 +588,139 @@ def test_find_says_why_the_shared_program_couldn_t_read_the_configs(
 @pytest.mark.parametrize("args", [(), ("a@b.fi", "c@d.fi")])
 def test_find_takes_exactly_one_address(server, capsys, args):
     assert server.admin("find", *args) == 2
+    assert "usage" in capsys.readouterr().err
+
+
+# ── The nightly check (#745)
+
+OK = Status("ph-0000aaaa", "21:00", exit=0, checks={"config": "ok"})
+FAILED = Status("ph-1111bbbb", "21:05", exit=1, checks={"config": "ok", "wilma": "fail"},
+                note="Virtanen")
+OVERDUE = Status("ph-2222cccc", "21:10", exit=0, overdue=True, checks={"config": "ok"})
+UNKNOWN = Status("ph-3333dddd", "21:15", unknown="signup health ended with 2 and said no status")
+
+
+def status_of(*households: Status, reboot: bool = False) -> tuple[int, str]:
+    """What `signup status` prints and its exit, from its own `line`."""
+    out = "".join(line(h) + "\n" for h in households)
+    out += f"\n{len(households)} Households: ...\n" + (f"\n{REBOOT_PENDING}\n" if reboot else "")
+    marked = any(h.failed or h.overdue or h.unknown for h in households)
+    return (1 if marked else 0), out
+
+
+def mail(server) -> str:
+    [(msg, to)] = server.smtp.sent
+    assert to == ["ops@example.com", "second@example.com"]
+    assert msg["From"] == "Parent Recap <brief@parentrecap.com>"
+    assert msg["To"] == "ops@example.com, second@example.com"
+    return msg.get_content()
+
+
+def test_nothing_wrong_mails_nothing(server, capsys):
+    server.status = status_of(OK)
+    assert server.admin("check", "--mail") == 0
+    assert server.smtp.sent == []
+    assert "nothing wrong" in capsys.readouterr().out
+    # It ran the Households' status as the service's user, as `admin households` does.
+    assert ["sudo", "-u", "parent-recap-signup", "-H", "--",
+            "/usr/local/lib/parent-recap/bin/parent-recap", "signup", "status"] in server.checked
+
+
+@pytest.mark.parametrize("household", [FAILED, OVERDUE, UNKNOWN])
+def test_a_household_marked_is_in_the_mail_with_its_lines_and_no_other(server, household):
+    server.status = status_of(OK, household)
+    assert server.admin("check", "--mail") == 0
+    body = mail(server)
+    for said in line(household).splitlines():
+        assert said in body
+    assert OK.user not in body and "Households: ..." not in body
+
+
+def test_a_service_not_running_is_in_the_mail(server):
+    server.status = status_of(OK)
+    server.down = {"bifrost", "caddy"}
+    assert server.admin("check", "--mail") == 0
+    body = mail(server)
+    assert "bifrost" in body and "caddy" in body and "brief-relay" not in body
+
+
+def test_a_pending_reboot_is_in_the_mail(server):
+    server.status = status_of(OK, reboot=True)
+    server.paths.reboot_required.parent.mkdir()
+    server.paths.reboot_required.write_text("*** System restart required ***\n")
+    assert server.admin("check", "--mail") == 0
+    assert "reboot" in mail(server)
+
+
+def test_every_problem_goes_in_one_mail_counted_in_the_relay_s_quota(server):
+    server.status = status_of(FAILED, OVERDUE, UNKNOWN)
+    server.down = {"brief-relay"}
+    server.paths.reboot_required.parent.mkdir()
+    server.paths.reboot_required.write_text("")
+    assert server.admin("check", "--mail") == 0
+    body = mail(server)
+    for h in (FAILED, OVERDUE, UNKNOWN):
+        assert h.user in body
+    assert "brief-relay" in body and "reboot" in body
+    assert server.smtp.logins == [("smtp-user", "smtp-pass")]
+    quota = json.loads((server.paths.relay_state / "quota.json").read_text())
+    assert quota["sent"] == 2  # one message, to each of the two maintainers
+
+
+def test_a_status_that_couldn_t_be_read_is_in_the_mail_without_its_output(server):
+    server.status = (1, "sudo: unknown user parent-recap-signup\n")
+    assert server.admin("check", "--mail") == 0
+    body = mail(server)
+    assert "couldn't be read" in body and "sudo:" not in body
+
+
+def test_without_the_sign_up_service_no_household_is_checked(server):
+    server.enabled.discard("parent-recap-signup")
+    server.status = (2, "")
+    assert server.admin("check", "--mail") == 0
+    assert server.smtp.sent == []
+    assert not any("signup" in argv for argv in server.checked)
+
+
+def test_a_service_not_enabled_isn_t_said_to_be_down(server):
+    server.status = status_of(OK)
+    server.enabled.discard("caddy")
+    server.down = {"caddy"}
+    assert server.admin("check", "--mail") == 0
+    assert server.smtp.sent == []
+
+
+def test_without_mail_it_prints_what_it_found_and_mails_nothing(server, capsys):
+    server.status = status_of(OK, FAILED)
+    assert server.admin("check") == 1
+    assert server.smtp.sent == []
+    assert FAILED.user in capsys.readouterr().out
+
+
+def test_without_the_maintainers_address_it_says_where_it_is_set(server, capsys):
+    server.status = status_of(FAILED)
+    server.paths.maintainers_env.write_text("")
+    assert server.admin("check", "--mail") == 1
+    assert server.smtp.sent == []
+    err = capsys.readouterr().err
+    assert "MAINTAINERS_ADDRESS" in err and "gateway-setup.sh" in err
+
+
+def test_an_address_that_isn_t_plain_is_refused(server, capsys):
+    server.status = status_of(FAILED)
+    server.paths.maintainers_env.write_text("MAINTAINERS_ADDRESS=Ops <ops@example.com>\n")
+    assert server.admin("check", "--mail") == 1
+    assert server.smtp.sent == [] and "MAINTAINERS_ADDRESS" in capsys.readouterr().err
+
+
+def test_a_mail_email_delivery_refused_fails_the_check_and_says_why(server, capsys):
+    server.status = status_of(FAILED)
+    server.smtp.refuse = True
+    assert server.admin("check", "--mail") == 1
+    assert "refused the gateway's login" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("args", [("--email",), ("--mail", "x")])
+def test_check_takes_only_mail(server, capsys, args):
+    assert server.admin("check", *args) == 2
     assert "usage" in capsys.readouterr().err

@@ -4,7 +4,7 @@ the store it runs `signup health` with the shared program (ADR 0035) as that Hou
 through the household host, and prints one line: its user with the note its Invite Link carried,
 the time its Brief comes, when its last run ended and how, how long it took and its peak memory,
 each of doctor's checks by its key with its status, and a mark when the last run failed or is
-overdue.
+overdue. Last, when the server waits for a reboot to apply updates, it says so (#745).
 
 `signup health` is the Household's side: it reads its own last-run.json and state.json, runs
 doctor's checks without the model's test call (which spends the Household's budget), and prints
@@ -38,6 +38,10 @@ GRACE = timedelta(hours=1)
 LEVELS = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
 MARKS = {"ok": "✅", "warn": "⚠️", "fail": "❌"}
 KEY = re.compile(r"[a-z][a-z0-9-]{0,39}")  # a doctor check's key
+# Ubuntu's updates leave this file when one waits for a reboot (unattended-upgrades among them).
+REBOOT_REQUIRED = Path("/run/reboot-required")
+# Begins with no mark, so it isn't read as a Household's line (`admin check`, ops/gateway/admin).
+REBOOT_PENDING = "Reboot pending: the server waits for a reboot to apply updates"
 
 
 # ---------------------------------------------------------------- the Household's side
@@ -153,8 +157,17 @@ def line(s: Status) -> str:
             + f"\n   doctor: {doctor or '(no checks)'}")
 
 
-def report(store: Store, host: HouseholdHost) -> int:
-    """Prints each Household's status as it's read; 1 when any is marked or unknown."""
+def report(store: Store, host: HouseholdHost,
+           reboot_required: Path = REBOOT_REQUIRED) -> int:
+    """Prints each Household's status as it's read, then whether the server waits for a reboot;
+    1 when any Household is marked or unknown."""
+    code = _households(store, host)
+    if reboot_required.exists():
+        print(f"\n{REBOOT_PENDING}")
+    return code
+
+
+def _households(store: Store, host: HouseholdHost) -> int:
     households = store.households()
     if not households:
         print("No Hosted Households yet.")

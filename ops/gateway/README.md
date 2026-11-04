@@ -4,7 +4,7 @@ The server that invited Households' Gateway Keys go through (ADR 0014), and wher
 
 - `host-setup.sh` sets up the VM (Ubuntu/Debian): system updates, SSH with keys only, a firewall that lets in only SSH and HTTPS, Caddy, and a login for the AI assistant that can read logs but has no sudo.
 - `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016), the Brief relay and, given a release of the program, the program every Hosted Household runs (ADR 0035) and the hosted version's sign-up service (ADR 0031) behind Caddy. It works on any systemd Linux with Caddy and `python3` installed.
-- `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile`, `bifrost.env.example` and `admin` (the maintainers' one command, see "Runbook") are what it installs, and for the Hosted Households `parent-recap` (the shared program's command), `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers` and `household-user`. The env examples hold only variable names.
+- `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile`, `bifrost.env.example`, `admin` (the maintainers' one command, see "Runbook") and `parent-recap-check.service` and `.timer` with `maintainers.env.example` (see "The nightly check") are what it installs, and for the Hosted Households `parent-recap` (the shared program's command), `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers` and `household-user`. The env examples hold only variable names.
 - `oci-quota.json` is the Oracle Cloud quota policy that lets the account create only Always Free resources.
 - `set-smtp-credentials.sh` puts the sending domain's SMTP credentials into their own env file, whose names are in `brief-relay.env.example` (see "The sending domain").
 
@@ -32,7 +32,7 @@ Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`).
    ssh ubuntu@<ip> "sudo MINI_PUBKEY='<assistant host public key>' bash -s" < ops/gateway/host-setup.sh
    ```
 
-7. **Gateway.** The first run asks for the Anthropic API key and the admin login, and keeps them in `/etc/bifrost/bifrost.env` on the server only:
+7. **Gateway.** The first run asks for the Anthropic API key and the admin login, and keeps them in `/etc/bifrost/bifrost.env` on the server only, and for the maintainers' address the nightly check mails (see "The nightly check"):
 
    ```sh
    scp -r ops/gateway ubuntu@<ip>:/tmp/
@@ -168,7 +168,7 @@ The email comes from `brief@parentrecap.com`; open its link and press Confirm. T
 
 ## Email Delivery's quota
 
-Briefs, confirmation emails and Hosted Households' Briefs all leave through the relay and share the tenancy's 100 messages a day, the `max-emails-day` quota in `oci-quota.json` that keeps sending inside Always Free's 3,000 a month ([Always Free Resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)). Email Delivery counts each Recipient of a message as one email, and each 2 MB of a message as another ([Limits by Service, Email Delivery](https://docs.oracle.com/en-us/iaas/Content/General/service-limits/default.htm#Email_Delivery_Limits)), so a Brief to 4 Recipients is 4. It isn't split between them (agreed 2026-10-30, #627): confirmations are capped at 30 a day (`MAILS_PER_DAY`), which leaves at least 70 for Briefs.
+Briefs, confirmation emails and Hosted Households' Briefs all leave through the relay, and the nightly check's mail with the relay's credentials; they share the tenancy's 100 messages a day, the `max-emails-day` quota in `oci-quota.json` that keeps sending inside Always Free's 3,000 a month ([Always Free Resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)). Email Delivery counts each Recipient of a message as one email, and each 2 MB of a message as another ([Limits by Service, Email Delivery](https://docs.oracle.com/en-us/iaas/Content/General/service-limits/default.htm#Email_Delivery_Limits)), so a Brief to 4 Recipients is 4. It isn't split between them (agreed 2026-10-30, #627): confirmations are capped at 30 a day (`MAILS_PER_DAY`), which leaves at least 70 for Briefs.
 
 **The warning.** The relay counts every message Email Delivery took, Briefs and confirmations alike, per UTC day in `/var/lib/brief-relay/quota.json` (the day and the count, nothing else). The first time a day's count passes 70 (`QUOTA_WARN_AT` in `brief_relay.py`) it logs one warning line, at journald's warning priority, and no more that day:
 
@@ -277,7 +277,7 @@ The link is a random code, kept with the Recipients and the note in the service'
 sudo admin households
 ```
 
-For each Household in `households.json` it runs `parent-recap signup health` as the Household's user, and prints its user with its Invite Link's note in brackets, such as `ph-0123abcd (Virtanen family)`, the time its Brief comes, when its last run ended and how, how long it took and its peak memory (from `last-run.json` beside its `state.json`), such as `last run 2026-10-30 18:00 UTC, ok, 7 s, 180 MB`, and each of `doctor`'s checks by its key with ✅, ⚠️ or ❌, run then without the model's test call. A last run that failed is marked ❌, a run not ended an hour after its time ⚠️ overdue, and a Household whose program is older than the command ❓. It prints no message text, subject, address or Kid's name, not even doctor's words, which name them. It exits 1 when any Household is marked.
+For each Household in `households.json` it runs `parent-recap signup health` as the Household's user, and prints its user with its Invite Link's note in brackets, such as `ph-0123abcd (Virtanen family)`, the time its Brief comes, when its last run ended and how, how long it took and its peak memory (from `last-run.json` beside its `state.json`), such as `last run 2026-10-30 18:00 UTC, ok, 7 s, 180 MB`, and each of `doctor`'s checks by its key with ✅, ⚠️ or ❌, run then without the model's test call. A last run that failed is marked ❌, a run not ended an hour after its time ⚠️ overdue, and a Household whose program is older than the command ❓. It prints no message text, subject, address or Kid's name, not even doctor's words, which name them. It exits 1 when any Household is marked. Last, when the server waits for a reboot to apply updates (Ubuntu's `/run/reboot-required`), it says `Reboot pending: the server waits for a reboot to apply updates`. Every night the server checks this for you and mails what is wrong (see "The nightly check").
 
 **Find a Household.** Only the note its Invite Link carried, if it had one, says which family a label is. When a parent asks about their Brief, find their label from a Recipient address they give:
 
@@ -299,6 +299,20 @@ It prints each step as it goes: the evening jobs removed by the shared program r
 
 **What it logs.** One line a sign-up (`journalctl -u parent-recap-signup`): the Household's user and evening time, or why the sign-up wasn't taken. Never a request's address, which carries the code, or its body, which carries the Wilma password.
 
+## The nightly check
+
+Every night at 23:00 Finnish time, after the last evening slot (21:55) and the hour `admin households` gives a run before calling it overdue, `parent-recap-check.timer` runs `admin check --mail` as root (#745). It checks:
+
+- **Every Hosted Household**, by running `admin households`' status: each one marked ❌ (its last run failed), ⚠️ (overdue) or ❓ (its status couldn't be read). A status that couldn't be run at all is said too. Skipped when the sign-up service isn't installed.
+- **The gateway's services**: `caddy`, `bifrost`, `brief-relay` and `parent-recap-signup`, each one that is enabled and not running.
+- **A pending reboot**: Ubuntu's updates waiting for one (`/run/reboot-required`).
+
+When anything is wrong it mails the maintainers one message from `brief@parentrecap.com`, through Email Delivery with the relay's SMTP credentials, so it counts toward the day's quota (see "Email Delivery's quota"). When nothing is wrong it sends nothing. The mail holds only the status lines of the Households marked (their labels, Invite Link notes, times, exits and check statuses), the names of the services down and the reboot: never message text, an address or a Kid's name, which the status never prints.
+
+**The address** is the server's, not the repo's: `/etc/brief-relay/maintainers.env` (`MAINTAINERS_ADDRESS`, commas between several; `maintainers.env.example`). The first run of `gateway-setup.sh` asks for it; to set or change it, run step 7 again with `MAINTAINERS_ADDRESS=<address>` before `bash`. Without it the check still runs and says in its journal that it mailed nobody.
+
+**By hand.** `sudo admin check` prints what the mail would say, or `nothing wrong`, and mails nothing; `sudo admin check --mail` mails it now, as at night. See the last runs with `journalctl -u parent-recap-check` and the next with `systemctl list-timers parent-recap-check`. The check's own run fails (`systemctl --failed`) only when its mail couldn't go: no address, no SMTP credentials, or Email Delivery refused it.
+
 ## Runbook
 
 Every routine task is one command on the server: SSH in, then `sudo admin <task>`. Nothing runs on the server from a laptop, and nothing below is run on the public address. `gateway-setup.sh` installs it as `/usr/local/sbin/admin` from `ops/gateway/admin`. It reads the admin login from `/etc/bifrost/bifrost.env` itself, never the provider key beside it, and calls Bifrost's admin API on localhost, so no tunnel is needed. `sudo admin --help` lists its tasks:
@@ -316,6 +330,7 @@ Every routine task is one command on the server: SSH in, then `sudo admin <task>
 | `deploy vX.Y.Z\|main\|COMMIT [--anyway]`     | Snapshots the state, fetches that commit and installs it all (see "Upgrade, check, switch back")                     |
 | `deploys`                                    | The deploys on disk, marking the current one (see "Upgrade, check, switch back")                                     |
 | `rollback [--restore]`                       | Switches back whole to the deploy before; `--restore` also restores its snapshot (see "Upgrade, check, switch back") |
+| `check [--mail]`                             | What is wrong tonight; `--mail` mails it, as at night (see "The nightly check")                                      |
 
 Run without root it refuses and says why. It prints only to the terminal and writes no log of its own, and no key's value is printed except by `key new`. `sudo` logs each command line to the system journal, as it did for the scripts `admin` replaced, so an address given to `invite` or `find` is there, and a note should stay a name. Those scripts (`keys.sh` and `new-key.sh` in `/usr/local/lib/brief-relay/`, `invite.sh`, `status.sh` and `remove.sh` in `/usr/local/lib/parent-recap-signup/`) are gone: the next run of `gateway-setup.sh` deletes them from the server.
 
@@ -383,4 +398,4 @@ Make a test call, then delete the old key in the Console.
 
 **Change the model.** Edit the `aliases` entry in `config.json`, land it on `main`, and deploy it with `sudo admin deploy` (see "Upgrade, check, switch back").
 
-**Check it is up.** The assistant's login can read logs and status: `journalctl -u bifrost -u brief-relay -u parent-recap-signup -u caddy`, `systemctl status bifrost brief-relay parent-recap-signup`.
+**Check it is up.** The assistant's login can read logs and status: `journalctl -u bifrost -u brief-relay -u parent-recap-signup -u caddy -u parent-recap-check`, `systemctl status bifrost brief-relay parent-recap-signup`. The nightly check mails the maintainers when one isn't running (see "The nightly check").
