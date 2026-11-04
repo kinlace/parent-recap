@@ -1,10 +1,10 @@
 """The hosted version's sign-up (ADR 0031): `parent-recap signup serve`, the always-on service
 behind the gateway's web server that turns an Invite Link into a Hosted Household;
-`signup invite`, which mints an Invite Link (ops/gateway/invite.sh runs it as the service's user);
+`signup invite`, which mints an Invite Link (`sudo admin invite` runs it as the service's user);
 `signup household`, which the service runs as a new Household's own user; `signup status`,
-which lists every Household's last run and doctor's statuses (ops/gateway/status.sh), from
+which lists every Household's last run and doctor's statuses (`sudo admin households`), from
 `signup health` run as each; and `signup remove`, which removes a Household with everything of it
-(ops/gateway/remove.sh).
+(`sudo admin remove`, ops/gateway/admin).
 
 The service runs as its own user, on the server's shared copy of the program (ADR 0035), whose
 wilma CLI checks a family's sign-in; every Household runs the same copy as its own user. It reads
@@ -61,7 +61,7 @@ def register(sub) -> None:
     health.set_defaults(func=cmd_health)
 
     remove = steps.add_parser("remove", help="Remove a Hosted Household: its jobs, its Gateway "
-                              "Key, its user and its home (ops/gateway/remove.sh runs it)")
+                              "Key, its user and its home (sudo admin remove runs it)")
     remove.add_argument("label", help="The Household's user, ph-XXXXXXXX")
     remove.set_defaults(func=cmd_remove)
 

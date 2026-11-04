@@ -1,5 +1,6 @@
 """Removing a Hosted Household (ADR 0031): `parent-recap signup remove <user>`, which
-ops/gateway/remove.sh runs as the sign-up service's user, through the household host.
+`sudo admin remove` (ops/gateway/admin) runs as the sign-up service's user, through the
+household host.
 
 In order: its evening jobs are removed by the shared program (ADR 0035) as its own user, its
 Gateway Key is revoked, its user is deleted with its home, and it is taken off the store's list.

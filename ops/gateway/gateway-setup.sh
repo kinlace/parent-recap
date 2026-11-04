@@ -74,8 +74,10 @@ systemctl restart bifrost
 # set-smtp-credentials.sh, which restarts it.
 install -d -m 0755 /usr/local/lib/brief-relay /usr/local/share/brief-relay
 install -m 0644 "$here/brief_relay.py" /usr/local/lib/brief-relay/brief_relay.py
-install -m 0755 "$here/keys.sh" /usr/local/lib/brief-relay/keys.sh
-install -m 0755 "$here/new-key.sh" /usr/local/lib/brief-relay/new-key.sh
+# `sudo admin <task>`, the maintainers' one command (README "Runbook"), uses
+# brief_relay.py's Gateway Key functions; the scripts it replaced go.
+install -o root -g root -m 0755 "$here/admin" /usr/local/sbin/admin
+rm -f /usr/local/lib/brief-relay/keys.sh /usr/local/lib/brief-relay/new-key.sh
 install -m 0644 "$here/brief-stop.html" /usr/local/share/brief-relay/stop.html
 install -m 0644 "$here/brief-relay.service" /etc/systemd/system/brief-relay.service
 mkdir -p /etc/systemd/system/brief-relay.service.d
@@ -143,9 +145,8 @@ if [ -n "${PARENT_RECAP_RELEASE:-}" ]; then
   rm -rf "$signup_lib/release" "$signup_home/ParentRecap"
   install -d -m 0755 "$signup_lib"
   install -o root -g root -m 0755 "$here/household-user" "$signup_lib/household-user"
-  install -o root -g root -m 0755 "$here/invite.sh" "$signup_lib/invite.sh"
-  install -o root -g root -m 0755 "$here/status.sh" "$signup_lib/status.sh"
-  install -o root -g root -m 0755 "$here/remove.sh" "$signup_lib/remove.sh"
+  # Their tasks are `sudo admin invite`, `households` and `remove` now.
+  rm -f "$signup_lib/invite.sh" "$signup_lib/status.sh" "$signup_lib/remove.sh"
   install -o root -g root -m 0440 "$here/signup.sudoers" /etc/sudoers.d/parent-recap-signup.incoming
   visudo -cf /etc/sudoers.d/parent-recap-signup.incoming
   mv /etc/sudoers.d/parent-recap-signup.incoming /etc/sudoers.d/parent-recap-signup
@@ -185,6 +186,6 @@ up 8081 || { echo "brief-relay did not answer on /health; see: journalctl -u bri
 echo "brief-relay is up"
 if [ "$signup" = yes ]; then
   up 8082 || { echo "the sign-up service did not answer on /health; see: journalctl -u parent-recap-signup" >&2; exit 1; }
-  echo "the sign-up service is up on Parent Recap $version; mint an Invite Link with: sudo bash $signup_lib/invite.sh --help"
+  echo "the sign-up service is up on Parent Recap $version; mint an Invite Link with: sudo admin invite --help"
   echo "every Hosted Household runs $version from its next run: run your own Household's now, before 21:00 (README \"Hosted Households\")"
 fi

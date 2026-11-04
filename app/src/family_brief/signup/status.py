@@ -1,5 +1,5 @@
 """`parent-recap signup status`: every Hosted Household's status in one place, for the maintainers
-on the server (ops/gateway/status.sh runs it as the sign-up service's user). For each Household in
+on the server (`sudo admin households` runs it as the sign-up service's user). For each Household in
 the store it runs `signup health` with the shared program (ADR 0035) as that Household's user,
 through the household host, and prints one line: its user with the note its Invite Link carried,
 the time its Brief comes, when its last run ended and how, how long it took and its peak memory,
