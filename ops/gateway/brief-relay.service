@@ -19,7 +19,8 @@ RestartPreventExitStatus=78
 RestartSec=5
 # The daily cap's counts ($STATE_DIRECTORY/sent.json), and the keys made on request with the
 # addresses bound to them and the day's request counts (bindings.json), and the day's count of all
-# mail sent (quota.json); no message is ever written.
+# mail sent (quota.json), and the date each key last sent a Brief (last-sent.json); no message
+# is ever written.
 StateDirectory=brief-relay
 StateDirectoryMode=0700
 NoNewPrivileges=true

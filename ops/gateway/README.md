@@ -129,7 +129,7 @@ oci iam smtp-credential delete --user-id "$U" --smtp-credential-id <old id>
 
 **The cap.** Each key may send 4 messages a UTC day (`DAILY_CAP` in `brief_relay.py`, and `ON_REQUEST_DAILY_CAP` for a key made on request): the Brief, Weekend Picks and room for a retry, or both in two languages on a Friday. At 10 Recipients each, one key can use at most 40 of the tenancy's 100 a day, so a leaked key can neither become a spam relay nor use up every other Household's sending. A message Email Delivery didn't take doesn't count. The counts are in `/var/lib/brief-relay/sent.json`. Before raising the cap or adding Households that send this way, check the total against the 100 a day.
 
-**What it keeps.** Nothing of the message. Each request logs one line to the journal: the key's name, the number of Recipients, the request's size and the outcome (`journalctl -u brief-relay`), never the subject, body, attachments or addresses. For keys made on request it keeps the addresses bound to each (see the next section).
+**What it keeps.** Nothing of the message. Each request logs one line to the journal: the key's name, the number of Recipients, the request's size and the outcome (`journalctl -u brief-relay`), never the subject, body, attachments or addresses. For each key it keeps the date it last sent a Brief, for `admin keys` (`last-sent.json` beside `sent.json`: the key's id and a date, written at most once a day a key, and nothing written to the journal). For keys made on request it keeps the addresses bound to each (see the next section).
 
 **Check it.** From a maintainer's machine, with a real Gateway Key, send a test with an `.ics` to a Gmail and a Hotmail inbox:
 
@@ -278,7 +278,8 @@ Every routine task is one command on the server: SSH in, then `sudo admin <task>
 | -------------------------------------------- | --------------------------------------------------------------------------------- |
 | `invite --recipient ADDRESS[:LANGUAGE] …`    | Mints an Invite Link and prints it (see "Invite a Household")                     |
 | `households`                                 | Every Hosted Household's last run and checks (see "See every Household's status") |
-| `keys`                                       | Every Gateway Key: what it can do, on or off, today's spend (below)               |
+| `keys`                                       | Every Gateway Key: who holds it, what it can do, made, last used, spend (below)   |
+| `cost`                                       | This month's model spend per key and in all (below)                               |
 | `key new LABEL "WHO HOLDS IT" [--send-only]` | Makes a Gateway Key and prints its value (below)                                  |
 | `key off NAME-OR-ID`, `key on NAME-OR-ID`    | Turns a Gateway Key off or back on (below)                                        |
 | `find ADDRESS`                               | Which Households have this Recipient (see "Find a Household")                     |
@@ -308,11 +309,17 @@ curl -s -u "<admin user>:<admin password>" -X PUT localhost:8080/api/governance/
   -H 'content-type: application/json' -d '{"description": "<Household>, <AI backend>, <date>"}'
 ```
 
-**See every key.** One line a key: its name and `id`, `writes+sends` or `sends only` (whether Bifrost has a provider behind it), `on` or `off`, and today's spend against its daily budget. A key made on request (name `on-request-…`, description `made on request <date>`) is followed by the addresses bound to it and who confirmed. It prints no key's value:
+**See every key.** One line a key: its name and `id`; who holds it (its `description`) when it has one; `writes+sends` or `sends only` (whether Bifrost has a provider behind it); `on` or `off`; `made <date>`; `last used <date>` or `never`; and its spend today, against its daily budget if it has one, and over the last 30 days. A key made on request (name `on-request-…`, description `made on request <date>`) is followed by the addresses bound to it and who confirmed. It prints no key's value and writes nothing:
 
 ```sh
 sudo admin keys
 ```
+
+```text
+ai-pilot-a  id=…  Korhonen family, gateway AI, 2026-10-01  writes+sends  on  made 2026-10-01  last used 2026-11-04  today $0.02 of $0.10  30 days $0.33
+```
+
+Days are UTC days. `made` is when Bifrost made the key. `last used` is the later of the key's last model call in Bifrost's request log, which keeps each request's key, time, token counts and cost for 90 days (`log_retention_days` in `config.json`), and the last Brief the relay sent with it, which the relay keeps per key (see "What it keeps" under "Sending the Brief"); so a key last used over 90 days ago only for model calls shows `never`. A model call Bifrost refused, such as a send-only key's, isn't use. The spend is the sum of the request log's cost for the key. When the request log can't be read, the keys are still listed, with `?` for last use and spend, and it says why.
 
 A key whose Recipients never confirmed sends nothing; revoke it when tidying up. A key made on request is revoked as any other, below: the relay then answers 401 to it, and its entry in `bindings.json` is no longer used.
 
@@ -323,7 +330,13 @@ sudo admin key off ai-pilot-a
 sudo admin key on ai-pilot-a
 ```
 
-**Check spend.** `admin keys` prints what each key has spent today (`budgets[].current_usage` in the list). The month's total is in the Anthropic Console, which also enforces the gateway workspace's $10 limit.
+**Check spend.** `admin keys` prints what each key spent today and over the last 30 days. `admin cost` prints this month's (UTC) spend per key from the same request log, a key since deleted by its `id`, and the total:
+
+```sh
+sudo admin cost
+```
+
+These are Bifrost's own figures, from its price list. What is billed is the Anthropic Console's, for the gateway's workspace, which also enforces its $10 monthly limit; `admin cost` says so.
 
 **Upgrade.** Try the new version on your own machine first (`npx -y @maximhq/bifrost --transport-version vX.Y.Z`). Then, in `gateway-setup.sh`, change `BIFROST_VERSION` and both `SHA256_*` lines (hash the binaries at `https://downloads.getmaxim.ai/bifrost/<version>/linux/<arm64|amd64>/bifrost-http`), and run step 7 again. The old version stays in `/usr/local/lib/bifrost/`; repoint the `current` symlink and restart to roll back.
 

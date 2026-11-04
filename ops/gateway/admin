@@ -29,7 +29,9 @@ usage: sudo admin <task> [arguments]
 
   invite --recipient ADDRESS[:LANGUAGE] ...  mint an Invite Link and print it (invite --help)
   households                                 every Hosted Household's last run and checks
-  keys                                       every Gateway Key: what it can do, on or off, spend
+  keys                                       every Gateway Key: who holds it, what it can do, on
+                                             or off, made, last used, spend
+  cost                                       this month's model spend per key and in all
   key new LABEL "WHO HOLDS IT" [--send-only] make a Gateway Key and print its value, once
   key off NAME-OR-ID                         turn a Gateway Key off: it neither writes nor sends
   key on NAME-OR-ID                          turn a Gateway Key back on
@@ -110,7 +112,13 @@ def main(argv: list[str], paths: Paths | None = None,
             if args:
                 raise Usage("keys")
             relay, keys = _keys(paths, fetch)
-            relay.print_keys(keys, paths.relay_state / "bindings.json")
+            relay.print_keys(keys, paths.relay_state, today=today or _today())
+            return 0
+        if task == "cost":
+            if args:
+                raise Usage("cost")
+            relay, keys = _keys(paths, fetch)
+            relay.print_cost(keys, today=today or _today())
             return 0
         if task == "key":
             return _key(paths, args, fetch, today)
@@ -130,7 +138,7 @@ def _key(paths: Paths, args: list[str], fetch: Callable[..., dict] | None,
     verb, rest = (args[0], args[1:]) if args else ("", [])
     if verb == "new":
         relay, keys = _keys(paths, fetch)
-        relay.new_key(keys, rest, today=today or datetime.now(UTC).date().isoformat())
+        relay.new_key(keys, rest, today=today or _today())
         return 0
     if verb in ("off", "on"):
         if len(rest) != 1:
@@ -202,6 +210,11 @@ def _keys(paths: Paths, fetch: Callable[..., dict] | None) -> tuple[Any, Any]:
         spec.loader.exec_module(relay)
     return relay, relay.Bifrost(paths.bifrost_url, login[ADMIN_LOGIN[0]], login[ADMIN_LOGIN[1]],
                                 fetch=fetch)
+
+
+def _today() -> str:
+    """Today's UTC day, as the relay and Bifrost's daily budgets count days."""
+    return datetime.now(UTC).date().isoformat()
 
 
 def _admin_login(paths: Paths) -> dict[str, str]:

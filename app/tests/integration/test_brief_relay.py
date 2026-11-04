@@ -75,6 +75,8 @@ class FakeBifrost:
             self.made.append(body)
             self.keys.append(key)
             return {"message": "created", "virtual_key": key}
+        if path.startswith("/api/logs?"):
+            return {"logs": [], "pagination": {"total_count": 0}}
         query = dict(p.split("=") for p in path.split("?", 1)[1].split("&"))
         limit, offset = min(int(query["limit"]), 100), int(query["offset"])
         page = self.keys[offset:offset + limit]
@@ -130,7 +132,8 @@ def make_relay(tmp_path: Path, day: list[str], keys: list[dict] | None = None,
                                         today=lambda: day[0])),
         stop_url=STOP,
         bindings=br.Bindings(tmp_path / "bindings.json", today=lambda: day[0]),
-        confirm_url=CONFIRM)
+        confirm_url=CONFIRM,
+        last_sent=br.LastSent(tmp_path / "last-sent.json", today=lambda: day[0]))
 
 
 def post(relay: Any, body: Any = BRIEF, key: str | None = KEY) -> tuple[int, dict]:
@@ -167,6 +170,39 @@ def test_bifrost_unreachable_gets_503_so_the_program_retries_later(tmp_path, day
 
 def test_the_key_is_checked_before_the_request_is_read(tmp_path, day):
     assert post(make_relay(tmp_path, day), body=b"not json", key="sk-bf-unknown")[0] == 401
+
+
+# ── The last send date (#742)
+
+def test_a_sent_brief_keeps_its_key_s_last_send_date_and_nothing_else(tmp_path, day):
+    assert post(make_relay(tmp_path, day))[0] == 200
+    assert json.loads((tmp_path / "last-sent.json").read_text()) == {"id-1": "2026-10-28"}
+
+
+def test_the_last_send_date_survives_a_restart_and_moves_on_with_the_next_send(tmp_path, day):
+    post(make_relay(tmp_path, day))
+    day[0] = "2026-10-30"
+    assert br.LastSent(tmp_path / "last-sent.json").read() == {"id-1": "2026-10-28"}
+    post(make_relay(tmp_path, day))
+    assert br.LastSent(tmp_path / "last-sent.json").read() == {"id-1": "2026-10-30"}
+
+
+@pytest.mark.parametrize("key", [None, "sk-bf-not-a-key"])
+def test_a_refused_request_keeps_no_send_date(tmp_path, day, key):
+    post(make_relay(tmp_path, day), key=key)
+    assert not (tmp_path / "last-sent.json").exists()
+
+
+def test_a_send_email_delivery_refused_keeps_no_send_date(tmp_path, day, smtp):
+    smtp.fail = smtplib.SMTPAuthenticationError(535, b"no")
+    assert post(make_relay(tmp_path, day))[0] == 502
+    assert not (tmp_path / "last-sent.json").exists()
+
+
+def test_a_send_date_that_couldn_t_be_written_doesn_t_fail_the_send(tmp_path, day):
+    (tmp_path / "last-sent.json").mkdir()
+    assert post(make_relay(tmp_path, day))[0] == 200
+    assert len(FakeSMTP.sent) == 1
 
 
 # ── The daily cap
@@ -663,16 +699,21 @@ def test_print_keys_lists_every_key_with_what_it_can_do_and_never_its_value(
     off = {**virtual_key(2, "sk-bf-test-send-only", active=False), "name": "send-household-2"}
     bifrost = FakeBifrost([ai, off])
     relay = make_relay(tmp_path, day, bifrost=bifrost)
-    ask_key(relay)
+    _, made = ask_key(relay)
     open_link(relay, link_in(FakeSMTP.sent[0][2]), post=True)
+    assert post(relay, key=made["key"])[0] == 200
     br.print_keys(br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=bifrost),
-                  tmp_path / "bindings.json")
+                  tmp_path, today="2026-10-28")
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0] == "ai-household-1  id=id-1  writes+sends  on  today $0.03 of $0.10"
-    assert lines[1] == "send-household-2  id=id-2  sends only  off  today -"
-    # A key made on request: what it can do, then who confirmed.
-    assert lines[2].startswith("on-request-") and "sends only  on" in lines[2]
-    assert lines[2].endswith("made 2026-10-28")
+    assert lines[0] == ("ai-household-1  id=id-1  writes+sends  on  made -  last used never  "
+                        "today $0.00 of $0.10  30 days $0.00")
+    assert lines[1] == ("send-household-2  id=id-2  sends only  off  made -  last used never  "
+                        "today $0.00  30 days $0.00")
+    # A key made on request: who holds it, what it can do, when it was made and last sent, then
+    # who confirmed.
+    assert lines[2].startswith("on-request-") and \
+        "made on request 2026-10-28  sends only  on  made 2026-10-28  last used 2026-10-28" \
+        in lines[2]
     assert lines[3].startswith("  parent@example.com (fi): confirmed ")
     assert lines[4:] == ["  partner@example.fi (zh): not confirmed"]
     for k in bifrost.keys:
