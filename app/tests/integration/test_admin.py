@@ -11,6 +11,7 @@ import io
 import json
 import sys
 import urllib.error
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,23 +32,62 @@ admin = _load("gateway_admin", GATEWAY / "admin")
 relay = _load("brief_relay", GATEWAY / "brief_relay.py")
 
 AI = {"id": "id-1", "name": "ai-pilot-a", "value": "sk-bf-secret-one", "is_active": True,
+      "description": "Korhonen family, gateway AI, 2026-10-01",
+      "created_at": "2026-10-01T08:00:00Z",
       "provider_configs": [{"provider": "anthropic"}],
       "budgets": [{"max_limit": 0.10, "current_usage": 0.02}]}
-SEND = {"id": "id-2", "name": "send-pilot-b", "value": "sk-bf-secret-two", "is_active": False}
+SEND = {"id": "id-2", "name": "send-pilot-b", "value": "sk-bf-secret-two", "is_active": False,
+        "created_at": "2026-10-20T10:00:00.123456789+03:00"}
+# Bifrost's request log, as its admin API lists it: a request's key, time, status and cost (no
+# content, as disable_content_logging is on). Today is 2026-11-04 (UTC).
+LOGS = [
+    {"id": "r1", "virtual_key_id": "id-1", "timestamp": "2026-11-04T07:00:00Z",
+     "status": "success", "cost": 0.02},
+    # 18:00 UTC on 3 November, written in another zone.
+    {"id": "r2", "virtual_key_id": "id-1", "timestamp": "2026-11-04T01:00:00.5+07:00",
+     "status": "success", "cost": 0.01},
+    {"id": "r3", "virtual_key_id": "id-1", "timestamp": "2026-10-10T21:00:00Z",
+     "status": "success", "cost": 0.30},
+    # Over 30 days ago, and last month.
+    {"id": "r4", "virtual_key_id": "id-1", "timestamp": "2026-09-20T21:00:00Z",
+     "status": "success", "cost": 1.00},
+    # Bifrost refusing a send-only key's model call: no use, no cost.
+    {"id": "r5", "virtual_key_id": "id-2", "timestamp": "2026-11-03T21:00:00Z",
+     "status": "error", "cost": None},
+    # A key since deleted from Bifrost.
+    {"id": "r6", "virtual_key_id": "id-9", "timestamp": "2026-11-02T21:00:00Z",
+     "status": "success", "cost": 0.05},
+]
 
 
 class FakeBifrost:
-    """Bifrost's admin API for virtual keys: the list, POST to make one, PUT to change one."""
+    """Bifrost's admin API for virtual keys: the list, POST to make one, PUT to change one. And its
+    request log, newest first, from `start_time`, at most `log_page` requests a page."""
 
-    def __init__(self, keys: list[dict], down: bool = False) -> None:
+    def __init__(self, keys: list[dict], down: bool = False, logs: Any = (),
+                 log_page: int = 1000) -> None:
         self.keys = [dict(k) for k in keys]
+        self.logs = [dict(e) for e in logs]
+        self.log_page = log_page
         self.down = down
         self.made: list[dict] = []
         self.changed: list[tuple[str, dict]] = []
+        self.log_queries: list[dict] = []
 
     def __call__(self, path: str, body: dict | None = None, method: str | None = None) -> dict:
         if self.down:
             raise urllib.error.URLError("connection refused")
+        if path.startswith("/api/logs?"):
+            query = dict(p.split("=", 1) for p in path.split("?", 1)[1].split("&"))
+            self.log_queries.append(query)
+            start = datetime.fromisoformat(query["start_time"])
+            logs = sorted((e for e in self.logs
+                           if datetime.fromisoformat(e["timestamp"]) >= start),
+                          key=lambda e: datetime.fromisoformat(e["timestamp"]), reverse=True)
+            limit, offset = min(int(query["limit"]), self.log_page), int(query["offset"])
+            return {"logs": logs[offset:offset + limit],
+                    "pagination": {"limit": limit, "offset": offset, "total_count": len(logs)},
+                    "stats": {"total_requests": len(logs)}}
         if method == "PUT":
             key_id = path.rsplit("/", 1)[1]
             key = next(k for k in self.keys if k["id"] == key_id)
@@ -91,7 +131,7 @@ class Server:
             homes=self.homes,
             store=self.store,
         )
-        self.bifrost = FakeBifrost([AI, SEND])
+        self.bifrost = FakeBifrost([AI, SEND], logs=LOGS)
         self.ran: list[tuple[list[str], dict]] = []
         self.root_user = True
 
@@ -134,7 +174,7 @@ def server(tmp_path: Path) -> Server:
 def test_help_lists_every_task_one_line_each(server, capsys):
     assert server.admin("--help") == 0
     out = capsys.readouterr().out
-    for task in ("invite", "households", "keys", "key new", "key off", "key on", "find",
+    for task in ("invite", "households", "keys", "cost", "key new", "key off", "key on", "find",
                  "remove"):
         assert sum(line.lstrip().startswith(task + " ") for line in out.splitlines()) == 1, task
 
@@ -216,11 +256,77 @@ def test_a_task_needing_the_admin_login_without_bifrost_env_says_to_run_setup(se
 
 
 def test_keys_lists_every_key_and_never_its_value(server, capsys):
+    server.paths.relay_state.mkdir()
+    # The relay's last send date for each key: the send-only key last sent on 2 November, the AI
+    # key before its last model call.
+    (server.paths.relay_state / "last-sent.json").write_text(
+        json.dumps({"id-1": "2026-11-01", "id-2": "2026-11-02"}))
     assert server.admin("keys") == 0
     out = capsys.readouterr().out
-    assert out.splitlines() == ["ai-pilot-a  id=id-1  writes+sends  on  today $0.02 of $0.10",
-                                "send-pilot-b  id=id-2  sends only  off  today -"]
+    assert out.splitlines() == [
+        "ai-pilot-a  id=id-1  Korhonen family, gateway AI, 2026-10-01  writes+sends  on  "
+        "made 2026-10-01  last used 2026-11-04  today $0.02 of $0.10  30 days $0.33",
+        "send-pilot-b  id=id-2  sends only  off  made 2026-10-20  last used 2026-11-02  "
+        "today $0.00  30 days $0.00"]
     assert "sk-bf-" not in out
+
+
+def test_keys_says_never_for_a_key_neither_bifrost_nor_the_relay_saw_used(server, capsys):
+    server.bifrost.logs = []
+    assert server.admin("keys") == 0
+    out = capsys.readouterr().out.splitlines()
+    assert "last used never" in out[0] and "last used never" in out[1]
+    assert "today $0.00 of $0.10  30 days $0.00" in out[0]
+
+
+def test_keys_reads_the_request_log_page_by_page_over_its_retention(server, capsys):
+    server.bifrost.log_page = 2
+    assert server.admin("keys") == 0
+    assert "30 days $0.33" in capsys.readouterr().out
+    queries = server.bifrost.log_queries
+    assert [q["offset"] for q in queries] == ["0", "2", "4"]
+    # Bifrost keeps 90 days of requests (config.json's log_retention_days).
+    assert {q["start_time"] for q in queries} == {"2026-08-06T00:00:00Z"}
+
+
+def test_keys_without_the_request_log_still_lists_the_keys_and_says_why(server, capsys):
+    bifrost = server.bifrost
+
+    def no_logs(path: str, body: dict | None = None, method: str | None = None) -> dict:
+        if path.startswith("/api/logs"):
+            raise urllib.error.HTTPError(path, 404, "Not Found", None, io.BytesIO(b"{}"))
+        return bifrost(path, body, method)
+    server.bifrost = no_logs
+    assert server.admin("keys") == 0
+    captured = capsys.readouterr()
+    assert captured.out.splitlines()[0].startswith("ai-pilot-a  id=id-1  ")
+    assert "last used ?" in captured.out and "today ?" in captured.out
+    assert "request log" in captured.err and "404" in captured.err
+
+
+def test_cost_prints_this_month_s_spend_per_key_and_the_total(server, capsys):
+    assert server.admin("cost") == 0
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    assert lines[0] == "Spend in 2026-11 (UTC) by Gateway Key, from Bifrost's request log:"
+    assert lines[1:5] == ["  ai-pilot-a  id=id-1  $0.03",
+                          "  send-pilot-b  id=id-2  $0.00",
+                          "  id=id-9 (no longer a key)  $0.05",
+                          "  total  $0.08"]
+    assert "Anthropic Console" in out and "billed" in out
+    assert "sk-bf-" not in out
+    assert {q["start_time"] for q in server.bifrost.log_queries} == {"2026-11-01T00:00:00Z"}
+
+
+def test_cost_without_the_request_log_says_so(server, capsys):
+    server.bifrost.down = True
+    assert server.admin("cost") == 1
+    assert "request log" in capsys.readouterr().err
+
+
+def test_cost_takes_no_arguments(server, capsys):
+    assert server.admin("cost", "2026-10") == 2
+    assert "usage" in capsys.readouterr().err
 
 
 def test_key_new_prints_the_new_key_s_name_and_value(server, capsys):
@@ -307,6 +413,7 @@ def test_a_key_task_without_its_arguments_is_refused(server, capsys, args):
 
 def test_the_key_tasks_log_nothing(server, caplog):
     server.admin("keys")
+    server.admin("cost")
     server.admin("key", "off", "ai-pilot-a")
     server.admin("key", "new", "pilot-c", "Korhonen family")
     assert caplog.records == []

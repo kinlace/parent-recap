@@ -14,9 +14,11 @@ addresses are bound to which key, and whether they confirmed, is the one thing k
 (STATE_DIRECTORY/bindings.json), with per-day counts that rate-limit the requests. Keys made by
 hand aren't in that file and send as before.
 
-`print_keys`, `new_key` and `switch_key` are the maintainers' `admin keys`, `admin key new` and
-`admin key off|on` (ops/gateway/admin): they list the Gateway Keys, make one, and turn one off or
-on, on Bifrost's admin API.
+`print_keys`, `print_cost`, `new_key` and `switch_key` are the maintainers' `admin keys`,
+`admin cost`, `admin key new` and `admin key off|on` (ops/gateway/admin): they list the Gateway
+Keys with their use and spend, give the month's spend, make a key, and turn one off or on, on
+Bifrost's admin API. For a key's last use the relay keeps one thing more: the date each key last
+sent a Brief (STATE_DIRECTORY/last-sent.json, #742).
 
 Everything the relay sends counts against Email Delivery's 100 a day for the whole tenancy; once a
 UTC day's count passes QUOTA_WARN_AT, the relay logs a warning for the maintainers (#627).
@@ -43,7 +45,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -66,6 +68,12 @@ MAX_REQUEST_BYTES = 2_000_000
 EX_CONFIG = 78
 # Bifrost's virtual-key list returns at most 100 keys a page.
 PAGE = 100
+# Bifrost's request log (GET /api/logs) returns at most 1000 requests a page, and keeps
+# `log_retention_days` of them (config.json): how far back `admin keys` looks for a key's last use.
+LOG_PAGE = 1000
+LOG_DAYS = 90
+# Each key's last send date, in STATE_DIRECTORY (`LastSent`).
+LAST_SENT = "last-sent.json"
 # What a key that writes the Brief may call, and its daily budget (README "Create a Gateway Key").
 AI_KEY = {"provider_configs": [{"provider": "anthropic", "weight": 1,
                                 "allowed_models": ["parent-recap"], "key_ids": ["*"]}],
@@ -208,6 +216,39 @@ class DailyCap:
             if sent.get(key.id, 0) > 0:
                 sent[key.id] -= 1
                 self._write(sent)
+
+
+# ── The last send date
+
+class LastSent:
+    """The UTC day each key last sent a Brief, kept in a file so a restart doesn't lose it: half of
+    `admin keys`' "last used", Bifrost's request log being the other (#742). A key's id and a date,
+    never an address or anything of the message."""
+
+    def __init__(self, path: Path,
+                 today: Callable[[], str] = lambda: datetime.now(UTC).date().isoformat()) -> None:
+        self.path = path
+        self.today = today
+        self.lock = threading.Lock()
+
+    def read(self) -> dict[str, str]:
+        try:
+            dates = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return {str(k): v for k, v in dates.items() if isinstance(v, str)} \
+            if isinstance(dates, dict) else {}
+
+    def mark(self, key: Key) -> None:
+        """Keeps today as `key`'s last send date; written once a day a key at most."""
+        with self.lock:
+            dates = self.read()
+            if dates.get(key.id) == self.today():
+                return
+            dates[key.id] = self.today()
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(dates), encoding="utf-8")
+            tmp.replace(self.path)
 
 
 # ── Email Delivery's quota
@@ -628,9 +669,9 @@ class Mailer:
 
 class Relay:
     def __init__(self, keys: Bifrost, cap: DailyCap, mailer: Mailer, stop_url: str,
-                 bindings: Bindings, confirm_url: str) -> None:
+                 bindings: Bindings, confirm_url: str, last_sent: LastSent | None = None) -> None:
         self.keys, self.cap, self.mailer, self.stop_url = keys, cap, mailer, stop_url
-        self.bindings, self.confirm_url = bindings, confirm_url
+        self.bindings, self.confirm_url, self.last_sent = bindings, confirm_url, last_sent
 
     def handle(self, key_value: str | None, raw: bytes) -> tuple[int, dict]:
         """The status and JSON answer for one POST /v1/brief. A key made on request sends only to
@@ -669,6 +710,13 @@ class Relay:
                 self.cap.give_back(key)
             self._log(key, recipients, raw, f"{e.status} {e.reason}")
             return e.status, {"error": e.reason, **e.extra}
+        if self.last_sent is not None:
+            try:
+                self.last_sent.mark(key)
+            except OSError:
+                # The Brief is sent: a date that couldn't be written mustn't make it look failed,
+                # or the program would send it again. `admin keys` shows an older date, no more.
+                pass
         self._log(key, recipients, raw, "sent" + (f", {refused} refused" if refused else "")
                   + (f", {len(unconfirmed)} unconfirmed left out" if unconfirmed else ""))
         return 200, {"sent": recipients - refused, "refused": refused,
@@ -907,36 +955,143 @@ def main() -> None:
                       quota=Quota(state / "quota.json")),
         stop_url=f"https://{env['GATEWAY_HOST']}/brief/stop",
         bindings=Bindings(state / "bindings.json"),
-        confirm_url=f"https://{env['GATEWAY_HOST']}/brief/confirm")
+        confirm_url=f"https://{env['GATEWAY_HOST']}/brief/confirm",
+        last_sent=LastSent(state / LAST_SENT))
     port = int(env.get("BRIEF_RELAY_PORT", "8081"))
     server = ThreadingHTTPServer(("127.0.0.1", port), handler(relay))
     log.info("brief-relay listening on 127.0.0.1:%d", port)
     server.serve_forever()
 
 
-def print_keys(keys: Bifrost, path: Path) -> None:
-    """`admin keys`: every Gateway Key, one line each, for the maintainers (README
-    "Runbook"): its name and id, what it can do, whether it is on, and its spend today. A key made on
-    request is followed by its addresses and whether each confirmed. Never a key's value."""
+TIMESTAMP = re.compile(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:\d\d)?", re.ASCII)
+
+
+def _utc_day(value: Any) -> date | None:
+    """The UTC day of an RFC 3339 time as Bifrost writes it (to the nanosecond, in any zone)."""
+    m = TIMESTAMP.match(value) if isinstance(value, str) else None
+    if m is None:
+        return None
+    zone = m.group(2) or "Z"
+    when = datetime.fromisoformat(m.group(1) + ("+00:00" if zone == "Z" else zone))
+    return when.astimezone(UTC).date()
+
+
+@dataclass
+class Use:
+    """A key's use in Bifrost's request log: its last model call's day, and what it cost today
+    and over the last 30 days."""
+    last_call: date | None = None
+    today: float = 0.0
+    days_30: float = 0.0
+
+
+def request_log(keys: Bifrost, since: date) -> Iterator[tuple[str, date, bool, float]]:
+    """Each request in Bifrost's request log from the start of UTC day `since`, page by page: its
+    key's id, its UTC day, whether it was taken (not refused or failed), and its cost. Nothing else
+    of a request is read, and its text isn't stored (README "What it keeps")."""
+    start = f"{since.isoformat()}T00:00:00Z"
+    offset = 0
+    while True:
+        page = keys.fetch(f"/api/logs?start_time={start}&sort_by=timestamp&order=desc"
+                          f"&limit={LOG_PAGE}&offset={offset}")
+        logs = page.get("logs") or []
+        for e in logs:
+            day = _utc_day(e.get("timestamp"))
+            if day is None or day < since:
+                continue
+            key_id = e.get("virtual_key_id") or (e.get("virtual_key") or {}).get("id") or ""
+            yield str(key_id), day, e.get("status") != "error", float(e.get("cost") or 0)
+        offset += len(logs)
+        total = (page.get("pagination") or {}).get("total_count")
+        if not logs or (offset >= int(total) if total is not None else len(logs) < LOG_PAGE):
+            return
+
+
+def _log_error(e: Exception) -> str:
+    return f"Bifrost answered {e.code}" if isinstance(e, urllib.error.HTTPError) else str(e)
+
+
+def _one_line(text: Any) -> str:
+    return " ".join("".join(c if c.isprintable() else " " for c in str(text or "")).split())
+
+
+def print_keys(keys: Bifrost, state: Path, today: str) -> None:
+    """`admin keys`: every Gateway Key, one line each, for the maintainers (README "See every
+    key"): its name and id, who holds it, what it can do, whether it is on, when it was made and
+    last used, and its spend today and over the last 30 days. A key made on request is followed by
+    its addresses and whether each confirmed. Never a key's value.
+
+    "Last used" is the later of its last model call in Bifrost's request log (which keeps 90 days)
+    and the last Brief the relay sent with it (`LastSent`). Days are UTC days."""
+    day = date.fromisoformat(today)
     try:
-        bound = json.loads(path.read_text(encoding="utf-8")).get("keys") or {}
-    except (OSError, ValueError):
+        bound = json.loads((state / "bindings.json").read_text(encoding="utf-8")).get("keys") or {}
+    except (OSError, ValueError, AttributeError):
         bound = {}
-    for k in keys.listed():
+    sent = LastSent(state / LAST_SENT).read()
+    listed = list(keys.listed())
+    use: dict[str, Use] | None = {}
+    try:
+        for key_id, when, taken, cost in request_log(keys, day - timedelta(days=LOG_DAYS)):
+            u = use.setdefault(key_id, Use())
+            if taken and (u.last_call is None or when > u.last_call):
+                u.last_call = when
+            if when == day:
+                u.today += cost
+            if when > day - timedelta(days=30):
+                u.days_30 += cost
+    except (OSError, ValueError, TypeError, AttributeError) as e:
+        print(f"couldn't read Bifrost's request log ({_log_error(e)}): last use and spend are ?",
+              file=sys.stderr)
+        use = None
+    for k in listed:
+        key_id = str(k.get("id"))
         # What a key can do is what Bifrost holds for it, not its name: with a provider it
         # writes the Brief too (README "Create a Gateway Key"), without one it only sends.
         kind = "writes+sends" if k.get("provider_configs") else "sends only"
-        state = "on" if k.get("is_active") is True else "off"
+        on = "on" if k.get("is_active") is True else "off"
+        holder = _one_line(k.get("description"))
+        entry = bound.get(key_id)
+        made = _utc_day(k.get("created_at")) or (entry or {}).get("made") or "-"
         budgets = k.get("budgets") or ([k["budget"]] if k.get("budget") else [])
-        spend = ", ".join(f"${b.get('current_usage') or 0:.2f} of ${b.get('max_limit') or 0:.2f}"
-                          for b in budgets) or "-"
-        entry = bound.get(str(k.get("id")))
-        made = f"  made {entry['made']}" if entry else ""
-        print(f"{k.get('name') or k.get('id')}  id={k.get('id')}  {kind}  {state}  "
-              f"today {spend}{made}")
+        limit = "".join(f" of ${b['max_limit']:.2f}" for b in budgets[:1]
+                        if isinstance(b.get("max_limit"), (int, float)))
+        if use is None:
+            last, spend = "?", f"today ?{limit}  30 days ?"
+        else:
+            u = use.get(key_id) or Use()
+            dates = [d for d in (u.last_call and u.last_call.isoformat(), sent.get(key_id)) if d]
+            last = max(dates) if dates else "never"
+            spend = f"today ${u.today:.2f}{limit}  30 days ${u.days_30:.2f}"
+        print(f"{k.get('name') or key_id}  id={key_id}  {holder + '  ' if holder else ''}{kind}  "
+              f"{on}  made {made}  last used {last}  {spend}")
         for r in (entry or {}).get("recipients", []):
             print(f"  {r['address']} ({r['language']}): "
                   f"{'confirmed ' + r['confirmed'] if r['confirmed'] else 'not confirmed'}")
+
+
+def print_cost(keys: Bifrost, today: str) -> None:
+    """`admin cost`: this UTC month's spend per Gateway Key and in all, from Bifrost's request log,
+    for the maintainers (README "Check spend"). A key since deleted is shown by its id, so the
+    total is the log's. What is billed is the Anthropic Console's figure, which it says."""
+    first = date.fromisoformat(today).replace(day=1)
+    try:
+        listed = list(keys.listed())
+        spent: dict[str, float] = {}
+        for key_id, _, _, cost in request_log(keys, first):
+            spent[key_id] = spent.get(key_id, 0.0) + cost
+    except (OSError, ValueError, TypeError, AttributeError) as e:
+        sys.exit(f"couldn't read Bifrost's request log: {_log_error(e)}")
+    print(f"Spend in {first:%Y-%m} (UTC) by Gateway Key, from Bifrost's request log:")
+    names = {str(k.get("id")): k.get("name") or str(k.get("id")) for k in listed}
+    for key_id, name in names.items():
+        print(f"  {name}  id={key_id}  ${spent.get(key_id, 0.0):.2f}")
+    for key_id in sorted(set(spent) - set(names)):
+        what = f"id={key_id} (no longer a key)" if key_id else "(no key)"
+        print(f"  {what}  ${spent[key_id]:.2f}")
+    print(f"  total  ${sum(spent.values()):.2f}")
+    print("These are Bifrost's own figures. What is billed is the Anthropic Console's, for the "
+          "gateway's workspace, which also enforces its monthly limit.")
 
 
 
