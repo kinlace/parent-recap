@@ -4,7 +4,7 @@ The server that invited Households' Gateway Keys go through (ADR 0014), and wher
 
 - `host-setup.sh` sets up the VM (Ubuntu/Debian): system updates, SSH with keys only, a firewall that lets in only SSH and HTTPS, Caddy, and a login for the AI assistant that can read logs but has no sudo.
 - `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016), the Brief relay and, given a release of the program, the program every Hosted Household runs (ADR 0035) and the hosted version's sign-up service (ADR 0031) behind Caddy. It works on any systemd Linux with Caddy and `python3` installed.
-- `config.json`, `bifrost.service`, `brief_relay.py`, `keys.sh`, `new-key.sh`, `brief-relay.service`, `brief-stop.html`, `Caddyfile` and `bifrost.env.example` are what it installs, and for the Hosted Households `parent-recap` (the shared program's command), `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers`, `household-user`, `invite.sh`, `status.sh` and `remove.sh`. The env examples hold only variable names.
+- `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile`, `bifrost.env.example` and `admin` (the maintainers' one command, see "Runbook") are what it installs, and for the Hosted Households `parent-recap` (the shared program's command), `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers` and `household-user`. The env examples hold only variable names.
 - `oci-quota.json` is the Oracle Cloud quota policy that lets the account create only Always Free resources.
 - `set-smtp-credentials.sh` puts the sending domain's SMTP credentials into their own env file, whose names are in `brief-relay.env.example` (see "The sending domain").
 
@@ -45,9 +45,9 @@ Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`).
 9. **Record it.** Keep the provider, region, IP, hostname and SSH logins in the maintainers' private notes, not here.
 10. **Hosted Households** (ADR 0029), once the gateway answers. All on the server, as in "Hosted Households" below:
     - **The program and the service.** Run step 7 again with `PARENT_RECAP_RELEASE` (see "Install it"). Check that `systemctl status parent-recap-signup` is active and an unknown `https://<hostname>/join/x` gets 404. Each later deploy upgrades every Household: check one after it (see "Upgrade, check, switch back").
-    - **Invite.** `invite.sh` prints an Invite Link (see "Invite a Household"). Sign up your own Household with it first: it is the first to sign in to Wilma from the server.
-    - **Status.** `status.sh` lists every Household's last run and checks (see "See every Household's status").
-    - **Remove.** `remove.sh ph-…` removes a Household with its data (see "Remove a Household").
+    - **Invite.** `sudo admin invite` prints an Invite Link (see "Invite a Household"). Sign up your own Household with it first: it is the first to sign in to Wilma from the server.
+    - **Status.** `sudo admin households` lists every Household's last run and checks (see "See every Household's status").
+    - **Remove.** `sudo admin remove ph-…` removes a Household with its data (see "Remove a Household").
 
     A rebuilt server has no Households: their homes, the Invite Links and `households.json` are on the old server only, and nothing backs them up. Invite each family again; its Wilma login and MyClub links come with the new sign-up, and deleting the old VM deletes the old Households with it.
 
@@ -199,16 +199,16 @@ scp -r <unpacked release> ubuntu@<ip>:/tmp/parent-recap
 ssh -t ubuntu@<ip> "sudo GATEWAY_HOST=<hostname> PARENT_RECAP_RELEASE=/tmp/parent-recap bash /tmp/gateway/gateway-setup.sh"
 ```
 
-It installs the program once for the whole server (ADR 0035): the release's `install.sh`, run as root, puts it in `/usr/local/lib/parent-recap/<version>` with its pinned Python and Node (ADR 0011), and the wilma CLI (ADR 0008) goes beside them; it is owned by root and readable by all. `/usr/local/lib/parent-recap/current` then points at that release, and `/usr/local/lib/parent-recap/bin/parent-recap` (`parent-recap` here) runs the program through it. The sign-up service and every Household run that command, each as its own user, and a Household's evening job runs `current`'s Python, so whatever `current` points at is what runs next. A Household's user holds only its own data: its config, the wilma CLI's sign-in, the Gateway Key file, the archive and the logs, all in its home. The script then makes the service's user `parent-recap-signup` (home `/var/lib/parent-recap-signup`); installs the `household-user` helper, `invite.sh`, `status.sh` and `remove.sh` in `/usr/local/lib/parent-recap-signup`, the sudoers file and `/etc/parent-recap-signup/signup.env`; and starts the `parent-recap-signup` unit (`parent-recap signup serve`) on `127.0.0.1:8082`, which reads Bifrost's admin login from `bifrost.env`.
+It installs the program once for the whole server (ADR 0035): the release's `install.sh`, run as root, puts it in `/usr/local/lib/parent-recap/<version>` with its pinned Python and Node (ADR 0011), and the wilma CLI (ADR 0008) goes beside them; it is owned by root and readable by all. `/usr/local/lib/parent-recap/current` then points at that release, and `/usr/local/lib/parent-recap/bin/parent-recap` (`parent-recap` here) runs the program through it. The sign-up service and every Household run that command, each as its own user, and a Household's evening job runs `current`'s Python, so whatever `current` points at is what runs next. A Household's user holds only its own data: its config, the wilma CLI's sign-in, the Gateway Key file, the archive and the logs, all in its home. The script then makes the service's user `parent-recap-signup` (home `/var/lib/parent-recap-signup`); installs the `household-user` helper in `/usr/local/lib/parent-recap-signup`, the sudoers file and `/etc/parent-recap-signup/signup.env`; and starts the `parent-recap-signup` unit (`parent-recap signup serve`) on `127.0.0.1:8082`, which reads Bifrost's admin login from `bifrost.env`.
 
 **Upgrade, check, switch back.** Run the same two lines with a newer release. The new version is installed beside the one in use, then `current` points at it and the service restarts: every Household runs the new version from its next run, its evening Brief included. The script says which version `current` pointed at before. A bad release so breaks every Household's next Brief at once, so after each deploy, before 21:00, run your own Household's evening run and read how it ended:
 
 ```sh
 cd / && sudo -u ph-30d2afe0 -H -- /usr/local/lib/parent-recap/bin/parent-recap schedule run-now
-sudo bash /usr/local/lib/parent-recap-signup/status.sh    # once it has ended, a minute or two
+sudo admin households    # once it has ended, a minute or two
 ```
 
-`run-now` starts the evening job itself, as its timer would, and sends that Household's Brief to its Recipients. `status.sh` should show its last run a minute ago, `ok`, and no ❌ among its checks; its logs are in `~ph-…/ParentRecap/logs/run-stderr.log`. If it failed, switch every Household back to the release before, which is still on disk (`ls /usr/local/lib/parent-recap` lists them), and restart the service on it:
+`run-now` starts the evening job itself, as its timer would, and sends that Household's Brief to its Recipients. `admin households` should show its last run a minute ago, `ok`, and no ❌ among its checks; its logs are in `~ph-…/ParentRecap/logs/run-stderr.log`. If it failed, switch every Household back to the release before, which is still on disk (`ls /usr/local/lib/parent-recap` lists them), and restart the service on it:
 
 ```sh
 sudo ln -sfn <previous version> /usr/local/lib/parent-recap/current
@@ -217,7 +217,7 @@ sudo systemctl restart parent-recap-signup
 
 Each deploy of a new version leaves the one before it on disk. Remove one that isn't `current` and that you won't switch back to with `sudo rm -rf /usr/local/lib/parent-recap/<version>`. Deploying the same version again updates it in place, so there is nothing to switch back to.
 
-**Move a Household made before the shared program.** Until 2026-11-02 the sign-up installed the program in each Household's home (`~/ParentRecap/app` with its `runtime`, `wilma` and `bin`), and its evening job ran that copy. `status.sh` and `remove.sh` already work for it, through the shared program. To have it run the shared program too, on the server, with its label:
+**Move a Household made before the shared program.** Until 2026-11-02 the sign-up installed the program in each Household's home (`~/ParentRecap/app` with its `runtime`, `wilma` and `bin`), and its evening job ran that copy. `admin households` and `admin remove` already work for it, through the shared program. To have it run the shared program too, on the server, with its label:
 
 ```sh
 cd / && sudo -u ph-0123abcd -H -- /usr/local/lib/parent-recap/bin/parent-recap schedule install
@@ -226,15 +226,17 @@ sudo cat /home/ph-0123abcd/.config/systemd/user/parent-recap-daily.service    # 
 sudo rm -rf /home/ph-0123abcd/ParentRecap/{app,runtime,wilma,baileys,bin,plugin} /home/ph-0123abcd/.local/bin/parent-recap
 ```
 
-The first line rewrites its evening job, at the same time, to run the shared program. The second adds `hosted: true` at the top of its config (`~/.family/config.yaml`, owner-only) when the line isn't there, as its user so the file keeps its owner and mode: a Household made before the sign-up wrote it (#669) reads as one on a family's own computer, and its Brief's footer says so. The last removes its own copy, and the link to it install.sh made, and keeps its archive and logs (`ParentRecap/*.md` and `ParentRecap/logs`). Its `~/.family/install-record.json` still names the removed copy, which nothing on the server reads first: the program looks beside itself. Then run its evening run and read `status.sh`, as after a deploy.
+The first line rewrites its evening job, at the same time, to run the shared program. The second adds `hosted: true` at the top of its config (`~/.family/config.yaml`, owner-only) when the line isn't there, as its user so the file keeps its owner and mode: a Household made before the sign-up wrote it (#669) reads as one on a family's own computer, and its Brief's footer says so. The last removes its own copy, and the link to it install.sh made, and keeps its archive and logs (`ParentRecap/*.md` and `ParentRecap/logs`). Its `~/.family/install-record.json` still names the removed copy, which nothing on the server reads first: the program looks beside itself. Then run its evening run and read `admin households`, as after a deploy.
 
 **Invite a Household.** On the server, with the Recipients the family gave you and the language each reads the Brief in. It prints the link; send it over a private channel:
 
 ```sh
-sudo bash /usr/local/lib/parent-recap-signup/invite.sh --recipient parent@example.com:fi --recipient partner@example.com:en --days 14 --note "Virtanen family"
+sudo admin invite --recipient parent@example.com:fi --recipient partner@example.com:en --days 14 --note "Virtanen family"
 ```
 
-`--note` is optional, for the maintainers only: say whose link it is, since nothing else on the server does once the family signs up. It goes with the link into the Household's line in `households.json` and beside its user in `status.sh`, and is never shown on the family's page. Keep it to what you would put in a log: a name, not an address or a password.
+`sudo admin invite --help` lists its options: `--language` is the page's until the family picks another, and the link works for `--days`.
+
+`--note` is optional, for the maintainers only: say whose link it is, since nothing else on the server does once the family signs up. It goes with the link into the Household's line in `households.json` and beside its user in `admin households` and `admin find`, and is never shown on the family's page. Keep it to what you would put in a log: a name, not an address or a password.
 
 The link is a random code, kept with the Recipients and the note in the service's owner-only store (`/var/lib/parent-recap-signup/signup/invites/`). It works once, until it expires, and a Household made from it retires it, Recipients and all. A link that isn't good, or any other address under `/join/`, gets the same 404 as the rest of the server.
 
@@ -243,24 +245,26 @@ The link is a random code, kept with the Recipients and the note in the service'
 **See every Household's status.** On the server; it reads nothing of a Household's messages, so any maintainer may run it:
 
 ```sh
-sudo bash /usr/local/lib/parent-recap-signup/status.sh
+sudo admin households
 ```
 
 For each Household in `households.json` it runs `parent-recap signup health` as the Household's user, and prints its user with its Invite Link's note in brackets, such as `ph-0123abcd (Virtanen family)`, the time its Brief comes, when its last run ended and how, how long it took and its peak memory (from `last-run.json` beside its `state.json`), such as `last run 2026-10-30 18:00 UTC, ok, 7 s, 180 MB`, and each of `doctor`'s checks by its key with ✅, ⚠️ or ❌, run then without the model's test call. A last run that failed is marked ❌, a run not ended an hour after its time ⚠️ overdue, and a Household whose program is older than the command ❓. It prints no message text, subject, address or Kid's name, not even doctor's words, which name them. It exits 1 when any Household is marked.
 
-**Find a Household.** Only the note its Invite Link carried, if it had one, says which family a label is. When a parent asks about their Brief, find their label from a Recipient address they give: each Household's config holds its Recipients, and root can read it.
+**Find a Household.** Only the note its Invite Link carried, if it had one, says which family a label is. When a parent asks about their Brief, find their label from a Recipient address they give:
 
 ```sh
-sudo grep -l "parent@example.com" /home/ph-*/.family/config.yaml
+sudo admin find parent@example.com
 ```
 
-**Remove a Household.** On the server, with the Household's label, its user as `ls /home`, `status.sh` and the sign-up's log show it:
+It reads each Household's config (`/home/ph-…/.family/config.yaml`, which root can read) with the shared program's Python, and prints the label of each Household whose Brief or Weekend Picks Recipients include the address, ignoring case, with its Invite Link's note in brackets, such as `ph-0123abcd (Virtanen family)`, and nothing else of its config. It exits 1 when no Household has the address.
+
+**Remove a Household.** On the server, with the Household's label, its user as `ls /home`, `admin households` and the sign-up's log show it:
 
 ```sh
-sudo bash /usr/local/lib/parent-recap-signup/remove.sh ph-0123abcd
+sudo admin remove ph-0123abcd
 ```
 
-It prints each step as it goes: the evening jobs removed by the shared program run as the Household's user, its Gateway Key revoked on the admin API, its user deleted with its home (and so its config with its MyClub links, Wilma sign-in, key file, archive of Briefs, and the `state.json` and `last-run.json` that `status.sh` reads), and its line taken off the store's `households.json`, which frees its evening slot and takes it off `status.sh`'s list. The shared program stays, for the other Households. Nothing of the Household stays on the server but log lines that held nothing of the family: the journal's lines naming its label, and Bifrost's per-request token counts and cost. A label that is no Household's is refused and nothing is touched. If a step fails, such as the admin API not answering, it stops there and says so; the Household stays on the list, and running the command again does the rest. Jobs its program couldn't remove go with its user anyway, since deleting the user ends everything running as it.
+It prints each step as it goes: the evening jobs removed by the shared program run as the Household's user, its Gateway Key revoked on the admin API, its user deleted with its home (and so its config with its MyClub links, Wilma sign-in, key file, archive of Briefs, and the `state.json` and `last-run.json` that `admin households` reads), and its line taken off the store's `households.json`, which frees its evening slot and takes it off `admin households`' list. The shared program stays, for the other Households. Nothing of the Household stays on the server but log lines that held nothing of the family: the journal's lines naming its label, and Bifrost's per-request token counts and cost. A label that is no Household's is refused and nothing is touched. If a step fails, such as the admin API not answering, it stops there and says so; the Household stays on the list, and running the command again does the rest. Jobs its program couldn't remove go with its user anyway, since deleting the user ends everything running as it.
 
 **Sudo.** The service's user may run, as root, only `household-user add|remove ph-…`, which refuses any other name. As a member of `parent-recap-households`, the Households' group, it may run only its own commands, with exactly their arguments (`signup.sudoers`): the shared `parent-recap` with `signup household`, `run --first-brief`, `signup health` or `schedule uninstall`. A Household's user can't change that program, which root owns. So a bug in the sign-up service can't read a Household's Wilma password, MyClub links or Gateway Key; it could still rewrite a Household's config, its Recipients among them, through `signup household`, and so have a first Brief, made from the last three days' messages, sent to an address of its choosing. A password or key never goes on a command line.
 
@@ -268,73 +272,58 @@ It prints each step as it goes: the evening jobs removed by the shared program r
 
 ## Runbook
 
-`keys.sh` and `new-key.sh` run on the server and read the admin login from `/etc/bifrost/bifrost.env` themselves. For the `curl` lines, open the admin API through a tunnel, with the admin login from the maintainers' password manager. Nothing below is run on the public address.
+Every routine task is one command on the server: SSH in, then `sudo admin <task>`. Nothing runs on the server from a laptop, and nothing below is run on the public address. `gateway-setup.sh` installs it as `/usr/local/sbin/admin` from `ops/gateway/admin`. It reads the admin login from `/etc/bifrost/bifrost.env` itself, never the provider key beside it, and calls Bifrost's admin API on localhost, so no tunnel is needed. `sudo admin --help` lists its tasks:
+
+| Task                                         | What it does                                                                      |
+| -------------------------------------------- | --------------------------------------------------------------------------------- |
+| `invite --recipient ADDRESS[:LANGUAGE] …`    | Mints an Invite Link and prints it (see "Invite a Household")                     |
+| `households`                                 | Every Hosted Household's last run and checks (see "See every Household's status") |
+| `keys`                                       | Every Gateway Key: what it can do, on or off, today's spend (below)               |
+| `key new LABEL "WHO HOLDS IT" [--send-only]` | Makes a Gateway Key and prints its value (below)                                  |
+| `key off NAME-OR-ID`, `key on NAME-OR-ID`    | Turns a Gateway Key off or back on (below)                                        |
+| `find ADDRESS`                               | Which Households have this Recipient (see "Find a Household")                     |
+| `remove ph-XXXXXXXX`                         | Removes a Hosted Household with everything of it (see "Remove a Household")       |
+
+Run without root it refuses and says why. It prints only to the terminal and writes no log of its own, and no key's value is printed except by `key new`. `sudo` logs each command line to the system journal, as it did for the scripts `admin` replaced, so an address given to `invite` or `find` is there, and a note should stay a name. Those scripts (`keys.sh` and `new-key.sh` in `/usr/local/lib/brief-relay/`, `invite.sh`, `status.sh` and `remove.sh` in `/usr/local/lib/parent-recap-signup/`) are gone: the next run of `gateway-setup.sh` deletes them from the server.
+
+**Create a Gateway Key and give it to a Household.** The `name` is a neutral label, because it is written to Bifrost's request log and the relay's journal, which more people can read. It starts with what the key can do, so a maintainer reading a list or a log tells the kinds apart: `ai-` for a key that writes the Brief and sends it, `send-` for one that only sends, each followed by the Household's label. Keys made by the program carry their own: a Hosted Household's is its user (`ph-…`), and one made on request starts `on-request-`. The key's value is the same kind of `sk-bf-…` for all of them; `admin keys` (below) says what each can do from what Bifrost holds, not from its name. Who holds the key goes in its `description` (the Household, its AI backend, the date), which only the admin API returns; it is kept only in the gateway's database, never in the repo. The printed `sk-bf-…` value is the key: send it to the Household over a private channel and don't save it anywhere. Bifrost keeps it in plaintext and the key list returns it too, so a lost key can be read back, and the admin login (kept only in the maintainers' password manager) can read every Household's key.
+
+`admin key new` makes it: the label (lowercase letters, digits and dashes) becomes `ai-<label>`, who holds it and today's date go into the `description` (`<Household>, gateway AI, <date>`), and it prints the name and the `sk-bf-…` value. The key may call only the `parent-recap` model through the gateway's Anthropic provider, with a $0.10 budget that resets daily. When Bifrost made no key, it says so with Bifrost's reply and prints no key:
 
 ```sh
-ssh -L 8080:localhost:8080 ubuntu@<ip>      # leave open
-export ADMIN=<admin user>:<admin password>
+sudo admin key new pilot-a "<Household>"
 ```
 
-**Create a Gateway Key and give it to a Household.** The `name` is a neutral label, because it is written to Bifrost's request log and the relay's journal, which more people can read. It starts with what the key can do, so a maintainer reading a list or a log tells the kinds apart: `ai-` for a key that writes the Brief and sends it, `send-` for one that only sends, each followed by the Household's label. Keys made by the program carry their own: a Hosted Household's is its user (`ph-…`), and one made on request starts `on-request-`. The key's value is the same kind of `sk-bf-…` for all of them; `keys.sh` (below) says what each can do from what Bifrost holds, not from its name. Who holds the key goes in its `description` (the Household, its AI backend, the date), which only the admin API returns; it is kept only in the gateway's database, never in the repo. The reply's `virtual_key.value` (`sk-bf-…`) is the key: send it to the Household over a private channel and don't save it anywhere. Bifrost keeps it in plaintext and the key list returns it too, so a lost key can be read back, and the admin login (kept only in the maintainers' password manager) can read every Household's key.
-
-On the server, `new-key.sh` makes it: the label (lowercase letters, digits and dashes) becomes `ai-<label>`, who holds it and today's date go into the `description`, and it prints the name and the `sk-bf-…` value. When Bifrost made no key, it says so with Bifrost's reply and prints no key:
+**Create a send-only Gateway Key.** A Household whose AI backend is its own Claude Code or Codex gets one on request by itself (see "Send-only keys on request"), so this is only for a Household that can't, such as one whose Recipients can't confirm by email. A key made here isn't bound to addresses, so it sends to any. It has no `provider_configs` and no budget: Bifrost refuses its model calls (400 or 403) and the relay accepts it, since the relay only checks that the key exists and is active. Same handover, named `send-<label>` and described `<Household>, own Claude Code or Codex, <date>`, with `--send-only`:
 
 ```sh
-sudo bash /usr/local/lib/brief-relay/new-key.sh pilot-a "<Household>"
+sudo admin key new pilot-b "<Household>" --send-only
 ```
 
-Without it, through the tunnel:
+**Say who holds a key made without a description.** Not an `admin` task: find its `id` with `admin keys`, then, through a tunnel to the admin API with the admin login from the maintainers' password manager, set the `description` alone (`PUT` changes only the fields it is given; Bifrost has no `PATCH` here):
 
 ```sh
-curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
-  -H 'content-type: application/json' -d '{
-    "name": "ai-<label>",
-    "description": "<Household>, gateway AI, <date>",
-    "is_active": true,
-    "provider_configs": [{"provider": "anthropic", "weight": 1,
-      "allowed_models": ["parent-recap"], "key_ids": ["*"]}],
-    "budgets": [{"max_limit": 0.10, "reset_duration": "1d"}]
-  }'
-```
-
-**Create a send-only Gateway Key.** A Household whose AI backend is its own Claude Code or Codex gets one on request by itself (see "Send-only keys on request"), so this is only for a Household that can't, such as one whose Recipients can't confirm by email. A key made here isn't bound to addresses, so it sends to any. Give it a key with no `provider_configs` and no budget: Bifrost refuses its model calls (400 or 403) and the relay accepts it, since the relay only checks that the key exists and is active. Same handover, named `send-<label>`, with `--send-only`:
-
-```sh
-sudo bash /usr/local/lib/brief-relay/new-key.sh pilot-b "<Household>" --send-only
-```
-
-Without it, through the tunnel:
-
-```sh
-curl -s -u "$ADMIN" -X POST localhost:8080/api/governance/virtual-keys \
-  -H 'content-type: application/json' -d '{"name": "send-<label>",
-    "description": "<Household>, own Claude Code or Codex, <date>", "is_active": true}'
-```
-
-**Say who holds a key made without a description.** Find its `id` in the list (below) and set the `description` alone:
-
-```sh
-curl -s -u "$ADMIN" -X PUT localhost:8080/api/governance/virtual-keys/<id> \
+ssh -L 8080:localhost:8080 <server>      # leave open
+curl -s -u "<admin user>:<admin password>" -X PUT localhost:8080/api/governance/virtual-keys/<id> \
   -H 'content-type: application/json' -d '{"description": "<Household>, <AI backend>, <date>"}'
 ```
 
-**See every key.** On the server, without the tunnel. One line a key: its name and `id`, `writes+sends` or `sends only` (whether Bifrost has a provider behind it), `on` or `off`, and today's spend against its daily budget. A key made on request (name `on-request-…`, description `made on request <date>`) is followed by the addresses bound to it and who confirmed. It prints no key's value:
+**See every key.** One line a key: its name and `id`, `writes+sends` or `sends only` (whether Bifrost has a provider behind it), `on` or `off`, and today's spend against its daily budget. A key made on request (name `on-request-…`, description `made on request <date>`) is followed by the addresses bound to it and who confirmed. It prints no key's value:
 
 ```sh
-sudo bash /usr/local/lib/brief-relay/keys.sh
+sudo admin keys
 ```
 
 A key whose Recipients never confirmed sends nothing; revoke it when tidying up. A key made on request is revoked as any other, below: the relay then answers 401 to it, and its entry in `bindings.json` is no longer used.
 
-**Revoke.** A Hosted Household's key goes with it (see "Remove a Household"). For any other, find the key's `id` with `keys.sh` (or in the list), then turn it off (or `DELETE` it). `PUT` changes only the fields it is given (Bifrost has no `PATCH` here):
+**Revoke, or turn a key back on.** A Hosted Household's key goes with it (see "Remove a Household"). For any other, turn it off by its name or its `id` from `admin keys`; `key on` turns it back on. It says what it changed, or that the key already was so. A name no key has, or one two keys share, is refused and nothing is changed; give the `id` then. A key off can neither write nor send the Brief: Bifrost refuses its model calls and the relay answers 401.
 
 ```sh
-curl -s -u "$ADMIN" localhost:8080/api/governance/virtual-keys
-curl -s -u "$ADMIN" -X PUT localhost:8080/api/governance/virtual-keys/<id> \
-  -H 'content-type: application/json' -d '{"is_active": false}'
+sudo admin key off ai-pilot-a
+sudo admin key on ai-pilot-a
 ```
 
-**Check spend.** `keys.sh` prints what each key has spent today (`budgets[].current_usage` in the list). The month's total is in the Anthropic Console, which also enforces the gateway workspace's $10 limit.
+**Check spend.** `admin keys` prints what each key has spent today (`budgets[].current_usage` in the list). The month's total is in the Anthropic Console, which also enforces the gateway workspace's $10 limit.
 
 **Upgrade.** Try the new version on your own machine first (`npx -y @maximhq/bifrost --transport-version vX.Y.Z`). Then, in `gateway-setup.sh`, change `BIFROST_VERSION` and both `SHA256_*` lines (hash the binaries at `https://downloads.getmaxim.ai/bifrost/<version>/linux/<arm64|amd64>/bifrost-http`), and run step 7 again. The old version stays in `/usr/local/lib/bifrost/`; repoint the `current` symlink and restart to roll back.
 

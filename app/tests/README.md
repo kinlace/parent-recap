@@ -69,6 +69,7 @@ the import path, so a test may import a helper from a test in another layer.
 
 | File                            | What it covers                                                                             |
 | ------------------------------- | ------------------------------------------------------------------------------------------ |
+| `test_admin.py`                 | The gateway's `admin` command: each task, root only, key off/on, a Household found         |
 | `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request     |
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                             |
 | `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                       |

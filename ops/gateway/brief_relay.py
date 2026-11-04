@@ -14,8 +14,9 @@ addresses are bound to which key, and whether they confirmed, is the one thing k
 (STATE_DIRECTORY/bindings.json), with per-day counts that rate-limit the requests. Keys made by
 hand aren't in that file and send as before.
 
-`brief_relay.py keys` and `brief_relay.py new-key` are the maintainers' `keys.sh` and `new-key.sh`:
-they list the Gateway Keys and make one, on Bifrost's admin API.
+`print_keys`, `new_key` and `switch_key` are the maintainers' `admin keys`, `admin key new` and
+`admin key off|on` (ops/gateway/admin): they list the Gateway Keys, make one, and turn one off or
+on, on Bifrost's admin API.
 
 Everything the relay sends counts against Email Delivery's 100 a day for the whole tenancy; once a
 UTC day's count passes QUOTA_WARN_AT, the relay logs a warning for the maintainers (#627).
@@ -110,14 +111,15 @@ class Bifrost:
         self.auth = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
         self.fetch = fetch or self._call
 
-    def _call(self, path: str, body: dict | None = None) -> dict:
-        """GET `path`, or POST `body` to it as JSON."""
+    def _call(self, path: str, body: dict | None = None, method: str | None = None) -> dict:
+        """GET `path`, or POST `body` to it as JSON (or `method`, such as PUT)."""
         headers = {"Authorization": self.auth}
         data = None
         if body is not None:
             data = json.dumps(body).encode()
             headers["Content-Type"] = "application/json"
-        request = urllib.request.Request(self.base + path, data=data, headers=headers)
+        request = urllib.request.Request(self.base + path, data=data, headers=headers,
+                                         method=method)
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.load(response)
 
@@ -891,10 +893,6 @@ def main() -> None:
     state = Path(env.get("STATE_DIRECTORY", "/var/lib/brief-relay"))
     admin = Bifrost(env.get("BIFROST_URL", "http://127.0.0.1:8080"),
                     env.get("BIFROST_ADMIN_USERNAME", ""), env.get("BIFROST_ADMIN_PASSWORD", ""))
-    if sys.argv[1:] == ["keys"]:
-        return print_keys(admin, state / "bindings.json")
-    if sys.argv[1:2] == ["new-key"]:
-        return new_key(admin, sys.argv[2:], today=datetime.now(UTC).date().isoformat())
     missing = [v for v in ("BRIEF_SMTP_USERNAME", "BRIEF_SMTP_PASSWORD", "BIFROST_ADMIN_USERNAME",
                            "BIFROST_ADMIN_PASSWORD", "GATEWAY_HOST") if not env.get(v)]
     if missing:
@@ -917,7 +915,7 @@ def main() -> None:
 
 
 def print_keys(keys: Bifrost, path: Path) -> None:
-    """`brief_relay.py keys`: every Gateway Key, one line each, for the maintainers (README
+    """`admin keys`: every Gateway Key, one line each, for the maintainers (README
     "Runbook"): its name and id, what it can do, whether it is on, and its spend today. A key made on
     request is followed by its addresses and whether each confirmed. Never a key's value."""
     try:
@@ -943,10 +941,10 @@ def print_keys(keys: Bifrost, path: Path) -> None:
 
 
 def new_key(keys: Bifrost, args: list[str], today: str) -> None:
-    """`brief_relay.py new-key <label> "<who holds it>" [--send-only]`: makes a Gateway Key for a
+    """`admin key new <label> "<who holds it>" [--send-only]`: makes a Gateway Key for a
     Household on its own computer and prints its name and value, for the maintainers (README
     "Create a Gateway Key"). Exits with Bifrost's reply when no key was made."""
-    parser = argparse.ArgumentParser(prog="new-key.sh")
+    parser = argparse.ArgumentParser(prog="sudo admin key new")
     parser.add_argument("label", help="a neutral label, such as pilot-a; it goes into the logs")
     parser.add_argument("holder", help="who holds the key; only the admin API shows it")
     parser.add_argument("--send-only", action="store_true",
@@ -976,6 +974,44 @@ def new_key(keys: Bifrost, args: list[str], today: str) -> None:
     if not isinstance(value, str) or not value:
         sys.exit(f"no key made: Bifrost answered {json.dumps(reply)}")
     print(f"{k.get('name') or body['name']}  {value}")
+
+
+def switch_key(keys: Bifrost, ref: str, on: bool) -> None:
+    """`admin key off|on <name or id>`: turns one Gateway Key off or back on, on Bifrost's admin
+    API, and says what it changed (README "Runbook"). A key off gets 401 from the relay and is
+    refused by Bifrost, so it can neither write nor send the Brief. An unknown key, or a name two
+    keys share, is refused and nothing is changed. Never a key's value."""
+    state = "on" if on else "off"
+    try:
+        listed = list(keys.listed())
+    except urllib.error.HTTPError as e:
+        sys.exit(f"nothing changed: Bifrost answered {e.code} to the key list")
+    except (OSError, ValueError) as e:
+        sys.exit(f"nothing changed: Bifrost's admin API: {e}")
+    found = [k for k in listed if str(k.get("id")) == ref] or \
+            [k for k in listed if k.get("name") == ref]
+    if not found:
+        sys.exit(f"no Gateway Key is named {ref} or has that id; nothing changed "
+                 "(sudo admin keys lists them)")
+    if len(found) > 1:
+        ids = ", ".join(str(k.get("id")) for k in found)
+        sys.exit(f"{len(found)} Gateway Keys are named {ref}: give one's id ({ids}); "
+                 "nothing changed")
+    k = found[0]
+    name = f"{k.get('name') or k.get('id')} (id={k.get('id')})"
+    if (k.get("is_active") is True) == on:
+        print(f"{name} was already {state}; nothing changed")
+        return
+    try:
+        keys.fetch(f"/api/governance/virtual-keys/{k.get('id')}", {"is_active": on},
+                   method="PUT")
+    except urllib.error.HTTPError as e:
+        sys.exit(f"nothing changed: Bifrost answered {e.code} to turning {name} {state}")
+    except (OSError, ValueError) as e:
+        sys.exit(f"Bifrost's admin API: {e}; run sudo admin keys to see whether {name} is "
+                 f"{state}")
+    print(f"{name} is now {state}" +
+          ("" if on else ": it can neither write nor send the Brief"))
 
 
 if __name__ == "__main__":
