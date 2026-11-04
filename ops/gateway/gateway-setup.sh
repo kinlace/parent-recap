@@ -98,8 +98,9 @@ systemctl restart brief-relay
 # wilma CLI goes beside them. `current` then points at that release, and
 # bin/parent-recap runs the program through it: the sign-up service now, and
 # every Hosted Household from its next run. The release `current` pointed at
-# before stays, to switch back to. `admin deploy` sets PARENT_RECAP_DEPLOY to the
-# commit's folder name to use in place of the version. Without PARENT_RECAP_RELEASE both are left as
+# before stays, to switch back to. `admin deploy` sets PARENT_RECAP_DEPLOY to
+# the commit's folder name, used in place of the version. Without
+# PARENT_RECAP_RELEASE both are left as
 # they are, and with no service yet the Caddyfile's /join/ route answers 502.
 shared=/usr/local/lib/parent-recap
 signup_lib=/usr/local/lib/parent-recap-signup

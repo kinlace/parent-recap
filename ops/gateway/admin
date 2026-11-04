@@ -118,7 +118,7 @@ def main(argv: list[str], paths: Paths | None = None,
             return exec_as(_as_service(paths, [], "signup", "invite", "--url",
                                        f"https://{host}", *args), _clean_env())
         if task == "households":
-            print(_runs(paths), flush=True)
+            print(_running_deploy(paths), flush=True)
             return exec_as(_as_service(paths, [], "signup", "status", *args), _clean_env())
         if task == "deploy":
             return _deploy(paths, args, edge or Edge())
@@ -292,12 +292,12 @@ def _deploy(paths: Paths, args: list[str], edge: Edge) -> int:
                              "PARENT_RECAP_DEPLOY": short})
     if setup.returncode != 0:
         print(f"❌ gateway-setup.sh of {short} failed (above), so this deploy isn't recorded. "
-              f"{_runs(paths)}. README \"Upgrade, check, switch back\" says how to switch back.",
+              f"{_running_deploy(paths)}. README \"Upgrade, check, switch back\" says how to switch back.",
               file=sys.stderr)
         return 1
     _record(paths, {"commit": commit, "tag": tag or "unreleased",
                     "at": edge.now().astimezone(UTC).isoformat(timespec="seconds")})
-    print(f"recorded: {_runs(paths)}", flush=True)
+    print(f"recorded: {_running_deploy(paths)}", flush=True)
 
     ok = _healthy(host, edge)
     ok = (_evening_run(paths, check, edge) if check else _no_check()) and ok
@@ -414,24 +414,25 @@ def _check_household(paths: Paths, households: list[tuple[str, str]]) -> str | N
 
 def _evening_is_quiet(paths: Paths, households: list[tuple[str, str]], edge: Edge,
                       anyway: bool) -> None:
-    """No evening run is due within SOON or still running, and `admin households` marks no
-    Household; --anyway deploys regardless, such as the fix for what it marks."""
+    """No evening run is still running or due within SOON, and `admin households` marks no
+    Household. --anyway deploys regardless of a run due and of the marks, such as the fix for
+    what it marks, but never under a running run: `current` would change beneath it."""
     if not households:
         return
     now = edge.now().astimezone(ZoneInfo(ZONE))
-    busy = []
-    for user, evening in households:
-        if _due_soon(evening, now):
-            busy.append(f"{user}'s evening run is due at {evening}")
-        elif any(_unit(edge, user, job).get("ActiveState") in ("active", "activating")
-                 for job in JOBS):
-            busy.append(f"{user}'s evening run is still running")
+    running = [f"{user}'s evening run is still running" for user, _ in households
+               if any(_unit(edge, user, job).get("ActiveState") in ("active", "activating")
+                      for job in JOBS)]
+    if running:
+        raise Refused("; ".join(running) + ". Deploy once it has ended")
+    due = [f"{user}'s evening run is due at {evening}" for user, evening in households
+           if _due_soon(evening, now)]
     if anyway:
-        if busy:
-            print("⚠️ deploying anyway, though " + "; ".join(busy), flush=True)
+        if due:
+            print("⚠️ deploying anyway, though " + "; ".join(due), flush=True)
         return
-    if busy:
-        raise Refused("; ".join(busy) + ". Deploy once the evening runs are over, or give "
+    if due:
+        raise Refused("; ".join(due) + ". Deploy once the evening runs are over, or give "
                       "--anyway")
     print("every Household's status first (sudo admin households):", flush=True)
     if edge.system(_as_service(paths, [], "signup", "status")).returncode != 0:
@@ -461,9 +462,8 @@ def _checkout(paths: Paths, commit: str) -> Path:
     source = paths.sources / commit[:SHORT]
     incoming = paths.sources / f"{commit[:SHORT]}.incoming"
     paths.sources.mkdir(parents=True, exist_ok=True)
-    for old in (incoming, source):
-        shutil.rmtree(old, ignore_errors=True)
-    steps = (["git", "clone", "--quiet", "--no-checkout", str(paths.repo), str(incoming)],
+    shutil.rmtree(incoming, ignore_errors=True)
+    steps =(["git", "clone", "--quiet", "--no-checkout", str(paths.repo), str(incoming)],
              ["git", "-C", str(incoming), "-c", "advice.detachedHead=false", "checkout",
               "--quiet", "--detach", commit])
     for step in steps:
@@ -471,6 +471,8 @@ def _checkout(paths: Paths, commit: str) -> Path:
         if r.returncode != 0:
             shutil.rmtree(incoming, ignore_errors=True)
             raise Refused(f"couldn't check out {commit[:SHORT]}: {_why_not(r)}")
+    # The same commit deployed again: its old checkout goes only once the new one is whole.
+    shutil.rmtree(source, ignore_errors=True)
     incoming.rename(source)
     return source
 
@@ -491,7 +493,7 @@ def _record(paths: Paths, deploy: dict) -> None:
     os.replace(incoming, paths.record)
 
 
-def _runs(paths: Paths) -> str:
+def _running_deploy(paths: Paths) -> str:
     """Which deploy the shared program's `current` is, by its record."""
     try:
         name = os.readlink(paths.shared / "current")
@@ -499,9 +501,10 @@ def _runs(paths: Paths) -> str:
         return "the shared program isn't installed"
     mine = [d for d in _deploys(paths) if str(d.get("commit", ""))[:SHORT] == name]
     if not mine:
-        return f"the server runs {name}, deployed before admin deploy recorded deploys"
+        return (f"the server runs {name}, which isn't recorded: deployed by hand, or by an "
+                "admin deploy whose install failed")
     last = mine[-1]
-    what = ("unreleased, a commit on main, until a release tag replaces it"
+    what = ("unreleased, a commit on main, until a release tag is deployed"
             if last.get("tag") == "unreleased" else last.get("tag"))
     return f"the server runs {last.get('commit')} ({what}), deployed {last.get('at')}"
 
