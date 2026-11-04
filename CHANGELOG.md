@@ -4,6 +4,10 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+### Added
+
+- A family without Wilma, such as at a private school, can sign up for the hosted version: leave the Wilma fields empty, write the children's names under "We don't have Wilma", and add at least one MyClub calendar link.
+
 ### Fixed
 
 - On an evening with nothing new from Wilma, Gmail or WhatsApp, an event from MyClub or another Source happening tomorrow is still told in the Brief, with its time and place.

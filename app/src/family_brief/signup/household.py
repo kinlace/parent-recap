@@ -13,7 +13,8 @@ stdin:
 
 and makes the Household: its config, through `setup save` as the setup page saves one, marked
 `hosted` so its Brief's footer says it comes from the hosted version, with the Kids Wilma listed,
-the Recipients, the gateway as its AI, Wilma on, WhatsApp off and the calendar as an .ics in the
+the Recipients, the gateway as its AI, Wilma on (off, with no "wilma", for a family without it),
+WhatsApp off and the calendar as an .ics in the
 email; the MyClub link of each Kid in `myclub`, which the service checked, saved as `setup myclub`
 saves one; the Gateway Key in the secrets store; the wilma CLI's sign-in the service checked, for
 the shared copy's CLI (installed with it, so only a copy without one installs it here); and the
@@ -29,7 +30,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .. import gateway, ops, setup_save, setup_wilma
 from ..collectors import myclub
@@ -60,9 +61,15 @@ class Household(_Strict):
     evening: str
     recipients: list[dict[str, Any]] = Field(min_length=1)
     kids: list[dict[str, Any]] = Field(min_length=1)
-    wilma: WilmaSignIn
+    wilma: WilmaSignIn | None = None  # none for a family without Wilma (#760)
     myclub: dict[str, str] = {}  # each link a secret (ADR 0007), by its Kid's name
     gateway_key: str = Field(pattern=r"^\S+$")
+
+    @model_validator(mode="after")
+    def _reads_something(self) -> "Household":
+        if self.wilma is None and not self.myclub:
+            raise ValueError("without Wilma, at least one MyClub link is needed")
+        return self
 
 
 def cmd_household(args: argparse.Namespace) -> int:
@@ -82,7 +89,7 @@ def create(config: Path, h: Household) -> dict[str, Any]:
         "language": h.language, **({"city": h.city} if h.city else {}), "hosted": True,
         "kids": h.kids, "recipients": h.recipients, "ai": "gateway",
         "evening": h.evening,
-        "sources": {"wilma": {"enabled": True}, "whatsapp": {"enabled": False}},
+        "sources": {"wilma": {"enabled": h.wilma is not None}, "whatsapp": {"enabled": False}},
     })
     if saved["result"] != "saved":
         return saved
@@ -95,21 +102,30 @@ def create(config: Path, h: Household) -> dict[str, Any]:
         secrets.put(gateway.ACCOUNT, h.gateway_key)
     except secrets.SecretsError as e:
         return outcome("key-not-stored", reason=str(e))
-    got = setup_wilma.install()
-    if got["result"] != "installed":
-        return outcome("wilma-not-installed", reason=got.get("reason") or got["result"])
-    before = [p["id"] for p in setup_wilma.signins() if isinstance(p.get("id"), str)]
-    try:
-        profile_id = setup_wilma.save_signin(h.wilma.tenant.model_dump(), h.wilma.username,
-                                             h.wilma.password, h.wilma.students)
-    except secrets.SecretsError as e:
-        return outcome("wilma-not-stored", reason=str(e))
-    setup_wilma.record_profile(profile_id, before)
+    if h.wilma is not None:
+        stored = _store_wilma(h.wilma)
+        if stored is not None:
+            return stored
     try:
         ops.install_jobs(Config.load(config))
     except jobs.NotStarted as e:
         return outcome("jobs-not-installed", reason=str(e))
     return outcome("created")
+
+
+def _store_wilma(w: WilmaSignIn) -> dict[str, Any] | None:
+    """The wilma CLI's sign-in the service checked, or why it wasn't stored."""
+    got = setup_wilma.install()
+    if got["result"] != "installed":
+        return outcome("wilma-not-installed", reason=got.get("reason") or got["result"])
+    before = [p["id"] for p in setup_wilma.signins() if isinstance(p.get("id"), str)]
+    try:
+        profile_id = setup_wilma.save_signin(w.tenant.model_dump(), w.username, w.password,
+                                             w.students)
+    except secrets.SecretsError as e:
+        return outcome("wilma-not-stored", reason=str(e))
+    setup_wilma.record_profile(profile_id, before)
+    return None
 
 
 def _print(out: dict[str, Any]) -> int:

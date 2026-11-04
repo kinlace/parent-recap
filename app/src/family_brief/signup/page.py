@@ -32,6 +32,12 @@ TEXT = {
         "address": "Email address",
         "language": "Language",
         "another": "Another address (optional)",
+        "no_wilma": "We don't have Wilma",
+        "no_wilma_hint": "If your children's school doesn't use Wilma, leave the Wilma fields "
+                         "empty and write each child's name here. The Brief then reads their "
+                         "clubs' MyClub calendars, which you add next.",
+        "kid": "Child's name",
+        "myclub_needed": "MyClub",
         "submit": "Continue",
         "myclub": "MyClub (optional)",
         "myclub_hint": "If a child's club uses MyClub, paste the child's calendar link from MyClub "
@@ -47,6 +53,7 @@ TEXT = {
                   "none of its steps has started yet.",
         "step_setup": "Setting up Parent Recap for you",
         "step_wilma": "Connecting Wilma",
+        "step_myclub": "Connecting MyClub",
         "step_brief": "Writing and sending your first Brief",
         "wrong-password": "Wilma didn't accept that username and password. Check them and try "
                           "again.",
@@ -54,7 +61,10 @@ TEXT = {
         "sign-in-failed": "Wilma couldn't be reached just now, so nothing was kept. Try again in "
                           "a while.",
         "invalid-town": "Pick your town from the list.",
-        "invalid-sign-in": "Fill in the Wilma username and password.",
+        "invalid-sign-in": "Fill in the Wilma username and password, or your children's names "
+                           "if you don't have Wilma.",
+        "need-myclub": "Without Wilma, give at least one child's MyClub calendar link, so the "
+                       "Brief has something to read.",
         "invalid-recipients": "Give at least one email address, written as name@example.com.",
         "not-a-myclub-link": "{kid}: that isn't a MyClub calendar link. Copy the calendar's "
                              "subscription link in MyClub, or leave it empty.",
@@ -93,6 +103,12 @@ TEXT = {
         "address": "Sähköpostiosoite",
         "language": "Kieli",
         "another": "Toinen osoite (vapaaehtoinen)",
+        "no_wilma": "Meillä ei ole Wilmaa",
+        "no_wilma_hint": "Jos lastesi koulu ei käytä Wilmaa, jätä Wilman kentät tyhjiksi ja "
+                         "kirjoita tähän jokaisen lapsen nimi. Kooste lukee silloin seurojen "
+                         "MyClub-kalenterit, jotka lisäät seuraavaksi.",
+        "kid": "Lapsen nimi",
+        "myclub_needed": "MyClub",
         "submit": "Jatka",
         "myclub": "MyClub (vapaaehtoinen)",
         "myclub_hint": "Jos lapsen seura käyttää MyClubia, liitä lapsen kalenterin linkki "
@@ -108,6 +124,7 @@ TEXT = {
                   "heidän on valmis, joten yhtäkään vaihetta ei ole vielä aloitettu.",
         "step_setup": "Parent Recapia valmistellaan sinulle",
         "step_wilma": "Wilma yhdistetään",
+        "step_myclub": "MyClub yhdistetään",
         "step_brief": "Ensimmäinen kooste kirjoitetaan ja lähetetään",
         "wrong-password": "Wilma ei hyväksynyt käyttäjätunnusta ja salasanaa. Tarkista ne ja "
                           "yritä uudelleen.",
@@ -115,7 +132,10 @@ TEXT = {
         "sign-in-failed": "Wilmaan ei juuri nyt saatu yhteyttä, joten mitään ei tallennettu. "
                           "Yritä hetken päästä uudelleen.",
         "invalid-town": "Valitse kuntasi listasta.",
-        "invalid-sign-in": "Täytä Wilman käyttäjätunnus ja salasana.",
+        "invalid-sign-in": "Täytä Wilman käyttäjätunnus ja salasana, tai lasten nimet, jos "
+                           "teillä ei ole Wilmaa.",
+        "need-myclub": "Ilman Wilmaa anna ainakin yhden lapsen MyClub-kalenterin linkki, jotta "
+                       "koosteella on jotain luettavaa.",
         "invalid-recipients": "Anna vähintään yksi sähköpostiosoite muodossa nimi@esimerkki.fi.",
         "not-a-myclub-link": "{kid}: tämä ei ole MyClub-kalenterin linkki. Kopioi kalenterin "
                              "tilauslinkki MyClubista tai jätä kenttä tyhjäksi.",
@@ -152,6 +172,11 @@ TEXT = {
         "address": "邮箱地址",
         "language": "语言",
         "another": "另一个地址（可选）",
+        "no_wilma": "我们没有 Wilma",
+        "no_wilma_hint": "如果孩子的学校不用 Wilma，把上面 Wilma 的几栏留空，在这里写下每个孩子的名字。"
+                         "摘要会读取孩子俱乐部的 MyClub 日历，下一步填写。",
+        "kid": "孩子的名字",
+        "myclub_needed": "MyClub",
         "submit": "继续",
         "myclub": "MyClub（可选）",
         "myclub_hint": "如果孩子的俱乐部用 MyClub，把孩子在 MyClub 里的日历链接粘贴到这里（以 webcal:// "
@@ -163,12 +188,14 @@ TEXT = {
         "queued": "另一个家庭正在开通。等他们完成后才轮到你，所以你的步骤都还没有开始。",
         "step_setup": "为你准备 Parent Recap",
         "step_wilma": "连接 Wilma",
+        "step_myclub": "连接 MyClub",
         "step_brief": "撰写并发送第一份摘要",
         "wrong-password": "Wilma 没有接受这个用户名和密码。请检查后再试一次。",
         "no-kids": "这个 Wilma 账号下没有孩子。请用家长（监护人）的账号登录。",
         "sign-in-failed": "现在连不上 Wilma，所以什么都没有保存。请过一会儿再试。",
         "invalid-town": "请从列表里选择你的城市。",
-        "invalid-sign-in": "请填写 Wilma 用户名和密码。",
+        "invalid-sign-in": "请填写 Wilma 用户名和密码；没有 Wilma 的话，填写孩子的名字。",
+        "need-myclub": "没有 Wilma 时，请至少填一个孩子的 MyClub 日历链接，这样摘要才有内容可读。",
         "invalid-recipients": "请至少填写一个邮箱地址，格式如 name@example.com。",
         "not-a-myclub-link": "{kid}：这不是 MyClub 日历链接。请在 MyClub 里复制日历的订阅链接，或者留空。",
         "link-failed": "{kid}：这个 MyClub 链接打不开。请检查一下，或者留空跳过 MyClub。",
@@ -188,6 +215,7 @@ main{max-width:34rem;margin:0 auto;padding:1rem 1rem 3rem}
 h1{font-size:1.4rem;margin:.5rem 0 1rem}h2{font-size:1.1rem;margin:1.5rem 0 .5rem}
 nav{display:flex;gap:1rem;justify-content:flex-end}nav a{color:#1d1d1b}nav b{font-weight:600}
 label{display:block;margin:.75rem 0 .25rem;font-weight:600}
+summary{margin:1rem 0 .25rem;font-weight:600;cursor:pointer}
 input,select{box-sizing:border-box;width:100%;font:inherit;padding:.6rem;border:1px solid #b9b6ad;
 border-radius:.4rem;background:#fff}
 .row{display:flex;gap:.5rem}.row input{flex:3}.row select{flex:1;min-width:6rem}
@@ -200,6 +228,8 @@ border-radius:.4rem;background:#2d5c4f;color:#fff}
 MAX_RECIPIENTS = 10  # the Brief relay's, for one message
 # What making a Household does, in the order the server does it, in words a parent understands.
 STEPS = ("step_setup", "step_wilma", "step_brief")
+NO_WILMA_STEPS = ("step_setup", "step_myclub", "step_brief")  # a Household without Wilma (#760)
+MAX_KIDS = 6  # the names a family without Wilma may give
 REFRESH_SECONDS = 3
 
 
@@ -210,6 +240,7 @@ class Typed:
     town: str = ""
     username: str = ""
     recipients: list[Recipient] = field(default_factory=list)
+    kids: list[str] = field(default_factory=list)  # the names given in place of Wilma
 
 
 def form(language: str, typed: Typed, towns: list[str], error: str | None = None) -> str:
@@ -217,6 +248,10 @@ def form(language: str, typed: Typed, towns: list[str], error: str | None = None
     rows = [*typed.recipients[:MAX_RECIPIENTS - 1], Recipient("", language)]
     recipients = "".join(_recipient(i, r, t, last=i == len(rows) - 1) for i, r in enumerate(rows))
     options = "".join(f"<option value=\"{escape(town)}\">" for town in towns)
+    names = [*typed.kids[:MAX_KIDS], *[""] * (MAX_KIDS - len(typed.kids[:MAX_KIDS]))]
+    kids = "".join(f"""<label for="k{i}">{escape(t['kid'])}</label>
+<input id="k{i}" name="k{i}" autocomplete="off" value="{escape(name)}">
+""" for i, name in enumerate(names))
     return _page(language, t["title"], f"""
 <p>{escape(t['intro'])}</p>
 {f'<p class="error" role="alert">{escape(t[error])}</p>' if error else ''}
@@ -224,15 +259,18 @@ def form(language: str, typed: Typed, towns: list[str], error: str | None = None
 <input type="hidden" name="lang" value="{language}">
 <h2>{escape(t['wilma'])}</h2>
 <label for="town">{escape(t['town'])}</label>
-<input id="town" name="town" list="towns" required autocomplete="off" value="{escape(typed.town)}">
+<input id="town" name="town" list="towns" autocomplete="off" value="{escape(typed.town)}">
 <datalist id="towns">{options}</datalist>
 <p class="hint">{escape(t['town_hint'])}</p>
 <label for="username">{escape(t['username'])}</label>
-<input id="username" name="username" required autocomplete="username" autocapitalize="none"
+<input id="username" name="username" autocomplete="username" autocapitalize="none"
  spellcheck="false" value="{escape(typed.username)}">
 <label for="password">{escape(t['password'])}</label>
-<input id="password" name="password" type="password" required autocomplete="current-password">
+<input id="password" name="password" type="password" autocomplete="current-password">
 <p class="hint">{escape(t['password_hint'])}</p>
+<details{' open' if typed.kids else ''}><summary>{escape(t['no_wilma'])}</summary>
+<p class="hint">{escape(t['no_wilma_hint'])}</p>
+{kids}</details>
 <h2>{escape(t['recipients'])}</h2>
 <p class="hint">{escape(t['recipients_hint'])}</p>
 {recipients}
@@ -241,9 +279,10 @@ def form(language: str, typed: Typed, towns: list[str], error: str | None = None
 
 
 def myclub(language: str, kids: list[str], error: str | None = None,
-           kid: str | None = None) -> str:
-    """The second step, once Wilma has said who the Kids are: a MyClub calendar link for each,
-    which may be left empty. A link is never shown back, as the password isn't (ADR 0007)."""
+           kid: str | None = None, wilma: bool = True) -> str:
+    """The second step, once Wilma, or the family without it, has said who the Kids are: a MyClub
+    calendar link for each, which may be left empty, though not every one without Wilma. A link is
+    never shown back, as the password isn't (ADR 0007)."""
     t = TEXT[language]
     fields = "".join(f"""<label for="m{i}">{escape(name)}</label>
 <input id="m{i}" name="m{i}" inputmode="url" autocomplete="off" autocapitalize="none"
@@ -256,7 +295,7 @@ def myclub(language: str, kids: list[str], error: str | None = None,
 <form method="post" autocomplete="off">
 <input type="hidden" name="lang" value="{language}">
 <input type="hidden" name="step" value="myclub">
-<h2>{escape(t['myclub'])}</h2>
+<h2>{escape(t['myclub' if wilma else 'myclub_needed'])}</h2>
 <p class="hint">{escape(t['myclub_hint'])}</p>
 {fields}
 <button type="submit">{escape(t['sign_up'])}</button>
@@ -275,42 +314,42 @@ def _recipient(i: int, r: Recipient, t: dict[str, str], last: bool) -> str:
 """
 
 
-def progress(language: str, ended: int, waiting: bool) -> str:
+def progress(language: str, ended: int, waiting: bool, steps: tuple[str, ...] = STEPS) -> str:
     """The steps while the Household is made, `ended` of them over, or none begun while it
     `waiting` behind another family's; asked again by itself until the page says how it ended."""
     t = TEXT[language]
     queued = f'<p>{escape(t["queued"])}</p>' if waiting else ""
     return _page(language, t["signing_up"], f"""
-{queued}{_steps(t, ended, None if waiting else "⏳")}
+{queued}{_steps(t, ended, None if waiting else "⏳", steps)}
 <p class="hint">{escape(t['updates'])}</p>""", languages=False, refresh=True)
 
 
-def done(language: str, time: str, junk: bool) -> str:
+def done(language: str, time: str, junk: bool, steps: tuple[str, ...] = STEPS) -> str:
     """Signed up: the first Brief sent, and when the next ones come. `junk` when a Recipient is
     on Hotmail or Outlook.com, which may file a new sender's first mail as Junk."""
     t = TEXT[language]
     hint = f'\n<p class="hint">{escape(t["junk"])}</p>' if junk else ""
     return _page(language, t["done"], f"""
-{_steps(t, len(STEPS), None)}
+{_steps(t, len(steps), None, steps)}
 <p>{escape(t['sent'].format(time=time))}</p>{hint}""", languages=False)
 
 
-def failed(language: str, ended: int | None = None) -> str:
+def failed(language: str, ended: int | None = None, steps: tuple[str, ...] = STEPS) -> str:
     """Nothing kept: with the steps, the one after the `ended` ones marked as the one that
     failed, when it was a step of making the Household."""
     t = TEXT[language]
-    steps = _steps(t, ended, "❌") if ended is not None else ""
+    shown = _steps(t, ended, "❌", steps) if ended is not None else ""
     return _page(language, t["title"],
-                 f'{steps}<p class="error" role="alert">{escape(t["failed"])}</p>',
+                 f'{shown}<p class="error" role="alert">{escape(t["failed"])}</p>',
                  languages=False)
 
 
-def _steps(t: dict[str, str], ended: int, now: str | None) -> str:
+def _steps(t: dict[str, str], ended: int, now: str | None, steps: tuple[str, ...]) -> str:
     """The steps, the first `ended` marked ✅ and the next with `now`, when one goes on."""
-    marks = ["✅"] * ended + ([now] if now and ended < len(STEPS) else [])
-    marks += ["⬜"] * (len(STEPS) - len(marks))
+    marks = ["✅"] * ended + ([now] if now and ended < len(steps) else [])
+    marks += ["⬜"] * (len(steps) - len(marks))
     return "<ol>" + "".join(f"<li>{mark} {escape(t[step])}</li>"
-                            for mark, step in zip(marks, STEPS)) + "</ol>"
+                            for mark, step in zip(marks, steps)) + "</ol>"
 
 
 def _page(language: str, title: str, body: str, languages: bool = True,
