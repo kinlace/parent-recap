@@ -263,8 +263,10 @@ def _configs(paths: Paths) -> list[Path]:
     """Each Household's config. A Household's user can replace its config or its `.family`
     with a link, so root follows no link in any part of the path: its home, `.family` or the
     config."""
+    if not paths.homes.is_dir():
+        return []
     configs = []
-    for home in sorted(paths.homes.glob("ph-*")) if paths.homes.is_dir() else []:
+    for home in sorted(paths.homes.glob("ph-*")):
         config = home / ".family" / "config.yaml"
         if LABEL.fullmatch(home.name) and not any(
                 p.is_symlink() for p in (home, config.parent, config)) and config.is_file():
@@ -320,17 +322,9 @@ def _http_status(url: str) -> int:
 
 
 def _uid(name: str) -> int | None:
-    import pwd  # the server's; Windows, where tests also run, has none
+    import pwd  # here, not at the top: Windows, where the tests also run, has none
     try:
         return pwd.getpwnam(name).pw_uid
-    except KeyError:
-        return None
-
-
-def _user(uid: int) -> str | None:
-    import pwd
-    try:
-        return pwd.getpwuid(uid).pw_name
     except KeyError:
         return None
 
@@ -348,9 +342,8 @@ class Edge:
     sleep: Callable[[float], None] = time.sleep
     free: Callable[[Path], int] = lambda path: shutil.disk_usage(path).free
     ask: Callable[[str], str] = input
-    # The uid of the user of this name, and the name of the user of this uid; None if none.
+    # The uid of the user of this name, None if there is none.
     uid: Callable[[str], int | None] = _uid
-    user: Callable[[int], str | None] = _user
 
 
 def _deploy(paths: Paths, args: list[str], edge: Edge) -> int:
@@ -770,7 +763,7 @@ def _inside(member: tarfile.TarInfo, dest: str) -> tarfile.TarInfo:
 
 
 def _restore(archive: Path,
-             why_not: Callable[[Path, tarfile.TarInfo], str | None] = lambda root, top: None
+             why_not: Callable[[Path, tarfile.TarInfo | None], str | None] = lambda *_: None
              ) -> tuple[list[Path], list[tuple[Path, str]]]:
     """Puts back each folder `archive` holds, whole: it is unpacked beside the folder first,
     which is swapped for it only once that is complete. A folder `why_not` gives a reason for,
@@ -783,7 +776,7 @@ def _restore(archive: Path,
         for i, root in enumerate(map(Path, manifest["roots"])):
             mine = [m for m in members if m.name == str(i) or m.name.startswith(f"{i}/")]
             top = next((m for m in mine if m.name == str(i)), None)
-            reason = why_not(root, top) if top is not None else None
+            reason = why_not(root, top)
             if reason:
                 left.append((root, reason))
                 continue
@@ -812,20 +805,22 @@ def _restore(archive: Path,
     return put_back, left
 
 
-def _home_kept_out(paths: Paths, edge: Edge) -> Callable[[Path, tarfile.TarInfo], str | None]:
+def _home_kept_out(paths: Paths,
+                   edge: Edge) -> Callable[[Path, tarfile.TarInfo | None], str | None]:
     """Why a Household's home in a snapshot isn't put back: unpacked with the uid it was owned
     by, it would be readable by whoever holds that uid now. So it is put back only while its
     user still exists and holds that uid; a removed Household's home stays out."""
-    def why_not(root: Path, top: tarfile.TarInfo) -> str | None:
+    def why_not(root: Path, top: tarfile.TarInfo | None) -> str | None:
         if root.parent != paths.homes or not LABEL.fullmatch(root.name):
             return None
+        if top is None:
+            return "the snapshot doesn't say who owned it"
         uid = edge.uid(root.name)
         if uid is None:
             return "its user no longer exists, so the Household was removed since"
         if uid != top.uid:
-            holder = edge.user(top.uid)
-            return ("the uid it was owned by now belongs to another user" if holder else
-                    "its user's uid is no longer the one it was owned by")
+            return ("its user no longer holds the uid it was owned by, which another user may "
+                    "hold now")
         return None
     return why_not
 
@@ -1012,8 +1007,8 @@ def _snapshot_before(paths: Paths, deploy: dict) -> Path:
 def _confirmed(leaving: dict, back: dict, snapshot: Path, edge: Edge) -> bool:
     print(f"this switches the server back from {_what(leaving)} to {_what(back)} and brings back "
           f"the state from {snapshot.name}: Bifrost's, the Brief relay's and the sign-up "
-          "service's, their config, and every Household's home but a removed one's. What changed "
-          "since is lost: "
+          "service's, their config, and each Household's home whose user still holds the uid it "
+          "had (not a removed one's). What changed since is lost: "
           "Households that signed up since lose their line in households.json, and Briefs "
           "archived and keys made since are gone.", flush=True)
     try:
