@@ -100,7 +100,9 @@ install -d -m 0700 /etc/brief-relay
 if [ -z "${MAINTAINERS_ADDRESS:-}" ] && [ ! -f "$maintainers" ] && [ -t 0 ]; then
   read -r -p "Maintainers' address for the nightly check's mail (commas between several): " MAINTAINERS_ADDRESS
 fi
-if [ -n "${MAINTAINERS_ADDRESS:-}" ]; then
+MAINTAINERS_ADDRESS=${MAINTAINERS_ADDRESS:-}
+MAINTAINERS_ADDRESS=${MAINTAINERS_ADDRESS// /}
+if [ -n "$MAINTAINERS_ADDRESS" ]; then
   address='[^@[:space:],]+@[^@[:space:],]+\.[^@[:space:],]+'
   [[ "$MAINTAINERS_ADDRESS" =~ ^$address(,$address)*$ ]] ||
     { echo "MAINTAINERS_ADDRESS must be name@domain addresses with commas between them" >&2; exit 1; }

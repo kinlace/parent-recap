@@ -1136,7 +1136,8 @@ def _problems(paths: Paths, run: Callable[[list[str], dict], tuple[int, str]]) -
     if down:
         found.append(f"Not running: {', '.join(down)} (systemctl status {' '.join(down)}).")
     if paths.reboot_required.exists():
-        found.append("Reboot pending: the server waits for a reboot to apply updates.")
+        # As `signup status` says it (REBOOT_PENDING in family_brief/signup/status.py).
+        found.append("Reboot pending: the server waits for a reboot to apply updates")
     return found
 
 
@@ -1180,7 +1181,7 @@ def _mail(paths: Paths, subject: str, text: str, smtp: Callable[..., Any] | None
                           login["BRIEF_SMTP_USERNAME"], login["BRIEF_SMTP_PASSWORD"],
                           quota=relay.Quota(quota), **({"smtp": smtp} if smtp else {}))
     try:
-        mailer.send(msg, to)
+        refused = mailer.send(msg, to)
     except relay.Refused as e:
         sys.exit(f"the check's mail wasn't sent: {e.reason}")
     # Written as root: given back to the relay's user, whose directory it is.
@@ -1189,7 +1190,9 @@ def _mail(paths: Paths, subject: str, text: str, smtp: Callable[..., Any] | None
         os.chown(quota, owner.st_uid, owner.st_gid)
     except OSError:
         pass
-    print(f"mailed to {len(to)} maintainer address{'es' if len(to) > 1 else ''}")
+    sent = len(to) - refused
+    print(f"mailed to {sent} maintainer address{'' if sent == 1 else 'es'}"
+          + (f"; Email Delivery refused {refused}" if refused else ""))
 
 
 def _run(argv: list[str], env: dict) -> tuple[int, str]:
