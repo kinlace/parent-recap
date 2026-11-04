@@ -17,3 +17,7 @@ Before publishing a spec or tickets, record in `docs/adr/` (via `/domain-modelin
 ### Landing changes
 
 `main` is protected: every change lands through a PR from its own branch, rebase-merged once the `test` and `gitleaks` checks pass. The PR body starts with `What changes for families:` and closes its issue (`Closes #N`). See [CONTRIBUTING.md](CONTRIBUTING.md#reviews).
+
+### Gateway admin requests
+
+A request to act on the hosted server (a Gateway Key, an invite, a family's status, a deploy) is answered with the exact `sudo admin …` command from the "What you want" table at the top of "Runbook" in `ops/gateway/README.md`. Xi runs it after `ssh oci-a1-admin`, which works only from Xi's own devices (hyprland, thinkpad), and pastes the output back when it needs reading. The Mac mini is a tagged Tailscale node whose `mini` login on `oci-a1` reads logs and `systemctl status` only.

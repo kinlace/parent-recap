@@ -315,6 +315,23 @@ When anything is wrong it mails the maintainers one message from `brief@parentre
 
 ## Runbook
 
+What you want, and the command for it. Each runs on the server as `sudo admin …`; the sections named say more.
+
+| What you want                                           | Command                                                                                                          |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| A family runs hosted on the server                      | `invite --recipient ADDRESS[:LANGUAGE] … --note "…"` (see "Invite a Household")                                  |
+| A Hosted Household's Gateway Key                        | None: the sign-up makes it; never make one by hand (see "What a sign-up does")                                   |
+| A send-only key for a Household on its own computer     | `key new LABEL "WHO HOLDS IT" --send-only`, only if it can't get one by itself (see "Send-only keys on request") |
+| A key that writes the Brief and sends it                | `key new LABEL "WHO HOLDS IT"` (see "Create a Gateway Key and give it to a Household")                           |
+| Every key, who holds it, its use and spend              | `keys`; this month's spend: `cost`                                                                               |
+| Stop a key, or start it again                           | `key off NAME-OR-ID`, `key on NAME-OR-ID`                                                                        |
+| Every Hosted Household's status                         | `households`                                                                                                     |
+| Which Household has this address                        | `find ADDRESS` (see "Find a Household")                                                                          |
+| Take a Hosted Household off the server                  | `remove ph-XXXXXXXX` (see "Remove a Household")                                                                  |
+| A new release, or `main`, on the server                 | `deploy vX.Y.Z` or `deploy main` (see "Upgrade, check, switch back")                                             |
+| Undo the last deploy, the program alone or the data too | `rollback`, `rollback --restore` (see "Upgrade, check, switch back")                                             |
+| What is wrong tonight                                   | `check` (see "The nightly check")                                                                                |
+
 Every routine task is one command on the server: SSH in, then `sudo admin <task>`. Nothing runs on the server from a laptop, and nothing below is run on the public address. `gateway-setup.sh` installs it as `/usr/local/sbin/admin` from `ops/gateway/admin`. It reads the admin login from `/etc/bifrost/bifrost.env` itself, never the provider key beside it, and calls Bifrost's admin API on localhost, so no tunnel is needed. `sudo admin --help` lists its tasks:
 
 | Task                                         | What it does                                                                                                         |
