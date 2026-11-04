@@ -8,11 +8,14 @@ is a real git repo; gateway-setup.sh, systemctl and HTTP are faked as in test_ad
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import sys
 import tarfile
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
 from test_admin import admin
 from test_admin_deploy import (  # noqa: F401  (fixtures)
     _symlinks, deploy, git, household, nothing_changed, origin, records)
@@ -82,12 +85,49 @@ def test_a_deploy_first_snapshots_the_services_state_and_every_household_s_home(
 
 
 def test_the_last_three_snapshots_are_kept(deploy):
-    names = []
-    for _ in range(4):
-        assert deploy("deploy", "v1.0.0") == 0
-        names.append(records(deploy)[-1]["snapshot"])
-        later(deploy)
+    three_deploys(deploy)
+    assert deploy("deploy", another_commit(deploy, "four")) == 0
+    names = [d["snapshot"] for d in records(deploy)]
     assert snapshots(deploy) == names[1:]
+
+
+def test_deploying_the_same_commit_again_keeps_the_snapshot_from_before_it_came(deploy):
+    """--restore from it brings back the state before it first came, which the deploy before
+    left."""
+    deploy.fake.checks[deploy.origin.unreleased] = [{"name": "test", "conclusion": "success"}]
+    assert deploy("deploy", "v1.0.0") == 0
+    later(deploy)
+    assert deploy("deploy", "main") == 0
+    first = records(deploy)[-1]["snapshot"]
+    for _ in range(3):
+        later(deploy)
+        assert deploy("deploy", "main") == 0
+    assert first in snapshots(deploy) and len(snapshots(deploy)) == 4
+
+
+def test_the_services_are_stopped_while_their_state_is_archived(deploy):
+    assert deploy("deploy", "v1.0.0") == 0
+    ran = [argv for argv, _ in deploy.fake.ran]
+    stop = ran.index(["systemctl", "stop", *admin.SERVICES])
+    start = ran.index(["systemctl", "start", *admin.SERVICES])
+    setup = next(i for i, argv in enumerate(ran) if argv[0] == "bash")
+    assert stop < start < setup
+
+
+def test_pruning_keeps_the_snapshot_the_running_deploy_was_made_after(deploy, monkeypatch):
+    assert deploy("deploy", "v1.0.0") == 0
+    mine = records(deploy)[-1]["snapshot"]
+    real_run = admin.subprocess.run
+
+    def no_clone(argv, **kw):
+        if argv[:2] == ["git", "clone"]:
+            return subprocess.CompletedProcess(argv, 128, "", "fatal: disk full")
+        return real_run(argv, **kw)
+    monkeypatch.setattr(admin.subprocess, "run", no_clone)
+    for _ in range(3):  # deploys refused after their snapshot
+        later(deploy)
+        assert deploy("deploy", "v1.0.0") == 1
+    assert mine in snapshots(deploy) and len(snapshots(deploy)) == 4
 
 
 def test_no_room_for_the_snapshot_stops_the_deploy_before_anything_changes(deploy, capsys):
@@ -182,6 +222,22 @@ def test_deploying_the_same_commit_again_is_no_deploy_to_switch_back_to(deploy):
     assert deploy("rollback") == 1
 
 
+@pytest.mark.parametrize("current_moved", [False, True])
+def test_after_a_failed_install_rollback_puts_the_deploy_before_back_whole(deploy, current_moved):
+    deploy.fake.checks[deploy.origin.unreleased] = [{"name": "test", "conclusion": "success"}]
+    assert deploy("deploy", "v1.0.0") == 0
+    deploy.fake.setup_fails = True
+    assert deploy("deploy", "main") == 1
+    if current_moved:  # it failed after pointing `current` at the new program
+        (deploy.server.paths.shared / "current").unlink()
+        (deploy.server.paths.shared / "current").symlink_to(deploy.origin.unreleased[:12])
+    deploy.fake.setup_fails = False
+    assert deploy("rollback") == 0
+    assert deploy.fake.setups()[-1]["PARENT_RECAP_DEPLOY"] == deploy.origin.release[:12]
+    assert current(deploy) == deploy.origin.release[:12]
+    assert records(deploy)[-1]["rolled_back_from"] == deploy.origin.unreleased
+
+
 # ── Refusing when there is nothing to roll back to
 
 
@@ -211,7 +267,7 @@ def test_rollback_to_a_deploy_no_longer_on_disk_is_refused(deploy, capsys):
     deploy.fake.checks[deploy.origin.unreleased] = [{"name": "test", "conclusion": "success"}]
     assert deploy("deploy", "v1.0.0") == 0
     assert deploy("deploy", "main") == 0
-    os.rmdir(deploy.server.paths.shared / deploy.origin.release[:12])
+    shutil.rmtree(deploy.server.paths.sources / deploy.origin.release[:12])
     err = refused(deploy, capsys)
     assert "is no longer on disk" in err and f"admin deploy {deploy.origin.release}" in err
 
@@ -311,6 +367,41 @@ def test_a_failed_switch_after_a_restore_starts_the_services_again(deploy, capsy
             "parent-recap-daily.timer"] in ran
     assert records(deploy)[-1]["commit"] == deploy.origin.unreleased
     assert "gateway-setup.sh of" in capsys.readouterr().err
+
+
+def test_restore_when_a_service_won_t_stop_restores_nothing_and_starts_all_again(deploy, capsys):
+    household(deploy)
+    deploy.fake.checks[deploy.origin.unreleased] = [{"name": "test", "conclusion": "success"}]
+    assert deploy("deploy", "v1.0.0") == 0
+    later(deploy)
+    assert deploy("deploy", "main") == 0
+    bifrost = deploy.server.root / "var" / "bifrost" / "config.db"
+    bifrost.write_text("migrated\n")
+    deploy.fake.stop_fails = True
+    deploy.fake.ran.clear()
+    assert deploy("rollback", "--restore") == 1
+    assert bifrost.read_text() == "migrated\n"
+    assert current(deploy) == deploy.origin.unreleased[:12]
+    ran = [argv for argv, _ in deploy.fake.ran]
+    assert ["systemctl", "start", *admin.SERVICES] in ran
+    assert ["systemctl", "--user", "-M", "ph-30d2afe0@", "start",
+            "parent-recap-daily.timer"] in ran
+    assert "nothing was restored" in capsys.readouterr().err
+
+
+def test_a_folder_an_interrupted_restore_set_aside_is_never_lost(deploy, monkeypatch):
+    assert deploy("deploy", "v1.0.0") == 0
+    archive = deploy.server.paths.snapshots / records(deploy)[-1]["snapshot"]
+    bifrost = deploy.server.root / "var" / "bifrost"
+    aside = bifrost.with_name(".bifrost.before-restore")
+    bifrost.rename(aside)  # where a restore stopped by a power cut left it
+
+    def fails(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(tarfile.TarFile, "extractall", fails)
+    with pytest.raises(OSError):
+        admin._restore(archive)
+    assert (bifrost / "config.db").read_text() == "keys as deployed\n"
 
 
 def test_rollback_and_deploys_are_listed_in_help(deploy, capsys):

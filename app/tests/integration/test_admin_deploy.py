@@ -71,6 +71,7 @@ class FakeEdge:
         self.answer = "yes"  # to rollback --restore's question
         self.questions: list[str] = []
         self.timers_on = True  # each Household's evening timers are active
+        self.stop_fails = False  # systemctl can't stop one of the gateway's services
 
     def edge(self) -> admin.Edge:
         return admin.Edge(system=self.system, github=self.github, http_status=self.http_status,
@@ -106,6 +107,8 @@ class FakeEdge:
             elif argv[-1] != admin.EVENING_JOB:
                 unit = {"ActiveState": "inactive"}
             out = "\n".join(f"{k}={v}" for k, v in unit.items())
+        elif argv[:2] == ["systemctl", "stop"] and self.stop_fails:
+            code = 1
         elif argv[-2:] == ["signup", "status"]:
             code = 1 if self.marked else 0
         elif argv[-2:] == ["schedule", "run-now"]:
@@ -383,11 +386,11 @@ def test_a_failed_checkout_of_a_commit_deployed_before_keeps_its_folder(deploy, 
     assert len(records(deploy)) == 1
 
 
-def test_a_failed_install_is_not_recorded(deploy, capsys):
+def test_a_failed_install_is_recorded_as_failed(deploy, capsys):
     deploy.fake.setup_fails = True
     assert deploy("deploy", "v1.0.0") == 1
-    assert records(deploy) == []
-    assert "isn't recorded" in capsys.readouterr().err
+    assert [d.get("failed") for d in records(deploy)] == [True]
+    assert "recorded as failed" in capsys.readouterr().err
 
 
 def test_it_runs_the_check_household_s_evening_run_and_says_it_ended_ok(deploy, capsys):

@@ -322,14 +322,17 @@ def _deploy(paths: Paths, args: list[str], edge: Edge) -> int:
     setup = edge.system(["bash", str(source / "ops" / "gateway" / "gateway-setup.sh")],
                         env={"GATEWAY_HOST": host, "PARENT_RECAP_RELEASE": str(source),
                              "PARENT_RECAP_DEPLOY": short})
+    deployed = {"commit": commit, "tag": tag or "unreleased", "at": _stamp(edge),
+                "snapshot": snapshot.name}
     if setup.returncode != 0:
-        print(f"❌ gateway-setup.sh of {short} failed (above), so this deploy isn't recorded. "
-              f"{_running_deploy(paths)}. README \"Upgrade, check, switch back\" says how to switch back.",
-              file=sys.stderr)
+        # It may have installed part of the commit, so it is recorded, as failed: `rollback`
+        # then puts the deploy before back whole, whether `current` moved or not.
+        _record(paths, {**deployed, "failed": True})
+        print(f"❌ gateway-setup.sh of {short} failed (above), so this deploy is recorded as "
+              f"failed. {_running_deploy(paths)}. To put the deploy before back whole: sudo "
+              "admin rollback", file=sys.stderr)
         return 1
-    _record(paths, {"commit": commit, "tag": tag or "unreleased",
-                    "at": edge.now().astimezone(UTC).isoformat(timespec="seconds"),
-                    "snapshot": snapshot.name})
+    _record(paths, deployed)
     print(f"recorded: {_running_deploy(paths)}", flush=True)
 
     ok = _healthy(host, edge)
@@ -530,21 +533,37 @@ def _record(paths: Paths, deploy: dict) -> None:
     os.replace(incoming, paths.record)
 
 
+def _current(paths: Paths) -> str | None:
+    """The folder name the shared program's `current` points at, if it is installed."""
+    try:
+        return os.readlink(paths.shared / "current")
+    except OSError:
+        return None
+
+
+def _stamp(edge: Edge) -> str:
+    return edge.now().astimezone(UTC).isoformat(timespec="seconds")
+
+
+def _when(deploy: dict) -> str:
+    """How a record's entry came to run, and when."""
+    how = ("switched back to" if deploy.get("rolled_back_from") else
+           "deployed, its install failed," if deploy.get("failed") else "deployed")
+    return f"{how} {deploy.get('at')}"
+
+
 def _running_deploy(paths: Paths) -> str:
     """Which deploy the shared program's `current` is, by its record."""
-    try:
-        name = os.readlink(paths.shared / "current")
-    except OSError:
+    name = _current(paths)
+    if name is None:
         return "the shared program isn't installed"
     mine = [d for d in _deploys(paths) if str(d.get("commit", ""))[:SHORT] == name]
     if not mine:
-        return (f"the server runs {name}, which isn't recorded: deployed by hand, or by an "
-                "admin deploy whose install failed")
+        return f"the server runs {name}, which isn't recorded: it was deployed by hand"
     last = mine[-1]
     what = ("unreleased, a commit on main, until a release tag is deployed"
             if last.get("tag") == "unreleased" else last.get("tag"))
-    when = "switched back to" if last.get("rolled_back_from") else "deployed"
-    return f"the server runs {last.get('commit')} ({what}), {when} {last.get('at')}"
+    return f"the server runs {last.get('commit')} ({what}), {_when(last)}"
 
 
 # ---------------------------------------------------------------- snapshots (#744)
@@ -574,9 +593,12 @@ def _entries(root: Path):
 
 def _snapshot(paths: Paths, short: str, edge: Edge) -> Path:
     """Archives the server's state before deploy `short` changes anything, readable by root
-    alone, and keeps the last KEEP_SNAPSHOTS. Refuses when there isn't room for it and for the
-    deploy, or it couldn't be written whole."""
+    alone, and keeps the last KEEP_SNAPSHOTS and the one the deploy that runs was made after.
+    Refuses when there isn't room for it and for the deploy, or it couldn't be written whole.
+    The services are stopped while their own state is archived, so a database isn't caught
+    mid-write; the Households' homes are taken after, with no evening run running."""
     roots = _state_roots(paths)
+    services = len([r for r in roots if r in paths.state])
     size = 0
     for root in roots:
         for entry in _entries(root):
@@ -598,9 +620,13 @@ def _snapshot(paths: Paths, short: str, edge: Edge) -> Path:
     stamp = edge.now().astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
     archive = paths.snapshots / f"{stamp}-{short}.tar.gz"
     incoming = archive.with_name(archive.name + ".incoming")
-    print(f"snapshot of the server's state ({_mb(size)} before compression): {archive}",
-          flush=True)
+    print(f"snapshot of the server's state ({_mb(size)} before compression), with "
+          + ", ".join(SERVICES) + f" stopped meanwhile: {archive}", flush=True)
+    stopped = False
     try:
+        _stop_services(edge)
+        stopped = True
+        # Text mode would turn the archive's newlines into CRLF where there is one (Windows).
         fd = os.open(incoming, os.O_WRONLY | os.O_CREAT | os.O_TRUNC
                      | getattr(os, "O_BINARY", 0), 0o600)
         with os.fdopen(fd, "wb") as out, \
@@ -610,6 +636,9 @@ def _snapshot(paths: Paths, short: str, edge: Edge) -> Path:
             info.size, info.mode = len(manifest), 0o600
             tar.addfile(info, io.BytesIO(manifest))
             for i, root in enumerate(roots):
+                if i == services and stopped:
+                    _start_services(edge)
+                    stopped = False
                 for entry in _entries(root):
                     name = "/".join([str(i), *entry.relative_to(root).parts])
                     try:
@@ -620,9 +649,32 @@ def _snapshot(paths: Paths, short: str, edge: Edge) -> Path:
     except (OSError, tarfile.TarError) as e:
         incoming.unlink(missing_ok=True)
         raise Refused(f"the snapshot of the server's state failed: {e}") from e
+    finally:
+        if stopped:
+            _start_services(edge)
+    top = _stack(paths)[-1:]
+    keep = {str(d.get("snapshot")) for d in top}
     for old in _snapshots(paths)[:-KEEP_SNAPSHOTS]:
-        old.unlink(missing_ok=True)
+        if old.name not in keep:
+            old.unlink(missing_ok=True)
     return archive
+
+
+def _stop_services(edge: Edge) -> bool:
+    """Stops the gateway's services; False, saying why, when systemctl couldn't stop one. It
+    stops the others still, and a service not installed yet, such as the sign-up service before
+    the first release, is one it can't."""
+    r = edge.system(["systemctl", "stop", *SERVICES], capture=True)
+    if r.returncode != 0:
+        print(f"⚠️ systemctl stop said: {_why_not(r)}", flush=True)
+    return r.returncode == 0
+
+
+def _start_services(edge: Edge) -> None:
+    r = edge.system(["systemctl", "start", *SERVICES], capture=True)
+    if r.returncode != 0:
+        print(f"⚠️ couldn't start every one of {', '.join(SERVICES)} again: {_why_not(r)}",
+              file=sys.stderr, flush=True)
 
 
 def _snapshots(paths: Paths) -> list[Path]:
@@ -637,6 +689,13 @@ def _mb(size: int) -> str:
     return f"{size / (1 << 20):.0f} MB"
 
 
+def _inside(member: tarfile.TarInfo, dest: str) -> tarfile.TarInfo:
+    """Every name stays inside the folder it is unpacked in, as tarfile's "tar" filter has it,
+    while owners, modes and links stay as they were: that filter would clear some modes."""
+    tarfile.tar_filter(member, dest)
+    return member
+
+
 def _restore(archive: Path) -> list[Path]:
     """Puts back each folder `archive` holds, whole: it is unpacked beside the folder first,
     which is swapped for it only once that is complete. Returns the folders put back."""
@@ -648,12 +707,15 @@ def _restore(archive: Path) -> list[Path]:
             mine = [m for m in members if m.name == str(i) or m.name.startswith(f"{i}/")]
             staging = root.with_name(f".{root.name}.restoring")
             aside = root.with_name(f".{root.name}.before-restore")
+            # A restore stopped between setting the folder aside and swapping in its copy left
+            # the folder only there.
+            if aside.exists() and not (root.exists() or root.is_symlink()):
+                aside.rename(root)
             for leftover in (staging, aside):
                 shutil.rmtree(leftover, ignore_errors=True)
             staging.mkdir(mode=0o700, parents=True)
             try:
-                # Owners, modes and links as they were; "tar" keeps every name inside staging.
-                tar.extractall(staging, members=mine, numeric_owner=True, filter="tar")
+                tar.extractall(staging, members=mine, numeric_owner=True, filter=_inside)
                 if root.exists() or root.is_symlink():
                     root.rename(aside)
                 (staging / str(i)).rename(root)
@@ -677,8 +739,9 @@ ROLLBACK_USAGE = "rollback [--restore]"
 
 def _stack(paths: Paths) -> list[dict]:
     """What ran, in turn, by the record: a deploy goes on top, unless it is the commit on top
-    already, and a rollback takes the top one off. Its last is what runs; the one before it is
-    what `rollback` switches back to."""
+    already (then it only replaces a failed one), and a rollback takes the top one off. Its last
+    is what runs, or what failed to install over the one before it; the one before it is what
+    `rollback` switches back to."""
     stack: list[dict] = []
     for d in _deploys(paths):
         commit = str(d.get("commit", ""))
@@ -690,34 +753,46 @@ def _stack(paths: Paths) -> list[dict]:
             if stack and stack[-1]["commit"] == commit:
                 continue
         elif stack and stack[-1]["commit"] == commit:
+            if stack[-1].get("failed"):
+                stack[-1] = d
             continue
         stack.append(d)
     return stack
 
 
 def _on_disk(paths: Paths, short: str) -> bool:
-    return ((paths.sources / short / "ops" / "gateway" / "gateway-setup.sh").is_file()
-            and (paths.shared / short).is_dir())
+    """Whether a deploy's checkout is still there; its program, if gone, is installed again."""
+    return (paths.sources / short / "ops" / "gateway" / "gateway-setup.sh").is_file()
 
 
 def _what(deploy: dict) -> str:
-    return f"{str(deploy.get('commit'))[:SHORT]} ({deploy.get('tag')})"
+    failed = ", its install failed" if deploy.get("failed") else ""
+    return f"{str(deploy.get('commit'))[:SHORT]} ({deploy.get('tag')}{failed})"
+
+
+def _rollback_pair(paths: Paths, current: str | None) -> tuple[dict, dict] | None:
+    """The deploy `rollback` leaves and the one it switches back to, by the record: the one on
+    top must be what runs, or have failed to install over what runs."""
+    stack = _stack(paths)
+    if len(stack) < 2:
+        return None
+    runs = {stack[-1]["commit"][:SHORT]}
+    if stack[-1].get("failed"):
+        runs.add(stack[-2]["commit"][:SHORT])
+    return (stack[-1], stack[-2]) if current in runs else None
 
 
 def _list_deploys(paths: Paths) -> int:
     """Each deploy whose checkout is on disk, the last deployed first, with its record."""
-    try:
-        current = os.readlink(paths.shared / "current")
-    except OSError:
-        current = None
+    current = _current(paths)
     folders = sorted(p.name for p in paths.sources.iterdir()
-                     if re.fullmatch(r"[0-9a-f]{12}", p.name)) if paths.sources.is_dir() else []
+                     if re.fullmatch(f"[0-9a-f]{{{SHORT}}}", p.name)) \
+        if paths.sources.is_dir() else []
     last: dict[str, dict] = {}
     for d in _deploys(paths):
         last[str(d.get("commit", ""))[:SHORT]] = d
-    stack = _stack(paths)
-    back = (stack[-2]["commit"][:SHORT] if len(stack) > 1 and current
-            and stack[-1]["commit"][:SHORT] == current else None)
+    pair = _rollback_pair(paths, current)
+    back = pair[1]["commit"][:SHORT] if pair else None
     snapshots = {p.name for p in _snapshots(paths)}
     if not folders:
         print("no deploy on disk: the first is sudo admin deploy vX.Y.Z", file=sys.stderr)
@@ -730,8 +805,7 @@ def _list_deploys(paths: Paths) -> int:
         if d is None:
             line += "  not recorded"
         else:
-            when = "switched back to" if d.get("rolled_back_from") else "deployed"
-            line += f"  {d.get('tag')}, {when} {d.get('at')}"
+            line += f"  {d.get('tag')}, {_when(d)}"
         if not (paths.shared / short).is_dir():
             line += f", its program is gone from {paths.shared}"
         if short == back:
@@ -739,34 +813,35 @@ def _list_deploys(paths: Paths) -> int:
         print(line)
     if current not in folders:
         print(_running_deploy(paths))
-    mine = stack[-1].get("snapshot") if stack else None
+    mine = pair[0].get("snapshot") if pair else None
     print(f"snapshots in {paths.snapshots}, the last {KEEP_SNAPSHOTS} kept: "
           + (", ".join(sorted(snapshots, reverse=True)) or "none"))
-    if back and mine in snapshots:
-        print(f"sudo admin rollback --restore brings back {mine}, taken before {current}")
+    if mine in snapshots:
+        print(f"sudo admin rollback --restore brings back {mine}, taken before "
+              f"{pair[0]['commit'][:SHORT]}")
     return 0
 
 
 def _rollback_target(paths: Paths) -> tuple[dict, dict]:
-    """The deploy that runs and the one before it, which must still be on disk."""
-    try:
-        current = os.readlink(paths.shared / "current")
-    except OSError as e:
-        raise Refused("the shared program isn't installed: there is nothing to switch back "
-                      "from") from e
-    stack = _stack(paths)
-    if not stack or stack[-1]["commit"][:SHORT] != current:
+    """The deploy that runs and the one before it, whose checkout must still be on disk."""
+    current = _current(paths)
+    pair = _rollback_pair(paths, current)
+    if pair is None:
+        stack = _stack(paths)
+        if current is None:
+            raise Refused("the shared program isn't installed: there is nothing to switch back "
+                          "from")
+        if stack and stack[-1]["commit"][:SHORT] == current:
+            raise Refused(f"{_what(stack[-1])} is the first deploy recorded: there is nothing "
+                          "to switch back to")
         raise Refused(f"the server runs {current}, which isn't the last deploy recorded in "
                       f"{paths.record}: there is no deploy before it to switch back to. Deploy "
                       "the one you want with sudo admin deploy")
-    if len(stack) < 2:
-        raise Refused(f"{_what(stack[-1])} is the first deploy recorded: there is nothing to "
-                      "switch back to")
-    back = stack[-2]
+    leaving, back = pair
     if not _on_disk(paths, back["commit"][:SHORT]):
         raise Refused(f"the deploy before, {_what(back)}, is no longer on disk: deploy it again "
                       f"with sudo admin deploy {back['commit']}")
-    return stack[-1], back
+    return leaving, back
 
 
 def _rollback(paths: Paths, args: list[str], edge: Edge) -> int:
@@ -777,104 +852,132 @@ def _rollback(paths: Paths, args: list[str], edge: Edge) -> int:
         host = _env(paths.signup_env).get("GATEWAY_HOST")
         if not host:
             raise Refused(f"GATEWAY_HOST is missing from {paths.signup_env}")
-        now, back = _rollback_target(paths)
-        snapshot = None
-        if restore:
-            name = str(now.get("snapshot") or "")
-            snapshot = paths.snapshots / name
-            if not SNAPSHOT_NAME.fullmatch(name) or not snapshot.is_file():
-                raise Refused(f"the snapshot taken before {_what(now)} "
-                              + (f"({name}) isn't on disk any more" if name else
-                                 "wasn't taken: it was deployed before snapshots were")
-                              + ". sudo admin rollback without --restore switches back the "
-                              "program alone")
+        leaving, back = _rollback_target(paths)
+        snapshot = _snapshot_before(paths, leaving) if restore else None
         households = _households(paths)
         # `current` must not change beneath a running evening run, nor its data be restored.
         _none_running(households, edge, "Switch back")
     except Refused as e:
         print(f"not switched back, nothing changed: {e}", file=sys.stderr)
         return 1
-
-    if restore:
-        print(f"this switches the server back from {_what(now)} to {_what(back)} and brings "
-              f"back the state from {snapshot.name}: Bifrost's, the Brief relay's and the "
-              "sign-up service's, their config, and every Household's home. What changed since "
-              "is lost: Households that signed up since lose their place in households.json, "
-              "and Briefs archived since are gone.", flush=True)
-        try:
-            answer = edge.ask("Type yes to go on: ")
-        except EOFError:
-            answer = ""
-        if answer.strip().lower() != "yes":
-            print("not switched back, nothing changed", file=sys.stderr)
-            return 1
-    started = _stop_for_restore(paths, households, edge) if restore else []
-    ok = True
-    if restore:
-        try:
-            put_back = _restore(snapshot)
-            print(f"restored {snapshot.name}: " + ", ".join(map(str, put_back)), flush=True)
-            kept = sorted(set(_state_roots(paths)) - set(put_back))
-            if kept:
-                print("⚠️ not in the snapshot, so kept as they are: "
-                      + ", ".join(map(str, kept)), flush=True)
-        except (OSError, tarfile.TarError, ValueError, KeyError) as e:
-            print(f"❌ restoring {snapshot.name} failed: {e}. The folder it was at is as it was; "
-                  "those before it are restored. Not switched back", file=sys.stderr)
-            ok = False
-    if ok:
-        short = back["commit"][:SHORT]
-        source = paths.sources / short
-        print(f"switching back from {_what(now)} to {_what(back)}: running its gateway-setup.sh",
-              flush=True)
-        setup = edge.system(["bash", str(source / "ops" / "gateway" / "gateway-setup.sh")],
-                            env={"GATEWAY_HOST": host, "PARENT_RECAP_RELEASE": str(source),
-                                 "PARENT_RECAP_DEPLOY": short, "PARENT_RECAP_SWITCH": "yes"})
-        if setup.returncode != 0:
-            print(f"❌ gateway-setup.sh of {short} failed (above). {_running_deploy(paths)}",
-                  file=sys.stderr)
-            ok = False
-        else:
-            _record(paths, {"commit": back["commit"], "tag": back.get("tag"),
-                            "at": edge.now().astimezone(UTC).isoformat(timespec="seconds"),
-                            "rolled_back_from": now["commit"]})
-    if restore:
-        _start_after_restore(started, ok, edge)
-    if not ok:
+    if snapshot and not _confirmed(leaving, back, snapshot, edge):
+        print("not switched back, nothing changed", file=sys.stderr)
         return 1
-    print(f"switched back from {_what(now)} to {_what(back)}: {_running_deploy(paths)}",
+
+    if snapshot is None:
+        switched = _switch(paths, host, leaving, back, edge)
+    else:
+        timers: list[tuple[str, str]] = []
+        switched = False
+        try:
+            print("stopping " + ", ".join(SERVICES) + " and the Households' evening timers",
+                  flush=True)
+            timers = _stop_timers(households, edge)
+            if not _stop_services(edge):
+                print("❌ not every service stopped (above), so nothing was restored or switched "
+                      "back", file=sys.stderr)
+            elif _restored(paths, snapshot):
+                switched = _switch(paths, host, leaving, back, edge)
+                if not switched:
+                    print(f"❌ the state from {snapshot.name} is restored, but the program is "
+                          f"still {_what(leaving)}'s: run sudo admin rollback again, without "
+                          "--restore, once what failed (above) is fixed", file=sys.stderr)
+        finally:
+            # gateway-setup.sh starts the services itself when it ran.
+            if not switched:
+                _start_services(edge)
+            _start_timers(timers, edge)
+    if not switched:
+        return 1
+    print(f"switched back from {_what(leaving)} to {_what(back)}: {_running_deploy(paths)}",
           flush=True)
     if not _healthy(host, edge):
         print("\n❌ switched back, but a check failed (above)", file=sys.stderr)
         return 1
-    print("\n✅ switched back. Check one Household's evening run: sudo admin households")
+    print("\n✅ switched back. Read the Households' next evening runs: sudo admin households")
     return 0
 
 
-def _stop_for_restore(paths: Paths, households: list[tuple[str, str]],
-                      edge: Edge) -> list[tuple[str, str]]:
-    """Stops the services and each Household's evening timers, so nothing writes what the
-    restore puts back. Returns the timers it stopped, to start again."""
-    print("stopping " + ", ".join(SERVICES) + " and the Households' evening timers", flush=True)
-    edge.system(["systemctl", "stop", *SERVICES])
+def _snapshot_before(paths: Paths, deploy: dict) -> Path:
+    name = str(deploy.get("snapshot") or "")
+    snapshot = paths.snapshots / name
+    if SNAPSHOT_NAME.fullmatch(name) and snapshot.is_file():
+        return snapshot
+    raise Refused(f"the snapshot taken before {_what(deploy)} "
+                  + (f"({name}) isn't on disk any more" if name else
+                     "wasn't taken: it was deployed before snapshots were")
+                  + ". sudo admin rollback without --restore switches back the program alone")
+
+
+def _confirmed(leaving: dict, back: dict, snapshot: Path, edge: Edge) -> bool:
+    print(f"this switches the server back from {_what(leaving)} to {_what(back)} and brings back "
+          f"the state from {snapshot.name}: Bifrost's, the Brief relay's and the sign-up "
+          "service's, their config, and every Household's home. What changed since is lost: "
+          "Households that signed up since lose their line in households.json, and Briefs "
+          "archived and keys made since are gone.", flush=True)
+    try:
+        return edge.ask("Type yes to go on: ").strip().lower() == "yes"
+    except EOFError:
+        return False
+
+
+def _restored(paths: Paths, snapshot: Path) -> bool:
+    try:
+        put_back = _restore(snapshot)
+    except (OSError, tarfile.TarError, ValueError, KeyError) as e:
+        print(f"❌ restoring {snapshot.name} failed: {e}. The folder it was at is as it was, and "
+              "those before it are restored; not switched back. Run it again once that is "
+              "fixed", file=sys.stderr)
+        return False
+    print(f"restored {snapshot.name}: " + ", ".join(map(str, put_back)), flush=True)
+    kept = sorted(set(_state_roots(paths)) - set(put_back))
+    if kept:
+        print("⚠️ not in the snapshot, so kept as they are: " + ", ".join(map(str, kept)),
+              flush=True)
+    return True
+
+
+def _switch(paths: Paths, host: str, leaving: dict, back: dict, edge: Edge) -> bool:
+    """Runs the deploy before's own gateway-setup.sh, its program kept as installed, and
+    records the switch."""
+    short = back["commit"][:SHORT]
+    source = paths.sources / short
+    print(f"switching back from {_what(leaving)} to {_what(back)}: running its gateway-setup.sh",
+          flush=True)
+    setup = edge.system(["bash", str(source / "ops" / "gateway" / "gateway-setup.sh")],
+                        env={"GATEWAY_HOST": host, "PARENT_RECAP_RELEASE": str(source),
+                             "PARENT_RECAP_DEPLOY": short, "PARENT_RECAP_SWITCH": "yes"})
+    if setup.returncode != 0:
+        print(f"❌ gateway-setup.sh of {short} failed (above). {_running_deploy(paths)}",
+              file=sys.stderr)
+        return False
+    _record(paths, {"commit": back["commit"], "tag": back.get("tag"), "at": _stamp(edge),
+                    "rolled_back_from": leaving["commit"]})
+    return True
+
+
+def _user_systemctl(edge: Edge, user: str, *args: str) -> subprocess.CompletedProcess:
+    return edge.system(["systemctl", "--user", "-M", f"{user}@", *args])
+
+
+def _stop_timers(households: list[tuple[str, str]], edge: Edge) -> list[tuple[str, str]]:
+    """Stops each Household's active evening timers, so no run writes what the restore puts
+    back. Returns them, to start again."""
     stopped = []
     for user, _ in households:
         for timer in TIMERS:
             if _unit(edge, user, timer).get("ActiveState") == "active":
-                edge.system(["systemctl", "--user", "-M", f"{user}@", "stop", timer])
+                _user_systemctl(edge, user, "stop", timer)
                 stopped.append((user, timer))
     return stopped
 
 
-def _start_after_restore(stopped: list[tuple[str, str]], switched: bool, edge: Edge) -> None:
-    """Starts again what _stop_for_restore stopped: the services only if gateway-setup.sh didn't
-    (it restarts them), and each timer from its unit file as restored."""
-    if not switched:
-        edge.system(["systemctl", "start", *SERVICES])
+def _start_timers(stopped: list[tuple[str, str]], edge: Edge) -> None:
+    """Starts again the timers _stop_timers stopped, each from its unit file as restored."""
     for user in dict.fromkeys(user for user, _ in stopped):
-        edge.system(["systemctl", "--user", "-M", f"{user}@", "daemon-reload"])
+        _user_systemctl(edge, user, "daemon-reload")
     failed = [f"{user}'s {timer}" for user, timer in stopped
-              if edge.system(["systemctl", "--user", "-M", f"{user}@", "start", timer]).returncode]
+              if _user_systemctl(edge, user, "start", timer).returncode]
     if failed:
         print("⚠️ couldn't start again: " + ", ".join(failed), file=sys.stderr)
 
