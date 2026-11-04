@@ -125,6 +125,20 @@ On the setup page's Finish, "Turn WhatsApp off" stops the always-running job, lo
    - Google Calendar on the web: "Other calendars" on the left → "+" → "From URL", replace `webcal://` with `https://` and paste
    - iPhone: Settings → Calendar → Accounts → Add Account → Other → Add Subscribed Calendar
 
+## Eepos (optional, added by the maintainers)
+
+Music and art schools on Eepos (such as Espoon musiikkiopisto at `emo.eepos.fi` and Espoon kuvataidekoulu at `espoo.eepos.fi`) give their lessons, concerts and holidays as calendar events in the Brief and its `.ics`, read through the school's guardian portal (ADR 0038). The setup page and the hosted sign-up have no Eepos step yet (#755): a maintainer adds it from a terminal, as the Household's user, once for each school:
+
+1. The guardian needs an Eepos password. A family that signs in by an emailed link sets one first with "Forgot your password?" ("Unohditko salasanasi?") on the school's Eepos login
+2. **Terminal**: `$FB setup eepos --school emo --username <the guardian's Eepos username>`. The password is typed at the secret store's own prompt (the Keychain asks twice; a hosted server's prompt is hidden), so it never reaches the chat or a command line. The command signs in with it, reads the guardian's students and the next 14 days of the calendar, and only then stores the password (Keychain `family-brief` / `eepos-signin-<16 hex digits>`) and the sign-in in the config's `eepos.signins`. It prints which Kid each student is, matched by name; a student who matches none has their lessons go to the whole Household until their Eepos name is added to the Kid's `aliases` and the command run again
+3. `$FB doctor` signs in to each school and lists its students; a password Eepos no longer takes is ❌ with the command to type it again
+
+Notes:
+
+- Each school is its own address with its own session, so Kids at two Eepos schools need two sign-ins, one per school, even with the same username
+- A cancelled lesson isn't added to the calendar, and isn't told as news yet. Messages and teachers' lesson notes come in a later slice
+- Eepos has no published API: when it changes, the Brief's coverage line says Eepos wasn't read, with the reason, and the rest of the Brief still goes out
+
 ## Calendar
 
 Whichever mode you pick, an event the model finds goes into the calendar only if it points to a message read that night, and it keeps a link only if that message has the link. The model is also told that message text is data, not instructions: a message in a parent group or an email that tells it to add an event or a link is reported in the Brief instead of followed.
@@ -188,6 +202,7 @@ Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declare
    - uninstall: `secrets`, `survey` and `notes`, for what setup made for it and what the family removes themselves
    - Held-back Messages ([ADR 0013](adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md)): `sent_to_everyone`, `checked_body`, `group` and `held_back_link`. Without them, a message is held back when in doubt and listed by sender and subject, with no link
    - the calendar: `in_ics`
+   - `setup_page`: false for a Source the setup page has no panel for yet, which is set up from a terminal by its own `setup` command, as Eepos is; the page's list then leaves it out
 
    A hook in another module goes through `_in`, which imports it when called
 

@@ -1,11 +1,11 @@
 """The Sources, one record each, in the order the evening run reads them (ADR 0022). Code that
 would name the Sources asks this registry instead: what a Source is called, whether a Household's
 config connects it, how the evening run reads it and widens its lookback, what the Brief's coverage
-line counts of it, which systems can read it, whether the setup page lets a family skip it, the
-mail it sends of its own news, which of its messages went to everyone and how the Brief lists one
-held back (ADR 0013), how the calendar treats its events, what `doctor` checks of it, why one the
-Household set up can't be read tonight, whether a Hosted Household can have it, and what
-uninstall removes for it. A new Source is its collector module, its config model and its record
+line counts of it, which systems can read it, whether the setup page has a step for it and lets a
+family skip it, the mail it sends of its own news, which of its messages went to everyone and how
+the Brief lists one held back (ADR 0013), how the calendar treats its events, what `doctor` checks
+of it, why one the Household set up can't be read tonight, whether a Hosted Household can have
+it, and what uninstall removes for it. A new Source is its collector module, its config model and its record
 here."""
 from __future__ import annotations
 
@@ -74,6 +74,9 @@ class Source:
     # whether the hosted sign-up sets it up (ADR 0031); a Hosted Household's Brief says the hosted
     # version doesn't read one it doesn't, or one its system can't read
     hosted_signup: bool = True
+    # whether the setup page has a step for it; one without is set up from a terminal, by its
+    # `setup` command, and the page's Connect list leaves it out
+    setup_page: bool = True
     lookback: Callable[[Config], Window] | None = None  # its section with lookback_hours, if any
     # why it isn't read tonight though the Household set it up, given the config and the state
     unread: Callable[[Config, State], Unread | None] = _never_unread
@@ -167,7 +170,16 @@ WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), _in("collectors.what
                   check=_in("ops", "check_whatsapp"), survey=_in("uninstall", "survey_whatsapp"),
                   notes=_in("uninstall", "whatsapp_notes"), group=lambda m: m.chat_name)
 
-ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP)
+# A music or art school's calendar, read through its portal's own JSON API with a password in the
+# secret store (ADR 0038). Its lessons and holidays are events, which nothing else puts in a
+# calendar, so they go into the .ics. Set up from a terminal for now, one sign-in per school
+# (`setup eepos`): neither the setup page nor the hosted sign-up has a step for it yet (#755).
+EEPOS = Source("eepos", _same_everywhere("Eepos"), lambda cfg: bool(cfg.eepos.signins),
+               skippable=True, connect_rank=6, collect=_collector("eepos"), counts_events=True,
+               hosted_signup=False, setup_page=False, check=_in("ops", "check_eepos"),
+               check_items={"eepos": "Eepos ({})"}, secrets=_in("collectors.eepos", "secrets_of"))
+
+ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP, EEPOS)
 
 
 def named(name: str) -> Source | None:
@@ -195,7 +207,8 @@ def not_hosted() -> list[Source]:
 
 
 def in_connect_order() -> list[Source]:
-    """The Sources this system can read, in the order the setup page's Connect list shows them."""
+    """The Sources this system can read, in the order the setup page's Connect list shows them,
+    with those it has no step for at their place too, as `doctor` checks them."""
     return sorted(available(), key=lambda s: s.connect_rank)
 
 

@@ -33,7 +33,7 @@ _Avoid_: filtered message, hidden message, 敏感消息
 ## Inputs
 
 **Source** (zh 信息源, fi lähde):
-A place messages or events are read from for a Household, such as Gmail, Wilma, WhatsApp or MyClub.
+A place messages or events are read from for a Household, such as Gmail, Wilma, WhatsApp, MyClub or Eepos.
 _Avoid_: collector, channel, feed, 采集器, 来源
 
 **Linked Device** (zh 已关联设备, fi linkitetty laite):
@@ -55,7 +55,7 @@ The unit that receives a Brief: its Kids, its Recipients and their configured So
 _Avoid_: family, user, account
 
 **Hosted Household** (zh 托管家庭, fi ylläpidetty perhe):
-An invited Household whose program the maintainers run for it on their own server, instead of on the Household's computer (ADR 0029). It reads Wilma and MyClub, never WhatsApp, and Gmail not yet, since its sign-up has no Gmail step (ADR 0031); its Brief is written through the gateway and sent from Parent Recap's own address, and its footer says it comes from the hosted version; and the maintainers hold its Gateway Key, its Wilma login and its config.
+An invited Household whose program the maintainers run for it on their own server, instead of on the Household's computer (ADR 0029). It reads Wilma and MyClub, and Eepos when the maintainers add it by hand (ADR 0038), never WhatsApp, and Gmail not yet, since its sign-up has no Gmail step (ADR 0031); its Brief is written through the gateway and sent from Parent Recap's own address, and its footer says it comes from the hosted version; and the maintainers hold its Gateway Key, its Wilma login and its config.
 _Avoid_: cloud user, hosted user, SaaS customer, 云端用户
 
 **Invite Link** (zh 邀请链接, fi kutsulinkki):

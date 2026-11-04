@@ -505,3 +505,28 @@ def myclub_event(ext_id: str, title: str, start: str, end: str, kid: str = "Mia"
     return CalendarEvent(source="myclub", external_id=ext_id, title=f"⚽ {title}",
                          start=datetime.fromisoformat(start), end=datetime.fromisoformat(end),
                          location="Leppävaara field", description="MyClub", kid=kid)
+
+
+def eepos_student(student_id: int, first: str, last: str, nickname: str | None = None) -> dict[str, Any]:
+    """One of a guardian's students as an Eepos school's portal lists them: with the address,
+    phone, birth date and start of the henkilötunnus the portal sends too, which Parent Recap
+    never keeps."""
+    return {"id": student_id, "person_id": student_id + 5000,
+            "person": {"firstname": first, "lastname": last, "nickname": nickname,
+                       "address": "Kilotie 7 B 12", "postcode": "02610", "phone": "+358401112233",
+                       "birthdate": "2016-03-14", "ssn_start": "140316", "email": "kid@example.fi"}}
+
+
+def eepos_entry(title: str, day: str, start: str | None = "15:15:00", end: str | None = "16:00:00", *,
+                students: tuple[int, ...] = (), kind: str = "lesson", school: str = "emo",
+                room: str | None = "Ahertajantie, luokka 12", canceled: bool = False,
+                entire_day: bool = False) -> dict[str, Any]:
+    """An entry of an Eepos school's calendar as its portal's JSON gives it, at `school` (which the
+    fake portal serves it at and leaves out), for each of `students` by their ids on Eepos."""
+    return {"school": school, "type": kind, "title": title, "titleParts": [title], "subTitle": None,
+            "date": day, "startTime": start, "endTime": end, "duration": 45, "roomId": 7,
+            "roomName": room, "isCanceled": canceled, "isEntireDay": entire_day, "color": "#3a87ad",
+            "sourceRefType": kind, "sourceRefId": sum(map(ord, title + day)),
+            "relatedRefs": [*({"refType": "student", "refId": s} for s in students),
+                            {"refType": "teacher", "refId": 88}],
+            "flags": [], "participants": [], "children": [], "source": None}

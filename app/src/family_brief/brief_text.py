@@ -59,7 +59,7 @@ class BriefText:
     message_unreadable: str             # a Source skipped a Message it couldn't read
     needs_pairing: str                  # the Linked Device's link ended, or it was never paired
     not_hosted: Plural                  # {sources} a Hosted Household can't have (ADR 0029, 0031)
-    sources_sep: str                    # between those {sources}
+    sources_sep: str                    # between the last two of those {sources}, missed_sep before
 
     # ── The short Brief of a night when no Source could be read
     nothing_read: str

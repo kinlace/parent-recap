@@ -7,6 +7,7 @@ What changes for families in each release, collected from the `What changes for 
 ### Added
 
 - A family without Wilma, such as at a private school, can sign up for the hosted version: leave the Wilma fields empty, write the children's names under "We don't have Wilma", and add at least one MyClub calendar link.
+- Lessons, concerts and holidays from a music or art school on Eepos come in the Brief and its calendar attachment, for the right Kid. For now the Parent Recap team turns it on for a Household by hand, one sign-in per school.
 
 ### Changed
 
