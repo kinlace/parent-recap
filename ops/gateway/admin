@@ -22,6 +22,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -496,23 +497,37 @@ def _unit(edge: Edge, user: str, unit: str) -> dict[str, str]:
     return dict(line.split("=", 1) for line in (r.stdout or "").splitlines() if "=" in line)
 
 
+def _rmtree(path: Path) -> None:
+    """Removes a checkout, if there is one, read-only files included: git makes its objects
+    read-only, which Windows, where the tests run too, won't delete as they are."""
+    def writable(func: Callable, name: str, _: Any) -> None:
+        os.chmod(name, stat.S_IWRITE)
+        func(name)
+    if not (path.exists() or path.is_symlink()):
+        return
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=writable)
+    else:
+        shutil.rmtree(path, onerror=writable)
+
+
 def _checkout(paths: Paths, commit: str) -> Path:
     """The commit's whole tree, ops/ included, in its own folder: the release zip leaves ops/ out
     (.gitattributes), so this is a checkout, not an archive."""
     source = paths.sources / commit[:SHORT]
     incoming = paths.sources / f"{commit[:SHORT]}.incoming"
     paths.sources.mkdir(parents=True, exist_ok=True)
-    shutil.rmtree(incoming, ignore_errors=True)
+    _rmtree(incoming)
     steps =(["git", "clone", "--quiet", "--no-checkout", str(paths.repo), str(incoming)],
              ["git", "-C", str(incoming), "-c", "advice.detachedHead=false", "checkout",
               "--quiet", "--detach", commit])
     for step in steps:
         r = subprocess.run(step, capture_output=True, text=True)
         if r.returncode != 0:
-            shutil.rmtree(incoming, ignore_errors=True)
+            _rmtree(incoming)
             raise Refused(f"couldn't check out {commit[:SHORT]}: {_why_not(r)}")
     # The same commit deployed again: its old checkout goes only once the new one is whole.
-    shutil.rmtree(source, ignore_errors=True)
+    _rmtree(source)
     incoming.rename(source)
     return source
 
