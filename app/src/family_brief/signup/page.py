@@ -46,7 +46,7 @@ TEXT = {
         "myclub_needed_hint": "If a child's club uses MyClub, paste the child's calendar link from "
                               "MyClub (it starts with webcal:// or https://), and their practices "
                               "and games come in the Brief too. Leave it empty to skip.",
-        "finish": "Done",
+        "myclub_done": "Done",
         "wait": "Signing up takes a minute or two. Keep this page open until it says you're "
                 "signed up.",
         "signing_up": "Signing you up",
@@ -122,7 +122,7 @@ TEXT = {
                               "MyClubista (se alkaa webcal:// tai https://), niin harjoitukset ja "
                               "pelit tulevat myös koosteeseen. Jätä kenttä tyhjäksi, jos et "
                               "tarvitse sitä.",
-        "finish": "Valmis",
+        "myclub_done": "Valmis",
         "wait": "Käyttöönotto kestää minuutin tai kaksi. Pidä tämä sivu auki, kunnes se kertoo, "
                 "että olet mukana.",
         "signing_up": "Otetaan käyttöön",
@@ -191,7 +191,7 @@ TEXT = {
                        "或 https:// 开头），训练和比赛也会出现在摘要里。不用 MyClub？留空，直接点“完成”。",
         "myclub_needed_hint": "如果孩子的俱乐部用 MyClub，把孩子在 MyClub 里的日历链接粘贴到这里（以 "
                               "webcal:// 或 https:// 开头），训练和比赛也会出现在摘要里。不需要就留空。",
-        "finish": "完成",
+        "myclub_done": "完成",
         "wait": "开通需要一两分钟。请保持这个页面打开，直到它显示开通成功。",
         "signing_up": "正在开通",
         "updates": "这个页面会自动更新。请保持它打开，直到它显示开通成功；中途手机屏幕熄灭也没关系。",
@@ -308,7 +308,7 @@ def myclub(language: str, kids: list[str], error: str | None = None,
 <h2>{escape(t['myclub' if wilma else 'myclub_needed'])}</h2>
 <p class="hint">{escape(t['myclub_hint' if wilma else 'myclub_needed_hint'])}</p>
 {fields}
-<button type="submit">{escape(t['finish'])}</button>
+<button type="submit">{escape(t['myclub_done'])}</button>
 <p class="hint">{escape(t['wait'])}</p>
 </form>""", languages=False)
 
