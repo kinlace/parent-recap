@@ -271,20 +271,12 @@ def _find_keys(paths: Paths, text: str, fetch: Callable[..., dict] | None,
 
 def _household_lines(out: str, label: str) -> list[str]:
     """The lines `signup status` printed for the Household `label`: its own and its doctor's."""
-    kept, keep = [], False
-    for said in out.splitlines():
-        if HOUSEHOLD_LINE.match(said):
-            keep = LABEL.search(said).group() == label
-        elif not said.startswith("   "):
-            keep = False
-        if keep:
-            kept.append(said)
-    return kept
+    return _status_lines(out, lambda said: LABEL.search(said).group() == label)
 
 
 def _find_households(paths: Paths, address: str) -> int:
-    """Each Household whose Recipients include `address`, by its label and its Invite Link's note,
-    and nothing else of its config."""
+    """Prints each Household whose Recipients include `address`, by its label and its Invite
+    Link's note, and nothing else of its config; returns how many it printed."""
     want = address.strip().lower()
     configs = _configs(paths)
     if not configs:
@@ -1257,10 +1249,16 @@ def _problems(paths: Paths, run: Callable[[list[str], dict], tuple[int, str]]) -
 
 def _marked(out: str) -> list[str]:
     """The lines of each Household `signup status` marked ❌, ⚠️ or ❓: its own and its doctor's."""
+    return _status_lines(out, lambda said: not said.startswith("✅"))
+
+
+def _status_lines(out: str, wanted: Callable[[str], bool]) -> list[str]:
+    """The lines of each Household in `signup status`'s output whose own line is `wanted`: that
+    line and the indented ones under it, its doctor's."""
     kept, keep = [], False
     for said in out.splitlines():
         if HOUSEHOLD_LINE.match(said):
-            keep = not said.startswith("✅")
+            keep = wanted(said)
         elif not said.startswith("   "):
             keep = False
         if keep:

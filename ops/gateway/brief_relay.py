@@ -1051,7 +1051,11 @@ def print_keys(keys: Bifrost, state: Path, today: str, find: str | None = None) 
     day = date.fromisoformat(today)
     try:
         bound = json.loads((state / "bindings.json").read_text(encoding="utf-8")).get("keys") or {}
-    except (OSError, ValueError, AttributeError):
+    except FileNotFoundError:
+        bound = {}  # no key made on request yet
+    except (OSError, ValueError, AttributeError) as e:
+        print(f"couldn't read {state / 'bindings.json'} ({type(e).__name__}): the addresses "
+              "bound to keys made on request are left out", file=sys.stderr)
         bound = {}
     sent = LastSent(state / LAST_SENT).read()
     listed = _listed(keys)
@@ -1184,7 +1188,11 @@ def _holder_email(ask: Callable[[str], str] | None) -> str | None:
     if ask is None:
         if not sys.stdin.isatty():
             return None
-        ask = input
+
+        def ask(prompt: str) -> str:
+            # On stderr: stdout carries the key's value, and may be sent to a file.
+            print(prompt, end="", file=sys.stderr, flush=True)
+            return input()
     while True:
         try:
             answer = ask("The holder's email, so admin find finds the key by it "
