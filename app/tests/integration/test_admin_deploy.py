@@ -284,12 +284,13 @@ def test_an_evening_run_further_off_or_just_past_lets_it_go_on(deploy, evening):
     assert deploy("deploy", "v1.0.0") == 0
 
 
-def test_an_evening_run_still_running_refuses_the_deploy(deploy, capsys):
+@pytest.mark.parametrize("anyway", [(), ("--anyway",)])
+def test_an_evening_run_still_running_refuses_the_deploy_even_anyway(deploy, capsys, anyway):
     household(deploy)
     household(deploy, "ph-0123abcd", check=False)
     deploy.fake.units["ph-0123abcd"] = {"ActiveState": "activating"}
     deploy.server.paths.deploy_env.write_text("CHECK_HOUSEHOLD=ph-30d2afe0\n")
-    assert deploy("deploy", "v1.0.0") == 1
+    assert deploy("deploy", "v1.0.0", *anyway) == 1
     nothing_changed(deploy)
     assert "ph-0123abcd's evening run is still running" in capsys.readouterr().err
 
@@ -336,14 +337,29 @@ def test_each_deploy_stays_on_disk_under_its_commit_and_is_recorded(deploy, caps
     assert deploy("households") == 0
     out = capsys.readouterr().out
     assert out.startswith(f"the server runs {deploy.origin.unreleased} (unreleased")
-    assert "until a release tag replaces it" in out
+    assert "until a release tag is deployed" in out
 
 
-def test_households_says_a_release_runs_until_one_is_deployed_by_admin(deploy, capsys):
+def test_households_says_when_what_runs_isn_t_recorded(deploy, capsys):
     deploy.server.paths.shared.mkdir()
     (deploy.server.paths.shared / "current").symlink_to("0.11.1")
     assert deploy("households") == 0
-    assert capsys.readouterr().out.startswith("the server runs 0.11.1, deployed before")
+    assert capsys.readouterr().out.startswith("the server runs 0.11.1, which isn't recorded")
+
+
+def test_a_failed_checkout_of_a_commit_deployed_before_keeps_its_folder(deploy, monkeypatch):
+    assert deploy("deploy", "v1.0.0") == 0
+    source = deploy.server.paths.sources / deploy.origin.release[:12]
+    real_run = admin.subprocess.run
+
+    def no_clone(argv, **kw):
+        if argv[:2] == ["git", "clone"]:
+            return subprocess.CompletedProcess(argv, 128, "", "fatal: disk full")
+        return real_run(argv, **kw)
+    monkeypatch.setattr(admin.subprocess, "run", no_clone)
+    assert deploy("deploy", "v1.0.0") == 1
+    assert (source / "ops" / "gateway" / "gateway-setup.sh").exists()
+    assert len(records(deploy)) == 1
 
 
 def test_a_failed_install_is_not_recorded(deploy, capsys):
