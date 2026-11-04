@@ -122,6 +122,7 @@ class FakeSMTP:
         self.sent: list[tuple[EmailMessage, list[str]]] = []
         self.logins: list[tuple[str, str]] = []
         self.refuse = False
+        self.refuse_to: set[str] = set()
 
     def __call__(self, host: str, port: int, **_kw: Any) -> "FakeSMTP":
         assert port == 465
@@ -140,7 +141,7 @@ class FakeSMTP:
 
     def send_message(self, msg: EmailMessage, from_addr: str, to_addrs: list[str]) -> dict:
         self.sent.append((msg, to_addrs))
-        return {}
+        return {a: (550, b"no such user") for a in to_addrs if a in self.refuse_to}
 
 
 class Server:
@@ -718,6 +719,14 @@ def test_a_mail_email_delivery_refused_fails_the_check_and_says_why(server, caps
     server.smtp.refuse = True
     assert server.admin("check", "--mail") == 1
     assert "refused the gateway's login" in capsys.readouterr().err
+
+
+def test_a_maintainer_address_email_delivery_refused_is_said(server, capsys):
+    server.status = status_of(FAILED)
+    server.smtp.refuse_to = {"second@example.com"}
+    assert server.admin("check", "--mail") == 0
+    out = capsys.readouterr().out
+    assert "mailed to 1 maintainer address;" in out and "refused 1" in out
 
 
 @pytest.mark.parametrize("args", [("--email",), ("--mail", "x")])

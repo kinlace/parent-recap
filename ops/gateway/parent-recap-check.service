@@ -9,3 +9,6 @@ Type=oneshot
 # the SMTP credentials the relay sends with. It mails only when something is wrong, to the address
 # in /etc/brief-relay/maintainers.env (README "The nightly check").
 ExecStart=/usr/local/sbin/admin check --mail
+# The status gives each Household up to 5 minutes; a check stuck past this fails the unit
+# (systemctl --failed) instead of hanging all night.
+TimeoutStartSec=2h

@@ -311,7 +311,7 @@ When anything is wrong it mails the maintainers one message from `brief@parentre
 
 **The address** is the server's, not the repo's: `/etc/brief-relay/maintainers.env` (`MAINTAINERS_ADDRESS`, commas between several; `maintainers.env.example`). The first run of `gateway-setup.sh` asks for it; to set or change it, run step 7 again with `MAINTAINERS_ADDRESS=<address>` before `bash`. Without it the check still runs and says in its journal that it mailed nobody.
 
-**By hand.** `sudo admin check` prints what the mail would say, or `nothing wrong`, and mails nothing; `sudo admin check --mail` mails it now, as at night. See the last runs with `journalctl -u parent-recap-check` and the next with `systemctl list-timers parent-recap-check`. The check's own run fails (`systemctl --failed`) only when its mail couldn't go: no address, no SMTP credentials, or Email Delivery refused it.
+**By hand.** `sudo admin check` prints what the mail would say, or `nothing wrong`, and mails nothing; `sudo admin check --mail` mails it now, as at night. See the last runs with `journalctl -u parent-recap-check` and the next with `systemctl list-timers parent-recap-check`. The check's own run fails (`systemctl --failed`) only when its mail couldn't go (no address, no SMTP credentials, or Email Delivery refused it) or it ran past 2 hours. A night the server was down at 23:00 is checked when it is up again.
 
 ## Runbook
 
