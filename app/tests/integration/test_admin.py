@@ -572,6 +572,28 @@ def test_find_follows_no_link_a_household_put_in_place_of_its_config(server, cap
     assert capsys.readouterr().out == "ph-0123abcd\n"
 
 
+@pytest.mark.parametrize("linked", [".family", "home"])
+def test_find_follows_no_link_a_household_put_in_any_part_of_the_path(server, capsys, linked):
+    """A Household's `.family`, or a home in place of a Household's, that is a link to a folder
+    holding a config root alone can read."""
+    server.household("ph-0123abcd", ["parent@example.com"])
+    outside = server.root / "root-only"
+    (outside / ".family").mkdir(parents=True)
+    (outside / ".family" / "config.yaml").write_text(
+        json.dumps({"email": {"to": ["parent@example.com"]}}))
+    try:
+        if linked == ".family":
+            (server.homes / "ph-89abcdef").mkdir()
+            (server.homes / "ph-89abcdef" / ".family").symlink_to(
+                outside / ".family", target_is_directory=True)
+        else:
+            (server.homes / "ph-89abcdef").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("this OS won't make a symlink here")
+    assert server.admin("find", "parent@example.com") == 0
+    assert capsys.readouterr().out == "ph-0123abcd\n"
+
+
 def test_find_says_why_the_shared_program_couldn_t_read_the_configs(
         server, capsys, tmp_path, monkeypatch):
     server.household("ph-0123abcd", ["parent@example.com"])
