@@ -130,24 +130,31 @@ if [ -n "${PARENT_RECAP_RELEASE:-}" ]; then
   # program, which every Household's user runs. A Household's data stays in its
   # own home. Made readable again however this ends, so a failed install of the
   # version in use doesn't lock every Household out of it.
-  setup_home=$(mktemp -d)
-  shared_readable() {
-    rm -rf "$setup_home"
-    if [ -d "$release" ]; then chown -R root:root "$release" && chmod -R u=rwX,go=rX "$release"; fi
-  }
-  trap shared_readable EXIT
-  (cd / && HOME=$setup_home PARENT_RECAP_HOME=$release bash "$PARENT_RECAP_RELEASE/install.sh")
-  (cd / && HOME=$setup_home "$release/app/.venv/bin/python" -m family_brief.setup_wilma install)
-  # Compiled now, as no Household's user may write beside the program's code.
-  "$release/app/.venv/bin/python" -m compileall -q "$release/app/src" >/dev/null
-  shared_readable
-  trap - EXIT
+  # `admin rollback` sets PARENT_RECAP_SWITCH=yes: the deploy it switches back
+  # to is installed already, so only the pointers and the gateway's files
+  # change. One whose program is gone is installed again.
+  if [ "${PARENT_RECAP_SWITCH:-}" = yes ] && [ -x "$release/app/.venv/bin/python" ]; then
+    echo "switching to $deploy, installed before: its install is skipped"
+  else
+    setup_home=$(mktemp -d)
+    shared_readable() {
+      rm -rf "$setup_home"
+      if [ -d "$release" ]; then chown -R root:root "$release" && chmod -R u=rwX,go=rX "$release"; fi
+    }
+    trap shared_readable EXIT
+    (cd / && HOME=$setup_home PARENT_RECAP_HOME=$release bash "$PARENT_RECAP_RELEASE/install.sh")
+    (cd / && HOME=$setup_home "$release/app/.venv/bin/python" -m family_brief.setup_wilma install)
+    # Compiled now, as no Household's user may write beside the program's code.
+    "$release/app/.venv/bin/python" -m compileall -q "$release/app/src" >/dev/null
+    shared_readable
+    trap - EXIT
+  fi
   install -o root -g root -m 0755 "$here/parent-recap" "$shared/bin/parent-recap"
   previous=$(readlink "$shared/current" || true)
   ln -sfn "$deploy" "$shared/current.incoming"
   mv -T "$shared/current.incoming" "$shared/current"
   if [ -n "$previous" ] && [ "$previous" != "$deploy" ]; then
-    echo "the shared program is now $deploy ($version), was $previous; to switch back: sudo ln -sfn $previous $shared/current"
+    echo "the shared program is now $deploy ($version), was $previous; to switch back: sudo admin rollback"
   fi
 
   getent group parent-recap-households >/dev/null || groupadd --system parent-recap-households

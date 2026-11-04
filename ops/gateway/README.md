@@ -222,14 +222,29 @@ sudo mkdir -p /etc/parent-recap-deploy
 echo CHECK_HOUSEHOLD=ph-30d2afe0 | sudo tee /etc/parent-recap-deploy/deploy.env
 ```
 
-A failed check exits 1 and says so; the run's logs are in `~ph-…/ParentRecap/logs/run-stderr.log`, and `sudo admin households` shows every Household. To switch back, deploy the commit before it again, which the record names (`sudo cat /var/lib/parent-recap-deploy/deploys.json`), with `--anyway` if `admin households` marks the Household the bad deploy broke: its folders are still on disk, and it is installed again in place. Or, for the program alone, point `current` back at the folder before, still on disk (`ls /usr/local/lib/parent-recap` lists them), and restart the service on it:
+A failed check exits 1 and says so; the run's logs are in `~ph-…/ParentRecap/logs/run-stderr.log`, and `sudo admin households` shows every Household.
+
+Before a deploy changes anything, it takes a snapshot of the server's state: Bifrost's (`/var/lib/bifrost`, the Gateway Keys and their spend), the Brief relay's (`/var/lib/private/brief-relay`), the sign-up service's (`/var/lib/parent-recap-signup`, `households.json` and the Invite Links), their config in `/etc` (`bifrost`, `brief-relay`, `parent-recap-signup`) and every Household's home. It is one archive, `/var/lib/parent-recap-deploy/snapshots/<time>-<commit>.tar.gz`, that only root can read, since it holds every secret those do; the last 3 are kept. When there isn't room for it and the deploy (1 GB beyond the snapshot), or it can't be written, the deploy stops there and changes nothing. It is taken with the services running, outside the evening runs.
+
+`sudo admin deploys` lists the deploys on disk, the last first, with `*` beside the one that runs, which one `admin rollback` would switch to, and the snapshots.
+
+To switch back, from a deploy whose check failed or one found bad later:
 
 ```sh
-sudo ln -sfn <previous commit or version> /usr/local/lib/parent-recap/current
-sudo systemctl restart parent-recap-signup
+sudo admin rollback
 ```
 
-Remove a deploy that isn't `current` and that you won't switch back to with `sudo rm -rf /usr/local/lib/parent-recap/<commit> /usr/local/lib/parent-recap-deploy/<commit>`. Deploying the same commit again installs it again in place, so there is nothing to switch back to.
+It switches back to the deploy before the one that runs, by the record: it runs that commit's `gateway-setup.sh` again from its folder, so the program, Bifrost, the Brief relay, `admin`, the units, the Caddyfile and the sudoers file are that commit's again, the services restart, and every Household runs it from its next run. Its program is installed already, so it isn't installed again, unless its folder is gone. It says from which deploy to which, records the switch, and checks each service's `/health` and the 404; it doesn't run a Household's evening run, so read `sudo admin households` after the next one. Run again, it goes one further back; after a rollback and a new deploy, it goes back to what ran before that deploy. It refuses, changing nothing, when there is nothing to switch back to: no deploy recorded before the one that runs, a `current` set by hand, or the deploy before no longer on disk (deploy that one again by its commit). It refuses too while an evening run is running. Switched back to a commit from before `admin rollback` existed, its own `admin` has no `rollback`: deploy forward again with `sudo admin deploy`.
+
+A release must not leave a Household's data unreadable to the release before it (ADR 0036); one that does says so in its changelog. Switching back from it also needs the state from before it:
+
+```sh
+sudo admin rollback --restore
+```
+
+It says what it will do and asks you to type `yes`. Then it stops Bifrost, the Brief relay and the sign-up service and each Household's evening timers, puts back the snapshot taken before the deploy that runs (each folder in it whole, unpacked beside it first and then swapped in), switches back as above, which starts the services again, and starts the timers again. What changed since that snapshot is lost: Briefs archived since, keys made since, and a Household that signed up since loses its line in `households.json`; its home, not in the snapshot, is kept, and it says so. Without that deploy's snapshot on disk it refuses before asking.
+
+Remove a deploy that isn't `current` and that you won't switch back to with `sudo rm -rf /usr/local/lib/parent-recap/<commit> /usr/local/lib/parent-recap-deploy/<commit>`, and an old snapshot with `sudo rm /var/lib/parent-recap-deploy/snapshots/<name>`. Deploying the same commit again installs it again in place, so there is nothing to switch back to.
 
 **Move a Household made before the shared program.** Until 2026-11-02 the sign-up installed the program in each Household's home (`~/ParentRecap/app` with its `runtime`, `wilma` and `bin`), and its evening job ran that copy. `admin households` and `admin remove` already work for it, through the shared program. To have it run the shared program too, on the server, with its label:
 
@@ -288,17 +303,19 @@ It prints each step as it goes: the evening jobs removed by the shared program r
 
 Every routine task is one command on the server: SSH in, then `sudo admin <task>`. Nothing runs on the server from a laptop, and nothing below is run on the public address. `gateway-setup.sh` installs it as `/usr/local/sbin/admin` from `ops/gateway/admin`. It reads the admin login from `/etc/bifrost/bifrost.env` itself, never the provider key beside it, and calls Bifrost's admin API on localhost, so no tunnel is needed. `sudo admin --help` lists its tasks:
 
-| Task                                         | What it does                                                                      |
-| -------------------------------------------- | --------------------------------------------------------------------------------- |
-| `invite --recipient ADDRESS[:LANGUAGE] …`    | Mints an Invite Link and prints it (see "Invite a Household")                     |
-| `households`                                 | Every Hosted Household's last run and checks (see "See every Household's status") |
-| `keys`                                       | Every Gateway Key: who holds it, what it can do, made, last used, spend (below)   |
-| `cost`                                       | This month's model spend per key and in all (below)                               |
-| `key new LABEL "WHO HOLDS IT" [--send-only]` | Makes a Gateway Key and prints its value (below)                                  |
-| `key off NAME-OR-ID`, `key on NAME-OR-ID`    | Turns a Gateway Key off or back on (below)                                        |
-| `find ADDRESS`                               | Which Households have this Recipient (see "Find a Household")                     |
-| `remove ph-XXXXXXXX`                         | Removes a Hosted Household with everything of it (see "Remove a Household")       |
-| `deploy vX.Y.Z\|main\|COMMIT [--anyway]`     | Fetches that commit and installs it all (see "Upgrade, check, switch back")       |
+| Task                                         | What it does                                                                                                         |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `invite --recipient ADDRESS[:LANGUAGE] …`    | Mints an Invite Link and prints it (see "Invite a Household")                                                        |
+| `households`                                 | Every Hosted Household's last run and checks (see "See every Household's status")                                    |
+| `keys`                                       | Every Gateway Key: who holds it, what it can do, made, last used, spend (below)                                      |
+| `cost`                                       | This month's model spend per key and in all (below)                                                                  |
+| `key new LABEL "WHO HOLDS IT" [--send-only]` | Makes a Gateway Key and prints its value (below)                                                                     |
+| `key off NAME-OR-ID`, `key on NAME-OR-ID`    | Turns a Gateway Key off or back on (below)                                                                           |
+| `find ADDRESS`                               | Which Households have this Recipient (see "Find a Household")                                                        |
+| `remove ph-XXXXXXXX`                         | Removes a Hosted Household with everything of it (see "Remove a Household")                                          |
+| `deploy vX.Y.Z\|main\|COMMIT [--anyway]`     | Snapshots the state, fetches that commit and installs it all (see "Upgrade, check, switch back")                     |
+| `deploys`                                    | The deploys on disk, marking the current one (see "Upgrade, check, switch back")                                     |
+| `rollback [--restore]`                       | Switches back whole to the deploy before; `--restore` also restores its snapshot (see "Upgrade, check, switch back") |
 
 Run without root it refuses and says why. It prints only to the terminal and writes no log of its own, and no key's value is printed except by `key new`. `sudo` logs each command line to the system journal, as it did for the scripts `admin` replaced, so an address given to `invite` or `find` is there, and a note should stay a name. Those scripts (`keys.sh` and `new-key.sh` in `/usr/local/lib/brief-relay/`, `invite.sh`, `status.sh` and `remove.sh` in `/usr/local/lib/parent-recap-signup/`) are gone: the next run of `gateway-setup.sh` deletes them from the server.
 
@@ -353,7 +370,7 @@ sudo admin cost
 
 These are Bifrost's own figures, from its price list. What is billed is the Anthropic Console's, for the gateway's workspace, which also enforces its $10 monthly limit; `admin cost` says so.
 
-**Upgrade.** Try the new version on your own machine first (`npx -y @maximhq/bifrost --transport-version vX.Y.Z`). Then, in `gateway-setup.sh`, change `BIFROST_VERSION` and both `SHA256_*` lines (hash the binaries at `https://downloads.getmaxim.ai/bifrost/<version>/linux/<arm64|amd64>/bifrost-http`), land that on `main`, and deploy it on the server with `sudo admin deploy main` (once its `test` check passed) or with the next release's tag (see "Upgrade, check, switch back"). The old version stays in `/usr/local/lib/bifrost/`; deploy the commit before to roll back, or repoint the `current` symlink and restart.
+**Upgrade.** Try the new version on your own machine first (`npx -y @maximhq/bifrost --transport-version vX.Y.Z`). Then, in `gateway-setup.sh`, change `BIFROST_VERSION` and both `SHA256_*` lines (hash the binaries at `https://downloads.getmaxim.ai/bifrost/<version>/linux/<arm64|amd64>/bifrost-http`), land that on `main`, and deploy it on the server with `sudo admin deploy main` (once its `test` check passed) or with the next release's tag (see "Upgrade, check, switch back"). The old version stays in `/usr/local/lib/bifrost/`; `sudo admin rollback` switches back to it with the deploy before.
 
 **Rotate the provider key.** Create the new key in the Console first (in the gateway's workspace, whose monthly limit is the gateway's ceiling), then:
 
