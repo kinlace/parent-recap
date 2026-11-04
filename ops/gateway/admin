@@ -124,7 +124,8 @@ class Paths:
     # mails, which gateway-setup.sh asks for.
     smtp_env: Path = Path("/etc/brief-relay/brief-relay.env")
     maintainers_env: Path = Path("/etc/brief-relay/maintainers.env")
-    # Ubuntu's updates leave it when one waits for a reboot (as `signup status` reads it).
+    # Exists when a reboot is needed after updates (as `signup status` reads it), per
+    # https://ubuntu.com/server/docs/how-to/software/upgrade-your-release/
     reboot_required: Path = Path("/run/reboot-required")
 
 

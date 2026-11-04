@@ -38,7 +38,8 @@ GRACE = timedelta(hours=1)
 LEVELS = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
 MARKS = {"ok": "✅", "warn": "⚠️", "fail": "❌"}
 KEY = re.compile(r"[a-z][a-z0-9-]{0,39}")  # a doctor check's key
-# Ubuntu's updates leave this file when one waits for a reboot (unattended-upgrades among them).
+# Exists when a reboot is needed after updates, per Ubuntu's Server documentation:
+# https://ubuntu.com/server/docs/how-to/software/upgrade-your-release/
 REBOOT_REQUIRED = Path("/run/reboot-required")
 # Begins with no mark, so it isn't read as a Household's line (`admin check`, ops/gateway/admin).
 REBOOT_PENDING = "Reboot pending: the server waits for a reboot to apply updates"
