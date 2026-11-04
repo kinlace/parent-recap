@@ -69,6 +69,8 @@ class FakeBifrost:
         self.keys = [dict(k) for k in keys]
         self.logs = [dict(e) for e in logs]
         self.log_page = log_page
+        # Whether a page of the request log says how many requests there are in all.
+        self.log_total = True
         self.down = down
         self.made: list[dict] = []
         self.changed: list[tuple[str, dict]] = []
@@ -83,10 +85,12 @@ class FakeBifrost:
             start = datetime.fromisoformat(query["start_time"])
             logs = sorted((e for e in self.logs
                            if datetime.fromisoformat(e["timestamp"]) >= start),
-                          key=lambda e: datetime.fromisoformat(e["timestamp"]), reverse=True)
+                          key=lambda e: datetime.fromisoformat(e["timestamp"]),
+                          reverse=query["order"] == "desc")
             limit, offset = min(int(query["limit"]), self.log_page), int(query["offset"])
-            return {"logs": logs[offset:offset + limit],
-                    "pagination": {"limit": limit, "offset": offset, "total_count": len(logs)},
+            pagination = {"limit": limit, "offset": offset,
+                          **({"total_count": len(logs)} if self.log_total else {})}
+            return {"logs": logs[offset:offset + limit], "pagination": pagination,
                     "stats": {"total_requests": len(logs)}}
         if method == "PUT":
             key_id = path.rsplit("/", 1)[1]
@@ -285,8 +289,31 @@ def test_keys_reads_the_request_log_page_by_page_over_its_retention(server, caps
     assert "30 days $0.33" in capsys.readouterr().out
     queries = server.bifrost.log_queries
     assert [q["offset"] for q in queries] == ["0", "2", "4"]
-    # Bifrost keeps 90 days of requests (config.json's log_retention_days).
+    # Bifrost keeps 90 days of requests (config.json's log_retention_days). Oldest first, so a
+    # request logged while it reads doesn't shift a page and get counted twice.
     assert {q["start_time"] for q in queries} == {"2026-08-06T00:00:00Z"}
+    assert {q["order"] for q in queries} == {"asc"}
+
+
+def test_without_a_total_the_request_log_is_read_until_an_empty_page(server, capsys):
+    # This month has 4 requests: Bifrost's page of 3 is shorter than the 1000 asked for.
+    server.bifrost.log_page, server.bifrost.log_total = 3, False
+    assert server.admin("cost") == 0
+    assert "  total  $0.08" in capsys.readouterr().out
+    assert [q["offset"] for q in server.bifrost.log_queries] == ["0", "3", "4"]
+
+
+def test_cost_without_the_key_list_says_so(server, capsys):
+    bifrost = server.bifrost
+
+    def no_keys(path: str, body: dict | None = None, method: str | None = None) -> dict:
+        if path.startswith("/api/governance"):
+            raise urllib.error.HTTPError(path, 401, "Unauthorized", None, io.BytesIO(b"{}"))
+        return bifrost(path, body, method)
+    server.bifrost = no_keys
+    assert server.admin("cost") == 1
+    err = capsys.readouterr().err
+    assert "Gateway Keys" in err and "401" in err
 
 
 def test_keys_without_the_request_log_still_lists_the_keys_and_says_why(server, capsys):
@@ -319,9 +346,16 @@ def test_cost_prints_this_month_s_spend_per_key_and_the_total(server, capsys):
 
 
 def test_cost_without_the_request_log_says_so(server, capsys):
-    server.bifrost.down = True
+    bifrost = server.bifrost
+
+    def no_logs(path: str, body: dict | None = None, method: str | None = None) -> dict:
+        if path.startswith("/api/logs"):
+            raise urllib.error.URLError("connection refused")
+        return bifrost(path, body, method)
+    server.bifrost = no_logs
     assert server.admin("cost") == 1
-    assert "request log" in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert "request log" in captured.err and captured.out == ""
 
 
 def test_cost_takes_no_arguments(server, capsys):
