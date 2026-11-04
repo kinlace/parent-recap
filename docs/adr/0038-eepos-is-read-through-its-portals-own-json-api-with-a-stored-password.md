@@ -12,7 +12,7 @@ Music and art schools in Finland run on Eepos, as sports clubs run on MyClub (#7
 ## Consequences
 
 - The API is unofficial and undocumented: Eepos can change it any time. When an answer isn't what the portal gave before, the Source says Eepos "changed" on the Brief's coverage line, the rest of the Brief still goes out, and `doctor` says the same.
-- What a wrong password returns wasn't captured; any 4xx answer to the sign-in but 404 and 429, or an answer without `success: true`, is taken as one.
+- A wrong username or password is answered HTTP 400 with `{"error": "loginFailed"}` (tried on emo.eepos.fi on 2026-11-04 with a made-up username), and only that is taken as one. Any other answer to the sign-in without `success: true` is taken as the portal having changed, so a changed login API never tells the family their password is wrong.
 - The portal's script has a `newLoginPage` switch that sends sign-in to `/auth/login`, and bundles a Supabase-style auth client: Eepos may move to a new sign-in, and the password flow could change or go with it. Then this ADR is revisited.
 - A Hosted Household's Eepos password is held on the maintainers' server as its Wilma password is, and SECURITY.md says so.
-- Until the hosted sign-up has an Eepos step, the hosted Brief's last line lists Eepos among the Sources the hosted version doesn't read, for a Household without it.
+- The hosted Brief's last line doesn't name Eepos among the Sources the hosted version doesn't read: a Hosted Household can have it, set up by the maintainers until the hosted sign-up has an Eepos step.

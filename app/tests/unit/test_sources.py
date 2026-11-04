@@ -54,11 +54,11 @@ def test_the_hosted_version_never_reads_whatsapp(system):
 
 
 @pytest.mark.parametrize("profile", [MACOS, WINDOWS, LINUX], ids=["macos", "windows", "linux"])
-def test_a_hosted_household_can_t_have_whatsapp_gmail_or_eepos_wherever_it_s_asked(system, profile):
+def test_a_hosted_household_can_t_have_whatsapp_or_gmail_wherever_it_s_asked(system, profile):
     system.profile = profile  # ADR 0029: no WhatsApp on its server; ADR 0031: no Gmail step
-    # #755: nor an Eepos step yet, though the maintainers can add an Eepos sign-in by hand
+    # #755: Eepos has no sign-up step yet, but the maintainers can add its sign-in, so it's not here
 
-    assert sources.not_hosted() == [sources.WHATSAPP, sources.GMAIL, sources.EEPOS]
+    assert sources.not_hosted() == [sources.WHATSAPP, sources.GMAIL]
 
 
 def test_a_source_is_found_by_its_name_and_any_other_name_is_its_own_label():

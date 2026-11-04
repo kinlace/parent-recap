@@ -484,7 +484,7 @@ class Eepos(SourceFake):
         if (method, path) == ("POST", "auth/login"):
             body = k.get("json") or {}
             if portal.accounts.get(body.get("username")) != body.get("password") or not body.get("password"):
-                return _response(401, json.dumps({"error": "loginFailed"}))
+                return _response(400, json.dumps({"error": "loginFailed"}))  # as emo.eepos.fi does
             cookie = tokens.token_hex(8)
             self._cookies[cookie] = (school, body["username"])
             session.cookies.set("eepos_session", cookie, domain=parts.hostname)

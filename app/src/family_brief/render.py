@@ -93,10 +93,7 @@ def _coverage_note(coverage: dict[str, dict], t: BriefText, hosted: bool) -> str
     if missed:
         note += "\n" + t.may_be_incomplete.format(missed=t.missed_sep.join(missed))
     if hosted and (not_read := [s.name for s in source_registry.not_hosted() if s.name not in coverage]):
-        names = [source_name(s) for s in not_read]
-        # "WhatsApp, Gmail and Eepos": the list's separator between all but the last two.
-        listed = t.sources_sep.join([t.missed_sep.join(names[:-1]), names[-1]] if len(names) > 2 else names)
-        note += "\n" + t.not_hosted(len(not_read), sources=listed)
+        note += "\n" + t.not_hosted(len(not_read), sources=t.sources_sep.join(map(source_name, not_read)))
     return note
 
 

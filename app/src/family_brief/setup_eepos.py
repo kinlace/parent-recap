@@ -24,7 +24,7 @@ import yaml
 from . import install_record
 from .collectors import eepos
 from .config import Config, EeposSignin
-from .setup_report import program
+from .setup_report import PLAIN_TERMINAL, keychain_failure, program
 from .setup_save import _write_private
 from .system import secrets
 
@@ -66,6 +66,11 @@ def add(path: Path, school_given: str, username: str) -> tuple[str, str | None, 
     if not username:
         return "no-username", "Run it again with the guardian's Eepos username: --username NAME", {}
     retry = again(school, username)
+    if not secrets.reachable():  # macOS in tmux or over SSH, where its prompt never shows
+        return "keychain-not-reachable", (
+            "macOS doesn't let Parent Recap keep the password in the Keychain from inside tmux or "
+            f"SSH, and shows no prompt there, so nothing was asked or saved. Run this again "
+            f"{PLAIN_TERMINAL}: {retry}"), {}
 
     # On stderr: the step's one line of JSON is all it prints on stdout.
     print(f"Type the Eepos password of {username} at {eepos.address(school)} "
@@ -100,6 +105,11 @@ def add(path: Path, school_given: str, username: str) -> tuple[str, str | None, 
     try:
         secrets.put(eepos.secret_name(school, username), password)
     except secrets.SecretsError as e:
+        result, extra = keychain_failure(e)
+        if result == "keychain-not-reachable":
+            return result, ("The sign-in works, but macOS doesn't let Parent Recap keep its "
+                            f"password in the Keychain from inside tmux or SSH. Run this again "
+                            f"{PLAIN_TERMINAL}: {retry}"), extra
         return "not-stored", f"The sign-in works, but the {secrets.STORE} didn't take its password: {e}", {}
     install_record.add("keychain", eepos.secret_name(school, username))
     try:
