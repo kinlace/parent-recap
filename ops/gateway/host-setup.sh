@@ -14,7 +14,7 @@ export DEBIAN_FRONTEND=noninteractive
 # ── Packages
 apt-get update -q
 apt-get upgrade -y -q
-apt-get install -y -q unattended-upgrades iptables-persistent caddy
+apt-get install -y -q unattended-upgrades iptables-persistent caddy git
 systemctl enable --now unattended-upgrades
 
 # ── SSH: keys only

@@ -6,7 +6,9 @@
 The tasks that touch a Household run the shared program (ADR 0035) as the sign-up service's user,
 as signup.sudoers lets it; the Gateway Key tasks call Bifrost's admin API on localhost, with the
 admin login read from bifrost.env, never the provider key beside it. It prints only to the
-terminal and writes no log of its own; no key's value is printed except by `key new`.
+terminal and writes no log of its own; no key's value is printed except by `key new`. `deploy`
+(ADR 0036) fetches a commit of the public repo and runs that commit's gateway-setup.sh with it,
+and notes each deploy in its record, which `households` reads to say which commit runs.
 
 Python's standard library only, so it runs on the host's own python3.
 """
@@ -16,13 +18,18 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, NoReturn
+from zoneinfo import ZoneInfo
 
 USAGE = """\
 usage: sudo admin <task> [arguments]
@@ -37,6 +44,7 @@ usage: sudo admin <task> [arguments]
   key on NAME-OR-ID                          turn a Gateway Key back on
   find ADDRESS                               which Households have this Recipient
   remove ph-XXXXXXXX                         remove a Hosted Household with everything of it
+  deploy vX.Y.Z|main|COMMIT [--anyway]       fetch that commit of the repo and install it all
 
 Every task needs root. ops/gateway/README.md says more of each."""
 
@@ -73,6 +81,16 @@ class Paths:
     homes: Path = Path("/home")
     store: Path = Path("/var/lib/parent-recap-signup/signup")
     bifrost_url: str = "http://127.0.0.1:8080"
+    # `deploy` (ADR 0036): the public repo, cloned once and fetched on each deploy; each deployed
+    # commit's checkout, whose ops/gateway is installed; the record of every deploy; and the
+    # Household whose evening run checks a deploy, set once on the server.
+    repo_url: str = "https://github.com/kinlace/parent-recap.git"
+    github_api: str = "https://api.github.com/repos/kinlace/parent-recap"
+    repo: Path = Path("/var/lib/parent-recap-deploy/repo.git")
+    record: Path = Path("/var/lib/parent-recap-deploy/deploys.json")
+    sources: Path = Path("/usr/local/lib/parent-recap-deploy")
+    deploy_env: Path = Path("/etc/parent-recap-deploy/deploy.env")
+    shared: Path = Path("/usr/local/lib/parent-recap")
 
 
 class Usage(Exception):
@@ -82,7 +100,8 @@ class Usage(Exception):
 def main(argv: list[str], paths: Paths | None = None,
          is_root: Callable[[], bool] = lambda: os.geteuid() == 0,
          exec_as: Callable[[list[str], dict], int] | None = None,
-         fetch: Callable[..., dict] | None = None, today: str | None = None) -> int:
+         fetch: Callable[..., dict] | None = None, today: str | None = None,
+         edge: Edge | None = None) -> int:
     paths = paths or Paths()
     exec_as = exec_as or _exec
     if not is_root():
@@ -101,7 +120,10 @@ def main(argv: list[str], paths: Paths | None = None,
             return exec_as(_as_service(paths, [], "signup", "invite", "--url",
                                        f"https://{host}", *args), _clean_env())
         if task == "households":
+            print(_runs(paths), flush=True)
             return exec_as(_as_service(paths, [], "signup", "status", *args), _clean_env())
+        if task == "deploy":
+            return _deploy(paths, args, edge or Edge())
         if task == "remove":
             if len(args) != 1:
                 raise Usage("remove ph-XXXXXXXX")
@@ -188,6 +210,354 @@ def _find(paths: Paths, address: str) -> int:
         print(f"no Household has {address} among its Recipients", file=sys.stderr)
         return 1
     return 0
+
+
+# ---------------------------------------------------------------- deploy (ADR 0036)
+
+RELEASE_TAG = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
+COMMIT = re.compile(r"[0-9a-f]{7,40}")
+SHORT = 12  # a deploy's folders are named by its commit's first 12 hex digits
+# households.json's evening times are the Households' own, which the sign-up makes Helsinki's.
+ZONE = "Europe/Helsinki"
+SOON = timedelta(minutes=30)
+EVENING_JOB = "parent-recap-daily.service"
+JOBS = (EVENING_JOB, "parent-recap-weekend-events.service")
+CHECK_MINUTES = 20  # how long the check Household's evening run is waited for
+# A `test` check skipped because the commit changed only docs counts as passed, as for main's
+# ruleset (tests.yml).
+PASSED = ("success", "skipped")
+HEALTH = (("Bifrost", 8080), ("the Brief relay", 8081), ("the sign-up service", 8082))
+DEPLOY_USAGE = "deploy vX.Y.Z|main|COMMIT [--anyway]"
+
+
+class Refused(Exception):
+    """A deploy refused before it changed anything."""
+
+
+def _system(argv: list[str], capture: bool = False,
+            env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    # From /, as _exec: a Household's or the service's user can't read a maintainer's folder.
+    return subprocess.run(argv, capture_output=capture, text=True, cwd="/",
+                          env={**_clean_env(), **(env or {})})
+
+
+def _github(url: str) -> dict:
+    """GitHub's public API, without a login: the server holds no GitHub credentials."""
+    request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
+                                                   "User-Agent": "parent-recap-admin"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read())
+
+
+def _http_status(url: str) -> int:
+    try:
+        with urllib.request.urlopen(url, timeout=15) as response:
+            return response.status
+    except urllib.error.HTTPError as e:
+        return e.code
+    except OSError:
+        return 0
+
+
+@dataclass
+class Edge:
+    """What `deploy` reaches outside this process, so a test can fake it: commands (git aside,
+    which runs on the repo for real), GitHub's API, an address's HTTP status and the clock."""
+    system: Callable[..., subprocess.CompletedProcess] = _system
+    github: Callable[[str], dict] = _github
+    http_status: Callable[[str], int] = _http_status
+    now: Callable[[], datetime] = lambda: datetime.now(UTC)
+    monotonic: Callable[[], float] = time.monotonic
+    sleep: Callable[[float], None] = time.sleep
+
+
+def _deploy(paths: Paths, args: list[str], edge: Edge) -> int:
+    anyway = "--anyway" in args
+    refs = [a for a in args if a != "--anyway"]
+    if len(refs) != 1 or refs[0].startswith("-"):
+        raise Usage(DEPLOY_USAGE)
+    try:
+        host = _env(paths.signup_env).get("GATEWAY_HOST")
+        if not host:
+            raise Refused(f"GATEWAY_HOST is missing from {paths.signup_env}: the server's first "
+                          "install is gateway-setup.sh's (README \"Building the server\")")
+        commit, tag = _resolve(paths, refs[0])
+        short = commit[:SHORT]
+        if tag is None:
+            _test_passed(paths, commit, edge)
+        households = _households(paths)
+        check = _check_household(paths, households)
+        _evening_is_quiet(paths, households, edge, anyway)
+        source = _checkout(paths, commit)
+    except Refused as e:
+        print(f"not deployed, nothing changed: {e}", file=sys.stderr)
+        return 1
+
+    print(f"deploying {short} ({tag or 'unreleased, a commit on main'}) from {source}",
+          flush=True)
+    setup = edge.system(["bash", str(source / "ops" / "gateway" / "gateway-setup.sh")],
+                        env={"GATEWAY_HOST": host, "PARENT_RECAP_RELEASE": str(source),
+                             "PARENT_RECAP_DEPLOY": short})
+    if setup.returncode != 0:
+        print(f"❌ gateway-setup.sh of {short} failed (above), so this deploy isn't recorded. "
+              f"{_runs(paths)}. README \"Upgrade, check, switch back\" says how to switch back.",
+              file=sys.stderr)
+        return 1
+    _record(paths, {"commit": commit, "tag": tag or "unreleased",
+                    "at": edge.now().astimezone(UTC).isoformat(timespec="seconds")})
+    print(f"recorded: {_runs(paths)}", flush=True)
+
+    ok = _healthy(host, edge)
+    ok = (_evening_run(paths, check, edge) if check else _no_check()) and ok
+    if not ok:
+        print(f"\n❌ {short} is deployed but a check failed (above): switch back as README "
+              "\"Upgrade, check, switch back\" says", file=sys.stderr)
+        return 1
+    print(f"\n✅ {short} is deployed and checked")
+    return 0
+
+
+def _git(paths: Paths, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", f"--git-dir={paths.repo}", *args], capture_output=True,
+                          text=True, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+
+
+def _why_not(r: subprocess.CompletedProcess) -> str:
+    return (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
+
+
+def _resolve(paths: Paths, ref: str) -> tuple[str, str | None]:
+    """The commit `ref` names and the release tag on it, if any: a release tag, main, or a
+    commit on main by its hash. The repo is fetched first, its main and its tags only, so a
+    commit only on another branch is unknown here."""
+    if not (ref == "main" or RELEASE_TAG.fullmatch(ref) or COMMIT.fullmatch(ref)):
+        raise Refused(f"{ref} is neither a release tag (vX.Y.Z), main nor a commit's hash: "
+                      "nothing else is deployed")
+    _fetch(paths)
+    if RELEASE_TAG.fullmatch(ref):
+        commit = _rev(paths, f"refs/tags/{ref}")
+        if not commit:
+            raise Refused(f"the repo has no tag {ref}")
+        return commit, ref
+    commit = _rev(paths, "refs/heads/main" if ref == "main" else ref)
+    if not commit:
+        raise Refused(f"no commit on main is {ref}")
+    if ref != "main" and _git(paths, "merge-base", "--is-ancestor", commit,
+                              "refs/heads/main").returncode != 0:
+        raise Refused(f"{ref} is no commit on main: only main's commits and release tags are "
+                      "deployed")
+    tags = [t for t in _git(paths, "tag", "--points-at", commit).stdout.split()
+            if RELEASE_TAG.fullmatch(t)]
+    return commit, max(tags, key=lambda t: tuple(map(int, RELEASE_TAG.fullmatch(t).groups())),
+                       default=None)
+
+
+def _fetch(paths: Paths) -> None:
+    if shutil.which("git") is None:
+        raise Refused("git isn't installed: sudo apt-get install git")
+    if not (paths.repo / "HEAD").exists():
+        paths.repo.parent.mkdir(parents=True, exist_ok=True)
+        init = subprocess.run(["git", "init", "--quiet", "--bare", str(paths.repo)],
+                              capture_output=True, text=True)
+        if init.returncode != 0:
+            raise Refused(f"couldn't make {paths.repo}: {_why_not(init)}")
+    fetched = _git(paths, "fetch", "--quiet", "--prune", "--no-auto-gc", paths.repo_url,
+                   "+refs/heads/main:refs/heads/main", "+refs/tags/*:refs/tags/*")
+    if fetched.returncode != 0:
+        raise Refused(f"couldn't fetch {paths.repo_url}: {_why_not(fetched)}")
+
+
+def _rev(paths: Paths, name: str) -> str | None:
+    r = _git(paths, "rev-parse", "--verify", "--quiet", f"{name}^{{commit}}")
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def _test_passed(paths: Paths, commit: str, edge: Edge) -> None:
+    """An unreleased commit's `test` check passed on GitHub; a release tag's ran before it was
+    published (release.yml)."""
+    short = commit[:SHORT]
+    url = f"{paths.github_api}/commits/{commit}/check-runs?check_name=test&filter=latest"
+    try:
+        runs = edge.github(url).get("check_runs") or []
+    except (OSError, ValueError, AttributeError) as e:
+        raise Refused(f"couldn't ask GitHub whether {short}'s test check passed: {e}") from e
+    ends = {r.get("conclusion") or "still running" for r in runs
+            if isinstance(r, dict) and r.get("name") == "test"}
+    if not ends:
+        raise Refused(f"{short} has no test check on GitHub yet: an unreleased commit is "
+                      "deployed only once its test check passed")
+    if not ends <= set(PASSED):
+        raise Refused(f"{short}'s test check on GitHub is {', '.join(sorted(ends))}: an "
+                      "unreleased commit is deployed only once it passed")
+
+
+def _households(paths: Paths) -> list[tuple[str, str]]:
+    """Each Household's label and evening time from the sign-up's households.json."""
+    path = paths.store / "households.json"
+    if not path.exists():
+        return []
+    try:
+        listed = json.loads(path.read_text(encoding="utf-8"))
+        return [(str(h["user"]), str(h["evening"])) for h in listed
+                if LABEL.fullmatch(str(h["user"]))]
+    except (OSError, ValueError, TypeError, KeyError) as e:
+        raise Refused(f"couldn't read {path}: {e}") from e
+
+
+def _check_household(paths: Paths, households: list[tuple[str, str]]) -> str | None:
+    """The Household whose evening run checks each deploy: CHECK_HOUSEHOLD in deploy.env, set
+    once on the server. A server without Households yet needs none."""
+    if not households:
+        return None
+    label = _env(paths.deploy_env).get("CHECK_HOUSEHOLD", "").strip()
+    how = (f"name the Household whose evening run checks each deploy, once: "
+           f"sudo mkdir -p {paths.deploy_env.parent} && "
+           f"echo CHECK_HOUSEHOLD=ph-… | sudo tee {paths.deploy_env}")
+    if not label:
+        raise Refused(how)
+    if label not in {user for user, _ in households}:
+        raise Refused(f"CHECK_HOUSEHOLD {label} is no Household's: {how}")
+    return label
+
+
+def _evening_is_quiet(paths: Paths, households: list[tuple[str, str]], edge: Edge,
+                      anyway: bool) -> None:
+    """No evening run is due within SOON or still running, and `admin households` marks no
+    Household; --anyway deploys regardless, such as the fix for what it marks."""
+    if not households:
+        return
+    now = edge.now().astimezone(ZoneInfo(ZONE))
+    busy = []
+    for user, evening in households:
+        if _due_soon(evening, now):
+            busy.append(f"{user}'s evening run is due at {evening}")
+        elif any(_unit(edge, user, job).get("ActiveState") in ("active", "activating")
+                 for job in JOBS):
+            busy.append(f"{user}'s evening run is still running")
+    if anyway:
+        if busy:
+            print("⚠️ deploying anyway, though " + "; ".join(busy), flush=True)
+        return
+    if busy:
+        raise Refused("; ".join(busy) + ". Deploy once the evening runs are over, or give "
+                      "--anyway")
+    print("every Household's status first (sudo admin households):", flush=True)
+    if edge.system(_as_service(paths, [], "signup", "status")).returncode != 0:
+        raise Refused("admin households marks a Household (above). To deploy the fix for that, "
+                      "give --anyway")
+
+
+def _due_soon(evening: str, now: datetime) -> bool:
+    try:
+        hour, minute = map(int, evening.split(":"))
+        due = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    except ValueError:
+        return True  # a time it can't read might be any
+    return (due - now) % timedelta(days=1) <= SOON
+
+
+def _unit(edge: Edge, user: str, unit: str) -> dict[str, str]:
+    """A Household's systemd user unit's properties, read as root through its user manager."""
+    r = edge.system(["systemctl", "--user", "-M", f"{user}@", "show", "--property=ActiveState,"
+                     "Result,ExecMainStatus,ExecMainStartTimestampMonotonic", unit], capture=True)
+    return dict(line.split("=", 1) for line in (r.stdout or "").splitlines() if "=" in line)
+
+
+def _checkout(paths: Paths, commit: str) -> Path:
+    """The commit's whole tree, ops/ included, in its own folder: the release zip leaves ops/ out
+    (.gitattributes), so this is a checkout, not an archive."""
+    source = paths.sources / commit[:SHORT]
+    incoming = paths.sources / f"{commit[:SHORT]}.incoming"
+    paths.sources.mkdir(parents=True, exist_ok=True)
+    for old in (incoming, source):
+        shutil.rmtree(old, ignore_errors=True)
+    steps = (["git", "clone", "--quiet", "--no-checkout", str(paths.repo), str(incoming)],
+             ["git", "-C", str(incoming), "-c", "advice.detachedHead=false", "checkout",
+              "--quiet", "--detach", commit])
+    for step in steps:
+        r = subprocess.run(step, capture_output=True, text=True)
+        if r.returncode != 0:
+            shutil.rmtree(incoming, ignore_errors=True)
+            raise Refused(f"couldn't check out {commit[:SHORT]}: {_why_not(r)}")
+    incoming.rename(source)
+    return source
+
+
+def _deploys(paths: Paths) -> list[dict]:
+    try:
+        listed = json.loads(paths.record.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [d for d in listed if isinstance(d, dict)] if isinstance(listed, list) else []
+
+
+def _record(paths: Paths, deploy: dict) -> None:
+    paths.record.parent.mkdir(parents=True, exist_ok=True)
+    incoming = paths.record.with_suffix(".incoming")
+    incoming.write_text(json.dumps([*_deploys(paths), deploy], indent=1) + "\n",
+                        encoding="utf-8")
+    os.replace(incoming, paths.record)
+
+
+def _runs(paths: Paths) -> str:
+    """Which deploy the shared program's `current` is, by its record."""
+    try:
+        name = os.readlink(paths.shared / "current")
+    except OSError:
+        return "the shared program isn't installed"
+    mine = [d for d in _deploys(paths) if str(d.get("commit", ""))[:SHORT] == name]
+    if not mine:
+        return f"the server runs {name}, deployed before admin deploy recorded deploys"
+    last = mine[-1]
+    what = ("unreleased, a commit on main, until a release tag replaces it"
+            if last.get("tag") == "unreleased" else last.get("tag"))
+    return f"the server runs {last.get('commit')} ({what}), deployed {last.get('at')}"
+
+
+def _healthy(host: str, edge: Edge) -> bool:
+    ok = True
+    for name, port in HEALTH:
+        status = edge.http_status(f"http://127.0.0.1:{port}/health")
+        print(f"{'✅' if status == 200 else '❌'} {name} on /health: "
+              f"{status or 'no answer'}", flush=True)
+        ok = ok and status == 200
+    status = edge.http_status(f"https://{host}/")
+    print(f"{'✅' if status == 404 else '❌'} https://{host}/ outside its routes: "
+          f"{status or 'no answer'} (404 expected)", flush=True)
+    return ok and status == 404
+
+
+def _no_check() -> bool:
+    print("no Household yet, so no evening run checked this deploy")
+    return True
+
+
+def _evening_run(paths: Paths, user: str, edge: Edge) -> bool:
+    """Runs `user`'s evening run as its timer would, waits for it to end and says how."""
+    before = _unit(edge, user, EVENING_JOB).get("ExecMainStartTimestampMonotonic", "")
+    print(f"running {user}'s evening run, which sends its Brief to its Recipients...", flush=True)
+    started = edge.system(["sudo", "-u", user, "-H", "--", paths.program, "schedule", "run-now"])
+    if started.returncode != 0:
+        print(f"❌ {user}'s evening run didn't start (above)", flush=True)
+        return False
+    deadline = edge.monotonic() + CHECK_MINUTES * 60
+    while True:
+        unit = _unit(edge, user, EVENING_JOB)
+        began = unit.get("ExecMainStartTimestampMonotonic", "")
+        if began not in ("", "0", before) and unit.get("ActiveState") in ("inactive", "failed"):
+            break
+        if edge.monotonic() >= deadline:
+            print(f"⚠️ {user}'s evening run hasn't ended after {CHECK_MINUTES} minutes: read "
+                  "sudo admin households once it has", flush=True)
+            return False
+        edge.sleep(5)
+    if unit.get("Result") == "success":
+        print(f"✅ {user}'s evening run ended ok", flush=True)
+        return True
+    print(f"❌ {user}'s evening run failed ({unit.get('Result')}, exit "
+          f"{unit.get('ExecMainStatus')}): its log is ~{user}/ParentRecap/logs/run-stderr.log",
+          flush=True)
+    return False
 
 
 def _notes(path: Path) -> dict[str, str]:

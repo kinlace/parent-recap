@@ -44,7 +44,7 @@ Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`).
 8. **Spend limit.** In the Anthropic Console, create a workspace for the gateway, put the gateway's API key in it and set that workspace's monthly spend limit to $10 (Settings > Workspaces > Spend limits). The default workspace can't be limited.
 9. **Record it.** Keep the provider, region, IP, hostname and SSH logins in the maintainers' private notes, not here.
 10. **Hosted Households** (ADR 0029), once the gateway answers. All on the server, as in "Hosted Households" below:
-    - **The program and the service.** Run step 7 again with `PARENT_RECAP_RELEASE` (see "Install it"). Check that `systemctl status parent-recap-signup` is active and an unknown `https://<hostname>/join/x` gets 404. Each later deploy upgrades every Household: check one after it (see "Upgrade, check, switch back").
+    - **The program and the service.** Run step 7 again with `PARENT_RECAP_RELEASE` (see "Install it"). Check that `systemctl status parent-recap-signup` is active and an unknown `https://<hostname>/join/x` gets 404. Each later deploy is `sudo admin deploy vX.Y.Z` on the server, which upgrades every Household and checks one (see "Upgrade, check, switch back").
     - **Invite.** `sudo admin invite` prints an Invite Link (see "Invite a Household"). Sign up your own Household with it first: it is the first to sign in to Wilma from the server.
     - **Status.** `sudo admin households` lists every Household's last run and checks (see "See every Household's status").
     - **Remove.** `sudo admin remove ph-…` removes a Household with its data (see "Remove a Household").
@@ -201,21 +201,33 @@ ssh -t ubuntu@<ip> "sudo GATEWAY_HOST=<hostname> PARENT_RECAP_RELEASE=/tmp/paren
 
 It installs the program once for the whole server (ADR 0035): the release's `install.sh`, run as root, puts it in `/usr/local/lib/parent-recap/<version>` with its pinned Python and Node (ADR 0011), and the wilma CLI (ADR 0008) goes beside them; it is owned by root and readable by all. `/usr/local/lib/parent-recap/current` then points at that release, and `/usr/local/lib/parent-recap/bin/parent-recap` (`parent-recap` here) runs the program through it. The sign-up service and every Household run that command, each as its own user, and a Household's evening job runs `current`'s Python, so whatever `current` points at is what runs next. A Household's user holds only its own data: its config, the wilma CLI's sign-in, the Gateway Key file, the archive and the logs, all in its home. The script then makes the service's user `parent-recap-signup` (home `/var/lib/parent-recap-signup`); installs the `household-user` helper in `/usr/local/lib/parent-recap-signup`, the sudoers file and `/etc/parent-recap-signup/signup.env`; and starts the `parent-recap-signup` unit (`parent-recap signup serve`) on `127.0.0.1:8082`, which reads Bifrost's admin login from `bifrost.env`.
 
-**Upgrade, check, switch back.** Run the same two lines with a newer release. The new version is installed beside the one in use, then `current` points at it and the service restarts: every Household runs the new version from its next run, its evening Brief included. The script says which version `current` pointed at before. A bad release so breaks every Household's next Brief at once, so after each deploy, before 21:00, run your own Household's evening run and read how it ended:
+**Upgrade, check, switch back.** Once the server is built, every deploy is one command on the server (ADR 0036), normally a release tag:
 
 ```sh
-cd / && sudo -u ph-30d2afe0 -H -- /usr/local/lib/parent-recap/bin/parent-recap schedule run-now
-sudo admin households    # once it has ended, a minute or two
+sudo admin deploy v0.12.0
 ```
 
-`run-now` starts the evening job itself, as its timer would, and sends that Household's Brief to its Recipients. `admin households` should show its last run a minute ago, `ok`, and no ❌ among its checks; its logs are in `~ph-…/ParentRecap/logs/run-stderr.log`. If it failed, switch every Household back to the release before, which is still on disk (`ls /usr/local/lib/parent-recap` lists them), and restart the service on it:
+The server fetches that commit of the public repo itself (`github.com` over HTTPS, into `/var/lib/parent-recap-deploy/repo.git`); nothing is copied from your machine. When a fix can't wait for a release, deploy `main`, or a commit on `main` by its hash, instead: `sudo admin deploy main`. Anything else, such as another branch or a hash `main` doesn't have, is refused, and so is an unreleased commit whose `test` check hasn't passed on GitHub (asked of GitHub's public API, without a login; a `test` skipped because the commit changed only docs counts as passed, as it does for merging). A refused deploy changes nothing.
+
+It is refused too while any Household's evening run is due within 30 minutes or still running, and when `admin households`, which it runs first, marks a Household. `--anyway` deploys regardless, for the fix for exactly what it marks.
+
+It checks out the whole commit, `ops/` included, into `/usr/local/lib/parent-recap-deploy/<commit>` (its first 12 hex digits), and runs that commit's `gateway-setup.sh` with it: Bifrost, the Brief relay, `admin` itself, the units, the Caddyfile and the sudoers file come from that commit, and the program is installed beside the one in use, in `/usr/local/lib/parent-recap/<commit>`. `current` then points at it and the services restart: every Household runs it from its next run, its evening Brief included. Deploys are kept by commit, not by version, since an unreleased commit carries the version of the release before it: the deploy before stays on disk, to switch back to. Each deploy is recorded in `/var/lib/parent-recap-deploy/deploys.json` (its commit, its tag or `unreleased`, the time), and `admin households` first says which commit runs, marked unreleased until a release tag replaces it.
+
+A bad deploy breaks every Household's next Brief at once, so it then checks itself: each service's `/health`, that `https://<hostname>/` still answers 404 outside its routes, and one Household's evening run, which it starts as the evening job's timer would (sending that Household's Brief to its Recipients), waits for, and reports how it ended. That Household is named once on the server; until it is, a server with Households refuses to deploy:
 
 ```sh
-sudo ln -sfn <previous version> /usr/local/lib/parent-recap/current
+sudo mkdir -p /etc/parent-recap-deploy
+echo CHECK_HOUSEHOLD=ph-30d2afe0 | sudo tee /etc/parent-recap-deploy/deploy.env
+```
+
+A failed check exits 1 and says so; the run's logs are in `~ph-…/ParentRecap/logs/run-stderr.log`, and `sudo admin households` shows every Household. To switch back, deploy the commit before it again, which the record names (`sudo cat /var/lib/parent-recap-deploy/deploys.json`), with `--anyway` if `admin households` marks the Household the bad deploy broke: its folders are still on disk, and it is installed again in place. Or, for the program alone, point `current` back at the folder before, still on disk (`ls /usr/local/lib/parent-recap` lists them), and restart the service on it:
+
+```sh
+sudo ln -sfn <previous commit or version> /usr/local/lib/parent-recap/current
 sudo systemctl restart parent-recap-signup
 ```
 
-Each deploy of a new version leaves the one before it on disk. Remove one that isn't `current` and that you won't switch back to with `sudo rm -rf /usr/local/lib/parent-recap/<version>`. Deploying the same version again updates it in place, so there is nothing to switch back to.
+Remove a deploy that isn't `current` and that you won't switch back to with `sudo rm -rf /usr/local/lib/parent-recap/<commit> /usr/local/lib/parent-recap-deploy/<commit>`. Deploying the same commit again installs it again in place, so there is nothing to switch back to.
 
 **Move a Household made before the shared program.** Until 2026-11-02 the sign-up installed the program in each Household's home (`~/ParentRecap/app` with its `runtime`, `wilma` and `bin`), and its evening job ran that copy. `admin households` and `admin remove` already work for it, through the shared program. To have it run the shared program too, on the server, with its label:
 
@@ -284,6 +296,7 @@ Every routine task is one command on the server: SSH in, then `sudo admin <task>
 | `key off NAME-OR-ID`, `key on NAME-OR-ID`    | Turns a Gateway Key off or back on (below)                                        |
 | `find ADDRESS`                               | Which Households have this Recipient (see "Find a Household")                     |
 | `remove ph-XXXXXXXX`                         | Removes a Hosted Household with everything of it (see "Remove a Household")       |
+| `deploy vX.Y.Z\|main\|COMMIT [--anyway]`     | Fetches that commit and installs it all (see "Upgrade, check, switch back")       |
 
 Run without root it refuses and says why. It prints only to the terminal and writes no log of its own, and no key's value is printed except by `key new`. `sudo` logs each command line to the system journal, as it did for the scripts `admin` replaced, so an address given to `invite` or `find` is there, and a note should stay a name. Those scripts (`keys.sh` and `new-key.sh` in `/usr/local/lib/brief-relay/`, `invite.sh`, `status.sh` and `remove.sh` in `/usr/local/lib/parent-recap-signup/`) are gone: the next run of `gateway-setup.sh` deletes them from the server.
 
@@ -338,7 +351,7 @@ sudo admin cost
 
 These are Bifrost's own figures, from its price list. What is billed is the Anthropic Console's, for the gateway's workspace, which also enforces its $10 monthly limit; `admin cost` says so.
 
-**Upgrade.** Try the new version on your own machine first (`npx -y @maximhq/bifrost --transport-version vX.Y.Z`). Then, in `gateway-setup.sh`, change `BIFROST_VERSION` and both `SHA256_*` lines (hash the binaries at `https://downloads.getmaxim.ai/bifrost/<version>/linux/<arm64|amd64>/bifrost-http`), and run step 7 again. The old version stays in `/usr/local/lib/bifrost/`; repoint the `current` symlink and restart to roll back.
+**Upgrade.** Try the new version on your own machine first (`npx -y @maximhq/bifrost --transport-version vX.Y.Z`). Then, in `gateway-setup.sh`, change `BIFROST_VERSION` and both `SHA256_*` lines (hash the binaries at `https://downloads.getmaxim.ai/bifrost/<version>/linux/<arm64|amd64>/bifrost-http`), land that on `main`, and deploy it on the server with `sudo admin deploy main` (once its `test` check passed) or with the next release's tag (see "Upgrade, check, switch back"). The old version stays in `/usr/local/lib/bifrost/`; deploy the commit before to roll back, or repoint the `current` symlink and restart.
 
 **Rotate the provider key.** Create the new key in the Console first (in the gateway's workspace, whose monthly limit is the gateway's ceiling), then:
 
@@ -349,6 +362,6 @@ ssh -t ubuntu@<ip> "sudo bash /tmp/set-provider-key.sh"
 
 Make a test call, then delete the old key in the Console.
 
-**Change the model.** Edit the `aliases` entry in `config.json` and run step 7 again.
+**Change the model.** Edit the `aliases` entry in `config.json`, land it on `main`, and deploy it with `sudo admin deploy` (see "Upgrade, check, switch back").
 
 **Check it is up.** The assistant's login can read logs and status: `journalctl -u bifrost -u brief-relay -u parent-recap-signup -u caddy`, `systemctl status bifrost brief-relay parent-recap-signup`.

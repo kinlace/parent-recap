@@ -4,6 +4,10 @@
 # service behind Caddy on any systemd Linux with Caddy and python3 already
 # installed (host-setup.sh does that on Ubuntu). Safe to run again.
 #
+# Once the server is built, `sudo admin deploy vX.Y.Z` runs it on the server
+# from the commit it fetched (README "Upgrade, check, switch back"). By hand,
+# for the first install:
+#
 #   scp -r ops/gateway <vm>:/tmp/
 #   ssh -t <vm> "sudo GATEWAY_HOST=<hostname> bash /tmp/gateway/gateway-setup.sh"
 #
@@ -94,7 +98,8 @@ systemctl restart brief-relay
 # wilma CLI goes beside them. `current` then points at that release, and
 # bin/parent-recap runs the program through it: the sign-up service now, and
 # every Hosted Household from its next run. The release `current` pointed at
-# before stays, to switch back to. Without PARENT_RECAP_RELEASE both are left as
+# before stays, to switch back to. `admin deploy` sets PARENT_RECAP_DEPLOY to the
+# commit's folder name to use in place of the version. Without PARENT_RECAP_RELEASE both are left as
 # they are, and with no service yet the Caddyfile's /join/ route answers 502.
 shared=/usr/local/lib/parent-recap
 signup_lib=/usr/local/lib/parent-recap-signup
@@ -109,7 +114,13 @@ if [ -n "${PARENT_RECAP_RELEASE:-}" ]; then
   [[ "$version" =~ ^[0-9][0-9A-Za-z.+-]*$ ]] ||
     { echo "PARENT_RECAP_RELEASE's .claude-plugin/plugin.json has no version" >&2; exit 1; }
   signup=yes
-  release=$shared/$version
+  # `admin deploy` (ADR 0036) names each deploy by its commit: an unreleased
+  # commit carries the version of the release before it, which it mustn't
+  # overwrite. By hand, a release goes under its version.
+  deploy=${PARENT_RECAP_DEPLOY:-$version}
+  [[ "$deploy" =~ ^[0-9A-Za-z][0-9A-Za-z.+-]*$ ]] ||
+    { echo "PARENT_RECAP_DEPLOY isn't a folder name" >&2; exit 1; }
+  release=$shared/$deploy
   install -d -m 0755 "$shared" "$shared/bin"
   # As root, with a home of its own for this run only, so what install.sh notes
   # for a family's uninstall, and its PATH line, go with it. Run again for the
@@ -132,10 +143,10 @@ if [ -n "${PARENT_RECAP_RELEASE:-}" ]; then
   trap - EXIT
   install -o root -g root -m 0755 "$here/parent-recap" "$shared/bin/parent-recap"
   previous=$(readlink "$shared/current" || true)
-  ln -sfn "$version" "$shared/current.incoming"
+  ln -sfn "$deploy" "$shared/current.incoming"
   mv -T "$shared/current.incoming" "$shared/current"
-  if [ -n "$previous" ] && [ "$previous" != "$version" ]; then
-    echo "the shared program is now $version, was $previous; to switch back: sudo ln -sfn $previous $shared/current"
+  if [ -n "$previous" ] && [ "$previous" != "$deploy" ]; then
+    echo "the shared program is now $deploy ($version), was $previous; to switch back: sudo ln -sfn $previous $shared/current"
   fi
 
   getent group parent-recap-households >/dev/null || groupadd --system parent-recap-households
