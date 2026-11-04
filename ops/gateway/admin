@@ -225,9 +225,7 @@ def _find(paths: Paths, address: str) -> int:
     """Each Household whose Recipients include `address`, by its label and its Invite Link's note,
     and nothing else of its config."""
     want = address.strip().lower()
-    # A Household's user can replace its config, so root follows no link out of its home.
-    configs = sorted(p for p in paths.homes.glob("ph-*/.family/config.yaml")
-                     if LABEL.fullmatch(p.parent.parent.name) and not p.is_symlink())
+    configs = _configs(paths)
     if not configs:
         print("no Household on this server", file=sys.stderr)
         return 1
@@ -261,7 +259,20 @@ def _find(paths: Paths, address: str) -> int:
     return 0
 
 
-# ---------------------------------------------------------------- deploy (ADR 0036)
+def _configs(paths: Paths) -> list[Path]:
+    """Each Household's config. A Household's user can replace its config or its `.family`
+    with a link, so root follows no link in any part of the path: its home, `.family` or the
+    config."""
+    configs = []
+    for home in sorted(paths.homes.glob("ph-*")) if paths.homes.is_dir() else []:
+        config = home / ".family" / "config.yaml"
+        if LABEL.fullmatch(home.name) and not any(
+                p.is_symlink() for p in (home, config.parent, config)) and config.is_file():
+            configs.append(config)
+    return configs
+
+
+# ── Deploy (ADR 0036)
 
 RELEASE_TAG = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
@@ -308,10 +319,27 @@ def _http_status(url: str) -> int:
         return 0
 
 
+def _uid(name: str) -> int | None:
+    import pwd  # the server's; Windows, where tests also run, has none
+    try:
+        return pwd.getpwnam(name).pw_uid
+    except KeyError:
+        return None
+
+
+def _user(uid: int) -> str | None:
+    import pwd
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return None
+
+
 @dataclass
 class Edge:
     """What `deploy` reaches outside this process, so a test can fake it: commands (git aside,
-    which runs on the repo for real), GitHub's API, an address's HTTP status and the clock."""
+    which runs on the repo for real), GitHub's API, an address's HTTP status, the clock and the
+    server's users."""
     system: Callable[..., subprocess.CompletedProcess] = _system
     github: Callable[[str], dict] = _github
     http_status: Callable[[str], int] = _http_status
@@ -320,6 +348,9 @@ class Edge:
     sleep: Callable[[float], None] = time.sleep
     free: Callable[[Path], int] = lambda path: shutil.disk_usage(path).free
     ask: Callable[[str], str] = input
+    # The uid of the user of this name, and the name of the user of this uid; None if none.
+    uid: Callable[[str], int | None] = _uid
+    user: Callable[[int], str | None] = _user
 
 
 def _deploy(paths: Paths, args: list[str], edge: Edge) -> int:
@@ -608,7 +639,7 @@ def _running_deploy(paths: Paths) -> str:
     return f"the server runs {last.get('commit')} ({what}), {_when(last)}"
 
 
-# ---------------------------------------------------------------- snapshots (#744)
+# ── Snapshots (#744)
 
 KEEP_SNAPSHOTS = 3
 # Room a deploy needs beyond its snapshot: the program it installs, with its own Python and Node.
@@ -738,15 +769,24 @@ def _inside(member: tarfile.TarInfo, dest: str) -> tarfile.TarInfo:
     return member
 
 
-def _restore(archive: Path) -> list[Path]:
+def _restore(archive: Path,
+             why_not: Callable[[Path, tarfile.TarInfo], str | None] = lambda root, top: None
+             ) -> tuple[list[Path], list[tuple[Path, str]]]:
     """Puts back each folder `archive` holds, whole: it is unpacked beside the folder first,
-    which is swapped for it only once that is complete. Returns the folders put back."""
-    put_back = []
+    which is swapped for it only once that is complete. A folder `why_not` gives a reason for,
+    given the folder and its own entry in the archive, is left as it is. Returns the folders put
+    back and those left, each with its reason."""
+    put_back, left = [], []
     with tarfile.open(archive, "r:gz") as tar:
         manifest = json.loads(tar.extractfile(MANIFEST).read())
         members = tar.getmembers()
         for i, root in enumerate(map(Path, manifest["roots"])):
             mine = [m for m in members if m.name == str(i) or m.name.startswith(f"{i}/")]
+            top = next((m for m in mine if m.name == str(i)), None)
+            reason = why_not(root, top) if top is not None else None
+            if reason:
+                left.append((root, reason))
+                continue
             staging = root.with_name(f".{root.name}.restoring")
             aside = root.with_name(f".{root.name}.before-restore")
             # A restore stopped between setting the folder aside and swapping in its copy left
@@ -769,10 +809,28 @@ def _restore(archive: Path) -> list[Path]:
                 shutil.rmtree(staging, ignore_errors=True)
             shutil.rmtree(aside, ignore_errors=True)
             put_back.append(root)
-    return put_back
+    return put_back, left
 
 
-# ---------------------------------------------------------------- deploys and rollback (#744)
+def _home_kept_out(paths: Paths, edge: Edge) -> Callable[[Path, tarfile.TarInfo], str | None]:
+    """Why a Household's home in a snapshot isn't put back: unpacked with the uid it was owned
+    by, it would be readable by whoever holds that uid now. So it is put back only while its
+    user still exists and holds that uid; a removed Household's home stays out."""
+    def why_not(root: Path, top: tarfile.TarInfo) -> str | None:
+        if root.parent != paths.homes or not LABEL.fullmatch(root.name):
+            return None
+        uid = edge.uid(root.name)
+        if uid is None:
+            return "its user no longer exists, so the Household was removed since"
+        if uid != top.uid:
+            holder = edge.user(top.uid)
+            return ("the uid it was owned by now belongs to another user" if holder else
+                    "its user's uid is no longer the one it was owned by")
+        return None
+    return why_not
+
+
+# ── Deploys and rollback (#744)
 
 SERVICES = ("bifrost", "brief-relay", "parent-recap-signup")
 TIMERS = tuple(job.replace(".service", ".timer") for job in JOBS)
@@ -918,7 +976,7 @@ def _rollback(paths: Paths, args: list[str], edge: Edge) -> int:
             if not _stop_services(edge):
                 print("❌ not every service stopped (above), so nothing was restored or switched "
                       "back", file=sys.stderr)
-            elif _restored(paths, snapshot):
+            elif _restored(paths, snapshot, edge):
                 switched = _switch(paths, host, leaving, back, edge)
                 if not switched:
                     print(f"❌ the state from {snapshot.name} is restored, but the program is "
@@ -954,7 +1012,8 @@ def _snapshot_before(paths: Paths, deploy: dict) -> Path:
 def _confirmed(leaving: dict, back: dict, snapshot: Path, edge: Edge) -> bool:
     print(f"this switches the server back from {_what(leaving)} to {_what(back)} and brings back "
           f"the state from {snapshot.name}: Bifrost's, the Brief relay's and the sign-up "
-          "service's, their config, and every Household's home. What changed since is lost: "
+          "service's, their config, and every Household's home but a removed one's. What changed "
+          "since is lost: "
           "Households that signed up since lose their line in households.json, and Briefs "
           "archived and keys made since are gone.", flush=True)
     try:
@@ -963,16 +1022,18 @@ def _confirmed(leaving: dict, back: dict, snapshot: Path, edge: Edge) -> bool:
         return False
 
 
-def _restored(paths: Paths, snapshot: Path) -> bool:
+def _restored(paths: Paths, snapshot: Path, edge: Edge) -> bool:
     try:
-        put_back = _restore(snapshot)
+        put_back, left = _restore(snapshot, _home_kept_out(paths, edge))
     except (OSError, tarfile.TarError, ValueError, KeyError) as e:
         print(f"❌ restoring {snapshot.name} failed: {e}. The folder it was at is as it was, and "
               "those before it are restored; not switched back. Run it again once that is "
               "fixed", file=sys.stderr)
         return False
     print(f"restored {snapshot.name}: " + ", ".join(map(str, put_back)), flush=True)
-    kept = sorted(set(_state_roots(paths)) - set(put_back))
+    for root, reason in left:
+        print(f"⚠️ {root.name}'s home isn't restored: {reason}", flush=True)
+    kept = sorted(set(_state_roots(paths)) - set(put_back) - {root for root, _ in left})
     if kept:
         print("⚠️ not in the snapshot, so kept as they are: " + ", ".join(map(str, kept)),
               flush=True)

@@ -20,6 +20,8 @@ GIT_ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.
            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
 # 12:00 UTC is 14:00 in Helsinki, where the evening times are.
 NOON = datetime(2026, 11, 4, 12, 0, tzinfo=UTC)
+# Who owns the files the tests make, as a snapshot records it: a Household's user here.
+OWNER = os.getuid() if hasattr(os, "getuid") else 0
 
 
 def git(repo: Path, *args: str) -> str:
@@ -72,11 +74,16 @@ class FakeEdge:
         self.questions: list[str] = []
         self.timers_on = True  # each Household's evening timers are active
         self.stop_fails = False  # systemctl can't stop one of the gateway's services
+        self.users: dict[str, int] = {}  # the server's users and their uids
 
     def edge(self) -> admin.Edge:
         return admin.Edge(system=self.system, github=self.github, http_status=self.http_status,
                           now=lambda: self.now, monotonic=lambda: self.clock, sleep=self.sleep,
-                          free=lambda path: self.free, ask=self.ask)
+                          free=lambda path: self.free, ask=self.ask, uid=self.users.get,
+                          user=self.user)
+
+    def user(self, uid: int) -> str | None:
+        return next((name for name, held in self.users.items() if held == uid), None)
 
     def ask(self, prompt: str) -> str:
         self.questions.append(prompt)
@@ -179,6 +186,7 @@ def household(deploy, label: str = "ph-30d2afe0", evening: str = "21:00",
     listed = json.loads(store.read_text()) if store.exists() else []
     listed.append({"user": label, "evening": evening, "created": "2026-11-01"})
     store.write_text(json.dumps(listed))
+    deploy.fake.users[label] = OWNER
     if check:
         deploy.server.paths.deploy_env.parent.mkdir(parents=True, exist_ok=True)
         deploy.server.paths.deploy_env.write_text(f"CHECK_HOUSEHOLD={label}\n")
