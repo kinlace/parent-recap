@@ -360,14 +360,23 @@ def test_restore_leaves_out_a_removed_household_s_home_and_says_so(deploy, capsy
 
 def test_restore_leaves_out_a_home_whose_uid_another_user_now_holds(deploy, capsys):
     a_restore_after_a_removal(deploy)
-    # Its label holds another uid now, and the one its home was owned by is another user's.
+    # Its label holds another uid now; the one its home was owned by may be another user's.
     deploy.fake.users["ph-11112222"] = OWNER + 1
     capsys.readouterr()
     assert deploy("rollback", "--restore") == 0
     assert not (deploy.server.homes / "ph-11112222").exists()
     assert (home(deploy) / "2026-11-03.md").read_text() == "Brief as it was\n"
-    assert "ph-11112222's home isn't restored: the uid it was owned by now belongs to another " \
-        "user" in capsys.readouterr().out
+    assert ("ph-11112222's home isn't restored: its user no longer holds the uid it was owned "
+            "by") in capsys.readouterr().out
+
+
+def test_a_home_whose_owner_the_snapshot_doesn_t_hold_isn_t_restored(deploy):
+    household(deploy)
+    why_not = admin._home_kept_out(deploy.server.paths, deploy.fake.edge())
+    assert why_not(deploy.server.homes / "ph-30d2afe0", None) == \
+        "the snapshot doesn't say who owned it"
+    # The services' folders aren't Households' homes, and are put back as ever.
+    assert why_not(deploy.server.root / "var" / "bifrost", None) is None
 
 
 def test_restore_answered_no_changes_nothing(deploy, capsys):

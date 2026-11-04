@@ -79,11 +79,7 @@ class FakeEdge:
     def edge(self) -> admin.Edge:
         return admin.Edge(system=self.system, github=self.github, http_status=self.http_status,
                           now=lambda: self.now, monotonic=lambda: self.clock, sleep=self.sleep,
-                          free=lambda path: self.free, ask=self.ask, uid=self.users.get,
-                          user=self.user)
-
-    def user(self, uid: int) -> str | None:
-        return next((name for name, held in self.users.items() if held == uid), None)
+                          free=lambda path: self.free, ask=self.ask, uid=self.users.get)
 
     def ask(self, prompt: str) -> str:
         self.questions.append(prompt)
