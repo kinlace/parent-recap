@@ -279,13 +279,19 @@ sudo admin households
 
 For each Household in `households.json` it runs `parent-recap signup health` as the Household's user, and prints its user with its Invite Link's note in brackets, such as `ph-0123abcd (Virtanen family)`, the time its Brief comes, when its last run ended and how, how long it took and its peak memory (from `last-run.json` beside its `state.json`), such as `last run 2026-10-30 18:00 UTC, ok, 7 s, 180 MB`, and each of `doctor`'s checks by its key with ✅, ⚠️ or ❌, run then without the model's test call. A last run that failed is marked ❌, a run not ended an hour after its time ⚠️ overdue, and a Household whose program is older than the command ❓. It prints no message text, subject, address or Kid's name, not even doctor's words, which name them. It exits 1 when any Household is marked. Last, when the server waits for a reboot to apply updates (the file `/run/reboot-required` exists, which Ubuntu's [Server documentation](https://ubuntu.com/server/docs/how-to/software/upgrade-your-release/) says means a reboot is needed), it says `Reboot pending: the server waits for a reboot to apply updates`. Every night the server checks this for you and mails what is wrong (see "The nightly check").
 
-**Find a Household.** Only the note its Invite Link carried, if it had one, says which family a label is. When a parent asks about their Brief, find their label from a Recipient address they give:
+**Find a Household.** Only the note its Invite Link carried, if it had one, says which family a label is. When a parent asks about their Brief, or a family on its own computer about its Gateway Key, find it from a Recipient address they give, or the holder's name:
 
 ```sh
 sudo admin find parent@example.com
+sudo admin find Korhonen
 ```
 
-It reads each Household's config (`/home/ph-…/.family/config.yaml`, which root can read) with the shared program's Python, and prints the label of each Household whose Brief or Weekend Picks Recipients include the address, ignoring case, with its Invite Link's note in brackets, such as `ph-0123abcd (Virtanen family)`, and nothing else of its config. It follows no link in a Household's home, `.family` or config, since a Household's user can make one. It exits 1 when no Household has the address.
+It searches two things and prints what matched in each:
+
+- **Hosted Households.** It reads each Household's config (`/home/ph-…/.family/config.yaml`, which root can read) with the shared program's Python, and prints the label of each Household whose Brief or Weekend Picks Recipients include the address (the whole address), ignoring case, with its Invite Link's note in brackets, such as `ph-0123abcd (Virtanen family)`, and nothing else of its config. It follows no link in a Household's home, `.family` or config, since a Household's user can make one.
+- **Gateway Keys.** Each key whose `description` (who holds it, with the holder's email when `key new` was given one) or one of the addresses bound to a key made on request (`bindings.json` in the relay's state directory) holds the text, ignoring case, is printed with its `admin keys` line (made, last used, spend) and, for a key made on request, its addresses. A Hosted Household's key (named `ph-…`) is followed by that Household's lines from `admin households`. It never prints a key's value.
+
+When one of the two can't be searched, such as Bifrost not answering, it says why and still prints the other. It exits 1 only when neither a Household nor a key matched.
 
 **Remove a Household.** On the server, with the Household's label, its user as `ls /home`, `admin households` and the sign-up's log show it:
 
@@ -327,6 +333,7 @@ What you want, and the command for it. Each runs on the server as `sudo admin �
 | Stop a key, or start it again                           | `key off NAME-OR-ID`, `key on NAME-OR-ID`                                                                        |
 | Every Hosted Household's status                         | `households`                                                                                                     |
 | Which Household has this address                        | `find ADDRESS` (see "Find a Household")                                                                          |
+| Which Gateway Key a family holds, by name or address    | `find TEXT` (see "Find a Household")                                                                             |
 | Take a Hosted Household off the server                  | `remove ph-XXXXXXXX` (see "Remove a Household")                                                                  |
 | A new release, or `main`, on the server                 | `deploy vX.Y.Z` or `deploy main` (see "Upgrade, check, switch back")                                             |
 | Undo the last deploy, the program alone or the data too | `rollback`, `rollback --restore` (see "Upgrade, check, switch back")                                             |
@@ -340,9 +347,9 @@ Every routine task is one command on the server: SSH in, then `sudo admin <task>
 | `households`                                 | Every Hosted Household's last run and checks (see "See every Household's status")                                    |
 | `keys`                                       | Every Gateway Key: who holds it, what it can do, made, last used, spend (below)                                      |
 | `cost`                                       | This month's model spend per key and in all (below)                                                                  |
-| `key new LABEL "WHO HOLDS IT" [--send-only]` | Makes a Gateway Key and prints its value (below)                                                                     |
+| `key new LABEL "WHO HOLDS IT" [--send-only]` | Asks for the holder's email, makes a Gateway Key and prints its value (below)                                        |
 | `key off NAME-OR-ID`, `key on NAME-OR-ID`    | Turns a Gateway Key off or back on (below)                                                                           |
-| `find ADDRESS`                               | Which Households have this Recipient (see "Find a Household")                                                        |
+| `find TEXT`                                  | Households with this Recipient, keys holding it in who holds them or their addresses (see "Find a Household")        |
 | `remove ph-XXXXXXXX`                         | Removes a Hosted Household with everything of it (see "Remove a Household")                                          |
 | `deploy vX.Y.Z\|main\|COMMIT [--anyway]`     | Snapshots the state, fetches that commit and installs it all (see "Upgrade, check, switch back")                     |
 | `deploys`                                    | The deploys on disk, marking the current one (see "Upgrade, check, switch back")                                     |
@@ -353,13 +360,13 @@ Run without root it refuses and says why. It prints only to the terminal and wri
 
 **Create a Gateway Key and give it to a Household.** The `name` is a neutral label, because it is written to Bifrost's request log and the relay's journal, which more people can read. It starts with what the key can do, so a maintainer reading a list or a log tells the kinds apart: `ai-` for a key that writes the Brief and sends it, `send-` for one that only sends, each followed by the Household's label. Keys made by the program carry their own: a Hosted Household's is its user (`ph-…`), and one made on request starts `on-request-`. The key's value is the same kind of `sk-bf-…` for all of them; `admin keys` (below) says what each can do from what Bifrost holds, not from its name. Who holds the key goes in its `description` (the Household, its AI backend, the date), which only the admin API returns; it is kept only in the gateway's database, never in the repo. The printed `sk-bf-…` value is the key: send it to the Household over a private channel and don't save it anywhere. Bifrost keeps it in plaintext and the key list returns it too, so a lost key can be read back, and the admin login (kept only in the maintainers' password manager) can read every Household's key.
 
-`admin key new` makes it: the label (lowercase letters, digits and dashes) becomes `ai-<label>`, who holds it and today's date go into the `description` (`<Household>, gateway AI, <date>`), and it prints the name and the `sk-bf-…` value. The key may call only the `parent-recap` model through the gateway's Anthropic provider, with a $0.10 budget that resets daily. When Bifrost made no key, it says so with Bifrost's reply and prints no key:
+`admin key new` makes it: the label (lowercase letters, digits and dashes) becomes `ai-<label>`, who holds it and today's date go into the `description` (`<Household>, gateway AI, <date>`), and it prints the name and the `sk-bf-…` value. First it asks for the holder's email, so `admin find` finds the key by it later: type it, or press Enter to skip. It must be a plain `name@domain` (it asks again otherwise) and goes only into the `description`, after who holds it (`<Household>, <email>, gateway AI, <date>`). It is asked for, never given on the command line, because `sudo` writes each command line to the system journal, which the assistant's read-only login can read. Without a terminal to ask on, it skips the question. The key may call only the `parent-recap` model through the gateway's Anthropic provider, with a $0.10 budget that resets daily. When Bifrost made no key, it says so with Bifrost's reply and prints no key:
 
 ```sh
 sudo admin key new pilot-a "<Household>"
 ```
 
-**Create a send-only Gateway Key.** A Household whose AI backend is its own Claude Code or Codex gets one on request by itself (see "Send-only keys on request"), so this is only for a Household that can't, such as one whose Recipients can't confirm by email. A key made here isn't bound to addresses, so it sends to any. It has no `provider_configs` and no budget: Bifrost refuses its model calls (400 or 403) and the relay accepts it, since the relay only checks that the key exists and is active. Same handover, named `send-<label>` and described `<Household>, own Claude Code or Codex, <date>`, with `--send-only`:
+**Create a send-only Gateway Key.** A Household whose AI backend is its own Claude Code or Codex gets one on request by itself (see "Send-only keys on request"), so this is only for a Household that can't, such as one whose Recipients can't confirm by email. A key made here isn't bound to addresses, so it sends to any. It has no `provider_configs` and no budget: Bifrost refuses its model calls (400 or 403) and the relay accepts it, since the relay only checks that the key exists and is active. Same handover and the same question for the holder's email, named `send-<label>` and described `<Household>, own Claude Code or Codex, <date>` (the email, if given, after `<Household>`), with `--send-only`:
 
 ```sh
 sudo admin key new pilot-b "<Household>" --send-only
