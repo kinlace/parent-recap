@@ -22,7 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 USAGE = """\
 usage: sudo admin <task> [arguments]
@@ -146,19 +146,25 @@ def _find(paths: Paths, address: str) -> int:
     """Each Household whose Recipients include `address`, by its label and its Invite Link's note,
     and nothing else of its config."""
     want = address.strip().lower()
+    # A Household's user can replace its config, so root follows no link out of its home.
     configs = sorted(p for p in paths.homes.glob("ph-*/.family/config.yaml")
-                     if LABEL.fullmatch(p.parent.parent.name))
+                     if LABEL.fullmatch(p.parent.parent.name) and not p.is_symlink())
     if not configs:
         print("no Household on this server", file=sys.stderr)
         return 1
     if not Path(paths.python).exists():
         sys.exit(f"{paths.python} is missing: the shared program isn't installed")
-    read = subprocess.run([paths.python, "-I", "-c", READ_RECIPIENTS, *map(str, configs)],
-                          capture_output=True, text=True, cwd="/")
+    failed = f"couldn't read the Households' configs with {paths.python}"
+    try:
+        read = subprocess.run([paths.python, "-I", "-c", READ_RECIPIENTS, *map(str, configs)],
+                              capture_output=True, text=True, cwd="/", timeout=60)
+    except subprocess.TimeoutExpired:
+        sys.exit(f"{failed}: it took over a minute")
     try:
         recipients = json.loads(read.stdout)
     except ValueError:
-        sys.exit(f"couldn't read the Households' configs with {paths.python}")
+        # Its last line says why, such as a missing module; it never quotes a config.
+        sys.exit(f"{failed}: {(read.stderr.strip().splitlines() or ['no answer'])[-1]}")
     notes = _notes(paths.store / "households.json")
     found = 0
     for config in configs:
@@ -227,7 +233,7 @@ def _clean_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k not in ADMIN_LOGIN}
 
 
-def _exec(argv: list[str], env: dict) -> int:
+def _exec(argv: list[str], env: dict) -> NoReturn:
     # From /, as the old scripts did: the service's user can't read a maintainer's folder.
     os.chdir("/")
     os.execvpe(argv[0], argv, env)

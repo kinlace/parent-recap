@@ -100,6 +100,9 @@ shared=/usr/local/lib/parent-recap
 signup_lib=/usr/local/lib/parent-recap-signup
 signup_home=/var/lib/parent-recap-signup
 signup=no
+# Their tasks are `sudo admin invite`, `households` and `remove` now, on every
+# run, with or without a release.
+rm -f "$signup_lib/invite.sh" "$signup_lib/status.sh" "$signup_lib/remove.sh"
 if [ -n "${PARENT_RECAP_RELEASE:-}" ]; then
   [ -f "$PARENT_RECAP_RELEASE/install.sh" ] || { echo "PARENT_RECAP_RELEASE has no install.sh" >&2; exit 1; }
   version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$PARENT_RECAP_RELEASE/.claude-plugin/plugin.json" | head -1)
@@ -145,8 +148,6 @@ if [ -n "${PARENT_RECAP_RELEASE:-}" ]; then
   rm -rf "$signup_lib/release" "$signup_home/ParentRecap"
   install -d -m 0755 "$signup_lib"
   install -o root -g root -m 0755 "$here/household-user" "$signup_lib/household-user"
-  # Their tasks are `sudo admin invite`, `households` and `remove` now.
-  rm -f "$signup_lib/invite.sh" "$signup_lib/status.sh" "$signup_lib/remove.sh"
   install -o root -g root -m 0440 "$here/signup.sudoers" /etc/sudoers.d/parent-recap-signup.incoming
   visudo -cf /etc/sudoers.d/parent-recap-signup.incoming
   mv /etc/sudoers.d/parent-recap-signup.incoming /etc/sudoers.d/parent-recap-signup

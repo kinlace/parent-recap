@@ -359,6 +359,32 @@ def test_find_names_a_household_whose_config_it_couldn_t_read_and_nothing_of_it(
     assert "ph-89abcdef" in captured.err and "unclosed" not in captured.err
 
 
+def test_find_follows_no_link_a_household_put_in_place_of_its_config(server, capsys):
+    server.household("ph-0123abcd", ["parent@example.com"])
+    outside = server.root / "root-only.yaml"
+    outside.write_text(json.dumps({"email": {"to": ["parent@example.com"]}}))
+    (server.homes / "ph-89abcdef" / ".family").mkdir(parents=True)
+    try:
+        (server.homes / "ph-89abcdef" / ".family" / "config.yaml").symlink_to(outside)
+    except OSError:
+        pytest.skip("this OS won't make a symlink here")
+    assert server.admin("find", "parent@example.com") == 0
+    assert capsys.readouterr().out == "ph-0123abcd\n"
+
+
+def test_find_says_why_the_shared_program_couldn_t_read_the_configs(
+        server, capsys, tmp_path, monkeypatch):
+    server.household("ph-0123abcd", ["parent@example.com"])
+    # A shared program's Python without PyYAML.
+    broken = tmp_path / "broken.py"
+    broken.write_text("raise ModuleNotFoundError(\"No module named 'yaml'\")\n")
+    real_run = admin.subprocess.run
+    monkeypatch.setattr(admin.subprocess, "run",
+                        lambda argv, **kw: real_run([argv[0], str(broken)], **kw))
+    assert server.admin("find", "parent@example.com") == 1
+    assert "No module named 'yaml'" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("args", [(), ("a@b.fi", "c@d.fi")])
 def test_find_takes_exactly_one_address(server, capsys, args):
     assert server.admin("find", *args) == 2
