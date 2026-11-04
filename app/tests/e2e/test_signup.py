@@ -380,6 +380,30 @@ def test_the_first_step_asks_for_each_kid_s_myclub_link_and_shows_no_secret(sign
         assert loads not in html
 
 
+@pytest.mark.parametrize(("language", "button", "skip"), [
+    ("fi", "Valmis", "Etkö käytä MyClubia? Jätä kentät tyhjiksi ja paina Valmis."),
+    ("en", "Done", "Don't use MyClub? Leave them empty and press Done."),
+    ("zh", "完成", "不用 MyClub？留空，直接点“完成”。"),
+])
+def test_the_myclub_step_ends_with_done_and_says_a_family_without_myclub_leaves_it_empty(
+        signup, language, button, skip):
+    from html import escape
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    html = text(sign_in(signup, code, lang=language))
+
+    assert f'<button type="submit">{button}</button>' in html
+    assert f"{escape(skip)}</p>" in html  # the hint's last sentence
+    assert said(language, "submit") not in html  # the first page's button stays its own
+    r = links(signup, code, "", "", lang=language)
+    assert r.status == 200, text(r)
+    assert said(language, "sent", time="21:00") in text(r)
+    _, user = signup.user()
+    cfg = Config.load(user.home / ".family" / "config.yaml")
+    assert [k.name for k in cfg.kids] == ["Mia Virtanen", "Leo Virtanen"]
+    assert not any(k.myclub_ical_url for k in cfg.kids)
+
+
 # ── The steps
 
 @pytest.mark.parametrize("language", ["fi", "en", "zh"])
@@ -560,6 +584,8 @@ def test_a_family_without_wilma_signs_up_with_its_kids_names_and_a_myclub_link(
     assert first.status == 200, text(first)
     html = text(first)
     assert said("en", "myclub_needed") in html and said("en", "myclub") not in html
+    # Without Wilma, MyClub is what the Brief reads: not told it may leave every link empty.
+    assert said("en", "myclub_needed_hint") in html and said("en", "myclub_hint") not in html
     assert '<label for="m0">Mia Virtanen</label>' in html
     assert '<label for="m1">Leo</label>' in html and 'for="m2"' not in html  # each name once
     r = links(signup, code, MIA_LINK, "")
