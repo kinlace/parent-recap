@@ -67,10 +67,19 @@ class FakeEdge:
         self.units: dict[str, dict[str, str]] = {}  # by user, the evening job's properties
         self.clock = 0.0
         self.asked: list[str] = []
+        self.free = 100 << 30  # bytes free where the snapshots go
+        self.answer = "yes"  # to rollback --restore's question
+        self.questions: list[str] = []
+        self.timers_on = True  # each Household's evening timers are active
 
     def edge(self) -> admin.Edge:
         return admin.Edge(system=self.system, github=self.github, http_status=self.http_status,
-                          now=lambda: self.now, monotonic=lambda: self.clock, sleep=self.sleep)
+                          now=lambda: self.now, monotonic=lambda: self.clock, sleep=self.sleep,
+                          free=lambda path: self.free, ask=self.ask)
+
+    def ask(self, prompt: str) -> str:
+        self.questions.append(prompt)
+        return self.answer
 
     now = NOON
 
@@ -82,25 +91,30 @@ class FakeEdge:
             code = 1 if self.setup_fails else 0
             if not self.setup_fails:
                 current = self.server.paths.shared / "current"
-                self.server.paths.shared.mkdir(parents=True, exist_ok=True)
+                (self.server.paths.shared / env["PARENT_RECAP_DEPLOY"]).mkdir(parents=True,
+                                                                             exist_ok=True)
                 if current.is_symlink():
                     current.unlink()
                 current.symlink_to(env["PARENT_RECAP_DEPLOY"])
-        elif argv[0] == "systemctl":
+        elif argv[0] == "systemctl" and argv[1] == "--user" and argv[4] == "show":
             user = argv[3].rstrip("@")
             unit = self.units.get(user, {"ActiveState": "inactive", "Result": "success",
                                          "ExecMainStatus": "0",
                                          "ExecMainStartTimestampMonotonic": "100"})
-            if argv[-1] != admin.EVENING_JOB:
+            if argv[-1].endswith(".timer"):
+                unit = {"ActiveState": "active" if self.timers_on else "inactive"}
+            elif argv[-1] != admin.EVENING_JOB:
                 unit = {"ActiveState": "inactive"}
             out = "\n".join(f"{k}={v}" for k, v in unit.items())
         elif argv[-2:] == ["signup", "status"]:
             code = 1 if self.marked else 0
         elif argv[-2:] == ["schedule", "run-now"]:
             user = argv[2]
-            # It starts, and has ended by the next look but one.
+            # It starts, later than any run before, and has ended by the next look but one.
+            began = int(self.units.get(user, {}).get("ExecMainStartTimestampMonotonic", 100))
             self.units[user] = {"ActiveState": "activating", "Result": "success",
-                                "ExecMainStatus": "0", "ExecMainStartTimestampMonotonic": "200"}
+                                "ExecMainStatus": "0",
+                                "ExecMainStartTimestampMonotonic": str(began + 100)}
         return subprocess.CompletedProcess(argv, code, out, "")
 
     def sleep(self, seconds: float) -> None:
@@ -138,6 +152,12 @@ def deploy(tmp_path: Path, origin: Origin):
     server.paths.sources = tmp_path / "sources"
     server.paths.deploy_env = tmp_path / "etc" / "deploy.env"
     server.paths.shared = tmp_path / "shared"
+    server.paths.snapshots = tmp_path / "state" / "snapshots"
+    # The services' state and config, of which a snapshot takes what is there.
+    server.paths.state = (tmp_path / "var" / "bifrost", tmp_path / "var" / "signup",
+                          tmp_path / "etc" / "brief-relay")
+    (tmp_path / "var" / "bifrost").mkdir(parents=True)
+    (tmp_path / "var" / "bifrost" / "config.db").write_text("keys as deployed\n")
     fake = FakeEdge(server)
 
     def run(*args: str) -> int:
@@ -194,7 +214,8 @@ def test_a_release_tag_is_checked_out_whole_installed_by_its_commit_and_recorded
     # ops/ comes with it, though the release zip leaves it out.
     assert (source / "ops" / "gateway" / "gateway-setup.sh").read_text() == "# v1\n"
     assert records(deploy) == [{"commit": deploy.origin.release, "tag": "v1.0.0",
-                                "at": "2026-11-04T12:00:00+00:00"}]
+                                "at": "2026-11-04T12:00:00+00:00",
+                                "snapshot": f"20261104T120000Z-{short}.tar.gz"}]
     # A release's tests ran before it was published: GitHub isn't asked.
     assert deploy.fake.asked == []
     out = capsys.readouterr().out
