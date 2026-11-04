@@ -75,9 +75,11 @@ def test_a_deploy_first_snapshots_the_services_state_and_every_household_s_home(
     archive = deploy.server.paths.snapshots / name
     with tarfile.open(archive) as tar:
         names = tar.getnames()
-    # Bifrost's state and the Household's home; a service with no state yet isn't there.
+    # Bifrost's state, the relay's config with the maintainers' address, and the Household's
+    # home; a service with no state yet isn't there.
     assert "snapshot.json" in names
-    assert "0/config.db" in names and "1/ParentRecap/2026-11-03.md" in names
+    assert "0/config.db" in names and "1/maintainers.env" in names
+    assert "2/ParentRecap/2026-11-03.md" in names
     if sys.platform != "win32":
         assert archive.stat().st_mode & 0o777 == 0o600
         assert deploy.server.paths.snapshots.stat().st_mode & 0o777 == 0o700

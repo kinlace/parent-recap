@@ -320,7 +320,6 @@ def test_a_task_needing_the_admin_login_without_bifrost_env_says_to_run_setup(se
 
 
 def test_keys_lists_every_key_and_never_its_value(server, capsys):
-    server.paths.relay_state.mkdir()
     # The relay's last send date for each key: the send-only key last sent on 2 November, the AI
     # key before its last model call.
     (server.paths.relay_state / "last-sent.json").write_text(
