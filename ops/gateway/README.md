@@ -190,7 +190,7 @@ journalctl -u brief-relay -p warning --grep '^quota '
 
 ## Hosted Households
 
-The hosted version runs invited Households on this server, each as its own Linux user (ADR 0029, ADR 0031). A Household is made by the sign-up service from an Invite Link the maintainers send: the family opens it on their phone, picks Finnish, English or Chinese, types their Wilma town and login, checks the Recipients the link prefilled, and goes on to paste each Kid's MyClub calendar link, or leave it empty, and sign up.
+The hosted version runs invited Households on this server, each as its own Linux user (ADR 0029, ADR 0031). A Household is made by the sign-up service from an Invite Link the maintainers send: the family opens it on their phone, picks Finnish, English or Chinese, types their Wilma town and login, checks the Recipients the link prefilled, and goes on to paste each Kid's MyClub calendar link, or, with Wilma, leave them all empty if they don't use MyClub, and press Done (Valmis, 完成).
 
 **Install it.** Copy an unpacked release of the program (or a checkout) to the server beside `ops/gateway`, and run step 7 with `PARENT_RECAP_RELEASE` pointing at it:
 
