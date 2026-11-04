@@ -50,7 +50,7 @@ from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import parse_qs, urlsplit
 
 FROM_ADDR = "brief@parentrecap.com"
@@ -985,14 +985,23 @@ class Use:
     days_30: float = 0.0
 
 
-def request_log(keys: Bifrost, since: date) -> Iterator[tuple[str, date, bool, float]]:
-    """Each request in Bifrost's request log from the start of UTC day `since`, page by page: its
-    key's id, its UTC day, whether it was taken (not refused or failed), and its cost. Nothing else
-    of a request is read, and its text isn't stored (README "What it keeps")."""
+class Logged(NamedTuple):
+    """One request in Bifrost's request log: its key's id, its UTC day, whether it was taken (not
+    refused or failed), and its cost."""
+    key_id: str
+    day: date
+    taken: bool
+    cost: float
+
+
+def request_log(keys: Bifrost, since: date) -> Iterator[Logged]:
+    """Each request in Bifrost's request log from the start of UTC day `since`, page by page.
+    Nothing else of a request is read, and its text isn't stored (README "What it keeps"). Oldest
+    first, so a request logged while it reads is added at the end, not counted twice."""
     start = f"{since.isoformat()}T00:00:00Z"
     offset = 0
     while True:
-        page = keys.fetch(f"/api/logs?start_time={start}&sort_by=timestamp&order=desc"
+        page = keys.fetch(f"/api/logs?start_time={start}&sort_by=timestamp&order=asc"
                           f"&limit={LOG_PAGE}&offset={offset}")
         logs = page.get("logs") or []
         for e in logs:
@@ -1000,15 +1009,25 @@ def request_log(keys: Bifrost, since: date) -> Iterator[tuple[str, date, bool, f
             if day is None or day < since:
                 continue
             key_id = e.get("virtual_key_id") or (e.get("virtual_key") or {}).get("id") or ""
-            yield str(key_id), day, e.get("status") != "error", float(e.get("cost") or 0)
+            yield Logged(str(key_id), day, e.get("status") != "error", float(e.get("cost") or 0))
         offset += len(logs)
         total = (page.get("pagination") or {}).get("total_count")
-        if not logs or (offset >= int(total) if total is not None else len(logs) < LOG_PAGE):
+        # Without a total, an empty page ends it: a page shorter than asked may be Bifrost's limit.
+        if not logs or (total is not None and offset >= int(total)):
             return
 
 
-def _log_error(e: Exception) -> str:
+def _why(e: Exception) -> str:
+    """What went wrong with an admin API call, for the maintainer; never a request's body."""
     return f"Bifrost answered {e.code}" if isinstance(e, urllib.error.HTTPError) else str(e)
+
+
+def _listed(keys: Bifrost) -> list[dict]:
+    """Every virtual key, or exits saying why Bifrost's admin API didn't list them."""
+    try:
+        return list(keys.listed())
+    except (OSError, ValueError, TypeError, AttributeError) as e:
+        sys.exit(f"couldn't read the Gateway Keys from Bifrost's admin API: {_why(e)}")
 
 
 def _one_line(text: Any) -> str:
@@ -1029,19 +1048,19 @@ def print_keys(keys: Bifrost, state: Path, today: str) -> None:
     except (OSError, ValueError, AttributeError):
         bound = {}
     sent = LastSent(state / LAST_SENT).read()
-    listed = list(keys.listed())
+    listed = _listed(keys)
     use: dict[str, Use] | None = {}
     try:
-        for key_id, when, taken, cost in request_log(keys, day - timedelta(days=LOG_DAYS)):
-            u = use.setdefault(key_id, Use())
-            if taken and (u.last_call is None or when > u.last_call):
-                u.last_call = when
-            if when == day:
-                u.today += cost
-            if when > day - timedelta(days=30):
-                u.days_30 += cost
+        for r in request_log(keys, day - timedelta(days=LOG_DAYS)):
+            u = use.setdefault(r.key_id, Use())
+            if r.taken and (u.last_call is None or r.day > u.last_call):
+                u.last_call = r.day
+            if r.day == day:
+                u.today += r.cost
+            if r.day > day - timedelta(days=30):
+                u.days_30 += r.cost
     except (OSError, ValueError, TypeError, AttributeError) as e:
-        print(f"couldn't read Bifrost's request log ({_log_error(e)}): last use and spend are ?",
+        print(f"couldn't read Bifrost's request log ({_why(e)}): last use and spend are ?",
               file=sys.stderr)
         use = None
     for k in listed:
@@ -1075,13 +1094,13 @@ def print_cost(keys: Bifrost, today: str) -> None:
     for the maintainers (README "Check spend"). A key since deleted is shown by its id, so the
     total is the log's. What is billed is the Anthropic Console's figure, which it says."""
     first = date.fromisoformat(today).replace(day=1)
+    listed = _listed(keys)
+    spent: dict[str, float] = {}
     try:
-        listed = list(keys.listed())
-        spent: dict[str, float] = {}
-        for key_id, _, _, cost in request_log(keys, first):
-            spent[key_id] = spent.get(key_id, 0.0) + cost
+        for r in request_log(keys, first):
+            spent[r.key_id] = spent.get(r.key_id, 0.0) + r.cost
     except (OSError, ValueError, TypeError, AttributeError) as e:
-        sys.exit(f"couldn't read Bifrost's request log: {_log_error(e)}")
+        sys.exit(f"couldn't read Bifrost's request log: {_why(e)}")
     print(f"Spend in {first:%Y-%m} (UTC) by Gateway Key, from Bifrost's request log:")
     names = {str(k.get("id")): k.get("name") or str(k.get("id")) for k in listed}
     for key_id, name in names.items():
