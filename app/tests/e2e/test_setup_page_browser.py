@@ -30,7 +30,8 @@ except ImportError:  # the browser fixture skips the tests and says why
 import fake_node
 from conftest import CLASS_GROUP, PIANO_GROUP, eepos_student, evaka_child
 from fake_sources import EEPOS_PASSWORD, EVAKA_PASSWORD
-from family_brief import failure, gateway, linked_device, ops, setup_connect, setup_wilma
+from family_brief import (failure, gateway, linked_device, ops, setup_connect, setup_gmail,
+                          setup_wilma)
 from family_brief.collectors import evaka, myclub
 from family_brief.config import Config
 from fake_system import MACOS
@@ -1049,6 +1050,28 @@ def test_an_app_password_gmail_rejects_shows_why_and_the_way_to_fix_it(tab):
     expect(source_listed(tab, "gmail", "to-do")).to_be_visible()
     expect(button(tab, "gmail.save")).to_be_enabled()
     expect(tab.get_by_label(text("gmail.password"))).to_have_value("")
+
+
+def test_the_google_password_opens_the_fold_with_the_2_step_verification_button(tab, family):
+    # #802: a tester whose account couldn't make App Passwords typed their Google password, and
+    # never found the 2-Step Verification button in the closed fold.
+    in_english_with_the_gateway(tab)
+    without_wilma_in_espoo(tab)
+    source_listed(tab, "gmail", "to-do").click()
+    connect_gmail_at_last(tab)
+    expect(button(tab, "gmail.two-step")).to_be_hidden()
+
+    sign_in_to_gmail(tab, "MyGooglePassword1")
+
+    expect(tab.get_by_text(text("gmail.not-an-app-password"))).to_be_visible()
+    expect(tab.locator("#gmail-unavailable")).to_have_attribute("open", "")
+    expect(tab.get_by_text(text("gmail.unavailable.two-step"))).to_be_visible()
+    expect(button(tab, "gmail.two-step")).to_be_visible()
+    expect(skip(tab, "gmail")).to_be_visible()
+
+    button(tab, "gmail.two-step").click()
+
+    wait_for(lambda: family.desktop.opened == [setup_gmail.TWO_STEP_URL])
 
 
 def test_each_language_is_offered_by_its_own_name_and_the_list_follows_a_switch(tab):

@@ -2,6 +2,12 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## Unreleased
+
+### Changed
+
+- When the setup page's Gmail step gets a password that isn't an App Password, such as your own Google password, the fold "Google says App Passwords aren't available" opens by itself with its Open 2-Step Verification button, and the message says to turn 2-Step Verification on first if Google's App passwords page said your account can't use this setting, or to skip Gmail for now.
+
 ## 0.12.0 · 2026-11-05
 
 ### Added
