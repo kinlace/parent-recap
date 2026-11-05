@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-LOOKAHEAD_DAYS = 14
+LOOKAHEAD_DAYS = 28  # four weeks: a daycare announces closed days and trips well ahead
 TIMEOUT = 30
 SIGN_IN = "auth/weak-login"
 SESSION_COOKIE = "evaka.eugw.session"
