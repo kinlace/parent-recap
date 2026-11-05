@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import stat
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -103,7 +104,8 @@ def test_the_device_cookie_is_kept_owner_only_and_sent_the_next_evening(sources,
     assert list(kept) == ["espoonvarhaiskasvatus.fi"]
     [name] = kept["espoonvarhaiskasvatus.fi"]
     assert name.startswith(evaka.DEVICE_COOKIE)
-    assert stat.S_IMODE(devices.stat().st_mode) == 0o600
+    if os.name != "nt":  # Windows has no POSIX modes; the file is in the user's own profile
+        assert stat.S_IMODE(devices.stat().st_mode) == 0o600
     assert EVAKA_PASSWORD not in devices.read_text()
 
     portal.requests.clear()
