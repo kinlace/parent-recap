@@ -376,8 +376,9 @@ def test_a_family_that_reads_no_mail_skips_gmail_and_setup_finishes_without_it(t
     assert [e.to for e in family.sent] == [[hotmail]]
     button(tab, "brief.done").click()
 
-    button(tab, "finish.start").click()
-    expect(tab.get_by_text(text("finish.done", evening="21:00"))).to_be_visible()
+    # The evening Brief turned itself on with the first Brief (#733): nothing to press.
+    expect(tab.get_by_text(text("finish.done"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.on", evening="21:00"))).to_be_visible()
     assert Config.load(config_file(family)).gmail.username is None
 
 
@@ -579,8 +580,9 @@ def test_with_codex_parent_recap_gets_a_key_for_sending_and_setup_finishes(tab, 
     assert [e.to for e in family.sent] == [[hotmail]]
     button(tab, "brief.done").click()
 
-    button(tab, "finish.start").click()
-    expect(tab.get_by_text(text("finish.done", evening="21:00"))).to_be_visible()
+    # The evening Brief turned itself on with the first Brief (#733): nothing to press.
+    expect(tab.get_by_text(text("finish.done"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.on", evening="21:00"))).to_be_visible()
     cfg = Config.load(config_file(family))
     assert (cfg.llm.backend, cfg.gmail.username) == ("codex", None)
     assert family.secrets[gateway.ACCOUNT] == next(iter(family.made_keys))
