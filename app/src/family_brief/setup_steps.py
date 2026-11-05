@@ -17,13 +17,16 @@ setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, d
 setup eepos — have an Eepos school's guardian password typed at the secret store's own prompt in
               the terminal, sign in with it, match the students to the Kids and save the sign-in
               (for the maintainers, until the setup page has an Eepos step)
+setup evaka — have a city's eVaka guardian password typed at the secret store's own prompt in the
+              terminal, sign in with it, match the children to the Kids and save the sign-in
+              (for the maintainers, until the setup page has an eVaka step)
 setup save — save the Household's answers into the config, and setup's progress (in setup_save.py)
 setup status — whether setup is done (in setup_status.py)
 setup page — serve the setup page on this Mac and open it in the browser (in setup_server/)
 
 This module is the chat's side only: the arguments, the dialogs and what each command prints. What
 a step does, which the setup page does too, is in its own module: setup_gmail, setup_wilma,
-setup_ai, setup_myclub and setup_eepos.
+setup_ai, setup_myclub, setup_eepos and setup_evaka.
 
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
@@ -121,6 +124,15 @@ def register(sub) -> None:
                              "emo.eepos.fi")
     peepos.add_argument("--username", required=True, help="The guardian's Eepos username")
     peepos.set_defaults(func=cmd_eepos)
+
+    pevaka = steps.add_parser("evaka", help="Add a guardian's sign-in in a city's eVaka: the "
+                              "password typed at the secret store's own prompt, checked at once, "
+                              "the children matched to the Kids by name")
+    pevaka.add_argument("--city", required=True,
+                        help="The city, one of " + ", ".join(evaka_cities()) + ", or the host of "
+                             "its eVaka")
+    pevaka.add_argument("--username", required=True, help="The guardian's eVaka email")
+    pevaka.set_defaults(func=cmd_evaka)
 
     from . import setup_save, setup_server, setup_status
     setup_save.register(steps)
@@ -436,4 +448,19 @@ def cmd_eepos(args: argparse.Namespace) -> int:
     dialog, chat or command line, and the one line of JSON never has it."""
     from . import setup_eepos
     result, next_, extra = setup_eepos.cmd(args)
+    return report(result, next_, **extra)
+
+
+# ---------------------------------------------------------------- evaka
+
+def evaka_cities() -> list[str]:
+    from .collectors.evaka import CITIES
+    return list(CITIES)
+
+
+def cmd_evaka(args: argparse.Namespace) -> int:
+    """The password is typed at the secret store's own prompt in this terminal, so it reaches no
+    dialog, chat or command line, and the one line of JSON never has it."""
+    from . import setup_evaka
+    result, next_, extra = setup_evaka.cmd(args)
     return report(result, next_, **extra)

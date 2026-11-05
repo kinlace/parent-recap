@@ -143,6 +143,21 @@ Notes:
 - A cancelled lesson isn't added to the calendar, and isn't told as news yet. Messages and teachers' lesson notes come in a later slice
 - Eepos has no published API: when it changes, the Brief's coverage line says Eepos wasn't read, with the reason, and the rest of the Brief still goes out
 
+## eVaka (optional, added by the maintainers)
+
+A public daycare on eVaka gives its events (an excursion, a photo day, a parents' evening), the days it is closed and when the next week's reservations close as calendar events in the Brief and its `.ics`, read through the city's eVaka with the guardian's own email and password (ADR 0039). The cities are Espoo, Tampere, Turku, Oulu, Hämeenkyrö, Orivesi, Ylöjärvi, Pirkkala, Nokia, Lempäälä, Vesilahti and Kangasala. The setup page and the hosted sign-up have no eVaka step yet (#768): a maintainer adds it from a terminal, as the Household's user, once for each city:
+
+1. The guardian needs an eVaka email and password. One who has only signed in with Suomi.fi sets them first, under Personal information ("Omat tiedot") in eVaka, and verifies the email
+2. **Terminal**: `$FB setup evaka --city espoo --username <the guardian's eVaka email>`. `--city` takes a city's name as in the list above, without ä or ö, or the host of its eVaka. The password is typed at the secret store's own prompt (the Keychain asks twice; a hosted server's prompt is hidden), so it never reaches the chat or a command line. The command signs in with it, reads the guardian's children and the next 14 days, and only then stores the password (Keychain `family-brief` / `evaka-signin-<16 hex digits>`) and the sign-in in the config's `evaka.signins`. It prints which Kid each child is, matched by name; a child who matches none has their events go to the whole Household until their eVaka name is added to the Kid's `aliases` and the command run again
+3. `$FB doctor` signs in to each city and lists its children; a password eVaka no longer takes is ❌ with the command to type it again
+
+Notes:
+
+- A closed day is a public holiday the daycare isn't open on for any of the children, for the Household, or for the Kids it isn't open for. A discussion time shows once it is booked
+- The reservation deadline is worked out from the first week still open for reservations and the hours before it each city closes them. For a city given by its host, which isn't in the list, there is none
+- Each sign-in keeps eVaka's device cookie in `~/.family/evaka-devices.json`, so cities that email about a sign-in from a new device don't email every evening
+- eVaka's API is internal and unversioned: when it changes, the Brief's coverage line says eVaka wasn't read, with the reason, and the rest of the Brief still goes out
+
 ## Calendar
 
 Whichever mode you pick, an event the model finds goes into the calendar only if it points to a message read that night, and it keeps a link only if that message has the link. The model is also told that message text is data, not instructions: a message in a parent group or an email that tells it to add an event or a link is reported in the Brief instead of followed.
@@ -206,7 +221,7 @@ Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declare
    - uninstall: `secrets`, `survey` and `notes`, for what setup made for it and what the family removes themselves
    - Held-back Messages ([ADR 0013](adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md)): `sent_to_everyone`, `checked_body`, `group` and `held_back_link`. Without them, a message is held back when in doubt and listed by sender and subject, with no link
    - the calendar: `in_ics`
-   - `setup_page`: false for a Source the setup page has no panel for yet, which is set up from a terminal by its own `setup` command, as Eepos is; the page's list then leaves it out
+   - `setup_page`: false for a Source the setup page has no panel for yet, which is set up from a terminal by its own `setup` command, as Eepos and eVaka are; the page's list then leaves it out
 
    A hook in another module goes through `_in`, which imports it when called
 

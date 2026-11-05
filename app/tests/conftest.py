@@ -19,6 +19,7 @@ local timezone are pinned. Regenerate golden files, all or one night's, with:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import socket
@@ -530,3 +531,36 @@ def eepos_entry(title: str, day: str, start: str | None = "15:15:00", end: str |
             "relatedRefs": [*({"refType": "student", "refId": s} for s in students),
                             {"refType": "teacher", "refId": 88}],
             "flags": [], "participants": [], "children": [], "source": None}
+
+
+def evaka_child(child_id: str, first: str, last: str, preferred: str = "") -> dict[str, Any]:
+    """One of a guardian's children as a city's eVaka lists them: with the unit, the group and the
+    placement eVaka sends too, which Parent Recap never keeps."""
+    return {"id": child_id, "firstName": first, "lastName": last, "preferredName": preferred,
+            "duplicateOf": None, "imageId": "4b3c2a1e-0000-4000-8000-000000000001",
+            "group": {"id": "9e0d1c2b-0000-4000-8000-000000000002", "name": "Kotiloiset"},
+            "unit": {"id": "8d7c6b5a-0000-4000-8000-000000000003", "name": "Päiväkoti Kilonpuisto"},
+            "permittedActions": ["READ_ABSENCES"], "absenceApplicationCreationPossible": False,
+            "serviceApplicationCreationPossible": True, "upcomingPlacementIsCalendarOpen": None,
+            "upcomingPlacementStartDate": None, "upcomingPlacementType": None, "upcomingPlacementUnit": None}
+
+
+def evaka_event(title: str, start: str, end: str | None = None, *, children: tuple[str, ...] = (),
+                city: str = "espoo", description: str = "", booked: dict[str, tuple[str, str, str]] | None = None
+                ) -> dict[str, Any]:
+    """An event of a city's eVaka calendar as its citizen API gives it, in `city` (which the fake
+    serves it in and leaves out), from the day `start` to `end`, for each of `children` by their ids.
+    With `booked`, a discussion survey instead: each child's booked time, as its day, start and end."""
+    event_id = hashlib.sha256(f"{title}{start}".encode()).hexdigest()[:8] + "-0000-4000-8000-000000000000"
+    period = {"start": start, "end": end or start}
+    attending = {c: [{"periods": [period], "type": "GROUP", "groupName": "Kotiloiset",
+                      "unitName": "Päiväkoti Kilonpuisto"}] for c in children}
+    times = {c: [{"id": f"{c[:8]}-t", "childId": c, "date": day, "startTime": begins, "endTime": ends,
+                  "isEditable": True},
+                 {"id": f"{c[:8]}-free", "childId": None, "date": day, "startTime": "08:00:00",
+                  "endTime": "08:30:00", "isEditable": True}]
+             for c, (day, begins, ends) in (booked or {}).items()}
+    return {"city": city, "id": event_id, "title": title, "description": description,
+            "eventType": "DISCUSSION_SURVEY" if booked else "DAYCARE_EVENT", "period": period,
+            "attendingChildren": {**attending, **{c: [] for c in times if c not in attending}},
+            "timesByChild": times}
