@@ -1,15 +1,16 @@
 """The hosted version's sign-up (ADR 0031), driven over HTTP as a family's phone drives it: the
-page under an Invite Link, the Wilma check, each Kid's MyClub link and an Eepos sign-in, the
+page under an Invite Link, the Wilma check, each Kid's MyClub link and an Eepos and an eVaka
+sign-in, the
 Household made under its own user with its first Brief sent, and the 404 every other request gets;
 then the maintainers' command that removes a Household again.
 
 The outside edges are faked: the service's wilma CLI is `test_setup_wilma`'s fake, which knows one
 Wilma account; the household host is `fake_household_host`'s, whose users each have their own
 home, secrets and jobs and run the real `signup household` and `run` in-process; MyClub's server,
-Eepos's school portals, the model and the gateway's Email Delivery are the harness's; the system is the harness's, set to
+Eepos's school portals, each city's eVaka, the model and the gateway's Email Delivery are the harness's; the system is the harness's, set to
 Linux. The service is the real one, on a free port or through socket pairs. Assertions are on the
 pages, on what each Household's user was left with, on the email sent, on the store, and on every
-place the Wilma and Eepos passwords, a MyClub link and the Gateway Key must never reach.
+place the Wilma, Eepos and eVaka passwords, a MyClub link and the Gateway Key must never reach.
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ import pytest
 import yaml
 
 from family_brief import setup_wilma
-from family_brief.collectors import eepos
+from family_brief.collectors import eepos, evaka
 from family_brief.brief_text import TEXT
 from family_brief.config import Config
 from family_brief.last_run import path as last_run_path
@@ -40,8 +41,8 @@ from family_brief.signup.invites import HouseholdRecord, Recipient, Store
 from family_brief.signup.remove import remove
 from family_brief.signup.server import Service, SignupServer
 from family_brief.system import jobs
-from conftest import eepos_entry, eepos_student, myclub_event
-from fake_sources import EEPOS_PASSWORD
+from conftest import eepos_entry, eepos_student, evaka_child, evaka_event, myclub_event
+from fake_sources import EEPOS_PASSWORD, EVAKA_PASSWORD
 from fake_household_host import FakeHouseholdHost
 from fake_system import LINUX
 from setup_page import CAN_LISTEN, Response, _Connection, _PairedServer
@@ -614,15 +615,18 @@ def test_a_family_without_wilma_signs_up_with_its_kids_names_and_a_myclub_link(
     assert household.user == signup.user()[0]
 
 
-def test_without_wilma_a_myclub_link_or_eepos_is_needed_and_nothing_is_made_without_one(signup):
+def test_without_wilma_a_myclub_link_eepos_or_evaka_is_needed_and_nothing_is_made_without_one(
+        signup):
     code = signup.invite(Recipient("parent@example.com", "fi"))
     assert sign_in(signup, code, **NO_WILMA, lang="zh", k0="Mia").status == 200
 
-    r = links(signup, code, "", lang="zh", **NO_EEPOS)
+    r = links(signup, code, "", lang="zh", **NO_EEPOS, **NO_EVAKA)
 
     assert r.status == 200
     assert said("zh", "need-myclub") in text(r)
-    assert "MyClub" in said("zh", "need-myclub") and "Eepos" in said("zh", "need-myclub")
+    for language, names in (("en", ("MyClub", "Eepos", "eVaka")), ("zh", ("MyClub", "Eepos", "eVaka")),
+                            ("fi", ("MyClub", "Eepokseen", "eVakaan"))):
+        assert all(name in said(language, "need-myclub") for name in names)
     assert 'name="step" value="myclub"' in text(r)
     assert (signup.host.users, signup.host.keys) == ({}, {})
     assert request(signup.url, f"/join/{code}").status == 200  # the link still works
@@ -741,6 +745,154 @@ def test_an_eepos_sign_in_that_won_t_do_is_said_and_nothing_is_made(
     sign_in(signup, code)
 
     r = links(signup, code, "", "", **EEPOS | fields)
+
+    assert r.status == 200
+    assert said("en", error) in text(r)
+    assert 'name="step" value="myclub"' in text(r)
+    assert (signup.host.users, signup.host.keys) == ({}, {})
+
+
+# ── eVaka (#790)
+
+NO_EVAKA = {"evaka_city": "", "evaka_username": "", "evaka_password": ""}
+EVAKA_USERNAME = "parent@example.com"
+EVAKA = {"evaka_city": "Espoo", "evaka_username": EVAKA_USERNAME, "evaka_password": EVAKA_PASSWORD}
+MIA_ID, ELLA_ID = "1a2b3c4d-0000-4000-8000-000000000011", "1a2b3c4d-0000-4000-8000-000000000013"
+
+
+@pytest.fixture
+def espoo(harness):
+    """Espoo's eVaka on the fake, where the guardian's password is EVAKA_PASSWORD and Mia and
+    Ella are in daycare, and Mia's group has a trip tomorrow."""
+    fake = harness.source_fakes["evaka"]
+    city = fake.city("espoo")
+    city.accounts[EVAKA_USERNAME] = EVAKA_PASSWORD
+    city.children = [evaka_child(MIA_ID, "Mia Emilia", "Virtanen"),
+                     evaka_child(ELLA_ID, "Ella", "Korhonen")]
+    harness.sources["evaka"] = [evaka_event("Retki Nuuksioon", "2026-09-28", children=(MIA_ID,))]
+    return fake
+
+
+def test_the_evaka_city_list_is_every_known_city_as_a_family_writes_it():
+    assert [evaka.city_of(c) for c in page.EVAKA_CITIES] == list(evaka.CITIES)
+    assert evaka.city_of(" Hämeenkyrö ") == "hameenkyro" and evaka.city_of("Ylöjärvi") == "ylojarvi"
+
+
+def test_a_family_without_wilma_signs_up_with_its_kids_names_and_an_evaka_sign_in(
+        signup, harness, espoo, caplog, capsys):
+    caplog.set_level(logging.DEBUG)
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    first = text(sign_in(signup, code, **NO_WILMA, k0="Mia Virtanen", k1="Leo"))
+    # The MyClub step has the eVaka part: the cities to pick from, and its password in a field
+    # that never has a value.
+    assert said("en", "evaka_needed") in first and said("en", "evaka_hint") in first
+    assert '<option value="Hämeenkyrö">' in first
+    assert '<input id="evaka_password" name="evaka_password" type="password" ' \
+           'autocomplete="off">' in first
+
+    r = links(signup, code, "", "", **EVAKA)
+
+    assert r.status == 200, text(r)
+    html = text(r)
+    steps = page.steps(wilma=False, myclub=False, eepos=False, evaka=True)
+    assert marks(html, "en", steps) == "✅✅✅" and said("en", "step_evaka") in html
+    # Ella is none of the Kids: said, and her daycare's events go to the whole Household.
+    assert said("en", "evaka_unmatched", names="Ella Korhonen") in html
+    name, user = signup.user()
+    config = yaml.safe_load((user.home / ".family" / "config.yaml").read_text())
+    assert config["evaka"] == {"signins": [{"city": "espoo", "username": EVAKA_USERNAME,
+                                            "kids": {MIA_ID: "Mia Virtanen"}}]}
+    assert "eepos" not in config
+    secret = evaka.secret_name("espoo", EVAKA_USERNAME)
+    assert set(user.secrets) == {"gateway-key", secret}
+    assert user.secrets[secret] == EVAKA_PASSWORD
+    # The device cookie the service's check got is the Household's, so the city sees one device.
+    [checked, *_] = [q for q in espoo.requests if q["path"] == evaka.SIGN_IN]
+    devices = user.home / ".family" / evaka.DEVICES
+    kept = json.loads(devices.read_text())["espoonvarhaiskasvatus.fi"]
+    assert kept and checked["devices"] == {}
+    assert [q["devices"] for q in espoo.requests if q["path"] == evaka.SIGN_IN][1:] == [kept]
+    assert not (harness.home / ".family" / evaka.DEVICES).exists()  # none left by the service
+    [sent] = harness.sent
+    # "read tonight: eVaka 2 events": the trip and when next week's reservations close
+    assert "eVaka 2 tapahtumaa" in sent.text and "Retki Nuuksioon" in sent.text
+    assert "without Wilma" in caplog.text and "and eVaka" in caplog.text
+    # The password: on no command line, in no log or output, in no page, nor in the config.
+    printed = "".join(capsys.readouterr())
+    assert EVAKA_PASSWORD not in caplog.text + printed + first + html
+    assert EVAKA_PASSWORD not in json.dumps(config)
+    assert not any(EVAKA_PASSWORD in arg for cmd in [*signup.host.commands, *harness.commands]
+                   for arg in cmd)
+    assert EVAKA_USERNAME not in caplog.text and "Ella" not in caplog.text
+
+
+def test_a_family_with_wilma_adds_eepos_and_evaka(signup, harness, emo, espoo):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    assert said("fi", "evaka") in text(sign_in(signup, code, lang="fi"))
+
+    r = links(signup, code, "", "", lang="fi", **EEPOS, **EVAKA | {"evaka_city": "espoo"})
+
+    assert r.status == 200, text(r)
+    html = text(r)
+    steps = page.steps(wilma=True, myclub=False, eepos=True, evaka=True)
+    assert marks(html, "fi", steps) == "✅✅✅"
+    assert "Wilma, Eepos ja eVaka yhdistetään" in html
+    assert said("fi", "evaka_unmatched", names="Ella Korhonen") in html
+    _, user = signup.user()
+    cfg = Config.load(user.home / ".family" / "config.yaml")
+    assert cfg.wilma.enabled and len(cfg.eepos.signins) == 1
+    [signin] = cfg.evaka.signins
+    assert (signin.city, signin.kids) == ("espoo", {MIA_ID: "Mia Virtanen"})  # as Wilma lists her
+    assert user.secrets[evaka.secret_name("espoo", EVAKA_USERNAME)] == EVAKA_PASSWORD
+    assert user.secrets[eepos.secret_name("emo", EEPOS_USERNAME)] == EEPOS_PASSWORD
+    assert "eVaka 2 tapahtumaa" in harness.sent[0].text and "Eepos 1 tapahtuma" in harness.sent[0].text
+
+
+def test_the_steps_name_what_they_connect_in_each_language():
+    assert page.TEXT["en"]["step_wilma_eepos_evaka"] == "Connecting Wilma, Eepos and eVaka"
+    assert page.TEXT["zh"]["step_myclub_evaka"] == "连接 MyClub 和 eVaka"
+    assert page.TEXT["fi"]["step_eepos"] == "Eepos yhdistetään"
+    assert page.steps(wilma=True, myclub=True, eepos=False, evaka=False) == page.STEPS
+    assert page.steps(wilma=False, myclub=True, eepos=False, evaka=False) == page.NO_WILMA_STEPS
+    assert page.steps(wilma=False, myclub=True, eepos=True, evaka=True)[1] == "step_myclub_eepos_evaka"
+
+
+def test_a_wrong_evaka_password_is_said_and_nothing_is_made(signup, espoo, caplog, capsys):
+    caplog.set_level(logging.DEBUG)
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    assert sign_in(signup, code, **NO_WILMA, lang="zh", k0="Mia Virtanen").status == 200
+
+    r = links(signup, code, "", lang="zh", **EVAKA | {"evaka_password": "wrong-evaka-mima"})
+
+    assert r.status == 200
+    html = text(r)
+    assert said("zh", "evaka-wrong-password") in html and said("zh", "paste_again") in html
+    assert 'value="Espoo"' in html and f'value="{EVAKA_USERNAME}"' in html  # typed again, but
+    assert b"wrong-evaka-mima" not in r.body  # never the password
+    assert "wrong-evaka-mima" not in caplog.text + "".join(capsys.readouterr())
+    assert (signup.host.users, signup.host.keys, signup.host.commands) == ({}, {}, [])
+    assert signup.store.households() == []
+    assert request(signup.url, f"/join/{code}").status == 200  # the link still works
+    # The names still wait: the right password signs up.
+    assert said("zh", "sent", time="21:00") in text(links(signup, code, "", lang="zh", **EVAKA))
+
+
+@pytest.mark.parametrize("fields, answer, error", [
+    ({"evaka_password": ""}, None, "evaka-incomplete"),
+    ({"evaka_city": ""}, None, "evaka-incomplete"),
+    ({"evaka_city": "Helsinki!"}, None, "evaka-not-a-city"),
+    ({}, (200, "OK"), "evaka-changed"),  # no session cookie
+    ({}, (502, "Bad gateway"), "evaka-no-answer"),
+    ({}, evaka.requests.ConnectionError("no route"), "evaka-no-answer"),
+])
+def test_an_evaka_sign_in_that_won_t_do_is_said_and_nothing_is_made(
+        signup, espoo, fields, answer, error):
+    if answer is not None:
+        espoo.answers[("espoo", evaka.SIGN_IN)] = answer
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    sign_in(signup, code)
+
+    r = links(signup, code, "", "", **EVAKA | fields)
 
     assert r.status == 200
     assert said("en", error) in text(r)
