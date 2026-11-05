@@ -19,7 +19,7 @@ next LOOKAHEAD_DAYS days of:
 - `reservations`: the days the unit is closed, a public holiday no child of the guardian's has
   reservable time on, and the deadline of the next week's reservations, which eVaka gives as the
   first day still open for them (`reservableRange`), and each city closes them a set number of
-  hours before (CITIES).
+  hours before (CITIES); none for a week a holiday period has its own reservations for.
 Each becomes a calendar event for the Kid its child is, or for the Household when it is for none,
 several or all of them. Absences, messages and holiday questionnaires are for later slices (#768).
 """
@@ -388,15 +388,21 @@ def deadline(reservations: dict[str, Any], city: str, kids: Mapping[str, str | N
              tz: str) -> CalendarEvent | None:
     """When the reservations of the first week still open for them close: eVaka's reservable range
     starts on that week's Monday, and the city closes them its CITIES hours before it, in eVaka's
-    own time. For the Kid whose child needs reservations, or the Household when several do; None
-    when none does, or for a city not in CITIES, whose hours aren't known."""
+    own time. For the Kid whose child needs reservations that week, or the Household when several
+    do; None when none does, or for a city not in CITIES, whose hours aren't known. A day in a
+    holiday period (`holidayPeriodEffect`) is reserved by the period's own rules, not by this
+    deadline, so a week all in one has none. When the reservations reach no day of that week, a
+    child needs them if it does on any day."""
     hours = deadline_hours(city)
     if hours is None:
         return None
-    monday = _day(reservations["reservableRange"].get("start"), f"{host_of(city)}'s reservations")
-    reserving = {str(c.get("childId")) for day in reservations["days"] if isinstance(day, dict)
-                 for c in day.get("children") or []
-                 if isinstance(c, dict) and c.get("scheduleType") == "RESERVATION_REQUIRED"}
+    where = f"{host_of(city)}'s reservations"
+    monday = _day(reservations["reservableRange"].get("start"), where)
+    days = [d for d in reservations["days"] if isinstance(d, dict)]
+    week = [d for d in days if monday <= _day(d.get("date"), where) < monday + timedelta(days=7)]
+    reserving = {str(c.get("childId")) for day in week or days for c in day.get("children") or []
+                 if isinstance(c, dict) and c.get("scheduleType") == "RESERVATION_REQUIRED"
+                 and not c.get("holidayPeriodEffect")}
     if not reserving:
         return None
     closes = datetime.combine(monday, time(0), EVAKA_ZONE) - timedelta(hours=hours)
