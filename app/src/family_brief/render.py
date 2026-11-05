@@ -199,6 +199,20 @@ def _start(start: str, t: BriefText, tz: str) -> str:
     return t.at(moment.replace(tzinfo=ZoneInfo(tz)) if moment.tzinfo is None else to_local(moment, tz))
 
 
+def _in_date_order(created: list[dict], tz: str) -> list[dict]:
+    """The listed events by their start in the Household's timezone `tz`, whatever Source gave them:
+    a day's all-day events before its timed ones, and a start that can't be read last."""
+    def when(ev: dict) -> tuple[datetime, bool]:
+        start = str(ev.get("start") or "")
+        try:
+            moment = datetime.fromisoformat(start)
+        except ValueError:
+            return datetime.max, True
+        local = moment if moment.tzinfo is None else to_local(moment, tz).replace(tzinfo=None)
+        return local, len(start) > 10
+    return sorted(created, key=when)
+
+
 _HEADING = re.compile(r"#{2,3}\s+(?P<title>.+)"
                       r"|\*\*(?P<kid>[^*]+)\*\*(?P<note>\s*[(（][^()（）]*[)）])?")
 _POINT = re.compile(r"\s*[-*•]\s+(\S.*)")
@@ -310,7 +324,7 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
         ics_hint = t.ics_hint_mixed if mixed else t.ics_hint
         parts.append(f"<h3>{t.new_events}</h3>" + (
             f"<p style='color:#666'>{ics_hint}</p>" if ics_attached else "") + "<ul>")
-        for ev in calendar_created:
+        for ev in _in_date_order(calendar_created, tz):
             title = _h.escape(str(ev.get("title", "")))
             start = _h.escape(_start(str(ev.get("start", "")), t, tz))
             kid = _h.escape(str(ev.get("kid") or ""))
@@ -367,7 +381,7 @@ def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: 
         parts += [f"• {a.what} {_action_meta(kid, a, t)}".rstrip() for kid, a in actions]
     if calendar_created:
         parts += ["", t.new_events_line]
-        for ev in calendar_created[:10]:
+        for ev in _in_date_order(calendar_created, tz)[:10]:
             tag = f" ({ev['kid']})" if ev.get("kid") else ""
             parts.append(f"• {ev['title']} — {_start(ev['start'], t, tz)}{tag}")
             if about := _place_and_details(ev):

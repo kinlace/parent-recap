@@ -1,0 +1,128 @@
+covers: [source-events, finnish-terms]
+note: >
+  Tuesday night, no Messages, only a daycare's eVaka events for the next two weeks. The Digest must
+  tell next week's trip with its departure time, the parents' breakfast, the closed day (said only in
+  Finnish, in the description) and the reservation deadline, and leave the routine group activities
+  out.
+now: 2026-11-24T20:00:00+02:00
+household:
+  timezone: Europe/Helsinki
+  kids:
+    - name: Lahti Ilona
+      everyday_name: Ilona
+      grade: 0
+      class_name: Eskari Kuusikko
+      school: Päiväkoti Kuusikko
+queued:
+  - {
+      external_id: "evaka:0a1b2c3d4e5f6071",
+      source: evaka,
+      title: Kirjastokäynti,
+      start: "2026-11-25",
+      description: "",
+      kid: Ilona,
+    }
+  - {
+      external_id: "evaka:1b2c3d4e5f607182",
+      source: evaka,
+      title: Leiki ja liiku,
+      start: "2026-11-27",
+      description: "",
+      kid: Ilona,
+    }
+  - {
+      external_id: "evaka:2c3d4e5f60718293",
+      source: evaka,
+      title: Esikoulu+ Viskarit toimintaa,
+      start: "2026-11-30",
+      description: "",
+      kid: Ilona,
+    }
+  - {
+      external_id: "evaka:3d4e5f6071829304",
+      source: evaka,
+      title: Varaukset viikolle 50 sulkeutuvat,
+      start: "2026-12-01T18:00:00+02:00",
+      description: Varaa hoitoajat 7.12. alkavalle viikolle eVakassa.,
+      kid: Ilona,
+    }
+  - {
+      external_id: "evaka:4e5f607182930415",
+      source: evaka,
+      title: Retki Sellosaliin,
+      start: "2026-12-02",
+      description: Lähtö päiväkodilta klo 9.15. Eväsreppu mukaan.,
+      kid: Ilona,
+    }
+  - {
+      external_id: "evaka:5f60718293041526",
+      source: evaka,
+      title: Vanhempien aamupala,
+      start: "2026-12-03",
+      description: Tervetuloa aamupalalle klo 7.30–9.00!,
+      kid: Ilona,
+    }
+  - {
+      external_id: "evaka:6071829304152637",
+      source: evaka,
+      title: Suunnittelupäivä,
+      start: "2026-12-04",
+      description: Päiväkoti kiinni,
+      kid: Ilona,
+    }
+expect:
+  action_items:
+    - { kid: Ilona, what: [varaa, varau, reserv, book, 预约, 预订, 登记], optional: true }
+    - { kid: Ilona, what: [eväs, evää, reppu, lunch, snack, backpack, 零食, 午餐, 背包, 便当], optional: true }
+    - { kid: Ilona, what: [hoito, hoid, järjest, care, arrange, 看护, 照看, 托管, 安排], optional: true }
+  notices:
+    must:
+      - {
+          text:
+            [
+              [retk, trip, outing, excursion, 郊游, 出游, 远足, 外出, Sello],
+              ["9.15", "9:15", "09.15", "09:15"],
+            ],
+          where: anywhere,
+        }
+      - {
+          text:
+            [
+              [aamupal, aamiai, breakfast, 早餐, 早饭, 早点],
+              [" 3.12", "12月3", "3 dec", "dec 3", "3. jouluk", torstai, thursday, 周四, 星期四],
+            ],
+          where: anywhere,
+        }
+      - {
+          text:
+            [
+              [kiinni, suljettu, closed, 关门, 闭园, 不开, 停园, 休园, 关闭, 不开放],
+              [" 4.12", "12月4", "4 dec", "dec 4", "4. jouluk", perjantai, friday, 周五, 星期五],
+            ],
+          where: anywhere,
+        }
+      - {
+          text:
+            [
+              [varau, varaa, reserv, book, 预约, 预订, 登记, 申报],
+              [" 1.12", "12月1", "1 dec", "dec 1", "1. jouluk", tiistai, tuesday, 周二, 星期二],
+            ],
+          where: anywhere,
+        }
+    must_not:
+      - {
+          text:
+            [
+              leiki ja liik,
+              play and move,
+              "play & move",
+              玩耍和运动,
+              游戏和运动,
+              玩耍与运动,
+              游戏与运动,
+              viskari,
+              preschool+,
+              esikoulu+,
+            ],
+          where: anywhere,
+        }
