@@ -20,7 +20,7 @@ from .cases import Spec
 
 # The dashes a model may write in a range such as "40–78": hyphen, the Unicode hyphens and
 # dashes, minus, and the full-width and small forms a Chinese Brief uses. All become "-".
-_DASHES = re.compile("[‐-―−﹘﹣－]")
+_DASHES = re.compile("[\\u2010-\\u2015\\u2212\\ufe58\\ufe63\\uff0d]")
 
 
 def _fold(text: str) -> str:
