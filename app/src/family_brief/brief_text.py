@@ -49,6 +49,7 @@ class BriefText:
     read_tonight: str                   # {counts}
     messages: Plural
     events: Plural
+    messages_with_events: Plural        # the Messages beside a Source's events, as in "1 message and 4 events"
     not_read: str                       # {source} {reason}
     partly_read: str                    # {source} {reason}
     not_read_since: str                 # {source} {when}, as `date_time` writes it, {reason}
@@ -160,6 +161,7 @@ EN = BriefText(
     read_tonight="📥 Read tonight: {counts}",
     messages=Plural("{n} message", "{n} messages"),
     events=Plural("{n} event", "{n} events"),
+    messages_with_events=Plural("{n} message", "{n} messages"),
     not_read="{source} not read ({reason})",
     partly_read="{source} partly read ({reason})",
     not_read_since="{source} not read since {when} ({reason})",
@@ -245,6 +247,7 @@ ZH = BriefText(
     read_tonight="📥 今晚读取：{counts}",
     messages=Plural("{n} 条", "{n} 条"),
     events=Plural("{n} 个日程", "{n} 个日程"),
+    messages_with_events=Plural("{n} 条消息", "{n} 条消息"),
     not_read="{source} 没读到（{reason}）",
     partly_read="{source} 部分没读到（{reason}）",
     not_read_since="{source} 自 {when} 起没读到（{reason}）",
@@ -321,6 +324,7 @@ FI = BriefText(
     read_tonight="📥 Luettu tänä iltana: {counts}",
     messages=Plural("{n} viesti", "{n} viestiä"),
     events=Plural("{n} tapahtuma", "{n} tapahtumaa"),
+    messages_with_events=Plural("{n} viesti", "{n} viestiä"),
     not_read="{source} jäi lukematta ({reason})",
     partly_read="{source} luettiin vain osittain ({reason})",
     not_read_since="{source} on jäänyt lukematta {when} lähtien ({reason})",

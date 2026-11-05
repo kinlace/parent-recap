@@ -41,6 +41,10 @@ You translate the fixed text of a program that emails a Household a daily Brief 
     "one": "{n} event",
     "other": "{n} events"
   },
+  "messages_with_events": {
+    "one": "{n} message",
+    "other": "{n} messages"
+  },
   "not_read": "{source} not read ({reason})",
   "partly_read": "{source} partly read ({reason})",
   "not_read_since": "{source} not read since {when} ({reason})",

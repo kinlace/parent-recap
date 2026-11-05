@@ -84,7 +84,7 @@ def _coverage_note(coverage: dict[str, dict], t: BriefText, hosted: bool) -> str
         counts_events = source_registry.named(source).counts_events
         counted = (t.events if counts_events else t.messages)(c["count"])
         if c.get("messages"):  # a Source that counts its events, with Messages tonight too
-            counted = t.sources_sep.join((t.messages(c["messages"]), counted))
+            counted = t.sources_sep.join((t.messages_with_events(c["messages"]), counted))
         read.append(f"{name} {counted}")
         if c["error"] and c.get("since"):  # a Source not read since then, in the Household's time
             missed.append(t.not_read_since.format(source=name, when=t.at(datetime.fromisoformat(c["since"])),
