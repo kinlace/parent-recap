@@ -3,7 +3,8 @@
 Entries are matched on keywords, not exact text, because the model writes its own words in the
 Brief's language (an English or Chinese Brief keeps a Finnish term only in brackets), so a spec
 lists Chinese, English and Finnish alternatives, the Finnish as stems that survive inflection. A
-keyword spec is a list of alternatives (any one must appear, case-insensitively); a list whose
+keyword spec is a list of alternatives (any one must appear, case-insensitively, with any dash
+standing for any other, so "40–78" also matches "40—78" and "40-78"); a list whose
 items are themselves lists is a set of groups that must all appear. Everything is counted, not averaged, so `aggregate` can pool cases of different sizes."""
 from __future__ import annotations
 
@@ -17,12 +18,21 @@ from ..summarize import _localize
 from .cases import Spec
 
 
+# The dashes a model may write in a range such as "40–78": hyphen, the Unicode hyphens and
+# dashes, minus, and the full-width and small forms a Chinese Brief uses. All become "-".
+_DASHES = re.compile("[‐-―−﹘﹣－]")
+
+
+def _fold(text: str) -> str:
+    return _DASHES.sub("-", text.casefold())
+
+
 def matches(spec: Spec, text: str) -> bool:
     # Padded, so a keyword such as "klo 10 " also matches at the very end of the text.
-    text = f" {text.casefold()} "
+    text = f" {_fold(text)} "
     if any(isinstance(s, list) for s in spec):
         return all(matches(s if isinstance(s, list) else [s], text) for s in spec)
-    return any(str(s).casefold() in text for s in spec)
+    return any(_fold(str(s)) in text for s in spec)
 
 
 def _kid_ok(expected: str | list[str] | None, kid: object) -> bool:
