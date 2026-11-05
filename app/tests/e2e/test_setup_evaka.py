@@ -157,7 +157,7 @@ def test_doctor_signs_in_to_each_city_and_names_its_children(harness, nothing_lo
 
     lines = capsys.readouterr().out.splitlines()
     assert (f"{ops.OK} eVaka (espoonvarhaiskasvatus.fi): signed in as {USERNAME}, 2 events in the next "
-            "14 days; children: Mia Emilia Virtanen (Mia), Leo Virtanen (Leo)") in lines
+            "28 days; children: Mia Emilia Virtanen (Mia), Leo Virtanen (Leo)") in lines
 
 
 def test_doctor_says_how_to_type_a_password_evaka_no_longer_takes(harness, nothing_loaded, portal,  # noqa: F811
