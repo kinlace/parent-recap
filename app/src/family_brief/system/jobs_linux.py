@@ -31,6 +31,7 @@ NO_BACKGROUND = ("A background run isn't available on Linux: run parent-recap wi
                  "command directly, as the Household's user")
 # systemd's own days, by the job's weekday: 0 and 7 are Sunday, as launchd has them.
 DAYS = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+OWN_CLOCK = False  # each timer's OnCalendar names the Household's zone
 
 
 def system_name(name: str) -> str:
@@ -89,7 +90,7 @@ def _command_line(command: list[str]) -> str:
 
 
 def _service(job: jobs.Job) -> str:
-    command = [sys.executable, "-m", "family_brief", job.subcommand]
+    command = [sys.executable, "-m", "family_brief", *jobs.command(job, OWN_CLOCK)]
     env = {"PATH": _path_env(), "HOME": str(Path.home())}
     log = job.log_dir / job.subcommand
     lines = [

@@ -1,7 +1,7 @@
 """The nightly `parent-recap run` across nights, end to end: quiet nights and what carries over, a
-Gmail with no sender ticked, and catching up at sign-in with `run --if-missed`. Assertions are only
-on what leaves the system: the email (text, HTML, attachments), the model command line, and
-persisted state."""
+Gmail with no sender ticked, catching up at sign-in with `run --if-missed`, and the evening job
+started early on a computer set to another zone. Assertions are only on what leaves the system:
+the email (text, HTML, attachments), the model command line, and persisted state."""
 from __future__ import annotations
 
 import json
@@ -14,6 +14,9 @@ import time_machine
 
 from conftest import NOW, html_for_golden, msg, myclub_event, without_unread_note
 from fake_system import WINDOWS
+
+from family_brief.actions import archive
+from family_brief.system import jobs
 
 from nights import normal_night, payload_message_ids
 
@@ -382,5 +385,124 @@ def test_signing_in_before_the_first_evening_since_setup_sends_nothing(harness):
     scheduled_on_windows(harness, hours_ago=8)
 
     assert harness.run("--if-missed") == 0
+
+    assert harness.sent == [] and harness.model_calls == []
+
+
+# ── A Brief sent once, and never early (#776)
+
+def last_run_hours_before_now(h, hours: float) -> None:
+    at = (NOW - timedelta(hours=hours)).isoformat()
+    h.state_path.parent.mkdir(parents=True, exist_ok=True)
+    h.state_path.write_text(json.dumps({"last_run_at": at, "caught_up_at": at}))
+
+
+def test_a_run_that_sent_the_brief_and_then_failed_isnt_caught_up_the_next_day(harness, monkeypatch):
+    normal_night(harness, "en")
+    last_run_hours_before_now(harness, 24)
+    def disk_full(*_a: object) -> None:
+        raise OSError("disk full")
+    monkeypatch.setattr(archive, "write", disk_full)
+
+    with pytest.raises(OSError, match="disk full"):
+        harness.run()
+
+    assert len(harness.sent) == 1
+    assert json.loads(harness.state_path.with_name("last-run.json").read_text())["exit"] == 1
+    # Signing in on Windows the next day at 19:00, before that evening's run.
+    with time_machine.travel(NOW + timedelta(hours=22), tick=False):
+        assert harness.run("--if-missed") == 0
+    assert len(harness.sent) == 1 and len(harness.model_calls) == 1
+
+
+# launchd and Task Scheduler start the evening job at 21:00 on the computer's own clock, which on
+# one set to Karachi's zone is 19:00 in the Household's, Helsinki.
+KARACHI = ZoneInfo("Asia/Karachi")
+EARLY_IN_KARACHI = NOW.replace(tzinfo=KARACHI)
+needs_tzset = pytest.mark.skipif(not hasattr(time, "tzset"),
+                                 reason="time_machine sets the computer's zone with tzset")
+
+
+@needs_tzset
+def test_a_scheduled_run_started_early_by_a_computer_in_another_zone_sends_nothing(harness, caplog):
+    normal_night(harness, "en")
+    assert EARLY_IN_KARACHI.astimezone(ZoneInfo("Europe/Helsinki")).hour == 19
+
+    with time_machine.travel(EARLY_IN_KARACHI, tick=False):
+        assert harness.run("--scheduled") == 0
+
+    assert harness.sent == [] and harness.model_calls == []
+    [why] = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Not sending")]
+    assert "21:00 on this computer's clock (UTC+0500)" in why
+    assert "19:00 in Europe/Helsinki" in why and "the Brief is at 21:00 there" in why
+
+
+@needs_tzset
+def test_run_now_sends_on_a_computer_in_another_zone(harness):
+    normal_night(harness, "en")
+    harness.jobs.add(jobs.DAILY)
+
+    with time_machine.travel(EARLY_IN_KARACHI, tick=False):
+        assert harness.cli("schedule", "run-now") == 0
+        assert harness.run("--scheduled") == 0  # the evening job run-now started
+
+    assert len(harness.sent) == 1
+
+
+@needs_tzset
+def test_a_scheduled_run_started_by_hand_long_ago_is_held_back_again(harness):
+    harness.jobs.add(jobs.DAILY)
+    with time_machine.travel(EARLY_IN_KARACHI - timedelta(days=1), tick=False):
+        assert harness.cli("schedule", "run-now") == 0
+    normal_night(harness, "en")
+
+    with time_machine.travel(EARLY_IN_KARACHI, tick=False):
+        assert harness.run("--scheduled") == 0
+
+    assert harness.sent == []
+
+
+@pytest.mark.parametrize("hours_late", [0, 13])
+def test_a_scheduled_run_on_time_or_after_a_sleep_sends(harness, hours_late):
+    # A run launchd starts once the Mac wakes, the next morning, still goes out.
+    normal_night(harness, "en")
+
+    with time_machine.travel(NOW + timedelta(hours=hours_late), tick=False):
+        assert harness.run("--scheduled") == 0
+
+    assert len(harness.sent) == 1
+
+
+@needs_tzset
+def test_a_computer_behind_the_household_s_zone_sends_when_it_starts_the_run(harness):
+    # Set to London's zone, it starts the evening job at 23:00 in Helsinki: late, not early.
+    normal_night(harness, "en")
+
+    with time_machine.travel(NOW.replace(tzinfo=ZoneInfo("Europe/London")), tick=False):
+        assert harness.run("--scheduled") == 0
+
+    assert len(harness.sent) == 1
+
+
+@needs_tzset
+def test_a_missed_evening_is_caught_up_at_any_hour_on_a_computer_in_another_zone(harness):
+    # Last night's 21:00 in Helsinki went by with no run; signing in at 19:00 there catches it up.
+    normal_night(harness, "en")
+    last_run_hours_before_now(harness, 24)
+
+    with time_machine.travel(EARLY_IN_KARACHI + timedelta(days=1), tick=False):
+        assert harness.run("--if-missed") == 0
+
+    assert len(harness.sent) == 1
+
+
+@needs_tzset
+def test_signing_in_early_on_a_computer_in_another_zone_after_the_evening_ran_sends_nothing(harness):
+    # 21:00 on its own clock has gone by, but the Household's evening is still two hours away.
+    normal_night(harness, "en")
+    last_run_hours_before_now(harness, 0)
+
+    with time_machine.travel(EARLY_IN_KARACHI + timedelta(days=1, minutes=1), tick=False):
+        assert harness.run("--if-missed") == 0
 
     assert harness.sent == [] and harness.model_calls == []

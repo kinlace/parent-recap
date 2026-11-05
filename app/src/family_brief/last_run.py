@@ -1,8 +1,7 @@
 """How the last evening run ended: when, its exit code, how long it took and its peak memory, in
 `last-run.json` beside state.json.
 
-state.json's `last_run_at` is written only by a run that got to its end, so it can't tell a run
-that failed from one that never started. This is written by every run that started, however it
+state.json's `last_run_at` is written only by a run that sent its Brief or had none to send, so it can't tell a run that failed from one that never started. This is written by every run that started, however it
 ended, and holds nothing of the Household's: a time and three numbers. The hosted version's status
 (`signup status`) reads it, and from the duration and peak memory the maintainers check that a run
 fits its unit's limits (#583)."""

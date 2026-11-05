@@ -85,7 +85,8 @@ def test_a_task_runs_the_job_without_a_window_and_with_its_log_files(tmp_path, m
     args = text(action, "t:Arguments")
     assert args.startswith(f"-m {jobs_windows.RUNNER} ")
     assert f'"{tmp_path / "log folder" / "run-stdout.log"}"' in args  # quoted for its space
-    assert args.endswith(f"{python} -m family_brief run")
+    # A StartBoundary without an offset is the PC's local time, so the run checks its own (#776).
+    assert args.endswith(f"{python} -m family_brief run --scheduled")
 
 
 def test_the_evening_jobs_sign_in_task_catches_up_a_run_missed_while_signed_out(tmp_path,
@@ -229,7 +230,7 @@ def test_installing_registers_both_tasks_and_without_weekend_picks_removes_their
     catch_up = jobs_windows.CATCH_UP
     jobs.install(both(tmp_path))
     assert jobs.installed() == {jobs.DAILY, jobs.WEEKEND}
-    assert jobs.program(jobs.DAILY) == [sys.executable, "-m", "family_brief", "run"]
+    assert jobs.program(jobs.DAILY) == [sys.executable, "-m", "family_brief", "run", "--scheduled"]
     assert jobs.program(catch_up) == [sys.executable, "-m", "family_brief", "run", "--if-missed"]
     assert {j.system_name for j in jobs.found()} == {jobs.system_name(jobs.DAILY),
                                                      jobs.system_name(catch_up),

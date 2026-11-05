@@ -60,7 +60,7 @@ def allowed(argv: list[str], rules: list[list[str]]) -> bool:
 class User:
     home: Path
     secrets: FakeSecrets = field(default_factory=FakeSecrets)
-    jobs: FakeJobs = field(default_factory=FakeJobs)
+    jobs: FakeJobs = field(default_factory=lambda: FakeJobs(on_a_server=lambda: True))
 
 
 class FakeHouseholdHost:

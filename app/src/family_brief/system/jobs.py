@@ -24,6 +24,10 @@ ALWAYS = "linked-device"  # the always-running job's name
 # rest, so it is 0, and the program must end any other way, a crash or an empty event loop
 # included, with another code.
 LINK_ENDED = 0
+# The evening job's flag where the scheduler keeps the computer's own clock (launchd, Task
+# Scheduler): the run itself then sends nothing when started well before the Household's time in
+# its own zone (#776). A systemd timer keeps the Household's zone, so it needs none.
+SCHEDULED = "--scheduled"
 
 
 @dataclass(frozen=True)
@@ -63,6 +67,19 @@ class AlreadyRunning(Exception):
 
 class NotStarted(Exception):
     """The system didn't start run_now's job; the message is its reason."""
+
+
+def own_clock() -> bool:
+    """Whether the system's scheduler starts the jobs at their time on the computer's own clock,
+    whatever zone the Household's config names."""
+    return _adapter.OWN_CLOCK
+
+
+def command(job: Job, keeps_own_clock: bool | None = None) -> list[str]:
+    """What `job` runs after `python -m family_brief`, on a scheduler that keeps the computer's
+    own clock or not; by default, this system's."""
+    own = own_clock() if keeps_own_clock is None else keeps_own_clock
+    return [job.subcommand, *([SCHEDULED] if job.name == DAILY and own else [])]
 
 
 def install(jobs: list[Job]) -> None:

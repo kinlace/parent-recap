@@ -89,7 +89,8 @@ class FakeJobs:
     """The system's scheduler: our jobs installed, which it will run at their time, and the one-off
     runs, which run `parent-recap` in this process with the evening job's environment."""
 
-    def __init__(self) -> None:
+    def __init__(self, on_a_server: Callable[[], bool] = lambda: False) -> None:
+        self._on_a_server = on_a_server  # a server's timers keep the Household's zone
         self.programs: dict[str, list[str]] = {}  # what each installed job runs, by its name
         self.loaded: set[str] = set()   # installed ones the system runs at their time; the rest
                                         # wait for the family to log in
@@ -107,6 +108,10 @@ class FakeJobs:
         self.always_log_dir: Path | None = None
         self.always_running = False            # stopped, or ended with its link, when False
 
+    @property
+    def OWN_CLOCK(self) -> bool:
+        return not self._on_a_server()
+
     def add(self, *names: str, loaded: bool = True) -> None:
         """Our jobs `names` as `schedule install` leaves them, loaded or waiting for a login."""
         for name in names:
@@ -118,7 +123,7 @@ class FakeJobs:
     def install(self, wanted: list[jobs.Job]) -> None:
         if self.install_fails is not None:
             raise jobs.NotStarted(self.install_fails)
-        self.programs = {job.name: [sys.executable, "-m", "family_brief", job.subcommand]
+        self.programs = {job.name: [sys.executable, "-m", "family_brief", *jobs.command(job)]
                          for job in wanted}
         self.loaded = set(self.programs)
 
@@ -353,7 +358,7 @@ class FakeSystem:
 
     def __init__(self, mp: pytest.MonkeyPatch) -> None:
         self.secrets = FakeSecrets()
-        self.jobs = FakeJobs()
+        self.jobs = FakeJobs(lambda: self.profile is LINUX)
         self.wake = FakeWake(lambda: self.profile is LINUX)
         self.user_path = FakeUserPath()
         self.desktop = FakeDesktop()

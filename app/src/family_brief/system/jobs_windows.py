@@ -39,6 +39,7 @@ RUNNING = "267009"
 # Where Last Result is in that list, `/Query /FO CSV /V`, whose columns don't move.
 LAST_RESULT = 6
 STOP_WAIT = 15  # seconds the always-running job's task gets to end once stopped
+OWN_CLOCK = True  # a StartBoundary without an offset is the PC's local time
 
 
 def system_name(name: str) -> str:
@@ -99,14 +100,13 @@ def _user() -> str | None:
 
 
 def _task(job: jobs.Job, description: str, trigger: Callable[[ET.Element], None], *,
-          wake: bool, more_args: tuple[str, ...] = ()) -> str:
-    """A task that runs `job`'s command and `more_args` when `trigger` (handed the Triggers
-    element) says, in Task Scheduler's XML; `wake` wakes the PC for it and catches up a missed
-    start."""
+          wake: bool, command: list[str]) -> str:
+    """A task that runs `command` of `job`'s when `trigger` (handed the Triggers element) says, in
+    Task Scheduler's XML; `wake` wakes the PC for it and catches up a missed start."""
     return _xml(description, trigger, [
         str(job.log_dir / f"{job.subcommand}-stdout.log"),
         str(job.log_dir / f"{job.subcommand}-stderr.log"),
-        sys.executable, "-m", "family_brief", job.subcommand, *more_args], wake=wake)
+        sys.executable, "-m", "family_brief", *command], wake=wake)
 
 
 def _at_sign_in(delay: str | None) -> Callable[[ET.Element], None]:
@@ -180,7 +180,7 @@ def task_xml(job: jobs.Job, now: datetime | None = None) -> str:
             _add(weekly, "WeeksInterval", "1")
 
     what = "the evening Brief" if job.name == jobs.DAILY else "Weekend Picks"
-    return _task(job, f"Parent Recap: {what}", at_its_time, wake=True)
+    return _task(job, f"Parent Recap: {what}", at_its_time, wake=True, command=jobs.command(job, OWN_CLOCK))
 
 
 def catch_up_xml(job: jobs.Job) -> str:
@@ -189,7 +189,7 @@ def catch_up_xml(job: jobs.Job) -> str:
     and the run itself tells whether one was (`run --if-missed`, #386)."""
     # The run waits for the network too, but Wi-Fi can take a while after signing in.
     return _task(job, "Parent Recap: the evening Brief, if it was missed", _at_sign_in("PT1M"),
-                 wake=False, more_args=("--if-missed",))
+                 wake=False, command=[job.subcommand, "--if-missed"])
 
 
 def always_xml(program: list[str], log_dir: Path) -> str:
