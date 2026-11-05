@@ -7,13 +7,12 @@ from typing import Any
 
 from .. import setup_myclub, setup_save
 from ..setup_connect import Nothing, Reply, Strict, parse
-from .context import Action, Phase
+from .context import Action, Phase, add_kid
 
-# What saving a Kid's MyClub calendar link can say, as `setup myclub` does, and adding a Kid by
-# the name the family calls them, for a Household without Wilma.
+# What saving a Kid's MyClub calendar link can say, as `setup myclub` does. Adding a Kid by the
+# name the family calls them, for a Household without Wilma, says one of context.KID_RESULTS.
 MYCLUB_RESULTS = ("saved", "not-a-myclub-link", "link-failed", "not-a-calendar", "save-failed",
                   "same-link")
-MYCLUB_KID_RESULTS = ("added", "kid-exists")
 
 
 class MyClubLink(Strict):
@@ -57,21 +56,10 @@ class MyClub(Phase):
     def add_kid(self, raw: Any) -> Reply:
         """For a Household without Wilma: adds a Kid by the name the family calls them, so their
         MyClub link can be saved. With Wilma, the Kids are the ones Wilma lists."""
-        name = parse(KidName, raw).name.strip()
-        if not (name and self._myclub()["add"]):
-            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                "invalid-answers", "Type the Kid's name. A Household with Wilma has its Kids from "
-                "there.", errors=["name: should be text, for a Household without Wilma"])
-        connect = self.context.connect
-        with connect.lock:
-            names = self._kid_names()
-            if name.casefold() in (n.casefold() for n in names):
-                return HTTPStatus.OK, {"result": "kid-exists"}
-            # Only the names: each Kid already there keeps the rest, such as their link.
-            status, out = connect.save({"kids": [{"name": n} for n in [*names, name]]})
-        if status != HTTPStatus.OK:
+        status, out = add_kid(self.context, parse(KidName, raw).name)
+        if out.get("result") != "added":
             return status, out
-        return status, {**out, "result": "added", "kids": self._myclub()["kids"]}
+        return status, {**out, "kids": self._myclub()["kids"]}
 
     def myclub_done(self, raw: Any) -> Reply:
         """Moves setup on from MyClub once a link is saved, leaving the other Kids without one."""
@@ -88,7 +76,7 @@ class MyClub(Phase):
                 if isinstance(k, dict) and isinstance(k.get("name"), str)]
         return {"kids": [{"name": k["name"], "linked": bool(k.get("myclub_ical_url"))}
                          for k in kids],
-                "add": self.context.section("wilma").get("enabled") is not True}
+                "add": self.context.adds_kids()}
 
     def _kid_names(self) -> list[str]:
         return [k["name"] for k in self._myclub()["kids"]]

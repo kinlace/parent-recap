@@ -207,7 +207,8 @@ def test_a_sign_in_typed_on_the_page_is_checked_kept_in_the_store_and_listed(har
 
     out = r.json()
     assert out["result"] == "saved" and out["events"] == 1
-    assert out["found"] == [{"name": "Mia Virtanen", "kid": "Mia"}, {"name": "Leo Virtanen", "kid": "Leo"}]
+    assert out["found"] == [{"name": "Mia Virtanen", "kid": "Mia", "id": "11", "first": "Mia"},
+                            {"name": "Leo Virtanen", "kid": "Leo", "id": "12", "first": "Leo"}]
     assert out["signins"] == [{"school": "emo", "address": "emo.eepos.fi", "username": USERNAME,
                                "kids": ["Mia", "Leo"]}]
     # Done, and the step stays for another school until Continue.
@@ -274,7 +275,7 @@ def test_a_student_who_is_none_of_the_kids_is_shown_not_guessed(harness, page, p
 
     out = sign_in(page.url).json()
 
-    assert out["found"][-1] == {"name": "Olli Virtanen", "kid": None}
+    assert out["found"][-1] == {"name": "Olli Virtanen", "kid": None, "id": "13", "first": "Olli"}
     assert saved_config(harness)["eepos"]["signins"][0]["kids"] == {"11": "Mia", "12": "Leo"}
 
 
@@ -336,3 +337,53 @@ def test_a_password_is_never_an_empty_answer(harness, page, portal):
 
     assert sign_in(page.url, " ").status == 400
     assert portal.requests == []
+
+
+# ── A Household without Wilma adds its Kids on Eepos's step (#796)
+
+def an_eepos_only_household(harness) -> None:
+    """A Household whose music school's Eepos is its only Source of the Kids: no Wilma, no
+    MyClub, no Kid yet, at Eepos's step."""
+    harness.config["kids"] = []
+    harness.config["wilma"] = {"enabled": False}
+    harness.config["whatsapp"] = {"enabled": False}
+    at_the_eepos_step(harness)
+
+
+def add_kid(url: str, name: str, student: str | None = None) -> Response:
+    body = {"name": name} if student is None else \
+        {"name": name, "school": "emo", "username": USERNAME, "id": student}
+    return call(url, "api/eepos/kid", method="POST", body=body)
+
+
+def test_a_student_found_is_added_as_a_kid_and_the_evening_puts_their_lessons_under_them(harness, page,
+                                                                                         portal):
+    an_eepos_only_household(harness)
+    found = sign_in(page.url).json()["found"]
+    assert [(p["id"], p["first"], p["kid"]) for p in found] == [("11", "Mia", None), ("12", "Leo", None)]
+
+    out = add_kid(page.url, "Leevi", "12").json()
+
+    assert out["result"] == "added" and out["signins"][0]["kids"] == ["Leevi"]
+    config = saved_config(harness)
+    assert config["kids"] == [{"name": "Leevi"}]
+    assert config["eepos"]["signins"][0]["kids"] == {"12": "Leevi"}
+    assert add_kid(page.url, "leevi", "11").json() == {"result": "kid-exists"}
+    assert add_kid(page.url, "Mia", "99").status == 400  # not a student this sign-in found
+
+    harness.config = saved_config(harness)
+    harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": "- Piano"}
+    assert harness.run() == 0
+    [email] = harness.sent
+    _, ics, _ = email.attachment(".ics")
+    assert "Parent Recap · Leevi]".encode() in ics.replace(b"\r\n ", b"")
+
+
+def test_with_wilma_no_kid_is_added_on_eepos_s_step(harness, page, portal):
+    portal.school("emo").students.append(eepos_student(13, "Olli", "Virtanen"))
+    at_the_eepos_step(harness)
+    sign_in(page.url)
+
+    for r in (add_kid(page.url, "Olli", "13"), add_kid(page.url, "Olli")):
+        assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    assert [k["name"] for k in saved_config(harness)["kids"]] == ["Mia", "Leo"]

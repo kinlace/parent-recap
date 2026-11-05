@@ -129,7 +129,8 @@ def keep(path: Path, cfg: Config, city: str, username: str, password: str,
         return "save-failed", {"error": str(e)[:300]}
     return "saved", {"city": evaka.host_of(city), "events": checked["events"],
                      "messages": checked["messages"],
-                     "children": [{"name": c.called(), "kid": kid} for c, kid in checked["children"]]}
+                     "children": [{"name": c.called(), "kid": kid, "id": c.id, "first": c.first()}
+                                  for c, kid in checked["children"]]}
 
 
 def _next(result: str, city: str, username: str, extra: dict[str, Any]) -> str | None:
@@ -160,8 +161,9 @@ def _next(result: str, city: str, username: str, extra: dict[str, Any]) -> str |
 
 def _reported(result: str, extra: dict[str, Any]) -> dict[str, Any]:
     """What `setup evaka` reports besides its result and what to do next."""
-    if result == "saved":
-        return {k: v for k, v in extra.items() if k != "messages"}
+    if result == "saved":  # each child by name, as the maintainer knows them
+        return {**{k: v for k, v in extra.items() if k != "messages"},
+                "children": [{"name": c["name"], "kid": c["kid"]} for c in extra["children"]]}
     return {k: v for k, v in extra.items() if k == "code" and result == "keychain-not-reachable"}
 
 

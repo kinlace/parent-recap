@@ -866,6 +866,8 @@ const SLOTS = [
   [[...WILMA_NOT_READY, "wilma.pick-town"], "wilma-town-slot"],
   [["wilma.removed"], "wilma-signins-slot"],
   [["myclub.added", "myclub.kid-exists"], "myclub-kid-slot"],
+  [["eepos.added", "eepos.kid-exists"], "eepos-kid-slot"],
+  [["evaka.added", "evaka.kid-exists"], "evaka-kid-slot"],
   // A Source just done: by the hand-off, as the next Source's step is shown.
   [["gmail.saved", "wilma.signed-in", "claude.saved", "gateway.saved",
     "codex.signed-in", "whatsapp.paired"], "connect-slot"],
@@ -890,7 +892,7 @@ const FAILED = [
     "no-username", "wrong-password", "changed", "no-answer", "keychain-not-reachable",
     "not-stored", "save-failed",
   ].map((result) => `${name}.${result}`)),
-  "eepos.not-a-school", "evaka.not-a-city",
+  "eepos.not-a-school", "evaka.not-a-city", "eepos.kid-exists", "evaka.kid-exists",
   "whatsapp.failed", "whatsapp.no-library",
   "open.not-opened", "open.app-not-opened",
 ];
@@ -2079,6 +2081,11 @@ async function leaveMyClub() {
 // each with the Kids it matched and a Remove button, and stays for another school or city until
 // Continue. Each step's fields and texts are named `<name>-…` and `<name>.…`.
 
+// What each step's latest sign-in found: which sign-in, its students or children, each with the Kid
+// they are (null for none), and its coming events. A Household without Wilma adds one who is none
+// of the Kids as a Kid, by the name it calls them (#796).
+const signinFound = {};
+
 // Where each step's sign-in is: what the server calls it, read from the page's own fields.
 const SIGNIN_PLACES = {
   eepos: { key: "school", given: () => document.getElementById("eepos-school").value },
@@ -2089,6 +2096,7 @@ function setUpSignins(name) {
   document.getElementById(`${name}-form`).addEventListener("submit", (e) => addSignin(name, e));
   document.getElementById(`${name}-continue`).addEventListener(
     "click", () => moveOn(`api/${name}/done`, {}));
+  document.getElementById(`${name}-kid-form`).addEventListener("submit", (e) => addSigninKid(name, e));
   if (name === "evaka") setUpEvakaCities();
 }
 
@@ -2126,6 +2134,8 @@ function renderSignins(name) {
   const { key } = SIGNIN_PLACES[name];
   document.getElementById(`${name}-signins`).hidden = signins.length === 0;
   document.getElementById(`${name}-more`).hidden = signins.length === 0;
+  // Without Wilma, Kids are added by name here, once a sign-in is kept (#796).
+  document.getElementById(`${name}-kid-form`).hidden = !(page[name].add && signins.length);
   document.getElementById(`${name}-signin-list`).replaceChildren(...signins.map((signin) => {
     const item = document.createElement("li");
     const shown = document.createElement("span");
@@ -2159,6 +2169,7 @@ async function addSignin(name, event) {
   const { key, given } = SIGNIN_PLACES[name];
   const username = document.getElementById(`${name}-username`);
   const password = document.getElementById(`${name}-password`);
+  const which = { [key]: given(), username: username.value };
   try {
     const out = await post(`api/${name}`, { [key]: given(), username: username.value,
                                            password: password.value });
@@ -2170,10 +2181,8 @@ async function addSignin(name, event) {
       username.value = "";
       if (name === "eepos") document.getElementById("eepos-school").value = "";
       renderSources();
-      const found = out.found.map(({ name: who, kid }) =>
-        kid ? fill(t(`${name}.found.kid`), { name: who, kid }) : fill(t(`${name}.found.none`), { name: who }));
-      showSource(found.length ? `${name}.saved` : `${name}.saved.none`,
-        { kids: found, values: { events: out.events } });
+      signinFound[name] = { which, found: out.found, events: out.events };
+      showFound(name);
     } else {
       showSource(`${name}.${out.result}`);
     }
@@ -2182,6 +2191,88 @@ async function addSignin(name, event) {
                                                               block: "nearest" });
   } catch (e) {
     showSource(null);
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// Each student or child the latest sign-in found, with the Kid they are. Without Wilma, one who is
+// none of the Kids comes with a field holding their first name and "Add as a Kid".
+function showFound(name) {
+  const { found, events } = signinFound[name];
+  const shown = found.map(({ name: who, kid }) =>
+    kid ? fill(t(`${name}.found.kid`), { name: who, kid }) : fill(t(`${name}.found.none`), { name: who }));
+  showSource(found.length ? `${name}.saved` : `${name}.saved.none`, { kids: shown, values: { events } });
+  if (!page[name].add) return;
+  const items = document.getElementById("source-kids").children;
+  found.forEach((person, i) => {
+    if (!person.kid) items[i].append(" ", ...addAsKid(name, person));
+  });
+}
+
+function addAsKid(name, person) {
+  const field = document.createElement("input");
+  field.type = "text";
+  field.autocomplete = "off";
+  field.value = person.first;
+  field.dataset.label = `${name}.add.as.name`;
+  field.dataset.values = JSON.stringify({ name: person.name });
+  field.setAttribute("aria-label", fill(t(`${name}.add.as.name`), { name: person.name }));
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary";
+  setText(button, `${name}.add.as`);
+  const add = () => addFoundKid(name, person, field, button);
+  button.addEventListener("click", add);
+  // Enter adds this Kid, rather than sending the sign-in form the list is in.
+  field.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    add();
+  });
+  return [field, " ", button];
+}
+
+async function addFoundKid(name, person, field, button) {
+  clearError();
+  if (!field.value.trim()) return field.focus();
+  button.disabled = true;
+  try {
+    const out = await post(`api/${name}/kid`, { ...signinFound[name].which, id: person.id,
+                                                name: field.value });
+    if (out.result === "added") {
+      page.progress = out.progress;
+      page[name].signins = out.signins;
+      person.kid = out.kid;
+      renderSources();
+      showFound(name);
+    } else {
+      showError(`${name}.${out.result}`);
+      button.disabled = false;
+    }
+  } catch (e) {
+    failed(e);
+    button.disabled = false;
+  }
+}
+
+// A Kid added by name alone, as on a step opened again: each evening, a student or child whose
+// name matches theirs is theirs.
+async function addSigninKid(name, event) {
+  event.preventDefault();
+  clearError();
+  const button = event.submitter;
+  button.disabled = true;
+  const field = document.getElementById(`${name}-kid-name`);
+  try {
+    const out = await post(`api/${name}/kid`, { name: field.value });
+    if (out.result === "added") {
+      page.progress = out.progress;
+      field.value = "";
+    }
+    showSource(`${name}.${out.result}`);
+  } catch (e) {
     failed(e);
   } finally {
     button.disabled = false;

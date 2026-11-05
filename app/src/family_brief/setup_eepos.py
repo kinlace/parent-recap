@@ -126,7 +126,8 @@ def keep(path: Path, cfg: Config, school: str, username: str, password: str,
     except (OSError, ValueError, yaml.YAMLError) as e:
         return "save-failed", {"error": str(e)[:300]}
     return "saved", {"school": eepos.address(school), "events": checked["events"],
-                     "students": [{"name": s.called(), "kid": kid} for s, kid in checked["students"]]}
+                     "students": [{"name": s.called(), "kid": kid, "id": s.id, "first": s.first()}
+                                  for s, kid in checked["students"]]}
 
 
 def _next(result: str, school: str, username: str, extra: dict[str, Any]) -> str | None:
@@ -157,8 +158,8 @@ def _next(result: str, school: str, username: str, extra: dict[str, Any]) -> str
 
 def _reported(result: str, extra: dict[str, Any]) -> dict[str, Any]:
     """What `setup eepos` reports besides its result and what to do next."""
-    if result == "saved":
-        return extra
+    if result == "saved":  # each student by name, as the maintainer knows them
+        return {**extra, "students": [{"name": s["name"], "kid": s["kid"]} for s in extra["students"]]}
     return {k: v for k, v in extra.items() if k == "code" and result == "keychain-not-reachable"}
 
 

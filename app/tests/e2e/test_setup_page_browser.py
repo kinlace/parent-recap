@@ -301,9 +301,17 @@ def test_a_family_goes_from_the_language_to_finish_in_the_browser(tab):
     # Each student with the Kid it is, and one who is none of the Kids said so, not guessed.
     expect(tab.locator("#source-kids li")).to_have_text([
         text("eepos.found.kid", name="Mia Virtanen", kid="Mia"),
-        text("eepos.found.none", name="Olli Virtanen")])
+        f"{text('eepos.found.none', name='Olli Virtanen')} {text('eepos.add.as')}"])
     expect(tab.locator("#eepos-signin-list li")).to_have_text([
         f"emo.eepos.fi ({PARENT}): Mia {text('eepos.remove')}"])
+    # Without Wilma, Olli is added as a Kid by his first name, and the school lists him at once (#796).
+    expect(tab.get_by_label(text("eepos.add.as.name", name="Olli Virtanen"))).to_have_value("Olli")
+    button(tab, "eepos.add.as").click()
+    expect(tab.locator("#source-kids li")).to_have_text([
+        text("eepos.found.kid", name="Mia Virtanen", kid="Mia"),
+        text("eepos.found.kid", name="Olli Virtanen", kid="Olli")])
+    expect(tab.locator("#eepos-signin-list li")).to_have_text([
+        f"emo.eepos.fi ({PARENT}): Mia, Olli {text('eepos.remove')}"])
     expect(skip(tab, "eepos")).to_be_hidden()
     button(tab, "continue").click()
     expect(tab.get_by_text(text("connect.handoff", done=text("source.eepos"),
@@ -837,8 +845,17 @@ def test_evaka_s_city_is_picked_from_the_list_and_a_city_added_is_removed_again(
 
     button(tab, "evaka.save").click()
 
-    expect(tab.locator("#source-kids li")).to_have_text([text("evaka.found.none", name="Leo Virtanen")])
+    expect(tab.locator("#source-kids li")).to_have_text([
+        f"{text('evaka.found.none', name='Leo Virtanen')} {text('evaka.add.as')}"])
     expect(tab.locator("#evaka-signin-list li")).to_have_text([f"Espoo ({PARENT}) {text('evaka.remove')}"])
+    # Without Wilma or a Kid from MyClub, a Kid is added by name too (#796).
+    tab.get_by_role("textbox", name=text("evaka.add.name")).fill("Leo")
+    button(tab, "evaka.add").click()
+    expect(tab.get_by_text(text("evaka.added"))).to_be_visible()
+    tab.get_by_role("textbox", name=text("evaka.add.name")).fill("leo")
+    button(tab, "evaka.add").click()
+    expect(tab.get_by_text(text("evaka.kid-exists"))).to_be_visible()
+    assert [k["name"] for k in yaml.safe_load(config_file(family).read_text())["kids"]] == ["Leo"]
     expect(source_listed(tab, "evaka", "done")).to_be_visible()
     assert family.secrets[evaka.secret_name("espoo", PARENT)] == EVAKA_PASSWORD
 
