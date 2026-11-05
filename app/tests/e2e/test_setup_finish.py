@@ -599,7 +599,7 @@ def test_every_finish_text_is_in_all_three_languages():
                 "finish.title", "finish.intro", "finish.start", "finish.replace", "finish.restart",
                 "finish.leave", "finish.more", "finish.closed", "finish.stop", "finish.warnings",
                 "finish.again", "finish.to-do.nightly", "finish.to-do.wake",
-                "finish.to-do.wake.windows", "finish.later", "finish.retry", "finish.on",
+                "finish.to-do.wake.windows", "finish.later", "finish.set-wake", "finish.on",
                 "brief.turning-on", "brief.turning-on.windows"]
         for key in keys:
             assert table.get(key, "").strip(), (language, key)
