@@ -312,6 +312,62 @@ def test_an_evening_run_further_off_or_just_past_lets_it_go_on(deploy, evening):
     assert deploy("deploy", "v1.0.0") == 0
 
 
+def own_evening(deploy, label: str, schedule: dict | None, zone: str | None = None) -> None:
+    """The Household's config, which its timer follows: its own time, moved by hand as the
+    Runbook says, while households.json keeps the slot the sign-up handed out."""
+    family = deploy.server.homes / label / ".family"
+    family.mkdir(parents=True, exist_ok=True)
+    config = {"hosted": True, "kids": [{"name": "Mia Virtanen"}],
+              **({"schedule": schedule} if schedule is not None else {}),
+              **({"timezone": zone} if zone else {})}
+    (family / "config.yaml").write_text(json.dumps(config))  # JSON is YAML
+
+
+def test_the_household_s_own_time_from_its_config_refuses_the_deploy(deploy, capsys):
+    household(deploy, evening="21:00")
+    own_evening(deploy, "ph-30d2afe0", {"daily_hour": 14, "daily_minute": 20})
+    assert deploy("deploy", "v1.0.0") == 1
+    nothing_changed(deploy)
+    assert "ph-30d2afe0's evening run is due at 14:20" in capsys.readouterr().err
+
+
+def test_households_json_s_slot_doesn_t_refuse_when_its_config_moved_away(deploy):
+    household(deploy, evening="14:20")
+    own_evening(deploy, "ph-30d2afe0", {"daily_hour": 16, "daily_minute": 0})
+    assert deploy("deploy", "v1.0.0") == 0
+
+
+def test_the_household_s_time_is_read_in_its_own_timezone(deploy, capsys):
+    # 12:00 UTC is 13:00 in Stockholm, where its 13:15 run is due soon.
+    household(deploy, evening="21:00")
+    own_evening(deploy, "ph-30d2afe0", {"daily_hour": 13, "daily_minute": 15},
+                "Europe/Stockholm")
+    assert deploy("deploy", "v1.0.0") == 1
+    assert "due at 13:15 Europe/Stockholm" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("config", ["email: [unclosed", '{"schedule": {"daily_hour": "x"}}',
+                                    '{"timezone": "Mars/Olympus"}', None])
+def test_without_the_household_s_own_time_households_json_s_is_used(deploy, capsys, config):
+    household(deploy, evening="14:20")
+    if config is not None:
+        family = deploy.server.homes / "ph-30d2afe0" / ".family"
+        family.mkdir(parents=True)
+        (family / "config.yaml").write_text(config)
+    assert deploy("deploy", "v1.0.0") == 1
+    nothing_changed(deploy)
+    assert "ph-30d2afe0's evening run is due at 14:20" in capsys.readouterr().err
+
+
+def test_without_the_shared_program_households_json_s_times_are_used(deploy, capsys):
+    household(deploy, evening="14:20")
+    own_evening(deploy, "ph-30d2afe0", {"daily_hour": 16, "daily_minute": 0})
+    deploy.server.paths.python = str(deploy.server.root / "no-such-python")
+    assert deploy("deploy", "v1.0.0") == 1
+    err = capsys.readouterr().err
+    assert "ph-30d2afe0's evening run is due at 14:20" in err
+
+
 @pytest.mark.parametrize("anyway", [(), ("--anyway",)])
 def test_an_evening_run_still_running_refuses_the_deploy_even_anyway(deploy, capsys, anyway):
     household(deploy)

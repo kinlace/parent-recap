@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 import time_machine
+import yaml
 
 from family_brief.config import Config
 from family_brief.last_run import path as last_run_path
@@ -163,6 +164,64 @@ def test_a_household_without_the_health_command_is_said_to_be_unknown(
     assert out.splitlines()[-1] == "1 Households: 0 failed, 0 overdue, 1 unknown"
 
 
+README = Path(__file__).parents[3] / "ops" / "gateway" / "README.md"
+
+
+def move_evening(s, name: str) -> str:
+    """The README's "Move a Household's Brief to another time", to 16:00: its config's time set
+    by the README's own script, then the evening job reinstalled. Returns what that said."""
+    text = README.read_text(encoding="utf-8")
+    steps = text.split("**Move a Household's Brief to another time.**")[1].split("```sh\n")[1]
+    set_time, install = steps.split("```")[0].strip().splitlines()
+    script = set_time.split(" -I -c '", 1)[1].removesuffix("'")
+    home = s.host.users[name].home
+    script = script.replace("/home/ph-0123abcd", home.as_posix())
+    exec(compile(script, "README.md", "exec"), {})  # the e2e tests start no subprocess
+    assert install.endswith(f"{PROGRAM} schedule install"), install
+    code, said = s.host.run_own(name, [PROGRAM, "schedule", "install"])
+    assert code == 0, said
+    return said
+
+
+def test_the_time_shown_is_the_household_s_own_from_its_config(signup, capsys):
+    name = sign_up(signup)  # households.json says 21:00
+    config = signup.host.users[name].home / ".family" / "config.yaml"
+    before = yaml.safe_load(config.read_text(encoding="utf-8"))
+
+    assert "Brief: every day at 16:00" in move_evening(signup, name)
+
+    after = yaml.safe_load(config.read_text(encoding="utf-8"))
+    assert after == {**before, "schedule": {**before.get("schedule", {}),
+                                            "daily_hour": 16, "daily_minute": 0}}
+    assert health_of(signup, name)["evening"] == "16:00"
+    assert [h.evening for h in signup.store.households()] == ["21:00"]
+
+    code, out = report(signup, capsys)
+
+    assert code == 0, out
+    assert out.startswith(f"✅ {name}  16:00  {FIRST_RUN}")
+
+
+@pytest.mark.parametrize("said", [{}, {"evening": "Mia 16:00"}, {"evening": "25:00"},
+                                  {"evening": 16}])
+def test_without_a_time_from_health_households_json_s_is_shown(signup, capsys, monkeypatch,
+                                                               said):
+    name = sign_up(signup)
+    move_evening(signup, name)
+    run_as = signup.host.run_as
+
+    def older(user, argv, stdin, timeout):  # a program from before it said the time
+        _, out = run_as(user, argv, stdin, timeout)
+        health = {k: v for k, v in json.loads(out.strip().splitlines()[-1]).items()
+                  if k != "evening"}
+        return 0, json.dumps({**health, **said}) + "\n"
+    monkeypatch.setattr(signup.host, "run_as", older)
+
+    _, out = report(signup, capsys)
+
+    assert out.startswith(f"✅ {name}  21:00  {FIRST_RUN}")
+
+
 def test_no_households_yet(signup, capsys):
     assert report(signup, capsys) == (0, "No Hosted Households yet.\n")
 
@@ -216,4 +275,4 @@ def test_nothing_of_a_household_s_messages_kids_or_addresses_is_printed(
         assert private not in out, private
         assert private not in health, private
     assert set(json.loads(health)) == {"last_run", "exit", "seconds", "peak_mb", "overdue",
-                                       "checks"}
+                                       "evening", "checks"}
