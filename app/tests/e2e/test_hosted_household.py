@@ -84,7 +84,7 @@ def test_recipients_are_written_after_yes_in_the_shape_signup_household_writes(
     before = config(path)
 
     code, out = run(signup, label, "recipients",
-                    "parent@example.com:fi\nIsa@Example.com:zh\nleo.dad@example.com\n\nyes\n")
+                    "parent@example.com:fi\nIsa@Example.com:ZH\nleo.dad@example.com\n\nyes\n")
 
     assert code == 0, out
     # Without a language, the Household's own.
@@ -99,6 +99,18 @@ def test_recipients_are_written_after_yes_in_the_shape_signup_household_writes(
     assert outbox.binds[-1]["recipients"] == new
     assert Config.load(path).email.to[1].address == "isa@example.com"
     healthy(signup, capsys)
+
+
+def test_recipients_only_reordered_say_so_and_are_written_after_yes(signup):
+    label, path = made(signup)
+    run(signup, label, "recipients", "parent@example.com:fi\nisa@example.com:zh\n\nyes\n")
+
+    code, out = run(signup, label, "recipients",
+                    "isa@example.com:zh\nparent@example.com:fi\n\nyes\n")
+
+    assert code == 0 and "only the order changes" in out
+    assert [r["address"] for r in config(path)["email"]["to"]] == ["isa@example.com",
+                                                                  "parent@example.com"]
 
 
 @pytest.mark.parametrize("answer", ["no\n", ""])

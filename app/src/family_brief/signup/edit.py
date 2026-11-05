@@ -97,7 +97,7 @@ def parse_recipient(given: str, default: str) -> dict[str, str] | None:
     from .server import EMAIL
     text = given.strip()
     address, sep, language = text.rpartition(":") if ":" in text else (text, "", "")
-    language = language.strip() if sep else default
+    language = language.strip().lower() if sep else default
     address = address.strip().lower()
     if language not in LANGUAGES or not EMAIL.fullmatch(address):
         return None
@@ -143,6 +143,8 @@ def cmd_recipients(args: argparse.Namespace) -> int:
             print(f"  - {address}  {language}")
     for address, language in after.items():
         print(f"  {'+' if before.get(address) != language else ' '} {address}  {language}")
+    if before == after:  # the same Recipients in another order
+        print("  (only the order changes: the first is the parent)")
     if cfg.email.weekend_to:
         print("Weekend Picks keep going to weekend_to, which this doesn't change.")
     if not _confirmed():
@@ -160,13 +162,19 @@ def cmd_recipients(args: argparse.Namespace) -> int:
 
 def _bind(config: Path) -> None:
     """Binds the Gateway Key to the Recipients as they are now, as doctor does after `manage`."""
-    status = send_key.ensure(Config.load(config), ask=False)
+    again = ("Doctor binds the key to the Recipients again whenever it runs (sudo admin "
+             "households runs it).")
+    try:
+        status = send_key.ensure(Config.load(config), ask=False)
+    except Exception as e:  # noqa: BLE001 - the list is written; its message names no address
+        print(f"⚠️ The gateway couldn't be asked to bind the new list ({type(e).__name__}). "
+              + again)
+        return
     if status.result == send_key.CONFIRMED:
-        print("✅ The gateway has the new list (a key the sign-up made isn't bound, so nothing "
-              "changed there).")
+        print("✅ The Gateway Key's binding follows the new list (a key the sign-up made is "
+              "bound to nobody, and stays so).")
     else:
-        print(f"⚠️ The gateway: {send_key.describe(status)}. Doctor binds the key to the "
-              "Recipients again whenever it runs (sudo admin households runs it).")
+        print(f"⚠️ The gateway: {send_key.describe(status)}. {again}")
 
 
 # ---------------------------------------------------------------- myclub
