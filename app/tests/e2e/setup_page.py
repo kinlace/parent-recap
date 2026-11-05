@@ -27,7 +27,7 @@ import yaml
 from family_brief import ops, setup_save, setup_server
 from family_brief.config import Config
 from family_brief.llm import codex as codex_backend
-from family_brief.setup_server import Context, Timeouts, server as shell
+from family_brief.setup_server import Context, Timeouts, finish as finish_step, server as shell
 from family_brief.state import State
 from family_brief.system import jobs
 from family_brief.system.secrets_error import SecretsError
@@ -166,6 +166,10 @@ def page(harness, clock):
     yield server
     server.stop()
     thread.join(5)
+    # Turning on the evening Brief runs in its own thread once a Brief is sent (#733): wait for it,
+    # so it doesn't go on in the next test, whose home and fakes are its own.
+    runs = server.context.runs
+    wait_for(lambda: runs.get("finish", {}).get("result") not in finish_step.UNDER_WAY, 30)
 
 
 def wait_for(condition, seconds: float = 5) -> None:
