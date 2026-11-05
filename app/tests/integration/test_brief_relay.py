@@ -710,14 +710,19 @@ def test_print_keys_lists_every_key_with_what_it_can_do_and_never_its_value(
     assert lines[1] == ("send-household-2  id=id-2  sends only  off  made -  last used never  "
                         "today $0.00  30 days $0.00")
     # A key made on request: who holds it, what it can do, when it was made and last sent, then
-    # who confirmed.
+    # how many of its addresses confirmed, and none of the addresses (#781).
     assert lines[2].startswith("on-request-") and \
         "made on request 2026-10-28  sends only  on  made 2026-10-28  last used 2026-10-28" \
         in lines[2]
-    assert lines[3].startswith("  parent@example.com (fi): confirmed ")
-    assert lines[4:] == ["  partner@example.fi (zh): not confirmed"]
+    assert lines[3:] == ["  2 addresses, 1 confirmed"]
     for k in bifrost.keys:
         assert k["value"] not in "\n".join(lines)
+    # With `addresses`, each address and whether it confirmed.
+    br.print_keys(br.Bifrost("http://127.0.0.1:8080", "admin", "pw", fetch=bifrost),
+                  tmp_path, today="2026-10-28", addresses=True)
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[3].startswith("  parent@example.com (fi): confirmed ")
+    assert lines[4:] == ["  partner@example.fi (zh): not confirmed"]
 
 
 
