@@ -92,7 +92,8 @@ def resolve(brief: Brief, messages: list[Message], upcoming_events: list[dict],
 
 
 def _resolve_events(brief: Brief, messages: list[Message]) -> None:
-    """Keep only the calendar events that cite one of tonight's Messages. Each takes its `source`
+    """Keep only the calendar events that cite one of tonight's Messages, and none whose event
+    its Source already queues itself (its metadata's `calendar_event`). Each takes its `source`
     and `external_id` from the earliest of those, and loses any link none of them has. The
     earliest, since they make the event's identity: a rerun that also cites a later reminder
     must not write (and invite to) the event again."""
@@ -106,6 +107,12 @@ def _resolve_events(brief: Brief, messages: list[Message]) -> None:
         if not cited:
             log.warning("Dropped calendar event %r at %s: no message it cites was read tonight (refs %s)",
                         ev.title, ev.start, refs)
+            continue
+        queued = sorted({m.metadata["calendar_event"] for r in cited for m in by_id[r]
+                         if m.metadata.get("calendar_event")})
+        if queued:  # such as a Wilma exam, which its Source puts in the calendar itself (ADR 0040)
+            log.info("Dropped calendar event %r at %s: it is the Source's own %s",
+                     ev.title, ev.start, ", ".join(queued))
             continue
         ev.ref_sources = {r: sorted({m.source for m in by_id[r]}) for r in cited}
         first = min((m for r in cited for m in by_id[r]), key=lambda m: (m.timestamp, m.source, str(m.external_id)))

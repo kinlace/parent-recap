@@ -108,6 +108,9 @@ class CalendarEvent:
     # A day with no start time, such as an exam: `start` is that day's local midnight and `end`,
     # if any, the local midnight of its last day.
     all_day: bool = False
+    # Its external_id stays when it moves to another day or time, as a Wilma exam's does: a
+    # calendar knows it by that id rather than by its start, so the moved one replaces it.
+    same_when_moved: bool = False
 
     def in_zone(self, tz: str) -> CalendarEvent:
         """The same event with its times in `tz`, as the Brief shows them and the model reads them."""

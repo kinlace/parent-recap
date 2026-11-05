@@ -1,0 +1,74 @@
+covers: [wilma-events, source-events, finnish-dates]
+note: >
+  Sunday night (#773). Wilma's exam list gives Aino's history exam in 18 days, seen for the first
+  time, and the reminder of Eero's English exam tomorrow. Both are already in
+  already_queued_for_calendar, put there by the program, so the model must tell each once, with
+  what to study, and add no calendar_events for either.
+now: 2026-10-04T21:00:00+03:00
+messages:
+  - id: exam:5512
+    source: wilma
+    at: 2026-10-04T21:00:00+03:00
+    subject: "Exam: Historia – Luvut 3–5"
+    chat: exams
+    kid_hint: Virtanen Aino
+    metadata: {wilma_kind: exam, raw_id: 5512, exam_date: "2026-10-22", reminder: false,
+               calendar_event: "exam:5512:3f9a2c1b"}
+    body: |
+      [2026-10-22 Thu · in 18 days]
+      Subject: Historia
+      Exam: Luvut 3–5
+      What to study: Kirjan luvut 3–5, s. 40–78
+  - id: exam:5530:eve
+    source: wilma
+    at: 2026-10-04T21:00:00+03:00
+    subject: "Exam: Englanti – Sanakoe"
+    chat: exams
+    kid_hint: Virtanen Eero
+    metadata: {wilma_kind: exam, raw_id: 5530, exam_date: "2026-10-05", reminder: true,
+               calendar_event: "exam:5530:8d2e4f60"}
+    body: |
+      [2026-10-05 Mon · tomorrow]
+      Subject: Englanti
+      Exam: Sanakoe
+      What to study: Unit 4 words
+      (Reminder: this exam was in an earlier Brief; it is on the next school day.)
+queued:
+  - {
+      external_id: "exam:5512:3f9a2c1b",
+      source: wilma,
+      title: "Koe: Historia – Luvut 3–5",
+      start: "2026-10-22",
+      description: "Kirjan luvut 3–5, s. 40–78",
+      kid: Aino,
+    }
+  - {
+      external_id: "exam:5530:8d2e4f60",
+      source: wilma,
+      title: "Koe: Englanti – Sanakoe",
+      start: "2026-10-05",
+      description: Unit 4 words,
+      kid: Eero,
+    }
+expect:
+  notices:
+    must:
+      - {
+          kid: Aino,
+          text:
+            [
+              [histor, 历史],
+              ["22.10", "10月22", "22 oct", "oct 22", "22. lokak", torstai, thursday, 周四, 星期四],
+              ["40–78", "40-78", "3–5", "3-5"],
+            ],
+          where: both,
+        }
+      - {
+          kid: Eero,
+          text:
+            [
+              [englan, english, 英语, sanako, vocabular, word, 单词, 词汇],
+              [" 5.10", "10月5", "5 oct", "oct 5", "5. lokak", maanantai, monday, 周一, 星期一, huomen, tomorrow, 明天],
+            ],
+          where: both,
+        }

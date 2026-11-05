@@ -9,7 +9,7 @@ A folder holds `household.yaml` (the Config fields the prompt uses: `timezone`, 
     household: {...}                   # optional, replaces household.yaml for this night
     messages:                          # the night's Messages
       - {id: w-1, source: wilma, at: 2026-10-04T14:00:00+03:00, sender: ..., subject: ...,
-         chat: ..., kid_hint: ..., body: ...}   # WhatsApp kid_hint defaults to the chat map
+         chat: ..., kid_hint: ..., body: ..., metadata: {...}}   # WhatsApp kid_hint defaults to the chat map
     calendar: [{id, summary, start, end, location}]   # existing Google Calendar, next 7 days
     queued: [{external_id, source, title, start, end, kid}]  # added from a Source, e.g. MyClub
     earlier_briefs: [{date, per_kid: [...]}]  # as the archive keeps them (brief.EarlierBrief.from_json)
@@ -109,6 +109,7 @@ class CaseMessage(_Strict):
     subject: str | None = None
     chat: str | None = None
     kid_hint: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)  # as its Source sets it, e.g. a Wilma exam's
 
 
 class CaseFile(_Strict):
@@ -167,6 +168,7 @@ def _case(name: str, raw: CaseFile, cfg: Config) -> Case:
         source=m.source, external_id=m.id, timestamp=aware(m.at).astimezone(ZoneInfo("UTC")),
         sender=m.sender, recipient=m.recipient, subject=m.subject, body=m.body, chat_name=m.chat,
         kid_hint=m.kid_hint or (cfg.whatsapp.kid_for(m.chat) if m.source == "whatsapp" and m.chat else None),
+        metadata=m.metadata,
     ) for m in raw.messages]
     return Case(name=name, covers=raw.covers, now=aware(raw.now), household=cfg, messages=messages,
                 calendar=raw.calendar, queued=raw.queued,

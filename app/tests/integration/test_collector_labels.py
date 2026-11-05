@@ -1,5 +1,6 @@
 """Labels the Sources add to Messages are model input, so they are English whatever the Brief's
-language; the summarize prompt explains them (see summarize._build_prompt)."""
+language; the summarize prompt explains them (see summarize._build_prompt). Also when a Wilma exam
+is told, and the calendar event it is every evening (ADR 0040)."""
 from __future__ import annotations
 
 from datetime import timedelta
@@ -51,11 +52,11 @@ def _collect(sources):
     return messages
 
 
-def test_a_wilma_exam_in_the_coming_week_reaches_the_brief_with_what_to_study(sources):
-    """#5: an upcoming exam's date, subject, name and topic, headed like the timetable."""
+def test_a_wilma_exam_in_the_next_four_weeks_reaches_the_brief_with_what_to_study(sources):
+    """#5, #773: an upcoming exam's date, subject, name and topic, headed like the timetable."""
     cli = sources.fakes["wilma"]
     cli.set_up()
-    _exams(cli, EXAM, {**EXAM, "examId": 2, "date": "2026-10-20"})  # the second, beyond a week
+    _exams(cli, EXAM, {**EXAM, "examId": 2, "date": "2026-10-26"})  # the second, beyond four weeks
 
     with time_machine.travel(NOW, tick=False):  # a Sunday evening
         [msg] = [m for m in _collect(sources) if m.chat_name == "exams"]
@@ -82,6 +83,72 @@ def test_a_wilma_exam_comes_again_only_the_evening_before_it(sources):
         assert reminder.body.splitlines()[0] == "[2026-09-29 Tue · tomorrow]"
         assert "Reminder" in reminder.body.splitlines()[-1]
         assert exams() == []
+
+
+def test_a_wilma_exam_four_weeks_ahead_is_told_the_first_evening_and_again_the_evening_before(sources):
+    """#773: as soon as the teacher adds it, not only within the coming week."""
+    cli = sources.fakes["wilma"]
+    cli.set_up()
+    _exams(cli, {**EXAM, "date": "2026-10-23"})  # a Friday, 26 days ahead
+    exams = lambda: [m for m in _collect(sources) if m.chat_name == "exams"]  # noqa: E731
+
+    with time_machine.travel(NOW, tick=False):
+        [first] = exams()
+    assert first.body.splitlines()[0] == "[2026-10-23 Fri · in 26 days]"
+    for days in (1, 7, 24):
+        with time_machine.travel(NOW + timedelta(days=days), tick=False):
+            assert exams() == []
+    with time_machine.travel(NOW + timedelta(days=25), tick=False):  # Thursday evening
+        [reminder] = exams()
+    assert reminder.metadata["reminder"]
+
+
+def _events(sources):
+    """One evening's Wilma calendar events."""
+    state = State(sources.home / "state.json")
+    events = wilma.collect(Config.model_validate(sources.config), state, []).events
+    state.save()
+    return events
+
+
+@time_machine.travel(NOW, tick=False)
+def test_each_upcoming_wilma_exam_is_an_all_day_calendar_event_for_its_kid(sources):
+    """#773: every exam in Wilma's exam list within four weeks goes into the calendar by itself,
+    each evening, so the .ics takes it the first evening it is seen, as Eepos's events."""
+    cli = sources.fakes["wilma"]
+    cli.set_up()
+    cli.answers[("exams",)] = {"students": [
+        {"student": {"studentNumber": "1001", "name": "Virtanen Mia"}, "exams": [
+            EXAM, {**EXAM, "examId": 2, "date": "2026-10-23", "topic": None},
+            {**EXAM, "examId": 3, "date": "2026-10-26"}]},  # beyond four weeks
+        {"student": {"studentNumber": "1002", "name": "Virtanen Leo"}, "exams": [
+            {**EXAM, "examId": 4, "subject": "Englanti", "name": "", "time": "08:30"}]}]}
+
+    maths, later, english = _events(sources)
+
+    assert (maths.source, maths.title, maths.kid, maths.description) == \
+        ("wilma", "Koe: Matematiikka – Murtoluvut", "Mia", "Koealue jakso 3: s. 62-103")
+    assert maths.all_day and maths.start.date().isoformat() == "2026-09-29" and maths.end is None
+    assert (later.start.date().isoformat(), later.description) == ("2026-10-23", "")
+    # One with a start time is at that time, in the Household's zone.
+    assert (english.title, english.kid, english.all_day) == ("Koe: Englanti", "Leo", False)
+    assert english.start.isoformat() == "2026-09-29T08:30:00+03:00"
+    # Every evening, not only the first: the .ics leaves out those it already took.
+    assert len(_events(sources)) == 3
+
+
+@time_machine.travel(NOW, tick=False)
+def test_a_moved_wilma_exam_keeps_its_id(sources):
+    """#773: a calendar knows the exam by its id, not its date, so the moved one replaces it."""
+    cli = sources.fakes["wilma"]
+    cli.set_up()
+    _exams(cli, EXAM)
+    [before] = _events(sources)
+    _exams(cli, {**EXAM, "date": "2026-10-01"})
+    [after] = _events(sources)
+
+    assert after.same_when_moved and after.external_id == before.external_id
+    assert after.start != before.start
 
 
 NOTE = {"date": "2026-09-25", "start": "09:00", "end": "09:45", "subject": "Englanti",
