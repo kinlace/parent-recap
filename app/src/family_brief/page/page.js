@@ -1030,6 +1030,11 @@ async function connectGmail(event) {
       renderSources();
     }
     showSource("gmail." + out.result);
+    // #802: most likely the Google password, typed because Google's App Passwords page said the
+    // account can't use them, so the fold with the 2-Step Verification button opens by itself.
+    if (out.result === "not-an-app-password") {
+      document.getElementById("gmail-unavailable").open = true;
+    }
   } catch (e) {
     failed(e);
   } finally {
