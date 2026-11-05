@@ -342,7 +342,7 @@ def test_send_it_to_me_goes_from_the_households_gmail(harness, page):
 
     r = send_it_to_me(page.url)
 
-    assert r.json() == {"result": "sent", "to": PARENT}
+    assert r.json() == {"result": "sent", "to": PARENT, "turning_on": True}
     [email] = harness.sent
     assert (email.via, email.from_addr, email.to) == ("gmail", PARENT, [PARENT])
     assert email.html == made["html"]

@@ -489,6 +489,8 @@
     <div id="brief-sent" class="status" role="status" hidden>
       <p id="brief-sent-message"></p>
       <p id="brief-junk" data-text="brief.junk" hidden></p>
+      <!-- The evening Brief turns itself on once the first Brief is sent (#733). -->
+      <p id="brief-turning-on" data-text="brief.turning-on" hidden></p>
       <button type="button" id="brief-done" data-text="brief.done"></button>
     </div>
   </section>
@@ -501,11 +503,13 @@
       <p><button type="button" id="finish-unconfirmed-resend" class="secondary" data-text="gmail.confirm.resend"></button></p>
       <p id="finish-unconfirmed-resent" hidden></p>
     </div>
+    <!-- The evening Brief is on: it turned itself on with the first Brief (#733). -->
+    <p id="finish-on" class="ready" hidden></p>
+    <!-- Only while it isn't on, or the Mac's wake-up isn't set: Turn it on, or Set the wake-up. -->
     <div id="finish-install" hidden>
       <p class="note" data-text="finish.intro"></p>
       <div class="actions">
         <button type="button" id="finish-start" data-text="finish.start"></button>
-        <button type="button" id="finish-stop" class="secondary" data-text="finish.stop" hidden></button>
       </div>
     </div>
     <div id="finish-status" class="status" role="status" hidden>
@@ -514,6 +518,7 @@
       <ul id="finish-other" class="kids" hidden></ul>
       <button type="button" id="finish-replace" class="secondary" data-text="finish.replace" hidden></button>
       <button type="button" id="finish-again" class="secondary" data-text="finish.again" hidden></button>
+      <button type="button" id="finish-stop" class="secondary" data-text="finish.stop" hidden></button>
       <details id="finish-why" class="why" hidden>
         <summary data-text="fail.details"></summary>
         <pre id="finish-reason" class="reason"></pre>
