@@ -1,5 +1,6 @@
 """Adding an Eepos sign-in from a terminal (ADR 0038), for the maintainers to turn Eepos on for a
-Household by hand until the setup page and the hosted sign-up have a step for it (#755).
+Household by hand until the setup page has a step for it (#755); the hosted sign-up has one
+(#769), which reuses `check` and `_save`.
 
 `setup eepos --school emo --username NAME` has the guardian's password typed at the secret store's
 own prompt in that terminal (`secrets.put_typed`), so it passes through no dialog, chat or command

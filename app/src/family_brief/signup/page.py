@@ -1,7 +1,7 @@
 """The sign-up page (ADR 0031): one phone-sized form, written out by the server in Finnish, English
 or Chinese, with no script and nothing loaded from anywhere, so it works on any phone's browser
-and a Content-Security-Policy of `default-src 'none'` holds. The Wilma password goes only into its
-own password field, posted with the form, and never comes back in a page.
+and a Content-Security-Policy of `default-src 'none'` holds. The Wilma and Eepos passwords go only
+into their own password fields, posted with the form, and never come back in a page.
 
 While the Household is made, the page lists its steps and asks the server again every few seconds
 by a `refresh` meta tag, which needs no script and picks up again when the phone wakes.
@@ -35,7 +35,8 @@ TEXT = {
         "no_wilma": "We don't have Wilma",
         "no_wilma_hint": "If your children's school doesn't use Wilma, leave the Wilma fields "
                          "empty and write each child's name here. The Brief then reads their "
-                         "clubs' MyClub calendars, which you add next.",
+                         "clubs' MyClub calendars or their music school's Eepos, which you add "
+                         "next.",
         "kid": "Child's name",
         "myclub_needed": "MyClub",
         "submit": "Continue",
@@ -47,6 +48,17 @@ TEXT = {
                               "MyClub (it starts with webcal:// or https://), and their practices "
                               "and games come in the Brief too. Leave it empty to skip.",
         "myclub_done": "Done",
+        "eepos": "Eepos (optional)",
+        "eepos_needed": "Eepos",
+        "eepos_hint": "If a child takes lessons at a music or art school that uses Eepos, sign in "
+                      "with your Eepos username and password, and their lessons, concerts and "
+                      "holidays come in the Brief too. Leave it empty to skip.",
+        "eepos_school": "School",
+        "eepos_school_hint": "The start of the school's Eepos address, such as emo for "
+                             "emo.eepos.fi.",
+        "eepos_username": "Eepos username",
+        "eepos_password": "Eepos password",
+        "eepos_password_hint": "It is kept only on our server, to read Eepos for you.",
         "wait": "Signing up takes a minute or two. Keep this page open until it says you're "
                 "signed up.",
         "signing_up": "Signing you up",
@@ -57,6 +69,9 @@ TEXT = {
         "step_setup": "Setting up Parent Recap for you",
         "step_wilma": "Connecting Wilma",
         "step_myclub": "Connecting MyClub",
+        "step_eepos": "Connecting Eepos",
+        "step_myclub_eepos": "Connecting MyClub and Eepos",
+        "step_wilma_eepos": "Connecting Wilma and Eepos",
         "step_brief": "Writing and sending your first Brief",
         "wrong-password": "Wilma didn't accept that username and password. Check them and try "
                           "again.",
@@ -66,7 +81,7 @@ TEXT = {
         "invalid-town": "Pick your town from the list.",
         "invalid-sign-in": "Fill in the Wilma username and password, or your children's names "
                            "if you don't have Wilma.",
-        "need-myclub": "Without Wilma, give at least one child's MyClub calendar link, so the "
+        "need-myclub": "Without Wilma, give a MyClub calendar link or an Eepos sign-in, so the "
                        "Brief has something to read.",
         "invalid-recipients": "Give at least one email address, written as name@example.com.",
         "not-a-myclub-link": "{kid}: that isn't a MyClub calendar link. Copy the calendar's "
@@ -77,8 +92,21 @@ TEXT = {
                           "calendar's subscription link in MyClub, or leave it empty.",
         "same-link": "{kid}: this is the same link as another child's. Each child has their own "
                      "MyClub calendar link.",
-        "paste_again": "The links aren't shown again, since each opens a child's calendar: paste "
-                       "the ones you want once more.",
+        "eepos-incomplete": "For Eepos, fill in the school, the username and the password, or "
+                            "leave all three empty.",
+        "eepos-not-a-school": "That isn't an Eepos school. Give the start of its address, such as "
+                              "emo for emo.eepos.fi.",
+        "eepos-wrong-password": "Eepos didn't accept that username and password. Check them and "
+                                "try again. If you sign in to Eepos by an emailed link, first set "
+                                "a password with \"Forgot your password?\" on the school's Eepos "
+                                "sign-in page.",
+        "eepos-changed": "Eepos answered in a way Parent Recap doesn't understand, so nothing was "
+                         "kept. Leave Eepos empty to sign up without it, and tell whoever sent "
+                         "you this link.",
+        "eepos-no-answer": "Eepos couldn't be reached just now, so nothing was kept. Try again in "
+                           "a while, or leave Eepos empty.",
+        "paste_again": "The links and the Eepos password aren't shown again, since they open a "
+                       "child's calendar: give the ones you want once more.",
         "expired": "That took too long, so nothing was kept. Sign in to Wilma again.",
         "failed": "Something went wrong on our side, and nothing was kept. Try again later, or "
                   "tell whoever sent you this link.",
@@ -87,6 +115,8 @@ TEXT = {
                 "evening at {time} when there's something new.",
         "junk": "Hotmail and Outlook.com may put the first Brief in Junk. If it's there, mark it "
                 "\"Not junk\" once.",
+        "eepos_unmatched": "On Eepos, {names} didn't match any of your children's names, so their "
+                           "lessons come in the Brief for the whole family.",
     },
     "fi": {
         "title": "Ota Parent Recap käyttöön",
@@ -109,7 +139,8 @@ TEXT = {
         "no_wilma": "Meillä ei ole Wilmaa",
         "no_wilma_hint": "Jos lastesi koulu ei käytä Wilmaa, jätä Wilman kentät tyhjiksi ja "
                          "kirjoita tähän jokaisen lapsen nimi. Kooste lukee silloin seurojen "
-                         "MyClub-kalenterit, jotka lisäät seuraavaksi.",
+                         "MyClub-kalenterit tai musiikkiopiston Eepoksen, jotka lisäät "
+                         "seuraavaksi.",
         "kid": "Lapsen nimi",
         "myclub_needed": "MyClub",
         "submit": "Jatka",
@@ -123,6 +154,19 @@ TEXT = {
                               "pelit tulevat myös koosteeseen. Jätä kenttä tyhjäksi, jos et "
                               "tarvitse sitä.",
         "myclub_done": "Valmis",
+        "eepos": "Eepos (vapaaehtoinen)",
+        "eepos_needed": "Eepos",
+        "eepos_hint": "Jos lapsi käy musiikki- tai taidekoulua, joka käyttää Eeposta, kirjaudu "
+                      "Eepoksen käyttäjätunnuksellasi ja salasanallasi, niin tunnit, konsertit ja "
+                      "lomat tulevat myös koosteeseen. Jätä kentät tyhjiksi, jos et tarvitse "
+                      "sitä.",
+        "eepos_school": "Koulu",
+        "eepos_school_hint": "Koulun Eepos-osoitteen alku, esimerkiksi emo, kun osoite on "
+                             "emo.eepos.fi.",
+        "eepos_username": "Eepoksen käyttäjätunnus",
+        "eepos_password": "Eepoksen salasana",
+        "eepos_password_hint": "Se säilytetään vain palvelimellamme, jotta voimme lukea Eeposta "
+                               "puolestasi.",
         "wait": "Käyttöönotto kestää minuutin tai kaksi. Pidä tämä sivu auki, kunnes se kertoo, "
                 "että olet mukana.",
         "signing_up": "Otetaan käyttöön",
@@ -133,6 +177,9 @@ TEXT = {
         "step_setup": "Parent Recapia valmistellaan sinulle",
         "step_wilma": "Wilma yhdistetään",
         "step_myclub": "MyClub yhdistetään",
+        "step_eepos": "Eepos yhdistetään",
+        "step_myclub_eepos": "MyClub ja Eepos yhdistetään",
+        "step_wilma_eepos": "Wilma ja Eepos yhdistetään",
         "step_brief": "Ensimmäinen kooste kirjoitetaan ja lähetetään",
         "wrong-password": "Wilma ei hyväksynyt käyttäjätunnusta ja salasanaa. Tarkista ne ja "
                           "yritä uudelleen.",
@@ -142,8 +189,8 @@ TEXT = {
         "invalid-town": "Valitse kuntasi listasta.",
         "invalid-sign-in": "Täytä Wilman käyttäjätunnus ja salasana, tai lasten nimet, jos "
                            "teillä ei ole Wilmaa.",
-        "need-myclub": "Ilman Wilmaa anna ainakin yhden lapsen MyClub-kalenterin linkki, jotta "
-                       "koosteella on jotain luettavaa.",
+        "need-myclub": "Ilman Wilmaa anna MyClub-kalenterin linkki tai kirjaudu Eepokseen, "
+                       "jotta koosteella on jotain luettavaa.",
         "invalid-recipients": "Anna vähintään yksi sähköpostiosoite muodossa nimi@esimerkki.fi.",
         "not-a-myclub-link": "{kid}: tämä ei ole MyClub-kalenterin linkki. Kopioi kalenterin "
                              "tilauslinkki MyClubista tai jätä kenttä tyhjäksi.",
@@ -153,8 +200,21 @@ TEXT = {
                           "tilauslinkki MyClubista tai jätä kenttä tyhjäksi.",
         "same-link": "{kid}: tämä on sama linkki kuin toisella lapsella. Jokaisella lapsella on "
                      "oma MyClub-kalenterin linkkinsä.",
-        "paste_again": "Linkkejä ei näytetä uudelleen, koska ne avaavat lapsen kalenterin: liitä "
-                       "haluamasi linkit uudelleen.",
+        "eepos-incomplete": "Täytä Eepoksen koulu, käyttäjätunnus ja salasana tai jätä ne kaikki "
+                            "tyhjiksi.",
+        "eepos-not-a-school": "Tämä ei ole Eepos-koulu. Anna osoitteen alku, esimerkiksi emo, kun "
+                              "osoite on emo.eepos.fi.",
+        "eepos-wrong-password": "Eepos ei hyväksynyt käyttäjätunnusta ja salasanaa. Tarkista ne "
+                                "ja yritä uudelleen. Jos kirjaudut Eepokseen sähköpostilinkillä, "
+                                "aseta ensin salasana koulun Eepos-kirjautumissivulla salasanan "
+                                "palautuksella.",
+        "eepos-changed": "Eepos vastasi tavalla, jota Parent Recap ei tunne, joten mitään ei "
+                         "tallennettu. Jätä Eepos tyhjäksi, niin pääset mukaan ilman sitä, ja "
+                         "kerro asiasta linkin lähettäjälle.",
+        "eepos-no-answer": "Eepokseen ei juuri nyt saatu yhteyttä, joten mitään ei tallennettu. "
+                           "Yritä hetken päästä uudelleen tai jätä Eepos tyhjäksi.",
+        "paste_again": "Linkkejä ja Eepoksen salasanaa ei näytetä uudelleen, koska niillä pääsee "
+                       "lapsen kalenteriin: anna haluamasi uudelleen.",
         "expired": "Tämä kesti liian kauan, joten mitään ei tallennettu. Kirjaudu Wilmaan "
                    "uudelleen.",
         "failed": "Meidän päässämme meni jotain vikaan, eikä mitään tallennettu. Yritä myöhemmin "
@@ -164,6 +224,8 @@ TEXT = {
                 "joka ilta kello {time}, kun on jotain uutta.",
         "junk": "Hotmail ja Outlook.com voivat laittaa ensimmäisen koosteen roskapostiin. Jos se "
                 "on siellä, merkitse se kerran \"Ei roskapostia\".",
+        "eepos_unmatched": "Eepoksen oppilasta {names} ei tunnistettu kenenkään lapsesi nimestä, "
+                           "joten tunnit tulevat koosteeseen koko perheelle.",
     },
     "zh": {
         "title": "开始使用 Parent Recap",
@@ -182,7 +244,7 @@ TEXT = {
         "another": "另一个地址（可选）",
         "no_wilma": "我们没有 Wilma",
         "no_wilma_hint": "如果孩子的学校不用 Wilma，把上面 Wilma 的几栏留空，在这里写下每个孩子的名字。"
-                         "摘要会读取孩子俱乐部的 MyClub 日历，下一步填写。",
+                         "摘要会读取孩子俱乐部的 MyClub 日历或音乐学校的 Eepos，下一步填写。",
         "kid": "孩子的名字",
         "myclub_needed": "MyClub",
         "submit": "继续",
@@ -192,6 +254,15 @@ TEXT = {
         "myclub_needed_hint": "如果孩子的俱乐部用 MyClub，把孩子在 MyClub 里的日历链接粘贴到这里（以 "
                               "webcal:// 或 https:// 开头），训练和比赛也会出现在摘要里。不需要就留空。",
         "myclub_done": "完成",
+        "eepos": "Eepos（可选）",
+        "eepos_needed": "Eepos",
+        "eepos_hint": "如果孩子在使用 Eepos 的音乐或艺术学校上课，用你的 Eepos 用户名和密码登录，"
+                      "课程、音乐会和假期也会出现在摘要里。不需要就留空。",
+        "eepos_school": "学校",
+        "eepos_school_hint": "学校 Eepos 网址的开头部分，例如 emo.eepos.fi 就填 emo。",
+        "eepos_username": "Eepos 用户名",
+        "eepos_password": "Eepos 密码",
+        "eepos_password_hint": "它只保存在我们的服务器上，用来替你读取 Eepos。",
         "wait": "开通需要一两分钟。请保持这个页面打开，直到它显示开通成功。",
         "signing_up": "正在开通",
         "updates": "这个页面会自动更新。请保持它打开，直到它显示开通成功；中途手机屏幕熄灭也没关系。",
@@ -199,24 +270,35 @@ TEXT = {
         "step_setup": "为你准备 Parent Recap",
         "step_wilma": "连接 Wilma",
         "step_myclub": "连接 MyClub",
+        "step_eepos": "连接 Eepos",
+        "step_myclub_eepos": "连接 MyClub 和 Eepos",
+        "step_wilma_eepos": "连接 Wilma 和 Eepos",
         "step_brief": "撰写并发送第一份摘要",
         "wrong-password": "Wilma 没有接受这个用户名和密码。请检查后再试一次。",
         "no-kids": "这个 Wilma 账号下没有孩子。请用家长（监护人）的账号登录。",
         "sign-in-failed": "现在连不上 Wilma，所以什么都没有保存。请过一会儿再试。",
         "invalid-town": "请从列表里选择你的城市。",
         "invalid-sign-in": "请填写 Wilma 用户名和密码；没有 Wilma 的话，填写孩子的名字。",
-        "need-myclub": "没有 Wilma 时，请至少填一个孩子的 MyClub 日历链接，这样摘要才有内容可读。",
+        "need-myclub": "没有 Wilma 时，请填一个 MyClub 日历链接或登录 Eepos，这样摘要才有内容可读。",
         "invalid-recipients": "请至少填写一个邮箱地址，格式如 name@example.com。",
         "not-a-myclub-link": "{kid}：这不是 MyClub 日历链接。请在 MyClub 里复制日历的订阅链接，或者留空。",
         "link-failed": "{kid}：这个 MyClub 链接打不开。请检查一下，或者留空跳过 MyClub。",
         "not-a-calendar": "{kid}：链接能打开，但里面没有日历。请在 MyClub 里复制日历的订阅链接，或者留空。",
         "same-link": "{kid}：这个链接和另一个孩子的一样。每个孩子都有自己的 MyClub 日历链接。",
-        "paste_again": "链接不会再显示，因为它们能打开孩子的日历：请把需要的链接再粘贴一次。",
+        "eepos-incomplete": "Eepos 的学校、用户名和密码请都填上，或者都留空。",
+        "eepos-not-a-school": "这不是 Eepos 学校。请填网址的开头部分，例如 emo.eepos.fi 就填 emo。",
+        "eepos-wrong-password": "Eepos 没有接受这个用户名和密码。请检查后再试一次。如果你平时通过邮件里的"
+                                "链接登录 Eepos，请先在学校的 Eepos 登录页用“忘记密码”设置一个密码。",
+        "eepos-changed": "Eepos 的回应 Parent Recap 看不懂，所以什么都没有保存。可以把 Eepos 留空先开通，"
+                         "并告诉发给你这个链接的人。",
+        "eepos-no-answer": "现在连不上 Eepos，所以什么都没有保存。请过一会儿再试，或者把 Eepos 留空。",
+        "paste_again": "链接和 Eepos 密码不会再显示，因为它们能打开孩子的日历：请把需要的再填一次。",
         "expired": "等待时间太长，什么都没有保存。请重新登录 Wilma。",
         "failed": "我们这边出了问题，什么都没有保存。请稍后再试，或告诉发给你这个链接的人。",
         "done": "开通成功",
         "sent": "第一份摘要刚刚已经发到你的邮箱。之后每天晚上 {time}，有新消息时就会发一份摘要。",
         "junk": "Hotmail 和 Outlook.com 可能会把第一份摘要放进垃圾邮件。如果在那里找到它，请把它标记为“非垃圾邮件”一次。",
+        "eepos_unmatched": "Eepos 上的 {names} 和孩子的名字对不上，所以他们的课程会作为全家的日程出现在摘要里。",
     },
 }
 STYLE = """
@@ -241,6 +323,15 @@ STEPS = ("step_setup", "step_wilma", "step_brief")
 NO_WILMA_STEPS = ("step_setup", "step_myclub", "step_brief")  # a Household without Wilma (#760)
 MAX_KIDS = 6  # the names a family without Wilma may give
 REFRESH_SECONDS = 3
+
+
+def steps(wilma: bool, myclub: bool, eepos: bool) -> tuple[str, ...]:
+    """The steps of making a Household, the second named after the Sources it connects: Wilma,
+    or without it MyClub, and Eepos when given (#769)."""
+    if not eepos:
+        return STEPS if wilma else NO_WILMA_STEPS
+    connects = "step_wilma_eepos" if wilma else "step_myclub_eepos" if myclub else "step_eepos"
+    return ("step_setup", connects, "step_brief")
 
 
 @dataclass
@@ -289,11 +380,13 @@ def form(language: str, typed: Typed, towns: list[str], error: str | None = None
 
 
 def myclub(language: str, kids: list[str], error: str | None = None,
-           kid: str | None = None, wilma: bool = True) -> str:
+           kid: str | None = None, wilma: bool = True, eepos: tuple[str, str] = ("", "")) -> str:
     """The second step, once Wilma, or the family without it, has said who the Kids are: a MyClub
-    calendar link for each, which may be left empty, though not every one without Wilma. A link is
-    never shown back, as the password isn't (ADR 0007)."""
+    calendar link for each and an Eepos sign-in (#769), each of which may be left empty, though not
+    all without Wilma. A link is never shown back, as the passwords aren't (ADR 0007); the Eepos
+    school and username typed, `eepos`, are."""
     t = TEXT[language]
+    school, username = eepos
     fields = "".join(f"""<label for="m{i}">{escape(name)}</label>
 <input id="m{i}" name="m{i}" inputmode="url" autocomplete="off" autocapitalize="none"
  spellcheck="false">
@@ -308,6 +401,18 @@ def myclub(language: str, kids: list[str], error: str | None = None,
 <h2>{escape(t['myclub' if wilma else 'myclub_needed'])}</h2>
 <p class="hint">{escape(t['myclub_hint' if wilma else 'myclub_needed_hint'])}</p>
 {fields}
+<h2>{escape(t['eepos' if wilma else 'eepos_needed'])}</h2>
+<p class="hint">{escape(t['eepos_hint'])}</p>
+<label for="eepos_school">{escape(t['eepos_school'])}</label>
+<input id="eepos_school" name="eepos_school" autocomplete="off" autocapitalize="none"
+ spellcheck="false" value="{escape(school)}">
+<p class="hint">{escape(t['eepos_school_hint'])}</p>
+<label for="eepos_username">{escape(t['eepos_username'])}</label>
+<input id="eepos_username" name="eepos_username" autocomplete="off" autocapitalize="none"
+ spellcheck="false" value="{escape(username)}">
+<label for="eepos_password">{escape(t['eepos_password'])}</label>
+<input id="eepos_password" name="eepos_password" type="password" autocomplete="off">
+<p class="hint">{escape(t['eepos_password_hint'])}</p>
 <button type="submit">{escape(t['myclub_done'])}</button>
 <p class="hint">{escape(t['wait'])}</p>
 </form>""", languages=False)
@@ -334,11 +439,16 @@ def progress(language: str, ended: int, waiting: bool, steps: tuple[str, ...] = 
 <p class="hint">{escape(t['updates'])}</p>""", languages=False, refresh=True)
 
 
-def done(language: str, time: str, junk: bool, steps: tuple[str, ...] = STEPS) -> str:
+def done(language: str, time: str, junk: bool, steps: tuple[str, ...] = STEPS,
+         unmatched: list[str] | None = None) -> str:
     """Signed up: the first Brief sent, and when the next ones come. `junk` when a Recipient is
-    on Hotmail or Outlook.com, which may file a new sender's first mail as Junk."""
+    on Hotmail or Outlook.com, which may file a new sender's first mail as Junk; `unmatched`, the
+    Eepos students who are none of the Kids, whose lessons are the whole Household's."""
     t = TEXT[language]
     hint = f'\n<p class="hint">{escape(t["junk"])}</p>' if junk else ""
+    if unmatched:
+        names = ", ".join(unmatched)
+        hint += f'\n<p class="hint">{escape(t["eepos_unmatched"].format(names=names))}</p>'
     return _page(language, t["done"], f"""
 {_steps(t, len(steps), None, steps)}
 <p>{escape(t['sent'].format(time=time))}</p>{hint}""", languages=False)

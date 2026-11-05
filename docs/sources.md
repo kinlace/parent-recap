@@ -125,9 +125,13 @@ On the setup page's Finish, "Turn WhatsApp off" stops the always-running job, lo
    - Google Calendar on the web: "Other calendars" on the left → "+" → "From URL", replace `webcal://` with `https://` and paste
    - iPhone: Settings → Calendar → Accounts → Add Account → Other → Add Subscribed Calendar
 
-## Eepos (optional, added by the maintainers)
+## Eepos (optional)
 
-Music and art schools on Eepos (such as Espoon musiikkiopisto at `emo.eepos.fi` and Espoon kuvataidekoulu at `espoo.eepos.fi`) give their lessons, concerts and holidays as calendar events in the Brief and its `.ics`, read through the school's guardian portal (ADR 0038). The setup page and the hosted sign-up have no Eepos step yet (#755): a maintainer adds it from a terminal, as the Household's user, once for each school:
+Music and art schools on Eepos (such as Espoon musiikkiopisto at `emo.eepos.fi` and Espoon kuvataidekoulu at `espoo.eepos.fi`) give their lessons, concerts and holidays as calendar events in the Brief and its `.ics`, read through the school's guardian portal (ADR 0038).
+
+**Hosted sign-up**: the MyClub step has an Eepos part: the school (`emo`, `espoo` or its `*.eepos.fi` address), the guardian's Eepos username and password (#769). It is optional with Wilma; without Wilma, it or a MyClub link is needed. The service signs in, reads the students and matches them to the Kids before anything is made, so a wrong password is said on the page at once. One school at sign-up; a second is added by a maintainer as below.
+
+**Setup page**: no Eepos step yet (#755). A maintainer adds it from a terminal, as the Household's user, once for each school:
 
 1. The guardian needs an Eepos password. A family that signs in by an emailed link sets one first with "Forgot your password?" ("Unohditko salasanasi?") on the school's Eepos login
 2. **Terminal**: `$FB setup eepos --school emo --username <the guardian's Eepos username>`. The password is typed at the secret store's own prompt (the Keychain asks twice; a hosted server's prompt is hidden), so it never reaches the chat or a command line. The command signs in with it, reads the guardian's students and the next 14 days of the calendar, and only then stores the password (Keychain `family-brief` / `eepos-signin-<16 hex digits>`) and the sign-in in the config's `eepos.signins`. It prints which Kid each student is, matched by name; a student who matches none has their lessons go to the whole Household until their Eepos name is added to the Kid's `aliases` and the command run again

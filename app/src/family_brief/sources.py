@@ -174,8 +174,8 @@ WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), _in("collectors.what
 # A music or art school's calendar, read through its portal's own JSON API with a password in the
 # secret store (ADR 0038). Its lessons and holidays are events, which nothing else puts in a
 # calendar, so they go into the .ics. Set up from a terminal for now, one sign-in per school
-# (`setup eepos`): neither the setup page nor the hosted sign-up has a step for it yet (#755),
-# but the maintainers can add a Hosted Household's, so its Brief doesn't call it unread there.
+# (`setup eepos`) or at the hosted sign-up (#769); the setup page has no step for it yet (#755).
+# A Hosted Household can have it, so its Brief doesn't call it unread there.
 EEPOS = Source("eepos", _same_everywhere("Eepos"), lambda cfg: bool(cfg.eepos.signins),
                skippable=True, connect_rank=6, collect=_collector("eepos"), counts_events=True,
                setup_page=False, check=_in("ops", "check_eepos"),

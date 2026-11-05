@@ -56,7 +56,7 @@ def test_the_hosted_version_never_reads_whatsapp(system):
 @pytest.mark.parametrize("profile", [MACOS, WINDOWS, LINUX], ids=["macos", "windows", "linux"])
 def test_a_hosted_household_can_t_have_whatsapp_or_gmail_wherever_it_s_asked(system, profile):
     system.profile = profile  # ADR 0029: no WhatsApp on its server; ADR 0031: no Gmail step
-    # #755: Eepos has no sign-up step yet, but the maintainers can add its sign-in, so it's not here
+    # #769: the hosted sign-up can add an Eepos sign-in, so it's not here
 
     assert sources.not_hosted() == [sources.WHATSAPP, sources.GMAIL]
 
