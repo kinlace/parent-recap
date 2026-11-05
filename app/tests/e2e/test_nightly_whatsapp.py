@@ -131,7 +131,7 @@ def test_the_hosted_version_never_reads_whatsapp_and_says_so(harness, whatsapp_o
     assert whatsapp_archived(harness) == []
     assert coverage_line(harness) == (
         "📥 Read tonight: Gmail 1 message · MyClub 0 events · Wilma 0 messages\n"
-        "WhatsApp and Eepos aren't read in the hosted version.")
+        "WhatsApp isn't read in the hosted version.")
     assert "whatsapp" not in harness.lookback_hours
 
 
