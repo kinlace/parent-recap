@@ -2796,6 +2796,9 @@ async function sendBrief(event) {
       // Parent Recap's new address may land in Hotmail's or Outlook.com's Junk at first (#524);
       // the family's own Gmail isn't new.
       document.getElementById("brief-junk").hidden = sendsFromGmail() || !JUNKS_AT_FIRST.test(out.to);
+      // The server turns the evening Brief on now (#733): on a Mac, macOS's password dialog for
+      // the wake-up is about to open, and this says why.
+      if (out.turning_on) document.getElementById("brief-turning-on").hidden = false;
     } else if (out.result === "unconfirmed") {
       // Not sent: the setup parent hasn't pressed the button their confirmation link opens.
       showError("brief.send.unconfirmed", { to: out.to });
@@ -3149,7 +3152,18 @@ function finishResult(out) {
   }));
   other.hidden = !out.other;
   document.getElementById("finish-replace").hidden = out.wake !== "other-schedule" || running;
-  document.getElementById("finish-install").hidden = running || done;
+  // The evening Brief turns itself on once the first Brief is sent (#733), so Finish says it's on
+  // and when. Turn it on only while it isn't, and Set the wake-up while the Mac's wake-up isn't
+  // set where its dialog sets it; another wake schedule is Replace it's to ask about.
+  const outcome = (name) => (out.outcomes || []).find((o) => o.outcome === name);
+  const off = out.result === "install-failed" || outcome("nightly")?.ok === false;
+  const noWake = page.system === "macos" && outcome("wake")?.ok === false
+    && !["other-schedule", "no-dialog"].includes(out.wake);
+  document.getElementById("finish-install").hidden = running || done || !(off || noWake);
+  setText(document.getElementById("finish-start"), off ? "finish.start" : "finish.retry");
+  const on = document.getElementById("finish-on");
+  on.hidden = running || !outcome("nightly")?.ok;
+  setText(on, "finish.on", { evening: page.check.evening });
   // Only once a try has left something failing: before Turn it on, it's the one thing to press.
   document.getElementById("finish-again").hidden = out.result !== "not-done" || !tried;
   document.getElementById("finish-stop").hidden = !tried;

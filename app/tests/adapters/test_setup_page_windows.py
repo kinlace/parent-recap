@@ -24,7 +24,7 @@ from family_brief.config import Config
 from family_brief.setup_server.gmail import MAX_RECIPIENTS
 from family_brief.system import jobs, jobs_windows, secrets, wake, wake_windows, windows_only
 from setup_page import (APP_PASSWORD, call, check_page, clock, config_file,  # noqa: F401
-                        finish, finished, health_result, page, source)
+                        finish, finished, health_result, page, source, wait_for)
 from test_setup_ai import GATEWAY_KEY, save_gateway_key
 from test_setup_check import read_to_the_end, start_reading
 from test_setup_first_brief import BRIEF_TEXT, brief_made, make_brief, send_it_to_me
@@ -163,7 +163,10 @@ def walk_to_finish(harness, url: str, reads_gmail: bool = True) -> dict[str, Any
 
     assert make_brief(url).status == 200
     assert brief_made(url)["result"] == "made"
-    assert send_it_to_me(url).json() == {"result": "sent", "to": PARENT}
+    # The evening Brief turns itself on once it's sent (#733).
+    assert send_it_to_me(url).json() == {"result": "sent", "to": PARENT, "turning_on": True}
+    wait_for(lambda: call(url, "api/finish/check", method="POST", body={}).json()["result"]
+             != "installing", SLOW)
     assert call(url, "api/brief/done", method="POST", body={}).status == 200
 
     data = yaml.safe_load(config_file(harness).read_text())
@@ -204,7 +207,8 @@ def test_a_family_sets_up_with_the_gateway_gmail_and_myclub_on_the_page_and_unin
 
     assert_finished(fresh_install, out)
     assert fresh_install.secrets[f"gmail-imap-{PARENT}"] == APP_PASSWORD
-    assert out["result"] == "done" and out["wake"] == "set"
+    # Set as the first Brief turned the evening Brief on (#733), so Turn it on finds it set.
+    assert out["result"] == "done" and out["wake"] == "already-set"
     uninstall_leaves_nothing(fresh_install, monkeypatch)
     assert fresh_install.wake.wakes == []
 

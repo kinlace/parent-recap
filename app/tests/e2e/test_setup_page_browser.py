@@ -32,6 +32,7 @@ from conftest import CLASS_GROUP, PIANO_GROUP
 from family_brief import failure, gateway, linked_device, ops, setup_connect, setup_wilma
 from family_brief.collectors import myclub
 from family_brief.config import Config
+from fake_system import MACOS
 from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, config_file,
                         more_progress, progress_file, save_progress, wait_for)
 from setup_page import ai, clock, health, page, schedule  # noqa: F401
@@ -294,11 +295,14 @@ def test_a_family_goes_from_the_language_to_finish_in_the_browser(tab):
     expect(tab.get_by_text(text("brief.made"))).to_be_visible()
     button(tab, "brief.send").click()
     expect(tab.get_by_text(text("brief.send.sent", to=PARENT))).to_be_visible()
+    # The evening Brief turns itself on now, and the page says why macOS's dialog opens (#733).
+    expect(tab.get_by_text(text("brief.turning-on"))).to_be_visible()
     button(tab, "brief.done").click()
 
+    # Nothing to press: the last step says it's on, and when.
     expect(heading(tab, "finish.title")).to_be_visible()
-    button(tab, "finish.start").click()
-    expect(tab.get_by_text(text("finish.done", evening="16:05"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.done"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.on", evening="16:05"))).to_be_visible()
     expect(tab.get_by_text(text("finish.closed"))).to_be_visible()
     expect(button(tab, "finish.start")).to_be_hidden()
     expect(button(tab, "finish.again")).to_be_hidden()
@@ -671,6 +675,30 @@ def test_the_first_brief_reminds_the_parent_to_confirm_until_they_have(tab, fami
     expect(tab.get_by_text(text("brief.send.sent", to=PARENT))).to_be_visible()
     # The partner's confirmation doesn't matter here: the page asks no more.
     asked_no_more(tab, family)
+
+
+def test_a_closed_password_window_leaves_the_evening_brief_on_and_finish_offers_the_wake_up(
+        tab, family, health):  # noqa: F811
+    # #733: the evening Brief turns itself on once the first Brief is sent, on a Mac with its
+    # wake-up through macOS's dialog, which the parent closes.
+    family.system = MACOS
+    at_the_first_brief(family)
+    family.wake.dialog = "cancel"
+    tab.reload()
+    expect(tab.get_by_text(text("brief.made", system="macos"))).to_be_visible()
+    button(tab, "brief.send", system="macos").click()
+    expect(tab.get_by_text(text("brief.turning-on", system="macos"))).to_be_visible()
+    button(tab, "brief.done", system="macos").click()
+
+    expect(heading(tab, "finish.title")).to_be_visible()
+    expect(tab.get_by_text(text("finish.wake.cancelled", system="macos"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.on", system="macos", evening="21:00"))).to_be_visible()
+    expect(button(tab, "finish.start", system="macos")).to_be_hidden()
+    family.wake.dialog = "allow"
+    button(tab, "finish.retry", system="macos").click()
+
+    expect(tab.locator("#finish-status")).to_have_attribute("data-result", "finish.done")
+    expect(button(tab, "finish.retry", system="macos")).to_be_hidden()
 
 
 def test_finish_names_each_recipient_who_won_t_get_tonight_s_brief(tab, family, health):  # noqa: F811

@@ -599,9 +599,30 @@ def test_every_finish_text_is_in_all_three_languages():
                 "finish.title", "finish.intro", "finish.start", "finish.replace", "finish.restart",
                 "finish.leave", "finish.more", "finish.closed", "finish.stop", "finish.warnings",
                 "finish.again", "finish.to-do.nightly", "finish.to-do.wake",
-                "finish.to-do.wake.windows", "finish.later"]
+                "finish.to-do.wake.windows", "finish.later", "finish.retry", "finish.on",
+                "brief.turning-on", "brief.turning-on.windows"]
         for key in keys:
             assert table.get(key, "").strip(), (language, key)
+        assert "{evening}" in table["finish.on"], language
+
+
+# The evening Brief is the product's name; the time itself can be any time of day (#733).
+EVENING = {"en": re.compile(r"\bevening\b(?! Brief)|\bevenings\b|\btonight\b|\bnight's\b", re.I),
+           "zh": re.compile(r"晚上|今晚"),
+           "fi": re.compile(r"\bilta\b|iltoina|iltaisin|illalla|tämäniltai|illasta")}
+
+
+def test_the_time_and_finish_s_texts_suit_a_morning_time_in_every_language():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        for key, value in table.items():
+            if key.startswith(("check.evening", "finish.", "brief.turning-on")):
+                shown = re.sub(r"\{\w+\}", "", value)  # {evening} is the time picked
+                assert not EVENING[language].search(shown), (language, key, value)
+    assert text["en"]["check.evening.label"] == "Every day at"
+    assert text["zh"]["check.evening.label"] == "每天"
+    assert text["fi"]["check.evening.label"] == "Joka päivä kello"
 
 
 def test_finish_says_a_mac_that_s_shut_down_makes_no_brief():

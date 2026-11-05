@@ -11,9 +11,12 @@ What changes for families in each release, collected from the `What changes for 
 ### Changed
 
 - The hosted sign-up's MyClub page ends with Done, and says a family that doesn't use MyClub leaves its links empty and presses it.
+- The setup page turns on the evening Brief by itself once your first Brief is sent, so closing the page after it no longer leaves the evening Brief off. On a Mac the page says why macOS then asks for your Mac password (so the Mac can wake up for the Brief). The last step says the evening Brief is on and at what time, and if the password window was closed, offers "Set the wake-up" to try again.
+- The setup page's time field says "Every day at" instead of "Every evening at", since the Brief can come at any time you pick.
 
 ### Fixed
 
+- `parent-recap doctor` reports an evening Brief that isn't on as a failure, not a warning, once a Brief has been sent.
 - On an evening with nothing new from Wilma, Gmail or WhatsApp, an event from MyClub or another Source happening tomorrow is still told in the Brief, with its time and place.
 - In the hosted version, the Brief's last line says neither WhatsApp nor Gmail is read there, not only WhatsApp, so a missing Gmail isn't taken for a quiet inbox.
 
