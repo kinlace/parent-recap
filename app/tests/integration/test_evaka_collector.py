@@ -46,7 +46,7 @@ def collect(sources) -> list:
     return evaka.collect(cfg, State(sources.home / "state.json"), []).events
 
 
-def test_it_signs_in_as_evaka_s_app_does_and_asks_for_the_next_two_weeks(sources, portal):
+def test_it_signs_in_as_evaka_s_app_does_and_asks_for_the_next_four_weeks(sources, portal):
     collect(sources)
 
     login, children, calendar, reservations = portal.requests
@@ -54,8 +54,8 @@ def test_it_signs_in_as_evaka_s_app_does_and_asks_for_the_next_two_weeks(sources
     assert login["body"] == {"username": "parent@example.fi", "password": EVAKA_PASSWORD}
     assert login["headers"]["x-evaka-csrf"] == "1"
     assert (children["path"], calendar["path"], reservations["path"]) == ("children", "calendar-events", "reservations")
-    assert calendar["query"] == {"start": "2026-09-27", "end": "2026-10-11"}
-    assert reservations["query"] == {"from": "2026-09-27", "to": "2026-10-11"}
+    assert calendar["query"] == {"start": "2026-09-27", "end": "2026-10-25"}
+    assert reservations["query"] == {"from": "2026-09-27", "to": "2026-10-25"}
 
 
 def test_events_closed_days_and_the_deadline_go_to_the_right_kid(sources, portal):
