@@ -360,6 +360,10 @@ def _read_progress(path: Path) -> dict[str, Any]:
         saved = ProgressAnswer.model_validate(json.loads(path.read_text(encoding="utf-8")))
     except (OSError, ValueError, ValidationError):  # none yet, or not one this program wrote
         return start
+    if saved.phase not in (None, "welcome", "connect"):
+        # Past Connect, a Source the page got a step for since is skipped, as the family never
+        # had it to do: Check isn't held up by it, and Connect's list offers it (#791).
+        start["sources"] = {s: "skipped" for s in SOURCES}
     return _merged_progress(start, saved)
 
 

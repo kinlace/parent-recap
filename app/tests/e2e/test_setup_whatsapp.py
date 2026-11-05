@@ -255,7 +255,8 @@ def test_every_pairing_result_is_explained_in_all_three_languages():
 # ── A link that isn't fresh: a new pairing keeps the picked groups
 
 
-ALL_DONE = {"wilma": "done", "gmail": "done", "ai": "done", "whatsapp": "done", "myclub": "done"}
+ALL_DONE = {"wilma": "done", "gmail": "done", "ai": "done", "whatsapp": "done", "myclub": "done",
+            "eepos": "done", "evaka": "done"}
 
 
 def finished_with_groups(harness, chats: list[dict[str, Any]]) -> None:
@@ -406,7 +407,8 @@ def test_a_done_whatsapp_opened_from_connect_s_list_goes_on_from_there(harness, 
         return call(page.url, "api/whatsapp/done", method="POST", body={})
 
     assert go_on().json()["progress"]["source"] == "myclub"  # the next to do
-    more_progress(harness, source="whatsapp", sources={"myclub": "skipped"})
+    more_progress(harness, source="whatsapp", sources={"myclub": "skipped", "eepos": "skipped",
+                                                       "evaka": "skipped"})
     assert go_on().json()["progress"]["source"] is None  # none left: on to Check
     more_progress(harness, source="whatsapp", sources={"whatsapp": "to-do"})
     assert go_on().status == 400

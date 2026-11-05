@@ -1499,7 +1499,7 @@ def test_off_macos_the_page_offers_whatsapp_but_not_the_passwords_app(harness, p
     harness.system = WINDOWS
 
     sources = [s["name"] for s in call(page.url, "api/state").json()["connect"]["sources"]]
-    assert sources == ["wilma", "ai", "whatsapp", "myclub", "gmail"]
+    assert sources == ["wilma", "ai", "whatsapp", "myclub", "eepos", "evaka", "gmail"]
     r = call(page.url, "api/open", method="POST", body={"site": "passwords"})
     assert r.status == 400 and harness.opened == []
 

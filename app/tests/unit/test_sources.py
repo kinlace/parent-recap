@@ -25,15 +25,11 @@ def test_a_language_without_reviewed_text_gets_the_english_label():
 
 
 def test_the_connect_list_puts_wilma_first_and_gmail_last():
-    # #708: few families read Gmail, and its App Password is where setup gets stuck.
+    # #708: few families read Gmail, and its App Password is where setup gets stuck. Eepos and
+    # eVaka have steps of their own since #791, before Gmail's.
     assert [s.name for s in sources.in_connect_order() if s.setup_page] == \
-        ["wilma", "whatsapp", "myclub", "gmail"]
-
-
-def test_eepos_and_evaka_have_no_step_on_the_setup_page_yet_and_doctor_checks_them_last():
-    # #755, #768: the maintainers add their sign-ins from a terminal, with `setup eepos` and `setup evaka`.
-    assert [s.name for s in sources.in_connect_order()][-2:] == ["eepos", "evaka"]
-    assert "eepos" not in setup_save.SOURCES and "evaka" not in setup_save.SOURCES
+        ["wilma", "whatsapp", "myclub", "eepos", "evaka", "gmail"]
+    assert setup_save.SOURCES == ("wilma", "ai", "whatsapp", "myclub", "eepos", "evaka", "gmail")
 
 
 @pytest.mark.parametrize("profile", [MACOS, WINDOWS], ids=["macos", "windows"])
@@ -48,7 +44,7 @@ def test_the_hosted_version_never_reads_whatsapp(system):
     cfg = Config(kids=[_KID], wilma={"enabled": True})
 
     assert [s.name for s in sources.available()] == ["gmail", "myclub", "wilma", "eepos", "evaka"]
-    assert [s.name for s in sources.in_connect_order()] == ["wilma", "myclub", "gmail", "eepos", "evaka"]
+    assert [s.name for s in sources.in_connect_order()] == ["wilma", "myclub", "eepos", "evaka", "gmail"]
     assert [s.name for s in sources.used(cfg)] == ["wilma"]
     assert cfg.other_sources() == ["wilma"]
 

@@ -2,7 +2,8 @@
 and uninstall: the password goes from the secret store's own prompt to one sign-in and the store,
 never into the config, the command's output or a dialog; the children are matched to the Kids by
 name. The outside edges are faked: the store's prompt (`secrets.typed`) and each city's eVaka.
-The command's one line of JSON on stdout is what the maintainer reads."""
+The command's one line of JSON on stdout is what the maintainer reads. The setup page's eVaka step
+is at the end, with the password typed into the page's own field (#791)."""
 from __future__ import annotations
 
 import json
@@ -17,6 +18,8 @@ from fake_sources import EVAKA_PASSWORD
 from family_brief import install_record, ops
 from family_brief.collectors import evaka
 from family_brief.config import Config
+from setup_page import Response, assert_never_leaked, call, config_file, save_progress, source
+from setup_page import clock, page  # noqa: F401
 
 USERNAME = "parent@example.com"
 SECRET = evaka.secret_name("espoo", USERNAME)
@@ -203,3 +206,105 @@ def test_uninstall_deletes_each_evaka_password_and_the_device_cookies(harness, p
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
     assert SECRET not in harness.secrets and not devices.exists()
+
+
+# ── Connect: eVaka, on the setup page (#791), driven with HTTP calls as the page makes them
+# (`setup_page.py`), against the same fake eVaka
+
+def at_the_evaka_step(harness) -> None:
+    config_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+    save_progress(harness, {"phase": "connect", "source": "evaka", "sources": {
+        "wilma": "done", "gmail": "done", "ai": "done", "whatsapp": "done", "myclub": "skipped",
+        "eepos": "skipped"}})
+    harness.source_fakes["whatsapp"].set_up()  # WhatsApp done: paired
+
+
+def sign_in(url: str, password: str = EVAKA_PASSWORD, city: str = "espoo",
+            username: str = USERNAME) -> Response:
+    return call(url, "api/evaka", method="POST",
+                body={"city": city, "username": username, "password": password})
+
+
+def test_the_step_lists_the_cities_on_evaka_by_their_own_names(harness, page, portal):
+    at_the_evaka_step(harness)
+
+    cities = call(page.url, "api/state").json()["evaka"]["cities"]
+
+    assert {"name": "hameenkyro", "label": "Hämeenkyrö"} in cities
+    assert {c["name"] for c in cities} == set(evaka.CITIES)
+
+
+def test_a_sign_in_typed_on_the_page_is_checked_kept_in_the_store_and_listed(harness, page, portal,
+                                                                            caplog, capsys):
+    at_the_evaka_step(harness)
+
+    r = sign_in(page.url)
+
+    out = r.json()
+    assert out["result"] == "saved" and out["events"] == 2
+    assert out["found"] == [{"name": "Mia Emilia Virtanen", "kid": "Mia"}, {"name": "Leo Virtanen", "kid": "Leo"}]
+    assert out["signins"] == [{"city": "espoo", "label": "Espoo", "address": "espoonvarhaiskasvatus.fi",
+                               "username": USERNAME, "kids": ["Mia", "Leo"]}]
+    assert out["progress"]["sources"]["evaka"] == "done"
+    assert saved_config(harness)["evaka"] == {"signins": [{"city": "espoo", "username": USERNAME,
+                                                           "kids": {MIA: "Mia", LEO: "Leo"}}]}
+    assert harness.secrets[SECRET] == EVAKA_PASSWORD and evaka.TYPED not in harness.secrets
+    assert_never_leaked(harness, [r, call(page.url, "api/state")], caplog, capsys, EVAKA_PASSWORD)
+
+    assert call(page.url, "api/evaka/done", method="POST", body={}).json()["progress"]["source"] is None
+
+
+def test_a_city_not_on_the_list_is_given_by_its_host(harness, page, portal):
+    portal.city("evaka.example.fi").accounts[USERNAME] = EVAKA_PASSWORD
+    portal.city("evaka.example.fi").children = [evaka_child(MIA, "Mia", "Virtanen")]
+    at_the_evaka_step(harness)
+
+    out = sign_in(page.url, city="https://evaka.example.fi/calendar").json()
+
+    assert out["result"] == "saved"
+    assert out["signins"][0]["city"] == out["signins"][0]["address"] == "evaka.example.fi"
+
+
+def test_a_wrong_password_on_the_page_is_refused_and_keeps_the_one_that_works(harness, page, portal):
+    harness.config["evaka"] = {"signins": [{"city": "espoo", "username": USERNAME}]}
+    harness.secrets[SECRET] = EVAKA_PASSWORD
+    at_the_evaka_step(harness)
+
+    assert sign_in(page.url, "typo").json() == {"result": "wrong-password"}
+    assert harness.secrets[SECRET] == EVAKA_PASSWORD
+    assert saved_config(harness)["evaka"] == {"signins": [{"city": "espoo", "username": USERNAME}]}
+
+
+def test_what_isn_t_a_city_is_refused_without_signing_in(harness, page, portal):
+    at_the_evaka_step(harness)
+
+    assert sign_in(page.url, city="not a city").json() == {"result": "not-a-city"}
+    assert portal.requests == []
+
+
+def test_a_child_who_is_none_of_the_kids_is_shown_not_guessed(harness, page, portal):
+    portal.city("espoo").children.append(evaka_child("1a2b3c4d-0000-4000-8000-000000000013", "Olli", "Virtanen"))
+    at_the_evaka_step(harness)
+
+    assert sign_in(page.url).json()["found"][-1] == {"name": "Olli Virtanen", "kid": None}
+
+
+def test_a_city_is_removed_with_its_password(harness, page, portal):
+    at_the_evaka_step(harness)
+    sign_in(page.url)
+
+    r = call(page.url, "api/evaka/remove", method="POST", body={"city": "espoo", "username": USERNAME})
+
+    assert r.json()["result"] == "removed" and r.json()["signins"] == []
+    assert r.json()["progress"]["sources"]["evaka"] == "to-do"
+    assert SECRET not in harness.secrets and saved_config(harness)["evaka"]["signins"] == []
+
+
+def test_skipping_evaka_removes_its_sign_ins_and_passwords(harness, page, portal):
+    harness.config["evaka"] = {"signins": [{"city": "espoo", "username": USERNAME}]}
+    harness.secrets[SECRET] = EVAKA_PASSWORD
+    at_the_evaka_step(harness)
+
+    assert source(page.url, "evaka", "skip").json()["progress"]["sources"]["evaka"] == "skipped"
+    assert saved_config(harness)["evaka"]["signins"] == [] and SECRET not in harness.secrets

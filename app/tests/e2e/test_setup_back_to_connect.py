@@ -46,7 +46,7 @@ def test_only_check_and_finish_go_back_to_connect_with_a_skipped_source_never_wh
 
     more_progress(harness, phase="first-brief")
     assert back_to_connect(page.url).status == 400
-    more_progress(harness, phase="check", sources={"myclub": "done"})
+    more_progress(harness, phase="check", sources={"myclub": "done", "eepos": "done", "evaka": "done"})
     assert back_to_connect(page.url).status == 400  # nothing skipped to add
     assert setup_save.read(config_file(harness))["progress"]["phase"] == "check"
 

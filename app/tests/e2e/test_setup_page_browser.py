@@ -28,9 +28,10 @@ except ImportError:  # the browser fixture skips the tests and says why
     sync_playwright = None
 
 import fake_node
-from conftest import CLASS_GROUP, PIANO_GROUP
+from conftest import CLASS_GROUP, PIANO_GROUP, eepos_student, evaka_child
+from fake_sources import EEPOS_PASSWORD, EVAKA_PASSWORD
 from family_brief import failure, gateway, linked_device, ops, setup_connect, setup_wilma
-from family_brief.collectors import myclub
+from family_brief.collectors import evaka, myclub
 from family_brief.config import Config
 from fake_system import MACOS
 from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, config_file,
@@ -95,6 +96,12 @@ def family(harness, wilma_cli, monkeypatch):  # noqa: F811
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(myclub.requests, "get", Web().get)
     school_mail(harness)
+    school = harness.source_fakes["eepos"].school("emo")  # where Mia takes piano lessons
+    school.accounts[PARENT] = EEPOS_PASSWORD
+    school.students = [eepos_student(11, "Mia", "Virtanen"), eepos_student(13, "Olli", "Virtanen")]
+    city = harness.source_fakes["evaka"].city("espoo")  # where Mia's little brother is in daycare
+    city.accounts[PARENT] = EVAKA_PASSWORD
+    city.children = [evaka_child("1a2b3c4d-0000-4000-8000-000000000012", "Leo", "Virtanen")]
     harness.config["summary_language"] = "en"
     return harness
 
@@ -248,6 +255,15 @@ def connect_up_to_myclub(tab) -> None:
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_visible()
 
 
+def skip_eepos_and_evaka(tab) -> None:
+    """Eepos's and eVaka's steps, after MyClub's, skipped: no Kid takes lessons or is in daycare."""
+    expect(tab.get_by_label(text("eepos.school"), exact=True)).to_be_visible()
+    skip(tab, "eepos").click()
+    expect(tab.get_by_label(text("evaka.city"), exact=True)).to_be_visible()
+    skip(tab, "evaka").click()
+    expect(source_listed(tab, "evaka", "skipped")).to_be_visible()
+
+
 def at_the_ai_step(tab, harness, name: str, system: str) -> None:
     """Connect's AI step for the AI `name`, as the page shows it on `system`."""
     in_english_with_the_gateway(tab)
@@ -269,13 +285,34 @@ def test_a_family_goes_from_the_language_to_finish_in_the_browser(tab):
     tab.get_by_label(text("myclub.link")).fill(MYCLUB_LINK)
     button(tab, "myclub.save").click()
     expect(tab.get_by_text(text("myclub.saved"))).to_be_visible()
-    # Gmail comes last (#708).
     expect(tab.get_by_text(text("connect.handoff", done=text("source.myclub"),
-                                next=text("source.gmail")))).to_be_visible()
+                                next=text("source.eepos")))).to_be_visible()
+    # Eepos's sign-in, typed into the page (#791): a wrong password is said to be wrong.
+    tab.get_by_label(text("eepos.school"), exact=True).fill("emo")
+    tab.get_by_label(text("eepos.username")).fill(PARENT)
+    tab.get_by_label(text("eepos.password")).fill("typo")
+    button(tab, "eepos.save").click()
+    expect(tab.get_by_text(text("eepos.wrong-password"))).to_be_visible()
+    expect(tab.get_by_label(text("eepos.password"))).to_have_value("")
+    tab.get_by_label(text("eepos.password")).fill(EEPOS_PASSWORD)
+    button(tab, "eepos.save").click()
+    expect(tab.get_by_text(text("eepos.saved", events=0))).to_be_visible()
+    # Each student with the Kid it is, and one who is none of the Kids said so, not guessed.
+    expect(tab.locator("#source-kids li")).to_have_text([
+        text("eepos.found.kid", name="Mia Virtanen", kid="Mia"),
+        text("eepos.found.none", name="Olli Virtanen")])
+    expect(tab.locator("#eepos-signin-list li")).to_have_text([
+        f"emo.eepos.fi ({PARENT}): Mia {text('eepos.remove')}"])
+    expect(skip(tab, "eepos")).to_be_hidden()
+    button(tab, "continue").click()
+    expect(tab.get_by_text(text("connect.handoff", done=text("source.eepos"),
+                                next=text("source.evaka")))).to_be_visible()
+    skip(tab, "evaka").click()
+    # Gmail comes last (#708).
     connect_gmail_at_last(tab)
     sign_in_to_gmail(tab, TYPED)
     expect(tab.get_by_text(text("gmail.saved"))).to_be_visible()
-    for source in ("ai", "myclub", "gmail"):
+    for source in ("ai", "myclub", "eepos", "gmail"):
         expect(source_listed(tab, source, "done")).to_be_visible()
     expect(tab.get_by_text(text("connect.done"))).to_be_visible()
     button(tab, "continue").click()
@@ -344,6 +381,7 @@ def test_a_family_that_reads_no_mail_skips_gmail_and_setup_finishes_without_it(t
     expect(tab.get_by_role("radio", name=re.compile("^Mia"))).to_be_checked()
     tab.get_by_label(text("myclub.link")).fill(MYCLUB_LINK)
     button(tab, "myclub.save").click()
+    skip_eepos_and_evaka(tab)
     expect(tab.get_by_text(text("gmail.explain"))).to_be_visible()
     # Loaded again, the page is back at Gmail, the step reached, not at who gets the Brief.
     tab.reload()
@@ -567,6 +605,7 @@ def test_with_codex_parent_recap_gets_a_key_for_sending_and_setup_finishes(tab, 
     expect(tab.get_by_role("radio", name=re.compile("^Mia"))).to_be_checked()
     tab.get_by_label(text("myclub.link")).fill(MYCLUB_LINK)
     button(tab, "myclub.save").click()
+    skip_eepos_and_evaka(tab)
     skip(tab, "gmail").click()
     expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
     expect(tab.get_by_text(text("connect.done"))).to_be_visible()
@@ -767,6 +806,7 @@ def test_a_skipped_source_is_listed_as_skipped_and_can_be_opened_again(tab):
 
     expect(source_listed(tab, "myclub", "skipped")).to_be_visible()
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_hidden()
+    skip_eepos_and_evaka(tab)
     skip(tab, "gmail").click()
     expect(tab.get_by_text(text("connect.done"))).to_be_visible()
     expect(button(tab, "continue")).to_be_enabled()
@@ -777,6 +817,37 @@ def test_a_skipped_source_is_listed_as_skipped_and_can_be_opened_again(tab):
     expect(tab.get_by_label(text("myclub.add.name"))).to_be_visible()
     expect(skip(tab, "myclub")).to_be_visible()
     expect(tab.get_by_text(text("connect.done"))).to_be_hidden()
+
+
+def test_evaka_s_city_is_picked_from_the_list_and_a_city_added_is_removed_again(tab, family):
+    connect_up_to_myclub(tab)
+    skip(tab, "myclub").click()
+    skip(tab, "eepos").click()
+    city = tab.get_by_label(text("evaka.city"), exact=True)
+    expect(city).to_be_visible()
+    # Another city is given by its eVaka's address, in a field of its own.
+    expect(tab.get_by_label(text("evaka.host"))).to_be_hidden()
+    city.select_option(label=text("evaka.city.other"))
+    expect(tab.get_by_label(text("evaka.host"))).to_be_visible()
+    city.select_option(label="Espoo")
+    expect(tab.get_by_label(text("evaka.host"))).to_be_hidden()
+    tab.get_by_label(text("evaka.username")).fill(PARENT)
+    tab.get_by_label(text("evaka.password")).fill(EVAKA_PASSWORD)
+
+    button(tab, "evaka.save").click()
+
+    expect(tab.locator("#source-kids li")).to_have_text([text("evaka.found.none", name="Leo Virtanen")])
+    expect(tab.locator("#evaka-signin-list li")).to_have_text([f"Espoo ({PARENT}) {text('evaka.remove')}"])
+    expect(source_listed(tab, "evaka", "done")).to_be_visible()
+    assert family.secrets[evaka.secret_name("espoo", PARENT)] == EVAKA_PASSWORD
+
+    button(tab, "evaka.remove").click()
+
+    expect(tab.get_by_text(text("evaka.removed"))).to_be_visible()
+    expect(tab.locator("#evaka-signins")).to_be_hidden()
+    expect(source_listed(tab, "evaka", "to-do")).to_be_visible()
+    expect(skip(tab, "evaka")).to_be_visible()
+    assert evaka.secret_name("espoo", PARENT) not in family.secrets
 
 
 def test_myclub_s_link_is_shown_on_its_own_page_in_each_language_and_at_phone_width(tab):
@@ -806,6 +877,7 @@ def test_myclub_s_link_is_shown_on_its_own_page_in_each_language_and_at_phone_wi
 def test_the_check_page_links_back_to_connect_s_list_while_a_source_is_skipped(tab):
     connect_up_to_myclub(tab)
     skip(tab, "myclub").click()
+    skip_eepos_and_evaka(tab)
     skip(tab, "gmail").click()
     button(tab, "continue").click()
     expect(heading(tab, "check.title")).to_be_visible()
@@ -817,7 +889,7 @@ def test_the_check_page_links_back_to_connect_s_list_while_a_source_is_skipped(t
 
 
 def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(tab):
-    # #491: Wilma, WhatsApp, MyClub and Gmail each say "Skip <Source> for now" beside the step's
+    # #491: Wilma, WhatsApp, MyClub, Eepos, eVaka and Gmail each say "Skip <Source> for now" beside the step's
     # main button. Who gets the Brief, Connect's first step (#708), and the AI sign-in can't be
     # skipped.
     in_english_with_the_gateway(tab, brief_to=None)
@@ -846,6 +918,13 @@ def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(
     expect(kid_form.get_by_role("button", name=text("source.skip", source="MyClub"))).to_be_visible()
     expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(1)
     skip(tab, "myclub").click()
+    for name in ("eepos", "evaka"):  # #791
+        actions = tab.locator(f"#{name}-form .actions")
+        expect(actions.get_by_role("button", name=text(f"{name}.save"))).to_be_visible()
+        expect(actions.get_by_role("button", name=text("source.skip", source=text(f"source.{name}")))
+               ).to_be_visible()
+        expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(1)
+        skip(tab, name).click()
     # Gmail's Connect and Skip side by side, the same kind of button (#708).
     actions = tab.locator("#source-gmail > .actions")
     connect = actions.get_by_role("button", name=text("gmail.connect"))
@@ -1700,7 +1779,7 @@ def test_a_link_that_ended_is_paired_again_and_whatsapp_turned_off_at_finish(
 def test_finish_names_the_whatsapp_groups_and_changes_them_with_nothing_skipped(
         tab, family, health, page):  # noqa: F811
     at_finish(family)
-    more_progress(family, sources={"myclub": "done"})  # no Source skipped to add
+    more_progress(family, sources={"myclub": "done", "eepos": "done", "evaka": "done"})  # none skipped
     tab.reload()
 
     expect(heading(tab, "finish.title")).to_be_visible()
@@ -1728,7 +1807,8 @@ def test_finish_names_the_whatsapp_groups_and_changes_them_with_nothing_skipped(
 
 def test_a_linked_whatsapp_opened_from_connect_s_list_goes_on_without_a_code(tab, family):
     at_the_whatsapp_step(family)
-    more_progress(family, sources={"whatsapp": "done", "myclub": "skipped"})
+    more_progress(family, sources={"whatsapp": "done", "myclub": "skipped", "eepos": "skipped",
+                                   "evaka": "skipped"})
     tab.reload()
 
     expect(tab.get_by_text(text("whatsapp.paired"))).to_be_visible()

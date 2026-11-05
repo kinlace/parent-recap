@@ -7,12 +7,13 @@ What changes for families in each release, collected from the `What changes for 
 ### Added
 
 - A family without Wilma, such as at a private school, can sign up for the hosted version: leave the Wilma fields empty, write the children's names under "We don't have Wilma", and add at least one MyClub calendar link.
-- Lessons, concerts and holidays from a music or art school on Eepos come in the Brief and its calendar attachment, for the right Kid. For now the Parent Recap team turns it on for a Household by hand, one sign-in per school.
+- Lessons, concerts and holidays from a music or art school on Eepos come in the Brief and its calendar attachment, for the right Kid, with one sign-in per school.
 - A family signing up for the hosted version can add their music or art school's Eepos sign-in on the MyClub page. Without Wilma, a MyClub link or an Eepos sign-in is enough.
-- A public daycare's events on eVaka, such as an excursion or a photo day, the days the daycare is closed and when the next week's reservations close come in the Brief and its calendar attachment, for the right Kid. For now the Parent Recap team turns it on for a Household by hand, one sign-in per city.
+- A public daycare's events on eVaka, such as an excursion or a photo day, the days the daycare is closed and when the next week's reservations close come in the Brief and its calendar attachment, for the right Kid, with one sign-in per city.
 - Each exam in Wilma's exam list comes in the Brief's calendar attachment as soon as the teacher adds it, up to four weeks ahead, for the right Kid and with what to study. A moved exam replaces itself in your calendar instead of showing twice. A family that doesn't want the Kids' exams among its own events can import the attachment into a calendar just for the Kids.
 - The Brief tells what the daycare's messages and bulletins on eVaka say, once, under the right Kid. A message eVaka marks sensitive is only named, with a link to read it in eVaka, and no AI sees it. Nothing is marked read in eVaka.
 - A family signing up for the hosted version can add their daycare's eVaka on the MyClub page: pick the city and give the email and password they use in eVaka. A wrong password is said at once. Without Wilma, an eVaka sign-in is enough.
+- The setup page has optional Eepos and eVaka steps after MyClub, on Mac and Windows: sign in with your Eepos username or eVaka email and password, and the page checks it at once, keeps the password in the Keychain or Credential Manager, and shows which of your Kids each student or child is. A wrong password is said to be wrong and doesn't replace one that works. Opened again, the step lists the schools and cities added, and each can be removed.
 
 ### Changed
 
