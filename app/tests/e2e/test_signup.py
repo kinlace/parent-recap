@@ -1,15 +1,15 @@
 """The hosted version's sign-up (ADR 0031), driven over HTTP as a family's phone drives it: the
-page under an Invite Link, the Wilma check, each Kid's MyClub link, the Household made under its
-own user with its first Brief sent, and the 404 every other request gets; then the maintainers'
-command that removes a Household again.
+page under an Invite Link, the Wilma check, each Kid's MyClub link and an Eepos sign-in, the
+Household made under its own user with its first Brief sent, and the 404 every other request gets;
+then the maintainers' command that removes a Household again.
 
 The outside edges are faked: the service's wilma CLI is `test_setup_wilma`'s fake, which knows one
 Wilma account; the household host is `fake_household_host`'s, whose users each have their own
 home, secrets and jobs and run the real `signup household` and `run` in-process; MyClub's server,
-the model and the gateway's Email Delivery are the harness's; the system is the harness's, set to
+Eepos's school portals, the model and the gateway's Email Delivery are the harness's; the system is the harness's, set to
 Linux. The service is the real one, on a free port or through socket pairs. Assertions are on the
 pages, on what each Household's user was left with, on the email sent, on the store, and on every
-place the Wilma password, a MyClub link and the Gateway Key must never reach.
+place the Wilma and Eepos passwords, a MyClub link and the Gateway Key must never reach.
 """
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ import pytest
 import yaml
 
 from family_brief import setup_wilma
+from family_brief.collectors import eepos
 from family_brief.brief_text import TEXT
 from family_brief.config import Config
 from family_brief.last_run import path as last_run_path
@@ -39,7 +40,8 @@ from family_brief.signup.invites import HouseholdRecord, Recipient, Store
 from family_brief.signup.remove import remove
 from family_brief.signup.server import Service, SignupServer
 from family_brief.system import jobs
-from conftest import myclub_event
+from conftest import eepos_entry, eepos_student, myclub_event
+from fake_sources import EEPOS_PASSWORD
 from fake_household_host import FakeHouseholdHost
 from fake_system import LINUX
 from setup_page import CAN_LISTEN, Response, _Connection, _PairedServer
@@ -54,6 +56,7 @@ NO_WILMA = {"town": "", "username": "", "password": ""}  # the Wilma fields left
 ESPOO_TOWN = "Espoo – Espoon kaupunki / Suomenkielisen opetuksen tulosyksikkö"
 NOON = datetime(2026, 10, 30, 10, 0, tzinfo=timezone.utc)  # 12:00 in Helsinki
 MIA_LINK = "webcal://kilonpallo.myclub.fi/ical/mia-1001-token.ics"
+EEPOS_USERNAME = "parent@example.com"
 
 
 class Clock:
@@ -132,16 +135,18 @@ def sign_in(s: SignUp, code: str, **fields: str) -> Response:
     return request(s.url, f"/join/{code}", "POST", answers)
 
 
-def post_links(s: SignUp, code: str, *given: str, lang: str = "en") -> Response:
-    """The page's MyClub step: a link, or "" for none, for each Kid in turn."""
+def post_links(s: SignUp, code: str, *given: str, lang: str = "en", **fields: str) -> Response:
+    """The page's MyClub step: a link, or "" for none, for each Kid in turn, and its other
+    `fields`, such as the Eepos sign-in."""
     return request(s.url, f"/join/{code}", "POST",
-                   {"lang": lang, "step": "myclub"} | {f"m{i}": url for i, url in enumerate(given)})
+                   {"lang": lang, "step": "myclub"} | {f"m{i}": url for i, url in enumerate(given)}
+                   | fields)
 
 
-def links(s: SignUp, code: str, *given: str, lang: str = "en") -> Response:
+def links(s: SignUp, code: str, *given: str, lang: str = "en", **fields: str) -> Response:
     """The MyClub step, then the page as it shows the steps, until it says how the sign-up
     ended; the step's own page when it doesn't move on."""
-    r = post_links(s, code, *given, lang=lang)
+    r = post_links(s, code, *given, lang=lang, **fields)
     if r.status != 303:
         return r
     assert r.headers["location"] == f"/join/{code}"
@@ -609,17 +614,138 @@ def test_a_family_without_wilma_signs_up_with_its_kids_names_and_a_myclub_link(
     assert household.user == signup.user()[0]
 
 
-def test_without_wilma_a_myclub_link_is_needed_and_nothing_is_made_without_one(signup):
+def test_without_wilma_a_myclub_link_or_eepos_is_needed_and_nothing_is_made_without_one(signup):
     code = signup.invite(Recipient("parent@example.com", "fi"))
     assert sign_in(signup, code, **NO_WILMA, lang="zh", k0="Mia").status == 200
 
-    r = links(signup, code, "", lang="zh")
+    r = links(signup, code, "", lang="zh", **NO_EEPOS)
 
     assert r.status == 200
     assert said("zh", "need-myclub") in text(r)
+    assert "MyClub" in said("zh", "need-myclub") and "Eepos" in said("zh", "need-myclub")
     assert 'name="step" value="myclub"' in text(r)
     assert (signup.host.users, signup.host.keys) == ({}, {})
     assert request(signup.url, f"/join/{code}").status == 200  # the link still works
+
+
+# ── Eepos (#769)
+
+NO_EEPOS = {"eepos_school": "", "eepos_username": "", "eepos_password": ""}
+EEPOS = {"eepos_school": "emo", "eepos_username": EEPOS_USERNAME, "eepos_password": EEPOS_PASSWORD}
+
+
+@pytest.fixture
+def emo(harness):
+    """emo.eepos.fi on Eepos's fake portal, where the guardian's password is EEPOS_PASSWORD and
+    Mia, Leo and Ella take lessons, and Mia has piano tomorrow."""
+    fake = harness.source_fakes["eepos"]
+    school = fake.school("emo")
+    school.accounts[EEPOS_USERNAME] = EEPOS_PASSWORD
+    school.students = [eepos_student(11, "Mia", "Virtanen"), eepos_student(12, "Leo", "Virtanen"),
+                       eepos_student(13, "Ella", "Korhonen")]
+    harness.sources["eepos"] = [eepos_entry("Virtanen Mia, Piano", "2026-09-28", students=(11,))]
+    return fake
+
+
+def test_a_family_without_wilma_signs_up_with_its_kids_names_and_an_eepos_sign_in(
+        signup, harness, emo, caplog, capsys):
+    caplog.set_level(logging.DEBUG)
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    first = text(sign_in(signup, code, **NO_WILMA, k0="Mia Virtanen", k1="Leo"))
+    # The MyClub step has the Eepos part, its password in a field that never has a value.
+    assert said("en", "eepos_needed") in first and said("en", "eepos_hint") in first
+    assert '<input id="eepos_password" name="eepos_password" type="password" ' \
+           'autocomplete="off">' in first
+
+    r = links(signup, code, "", "", eepos_school=" https://emo.eepos.fi/#/portal ",
+              eepos_username=EEPOS_USERNAME, eepos_password=EEPOS_PASSWORD)
+
+    assert r.status == 200, text(r)
+    html = text(r)
+    steps = page.steps(wilma=False, myclub=False, eepos=True)
+    assert marks(html, "en", steps) == "✅✅✅" and said("en", "step_eepos") in html
+    # Ella is none of the Kids: said, and her lessons go to the whole Household.
+    assert said("en", "eepos_unmatched", names="Ella Korhonen") in html
+    name, user = signup.user()
+    config = yaml.safe_load((user.home / ".family" / "config.yaml").read_text())
+    assert config["eepos"] == {"signins": [{"school": "emo", "username": EEPOS_USERNAME,
+                                            "kids": {"11": "Mia Virtanen", "12": "Leo"}}]}
+    cfg = Config.load(user.home / ".family" / "config.yaml")
+    assert not cfg.wilma.enabled and not any(k.myclub_ical_url for k in cfg.kids)
+    secret = eepos.secret_name("emo", EEPOS_USERNAME)
+    assert set(user.secrets) == {"gateway-key", secret}
+    assert user.secrets[secret] == EEPOS_PASSWORD
+    [sent] = harness.sent
+    assert "Eepos 1 tapahtuma" in sent.text  # "read tonight: Eepos 1 event"
+    assert "without Wilma" in caplog.text and "and Eepos" in caplog.text
+    # The password: on no command line, in no log or output, in no page, nor in the config.
+    printed = "".join(capsys.readouterr())
+    assert EEPOS_PASSWORD not in caplog.text + printed + first + html
+    assert EEPOS_PASSWORD not in json.dumps(config)
+    assert not any(EEPOS_PASSWORD in arg for cmd in [*signup.host.commands, *harness.commands]
+                   for arg in cmd)
+    assert EEPOS_USERNAME not in caplog.text and "Ella" not in caplog.text
+
+
+def test_a_family_with_wilma_adds_eepos(signup, harness, emo):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    assert said("en", "eepos") in text(sign_in(signup, code))
+
+    r = links(signup, code, "", "", **EEPOS)
+
+    assert r.status == 200, text(r)
+    html = text(r)
+    assert marks(html, "en", page.steps(wilma=True, myclub=False, eepos=True)) == "✅✅✅"
+    _, user = signup.user()
+    cfg = Config.load(user.home / ".family" / "config.yaml")
+    assert cfg.wilma.enabled
+    [signin] = cfg.eepos.signins
+    assert signin.kids == {"11": "Mia Virtanen", "12": "Leo Virtanen"}  # as Wilma lists them
+    assert user.secrets[eepos.secret_name("emo", EEPOS_USERNAME)] == EEPOS_PASSWORD
+    assert setup_wilma.secret_name(f"{ESPOO}|mia.parent") in user.secrets
+    assert "Eepos 1 tapahtuma" in harness.sent[0].text
+
+
+def test_a_wrong_eepos_password_is_said_and_nothing_is_made(signup, emo, caplog, capsys):
+    caplog.set_level(logging.DEBUG)
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    assert sign_in(signup, code, **NO_WILMA, lang="fi", k0="Mia Virtanen").status == 200
+
+    r = links(signup, code, "", lang="fi", **EEPOS | {"eepos_password": "wrong-eepos-salasana"})
+
+    assert r.status == 200
+    html = text(r)
+    assert said("fi", "eepos-wrong-password") in html and said("fi", "paste_again") in html
+    assert 'value="emo"' in html and f'value="{EEPOS_USERNAME}"' in html  # typed again, but
+    assert b"wrong-eepos-salasana" not in r.body  # never the password
+    assert "wrong-eepos-salasana" not in caplog.text + "".join(capsys.readouterr())
+    assert (signup.host.users, signup.host.keys, signup.host.commands) == ({}, {}, [])
+    assert signup.store.households() == []
+    assert request(signup.url, f"/join/{code}").status == 200  # the link still works
+    # The names still wait: the right password signs up.
+    assert said("fi", "sent", time="21:00") in text(links(signup, code, "", lang="fi", **EEPOS))
+
+
+@pytest.mark.parametrize("fields, answer, error", [
+    ({"eepos_password": ""}, None, "eepos-incomplete"),
+    ({"eepos_school": "emo.example.com"}, None, "eepos-not-a-school"),
+    ({}, (200, ")]}',\n{}"), "eepos-changed"),
+    ({}, (502, "Bad gateway"), "eepos-no-answer"),
+    ({}, eepos.requests.ConnectionError("no route"), "eepos-no-answer"),
+])
+def test_an_eepos_sign_in_that_won_t_do_is_said_and_nothing_is_made(
+        signup, emo, fields, answer, error):
+    if answer is not None:
+        emo.answers[("emo", "auth/login")] = answer
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    sign_in(signup, code)
+
+    r = links(signup, code, "", "", **EEPOS | fields)
+
+    assert r.status == 200
+    assert said("en", error) in text(r)
+    assert 'name="step" value="myclub"' in text(r)
+    assert (signup.host.users, signup.host.keys) == ({}, {})
 
 
 def test_neither_wilma_nor_names_is_said_and_nothing_is_made(signup):

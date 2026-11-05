@@ -9,6 +9,8 @@ stdin:
              "username": "mia.parent", "password": "…", "students": [{"studentNumber": "1001",
                                                                       "name": "Mia Virtanen"}]},
    "myclub": {"Mia Virtanen": "https://…myclub.fi/…"},
+   "eepos": {"school": "emo", "username": "parent@example.com", "password": "…",
+             "kids": {"11": "Mia Virtanen"}},
    "gateway_key": "sk-bf-…"}
 
 and makes the Household: its config, through `setup save` as the setup page saves one, marked
@@ -16,7 +18,8 @@ and makes the Household: its config, through `setup save` as the setup page save
 the Recipients, the gateway as its AI, Wilma on (off, with no "wilma", for a family without it),
 WhatsApp off and the calendar as an .ics in the
 email; the MyClub link of each Kid in `myclub`, which the service checked, saved as `setup myclub`
-saves one; the Gateway Key in the secrets store; the wilma CLI's sign-in the service checked, for
+saves one; the Eepos sign-in the service checked (#769), its password in the secrets store and the
+rest in the config, as `setup eepos` saves one; the Gateway Key in the secrets store; the wilma CLI's sign-in the service checked, for
 the shared copy's CLI (installed with it, so only a copy without one installs it here); and the
 evening jobs at `evening`, which run the shared copy too. It prints one line of
 JSON, `{"result": "created"}` or why not, which never holds the password, a link or the key.
@@ -32,9 +35,11 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from .. import gateway, ops, setup_save, setup_wilma
-from ..collectors import myclub
-from ..config import Config
+import yaml
+
+from .. import gateway, ops, setup_eepos, setup_save, setup_wilma
+from ..collectors import eepos, myclub
+from ..config import Config, EeposSignin
 from ..setup_report import outcome
 from ..system import jobs, secrets
 
@@ -55,6 +60,13 @@ class WilmaSignIn(_Strict):
     students: list[dict[str, Any]] | None = None
 
 
+class EeposSignIn(EeposSignin):
+    """The Eepos sign-in the service checked, with its password and the Kids matched by id."""
+    model_config = ConfigDict(extra="forbid")
+    username: str = Field(pattern=r"\S")
+    password: str = Field(min_length=1)
+
+
 class Household(_Strict):
     language: str
     city: str | None = None
@@ -63,12 +75,13 @@ class Household(_Strict):
     kids: list[dict[str, Any]] = Field(min_length=1)
     wilma: WilmaSignIn | None = None  # none for a family without Wilma (#760)
     myclub: dict[str, str] = {}  # each link a secret (ADR 0007), by its Kid's name
+    eepos: EeposSignIn | None = None  # one school for now (#769)
     gateway_key: str = Field(pattern=r"^\S+$")
 
     @model_validator(mode="after")
     def _reads_something(self) -> "Household":
-        if self.wilma is None and not self.myclub:
-            raise ValueError("without Wilma, at least one MyClub link is needed")
+        if self.wilma is None and not self.myclub and self.eepos is None:
+            raise ValueError("without Wilma, at least one MyClub link or an Eepos sign-in is needed")
         return self
 
 
@@ -106,6 +119,10 @@ def create(config: Path, h: Household) -> dict[str, Any]:
         stored = _store_wilma(h.wilma)
         if stored is not None:
             return stored
+    if h.eepos is not None:
+        stored = _store_eepos(config, h.eepos)
+        if stored is not None:
+            return stored
     try:
         ops.install_jobs(Config.load(config))
     except jobs.NotStarted as e:
@@ -125,6 +142,19 @@ def _store_wilma(w: WilmaSignIn) -> dict[str, Any] | None:
     except secrets.SecretsError as e:
         return outcome("wilma-not-stored", reason=str(e))
     setup_wilma.record_profile(profile_id, before)
+    return None
+
+
+def _store_eepos(config: Path, e: EeposSignIn) -> dict[str, Any] | None:
+    """The Eepos sign-in the service checked, or why it wasn't stored."""
+    try:
+        secrets.put(eepos.secret_name(e.school, e.username), e.password)
+    except secrets.SecretsError as err:
+        return outcome("eepos-not-stored", reason=str(err))
+    try:
+        setup_eepos._save(config, EeposSignin(**e.model_dump(exclude={"password"})))
+    except (OSError, ValueError, yaml.YAMLError) as err:  # the config's, never the password
+        return outcome("eepos-not-saved", reason=str(err)[:300])
     return None
 
 

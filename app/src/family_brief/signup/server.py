@@ -8,16 +8,19 @@ made, so a wrong password is said at once and the link stays good, and answers w
 calendar link field for each Kid Wilma listed. The answers wait in memory only, for the second,
 up to PENDING_MINUTES: the password is never written down or put back in a page. The second post
 checks each link given by downloading it once, so a link that doesn't open is said at once, and
-an empty one leaves MyClub off for that Kid.
+an empty one leaves MyClub off for that Kid. It may also give an Eepos sign-in (#769), checked as
+`setup eepos` checks one: signed in to, its students read and matched to the Kids by name, a
+student who is none of them left to the whole Household. A wrong password is said at once, and the
+answers still wait; the Eepos password, too, is never written down or put back in a page.
 
 A family without Wilma, such as at a private school, leaves the Wilma fields empty and gives the
 Kids' names instead (#760): nothing is checked at the first post, and the second needs at least one
-MyClub link, the only thing its Brief would read. Then the Household is made through the household
-host: its Linux user, its Gateway Key, `signup household` run as it, by the server's shared copy
-of the program (ADR 0035), with the answers, the Wilma sign-in, the links and the key on its
-stdin, and its first Brief, made and sent to its Recipients by `run --first-brief` as it, as the
-setup page's first Brief step makes one (ADR 0031). A step that fails takes back the user with its files and jobs and the
-key, and the link stays good. Once made, the Household is listed in the store, its link retired,
+MyClub link or the Eepos sign-in, the only things its Brief would read. Then the Household is made
+through the household host: its Linux user, its Gateway Key, `signup household` run as it, by the
+server's shared copy of the program (ADR 0035), with the answers, the Wilma and Eepos sign-ins,
+the links and the key on its stdin, and its first Brief, made and sent to its Recipients by
+`run --first-brief` as it, as the setup page's first Brief step makes one (ADR 0031). A step that
+fails takes back the user with its files and jobs and the key, and the link stays good. Once made, the Household is listed in the store, its link retired,
 and the page says its first Brief was sent.
 
 The Household is made in the background: the second post is answered at once with a redirect to
@@ -30,7 +33,7 @@ Sign-ups go one at a time: each takes a minute or two, which ten Households can 
 never take the same evening slot or the same link. One waiting behind another says so.
 
 The service logs one line per sign-up, saying how it ended, and nothing of the request: not its
-address, which carries the code, nor its body, which carries the Wilma password.
+address, which carries the code, nor its body, which carries the Wilma and Eepos passwords.
 """
 from __future__ import annotations
 
@@ -41,14 +44,16 @@ import logging
 import re
 import socketserver
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.parse import parse_qs
 
-from .. import failure, setup_myclub, setup_wilma
+from .. import failure, setup_eepos, setup_myclub, setup_wilma
+from ..collectors import eepos
+from ..config import Config, EeposSignin, Kid
 from ..setup_server.first_brief import BRIEF_LOOKBACK_HOURS
 from . import page
 from .host import PROGRAM, HostError, HouseholdHost, user_name
@@ -219,6 +224,10 @@ class Service:
         the first step checked, and sends the page to its steps."""
         pending = self._pending[code]
         language, kids, wilma = pending.language, pending.kids(), pending.wilma()
+        typed = (fields.get("eepos_school", "").strip(), fields.get("eepos_username", "").strip())
+
+        def again(error: str, kid: str | None = None) -> tuple[HTTPStatus, str]:
+            return HTTPStatus.OK, page.myclub(language, kids, error, kid, wilma, typed)
         links: dict[str, str] = {}
         for i, kid in enumerate(kids):
             url = "".join(fields.get(f"m{i}", "").split())
@@ -231,13 +240,18 @@ class Service:
                 result, _ = setup_myclub.check_link(url)
             if result != "checked":
                 log.info("A sign-up's MyClub link wasn't taken: %s", result)
-                return HTTPStatus.OK, page.myclub(language, kids, result, kid, wilma)
+                return again(result, kid)
             links[kid] = url
-        if not wilma and not links:  # nothing for its Brief to read
-            log.info("A sign-up without Wilma gave no MyClub link")
-            return HTTPStatus.OK, page.myclub(language, kids, "need-myclub", None, wilma)
+        error, signin = _eepos(kids, *typed, fields.get("eepos_password", ""))
+        if error:
+            return again(error)
+        if not wilma and not links and signin is None:  # nothing for its Brief to read
+            log.info("A sign-up without Wilma gave no MyClub link or Eepos sign-in")
+            return again("need-myclub")
         del self._pending[code]
-        progress = _Progress(language, page.STEPS if wilma else page.NO_WILMA_STEPS)
+        if signin is not None:
+            pending.answers["eepos"], pending.unmatched = signin
+        progress = _Progress(language, page.steps(wilma, bool(links), signin is not None))
         with self._progress_lock:
             self._progress[code] = progress
         threading.Thread(target=self._make_in_turn, args=(code, pending, links, progress),
@@ -282,12 +296,13 @@ class Service:
         self.store.add_household(HouseholdRecord(name, evening, self.now().isoformat(),
                                                  pending.note))
         self.store.retire(code)
-        log.info("Household %s created from an Invite Link, %s, with MyClub for %d of %d Kids; "
+        log.info("Household %s created from an Invite Link, %s, with MyClub for %d of %d Kids%s; "
                  "its first Brief was sent, and the next come at %s", name,
                  "with Wilma" if pending.wilma() else "without Wilma", len(links), len(kids),
-                 evening)
+                 " and Eepos" if "eepos" in answers else "", evening)
         progress.end(self.now(), HTTPStatus.OK, page.done(language, evening, any(
-            _junk_prone(r["address"]) for r in answers["recipients"]), progress.names))
+            _junk_prone(r["address"]) for r in answers["recipients"]), progress.names,
+            pending.unmatched))
 
     def _create(self, name: str, answers: dict[str, Any], progress: _Progress) -> None:
         """Makes the Household, one of its steps after another, `progress.steps` of them ended."""
@@ -325,6 +340,7 @@ class _Pending:
     expires: datetime
     answers: dict[str, Any]
     note: str = ""  # the Invite Link's, for the Household's record
+    unmatched: list[str] = field(default_factory=list)  # Eepos students who are none of the Kids
 
     def kids(self) -> list[str]:
         return [k["name"] for k in self.answers["kids"]]
@@ -362,6 +378,35 @@ def _kids(fields: dict[str, str]) -> list[str]:
     """The names a family without Wilma gave, each once, in the order given."""
     names = [" ".join(fields.get(f"k{i}", "").split())[:60] for i in range(page.MAX_KIDS)]
     return list(dict.fromkeys(n for n in names if n))
+
+
+def _eepos(kids: list[str], school_typed: str, username: str,
+           password: str) -> tuple[str | None, tuple[dict[str, Any], list[str]] | None]:
+    """The Eepos sign-in the MyClub step gave, checked as `setup eepos` checks one: why it won't
+    do, or its answer for `signup household`, the students matched to `kids` by id, with the names
+    of those who are none of them. None for both when none was given."""
+    if not (school_typed or username or password):
+        return None, None
+    if not (school_typed and username and password):
+        return "eepos-incomplete", None
+    school = eepos.school_of(school_typed)
+    if school is None:
+        return "eepos-not-a-school", None
+    try:
+        checked = setup_eepos.check(Config(kids=[Kid(name=k) for k in kids]),
+                                    EeposSignin(school=school, username=username), password)
+    except eepos.WrongPassword:
+        log.info("A sign-up's Eepos sign-in wasn't taken: wrong-password")
+        return "eepos-wrong-password", None
+    except eepos.Changed as e:  # names the school's address, never the username or password
+        log.warning("Eepos answered a sign-up in a way it didn't before: %s", e)
+        return "eepos-changed", None
+    except eepos.EeposError as e:
+        log.warning("Eepos couldn't be read for a sign-up: %s", e)
+        return "eepos-no-answer", None
+    return None, ({"school": school, "username": username, "password": password,
+                   "kids": {s.id: kid for s, kid in checked["students"] if kid}},
+                  [s.called() for s, kid in checked["students"] if not kid])
 
 
 def _evening(households: list[HouseholdRecord]) -> str:
