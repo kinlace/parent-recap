@@ -2,7 +2,7 @@
 on the server (`sudo admin households` runs it as the sign-up service's user). For each Household in
 the store it runs `signup health` with the shared program (ADR 0035) as that Household's user,
 through the household host, and prints one line: its user with the note its Invite Link carried,
-the time its Brief comes, when its last run ended and how, how long it took and its peak memory,
+the time its Brief comes (its config's, which `signup health` says, #780), when its last run ended and how, how long it took and its peak memory,
 each of doctor's checks by its key with its status, and a mark when the last run failed or is
 overdue. Last, when the server waits for a reboot to apply updates, it says so (#745).
 
@@ -38,6 +38,7 @@ GRACE = timedelta(hours=1)
 LEVELS = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
 MARKS = {"ok": "✅", "warn": "⚠️", "fail": "❌"}
 KEY = re.compile(r"[a-z][a-z0-9-]{0,39}")  # a doctor check's key
+EVENING = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")  # its evening time, HH:MM
 # Exists when a reboot is needed after updates, per Ubuntu's Server documentation:
 # https://ubuntu.com/server/docs/how-to/software/upgrade-your-release/
 REBOOT_REQUIRED = Path("/run/reboot-required")
@@ -69,6 +70,9 @@ def health(config: Path, now: datetime) -> dict[str, Any]:
             "peak_mb": last.peak_mb if last else None,
             "overdue": overdue(since, cfg.schedule.daily_hour, cfg.schedule.daily_minute,
                                cfg.timezone, now),
+            # Its own time, which its timer follows, in its timezone: households.json's is only
+            # the slot the sign-up handed out (#780).
+            "evening": f"{cfg.schedule.daily_hour:02d}:{cfg.schedule.daily_minute:02d}",
             "checks": checks}
 
 
@@ -114,7 +118,12 @@ def status(host: HouseholdHost, household: HouseholdRecord) -> Status:
         return Status(household.user, household.evening,
                       unknown=f"signup health ended with {code} and said no status (a program "
                               "older than this command?)", note=household.note)
-    return Status(household.user, household.evening, last_run=_time(said.get("last_run")),
+    # A program from before it said the time, or a config that won't load, says none: then the
+    # slot households.json noted at sign-up.
+    evening = said.get("evening")
+    if not (isinstance(evening, str) and EVENING.fullmatch(evening)):
+        evening = household.evening
+    return Status(household.user, evening, last_run=_time(said.get("last_run")),
                   exit=last_run.number(said.get("exit")), overdue=said.get("overdue") is True,
                   checks=_checks(said["checks"]), seconds=last_run.number(said.get("seconds")),
                   peak_mb=last_run.number(said.get("peak_mb")), note=household.note)

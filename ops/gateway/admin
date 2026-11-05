@@ -92,6 +92,25 @@ for path in sys.argv[1:]:
         out[path] = None
 print(json.dumps(out))
 """
+# Each Household's own evening time and timezone from its config, which its timer follows (#780),
+# read as `signup health` reads them, with the shared program's Config, as root. Prints
+# {path: ["HH:MM", zone] or null}; a program without that Config prints null for each.
+READ_EVENINGS = r"""
+import json, sys
+try:
+    from family_brief.config import Config
+except Exception:
+    Config = None
+out = {}
+for path in sys.argv[1:]:
+    try:
+        cfg = Config.load(path)
+        out[path] = [f"{cfg.schedule.daily_hour:02d}:{cfg.schedule.daily_minute:02d}",
+                     cfg.timezone]
+    except Exception:
+        out[path] = None
+print(json.dumps(out))
+"""
 
 
 @dataclass
@@ -328,8 +347,9 @@ def _configs(paths: Paths) -> list[Path]:
 RELEASE_TAG = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
 SHORT = 12  # a deploy's folders are named by its commit's first 12 hex digits
-# households.json's evening times are the Households' own, which the sign-up makes Helsinki's.
+# households.json's evening times, the slots the sign-up handed out, are Helsinki's.
 ZONE = "Europe/Helsinki"
+EVENING = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
 SOON = timedelta(minutes=30)
 EVENING_JOB = "parent-recap-daily.service"
 JOBS = (EVENING_JOB, "parent-recap-weekend-events.service")
@@ -557,9 +577,10 @@ def _evening_is_quiet(paths: Paths, households: list[tuple[str, str]], edge: Edg
     if not households:
         return
     _none_running(households, edge, "Deploy")
-    now = edge.now().astimezone(ZoneInfo(ZONE))
-    due = [f"{user}'s evening run is due at {evening}" for user, evening in households
-           if _due_soon(evening, now)]
+    now = edge.now()
+    due = [f"{user}'s evening run is due at {evening}" + ("" if zone == ZONE else f" {zone}")
+           for user, evening, zone in _evenings(paths, households)
+           if _due_soon(evening, now.astimezone(ZoneInfo(zone)))]
     if anyway:
         if due:
             print("⚠️ deploying anyway, though " + "; ".join(due), flush=True)
@@ -579,6 +600,43 @@ def _none_running(households: list[tuple[str, str]], edge: Edge, what: str) -> N
                       for job in JOBS)]
     if running:
         raise Refused("; ".join(running) + f". {what} once it has ended")
+
+
+def _evenings(paths: Paths, households: list[tuple[str, str]]) -> list[tuple[str, str, str]]:
+    """Each Household's label, evening time and timezone: its config's, which its timer follows,
+    as `admin households` shows them (#780). Where its config won't load, or the shared program
+    can't read it, households.json's slot, in Helsinki."""
+    configs = {c.parent.parent.name: c for c in _configs(paths)}
+    wanted = [str(configs[user]) for user, _ in households if user in configs]
+    read: Any = {}
+    if wanted:
+        try:
+            done = subprocess.run([paths.python, "-I", "-c", READ_EVENINGS, *wanted],
+                                  capture_output=True, text=True, cwd="/", timeout=60)
+            read = json.loads(done.stdout)
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            print(f"⚠️ couldn't read the Households' own evening times with {paths.python}, so "
+                  "households.json's are used", flush=True)
+    if not isinstance(read, dict):
+        read = {}
+    evenings = []
+    for user, slot in households:
+        own = read.get(str(configs.get(user)))
+        if (isinstance(own, list) and len(own) == 2 and isinstance(own[0], str)
+                and EVENING.fullmatch(own[0]) and _zone(own[1])):
+            evenings.append((user, own[0], own[1]))
+        else:
+            evenings.append((user, slot, ZONE))
+    return evenings
+
+
+def _zone(name: Any) -> bool:
+    """Whether `name` is a timezone this host knows."""
+    try:
+        ZoneInfo(name)
+    except (KeyError, TypeError, ValueError, OSError):  # ZoneInfoNotFoundError is a KeyError
+        return False
+    return True
 
 
 def _due_soon(evening: str, now: datetime) -> bool:

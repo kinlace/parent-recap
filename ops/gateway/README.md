@@ -275,7 +275,7 @@ The server fetches that commit of the public repo itself (`github.com` over HTTP
 
 An unreleased commit's check is its own: of a pull request with several commits, only the last one ran `test` on `main`, so deploy that one.
 
-It is refused too while any Household's evening run is still running, and while one is due within 30 minutes or `admin households`, which it runs first, marks a Household, unless you give `--anyway`, for the fix for exactly what it marks. Nothing deploys under a running evening run: it ends within minutes.
+It is refused too while any Household's evening run is still running, and while one is due within 30 minutes, at the time its own config says (see "The time a Household's Brief comes"), or `admin households`, which it runs first, marks a Household, unless you give `--anyway`, for the fix for exactly what it marks. Nothing deploys under a running evening run: it ends within minutes.
 
 It checks out the whole commit, `ops/` included, into `/usr/local/lib/parent-recap-deploy/<commit>` (its first 12 hex digits), and runs that commit's `gateway-setup.sh` with it: Bifrost, the Brief relay, `admin` itself, the units, the Caddyfile and the sudoers file come from that commit, and the program is installed beside the one in use, in `/usr/local/lib/parent-recap/<commit>`. `current` then points at it and the services restart: every Household runs it from its next run, its evening Brief included. Deploys are kept by commit, not by version, since an unreleased commit carries the version of the release before it: the deploy before stays on disk, to switch back to. Each deploy is recorded in `/var/lib/parent-recap-deploy/deploys.json` (its commit, its tag or `unreleased`, the time, its snapshot, and whether its install failed), and `admin households` first says which commit runs, marked unreleased until a release tag is deployed.
 
@@ -345,6 +345,17 @@ sudo admin households
 
 For each Household in `households.json` it runs `parent-recap signup health` as the Household's user, and prints its user with its Invite Link's note in brackets, such as `ph-0123abcd (Virtanen family)`, the time its Brief comes, when its last run ended and how, how long it took and its peak memory (from `last-run.json` beside its `state.json`), such as `last run 2026-10-30 18:00 UTC, ok, 7 s, 180 MB`, and each of `doctor`'s checks by its key with ✅, ⚠️ or ❌, run then without the model's test call. A last run that failed is marked ❌, a run not ended an hour after its time ⚠️ overdue, and a Household whose program is older than the command ❓. It prints no message text, subject, address or Kid's name, not even doctor's words, which name them. It exits 1 when any Household is marked. Last, when the server waits for a reboot to apply updates (the file `/run/reboot-required` exists, which Ubuntu's [Server documentation](https://ubuntu.com/server/docs/how-to/software/upgrade-your-release/) says means a reboot is needed), it says `Reboot pending: the server waits for a reboot to apply updates`. Every night the server checks this for you and mails what is wrong (see "The nightly check").
 
+**The time a Household's Brief comes.** The time `admin households` shows is the Household's own, from its config (`schedule` in `~/.family/config.yaml`, in its `timezone`), which its evening timer follows and `signup health` reports; `admin deploy`'s refusal while a run is due soon reads the same. The time in its line in `households.json` is only the slot the sign-up handed out, which later sign-ups skip. It is shown instead only when `signup health` says no time: a program older than #780, or a config that won't load.
+
+**Move a Household's Brief to another time.** There is no `admin` task for it. On the server, with its label and the new time (here 16:00, in the Household's `timezone`), as the Household's user, so its config keeps its owner and mode:
+
+```sh
+cd / && sudo -u ph-0123abcd -H -- /usr/local/lib/parent-recap/current/app/.venv/bin/python -I -c 'import yaml; p = "/home/ph-0123abcd/.family/config.yaml"; d = yaml.safe_load(open(p, encoding="utf-8")); d.setdefault("schedule", {}).update(daily_hour=16, daily_minute=0); open(p, "w", encoding="utf-8").write(yaml.safe_dump(d, allow_unicode=True, sort_keys=False))'
+cd / && sudo -u ph-0123abcd -H -- /usr/local/lib/parent-recap/bin/parent-recap schedule install
+```
+
+The first line sets the time in its config, written as the sign-up writes it. The second reinstalls its evening job at that time and prints it (`Brief: every day at 16:00`). `sudo admin households` then shows the new time. Its line in `households.json` keeps its old slot, which stays taken; that is harmless.
+
 **Find a Household.** Only the note its Invite Link carried, if it had one, says which family a label is. When a parent asks about their Brief, or a family on its own computer about its Gateway Key, find it from a Recipient address they give, or the holder's name:
 
 ```sh
@@ -398,6 +409,7 @@ What you want, and the command for it. Each runs on the server as `sudo admin �
 | Every key, who holds it, its use and spend              | `keys`; this month's spend: `cost`                                                                               |
 | Stop a key, or start it again                           | `key off NAME-OR-ID`, `key on NAME-OR-ID`                                                                        |
 | Every Hosted Household's status                         | `households`                                                                                                     |
+| A Hosted Household's Brief at another time              | None: two commands as its user (see "Move a Household's Brief to another time")                                  |
 | Which Household has this address                        | `find ADDRESS` (see "Find a Household")                                                                          |
 | Which Gateway Key a family holds, by name or address    | `find TEXT` (see "Find a Household")                                                                             |
 | Take a Hosted Household off the server                  | `remove ph-XXXXXXXX` (see "Remove a Household")                                                                  |
