@@ -2,17 +2,17 @@
 
 The server that invited Households' Gateway Keys go through (ADR 0014), and where Hosted Households run (ADR 0029). Everything needed to rebuild it is here, and none of it is secret (ADR 0015). Where the running server is and how to reach it are in the maintainers' Bitwarden, not here.
 
-- `host-setup.sh` sets up the VM (Ubuntu/Debian): system updates, SSH with keys only, a firewall that lets in only SSH and HTTPS, Caddy, and a login for the AI assistant that can read logs but has no sudo.
+- `host-setup.sh` sets up the VM (Ubuntu/Debian): system updates, SSH with keys only, a firewall that lets in only HTTPS from the internet (logins come over Tailscale SSH, see "Logging in"), Caddy, and a login for the AI assistant that can read logs but has no sudo.
 - `gateway-setup.sh` installs and upgrades Bifrost (ADR 0016), the Brief relay and, given a release of the program, the program every Hosted Household runs (ADR 0035) and the hosted version's sign-up service (ADR 0031) behind Caddy. It works on any systemd Linux with Caddy and `python3` installed.
 - `config.json`, `bifrost.service`, `brief_relay.py`, `brief-relay.service`, `brief-stop.html`, `Caddyfile`, `bifrost.env.example`, `admin` (the maintainers' one command, see "Runbook") and `parent-recap-check.service` and `.timer` with `maintainers.env.example` (see "The nightly check") are what it installs, and for the Hosted Households `parent-recap` (the shared program's command), `parent-recap-signup.service`, `signup.env.example`, `signup.sudoers` and `household-user`. The env examples hold only variable names.
 - `oci-quota.json` is the Oracle Cloud quota policy that lets the account create only Always Free resources.
 - `set-smtp-credentials.sh` puts the sending domain's SMTP credentials into their own env file, whose names are in `brief-relay.env.example` (see "The sending domain").
 
-This is how we run it. Take as much as fits your own setup. `host-setup.sh` works on any Ubuntu 24.04 server; on another Linux, do its steps yourself (updates, SSH keys only, firewall, install Caddy) and go straight to `gateway-setup.sh`. On a cloud other than Oracle's, use that cloud's own firewall too: the script only opens port 443 in front of the reject-all rule Oracle's image ships, and adds no rules of its own on an image without one. Steps 1–4 below are Oracle's.
+This is how we run it. Take as much as fits your own setup. `host-setup.sh` works on any Ubuntu 24.04 server; on another Linux, do its steps yourself (updates, SSH keys only, firewall, install Caddy) and go straight to `gateway-setup.sh`. On a cloud other than Oracle's, use that cloud's own firewall too: the script only opens port 443 in front of the reject-all rule Oracle's image ships, and takes out the image's port 22 rule once Tailscale is up; on an image without those rules it adds none of its own. Steps 1–4 and 9 below are Oracle's.
 
 ## Building the server
 
-Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`). Steps 1–4 are in Oracle's console and can't be scripted.
+Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`). Steps 1–4 and 9 are in Oracle's console.
 
 1. **Pay-As-You-Go.** Upgrade the Oracle account to Pay-As-You-Go. Always Free resources stay free, and Oracle doesn't reclaim them as idle.
 2. **Spending guards.** In Billing, add a budget of $1 a month that emails the maintainers on any actual spend. Then add the quota policy, which makes anything not Always Free impossible to create:
@@ -23,35 +23,99 @@ Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`).
      --statements file://ops/gateway/oci-quota.json
    ```
 
-3. **Network.** Create a VCN with a public subnet. Its security list lets in only TCP 22, TCP 443 and ICMP types 3 and 4.
-4. **VM.** Shape `VM.Standard.A1.Flex`, 1 OCPU and 6 GB, image Ubuntu 24.04 (aarch64), public IP, your SSH public key. Stockholm often has no A1 capacity ("Out of host capacity"). Keep retrying, a few times an hour, until a launch succeeds; it can take a day.
-5. **DNS.** Point an A record for the gateway's hostname at the VM's public IP.
-6. **Host setup.** From your machine:
+3. **Network.** Create a VCN with a public subnet. Give the subnet one security list of its own, whose only ingress rules are TCP 443 and ICMP type 3 code 4, both from `0.0.0.0/0`: no SSH, no port 80. Don't attach the VCN's default security list to the subnet, and give the VM's VNIC no network security group.
+4. **VM.** Shape `VM.Standard.A1.Flex`, 1 OCPU and 6 GB, image Ubuntu 24.04 (aarch64), public IP, your SSH public key (only for a rescue: port 22 stays closed). Under "Advanced options" → "Management", paste the cloud-init script below, so the VM joins the maintainers' tailnet with Tailscale SSH on at its first boot: nothing else can log in to it (see "Logging in"). Stockholm often has no A1 capacity ("Out of host capacity"). Keep retrying, a few times an hour, until a launch succeeds; it can take a day.
 
    ```sh
-   ssh ubuntu@<ip> "sudo MINI_PUBKEY='<assistant host public key>' bash -s" < ops/gateway/host-setup.sh
+   #!/bin/bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   tailscale up --ssh --auth-key='<auth key>'
    ```
+
+   Make the auth key in Tailscale's admin console (Settings → Keys): not reusable, pre-approved, tagged `tag:gateway`, expiring in a day. The script stays in the VM's metadata, so the key must be spent by then. A tagged node's key doesn't expire, so the VM stays on the tailnet.
+
+5. **DNS.** Point an A record for the gateway's hostname at the VM's public IP. The IP is ephemeral: a VM made again, such as from a backup, gets a new one (see "Backups").
+6. **Host setup.** From your machine, over Tailscale SSH. `<server>` here and below is the VM's name on the tailnet, never its public IP:
+
+   ```sh
+   ssh ubuntu@<server> "sudo bash -s" < ops/gateway/host-setup.sh
+   ```
+
+   It also takes out the image's own firewall rule for port 22, once Tailscale is up, and makes the assistant's read-only login `mini`.
 
 7. **Gateway.** The first run asks for the Anthropic API key and the admin login, and keeps them in `/etc/bifrost/bifrost.env` on the server only, and for the maintainers' address the nightly check mails (see "The nightly check"):
 
    ```sh
-   scp -r ops/gateway ubuntu@<ip>:/tmp/
-   ssh -t ubuntu@<ip> "sudo GATEWAY_HOST=<hostname> bash /tmp/gateway/gateway-setup.sh"
+   scp -r ops/gateway ubuntu@<server>:/tmp/
+   ssh -t ubuntu@<server> "sudo GATEWAY_HOST=<hostname> bash /tmp/gateway/gateway-setup.sh"
    ```
 
    Caddy gets the hostname's certificate over port 443 (TLS-ALPN-01), so port 80 stays closed. Check with `curl -i https://<hostname>/` (404) and a call with a Gateway Key (below).
 
 8. **Spend limit.** In the Anthropic Console, create a workspace for the gateway, put the gateway's API key in it and set that workspace's monthly spend limit to $10 (Settings > Workspaces > Spend limits). The default workspace can't be limited.
-9. **Record it.** Keep the provider, region, IP, hostname and SSH logins in the maintainers' private notes, not here.
-10. **Hosted Households** (ADR 0029), once the gateway answers. All on the server, as in "Hosted Households" below:
+9. **Backups.** Assign the weekly backup policy to the VM's boot volume (see "Backups").
+10. **Record it.** Keep the provider, region, IP, hostname, tailnet name and SSH logins in the maintainers' private notes, not here.
+11. **Hosted Households** (ADR 0029), once the gateway answers. All on the server, as in "Hosted Households" below:
     - **The program and the service.** Run step 7 again with `PARENT_RECAP_RELEASE` (see "Install it"). Check that `systemctl status parent-recap-signup` is active and an unknown `https://<hostname>/join/x` gets 404. Each later deploy is `sudo admin deploy vX.Y.Z` on the server, which upgrades every Household and checks one (see "Upgrade, check, switch back").
     - **Invite.** `sudo admin invite` prints an Invite Link (see "Invite a Household"). Sign up your own Household with it first: it is the first to sign in to Wilma from the server.
     - **Status.** `sudo admin households` lists every Household's last run and checks (see "See every Household's status").
     - **Remove.** `sudo admin remove ph-…` removes a Household with its data (see "Remove a Household").
 
-    A rebuilt server has no Households: their homes, the Invite Links and `households.json` are on the old server only, and nothing backs them up. Invite each family again; its Wilma login and MyClub links come with the new sign-up, and deleting the old VM deletes the old Households with it.
+    A server built again from these steps has no Households: their homes, the Invite Links and `households.json` are on the old server and in its backups only. To keep them, make the new VM from a backup instead (see "Backups"). Otherwise invite each family again; its Wilma login and MyClub links come with the new sign-up, and deleting the old VM deletes the old Households with it.
 
 Both scripts are safe to run again.
+
+## Logging in
+
+Nothing logs in from the internet: port 22 is closed in the security list and in the host's firewall, and only 443 is open. Every login comes over Tailscale SSH: `tailscaled` takes SSH on the VM's tailnet address itself and checks the tailnet's policy, not `authorized_keys`, and its own firewall chain (`ts-input`) lets the tailnet in. Tailscale isn't set up by `host-setup.sh`: the VM joins at its first boot (step 4). On a VM made without that script, run its two lines over plain SSH, check that `ssh ubuntu@<server>` works over the tailnet, run `host-setup.sh` again and then close port 22 in the security list.
+
+The tailnet's policy (Tailscale's admin console → Access controls) says who gets which login. One that gives what "Who holds access" below says:
+
+```json
+"tagOwners": { "tag:gateway": ["<maintainer>"], "tag:assistant": ["<maintainer>"] },
+"ssh": [
+  { "action": "check", "src": ["<maintainer>"], "dst": ["tag:gateway"], "users": ["ubuntu"] },
+  { "action": "accept", "src": ["tag:assistant"], "dst": ["tag:gateway"], "users": ["mini"] }
+]
+```
+
+A user in `src` means that user's own devices; a tagged machine, such as the assistant's, isn't one of them, so it gets only `mini`. `check` makes the maintainer sign in again in the browser on the first login after 12 hours. If the policy's `acls` or `grants` don't already let those sources reach the gateway, add TCP 22 to `tag:gateway` for them.
+
+## Who holds access
+
+One maintainer runs the server.
+
+- **Oracle's console**, with MFA on, is that maintainer's alone. Its recovery codes are in the maintainers' password manager. The console can read the VM's disk and its backups (ADR 0037), so who holds it can read everything on the server.
+- **The admin login** (`ubuntu`, with sudo) is that maintainer's too, from their own devices only (the `check` rule in "Logging in"). It runs `sudo admin …` (see "Runbook") and the setup scripts.
+- **The AI assistant's login** (`mini`) reads only: logs and service status (it is in `systemd-journal` and `adm`), no sudo, and nothing of the gateway's state or secrets. It comes from the assistant's tagged machine, which isn't the maintainer's device and so can't use the admin login.
+- **The tailnet's admin console** decides who gets which login, so it stays with the same maintainer.
+
+## Backups
+
+The VM's boot volume is backed up weekly by Oracle (ADR 0037), for losing the VM. A bad deploy is switched back with the deploy's own snapshot (see "Upgrade, check, switch back"), not these.
+
+**The policy.** `gateway-weekly`, assigned to the boot volume: an incremental backup every Sunday at 03:00 UTC, kept 28 days, so at most four exist at a time, within the tenancy's quota of 5 (`oci-quota.json`). No retention lock or delete protection, and no copy to another region (Stockholm has no paired region). They are Always Free. The backups hold everything the disk does, the Wilma sign-ins, Gateway Keys, the provider key and the SMTP credentials among it, encrypted with Oracle's keys.
+
+Set it up in the console, or from the CLI (check the flags with `--help` first; these haven't been run as written):
+
+```sh
+P=$(oci bv volume-backup-policy create --compartment-id <tenancy OCID> \
+  --display-name gateway-weekly \
+  --schedules '[{"backupType":"INCREMENTAL","period":"ONE_WEEK","dayOfWeek":"SUNDAY","hourOfDay":3,"timeZone":"UTC","retentionSeconds":2419200}]' \
+  --query data.id --raw-output)
+oci bv volume-backup-policy-assignment create --asset-id <boot volume OCID> --policy-id "$P"
+```
+
+**Restore.** When the VM is lost:
+
+1. In the console, Boot Volume Backups → the backup → Restore boot volume, in the same availability domain, with no backup policy.
+2. Create an instance from that boot volume, as in step 4 but without the cloud-init script: the copy is already on the tailnet as the old VM.
+3. Point the gateway's A record at the new VM's public IP (step 5): it isn't the old one.
+4. Assign `gateway-weekly` to the new boot volume, and delete the old VM if it is still there.
+
+Never boot a copy while the old VM still runs: it would run the Households' evening runs too, and take over the gateway's Tailscale identity. A restore loses what changed since the backup: Households that signed up since are invited again, Gateway Keys made since are made again, and Briefs archived since are gone.
+
+Tried on 2026-11-05: a backup was restored to a new boot volume, which reached Available, and then deleted unbooted. Booting a restored copy, in a subnet with no way out, is left for before a public launch (#666).
 
 ## What the gateway does
 
@@ -82,8 +146,8 @@ Briefs sent from Parent Recap's own address (ADR 0028) leave as `brief@parentrec
 **Put the credentials on the host.** Prompts for the SMTP username and password and writes them to `/etc/brief-relay/brief-relay.env` (`BRIEF_SMTP_USERNAME`, `BRIEF_SMTP_PASSWORD`); the Brief relay reads them from there, and the script restarts it. It is not `bifrost.env`, because Bifrost's unit loads that file into Bifrost's environment and Bifrost only proxies model calls. SMTP endpoint `smtp.email.eu-stockholm-1.oci.oraclecloud.com`, port 465 (TLS) or 587 (STARTTLS), AUTH PLAIN.
 
 ```sh
-scp ops/gateway/set-smtp-credentials.sh ubuntu@<ip>:/tmp/
-ssh -t ubuntu@<ip> "sudo bash /tmp/set-smtp-credentials.sh"
+scp ops/gateway/set-smtp-credentials.sh ubuntu@<server>:/tmp/
+ssh -t ubuntu@<server> "sudo bash /tmp/set-smtp-credentials.sh"
 ```
 
 **Rotate the SMTP credentials.** Make a new pair for `brief-sender`, put it on the host, then delete the old one. New credentials take a few minutes to work.
@@ -195,8 +259,8 @@ The hosted version runs invited Households on this server, each as its own Linux
 **Install it.** Copy an unpacked release of the program (or a checkout) to the server beside `ops/gateway`, and run step 7 with `PARENT_RECAP_RELEASE` pointing at it:
 
 ```sh
-scp -r <unpacked release> ubuntu@<ip>:/tmp/parent-recap
-ssh -t ubuntu@<ip> "sudo GATEWAY_HOST=<hostname> PARENT_RECAP_RELEASE=/tmp/parent-recap bash /tmp/gateway/gateway-setup.sh"
+scp -r <unpacked release> ubuntu@<server>:/tmp/parent-recap
+ssh -t ubuntu@<server> "sudo GATEWAY_HOST=<hostname> PARENT_RECAP_RELEASE=/tmp/parent-recap bash /tmp/gateway/gateway-setup.sh"
 ```
 
 It installs the program once for the whole server (ADR 0035): the release's `install.sh`, run as root, puts it in `/usr/local/lib/parent-recap/<version>` with its pinned Python and Node (ADR 0011), and the wilma CLI (ADR 0008) goes beside them; it is owned by root and readable by all. `/usr/local/lib/parent-recap/current` then points at that release, and `/usr/local/lib/parent-recap/bin/parent-recap` (`parent-recap` here) runs the program through it. The sign-up service and every Household run that command, each as its own user, and a Household's evening job runs `current`'s Python, so whatever `current` points at is what runs next. A Household's user holds only its own data: its config, the wilma CLI's sign-in, the Gateway Key file, the archive and the logs, all in its home. The script then makes the service's user `parent-recap-signup` (home `/var/lib/parent-recap-signup`); installs the `household-user` helper in `/usr/local/lib/parent-recap-signup`, the sudoers file and `/etc/parent-recap-signup/signup.env`; and starts the `parent-recap-signup` unit (`parent-recap signup serve`) on `127.0.0.1:8082`, which reads Bifrost's admin login from `bifrost.env`.
@@ -416,8 +480,8 @@ These are Bifrost's own figures, from its price list. What is billed is the Anth
 **Rotate the provider key.** Create the new key in the Console first (in the gateway's workspace, whose monthly limit is the gateway's ceiling), then:
 
 ```sh
-scp ops/gateway/set-provider-key.sh ubuntu@<ip>:/tmp/
-ssh -t ubuntu@<ip> "sudo bash /tmp/set-provider-key.sh"
+scp ops/gateway/set-provider-key.sh ubuntu@<server>:/tmp/
+ssh -t ubuntu@<server> "sudo bash /tmp/set-provider-key.sh"
 ```
 
 Make a test call, then delete the old key in the Console.
