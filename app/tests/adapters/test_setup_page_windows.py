@@ -182,7 +182,7 @@ def assert_finished(harness, out: dict[str, Any]) -> None:
     assert {k: v for k, v in outcomes.items() if k != "wake"} == \
         {"installed": True, "doctor": True, "brief": True, "nightly": True}, out
     assert jobs.installed() == {jobs.DAILY, jobs.WEEKEND}
-    assert jobs.program(jobs.DAILY) == [sys.executable, "-m", "family_brief", "run", "--scheduled"]
+    assert jobs.program(jobs.DAILY) == [sys.executable, "-m", "family_brief", "run"]
     assert gateway.key() == GATEWAY_KEY
     cfg = Config.load(config_file(harness))
     assert (cfg.llm.backend, cfg.gmail.username, cfg.kids[0].name) == ("gateway", PARENT, "Mia")

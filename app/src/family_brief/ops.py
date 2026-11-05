@@ -81,7 +81,7 @@ def register(sub) -> None:
 
     psch = sub.add_parser("schedule", help="Install / remove / inspect the scheduled jobs, or start "
                           "one now with run-now")
-    psch.add_argument("action", choices=["install", "uninstall", "status", "run-now", "refresh"])
+    psch.add_argument("action", choices=["install", "uninstall", "status", "run-now"])
     psch.add_argument("--weekend", action="store_true",
                       help="With run-now: start the Weekend Picks job instead of the evening one")
     psch.add_argument("--replace-wake", action="store_true",
@@ -89,8 +89,7 @@ def register(sub) -> None:
     psch.epilog = ("run-now asks the system's scheduler (launchd on macOS, Task Scheduler on "
                    "Windows) to start the installed job right now, so it runs exactly "
                    "as the scheduler would. A Brief it sends goes to every Recipient, like the "
-                   "evening one. refresh installs the jobs again when they run an older "
-                   "version's command, as an update does.")
+                   "evening one.")
     psch.set_defaults(func=cmd_schedule)
 
     pbg = sub.add_parser("bg", help="Run a parent-recap command as a one-off launchd job "
@@ -532,7 +531,8 @@ def _check_schedule(cfg: Config, add) -> None:
 
 def _check_time_zone(cfg: Config, add) -> None:
     """The scheduler starts the evening job on the computer's own clock, so a computer set to
-    another zone than the config's runs it at another time, and an early run sends nothing (#776)."""
+    another zone than the config's runs it at another time (#776). A travelling family's laptop
+    may be meant to."""
     here = datetime.now().astimezone()
     home = here.astimezone(ZoneInfo(cfg.timezone))
     if here.utcoffset() != home.utcoffset():
@@ -791,14 +791,12 @@ def install_jobs(cfg: Config) -> None:
         pass
 
 
-def _run_now(cfg: Config, name: str, log_dir: Path) -> int:
+def _run_now(name: str, log_dir: Path) -> int:
     """Asks the system to start the installed job, which then runs with the job's own Python,
     PATH, environment and log files. Doesn't wait for it."""
     label = jobs.system_name(name)
     logs = log_dir / ("weekend-events" if name == jobs.WEEKEND else "run")
     where = f"Its logs:\n  {logs}-stdout.log\n  {logs}-stderr.log"
-    if name == jobs.DAILY:
-        _note_started_by_hand(cfg)
     try:
         jobs.run_now(name)
     except jobs.NotInstalled:
@@ -816,44 +814,7 @@ def _run_now(cfg: Config, name: str, log_dir: Path) -> int:
     return 0
 
 
-def _note_started_by_hand(cfg: Config) -> None:
-    """So the evening job started now runs at whatever time, as the scheduler's early start
-    doesn't (#776)."""
-    from . import run_lock
-    from .state import State
-    try:
-        with run_lock.exclusive(cfg):
-            state = State(cfg.resolved_state_path())
-            state.mark_started_by_hand_now()
-            state.save()
-    except run_lock.Busy:  # a run is going, so no second one starts
-        pass
-
-
-def refresh_jobs(config: str | None) -> int:
-    """Installs the jobs again when the evening job runs an older version's command, so an update
-    reaches a job installed before it (#776). Nothing to do without a config or an evening job,
-    or while a run is going, after which the next update tries again."""
-    from . import run_lock
-    try:
-        cfg = Config.load(config)
-    except FileNotFoundError:
-        return 0
-    installed = jobs.program(jobs.DAILY)
-    wanted = jobs.command(jobs.Job(jobs.DAILY, "run", None, 0, 0, Path()))
-    if installed is None or installed[3:] == wanted:
-        return 0
-    if run_lock.is_busy(cfg):
-        print(f"{WARN}A run is going, so the scheduled jobs weren't installed again")
-        return 0
-    install_jobs(cfg)
-    print(f"{OK} The scheduled jobs were installed again for this version")
-    return 0
-
-
 def cmd_schedule(args: argparse.Namespace) -> int:
-    if args.action == "refresh":
-        return refresh_jobs(args.config)
     cfg = Config.load(args.config)
     log_dir = cfg.archive.resolved_dir() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -861,7 +822,7 @@ def cmd_schedule(args: argparse.Namespace) -> int:
     sc = cfg.schedule
 
     if args.action == "run-now":
-        return _run_now(cfg, jobs.WEEKEND if args.weekend else jobs.DAILY, log_dir)
+        return _run_now(jobs.WEEKEND if args.weekend else jobs.DAILY, log_dir)
 
     if args.action == "install":
         install_jobs(cfg)

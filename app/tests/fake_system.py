@@ -123,7 +123,7 @@ class FakeJobs:
     def install(self, wanted: list[jobs.Job]) -> None:
         if self.install_fails is not None:
             raise jobs.NotStarted(self.install_fails)
-        self.programs = {job.name: [sys.executable, "-m", "family_brief", *jobs.command(job)]
+        self.programs = {job.name: [sys.executable, "-m", "family_brief", job.subcommand]
                          for job in wanted}
         self.loaded = set(self.programs)
 

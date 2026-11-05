@@ -1,7 +1,7 @@
 """The nightly `parent-recap run` across nights, end to end: quiet nights and what carries over, a
-Gmail with no sender ticked, catching up at sign-in with `run --if-missed`, and the evening job
-started early on a computer set to another zone. Assertions are only on what leaves the system:
-the email (text, HTML, attachments), the model command line, and persisted state."""
+Gmail with no sender ticked, and catching up at sign-in with `run --if-missed`, in the Household's
+zone. Assertions are only on what leaves the system: the email (text, HTML, attachments), the
+model command line, and persisted state."""
 from __future__ import annotations
 
 import json
@@ -16,7 +16,6 @@ from conftest import NOW, html_for_golden, msg, myclub_event, without_unread_not
 from fake_system import WINDOWS
 
 from family_brief.actions import archive
-from family_brief.system import jobs
 
 from nights import normal_night, payload_message_ids
 
@@ -389,7 +388,7 @@ def test_signing_in_before_the_first_evening_since_setup_sends_nothing(harness):
     assert harness.sent == [] and harness.model_calls == []
 
 
-# ── A Brief sent once, and never early (#776)
+# ── A Brief sent once, and caught up in the Household's zone (#776)
 
 def last_run_hours_before_now(h, hours: float) -> None:
     at = (NOW - timedelta(hours=hours)).isoformat()
@@ -415,73 +414,10 @@ def test_a_run_that_sent_the_brief_and_then_failed_isnt_caught_up_the_next_day(h
     assert len(harness.sent) == 1 and len(harness.model_calls) == 1
 
 
-# launchd and Task Scheduler start the evening job at 21:00 on the computer's own clock, which on
-# one set to Karachi's zone is 19:00 in the Household's, Helsinki.
-KARACHI = ZoneInfo("Asia/Karachi")
-EARLY_IN_KARACHI = NOW.replace(tzinfo=KARACHI)
+# On a computer set to Karachi's zone, 21:00 there is 19:00 in the Household's, Helsinki.
+EARLY_IN_KARACHI = NOW.replace(tzinfo=ZoneInfo("Asia/Karachi"))
 needs_tzset = pytest.mark.skipif(not hasattr(time, "tzset"),
                                  reason="time_machine sets the computer's zone with tzset")
-
-
-@needs_tzset
-def test_a_scheduled_run_started_early_by_a_computer_in_another_zone_sends_nothing(harness, caplog):
-    normal_night(harness, "en")
-    assert EARLY_IN_KARACHI.astimezone(ZoneInfo("Europe/Helsinki")).hour == 19
-
-    with time_machine.travel(EARLY_IN_KARACHI, tick=False):
-        assert harness.run("--scheduled") == 0
-
-    assert harness.sent == [] and harness.model_calls == []
-    [why] = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Not sending")]
-    assert "21:00 on this computer's clock (UTC+0500)" in why
-    assert "19:00 in Europe/Helsinki" in why and "the Brief is at 21:00 there" in why
-
-
-@needs_tzset
-def test_run_now_sends_on_a_computer_in_another_zone(harness):
-    normal_night(harness, "en")
-    harness.jobs.add(jobs.DAILY)
-
-    with time_machine.travel(EARLY_IN_KARACHI, tick=False):
-        assert harness.cli("schedule", "run-now") == 0
-        assert harness.run("--scheduled") == 0  # the evening job run-now started
-
-    assert len(harness.sent) == 1
-
-
-@needs_tzset
-def test_a_scheduled_run_started_by_hand_long_ago_is_held_back_again(harness):
-    harness.jobs.add(jobs.DAILY)
-    with time_machine.travel(EARLY_IN_KARACHI - timedelta(days=1), tick=False):
-        assert harness.cli("schedule", "run-now") == 0
-    normal_night(harness, "en")
-
-    with time_machine.travel(EARLY_IN_KARACHI, tick=False):
-        assert harness.run("--scheduled") == 0
-
-    assert harness.sent == []
-
-
-@pytest.mark.parametrize("hours_late", [0, 13])
-def test_a_scheduled_run_on_time_or_after_a_sleep_sends(harness, hours_late):
-    # A run launchd starts once the Mac wakes, the next morning, still goes out.
-    normal_night(harness, "en")
-
-    with time_machine.travel(NOW + timedelta(hours=hours_late), tick=False):
-        assert harness.run("--scheduled") == 0
-
-    assert len(harness.sent) == 1
-
-
-@needs_tzset
-def test_a_computer_behind_the_household_s_zone_sends_when_it_starts_the_run(harness):
-    # Set to London's zone, it starts the evening job at 23:00 in Helsinki: late, not early.
-    normal_night(harness, "en")
-
-    with time_machine.travel(NOW.replace(tzinfo=ZoneInfo("Europe/London")), tick=False):
-        assert harness.run("--scheduled") == 0
-
-    assert len(harness.sent) == 1
 
 
 @needs_tzset
