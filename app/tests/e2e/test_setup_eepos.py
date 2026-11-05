@@ -2,7 +2,8 @@
 and uninstall: the password goes from the secret store's own prompt to one sign-in and the store,
 never into the config, the command's output or a dialog; the students are matched to the Kids by
 name. The outside edges are faked: the store's prompt (`secrets.typed`) and each school's portal.
-The command's one line of JSON on stdout is what the maintainer reads."""
+The command's one line of JSON on stdout is what the maintainer reads. The setup page's Eepos step
+is at the end, with the password typed into the page's own field (#791)."""
 from __future__ import annotations
 
 import json
@@ -16,6 +17,9 @@ from conftest import eepos_entry, eepos_student
 from fake_sources import EEPOS_PASSWORD
 from family_brief import install_record, ops
 from family_brief.collectors import eepos
+from setup_page import (Response, assert_never_leaked, call, config_file, refuse_secrets,
+                        save_progress, source, statuses)
+from setup_page import clock, page  # noqa: F401
 
 USERNAME = "parent@example.com"
 SECRET = eepos.secret_name("emo", USERNAME)
@@ -176,3 +180,159 @@ def test_uninstall_deletes_each_eepos_password(harness, portal, monkeypatch, cap
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
     assert SECRET not in harness.secrets
+
+
+# ── Connect: Eepos, on the setup page (#791), driven with HTTP calls as the page makes them
+# (`setup_page.py`), against the same fake portal
+
+def at_the_eepos_step(harness) -> None:
+    config_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
+    save_progress(harness, {"phase": "connect", "source": "eepos", "sources": {
+        "wilma": "done", "gmail": "done", "ai": "done", "whatsapp": "done", "myclub": "skipped"}})
+    harness.source_fakes["whatsapp"].set_up()  # WhatsApp done: paired
+
+
+def sign_in(url: str, password: str = EEPOS_PASSWORD, school: str = "emo.eepos.fi",
+            username: str = USERNAME) -> Response:
+    return call(url, "api/eepos", method="POST",
+                body={"school": school, "username": username, "password": password})
+
+
+def test_a_sign_in_typed_on_the_page_is_checked_kept_in_the_store_and_listed(harness, page, portal,
+                                                                            caplog, capsys):
+    at_the_eepos_step(harness)
+
+    r = sign_in(page.url)
+
+    out = r.json()
+    assert out["result"] == "saved" and out["events"] == 1
+    assert out["found"] == [{"name": "Mia Virtanen", "kid": "Mia"}, {"name": "Leo Virtanen", "kid": "Leo"}]
+    assert out["signins"] == [{"school": "emo", "address": "emo.eepos.fi", "username": USERNAME,
+                               "kids": ["Mia", "Leo"]}]
+    # Done, and the step stays for another school until Continue.
+    assert out["progress"]["sources"]["eepos"] == "done" and out["progress"]["source"] == "eepos"
+    assert saved_config(harness)["eepos"] == {"signins": [{"school": "emo", "username": USERNAME,
+                                                           "kids": {"11": "Mia", "12": "Leo"}}]}
+    assert harness.secrets[SECRET] == EEPOS_PASSWORD and eepos.TYPED not in harness.secrets
+    assert SECRET in install_record.entries("keychain")
+    state = call(page.url, "api/state")
+    assert state.json()["eepos"]["signins"] == out["signins"]
+    assert_never_leaked(harness, [r, state], caplog, capsys, EEPOS_PASSWORD)  # but in the store
+
+    assert call(page.url, "api/eepos/done", method="POST", body={}).json()["progress"]["source"] == "evaka"
+
+
+def test_a_wrong_password_on_the_page_is_refused_and_keeps_the_one_that_works(harness, page, portal):
+    harness.config["eepos"] = {"signins": [{"school": "emo", "username": USERNAME}]}
+    harness.secrets[SECRET] = EEPOS_PASSWORD
+    at_the_eepos_step(harness)
+
+    assert sign_in(page.url, "typo").json() == {"result": "wrong-password"}
+    assert harness.secrets[SECRET] == EEPOS_PASSWORD
+    assert saved_config(harness)["eepos"] == {"signins": [{"school": "emo", "username": USERNAME}]}
+    assert statuses(page.url)["eepos"] == "to-do"
+
+
+@pytest.mark.parametrize("change, result", [
+    ({"school": "emo.example.fi"}, "not-a-school"),
+    ({"username": " "}, "no-username"),
+], ids=["not-eepos", "no-username"])
+def test_what_isn_t_a_sign_in_is_refused_without_signing_in(harness, page, portal, change, result):
+    at_the_eepos_step(harness)
+
+    assert sign_in(page.url, **change).json() == {"result": result}
+    assert portal.requests == [] and SECRET not in harness.secrets
+
+
+def test_a_store_the_page_can_t_reach_is_said_before_signing_in(harness, page, portal):
+    harness.secrets.reachable_here = False  # macOS, with the page started in tmux or over SSH
+    at_the_eepos_step(harness)
+
+    assert sign_in(page.url).json() == {"result": "keychain-not-reachable"}
+    assert portal.requests == []
+
+
+def test_a_store_that_refuses_the_password_keeps_nothing(harness, page, portal):
+    at_the_eepos_step(harness)
+    refuse_secrets(harness, -25293)
+
+    assert sign_in(page.url).json() == {"result": "not-stored", "code": -25293}
+    assert "eepos" not in saved_config(harness) and statuses(page.url)["eepos"] == "to-do"
+
+
+def test_a_portal_that_changed_says_so_without_its_words(harness, page, portal):
+    portal.answers[("emo", "guardian/students")] = (200, "<html>Eepos</html>")
+    at_the_eepos_step(harness)
+
+    assert sign_in(page.url).json() == {"result": "changed"}
+
+
+def test_a_student_who_is_none_of_the_kids_is_shown_not_guessed(harness, page, portal):
+    portal.school("emo").students.append(eepos_student(13, "Olli", "Virtanen"))
+    at_the_eepos_step(harness)
+
+    out = sign_in(page.url).json()
+
+    assert out["found"][-1] == {"name": "Olli Virtanen", "kid": None}
+    assert saved_config(harness)["eepos"]["signins"][0]["kids"] == {"11": "Mia", "12": "Leo"}
+
+
+def test_a_second_school_is_added_and_one_is_removed_with_its_password(harness, page, portal):
+    portal.school("espoo").accounts[USERNAME] = EEPOS_PASSWORD
+    portal.school("espoo").students = [eepos_student(31, "Mia", "Virtanen")]
+    at_the_eepos_step(harness)
+    sign_in(page.url)
+    assert [s["school"] for s in sign_in(page.url, school="espoo").json()["signins"]] == ["emo", "espoo"]
+
+    r = call(page.url, "api/eepos/remove", method="POST", body={"school": "emo", "username": USERNAME})
+
+    assert r.json()["result"] == "removed" and r.json()["signins"][0]["school"] == "espoo"
+    assert r.json()["progress"]["sources"]["eepos"] == "done"
+    assert SECRET not in harness.secrets and SECRET not in install_record.entries("keychain")
+    assert eepos.secret_name("espoo", USERNAME) in harness.secrets
+    assert [s["school"] for s in saved_config(harness)["eepos"]["signins"]] == ["espoo"]
+
+    # With the last one removed, Eepos is to do again: to add one or skip it.
+    r = call(page.url, "api/eepos/remove", method="POST", body={"school": "espoo", "username": USERNAME})
+    assert r.json()["signins"] == [] and r.json()["progress"]["sources"]["eepos"] == "to-do"
+    assert call(page.url, "api/eepos/remove", method="POST",
+                body={"school": "espoo", "username": USERNAME}).status == 400
+
+
+def test_a_sign_in_added_from_a_terminal_is_listed_and_continue_keeps_it(harness, page, portal):
+    harness.config["eepos"] = {"signins": [{"school": "emo", "username": USERNAME, "kids": {"12": "Leo"}}]}
+    harness.secrets[SECRET] = EEPOS_PASSWORD
+    at_the_eepos_step(harness)
+
+    assert call(page.url, "api/state").json()["eepos"]["signins"] == [
+        {"school": "emo", "address": "emo.eepos.fi", "username": USERNAME, "kids": ["Leo"]}]
+    r = call(page.url, "api/eepos/done", method="POST", body={})
+
+    assert r.json()["progress"]["sources"]["eepos"] == "done"
+    assert harness.secrets[SECRET] == EEPOS_PASSWORD
+
+
+def test_continue_needs_a_sign_in_first(harness, page, portal):
+    at_the_eepos_step(harness)
+
+    assert call(page.url, "api/eepos/done", method="POST", body={}).status == 400
+    assert statuses(page.url)["eepos"] == "to-do"
+
+
+def test_skipping_eepos_removes_its_sign_ins_and_passwords(harness, page, portal):
+    harness.config["eepos"] = {"signins": [{"school": "emo", "username": USERNAME}]}
+    harness.secrets[SECRET] = EEPOS_PASSWORD
+    at_the_eepos_step(harness)
+
+    out = source(page.url, "eepos", "skip").json()
+
+    assert out["progress"]["sources"]["eepos"] == "skipped" and out["progress"]["source"] == "evaka"
+    assert saved_config(harness)["eepos"]["signins"] == [] and SECRET not in harness.secrets
+
+
+def test_a_password_is_never_an_empty_answer(harness, page, portal):
+    at_the_eepos_step(harness)
+
+    assert sign_in(page.url, " ").status == 400
+    assert portal.requests == []

@@ -305,6 +305,8 @@ def test_welcome_has_a_folded_list_of_what_to_have_ready():
                      ("welcome.ready.key", "welcome.ready.key.why"),
                      ("source.gmail", "welcome.ready.gmail"),
                      ("source.myclub", "welcome.ready.myclub"),
+                     ("source.eepos", "welcome.ready.eepos"),
+                     ("source.evaka", "welcome.ready.evaka"),
                      ("welcome.ready.phone", "welcome.ready.phone.why")]
     assert 'data-text="welcome.ready.later"' in ready
 

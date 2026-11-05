@@ -132,8 +132,8 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_setup_welcome.py`                    | Welcome                                                                |
 | `test_setup_ai.py`                         | The AI sign-in, the gateway, changing the AI on Finish                 |
 | `test_setup_gmail.py`, `_wilma`, `_myclub` | Each Source's `setup` command, then its step on the page               |
-| `test_setup_eepos.py`                      | `setup eepos` from a terminal, doctor's check of it, uninstall         |
-| `test_setup_evaka.py`                      | `setup evaka` from a terminal, doctor's check of it, uninstall         |
+| `test_setup_eepos.py`                      | `setup eepos` from a terminal, the page's Eepos step, doctor, uninstall |
+| `test_setup_evaka.py`                      | `setup evaka` from a terminal, the page's eVaka step, doctor, uninstall |
 | `test_setup_whatsapp.py`                   | WhatsApp's step: the Linked Device's `pair` on a real Node, the job    |
 | `test_setup_back_to_connect.py`            | The way back from Check and Finish to Connect, for a skipped Source    |
 | `test_setup_claude.py`                     | `setup claude` and its terminal window                                 |

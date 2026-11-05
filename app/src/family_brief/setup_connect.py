@@ -7,6 +7,7 @@ read with a typed model through `parse`, so a malformed one gets the same 400 fr
 """
 from __future__ import annotations
 
+import importlib
 import threading
 from collections.abc import Callable
 from http import HTTPStatus
@@ -32,6 +33,20 @@ SKIP_ANSWERS: dict[str, dict[str, Any]] = {
        for s in (source_registry.WILMA, source_registry.WHATSAPP, source_registry.MYCLUB)},
     source_registry.GMAIL.name: {"sources": {"gmail": {"allowlist_domains": [],
                                                        "allowlist_senders": []}}},
+}
+
+
+def _remove_all(module: str) -> Callable[[Path], None]:
+    def remove(config: Path) -> None:
+        importlib.import_module(f"{__package__}.{module}").remove_all(config)
+    return remove
+
+
+# What skipping a Source removes besides its answers: Eepos's and eVaka's sign-ins, each with its
+# password in the secret store, which an answer can't reach.
+SKIP_REMOVES: dict[str, Callable[[Path], None]] = {
+    source_registry.EEPOS.name: _remove_all("setup_eepos"),
+    source_registry.EVAKA.name: _remove_all("setup_evaka"),
 }
 
 
@@ -126,8 +141,16 @@ class ConnectSteps:
             return self.save({"progress": {"source": next_source(statuses)}})
 
     def skip(self, name: str, answers: dict[str, Any] | None = None) -> Reply:
-        """Saves the Source `name` as skipped with `answers`, and moves setup on to the next one."""
+        """Saves the Source `name` as skipped with `answers`, and moves setup on to the next one.
+        What it had set up is removed first (SKIP_ANSWERS, SKIP_REMOVES)."""
         with self.lock:
+            if name in SKIP_REMOVES:
+                try:
+                    SKIP_REMOVES[name](self.config)
+                except Exception:  # not its error: a config check quotes values, which can be secrets
+                    return HTTPStatus.CONFLICT, setup_save.outcome(
+                        "bad-config", f"The config at {self.config} can't be read, so nothing was "
+                        "saved. Run parent-recap doctor, fix what it names, then skip it again.")
             progress = self.progress()
             statuses = {**progress["sources"], name: "skipped"}
             return self._step(progress, {**SKIP_ANSWERS.get(name, {}), **(answers or {})},

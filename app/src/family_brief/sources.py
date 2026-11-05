@@ -142,7 +142,7 @@ def _same_everywhere(label: str) -> dict[str, str]:
 # sign-up has no Gmail step yet (ADR 0029, 0031).
 GMAIL = Source("gmail", _same_everywhere("Gmail"),
                lambda cfg: bool(cfg.gmail.allowlist_domains or cfg.gmail.allowlist_senders),
-               skippable=True, connect_rank=5, collect=_collector("gmail"), hosted=False,
+               skippable=True, connect_rank=8, collect=_collector("gmail"), hosted=False,
                lookback=lambda cfg: cfg.gmail, check=_in("ops", "check_gmail"),
                secrets=_in("uninstall", "gmail_secrets"), notes=_in("uninstall", "gmail_notes"),
                sent_to_everyone=_in("collectors.gmail", "sent_to_everyone"),
@@ -176,22 +176,23 @@ WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), _in("collectors.what
 
 # A music or art school's calendar, read through its portal's own JSON API with a password in the
 # secret store (ADR 0038). Its lessons and holidays are events, which nothing else puts in a
-# calendar, so they go into the .ics. Set up from a terminal for now, one sign-in per school
-# (`setup eepos`) or at the hosted sign-up (#769); the setup page has no step for it yet (#755).
-# A Hosted Household can have it, so its Brief doesn't call it unread there.
+# calendar, so they go into the .ics. Set up one sign-in per school on the setup page's step
+# (#791), from a terminal (`setup eepos`) or at the hosted sign-up (#769). A Hosted Household can
+# have it, so its Brief doesn't call it unread there.
 EEPOS = Source("eepos", _same_everywhere("Eepos"), lambda cfg: bool(cfg.eepos.signins),
                skippable=True, connect_rank=6, collect=_collector("eepos"), counts_events=True,
-               setup_page=False, check=_in("ops", "check_eepos"),
+               check=_in("ops", "check_eepos"),
                check_items={"eepos": "Eepos ({})"}, secrets=_in("collectors.eepos", "secrets_of"))
 
 # A public daycare's calendar and messages, read through eVaka's citizen API with a password in
 # the secret store (ADR 0039): its events, the days the unit is closed and the reservation
 # deadline, which go into the .ics, as Eepos's do, and the messages the daycare sends guardians
-# (#786). A sensitive one comes only as a stub, which is withheld and named. Set up from a terminal
-# for now, one sign-in per city (`setup evaka`), or at the hosted sign-up (#790), as Eepos's.
+# (#786). A sensitive one comes only as a stub, which is withheld and named. Set up one sign-in per
+# city on the setup page's step (#791), from a terminal (`setup evaka`) or at the hosted sign-up
+# (#790), as Eepos's.
 EVAKA = Source("evaka", _same_everywhere("eVaka"), lambda cfg: bool(cfg.evaka.signins),
                skippable=True, connect_rank=7, collect=_collector("evaka"), counts_events=True,
-               setup_page=False, lookback=lambda cfg: cfg.evaka, check=_in("ops", "check_evaka"),
+               lookback=lambda cfg: cfg.evaka, check=_in("ops", "check_evaka"),
                check_items={"evaka": "eVaka ({})"}, secrets=_in("collectors.evaka", "secrets_of"),
                survey=_in("uninstall", "survey_evaka"),
                sent_to_everyone=_in("collectors.evaka", "sent_to_everyone"),

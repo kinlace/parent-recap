@@ -312,7 +312,7 @@ def test_a_page_opened_again_after_setup_stays_open_to_add_a_skipped_source(harn
 def test_a_page_opened_again_after_setup_with_nothing_skipped_stops_once_all_is_true(
         harness, schedule, opened_again):
     at_finish(harness)
-    more_progress(harness, sources={"myclub": "done"})
+    more_progress(harness, sources={"myclub": "done", "eepos": "done", "evaka": "done"})
     page = opened_again()
     finish(page.url)
     out = finished(page.url)

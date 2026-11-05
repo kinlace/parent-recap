@@ -311,7 +311,8 @@ def test_progress_is_saved_and_read_back(harness, capsys):
     assert res["result"] == "read"
     assert res["progress"] == {"phase": "connect", "source": "gmail",
                                "sources": {"wilma": "done", "gmail": "to-do", "ai": "to-do",
-                                           "whatsapp": "to-do", "myclub": "to-do"}}
+                                           "whatsapp": "to-do", "myclub": "to-do", "eepos": "to-do",
+                                           "evaka": "to-do"}}
     assert stat.S_IMODE(progress_file(harness).stat().st_mode) == 0o600
     assert not config_file(harness).exists()  # progress alone doesn't make a config
 
@@ -322,7 +323,25 @@ def test_before_any_progress_it_reads_as_the_start(harness, capsys):
     res, _ = result(capsys)
     assert res["progress"] == {"phase": "welcome", "source": None,
                                "sources": {s: "to-do" for s in
-                                           ("wilma", "gmail", "ai", "whatsapp", "myclub")}}
+                                           ("wilma", "gmail", "ai", "whatsapp", "myclub", "eepos",
+                                            "evaka")}}
+
+
+@pytest.mark.parametrize("phase, status", [("connect", "to-do"), ("check", "skipped"),
+                                           ("finish", "skipped")])
+def test_a_source_the_page_got_a_step_for_since_is_skipped_past_connect(harness, capsys, phase,
+                                                                        status):
+    # #791: a Household set up before Eepos and eVaka had steps isn't held up at Check by them,
+    # and Connect's list offers them as skipped ones.
+    progress_file(harness).parent.mkdir(parents=True, exist_ok=True)
+    progress_file(harness).write_text(json.dumps({"phase": phase, "source": None, "sources": {
+        s: "done" for s in ("wilma", "gmail", "ai", "whatsapp", "myclub")}}))
+
+    assert save(harness, None, "--read") == 0
+
+    res, _ = result(capsys)
+    assert res["progress"]["sources"]["eepos"] == res["progress"]["sources"]["evaka"] == status
+    assert res["progress"]["sources"]["wilma"] == "done"
 
 
 def test_progress_not_given_stays_as_it_was(harness, capsys):

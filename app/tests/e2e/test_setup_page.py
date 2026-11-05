@@ -436,12 +436,14 @@ def test_the_source_list_shows_each_entry_with_its_status(harness, page):
     state = call(page.url, "api/state").json()
 
     # WhatsApp is a Linked Device on every system (ADR 0027), in the slot after the AI sign-in,
-    # and Gmail comes last (#708).
+    # then MyClub, Eepos and eVaka (#791), and Gmail comes last (#708).
     assert [(s["name"], s["skippable"]) for s in state["connect"]["sources"]] == [
-        ("wilma", True), ("ai", False), ("whatsapp", True), ("myclub", True), ("gmail", True)]
+        ("wilma", True), ("ai", False), ("whatsapp", True), ("myclub", True), ("eepos", True),
+        ("evaka", True), ("gmail", True)]
     assert state["progress"]["source"] == "gmail"
     assert state["progress"]["sources"] == {"wilma": "done", "gmail": "to-do", "ai": "to-do",
-                                            "whatsapp": "to-do", "myclub": "to-do"}
+                                            "whatsapp": "to-do", "myclub": "to-do",
+                                            "eepos": "to-do", "evaka": "to-do"}
     # The WhatsApp for Mac step's calls are gone.
     for path in ("api/whatsapp/open", "api/whatsapp/back"):
         assert call(page.url, path, method="POST", body={}).status == 404, path
@@ -456,7 +458,7 @@ def test_on_the_hosted_version_s_server_the_page_offers_only_what_hosting_can_do
     assert (state["system"], state["ais"], state["installs"]) == ("linux", ["gateway"], [])
     # No AI step, no Gmail step and no WhatsApp (ADR 0029, ADR 0031).
     assert [(s["name"], s["skippable"]) for s in state["connect"]["sources"]] == [
-        ("wilma", True), ("myclub", True)]
+        ("wilma", True), ("myclub", True), ("eepos", True), ("evaka", True)]
     for name in ("gmail", "ai", "whatsapp"):
         for action in ("open", "skip"):
             r = source(page.url, name, action)
@@ -468,7 +470,9 @@ def test_on_the_hosted_version_s_server_the_page_offers_only_what_hosting_can_do
 
     assert welcome(page.url).json()["progress"]["source"] == "wilma"
     assert source(page.url, "wilma", "skip").json()["progress"]["source"] == "myclub"
-    assert source(page.url, "myclub", "skip").json()["progress"]["source"] is None
+    assert source(page.url, "myclub", "skip").json()["progress"]["source"] == "eepos"
+    assert source(page.url, "eepos", "skip").json()["progress"]["source"] == "evaka"
+    assert source(page.url, "evaka", "skip").json()["progress"]["source"] is None
 
 
 def test_every_source_list_button_is_named_after_its_source_and_status_in_each_language():
@@ -498,7 +502,8 @@ def test_a_skipped_source_moves_setup_on_and_can_be_come_back_to(harness, page):
 def test_skipping_the_last_source_leaves_none_to_do(harness, page):
     save_progress(harness, {"phase": "connect", "source": "gmail",
                             "sources": {"wilma": "done", "myclub": "done", "ai": "done",
-                                        "whatsapp": "skipped"}})
+                                        "whatsapp": "skipped", "eepos": "skipped",
+                                        "evaka": "skipped"}})
 
     assert source(page.url, "gmail", "skip").json()["progress"]["source"] is None
 

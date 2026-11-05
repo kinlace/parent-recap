@@ -15,11 +15,11 @@ setup sending — send the Brief from the Household's own Gmail, after checking 
 setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, download it once,
                save it in the owner-only config
 setup eepos — have an Eepos school's guardian password typed at the secret store's own prompt in
-              the terminal, sign in with it, match the students to the Kids and save the sign-in
-              (for the maintainers, until the setup page has an Eepos step)
+              the terminal, sign in with it, match the students to the Kids and save the sign-in,
+              as the setup page's Eepos step does
 setup evaka — have a city's eVaka guardian password typed at the secret store's own prompt in the
-              terminal, sign in with it, match the children to the Kids and save the sign-in
-              (for the maintainers, until the setup page has an eVaka step)
+              terminal, sign in with it, match the children to the Kids and save the sign-in,
+              as the setup page's eVaka step does
 setup save — save the Household's answers into the config, and setup's progress (in setup_save.py)
 setup status — whether setup is done (in setup_status.py)
 setup page — serve the setup page on this Mac and open it in the browser (in setup_server/)

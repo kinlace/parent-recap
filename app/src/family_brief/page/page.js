@@ -6,6 +6,7 @@ const page = {
   text: null, language: "en", chosen: null, languages: [], system: "macos", ais: [], installs: [],
   about: null,
   progress: null, welcome: null, connect: null, gmail: null, myclub: null, wilma: null,
+  eepos: null, evaka: null,
   sending: null,
   check: null, brief: null, welcomeShown: false, connectShown: false, workingShown: false,
   checkShown: false, briefShown: false, finishShown: false, finished: false,
@@ -429,6 +430,18 @@ const STEPS = {
     leave: () => { document.getElementById("myclub-link").value = ""; },
     working: () => ["working.myclub", null],
     label: "MyClub",
+  },
+  eepos: {
+    setUp: () => setUpSignins("eepos"), first: () => renderSignins("eepos"),
+    again: () => renderSignins("eepos"), leave: () => leaveSignins("eepos"),
+    working: () => ["working.eepos", { count: page.eepos.signins.length }],
+    label: "Eepos",
+  },
+  evaka: {
+    setUp: () => setUpSignins("evaka"), first: () => renderSignins("evaka"),
+    again: () => renderSignins("evaka"), leave: () => leaveSignins("evaka"),
+    working: () => ["working.evaka", { count: page.evaka.signins.length }],
+    label: "eVaka",
   },
 };
 
@@ -873,6 +886,11 @@ const FAILED = [
   "gateway.keychain-not-reachable", "gateway.keychain-failed",
   "myclub.pick-kid", "myclub.not-a-myclub-link", "myclub.link-failed", "myclub.not-a-calendar",
   "myclub.save-failed", "myclub.same-link", "myclub.kid-exists",
+  ...["eepos", "evaka"].flatMap((name) => [
+    "no-username", "wrong-password", "changed", "no-answer", "keychain-not-reachable",
+    "not-stored", "save-failed",
+  ].map((result) => `${name}.${result}`)),
+  "eepos.not-a-school", "evaka.not-a-city",
   "whatsapp.failed", "whatsapp.no-library",
   "open.not-opened", "open.app-not-opened",
 ];
@@ -2047,6 +2065,136 @@ async function leaveMyClub() {
     renderSources();
   } catch (e) {
     failed(e);
+  }
+}
+
+// ── Connect: Eepos and eVaka (#791). A guardian's sign-in at a music or art school on Eepos, or in
+// a city's eVaka, typed into the page's own fields. The server checks it with the service and
+// keeps the password in the secret store only once it works. The step lists the sign-ins kept,
+// each with the Kids it matched and a Remove button, and stays for another school or city until
+// Continue. Each step's fields and texts are named `<name>-…` and `<name>.…`.
+
+// Where each step's sign-in is: what the server calls it, read from the page's own fields.
+const SIGNIN_PLACES = {
+  eepos: { key: "school", given: () => document.getElementById("eepos-school").value },
+  evaka: { key: "city", given: evakaCity },
+};
+
+function setUpSignins(name) {
+  document.getElementById(`${name}-form`).addEventListener("submit", (e) => addSignin(name, e));
+  document.getElementById(`${name}-continue`).addEventListener(
+    "click", () => moveOn(`api/${name}/done`, {}));
+  if (name === "evaka") setUpEvakaCities();
+}
+
+// eVaka's cities, by the names families know them, and another city by its eVaka's address.
+function setUpEvakaCities() {
+  const select = document.getElementById("evaka-city");
+  const pick = document.createElement("option");
+  pick.value = "";
+  pick.disabled = true;
+  pick.selected = true;
+  setText(pick, "evaka.city.pick");
+  const other = document.createElement("option");
+  other.value = "other";
+  setText(other, "evaka.city.other");
+  select.replaceChildren(pick, ...page.evaka.cities.map(({ name, label }) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = label;
+    return option;
+  }), other);
+  select.addEventListener("change", () => {
+    const another = select.value === "other";
+    document.getElementById("evaka-host-field").hidden = !another;
+    document.getElementById("evaka-host").required = another;
+  });
+}
+
+function evakaCity() {
+  const city = document.getElementById("evaka-city").value;
+  return city === "other" ? document.getElementById("evaka-host").value : city;
+}
+
+function renderSignins(name) {
+  const { signins } = page[name];
+  const { key } = SIGNIN_PLACES[name];
+  document.getElementById(`${name}-signins`).hidden = signins.length === 0;
+  document.getElementById(`${name}-more`).hidden = signins.length === 0;
+  document.getElementById(`${name}-signin-list`).replaceChildren(...signins.map((signin) => {
+    const item = document.createElement("li");
+    const shown = document.createElement("span");
+    shown.textContent = `${signin.label || signin.address} (${signin.username})` +
+      (signin.kids.length ? `: ${signin.kids.join(", ")}` : "");
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "link";
+    setText(remove, `${name}.remove`);
+    remove.addEventListener("click", () => removeSignin(name, { [key]: signin[key],
+                                                               username: signin.username }, remove));
+    item.append(shown, " ", remove);
+    return item;
+  }));
+  // Skipping removes the sign-ins kept, so with one kept the way on is Continue.
+  if (signins.length) {
+    for (const link of document.querySelectorAll(`#source-${name} [data-skip]`)) link.hidden = true;
+  }
+}
+
+function leaveSignins(name) {
+  document.getElementById(`${name}-password`).value = "";
+}
+
+async function addSignin(name, event) {
+  event.preventDefault();
+  clearError();
+  const button = event.submitter;
+  button.disabled = true;
+  showSource(`${name}.checking`);
+  const { key, given } = SIGNIN_PLACES[name];
+  const username = document.getElementById(`${name}-username`);
+  const password = document.getElementById(`${name}-password`);
+  try {
+    const out = await post(`api/${name}`, { [key]: given(), username: username.value,
+                                           password: password.value });
+    // The password is never kept on the page: a wrong one is typed again.
+    password.value = "";
+    if (out.result === "saved") {
+      page.progress = out.progress;
+      page[name].signins = out.signins;
+      username.value = "";
+      if (name === "eepos") document.getElementById("eepos-school").value = "";
+      renderSources();
+      const found = out.found.map(({ name: who, kid }) =>
+        kid ? fill(t(`${name}.found.kid`), { name: who, kid }) : fill(t(`${name}.found.none`), { name: who }));
+      showSource(found.length ? `${name}.saved` : `${name}.saved.none`,
+        { kids: found, values: { events: out.events } });
+    } else {
+      showSource(`${name}.${out.result}`);
+    }
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById("source-status").scrollIntoView({ behavior: still ? "auto" : "smooth",
+                                                              block: "nearest" });
+  } catch (e) {
+    showSource(null);
+    failed(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function removeSignin(name, which, button) {
+  clearError();
+  button.disabled = true;
+  try {
+    const out = await post(`api/${name}/remove`, which);
+    page.progress = out.progress;
+    page[name].signins = out.signins;
+    renderSources();
+    showSource(`${name}.removed`);
+  } catch (e) {
+    failed(e);
+    button.disabled = false;
   }
 }
 
@@ -3369,6 +3517,8 @@ async function start() {
   page.connect = state.connect;
   page.gmail = state.gmail;
   page.myclub = state.myclub;
+  page.eepos = state.eepos;
+  page.evaka = state.evaka;
   page.whatsapp = state.whatsapp;
   page.wilma = state.wilma;
   page.sending = state.sending;

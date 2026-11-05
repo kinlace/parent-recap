@@ -85,6 +85,10 @@
           <dd data-text="welcome.ready.gmail"></dd>
           <dt data-text="source.myclub"></dt>
           <dd data-text="welcome.ready.myclub"></dd>
+          <dt data-text="source.eepos"></dt>
+          <dd data-text="welcome.ready.eepos"></dd>
+          <dt data-text="source.evaka"></dt>
+          <dd data-text="welcome.ready.evaka"></dd>
           <dt data-text="welcome.ready.phone"></dt>
           <dd data-text="welcome.ready.phone.why"></dd>
         </dl>
@@ -363,6 +367,82 @@
         <p class="hint" data-text="myclub.more"></p>
         <div class="actions">
           <button type="button" id="myclub-continue" data-text="continue"></button>
+        </div>
+      </div>
+    </div>
+    <div id="source-eepos" class="source" hidden>
+      <h2 data-text="source.eepos"></h2>
+      <p data-text="eepos.explain"></p>
+      <div id="eepos-signins" class="details" hidden>
+        <p data-text="eepos.signins"></p>
+        <ul id="eepos-signin-list" class="signins"></ul>
+        <div id="eepos-signins-slot" class="slot"></div>
+      </div>
+      <form id="eepos-form" class="details">
+        <div class="field">
+          <label for="eepos-school" data-text="eepos.school"></label>
+          <input type="text" id="eepos-school" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="eepos-school-hint" required>
+          <p id="eepos-school-hint" class="hint" data-text="eepos.school.hint"></p>
+        </div>
+        <div class="field">
+          <label for="eepos-username" data-text="eepos.username"></label>
+          <input type="text" id="eepos-username" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+        </div>
+        <div class="field">
+          <label for="eepos-password" data-text="eepos.password"></label>
+          <input type="password" id="eepos-password" autocomplete="current-password" aria-describedby="eepos-password-hint" required>
+          <p id="eepos-password-hint" class="hint" data-text="eepos.password.hint"></p>
+        </div>
+        <div class="slot" data-default></div>
+        <div class="actions">
+          <button type="submit" id="eepos-save" data-text="eepos.save"></button>
+          <button type="button" class="link" data-skip hidden></button>
+        </div>
+      </form>
+      <div id="eepos-more" class="details" hidden>
+        <p class="hint" data-text="eepos.more"></p>
+        <div class="actions">
+          <button type="button" id="eepos-continue" data-text="continue"></button>
+        </div>
+      </div>
+    </div>
+    <div id="source-evaka" class="source" hidden>
+      <h2 data-text="source.evaka"></h2>
+      <p data-text="evaka.explain"></p>
+      <div id="evaka-signins" class="details" hidden>
+        <p data-text="evaka.signins"></p>
+        <ul id="evaka-signin-list" class="signins"></ul>
+        <div id="evaka-signins-slot" class="slot"></div>
+      </div>
+      <form id="evaka-form" class="details">
+        <div class="field">
+          <label for="evaka-city" data-text="evaka.city"></label>
+          <select id="evaka-city" required></select>
+        </div>
+        <div id="evaka-host-field" class="field" hidden>
+          <label for="evaka-host" data-text="evaka.host"></label>
+          <input type="text" id="evaka-host" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="evaka-host-hint">
+          <p id="evaka-host-hint" class="hint" data-text="evaka.host.hint"></p>
+        </div>
+        <div class="field">
+          <label for="evaka-username" data-text="evaka.username"></label>
+          <input type="email" id="evaka-username" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+        </div>
+        <div class="field">
+          <label for="evaka-password" data-text="evaka.password"></label>
+          <input type="password" id="evaka-password" autocomplete="current-password" aria-describedby="evaka-password-hint" required>
+          <p id="evaka-password-hint" class="hint" data-text="evaka.password.hint"></p>
+        </div>
+        <div class="slot" data-default></div>
+        <div class="actions">
+          <button type="submit" id="evaka-save" data-text="evaka.save"></button>
+          <button type="button" class="link" data-skip hidden></button>
+        </div>
+      </form>
+      <div id="evaka-more" class="details" hidden>
+        <p class="hint" data-text="evaka.more"></p>
+        <div class="actions">
+          <button type="button" id="evaka-continue" data-text="continue"></button>
         </div>
       </div>
     </div>

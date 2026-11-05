@@ -421,7 +421,7 @@ def test_a_good_link_is_checked_and_saved_for_the_right_kid(harness, page, myclu
     assert myclub_links(harness) == {"Mia": "https://example.myclub.fi/ical/mia-old",
                                      "Leo": MYCLUB_LINK}
     # Every Kid has a link now, so MyClub is done and setup moves on.
-    assert out["progress"]["sources"]["myclub"] == "done" and out["progress"]["source"] is None
+    assert out["progress"]["sources"]["myclub"] == "done" and out["progress"]["source"] == "eepos"
     # The config is where the link is kept, and only there.
     printed = "".join(capsys.readouterr())
     for shown in [r.body.decode(), call(page.url, "api/state").body.decode(), printed, caplog.text,
@@ -438,7 +438,7 @@ def test_with_a_kid_still_without_a_link_the_step_stays_until_continue(harness, 
     assert out["progress"]["sources"]["myclub"] == "done"
     assert out["progress"]["source"] == "myclub"  # Leo's link can come next
     r = call(page.url, "api/myclub/done", method="POST", body={})
-    assert r.status == 200 and r.json()["progress"]["source"] is None
+    assert r.status == 200 and r.json()["progress"]["source"] == "eepos"
     assert myclub_links(harness) == {"Mia": MYCLUB_LINK, "Leo": None}
 
 
@@ -548,7 +548,7 @@ def test_skipping_myclub_saves_no_link_and_moves_on(harness, page, myclub_server
 
     out = source(page.url, "myclub", "skip").json()
 
-    assert out["progress"]["sources"]["myclub"] == "skipped" and out["progress"]["source"] is None
+    assert out["progress"]["sources"]["myclub"] == "skipped" and out["progress"]["source"] == "eepos"
     assert myclub_links(harness) == {"Mia": None, "Leo": None}
     assert myclub_server.downloads == []
 

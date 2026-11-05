@@ -133,7 +133,9 @@ Music and art schools on Eepos (such as Espoon musiikkiopisto at `emo.eepos.fi` 
 
 **Hosted sign-up**: the MyClub step has an Eepos part: the school (`emo`, `espoo` or its `*.eepos.fi` address), the guardian's Eepos username and password (#769). It is optional with Wilma; without Wilma, it or a MyClub link is needed. The service signs in, reads the students and matches them to the Kids before anything is made, so a wrong password is said on the page at once. One school at sign-up; a second is added by a maintainer as below.
 
-**Setup page**: no Eepos step yet (#755). A maintainer adds it from a terminal, as the Household's user, once for each school:
+**Setup page**: the optional Eepos step, after MyClub's (#791). The guardian gives the school (`emo`, or its `*.eepos.fi` address), the Eepos username and the password, in the page's own fields. The page's server signs in, reads the students and the next 14 days of the calendar, and only then keeps the password in the Keychain (Credential Manager on Windows) and the sign-in in the config, as the terminal command below does; a wrong password is said on the page and replaces nothing. The page shows which Kid each student is; a student who matches none is shown as such, and their lessons go to the whole Household. The step lists the schools added, each with a Remove button that deletes its password too, and stays for another school until Continue. Skipping Eepos removes every sign-in with its password.
+
+**Terminal**, for the maintainers, such as a Hosted Household's second school: as the Household's user, once for each school:
 
 1. The guardian needs an Eepos password. A family that signs in by an emailed link sets one first with "Forgot your password?" ("Unohditko salasanasi?") on the school's Eepos login
 2. **Terminal**: `$FB setup eepos --school emo --username <the guardian's Eepos username>`. The password is typed at the secret store's own prompt (the Keychain asks twice; a hosted server's prompt is hidden), so it never reaches the chat or a command line. The command signs in with it, reads the guardian's students and the next 14 days of the calendar, and only then stores the password (Keychain `family-brief` / `eepos-signin-<16 hex digits>`) and the sign-in in the config's `eepos.signins`. It prints which Kid each student is, matched by name; a student who matches none has their lessons go to the whole Household until their Eepos name is added to the Kid's `aliases` and the command run again
@@ -151,7 +153,9 @@ A public daycare on eVaka gives its events (an excursion, a photo day, a parents
 
 **Hosted sign-up**: the MyClub step has an eVaka part, below Eepos's: the city (picked from the list above, or the host of its eVaka), the guardian's eVaka email and password (#790). It is optional with Wilma; without Wilma, it, an Eepos sign-in or a MyClub link is needed. The service signs in, reads the children and matches them to the Kids before anything is made, so a wrong password is said on the page at once, and the device cookie it got is the Household's, so the city sees one device. One city at sign-up; a second is added by a maintainer as below.
 
-**Setup page**: no eVaka step yet. A maintainer adds it from a terminal, as the Household's user, once for each city:
+**Setup page**: the optional eVaka step, after Eepos's (#791). The guardian picks the city from the list, or "Another city" and the address of its eVaka, and gives the eVaka email and the password, in the page's own fields. It is checked, kept, shown, listed, removed and skipped as Eepos's step does, above; the device cookie is kept as below.
+
+**Terminal**, for the maintainers, such as for a Hosted Household: as the Household's user, once for each city:
 
 1. The guardian needs an eVaka email and password. One who has only signed in with Suomi.fi sets them first, under Personal information ("Omat tiedot") in eVaka, and verifies the email
 2. **Terminal**: `$FB setup evaka --city espoo --username <the guardian's eVaka email>`. `--city` takes a city's name as in the list above, without ä or ö, or the host of its eVaka. The password is typed at the secret store's own prompt (the Keychain asks twice; a hosted server's prompt is hidden), so it never reaches the chat or a command line. The command signs in with it, reads the guardian's children and the next 14 days, and only then stores the password (Keychain `family-brief` / `evaka-signin-<16 hex digits>`) and the sign-in in the config's `evaka.signins`. It prints which Kid each child is, matched by name; a child who matches none has their events go to the whole Household until their eVaka name is added to the Kid's `aliases` and the command run again
@@ -228,7 +232,7 @@ Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declare
    - uninstall: `secrets`, `survey` and `notes`, for what setup made for it and what the family removes themselves
    - Held-back Messages ([ADR 0013](adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md)): `sent_to_everyone`, `checked_body`, `group` and `held_back_link`. Without them, a message is held back when in doubt and listed by sender and subject, with no link
    - the calendar: `in_ics`
-   - `setup_page`: false for a Source the setup page has no panel for yet, which is set up from a terminal by its own `setup` command, as Eepos and eVaka are; the page's list then leaves it out
+   - `setup_page`: false for a Source the setup page has no panel for yet, which is set up from a terminal by its own `setup` command, as Eepos and eVaka were before #791; the page's list then leaves it out
 
    A hook in another module goes through `_in`, which imports it when called
 

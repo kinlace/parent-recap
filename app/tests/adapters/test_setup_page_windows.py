@@ -1,7 +1,7 @@
-"""The setup page from a fresh install to Finish with the gateway, Gmail and MyClub, driven with
+"""The setup page from a fresh install to Finish with the gateway, Gmail, MyClub and Eepos, driven with
 HTTP calls as the page makes them (ADR 0006, ADR 0019).
 
-Gmail's IMAP server, the gateway and the Brief's Sources are the harness's fakes; MyClub's
+Gmail's IMAP server, the gateway, the school's Eepos and the Brief's Sources are the harness's fakes; MyClub's
 calendar comes from this file's fake web. On any system the secrets, the evening jobs and the wake
 are its in-memory fakes too; on Windows a second run stores the secrets in the real Credential Manager and registers the evening jobs in the real
 Task Scheduler, under names of the test's own, removed after, and reads the real "Allow wake
@@ -17,9 +17,10 @@ from typing import Any
 import pytest
 import yaml
 
-from conftest import REAL_RUN, msg
+from conftest import REAL_RUN, eepos_student, msg
+from fake_sources import EEPOS_PASSWORD
 from family_brief import gateway, ops
-from family_brief.collectors import myclub
+from family_brief.collectors import eepos, myclub
 from family_brief.config import Config
 from family_brief.setup_server.gmail import MAX_RECIPIENTS
 from family_brief.system import jobs, jobs_windows, secrets, wake, wake_windows, windows_only
@@ -37,6 +38,7 @@ PARENT = "parent@example.com"
 # Windows' own Task Scheduler and Credential Manager take seconds on CI's runner, so Finish and the
 # checks around it are given longer than the page's own waits.
 SLOW = 120
+EEPOS_SECRET = eepos.secret_name("emo", PARENT)
 SENDERS = ["Opettaja <opettaja@edu.espoo.fi>"] * 3 + ["Coach <coach@tapiolan-seura.fi>"] * 2
 
 
@@ -92,6 +94,9 @@ def fresh_install(harness, monkeypatch):
     monkeypatch.setattr(sys, "executable", str(python))
     monkeypatch.setattr(myclub.requests, "get", Web().get)
     school_mail(harness)
+    school = harness.source_fakes["eepos"].school("emo")  # where Mia takes piano lessons
+    school.accounts[PARENT] = EEPOS_PASSWORD
+    school.students = [eepos_student(11, "Mia", "Virtanen")]
     return harness
 
 
@@ -100,7 +105,7 @@ def windows_pc(fresh_install, credential_manager, monkeypatch):
     """The same, with Windows' own Credential Manager, Task Scheduler and power settings, past
     the harness's fake `subprocess.run`, which stands in for the AIs' programs only."""
     harness = fresh_install
-    credential_manager.extend([f"gmail-imap-{PARENT}", gateway.ACCOUNT])
+    credential_manager.extend([f"gmail-imap-{PARENT}", gateway.ACCOUNT, EEPOS_SECRET])
     monkeypatch.setattr(jobs, "_adapter", TaskScheduler(harness))
     monkeypatch.setattr(jobs_windows, "PREFIX", f"Parent Recap test {uuid.uuid4().hex[:8]} ")
     monkeypatch.setattr(wake, "_adapter", wake_windows)
@@ -128,9 +133,10 @@ def walk_to_finish(harness, url: str, reads_gmail: bool = True) -> dict[str, Any
     assert save_recipients(url, {"address": PARENT, "language": "en"}).json()["result"] == "saved"
 
     listed = [s["name"] for s in call(url, "api/state").json()["connect"]["sources"]]
-    assert listed == ["wilma", "ai", "whatsapp", "myclub", "gmail"]
+    assert listed == ["wilma", "ai", "whatsapp", "myclub", "eepos", "evaka", "gmail"]
     for name in listed:
-        if name in ("wilma", "whatsapp"):  # the school has no Wilma, the family skips WhatsApp
+        # The school has no Wilma, the family skips WhatsApp, and Mia isn't in daycare.
+        if name in ("wilma", "whatsapp", "evaka"):
             assert source(url, name, "skip").status == 200, name
         elif name == "gmail":
             if reads_gmail:
@@ -142,10 +148,17 @@ def walk_to_finish(harness, url: str, reads_gmail: bool = True) -> dict[str, Any
         elif name == "myclub":
             assert add_kid(url, "Mia").json()["result"] == "added"
             out = save_link(url, "Mia", MYCLUB_LINK).json()
-            assert out["result"] == "saved" and out["progress"]["source"] == "gmail"
+            assert out["result"] == "saved" and out["progress"]["source"] == "eepos"
+        elif name == "eepos":  # the password typed into the page goes to the secret store
+            out = call(url, "api/eepos", method="POST", body={
+                "school": "emo", "username": PARENT, "password": EEPOS_PASSWORD}).json()
+            assert out["result"] == "saved" and out["found"] == [{"name": "Mia Virtanen", "kid": "Mia"}]
+            assert secrets.get(EEPOS_SECRET) == EEPOS_PASSWORD
+            out = call(url, "api/eepos/done", method="POST", body={}).json()
+            assert out["progress"]["source"] == "evaka"
     assert call(url, "api/state").json()["progress"]["source"] is None
     statuses = call(url, "api/state").json()["progress"]["sources"]
-    assert {statuses[s] for s in ("ai", "myclub")} == {"done"}
+    assert {statuses[s] for s in ("ai", "myclub", "eepos")} == {"done"}
     assert statuses["gmail"] == ("done" if reads_gmail else "skipped")
 
     assert start_reading(url).status == 200
@@ -197,7 +210,7 @@ def uninstall_leaves_nothing(harness, monkeypatch) -> None:
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
     assert jobs.found() == []
-    assert [n for n in (f"gmail-imap-{PARENT}", gateway.ACCOUNT) if secrets.has(n)] == []
+    assert [n for n in (f"gmail-imap-{PARENT}", gateway.ACCOUNT, EEPOS_SECRET) if secrets.has(n)] == []
     assert leftovers(harness.home) == []
 
 

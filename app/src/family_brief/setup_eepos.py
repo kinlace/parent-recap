@@ -1,6 +1,6 @@
 """Adding an Eepos sign-in from a terminal (ADR 0038), for the maintainers to turn Eepos on for a
-Household by hand until the setup page has a step for it (#755); the hosted sign-up has one
-(#769), which reuses `check` and `_save`.
+Household by hand. The setup page's Eepos step (#791) keeps and removes a sign-in through `keep`
+and `remove` here, and the hosted sign-up (#769) reuses `check` and `_save`.
 
 `setup eepos --school emo --username NAME` has the guardian's password typed at the secret store's
 own prompt in that terminal (`secrets.put_typed`), so it passes through no dialog, chat or command
@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import shlex
 import sys
+from contextlib import AbstractContextManager, nullcontext
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -87,46 +88,119 @@ def add(path: Path, school_given: str, username: str) -> tuple[str, str | None, 
     if not password:
         return "not-stored", f"No password was typed, so nothing was saved. Run this again: {retry}", {}
 
+    result, extra = keep(path, cfg, school, username, password)
+    return result, _next(result, school, username, extra), _reported(result, extra)
+
+
+def keep(path: Path, cfg: Config, school: str, username: str, password: str,
+         saving: AbstractContextManager[Any] = nullcontext()) -> tuple[str, dict[str, Any]]:
+    """Signs in as `username` at `school` with `password` and, only once that works, keeps the
+    password in the secret store under the sign-in's own name and the sign-in in the config at
+    `path`, holding `saving` only while it writes the config: the result, with the school's
+    address, each student with the Kid it matched (None for none) and the events once saved, or
+    the error otherwise. A password that doesn't work never replaces one that does. `setup eepos`
+    and the setup page's Eepos step both keep a sign-in through this."""
     signin = EeposSignin(school=school, username=username)
     try:
         checked = check(cfg, signin, password)
     except eepos.WrongPassword:
-        return "wrong-password", (f"Eepos didn't take that username and password at "
-                                  f"{eepos.address(school)}, so nothing was saved. A family that "
-                                  "signs in by an emailed link sets a password first, with "
-                                  f"\"Forgot your password?\" on the school's Eepos login. Then: {retry}"), {}
+        return "wrong-password", {}
     except eepos.Changed as e:
-        return "changed", (f"Eepos answered in a way Parent Recap doesn't know, so nothing was "
-                           f"saved: {e}. Its portal may have changed; tell the maintainers."), {}
+        return "changed", {"error": str(e)}
     except eepos.EeposError as e:
-        return "no-answer", f"Eepos couldn't be read, so nothing was saved: {e}. Run this again: {retry}", {}
+        return "no-answer", {"error": str(e)}
 
     matched = {s.id: kid for s, kid in checked["students"] if kid}
     signin = EeposSignin(school=school, username=username, kids=matched)
     try:
         secrets.put(eepos.secret_name(school, username), password)
     except secrets.SecretsError as e:
-        result, extra = keychain_failure(e)
+        result, code = keychain_failure(e)
         if result == "keychain-not-reachable":
-            return result, ("The sign-in works, but macOS doesn't let Parent Recap keep its "
-                            f"password in the Keychain from inside tmux or SSH. Run this again "
-                            f"{PLAIN_TERMINAL}: {retry}"), extra
-        return "not-stored", f"The sign-in works, but the {secrets.STORE} didn't take its password: {e}", {}
+            return result, code
+        return "not-stored", {"error": str(e), **code}
     install_record.add("keychain", eepos.secret_name(school, username))
     try:
-        _save(path, signin)
+        with saving:
+            _save(path, signin)
     except (OSError, ValueError, yaml.YAMLError) as e:
-        return "save-failed", f"The sign-in works, but it couldn't be saved in the config: {str(e)[:300]}", {}
+        return "save-failed", {"error": str(e)[:300]}
+    return "saved", {"school": eepos.address(school), "events": checked["events"],
+                     "students": [{"name": s.called(), "kid": kid} for s, kid in checked["students"]]}
 
-    students = [{"name": s.called(), "kid": kid} for s, kid in checked["students"]]
-    unmatched = [s["name"] for s in students if s["kid"] is None]
-    extra = {"school": eepos.address(school), "students": students, "events": checked["events"]}
-    if unmatched:
-        return "saved", (f"{', '.join(unmatched)} matched none of the Kids, so their lessons go to "
-                         "the whole Household. Add the name Eepos gives as an alias of the Kid in "
-                         f"the config, then run this again: {retry}"), extra
-    return "saved", None, extra
 
+def _next(result: str, school: str, username: str, extra: dict[str, Any]) -> str | None:
+    """What the maintainer does next after `keep`'s `result`, or None once all is done."""
+    retry = again(school, username)
+    error = extra.get("error")
+    if result == "saved":
+        unmatched = [s["name"] for s in extra["students"] if s["kid"] is None]
+        return None if not unmatched else (
+            f"{', '.join(unmatched)} matched none of the Kids, so their lessons go to the whole "
+            "Household. Add the name Eepos gives as an alias of the Kid in the config, then run "
+            f"this again: {retry}")
+    return {
+        "wrong-password": (f"Eepos didn't take that username and password at "
+                           f"{eepos.address(school)}, so nothing was saved. A family that signs in "
+                           "by an emailed link sets a password first, with \"Forgot your "
+                           f"password?\" on the school's Eepos login. Then: {retry}"),
+        "changed": (f"Eepos answered in a way Parent Recap doesn't know, so nothing was saved: "
+                    f"{error}. Its portal may have changed; tell the maintainers."),
+        "no-answer": f"Eepos couldn't be read, so nothing was saved: {error}. Run this again: {retry}",
+        "keychain-not-reachable": ("The sign-in works, but macOS doesn't let Parent Recap keep its "
+                                   "password in the Keychain from inside tmux or SSH. Run this "
+                                   f"again {PLAIN_TERMINAL}: {retry}"),
+        "not-stored": f"The sign-in works, but the {secrets.STORE} didn't take its password: {error}",
+        "save-failed": f"The sign-in works, but it couldn't be saved in the config: {error}",
+    }[result]
+
+
+def _reported(result: str, extra: dict[str, Any]) -> dict[str, Any]:
+    """What `setup eepos` reports besides its result and what to do next."""
+    if result == "saved":
+        return extra
+    return {k: v for k, v in extra.items() if k == "code" and result == "keychain-not-reachable"}
+
+
+def remove(path: Path, school: str, username: str,
+           saving: AbstractContextManager[Any] = nullcontext()) -> bool:
+    """Removes the sign-in as `username` at `school` from the config at `path`, holding `saving`
+    while it writes, and deletes its password from the secret store: whether there was one."""
+    with saving:
+        cfg = Config.load(path)
+        gone = [s for s in cfg.eepos.signins
+                if s.school == school and s.username.casefold() == username.strip().casefold()]
+        if not gone:
+            return False
+        _drop(path, gone)
+    return True
+
+
+def remove_all(path: Path) -> None:
+    """Removes every Eepos sign-in from the config at `path`, with its password, as skipping
+    Eepos on the setup page does: a Household that skips it doesn't read it (#500)."""
+    try:
+        cfg = Config.load(path)
+    except FileNotFoundError:
+        return
+    if cfg.eepos.signins:
+        _drop(path, cfg.eepos.signins)
+
+
+def _drop(path: Path, gone: list[EeposSignin]) -> None:
+    names = {eepos.secret_name(s.school, s.username) for s in gone}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    section = data["eepos"] if isinstance(data.get("eepos"), dict) else {}
+    data["eepos"] = {**section, "signins": [
+        s for s in section.get("signins") or []
+        if not (isinstance(s, dict) and eepos.secret_name(
+            eepos.school_of(str(s.get("school", ""))) or "", str(s.get("username", ""))) in names)]}
+    new = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
+    Config.model_validate(yaml.safe_load(new))
+    _write_private(path, new)
+    for name in names:
+        secrets.delete(name)
+        install_record.remove("keychain", name)
 
 def _save(path: Path, signin: EeposSignin) -> None:
     """Puts `signin` in the config's eepos.signins, in place of one for the same username at the
