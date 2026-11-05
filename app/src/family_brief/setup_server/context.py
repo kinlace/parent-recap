@@ -168,10 +168,50 @@ class Context:
         email = self.model().email
         return email.to[0].address if email.to else None
 
+    def kid_names(self) -> list[str]:
+        """The Household's Kids so far, by name."""
+        return [k["name"] for k in self.data().get("kids") or []
+                if isinstance(k, dict) and isinstance(k.get("name"), str)]
+
+    def adds_kids(self) -> bool:
+        """Whether the family adds its Kids by name on the page: only without Wilma, whose Kids
+        are the ones it lists."""
+        return self.section("wilma").get("enabled") is not True
+
     def gateway_url(self) -> str:
         """The gateway the config names, else the maintainers' own."""
         url = self.section("llm").get("gateway_url")
         return url if isinstance(url, str) and url else LLMConfig().gateway_url
+
+
+# What adding a Kid by the name the family calls them can say, on MyClub's, Eepos's and eVaka's
+# steps, for a Household without Wilma (#796).
+KID_RESULTS = ("added", "kid-exists")
+
+
+def add_kid(context: Context, given: str, also: Callable[[], None] = lambda: None) -> Reply:
+    """For a Household without Wilma: adds a Kid by the name the family calls them, every Kid
+    already there keeping the rest of what's saved for them, such as a MyClub link. A name
+    already a Kid's, in any case, adds nothing and says `kid-exists`. `also` runs under the same
+    saving lock just before the Kid is saved, such as for a sign-in to name the Kid one of its
+    students is; what it raises is the caller's. With Wilma, the Kids are the ones Wilma lists,
+    so none is added here."""
+    name = given.strip()
+    if not (name and context.adds_kids()):
+        return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+            "invalid-answers", "Type the Kid's name. A Household with Wilma has its Kids from "
+            "there.", errors=["name: should be text, for a Household without Wilma"])
+    connect = context.connect
+    with connect.lock:
+        names = context.kid_names()
+        if name.casefold() in (n.casefold() for n in names):
+            return HTTPStatus.OK, {"result": "kid-exists"}
+        also()
+        # Only the names: each Kid already there keeps the rest, such as their link.
+        status, out = connect.save({"kids": [{"name": n} for n in [*names, name]]})
+    if status != HTTPStatus.OK:
+        return status, out
+    return status, {**out, "result": "added", "kid": name}
 
 
 class Phase:

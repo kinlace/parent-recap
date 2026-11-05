@@ -24,6 +24,7 @@ from setup_page import clock, page  # noqa: F401
 USERNAME = "parent@example.com"
 SECRET = evaka.secret_name("espoo", USERNAME)
 MIA, LEO = "1a2b3c4d-0000-4000-8000-000000000011", "1a2b3c4d-0000-4000-8000-000000000012"
+OLLI = "1a2b3c4d-0000-4000-8000-000000000013"
 
 
 @pytest.fixture
@@ -243,7 +244,8 @@ def test_a_sign_in_typed_on_the_page_is_checked_kept_in_the_store_and_listed(har
 
     out = r.json()
     assert out["result"] == "saved" and out["events"] == 2
-    assert out["found"] == [{"name": "Mia Emilia Virtanen", "kid": "Mia"}, {"name": "Leo Virtanen", "kid": "Leo"}]
+    assert out["found"] == [{"name": "Mia Emilia Virtanen", "kid": "Mia", "id": MIA, "first": "Mia"},
+                            {"name": "Leo Virtanen", "kid": "Leo", "id": LEO, "first": "Leo"}]
     assert out["signins"] == [{"city": "espoo", "label": "Espoo", "address": "espoonvarhaiskasvatus.fi",
                                "username": USERNAME, "kids": ["Mia", "Leo"]}]
     assert out["progress"]["sources"]["evaka"] == "done"
@@ -284,10 +286,11 @@ def test_what_isn_t_a_city_is_refused_without_signing_in(harness, page, portal):
 
 
 def test_a_child_who_is_none_of_the_kids_is_shown_not_guessed(harness, page, portal):
-    portal.city("espoo").children.append(evaka_child("1a2b3c4d-0000-4000-8000-000000000013", "Olli", "Virtanen"))
+    portal.city("espoo").children.append(evaka_child(OLLI, "Olli", "Virtanen"))
     at_the_evaka_step(harness)
 
-    assert sign_in(page.url).json()["found"][-1] == {"name": "Olli Virtanen", "kid": None}
+    assert sign_in(page.url).json()["found"][-1] == {"name": "Olli Virtanen", "kid": None, "id": OLLI,
+                                                     "first": "Olli"}
 
 
 def test_a_city_is_removed_with_its_password(harness, page, portal):
@@ -308,3 +311,111 @@ def test_skipping_evaka_removes_its_sign_ins_and_passwords(harness, page, portal
 
     assert source(page.url, "evaka", "skip").json()["progress"]["sources"]["evaka"] == "skipped"
     assert saved_config(harness)["evaka"]["signins"] == [] and SECRET not in harness.secrets
+
+
+# ── A Household without Wilma adds its Kids on eVaka's step (#796)
+
+def an_evaka_only_household(harness) -> None:
+    """A Household whose daycare's eVaka is its only Source of the Kids: no Wilma, no MyClub,
+    no Kid yet, at eVaka's step."""
+    harness.config["kids"] = []
+    harness.config["wilma"] = {"enabled": False}
+    harness.config["whatsapp"] = {"enabled": False}
+    at_the_evaka_step(harness)
+
+
+def add_kid(url: str, name: str, child: str | None = None, city: str = "espoo",
+            username: str = USERNAME) -> Response:
+    body = {"name": name} if child is None else {"name": name, "city": city, "username": username, "id": child}
+    return call(url, "api/evaka/kid", method="POST", body=body)
+
+
+def ics_of_the_evening(harness) -> bytes:
+    """The evening run's .ics, its folded lines unfolded."""
+    harness.config = saved_config(harness)
+    harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": "- A trip and a photo day"}
+    assert harness.run() == 0
+    [email] = harness.sent
+    _, ics, _ = email.attachment(".ics")
+    return ics.replace(b"\r\n ", b"")
+
+
+def test_a_child_found_is_added_as_a_kid_and_the_evening_puts_their_events_under_them(harness, page, portal):
+    harness.sources["evaka"].append(evaka_event("Kuvauspäivä", "2026-10-01", children=(MIA,)))
+    an_evaka_only_household(harness)
+    assert call(page.url, "api/state").json()["evaka"]["add"] is True
+    found = sign_in(page.url).json()["found"]
+    assert [(p["first"], p["kid"]) for p in found] == [("Mia", None), ("Leo", None)]
+
+    # Leo by the name eVaka gives, Mia by one it doesn't.
+    leo = add_kid(page.url, " Leo ", LEO).json()
+    mia = add_kid(page.url, "Mimi", MIA).json()
+
+    assert leo["result"] == mia["result"] == "added" and mia["kid"] == "Mimi"
+    assert mia["signins"][0]["kids"] == ["Leo", "Mimi"]  # the step lists them at once
+    assert call(page.url, "api/state").json()["evaka"]["signins"][0]["kids"] == ["Leo", "Mimi"]
+    config = saved_config(harness)
+    assert config["kids"] == [{"name": "Leo"}, {"name": "Mimi"}]
+    assert config["evaka"]["signins"] == [{"city": "espoo", "username": USERNAME,
+                                           "kids": {LEO: "Leo", MIA: "Mimi"}}]
+    assert mia["progress"]["sources"]["evaka"] == "done"
+
+    ics = ics_of_the_evening(harness)
+    assert "Retki Nuuksioon".encode() in ics and "Parent Recap · Leo]".encode() in ics
+    assert "Parent Recap · Mimi]".encode() in ics
+
+
+def test_a_kid_added_by_name_alone_gets_the_events_of_the_child_with_that_name(harness, page, portal):
+    an_evaka_only_household(harness)
+    sign_in(page.url)
+
+    out = add_kid(page.url, "Leo").json()
+
+    assert out["result"] == "added" and saved_config(harness)["kids"] == [{"name": "Leo"}]
+    # Matched by name each evening, so the sign-in names no Kid for the child.
+    assert saved_config(harness)["evaka"]["signins"][0]["kids"] == {}
+    assert "Parent Recap · Leo]".encode() in ics_of_the_evening(harness)
+
+
+def test_a_kid_already_there_is_not_added_again(harness, page, portal):
+    an_evaka_only_household(harness)
+    sign_in(page.url)
+    add_kid(page.url, "Leo", LEO)
+
+    assert add_kid(page.url, "LEO").json() == {"result": "kid-exists"}
+    assert add_kid(page.url, "leo", MIA).json() == {"result": "kid-exists"}
+    config = saved_config(harness)
+    assert config["kids"] == [{"name": "Leo"}]
+    assert config["evaka"]["signins"][0]["kids"] == {LEO: "Leo"}
+
+
+def test_with_wilma_the_kids_are_wilma_s_and_none_is_added_here(harness, page, portal):
+    portal.city("espoo").children.append(evaka_child(OLLI, "Olli", "Virtanen"))
+    at_the_evaka_step(harness)  # Wilma lists Mia and Leo
+    sign_in(page.url)
+    assert call(page.url, "api/state").json()["evaka"]["add"] is False
+
+    for r in (add_kid(page.url, "Olli", OLLI), add_kid(page.url, "Olli")):
+        assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    config = saved_config(harness)
+    assert [k["name"] for k in config["kids"]] == ["Mia", "Leo"]
+    assert config["evaka"]["signins"][0]["kids"] == {MIA: "Mia", LEO: "Leo"}
+
+
+@pytest.mark.parametrize("change", [
+    {"id": "1a2b3c4d-0000-4000-8000-000000000099"},  # not a child this sign-in found
+    {"username": "someone@example.com"},
+    {"city": "tampere"},
+    {"city": "not a city"},
+    {"id": None},
+    {"name": " "},
+], ids=["unknown-child", "another-username", "another-city", "not-a-city", "no-id", "no-name"])
+def test_a_kid_is_added_only_for_a_child_a_sign_in_just_found(harness, page, portal, change):
+    an_evaka_only_household(harness)
+    sign_in(page.url)
+    body = {"name": "Leo", "city": "espoo", "username": USERNAME, "id": LEO, **change}
+
+    r = call(page.url, "api/evaka/kid", method="POST", body={k: v for k, v in body.items() if v is not None})
+
+    assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    assert saved_config(harness)["kids"] == []

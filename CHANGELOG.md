@@ -7,6 +7,9 @@ What changes for families in each release, collected from the `What changes for 
 ### Changed
 
 - When the setup page's Gmail step gets a password that isn't an App Password, such as your own Google password, the fold "Google says App Passwords aren't available" opens by itself with its Open 2-Step Verification button, and the message says to turn 2-Step Verification on first if Google's App passwords page said your account can't use this setting, or to skip Gmail for now.
+### Added
+
+- A family without Wilma can add its Kids on the setup page's Eepos and eVaka steps: next to a student or child who matches none of your Kids, "Add as a Kid" adds them under the name you call them, and their lessons or daycare events come under that Kid from the next Brief. Opened again later, the steps have a field to add a Kid by name.
 
 ## 0.12.0 · 2026-11-05
 

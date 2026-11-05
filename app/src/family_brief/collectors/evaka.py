@@ -128,6 +128,11 @@ class Child:
     def called(self) -> str:
         return " ".join(n for n in (self.preferred_name or self.first_name, self.last_name) if n) or self.id
 
+    def first(self) -> str:
+        """The one name the child goes by, as a Kid may be added under it: the preferred name,
+        else the first given name."""
+        return self.preferred_name or (self.first_name.split() or [self.called()])[0]
+
 
 def city_of(text: str) -> str | None:
     """The city a sign-in is in, as the config keeps it: its name in CITIES, from that name, also

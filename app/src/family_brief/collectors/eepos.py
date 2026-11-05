@@ -83,6 +83,11 @@ class Student:
     def called(self) -> str:
         return " ".join(n for n in (self.first_name, self.last_name) if n) or self.nickname or self.id
 
+    def first(self) -> str:
+        """The one name the student goes by, as a Kid may be added under it: the first word of
+        the first name, else the nickname."""
+        return (self.first_name.split() or [self.nickname or self.called()])[0]
+
 
 def school_of(text: str) -> str | None:
     """The school's own part of its Eepos address, `emo` for emo.eepos.fi, from that part, the

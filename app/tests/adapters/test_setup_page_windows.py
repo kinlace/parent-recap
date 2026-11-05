@@ -152,7 +152,8 @@ def walk_to_finish(harness, url: str, reads_gmail: bool = True) -> dict[str, Any
         elif name == "eepos":  # the password typed into the page goes to the secret store
             out = call(url, "api/eepos", method="POST", body={
                 "school": "emo", "username": PARENT, "password": EEPOS_PASSWORD}).json()
-            assert out["result"] == "saved" and out["found"] == [{"name": "Mia Virtanen", "kid": "Mia"}]
+            assert out["result"] == "saved"
+            assert [(p["name"], p["kid"]) for p in out["found"]] == [("Mia Virtanen", "Mia")]
             assert secrets.get(EEPOS_SECRET) == EEPOS_PASSWORD
             out = call(url, "api/eepos/done", method="POST", body={}).json()
             assert out["progress"]["source"] == "evaka"
