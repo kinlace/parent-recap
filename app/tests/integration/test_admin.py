@@ -248,7 +248,7 @@ def test_help_lists_every_task_one_line_each(server, capsys):
     assert server.admin("--help") == 0
     out = capsys.readouterr().out
     for task in ("invite", "households", "keys", "cost", "key new", "key off", "key on", "find",
-                 "remove", "check"):
+                 "remove", "check", "household"):
         assert sum(line.lstrip().startswith(task + " ") for line in out.splitlines()) == 1, task
 
 
@@ -316,6 +316,43 @@ def test_remove_runs_signup_remove_with_the_admin_login_in_its_environment_only(
 @pytest.mark.parametrize("args", [(), ("ph-0123abcd", "ph-89abcdef")])
 def test_remove_takes_exactly_one_label(server, capsys, args):
     assert server.admin("remove", *args) == 2
+    assert "usage" in capsys.readouterr().err and server.ran == []
+
+
+@pytest.mark.parametrize("change, command", [((), "show"), (("recipients",), "recipients"),
+                                             (("myclub",), "myclub")])
+def test_household_runs_its_signup_command_as_the_household_s_own_user(server, change, command):
+    server.household("ph-0123abcd", ["parent@example.com"])
+
+    assert server.admin("household", "ph-0123abcd", *change) == 0
+
+    [(argv, env)] = server.ran
+    # What the maintainer types, addresses and links, goes to its stdin: none is an argument,
+    # since sudo logs each command line.
+    assert argv == ["sudo", "-u", "ph-0123abcd", "-H", "--",
+                    "/usr/local/lib/parent-recap/bin/parent-recap", "signup", command]
+    assert "BIFROST_ADMIN_PASSWORD" not in env
+
+
+@pytest.mark.parametrize("label", ["ph-89abcdef", "ph-0123ABCD", "parent-recap-signup", "root"])
+def test_household_refuses_a_label_that_is_no_household_s(server, capsys, label):
+    server.household("ph-0123abcd", ["parent@example.com"])
+
+    assert server.admin("household", label) == 1
+
+    assert "no Hosted Household" in capsys.readouterr().err and server.ran == []
+
+
+def test_household_without_any_household_refuses_every_label(server, capsys):
+    assert server.admin("household", "ph-0123abcd") == 1
+    assert server.ran == []
+
+
+@pytest.mark.parametrize("args", [(), ("ph-0123abcd", "evening"),
+                                  ("ph-0123abcd", "recipients", "parent@example.com")])
+def test_household_takes_a_label_and_one_change_and_no_address(server, capsys, args):
+    server.household("ph-0123abcd", ["parent@example.com"])
+    assert server.admin("household", *args) == 2
     assert "usage" in capsys.readouterr().err and server.ran == []
 
 
