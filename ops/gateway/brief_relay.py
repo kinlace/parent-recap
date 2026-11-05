@@ -1038,13 +1038,19 @@ def _one_line(text: Any) -> str:
     return " ".join("".join(c if c.isprintable() else " " for c in str(text or "")).split())
 
 
-def print_keys(keys: Bifrost, state: Path, today: str, find: str | None = None) -> list[str]:
+def print_keys(keys: Bifrost, state: Path, today: str, find: str | None = None,
+               addresses: bool = False) -> list[str]:
     """`admin keys`: every Gateway Key, one line each, for the maintainers (README "See every
     key"): its name and id, who holds it, what it can do, whether it is on, when it was made and
     last used, and its spend today and over the last 30 days. A key made on request is followed by
-    its addresses and whether each confirmed. Never a key's value. With `find` (`admin find`),
-    only the keys whose description (who holds it) or bound addresses hold that text, ignoring
-    case. Returns the names of the keys printed.
+    how many addresses are bound to it and how many of them confirmed. Never a key's value.
+
+    Its output is pasted into a chat (#781), so it prints no address: an email in who holds a key
+    is printed as <address>. With `addresses` (`admin keys --addresses`, and `admin find`), who
+    holds it is printed as it is, and a key made on request is followed by each of its addresses
+    and whether it confirmed. With `find` (`admin find`), only the keys whose description (who
+    holds it) or bound addresses hold that text, ignoring case. Returns the names of the keys
+    printed.
 
     "Last used" is the later of its last model call in Bifrost's request log (which keeps 90 days)
     and the last Brief the relay sent with it (`LastSent`). Days are UTC days."""
@@ -1085,6 +1091,8 @@ def print_keys(keys: Bifrost, state: Path, today: str, find: str | None = None) 
         kind = "writes+sends" if k.get("provider_configs") else "sends only"
         on = "on" if k.get("is_active") is True else "off"
         holder = _one_line(k.get("description"))
+        if not addresses:
+            holder = ADDRESS.sub("<address>", holder)
         made = _utc_day(k.get("created_at")) or (entry or {}).get("made") or "-"
         budgets = k.get("budgets") or ([k["budget"]] if k.get("budget") else [])
         limit = "".join(f" of ${b['max_limit']:.2f}" for b in budgets[:1]
@@ -1099,7 +1107,14 @@ def print_keys(keys: Bifrost, state: Path, today: str, find: str | None = None) 
         print(f"{k.get('name') or key_id}  id={key_id}  {holder + '  ' if holder else ''}{kind}  "
               f"{on}  made {made}  last used {last}  {spend}")
         printed.append(str(k.get("name") or key_id))
-        for r in (entry or {}).get("recipients", []):
+        recipients = (entry or {}).get("recipients", [])
+        if not addresses:
+            if recipients:
+                n = len(recipients)
+                print(f"  {n} address{'' if n == 1 else 'es'}, "
+                      f"{sum(1 for r in recipients if r['confirmed'])} confirmed")
+            continue
+        for r in recipients:
             print(f"  {r['address']} ({r['language']}): "
                   f"{'confirmed ' + r['confirmed'] if r['confirmed'] else 'not confirmed'}")
     return printed

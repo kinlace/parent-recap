@@ -49,8 +49,9 @@ usage: sudo admin <task> [arguments]
 
   invite --recipient ADDRESS[:LANGUAGE] ...  mint an Invite Link and print it (invite --help)
   households                                 every Hosted Household's last run and checks
-  keys                                       every Gateway Key: who holds it, what it can do, on
-                                             or off, made, last used, spend
+  keys [--addresses]                         every Gateway Key: who holds it, what it can do, on
+                                             or off, made, last used, spend, how many addresses
+                                             it has; --addresses prints them
   cost                                       this month's model spend per key and in all
   key new LABEL "WHO HOLDS IT" [--send-only] make a Gateway Key and print its value, once;
                                              asks for the holder's email
@@ -198,10 +199,11 @@ def main(argv: list[str], paths: Paths | None = None,
             return exec_as(_as_service(paths, [f"--preserve-env={','.join(ADMIN_LOGIN)}"],
                                        "signup", "remove", args[0]), {**_clean_env(), **login})
         if task == "keys":
-            if args:
-                raise Usage("keys")
+            if args not in ([], ["--addresses"]):
+                raise Usage("keys [--addresses]")
             relay, keys = _keys(paths, fetch)
-            relay.print_keys(keys, paths.relay_state, today=today or _today())
+            relay.print_keys(keys, paths.relay_state, today=today or _today(),
+                             addresses=bool(args))
             return 0
         if task == "cost":
             if args:
@@ -274,7 +276,8 @@ def _find_keys(paths: Paths, text: str, fetch: Callable[..., dict] | None,
     """Each Gateway Key matching `text`, by its `admin keys` line; a Hosted Household's key, named
     by its label, also by that Household's `admin households` lines."""
     relay, keys = _keys(paths, fetch)
-    printed = relay.print_keys(keys, paths.relay_state, today=today, find=text)
+    # What matched the text the maintainer typed, addresses and all (#781).
+    printed = relay.print_keys(keys, paths.relay_state, today=today, find=text, addresses=True)
     hosted = [name for name in printed if LABEL.fullmatch(name)]
     if hosted:
         code, out = run(_as_service(paths, [], "signup", "status"), _clean_env())

@@ -343,6 +343,46 @@ def test_keys_lists_every_key_and_never_its_value(server, capsys):
     assert "sk-bf-" not in out
 
 
+BOUND = {"keys": {"id-2": {"name": "send-pilot-b", "made": "2026-10-20", "recipients": [
+    {"address": "Grandma@Example.com", "language": "fi", "token": "t-one",
+     "confirmed": "2026-10-21T08:00:00Z"},
+    {"address": "partner@example.fi", "language": "zh", "token": "t-two", "confirmed": None}]}}}
+HOLDER_EMAIL = {"id": "id-4", "name": "send-pilot-d", "value": "sk-bf-four", "is_active": True,
+                "description": "Lahti family, Parent@Example.com, own Claude Code or Codex, "
+                               "2026-11-04"}
+
+
+def test_keys_prints_no_address_only_how_many_are_bound_and_confirmed(server, capsys):
+    """Its output is pasted into a chat (#781): no Recipient's or holder's address."""
+    (server.paths.relay_state / "bindings.json").write_text(json.dumps(BOUND))
+    server.bifrost.keys.append(HOLDER_EMAIL)
+    assert server.admin("keys") == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[1].startswith("send-pilot-b  id=id-2  sends only  ")
+    assert lines[2] == "  2 addresses, 1 confirmed"
+    assert lines[3].startswith("send-pilot-d  id=id-4  Lahti family, <address>, own Claude Code ")
+    out = "\n".join(lines)
+    for secret in ("@", "Grandma", "partner", "t-one", "sk-bf-"):
+        assert secret not in out
+
+
+def test_keys_with_addresses_prints_them_as_find_does(server, capsys):
+    (server.paths.relay_state / "bindings.json").write_text(json.dumps(BOUND))
+    server.bifrost.keys.append(HOLDER_EMAIL)
+    assert server.admin("keys", "--addresses") == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[2:4] == ["  Grandma@Example.com (fi): confirmed 2026-10-21T08:00:00Z",
+                          "  partner@example.fi (zh): not confirmed"]
+    assert lines[4].startswith("send-pilot-d  id=id-4  Lahti family, Parent@Example.com, ")
+    assert "t-one" not in "\n".join(lines)
+
+
+@pytest.mark.parametrize("args", [("--address",), ("--addresses", "x")])
+def test_keys_takes_only_addresses(server, capsys, args):
+    assert server.admin("keys", *args) == 2
+    assert "keys [--addresses]" in capsys.readouterr().err
+
+
 def test_keys_says_never_for_a_key_neither_bifrost_nor_the_relay_saw_used(server, capsys):
     server.bifrost.logs = []
     assert server.admin("keys") == 0

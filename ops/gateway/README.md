@@ -366,7 +366,7 @@ sudo admin find Korhonen
 It searches two things and prints what matched in each:
 
 - **Hosted Households.** It reads each Household's config (`/home/ph-…/.family/config.yaml`, which root can read) with the shared program's Python, and prints the label of each Household whose Brief or Weekend Picks Recipients include the address (the whole address), ignoring case, with its Invite Link's note in brackets, such as `ph-0123abcd (Virtanen family)`, and nothing else of its config. It follows no link in a Household's home, `.family` or config, since a Household's user can make one.
-- **Gateway Keys.** Each key whose `description` (who holds it, with the holder's email when `key new` was given one) or one of the addresses bound to a key made on request (`bindings.json` in the relay's state directory) holds the text, ignoring case, is printed with its `admin keys` line (made, last used, spend) and, for a key made on request, its addresses. A Hosted Household's key (named `ph-…`) is followed by that Household's lines from `admin households`. It never prints a key's value.
+- **Gateway Keys.** Each key whose `description` (who holds it, with the holder's email when `key new` was given one) or one of the addresses bound to a key made on request (`bindings.json` in the relay's state directory) holds the text, ignoring case, is printed with its `admin keys --addresses` line (made, last used, spend) and, for a key made on request, its addresses. A Hosted Household's key (named `ph-…`) is followed by that Household's lines from `admin households`. It never prints a key's value.
 
 When one of the two can't be searched, such as Bifrost not answering, it says why and still prints the other. It exits 1 only when neither a Household nor a key matched.
 
@@ -417,13 +417,15 @@ What you want, and the command for it. Each runs on the server as `sudo admin �
 | Undo the last deploy, the program alone or the data too | `rollback`, `rollback --restore` (see "Upgrade, check, switch back")                                             |
 | What is wrong tonight                                   | `check` (see "The nightly check")                                                                                |
 
+**What can be pasted.** The output of `households`, `keys`, `cost`, `check`, `deploys` and `--help` carries no address, no Kid's name and no key's value, so it can be pasted into a chat, such as one with an AI assistant, as it is. `find`, `invite` and `keys --addresses` echo addresses, and `key new` prints a key's value: read those on the server, or take the addresses and the key out before pasting.
+
 Every routine task is one command on the server: SSH in, then `sudo admin <task>`. Nothing runs on the server from a laptop, and nothing below is run on the public address. `gateway-setup.sh` installs it as `/usr/local/sbin/admin` from `ops/gateway/admin`. It reads the admin login from `/etc/bifrost/bifrost.env` itself, never the provider key beside it, and calls Bifrost's admin API on localhost, so no tunnel is needed. `sudo admin --help` lists its tasks:
 
 | Task                                         | What it does                                                                                                         |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `invite --recipient ADDRESS[:LANGUAGE] …`    | Mints an Invite Link and prints it (see "Invite a Household")                                                        |
 | `households`                                 | Every Hosted Household's last run and checks (see "See every Household's status")                                    |
-| `keys`                                       | Every Gateway Key: who holds it, what it can do, made, last used, spend (below)                                      |
+| `keys [--addresses]`                         | Every Gateway Key: who holds it, what it can do, made, last used, spend; `--addresses` prints its addresses (below)  |
 | `cost`                                       | This month's model spend per key and in all (below)                                                                  |
 | `key new LABEL "WHO HOLDS IT" [--send-only]` | Asks for the holder's email, makes a Gateway Key and prints its value (below)                                        |
 | `key off NAME-OR-ID`, `key on NAME-OR-ID`    | Turns a Gateway Key off or back on (below)                                                                           |
@@ -458,14 +460,28 @@ curl -s -u "<admin user>:<admin password>" -X PUT localhost:8080/api/governance/
   -H 'content-type: application/json' -d '{"description": "<Household>, <AI backend>, <date>"}'
 ```
 
-**See every key.** One line a key: its name and `id`; who holds it (its `description`) when it has one; `writes+sends` or `sends only` (whether Bifrost has a provider behind it); `on` or `off`; `made <date>`; `last used <date>` or `never`; and its spend today, against its daily budget if it has one, and over the last 30 days. A key made on request (name `on-request-…`, description `made on request <date>`) is followed by the addresses bound to it and who confirmed. It prints no key's value and writes nothing:
+**See every key.** One line a key: its name and `id`; who holds it (its `description`) when it has one; `writes+sends` or `sends only` (whether Bifrost has a provider behind it); `on` or `off`; `made <date>`; `last used <date>` or `never`; and its spend today, against its daily budget if it has one, and over the last 30 days. A key made on request (name `on-request-…`, description `made on request <date>`) is followed by how many addresses are bound to it and how many of them confirmed. It prints no address, so its output can be pasted (see "What can be pasted"): an email in who holds a key (the holder's, when `key new` was given one) is printed as `<address>`. It prints no key's value and writes nothing:
 
 ```sh
 sudo admin keys
 ```
 
 ```text
-ai-pilot-a  id=…  Korhonen family, gateway AI, 2026-10-01  writes+sends  on  made 2026-10-01  last used 2026-11-04  today $0.02 of $0.10  30 days $0.33
+ai-pilot-a  id=…  Korhonen family, <address>, gateway AI, 2026-10-01  writes+sends  on  made 2026-10-01  last used 2026-11-04  today $0.02 of $0.10  30 days $0.33
+on-request-…  id=…  made on request 2026-10-28  sends only  on  made 2026-10-28  last used 2026-10-29  today $0.00  30 days $0.00
+  2 addresses, 1 confirmed
+```
+
+With `--addresses` it prints who holds each key as it is, and under a key made on request each address bound to it, its language and whether it confirmed, as `find` does; read that on the server rather than pasting it:
+
+```sh
+sudo admin keys --addresses
+```
+
+```text
+on-request-…  id=…  made on request 2026-10-28  sends only  on  made 2026-10-28  last used 2026-10-29  today $0.00  30 days $0.00
+  parent@example.com (fi): confirmed 2026-10-28T19:02:11Z
+  partner@example.fi (zh): not confirmed
 ```
 
 Days are UTC days. `made` is when Bifrost made the key. `last used` is the later of the key's last model call in Bifrost's request log, which keeps each request's key, time, token counts and cost for 90 days (`log_retention_days` in `config.json`), and the last Brief the relay sent with it, which the relay keeps per key (see "What it keeps" under "Sending the Brief"); so a key last used over 90 days ago only for model calls shows `never`. A model call Bifrost refused, such as a send-only key's, isn't use. The spend is the sum of the request log's cost for the key. When the request log can't be read, the keys are still listed, with `?` for last use and spend, and it says why.
