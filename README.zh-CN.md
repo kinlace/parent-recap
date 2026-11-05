@@ -59,6 +59,10 @@ irm https://raw.githubusercontent.com/kinlace/parent-recap/stable/install.ps1 | 
 
 这能减少 AI 拿到的内容，但不能保证什么：每条消息的其余部分仍然会交给它。Claude 和 ChatGPT 在美国处理这些内容，并且默认可能用它训练模型。要关掉的话：在 Claude 的 Settings > Privacy 里关掉“Help improve Claude”，或在 ChatGPT 的 Settings > Data controls 里关掉“Improve the model for everyone”。详情见 [What the AI sees](docs/config.md#what-the-ai-sees)（英文）。
 
+## 致谢
+
+Parent Recap 通过 Antti Karjalainen 的 [wilma CLI](https://github.com/aikarjal/wilmai)（WilmAI）读取 Wilma，它免费开源，采用 MIT 许可。没有它，摘要里就没有 Wilma 的内容。
+
 ## 免责声明
 
 这是家长们为自己做的开源工具，与 Visma（Wilma）、Eepos、myClub、Meta（WhatsApp）和 Google 没有关联，也没有得到它们的认可。Wilma 通过非官方、由社区维护的 [wilma CLI](https://github.com/aikarjal/wilmai) 读取。如果某个信息源不能用了，请联系 Parent Recap 或 wilma CLI 的维护者，不要联系这些公司。

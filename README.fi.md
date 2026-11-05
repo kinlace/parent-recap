@@ -59,6 +59,10 @@ Oma Claudesi tai ChatGPT:si kirjoittaa koosteen. Ennen kuin mitään lähtee tie
 
 Tämä vähentää sitä, mitä tekoäly saa, mutta ei takaa mitään: muu osa jokaisesta viestistä menee silti sille. Claude ja ChatGPT käsittelevät tiedot Yhdysvalloissa ja voivat oletuksena käyttää niitä mallien kouluttamiseen. Sen voi kytkeä pois Clauden kohdasta Settings > Privacy > "Help improve Claude" tai ChatGPT:n kohdasta Settings > Data controls > "Improve the model for everyone". Lisätietoja: [What the AI sees](docs/config.md#what-the-ai-sees) (englanniksi).
 
+## Kiitokset
+
+Parent Recap lukee Wilmaa Antti Karjalaisen [wilma CLI:n](https://github.com/aikarjal/wilmai) (WilmAI) avulla. Se on ilmaista ja avointa lähdekoodia MIT-lisenssillä. Ilman sitä koosteessa ei olisi Wilmaa.
+
 ## Vastuuvapauslauseke
 
 Avoimen lähdekoodin työkalu, jonka vanhemmat ovat tehneet omaan käyttöönsä. Sillä ei ole yhteyttä Vismaan (Wilma), Eepokseen, myClubiin, Metaan (WhatsApp) tai Googleen, eivätkä ne ole hyväksyneet sitä. Wilmaa luetaan epävirallisella, yhteisön ylläpitämällä [wilma CLI:llä](https://github.com/aikarjal/wilmai). Jos jokin lähde lakkaa toimimasta, ota yhteyttä Parent Recapin tai wilma CLI:n ylläpitäjiin, älä näihin yrityksiin.

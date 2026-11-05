@@ -59,6 +59,10 @@ Your own Claude or ChatGPT writes the Brief. Before anything leaves your compute
 
 This cuts down what the AI gets and guarantees nothing: the rest of each message still reaches it. Claude and ChatGPT process it in the US, and by default may use it to train their models. Turn that off under "Help improve Claude" in Claude's Settings > Privacy, or "Improve the model for everyone" in ChatGPT's Settings > Data controls. The details are in [What the AI sees](docs/config.md#what-the-ai-sees).
 
+## Thanks
+
+Parent Recap reads Wilma through Antti Karjalainen's [wilma CLI](https://github.com/aikarjal/wilmai) (WilmAI), free and open source under MIT. Without it there would be no Wilma in the Brief.
+
 ## Disclaimer
 
 An open-source tool made by parents for their own use, not affiliated with or endorsed by Visma (Wilma), Eepos, myClub, Meta (WhatsApp) or Google. Wilma is read through the unofficial, community-maintained [wilma CLI](https://github.com/aikarjal/wilmai). If a Source stops working, contact the maintainers of Parent Recap or the wilma CLI, not these companies.
