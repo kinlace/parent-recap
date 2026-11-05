@@ -117,8 +117,9 @@ def test_an_event_evaka_writes_otherwise_says_evaka_has_changed(change):
         events({**evaka_event("Retki", "2026-10-01", children=(MIA,)), **change})
 
 
-def child_day(child: str, *, reservable: bool = True, schedule: str = "RESERVATION_REQUIRED") -> dict:
-    return {"childId": child, "scheduleType": schedule,
+def child_day(child: str, *, reservable: bool = True, schedule: str = "RESERVATION_REQUIRED",
+              holiday_period: dict | None = None) -> dict:
+    return {"childId": child, "scheduleType": schedule, "holidayPeriodEffect": holiday_period,
             "reservableTimeRange": {"type": "NORMAL", "range": {"start": "06:30", "end": "17:30"}} if reservable
             else {"type": "INTERMITTENT_SHIFT_CARE", "placementUnitOperationTime": None}}
 
@@ -165,3 +166,24 @@ def test_no_deadline_for_a_city_whose_hours_aren_t_known_or_children_who_don_t_r
     assert evaka.deadline(days, "evaka.kouvola.fi", KIDS_BY_ID, "Europe/Helsinki") is None
     assert evaka.deadline(fixed, "espoo", KIDS_BY_ID, "Europe/Helsinki") is None
     assert evaka.deadline(days, "espoo", KIDS_BY_ID, "Europe/Helsinki").kid == "Mia"
+
+
+def test_no_deadline_for_a_week_a_holiday_period_has_its_own_reservations_for():
+    # As a local eVaka answers on Thursday 17 December with a Christmas holiday period from the
+    # 21st, its reservations closed on 1 December: week 53 is in it, so it has no weekly deadline.
+    closed = {"type": "ReservationsClosed"}
+    days = reservations({"date": "2026-12-18", "holiday": False, "children": [child_day(MIA), child_day(LEO)]},
+                        *({"date": f"2026-12-{d}", "holiday": False,
+                           "children": [child_day(MIA, holiday_period=closed), child_day(LEO, holiday_period=closed)]}
+                          for d in (28, 29, 30, 31)), start="2026-12-28")
+    # One that starts on the Wednesday leaves Monday and Tuesday to the deadline, for the child
+    # whose days they are.
+    half = reservations({"date": "2026-12-28", "holiday": False, "children": [child_day(LEO)]},
+                        {"date": "2026-12-30", "holiday": False,
+                         "children": [child_day(MIA, holiday_period=closed), child_day(LEO, holiday_period=closed)]},
+                        start="2026-12-28")
+
+    assert evaka.deadline(days, "espoo", KIDS_BY_ID, "Europe/Helsinki") is None
+    due = evaka.deadline(half, "espoo", KIDS_BY_ID, "Europe/Helsinki")
+    assert (due.title, due.kid, due.start) == ("Varaukset viikolle 53 sulkeutuvat", "Leo Virtanen",
+                                               datetime(2026, 12, 21, 18, 0, tzinfo=TZ))
