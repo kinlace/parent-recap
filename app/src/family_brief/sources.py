@@ -188,8 +188,7 @@ EEPOS = Source("eepos", _same_everywhere("Eepos"), lambda cfg: bool(cfg.eepos.si
 # the secret store (ADR 0039): its events, the days the unit is closed and the reservation
 # deadline, which go into the .ics, as Eepos's do, and the messages the daycare sends guardians
 # (#786). A sensitive one comes only as a stub, which is withheld and named. Set up from a terminal
-# for now, one sign-in per city (`setup evaka`), and the maintainers can add a Hosted Household's,
-# as Eepos's (#768).
+# for now, one sign-in per city (`setup evaka`), or at the hosted sign-up (#790), as Eepos's.
 EVAKA = Source("evaka", _same_everywhere("eVaka"), lambda cfg: bool(cfg.evaka.signins),
                skippable=True, connect_rank=7, collect=_collector("evaka"), counts_events=True,
                setup_page=False, lookback=lambda cfg: cfg.evaka, check=_in("ops", "check_evaka"),

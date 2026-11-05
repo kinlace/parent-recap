@@ -1,5 +1,6 @@
 """Adding an eVaka sign-in from a terminal (ADR 0039), for the maintainers to turn eVaka on for a
-Household by hand until the setup page and the hosted sign-up have a step for it (#768).
+Household by hand until the setup page has a step for it; the hosted sign-up has one (#790), which
+reuses `check` and `_save`.
 
 `setup evaka --city espoo --username EMAIL` has the guardian's password typed at the secret store's
 own prompt in that terminal (`secrets.put_typed`), so it passes through no dialog, chat or command

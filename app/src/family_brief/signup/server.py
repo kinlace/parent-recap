@@ -10,15 +10,18 @@ up to PENDING_MINUTES: the password is never written down or put back in a page.
 checks each link given by downloading it once, so a link that doesn't open is said at once, and
 an empty one leaves MyClub off for that Kid. It may also give an Eepos sign-in (#769), checked as
 `setup eepos` checks one: signed in to, its students read and matched to the Kids by name, a
-student who is none of them left to the whole Household. A wrong password is said at once, and the
-answers still wait; the Eepos password, too, is never written down or put back in a page.
+student who is none of them left to the whole Household, and an eVaka sign-in (#790), checked as
+`setup evaka` checks one, its children matched the same way. A wrong password is said at once, and
+the answers still wait; the Eepos and eVaka passwords, too, are never written down or put back in a
+page. The device cookie eVaka sets on the check is handed to the Household, so its evening runs
+sign in as the same device and a city that emails about new devices emails once.
 
 A family without Wilma, such as at a private school, leaves the Wilma fields empty and gives the
 Kids' names instead (#760): nothing is checked at the first post, and the second needs at least one
-MyClub link or the Eepos sign-in, the only things its Brief would read. Then the Household is made
-through the household host: its Linux user, its Gateway Key, `signup household` run as it, by the
-server's shared copy of the program (ADR 0035), with the answers, the Wilma and Eepos sign-ins,
-the links and the key on its stdin, and its first Brief, made and sent to its Recipients by
+MyClub link, the Eepos sign-in or the eVaka sign-in, the only things its Brief would read. Then the
+Household is made through the household host: its Linux user, its Gateway Key, `signup household`
+run as it, by the server's shared copy of the program (ADR 0035), with the answers, the Wilma, Eepos
+and eVaka sign-ins, the links and the key on its stdin, and its first Brief, made and sent to its Recipients by
 `run --first-brief` as it, as the setup page's first Brief step makes one (ADR 0031). A step that
 fails takes back the user with its files and jobs and the key, and the link stays good. Once made, the Household is listed in the store, its link retired,
 and the page says its first Brief was sent.
@@ -33,7 +36,7 @@ Sign-ups go one at a time: each takes a minute or two, which ten Households can 
 never take the same evening slot or the same link. One waiting behind another says so.
 
 The service logs one line per sign-up, saying how it ended, and nothing of the request: not its
-address, which carries the code, nor its body, which carries the Wilma and Eepos passwords.
+address, which carries the code, nor its body, which carries the Wilma, Eepos and eVaka passwords.
 """
 from __future__ import annotations
 
@@ -43,17 +46,19 @@ import json
 import logging
 import re
 import socketserver
+import tempfile
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs
 
-from .. import failure, setup_eepos, setup_myclub, setup_wilma
-from ..collectors import eepos
-from ..config import Config, EeposSignin, Kid
+from .. import failure, setup_eepos, setup_evaka, setup_myclub, setup_wilma
+from ..collectors import eepos, evaka
+from ..config import Config, EeposSignin, EvakaSignin, Kid
 from ..setup_server.first_brief import BRIEF_LOOKBACK_HOURS
 from . import page
 from .host import PROGRAM, HostError, HouseholdHost, user_name
@@ -225,9 +230,10 @@ class Service:
         pending = self._pending[code]
         language, kids, wilma = pending.language, pending.kids(), pending.wilma()
         typed = (fields.get("eepos_school", "").strip(), fields.get("eepos_username", "").strip())
+        typed_evaka = (fields.get("evaka_city", "").strip(), fields.get("evaka_username", "").strip())
 
         def again(error: str, kid: str | None = None) -> tuple[HTTPStatus, str]:
-            return HTTPStatus.OK, page.myclub(language, kids, error, kid, wilma, typed)
+            return HTTPStatus.OK, page.myclub(language, kids, error, kid, wilma, typed, typed_evaka)
         links: dict[str, str] = {}
         for i, kid in enumerate(kids):
             url = "".join(fields.get(f"m{i}", "").split())
@@ -245,13 +251,19 @@ class Service:
         error, signin = _eepos(kids, *typed, fields.get("eepos_password", ""))
         if error:
             return again(error)
-        if not wilma and not links and signin is None:  # nothing for its Brief to read
-            log.info("A sign-up without Wilma gave no MyClub link or Eepos sign-in")
+        error, daycare = _evaka(kids, *typed_evaka, fields.get("evaka_password", ""))
+        if error:
+            return again(error)
+        if not wilma and not links and signin is None and daycare is None:  # nothing to read
+            log.info("A sign-up without Wilma gave no MyClub link, Eepos or eVaka sign-in")
             return again("need-myclub")
         del self._pending[code]
         if signin is not None:
             pending.answers["eepos"], pending.unmatched = signin
-        progress = _Progress(language, page.steps(wilma, bool(links), signin is not None))
+        if daycare is not None:
+            pending.answers["evaka"], pending.evaka_unmatched = daycare
+        progress = _Progress(language, page.steps(wilma, bool(links), signin is not None,
+                                                  daycare is not None))
         with self._progress_lock:
             self._progress[code] = progress
         threading.Thread(target=self._make_in_turn, args=(code, pending, links, progress),
@@ -299,10 +311,11 @@ class Service:
         log.info("Household %s created from an Invite Link, %s, with MyClub for %d of %d Kids%s; "
                  "its first Brief was sent, and the next come at %s", name,
                  "with Wilma" if pending.wilma() else "without Wilma", len(links), len(kids),
-                 " and Eepos" if "eepos" in answers else "", evening)
+                 "".join(f" and {said}" for key, said in (("eepos", "Eepos"), ("evaka", "eVaka"))
+                         if key in answers), evening)
         progress.end(self.now(), HTTPStatus.OK, page.done(language, evening, any(
             _junk_prone(r["address"]) for r in answers["recipients"]), progress.names,
-            pending.unmatched))
+            pending.unmatched, pending.evaka_unmatched))
 
     def _create(self, name: str, answers: dict[str, Any], progress: _Progress) -> None:
         """Makes the Household, one of its steps after another, `progress.steps` of them ended."""
@@ -341,6 +354,7 @@ class _Pending:
     answers: dict[str, Any]
     note: str = ""  # the Invite Link's, for the Household's record
     unmatched: list[str] = field(default_factory=list)  # Eepos students who are none of the Kids
+    evaka_unmatched: list[str] = field(default_factory=list)  # eVaka children who are none of them
 
     def kids(self) -> list[str]:
         return [k["name"] for k in self.answers["kids"]]
@@ -407,6 +421,43 @@ def _eepos(kids: list[str], school_typed: str, username: str,
     return None, ({"school": school, "username": username, "password": password,
                    "kids": {s.id: kid for s, kid in checked["students"] if kid}},
                   [s.called() for s, kid in checked["students"] if not kid])
+
+
+def _evaka(kids: list[str], city_typed: str, username: str,
+           password: str) -> tuple[str | None, tuple[dict[str, Any], list[str]] | None]:
+    """The eVaka sign-in the MyClub step gave, checked as `setup evaka` checks one: why it won't
+    do, or its answer for `signup household`, the children matched to `kids` by id and the device
+    cookie the check got, with the names of the children who are none of them. None for both when
+    none was given."""
+    if not (city_typed or username or password):
+        return None, None
+    if not (city_typed and username and password):
+        return "evaka-incomplete", None
+    city = evaka.city_of(city_typed)
+    if city is None:
+        return "evaka-not-a-city", None
+    # The check's device cookie goes in a folder of its own, for the Household to keep, never in
+    # the service's home.
+    with tempfile.TemporaryDirectory(prefix="evaka-check-") as folder:
+        state = Path(folder) / "state.json"
+        try:
+            checked = setup_evaka.check(Config(kids=[Kid(name=k) for k in kids],
+                                               state_path=str(state)),
+                                        EvakaSignin(city=city, username=username), password)
+        except evaka.WrongPassword:
+            log.info("A sign-up's eVaka sign-in wasn't taken: wrong-password")
+            return "evaka-wrong-password", None
+        except evaka.Changed as e:  # names the city's host, never the username or password
+            log.warning("eVaka answered a sign-up in a way it didn't before: %s", e)
+            return "evaka-changed", None
+        except evaka.EvakaError as e:
+            log.warning("eVaka couldn't be read for a sign-up: %s", e)
+            return "evaka-no-answer", None
+        devices = evaka._devices(state.with_name(evaka.DEVICES)).get(evaka.host_of(city), {})
+    return None, ({"city": city, "username": username, "password": password,
+                   "kids": {c.id: kid for c, kid in checked["children"] if kid},
+                   "devices": devices},
+                  [c.called() for c, kid in checked["children"] if not kid])
 
 
 def _evening(households: list[HouseholdRecord]) -> str:

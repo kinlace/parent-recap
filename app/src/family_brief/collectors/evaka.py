@@ -130,12 +130,12 @@ class Child:
 
 
 def city_of(text: str) -> str | None:
-    """The city a sign-in is in, as the config keeps it: its name in CITIES, from that name, its
-    host or a link into it; or the host itself, for a city on eVaka that isn't in CITIES. None when
-    it is neither."""
+    """The city a sign-in is in, as the config keeps it: its name in CITIES, from that name, also
+    written with ä and ö as in Finnish, its host or a link into it; or the host itself, for a city
+    on eVaka that isn't in CITIES. None when it is neither."""
     given = text.strip().lower()
-    if given in CITIES:
-        return given
+    if (named := given.translate(str.maketrans("äöå", "aoa"))) in CITIES:
+        return named
     host = re.sub(r"^[a-z]+://", "", given).split("/", 1)[0].split(":", 1)[0]
     for name, (known, _) in CITIES.items():
         if host == known:
