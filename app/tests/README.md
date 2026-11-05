@@ -149,6 +149,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_setup_page_browser.py`               | Main paths and each step's own, in a real browser (ADR 0024)           |
 | `test_signup.py`                           | The hosted sign-up: page, Wilma, MyClub, first Brief, 404s, removal    |
 | `test_hosted_status.py`                    | `signup status`: each Household's last run and doctor, nothing private |
+| `test_hosted_household.py`                 | `signup show`, `recipients`, `myclub`: one Household seen and changed  |
 
 The page's server, its calls and the steps more than one file walks through are in
 `e2e/setup_page.py`.

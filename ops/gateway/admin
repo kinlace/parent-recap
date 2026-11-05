@@ -4,7 +4,8 @@
 /usr/local/sbin/admin, beside the Brief relay whose Gateway Key functions it uses.
 
 The tasks that touch a Household run the shared program (ADR 0035) as the sign-up service's user,
-as signup.sudoers lets it; the Gateway Key tasks call Bifrost's admin API on localhost, with the
+as signup.sudoers lets it, but for `household`, which runs it as that Household's own user
+(#782); the Gateway Key tasks call Bifrost's admin API on localhost, with the
 admin login read from bifrost.env, never the provider key beside it. It prints only to the
 terminal and writes no log of its own; no key's value is printed except by `key new`. `deploy`
 (ADR 0036) snapshots the server's state, fetches a commit of the public repo and runs that
@@ -60,6 +61,9 @@ usage: sudo admin <task> [arguments]
   find TEXT                                  which Households have this Recipient, and which
                                              Gateway Keys hold TEXT in who holds them or in
                                              their addresses
+  household ph-XXXXXXXX [recipients|myclub]  a Hosted Household's Recipients, Kids and MyClub
+                                             links; recipients or myclub changes them, asked
+                                             for on the terminal
   remove ph-XXXXXXXX                         remove a Hosted Household with everything of it
   deploy vX.Y.Z|main|COMMIT [--anyway]       snapshot the server's state, then fetch that commit
                                              of the repo and install it all
@@ -184,6 +188,8 @@ def main(argv: list[str], paths: Paths | None = None,
         if task == "households":
             print(_running_deploy(paths), flush=True)
             return exec_as(_as_service(paths, [], "signup", "status", *args), _clean_env())
+        if task == "household":
+            return _household(paths, args, exec_as)
         if task == "deploy":
             return _deploy(paths, args, edge or Edge())
         if task == "deploys":
@@ -244,6 +250,33 @@ def _key(paths: Paths, args: list[str], fetch: Callable[..., dict] | None,
         return 0
     raise Usage('key new LABEL "WHO HOLDS IT" [--send-only] | key off NAME-OR-ID | '
                 "key on NAME-OR-ID")
+
+
+HOUSEHOLD_USAGE = "household ph-XXXXXXXX [recipients|myclub]"
+# What `admin household LABEL [CHANGE]` runs as the Household: show reads only (#782).
+HOUSEHOLD_TASKS = {None: "show", "recipients": "recipients", "myclub": "myclub"}
+
+
+def _household(paths: Paths, args: list[str], exec_as: Callable[[list[str], dict], int]) -> int:
+    """Runs `signup show`, `signup recipients` or `signup myclub` as the Household's own user, on
+    this terminal (#782). Root runs it straight, not through the sign-up service's user, whom
+    signup.sudoers lets read none of a Household's MyClub links. What is typed, the addresses
+    and links, goes to the program's stdin, never on its command line, which sudo logs."""
+    if not 1 <= len(args) <= 2 or (args[1:] and args[1] not in HOUSEHOLD_TASKS):
+        raise Usage(HOUSEHOLD_USAGE)
+    label = args[0]
+    try:
+        households = {user for user, _ in _households(paths)} if LABEL.fullmatch(label) else set()
+    except Refused as e:
+        print(f"admin household: {e}", file=sys.stderr)
+        return 1
+    if label not in households:
+        print(f"{label} is no Hosted Household's label: sudo admin households lists them",
+              file=sys.stderr)
+        return 1
+    command = HOUSEHOLD_TASKS[args[1] if args[1:] else None]
+    return exec_as(["sudo", "-u", label, "-H", "--", paths.program, "signup", command],
+                   _clean_env())
 
 
 def _find(paths: Paths, text: str, fetch: Callable[..., dict] | None,

@@ -3,8 +3,10 @@ behind the gateway's web server that turns an Invite Link into a Hosted Househol
 `signup invite`, which mints an Invite Link (`sudo admin invite` runs it as the service's user);
 `signup household`, which the service runs as a new Household's own user; `signup status`,
 which lists every Household's last run and doctor's statuses (`sudo admin households`), from
-`signup health` run as each; and `signup remove`, which removes a Household with everything of it
-(`sudo admin remove`, ops/gateway/admin).
+`signup health` run as each; `signup remove`, which removes a Household with everything of it
+(`sudo admin remove`, ops/gateway/admin); and `signup show`, `signup recipients` and `signup
+myclub`, run as a Household's user, which show and change its Recipients and MyClub links
+(`sudo admin household`, edit.py).
 
 The service runs as its own user, on the server's shared copy of the program (ADR 0035), whose
 wilma CLI checks a family's sign-in; every Household runs the same copy as its own user. It reads
@@ -69,6 +71,9 @@ def register(sub) -> None:
                                  "answers on stdin (the sign-up service runs it)")
     from .household import cmd_household
     household.set_defaults(func=cmd_household)
+
+    from . import edit
+    edit.register(steps)
 
 
 def store() -> Store:
