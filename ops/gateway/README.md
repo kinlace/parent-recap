@@ -24,7 +24,7 @@ Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`).
    ```
 
 3. **Network.** Create a VCN with a public subnet. Give the subnet one security list of its own, whose only ingress rules are TCP 443 and ICMP type 3 code 4, both from `0.0.0.0/0`: no SSH, no port 80. Don't attach the VCN's default security list to the subnet, and give the VM's VNIC no network security group.
-4. **VM.** Shape `VM.Standard.A1.Flex`, 1 OCPU and 6 GB, image Ubuntu 24.04 (aarch64), public IP, your SSH public key (only for a rescue: port 22 stays closed). Under "Advanced options" → "Management", paste the cloud-init script below, so the VM joins the maintainers' tailnet with Tailscale SSH on at its first boot: nothing else can log in to it (see "Logging in"). Stockholm often has no A1 capacity ("Out of host capacity"). Keep retrying, a few times an hour, until a launch succeeds; it can take a day.
+4. **VM.** Shape `VM.Standard.A1.Flex`, 1 OCPU and 6 GB, image Ubuntu 24.04 (aarch64), public IP, your SSH public key (only for a rescue: port 22 stays closed). Under "Advanced options" → "Management", give the cloud-init script below as the "Initialization script" ([Oracle: Creating an Instance](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/launchinginstance.htm)), so the VM joins the maintainers' tailnet with Tailscale SSH on at its first boot: nothing else can log in to it (see "Logging in"). Stockholm often has no A1 capacity ("Out of host capacity"). Keep retrying, a few times an hour, until a launch succeeds; it can take a day.
 
    ```sh
    #!/bin/bash
@@ -32,7 +32,7 @@ Our VM is an Oracle Cloud Always Free Ampere A1 in Stockholm (`eu-stockholm-1`).
    tailscale up --ssh --auth-key='<auth key>'
    ```
 
-   Make the auth key in Tailscale's admin console (Settings → Keys): not reusable, pre-approved, tagged `tag:gateway`, expiring in a day. The script stays in the VM's metadata, so the key must be spent by then. A tagged node's key doesn't expire, so the VM stays on the tailnet.
+   Make the auth key on the Keys page of Tailscale's admin console: not reusable, pre-approved (needed only if the tailnet has device approval on), tagged `tag:gateway`, expiring in 1 day, the shortest it allows ([Tailscale: Auth keys](https://tailscale.com/kb/1085/auth-keys)). The script stays in the VM's metadata as `user_data`, which anything on the VM can read from Oracle's metadata service ([Oracle: Getting Instance Metadata](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/gettingmetadata.htm)), so the key must be spent and expired by then. A tagged device's key expiry is disabled by default, so the VM stays on the tailnet ([Tailscale: Tags](https://tailscale.com/kb/1068/tags)).
 
 5. **DNS.** Point an A record for the gateway's hostname at the VM's public IP. The IP is ephemeral: a VM made again, such as from a backup, gets a new one (see "Backups").
 6. **Host setup.** From your machine, over Tailscale SSH. `<server>` here and below is the VM's name on the tailnet, never its public IP:
@@ -67,7 +67,7 @@ Both scripts are safe to run again.
 
 ## Logging in
 
-Nothing logs in from the internet: port 22 is closed in the security list and in the host's firewall, and only 443 is open. Every login comes over Tailscale SSH: `tailscaled` takes SSH on the VM's tailnet address itself and checks the tailnet's policy, not `authorized_keys`, and its own firewall chain (`ts-input`) lets the tailnet in. Tailscale isn't set up by `host-setup.sh`: the VM joins at its first boot (step 4). On a VM made without that script, run its two lines over plain SSH, check that `ssh ubuntu@<server>` works over the tailnet, run `host-setup.sh` again and then close port 22 in the security list.
+Nothing logs in from the internet: port 22 is closed in the security list and in the host's firewall, and only 443 is open. Every login comes over Tailscale SSH: `tailscaled` intercepts the tailnet's traffic to port 22 on the VM's Tailscale address and lets it in by the tailnet's policy, without `authorized_keys` ([Tailscale: Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)), and the firewall chain it adds (`ts-input`) lets the tailnet in. Tailscale isn't set up by `host-setup.sh`: the VM joins at its first boot (step 4). On a VM made without that script, run its two lines over plain SSH, check that `ssh ubuntu@<server>` works over the tailnet, run `host-setup.sh` again and then close port 22 in the security list.
 
 The tailnet's policy (Tailscale's admin console → Access controls) says who gets which login. One that gives what "Who holds access" below says, with tag names of your choosing (this is an example, not a copy of the live policy):
 
@@ -79,7 +79,7 @@ The tailnet's policy (Tailscale's admin console → Access controls) says who ge
 ]
 ```
 
-A user in `src` means that user's own devices; a tagged machine, such as the assistant's, isn't one of them, so it gets only `mini`. `check` makes the maintainer sign in again in the browser on the first login after 12 hours. If the policy's `acls` or `grants` don't already let those sources reach the gateway, add TCP 22 to `tag:gateway` for them.
+A tagged machine, such as the assistant's, has no user identity ([Tailscale: Tags](https://tailscale.com/kb/1068/tags)), so the maintainer's rule doesn't cover it and it gets only `mini`. `check` makes the maintainer sign in again with their identity provider, after which logins work for the check period, 12 hours unless `checkPeriod` sets another ([Tailscale: Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)). The policy must also let those sources reach the gateway on TCP 22 in its `acls` or `grants`, beside the `ssh` rules (same page).
 
 ## Who holds access
 
