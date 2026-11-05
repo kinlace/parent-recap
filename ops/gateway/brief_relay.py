@@ -86,6 +86,9 @@ LABEL = re.compile(r"[a-z0-9][a-z0-9-]{0,39}", re.ASCII)
 # Strict on purpose: no display names, no commas, nothing a header could be split on, and ASCII
 # only, as Email Delivery's SMTP takes no internationalized addresses.
 ADDRESS = re.compile(r"[!#-'*+./0-9=?A-Z^-~-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+", re.ASCII)
+# Anything like an address in free text, such as a key's description set by hand, for `admin
+# keys` to leave out (#781): loose on purpose, so a non-ASCII or dotless address goes too.
+IN_TEXT_ADDRESS = re.compile(r"[^\s,;<>()\[\]\"']+@[^\s,;<>()\[\]\"']+")
 MIME_TYPE = re.compile(r"([a-z0-9][a-z0-9.+-]*)/([a-z0-9][a-z0-9.+-]*)")
 FILENAME = re.compile(r"[^/\\\x00-\x1f\x7f]{1,100}")
 
@@ -1092,7 +1095,7 @@ def print_keys(keys: Bifrost, state: Path, today: str, find: str | None = None,
         on = "on" if k.get("is_active") is True else "off"
         holder = _one_line(k.get("description"))
         if not addresses:
-            holder = ADDRESS.sub("<address>", holder)
+            holder = IN_TEXT_ADDRESS.sub("<address>", holder)
         made = _utc_day(k.get("created_at")) or (entry or {}).get("made") or "-"
         budgets = k.get("budgets") or ([k["budget"]] if k.get("budget") else [])
         limit = "".join(f" of ${b['max_limit']:.2f}" for b in budgets[:1]
@@ -1109,7 +1112,7 @@ def print_keys(keys: Bifrost, state: Path, today: str, find: str | None = None,
         printed.append(str(k.get("name") or key_id))
         recipients = (entry or {}).get("recipients", [])
         if not addresses:
-            if recipients:
+            if entry is not None:
                 n = len(recipients)
                 print(f"  {n} address{'' if n == 1 else 'es'}, "
                       f"{sum(1 for r in recipients if r['confirmed'])} confirmed")
