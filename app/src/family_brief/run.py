@@ -134,7 +134,8 @@ def collect(cfg: Config, state: State, sources: list[str],
             coverage: dict[str, dict] | None = None,
             reading: Callable[[str], None] | None = None) -> tuple[list[Message], list[CalendarEvent]]:
     """Run each collector, isolating failures. If `coverage` is given, it is filled with
-    {source: {"count": n, "error": first error or None}} for the brief's coverage line.
+    {source: {"count": n, "error": first error or None}} for the brief's coverage line, and for a
+    Source that counts its events, "messages" when it had Messages too.
     `reading` is told each Source as its collector starts."""
     kid_terms = _all_kid_terms(cfg)
     messages: list[Message] = []
@@ -149,7 +150,7 @@ def collect(cfg: Config, state: State, sources: list[str],
                 continue
             if reading:
                 reading(source)
-            count, error = 0, None
+            count, messages_too, error = 0, 0, None
             try:
                 got = record.collect(cfg, state, kid_terms)
                 log.info("%s: collected %d messages, %d events", source, len(got.messages), len(got.events))
@@ -157,6 +158,8 @@ def collect(cfg: Config, state: State, sources: list[str],
                 # A feed gives UTC; the Brief and the model's already-queued list use local time.
                 direct_events.extend(e.in_zone(cfg.timezone) for e in got.events)
                 count = len(got.events if record.counts_events else got.messages)
+                # A Source that counts its events and has Messages too, such as eVaka's daycare's.
+                messages_too = len(got.messages) if record.counts_events else 0
             except Exception as e:
                 log.error("%s collector failed: %s\n%s", source, e, traceback.format_exc())
                 error = str(e)
@@ -164,6 +167,8 @@ def collect(cfg: Config, state: State, sources: list[str],
                 state.forget_new_seen_messages(source)
             if coverage is not None:
                 coverage[source] = {"count": count, "error": error or errors.first.get(source)}
+                if messages_too:
+                    coverage[source]["messages"] = messages_too
     finally:
         collectors_log.removeHandler(errors)
     return messages, direct_events

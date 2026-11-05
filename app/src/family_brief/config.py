@@ -123,6 +123,7 @@ class EvakaConfig(BaseModel):
     """eVaka, the cities' early-childhood education system (ADR 0039): one sign-in per city, since
     each city runs it at a host of its own, with sessions of its own."""
     signins: list[EvakaSignin] = Field(default_factory=list)
+    lookback_hours: int = 26  # older messages are marked seen without being told
 
 
 class WhatsAppChat(BaseModel):

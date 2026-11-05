@@ -1,8 +1,9 @@
 """The eVaka Source in the evening run (ADR 0039, #768), against each city's fake eVaka, which
 answers with its citizen API's own JSON: tomorrow's daycare events, a closed day and the
 reservation deadline in the Brief, its .ics and its coverage line; a wrong password or a changed
-API said there while the rest still goes out; two cities; and nothing of the children kept but
-their ids and names."""
+API said there while the rest still goes out; two cities; nothing of the children kept but their
+ids and names; and the daycare's messages (#786): a new one told under its Kid once, and a
+sensitive one only named."""
 from __future__ import annotations
 
 import json
@@ -10,7 +11,8 @@ from datetime import timedelta
 
 import time_machine
 
-from conftest import NOW, SAYS_SOMETHING, evaka_child, evaka_event, without_unread_note
+from conftest import (NOW, SAYS_SOMETHING, evaka_child, evaka_event, evaka_sensitive_thread, evaka_thread,
+                      without_unread_note)
 from fake_sources import EVAKA_PASSWORD
 from fake_system import LINUX
 from nights import normal_night
@@ -158,3 +160,54 @@ def test_a_hosted_household_reads_evaka_and_isn_t_told_the_hosted_version_doesn_
     assert harness.run() == 0
 
     assert coverage(harness).endswith("eVaka 2 events\nWhatsApp isn't read in the hosted version.")
+
+
+BULLETIN = "Hei Kotiloisten perheet! Perjantaina 2.10. on pehmolelupäivä. Oman pehmolelun saa tuoda mukaan."
+
+
+def test_a_new_daycare_message_reaches_the_model_and_the_brief_under_its_kid_once(harness):
+    harness.config["summary_language"] = "en"
+    with_evaka(harness)
+    city = harness.source_fakes["evaka"].city("espoo")
+    city.fixed_schedule = {MIA, LEO}  # no deadline: the message is tonight's only news
+    city.threads = [evaka_thread("Pehmolelupäivä", BULLETIN, "2026-09-27T14:05:00+03:00", children=(MIA,))]
+    harness.model_reply = {"per_kid": [], "calendar_events": [],
+                           "message_digest": "**Mia**\n- Fri 2.10. cuddly toy day at daycare"}
+
+    assert harness.run() == 0
+
+    [call] = harness.model_calls
+    assert BULLETIN in call.prompt and "Pehmolelupäivä" in call.prompt
+    [message] = [m for m in json.loads(call.prompt[call.prompt.index("{"):])["messages"]
+                 if m.get("source") == "evaka"]
+    assert message["kid_hint"] == "Kid A"  # Mia, as the AI filter sends her (ADR 0013)
+    [email] = harness.sent
+    assert "Fri 2.10. cuddly toy day at daycare" in email.text
+    assert coverage(harness).endswith("eVaka 1 message and 0 events")
+
+    # The next evening it is not told again.
+    harness.sent.clear()
+    with time_machine.travel(NOW + timedelta(days=1), tick=False):
+        assert harness.run() == 0
+    assert len(harness.model_calls) == 1
+
+
+def test_a_sensitive_daycare_message_is_only_named_with_its_link_and_no_model_sees_it(harness):
+    harness.config["summary_language"] = "en"
+    harness.config["ai_filter"] = {"enabled": False}  # held back even so: there is nothing to tell
+    with_evaka(harness)
+    city = harness.source_fakes["evaka"].city("espoo")
+    city.fixed_schedule = {MIA, LEO}
+    sensitive = evaka_sensitive_thread("Laine Maija", "2026-09-27T16:30:00+03:00")
+    city.threads = [sensitive]
+
+    assert harness.run() == 0
+
+    assert harness.model_calls == []
+    [email] = harness.sent
+    link = f"https://espoonvarhaiskasvatus.fi/messages/{sensitive['id']}"
+    assert "🔒 Held-back messages" in email.text
+    assert f"• eVaka · Laine Maija · (no subject) · {link}" in email.text
+    assert f'href="{link}"' in email.html
+    assert [r for r in harness.source_fakes["evaka"].requests if r["method"] != "GET"] == \
+        [r for r in harness.source_fakes["evaka"].requests if r["path"] == evaka.SIGN_IN]

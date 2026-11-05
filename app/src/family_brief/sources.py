@@ -2,11 +2,11 @@
 would name the Sources asks this registry instead: what a Source is called, whether a Household's
 config connects it, how the evening run reads it and widens its lookback, what the Brief's coverage
 line counts of it, which systems can read it, whether the setup page has a step for it and lets a
-family skip it, the mail it sends of its own news, which of its messages went to everyone and how
-the Brief lists one held back (ADR 0013), how the calendar treats its events, what `doctor` checks
-of it, why one the Household set up can't be read tonight, whether a Hosted Household can have
-it, and what uninstall removes for it. A new Source is its collector module, its config model and its record
-here."""
+family skip it, the mail it sends of its own news, which of its messages went to everyone, which it
+gives only as a stub and how the Brief lists one held back (ADR 0013), how the calendar treats its
+events, what `doctor` checks of it, why one the Household set up can't be read tonight, whether a
+Hosted Household can have it, and what uninstall removes for it. A new Source is its collector
+module, its config model and its record here."""
 from __future__ import annotations
 
 import importlib
@@ -98,6 +98,9 @@ class Source:
     checked_body: Callable[[Message], str] = lambda m: m.body or ""  # the part of the body checked
     group: Callable[[Message], str | None] | None = None  # listed by in place of a subject, ahead of the sender
     held_back_link: Callable[[Message], str | None] = lambda m: None  # where the Brief links it to
+    # a message the Source gave only as a stub, such as eVaka's sensitive one: held back whatever its
+    # words, and with the AI filter off too, since a model could only guess at it
+    withheld: Callable[[Message], bool] = lambda m: False
     # ── The calendar
     in_ics: Callable[[Config], bool] = lambda cfg: True  # its events go into the .ics attachment
     utc_hash_before_0_4: bool = False   # its event starts were hashed in UTC before 0.4.0
@@ -181,15 +184,19 @@ EEPOS = Source("eepos", _same_everywhere("Eepos"), lambda cfg: bool(cfg.eepos.si
                setup_page=False, check=_in("ops", "check_eepos"),
                check_items={"eepos": "Eepos ({})"}, secrets=_in("collectors.eepos", "secrets_of"))
 
-# A public daycare's calendar, read through eVaka's citizen API with a password in the secret
-# store (ADR 0039): its events, the days the unit is closed and the reservation deadline, which go
-# into the .ics, as Eepos's do. Set up from a terminal for now, one sign-in per city (`setup
-# evaka`), and the maintainers can add a Hosted Household's, as Eepos's (#768).
+# A public daycare's calendar and messages, read through eVaka's citizen API with a password in
+# the secret store (ADR 0039): its events, the days the unit is closed and the reservation
+# deadline, which go into the .ics, as Eepos's do, and the messages the daycare sends guardians
+# (#786). A sensitive one comes only as a stub, which is withheld and named. Set up from a terminal
+# for now, one sign-in per city (`setup evaka`), and the maintainers can add a Hosted Household's,
+# as Eepos's (#768).
 EVAKA = Source("evaka", _same_everywhere("eVaka"), lambda cfg: bool(cfg.evaka.signins),
                skippable=True, connect_rank=7, collect=_collector("evaka"), counts_events=True,
-               setup_page=False, check=_in("ops", "check_evaka"),
+               setup_page=False, lookback=lambda cfg: cfg.evaka, check=_in("ops", "check_evaka"),
                check_items={"evaka": "eVaka ({})"}, secrets=_in("collectors.evaka", "secrets_of"),
-               survey=_in("uninstall", "survey_evaka"))
+               survey=_in("uninstall", "survey_evaka"),
+               sent_to_everyone=_in("collectors.evaka", "sent_to_everyone"),
+               withheld=_in("collectors.evaka", "withheld"), held_back_link=lambda m: m.url)
 
 ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP, EEPOS, EVAKA)
 

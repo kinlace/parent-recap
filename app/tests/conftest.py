@@ -564,3 +564,46 @@ def evaka_event(title: str, start: str, end: str | None = None, *, children: tup
             "eventType": "DISCUSSION_SURVEY" if booked else "DAYCARE_EVENT", "period": period,
             "attendingChildren": {**attending, **{c: [] for c in times if c not in attending}},
             "timesByChild": times}
+
+
+def evaka_thread(title: str, content: str, sent_at: str, *, children: tuple[str, ...] = (),
+                 sender: str = "Kilonpuisto - Kotiloiset", sender_type: str = "GROUP",
+                 kind: str = "BULLETIN", recipients: int = 24, replies: tuple[tuple[str, str, str], ...] = (),
+                 attachments: tuple[str, ...] = ()) -> dict[str, Any]:
+    """A thread of the guardian's received messages as eVaka's `messages/received` gives one
+    (CitizenMessageThread.Regular, at espoon-voltti/evaka@2ad3203f): `content` from `sender` at
+    `sent_at`, to `recipients` guardians' accounts, the guardian's first, and about each of
+    `children` by their ids on eVaka; then each of `replies`, as its sender's name, type and time,
+    with the same text."""
+    def account(name: str, kind_: str, n: int) -> dict[str, Any]:
+        return {"id": hashlib.sha256(f"{name}{n}".encode()).hexdigest()[:8] + "-0000-4000-8000-0000000000a0",
+                "name": name, "type": kind_, "personId": None}
+    thread_id = hashlib.sha256(f"{title}{sent_at}".encode()).hexdigest()[:8] + "-0000-4000-8000-0000000000b0"
+    guardians = [account("Virtanen Anna", "CITIZEN", 0),
+                 *(account(f"Huoltaja {n}", "CITIZEN", n) for n in range(1, recipients))]
+
+    def message(n: int, who: dict[str, Any], at: str, text: str) -> dict[str, Any]:
+        return {"id": thread_id[:8] + f"-{n:04d}-4000-8000-0000000000c0", "threadId": thread_id,
+                "contentId": thread_id[:8] + f"-{n:04d}-4000-8000-0000000000d0", "sender": who,
+                "sentAt": at, "content": text, "contentDeletedAt": None, "readAt": None,
+                "recipients": guardians if who["type"] != "CITIZEN" else [account(sender, sender_type, 0)],
+                "recipientNames": None,
+                "attachments": [{"id": f"{thread_id[:8]}-{a}", "name": name, "contentType": "application/pdf"}
+                                for a, name in enumerate(attachments)] if n == 0 else []}
+    return {"type": "Regular", "id": thread_id, "urgent": False, "messageType": kind, "title": title,
+            "sensitive": False, "isCopy": False, "applicationStatus": None,
+            "children": [{"childId": c, "firstName": "", "lastName": "", "preferredName": ""} for c in children],
+            "messages": [message(0, account(sender, sender_type, 0), sent_at, content),
+                         *(message(n, account(name, kind_, 0), at, content)
+                           for n, (name, kind_, at) in enumerate(replies, 1))]}
+
+
+def evaka_sensitive_thread(sender: str, sent_at: str, *, unread: bool = True) -> dict[str, Any]:
+    """A sensitive thread as eVaka gives it to a guardian signed in with a password
+    (CitizenMessageThread.Redacted): its sender, when its last message was sent and whether it is
+    unread, and nothing of what it says."""
+    thread_id = hashlib.sha256(f"{sender}{sent_at}".encode()).hexdigest()[:8] + "-0000-4000-8000-0000000000e0"
+    return {"type": "Redacted", "id": thread_id, "urgent": False,
+            "sender": {"id": "5e6f7a8b-0000-4000-8000-0000000000f0", "name": sender, "type": "PERSONAL",
+                       "personId": None},
+            "lastMessageSentAt": sent_at, "hasUnreadMessages": unread}

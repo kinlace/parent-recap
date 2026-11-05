@@ -145,7 +145,7 @@ Notes:
 
 ## eVaka (optional, added by the maintainers)
 
-A public daycare on eVaka gives its events (an excursion, a photo day, a parents' evening), the days it is closed and when the next week's reservations close as calendar events in the Brief and its `.ics`, read through the city's eVaka with the guardian's own email and password (ADR 0039). The cities are Espoo, Tampere, Turku, Oulu, Hämeenkyrö, Orivesi, Ylöjärvi, Pirkkala, Nokia, Lempäälä, Vesilahti and Kangasala. The setup page and the hosted sign-up have no eVaka step yet (#768): a maintainer adds it from a terminal, as the Household's user, once for each city:
+A public daycare on eVaka gives its events (an excursion, a photo day, a parents' evening), the days it is closed and when the next week's reservations close as calendar events in the Brief and its `.ics`, and the messages and bulletins the daycare sends guardians as Messages for the Brief, read through the city's eVaka with the guardian's own email and password (ADR 0039). The cities are Espoo, Tampere, Turku, Oulu, Hämeenkyrö, Orivesi, Ylöjärvi, Pirkkala, Nokia, Lempäälä, Vesilahti and Kangasala. The setup page and the hosted sign-up have no eVaka step yet (#768): a maintainer adds it from a terminal, as the Household's user, once for each city:
 
 1. The guardian needs an eVaka email and password. One who has only signed in with Suomi.fi sets them first, under Personal information ("Omat tiedot") in eVaka, and verifies the email
 2. **Terminal**: `$FB setup evaka --city espoo --username <the guardian's eVaka email>`. `--city` takes a city's name as in the list above, without ä or ö, or the host of its eVaka. The password is typed at the secret store's own prompt (the Keychain asks twice; a hosted server's prompt is hidden), so it never reaches the chat or a command line. The command signs in with it, reads the guardian's children and the next 14 days, and only then stores the password (Keychain `family-brief` / `evaka-signin-<16 hex digits>`) and the sign-in in the config's `evaka.signins`. It prints which Kid each child is, matched by name; a child who matches none has their events go to the whole Household until their eVaka name is added to the Kid's `aliases` and the command run again
@@ -156,7 +156,8 @@ Notes:
 - A closed day is a public holiday the daycare isn't open on for any of the children, for the Household, or for the Kids it isn't open for. A discussion time shows once it is booked
 - The reservation deadline is worked out from the first week still open for reservations and the hours before it each city closes them. For a city given by its host, which isn't in the list, there is none
 - Each sign-in keeps eVaka's device cookie in `~/.family/evaka-devices.json`, so cities that email about a sign-in from a new device don't email every evening
-- eVaka's API is internal and unversioned: when it changes, the Brief's coverage line says eVaka wasn't read, with the reason, and the rest of the Brief still goes out
+- A message the daycare or the city sent since the last evening is told once, under the Kid its thread names, or the Household when it names several or none. The family's own messages aren't. A sensitive message comes to a password sign-in only as its sender and time: the Brief lists it under Held-back messages with its link, and no model sees it, even with the AI filter off. Nothing is marked read in eVaka, nothing is answered
+- eVaka's API is internal and unversioned: when it changes, the Brief's coverage line says eVaka wasn't read, with the reason, and the rest of the Brief still goes out. Messages that can't be read leave the events, and the line says eVaka was partly read
 
 ## Calendar
 

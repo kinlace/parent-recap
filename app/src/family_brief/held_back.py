@@ -5,7 +5,8 @@ that a native speaker can review, which also says how an entry matches and what 
 The check runs on the Mac and never goes through the AI. sensitive() says whether a text looks
 sensitive and in which category, match() also says which entry matched and where, and hold_back()
 splits a night's messages into those that may go to the AI and those held back, which the Brief
-lists itself.
+lists itself. A message its Source gave only as a stub, such as eVaka's sensitive one, is held back
+whatever its words, and with the AI filter off too.
 
 A message sent to everyone is never held back, whatever words it has: the word lists can't tell a
 notice to the whole school from a message about one child, but the Sources can, each in its record
@@ -191,12 +192,25 @@ def category(message: Message) -> str | None:
     return found.category if found else None
 
 
-def hold_back(messages: Iterable[Message]) -> tuple[list[Message], list[Message]]:
-    """`messages` split into those that may go to the AI and those held back, each in its order."""
+def withheld(message: Message) -> bool:
+    """Whether the message's Source gave only a stub of it, such as eVaka's sensitive message, so it
+    is held back whatever its words, and with the AI filter off too: a model could only guess."""
+    source = sources.named(message.source)
+    return bool(source and source.withheld(message))
+
+
+def hold_back(messages: Iterable[Message], words: bool = True) -> tuple[list[Message], list[Message]]:
+    """`messages` split into those that may go to the AI and those held back, each in its order:
+    those their Source withheld, and with `words`, those that look sensitive."""
     to_the_ai: list[Message] = []
     held: list[Message] = []
     for m in messages:
-        found = category(m)
+        if withheld(m):
+            held.append(m)
+            log.info("Held back %s message %s from the AI: its Source gave only that it exists",
+                     m.source, m.external_id)
+            continue
+        found = category(m) if words else None
         if found is None:
             to_the_ai.append(m)
         else:

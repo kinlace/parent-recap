@@ -101,7 +101,7 @@ class Expect(_Strict):
 
 class CaseMessage(_Strict):
     id: str
-    source: Literal["gmail", "wilma", "whatsapp", "myclub"]
+    source: Literal["gmail", "wilma", "whatsapp", "myclub", "evaka"]
     at: datetime
     body: str = ""
     sender: str | None = None

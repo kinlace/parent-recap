@@ -527,7 +527,9 @@ class EvakaCity:
     whole, and its reservation calendar: the public `holidays` (ISO days), the children `open_on_holidays`
     (shift care), those on a `fixed_schedule` who make no reservations, and the first day still open
     for reservations, `reservable_from`, by default the Monday eVaka's own rule gives with the
-    city's hours in evaka.CITIES, as of the clock."""
+    city's hours in evaka.CITIES, as of the clock. `threads` are the guardian's received message
+    threads (conftest's evaka_thread and evaka_sensitive_thread), which `messages/received` gives
+    ten a page, the latest first, as eVaka does."""
 
     def __init__(self, city: str) -> None:
         self.city = city
@@ -537,6 +539,17 @@ class EvakaCity:
         self.open_on_holidays: set[str] = set()
         self.fixed_schedule: set[str] = set()
         self.reservable_from: str | None = None
+        self.threads: list[dict[str, Any]] = []
+
+    def received(self, page: int) -> dict[str, Any]:
+        """A page of the received threads as eVaka's getReceivedMessages gives it: ten a page,
+        by the time of each one's last message, the latest first."""
+        def last(t: dict[str, Any]) -> datetime:
+            at = t.get("lastMessageSentAt") or max(m["sentAt"] for m in t["messages"])
+            return datetime.fromisoformat(at)
+        threads = sorted(self.threads, key=last, reverse=True)
+        return {"data": threads[(page - 1) * 10:page * 10], "total": len(threads),
+                "pages": (len(threads) + 9) // 10}
 
     def first_reservable_monday(self) -> date:
         """eVaka's getNextReservableMonday: the first Monday after now plus the city's hours."""
@@ -568,7 +581,7 @@ class Evaka(SourceFake):
     body of the email and the password, which the city's `accounts` must have, and the header
     `x-evaka-csrf`; a wrong one is answered 403 "Forbidden", as apigw does. A sign-in gets the
     session cookie and a device cookie for the guardian. With the session, `children` lists the
-    city's children, `calendar-events` tonight's events there that overlap its start to its end,
+    city's children, `messages/received` a page of the city's message threads, `calendar-events` tonight's events there that overlap its start to its end,
     and `reservations` the city's reservation calendar from its from to its to. Without it, or
     with another city's, eVaka answers 401.
 
@@ -643,6 +656,8 @@ class Evaka(SourceFake):
         query = {key: v for key, [v] in parse_qs(parts.query).items()}
         if (method, path) == ("GET", "children"):
             return _response(200, json.dumps(portal.children, ensure_ascii=False))
+        if (method, path) == ("GET", "messages/received"):
+            return _response(200, json.dumps(portal.received(int(query["page"])), ensure_ascii=False))
         if (method, path) == ("GET", "calendar-events"):
             first, last = date.fromisoformat(query["start"]), date.fromisoformat(query["end"])
             return _response(200, json.dumps(
