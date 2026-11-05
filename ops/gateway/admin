@@ -203,7 +203,7 @@ def main(argv: list[str], paths: Paths | None = None,
                 raise Usage("keys [--addresses]")
             relay, keys = _keys(paths, fetch)
             relay.print_keys(keys, paths.relay_state, today=today or _today(),
-                             addresses=bool(args))
+                             addresses=args == ["--addresses"])
             return 0
         if task == "cost":
             if args:
@@ -273,7 +273,7 @@ def _searched(failed: str, search: Callable[[], int]) -> int:
 
 def _find_keys(paths: Paths, text: str, fetch: Callable[..., dict] | None,
                run: Callable[[list[str], dict], tuple[int, str]], today: str) -> int:
-    """Each Gateway Key matching `text`, by its `admin keys` line; a Hosted Household's key, named
+    """Each Gateway Key matching `text`, by its `admin keys --addresses` lines; a Hosted Household's key, named
     by its label, also by that Household's `admin households` lines."""
     relay, keys = _keys(paths, fetch)
     # What matched the text the maintainer typed, addresses and all (#781).

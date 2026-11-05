@@ -366,6 +366,17 @@ def test_keys_prints_no_address_only_how_many_are_bound_and_confirmed(server, ca
         assert secret not in out
 
 
+def test_keys_leaves_out_an_address_set_by_hand_and_counts_a_key_with_none(server, capsys):
+    (server.paths.relay_state / "bindings.json").write_text(json.dumps({"keys": {"id-2": {
+        "name": "send-pilot-b", "made": "2026-10-20", "recipients": []}}}))
+    server.bifrost.keys.append({**HOLDER_EMAIL,
+                                "description": "Jörg (jörg@pörssi.fi), admin@host"})
+    assert server.admin("keys") == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[2] == "  0 addresses, 0 confirmed"
+    assert "  Jörg (<address>), <address>  " in lines[3] and "@" not in lines[3]
+
+
 def test_keys_with_addresses_prints_them_as_find_does(server, capsys):
     (server.paths.relay_state / "bindings.json").write_text(json.dumps(BOUND))
     server.bifrost.keys.append(HOLDER_EMAIL)
