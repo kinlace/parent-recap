@@ -888,20 +888,22 @@ def test_feedback_links_prefill_each_action_item_and_the_digest(harness):
     common = {"backend": "claude", "date": "2026-09-27", "household": "Household 24ebb1"}
     digest = "**Kid A**\n- 周四远足，周二前在 Wilma 签同意书\n- 下周一数学考试\n\n**Kid B**\n- 周三拍班级照\n- 钢琴课本周改到周三 17:30"
     assert [(label, answers) for label, answers, _ in links] == [
-        ("❌ 摘要里有错", {"verdict": "❌ The Digest has a mistake", "item_text": digest, "source": "", "kid": "", **common}),
-        ("⭐ 幸好有这条", {"verdict": "⭐ Glad this was here", "item_text": "在 Wilma 签远足同意书", "source": "gmail",
+        ("这段摘要有错？告诉我们", {"verdict": "❌ The Digest has a mistake", "item_text": digest, "source": "", "kid": "", **common}),
+        ("⭐ 有用", {"verdict": "⭐ Glad this was here", "item_text": "在 Wilma 签远足同意书", "source": "gmail",
                          "kid": "Kid A", **common}),
-        ("❌ 这条错了", {"verdict": "❌ This is wrong", "item_text": "在 Wilma 签远足同意书", "source": "gmail",
+        ("❌ 有错", {"verdict": "❌ This is wrong", "item_text": "在 Wilma 签远足同意书", "source": "gmail",
                         "kid": "Kid A", **common}),
-        ("⭐ 幸好有这条", {"verdict": "⭐ Glad this was here", "item_text": "签 reissuvihko", "source": "whatsapp",
+        ("⭐ 有用", {"verdict": "⭐ Glad this was here", "item_text": "签 reissuvihko", "source": "whatsapp",
                          "kid": "Kid A", **common}),
-        ("❌ 这条错了", {"verdict": "❌ This is wrong", "item_text": "签 reissuvihko", "source": "whatsapp",
+        ("❌ 有错", {"verdict": "❌ This is wrong", "item_text": "签 reissuvihko", "source": "whatsapp",
                         "kid": "Kid A", **common}),
-        ("⭐ 幸好有这条", {"verdict": "⭐ Glad this was here", "item_text": "给 Kid B 准备拍照穿的衣服 <整洁>",
+        ("⭐ 有用", {"verdict": "⭐ Glad this was here", "item_text": "给 Kid B 准备拍照穿的衣服 <整洁>",
                          "source": "gmail", "kid": "Kid B", **common}),
-        ("❌ 这条错了", {"verdict": "❌ This is wrong", "item_text": "给 Kid B 准备拍照穿的衣服 <整洁>",
+        ("❌ 有错", {"verdict": "❌ This is wrong", "item_text": "给 Kid B 准备拍照穿的衣服 <整洁>",
                         "source": "gmail", "kid": "Kid B", **common}),
     ]
+    # Each item's links sit on a small grey line of their own, after a plain label (#803).
+    assert email.html.count("<br><small style='color:#888'>反馈：<a href=") == 3
     assert FORM not in email.text
 
 
@@ -918,7 +920,7 @@ def test_feedback_links_carry_only_the_derived_source(harness):
 
     assert harness.run() == 0
 
-    items = [answers for label, answers, _ in feedback_links(harness.sent[0].html) if label == "❌ 这条错了"]
+    items = [answers for label, answers, _ in feedback_links(harness.sent[0].html) if label == "❌ 有错"]
     assert [(a["item_text"], a["source"]) for a in items] == [
         ("签 reissuvihko 和远足同意书", "gmail,whatsapp"), ("交班费 20€", ""), ("带手工材料", "")]
 
@@ -973,10 +975,11 @@ def test_english_feedback_links_label_the_forms_choices_in_english(harness):
     [email] = harness.sent
     links = feedback_links(email.html)
     assert [(label, answers["verdict"]) for label, answers, _ in links[:3]] == [
-        ("❌ The Digest has a mistake", "❌ The Digest has a mistake"),
-        ("⭐ Glad this was here", "⭐ Glad this was here"),
-        ("❌ This is wrong", "❌ This is wrong"),
+        ("Something wrong in this summary? Tell us", "❌ The Digest has a mistake"),
+        ("⭐ useful", "⭐ Glad this was here"),
+        ("❌ wrong", "❌ This is wrong"),
     ]
+    assert "<br><small style='color:#888'>Feedback: <a href=" in email.html
     assert "Written by Claude" in email.html
     assert "<h3>✅ Action Items</h3>" in email.html
     assert "Sign the reissuvihko<small style='color:#666'> (Mia) · by Mon 28 Sep · Mom · WhatsApp</small>" \

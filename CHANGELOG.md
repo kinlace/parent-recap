@@ -10,6 +10,7 @@ What changes for families in each release, collected from the `What changes for 
 ### Added
 
 - A family without Wilma can add its Kids on the setup page's Eepos and eVaka steps: next to a student or child who matches none of your Kids, "Add as a Kid" adds them under the name you call them, and their lessons or daycare events come under that Kid from the next Brief. Opened again later, the steps have a field to add a Kid by name.
+- In a pilot family's Brief, the feedback links read as a question instead of an error: a small grey "Feedback: ⭐ useful · ❌ wrong" line under each Action Item, and "Something wrong in this summary? Tell us" under the Digest, in English, Chinese and Finnish.
 
 ## 0.12.0 · 2026-11-05
 

@@ -286,7 +286,7 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
     def form_link(verdict: str, label: str, text: str, **kw) -> str:
         assert feedback_link is not None
         return (f'<a href="{_h.escape(feedback_link(verdict, text, **kw))}"'
-                f" style='color:#888;text-decoration:none'>{label}</a>")
+                f" style='color:#888;text-decoration:underline'>{_h.escape(label)}</a>")
     parts = [f"<h2>👨‍👩‍👧‍👦 {PRODUCT_NAME} · {_h.escape(_header_date(date_str, t))}</h2>"]
     if top_note:
         warnings = _h.escape(top_note).replace("\n", "<br>")
@@ -296,7 +296,7 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
         parts.append(_digest_html(digest))
         if feedback_link:
             as_written = _shown_digest(original, t)
-            parts.append("<p><small>"
+            parts.append("<p><small style='color:#888'>"
                          f"{form_link(feedback.DIGEST_WRONG, t.feedback_digest_wrong, as_written)}"
                          "</small></p>")
     if held_back:
@@ -317,7 +317,9 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
             if feedback_link:
                 kw = {"kid": kid_as_written, "source": as_written.source or []}
                 what_text = as_written.what
-                links = (f" <small>{form_link(feedback.SAVED, t.feedback_saved, what_text, **kw)}"
+                # Its own small grey line, so the links read as a question, not part of the item (#803).
+                links = (f"<br><small style='color:#888'>{_h.escape(t.feedback_label)}"
+                         f"{form_link(feedback.SAVED, t.feedback_saved, what_text, **kw)}"
                          f" · {form_link(feedback.WRONG, t.feedback_wrong, what_text, **kw)}</small>")
             parts.append(f"<li>{what}<small style='color:#666'> {meta}</small>{links}</li>")
         parts.append("</ul>")
