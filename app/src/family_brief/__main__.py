@@ -30,7 +30,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     options = evening.Options(dry_run=args.dry_run or args.preview, preview=args.preview,
                               sources=args.sources.split(",") if args.sources else None,
                               lookback_hours=args.lookback_hours, if_missed=args.if_missed,
-                              first=args.first_brief)
+                              scheduled=args.scheduled, first=args.first_brief)
     io = evening.IO.real()
     if options.dry_run:  # writes nothing, so it can't clash with a run that is going
         return evening.run_unless_caught_up(cfg, options, io)
@@ -118,6 +118,9 @@ def main() -> int:
     prun.add_argument("--if-missed", action="store_true",
                       help="Run only if the evening run's latest time went by with no run since "
                            "(the Windows sign-in task's)")
+    prun.add_argument("--scheduled", action="store_true",
+                      help="Send nothing when started well before the Brief's time in the config's "
+                           "timezone, as on a computer set to another zone (the evening job's)")
     prun.set_defaults(func=cmd_run)
 
     pcol = sub.add_parser("collect", help="Debug only: print raw collected messages (includes bodies)")

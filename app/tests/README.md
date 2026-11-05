@@ -96,7 +96,7 @@ the import path, so a test may import a helper from a test in another layer.
 | File                              | What it covers                                                                          |
 | --------------------------------- | --------------------------------------------------------------------------------------- |
 | `test_nightly_brief.py`           | The Brief a normal night makes, failures at the edges                                   |
-| `test_nightly_continuity.py`      | Nights in a row, quiet nights, `run --if-missed`                                        |
+| `test_nightly_continuity.py`      | Nights in a row, quiet nights, `run --if-missed`, a scheduled run started early         |
 | `test_nightly_google_calendar.py` | Google Calendar mode                                                                    |
 | `test_nightly_languages.py`       | Recipients in their own languages                                                       |
 | `test_nightly_placeholders.py`    | The AI filter's placeholders, end to end (ADR 0013)                                     |
@@ -116,7 +116,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish                                |
 | `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                                       |
 | `test_ai_filter_report.py`        | `parent-recap ai-filter-report` over an archive                                         |
-| `test_schedule_run_now.py`        | `schedule run-now`                                                                      |
+| `test_schedule_run_now.py`        | `schedule run-now`, and `schedule refresh` after an update                              |
 | `test_without_google_packages.py` | Everything but google mode runs without Google's packages                               |
 
 The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights.py`.

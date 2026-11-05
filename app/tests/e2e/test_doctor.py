@@ -6,10 +6,13 @@ import os
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
+import time_machine
 import yaml
 
 import fake_node
@@ -17,7 +20,7 @@ from family_brief import __main__ as cli, ops, setup_server, setup_steps
 from family_brief.llm import codex as codex_backend
 from family_brief.state import State
 from family_brief.system import jobs
-from conftest import program
+from conftest import NOW, TZ, program
 from fake_sources import GmailFolders
 from fake_system import LINUX, MACOS, WINDOWS
 
@@ -122,6 +125,38 @@ def test_doctor_names_the_always_running_job_when_it_is_installed(harness, nothi
               if jobs.system_name(jobs.ALWAYS) in l]
     assert line.startswith(ops.WARN.strip()) and "installed but not running" in line
     assert not HAN.findall(line)
+
+
+# On the PC's or Mac's own clock: the hosted version's server keeps UTC, and its timers the
+# Household's zone.
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="time_machine sets the computer's zone with tzset")
+@pytest.mark.parametrize("on", [MACOS, WINDOWS])
+def test_doctor_names_a_computer_time_zone_that_isnt_the_config_s(harness, nothing_loaded, capsys,
+                                                                  on):
+    # The scheduler starts the evening job at 21:00 in Karachi, 19:00 in Helsinki (#776).
+    harness.system = on
+    harness.jobs.add(jobs.DAILY)
+    with time_machine.travel(NOW.astimezone(ZoneInfo("Asia/Karachi")), tick=False):
+        harness.cli("doctor", "--skip-llm")
+
+    [line] = [l for l in schedule_lines(capsys.readouterr().out) if "time zone" in l]
+    assert line.startswith(ops.WARN.strip())
+    assert "this computer's time zone is PKT (UTC+0500)" in line
+    assert "the config's timezone is Europe/Helsinki (UTC+0300)" in line
+    assert "starts at 21:00 on this computer's clock, which is 19:00 in Europe/Helsinki" in line
+
+
+@pytest.mark.parametrize("on", [MACOS, LINUX])
+def test_doctor_says_nothing_of_the_time_zone_where_it_starts_the_job_on_time(harness,
+                                                                             nothing_loaded,
+                                                                             capsys, on):
+    # A Mac in the config's zone, or a server whose timers keep the Household's zone in UTC.
+    harness.system = on
+    harness.jobs.add(jobs.DAILY)
+    with time_machine.travel(NOW.astimezone(ZoneInfo("UTC" if on is LINUX else TZ)), tick=False):
+        harness.cli("doctor", "--skip-llm")
+
+    assert not any("time zone" in l for l in schedule_lines(capsys.readouterr().out))
 
 
 def whatsapp_library_line(out: str) -> str:

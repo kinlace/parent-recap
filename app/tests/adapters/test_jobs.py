@@ -87,8 +87,17 @@ def test_installing_without_weekend_picks_removes_their_job(harness, launchctl, 
 
     assert jobs.installed() == {"daily"}
     assert jobs.program("weekend-events") is None
-    assert jobs.program("daily")[1:] == ["-m", "family_brief", "run"]
+    assert jobs.program("daily")[1:] == ["-m", "family_brief", "run", "--scheduled"]
     assert jobs.system_name("daily") == jobs_macos.DAILY_LABEL == "com.parentrecap.daily"
+
+
+def test_the_evening_run_checks_its_own_time_as_launchd_keeps_the_mac_s_zone(harness, launchctl,
+                                                                              tmp_path):
+    # StartCalendarInterval is the Mac's local time, whatever the config's timezone (#776).
+    jobs.install(both(tmp_path))
+
+    assert jobs.program("daily")[3:] == ["run", "--scheduled"]
+    assert jobs.program("weekend-events")[3:] == ["weekend-events"]
 
 
 def test_a_job_runs_at_its_time_with_owner_only_logs_in_the_log_folder(harness, launchctl, tmp_path):

@@ -28,6 +28,7 @@ DAILY_LABEL = f"{PREFIX}daily"
 WEEKEND_LABEL = f"{PREFIX}weekend-events"
 OURS = (DAILY_LABEL, WEEKEND_LABEL)
 ALWAYS_LABEL = f"{PREFIX}linked-device"
+OWN_CLOCK = True  # StartCalendarInterval is the Mac's local time
 
 
 def system_name(name: str) -> str:
@@ -54,7 +55,7 @@ def _plist(job: jobs.Job) -> dict:
         interval = {"Weekday": job.weekday, **interval}
     return {
         "Label": system_name(job.name),
-        "ProgramArguments": [sys.executable, "-m", "family_brief", job.subcommand],
+        "ProgramArguments": [sys.executable, "-m", "family_brief", *jobs.command(job, OWN_CLOCK)],
         "StartCalendarInterval": interval,
         "StandardOutPath": str(job.log_dir / f"{job.subcommand}-stdout.log"),
         "StandardErrorPath": str(job.log_dir / f"{job.subcommand}-stderr.log"),

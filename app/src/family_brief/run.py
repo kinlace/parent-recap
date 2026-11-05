@@ -41,6 +41,7 @@ class Options:
     sources: list[str] | None = None  # the connected ones when None
     lookback_hours: int | None = None  # each Source's own, caught up, when None
     if_missed: bool = False
+    scheduled: bool = False  # started by the evening job, on the scheduler's clock
 
 
 @dataclass(frozen=True)
@@ -614,9 +615,6 @@ def run(cfg: Config, options: Options, io: IO) -> int:
         return 0
 
     email_sent, delivered, everyone = _deliver(cfg, io, state, written)
-    md_path = io.write_archive(cfg, night.date, read.messages, night.brief, written.notes, night.created, delivered)
-    log.info("Archive written to %s", md_path)
-
     # Only mark .ics events as sent once the email actually went out, so a failed send retries tomorrow.
     if email_sent:
         for e in night.ics_events:
@@ -627,20 +625,28 @@ def run(cfg: Config, options: Options, io: IO) -> int:
         # Nobody saw tonight's Brief: leave its Messages unseen so tomorrow's Brief picks them up.
         log.warning("Brief not delivered; its messages will be collected again next run")
         state.forget_new_seen_messages()
+    # Saved before the archive, so a run that sent the Brief and then failed isn't caught up with a
+    # second Brief (#776). The failure still shows in the log and last-run.json.
     state.mark_run_now()
     state.save()
+    md_path = io.write_archive(cfg, night.date, read.messages, night.brief, written.notes, night.created, delivered)
+    log.info("Archive written to %s", md_path)
     # A first Brief a Recipient didn't get fails, so the sign-up isn't said to have sent it.
     return 1 if options.first and not everyone else 0
 
 
+# How long before the Household's time a run the scheduler started is held back as early (#776)
+EARLY = timedelta(minutes=30)
+
+
 def _evening_missed(cfg: Config, state: State) -> bool:
-    """Whether the evening run's latest time has gone by with no run since, on the PC's own clock,
-    which the scheduler keeps. Before the first run, since the evening job was installed: it is
-    installed with its first start still to come."""
+    """Whether the evening run's latest time, in the Household's zone, has gone by with no run
+    since. Before the first run, since the evening job was installed: it is installed with its
+    first start still to come. A run that sent the Brief counts, even if a later step failed."""
     last = state.last_run_at or state.scheduled_at
     if last is None:  # installed by a version that didn't note when
         return False
-    now = datetime.now().astimezone()
+    now = datetime.now(ZoneInfo(cfg.timezone))
     evening = now.replace(hour=cfg.schedule.daily_hour, minute=cfg.schedule.daily_minute,
                           second=0, microsecond=0)
     if evening > now:
@@ -648,11 +654,41 @@ def _evening_missed(cfg: Config, state: State) -> bool:
     return last < evening
 
 
+def _too_early(cfg: Config) -> str | None:
+    """Why a run the scheduler starts now sends nothing, or None when it may. launchd and Task
+    Scheduler keep the computer's own clock, so on a computer set to a zone ahead of the
+    Household's they start it hours early. One started on time, or late after a sleep, may run."""
+    here = datetime.now().astimezone()
+    home = here.astimezone(ZoneInfo(cfg.timezone))
+    if here.utcoffset() == home.utcoffset():
+        return None
+    evening = home.replace(hour=cfg.schedule.daily_hour, minute=cfg.schedule.daily_minute,
+                           second=0, microsecond=0)
+    if evening < home:
+        evening += timedelta(days=1)
+    # Within half a day before it: a computer behind the Household's zone starts it after.
+    if not EARLY < evening.astimezone(timezone.utc) - here <= timedelta(hours=12):
+        return None
+    return (f"Not sending: started at {here:%H:%M} on this computer's clock (UTC{here:%z}), which "
+            f"is {home:%H:%M} in {cfg.timezone}, the Household's zone, and the Brief is at "
+            f"{evening:%H:%M} there. Set this computer's time zone to {cfg.timezone}")
+
+
+def _started_by_hand(state: State) -> bool:
+    """Whether `schedule run-now` started this run of the evening job, a few minutes ago."""
+    at = state.started_by_hand_at
+    return at is not None and datetime.now(timezone.utc) - at < timedelta(minutes=10)
+
+
 def run_unless_caught_up(cfg: Config, options: Options, io: IO) -> int:
-    """`run`, or with `if_missed` only when the evening run was missed (#386). Checked under the
-    run lock, so a catch-up started beside the evening run sees the state that run left. A run
-    that isn't a dry run notes how it ended in last-run.json, a crash as exit 1, with how long it
-    took."""
+    """`run`, or with `if_missed` only when the evening run was missed (#386), or when `scheduled`
+    only unless it started too early (#776). Checked under the run lock, so a catch-up started
+    beside the evening run sees the state that run left. A run that isn't a dry run notes how it
+    ended in last-run.json, a crash as exit 1, with how long it took."""
+    if options.scheduled and (early := _too_early(cfg)):
+        if not _started_by_hand(io.load_state(cfg.resolved_state_path())):
+            log.warning(early)
+            return 0
     if options.if_missed:
         if not _evening_missed(cfg, io.load_state(cfg.resolved_state_path())):
             log.info("The evening run has run since its last time, so there is nothing to catch up")
