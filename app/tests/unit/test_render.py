@@ -328,3 +328,22 @@ def test_the_imessage_is_the_plain_text_brief_in_the_brief_language(golden):
     assert isinstance(imessage, render.IMessage) and imessage.to == ["+358401234567"]
     # The email's text, but for its last line, which says the address it came from is unread.
     golden("normal_night.zh.imessage.txt", imessage.text)
+
+
+def test_the_new_calendar_events_are_listed_by_start_whatever_source_gave_them():
+    t = TEXT["en"]
+    created = [  # as the run collects them: the model's first, then each Source's in its own order
+        {"title": "Parents' evening", "start": "2026-10-02T18:00:00", "kid": "Leo"},
+        {"title": "Daycare closed", "start": "2026-10-06", "kid": "Mia"},
+        {"title": "Forest trip", "start": "2026-09-30T08:45:00+03:00", "kid": "Mia"},
+        {"title": "Training", "start": "2026-09-30T14:30:00+00:00", "kid": "Leo"},  # 17:30 in Helsinki
+        {"title": "Photo day", "start": "2026-09-30", "kid": "Mia"},
+    ]
+    night = brief_of(Brief(), t, created=created, ics_events=[])
+
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
+
+    order = ["Photo day", "Forest trip", "Training", "Parents' evening", "Daycare closed"]
+    for listed in (mail.text, mail.html, night.text()):
+        at = [listed.index(html.escape(title) if listed is mail.html else title) for title in order]
+        assert at == sorted(at), listed

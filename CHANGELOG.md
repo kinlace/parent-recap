@@ -13,6 +13,7 @@ What changes for families in each release, collected from the `What changes for 
 
 ### Changed
 
+- The Brief tells under each Kid the coming days a parent must plan for from MyClub, Eepos and eVaka, not only tomorrow's: a day the daycare or school is closed, a trip with its departure time or what to bring, an event parents attend or book, and a reservation deadline, saying in the Brief's language what a Finnish title means. Routine group activities stay out. The new calendar events are listed in date order.
 - The hosted sign-up's MyClub page ends with Done, and says a family that doesn't use MyClub leaves its links empty and presses it.
 - The setup page turns on the evening Brief by itself once your first Brief is sent, so closing the page after it no longer leaves the evening Brief off. On a Mac the page says why macOS then asks for your Mac password (so the Mac can wake up for the Brief). The last step says the evening Brief is on and at what time, and if the password window was closed, offers "Set the wake-up" to try again.
 - The setup page's time field says "Every day at" instead of "Every evening at", since the Brief can come at any time you pick.

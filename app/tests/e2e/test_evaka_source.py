@@ -6,8 +6,11 @@ their ids and names."""
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
-from conftest import SAYS_SOMETHING, evaka_child, evaka_event, without_unread_note
+import time_machine
+
+from conftest import NOW, SAYS_SOMETHING, evaka_child, evaka_event, without_unread_note
 from fake_sources import EVAKA_PASSWORD
 from fake_system import LINUX
 from nights import normal_night
@@ -56,6 +59,24 @@ def test_tomorrow_s_daycare_events_closures_and_deadline_are_in_the_brief_and_co
     _, ics, _ = email.attachment(".ics")
     assert ics.count(b"BEGIN:VEVENT") == 4 and b"DTSTART;VALUE=DATE:20261009" in ics
     assert b"DTSTART:20260928T150000Z" in ics  # 18:00 in Helsinki
+
+
+def test_a_later_daycare_event_asks_the_model_the_evening_it_is_new_and_not_after(harness):
+    # #777: only the model picks out a closed day or a trip ahead to tell in the Digest.
+    harness.sources = {"evaka": [evaka_event("Retki Sellosaliin", "2026-10-01", children=(MIA,),
+                                             description="Lähtö päiväkodilta klo 9.15")]}
+    with_evaka(harness)
+    harness.source_fakes["evaka"].city("espoo").fixed_schedule = {MIA, LEO}  # no deadline tomorrow
+    harness.model_reply = {"per_kid": [], "calendar_events": [],
+                           "message_digest": "**Mia**\n- Thu 1.10. daycare trip, leaving at 9.15"}
+
+    assert harness.run() == 0
+
+    [call] = harness.model_calls
+    assert "Retki Sellosaliin" in call.prompt and "Lähtö päiväkodilta klo 9.15" in call.prompt
+    with time_machine.travel(NOW + timedelta(hours=1), tick=False):
+        assert harness.run() == 0
+    assert len(harness.model_calls) == 1
 
 
 def test_a_wrong_evaka_password_is_said_on_the_coverage_line_and_the_brief_still_goes_out(harness):

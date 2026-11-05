@@ -323,6 +323,14 @@ def _ics_candidates(cfg: Config, state: State, events: list) -> list:
             and not calendar_action.already_created(state, e)]
 
 
+def _new_events(cfg: Config, state: State, events: list[CalendarEvent]) -> list[CalendarEvent]:
+    """The Sources' events the Brief lists as new tonight: those not yet written, and in ics mode
+    only those of a Source the .ics takes."""
+    if cfg.google_calendar.mode == "ics":
+        return _ics_candidates(cfg, state, events)
+    return [e for e in events if not calendar_action.already_created(state, e)]
+
+
 def _as_created(events: list) -> list[dict]:
     """Events the Brief lists without a Google write, shaped like `create_events` results."""
     return [{"title": e.title, "start": e.start_iso(), "kid": e.kid, "location": e.location,
@@ -403,8 +411,9 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
     placeholders = placeholders_for(cfg)
     # Messages that look sensitive reach no model call: the Brief lists them itself (ADR 0013).
     for_ai, held = for_the_ai(cfg, read.messages)
-    # Only the model tells a Source's event on the evening before it (#696), so tomorrow's asks it.
-    asks_model = bool(for_ai or read.due_soon or read.event_tomorrow)
+    # Only the model tells a Source's event on the evening before it (#696), so tomorrow's asks it,
+    # and one a parent must plan for when it's first listed (#777), so a new one does too.
+    asks_model = bool(for_ai or read.due_soon or read.event_tomorrow or _new_events(cfg, state, read.direct_events))
     if asks_model:
         if options.preview:
             _preview_step("writing")
@@ -433,7 +442,7 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         coverage=read.coverage, created=calendar.created, held_back=_held_back(held),
         calendar_problem=calendar.problem, ics_events=calendar.ics_events,
         # The rule-based fallback is a raw message list the model never wrote, and a night with only
-        # later MyClub events or Held-back Messages asks no model: nothing to judge and no model to credit.
+        # Source events listed before or Held-back Messages asks no model: nothing to judge and no model to credit.
         model_wrote=asks_model and notes.error is None, form=form,
         stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg),
         hosted=cfg.hosted)
