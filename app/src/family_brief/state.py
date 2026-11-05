@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import tempfile
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -113,4 +116,18 @@ class State:
     def save(self) -> None:
         self._prune()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self._data, indent=2, ensure_ascii=False), encoding="utf-8")
+        # A whole file in place of the old one, so a reader never gets half of it and reads no
+        # state at all: the setup page checks it while turning on the evening Brief saves it.
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self.path.parent,
+                                         prefix=f"{self.path.name}.", suffix=".partial",
+                                         delete=False) as f:
+            f.write(json.dumps(self._data, indent=2, ensure_ascii=False))
+        for attempt in range(50):
+            try:
+                os.replace(f.name, self.path)
+                return
+            except PermissionError:  # Windows, while another process has the file open
+                if attempt == 49:
+                    os.unlink(f.name)
+                    raise
+                time.sleep(0.02)
