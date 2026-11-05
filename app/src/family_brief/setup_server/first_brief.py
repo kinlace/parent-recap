@@ -113,7 +113,8 @@ class FirstBrief(Phase):
         """"Send it to me": sends the Brief made to the setup parent, the first Recipient, and
         never to anyone else: the others' first Brief is the first evening one. It's recorded as
         delivered to them, which the outcome check counts as the first Brief, and nothing else:
-        the evening Brief still reads the same Messages."""
+        the evening Brief still reads the same Messages. Once it's sent, the evening Brief turns
+        itself on in the background, as Finish's Turn it on does (#733)."""
         brief = self._brief
         cfg = self.context.model()
         parent = cfg.email.to[0].address if cfg.email.enabled and cfg.email.to else None
@@ -145,7 +146,10 @@ class FirstBrief(Phase):
                 state.save()
         except run_lock.Busy:
             return HTTPStatus.OK, {"result": "busy"}
-        return HTTPStatus.OK, {"result": "sent", "to": parent}
+        # The evening Brief turns itself on now (#733): `turning_on` once it has started, so the
+        # page says why macOS's password dialog is about to open.
+        turning_on = {"turning_on": True} if self.context.turn_on() else {}
+        return HTTPStatus.OK, {"result": "sent", "to": parent, **turning_on}
 
     def brief_done(self, raw: Any) -> Reply:
         """Moves setup on to Finish once the first Brief has reached the setup parent."""

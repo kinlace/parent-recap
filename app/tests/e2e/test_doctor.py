@@ -15,6 +15,7 @@ import yaml
 import fake_node
 from family_brief import __main__ as cli, ops, setup_server, setup_steps
 from family_brief.llm import codex as codex_backend
+from family_brief.state import State
 from family_brief.system import jobs
 from conftest import program
 from fake_sources import GmailFolders
@@ -68,6 +69,33 @@ def test_doctor_says_a_job_that_isnt_installed_isnt_installed_yet(harness, nothi
     line = schedule_line(capsys.readouterr().out)
     assert f"not installed yet: {jobs.system_name(jobs.DAILY)}" in line and "parent-recap schedule install" in line
     assert "not loaded" not in line
+
+
+def test_doctor_fails_on_an_evening_brief_that_isnt_on_once_a_brief_has_gone_out(
+        harness, nothing_loaded, capsys):
+    # Setup turns the evening Brief on once the first Brief is sent (#733): off after that, no
+    # Brief comes.
+    harness.state_path.parent.mkdir(parents=True, exist_ok=True)
+    state = State(harness.state_path)
+    state.mark_delivered_now(["parent@example.com"])
+    state.save()
+
+    code = harness.cli("doctor", "--skip-llm")
+
+    line = schedule_line(capsys.readouterr().out)
+    assert code == 1
+    assert line.startswith(ops.FAIL.strip())
+    assert "the evening Brief isn't on" in line and jobs.system_name(jobs.DAILY) in line
+    assert "parent-recap schedule install" in line and "not installed yet" not in line
+    assert not HAN.findall(line)
+
+
+def test_doctor_only_warns_of_an_evening_brief_that_isnt_on_before_the_first_brief(
+        harness, nothing_loaded, capsys):
+    harness.cli("doctor", "--skip-llm")
+
+    line = schedule_line(capsys.readouterr().out)
+    assert line.startswith(ops.WARN.strip()) and "evening Brief isn't on" not in line
 
 
 def schedule_lines(out: str) -> list[str]:

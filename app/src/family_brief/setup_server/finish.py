@@ -29,14 +29,17 @@ class SendingAnswer(Strict):
 class Finish(Phase):
     def __init__(self, context: Context) -> None:
         super().__init__(context)
-        # Finish was tried, with Turn it on or Check again: from then on, its checklist says
-        # what's missing under each outcome that isn't true.
+        # Finish was tried, by the first Brief's turning it on, Turn it on or Check again: from
+        # then on, its checklist says what's missing under each outcome that isn't true.
         self._tried = False
         # How setting the wake-up went at the last Turn it on, which Check again still shows, with
         # Replace it for another wake schedule.
         self._wake: dict[str, Any] = {}
         # Opened again once setup was at Finish: the family came back to change something.
         self._opened_at_finish = context.progress()["phase"] == "finish"
+        # The first Brief has turned the evening Brief on once: a Brief sent again doesn't.
+        self._turned_on = False
+        context.turn_on = self.turn_on
 
     def routes(self) -> dict[str, Action]:
         return {"api/finish": self.start_finish, "api/finish/outcomes": self.check_outcomes,
@@ -76,6 +79,21 @@ class Finish(Phase):
                 "invalid-answers", "Say whether to replace the Mac's other wake schedule.",
                 errors=["replace_wake: should be true or false"])
         return self._start(raw["replace_wake"])
+
+    def turn_on(self) -> bool:
+        """Turns on the evening Brief once the first Brief has been sent (#733): what Turn it on
+        does, without replacing the Mac's other wake schedule, which Finish then asks about. It
+        runs on the server, so a page closed right after the first Brief doesn't stop it, and
+        once per server, so sending the Brief again doesn't open macOS's dialog again. Its
+        outcomes are checked once Finish asks for them. True if it started."""
+        runs = self.context.runs
+        with self.context.working:
+            if self._turned_on or runs.get("finish", {}).get("result") in UNDER_WAY:
+                return False
+            self._turned_on = self._tried = True
+            runs["finish"] = {"result": "installing"}
+            threading.Thread(target=self._finishing, args=(False, False), daemon=True).start()
+        return True
 
     def check_outcomes(self, raw: Any) -> Reply:
         """Checks the outcomes without installing anything, for a Household that may have
@@ -140,7 +158,9 @@ class Finish(Phase):
             threading.Thread(target=self._finishing, args=(replace,), daemon=True).start()
         return HTTPStatus.OK, dict(started)
 
-    def _finishing(self, replace: bool | None) -> None:
+    def _finishing(self, replace: bool | None, check: bool = True) -> None:
+        """Installs with `replace` true or false, then checks the outcomes; with None, only
+        checks them. Without `check`, it ends once installed, and Finish checks them when asked."""
         runs = self.context.runs
         if replace is not None:
             try:
@@ -160,6 +180,9 @@ class Finish(Phase):
             if result:
                 self._wake = {"wake": result,
                               **({"other": other} if result == "other-schedule" else {})}
+            if not check:
+                runs.pop("finish", None)  # Finish's first ask checks the outcomes, with the wake
+                return
             runs["finish"] = {"result": "checking"}
         why: dict[str, str] = {}
         try:
