@@ -462,9 +462,17 @@ def _check_schedule(cfg: Config, add) -> None:
     wanted = [jobs.DAILY] + ([jobs.WEEKEND] if cfg.weekend_events.enabled else [])
     missing = [j for j in wanted if j not in installed]
     unloaded = [jobs.system_name(j) for j in missing if j in waiting]
-    uninstalled = [jobs.system_name(j) for j in missing if j not in waiting]
+    uninstalled = [j for j in missing if j not in waiting]
+    state = State(cfg.resolved_state_path())
+    if jobs.DAILY in uninstalled and any(state.delivered_at(r.address) for r in cfg.email.to):
+        # Once a Brief has gone out the evening Brief should be on: setup turns it on by itself
+        # after the first one (#733), so one that's off is the family's Brief missing.
+        add(FAIL, "schedule", f"the evening Brief isn't on: {jobs.system_name(jobs.DAILY)} isn't "
+            "installed, so no Brief comes (run parent-recap schedule install)")
+        uninstalled.remove(jobs.DAILY)
     if uninstalled:
-        add(WARN, "schedule", f"not installed yet: {', '.join(uninstalled)} "
+        add(WARN, "schedule", f"not installed yet: "
+            f"{', '.join(jobs.system_name(j) for j in uninstalled)} "
             "(run parent-recap schedule install)")
     if unloaded:
         add(WARN, "schedule", f"installed but not loaded for this login: {', '.join(unloaded)}. "
@@ -482,7 +490,7 @@ def _check_schedule(cfg: Config, add) -> None:
         else:
             add(WARN, "schedule", f"installed but not running: {name}. It starts again when you "
                 "sign in, unless WhatsApp ended its link")
-    last = State(cfg.resolved_state_path()).last_run_at
+    last = state.last_run_at
     if last:
         hours = (datetime.now(timezone.utc) - last).total_seconds() / 3600
         status = OK if hours < 30 else WARN

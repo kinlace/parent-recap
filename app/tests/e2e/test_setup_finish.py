@@ -16,11 +16,12 @@ import pytest
 
 from family_brief import ops, setup_server, setup_status
 from family_brief.system import jobs, wake
-from fake_system import LINUX, FakeWake
-from setup_page import (PAGE_DIR, Response, at_finish, call, finish, finished, more_progress, new_server,
-                        refused, wait_for)
+from fake_system import LINUX, MACOS, WINDOWS, FakeWake
+from setup_page import (PAGE_DIR, Response, at_finish, call, finish, finished, install_program,
+                        more_progress, new_server, refused, wait_for)
 from setup_page import clock, health, page, schedule  # noqa: F401
 from test_setup_back_to_connect import back_to_connect
+from test_setup_first_brief import at_the_first_brief, brief_made, make_brief, send_it_to_me
 
 
 # ── Finish: the evening job and the wake-up, then the outcome checklist
@@ -31,6 +32,106 @@ OTHER_WAKE = "wake every weekday at 07:00"
 
 def checklist(out: dict[str, Any]) -> dict[str, bool]:
     return {o["outcome"]: o["ok"] for o in out["outcomes"]}
+
+
+# ── The first Brief sent turns the evening Brief on by itself (#733)
+
+
+def first_brief_sent(harness, url: str) -> dict[str, Any]:
+    """The first Brief made and sent to the setup parent, with the program installed: what the
+    page asks, and nothing after it."""
+    at_the_first_brief(harness)
+    install_program(harness)
+    make_brief(url)
+    assert brief_made(url)["result"] == "made"
+    return send_it_to_me(url).json()
+
+
+def turned_on(url: str) -> None:
+    wait_for(lambda: call(url, "api/finish/check", method="POST", body={}).json()["result"]
+             not in ("installing", "checking"))
+
+
+def at_finish_after_turning_on(url: str) -> dict[str, Any]:
+    """The page goes on to Finish, which checks the outcomes as it does when opened."""
+    assert call(url, "api/brief/done", method="POST", body={}).json()["result"] == "saved"
+    assert call(url, "api/finish/check", method="POST", body={}).json() == {"result": "no-finish"}
+    call(url, "api/finish/outcomes", method="POST", body={})
+    return finished(url)
+
+
+@pytest.mark.parametrize("on", [MACOS, WINDOWS, LINUX], ids=["macos", "windows", "linux"])
+def test_the_first_brief_sent_turns_on_the_evening_brief_with_nothing_more_from_the_page(
+        harness, page, schedule, on):
+    harness.system = on
+
+    out = first_brief_sent(harness, page.url)
+
+    assert out["result"] == "sent" and out["turning_on"] is True
+    wait_for(lambda: jobs.DAILY in harness.jobs.installed())
+    turned_on(page.url)
+    assert schedule.loads[:1] == [jobs.DAILY]
+    # The wake-up set as Turn it on sets it, never replacing another; a server never sleeps.
+    assert schedule.dialogs == ([] if on is LINUX else ["set 20:55"])
+    # Finish then says it's on, without asking for anything.
+    out = at_finish_after_turning_on(page.url)
+    assert checklist(out)["nightly"] is True and out["tried"] is True
+    # Windows' wake-up waits for the family's own Allow wake timers.
+    assert out["result"] == ("not-done" if on is WINDOWS else "done")
+    assert len(schedule.loads) == 1 and len(schedule.dialogs) <= 1  # nothing installed again
+
+
+def test_the_brief_sent_again_doesn_t_turn_it_on_again(harness, page, schedule):
+    first_brief_sent(harness, page.url)
+    turned_on(page.url)
+
+    again = send_it_to_me(page.url).json()
+
+    assert again["result"] == "sent" and "turning_on" not in again
+    assert schedule.dialogs == ["set 20:55"]  # macOS's dialog isn't opened twice
+
+
+def test_a_cancelled_wake_up_leaves_the_evening_brief_on_and_finish_offers_to_try_again(
+        harness, page, schedule):
+    harness.wake.dialog = "cancel"
+
+    first_brief_sent(harness, page.url)
+    turned_on(page.url)
+
+    assert jobs.DAILY in harness.jobs.installed()
+    out = at_finish_after_turning_on(page.url)
+    assert out["result"] == "not-done" and out["wake"] == "cancelled" and out["tried"] is True
+    assert checklist(out)["nightly"] is True and checklist(out)["wake"] is False
+    harness.wake.dialog = "allow"
+    finish(page.url)  # the page's Set the wake-up, today's retry
+    assert finished(page.url)["result"] == "done"
+
+
+def test_turning_it_on_by_itself_never_replaces_another_wake_schedule(harness, page, schedule):
+    harness.wake.wakes = [OTHER_WAKE]
+
+    first_brief_sent(harness, page.url)
+    turned_on(page.url)
+
+    assert schedule.dialogs == [] and harness.wake.wakes == [OTHER_WAKE]
+    out = at_finish_after_turning_on(page.url)
+    # The page is told to ask, as Turn it on tells it.
+    assert out["wake"] == "other-schedule" and out["other"] == [OTHER_WAKE]
+    assert checklist(out)["nightly"] is True and checklist(out)["wake"] is False
+
+
+def test_jobs_that_cannot_be_loaded_after_the_first_brief_say_so_at_finish(harness, page,
+                                                                           schedule):
+    schedule.load_fails = True
+
+    first_brief_sent(harness, page.url)
+    turned_on(page.url)
+
+    call(page.url, "api/brief/done", method="POST", body={})
+    assert finished(page.url)["result"] == "install-failed"
+    schedule.load_fails = False
+    finish(page.url)
+    assert finished(page.url)["result"] == "done"
 
 
 def test_finish_installs_the_evening_job_and_the_wake_up_through_macos_s_dialog(harness, page,

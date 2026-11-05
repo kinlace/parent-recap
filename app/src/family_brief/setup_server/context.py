@@ -123,6 +123,9 @@ class Context:
     runs: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
     # Every outcome is true, or the family finished for now: the server stops once that's been said.
     closing: bool = field(default=False, init=False)
+    # Turns on the evening Brief in the background, as Finish's Turn it on does, once the first
+    # Brief has been sent (#733): True if it started. Finish puts its own in.
+    turn_on: Callable[[], bool] = field(default=lambda: False, init=False)
 
     def __post_init__(self) -> None:
         self.connect = setup_connect.ConnectSteps(self.config)
