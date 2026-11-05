@@ -219,8 +219,10 @@ A bad deploy breaks every Household's next Brief at once, so it then checks itse
 
 ```sh
 sudo mkdir -p /etc/parent-recap-deploy
-echo CHECK_HOUSEHOLD=ph-30d2afe0 | sudo tee /etc/parent-recap-deploy/deploy.env
+echo CHECK_HOUSEHOLD=ph-XXXXXXXX | sudo tee /etc/parent-recap-deploy/deploy.env
 ```
+
+Make it a Household of its own, signed up through an Invite Link whose only Recipient is a mailbox the maintainers keep for these checks, so every deploy mails that mailbox and no family. Ours is `ph-e106d09d` (signed up 2026-11-04). Don't remove it, and leave it out when counting Hosted Households.
 
 A failed check exits 1 and says so; the run's logs are in `~ph-…/ParentRecap/logs/run-stderr.log`, and `sudo admin households` shows every Household.
 
