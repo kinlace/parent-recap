@@ -134,10 +134,9 @@ def kids_for(cfg: Config) -> kid_placeholders.KidPlaceholders | None:
 
 def for_the_ai(cfg: Config, messages: list[Message]) -> tuple[list[Message], list[Message]]:
     """The night's `messages` that may go to the AI, and those held back from every model call
-    because they look sensitive (ADR 0013). With the AI filter off, none are held back."""
-    if not cfg.ai_filter.enabled:
-        return messages, []
-    return held_back.hold_back(messages)
+    because they look sensitive (ADR 0013). With the AI filter off, only those their Source gave
+    only as a stub are, such as eVaka's sensitive messages: a model could only guess at them."""
+    return held_back.hold_back(messages, words=cfg.ai_filter.enabled)
 
 
 # The Sources' own names in every language, which a person may share (Wilma is a first name too).

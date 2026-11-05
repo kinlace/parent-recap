@@ -157,7 +157,21 @@ def test_doctor_signs_in_to_each_city_and_names_its_children(harness, nothing_lo
 
     lines = capsys.readouterr().out.splitlines()
     assert (f"{ops.OK} eVaka (espoonvarhaiskasvatus.fi): signed in as {USERNAME}, 2 events in the next "
-            "28 days; children: Mia Emilia Virtanen (Mia), Leo Virtanen (Leo)") in lines
+            "28 days, messages readable; children: Mia Emilia Virtanen (Mia), Leo Virtanen (Leo)") in lines
+
+
+def test_doctor_warns_when_the_messages_can_t_be_read_while_the_rest_can(harness, nothing_loaded, portal,  # noqa: F811
+                                                                         capsys):
+    harness.config["evaka"] = {"signins": [{"city": "espoo", "username": USERNAME}]}
+    harness.secrets[SECRET] = EVAKA_PASSWORD
+    portal.answers[("espoo", "messages/received")] = (404, "Not Found")
+
+    harness.cli("doctor", "--skip-llm")
+
+    [line] = [l for l in capsys.readouterr().out.splitlines() if "eVaka" in l]
+    assert line == (f"{ops.WARN} eVaka (espoonvarhaiskasvatus.fi): signed in as {USERNAME}, 2 events in the "
+                    "next 28 days, no messages; children: Mia Emilia Virtanen (Mia), Leo Virtanen (Leo). The "
+                    "messages couldn't be read: espoonvarhaiskasvatus.fi has no messages where it was (HTTP 404)")
 
 
 def test_doctor_says_how_to_type_a_password_evaka_no_longer_takes(harness, nothing_loaded, portal,  # noqa: F811

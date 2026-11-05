@@ -10,6 +10,7 @@ What changes for families in each release, collected from the `What changes for 
 - Lessons, concerts and holidays from a music or art school on Eepos come in the Brief and its calendar attachment, for the right Kid. For now the Parent Recap team turns it on for a Household by hand, one sign-in per school.
 - A family signing up for the hosted version can add their music or art school's Eepos sign-in on the MyClub page. Without Wilma, a MyClub link or an Eepos sign-in is enough.
 - A public daycare's events on eVaka, such as an excursion or a photo day, the days the daycare is closed and when the next week's reservations close come in the Brief and its calendar attachment, for the right Kid. For now the Parent Recap team turns it on for a Household by hand, one sign-in per city.
+- The Brief tells what the daycare's messages and bulletins on eVaka say, once, under the right Kid. A message eVaka marks sensitive is only named, with a link to read it in eVaka, and no AI sees it. Nothing is marked read in eVaka.
 
 ### Changed
 

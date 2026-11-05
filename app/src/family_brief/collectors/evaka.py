@@ -21,7 +21,16 @@ next LOOKAHEAD_DAYS days of:
   first day still open for them (`reservableRange`), and each city closes them a set number of
   hours before (CITIES); none for a week a holiday period has its own reservations for.
 Each becomes a calendar event for the Kid its child is, or for the Household when it is for none,
-several or all of them. Absences, messages and holiday questionnaires are for later slices (#768).
+several or all of them.
+
+It also reads the guardian's received messages (`messages/received`, ten threads a page, the
+latest first), back to the lookback, and makes each message the daycare sent since the last run a
+Message for the Kid its thread names (#786). The family's own messages, and another guardian's,
+aren't told. A sensitive thread comes to a sign-in with a password as a stub, its sender, the time
+of its last message and whether it is unread: it becomes a Message with no text, which its Source
+withholds from the AI (`withheld`), so the Brief only names it, with its link, as a Held-back
+Message (ADR 0013). Nothing is written to eVaka: nothing is marked read, nothing is answered.
+Absences and holiday questionnaires are for later slices.
 """
 from __future__ import annotations
 
@@ -40,7 +49,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 from ..system import secrets
-from .base import CalendarEvent, Collected, retry_once_on_timeout, sign_in_failed
+from .base import CalendarEvent, Collected, Message, retry_once_on_timeout, sign_in_failed
 
 if TYPE_CHECKING:
     from ..config import Config, EvakaSignin, Kid
@@ -78,6 +87,12 @@ CITIES: dict[str, tuple[str, int]] = {
     "kangasala": ("evaka.kangasala.fi", 7 * 24 - 9),
 }
 CLOSED = "Päiväkoti suljettu"  # as the Brief's model reads it, and the .ics shows it
+MESSAGE_PAGES = 5  # of ten threads each: more than a daycare sends in the longest lookback
+MAX_BODY_CHARS = 8000
+# A message to this many guardians' accounts or more went to a whole group or unit, so it is never
+# held back for its words (ADR 0013), as a Wilma message to as many addressees: the guardians of a
+# daycare group of even ten children number more, and one child's are two or three.
+EVERYONE_MIN_ADDRESSEES = 15
 
 
 class EvakaError(Exception):
@@ -265,6 +280,15 @@ class Portal:
             raise Changed(f"{self.where}'s reservations aren't as they were")
         return answer
 
+    def received(self, page: int) -> dict[str, Any]:
+        """A page of the guardian's received message threads, the first page 1, as eVaka gives it:
+        its `data`, ten threads, the latest first, and how many `pages` there are. Only GETs it."""
+        answer = self._json("messages/received", "messages", page=str(page))
+        if not isinstance(answer, dict) or not isinstance(answer.get("data"), list) \
+                or not all(isinstance(t, dict) for t in answer["data"]) or not isinstance(answer.get("pages"), int):
+            raise Changed(f"{self.where}'s messages aren't as they were")
+        return answer
+
 
 def _text(v: Any) -> str:
     return v.strip() if isinstance(v, str) else ""
@@ -414,6 +438,116 @@ def deadline(reservations: dict[str, Any], city: str, kids: Mapping[str, str | N
         description=f"Varaa hoitoajat {monday.day}.{monday.month}. alkavalle viikolle eVakassa.")
 
 
+def _sent(v: Any, where: str) -> datetime:
+    """One of eVaka's times (HelsinkiDateTime, which it gives with its offset), in UTC."""
+    try:
+        at = datetime.fromisoformat(v)
+    except (TypeError, ValueError):
+        raise Changed(f"{where} has a time it didn't have") from None
+    return (at if at.tzinfo else at.replace(tzinfo=EVAKA_ZONE)).astimezone(timezone.utc)
+
+
+def last_sent(thread: dict[str, Any], where: str) -> datetime | None:
+    """When the thread's last message was sent, or None for a thread with none."""
+    if thread.get("type") == "Redacted":
+        return _sent(thread["lastMessageSentAt"], where) if thread.get("lastMessageSentAt") else None
+    sent = [_sent(m.get("sentAt"), where) for m in thread.get("messages") or [] if isinstance(m, dict)]
+    return max(sent, default=None)
+
+
+def thread_link(city: str, thread_id: Any) -> str:
+    """Where the family reads a thread in eVaka's own web app."""
+    return f"https://{host_of(city)}/messages/{thread_id}"
+
+
+def _account(v: Any, where: str) -> dict[str, Any]:
+    if not isinstance(v, dict) or not isinstance(v.get("name"), str):
+        raise Changed(f"{where} has a message without its sender")
+    return v
+
+
+def messages_of(threads: Iterable[dict[str, Any]], city: str, kids: Mapping[str, str | None]) -> list[Message]:
+    """eVaka's received `threads` in `city` as Messages: each message the daycare or the city
+    sent in a thread, for the Kid the thread's children are (none for several or none), with the
+    thread's title as its subject; and each sensitive thread as one Message with no text, by its
+    sender and the time of its last message, so a new message in it is named again. The family's
+    own messages, and another guardian's (an account of type CITIZEN), and a message whose text
+    eVaka deleted, aren't. Only how many accounts a message went to is kept, never who they are
+    (ADR 0013). Raises Changed for a thread or message that isn't as eVaka gave them."""
+    where = f"{host_of(city)}'s messages"
+    out: list[Message] = []
+    for thread in threads:
+        kind, thread_id = thread.get("type"), thread.get("id")
+        if not thread_id or kind not in ("Regular", "Redacted"):
+            raise Changed(f"{where} has a thread it didn't have")
+        if kind == "Redacted" or thread.get("sensitive"):
+            at = last_sent(thread, where)
+            if at is None:
+                continue
+            sender = _account(thread.get("sender") or {"name": ""}, where)
+            out.append(Message(
+                source="evaka", external_id="sensitive:" + hashlib.sha256(
+                    f"{city}|{thread_id}|{at.isoformat()}".encode()).hexdigest()[:16],
+                timestamp=at, sender=sender["name"] or None, subject=None, body="", chat_name="message",
+                url=thread_link(city, thread_id),
+                metadata={"evaka_sensitive": True, "evaka_city": city, "thread_id": thread_id,
+                          "unread": bool(thread.get("hasUnreadMessages"))}))
+            continue
+        title, messages = _text(thread.get("title")), thread.get("messages")
+        if not isinstance(messages, list):
+            raise Changed(f"{where} has a thread without its messages")
+        children = [str(c.get("childId")) for c in thread.get("children") or [] if isinstance(c, dict)]
+        for m in messages:
+            if not isinstance(m, dict) or not m.get("id") or not isinstance(m.get("content"), str):
+                raise Changed(f"{where} has a message without its text")
+            sender = _account(m.get("sender"), where)
+            if sender.get("type") == "CITIZEN" or m.get("contentDeletedAt"):
+                continue
+            recipients = m.get("recipients") if isinstance(m.get("recipients"), list) else []
+            attachments = m.get("attachments") if isinstance(m.get("attachments"), list) else []
+            body = m["content"].strip()
+            if attachments:  # model input, so in English: the files are only in eVaka
+                body += f"\n\n[{len(attachments)} attachment{'s' * (len(attachments) > 1)} in eVaka]"
+            out.append(Message(
+                source="evaka", external_id=str(m["id"]), timestamp=_sent(m.get("sentAt"), where),
+                sender=sender["name"] or None, subject=title, body=body[:MAX_BODY_CHARS],
+                chat_name="bulletin" if thread.get("messageType") == "BULLETIN" else "message",
+                kid_hint=_whose(children, kids), url=thread_link(city, thread_id),
+                metadata={"evaka_city": city, "thread_id": thread_id, "sender_type": sender.get("type"),
+                          "urgent": bool(thread.get("urgent")),
+                          "addressee_count": len({r.get("id") for r in recipients if isinstance(r, dict)})}))
+    return out
+
+
+def withheld(m: Message) -> bool:
+    """Whether `m` is a sensitive message eVaka gave only as a stub: the Brief names it, and no
+    model is asked about it, whatever the AI filter says (ADR 0013)."""
+    return bool(m.metadata.get("evaka_sensitive"))
+
+
+def sent_to_everyone(m: Message) -> bool:
+    """Whether the eVaka message `m` went to everyone, so it is never held back for its words: one
+    from the city (a MUNICIPAL account, whose addressees eVaka hides), or one to
+    EVERYONE_MIN_ADDRESSEES guardians' accounts or more."""
+    count = m.metadata.get("addressee_count")
+    return not withheld(m) and (m.metadata.get("sender_type") == "MUNICIPAL" or (
+        isinstance(count, int) and not isinstance(count, bool) and count >= EVERYONE_MIN_ADDRESSEES))
+
+
+def threads_since(portal: Portal, since: datetime) -> list[dict[str, Any]]:
+    """The guardian's received threads, page by page, the latest first, until a page reaches back
+    before `since`, or MESSAGE_PAGES pages."""
+    where = f"{portal.where}'s messages"
+    out: list[dict[str, Any]] = []
+    for page in range(1, MESSAGE_PAGES + 1):
+        answer = portal.received(page)
+        out += answer["data"]
+        times = [at for t in answer["data"] if (at := last_sent(t, where)) is not None]
+        if page >= answer["pages"] or not times or min(times) < since:
+            break
+    return out
+
+
 def password_of(signin: EvakaSignin) -> str:
     """The sign-in's password from the secret store. Raises WrongPassword when there is none."""
     try:
@@ -446,35 +580,64 @@ def read_all(portal: Portal, signin: EvakaSignin, cfg: Config, first: date
     return children, kids, got
 
 
-def read(cfg: Config, signin: EvakaSignin, first: date) -> list[CalendarEvent]:
-    """The events of the sign-in's city from the day `first` to LOOKAHEAD_DAYS on."""
+@dataclass
+class _Read:
+    """What one sign-in gave tonight: its events, its messages, and why its messages couldn't be
+    read, if they couldn't."""
+    events: list[CalendarEvent]
+    messages: list[Message]
+    messages_failed: EvakaError | None = None
+
+
+def read(cfg: Config, signin: EvakaSignin, first: date, since: datetime) -> _Read:
+    """The events of the sign-in's city from the day `first` to LOOKAHEAD_DAYS on, and its
+    messages, back to `since` at least. Messages that can't be read leave the events."""
     password = password_of(signin)
     with Portal(signin.city, devices_path(cfg)) as portal:
         portal.sign_in(signin.username, password)
-        return read_all(portal, signin, cfg, first)[2]
+        children, kids, events = read_all(portal, signin, cfg, first)
+        try:
+            messages = messages_of(threads_since(portal, since), signin.city, kids)
+        except EvakaError as e:
+            return _Read(events, [], e)
+    return _Read(events, messages)
 
 
 def collect(cfg: Config, state: State, kid_terms: list[str]) -> Collected:
-    """The coming events of each eVaka sign-in, to add to the calendar; eVaka has no Messages in
-    this slice. They come again each night, so none is marked seen. A sign-in that fails while
-    another works is logged by its host, so the Brief says eVaka was partly read and where; when
-    none works, eVaka wasn't read, with the first one's reason."""
+    """The coming events of each eVaka sign-in, to add to the calendar, and the messages its
+    daycare sent within the lookback that no earlier run told. Events come again each night, so
+    none is marked seen; a message is, so it is told once. A sign-in that fails while another
+    works, or whose messages can't be read, is logged by its host, so the Brief says eVaka was
+    partly read and where; when none works, eVaka wasn't read, with the first one's reason."""
     now = datetime.now(timezone.utc)
     on = today(cfg.timezone)
+    since = now - timedelta(hours=cfg.evaka.lookback_hours)
     out: list[CalendarEvent] = []
+    messages: list[Message] = []
     failed: list[EvakaError] = []
+    several = len(cfg.evaka.signins) > 1
     for signin in cfg.evaka.signins:
+        where = host_of(signin.city)
         try:
-            got = read(cfg, signin, on)
+            got = read(cfg, signin, on, since)
         except EvakaError as e:
             failed.append(e)
-            if len(cfg.evaka.signins) > 1:
-                log.error("%s", sign_in_failed(host_of(signin.city), str(e), signin.username))
+            if several:
+                log.error("%s", sign_in_failed(where, str(e), signin.username))
             continue
+        if got.messages_failed is not None:
+            why = str(got.messages_failed)
+            log.error("%s", sign_in_failed(where, why, signin.username) if several else why)
         # What is over by this evening is gone; an event of several days that goes on, isn't.
-        got = [e for e in got if (e.end if e.all_day and e.end else e.start) >= now - timedelta(hours=6)]
-        log.info("eVaka: %d events at %s (next %dd)", len(got), host_of(signin.city), LOOKAHEAD_DAYS)
-        out += got
+        events = [e for e in got.events if (e.end if e.all_day and e.end else e.start) >= now - timedelta(hours=6)]
+        new = [m for m in got.messages if not state.has_seen_message("evaka", m.external_id)]
+        for m in new:  # one from before the lookback is seen untold, so a wider one never tells it late
+            state.mark_message_seen("evaka", m.external_id)
+        new = [m for m in new if m.timestamp >= since]
+        log.info("eVaka: %d events (next %dd), %d new messages at %s", len(events), LOOKAHEAD_DAYS,
+                 len(new), where)
+        out += events
+        messages += new
     if failed and len(failed) == len(cfg.evaka.signins):
         raise failed[0]
-    return Collected(events=out)
+    return Collected(messages=messages, events=out)

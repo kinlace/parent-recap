@@ -1,8 +1,9 @@
 """Which messages look sensitive, checked on their own, as another tool could: a text in, its
 category or None out, the entry that matched and where, and a night's messages split into those for
 the AI and those held back. Messages sent to everyone are never held back: Wilma announcements,
-Wilma messages to 15 or more addressees, mailing-list email and the announcements in Wilma's
-notification emails.
+Wilma messages to 15 or more addressees, eVaka messages to as many guardians or from the city,
+mailing-list email and the announcements in Wilma's notification emails. A sensitive eVaka message,
+which eVaka gives only as a stub, is always held back.
 The evening run's use of it (nothing held back reaches a prompt, and the Brief lists it) is in
 test_nightly_held_back.py. The words are in src/family_brief/sensitive_words.yaml."""
 from __future__ import annotations
@@ -13,8 +14,9 @@ from email.message import EmailMessage
 import pytest
 import yaml
 
+from conftest import evaka_sensitive_thread, evaka_thread
 from family_brief import held_back
-from family_brief.collectors import gmail, wilma as wilma_source
+from family_brief.collectors import evaka, gmail, wilma as wilma_source
 from family_brief.collectors.base import Message
 
 # A message about one person's sensitive situation, written as parents and schools write it:
@@ -250,6 +252,33 @@ def test_a_count_of_addressees_on_an_announcement_or_another_source_changes_noth
     assert held_back.sent_to_everyone(wilma("42", POLICE, "news"))
     assert not held_back.sent_to_everyone(whatsapp)
     assert held_back.category(whatsapp) == "bullying"
+
+
+def evaka_message(thread: dict) -> Message:
+    [m] = evaka.messages_of([thread], "espoo", {})
+    return m
+
+
+@pytest.mark.parametrize("recipients, sender_type, everyone", [
+    (24, "GROUP", True), (evaka.EVERYONE_MIN_ADDRESSEES, "PERSONAL", True),
+    (evaka.EVERYONE_MIN_ADDRESSEES - 1, "GROUP", False), (2, "PERSONAL", False),
+    (0, "MUNICIPAL", True),  # eVaka hides who the city's messages go to: they go to everyone
+], ids=["group", "just-enough", "just-under", "household", "city"])
+def test_an_evaka_message_to_a_whole_group_or_from_the_city_is_never_held_back(recipients, sender_type, everyone):
+    m = evaka_message(evaka_thread("Tiedote", POLICE, "2026-09-27T10:00:00+03:00", recipients=recipients,
+                                   sender_type=sender_type))
+
+    assert held_back.sent_to_everyone(m) is everyone
+    assert held_back.hold_back([m]) == (([m], []) if everyone else ([], [m]))
+
+
+def test_a_sensitive_evaka_message_is_held_back_whatever_its_words_and_with_the_filter_off():
+    stub = evaka_message(evaka_sensitive_thread("Laine Maija", "2026-09-27T16:30:00+03:00"))
+    ordinary = evaka_message(evaka_thread("Tiedote", POLICE, "2026-09-27T10:00:00+03:00", recipients=2))
+
+    assert held_back.category(stub) is None and held_back.withheld(stub)
+    assert held_back.hold_back([ordinary, stub]) == ([], [ordinary, stub])
+    assert held_back.hold_back([ordinary, stub], words=False) == ([ordinary], [stub])
 
 
 def test_an_email_to_a_mailing_list_is_never_held_back():

@@ -78,7 +78,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                                               |
 | `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                                         |
 | `test_eepos_collector.py`       | Eepos's collector on a fake portal: the sign-in, the calendar, failures, two schools                         |
-| `test_evaka_collector.py`       | eVaka's collector on a fake eVaka: the sign-in, the device cookie, the events, failures, two cities         |
+| `test_evaka_collector.py`       | eVaka's collector on a fake eVaka: the sign-in, the device cookie, the events, the messages, failures, two cities |
 | `test_email_gateway.py`         | The Brief sent through the gateway's relay: the request, refusals, a key, binding, doctor                    |
 | `test_email_gmail.py`           | The Brief sent from the Household's own Gmail (ADR 0034): the message, which way, refusals                   |
 | `test_eval_runner.py`           | The eval runner end to end, only the model process faked                                                     |
@@ -114,7 +114,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON                           |
 | `test_wilma_signins.py`           | Wilma read through a config of each run's own, passwords from the store (#710)          |
 | `test_eepos_source.py`            | Eepos lessons in the Brief, a wrong password or a changed portal, two schools (#755)    |
-| `test_evaka_source.py`            | eVaka events, closed days and the deadline in the Brief, failures, two cities (#768)    |
+| `test_evaka_source.py`            | eVaka events, closed days, the deadline and messages in the Brief, failures, two cities |
 | `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing                       |
 | `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish                                |
 | `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                                       |
@@ -240,7 +240,8 @@ out (iMessage, `open` for the Passwords app), the Sources' own programs, and Cla
 Codex's sign-in and plugin commands. A model call never does. `conftest.py` also has `pauses`
 (a busy model's pauses, on a fake clock), `golden`, `login_shell`, `windows_programs` (programs
 found as Windows finds them, on any system), `credential_manager`, and the builders `msg`,
-`myclub_event`, `eepos_entry`, `eepos_student`, `evaka_event` and `evaka_child`.
+`myclub_event`, `eepos_entry`, `eepos_student`, `evaka_event`, `evaka_child`, `evaka_thread` and
+`evaka_sensitive_thread`.
 
 ## Other fakes and helpers
 

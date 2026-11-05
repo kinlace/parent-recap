@@ -35,13 +35,19 @@ def again(city: str, username: str) -> str:
 
 
 def check(cfg: Config, signin: EvakaSignin, password: str) -> dict[str, Any]:
-    """Signs in to the sign-in's city with `password` and reads the guardian's children and the
-    coming events: each child with the Kid it is (None for none), and how many events the next
-    LOOKAHEAD_DAYS days have. Raises evaka.EvakaError when that doesn't work."""
+    """Signs in to the sign-in's city with `password` and reads the guardian's children, the
+    coming events and the first page of messages: each child with the Kid it is (None for none),
+    how many events the next LOOKAHEAD_DAYS days have, and how many messages that page has, or why
+    it couldn't be read. Raises evaka.EvakaError when the rest doesn't work."""
     with evaka.Portal(signin.city, evaka.devices_path(cfg)) as portal:
         portal.sign_in(signin.username, password)
         children, kids, events = evaka.read_all(portal, signin, cfg, evaka.today(cfg.timezone))
-    return {"children": [(c, kids[c.id]) for c in children], "events": len(events)}
+        try:
+            threads = portal.received(1)["data"]
+            messages: int | str = len(evaka.messages_of(threads, signin.city, kids))
+        except evaka.EvakaError as e:
+            messages = str(e)
+    return {"children": [(c, kids[c.id]) for c in children], "events": len(events), "messages": messages}
 
 
 def add(path: Path, city_given: str, username: str) -> tuple[str, str | None, dict[str, Any]]:
