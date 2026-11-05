@@ -349,6 +349,7 @@ COMMIT = re.compile(r"[0-9a-f]{7,40}")
 SHORT = 12  # a deploy's folders are named by its commit's first 12 hex digits
 # households.json's evening times, the slots the sign-up handed out, are Helsinki's.
 ZONE = "Europe/Helsinki"
+# An evening time, HH:MM, as signup/status.py's EVENING: this file can't import the program.
 EVENING = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
 SOON = timedelta(minutes=30)
 EVENING_JOB = "parent-recap-daily.service"
@@ -621,7 +622,7 @@ def _evenings(paths: Paths, households: list[tuple[str, str]]) -> list[tuple[str
         read = {}
     evenings = []
     for user, slot in households:
-        own = read.get(str(configs.get(user)))
+        own = read.get(str(configs[user])) if user in configs else None
         if (isinstance(own, list) and len(own) == 2 and isinstance(own[0], str)
                 and EVENING.fullmatch(own[0]) and _zone(own[1])):
             evenings.append((user, own[0], own[1]))

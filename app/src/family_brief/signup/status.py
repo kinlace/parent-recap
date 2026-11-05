@@ -2,9 +2,9 @@
 on the server (`sudo admin households` runs it as the sign-up service's user). For each Household in
 the store it runs `signup health` with the shared program (ADR 0035) as that Household's user,
 through the household host, and prints one line: its user with the note its Invite Link carried,
-the time its Brief comes (its config's, which `signup health` says, #780), when its last run ended and how, how long it took and its peak memory,
-each of doctor's checks by its key with its status, and a mark when the last run failed or is
-overdue. Last, when the server waits for a reboot to apply updates, it says so (#745).
+the time its Brief comes (its config's, which `signup health` says, #780), when its last run
+ended and how, how long it took and its peak memory, each of doctor's checks by its key with its
+status, and a mark when the last run failed or is overdue. Last, when the server waits for a reboot to apply updates, it says so (#745).
 
 `signup health` is the Household's side: it reads its own last-run.json and state.json, runs
 doctor's checks without the model's test call (which spends the Household's budget), and prints
@@ -38,7 +38,8 @@ GRACE = timedelta(hours=1)
 LEVELS = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
 MARKS = {"ok": "✅", "warn": "⚠️", "fail": "❌"}
 KEY = re.compile(r"[a-z][a-z0-9-]{0,39}")  # a doctor check's key
-EVENING = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")  # its evening time, HH:MM
+# Its evening time, HH:MM; ops/gateway/admin keeps its own copy, as it can't import this.
+EVENING = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
 # Exists when a reboot is needed after updates, per Ubuntu's Server documentation:
 # https://ubuntu.com/server/docs/how-to/software/upgrade-your-release/
 REBOOT_REQUIRED = Path("/run/reboot-required")
