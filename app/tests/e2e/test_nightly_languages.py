@@ -77,7 +77,7 @@ def test_translation_shares_calendar_archive_and_feedback_text_with_the_original
     # Feedback from the English Brief reaches the Form in the original's words.
     en_links, zh_links = feedback_links(en.html), feedback_links(zh.html)
     assert [label for label, _, _ in en_links[:3]] == \
-        ["❌ The Digest has a mistake", "⭐ Glad this was here", "❌ This is wrong"]
+        ["Something wrong in this summary? Tell us", "⭐ useful", "❌ wrong"]
     assert [answers for _, answers, _ in en_links] == [answers for _, answers, _ in zh_links]
     assert en_links[1][1]["item_text"] == "在 Wilma 签远足同意书"
 

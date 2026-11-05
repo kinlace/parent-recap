@@ -102,11 +102,11 @@ To turn the AI filter off, set `ai_filter.enabled: false`, or ask Claude or Code
 
 ## Pilot feedback
 
-For pilot families only. When turned on, the emailed Brief (HTML version) shows a ⭐ and a ❌ link next to every Action Item, and a ❌ link under the Digest. Their labels follow the Brief's language (`⭐ Glad this was here`, `❌ This is wrong`, `❌ The Digest has a mistake`, or `⭐ 幸好有这条`, `❌ 这条错了`, `❌ 摘要里有错` in a Chinese Brief); the form itself is in English and records the English option for every Household. iMessage has no such links.
+For pilot families only. When turned on, the emailed Brief (HTML version) shows a small grey line under every Action Item with a ⭐ and a ❌ link (`Feedback: ⭐ useful · ❌ wrong`, or `反馈：⭐ 有用 · ❌ 有错` in a Chinese Brief), and a link under the Digest (`Something wrong in this summary? Tell us`, or `这段摘要有错？告诉我们`). Their labels follow the Brief's language; the form itself is in English and records the English option (`⭐ Glad this was here`, `❌ This is wrong`, `❌ The Digest has a mistake`) for every Household. iMessage has no such links.
 
 **Before turning it on, the parents must know and agree that:**
 
-- Clicking ⭐ or ❌ opens a pre-filled Google Form. On submit, the item's text, its Source (Gmail / Wilma / WhatsApp / MyClub), the AI that made the Brief (Claude or Codex), the date, the Household's pseudonym and the Kid as Kid A or Kid B are sent to the Parent Recap team and stored in the team's Google Sheet. The Digest's ❌ sends the Digest (shortened if too long), without Source or Kid. The form also has an optional comment field.
+- Clicking ⭐ or ❌ opens a pre-filled Google Form. On submit, the item's text, its Source (Gmail / Wilma / WhatsApp / MyClub), the AI that made the Brief (Claude or Codex), the date, the Household's pseudonym and the Kid as Kid A or Kid B are sent to the Parent Recap team and stored in the team's Google Sheet. The Digest's link sends the Digest (shortened if too long), without Source or Kid. The form also has an optional comment field.
 - The text goes as the AI saw it: other people's names, phone numbers, email addresses and links are placeholders such as ⟦N1⟧ and ⟦P1⟧ (see [What the AI sees](#what-the-ai-sees)), and each Kid is Kid A, Kid B in the order of `kids`. This holds with the AI filter off too, since the links go to the team, not the AI. As with the AI, a name the program can't list and the Recipients' own names still go as written.
 - Just opening the link without submitting still leaves the item's text and the Household's pseudonym in the browser history and Google's access logs, because they are part of the link.
 - Only the item clicked is sent; nothing is sent if nothing is clicked. The rest of the Brief, and the original mail and chat messages, are never sent.

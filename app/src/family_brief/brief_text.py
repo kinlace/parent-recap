@@ -129,6 +129,7 @@ class BriefText:
     archive_messages: str
 
     # ── Feedback link labels (the Form's own choices are English for every language, see feedback.py)
+    feedback_label: str  # plain text before an Action Item's two links
     feedback_saved: str
     feedback_wrong: str
     feedback_digest_wrong: str
@@ -232,9 +233,10 @@ EN = BriefText(
     archive_action_items="**Action Items:**",
     archive_new_events="## New calendar events",
     archive_messages="## Messages",
-    feedback_saved="⭐ Glad this was here",
-    feedback_wrong="❌ This is wrong",
-    feedback_digest_wrong="❌ The Digest has a mistake",
+    feedback_label="Feedback: ",
+    feedback_saved="⭐ useful",
+    feedback_wrong="❌ wrong",
+    feedback_digest_wrong="Something wrong in this summary? Tell us",
 )
 
 ZH = BriefText(
@@ -309,9 +311,10 @@ ZH = BriefText(
     archive_action_items="**待办：**",
     archive_new_events="## 新日历事件",
     archive_messages="## 原始消息",
-    feedback_saved="⭐ 幸好有这条",
-    feedback_wrong="❌ 这条错了",
-    feedback_digest_wrong="❌ 摘要里有错",
+    feedback_label="反馈：",
+    feedback_saved="⭐ 有用",
+    feedback_wrong="❌ 有错",
+    feedback_digest_wrong="这段摘要有错？告诉我们",
 )
 
 FI = BriefText(
@@ -400,9 +403,10 @@ FI = BriefText(
     archive_action_items="**Hoidettavat:**",
     archive_new_events="## Uudet kalenteritapahtumat",
     archive_messages="## Viestit",
-    feedback_saved="⭐ Hyvä, että tämä oli mukana",
-    feedback_wrong="❌ Tämä on väärin",
-    feedback_digest_wrong="❌ Yhteenvedossa on virhe",
+    feedback_label="Palaute: ",
+    feedback_saved="⭐ hyödyllinen",
+    feedback_wrong="❌ väärin",
+    feedback_digest_wrong="Onko tiivistelmässä virhe? Kerro meille",
 )
 
 TEXT: dict[Language, BriefText] = {"en": EN, "zh": ZH, "fi": FI}  # the reviewed languages
