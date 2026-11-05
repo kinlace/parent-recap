@@ -357,6 +357,26 @@ def test_a_keyword_ending_in_a_space_matches_at_the_end_of_the_text():
     assert not matches(["klo 10 "], "kokoontuminen klo 10.30")
 
 
+def test_any_dash_in_a_range_matches_any_other_dash():
+    # Codex zh wrote "40—78" with an em dash and the notice counted as missed (#799).
+    from family_brief.eval.score import matches
+    for written in ("40-78", "40‐78", "40‑78", "40‒78", "40–78", "40—78", "40―78", "40−78", "40－78", "40﹣78"):
+        assert matches(["40–78"], f"第{written}页"), written
+        assert matches([written], "s. 40–78"), written
+    assert not matches(["40–78"], "40 78")
+
+
+def test_the_exam_told_with_em_dashes_is_clean():
+    # The 2026-11-05 Codex zh Brief, which told both exams right but failed the case (#799).
+    from family_brief.eval.cases import BUNDLED, load_cases
+    case = next(c for c in load_cases(BUNDLED) if c.name == "wilma-exams-already-in-calendar")
+    got = summary([kid("Aino", notices=["10月22日（周四）历史考试：复习课本第3—5章、第40—78页。"]),
+                   kid("Eero", notices=["明天（周一）英语单词测验：复习 Unit 4 单词。"])])
+    s = score_case(case.expect, got, TZ, language="zh")
+    s.update(valid_json=True)
+    assert is_clean(s), s
+
+
 def test_a_photo_word_counts_as_forbidden_but_a_training_that_continues_does_not():
     # A bare stem kuva (photo) also matches "jatkuvat" (continue), which failed right Briefs (#243).
     from family_brief.eval.cases import BUNDLED, load_cases
