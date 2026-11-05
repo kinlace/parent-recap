@@ -90,6 +90,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks                                            |
 | `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token                                                       |
 | `test_setup_google_calendar.py` | The Google Calendar authorization script                                                                     |
+| `test_state.py`                 | The state file saved whole, so a reader never sees half of it                                                |
 | `test_weekend_picks.py`         | Weekend Picks through the same backend as the Brief                                                          |
 | `test_whatsapp_source.py`       | WhatsApp's collector: the Linked Device's store read, mapped to Messages, pruned                             |
 
