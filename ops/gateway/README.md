@@ -345,6 +345,22 @@ sudo admin households
 
 For each Household in `households.json` it runs `parent-recap signup health` as the Household's user, and prints its user with its Invite Link's note in brackets, such as `ph-0123abcd (Virtanen family)`, the time its Brief comes, when its last run ended and how, how long it took and its peak memory (from `last-run.json` beside its `state.json`), such as `last run 2026-10-30 18:00 UTC, ok, 7 s, 180 MB`, and each of `doctor`'s checks by its key with ✅, ⚠️ or ❌, run then without the model's test call. A last run that failed is marked ❌, a run not ended an hour after its time ⚠️ overdue, and a Household whose program is older than the command ❓. It prints no message text, subject, address or Kid's name, not even doctor's words, which name them. It exits 1 when any Household is marked. Last, when the server waits for a reboot to apply updates (the file `/run/reboot-required` exists, which Ubuntu's [Server documentation](https://ubuntu.com/server/docs/how-to/software/upgrade-your-release/) says means a reboot is needed), it says `Reboot pending: the server waits for a reboot to apply updates`. Every night the server checks this for you and mails what is wrong (see "The nightly check").
 
+**See and change one Household.** A Household's Recipients and MyClub links are set by its sign-up; a family without a computer asks the maintainers to change them (#782). On the server, with its label:
+
+```sh
+sudo admin household ph-0123abcd             # what it has
+sudo admin household ph-0123abcd recipients  # change its Recipients
+sudo admin household ph-0123abcd myclub      # change its Kids' MyClub links
+```
+
+Each runs the shared program as the Household's own user (`signup show`, `signup recipients`, `signup myclub`), so its config keeps its owner and mode. Root runs it, not the sign-up service's user, which may read no MyClub link. A label that is no Household's in `households.json` is refused.
+
+- **What it has.** Its Recipients, each with its language, and the Weekend Picks' own (`weekend_to`) when it has any; its Kids as Wilma gave them (or as the family named them, without Wilma), each with its MyClub link or `none`. It holds addresses, Kids' names and links, which are secrets: read it on the server, never paste it (see "What can be pasted").
+- **Recipients.** It prints the list it has and asks for the new one, one `ADDRESS[:LANGUAGE]` a line (`fi`, `en` or `zh`; without one, the Household's language), the parent first, an empty line to end. They are asked for, never given on the command line, because `sudo` logs each command line to the journal, as `key new` asks for the holder's email. It shows the change and writes it only after `yes`, as the sign-up writes it; `weekend_to` stays as it was. Then it binds the Household's Gateway Key to the new list as `doctor` does (see "Binding changed Recipients and sending the link again"): a key the sign-up made isn't bound, so nothing changes at the relay.
+- **MyClub.** It asks for each Kid in turn: paste a link, press Enter to keep what the Kid has, or type `none` to turn MyClub off for that Kid. Each new link is downloaded once to check it, as the sign-up does; one that doesn't download, isn't MyClub's or is another Kid's stops it with nothing written. It shows the change and writes it only after `yes`.
+
+The Household's next run, and its next `admin households`, use what was written. A Kid comes from Wilma, so none is added or removed here; the evening time is "Move a Household's Brief to another time".
+
 **The time a Household's Brief comes.** The time `admin households` shows is the Household's own, from its config (`schedule` in `~/.family/config.yaml`, in its `timezone`), which its evening timer follows and `signup health` reports; `admin deploy`'s refusal while a run is due soon reads the same. The time in its line in `households.json` is only the slot the sign-up handed out, which later sign-ups skip. It is shown instead only when `signup health` says no time: a program older than #780, or a config that won't load.
 
 **Move a Household's Brief to another time.** There is no `admin` task for it. On the server, with its label and the new time (here 16:00, in the Household's `timezone`), as the Household's user, so its config keeps its owner and mode:
@@ -409,6 +425,9 @@ What you want, and the command for it. Each runs on the server as `sudo admin �
 | Every key, who holds it, its use and spend              | `keys`; this month's spend: `cost`                                                                               |
 | Stop a key, or start it again                           | `key off NAME-OR-ID`, `key on NAME-OR-ID`                                                                        |
 | Every Hosted Household's status                         | `households`                                                                                                     |
+| A Hosted Household's Recipients, Kids and MyClub links  | `household ph-XXXXXXXX` (see "See and change one Household")                                                     |
+| Add or change a Hosted Household's Recipients           | `household ph-XXXXXXXX recipients`, asks for the list (see "See and change one Household")                       |
+| Add, fix or turn off a Kid's MyClub link                | `household ph-XXXXXXXX myclub`, asks for each Kid (see "See and change one Household")                           |
 | A Hosted Household's Brief at another time              | None: two commands as its user (see "Move a Household's Brief to another time")                                  |
 | Which Household has this address                        | `find ADDRESS` (see "Find a Household")                                                                          |
 | Which Gateway Key a family holds, by name or address    | `find TEXT` (see "Find a Household")                                                                             |
@@ -417,7 +436,7 @@ What you want, and the command for it. Each runs on the server as `sudo admin �
 | Undo the last deploy, the program alone or the data too | `rollback`, `rollback --restore` (see "Upgrade, check, switch back")                                             |
 | What is wrong tonight                                   | `check` (see "The nightly check")                                                                                |
 
-**What can be pasted.** The output of `households`, `keys`, `cost`, `check`, `deploys` and `--help` carries no address, no Kid's name and no key's value, so it can be pasted into a chat, such as one with an AI assistant, as it is. `find`, `invite` and `keys --addresses` echo addresses, and `key new` prints a key's value: read those on the server, or take the addresses and the key out before pasting.
+**What can be pasted.** The output of `households`, `keys`, `cost`, `check`, `deploys` and `--help` carries no address, no Kid's name and no key's value, so it can be pasted into a chat, such as one with an AI assistant, as it is. `find`, `invite` and `keys --addresses` echo addresses, and `key new` prints a key's value: read those on the server, or take the addresses and the key out before pasting. `household` prints a Household's addresses, its Kids' names and their MyClub links, which are secrets: read it on the server only, never paste it.
 
 Every routine task is one command on the server: SSH in, then `sudo admin <task>`. Nothing runs on the server from a laptop, and nothing below is run on the public address. `gateway-setup.sh` installs it as `/usr/local/sbin/admin` from `ops/gateway/admin`. It reads the admin login from `/etc/bifrost/bifrost.env` itself, never the provider key beside it, and calls Bifrost's admin API on localhost, so no tunnel is needed. `sudo admin --help` lists its tasks:
 
@@ -430,6 +449,7 @@ Every routine task is one command on the server: SSH in, then `sudo admin <task>
 | `key new LABEL "WHO HOLDS IT" [--send-only]` | Asks for the holder's email, makes a Gateway Key and prints its value (below)                                        |
 | `key off NAME-OR-ID`, `key on NAME-OR-ID`    | Turns a Gateway Key off or back on (below)                                                                           |
 | `find TEXT`                                  | Households with this Recipient, keys holding it in who holds them or their addresses (see "Find a Household")        |
+| `household ph-XXXXXXXX [recipients\|myclub]` | One Household's Recipients, Kids and MyClub links, or changes them (see "See and change one Household")              |
 | `remove ph-XXXXXXXX`                         | Removes a Hosted Household with everything of it (see "Remove a Household")                                          |
 | `deploy vX.Y.Z\|main\|COMMIT [--anyway]`     | Snapshots the state, fetches that commit and installs it all (see "Upgrade, check, switch back")                     |
 | `deploys`                                    | The deploys on disk, marking the current one (see "Upgrade, check, switch back")                                     |
