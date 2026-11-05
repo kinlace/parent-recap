@@ -157,9 +157,10 @@ def test_a_source_a_hosted_household_read_tonight_is_not_named_as_unread(system,
     system.profile = LINUX
     reply, sources = the_normal_night(language)
     t = TEXT[language]
-    # The maintainers set up Eepos by hand for a Hosted Household, as its sign-up can't yet (#755).
+    # The maintainers set up Eepos and eVaka by hand for a Hosted Household, as its sign-up can't
+    # yet (#755, #768).
     coverage = {"gmail": {"count": 1, "error": None}, "wilma": {"count": 2, "error": None},
-                "eepos": {"count": 3, "error": None}}
+                "eepos": {"count": 3, "error": None}, "evaka": {"count": 4, "error": None}}
     night = brief_of(written(reply, sources), t, coverage=coverage, hosted=True)
 
     [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))

@@ -181,7 +181,17 @@ EEPOS = Source("eepos", _same_everywhere("Eepos"), lambda cfg: bool(cfg.eepos.si
                setup_page=False, check=_in("ops", "check_eepos"),
                check_items={"eepos": "Eepos ({})"}, secrets=_in("collectors.eepos", "secrets_of"))
 
-ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP, EEPOS)
+# A public daycare's calendar, read through eVaka's citizen API with a password in the secret
+# store (ADR 0039): its events, the days the unit is closed and the reservation deadline, which go
+# into the .ics, as Eepos's do. Set up from a terminal for now, one sign-in per city (`setup
+# evaka`), and the maintainers can add a Hosted Household's, as Eepos's (#768).
+EVAKA = Source("evaka", _same_everywhere("eVaka"), lambda cfg: bool(cfg.evaka.signins),
+               skippable=True, connect_rank=7, collect=_collector("evaka"), counts_events=True,
+               setup_page=False, check=_in("ops", "check_evaka"),
+               check_items={"evaka": "eVaka ({})"}, secrets=_in("collectors.evaka", "secrets_of"),
+               survey=_in("uninstall", "survey_evaka"))
+
+ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP, EEPOS, EVAKA)
 
 
 def named(name: str) -> Source | None:

@@ -30,10 +30,10 @@ def test_the_connect_list_puts_wilma_first_and_gmail_last():
         ["wilma", "whatsapp", "myclub", "gmail"]
 
 
-def test_eepos_has_no_step_on_the_setup_page_yet_and_doctor_checks_it_last():
-    # #755: the maintainers add an Eepos sign-in from a terminal, with `setup eepos`.
-    assert [s.name for s in sources.in_connect_order()][-1] == "eepos"
-    assert "eepos" not in setup_save.SOURCES
+def test_eepos_and_evaka_have_no_step_on_the_setup_page_yet_and_doctor_checks_them_last():
+    # #755, #768: the maintainers add their sign-ins from a terminal, with `setup eepos` and `setup evaka`.
+    assert [s.name for s in sources.in_connect_order()][-2:] == ["eepos", "evaka"]
+    assert "eepos" not in setup_save.SOURCES and "evaka" not in setup_save.SOURCES
 
 
 @pytest.mark.parametrize("profile", [MACOS, WINDOWS], ids=["macos", "windows"])
@@ -47,8 +47,8 @@ def test_the_hosted_version_never_reads_whatsapp(system):
     system.profile = LINUX
     cfg = Config(kids=[_KID], wilma={"enabled": True})
 
-    assert [s.name for s in sources.available()] == ["gmail", "myclub", "wilma", "eepos"]
-    assert [s.name for s in sources.in_connect_order()] == ["wilma", "myclub", "gmail", "eepos"]
+    assert [s.name for s in sources.available()] == ["gmail", "myclub", "wilma", "eepos", "evaka"]
+    assert [s.name for s in sources.in_connect_order()] == ["wilma", "myclub", "gmail", "eepos", "evaka"]
     assert [s.name for s in sources.used(cfg)] == ["wilma"]
     assert cfg.other_sources() == ["wilma"]
 
@@ -56,7 +56,8 @@ def test_the_hosted_version_never_reads_whatsapp(system):
 @pytest.mark.parametrize("profile", [MACOS, WINDOWS, LINUX], ids=["macos", "windows", "linux"])
 def test_a_hosted_household_can_t_have_whatsapp_or_gmail_wherever_it_s_asked(system, profile):
     system.profile = profile  # ADR 0029: no WhatsApp on its server; ADR 0031: no Gmail step
-    # #769: the hosted sign-up can add an Eepos sign-in, so it's not here
+    # #769: the hosted sign-up can add an Eepos sign-in; #768: eVaka has no sign-up step yet, but
+    # the maintainers can add its sign-ins. So neither is here
 
     assert sources.not_hosted() == [sources.WHATSAPP, sources.GMAIL]
 
@@ -82,8 +83,9 @@ _KID = {"name": "Mia Virtanen"}
     ({"kids": [{**_KID, "myclub_ical_url": "https://myclub.fi/x.ics"}], "wilma": {"enabled": True},
       "whatsapp": {"enabled": True, "chats": [{"name": "3B"}]}}, ["myclub", "wilma"]),
     ({"eepos": {"signins": [{"school": "emo", "username": "parent"}]}}, ["eepos"]),
+    ({"evaka": {"signins": [{"city": "espoo", "username": "parent@example.fi"}]}}, ["evaka"]),
 ], ids=["nothing", "gmail", "wilma", "gmail-and-wilma", "whatsapp-no-groups", "whatsapp", "all-but-gmail",
-        "eepos"])
+        "eepos", "evaka"])
 def test_the_household_uses_the_connected_sources_in_run_order(config, used):
     cfg = Config(**{"kids": [_KID], **config})
 

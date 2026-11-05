@@ -1,6 +1,7 @@
 """Each Source's fake, at its transport, where the real thing varies (ADR 0022): Gmail's IMAP
 server, the MyClub feed over HTTP, the wilma CLI on Parent Recap's own Node, the Linked
-Device's message store and status file, and each Eepos school's portal over HTTP. FakeSources, the `sources` fixture, installs the fake of
+Device's message store and status file, each Eepos school's portal and each city's eVaka over
+HTTP. FakeSources, the `sources` fixture, installs the fake of
 each Source in the registry, so the real collectors run in every test of the evening run; FAKES is
 the list it reads.
 
@@ -12,7 +13,8 @@ only the fields its transport carries, and the id the collector makes of it:
   - Wilma: `message:<id>` or `news:<id>`, or `message:<tag>:<id>` once a Wilma is signed in to;
   - WhatsApp: its message id;
   - MyClub: the event's UID;
-  - Eepos: a calendar entry as its portal's JSON has it (conftest's eepos_entry), not an event.
+  - Eepos: a calendar entry as its portal's JSON has it (conftest's eepos_entry), not an event;
+  - eVaka: a calendar event as its citizen API's JSON has it (conftest's evaka_event).
 A Message older than the Source's lookback is skipped, as the collector skips it.
 """
 from __future__ import annotations
@@ -21,8 +23,9 @@ import imaplib
 import json
 import re
 import subprocess
+import hashlib
 import secrets as tokens
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import format_datetime
 from pathlib import Path
@@ -35,7 +38,7 @@ import requests
 
 import fake_node
 from family_brief import linked_device, own_node, sources as registry
-from family_brief.collectors import eepos, gmail, myclub
+from family_brief.collectors import eepos, evaka, gmail, myclub
 from family_brief.collectors.base import CalendarEvent, Collected, Message
 from fake_system import FakeSecrets
 
@@ -514,9 +517,157 @@ def _response(status: int, text: str) -> requests.Response:
     return r
 
 
+# ── eVaka: each city's citizen API over HTTP
+
+EVAKA_PASSWORD = "evaka-password"
+
+
+class EvakaCity:
+    """One city's eVaka: its guardians' passwords by email, the children it lists to each of them,
+    whole, and its reservation calendar: the public `holidays` (ISO days), the children `open_on_holidays`
+    (shift care), those on a `fixed_schedule` who make no reservations, and the first day still open
+    for reservations, `reservable_from`, by default the Monday eVaka's own rule gives with the
+    city's hours in evaka.CITIES, as of the clock."""
+
+    def __init__(self, city: str) -> None:
+        self.city = city
+        self.accounts: dict[str, str] = {}
+        self.children: list[dict[str, Any]] = []
+        self.holidays: set[str] = set()
+        self.open_on_holidays: set[str] = set()
+        self.fixed_schedule: set[str] = set()
+        self.reservable_from: str | None = None
+
+    def first_reservable_monday(self) -> date:
+        """eVaka's getNextReservableMonday: the first Monday after now plus the city's hours."""
+        if self.reservable_from:
+            return date.fromisoformat(self.reservable_from)
+        now = datetime.now(evaka.EVAKA_ZONE)
+        hours = evaka.deadline_hours(self.city) or 7 * 24
+        monday = now.date() + timedelta(days=7 - now.weekday())
+        while not monday > (now + timedelta(hours=hours)).date():
+            monday += timedelta(weeks=1)
+        return monday
+
+    def day(self, on: date) -> dict[str, Any]:
+        """One day of the reservation calendar: the children whose unit is open, each with its
+        opening hours, as eVaka leaves out a child whose unit is closed that day."""
+        holiday = on.isoformat() in self.holidays
+        children = [] if on.weekday() >= 5 else [
+            {"childId": c["id"], "absence": None, "attendances": [], "holidayPeriodEffect": None,
+             "reservableTimeRange": {"type": "NORMAL", "range": {"start": "06:30", "end": "17:30"}},
+             "reservations": [], "shiftCare": c["id"] in self.open_on_holidays, "usedService": None,
+             "scheduleType": "FIXED_SCHEDULE" if c["id"] in self.fixed_schedule else "RESERVATION_REQUIRED"}
+            for c in self.children if not holiday or c["id"] in self.open_on_holidays]
+        return {"date": on.isoformat(), "holiday": holiday, "children": children}
+
+
+class Evaka(SourceFake):
+    """Each city's eVaka at its own host (`cities`, by the city's name in the config), as its
+    citizen API answers under /api/citizen/. A session signs in with POST auth/weak-login, a JSON
+    body of the email and the password, which the city's `accounts` must have, and the header
+    `x-evaka-csrf`; a wrong one is answered 403 "Forbidden", as apigw does. A sign-in gets the
+    session cookie and a device cookie for the guardian. With the session, `children` lists the
+    city's children, `calendar-events` tonight's events there that overlap its start to its end,
+    and `reservations` the city's reservation calendar from its from to its to. Without it, or
+    with another city's, eVaka answers 401.
+
+    Tonight's items are calendar events as eVaka gives them (conftest's evaka_event), each with
+    the `city` it is in, which the fake leaves out. `answers` maps a city and a path to what eVaka
+    answers there instead: an HTTP status and the text, or an exception the request raises.
+    `requests` records each request: its method, city, path, JSON body, query, headers and the
+    device cookies it sent. Any other address goes to requests as before."""
+    name = "evaka"
+
+    def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
+        super().__init__(sources)
+        self.cities: dict[str, EvakaCity] = {}
+        self.answers: dict[tuple[str, str], tuple[int, str] | BaseException] = {}
+        self.requests: list[dict[str, Any]] = []
+        self._sessions: dict[str, tuple[str, str]] = {}  # a session cookie: its city and email
+        other = requests.Session.request
+
+        def request(session: requests.Session, method: str, url: str, **k: Any) -> requests.Response:
+            host = urlsplit(url).hostname or ""
+            city = next((c for c in self.cities if evaka.host_of(c) == host), None)
+            if city is None and evaka.city_of(host) not in evaka.CITIES:
+                return other(session, method, url, **k)
+            return self.answer(session, city or evaka.city_of(host), method, url, **k)
+        mp.setattr(requests.Session, "request", request)
+
+    def city(self, city: str) -> EvakaCity:
+        name = evaka.city_of(city) or city
+        return self.cities.setdefault(name, EvakaCity(name))
+
+    def set_up(self) -> None:
+        for signin in (self.sources.config.get("evaka") or {}).get("signins") or []:
+            city = evaka.city_of(signin["city"]) or signin["city"]
+            self.city(city).accounts.setdefault(signin["username"].lower(), EVAKA_PASSWORD)
+            self.sources.secrets.setdefault(evaka.secret_name(city, signin["username"]), EVAKA_PASSWORD)
+
+    def answer(self, session: requests.Session, city: str, method: str, url: str, **k: Any) -> requests.Response:
+        parts = urlsplit(requests.Request(method, url, params=k.get("params")).prepare().url)
+        host = parts.hostname or ""
+        assert parts.path.startswith("/api/citizen/"), f"the citizen API is under /api/citizen/: {url}"
+        path = parts.path.removeprefix("/api/citizen/")
+        devices = {c.name: c.value for c in session.cookies
+                   if c.name.startswith(evaka.DEVICE_COOKIE) and c.domain == host}
+        self.requests.append({"method": method, "city": city, "path": path, "body": k.get("json"),
+                              "query": {key: v for key, [v] in parse_qs(parts.query).items()},
+                              "headers": dict(session.headers), "devices": devices})
+        instead = self.answers.get((city, path))
+        if isinstance(instead, BaseException):
+            raise instead
+        if instead is not None:
+            return _response(*instead)
+        portal = self.cities.get(city)
+        if portal is None:
+            return _response(404, "Not Found")
+        if method != "GET" and session.headers.get("x-evaka-csrf") != "1":
+            return _response(403, "Forbidden")  # apigw's InvalidAntiCsrfToken
+        if (method, path) == ("POST", evaka.SIGN_IN):
+            body = k.get("json") or {}
+            username = str(body.get("username") or "").lower()  # as apigw takes it
+            if not body.get("password") or portal.accounts.get(username) != body.get("password"):
+                return _response(*evaka.WRONG_CREDENTIALS)
+            cookie = tokens.token_hex(8)
+            self._sessions[cookie] = (city, username)
+            session.cookies.set(evaka.SESSION_COOKIE, cookie, domain=host)
+            device = hashlib.sha256(username.encode()).hexdigest()
+            session.cookies.set(evaka.DEVICE_COOKIE + device, f"s:{device}.signature", domain=host,
+                                path="/", secure=True)
+            return _response(200, "OK")
+        signed_in = self._sessions.get(session.cookies.get(evaka.SESSION_COOKIE, domain=host) or "")
+        if signed_in is None or signed_in[0] != city:
+            return _response(401, "Unauthorized")
+        query = {key: v for key, [v] in parse_qs(parts.query).items()}
+        if (method, path) == ("GET", "children"):
+            return _response(200, json.dumps(portal.children, ensure_ascii=False))
+        if (method, path) == ("GET", "calendar-events"):
+            first, last = date.fromisoformat(query["start"]), date.fromisoformat(query["end"])
+            return _response(200, json.dumps(
+                [{k: v for k, v in e.items() if k != "city"} for e in self.tonight()
+                 if e["city"] == city and date.fromisoformat(e["period"]["start"]) <= last
+                 and date.fromisoformat(e["period"]["end"]) >= first], ensure_ascii=False))
+        if (method, path) == ("GET", "reservations"):
+            first, last = date.fromisoformat(query["from"]), date.fromisoformat(query["to"])
+            monday = portal.first_reservable_monday()
+            days = [portal.day(first + timedelta(days=n)) for n in range((last - first).days + 1)]
+            children = [{"id": c["id"], "firstName": c["firstName"], "lastName": c["lastName"],
+                         "preferredName": c["preferredName"], "duplicateOf": None, "imageId": None,
+                         "monthSummaries": [], "upcomingPlacementStartDate": None,
+                         "upcomingPlacementType": None, "upcomingPlacementUnitName": None}
+                        for c in portal.children]
+            return _response(200, json.dumps({
+                "children": children, "days": days,
+                "reservableRange": {"start": monday.isoformat(),
+                                    "end": date(monday.year + (monday.month >= 7), 8, 31).isoformat()}}))
+        return _response(404, "Not Found")
+
+
 # The fake of each Source, by its name in the registry.
 FAKES: dict[str, Callable[[FakeSources, pytest.MonkeyPatch], SourceFake]] = {
-    f.name: f for f in (Gmail, MyClub, Wilma, WhatsApp, Eepos)}
+    f.name: f for f in (Gmail, MyClub, Wilma, WhatsApp, Eepos, Evaka)}
 
 
 class FakeSources:
