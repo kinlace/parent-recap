@@ -15,4 +15,5 @@ Music and art schools in Finland run on Eepos, as sports clubs run on MyClub (#7
 - A wrong username or password is answered HTTP 400 with `{"error": "loginFailed"}` (tried on emo.eepos.fi on 2026-11-04 with a made-up username), and only that is taken as one. Any other answer to the sign-in without `success: true` is taken as the portal having changed, so a changed login API never tells the family their password is wrong.
 - The portal's script has a `newLoginPage` switch that sends sign-in to `/auth/login`, and bundles a Supabase-style auth client: Eepos may move to a new sign-in, and the password flow could change or go with it. Then this ADR is revisited.
 - A Hosted Household's Eepos password is held on the maintainers' server as its Wilma password is, and SECURITY.md says so.
-- The hosted Brief's last line doesn't name Eepos among the Sources the hosted version doesn't read: a Hosted Household can have it, set up by the maintainers until the hosted sign-up has an Eepos step.
+- The hosted Brief's last line doesn't name Eepos among the Sources the hosted version doesn't read: a Hosted Household can have it.
+- Amended 2026-11-05 (#769): the hosted sign-up has an optional Eepos step on its MyClub page, one school, checked before anything is made. Without Wilma, an Eepos sign-in is enough to sign up. The setup page still has no Eepos step.
