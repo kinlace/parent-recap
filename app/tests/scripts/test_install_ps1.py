@@ -51,16 +51,6 @@ def test_as_install_sh_it_installs_the_baileys_tree_once_the_runtimes_are_record
     assert recorded < body.index("@('-m', 'family_brief.baileys_install', 'install')")
 
 
-def test_as_install_sh_it_installs_the_evening_task_again_after_the_program():
-    # An evening task an older version registered runs this one's command from now on (#776).
-    body = (ROOT / "install.ps1").read_text().split("function Install-ParentRecap {", 1)[1]
-    sh = (ROOT / "install.sh").read_text()
-
-    assert body.index("'-m', 'family_brief.install_record'") < \
-        body.index("@('-m', 'family_brief', 'schedule', 'refresh')")
-    assert sh.index("-m family_brief.install_record") < sh.index("-m family_brief schedule refresh")
-
-
 def test_as_install_sh_it_puts_the_command_on_the_path_once_the_program_is_recorded():
     # CI's windows-install job opens a PowerShell with the user's PATH and runs it from there.
     body = (ROOT / "install.ps1").read_text().split("function Install-ParentRecap {", 1)[1]

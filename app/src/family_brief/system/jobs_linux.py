@@ -90,7 +90,7 @@ def _command_line(command: list[str]) -> str:
 
 
 def _service(job: jobs.Job) -> str:
-    command = [sys.executable, "-m", "family_brief", *jobs.command(job, OWN_CLOCK)]
+    command = [sys.executable, "-m", "family_brief", job.subcommand]
     env = {"PATH": _path_env(), "HOME": str(Path.home())}
     log = job.log_dir / job.subcommand
     lines = [

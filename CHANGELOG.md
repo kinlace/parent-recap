@@ -21,7 +21,7 @@ What changes for families in each release, collected from the `What changes for 
 
 - On an evening with nothing new from Wilma, Gmail or WhatsApp, an event from MyClub or another Source happening tomorrow is still told in the Brief, with its time and place.
 - In the hosted version, the Brief's last line says neither WhatsApp nor Gmail is read there, not only WhatsApp, so a missing Gmail isn't taken for a quiet inbox.
-- An evening Brief that was sent isn't sent a second time the next day when a later step of that evening's run failed. On a computer set to another time zone than your settings, the evening Brief no longer goes out hours early: that run sends nothing, `parent-recap doctor` and the setup page's last step say the computer's time zone is wrong, and an update moves the evening job to this check by itself.
+- An evening Brief that was sent isn't sent a second time the next day when a later step of that evening's run failed, and catching up a missed evening at sign-in on Windows goes by your settings' time zone, so it no longer sends the Brief early on a computer set to another zone. `parent-recap doctor` and the setup page's last step say when the computer's time zone isn't the one in your settings.
 
 ## 0.11.1 · 2026-11-03
 

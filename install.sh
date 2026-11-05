@@ -254,9 +254,6 @@ if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_RO
 # lockfile this release pins. One that couldn't be installed leaves the one there, and the next
 # install tries again.
 "$APP/.venv/bin/python" -m family_brief.baileys_install install
-# An evening job installed by an older version runs this one's command from now on. One that
-# couldn't be installed again keeps working as it was, and the next install tries again.
-"$APP/.venv/bin/python" -m family_brief schedule refresh >> "$LOG" 2>&1 || true
 
 # --codex: also install the two skills for Codex, which reads user skills from ~/.agents/skills.
 # They get unique names, Codex's $skill syntax, and a note saying where this plugin folder is.

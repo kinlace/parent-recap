@@ -55,7 +55,7 @@ def _plist(job: jobs.Job) -> dict:
         interval = {"Weekday": job.weekday, **interval}
     return {
         "Label": system_name(job.name),
-        "ProgramArguments": [sys.executable, "-m", "family_brief", *jobs.command(job, OWN_CLOCK)],
+        "ProgramArguments": [sys.executable, "-m", "family_brief", job.subcommand],
         "StartCalendarInterval": interval,
         "StandardOutPath": str(job.log_dir / f"{job.subcommand}-stdout.log"),
         "StandardErrorPath": str(job.log_dir / f"{job.subcommand}-stderr.log"),

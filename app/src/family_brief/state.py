@@ -44,16 +44,6 @@ class State:
     def mark_scheduled_now(self) -> None:
         self._data["scheduled_at"] = datetime.now(timezone.utc).isoformat()
 
-    @property
-    def started_by_hand_at(self) -> datetime | None:
-        """When `schedule run-now` last started the evening job, whose run is then never held back
-        as one the scheduler started early (#776)."""
-        v = self._data.get("started_by_hand_at")
-        return datetime.fromisoformat(v) if v else None
-
-    def mark_started_by_hand_now(self) -> None:
-        self._data["started_by_hand_at"] = datetime.now(timezone.utc).isoformat()
-
     def caught_up_at(self, source: str) -> datetime | None:
         """When a run last left nothing of `source` undelivered: its Brief went out, or there was
         nothing new, and that Source was read without errors."""
