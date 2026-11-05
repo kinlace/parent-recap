@@ -9,11 +9,12 @@ from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
+from zoneinfo import ZoneInfo
 
 from .. import own_node
-from ..config import Config
+from ..config import Config, Kid
 from ..state import State
-from .base import Collected, Message, retry_once_on_timeout, sign_in_failed, unreadable
+from .base import CalendarEvent, Collected, Message, retry_once_on_timeout, sign_in_failed, unreadable
 
 log = logging.getLogger(__name__)
 
@@ -406,18 +407,22 @@ def _collect_schedule(state: State, wilmas: _Wilmas | None = None) -> list[Messa
     )]
 
 
-# How far ahead an exam reaches the Brief: the coming week (#5).
-EXAM_DAYS_AHEAD = 7
+# How far ahead an exam reaches the Brief and the calendar: four weeks, as teachers add them (#773).
+EXAM_DAYS_AHEAD = 28
 
 
-def _collect_exams(state: State, wilmas: _Wilmas | None = None) -> list[Message]:
-    """Each upcoming exam in Wilma's exam list as a Message of its own, twice at most: the first
-    evening it is within EXAM_DAYS_AHEAD days, and again the evening before the school day it falls
-    on, so a Brief cites it like any other Wilma item. Its header carries the date, as the
-    timetable's does."""
+def _collect_exams(state: State, wilmas: _Wilmas | None = None, kids: list[Kid] | None = None,
+                   tz: str | None = None) -> tuple[list[Message], list[CalendarEvent]]:
+    """Each upcoming exam in Wilma's exam list within EXAM_DAYS_AHEAD days, as a Message and a
+    calendar event (ADR 0040). The Message comes twice at most: the first evening it is seen, and
+    again the evening before the school day it falls on, so a Brief cites it like any other Wilma
+    item; its header carries the date, as the timetable's does. The event comes every evening, so
+    the .ics and Google Calendar take it the first evening, as Eepos's events. It is known by its
+    exam id, not its date, so a moved exam replaces itself in the calendar. Its day and time are
+    in `tz`, the Household's zone."""
     payload = _run_or_log(["exams", "--limit", "30"])
     if payload is None:
-        return []
+        return [], []
     wilmas = wilmas or _Wilmas(set())
     if isinstance(payload, dict):
         wilmas.log_problems(payload)
@@ -425,7 +430,9 @@ def _collect_exams(state: State, wilmas: _Wilmas | None = None) -> list[Message]
     today = _dt.now().astimezone().date()
     next_school_day = next(today + timedelta(days=n) for n in range(1, 8)
                            if (today + timedelta(days=n)).weekday() < 5)
+    zone = ZoneInfo(tz) if tz else _dt.now().astimezone().tzinfo
     results: list[Message] = []
+    events: list[CalendarEvent] = []
     for student, items in _walk_students(payload):
         scope = _scope(wilmas.of(student))
         for it in items:
@@ -438,8 +445,13 @@ def _collect_exams(state: State, wilmas: _Wilmas | None = None) -> list[Message]
                 continue
             subject = _first(it, "subject", default="") or ""
             name = _first(it, "name", default="") or ""
+            topic = _first(it, "topic", default=None)
             exam_id = _first(it, "examId", "id", default=None) or f"{day}:{subject}:{name}"
             first_key = f"exam:{scope}:{exam_id}" if scope else f"exam:{exam_id}"
+            # Two Kids in one class share an exam id, so the event's id has the student too.
+            event = _exam_event(first_key, student, day, _first(it, "time", default=None),
+                                f"Koe: {subject}" + (f" – {name}" if name else ""), topic, kids or [], zone)
+            events.append(event)
             eve_key = f"{first_key}:eve"
             if not state.has_seen_message("wilma", first_key):
                 key, reminder = first_key, False
@@ -451,7 +463,7 @@ def _collect_exams(state: State, wilmas: _Wilmas | None = None) -> list[Message]
             lines = [f"[{day.isoformat()} {_WEEKDAYS[day.weekday()]} · {rel}]"]
             for label, value in (("Subject", subject), ("Exam", name),
                                  ("Time", _first(it, "time", default=None)),
-                                 ("What to study", _first(it, "topic", default=None)),
+                                 ("What to study", topic),
                                  ("Teacher", _first(it, "teacher", default=None))):
                 if value:
                     lines.append(f"{label}: {value}")
@@ -468,11 +480,42 @@ def _collect_exams(state: State, wilmas: _Wilmas | None = None) -> list[Message]
                 metadata={"wilma_kind": "exam", "raw_id": exam_id,
                           "student_number": student.get("studentNumber"),
                           "wilma_url": wilmas.of(student), "exam_date": day.isoformat(),
-                          "reminder": reminder},
+                          "reminder": reminder,
+                          # the event in already_queued_for_calendar, which the model doesn't add again
+                          "calendar_event": event.external_id},
             ))
             state.mark_message_seen("wilma", key)
-    log.info("wilma exams: %d to tell", len(results))
-    return results
+    log.info("wilma exams: %d to tell, %d in the calendar", len(results), len(events))
+    return results, events
+
+
+def _exam_event(key: str, student: dict, day: Any, start: Any, title: str, topic: Any,
+                kids: list[Kid], zone: Any) -> CalendarEvent:
+    """The exam `key` as a calendar event in `zone`: all day, or from its start time ("08:30")
+    when Wilma gives one, for the Kid the student is."""
+    from datetime import time as _time
+    try:
+        at = _time.fromisoformat(str(start)) if start else None
+    except ValueError:
+        at = None
+    # A tag for the student, not their number, which the model never gets (ADR 0013).
+    number = student.get("studentNumber")
+    tag = hashlib.sha256(str(number).encode()).hexdigest()[:8] if number else None
+    return CalendarEvent(
+        source="wilma", external_id=f"{key}:{tag}" if tag else key, title=title,
+        start=datetime.combine(day, at or _time(0), zone), description=str(topic or ""),
+        kid=_kid_of(student.get("name"), kids), all_day=at is None, same_when_moved=True)
+
+
+def _kid_of(name: Any, kids: list[Kid]) -> str | None:
+    """The Kid the Wilma student `name` ("Virtanen Mia") is, by the name the Brief calls them:
+    the one whose name, everyday name or an alias is the student's name or one word of it. The
+    student's own name when no Kid, or more than one, is."""
+    if not isinstance(name, str) or not name.strip():
+        return None
+    words = {name.casefold(), *(w.casefold() for w in name.split())}
+    found = [k for k in kids if words & {t.casefold() for t in k.match_terms()}]
+    return found[0].called() if len(found) == 1 else name
 
 
 # How many days back lesson notes are read: teachers often record a lesson the next day (#697).
@@ -609,6 +652,6 @@ def _collect(cfg: Config, state: State) -> Collected:
         wilmas=wilmas,
     )
     schedule = _collect_schedule(state, wilmas)
-    exams = _collect_exams(state, wilmas)
+    exams, exam_events = _collect_exams(state, wilmas, cfg.kids, cfg.timezone)
     notes = _collect_notes(state, wilmas)
-    return Collected(messages=[*msgs, *news, *schedule, *exams, *notes])
+    return Collected(messages=[*msgs, *news, *schedule, *exams, *notes], events=exam_events)

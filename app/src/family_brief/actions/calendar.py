@@ -31,6 +31,14 @@ def event_hash(ev: CalendarEvent) -> str:
     return _hash(f"{ev.source}|{ev.external_id}|{start}|{ev.kid or ''}")
 
 
+def calendar_uid(ev: CalendarEvent) -> str:
+    """What a calendar knows the event by: its hash, or for one that keeps its id when it moves,
+    such as a Wilma exam (ADR 0040), a hash without its start, so the moved one replaces it."""
+    if ev.same_when_moved:
+        return _hash(f"{ev.source}|{ev.external_id}|moves|{ev.kid or ''}")
+    return event_hash(ev)
+
+
 def _legacy_event_hash(ev: CalendarEvent) -> str:
     """The hash before 0.4.0, which had the title in it and, for a Source whose record says so
     (MyClub), the start in UTC."""
@@ -199,6 +207,28 @@ def create_events(cfg: Config, state: State, events: list[CalendarEvent],
         else:
             start = {"dateTime": ev.start.isoformat(), "timeZone": cfg.timezone}
             end = {"dateTime": (ev.end or ev.start + timedelta(hours=1)).isoformat(), "timeZone": cfg.timezone}
+        uid = calendar_uid(ev)
+        if ev.same_when_moved:
+            # Written before on another day or time: moved there, not written again (ADR 0040).
+            moved = service.events().list(
+                calendarId=calendar_id, privateExtendedProperty=f"family_brief_uid={uid}",
+                maxResults=1,
+            ).execute().get("items", [])
+            if moved:
+                resp = service.events().patch(
+                    calendarId=calendar_id, eventId=moved[0]["id"],
+                    body={"summary": ev.title, "start": start, "end": end,
+                          "extendedProperties": {"private": {
+                              **moved[0].get("extendedProperties", {}).get("private", {}),
+                              "family_brief_hash": h}}},
+                    sendUpdates=cfg.google_calendar.send_updates,
+                ).execute()
+                state.mark_event_created(h, resp["id"])
+                created.append({"title": ev.title, "start": ev.start_iso(), "kid": ev.kid,
+                                "location": ev.location, "description": ev.description,
+                                "google_event_id": resp["id"], "htmlLink": resp.get("htmlLink")})
+                log.info("Moved event: %s to %s", ev.title, ev.start_iso())
+                continue
         body = {
             "summary": ev.title,
             "description": (ev.description or "") + f"\n\n[{PRODUCT_NAME} • {ev.source}"
@@ -213,6 +243,7 @@ def create_events(cfg: Config, state: State, events: list[CalendarEvent],
                     "source": ev.source,
                     "external_id": ev.external_id,
                     "kid": ev.kid or "",
+                    **({"family_brief_uid": uid} if ev.same_when_moved else {}),
                 }
             },
             "reminders": {"useDefault": True},

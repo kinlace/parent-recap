@@ -10,10 +10,12 @@ What changes for families in each release, collected from the `What changes for 
 - Lessons, concerts and holidays from a music or art school on Eepos come in the Brief and its calendar attachment, for the right Kid. For now the Parent Recap team turns it on for a Household by hand, one sign-in per school.
 - A family signing up for the hosted version can add their music or art school's Eepos sign-in on the MyClub page. Without Wilma, a MyClub link or an Eepos sign-in is enough.
 - A public daycare's events on eVaka, such as an excursion or a photo day, the days the daycare is closed and when the next week's reservations close come in the Brief and its calendar attachment, for the right Kid. For now the Parent Recap team turns it on for a Household by hand, one sign-in per city.
+- Each exam in Wilma's exam list comes in the Brief's calendar attachment as soon as the teacher adds it, up to four weeks ahead, for the right Kid and with what to study. A moved exam replaces itself in your calendar instead of showing twice. A family that doesn't want the Kids' exams among its own events can import the attachment into a calendar just for the Kids.
 - The Brief tells what the daycare's messages and bulletins on eVaka say, once, under the right Kid. A message eVaka marks sensitive is only named, with a link to read it in eVaka, and no AI sees it. Nothing is marked read in eVaka.
 
 ### Changed
 
+- The Brief tells a Wilma exam the first evening it's in Wilma's exam list, up to four weeks ahead rather than only a week, and again the evening before it.
 - The Brief tells under each Kid the coming days a parent must plan for from MyClub, Eepos and eVaka, not only tomorrow's: a day the daycare or school is closed, a trip with its departure time or what to bring, an event parents attend or book, and a reservation deadline, saying in the Brief's language what a Finnish title means. Routine group activities stay out. The new calendar events are listed in date order.
 - The hosted sign-up's MyClub page ends with Done, and says a family that doesn't use MyClub leaves its links empty and presses it.
 - The setup page turns on the evening Brief by itself once your first Brief is sent, so closing the page after it no longer leaves the evening Brief off. On a Mac the page says why macOS then asks for your Mac password (so the Mac can wake up for the Brief). The last step says the evening Brief is on and at what time, and if the password window was closed, offers "Set the wake-up" to try again.

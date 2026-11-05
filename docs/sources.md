@@ -82,6 +82,8 @@ This uses the community open-source wilma CLI (not affiliated with Visma).
 
 Note: Wilma only publishes the timetable for about two weeks ahead, so later dates being empty is normal.
 
+Each exam in Wilma's exam list in the next four weeks goes into the Brief's calendar (the `.ics` attachment, or Google Calendar in google mode) the first evening it is seen, all day, or at its start time when Wilma gives one, for the right Kid, with what to study (ADR 0040). The program does this itself, not the model, and every Household gets it: a family that doesn't want the Kids' exams among its own events imports the `.ics` into a calendar of its own for the Kids. An exam the teacher moves to another day replaces itself in the calendar, since it keeps its UID. The Brief tells each exam under its Kid twice: the first evening it is seen, and again the evening before the school day it falls on.
+
 The wilma CLI signs in with every sign-in saved in `~/.config/wilmai/config.json`, also one made with a wilma CLI of the family's own, and Parent Recap reads the Kids of each. When a sign-in for none of the Kids stops working, the Brief doesn't say so: `$FB doctor` names it, with the command that removes it.
 
 A Household whose Kids go to school in two towns, or use two guardian logins, signs in to each Wilma (#647). Once one is signed in, the setup page's Wilma step, opened again from the Source list, lists each Wilma with the Kids it shows and offers "Add another Wilma", the same sign-in with the same Terminal or PowerShell fallback; with two or more, each can be removed there, which deletes its saved sign-in and the Kids only it shows. The Kids of every Wilma are the Household's, and its town stays the first Wilma's. When one of them doesn't answer at the evening run, the Brief has the other's items and says which Wilma couldn't be read; `$FB doctor` signs in with each alone and names the one that fails. Uninstall removes every sign-in setup made.
@@ -165,7 +167,7 @@ Whichever mode you pick, an event the model finds goes into the calendar only if
 
 There are two modes. Setup always starts with ics; a family who wants Google Calendar turns it on later with `/parent-recap:manage`, once they have the Google app file:
 
-**ics (default)**: `google_calendar.mode: ics`. New events the model finds in Wilma, mail and group chats (parent evenings, trips, deadlines …) are put in one `.ics` attachment on the Brief email. Tap the attachment on the phone to add them to the calendar (on iPhone choose "Add All"). Each event is sent only once, and its UID in the attachment is fixed, so importing it again doesn't create duplicates.
+**ics (default)**: `google_calendar.mode: ics`. New events the model finds in Wilma, mail and group chats (parent evenings, trips, deadlines …), and those of Wilma's exam list, Eepos and eVaka, are put in one `.ics` attachment on the Brief email. Tap the attachment on the phone to add them to the calendar (on iPhone choose "Add All"). Each event is sent only once, and its UID in the attachment is fixed, so importing it again doesn't create duplicates.
 
 **google**: `mode: google` writes straight into Google Calendar, removes duplicates, and can invite a partner automatically.
 The plugin doesn't include a Google app. Authorizing needs a Google app file (the JSON of a Desktop OAuth client); either:

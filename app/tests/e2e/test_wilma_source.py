@@ -2,7 +2,8 @@
 Parent Recap's own Node: a message's text, its sender and how many people it is addressed to, news with
 their text, and the CLI's errors. From 2.0 the CLI signs in with every profile in its config, so a
 Household can have two Wilmas, whose ids are unique only within each. A CLI kept from before 2.0,
-when an update couldn't install the new one, is still read. All names, Wilmas and messages are
+when an update couldn't install the new one, is still read. Each upcoming exam goes into the
+calendar once, and a moved one replaces itself there (ADR 0040). All names, Wilmas and messages are
 made up."""
 from __future__ import annotations
 
@@ -378,3 +379,88 @@ def test_doctor_names_each_of_two_wilmas_and_the_one_whose_sign_in_fails(harness
     assert other.startswith(ops.FAIL.strip()) and "login_failed" in other
     assert "setup wilma" in other
     assert all("salasana" not in l for l in lines)
+
+
+# ── Exams in the calendar (#773, ADR 0040)
+
+EXAM = {"examId": 5512, "date": "2026-10-22", "name": "Luvut 3–5", "subject": "Historia",
+        "topic": "Kirjan luvut 3–5", "teacher": "Laine Maija", "time": None}
+
+
+def exams(*items: dict[str, Any]) -> dict[str, Any]:
+    """`exams` as the wilma CLI 2.x prints it: the student's upcoming exams."""
+    return {"students": [{"student": STUDENT, "exams": list(items)}]}
+
+
+def vevents(harness, night: int = -1) -> list[str]:
+    _, ics, _ = harness.sent[night].attachment(".ics")
+    return ics.decode().replace("\r\n", "\n").split("BEGIN:VEVENT")[1:]
+
+
+def field_of(vevent: str, name: str) -> str:
+    return next(line.split(":", 1)[1] for line in vevent.splitlines() if line.split(";")[0].split(":")[0] == name)
+
+
+def test_an_exam_weeks_ahead_goes_into_the_ics_the_first_evening_it_is_seen(harness, cli):
+    cli.answers = {("exams",): exams(EXAM)}
+
+    assert harness.run() == 0
+
+    [exam] = vevents(harness)
+    assert "SUMMARY:Koe: Historia – Luvut 3–5" in exam and "DTSTART;VALUE=DATE:20261022" in exam
+    assert "[Parent Recap · Mia]" in exam
+    # The model tells it from its message and is told it is already in the calendar.
+    [queued] = harness.model_payload()["already_queued_for_calendar"]
+    assert (queued["source"], queued["start"]) == ("wilma", "2026-10-22")
+    [message] = [m for m in harness.model_payload()["messages"] if m["chat_name"] == "exams"]
+    assert message["metadata"]["calendar_event"] == queued["external_id"]
+    assert STUDENT["studentNumber"] not in harness.model_prompt()  # the model never gets it
+    assert "Koe: Historia – Luvut 3–5" in harness.sent[0].text  # listed under the new events
+    # The next evening it isn't sent again.
+    with time_machine.travel(NOW + timedelta(days=1), tick=False):
+        assert harness.run() == 0
+    assert all(email.attachment(".ics") is None for email in harness.sent[1:])
+
+
+def test_a_moved_exam_replaces_itself_in_the_calendar(harness, cli):
+    cli.answers = {("exams",): exams(EXAM)}
+    assert harness.run() == 0
+    cli.answers = {("exams",): exams({**EXAM, "date": "2026-10-23"})}
+
+    with time_machine.travel(NOW + timedelta(days=1), tick=False):
+        assert harness.run() == 0
+
+    [before], [after] = vevents(harness, 0), vevents(harness, 1)
+    assert "DTSTART;VALUE=DATE:20261023" in after
+    # The same UID with a later SEQUENCE, so a calendar app updates the entry.
+    assert field_of(after, "UID") == field_of(before, "UID")
+    assert int(field_of(after, "SEQUENCE")) > int(field_of(before, "SEQUENCE"))
+
+
+def test_the_model_s_own_entry_for_an_exam_is_left_out_of_the_ics(harness, cli):
+    cli.answers = {("exams",): exams(EXAM)}
+    harness.model_reply = {
+        "per_kid": [], "message_digest": "- Mia: history exam on Thu 22 Oct",
+        "calendar_events": [{"kid": "Mia", "title": "History exam", "start": "2026-10-22",
+                             "refs": ["exam:5512"]}]}
+
+    assert harness.run() == 0
+
+    [exam] = vevents(harness)
+    assert "SUMMARY:Koe: Historia – Luvut 3–5" in exam
+    assert "exam:5512" in payload_ids(harness, "wilma")
+
+
+def test_in_google_mode_a_moved_exam_is_moved_not_written_again(harness, cli):
+    harness.config["google_calendar"] = {"mode": "google"}
+    harness.authorize_google_calendar()
+    cli.answers = {("exams",): exams(EXAM)}
+    assert harness.run() == 0
+    cli.answers = {("exams",): exams({**EXAM, "date": "2026-10-23"})}
+
+    with time_machine.travel(NOW + timedelta(days=1), tick=False):
+        assert harness.run() == 0
+
+    [exam] = harness.calendar.inserted
+    assert (exam["summary"], exam["start"], exam["end"]) == \
+        ("Koe: Historia – Luvut 3–5", {"date": "2026-10-23"}, {"date": "2026-10-24"})

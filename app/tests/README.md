@@ -111,7 +111,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_gmail_sends.py`             | The Brief from the Household's own Gmail (ADR 0034): run, doctor, `setup sending`, page |
 | `test_send_key_on_request.py`     | A send-only key on request (ADR 0033): setup page, `setup confirm`, doctor, the run     |
 | `test_source_failures.py`         | A Source's transport failing partway or timing out                                      |
-| `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON                           |
+| `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON, exams in the calendar |
 | `test_wilma_signins.py`           | Wilma read through a config of each run's own, passwords from the store (#710)          |
 | `test_eepos_source.py`            | Eepos lessons in the Brief, a wrong password or a changed portal, two schools (#755)    |
 | `test_evaka_source.py`            | eVaka events, closed days, the deadline and messages in the Brief, failures, two cities |

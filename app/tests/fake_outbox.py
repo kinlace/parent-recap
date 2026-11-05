@@ -36,7 +36,7 @@ class SentEmail:
 
 @dataclass
 class FakeCalendarService:
-    """Stands in for googleapiclient's Calendar v3 service: events().list/insert(...).execute()."""
+    """Stands in for googleapiclient's Calendar v3 service: events().list/insert/patch(...).execute()."""
     existing: list[dict] = field(default_factory=list)
     inserted: list[dict] = field(default_factory=list)
     error: Exception | None = None
@@ -47,10 +47,18 @@ class FakeCalendarService:
 
     def list(self, **kw: Any) -> "_Call":
         if "privateExtendedProperty" in kw:
-            h = kw["privateExtendedProperty"].split("=", 1)[1]
+            key, value = kw["privateExtendedProperty"].split("=", 1)
             return _Call(lambda: {"items": [e for e in self.inserted
-                                            if e["extendedProperties"]["private"]["family_brief_hash"] == h]})
+                                            if e["extendedProperties"]["private"].get(key) == value]})
         return _Call(lambda: {"items": self.existing})
+
+    def patch(self, calendarId: str, eventId: str, body: dict, sendUpdates: str) -> "_Call":
+        """Changes the fields `body` gives of the inserted event `eventId`."""
+        def run() -> dict:
+            ev = next(e for e in self.inserted if e["id"] == eventId)
+            ev.update(body)
+            return ev
+        return _Call(run)
 
     def insert(self, calendarId: str, body: dict, sendUpdates: str) -> "_Call":
         def run() -> dict:
