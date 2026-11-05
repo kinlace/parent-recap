@@ -2797,8 +2797,10 @@ async function sendBrief(event) {
       // the family's own Gmail isn't new.
       document.getElementById("brief-junk").hidden = sendsFromGmail() || !JUNKS_AT_FIRST.test(out.to);
       // The server turns the evening Brief on now (#733): on a Mac, macOS's password dialog for
-      // the wake-up is about to open, and this says why.
-      if (out.turning_on) document.getElementById("brief-turning-on").hidden = false;
+      // the wake-up is about to open, and this says why. A Linux server never sleeps: no dialog.
+      if (out.turning_on && page.system !== "linux") {
+        document.getElementById("brief-turning-on").hidden = false;
+      }
     } else if (out.result === "unconfirmed") {
       // Not sent: the setup parent hasn't pressed the button their confirmation link opens.
       showError("brief.send.unconfirmed", { to: out.to });
@@ -3160,7 +3162,7 @@ function finishResult(out) {
   const noWake = page.system === "macos" && outcome("wake")?.ok === false
     && !["other-schedule", "no-dialog"].includes(out.wake);
   document.getElementById("finish-install").hidden = running || done || !(off || noWake);
-  setText(document.getElementById("finish-start"), off ? "finish.start" : "finish.retry");
+  setText(document.getElementById("finish-start"), off ? "finish.start" : "finish.set-wake");
   const on = document.getElementById("finish-on");
   on.hidden = running || !outcome("nightly")?.ok;
   setText(on, "finish.on", { evening: page.check.evening });

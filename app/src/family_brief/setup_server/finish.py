@@ -92,7 +92,8 @@ class Finish(Phase):
                 return False
             self._turned_on = self._tried = True
             runs["finish"] = {"result": "installing"}
-            threading.Thread(target=self._finishing, args=(False, False), daemon=True).start()
+            threading.Thread(target=self._finishing, args=(False,), kwargs={"check": False},
+                             daemon=True).start()
         return True
 
     def check_outcomes(self, raw: Any) -> Reply:

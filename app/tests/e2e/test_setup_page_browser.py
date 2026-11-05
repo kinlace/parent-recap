@@ -695,10 +695,10 @@ def test_a_closed_password_window_leaves_the_evening_brief_on_and_finish_offers_
     expect(tab.get_by_text(text("finish.on", system="macos", evening="21:00"))).to_be_visible()
     expect(button(tab, "finish.start", system="macos")).to_be_hidden()
     family.wake.dialog = "allow"
-    button(tab, "finish.retry", system="macos").click()
+    button(tab, "finish.set-wake", system="macos").click()
 
     expect(tab.locator("#finish-status")).to_have_attribute("data-result", "finish.done")
-    expect(button(tab, "finish.retry", system="macos")).to_be_hidden()
+    expect(button(tab, "finish.set-wake", system="macos")).to_be_hidden()
 
 
 def test_finish_names_each_recipient_who_won_t_get_tonight_s_brief(tab, family, health):  # noqa: F811
