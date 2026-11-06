@@ -71,7 +71,7 @@ the import path, so a test may import a helper from a test in another layer.
 
 | File                            | What it covers                                                                                               |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `test_admin.py`                 | The gateway's `admin` command: each task, root only, key off/on, a Household found, the nightly check's mail |
+| `test_admin.py`                 | The gateway's `admin` command: each task, root only, key off/on, a Household found, nightly + sign-up mails  |
 | `test_admin_deploy.py`          | `admin deploy`: what is refused, the evening window, each deploy kept, recorded, checked                     |
 | `test_admin_rollback.py`        | Each deploy's snapshot and its pruning, `admin deploys`, which deploy `rollback` picks, `--restore`          |
 | `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request                       |
@@ -152,7 +152,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_uninstall.py`                        | `uninstall` removes what setup made, and nothing else                  |
 | `test_new_source_doctor_uninstall.py`      | A Source added only to the registry in `doctor` and `uninstall`        |
 | `test_setup_page_browser.py`               | Main paths and each step's own, in a real browser (ADR 0024)           |
-| `test_signup.py`                           | The hosted sign-up: page, Wilma, MyClub, first Brief, 404s, removal    |
+| `test_signup.py`                           | Hosted sign-up: page, name, Wilma, MyClub, Brief, mail, 404s, removal  |
 | `test_hosted_status.py`                    | `signup status`: each Household's last run and doctor, nothing private |
 | `test_hosted_household.py`                 | `signup show`, `recipients`, `myclub`: one Household seen and changed  |
 

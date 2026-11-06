@@ -4,8 +4,8 @@ root-owned helper the service's user may run through sudo, commands run as a Hou
 
 The service's user may run, with sudo, only the helper (`household-user add|remove <name>`,
 which takes no name but a Household's), `admin signed-up <name>`, which mails the maintainers of a
-new Household as the nightly check mails them (#814), and, as a Household's user, only the commands the service
-runs, with exactly their arguments, as the sudoers file gateway-setup.sh installs says
+new Household as the nightly check mails them (#814), and, as a Household's user, only the
+commands the service runs, with exactly their arguments, as the sudoers file gateway-setup.sh installs says
 (ops/gateway/signup.sudoers, #645): the shared `parent-recap` (ADR 0035) with `signup household`,
 `run --first-brief`, `signup health` or `schedule uninstall`. So the service can't read a
 Household's secrets; it can still rewrite its config, its Recipients among them, and send its

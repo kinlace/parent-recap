@@ -313,11 +313,6 @@ class Service:
         self.store.add_household(HouseholdRecord(name, evening, self.now().isoformat(),
                                                  pending.note))
         self.store.retire(code)
-        try:
-            self.host.tell_maintainers(name)
-        except Exception as e:  # noqa: BLE001 - the Household is made all the same
-            log.error("The maintainers weren't mailed of Household %s: %s", name,
-                      failure.raised(e, "Mailing the maintainers"))
         log.info("Household %s created from an Invite Link, %s, with MyClub for %d of %d Kids%s; "
                  "its first Brief was sent, and the next come at %s", name,
                  "with Wilma" if pending.wilma() else "without Wilma", len(links), len(kids),
@@ -326,6 +321,12 @@ class Service:
         progress.end(self.now(), HTTPStatus.OK, page.done(language, evening, any(
             _junk_prone(r["address"]) for r in answers["recipients"]), progress.names,
             pending.unmatched, pending.evaka_unmatched))
+        # After the page says it's done, so a slow mail never keeps the family waiting.
+        try:
+            self.host.tell_maintainers(name)
+        except Exception as e:  # noqa: BLE001 - the Household is made all the same
+            log.error("The maintainers weren't mailed of Household %s: %s", name,
+                      failure.raised(e, "Mailing the maintainers"))
 
     def _create(self, name: str, answers: dict[str, Any], progress: _Progress) -> None:
         """Makes the Household, one of its steps after another, `progress.steps` of them ended."""

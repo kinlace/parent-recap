@@ -4,7 +4,8 @@ the same arguments and safeguards as the scripts they replaced; the Gateway Keys
 turned off or on through Bifrost's admin API, which is faked here, with no key's value printed but
 by `key new`; a Household found from a Recipient's address; and the nightly check (#745), with
 the Households' status, systemd and Email Delivery's SMTP faked: nothing wrong mails nothing, and
-each kind of problem is in the mail, which holds only what the status prints."""
+each kind of problem is in the mail, which holds only what the status prints; and the mail of a
+new Household (`signed-up`, #814), with only its label, note and evening time."""
 from __future__ import annotations
 
 import importlib.machinery

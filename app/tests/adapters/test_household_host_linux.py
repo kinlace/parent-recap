@@ -214,8 +214,9 @@ def test_the_sudoers_rules_let_the_service_run_as_root_only_its_helper_and_admin
 
     assert allowed([host_linux.HELPER, "add", NAME], rules)
     assert allowed([host_linux.ADMIN_COMMAND, "signed-up", NAME], rules)
-    for argv in (["/usr/local/sbin/admin", "households"], ["/usr/local/sbin/admin", "deploy", "main"],
-                 ["/usr/local/sbin/admin", "signed-up"], ["/usr/bin/bash"]):
+    admin = host_linux.ADMIN_COMMAND
+    for argv in ([admin, "households"], [admin, "deploy", "main"], [admin, "signed-up"],
+                 ["/usr/bin/bash"]):
         assert not allowed(argv, rules), argv
 
 
