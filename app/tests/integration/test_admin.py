@@ -974,14 +974,14 @@ def test_check_takes_only_mail(server, capsys, args):
 # ── A new Household's mail (#814)
 
 def test_signed_up_mails_the_household_s_label_note_and_evening_and_nothing_else(server, capsys):
-    server.household("ph-0123abcd", ["parent@example.com"], note="via Zhao 2026-11-06 #3 · 黄天茵")
+    server.household("ph-0123abcd", ["parent@example.com"], note="via Zhao 2026-11-06 #3 · 王家")
 
     assert server.admin("signed-up", "ph-0123abcd") == 0
 
     [(msg, _)] = server.smtp.sent
     assert msg["Subject"] == "Parent Recap: a new Household, ph-0123abcd"
     body = mail(server)
-    assert "ph-0123abcd (via Zhao 2026-11-06 #3 · 黄天茵)" in body and "21:00" in body
+    assert "ph-0123abcd (via Zhao 2026-11-06 #3 · 王家)" in body and "21:00" in body
     # Not from the Household's config: no address, no Kid, nothing it holds.
     for kept in ("parent@example.com", "Mia", "do-not-print"):
         assert kept not in body and kept not in "".join(capsys.readouterr())

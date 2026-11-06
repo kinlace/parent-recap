@@ -405,10 +405,10 @@ def test_a_name_that_won_t_do_is_shown_again_to_be_mended(signup):
 def test_the_name_is_kept_on_one_line_and_short(signup):
     code = signup.invite(Recipient("parent@example.com", "fi"), note="via Zhao 2026-11-06 #3")
 
-    assert submit(signup, code, name="  黄天茵\n " + "x" * 100).status == 200
+    assert submit(signup, code, name="  王家\n " + "x" * 100).status == 200
 
     [household] = signup.store.households()
-    assert household.note == "via Zhao 2026-11-06 #3 · 黄天茵 " + "x" * 56  # 60 in all
+    assert household.note == "via Zhao 2026-11-06 #3 · 王家 " + "x" * 57  # 60 in all
 
 
 def test_the_maintainers_are_told_of_each_household_made_and_only_its_label(signup):
