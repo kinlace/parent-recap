@@ -13,7 +13,7 @@ from . import ops, private_files, run_lock
 from .config import Config
 from .system import jobs, wake
 
-AGAIN = "parent-recap schedule install"
+SCHEDULE_INSTALL = "parent-recap schedule install"  # what the family runs to do it by hand
 
 
 def update(config: str | None = None) -> None:
@@ -23,17 +23,17 @@ def update(config: str | None = None) -> None:
         cfg = Config.load(config)
     except Exception:  # noqa: BLE001 - doctor says what's wrong with it
         print(f"{ops.WARN}The evening Brief's job wasn't updated: the config can't be read. Run "
-              f"parent-recap doctor, fix what it names, then run {AGAIN}.")
+              f"parent-recap doctor, fix what it names, then run {SCHEDULE_INSTALL}.")
         return
     if run_lock.is_busy(cfg):  # installing the job again would stop the run
         print(f"{ops.WARN}The evening Brief's job wasn't updated, since a Brief is being made right "
-              f"now. Run {AGAIN} once it has gone out.")
+              f"now. Run {SCHEDULE_INSTALL} once it has gone out.")
         return
     try:
         ops.install_jobs(cfg)
     except Exception:  # noqa: BLE001 - the job installed before keeps running
         print(f"{ops.WARN}The evening Brief's job couldn't be updated, so it runs as it did. Run "
-              f"{AGAIN} to update it.")
+              f"{SCHEDULE_INSTALL} to update it.")
         return
     hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
     if not (wake.sleeps() and wake.has_own_schedule()):
@@ -42,7 +42,8 @@ def update(config: str | None = None) -> None:
     if status.ours or not status.old:
         return  # already moved, or none of ours to move: doctor says if one is missing
     print(f"\nParent Recap now wakes the Mac at {hour:02d}:{minute:02d}, when the Brief starts, "
-          "instead of 5 minutes before, so a MacBook with its lid closed stays awake for it. "
+          "instead of 5 minutes before, so the Brief starts as the Mac wakes, before a MacBook "
+          "with its lid closed can go back to sleep. "
           "macOS asks for your Mac password to move the wake.")
     ops.set_wake(hour, minute, False)
 
@@ -55,7 +56,7 @@ def main(argv: list[str]) -> int:
     try:
         update()
     except Exception:  # noqa: BLE001 - never fail the install over the schedule
-        print(f"{ops.WARN}The evening Brief's schedule wasn't updated. Run {AGAIN} to update it.")
+        print(f"{ops.WARN}The evening Brief's schedule wasn't updated. Run {SCHEDULE_INSTALL} to update it.")
     return 0
 
 
