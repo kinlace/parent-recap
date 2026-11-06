@@ -39,7 +39,7 @@ To work through issues labelled `ready-for-agent` unattended, one PR at a time, 
 ## Outside the repository
 
 - The Google app file shared with pilot families is not in the repository or the package: the Parent Recap team sends it separately to pilot families who want Google Calendar mode, and `/parent-recap:manage` saves it to `~/.family/calendar_credentials.json`.
-- The homepage at [parentrecap.com](https://parentrecap.com) lives in [kinlace/parent-recap-site](https://github.com/kinlace/parent-recap-site), which deploys it and holds the domain's DNS script. It links to the README for installing and privacy, so keep the README's `#install`, `#privacy` and `#what-the-ai-sees` headings or update its links.
+- The homepage at [parentrecap.com](https://parentrecap.com) lives in [kinlace/parent-recap-site](https://github.com/kinlace/parent-recap-site), which deploys it and holds the domain's DNS script. It links to the README for installing and privacy, so keep the README's `#install`, `#privacy` and `#what-the-ai-sees` headings or update its links. Every Brief from a family's own computer links `#change-settings` in the README of its language on `stable` (`settings_help` in `app/src/family_brief/brief_text.py`), so keep that anchor in all three READMEs.
 
 ## Conventions
 

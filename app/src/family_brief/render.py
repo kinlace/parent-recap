@@ -280,7 +280,7 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
     `original` for a Recipient in another language; feedback links carry the original's text, so
     the Form gets the same words from every language version (ADR 0004). `top_note` holds the
     warnings shown above the Digest (see _top_note), and `held_back` the Held-back Messages, which
-    were not sent to the `assistant`."""
+    were not sent to the `assistant`. `end_html` is the Brief's last lines, already HTML (EndNote.html)."""
     original = original or brief
 
     def form_link(verdict: str, label: str, text: str, **kw) -> str:

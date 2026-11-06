@@ -424,8 +424,8 @@ _SETTINGS_HELP = "https://github.com/kinlace/parent-recap/blob/stable/{readme}#c
 def settings_help(t: BriefText) -> str:
     """The README FAQ entry on changing a setting, in the language of `t`: a reviewed one's own,
     or the English one for any other language."""
-    code = next((code for code, text in TEXT.items() if text is t), "en")
-    return _SETTINGS_HELP.format(readme=_README[code])
+    code = next((code for code, text in TEXT.items() if text == t), "en")
+    return _SETTINGS_HELP.format(readme=_README.get(code, _README["en"]))
 
 
 @dataclass(frozen=True)
