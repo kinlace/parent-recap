@@ -66,9 +66,27 @@ def text(key: str, *, system: str = SYSTEM, language: str = "en", **values: Any)
     return re.sub(r"\{(\w+)\}", lambda m: str(values.get(m.group(1), m.group(0))), shown)
 
 
+class Chromium:
+    """Headless Chromium, one for the whole run while it lives. Should it die partway (#828: on a
+    Mac with no display session it can), the next test gets a fresh one, so the dead browser costs
+    only the test it died in."""
+
+    def __init__(self, playwright: Any) -> None:
+        self.playwright = playwright
+        self.browser = playwright.chromium.launch()
+
+    def connected(self) -> Any:
+        if not self.browser.is_connected():
+            self.browser = self.playwright.chromium.launch()
+        return self.browser
+
+    def close(self) -> None:
+        if self.browser.is_connected():
+            self.browser.close()
+
+
 @pytest.fixture(scope="session")
-def browser() -> Iterator[Any]:
-    """Headless Chromium, one for the whole run."""
+def chromium() -> Iterator[Chromium]:
     if not CAN_LISTEN:
         pytest.skip("no port can be listened on here (a sandbox), and the browser needs one")
     if sync_playwright is None:
@@ -76,14 +94,20 @@ def browser() -> Iterator[Any]:
     expect.set_options(timeout=SLOW_MS)
     playwright = sync_playwright().start()
     try:
-        chromium = playwright.chromium.launch()
+        launched = Chromium(playwright)
     except PlaywrightError as e:
         playwright.stop()
         pytest.skip(f"Playwright has no Chromium (python -m playwright install --only-shell "
                     f"chromium): {str(e).splitlines()[0]}")
-    yield chromium
-    chromium.close()
+    yield launched
+    launched.close()
     playwright.stop()
+
+
+@pytest.fixture
+def browser(chromium) -> Any:
+    """The run's Chromium, launched again first if it has died since the last test."""
+    return chromium.connected()
 
 
 @pytest.fixture
@@ -286,6 +310,16 @@ def at_the_ai_step(tab, harness, name: str, system: str) -> None:
 
 
 # ── The tests
+
+
+def test_a_browser_that_died_mid_run_is_launched_again_for_the_next_test(chromium):
+    """#828: Chromium closed partway through a run cost every later test, not just its own."""
+    dead = chromium.connected()
+    dead.close()  # as if it had crashed: the next test asks for a browser all the same
+    assert not dead.is_connected()
+    again = chromium.connected()
+    assert again.is_connected()
+    again.new_context().close()
 
 
 def test_a_family_goes_from_the_language_to_finish_in_the_browser(tab):
