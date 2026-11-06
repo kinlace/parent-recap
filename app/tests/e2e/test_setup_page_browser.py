@@ -545,6 +545,26 @@ def test_welcome_s_partner_is_the_second_row_and_the_first_may_be_removed(tab, f
     assert [(t.address, t.language) for t in to] == [("partner@gmail.com", "fi")]
 
 
+def asked_and_closed(where, question: str, answer: str, *, system: str = SYSTEM) -> None:
+    """A collapsed question at `where`: its question shown, its answer folded away (#823)."""
+    expect(where.get_by_text(text(question, system=system), exact=True)).to_be_visible()
+    expect(where.get_by_text(text(answer, system=system), exact=True)).to_be_hidden()
+
+
+def test_welcome_answers_which_browser_and_what_the_partner_s_address_is_for_folded(tab, family):
+    # #823: a tester thought the browser's Google account and her second address mattered.
+    in_english(tab)
+    asked_and_closed(tab.locator("#welcome-form"), "welcome.browser.more", "welcome.browser")
+    expect(tab.get_by_text(text("welcome.partner.why.more"))).to_be_hidden()
+
+    tab.get_by_role("radio", name=text("welcome.partner.add")).check()
+
+    asked_and_closed(tab.locator("#partner-details"), "welcome.partner.why.more",
+                     "welcome.partner.why")
+    tab.get_by_text(text("welcome.partner.why.more")).click()
+    expect(tab.get_by_text(text("welcome.partner.why"), exact=True)).to_be_visible()
+
+
 def test_recipients_added_in_the_chat_are_rows_the_page_changes(tab, family):
     in_english_with_the_gateway(tab, "parent@hotmail.com")
     # A second and third added in the chat (manage), or by hand.
@@ -1794,6 +1814,10 @@ def test_whatsapp_pairs_with_a_qr_code_and_its_groups_are_ticked_on_the_check_pa
                  "whatsapp.terms"):
         expect(tab.get_by_text(text(line, system=on))).to_be_visible()
     expect(qr_code(tab)).to_be_visible()
+    # #823: asked before scanning, answered there, folded.
+    whatsapp = tab.locator("#source-whatsapp")
+    asked_and_closed(whatsapp, "whatsapp.groups.more", "whatsapp.groups", system=on)
+    asked_and_closed(whatsapp, "whatsapp.desktop.more", "whatsapp.desktop", system=on)
     expect(tab.get_by_text(text("whatsapp.qr", system=on))).to_be_visible()
     first = qr_code(tab).screenshot()
     phone.go("next")  # WhatsApp changes the code
