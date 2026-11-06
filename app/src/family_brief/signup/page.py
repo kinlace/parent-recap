@@ -201,8 +201,8 @@ TEXT = {
                       "sitä.",
         "eepos_school": "Koulu",
         "eepos_school_hint": "Osoite selaimesi osoiterivillä, kun kirjaudut koulun Eepokseen, "
-                             "esimerkiksi espoo.eepos.fi (ei koulun omaa verkkosivua). Koko "
-                             "osoitteen voi myös liittää.",
+                             "esimerkiksi espoo.eepos.fi (ei koulun oman verkkosivun osoite). "
+                             "Koko osoitteen voi myös liittää.",
         "eepos_username": "Eepoksen käyttäjätunnus",
         "eepos_password": "Eepoksen salasana",
         "eepos_password_hint": "Se säilytetään vain palvelimellamme, jotta voimme lukea Eeposta "
@@ -258,7 +258,7 @@ TEXT = {
                               "osoite on emo.eepos.fi.",
         "eepos-school-website": "Tämä näyttää koulun verkkosivulta. Kopioi sen sijaan osoite "
                                 "selaimesta koulun Eepos-kirjautumissivulta: se päättyy "
-                                ".eepos.fi, esimerkiksi espoo.eepos.fi.",
+                                "muotoon .eepos.fi, esimerkiksi espoo.eepos.fi.",
         "eepos-wrong-password": "Eepos ei hyväksynyt käyttäjätunnusta ja salasanaa. Tarkista ne "
                                 "ja yritä uudelleen. Jos kirjaudut Eepokseen sähköpostilinkillä, "
                                 "aseta ensin salasana koulun Eepos-kirjautumissivulla salasanan "

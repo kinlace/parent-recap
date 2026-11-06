@@ -26,8 +26,8 @@ from ..system import secrets
 from .context import Action, Phase, add_kid, keychain_code
 
 # What adding a sign-in can say, as `setup eepos` and `setup evaka` do, besides the place given
-# not being one: `not-a-school` (or `school-website`, a site's address instead of its Eepos's)
-# or `not-a-city`.
+# not being one: `not-a-school` (or `school-website`, for another site's address, such as the
+# school's own website) or `not-a-city`.
 SIGNIN_RESULTS = ("saved", "no-username", "wrong-password", "changed", "no-answer",
                   "keychain-not-reachable", "not-stored", "save-failed")
 EEPOS_RESULTS = (*SIGNIN_RESULTS, "not-a-school", "school-website")
@@ -110,7 +110,7 @@ class _SignIns(Phase):
         answer = parse(self.SignIn, raw)
         place = self.of(getattr(answer, self.place))
         if place is None:
-            return HTTPStatus.OK, {"result": self.not_one(getattr(answer, self.place))}
+            return HTTPStatus.OK, {"result": self.refusal(getattr(answer, self.place))}
         username = answer.username.strip()
         if not username:
             return HTTPStatus.OK, {"result": "no-username"}
@@ -214,7 +214,7 @@ class _SignIns(Phase):
         """The school or city as the config keeps it, from what the family typed or picked."""
         raise NotImplementedError
 
-    def not_one(self, given: str) -> str:
+    def refusal(self, given: str) -> str:
         """Why what the family typed or picked, which `of` takes for none, isn't a school or city."""
         return f"not-a-{self.place}"
 
@@ -236,8 +236,8 @@ class Eepos(_SignIns):
     def of(self, given: str) -> str | None:
         return eepos.school_of(given)
 
-    def not_one(self, given: str) -> str:
-        return "school-website" if eepos.is_website(given) else super().not_one(given)
+    def refusal(self, given: str) -> str:
+        return "school-website" if eepos.is_website(given) else super().refusal(given)
 
 
 class Evaka(_SignIns):
