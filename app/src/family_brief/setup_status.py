@@ -146,9 +146,9 @@ def _wake(hour: int, minute: int) -> Outcome:
     status = wake.status(hour, minute)
     if status.never_sleeps:
         return Outcome("wake", True, "this computer never sleeps, so it needs no wake schedule")
-    wake_h, wake_m = wake.time(hour, minute)
+    at = f"{hour:02d}:{minute:02d}"
     if status.ours:
-        return Outcome("wake", True, f"the computer wakes at {wake_h:02d}:{wake_m:02d} every day")
+        return Outcome("wake", True, f"the computer wakes at {at} every day")
     if not wake.has_own_schedule():  # the job's task wakes the PC, once the family's setting lets it
         return Outcome("wake", False, "Allow wake timers is off, so the PC doesn't wake for the "
                        "Brief, which then only comes on evenings it's awake. Only the family can "
@@ -159,9 +159,14 @@ def _wake(hour: int, minute: int) -> Outcome:
                    f"repeating wake schedule ({', '.join(status.others)})")
     step = wake.manual_step(hour, minute)
     by_hand = f", or the family runs this in Terminal: {step}" if step else ""
-    return Outcome("wake", False, f"the Mac sleeps and doesn't wake at {wake_h:02d}:{wake_m:02d} "
-                   f"every day, so the Brief only comes on nights it's awake. Run {install}, "
-                   f"which sets it through macOS's administrator dialog{by_hand}")
+    if status.old:  # an older version's, which a lid-closed MacBook can sleep through (#832)
+        return Outcome("wake", False, f"the Mac wakes 5 minutes before the Brief ({status.old}), "
+                       "and a MacBook with its lid closed can go back to sleep before the Brief "
+                       f"starts. Run {install}, which moves the wake to {at} through macOS's "
+                       f"administrator dialog{by_hand}")
+    return Outcome("wake", False, f"the Mac sleeps and doesn't wake at {at} every day, so the "
+                   f"Brief only comes on nights it's awake. Run {install}, which sets it through "
+                   f"macOS's administrator dialog{by_hand}")
 
 
 def _read(path: Path) -> str:

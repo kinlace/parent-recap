@@ -421,6 +421,15 @@ def test_a_cancelled_administrator_dialog_leaves_the_wake_schedule_and_says_how(
     assert wake.manual_cancel() in capsys.readouterr().out
 
 
+def test_cancels_the_wake_an_older_version_set_5_minutes_before_the_job(harness, monkeypatch):
+    set_up(harness, monkeypatch)
+    harness.wake.wakes = [harness.wake.old_line(21, 0)]  # never moved by an update (#832)
+
+    assert uninstall(harness, "--confirm", "--keep-archive") == 0
+
+    assert harness.wake.wakes == [] and harness.wake.asked == ["cancel"]
+
+
 def test_leaves_a_wake_schedule_setup_did_not_set(harness, monkeypatch, capsys):
     set_up(harness, monkeypatch)
     harness.wake.wakes = [OTHER_WAKE]

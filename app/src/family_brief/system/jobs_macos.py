@@ -49,13 +49,20 @@ def _domain() -> str:
 
 # ---------------------------------------------------------------- the evening jobs
 
+# The evening jobs run under caffeinate, which holds power assertions until the program exits:
+# a lid-closed MacBook woken for the job gets a DarkWake of seconds, and sleeps again mid-run
+# without one (#832). -i keeps the Mac from idle sleep on any power, -s from sleeping at all on
+# AC power only. Whether -i holds a lid-closed MacBook on battery is checked after release.
+AWAKE = ["/usr/bin/caffeinate", "-i", "-s"]
+
+
 def _plist(job: jobs.Job) -> dict:
     interval = {"Hour": job.hour, "Minute": job.minute}
     if job.weekday is not None:
         interval = {"Weekday": job.weekday, **interval}
     return {
         "Label": system_name(job.name),
-        "ProgramArguments": [sys.executable, "-m", "family_brief", job.subcommand],
+        "ProgramArguments": [*AWAKE, sys.executable, "-m", "family_brief", job.subcommand],
         "StartCalendarInterval": interval,
         "StandardOutPath": str(job.log_dir / f"{job.subcommand}-stdout.log"),
         "StandardErrorPath": str(job.log_dir / f"{job.subcommand}-stderr.log"),
@@ -116,10 +123,16 @@ def waiting_for_login() -> set[str]:
 
 
 def _program(path: Path) -> list[str]:
+    """The command the plist runs, without the caffeinate it runs under (AWAKE)."""
     try:
-        return [str(a) for a in plistlib.loads(path.read_bytes()).get("ProgramArguments", [])]
+        args = [str(a) for a in plistlib.loads(path.read_bytes()).get("ProgramArguments", [])]
     except (OSError, plistlib.InvalidFileException, AttributeError):
         return []
+    if args[:1] == AWAKE[:1]:
+        args = args[1:]
+        while args[:1] and args[0].startswith("-"):
+            args = args[1:]
+    return args
 
 
 def found() -> list[jobs.Found]:

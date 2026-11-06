@@ -33,12 +33,17 @@ def _repeating(sched: str) -> list[str]:
     return lines
 
 
-def _is_ours(line: str, hour: int, minute: int) -> bool:
-    """Whether a line of `pmset -g sched` is the daily wake setup gives for a job at hour:minute."""
-    wake_h, wake_m = wake.time(hour, minute)
-    wake_12h = f"{wake_h % 12 or 12}:{wake_m:02d}{'am' if wake_h < 12 else 'pm'}"  # as pmset prints it
-    our_wake = re.compile(rf"wake.*(?<!\d)({wake_12h}|{wake_h}:{wake_m:02d}).*everyday")
-    return bool(our_wake.search(line.lower().replace(" ", "")))
+def _daily_at(line: str, hour: int, minute: int) -> bool:
+    """Whether a line of `pmset -g sched` is a daily wake at hour:minute."""
+    wake_12h = f"{hour % 12 or 12}:{minute:02d}{'am' if hour < 12 else 'pm'}"  # as pmset prints it
+    daily = re.compile(rf"wake.*(?<!\d)({wake_12h}|{hour}:{minute:02d}).*everyday")
+    return bool(daily.search(line.lower().replace(" ", "")))
+
+
+def _old_time(hour: int, minute: int) -> tuple[int, int]:
+    """When versions before #832 woke the Mac for a job at hour:minute: 5 minutes before."""
+    wake_h, wake_m = divmod(hour * 60 + minute - 5, 60)
+    return wake_h % 24, wake_m
 
 
 def _never_sleeps() -> bool:
@@ -46,21 +51,25 @@ def _never_sleeps() -> bool:
     return bool(sleeps) and all(s == "0" for s in sleeps)
 
 
-def _wakes(hour: int, minute: int) -> tuple[str | None, list[str]]:
+def _wakes(hour: int, minute: int) -> wake.WakeStatus:
+    """The repeating wakes, told apart; `never_sleeps` isn't read, and is False."""
     lines = _repeating(_pmset("-g", "sched"))
-    ours = [line for line in lines if _is_ours(line, hour, minute)]
-    return (ours[0] if ours else None), [line for line in lines if line not in ours]
+    ours = [line for line in lines if _daily_at(line, hour, minute)]
+    old = [line for line in lines
+           if line not in ours and _daily_at(line, *_old_time(hour, minute))]
+    return wake.WakeStatus(ours[0] if ours else None,
+                           [line for line in lines if line not in ours and line not in old],
+                           False, old[0] if old else None)
 
 
 def status(hour: int, minute: int) -> wake.WakeStatus:
     never = _never_sleeps()
-    ours, others = _wakes(hour, minute)
-    return wake.WakeStatus(ours, others, never)
+    found = _wakes(hour, minute)
+    return wake.WakeStatus(found.ours, found.others, never, found.old)
 
 
 def _pmset_wake(hour: int, minute: int) -> str:
-    wake_h, wake_m = wake.time(hour, minute)
-    return f"pmset repeat wakeorpoweron MTWRFSU {wake_h:02d}:{wake_m:02d}:00"
+    return f"pmset repeat wakeorpoweron MTWRFSU {hour:02d}:{minute:02d}:00"
 
 
 def manual_step(hour: int, minute: int) -> str:
@@ -70,22 +79,28 @@ def manual_step(hour: int, minute: int) -> str:
 def set(hour: int, minute: int, replace: bool) -> str:
     if _never_sleeps():
         return "never-sleeps"
-    ours, others = _wakes(hour, minute)
-    if ours:
+    found = _wakes(hour, minute)
+    if found.ours:
         return "already-set"
-    if others and not replace:
+    if found.others and not replace:
         return "other-schedule"
-    wake_h, wake_m = wake.time(hour, minute)
+    at = f"{hour:02d}:{minute:02d}"
+    if found.old:
+        old_h, old_m = _old_time(hour, minute)
+        why = (f"Parent Recap wants to move your Mac's daily wake from {old_h:02d}:{old_m:02d} "
+               f"to {at}, when the Brief starts, so the Mac stays awake for it.")
+    else:
+        why = f"Parent Recap wants to wake your Mac at {at} every day, when the Brief starts."
+    # One `pmset repeat` replaces the whole schedule, so the old wake goes only once the new one
+    # is set: a closed dialog or a failed pmset leaves it as it was.
     try:
-        _as_administrator(
-            f"/usr/bin/{_pmset_wake(hour, minute)}",
-            f"Parent Recap wants to wake your Mac at {wake_h:02d}:{wake_m:02d} every day, 5 "
-            "minutes before the Brief. Enter your Mac password to allow this.")
+        _as_administrator(f"/usr/bin/{_pmset_wake(hour, minute)}",
+                          f"{why} Enter your Mac password to allow this.")
     except Cancelled:
         return "cancelled"
     except NoWayToAsk:
         return "no-dialog"
-    return "set" if _wakes(hour, minute)[0] else "not-set"
+    return "set" if _wakes(hour, minute).ours else "not-set"
 
 
 def cancel() -> None:

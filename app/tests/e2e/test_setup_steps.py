@@ -165,9 +165,9 @@ def test_schedule_install_sets_the_wake_schedule_through_the_administrator_dialo
     assert harness.cli("schedule", "install") == 0
 
     out = capsys.readouterr().out
-    assert harness.wake.asked == ["set 20:55"]
+    assert harness.wake.asked == ["set 21:00"]
     assert harness.wake.wakes == [harness.wake.line(21, 0)]
-    assert "20:55" in out and wake.manual_step(21, 0) not in out
+    assert "Wake: the Mac wakes at 21:00" in out and wake.manual_step(21, 0) not in out
     assert "replace" not in out
 
 
@@ -202,10 +202,36 @@ def test_schedule_install_replaces_another_wake_schedule_once_the_family_agrees(
     assert harness.cli("schedule", "install", "--replace-wake") == 0
 
     out = capsys.readouterr().out
-    assert harness.wake.asked == ["set 20:55"]
+    assert harness.wake.asked == ["set 21:00"]
     assert harness.wake.wakes == [harness.wake.line(21, 0)]
     assert OTHER_WAKE in out  # what was replaced
-    assert "20:55" in out and wake.manual_step(21, 0) not in out
+    assert "Wake: the Mac wakes at 21:00" in out and wake.manual_step(21, 0) not in out
+
+
+@pytest.mark.macos  # the Mac's wake dialog
+def test_schedule_install_moves_an_older_versions_wake_to_the_jobs_time(harness, capsys):
+    harness.wake.wakes = [harness.wake.old_line(21, 0)]  # 20:55, from before #832
+
+    assert harness.cli("schedule", "install") == 0
+
+    out = capsys.readouterr().out
+    assert harness.wake.asked == ["set 21:00"]  # without --replace-wake
+    assert harness.wake.wakes == [harness.wake.line(21, 0)]
+    assert "Wake: the Mac wakes at 21:00" in out and "in place of 5 minutes before" in out
+
+
+@pytest.mark.macos  # the Mac's wake dialog
+def test_schedule_install_keeps_an_older_versions_wake_when_the_dialog_is_closed(harness, capsys):
+    old = harness.wake.old_line(21, 0)
+    harness.wake.wakes = [old]
+    harness.wake.dialog = "cancel"
+
+    assert harness.cli("schedule", "install") == 0
+
+    out = capsys.readouterr().out
+    assert harness.wake.wakes == [old]
+    assert "still wakes 5 minutes before the Brief" in out
+    assert wake.manual_step(21, 0) in out
 
 
 @pytest.mark.macos  # the Mac's wake dialog; Windows' wake: test_windows_only.py

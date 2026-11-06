@@ -745,7 +745,7 @@ def cmd_bg(args: argparse.Namespace) -> int:
 
 # ---------------------------------------------------------------- schedule
 
-def _set_wake(hour: int, minute: int, replace: bool) -> None:
+def set_wake(hour: int, minute: int, replace: bool) -> None:
     """`wake.set`, saying how it went. Without a desktop session it gives the command for
     Terminal instead."""
     if not wake.sleeps():
@@ -753,16 +753,21 @@ def _set_wake(hour: int, minute: int, replace: bool) -> None:
     if windows_only.offers("wake-timers"):
         _say_wake_timers(hour, minute)
         return
-    wake_h, wake_m = wake.time(hour, minute)
-    existing = wake.status(hour, minute).others
+    at = f"{hour:02d}:{minute:02d}"
+    before = wake.status(hour, minute)
+    existing = before.others
     result = wake.set(hour, minute, replace)
     if result == "never-sleeps":
         print("\nThis Mac never sleeps (sleep 0 in pmset), so it needs no wake schedule.")
         return
     if result == "already-set":
-        print(f"\nThe Mac already wakes at {wake_h:02d}:{wake_m:02d} every day, before the job starts.")
+        print(f"\nThe Mac already wakes at {at} every day, when the job starts.")
         return
     print("\nScheduled jobs don't run while the Mac is asleep.")
+    if before.old and result not in ("set", "other-schedule"):
+        print(f"{WARN}The Mac still wakes 5 minutes before the Brief ({before.old}), and a "
+              "MacBook with its lid closed can go back to sleep before the Brief starts. Its "
+              f"wake moves to {at} once it's set again as below.")
     step = wake.manual_step(hour, minute)
     in_terminal = (f"Run this once in Terminal (it asks for your Mac password):\n  {step}"
                    if step else "")
@@ -792,7 +797,8 @@ def _set_wake(hour: int, minute: int, replace: bool) -> None:
     elif result == "no-dialog":
         print(in_terminal)
     elif result == "set":
-        print(f"{OK} Wake: the Mac wakes at {wake_h:02d}:{wake_m:02d} every day")
+        moved = f", in place of 5 minutes before ({before.old})" if before.old else ""
+        print(f"{OK} Wake: the Mac wakes at {at} every day, when the Brief starts{moved}")
     else:
         print(f"{FAIL} The wake schedule wasn't set: macOS doesn't list it after the dialog.")
         print(in_terminal)
@@ -867,7 +873,7 @@ def cmd_schedule(args: argparse.Namespace) -> int:
         print(f"{OK} Brief: every day at {sc.daily_hour:02d}:{sc.daily_minute:02d}")
         if cfg.weekend_events.enabled:
             print(f"{OK} Weekend Picks: every Friday at {sc.weekend_hour:02d}:00")
-        _set_wake(sc.daily_hour, sc.daily_minute, args.replace_wake)
+        set_wake(sc.daily_hour, sc.daily_minute, args.replace_wake)
         return 0
 
     if args.action == "uninstall":

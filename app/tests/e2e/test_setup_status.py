@@ -286,14 +286,28 @@ def test_the_nightly_job_isnt_loaded_before_the_schedule_is_installed(harness, o
 # ── 5. The wake schedule is set, or the Mac never sleeps
 
 
-def test_the_wake_schedule_is_set_when_the_mac_wakes_before_the_nightly_job(harness, offline, capsys):
+def test_the_wake_schedule_is_set_when_the_mac_wakes_at_the_nightly_jobs_time(harness, offline, capsys):
     harness.wake.wakes = [harness.wake.line(21, 0)]
 
     _, report = status(harness, capsys)
 
     wake = outcome(report, "wake")
     assert wake["ok"] is True
-    assert "20:55" in wake["reason"]
+    assert "21:00" in wake["reason"]
+
+
+@pytest.mark.macos  # the Mac's wake dialog
+def test_an_older_versions_wake_5_minutes_before_the_job_is_to_be_moved(harness, offline, capsys):
+    # A lid-closed MacBook can sleep again in the 5 minutes before the job (#832).
+    harness.wake.wakes = [harness.wake.old_line(21, 0)]
+
+    _, report = status(harness, capsys)
+
+    wake = outcome(report, "wake")
+    assert wake["ok"] is False
+    assert "5 minutes before" in wake["reason"] and "moves the wake to 21:00" in wake["reason"]
+    assert "parent-recap schedule install" in wake["reason"]
+    assert "--replace-wake" not in wake["reason"]
 
 
 def test_a_mac_that_never_sleeps_needs_no_wake_schedule(harness, offline, capsys):
@@ -316,7 +330,7 @@ def test_the_wake_schedule_isnt_set_when_the_mac_sleeps_through_the_nightly_job(
 
     wake = outcome(report, "wake")
     assert wake["ok"] is False
-    assert "20:55" in wake["reason"]
+    assert "21:00" in wake["reason"]
     # Without the flag, schedule install only warns about the other schedule again.
     assert ("--replace-wake" in wake["reason"]) == bool(repeating)
 
@@ -363,7 +377,7 @@ def test_the_readable_form_has_a_short_line_per_outcome(harness, set_up, capsys)
 
     assert code == 0
     assert len(lines) == 5 and all(line.startswith(ops.OK) for line in lines)
-    assert any("20:55" in line for line in lines)
+    assert any("21:00" in line for line in lines)
 
 
 def test_the_readable_form_marks_what_isnt_done(harness, offline, capsys):

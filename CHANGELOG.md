@@ -6,6 +6,7 @@ What changes for families in each release, collected from the `What changes for 
 
 ### Changed
 
+- A Mac now wakes for the evening Brief at the Brief's own time instead of 5 minutes before, and the evening job asks macOS to keep it awake while the Brief is made, so that a MacBook with its lid closed sends the Brief on time instead of once it's opened (still to be confirmed on a MacBook on battery). Updating moves the wake of an existing install: macOS asks for the Mac password once, and if that window is closed the Mac keeps waking as before, and `parent-recap doctor` says how to move it.
 - The setup page's WhatsApp step says where Linked devices is on an iPhone, under the You tab (Android: Settings), and says to scan the code with the scanner that Link a device opens, not the camera in a chat, in English, Chinese and Finnish. Turning WhatsApp off and uninstall name the You tab too, where they tell you to remove Parent Recap from Linked devices.
 - The Eepos school field, on the setup page and the hosted sign-up page, asks for the address in the browser on the school's Eepos sign-in page, such as espoo.eepos.fi, not the school's own website. A school's website typed there, such as www.espoonkuvis.fi, is said to be one, with where to copy the Eepos address from instead, in English, Finnish and Chinese.
 
