@@ -2,15 +2,16 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
-## Unreleased
+## 0.13.0 · 2026-11-06
 
-### Changed
-
-- When the setup page's Gmail step gets a password that isn't an App Password, such as your own Google password, the fold "Google says App Passwords aren't available" opens by itself with its Open 2-Step Verification button, and the message says to turn 2-Step Verification on first if Google's App passwords page said your account can't use this setting, or to skip Gmail for now.
 ### Added
 
 - A family without Wilma can add its Kids on the setup page's Eepos and eVaka steps: next to a student or child who matches none of your Kids, "Add as a Kid" adds them under the name you call them, and their lessons or daycare events come under that Kid from the next Brief. Opened again later, the steps have a field to add a Kid by name.
 - A Kid in more than one MyClub club gets every club's practices and games in the Brief: on the hosted sign-up, "Add another club" under a Kid takes another calendar link, and on the setup page's MyClub step a Kid with a link can add another club's link or remove one. An event that comes in two of a Kid's calendars shows once.
+
+### Changed
+
+- When the setup page's Gmail step gets a password that isn't an App Password, such as your own Google password, the fold "Google says App Passwords aren't available" opens by itself with its Open 2-Step Verification button, and the message says to turn 2-Step Verification on first if Google's App passwords page said your account can't use this setting, or to skip Gmail for now.
 - In a pilot family's Brief, the feedback links read as a question instead of an error: a small grey "Feedback: ⭐ useful · ❌ wrong" line under each Action Item, and "Something wrong in this summary? Tell us" under the Digest, in English, Chinese and Finnish.
 - Once you click Connect Gmail on the setup page, "Skip Gmail for now" sits beside Save, right under any message about the password, instead of above the steps.
 
