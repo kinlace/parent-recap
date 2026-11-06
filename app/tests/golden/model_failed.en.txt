@@ -19,4 +19,5 @@
 📥 Read tonight: Gmail 2 messages · MyClub 1 event · Wilma 1 message · WhatsApp 2 messages
 
 Parent Recap, running on your own computer
+Change settings: https://github.com/kinlace/parent-recap/blob/stable/README.md#change-settings
 This email comes from an address nobody reads. To reply, write to parent@example.com, who set up Parent Recap.

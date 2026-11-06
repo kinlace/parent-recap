@@ -7,4 +7,5 @@
 • WhatsApp：macOS 权限被拒绝。跟 Claude 说「Parent Recap 读不了 WhatsApp」即可修复。
 
 Parent Recap，在你家的电脑上运行
+修改设置: https://github.com/kinlace/parent-recap/blob/stable/README.zh-CN.md#change-settings
 这封邮件的发件地址无人查看。如需回复，请写信给设置 Parent Recap 的人：parent@example.com。

@@ -59,6 +59,16 @@ irm https://raw.githubusercontent.com/kinlace/parent-recap/stable/install.ps1 | 
 
 这能减少 AI 拿到的内容，但不能保证什么：每条消息的其余部分仍然会交给它。Claude 和 ChatGPT 在美国处理这些内容，并且默认可能用它训练模型。要关掉的话：在 Claude 的 Settings > Privacy 里关掉“Help improve Claude”，或在 ChatGPT 的 Settings > Data controls 里关掉“Improve the model for everyone”。详情见 [What the AI sees](docs/config.md#what-the-ai-sees)（英文）。
 
+## 常见问题
+
+<a id="change-settings"></a>
+
+### 以后怎么修改设置？
+
+再粘贴一次[安装](#安装)里的那一行：Mac 上粘贴到“终端”，Windows 上粘贴到 PowerShell。设置页面会打开，在那里可以修改谁收日报、几点收、WhatsApp 群和信息源。你原来的设置都会保留。
+
+或者，在 Claude Code 里输入 `/parent-recap:manage`，在 Codex 里输入 `$parent-recap-manage`，或者直接说你想改什么。
+
 ## 致谢
 
 Parent Recap 通过 Antti Karjalainen 的 [wilma CLI](https://github.com/aikarjal/wilmai)（WilmAI）读取 Wilma，它免费开源，采用 MIT 许可。没有它，摘要里就没有 Wilma 的内容。

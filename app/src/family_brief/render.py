@@ -14,7 +14,7 @@ from . import feedback
 from . import sources as source_registry
 from .actions import ics as ics_action
 from .brief import ActionItem, Brief
-from .brief_text import PRODUCT_NAME, BriefText
+from .brief_text import PRODUCT_NAME, BriefText, settings_help
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, failed_sign_in
 from .utils.dates import to_local
 
@@ -123,11 +123,11 @@ def nothing_read(coverage: dict[str, dict], date_str: str, assistant: str, t: Br
     out: list[Outgoing] = []
     for reader_t, to in readers:
         note = _h.escape(nothing_read_text(coverage, reader_t, assistant)).replace("\n", "<br>")
-        sender = end_note(reader_t, hosted, unread_sender(reader_t, write_to))
-        out.append(Mail(to=to, subject=f"{PRODUCT_NAME} · {date_str}", text=_with_note(whole(reader_t), sender),
+        end = EndNote(reader_t, hosted, unread_sender(reader_t, write_to))
+        out.append(Mail(to=to, subject=f"{PRODUCT_NAME} · {date_str}", text=_with_note(whole(reader_t), end.text()),
                         html=_HTML_PAGE
                         + f"<h2>👨‍👩‍👧‍👦 {PRODUCT_NAME} · {_h.escape(_header_date(date_str, reader_t))}</h2>"
-                          f"<p style='color:#a33'>{note}</p>" + _small(sender) + "</body></html>"))
+                          f"<p style='color:#a33'>{note}</p>" + end.html() + "</body></html>"))
     if imessage_to:
         out.append(IMessage(imessage_to, whole(t)))
     return out
@@ -275,7 +275,7 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
                       feedback_link: Callable[..., str] | None = None,
                       original: Brief | None = None, top_note: str = "",
                       held_back: list[HeldBack] | None = None, assistant: str = "",
-                      sender_note: str = "") -> str:
+                      end_html: str = "") -> str:
     """Simple HTML rendering of the Brief, safe for Gmail. `brief` is translated from
     `original` for a Recipient in another language; feedback links carry the original's text, so
     the Form gets the same words from every language version (ADR 0004). `top_note` holds the
@@ -346,7 +346,7 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
                      + _h.escape(coverage).replace("\n", "<br>") + "</p>")
     if footer:
         parts.append(_small(footer))
-    parts.append(_small(sender_note))
+    parts.append(end_html)
     return _HTML_PAGE + "".join(parts) + "</body></html>"
 
 
@@ -501,10 +501,28 @@ def unread_sender(t: BriefText, write_to: str | None) -> str:
     return t.unread_sender.format(address=write_to) if write_to else ""
 
 
-def end_note(t: BriefText, hosted: bool, sender: str) -> str:
+@dataclass(frozen=True)
+class EndNote:
     """The last lines of every Brief: which version sent it, the hosted one or the family's own
-    computer's, then the `sender` line, if any."""
-    return "\n".join(line for line in (t.runs_hosted if hosted else t.runs_on_own_computer, sender) if line)
+    computer's; from the family's own computer, the link to how to change a setting (#824), which a
+    Hosted Household changes through the maintainers; then the `sender` line, if any."""
+    t: BriefText
+    hosted: bool
+    sender: str
+
+    def text(self) -> str:
+        link = "" if self.hosted else f"{self.t.change_settings}: {settings_help(self.t)}"
+        return "\n".join(line for line in (self._version, link, self.sender) if line)
+
+    def html(self) -> str:
+        link = "" if self.hosted else (
+            f"<p style='color:#888;font-size:12px'><a href=\"{_h.escape(settings_help(self.t))}\""
+            f" style='color:#888;text-decoration:underline'>{_h.escape(self.t.change_settings)}</a></p>")
+        return _small(self._version) + link + _small(self.sender)
+
+    @property
+    def _version(self) -> str:
+        return self.t.runs_hosted if self.hosted else self.t.runs_on_own_computer
 
 
 # Hotmail and Outlook.com junk mail from Parent Recap's new address at first (#524). The setup
@@ -536,15 +554,15 @@ def mail(night: Night, v: Version) -> Mail:
                     ics_action.build(night.ics_events, night.tz, night.stamp, v.translated_event),
                     "text/calendar")] if night.ics_events else []
     links = night.form.link if night.form and night.model_wrote else None
-    note = end_note(t, night.hosted, unread_sender(t, night.write_to))
+    end = EndNote(t, night.hosted, unread_sender(t, night.write_to))
     html = _daily_brief_html(v.brief, listed, night.date, t, night.tz, calendar_note,
                              ics_attached=bool(attachments), coverage=coverage_note,
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
                              feedback_link=links, original=night.brief, top_note=top_note,
-                             held_back=night.held_back, assistant=assistant, sender_note=note)
+                             held_back=night.held_back, assistant=assistant, end_html=end.html())
     return Mail(to=v.to, subject=night.subject,
                 text=_with_note(_brief_text(v.brief, listed, night.date, t, night.tz, coverage_note,
-                                            calendar_note, top_note, night.held_back, assistant), note),
+                                            calendar_note, top_note, night.held_back, assistant), end.text()),
                 html=html, attachments=attachments)
 
 
@@ -568,16 +586,16 @@ def preview(night: Night) -> dict[str, str | None]:
     subject, text and HTML, and for a pilot Household (with its Form links) the Digest's
     feedback link. It is the first Brief, which setup sends to the setup parent only."""
     t, assistant, form = night.t, night.assistant, night.form
-    sender_note = end_note(t, night.hosted, first_sender_note(t, night.write_to))
+    end = EndNote(t, night.hosted, first_sender_note(t, night.write_to))
     html = _daily_brief_html(night.brief, night.created, night.date, t, night.tz,
                              coverage=_coverage_note(night.coverage, t, night.hosted),
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
                              feedback_link=form.link if form and night.model_wrote else None,
                              top_note=_top_note(night.incomplete, t, assistant), held_back=night.held_back,
-                             assistant=assistant, sender_note=sender_note)
+                             assistant=assistant, end_html=end.html())
     wrong = form.link(feedback.DIGEST_WRONG, _shown_digest(night.brief, t) if night.model_wrote else "") \
         if form else None
-    return {"subject": night.subject, "text": _with_note(night.text(), sender_note),
+    return {"subject": night.subject, "text": _with_note(night.text(), end.text()),
             "html": html, "feedback": wrong}
 
 

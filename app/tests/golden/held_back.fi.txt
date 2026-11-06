@@ -28,4 +28,5 @@ Nämä viestit vaikuttivat arkaluonteisilta (esimerkiksi terveyteen, oppimisen t
 📥 Luettu tänä iltana: Gmail 3 viestiä · MyClub 1 tapahtuma · Wilma 2 viestiä · WhatsApp 3 viestiä
 
 Parent Recap, joka toimii omalla tietokoneellasi
+Muuta asetuksia: https://github.com/kinlace/parent-recap/blob/stable/README.fi.md#change-settings
 Tämä viesti tulee osoitteesta, jota kukaan ei lue. Jos haluat vastata, kirjoita osoitteeseen parent@example.com: hän otti Parent Recapin käyttöön.

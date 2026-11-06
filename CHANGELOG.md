@@ -4,6 +4,10 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+### Added
+
+- A Brief from your own computer ends with a "Change settings" link to the README's new FAQ, in the Brief's language, which says how to change who gets the Brief, its time, the WhatsApp groups or the Sources later: paste the install line again, or ask Claude Code or Codex. A hosted family's Brief has no such link.
+
 ### Changed
 
 - A Mac now wakes for the evening Brief at the Brief's own time instead of 5 minutes before, and the evening job asks macOS to keep it awake while the Brief is made, so that a MacBook with its lid closed sends the Brief on time instead of once it's opened (still to be confirmed on a MacBook on battery). Updating moves the wake of an existing install: macOS asks for the Mac password once, and if that window is closed the Mac keeps waking as before, and `parent-recap doctor` says how to move it.

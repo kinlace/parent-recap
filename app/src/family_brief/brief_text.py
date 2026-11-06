@@ -102,6 +102,7 @@ class BriefText:
     written_by: str                     # {assistant}
     runs_hosted: str                    # every Brief's footer, from a Hosted Household (#669)
     runs_on_own_computer: str           # every Brief's footer, from the family's own computer
+    change_settings: str                # the link after it, to the README's FAQ (#824)
     unread_sender: str                  # {address}, when the gateway's address nobody reads sent it
     junk_at_first: str                  # the first Brief from that address, to Hotmail or Outlook.com
     untitled: str
@@ -211,6 +212,7 @@ EN = BriefText(
     written_by="Written by {assistant}",
     runs_hosted="Parent Recap hosted version, running on the parentrecap.com server",
     runs_on_own_computer="Parent Recap, running on your own computer",
+    change_settings="Change settings",
     unread_sender="This email comes from an address nobody reads. To reply, write to {address}, "
                   "who set up Parent Recap.",
     junk_at_first='Found this in Junk? Mark it "Not junk" once, and the rest arrive in the inbox: '
@@ -291,6 +293,7 @@ ZH = BriefText(
     written_by="由 {assistant} 生成",
     runs_hosted="Parent Recap 托管版，在 parentrecap.com 的服务器上运行",
     runs_on_own_computer="Parent Recap，在你家的电脑上运行",
+    change_settings="修改设置",
     unread_sender="这封邮件的发件地址无人查看。如需回复，请写信给设置 Parent Recap 的人：{address}。",
     junk_at_first="在垃圾邮件里找到这封？把它标记一次“不是垃圾邮件”，之后的就会进收件箱："
                   "Parent Recap 的地址是新的，Hotmail 和 Outlook.com 可能把第一份日报当成垃圾邮件。",
@@ -379,6 +382,7 @@ FI = BriefText(
     written_by="Kirjoittanut: {assistant}",
     runs_hosted="Parent Recapin ylläpidetty versio, joka toimii parentrecap.com-palvelimella",
     runs_on_own_computer="Parent Recap, joka toimii omalla tietokoneellasi",
+    change_settings="Muuta asetuksia",
     unread_sender="Tämä viesti tulee osoitteesta, jota kukaan ei lue. Jos haluat vastata, kirjoita "
                   "osoitteeseen {address}: hän otti Parent Recapin käyttöön.",
     junk_at_first="Löytyikö tämä roskapostista? Merkitse se kerran ”Ei roskapostia”, niin loput tulevat "
@@ -410,6 +414,18 @@ FI = BriefText(
 )
 
 TEXT: dict[Language, BriefText] = {"en": EN, "zh": ZH, "fi": FI}  # the reviewed languages
+
+# The README in each reviewed language. Its FAQ says how to change a setting later, under the same
+# anchor in each (#824); the `stable` branch's, so it matches the version the family runs.
+_README = {"en": "README.md", "zh": "README.zh-CN.md", "fi": "README.fi.md"}
+_SETTINGS_HELP = "https://github.com/kinlace/parent-recap/blob/stable/{readme}#change-settings"
+
+
+def settings_help(t: BriefText) -> str:
+    """The README FAQ entry on changing a setting, in the language of `t`: a reviewed one's own,
+    or the English one for any other language."""
+    code = next((code for code, text in TEXT.items() if text is t), "en")
+    return _SETTINGS_HELP.format(readme=_README[code])
 
 
 @dataclass(frozen=True)
