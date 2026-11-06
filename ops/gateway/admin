@@ -17,7 +17,10 @@ to say which commit runs; `rollback` runs the deploy before's gateway-setup.sh a
 runs: the Households' status, the gateway's services and a pending reboot, mailed to the
 maintainers from the Brief's address through Email Delivery, as the relay sends, only when
 something is wrong. The mail holds only the status lines of the Households marked ❌, ⚠️ or ❓,
-the services' names and the reboot.
+the services' names and the reboot. `signed-up LABEL` (#814), which the sign-up service runs
+through sudo once it has made a Household, mails them the same way that Household's label, its
+note in households.json, with the name the family gave, and the time its Brief comes: nothing else
+of it.
 
 Python's standard library only, so it runs on the host's own python3.
 """
@@ -72,6 +75,8 @@ usage: sudo admin <task> [arguments]
                                              runs; --restore also brings back the state from the
                                              snapshot taken before the one that runs
   check [--mail]                             what is wrong tonight; --mail mails it, as nightly
+  signed-up ph-XXXXXXXX                      mail the maintainers that the sign-up made this
+                                             Household (the sign-up service runs it)
 
 Every task needs root. ops/gateway/README.md says more of each."""
 
@@ -228,6 +233,10 @@ def main(argv: list[str], paths: Paths | None = None,
                 raise Usage("check [--mail]")
             return _check(paths, run or _run, mail=bool(args), smtp=smtp,
                           today=today or _today())
+        if task == "signed-up":
+            if len(args) != 1 or not LABEL.fullmatch(args[0]):
+                raise Usage("signed-up ph-XXXXXXXX")
+            return _signed_up(paths, args[0], smtp)
     except Usage as e:
         print(f"usage: sudo admin {e}", file=sys.stderr)
         return 2
@@ -1320,6 +1329,26 @@ def _check(paths: Paths, run: Callable[[list[str], dict], tuple[int, str]], mail
     return 0
 
 
+def _signed_up(paths: Paths, label: str, smtp: Callable[..., Any] | None) -> int:
+    """Mails the maintainers that the sign-up made Household `label` (#814): its label, its note
+    in households.json, the Invite Link's with the name the family gave, and the time its Brief
+    comes, Helsinki's as the sign-up hands the slots out. Nothing else of the Household."""
+    try:
+        evening = dict(_households(paths)).get(label)
+    except Refused as e:
+        sys.exit(f"{e}, so nobody was mailed")
+    if evening is None:
+        sys.exit(f"{label} isn't in {paths.store / 'households.json'}, so nobody was mailed")
+    note = _notes(paths.store / "households.json").get(label, "")
+    host = _env(paths.signup_env).get("GATEWAY_HOST")
+    text = (f"A Household signed up{f' on {host}' if host else ''}:\n\n"
+            f"{f'{label} ({note})' if note else label}\n"
+            f"Its Brief comes each evening at {evening}, Helsinki time.\n\n"
+            "SSH in and run sudo admin households for its status.\n")
+    _mail(paths, f"Parent Recap: a new Household, {label}", text, smtp)
+    return 0
+
+
 def _problems(paths: Paths, run: Callable[[list[str], dict], tuple[int, str]]) -> list[str]:
     """What is wrong, one paragraph each: the Households marked, the services down, a reboot."""
     found = []
@@ -1390,7 +1419,7 @@ def _mail(paths: Paths, subject: str, text: str, smtp: Callable[..., Any] | None
     try:
         refused = mailer.send(msg, to)
     except relay.Refused as e:
-        sys.exit(f"the check's mail wasn't sent: {e.reason}")
+        sys.exit(f"the mail wasn't sent: {e.reason}")
     # Written as root: given back to the relay's user, whose directory it is.
     # The server is Linux; Windows, where the tests also run, has no chown.
     chown = getattr(os, "chown", None)

@@ -23,7 +23,7 @@ from family_brief.signup import status
 from family_brief.signup.host import PROGRAM
 from family_brief.signup.invites import Recipient
 from conftest import NOW
-from test_signup import signup, submit, wilma_cli  # noqa: F401
+from test_signup import FAMILY, signup, submit, wilma_cli  # noqa: F401
 
 pytestmark = pytest.mark.posix  # the fake wilma CLI is a script on a shell-script Node
 
@@ -56,7 +56,7 @@ def test_each_household_is_listed_with_its_last_run_and_doctor_s_statuses(signup
     lines = out.splitlines()
     for user, evening in ((first, "21:00"), (second, "21:05")):
         [row] = [i for i, line in enumerate(lines) if f" {user} " in line]
-        assert re.fullmatch(re.escape(f"✅ {user}  {evening}  {FIRST_RUN}") + MEASURED,
+        assert re.fullmatch(re.escape(f"✅ {user} ({FAMILY})  {evening}  {FIRST_RUN}") + MEASURED,
                             lines[row]), lines[row]
         doctor = lines[row + 1]
         assert doctor.startswith("   doctor: ✅ config  ✅ language")
@@ -69,14 +69,15 @@ def test_each_household_is_listed_with_its_last_run_and_doctor_s_statuses(signup
                                          [second, PROGRAM, "signup", "health"]]
 
 
-def test_the_note_the_invite_carried_is_beside_its_household(signup, capsys):
+def test_the_note_the_invite_carried_is_beside_its_household_with_the_family_s_name(
+        signup, capsys):
     code = signup.invite(Recipient("parent@example.com", "fi"), note="Zhao Hanbo, test family")
     assert submit(signup, code).status == 200
     name = signup.store.households()[-1].user
 
     _, out = report(signup, capsys)
 
-    assert out.startswith(f"✅ {name} (Zhao Hanbo, test family)  21:00  {FIRST_RUN}")
+    assert out.startswith(f"✅ {name} (Zhao Hanbo, test family · {FAMILY})  21:00  {FIRST_RUN}")
 
 
 def test_a_household_whose_last_run_failed_is_marked(signup, capsys, monkeypatch):
@@ -92,7 +93,7 @@ def test_a_household_whose_last_run_failed_is_marked(signup, capsys, monkeypatch
     code, out = report(signup, capsys)
 
     assert code == 1
-    assert f"❌ {name}  21:00  last run " in out and "UTC, failed (exit 1)" in out
+    assert f"❌ {name} ({FAMILY})  21:00  last run " in out and "UTC, failed (exit 1)" in out
     assert out.splitlines()[-1] == "1 Households: 1 failed, 0 overdue, 0 unknown"
 
 
@@ -104,7 +105,8 @@ def test_a_household_whose_run_is_overdue_is_marked(signup, capsys):
         code, out = report(signup, capsys)
 
     assert code == 1
-    assert re.search(re.escape(f"⚠️ {name}  21:00  {FIRST_RUN}") + MEASURED + ", overdue", out)
+    assert re.search(re.escape(f"⚠️ {name} ({FAMILY})  21:00  {FIRST_RUN}") + MEASURED
+                     + ", overdue", out)
     assert out.splitlines()[-1] == "1 Households: 0 failed, 1 overdue, 0 unknown"
 
 
@@ -131,7 +133,8 @@ def test_each_run_notes_how_long_it_took_and_its_peak_memory(signup, capsys, mon
     code, out = report(signup, capsys)
 
     assert code == 0, out
-    assert f"{name}  21:00  {FIRST_RUN}, {ran['seconds']} s, {ran['peak_mb']} MB\n" in out
+    assert (f"{name} ({FAMILY})  21:00  {FIRST_RUN}, {ran['seconds']} s, {ran['peak_mb']} MB\n"
+            in out)
 
 
 def test_a_run_noted_before_its_duration_and_peak_were_still_reads(signup, capsys, monkeypatch):
@@ -146,7 +149,7 @@ def test_a_run_noted_before_its_duration_and_peak_were_still_reads(signup, capsy
     code, out = report(signup, capsys)
 
     assert code == 0, out
-    assert f"✅ {name}  21:00  {FIRST_RUN}\n" in out
+    assert f"✅ {name} ({FAMILY})  21:00  {FIRST_RUN}\n" in out
 
 
 def test_a_household_without_the_health_command_is_said_to_be_unknown(
@@ -160,7 +163,8 @@ def test_a_household_without_the_health_command_is_said_to_be_unknown(
     code, out = report(signup, capsys)
 
     assert code == 1
-    assert out.startswith(f"❓ {name}  21:00  status unknown: signup health ended with 2")
+    assert out.startswith(
+        f"❓ {name} ({FAMILY})  21:00  status unknown: signup health ended with 2")
     assert out.splitlines()[-1] == "1 Households: 0 failed, 0 overdue, 1 unknown"
 
 
@@ -199,7 +203,7 @@ def test_the_time_shown_is_the_household_s_own_from_its_config(signup, capsys):
     code, out = report(signup, capsys)
 
     assert code == 0, out
-    assert out.startswith(f"✅ {name}  16:00  {FIRST_RUN}")
+    assert out.startswith(f"✅ {name} ({FAMILY})  16:00  {FIRST_RUN}")
 
 
 @pytest.mark.parametrize("said", [{}, {"evening": "Mia 16:00"}, {"evening": "25:00"},
@@ -219,7 +223,7 @@ def test_without_a_time_from_health_households_json_s_is_shown(signup, capsys, m
 
     _, out = report(signup, capsys)
 
-    assert out.startswith(f"✅ {name}  21:00  {FIRST_RUN}")
+    assert out.startswith(f"✅ {name} ({FAMILY})  21:00  {FIRST_RUN}")
 
 
 def test_no_households_yet(signup, capsys):
@@ -234,7 +238,7 @@ def test_a_reboot_the_server_waits_for_is_said_last(signup, capsys, tmp_path):
     code, out = report(signup, capsys, reboot_required=flag)
 
     assert code == 0, out  # a reboot is the server's, not a Household's
-    assert f"✅ {name}  21:00" in out
+    assert f"✅ {name} ({FAMILY})  21:00" in out
     assert out.splitlines()[-1] == status.REBOOT_PENDING
 
 
@@ -269,7 +273,7 @@ def test_nothing_of_a_household_s_messages_kids_or_addresses_is_printed(
 
     code, out = report(signup, capsys)
 
-    assert f"{name}  21:00  {FIRST_RUN}" in out
+    assert f"{name} ({FAMILY})  21:00  {FIRST_RUN}" in out
     for private in (subject, body, sender, "Korhonen", "Mia", "Leo", "Virtanen",
                     "parent@example.com", "partner@example.com", "@", "Kilon"):
         assert private not in out, private

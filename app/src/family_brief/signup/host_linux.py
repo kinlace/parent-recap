@@ -3,7 +3,8 @@ root-owned helper the service's user may run through sudo, commands run as a Hou
 `sudo -u`, and Gateway Keys minted and revoked on Bifrost's admin API on localhost.
 
 The service's user may run, with sudo, only the helper (`household-user add|remove <name>`,
-which takes no name but a Household's) and, as a Household's user, only the commands the service
+which takes no name but a Household's), `admin signed-up <name>`, which mails the maintainers of a
+new Household as the nightly check mails them (#814), and, as a Household's user, only the commands the service
 runs, with exactly their arguments, as the sudoers file gateway-setup.sh installs says
 (ops/gateway/signup.sudoers, #645): the shared `parent-recap` (ADR 0035) with `signup household`,
 `run --first-brief`, `signup health` or `schedule uninstall`. So the service can't read a
@@ -26,6 +27,10 @@ from .host import USER, HostError
 HELPER = "/usr/local/lib/parent-recap-signup/household-user"
 ADMIN = "http://127.0.0.1:8080/api/governance/virtual-keys"
 HELPER_SECONDS = 120
+# The maintainers' command (ops/gateway/admin), whose `signed-up` task mails them of a new
+# Household with the SMTP login the service can't read.
+ADMIN_COMMAND = "/usr/local/sbin/admin"
+MAIL_SECONDS = 60
 # A Household's Gateway Key, as the README's runbook creates one by hand.
 KEY = {"is_active": True,
        "provider_configs": [{"provider": "anthropic", "weight": 1,
@@ -70,6 +75,12 @@ class LinuxHost:
 
     def remove_user(self, name: str) -> None:
         self._helper("remove", name)
+
+    def tell_maintainers(self, name: str) -> None:
+        r = self._sudo([ADMIN_COMMAND, "signed-up", _checked(name)], "", MAIL_SECONDS)
+        if r.returncode != 0:  # admin says why with no address in it
+            raise HostError(f"admin signed-up failed ({r.returncode}): "
+                            f"{(r.stderr or r.stdout).strip()[-300:]}")
 
     def _helper(self, verb: str, name: str) -> str:
         r = self._sudo([HELPER, verb, _checked(name)], "", HELPER_SECONDS)

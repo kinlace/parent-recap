@@ -16,7 +16,7 @@ from family_brief.setup_server.first_brief import BRIEF_LOOKBACK_HOURS
 from family_brief.signup import host_linux
 from family_brief.signup.host import PROGRAM, HostError, user_name
 from family_brief.signup.host_linux import LinuxHost
-from fake_household_host import SUDOERS, allowed, household_rules
+from fake_household_host import SUDOERS, allowed, household_rules, root_rules
 
 NAME = "ph-0123abcd"
 
@@ -116,7 +116,7 @@ def test_a_command_runs_as_the_household_with_its_input_on_stdin(sudo):
 
 @pytest.mark.parametrize("name", ["root", "ph-../../x", "ph-0123ABCD", "ph-0123abcd9"])
 def test_only_a_household_s_user_is_ever_given_to_sudo(sudo, name):
-    for step in (HOST.create_user, HOST.remove_user,
+    for step in (HOST.create_user, HOST.remove_user, HOST.tell_maintainers,
                  lambda n: HOST.run_as(n, ["true"], "", 5)):
         with pytest.raises(ValueError):
             step(name)
@@ -131,6 +131,22 @@ def test_a_helper_that_fails_or_hangs_says_so(sudo):
     sudo.answer = subprocess.TimeoutExpired(["sudo"], 120)
     with pytest.raises(HostError, match="didn't end within 120 seconds"):
         HOST.remove_user(NAME)
+
+
+def test_the_maintainers_are_mailed_through_admin_signed_up_as_root(sudo):
+    sudo.answer = subprocess.CompletedProcess([], 0, "mailed to 2 maintainer addresses\n", "")
+
+    HOST.tell_maintainers(NAME)
+
+    [call] = sudo.calls
+    assert call["cmd"] == ["sudo", "-n", "/usr/local/sbin/admin", "signed-up", NAME]
+    assert call["cwd"] == "/" and call["input"] == ""
+
+
+def test_a_mail_admin_couldn_t_send_says_why(sudo):
+    sudo.answer = subprocess.CompletedProcess([], 1, "", "the mail wasn't sent: refused\n")
+    with pytest.raises(HostError, match="admin signed-up failed \\(1\\): the mail wasn't sent"):
+        HOST.tell_maintainers(NAME)
 
 
 def test_a_gateway_key_is_minted_with_a_household_s_budget_and_revoked_by_its_name(admin):
@@ -190,6 +206,17 @@ def test_the_sudoers_rules_let_the_service_run_its_own_commands_as_a_household()
 ])
 def test_the_sudoers_rules_let_the_service_run_nothing_else_as_a_household(argv):
     assert not allowed(argv, household_rules(SUDOERS.read_text()))
+
+
+@pytest.mark.posix  # a shell script, as on the server
+def test_the_sudoers_rules_let_the_service_run_as_root_only_its_helper_and_admin_signed_up():
+    rules = root_rules(SUDOERS.read_text())
+
+    assert allowed([host_linux.HELPER, "add", NAME], rules)
+    assert allowed([host_linux.ADMIN_COMMAND, "signed-up", NAME], rules)
+    for argv in (["/usr/local/sbin/admin", "households"], ["/usr/local/sbin/admin", "deploy", "main"],
+                 ["/usr/local/sbin/admin", "signed-up"], ["/usr/bin/bash"]):
+        assert not allowed(argv, rules), argv
 
 
 @pytest.mark.posix  # a shell script, as on the server

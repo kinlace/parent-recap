@@ -24,8 +24,11 @@ Household is made through the household host: its Linux user, its Gateway Key, `
 run as it, by the server's shared copy of the program (ADR 0035), with the answers, the Wilma, Eepos
 and eVaka sign-ins, the links and the key on its stdin, and its first Brief, made and sent to its Recipients by
 `run --first-brief` as it, as the setup page's first Brief step makes one (ADR 0031). A step that
-fails takes back the user with its files and jobs and the key, and the link stays good. Once made, the Household is listed in the store, its link retired,
-and the page says its first Brief was sent.
+fails takes back the user with its files and jobs and the key, and the link stays good. Once made,
+the Household is listed in the store, under its Invite Link's note joined with what the family
+asked to be called on the first post (#814), its link retired, and the maintainers mailed through
+the household host; a mail that can't go is logged and the Household stays made. The page says its
+first Brief was sent.
 
 The Household is made in the background: the second post is answered at once with a redirect to
 the link's own address, where the page shows the steps as each ends and asks again every few
@@ -178,7 +181,7 @@ class Service:
                                                 list(self.towns()), "expired")
             self._pending.pop(code, None)  # signing in again starts over
             typed = page.Typed(fields.get("town", "").strip(), fields.get("username", "").strip(),
-                               _recipients(fields, language), _kids(fields))
+                               _recipients(fields, language), _kids(fields), _name(fields))
             password = fields.get("password", "")
 
             def again(error: str, status: HTTPStatus = HTTPStatus.OK) -> tuple[HTTPStatus, str]:
@@ -195,6 +198,11 @@ class Service:
             if not typed.recipients or any(not EMAIL.fullmatch(r.address)
                                            for r in typed.recipients):
                 return again("invalid-recipients", HTTPStatus.BAD_REQUEST)
+            # What the family asks to be called, for the maintainers only: never an address, as
+            # `admin households` prints it (#814).
+            if not typed.name or "@" in typed.name:
+                return again("invalid-name", HTTPStatus.BAD_REQUEST)
+            note = " · ".join(n for n in (invite.note, typed.name) if n)
             expires = now + timedelta(minutes=PENDING_MINUTES)
             recipients = [{"address": r.address, "language": r.language}
                           for r in typed.recipients]
@@ -202,7 +210,7 @@ class Service:
                 self._pending[code] = _Pending(language, expires, {
                     "language": language, "recipients": recipients,
                     "kids": [{"name": name} for name in typed.kids],
-                }, invite.note)
+                }, note)
                 return HTTPStatus.OK, page.myclub(language, typed.kids, wilma=False)
             tenant, town = picked
             checked, students = setup_wilma.check(tenant, typed.username, password)
@@ -222,7 +230,7 @@ class Service:
                 "wilma": {"tenant": {"url": tenant["url"], "name": tenant["name"]},
                           "username": typed.username, "password": password,
                           "students": students},
-            }, invite.note)
+            }, note)
             return HTTPStatus.OK, page.myclub(language, self._pending[code].kids())
 
     def _make(self, code: str, fields: dict[str, str]) -> tuple[HTTPStatus, str]:
@@ -305,6 +313,11 @@ class Service:
         self.store.add_household(HouseholdRecord(name, evening, self.now().isoformat(),
                                                  pending.note))
         self.store.retire(code)
+        try:
+            self.host.tell_maintainers(name)
+        except Exception as e:  # noqa: BLE001 - the Household is made all the same
+            log.error("The maintainers weren't mailed of Household %s: %s", name,
+                      failure.raised(e, "Mailing the maintainers"))
         log.info("Household %s created from an Invite Link, %s, with MyClub for %d of %d Kids%s; "
                  "its first Brief was sent, and the next come at %s", name,
                  "with Wilma" if pending.wilma() else "without Wilma", len(links), len(kids),
@@ -349,7 +362,7 @@ class _Pending:
     language: str
     expires: datetime
     answers: dict[str, Any]
-    note: str = ""  # the Invite Link's, for the Household's record
+    note: str = ""  # the Invite Link's with the family's name, for the Household's record
     unmatched: list[str] = field(default_factory=list)  # Eepos students who are none of the Kids
     evaka_unmatched: list[str] = field(default_factory=list)  # eVaka children who are none of them
 
@@ -389,6 +402,11 @@ def _kids(fields: dict[str, str]) -> list[str]:
     """The names a family without Wilma gave, each once, in the order given."""
     names = [" ".join(fields.get(f"k{i}", "").split())[:60] for i in range(page.MAX_KIDS)]
     return list(dict.fromkeys(n for n in names if n))
+
+
+def _name(fields: dict[str, str]) -> str:
+    """What the family asks to be called, on one line and at most page.MAX_NAME long."""
+    return " ".join(fields.get("name", "").split())[:page.MAX_NAME].rstrip()
 
 
 def _eepos(kids: list[str], school_typed: str, username: str,

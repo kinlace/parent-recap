@@ -10,7 +10,8 @@ in-process with the user's HOME, stdin, secrets and jobs, and as if from the sha
 `sys.prefix`, and its Python the `sys.executable` the evening jobs are written with, as
 ops/gateway/parent-recap runs it. Nothing is installed in a user's home. Every command is in
 `commands` and nothing is faked by patching the service's modules. `log` keeps the order of the
-steps a removal takes, and a removed user's home goes with it.
+steps a removal takes, and a removed user's home goes with it. `told` lists the Households the
+maintainers were mailed of, as `admin signed-up` mails them (#814).
 
 A command the service runs as a user must be one ops/gateway/signup.sudoers lets it run, so a new
 call site fails here and not only there (#645). What the user runs itself, as its evening timer
@@ -29,6 +30,7 @@ from pathlib import Path
 import pytest
 
 from family_brief.signup.host import PROGRAM, USER, HostError
+from family_brief.signup.host_linux import ADMIN_COMMAND
 from family_brief.system import jobs, secrets
 from fake_system import FakeJobs, FakeSecrets
 
@@ -36,23 +38,38 @@ from fake_system import FakeJobs, FakeSecrets
 SUDOERS = Path(__file__).resolve().parents[2] / "ops" / "gateway" / "signup.sudoers"
 AS_HOUSEHOLD = re.compile(r"parent-recap-signup\s+ALL\s*=\s*\(%parent-recap-households\)\s+"
                           r"NOPASSWD:\s*(.+)")
+AS_ROOT = re.compile(r"parent-recap-signup\s+ALL\s*=\s*\(root\)\s+NOPASSWD:\s*(.+)")
 
 
 def household_rules(text: str) -> list[list[str]]:
     """The commands a sudoers file lets the service's user run as a Household, each its path
     and its arguments, one line a rule."""
+    return _rules(text, AS_HOUSEHOLD)
+
+
+def root_rules(text: str) -> list[list[str]]:
+    """The commands a sudoers file lets the service's user run as root."""
+    return _rules(text, AS_ROOT)
+
+
+def _rules(text: str, rule: re.Pattern) -> list[list[str]]:
     return [spec.split() for line in text.splitlines()
-            if (m := AS_HOUSEHOLD.fullmatch(line.strip())) for spec in m[1].split(",")]
+            if (m := rule.fullmatch(line.strip())) for spec in m[1].split(",")]
 
 
 def allowed(argv: list[str], rules: list[list[str]]) -> bool:
     """Whether sudo runs `argv` under one of `rules`: ALL is anything, a path alone takes any
     arguments, and otherwise they must be exactly the rule's. A `*` in a path is any part of one
-    folder's name, as sudo's matching keeps it within the folder."""
+    folder's name, as sudo's matching keeps it within the folder; in the arguments it is anything,
+spaces too, as sudo matches them as one string."""
     def path(pattern: str) -> re.Pattern:
         return re.compile("[^/]*".join(map(re.escape, pattern.split("*"))))
+
+    def arguments(pattern: list[str]) -> re.Pattern:
+        return re.compile(".*".join(map(re.escape, " ".join(pattern).split("*"))))
     return any(rule == ["ALL"]
-               or (path(rule[0]).fullmatch(argv[0]) and (len(rule) == 1 or rule[1:] == argv[1:]))
+               or (path(rule[0]).fullmatch(argv[0])
+                   and (len(rule) == 1 or arguments(rule[1:]).fullmatch(" ".join(argv[1:]))))
                for rule in rules)
 
 
@@ -73,6 +90,7 @@ class FakeHouseholdHost:
         self.revoked: list[str] = []
         self.commands: list[list[str]] = []  # every command run as a user, with the user first
         self.log: list[tuple[str, ...]] = []  # revoke_key, remove_user and run_as, in order
+        self.told: list[str] = []  # the Households the maintainers were mailed of
         # A step's name, such as "mint_key" or "revoke_key": that step raises; "jobs": the
         # user's systemd doesn't take the evening jobs
         self.fails: str | None = None
@@ -115,6 +133,15 @@ class FakeHouseholdHost:
         if self.fails == "revoke_key":
             raise HostError("the gateway's admin API couldn't be reached (ConnectionError)")
         return self.keys.pop(name, None) is not None
+
+    def tell_maintainers(self, name: str) -> None:
+        assert USER.fullmatch(name), name
+        assert allowed([ADMIN_COMMAND, "signed-up", name], root_rules(SUDOERS.read_text())), \
+            "signup.sudoers doesn't let the service run admin signed-up"
+        if self.fails == "tell_maintainers":
+            raise HostError("admin signed-up failed (1): the mail wasn't sent: Email "
+                            "Delivery refused the gateway's login")
+        self.told.append(name)
 
     def run_as(self, name: str, argv: list[str], stdin: str, timeout: int) -> tuple[int, str]:
         assert allowed(argv, household_rules(SUDOERS.read_text())), \

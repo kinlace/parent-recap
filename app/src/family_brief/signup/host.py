@@ -49,6 +49,11 @@ class HouseholdHost(Protocol):
         """Deletes the Gateway Key named `name`, and says whether there was one; one that isn't
         there is fine."""
 
+    def tell_maintainers(self, name: str) -> None:
+        """Mails the maintainers that the Household `name` was made, with only its label, its
+        note from the store and the time its Brief comes (#814). Raises HostError when the mail
+        didn't go."""
+
 
 def user_name() -> str:
     """A new Household's user: random, so it says nothing about the family."""

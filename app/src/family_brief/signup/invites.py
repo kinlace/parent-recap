@@ -7,8 +7,9 @@ minted, or until a Household is created from it, which retires it: its file goes
 Recipients' addresses. A link that fails, such as for a wrong Wilma password, stays good.
 
 The Households' list holds only what the service needs to place the next one's evening jobs: each
-Household's user and the time its Brief comes, never the family's addresses or Kids; and the note
-the maintainers gave its Invite Link, if any, so they can tell whose it is.
+Household's user and the time its Brief comes, never the family's addresses or Kids; and its note,
+so the maintainers can tell whose it is: the one they gave its Invite Link, if any, joined with
+what the family asked to be called when signing up (#814), as `via Zhao 2026-11-06 #3 · Leo`.
 """
 from __future__ import annotations
 
@@ -54,7 +55,7 @@ class HouseholdRecord:
     user: str
     evening: str  # HH:MM, when its Brief comes
     created: str
-    note: str = ""  # the maintainers' note its Invite Link carried, such as whose it is
+    note: str = ""  # its Invite Link's note and the family's chosen name, such as whose it is
 
 
 class Store:
