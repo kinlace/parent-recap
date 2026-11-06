@@ -60,8 +60,8 @@ def _rules(text: str, rule: re.Pattern) -> list[list[str]]:
 def allowed(argv: list[str], rules: list[list[str]]) -> bool:
     """Whether sudo runs `argv` under one of `rules`: ALL is anything, a path alone takes any
     arguments, and otherwise they must be exactly the rule's. A `*` in a path is any part of one
-    folder's name, as sudo's matching keeps it within the folder; in the arguments it is anything,
-spaces too, as sudo matches them as one string."""
+    folder's name, as sudo's matching keeps it within the folder; in the arguments it is
+    anything, spaces too, as sudo matches them as one string."""
     def path(pattern: str) -> re.Pattern:
         return re.compile("[^/]*".join(map(re.escape, pattern.split("*"))))
 

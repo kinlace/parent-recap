@@ -1,7 +1,9 @@
 """The hosted version's sign-up (ADR 0031), driven over HTTP as a family's phone drives it: the
-page under an Invite Link, the Wilma check, each Kid's MyClub link and an Eepos and an eVaka
+page under an Invite Link, the name the family asks to be called, which joins the link's note
+(#814), the Wilma check, each Kid's MyClub link and an Eepos and an eVaka
 sign-in, the
-Household made under its own user with its first Brief sent, and the 404 every other request gets;
+Household made under its own user with its first Brief sent and the maintainers mailed of it
+(through the household host, as `admin signed-up`), and the 404 every other request gets;
 then the maintainers' command that removes a Household again.
 
 The outside edges are faked: the service's wilma CLI is `test_setup_wilma`'s fake, which knows one
