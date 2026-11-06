@@ -258,6 +258,9 @@ fieldset .field label {
 /* The partner's address and language side by side. */
 #partner-details { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
 
+/* What the partner's address is for, folded under both fields (#823). */
+#partner-details > .more { grid-column: 1 / -1; margin: 0; }
+
 /* Who gets the Brief, one row each: the address, the language and Remove side by side. */
 .recipients { display: grid; gap: 12px; }
 
