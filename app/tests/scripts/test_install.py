@@ -196,8 +196,9 @@ def program(mac: dict, requires: tuple[str, ...], constraints: str = "",
     (app / "family_brief" / "__main__.py").write_text(
         "import os, sys\ndef main():\n    print('runs on', os.path.realpath(sys.executable))\n")
     # The real ones record what the install made (test_uninstall.py), put the command on the PATH
-    # (test_command_path.py) and install the Baileys tree (test_baileys_install.py). These note, in order, that they were asked.
-    for module in ("install_record", "command_path", "baileys_install"):
+    # (test_command_path.py), install the Baileys tree (test_baileys_install.py) and update the
+    # evening schedule (test_schedule_update.py). These note, in order, that they were asked.
+    for module in ("install_record", "command_path", "baileys_install", "schedule_update"):
         (app / "family_brief" / f"{module}.py").write_text(
             "import pathlib, sys\n"
             "with open(pathlib.Path.home() / 'installer.calls', 'a') as calls:\n"
@@ -351,8 +352,26 @@ def test_every_install_installs_the_baileys_tree_once_the_runtimes_are_recorded(
         result = install(mac)
         assert result.returncode == 0, result.stdout + result.stderr
 
-    assert (mac["home"] / "installer.calls").read_text() == \
-        "install_record program\ncommand_path install\nbaileys_install install\n" * 2
+    assert (mac["home"] / "installer.calls").read_text().splitlines()[:3] == \
+        ["install_record program", "command_path install", "baileys_install install"]
+
+
+# --- The evening schedule ------------------------------------------------------------------------
+
+@pytest.mark.macos
+def test_every_install_on_a_mac_updates_the_evening_schedule_last(mac):
+    # How an older install's job comes to run under caffeinate, and its wake moves to the Brief's
+    # time (#832): the module leaves an install that isn't scheduled alone.
+    wheel(mac["packages"], "pure-dep", "1.0")
+    program(mac, ("pure-dep",))
+
+    for _ in range(2):
+        result = install(mac)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    assert (mac["home"] / "installer.calls").read_text() == (
+        "install_record program\ncommand_path install\nbaileys_install install\n"
+        "schedule_update\n") * 2
 
 
 @pytest.mark.macos

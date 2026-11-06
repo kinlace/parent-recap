@@ -254,6 +254,12 @@ if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_RO
 # lockfile this release pins. One that couldn't be installed leaves the one there, and the next
 # install tries again.
 "$APP/.venv/bin/python" -m family_brief.baileys_install install
+# A Mac whose evening Brief is scheduled gets this release's jobs, and an older version's wake,
+# 5 minutes before the Brief, moved to the Brief's time (#832): macOS asks for the Mac password
+# to move it, and a closed dialog keeps the old wake. It never fails the install.
+if [ "$OS" = macos ]; then
+  "$APP/.venv/bin/python" -m family_brief.schedule_update
+fi
 
 # --codex: also install the two skills for Codex, which reads user skills from ~/.agents/skills.
 # They get unique names, Codex's $skill syntax, and a note saying where this plugin folder is.
