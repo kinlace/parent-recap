@@ -38,6 +38,7 @@ import requests
 
 import fake_node
 from family_brief import linked_device, own_node, sources as registry
+from family_brief.config import myclub_links
 from family_brief.collectors import eepos, evaka, gmail, myclub
 from family_brief.collectors.base import CalendarEvent, Collected, Message
 from fake_system import FakeSecrets
@@ -210,32 +211,38 @@ def _rfc822(m: Message) -> bytes:
 class MyClub(SourceFake):
     """MyClub's server, which gives at a Kid's subscription link (in the config when it is read)
     the events whose `kid` is that Kid, as iCal. Each event's title is the feed's SUMMARY behind
-    the ⚽ the collector puts before it. `failures` lists what each next download does instead:
-    an exception it raises, or an HTTP status the server answers with. `gets` is each link
-    downloaded. Any other address goes to whatever requests.get was before."""
+    the ⚽ the collector puts before it. A link in `feeds`, one of a Kid's clubs (#810), gives
+    instead the events listed for it, of tonight's. `failures` lists what each next download does
+    instead: an exception it raises, or an HTTP status the server answers with. `gets` is each
+    link downloaded. Any other address goes to whatever requests.get was before."""
     name = "myclub"
 
     def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
         super().__init__(sources)
         self.failures: list[BaseException | int] = []
         self.gets: list[str] = []
+        self.feeds: dict[str, list[str]] = {}  # a link: the external ids of its events
         self._other = requests.get
         mp.setattr(myclub.requests, "get", self.get)
 
     def get(self, url: str, *a: Any, **k: Any) -> Any:
         # A webcal:// link is downloaded over https://.
+        def https(link: str) -> str:
+            return re.sub(r"^webcal://", "https://", link)
         kid = next((kid["name"] for kid in self.sources.config.get("kids", [])
-                    if kid.get("myclub_ical_url")
-                    and url == re.sub(r"^webcal://", "https://", kid["myclub_ical_url"])), None)
+                    if any(url == https(link)
+                           for link in myclub_links(kid.get("myclub_ical_url")))), None)
         if kid is None:
             return self._other(url, *a, **k)
+        feed = next((ids for link, ids in self.feeds.items() if url == https(link)), None)
         self.gets.append(url)
         failure = self.failures.pop(0) if self.failures else None
         if isinstance(failure, BaseException):
             raise failure
         if failure is not None:
             return _Feed(failure, "")
-        return _Feed(200, _ics([e for e in self.tonight() if e.kid == kid]))
+        return _Feed(200, _ics([e for e in self.tonight() if e.kid == kid
+                                and (feed is None or e.external_id in feed)]))
 
 
 class _Feed:

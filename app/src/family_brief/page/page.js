@@ -869,6 +869,7 @@ const SLOTS = [
   [[...WILMA_NOT_READY, "wilma.pick-town"], "wilma-town-slot"],
   [["wilma.removed"], "wilma-signins-slot"],
   [["myclub.added", "myclub.kid-exists"], "myclub-kid-slot"],
+  [["myclub.removed", "myclub.no-such-link", "myclub.remove-failed"], "myclub-links-slot"],
   [["eepos.added", "eepos.kid-exists"], "eepos-kid-slot"],
   [["evaka.added", "evaka.kid-exists"], "evaka-kid-slot"],
   // A Source just done: by the hand-off, as the next Source's step is shown.
@@ -890,7 +891,7 @@ const FAILED = [
   "gateway.not-a-key", "gateway.rejected", "gateway.no-connection", "gateway.test-call-failed",
   "gateway.keychain-not-reachable", "gateway.keychain-failed",
   "myclub.pick-kid", "myclub.not-a-myclub-link", "myclub.link-failed", "myclub.not-a-calendar",
-  "myclub.save-failed", "myclub.same-link", "myclub.kid-exists",
+  "myclub.save-failed", "myclub.same-link", "myclub.kid-exists", "myclub.remove-failed",
   ...["eepos", "evaka"].flatMap((name) => [
     "no-username", "wrong-password", "changed", "no-answer", "keychain-not-reachable",
     "not-stored", "save-failed",
@@ -1981,7 +1982,7 @@ function renderMyClub() {
     myclubStep.kid = (kids.find((k) => !k.linked) ?? kids[0])?.name ?? null;
   }
   const list = document.getElementById("myclub-kids");
-  list.replaceChildren(...kids.map(({ name, linked }) => {
+  list.replaceChildren(...kids.map(({ name, links }) => {
     const label = document.createElement("label");
     const input = document.createElement("input");
     input.type = "radio";
@@ -1993,21 +1994,61 @@ function renderMyClub() {
       myclubStep.kid = name;
       document.getElementById("myclub-link").value = "";
       showSource(null);
+      renderMyClubLinks();
     });
     const shown = document.createElement("span");
     shown.className = "name";
     shown.textContent = name;
     const state = document.createElement("span");
     state.className = "town";
-    state.textContent = t(linked ? "myclub.kid.linked" : "myclub.kid.to-do");
+    if (links > 1) setText(state, "myclub.kid.links", { count: links });
+    else setText(state, links ? "myclub.kid.linked" : "myclub.kid.to-do");
     label.append(input, shown, state);
     return label;
   }));
+  renderMyClubLinks();
   document.getElementById("myclub-kid-form").hidden = !add;
   document.getElementById("myclub-form").hidden = !kids.length;
   document.getElementById("myclub-more").hidden = page.progress.sources.myclub !== "done";
   if (currentSource() === "myclub") {
     showSkips(connectSteps().find((s) => s.name === "myclub"), page.progress.sources.myclub);
+  }
+}
+
+// The picked Kid's links, one per club (#810), each by its place only: the page never has a
+// link. A Kid with one can add another club's, and remove any.
+function renderMyClubLinks() {
+  const kid = page.myclub.kids.find((k) => k.name === myclubStep.kid);
+  const links = kid?.links ?? 0;
+  document.getElementById("myclub-links").hidden = links === 0;
+  setText(document.getElementById("myclub-link-label"),
+          links ? "myclub.link.another" : "myclub.link");
+  document.getElementById("myclub-link-list").replaceChildren(
+    ...Array.from({ length: links }, (_, index) => {
+      const item = document.createElement("li");
+      const shown = document.createElement("span");
+      setText(shown, "myclub.links.item", { n: index + 1 });
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "link";
+      setText(remove, "myclub.remove");
+      remove.addEventListener("click", () => removeMyClubLink(kid.name, index, remove));
+      item.append(shown, " ", remove);
+      return item;
+    }));
+}
+
+async function removeMyClubLink(kid, index, button) {
+  clearError();
+  button.disabled = true;
+  try {
+    const out = await post("api/myclub/remove", { kid, index });
+    page.myclub.kids = out.kids;
+    renderMyClub();
+    showSource("myclub." + out.result);
+  } catch (e) {
+    failed(e);
+    button.disabled = false;
   }
 }
 

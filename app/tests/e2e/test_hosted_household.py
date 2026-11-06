@@ -145,7 +145,7 @@ def test_myclub_sets_a_link_checked_once_keeps_an_empty_one_and_turns_off_none(
     path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
     before = config(path)
 
-    code, out = run(signup, label, "myclub", f" {MIA_LINK} \nnone\nyes\n")
+    code, out = run(signup, label, "myclub", f" {MIA_LINK} \n\nnone\nyes\n")
 
     assert code == 0, out
     assert mia_plays.gets == [MIA_LINK.replace("webcal://", "https://")]
@@ -161,13 +161,39 @@ def test_myclub_sets_a_link_checked_once_keeps_an_empty_one_and_turns_off_none(
     assert config(path) == after
 
 
+def test_myclub_takes_a_kid_s_links_of_several_clubs_and_show_lists_them(
+        signup, harness, mia_plays, capsys):
+    """A Kid in several clubs has a link from each (#810): given separated by spaces or one a line,
+    each checked once, the same one twice kept once."""
+    swim, gym = (MIA_LINK.replace("kilonpallo", club) for club in ("uimaseura", "voimistelu"))
+    harness.config["kids"][0]["myclub_ical_url"] = [MIA_LINK, swim, gym]  # served by MyClub
+    label, path = made(signup)
+
+    code, out = run(signup, label, "myclub", f"{MIA_LINK} {swim}\n{gym}\n{swim}\n\n\nyes\n")
+
+    assert code == 0, out
+    assert sorted(mia_plays.gets) == sorted(u.replace("webcal://", "https://")
+                                            for u in (MIA_LINK, swim, gym))
+    assert config(path)["kids"][0]["myclub_ical_url"] == [MIA_LINK, swim, gym]
+    code, out = run(signup, label, "show")
+    lines = out.splitlines()
+    start = lines.index(next(line for line in lines if line.startswith("  Mia Virtanen"))) + 1
+    assert lines[start:start + 3] == [f"    MyClub: {url}" for url in (MIA_LINK, swim, gym)]
+    healthy(signup, capsys)
+
+    # Another Kid can't have one of them; nothing is written then.
+    before = path.read_text()
+    code, out = run(signup, label, "myclub", f"\n{gym}\n\nyes\n")
+    assert code == 1 and "same-link" in out and path.read_text() == before
+
+
 def test_myclub_refuses_a_link_that_doesn_t_download_and_writes_nothing(
         signup, mia_plays):
     label, path = made(signup)
     before = path.read_text()
     mia_plays.failures.append(404)
 
-    code, out = run(signup, label, "myclub", f"{MIA_LINK}\n\nyes\n")
+    code, out = run(signup, label, "myclub", f"{MIA_LINK}\n\n\nyes\n")
 
     assert code == 1 and "link-failed" in out
     assert path.read_text() == before
@@ -177,7 +203,7 @@ def test_myclub_without_yes_writes_nothing(signup, mia_plays):
     label, path = made(signup)
     before = path.read_text()
 
-    code, out = run(signup, label, "myclub", f"{MIA_LINK}\n\nno\n")
+    code, out = run(signup, label, "myclub", f"{MIA_LINK}\n\n\nno\n")
 
     assert code == 1 and "Not written" in out
     assert path.read_text() == before

@@ -12,6 +12,13 @@ from .brief_text import Language
 from .system import macos_only
 
 
+def myclub_links(value: object) -> list[str]:
+    """A Kid's MyClub calendar links as the config holds them under `myclub_ical_url`: one link, as
+    every config written before #810 has it, or a list of them, one per club (ADR 0041)."""
+    given = value if isinstance(value, list) else [value]
+    return [v for v in given if isinstance(v, str) and v.strip()]
+
+
 def _expand(p: str | None) -> str | None:
     if p is None:
         return None
@@ -28,7 +35,15 @@ class Kid(BaseModel):
     activities: list[str] = Field(default_factory=list)
     wilma_tenant: str | None = None
     wilma_username: str | None = None
-    myclub_ical_url: str | None = None
+    # Its MyClub calendar links, one per club: one link or a list in the config (ADR 0041).
+    myclub_ical_url: list[str] = Field(default_factory=list)
+
+    @field_validator("myclub_ical_url", mode="before")
+    @classmethod
+    def _links(cls, v: object) -> list[str]:
+        if v is not None and not isinstance(v, (str, list)):
+            raise ValueError("should be a MyClub calendar link or a list of them")
+        return myclub_links(v)
 
     def called(self) -> str:
         """The name the Brief calls this Kid by everywhere."""

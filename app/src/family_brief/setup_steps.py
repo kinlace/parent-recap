@@ -13,7 +13,8 @@ setup confirm — get a send-only Gateway Key from the gateway when there's none
 setup sending — send the Brief from the Household's own Gmail, after checking Gmail takes the App
                 Password, or through the gateway again (ADR 0034)
 setup myclub — open MyClub, ask for a Kid's calendar link in a macOS dialog, download it once,
-               save it in the owner-only config
+               save it in the owner-only config, in place of the Kid's links or, with --another,
+               beside them for another club (#810)
 setup eepos — have an Eepos school's guardian password typed at the secret store's own prompt in
               the terminal, sign in with it, match the students to the Kids and save the sign-in,
               as the setup page's Eepos step does
@@ -112,6 +113,9 @@ def register(sub) -> None:
                                "download it once and save it in the config")
     pmyclub.add_argument("--kid", default=None, help="The Kid's name, exactly as under kids: in "
                          "the config")
+    pmyclub.add_argument("--another", action="store_true",
+                         help="Add the link beside the Kid's links, for another club, instead of "
+                              "in place of them")
     pmyclub.add_argument("--no-open", action="store_true",
                          help="Don't open MyClub's page again, only ask for the link")
     pmyclub.set_defaults(func=cmd_myclub)
@@ -405,7 +409,8 @@ def cmd_myclub(args: argparse.Namespace) -> int:
         return report("no-kid" if args.kid is None else "no-such-kid", "Run it again with --kid "
                       f"and one of the Kids' names: {program()} setup myclub --kid NAME",
                       kids=kids)
-    again = f"{program()} setup myclub --kid {shlex.quote(args.kid)}"
+    again = (f"{program()} setup myclub --kid {shlex.quote(args.kid)}"
+             + (" --another" if args.another else ""))
     if not args.no_open:
         desktop.open_url(setup_myclub.MYCLUB_URL)
 
@@ -422,7 +427,7 @@ def cmd_myclub(args: argparse.Namespace) -> int:
         return report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
                       f"runs this in Terminal: {again} --no-open")
 
-    result, extra = setup_myclub.save_link(path, args.kid, url)
+    result, extra = setup_myclub.save_link(path, args.kid, url, another=args.another)
     next_ = {
         "not-a-myclub-link": "That wasn't a MyClub calendar link. Copy it with Copy link "
                              "(Kopioi linkki) on MyClub's Calendar subscriptions page, starting "
@@ -433,6 +438,8 @@ def cmd_myclub(args: argparse.Namespace) -> int:
                           "with Copy link (Kopioi linkki) on MyClub's Calendar subscriptions "
                           f"page, not from the browser's address bar: {again} --no-open",
         "save-failed": "The link works, but it couldn't be saved in the config (see error).",
+        "already-saved": f"That link is already saved for {args.kid}, so nothing changed. For "
+                         f"another club, copy the link from that club's MyClub: {again} --no-open",
         "same-link": f"That link is already saved for {extra.get('other_kid')}, so it wasn't saved "
                      f"again. Each Kid needs their own link: make a new calendar subscription, "
                      f"choose Valitut jäsentilit, tick only {args.kid}, and copy that link: "

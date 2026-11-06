@@ -48,6 +48,8 @@ TEXT = {
                               "MyClub (it starts with webcal:// or https://), and their practices "
                               "and games come in the Brief too. Leave it empty to skip.",
         "myclub_done": "Done",
+        "another_club": "Add another club",
+        "another_club_link": "{kid}: another club's link",
         "eepos": "Eepos (optional)",
         "eepos_needed": "Eepos",
         "eepos_hint": "If a child takes lessons at a music or art school that uses Eepos, sign in "
@@ -178,6 +180,8 @@ TEXT = {
                               "pelit tulevat myös koosteeseen. Jätä kenttä tyhjäksi, jos et "
                               "tarvitse sitä.",
         "myclub_done": "Valmis",
+        "another_club": "Lisää toinen seura",
+        "another_club_link": "{kid}: toisen seuran linkki",
         "eepos": "Eepos (vapaaehtoinen)",
         "eepos_needed": "Eepos",
         "eepos_hint": "Jos lapsi käy musiikki- tai taidekoulua, joka käyttää Eeposta, kirjaudu "
@@ -303,6 +307,8 @@ TEXT = {
         "myclub_needed_hint": "如果孩子的俱乐部用 MyClub，把孩子在 MyClub 里的日历链接粘贴到这里（以 "
                               "webcal:// 或 https:// 开头），训练和比赛也会出现在摘要里。不需要就留空。",
         "myclub_done": "完成",
+        "another_club": "再加一个俱乐部",
+        "another_club_link": "{kid}：另一个俱乐部的链接",
         "eepos": "Eepos（可选）",
         "eepos_needed": "Eepos",
         "eepos_hint": "如果孩子在使用 Eepos 的音乐或艺术学校上课，用你的 Eepos 用户名和密码登录，"
@@ -406,6 +412,7 @@ MAX_RECIPIENTS = 10  # the Brief relay's, for one message
 STEPS = ("step_setup", "step_wilma", "step_brief")
 NO_WILMA_STEPS = ("step_setup", "step_myclub", "step_brief")  # a Household without Wilma (#760)
 MAX_KIDS = 6  # the names a family without Wilma may give
+MAX_CLUBS = 4  # the MyClub links one Kid may give, one per club (#810)
 REFRESH_SECONDS = 3
 
 
@@ -465,8 +472,8 @@ def form(language: str, typed: Typed, towns: list[str], error: str | None = None
 def myclub(language: str, kids: list[str], error: str | None = None,
            kid: str | None = None, wilma: bool = True, eepos: tuple[str, str] = ("", ""),
            evaka: tuple[str, str] = ("", "")) -> str:
-    """The second step, once Wilma, or the family without it, has said who the Kids are: a MyClub
-    calendar link for each, an Eepos sign-in (#769) and an eVaka sign-in (#790), each of which may
+    """The second step, once Wilma, or the family without it, has said who the Kids are: MyClub
+    calendar links for each, one per club (#810), an Eepos sign-in (#769) and an eVaka sign-in (#790), each of which may
     be left empty, though not all without Wilma. A link is never shown back, as the passwords
     aren't (ADR 0007); the Eepos school and username typed, `eepos`, and the eVaka city and email,
     `evaka`, are."""
@@ -474,10 +481,7 @@ def myclub(language: str, kids: list[str], error: str | None = None,
     school, username = eepos
     city, email = evaka
     cities = "".join(f"<option value=\"{escape(c)}\">" for c in EVAKA_CITIES)
-    fields = "".join(f"""<label for="m{i}">{escape(name)}</label>
-<input id="m{i}" name="m{i}" inputmode="url" autocomplete="off" autocapitalize="none"
- spellcheck="false">
-""" for i, name in enumerate(kids))
+    fields = "".join(_links(i, name, t) for i, name in enumerate(kids))
     alert = (f'<p class="error" role="alert">{escape(t[error].format(kid=kid))}</p>'
              f'<p class="hint">{escape(t["paste_again"])}</p>') if error else ""
     return _page(language, t["title"], f"""
@@ -516,6 +520,20 @@ def myclub(language: str, kids: list[str], error: str | None = None,
 <button type="submit">{escape(t['myclub_done'])}</button>
 <p class="hint">{escape(t['wait'])}</p>
 </form>""", languages=False)
+
+
+def _links(i: int, kid: str, t: dict[str, str]) -> str:
+    """Kid `i`'s MyClub link fields: one, and under "Add another club" one for each other club
+    (#810), opened with no script, so the Content-Security-Policy holds."""
+    def field(name: str, label: str) -> str:
+        return f"""<label for="{name}">{escape(label)}</label>
+<input id="{name}" name="{name}" inputmode="url" autocomplete="off" autocapitalize="none"
+ spellcheck="false">
+"""
+    more = "".join(field(f"m{i}_{n}", t["another_club_link"].format(kid=kid))
+                   for n in range(1, MAX_CLUBS))
+    return (field(f"m{i}", kid)
+            + f"<details><summary>{escape(t['another_club'])}</summary>\n{more}</details>\n")
 
 
 def _recipient(i: int, r: Recipient, t: dict[str, str], last: bool) -> str:

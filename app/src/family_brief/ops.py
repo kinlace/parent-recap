@@ -333,18 +333,23 @@ def check_wilma(cfg: Config, add, config: str | None = None) -> None:
 
 
 def check_myclub(cfg: Config, add, config: str | None = None) -> None:
-    """Each Kid's subscription link, since each Kid can have a club of their own."""
+    """Each Kid's subscription links, since each Kid can have clubs of their own (#810)."""
     for kid in cfg.kids:
-        if kid.myclub_ical_url:
-            _check_myclub(kid.name, kid.myclub_ical_url, add)
+        links = kid.myclub_ical_url
+        for i, url in enumerate(links, 1):
+            _check_myclub(kid.name, url, add, f"link {i} of {len(links)}" if len(links) > 1 else "link")
 
 
-def _check_myclub(kid: str, url: str, add) -> None:
+def _check_myclub(kid: str, url: str, add, which: str = "link") -> None:
     from .collectors import myclub
     try:
         text = myclub.download(url)
         n = text.count("BEGIN:VEVENT")
-        add(OK, "myclub", f"subscription link works, {n} events in the calendar", subject=kid)
+        add(OK, "myclub", f"subscription {which} works, {n} events in the calendar", subject=kid)
+    except Exception as e:
+        fix = ("remove it on the setup page's MyClub step and add a new one" if which != "link"
+               else f"save a new one with parent-recap setup myclub --kid {shlex.quote(kid)}")
+        add(FAIL, "myclub", f"subscription {which} doesn't open: {e} ({fix})", subject=kid)
     except Exception as e:
         add(FAIL, "myclub", f"subscription link doesn't open: {e} (save a new one with "
             f"parent-recap setup myclub --kid {shlex.quote(kid)})", subject=kid)

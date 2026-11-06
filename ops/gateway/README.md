@@ -254,7 +254,7 @@ journalctl -u brief-relay -p warning --grep '^quota '
 
 ## Hosted Households
 
-The hosted version runs invited Households on this server, each as its own Linux user (ADR 0029, ADR 0031). A Household is made by the sign-up service from an Invite Link the maintainers send: the family opens it on their phone, picks Finnish, English or Chinese, types their Wilma town and login, checks the Recipients the link prefilled, and goes on to paste each Kid's MyClub calendar link, or, with Wilma, leave them all empty if they don't use MyClub, and press Done (Valmis, 完成).
+The hosted version runs invited Households on this server, each as its own Linux user (ADR 0029, ADR 0031). A Household is made by the sign-up service from an Invite Link the maintainers send: the family opens it on their phone, picks Finnish, English or Chinese, types their Wilma town and login, checks the Recipients the link prefilled, and goes on to paste each Kid's MyClub calendar link (more under "Add another club" for a Kid in several clubs, #810), or, with Wilma, leave them all empty if they don't use MyClub, and press Done (Valmis, 完成).
 
 **Install it.** Copy an unpacked release of the program (or a checkout) to the server beside `ops/gateway`, and run step 7 with `PARENT_RECAP_RELEASE` pointing at it:
 
@@ -355,9 +355,9 @@ sudo admin household ph-0123abcd myclub      # change its Kids' MyClub links
 
 Each runs the shared program as the Household's own user (`signup show`, `signup recipients`, `signup myclub`), so its config keeps its owner and mode. Root runs it, not the sign-up service's user, which may read no MyClub link. A label that is no Household's in `households.json` is refused.
 
-- **What it has.** Its Recipients, each with its language, and the Weekend Picks' own (`weekend_to`) when it has any; its Kids as Wilma gave them (or as the family named them, without Wilma), each with its MyClub link or `none`. It holds addresses, Kids' names and links, which are secrets: read it on the server, never paste it (see "What can be pasted").
+- **What it has.** Its Recipients, each with its language, and the Weekend Picks' own (`weekend_to`) when it has any; its Kids as Wilma gave them (or as the family named them, without Wilma), each with its MyClub links, one a line, or `none`. It holds addresses, Kids' names and links, which are secrets: read it on the server, never paste it (see "What can be pasted").
 - **Recipients.** It prints the list it has and asks for the new one, one `ADDRESS[:LANGUAGE]` a line (`fi`, `en` or `zh`; without one, the Household's language), the parent first, an empty line to end. They are asked for, never given on the command line, because `sudo` logs each command line to the journal, as `key new` asks for the holder's email. It shows the change and writes it only after `yes`, as the sign-up writes it; `weekend_to` stays as it was. Then it binds the Household's Gateway Key to the new list as `doctor` does (see "Binding changed Recipients and sending the link again"): a key the sign-up made isn't bound, so nothing changes at the relay.
-- **MyClub.** It asks for each Kid in turn: paste a link, press Enter to keep what the Kid has, or type `none` to turn MyClub off for that Kid. Each new link is downloaded once to check it, as the sign-up does; one that doesn't download, isn't MyClub's or is another Kid's stops it with nothing written. It shows the change and writes it only after `yes`.
+- **MyClub.** It asks for each Kid in turn: paste their links, one per club (#810), separated by spaces or one a line until an empty line, which take the place of what the Kid has; press Enter to keep what the Kid has, or type `none` to turn MyClub off for that Kid. Each new link is downloaded once to check it, as the sign-up does; one that doesn't download, isn't MyClub's or is another Kid's stops it with nothing written. It shows the change and writes it only after `yes`.
 
 The Household's next run, and its next `admin households`, use what was written. A Kid comes from Wilma, so none is added or removed here; the evening time is "Move a Household's Brief to another time".
 

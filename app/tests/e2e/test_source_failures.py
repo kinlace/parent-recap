@@ -255,3 +255,55 @@ def test_myclub_feed_timing_out_once_is_fetched_again(harness):
     assert len(feed.gets) == 2
     coverage = json.loads((harness.archive_dir / "2026-09-27.raw.json").read_text())["summary"]["_coverage"]
     assert coverage["myclub"] == {"count": 1, "error": None}
+
+
+# ── A Kid in several MyClub clubs (#810)
+
+SWIM_LINK = "webcal://uimaseura.myclub.fi/ical/mia-swim"
+
+
+def mia_in_two_clubs(harness) -> Any:
+    """Mia's football club's link and her swimming club's, with a match both feeds give."""
+    football = harness.config["kids"][0]["myclub_ical_url"]
+    harness.config["kids"][0]["myclub_ical_url"] = [football, SWIM_LINK]
+    harness.sources["myclub"] = [
+        myclub_event("football-1", "Football training", "2026-09-29T15:00:00+00:00",
+                     "2026-09-29T16:30:00+00:00"),
+        myclub_event("swim-1", "Swimming", "2026-09-30T15:00:00+00:00", "2026-09-30T16:00:00+00:00"),
+        myclub_event("gala-1", "Club gala", "2026-10-03T09:00:00+00:00", "2026-10-03T12:00:00+00:00"),
+    ]
+    feed = harness.source_fakes["myclub"]
+    feed.feeds = {football: ["football-1", "gala-1"], SWIM_LINK: ["swim-1", "gala-1"]}
+    return feed
+
+
+def queued(harness) -> list[tuple[str, str]]:
+    """The events queued for the calendar, with their Kid as the model sees them: Mia is Kid A."""
+    return sorted((e["title"], e["kid"]) for e in harness.model_payload()["already_queued_for_calendar"])
+
+
+def test_a_kid_s_events_from_every_club_come_once_under_that_kid(harness):
+    one_new_message(harness, "myclub")
+    feed = mia_in_two_clubs(harness)
+    harness.config["google_calendar"] = {"mode": "ics", "ics_include_myclub": True}
+
+    assert harness.run() == 0
+
+    assert len(feed.gets) == 2
+    assert queued(harness) == [("⚽ Club gala", "Kid A"), ("⚽ Football training", "Kid A"),
+                               ("⚽ Swimming", "Kid A")]
+    [email] = harness.sent
+    ics = next(body for name, body, _ in email.attachments if name.endswith(".ics")).decode()
+    assert ics.count("Club gala") == 1 and "Swimming" in ics and "Football training" in ics
+
+
+def test_one_club_s_link_failing_leaves_the_other_s_events(harness, caplog):
+    one_new_message(harness, "myclub")
+    feed = mia_in_two_clubs(harness)
+    feed.failures = [404]  # the football club's link, read first
+
+    assert harness.run() == 0
+
+    assert queued(harness) == [("⚽ Club gala", "Kid A"), ("⚽ Swimming", "Kid A")]
+    assert "MyClub fetch failed for Mia (link 1)" in caplog.text
+    assert "mia-swim" not in caplog.text and "/ical/" not in caplog.text

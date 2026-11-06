@@ -5,7 +5,7 @@ program (ADR 0035), on the maintainer's terminal.
 
 `show` reads only. It prints the Recipients with their languages (and the Weekend Picks'
 Recipients when `email.weekend_to` names others), the Kids as Wilma gave them, and each Kid's
-MyClub link or "none". So its output holds addresses, Kids' names and links: it is read on the
+MyClub links, one a line, or "none". So its output holds addresses, Kids' names and links: it is read on the
 server, never pasted into a chat (ops/gateway/README.md "What can be pasted").
 
 `recipients` asks for the new list on stdin, one `ADDRESS[:LANGUAGE]` a line until an empty line,
@@ -14,8 +14,9 @@ so the config keeps that shape. The addresses come on stdin, never as arguments:
 command line. Then it binds the Gateway Key to the new list as `doctor` does (send_key.ensure); a
 key the sign-up made isn't bound, and the relay changes nothing for it.
 
-`myclub` asks for each Kid in turn: an empty answer keeps the link, `none` turns MyClub off for
-that Kid, a link is downloaded once to check it as the sign-up does. Any link that won't do stops
+`myclub` asks for each Kid in turn: an empty answer keeps their links, `none` turns MyClub off for
+that Kid, and links, one per club (#810), separated by spaces or one a line until an empty line,
+take the place of theirs, each downloaded once to check it as the sign-up does. Any link that won't do stops
 it with nothing written; otherwise it shows the change and writes it only after `yes`.
 """
 from __future__ import annotations
@@ -76,7 +77,7 @@ def show(cfg: Config) -> list[str]:
     for kid in cfg.kids:
         about = ", ".join(x for x in (kid.school, kid.class_name) if x)
         lines.append(f"  {kid.name}" + (f" ({about})" if about else ""))
-        lines.append(f"    MyClub: {kid.myclub_ical_url or NONE}")
+        lines += [f"    MyClub: {url}" for url in kid.myclub_ical_url or [NONE]]
     if not cfg.kids:
         lines.append("  (none)")
     return lines
@@ -187,39 +188,39 @@ def cmd_myclub(args: argparse.Namespace) -> int:
     if not cfg.kids:
         print("The Household has no Kids, so there is no MyClub link to change.", file=sys.stderr)
         return 1
-    print("For each Kid, paste their MyClub calendar link; an empty line keeps what they have, "
-          f"`{NONE}` turns MyClub off for them.")
+    print("For each Kid, paste their MyClub calendar links, one per club, separated by spaces or "
+          f"one a line until an empty line; an empty line keeps what they have, `{NONE}` turns "
+          "MyClub off for them.")
     links = {kid.name: kid.myclub_ical_url for kid in cfg.kids}
-    new = dict(links)
+    given: dict[str, list[str]] = {}
     for kid in cfg.kids:
-        answer = _ask(f"{kid.name} (now: {links[kid.name] or NONE}): ")
+        answer = _ask(f"{kid.name} (now: {_said(links[kid.name])}): ")
         if answer is None:
             print("Not written: nothing was changed.")
             return 1
-        given = "".join(answer.split())
-        if not given:
+        if not answer.strip():
             continue
-        if given.lower() == NONE:
-            new[kid.name] = None
+        if answer.strip().lower() == NONE:
+            given[kid.name] = []
             continue
-        if any(other and setup_myclub.same_link(given, other)
-               for name, other in new.items() if name != kid.name):
-            # One link for two Kids would write every event twice, under both names (#209).
-            result = "same-link"
-        else:
-            result, _ = setup_myclub.check_link(given)
-        if result != "checked":
-            print(f"❌ {kid.name}'s link won't do ({result}). Nothing was changed.",
-                  file=sys.stderr)
-            return 1
-        new[kid.name] = given
-    changed = {name: url for name, url in new.items() if url != links[name]}
+        urls = answer.split()
+        while (more := _ask("  another club's link, or an empty line: ")):
+            urls += more.split()
+        given[kid.name] = urls
+    result, kid, checked = setup_myclub.check_links(  # the links kept count for the others
+        {name: urls for name, urls in given.items() if urls},
+        {name: urls for name, urls in links.items() if name not in given})
+    if result != "checked":
+        print(f"❌ {kid}'s link won't do ({result}). Nothing was changed.", file=sys.stderr)
+        return 1
+    new = {**links, **{name: checked.get(name, []) for name in given}}
+    changed = {name: urls for name, urls in new.items() if urls != links[name]}
     if not changed:
-        print("Every Kid keeps their link: nothing to change.")
+        print("Every Kid keeps their links: nothing to change.")
         return 0
     print("The change:")
-    for name, url in changed.items():
-        print(f"  {name}: {links[name] or NONE} -> {url or NONE}")
+    for name, urls in changed.items():
+        print(f"  {name}: {_said(links[name])} -> {_said(urls)}")
     if not _confirmed():
         print("Not written: nothing was changed.")
         return 1
@@ -232,16 +233,21 @@ def cmd_myclub(args: argparse.Namespace) -> int:
     return 0
 
 
-def _write_links(config: Path, changed: dict[str, str | None]) -> None:
-    """Sets or removes each Kid's myclub_ical_url, written as `setup save` writes the config."""
+def _said(urls: list[str]) -> str:
+    return " ".join(urls) or NONE
+
+
+def _write_links(config: Path, changed: dict[str, list[str]]) -> None:
+    """Sets or removes each Kid's myclub_ical_url, written as `setup save` writes the config: one
+    link as a string, several as a list (ADR 0041)."""
     data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
     for kid in data.get("kids") or []:
         if isinstance(kid, dict) and kid.get("name") in changed:
-            url = changed[kid["name"]]
-            if url is None:
+            urls = changed[kid["name"]]
+            if not urls:
                 kid.pop("myclub_ical_url", None)
             else:
-                kid["myclub_ical_url"] = url
+                kid["myclub_ical_url"] = urls[0] if len(urls) == 1 else urls
     Config.model_validate(data)
     setup_save._write_private(config, yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 

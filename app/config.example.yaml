@@ -14,7 +14,7 @@ kids:
     school: "School name / city"
     activities: ["Football (club name)", "Piano (music school name)"]
     wilma_username: you@example.com
-    myclub_ical_url: null # Personal MyClub calendar subscription link (webcal://...), or null
+    myclub_ical_url: null # Personal MyClub calendar subscription link (webcal://...), a list of them for a Kid in several clubs, or null
 
 gmail:
   username: you@gmail.com # Only read (IMAP); the Brief is sent from Parent Recap's own address

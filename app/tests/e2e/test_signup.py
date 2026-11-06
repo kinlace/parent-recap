@@ -524,8 +524,8 @@ def test_a_kid_s_myclub_link_is_checked_once_and_saved_for_that_kid(
     assert r.status == 200, text(r)
     _, user = signup.user()
     cfg = Config.load(user.home / ".family" / "config.yaml")
-    assert {k.name: k.myclub_ical_url for k in cfg.kids} == {"Mia Virtanen": MIA_LINK,
-                                                            "Leo Virtanen": None}
+    assert {k.name: k.myclub_ical_url for k in cfg.kids} == {"Mia Virtanen": [MIA_LINK],
+                                                            "Leo Virtanen": []}
     # Downloaded once to check it, then once more by the first Brief, which reads it.
     https = MIA_LINK.replace("webcal://", "https://")
     assert mia_plays.gets == [https, https]
@@ -534,6 +534,43 @@ def test_a_kid_s_myclub_link_is_checked_once_and_saved_for_that_kid(
     # The link is a secret: on no command line and in no log.
     assert not any(MIA_LINK in arg or https in arg for cmd in signup.host.commands for arg in cmd)
     assert "mia-1001-token" not in caplog.text
+
+
+def test_a_kid_in_several_clubs_gives_a_link_for_each(signup, harness, mia_plays):
+    """Under "Add another club", more fields for a Kid's other clubs (#810): each link checked
+    once and all saved for that Kid, the first Brief reading every one."""
+    swim = MIA_LINK.replace("kilonpallo", "uimaseura")
+    harness.config["kids"][0]["myclub_ical_url"] = [MIA_LINK, swim]  # served by MyClub
+    harness.sources["myclub"].append(myclub_event(
+        "ev-2", "Uintikoulu", "2026-09-29T17:00:00+03:00", "2026-09-29T18:00:00+03:00",
+        kid="Mia Virtanen"))
+    mia_plays.feeds = {MIA_LINK: ["ev-1"], swim: ["ev-2"]}
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    html = text(sign_in(signup, code))
+    assert f"<summary>{said('en', 'another_club')}</summary>" in html
+    assert said("en", "another_club_link", kid="Mia Virtanen") in html
+    for i in range(page.MAX_CLUBS - 1):
+        assert f'name="m0_{i + 1}"' in html
+
+    r = links(signup, code, "", "", m0_1=swim, m0_2=MIA_LINK, m1_1="")
+
+    assert r.status == 200, text(r)
+    _, user = signup.user()
+    cfg = Config.load(user.home / ".family" / "config.yaml")
+    assert {k.name: k.myclub_ical_url for k in cfg.kids} == {"Mia Virtanen": [swim, MIA_LINK],
+                                                            "Leo Virtanen": []}
+    [first] = harness.sent
+    assert "MyClub 2 tapahtumaa" in first.text  # "read tonight: MyClub 2 events"
+
+
+def test_one_kid_s_other_club_link_can_t_be_another_kid_s(signup, mia_plays):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    assert sign_in(signup, code).status == 200
+
+    r = links(signup, code, MIA_LINK, "", m1_1=MIA_LINK.replace("webcal://", "https://"))
+
+    assert said("en", "same-link", kid="Leo Virtanen") in text(r)
+    assert signup.host.users == {}  # nothing made
 
 
 @pytest.mark.parametrize("given, error, status", [
@@ -601,7 +638,7 @@ def test_a_family_without_wilma_signs_up_with_its_kids_names_and_a_myclub_link(
     assert said("en", "step_wilma") not in text(r)
     _, user = signup.user()
     cfg = Config.load(user.home / ".family" / "config.yaml")
-    assert {k.name: k.myclub_ical_url for k in cfg.kids} == {"Mia Virtanen": MIA_LINK, "Leo": None}
+    assert {k.name: k.myclub_ical_url for k in cfg.kids} == {"Mia Virtanen": [MIA_LINK], "Leo": []}
     assert not cfg.wilma.enabled and not cfg.whatsapp.enabled and cfg.hosted
     assert cfg.city is None
     # No Wilma sign-in anywhere: only the key in the secret store, and no sign-in file.
