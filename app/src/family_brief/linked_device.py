@@ -44,8 +44,8 @@ LOGOUT_SECONDS = 30  # how long turning it off waits for WhatsApp to take the lo
 # What turning it off and uninstall tell the family: a logout that didn't get through leaves the
 # device listed on the phone.
 PHONE_NOTE = ("WhatsApp on your phone may still list Parent Recap as a linked device: in WhatsApp, "
-              "go to Settings → Linked devices and remove “Parent Recap” from Linked devices if "
-              "it's there.")
+              "go to Settings (on an iPhone: You) → Linked devices and remove “Parent Recap” from "
+              "Linked devices if it's there.")
 
 
 def folder() -> Path:
