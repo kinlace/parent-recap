@@ -637,6 +637,42 @@ def test_with_codex_parent_recap_gets_a_key_for_sending_and_setup_finishes(tab, 
     assert family.model.reached and "gateway.parentrecap.com" not in family.model.reached
 
 
+def test_a_kid_in_two_clubs_gets_a_link_from_each_and_one_can_be_removed(tab, family):
+    """MyClub's step opened again: a Kid with a link adds another club's beside it and stays on
+    the step for more, and removes one by its place in the list (#810)."""
+    swim = "webcal://uimaseura.myclub.fi/ical/mia-swim"
+    connect_up_to_myclub(tab)
+    tab.get_by_label(text("myclub.add.name")).fill("Mia")
+    button(tab, "myclub.add").click()
+    tab.get_by_label(text("myclub.link")).fill(MYCLUB_LINK)
+    button(tab, "myclub.save").click()
+    expect(tab.get_by_label(text("eepos.school"), exact=True)).to_be_visible()
+
+    source_listed(tab, "myclub", "done").click()
+    expect(tab.get_by_role("radio", name=re.compile("^Mia"))).to_be_checked()
+    expect(tab.get_by_text(text("myclub.links.item", n=1))).to_be_visible()
+    tab.get_by_label(text("myclub.link.another")).fill(swim)
+    button(tab, "myclub.save").click()
+
+    expect(tab.get_by_text(text("myclub.saved"))).to_be_visible()
+    expect(tab.get_by_text(text("myclub.kid.links", count=2))).to_be_visible()
+    expect(tab.get_by_text(text("myclub.links.item", n=2))).to_be_visible()
+    assert yaml.safe_load(config_file(family).read_text())["kids"][0]["myclub_ical_url"] \
+        == [MYCLUB_LINK, swim]
+    tab.get_by_label(text("myclub.link.another")).fill(swim)
+    button(tab, "myclub.save").click()
+    expect(tab.get_by_text(text("myclub.already-saved"))).to_be_visible()
+
+    tab.get_by_role("button", name=text("myclub.remove")).first.click()
+
+    expect(tab.get_by_text(text("myclub.removed"))).to_be_visible()
+    expect(tab.get_by_text(text("myclub.links.item", n=2))).to_be_hidden()
+    expect(tab.get_by_text(text("myclub.kid.linked"))).to_be_visible()
+    assert yaml.safe_load(config_file(family).read_text())["kids"][0]["myclub_ical_url"] == swim
+    tab.locator("#myclub-continue").click()
+    expect(tab.get_by_label(text("eepos.school"), exact=True)).to_be_visible()
+
+
 # ── Each Recipient's confirmation as it happens (#712): the page asks every few seconds, and
 # asking mails nobody.
 

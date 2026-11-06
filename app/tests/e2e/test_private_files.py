@@ -13,6 +13,7 @@ import yaml
 
 from conftest import SAYS_SOMETHING, msg
 from family_brief.collectors import myclub
+from family_brief.config import Kid
 
 TOKEN = "s3cr3t-t0ken"
 LINK = f"https://example.myclub.fi/ical/{TOKEN}?key={TOKEN}"
@@ -94,6 +95,26 @@ def test_a_link_saved_from_terminal_keeps_the_rest_of_the_config(tmp_path):
     assert [k.get("myclub_ical_url") for k in data["kids"]] == [LINK + "2",
                                                                 "https://example.myclub.fi/ical/leo"]
     assert data["gmail"] == {"username": "parent@example.com"}
+    assert _mode(cfg) == 0o600
+
+
+@pytest.mark.macos
+def test_a_kid_s_several_links_stay_on_their_key_s_line_and_go_with_it(tmp_path):
+    """A Kid in two clubs has two links (#810), written as a list on the key's own line, so the
+    skills' grep leaves them out; removing the last takes the key away, comments kept."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("kids:\n  - name: Mia  # the older one\n    myclub_ical_url: \"%s\"\n"
+                   "    grade: 3\n" % LINK)
+    swim = "https://example.myclub.fi/ical/swim"
+
+    myclub.save_links(cfg, "Mia", [LINK, swim])
+
+    assert [line for line in cfg.read_text().splitlines() if "myclub" in line] \
+        == [f'    myclub_ical_url: ["{LINK}", "{swim}"]']
+    assert Kid.model_validate(yaml.safe_load(cfg.read_text())["kids"][0]).myclub_ical_url \
+        == [LINK, swim]
+    myclub.save_links(cfg, "Mia", [])
+    assert cfg.read_text() == "kids:\n  - name: Mia  # the older one\n    grade: 3\n"
     assert _mode(cfg) == 0o600
 
 

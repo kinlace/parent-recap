@@ -8,7 +8,7 @@ stdin:
    "wilma": {"tenant": {"url": "https://espoo.inschool.fi", "name": "Espoon kaupunki"},
              "username": "mia.parent", "password": "…", "students": [{"studentNumber": "1001",
                                                                       "name": "Mia Virtanen"}]},
-   "myclub": {"Mia Virtanen": "https://…myclub.fi/…"},
+   "myclub": {"Mia Virtanen": ["https://…myclub.fi/…"]},
    "eepos": {"school": "emo", "username": "parent@example.com", "password": "…",
              "kids": {"11": "Mia Virtanen"}},
    "evaka": {"city": "espoo", "username": "parent@example.com", "password": "…",
@@ -19,8 +19,8 @@ and makes the Household: its config, through `setup save` as the setup page save
 `hosted` so its Brief's footer says it comes from the hosted version, with the Kids Wilma listed,
 the Recipients, the gateway as its AI, Wilma on (off, with no "wilma", for a family without it),
 WhatsApp off and the calendar as an .ics in the
-email; the MyClub link of each Kid in `myclub`, which the service checked, saved as `setup myclub`
-saves one; the Eepos sign-in the service checked (#769), its password in the secrets store and the
+email; the MyClub links of each Kid in `myclub`, one per club (#810), which the service checked,
+saved as `setup myclub` saves them; the Eepos sign-in the service checked (#769), its password in the secrets store and the
 rest in the config, as `setup eepos` saves one; the eVaka sign-in the service checked (#790), saved
 as `setup evaka` saves one, with the device cookie eVaka set on that check; the Gateway Key in the
 secrets store; the wilma CLI's sign-in the service checked, for the shared copy's CLI (installed with it, so only a copy without one installs it here); and the
@@ -42,7 +42,7 @@ import yaml
 
 from .. import gateway, ops, setup_eepos, setup_evaka, setup_save, setup_wilma
 from ..collectors import eepos, evaka, myclub
-from ..config import Config, EeposSignin, EvakaSignin
+from ..config import Config, EeposSignin, EvakaSignin, myclub_links
 from ..setup_report import outcome
 from ..system import jobs, secrets
 
@@ -86,14 +86,17 @@ class Household(_Strict):
     recipients: list[dict[str, Any]] = Field(min_length=1)
     kids: list[dict[str, Any]] = Field(min_length=1)
     wilma: WilmaSignIn | None = None  # none for a family without Wilma (#760)
-    myclub: dict[str, str] = {}  # each link a secret (ADR 0007), by its Kid's name
+    # Each Kid's links, by name, one per club (#810), each a secret (ADR 0007); one link alone is
+    # taken too, as before.
+    myclub: dict[str, list[str] | str] = {}
     eepos: EeposSignIn | None = None  # one school for now (#769)
     evaka: EvakaSignIn | None = None  # one city for now (#790)
     gateway_key: str = Field(pattern=r"^\S+$")
 
     @model_validator(mode="after")
     def _reads_something(self) -> "Household":
-        if self.wilma is None and not self.myclub and self.eepos is None and self.evaka is None:
+        linked = any(myclub_links(urls) for urls in self.myclub.values())
+        if self.wilma is None and not linked and self.eepos is None and self.evaka is None:
             raise ValueError("without Wilma, at least one MyClub link, an Eepos sign-in or an "
                              "eVaka sign-in is needed")
         return self
@@ -120,9 +123,9 @@ def create(config: Path, h: Household) -> dict[str, Any]:
     })
     if saved["result"] != "saved":
         return saved
-    for kid, url in h.myclub.items():
+    for kid, urls in h.myclub.items():
         try:
-            myclub.save_link(config, kid, "".join(url.split()))
+            myclub.save_links(config, kid, ["".join(u.split()) for u in myclub_links(urls)])
         except (OSError, ValueError) as e:  # names the Kid and the config, never the link
             return outcome("myclub-not-saved", reason=str(e)[:300])
     try:

@@ -151,6 +151,26 @@ def test_a_new_link_replaces_the_old_one(harness, server, capsys):
     assert saved_links(harness)["Mia"] == LINK
 
 
+def test_another_club_s_link_is_saved_beside_the_kid_s_links(harness, server, capsys):
+    """A link holds one club's groups, so a Kid in two clubs has two links (#810)."""
+    old = "https://example.myclub.fi/ical/old"
+    harness.config["kids"][0]["myclub_ical_url"] = old
+    harness.dialog.typed = LINK
+
+    assert harness.cli("setup", "myclub", "--kid", "Mia", "--another") == 0
+
+    assert saved_links(harness)["Mia"] == [old, LINK]
+    assert Config.load(config_file(harness)).kids[0].myclub_ical_url == [old, LINK]
+    capsys.readouterr()
+    harness.config["kids"][0]["myclub_ical_url"] = [old, LINK]  # the harness writes it again
+    harness.dialog.typed = LINK.replace("webcal://", "https://")
+    harness.cli("setup", "myclub", "--kid", "Mia", "--another", "--no-open")
+    res, printed = result(capsys)
+    assert res["result"] == "already-saved" and "--another" in res["next"]
+    assert saved_links(harness)["Mia"] == [old, LINK]
+    assert TOKEN not in printed
+
+
 def test_a_link_already_saved_for_another_kid_is_not_saved_again(harness, server, capsys):
     """A link made with several members ticked is one link for all of them (#207, #209)."""
     harness.config["kids"][0]["myclub_ical_url"] = LINK
@@ -390,8 +410,9 @@ def test_each_kid_known_so_far_is_listed_without_its_link(harness, page, myclub_
 
     r = call(page.url, "api/state")
 
-    assert r.json()["myclub"] == {"kids": [{"name": "Mia", "linked": True},
-                                           {"name": "Leo", "linked": False}], "add": False}
+    assert r.json()["myclub"] == {"kids": [{"name": "Mia", "linked": True, "links": 1},
+                                           {"name": "Leo", "linked": False, "links": 0}],
+                                  "add": False}
     assert MYCLUB_TOKEN.encode() not in r.body
 
 
@@ -416,7 +437,8 @@ def test_a_good_link_is_checked_and_saved_for_the_right_kid(harness, page, myclu
     assert r.status == 200
     out = r.json()
     assert out["result"] == "saved" and out["kid"] == "Leo" and out["events"] == 2
-    assert out["kids"] == [{"name": "Mia", "linked": True}, {"name": "Leo", "linked": True}]
+    assert out["kids"] == [{"name": "Mia", "linked": True, "links": 1},
+                           {"name": "Leo", "linked": True, "links": 1}]
     assert myclub_server.downloads == [MYCLUB_LINK.replace("webcal://", "https://")]
     assert myclub_links(harness) == {"Mia": "https://example.myclub.fi/ical/mia-old",
                                      "Leo": MYCLUB_LINK}
@@ -427,6 +449,41 @@ def test_a_good_link_is_checked_and_saved_for_the_right_kid(harness, page, myclu
     for shown in [r.body.decode(), call(page.url, "api/state").body.decode(), printed, caplog.text,
                   progress_file(harness).read_text(), *(a for c in harness.commands for a in c)]:
         assert MYCLUB_TOKEN not in shown
+
+
+def remove_link(url: str, kid: str, index: int) -> Response:
+    return call(url, "api/myclub/remove", method="POST", body={"kid": kid, "index": index})
+
+
+def test_a_kid_with_a_link_adds_another_club_s_and_removes_one(harness, page, myclub_server,
+                                                              caplog, capsys):
+    """A Kid in two clubs has a link from each (#810): the page adds the next beside the first,
+    refuses one the Kid has already, and removes one by its place, never seeing a link."""
+    caplog.set_level(logging.DEBUG)
+    other = "https://example.myclub.fi/ical/swim-club"
+    at_the_myclub_step(harness)
+    assert save_link(page.url, "Mia").json()["result"] == "saved"
+
+    out = save_link(page.url, "Mia", other).json()
+
+    assert out["result"] == "saved"
+    assert out["kids"][0] == {"name": "Mia", "linked": True, "links": 2}
+    assert myclub_links(harness) == {"Mia": [MYCLUB_LINK, other], "Leo": None}
+    again = save_link(page.url, "Mia", MYCLUB_LINK.replace("webcal://", "https://"))
+    assert again.json() == {"result": "already-saved"}
+    assert save_link(page.url, "Leo", other).json() == {"result": "same-link"}
+
+    r = remove_link(page.url, "Mia", 0)
+
+    assert r.status == 200 and r.json() == {"result": "removed", "kids": [
+        {"name": "Mia", "linked": True, "links": 1}, {"name": "Leo", "linked": False, "links": 0}]}
+    assert myclub_links(harness) == {"Mia": other, "Leo": None}
+    assert remove_link(page.url, "Mia", 1).json()["result"] == "no-such-link"
+    assert remove_link(page.url, "Mia", 0).json()["result"] == "removed"
+    assert myclub_links(harness) == {"Mia": None, "Leo": None}
+    for body in [{"kid": "Ada", "index": 0}, {"kid": "Mia"}, {"kid": "Mia", "index": "first"}]:
+        assert call(page.url, "api/myclub/remove", method="POST", body=body).status == 400, body
+    assert_never_leaked_by_page(harness, [r, again], caplog, capsys, MYCLUB_TOKEN)
 
 
 def test_with_a_kid_still_without_a_link_the_step_stays_until_continue(harness, page,
@@ -526,9 +583,9 @@ def test_a_household_without_wilma_adds_its_kids_here(harness, page, myclub_serv
 
     assert r.status == 200
     assert r.json()["result"] == "added"
-    assert r.json()["kids"] == [{"name": "Mia", "linked": False}]
-    assert add_kid(page.url, "小狮").json()["kids"] == [{"name": "Mia", "linked": False},
-                                                        {"name": "小狮", "linked": False}]
+    assert r.json()["kids"] == [{"name": "Mia", "linked": False, "links": 0}]
+    assert add_kid(page.url, "小狮").json()["kids"] == [{"name": "Mia", "linked": False, "links": 0},
+                                                        {"name": "小狮", "linked": False, "links": 0}]
     assert add_kid(page.url, "mia").json() == {"result": "kid-exists"}
     assert [k.name for k in Config.load(config_file(harness)).kids] == ["Mia", "小狮"]
     assert save_link(page.url, "小狮").json()["result"] == "saved"
@@ -598,5 +655,6 @@ def test_every_myclub_result_is_explained_in_all_three_languages():
     text = json.loads((PAGE_DIR / "text.json").read_text())
 
     for language, table in text.items():
-        for result in (*setup_server.myclub.MYCLUB_RESULTS, *setup_server.context.KID_RESULTS):
+        for result in (*setup_server.myclub.MYCLUB_RESULTS, *setup_server.myclub.REMOVE_RESULTS,
+                       *setup_server.context.KID_RESULTS):
             assert table.get(f"myclub.{result}", "").strip(), (language, result)

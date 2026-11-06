@@ -4,9 +4,10 @@ good any more included, gets the gateway's web server's usual 404, so the servic
 of which links exist.
 
 Signing up takes two posts of the page. The first checks the Wilma sign-in before anything is
-made, so a wrong password is said at once and the link stays good, and answers with a MyClub
-calendar link field for each Kid Wilma listed. The answers wait in memory only, for the second,
-up to PENDING_MINUTES: the password is never written down or put back in a page. The second post
+made, so a wrong password is said at once and the link stays good, and answers with MyClub
+calendar link fields for each Kid Wilma listed, one per club (#810). The answers wait in memory
+only, for the second, up to PENDING_MINUTES: the password is never written down or put back in a
+page. The second post
 checks each link given by downloading it once, so a link that doesn't open is said at once, and
 an empty one leaves MyClub off for that Kid. It may also give an Eepos sign-in (#769), checked as
 `setup eepos` checks one: signed in to, its students read and matched to the Kids by name, a
@@ -234,20 +235,16 @@ class Service:
 
         def again(error: str, kid: str | None = None) -> tuple[HTTPStatus, str]:
             return HTTPStatus.OK, page.myclub(language, kids, error, kid, wilma, typed, typed_evaka)
-        links: dict[str, str] = {}
-        for i, kid in enumerate(kids):
-            url = "".join(fields.get(f"m{i}", "").split())
-            if not url:
-                continue  # MyClub stays off for this Kid
-            # One link for two Kids would write every event twice, under both names (#209).
-            if any(setup_myclub.same_link(url, other) for other in links.values()):
-                result = "same-link"
-            else:
-                result, _ = setup_myclub.check_link(url)
-            if result != "checked":
-                log.info("A sign-up's MyClub link wasn't taken: %s", result)
-                return again(result, kid)
-            links[kid] = url
+        # Each Kid's links, one per club (#810); an empty field leaves it out, and a Kid without
+        # one has MyClub off. One link for two Kids would write every event twice, under both
+        # names (#209).
+        result, kid, checked = setup_myclub.check_links({kid: [
+            fields.get(f"m{i}" + (f"_{n}" if n else ""), "") for n in range(page.MAX_CLUBS)]
+            for i, kid in enumerate(kids)})
+        if result != "checked":
+            log.info("A sign-up's MyClub link wasn't taken: %s", result)
+            return again(result, kid)
+        links = {kid: urls for kid, urls in checked.items() if urls}
         error, signin = _eepos(kids, *typed, fields.get("eepos_password", ""))
         if error:
             return again(error)
@@ -270,7 +267,7 @@ class Service:
                          name="household-maker", daemon=True).start()
         return HTTPStatus.SEE_OTHER, ""
 
-    def _make_in_turn(self, code: str, pending: _Pending, links: dict[str, str],
+    def _make_in_turn(self, code: str, pending: _Pending, links: dict[str, list[str]],
                       progress: _Progress) -> None:
         """Makes the Household once those posted before it are made; the page stops asking
         however that ends."""
@@ -288,7 +285,7 @@ class Service:
                 self._queue.pop(0)
                 self._turns.notify_all()
 
-    def _make_household(self, code: str, pending: _Pending, links: dict[str, str],
+    def _make_household(self, code: str, pending: _Pending, links: dict[str, list[str]],
                         progress: _Progress) -> None:
         """Makes the Household, marking each step on `progress` as it ends, or takes back what
         was made."""
