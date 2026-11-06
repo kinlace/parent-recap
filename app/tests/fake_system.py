@@ -221,14 +221,20 @@ class FakeWake:
 
     @staticmethod
     def line(hour: int, minute: int) -> str:
-        """The wake setup gives for a job at hour:minute, as this system lists it."""
-        wake_h, wake_m = wake.time(hour, minute)
-        return f"wake every day at {wake_h:02d}:{wake_m:02d}"
+        """The wake setup gives for a job at hour:minute, at its own time, as this system lists it."""
+        return f"wake every day at {hour:02d}:{minute:02d}"
+
+    @staticmethod
+    def old_line(hour: int, minute: int) -> str:
+        """The wake versions before #832 gave for a job at hour:minute, 5 minutes before."""
+        wake_h, wake_m = divmod(hour * 60 + minute - 5, 60)
+        return f"wake every day at {wake_h % 24:02d}:{wake_m:02d}"
 
     def status(self, hour: int, minute: int) -> wake.WakeStatus:
-        ours = self.line(hour, minute)
+        ours, old = self.line(hour, minute), self.old_line(hour, minute)
         return wake.WakeStatus(ours if ours in self.wakes else None,
-                               [w for w in self.wakes if w != ours], self.never_sleeps)
+                               [w for w in self.wakes if w not in (ours, old)], self.never_sleeps,
+                               old if old in self.wakes else None)
 
     def set(self, hour: int, minute: int, replace: bool) -> str:
         if self.never_sleeps:
@@ -240,8 +246,7 @@ class FakeWake:
             return "other-schedule"
         if not self.settable:
             return "not-set"
-        wake_h, wake_m = wake.time(hour, minute)
-        self.asked.append(f"set {wake_h:02d}:{wake_m:02d}")
+        self.asked.append(f"set {hour:02d}:{minute:02d}")
         if self.dialog == "cancel":
             return "cancelled"
         if self.dialog == "none":
@@ -257,8 +262,7 @@ class FakeWake:
         self.wakes = []
 
     def manual_step(self, hour: int, minute: int) -> str:
-        wake_h, wake_m = wake.time(hour, minute)
-        return f"set-wake {wake_h:02d}:{wake_m:02d}"
+        return f"set-wake {hour:02d}:{minute:02d}"
 
 
 class FakeUserPath:

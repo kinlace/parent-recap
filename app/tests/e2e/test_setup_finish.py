@@ -72,7 +72,7 @@ def test_the_first_brief_sent_turns_on_the_evening_brief_with_nothing_more_from_
     turned_on(page.url)
     assert schedule.loads[:1] == [jobs.DAILY]
     # The wake-up set as Turn it on sets it, never replacing another; a server never sleeps.
-    assert schedule.dialogs == ([] if on is LINUX else ["set 20:55"])
+    assert schedule.dialogs == ([] if on is LINUX else ["set 21:00"])
     # Finish then says it's on, without asking for anything.
     out = at_finish_after_turning_on(page.url)
     assert checklist(out)["nightly"] is True and out["tried"] is True
@@ -88,7 +88,7 @@ def test_the_brief_sent_again_doesn_t_turn_it_on_again(harness, page, schedule):
     again = send_it_to_me(page.url).json()
 
     assert again["result"] == "sent" and "turning_on" not in again
-    assert schedule.dialogs == ["set 20:55"]  # macOS's dialog isn't opened twice
+    assert schedule.dialogs == ["set 21:00"]  # macOS's dialog isn't opened twice
 
 
 def test_a_cancelled_wake_up_leaves_the_evening_brief_on_and_finish_offers_to_try_again(
@@ -147,7 +147,7 @@ def test_finish_installs_the_evening_job_and_the_wake_up_through_macos_s_dialog(
                               "wake": True}
     assert jobs.DAILY in harness.jobs.installed()
     # The Mac password goes into macOS's own dialog only.
-    assert schedule.dialogs == ["set 20:55"]
+    assert schedule.dialogs == ["set 21:00"]
     assert harness.wake.wakes == [FakeWake.line(21, 0)]
     # Doctor's checks run with the evening job's own, now that it's installed.
     assert health.runs[-1][1] is True

@@ -234,14 +234,15 @@ def _jobs(s: Survey, programs: list[Path]) -> None:
 
 def _wake(s: Survey, cfg: Config) -> None:
     status = wake.status(cfg.schedule.daily_hour, cfg.schedule.daily_minute)
+    ours = status.ours or status.old  # an older version's, 5 minutes before the job, is ours too
     if not wake.has_own_schedule():
         if status.ours:  # the wake goes with the jobs
             s.left.append(f"{status.ours}: your own power setting, which setup didn't change")
-    elif status.ours and not status.others:
-        s.items.append(Item("Wake schedule", status.ours, _cancel_wake,
+    elif ours and not status.others:
+        s.items.append(Item("Wake schedule", ours, _cancel_wake,
                             asks="macOS asks for your Mac password to remove it"))
-    elif status.ours:
-        s.left.append(f"The wake schedule setup gave ({status.ours}): macOS can only cancel it "
+    elif ours:
+        s.left.append(f"The wake schedule setup gave ({ours}): macOS can only cancel it "
                       f"together with {'; '.join(status.others)}. To cancel both, run this in "
                       f"Terminal: {wake.manual_cancel()}")
     elif status.others:

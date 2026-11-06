@@ -10,6 +10,7 @@ import os
 import plistlib
 import signal
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -89,6 +90,33 @@ def test_installing_without_weekend_picks_removes_their_job(harness, launchctl, 
     assert jobs.program("weekend-events") is None
     assert jobs.program("daily")[1:] == ["-m", "family_brief", "run"]
     assert jobs.system_name("daily") == jobs_macos.DAILY_LABEL == "com.parentrecap.daily"
+
+
+def test_the_evening_jobs_run_under_caffeinate_so_the_mac_stays_awake_through_the_run(
+        harness, launchctl, tmp_path):
+    # A lid-closed MacBook woken for the job sleeps again within seconds without an assertion
+    # (#832); caffeinate holds one until the program it starts exits.
+    jobs.install(both(tmp_path))
+
+    for label, subcommand in (("daily", "run"), ("weekend-events", "weekend-events")):
+        plist = plistlib.loads((jobs_macos.LAUNCH_AGENTS / f"com.parentrecap.{label}.plist")
+                               .read_bytes())
+        assert plist["ProgramArguments"] == [
+            "/usr/bin/caffeinate", "-i", "-s", sys.executable, "-m", "family_brief", subcommand]
+        # What the job runs, as uninstall checks it, is the program under caffeinate.
+        assert jobs.program(label) == [sys.executable, "-m", "family_brief", subcommand]
+    assert {tuple(f.program) for f in jobs.found()} == {
+        (sys.executable, "-m", "family_brief", "run"),
+        (sys.executable, "-m", "family_brief", "weekend-events")}
+
+
+def test_a_plist_from_before_caffeinate_still_reads_as_its_program(harness, launchctl, tmp_path):
+    jobs_macos.LAUNCH_AGENTS.mkdir(parents=True)
+    (jobs_macos.LAUNCH_AGENTS / "com.parentrecap.daily.plist").write_bytes(plistlib.dumps(
+        {"Label": "com.parentrecap.daily",
+         "ProgramArguments": [sys.executable, "-m", "family_brief", "run"]}))
+
+    assert jobs.program("daily") == [sys.executable, "-m", "family_brief", "run"]
 
 
 def test_a_job_runs_at_its_time_with_owner_only_logs_in_the_log_folder(harness, launchctl, tmp_path):

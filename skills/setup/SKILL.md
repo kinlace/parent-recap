@@ -51,17 +51,17 @@ The flow is the same in both:
 
 Each prints one line of JSON. `result` says what happened; when it isn't a success, `next` says what to do about it, in English: tell the parent the gist in their language, help with it, and run the command again as `next` says (often with `--no-open`, so the page or window doesn't open twice).
 
-| Command                                           | Success     | Also gives                                                                          |
-| ------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------- |
-| `$FB setup wilma --timeout 540 --language <code>` | `signed-in` | `kids` (name, school, class), `wilma_address`, `city` (or null)                     |
-| `$FB setup gmail --address <address>`             | `saved`     | `address`                                                                           |
-| `$FB setup claude`                                | `saved`     | `test_call: ok`                                                                     |
-| `$FB setup gateway`                               | `saved`     | `test_call: ok`                                                                     |
-| `$FB setup confirm [--resend]`                    | `confirmed` | `unconfirmed` and `mailed` addresses (`unconfirmed` is the result while any wait)   |
-| `$FB setup myclub --kid "<Kid's name>"`           | `saved`     | `events`, the number of events in the calendar                                      |
-| `$FB setup status`                                | `done`      | `outcomes`, each with `ok` and a `reason`                                           |
-| `$FB setup save` (answers as JSON on stdin)       | `saved`     | `progress`                                                                          |
-| `$FB setup save --read`                           | `read`      | `progress`                                                                          |
+| Command                                           | Success     | Also gives                                                                        |
+| ------------------------------------------------- | ----------- | --------------------------------------------------------------------------------- |
+| `$FB setup wilma --timeout 540 --language <code>` | `signed-in` | `kids` (name, school, class), `wilma_address`, `city` (or null)                   |
+| `$FB setup gmail --address <address>`             | `saved`     | `address`                                                                         |
+| `$FB setup claude`                                | `saved`     | `test_call: ok`                                                                   |
+| `$FB setup gateway`                               | `saved`     | `test_call: ok`                                                                   |
+| `$FB setup confirm [--resend]`                    | `confirmed` | `unconfirmed` and `mailed` addresses (`unconfirmed` is the result while any wait) |
+| `$FB setup myclub --kid "<Kid's name>"`           | `saved`     | `events`, the number of events in the calendar                                    |
+| `$FB setup status`                                | `done`      | `outcomes`, each with `ok` and a `reason`                                         |
+| `$FB setup save` (answers as JSON on stdin)       | `saved`     | `progress`                                                                        |
+| `$FB setup save --read`                           | `read`      | `progress`                                                                        |
 
 A `result` of `no-prompt` means no dialog could open here (for example from inside Codex's sandbox): run the command again outside the sandbox, and only if that fails too, give the parent the command in `next` to run in Terminal.
 
@@ -262,7 +262,7 @@ Save `"progress": {"phase": "first-brief"}` first.
 
 Save `"progress": {"phase": "finish"}` first.
 
-1. Tell the parent macOS will ask for their Mac password in its own dialog, to wake the Mac 5 minutes before the Brief. Run `$FB schedule install`. If it warns the Mac already has a repeating wake schedule, show the parent what it lists and ask, as a choice, whether to replace it (keep it first); only if they choose to replace it, run `$FB schedule install --replace-wake`. If it prints a `sudo pmset ...` command, give it to the parent to run in Terminal.
+1. Tell the parent macOS will ask for their Mac password in its own dialog, to wake the Mac at the Brief's time. Run `$FB schedule install`. If it warns the Mac already has a repeating wake schedule, show the parent what it lists and ask, as a choice, whether to replace it (keep it first); only if they choose to replace it, run `$FB schedule install --replace-wake`. If it prints a `sudo pmset ...` command, give it to the parent to run in Terminal.
 2. Run `$FB setup status`. It reports five outcomes: the program installed, the health check with nothing to fix (no ❌; its `reason` names any ⚠️, which you tell the parent about with what to do, but which don't stop setup), the first Brief delivered to the setup parent (the first Recipient; the others' first is the first evening one), the nightly job loaded, and the wake schedule set or the Mac never sleeping. Show them as a checklist. For each with `ok: false`, do what its `reason` says, and run it again, until `result` is `done`.
 3. The sixth outcome is yours to confirm: after the Mac restarts, such as after a macOS update, someone must log in to this Mac user once, or no Brief comes until they do. The wake-up wakes a sleeping Mac only: a Mac that's shut down makes no Brief, so in the evening it should be left asleep or locked, not shut down. Tell the parent both, and end with one choice for them to confirm they've got it.
 

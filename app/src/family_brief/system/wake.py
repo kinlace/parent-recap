@@ -1,6 +1,7 @@
 """Waking the computer every day for the evening job (ADR 0020). Each system has its adapter:
-`pmset` on macOS, 5 minutes before the job; on Windows the job's own task wakes the PC, once the
-family's "Allow wake timers" lets it (ADR 0021); a Linux server never sleeps."""
+`pmset` on macOS, at the job's own time, so launchd starts it as the Mac wakes (#832); on Windows
+the job's own task wakes the PC, once the family's "Allow wake timers" lets it (ADR 0021); a Linux
+server never sleeps."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,16 +24,13 @@ class WakeStatus:
     ours: str | None       # the daily wake setup gives for the job's time, as the system lists it
     others: list[str]      # the system's other repeating wakes, as it lists them
     never_sleeps: bool     # set never to sleep, on every power source
+    # The daily wake an older version gave, 5 minutes before the job, which `set` moves to the
+    # job's time without asking to replace it (#832): not among `others`.
+    old: str | None = None
 
 
 class NotCancelled(Exception):
     """The wake schedule wasn't cancelled; the message says how the family can cancel it."""
-
-
-def time(hour: int, minute: int) -> tuple[int, int]:
-    """When the computer should wake for a job at hour:minute: 5 minutes before."""
-    wake_h, wake_m = divmod(hour * 60 + minute - 5, 60)
-    return wake_h % 24, wake_m
 
 
 def status(hour: int, minute: int) -> WakeStatus:
@@ -44,7 +42,9 @@ def status(hour: int, minute: int) -> WakeStatus:
 def set(hour: int, minute: int, replace: bool) -> str:
     """Sets the daily wake for a job at hour:minute through the system's administrator dialog,
     where the family types their password. Another repeating wake schedule is replaced only with
-    `replace`, so the family can decline before any dialog opens. Returns one of RESULTS."""
+    `replace`, so the family can decline before any dialog opens; an older version's wake is
+    moved without it. Until the system lists the new wake, whatever wake was there stays, so a
+    closed dialog leaves an older version's wake in place. Returns one of RESULTS."""
     return _adapter.set(hour, minute, replace)
 
 
