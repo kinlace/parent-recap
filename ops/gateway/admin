@@ -418,7 +418,7 @@ def _system(argv: list[str], capture: bool = False,
                           env={**_clean_env(), **(env or {})})
 
 
-def _github(url: str) -> dict:
+def _github(url: str) -> Any:
     """GitHub's public API, without a login: the server holds no GitHub credentials."""
     request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
                                                    "User-Agent": "parent-recap-admin"})
@@ -450,7 +450,7 @@ class Edge:
     which runs on the repo for real), GitHub's API, an address's HTTP status, the clock and the
     server's users."""
     system: Callable[..., subprocess.CompletedProcess] = _system
-    github: Callable[[str], dict] = _github
+    github: Callable[[str], Any] = _github
     http_status: Callable[[str], int] = _http_status
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     monotonic: Callable[[], float] = time.monotonic
@@ -567,23 +567,109 @@ def _rev(paths: Paths, name: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+RUNNING = "still running"
+
+
 def _test_passed(paths: Paths, commit: str, edge: Edge) -> None:
-    """An unreleased commit's `test` check passed on GitHub; a release tag's ran before it was
-    published (release.yml)."""
+    """An unreleased commit's `test` check passed on GitHub, or, while its own is missing or
+    still running, that of the head of the PR it came from, with the same code (#818); a release
+    tag's ran before it was published (release.yml)."""
     short = commit[:SHORT]
-    url = f"{paths.github_api}/commits/{commit}/check-runs?check_name=test&filter=latest"
-    try:
-        runs = edge.github(url).get("check_runs") or []
-    except (OSError, ValueError, AttributeError) as e:
-        raise Refused(f"couldn't ask GitHub whether {short}'s test check passed: {e}") from e
-    ends = {r.get("conclusion") or "still running" for r in runs
-            if isinstance(r, dict) and r.get("name") == "test"}
-    if not ends:
-        raise Refused(f"{short} has no test check on GitHub yet: an unreleased commit is "
-                      "deployed only once its test check passed")
-    if not ends <= set(PASSED):
+    ends = _test_ends(paths, commit, edge)
+    if ends and ends <= set(PASSED):
+        return
+    if ends - set(PASSED) - {RUNNING}:
+        # A failure on main is never overridden by a PR's pass.
         raise Refused(f"{short}'s test check on GitHub is {', '.join(sorted(ends))}: an "
                       "unreleased commit is deployed only once it passed")
+    tested, why_not = _same_code_tested(paths, commit, edge)
+    if tested:
+        head, number = tested
+        print(f"✅ {short} has the same code as {head[:SHORT]}, whose test check passed (the "
+              f"head of PR #{number})", flush=True)
+        return
+    own = (f"{short} has no test check on GitHub yet" if not ends
+           else f"{short}'s test check on GitHub is still running")
+    raise Refused(f"{own}{'; ' + why_not if why_not else ''}: an unreleased commit is deployed "
+                  "only once its test check passed, or that of its PR's head with the same code")
+
+
+def _ask_github(url: str, about: str, edge: Edge) -> Any:
+    try:
+        return edge.github(url)
+    except (OSError, ValueError) as e:
+        raise Refused(f"couldn't ask GitHub {about}: {e}") from e
+
+
+def _test_ends(paths: Paths, commit: str, edge: Edge) -> set[str]:
+    """How each of `commit`'s latest `test` check runs ended, RUNNING for one that hasn't."""
+    answer = _ask_github(
+        f"{paths.github_api}/commits/{commit}/check-runs?check_name=test&filter=latest",
+        f"whether {commit[:SHORT]}'s test check passed", edge)
+    runs = answer.get("check_runs") if isinstance(answer, dict) else ()
+    if not isinstance(runs, list) and runs is not None:
+        raise Refused(f"couldn't ask GitHub whether {commit[:SHORT]}'s test check passed: it "
+                      "answered something else")
+    return {r.get("conclusion") or RUNNING for r in runs or []
+            if isinstance(r, dict) and r.get("name") == "test"}
+
+
+def _same_code_tested(paths: Paths, commit: str,
+                      edge: Edge) -> tuple[tuple[str, int] | None, str]:
+    """The head, and its PR's number, of a PR into main that `commit` came from, whose `test`
+    check passed on `commit`'s code; else None and why none, empty if no such PR is known.
+
+    A PR's `test` doesn't run on its head: actions/checkout on pull_request checks out GitHub's
+    merge of the head into main as main was when the run started (GITHUB_SHA, the last merge
+    commit on refs/pull/N/merge, GitHub's "Events that trigger workflows"). That merge
+    has the head's own tree when main as it was then is an ancestor of the head: merging in an
+    ancestor changes nothing. main only moves forward (rebase merges, no force push, and the
+    PR's own merge moves it later still), so main as it was then is an ancestor of main as it was
+    when the PR landed. So it is enough that the head was built on that: then it was tested as it
+    is. A rebase merge puts the head's commits since its merge base with `commit` on top of main
+    one for one, ending at `commit`, so the head was built on main as it was when the PR landed
+    when it is as many commits past that merge base as `commit` is; if it was built on an older
+    main, `commit` is past it by main's commits since then too. (A rebase that dropped a head's
+    commit already on main could make up the count; the trees must be equal all the same, so the
+    merge tested added only what the head already made.) The trees being equal then makes the
+    tested code `commit`'s."""
+    short = commit[:SHORT]
+    tree = _git(paths, "rev-parse", f"{commit}^{{tree}}").stdout.strip()
+    about = f"which PR {short} came from"
+    pulls = _ask_github(f"{paths.github_api}/commits/{commit}/pulls", about, edge)
+    if not isinstance(pulls, list):
+        raise Refused(f"couldn't ask GitHub {about}: it answered something else")
+    reasons = []
+    for pr in pulls:
+        try:
+            number, base, head = int(pr["number"]), pr["base"]["ref"], str(pr["head"]["sha"])
+        except (TypeError, KeyError, ValueError) as e:
+            raise Refused(f"couldn't ask GitHub {about}: it answered something else") from e
+        if base != "main" or not COMMIT.fullmatch(head):
+            continue
+        hshort = head[:SHORT]
+        try:
+            head_tree = _ask_github(f"{paths.github_api}/git/commits/{head}",
+                                    f"what code {hshort} has", edge)["tree"]["sha"]
+            compared = _ask_github(f"{paths.github_api}/compare/{commit}...{head}",
+                                   f"what {hshort} was built on", edge)
+            ahead, behind = int(compared["ahead_by"]), int(compared["behind_by"])
+        except (TypeError, KeyError, ValueError) as e:
+            raise Refused(f"couldn't ask GitHub about PR #{number}'s head {hshort}: it answered "
+                          "something else") from e
+        if head_tree != tree:
+            reasons.append(f"PR #{number}'s head {hshort} has other code")
+            continue
+        if ahead != behind:
+            reasons.append(f"PR #{number}'s head {hshort} has the same code but was built on an "
+                           "older main, so its test check ran on other code")
+            continue
+        ends = _test_ends(paths, head, edge)
+        if ends and ends <= set(PASSED):
+            return (head, number), ""
+        reasons.append(f"PR #{number}'s head {hshort} has the same code, and its test check "
+                       f"{'is ' + ', '.join(sorted(ends)) if ends else 'is missing'}")
+    return None, "; ".join(reasons)
 
 
 def _households(paths: Paths) -> list[tuple[str, str]]:
