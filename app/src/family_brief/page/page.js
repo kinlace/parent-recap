@@ -530,7 +530,8 @@ function renderRecipients() {
 }
 
 // Gmail's step: what it reads, with Connect Gmail and Skip side by side, and the App Password's
-// steps only once the parent chooses to connect it, only to have the school's mail read.
+// steps, with Skip beside Save, only once the parent chooses to connect it, only to have the
+// school's mail read.
 const gmailStep = { connecting: false };
 
 function setUpGmail() {
@@ -554,7 +555,9 @@ function prepareGmail() {
 }
 
 function showGmailParts() {
-  document.getElementById("gmail-connect").hidden = gmailStep.connecting;
+  // The row with Connect Gmail and its Skip goes once connecting, and the form's own Skip, beside
+  // Save, is the one shown (#808).
+  document.getElementById("gmail-start").hidden = gmailStep.connecting;
   document.getElementById("gmail-own").hidden = !gmailStep.connecting;
   // The Brief's own address is the likeliest Gmail to read, when it is a Gmail.
   const parent = page.gmail.to[0]?.address || "";

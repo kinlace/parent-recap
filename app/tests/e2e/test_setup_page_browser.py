@@ -217,12 +217,23 @@ def brief_goes_to(tab, address: str = PARENT) -> None:
 
 def connect_gmail_at_last(tab) -> None:
     """Gmail's step, last on the list (#708): Connect Gmail, beside its Skip, shows the App
-    Password's steps."""
+    Password's steps, and the Skip moves beside Save (#808)."""
     expect(tab.get_by_text(text("gmail.explain"))).to_be_visible()
     expect(skip(tab, "gmail")).to_be_visible()
+    expect(tab.locator("#gmail-start").get_by_role("button", name=text(
+        "source.skip", source=text("source.gmail")))).to_be_visible()
     expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
     button(tab, "gmail.connect").click()
     expect(tab.get_by_label(text("gmail.password"))).to_be_visible()
+    gmail_skip_beside_save(tab)
+
+
+def gmail_skip_beside_save(tab) -> None:
+    """Gmail's one Skip, once connecting: in the form's actions beside Save, not above (#808)."""
+    expect(skip(tab, "gmail")).to_have_count(1)
+    expect(tab.locator("#gmail-form .actions").get_by_role("button", name=text(
+        "source.skip", source=text("source.gmail")))).to_be_visible()
+    expect(tab.locator("#gmail-start")).to_be_hidden()
 
 
 def sign_in_to_gmail(tab, password: str) -> None:
@@ -953,7 +964,11 @@ def test_each_source_a_family_can_do_without_offers_skip_beside_its_main_button(
     expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(1)
     connect.click()
     expect(button(tab, "gmail.save")).to_be_visible()
-    expect(skip_gmail).to_be_visible()
+    # Then the Skip is beside Save, and no longer above the form (#808).
+    expect(skip_gmail).to_be_hidden()
+    form = tab.locator("#gmail-form .actions")
+    expect(form.get_by_role("button", name=text("source.skip", source="Gmail"))).to_be_visible()
+    expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(1)
     sign_in_to_gmail(tab, TYPED)
     expect(source_listed(tab, "gmail", "done")).to_be_visible()
     expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(0)
@@ -1084,11 +1099,17 @@ def test_the_google_password_opens_the_fold_with_the_2_step_verification_button(
     expect(tab.locator("#gmail-unavailable")).to_have_attribute("open", "")
     expect(tab.get_by_text(text("gmail.unavailable.two-step"))).to_be_visible()
     expect(button(tab, "gmail.two-step")).to_be_visible()
-    expect(skip(tab, "gmail")).to_be_visible()
+    # #808: the way out is beside Save, near the message, the only Skip shown.
+    gmail_skip_beside_save(tab)
 
     button(tab, "gmail.two-step").click()
 
     wait_for(lambda: family.desktop.opened == [setup_gmail.TWO_STEP_URL])
+
+    skip(tab, "gmail").click()
+
+    expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
+    assert json.loads(progress_file(family).read_text())["sources"]["gmail"] == "skipped"
 
 
 def test_each_language_is_offered_by_its_own_name_and_the_list_follows_a_switch(tab):
