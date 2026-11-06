@@ -121,6 +121,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                                       |
 | `test_ai_filter_report.py`        | `parent-recap ai-filter-report` over an archive                                         |
 | `test_schedule_run_now.py`        | `schedule run-now`                                                                      |
+| `test_schedule_update.py`         | An update installs the evening job again and moves an older version's wake              |
 | `test_without_google_packages.py` | Everything but google mode runs without Google's packages                               |
 
 The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights.py`.
