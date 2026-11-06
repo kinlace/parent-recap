@@ -1,5 +1,7 @@
 # /etc/sudoers.d/parent-recap-signup (root, mode 0440): what the sign-up service's user may run
-# (ADR 0031). As root, only the helper that adds and removes a Household's user. As a Household's
+# (ADR 0031). As root, only the helper that adds and removes a Household's user, and `admin
+# signed-up`, which mails the maintainers of a new Household (#814): admin takes only a
+# Household's label there, so the `*` lets in nothing else. As a Household's
 # user, a member of parent-recap-households, only the commands the service runs, with exactly
 # these arguments (#645): the shared program (ADR 0035) to write its config, send its first Brief,
 # read its status and remove its evening jobs. So the service can't read the files that hold a
@@ -8,6 +10,7 @@
 # Brief. A `*` in a path stays within one folder's name.
 # app/tests/adapters/test_household_host_linux.py reads these rules; keep one command a line.
 parent-recap-signup ALL=(root) NOPASSWD: /usr/local/lib/parent-recap-signup/household-user
+parent-recap-signup ALL=(root) NOPASSWD: /usr/local/sbin/admin signed-up ph-*
 parent-recap-signup ALL=(%parent-recap-households) NOPASSWD: /usr/local/lib/parent-recap/bin/parent-recap signup household
 parent-recap-signup ALL=(%parent-recap-households) NOPASSWD: /usr/local/lib/parent-recap/bin/parent-recap run --first-brief --lookback-hours 72
 parent-recap-signup ALL=(%parent-recap-households) NOPASSWD: /usr/local/lib/parent-recap/bin/parent-recap signup health

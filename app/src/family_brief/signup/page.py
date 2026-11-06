@@ -19,6 +19,9 @@ TEXT = {
         "title": "Sign up for Parent Recap",
         "intro": "Parent Recap reads your children's Wilma every evening and emails you a short "
                  "Brief of what matters. Sign in to Wilma once here, and we do the rest.",
+        "name": "What should we call you?",
+        "name_hint": "A name for your family, such as Leo or 黄天茵. Only the people who run Parent "
+                     "Recap see it, so they know who signed up.",
         "wilma": "Wilma",
         "town": "Town",
         "town_hint": "Type your town in Finnish, such as Espoo, and pick it from the list.",
@@ -89,6 +92,7 @@ TEXT = {
         "no-kids": "This Wilma account has no children in it. Sign in with a guardian's account.",
         "sign-in-failed": "Wilma couldn't be reached just now, so nothing was kept. Try again in "
                           "a while.",
+        "invalid-name": "Write a name we can call you, such as Leo. An email address won't do.",
         "invalid-town": "Pick your town from the list.",
         "invalid-sign-in": "Fill in the Wilma username and password, or your children's names "
                            "if you don't have Wilma.",
@@ -149,6 +153,9 @@ TEXT = {
         "intro": "Parent Recap lukee lastesi Wilman joka ilta ja lähettää sinulle sähköpostilla "
                  "lyhyen koosteen siitä, mikä on tärkeää. Kirjaudu Wilmaan tässä kerran, niin me "
                  "hoidamme loput.",
+        "name": "Millä nimellä voimme kutsua teitä?",
+        "name_hint": "Perheenne nimi, esimerkiksi Leo tai 黄天茵. Sen näkevät vain Parent Recapin "
+                     "ylläpitäjät, jotta he tietävät, kuka liittyi.",
         "wilma": "Wilma",
         "town": "Kunta",
         "town_hint": "Kirjoita kuntasi nimi suomeksi, esimerkiksi Espoo, ja valitse se listasta.",
@@ -224,6 +231,8 @@ TEXT = {
         "no-kids": "Tällä Wilma-tunnuksella ei ole lapsia. Kirjaudu huoltajan tunnuksella.",
         "sign-in-failed": "Wilmaan ei juuri nyt saatu yhteyttä, joten mitään ei tallennettu. "
                           "Yritä hetken päästä uudelleen.",
+        "invalid-name": "Kirjoita nimi, jolla voimme kutsua teitä, esimerkiksi Leo. "
+                        "Sähköpostiosoite ei käy.",
         "invalid-town": "Valitse kuntasi listasta.",
         "invalid-sign-in": "Täytä Wilman käyttäjätunnus ja salasana, tai lasten nimet, jos "
                            "teillä ei ole Wilmaa.",
@@ -284,6 +293,8 @@ TEXT = {
         "title": "开始使用 Parent Recap",
         "intro": "Parent Recap 每天晚上读取孩子的 Wilma，把重要的内容整理成一份简短的摘要发到你的邮箱。"
                  "在这里登录一次 Wilma，其余的交给我们。",
+        "name": "我们怎么称呼你？",
+        "name_hint": "你家的称呼，例如 Leo 或 黄天茵。只有 Parent Recap 的维护者能看到，用来知道是谁开通的。",
         "wilma": "Wilma",
         "town": "城市",
         "town_hint": "用芬兰语输入你所在的城市，例如 Espoo，然后在列表里选中它。",
@@ -338,6 +349,7 @@ TEXT = {
         "wrong-password": "Wilma 没有接受这个用户名和密码。请检查后再试一次。",
         "no-kids": "这个 Wilma 账号下没有孩子。请用家长（监护人）的账号登录。",
         "sign-in-failed": "现在连不上 Wilma，所以什么都没有保存。请过一会儿再试。",
+        "invalid-name": "请填写一个我们可以称呼你的名字，例如 Leo。不能是邮箱地址。",
         "invalid-town": "请从列表里选择你的城市。",
         "invalid-sign-in": "请填写 Wilma 用户名和密码；没有 Wilma 的话，填写孩子的名字。",
         "need-myclub": "没有 Wilma 时，请填一个 MyClub 日历链接，或者登录 Eepos 或 eVaka，这样摘要才有内容可读。",
@@ -413,6 +425,7 @@ STEPS = ("step_setup", "step_wilma", "step_brief")
 NO_WILMA_STEPS = ("step_setup", "step_myclub", "step_brief")  # a Household without Wilma (#760)
 MAX_KIDS = 6  # the names a family without Wilma may give
 MAX_CLUBS = 4  # the MyClub links one Kid may give, one per club (#810)
+MAX_NAME = 60  # what the family asks to be called (#814)
 REFRESH_SECONDS = 3
 
 
@@ -432,6 +445,7 @@ class Typed:
     username: str = ""
     recipients: list[Recipient] = field(default_factory=list)
     kids: list[str] = field(default_factory=list)  # the names given in place of Wilma
+    name: str = ""  # what the family asks to be called (#814)
 
 
 def form(language: str, typed: Typed, towns: list[str], error: str | None = None) -> str:
@@ -448,6 +462,10 @@ def form(language: str, typed: Typed, towns: list[str], error: str | None = None
 {f'<p class="error" role="alert">{escape(t[error])}</p>' if error else ''}
 <form method="post" autocomplete="on">
 <input type="hidden" name="lang" value="{language}">
+<label for="name">{escape(t['name'])}</label>
+<input id="name" name="name" autocomplete="off" maxlength="{MAX_NAME}" required
+ value="{escape(typed.name)}">
+<p class="hint">{escape(t['name_hint'])}</p>
 <h2>{escape(t['wilma'])}</h2>
 <label for="town">{escape(t['town'])}</label>
 <input id="town" name="town" list="towns" autocomplete="off" value="{escape(typed.town)}">

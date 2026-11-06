@@ -248,7 +248,7 @@ def test_help_lists_every_task_one_line_each(server, capsys):
     assert server.admin("--help") == 0
     out = capsys.readouterr().out
     for task in ("invite", "households", "keys", "cost", "key new", "key off", "key on", "find",
-                 "remove", "check", "household"):
+                 "remove", "check", "household", "signed-up"):
         assert sum(line.lstrip().startswith(task + " ") for line in out.splitlines()) == 1, task
 
 
@@ -968,3 +968,57 @@ def test_a_maintainer_address_email_delivery_refused_is_said(server, capsys):
 def test_check_takes_only_mail(server, capsys, args):
     assert server.admin("check", *args) == 2
     assert "usage" in capsys.readouterr().err
+
+
+# ── A new Household's mail (#814)
+
+def test_signed_up_mails_the_household_s_label_note_and_evening_and_nothing_else(server, capsys):
+    server.household("ph-0123abcd", ["parent@example.com"], note="via Zhao 2026-11-06 #3 · 黄天茵")
+
+    assert server.admin("signed-up", "ph-0123abcd") == 0
+
+    [(msg, _)] = server.smtp.sent
+    assert msg["Subject"] == "Parent Recap: a new Household, ph-0123abcd"
+    body = mail(server)
+    assert "ph-0123abcd (via Zhao 2026-11-06 #3 · 黄天茵)" in body and "21:00" in body
+    # Not from the Household's config: no address, no Kid, nothing it holds.
+    for kept in ("parent@example.com", "Mia", "do-not-print"):
+        assert kept not in body and kept not in "".join(capsys.readouterr())
+    assert server.ran == [] and server.checked == []  # read as root, nothing run
+    quota = json.loads((server.paths.relay_state / "quota.json").read_text())
+    assert quota["sent"] == 2  # counted in the relay's day, as the check's mail
+
+
+def test_signed_up_without_a_note_mails_the_label_alone(server):
+    server.household("ph-0123abcd", ["parent@example.com"])
+
+    assert server.admin("signed-up", "ph-0123abcd") == 0
+
+    assert "\nph-0123abcd\n" in mail(server)
+
+
+def test_signed_up_for_a_household_not_listed_mails_nobody(server, capsys):
+    server.household("ph-0123abcd", ["parent@example.com"])
+
+    assert server.admin("signed-up", "ph-99999999") == 1
+
+    assert server.smtp.sent == [] and "nobody was mailed" in capsys.readouterr().err
+
+
+def test_signed_up_whose_mail_email_delivery_refused_fails_and_says_why(server, capsys):
+    server.household("ph-0123abcd", ["parent@example.com"])
+    server.smtp.refuse = True
+
+    assert server.admin("signed-up", "ph-0123abcd") == 1
+
+    assert "the mail wasn't sent" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("args", [(), ("ph-0123abcd", "x"), ("ph-0123abcd --mail",),
+                                  ("../etc",), ("PH-0123ABCD",)])
+def test_signed_up_takes_one_household_s_label_only(server, capsys, args):
+    server.household("ph-0123abcd", ["parent@example.com"])
+
+    assert server.admin("signed-up", *args) == 2
+
+    assert server.smtp.sent == [] and "usage" in capsys.readouterr().err

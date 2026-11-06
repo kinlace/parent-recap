@@ -58,6 +58,7 @@ ESPOO_TOWN = "Espoo – Espoon kaupunki / Suomenkielisen opetuksen tulosyksikkö
 NOON = datetime(2026, 10, 30, 10, 0, tzinfo=timezone.utc)  # 12:00 in Helsinki
 MIA_LINK = "webcal://kilonpallo.myclub.fi/ical/mia-1001-token.ics"
 EEPOS_USERNAME = "parent@example.com"
+FAMILY = "Virtasen perhe"  # what the family asks to be called (#814)
 
 
 class Clock:
@@ -129,8 +130,8 @@ def request(url: str, path: str, method: str = "GET", fields: dict[str, str] | N
 
 
 def sign_in(s: SignUp, code: str, **fields: str) -> Response:
-    """The page's first step: the Wilma sign-in and the Recipients."""
-    answers = {"lang": "en", "town": ESPOO_TOWN, "username": "mia.parent",
+    """The page's first step: what to call the family, the Wilma sign-in and the Recipients."""
+    answers = {"lang": "en", "name": FAMILY, "town": ESPOO_TOWN, "username": "mia.parent",
                "password": WILMA_PASSWORD, "r0": "parent@example.com", "r0_language": "fi",
                "r1": "", "r1_language": "en"} | fields
     return request(s.url, f"/join/{code}", "POST", answers)
@@ -333,7 +334,8 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     assert not list((user.home / ".family" / "wilma-runs").iterdir())
     # Listed, without the family's addresses, and the link retired with its Recipients.
     [household] = signup.store.households()
-    assert (household.user, household.evening, household.note) == (name, "21:00", "")
+    # Its note is the name the family gave, as its link had none (#814).
+    assert (household.user, household.evening, household.note) == (name, "21:00", FAMILY)
     assert "parent@example.com" not in (signup.store.folder / "households.json").read_text()
     assert not list((signup.store.folder / "invites").iterdir())
     # The password and the key: on no command line, in no log or output, in no page.
@@ -355,7 +357,91 @@ def test_the_maintainers_note_goes_to_the_household_s_record_and_never_to_the_fa
     assert r.status == 200, text(r)
     assert "Zhao Hanbo" not in shown and "Zhao Hanbo" not in text(r)
     [household] = signup.store.households()
-    assert household.note == "Zhao Hanbo, test family"
+    assert household.note == f"Zhao Hanbo, test family · {FAMILY}"  # with its name (#814)
+
+
+# ── What the family is called, and the maintainers told (#814)
+
+@pytest.mark.parametrize("language", ["fi", "en", "zh"])
+def test_the_page_asks_what_to_call_the_family_and_says_only_the_maintainers_see_it(
+        signup, language):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    html = text(request(signup.url, f"/join/{code}?lang={language}"))
+
+    assert f'<label for="name">{said(language, "name")}</label>' in html
+    assert re.search(r'<input id="name" name="name"[^>]* required', html)
+    assert said(language, "name_hint") in html
+    assert html.index('id="name"') < html.index('id="town"')  # first, before Wilma
+
+
+@pytest.mark.parametrize("language", ["fi", "en", "zh"])
+@pytest.mark.parametrize("name", ["", "   ", "leo@example.com"])
+def test_a_sign_up_without_a_name_is_refused_and_keeps_what_was_typed(signup, language, name):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    r = sign_in(signup, code, name=name, lang=language, r1="partner@example.com")
+
+    assert r.status == 400
+    html = text(r)
+    assert said(language, "invalid-name") in html
+    assert f'value="{ESPOO_TOWN}"' in html and 'value="mia.parent"' in html
+    assert 'value="parent@example.com"' in html and 'value="partner@example.com"' in html
+    assert WILMA_PASSWORD not in html
+    assert (signup.host.users, signup.host.keys, signup.host.told) == ({}, {}, [])
+    assert request(signup.url, f"/join/{code}").status == 200  # the link still works
+
+
+def test_a_name_that_won_t_do_is_shown_again_to_be_mended(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    html = text(sign_in(signup, code, name="leo@example.com"))
+
+    assert '<input id="name" name="name"' in html and 'value="leo@example.com"' in html
+
+
+def test_the_name_is_kept_on_one_line_and_short(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"), note="via Zhao 2026-11-06 #3")
+
+    assert submit(signup, code, name="  黄天茵\n " + "x" * 100).status == 200
+
+    [household] = signup.store.households()
+    assert household.note == "via Zhao 2026-11-06 #3 · 黄天茵 " + "x" * 56  # 60 in all
+
+
+def test_the_maintainers_are_told_of_each_household_made_and_only_its_label(signup):
+    for n in range(2):
+        code = signup.invite(Recipient(f"parent{n}@example.com", "fi"))
+        assert submit(signup, code).status == 200
+
+    assert signup.host.told == [h.user for h in signup.store.households()]
+    assert len(set(signup.host.told)) == 2
+
+
+def test_a_sign_up_that_fails_tells_the_maintainers_nothing(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    signup.host.fails = "mint_key"
+
+    assert submit(signup, code).status == 500
+
+    assert signup.host.told == []
+
+
+def test_a_mail_to_the_maintainers_that_can_t_go_is_logged_and_the_household_stays_made(
+        signup, harness, caplog):
+    caplog.set_level(logging.DEBUG)
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+    signup.host.fails = "tell_maintainers"
+
+    r = submit(signup, code)
+
+    assert r.status == 200 and said("en", "sent", time="21:00") in text(r)
+    name, _ = signup.user()
+    assert [h.user for h in signup.store.households()] == [name]
+    assert signup.host.keys and harness.sent  # its key kept, its first Brief sent
+    assert not list((signup.store.folder / "invites").iterdir())  # its link retired
+    assert f"The maintainers weren't mailed of Household {name}" in caplog.text
+    assert "admin signed-up failed" in caplog.text
 
 
 @pytest.mark.parametrize("address", ["mia.mum@hotmail.com", "isa@outlook.com", "leo@hotmail.fi",
