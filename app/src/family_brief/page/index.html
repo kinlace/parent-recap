@@ -180,8 +180,9 @@
       <h2 data-text="source.gmail"></h2>
       <p data-text="gmail.explain"></p>
       <!-- Connect and Skip side by side, equally plain (#708): the App Password's steps show only
-           once the parent chooses to connect Gmail. -->
-      <div class="actions">
+           once the parent chooses to connect Gmail. Then this row goes, and Skip is beside Save,
+           where a parent reading why the password didn't work sees it (#808). -->
+      <div id="gmail-start" class="actions">
         <button type="button" id="gmail-connect" class="secondary" data-text="gmail.connect"></button>
         <button type="button" class="secondary" data-skip hidden></button>
       </div>
@@ -214,6 +215,7 @@
           <div class="slot" data-default></div>
           <div class="actions">
             <button type="submit" id="gmail-save" data-text="gmail.save"></button>
+            <button type="button" class="link" data-skip hidden></button>
           </div>
         </form>
         <details id="gmail-unavailable" class="more">
