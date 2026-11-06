@@ -68,25 +68,32 @@ def text(key: str, *, system: str = SYSTEM, language: str = "en", **values: Any)
 
 class Chromium:
     """Headless Chromium, one for the whole run while it lives. Should it die partway (#828: on a
-    Mac with no display session it can), the next test gets a fresh one, so the dead browser costs
-    only the test it died in."""
+    Mac with no display session it can), the next tab it can't open is opened in a fresh one, so
+    the dead browser costs only the test it died in. Its `is_connected()` can still say yes until
+    a call to it fails, so the failed call is what launches the fresh one."""
 
-    def __init__(self, playwright: Any) -> None:
-        self.playwright = playwright
-        self.browser = playwright.chromium.launch()
+    def __init__(self, launch: Callable[[], Any]) -> None:
+        self.launch = launch
+        self.browser = launch()
 
-    def connected(self) -> Any:
-        if not self.browser.is_connected():
-            self.browser = self.playwright.chromium.launch()
-        return self.browser
+    def new_context(self, **options: Any) -> Any:
+        try:
+            return self.browser.new_context(**options)
+        except PlaywrightError:
+            self.close()
+            self.browser = self.launch()
+            return self.browser.new_context(**options)
 
     def close(self) -> None:
-        if self.browser.is_connected():
+        try:
             self.browser.close()
+        except PlaywrightError:
+            pass  # it had died already
 
 
 @pytest.fixture(scope="session")
 def chromium() -> Iterator[Chromium]:
+    """Headless Chromium, one for the whole run, or launched again once it dies."""
     if not CAN_LISTEN:
         pytest.skip("no port can be listened on here (a sandbox), and the browser needs one")
     if sync_playwright is None:
@@ -94,7 +101,7 @@ def chromium() -> Iterator[Chromium]:
     expect.set_options(timeout=SLOW_MS)
     playwright = sync_playwright().start()
     try:
-        launched = Chromium(playwright)
+        launched = Chromium(playwright.chromium.launch)
     except PlaywrightError as e:
         playwright.stop()
         pytest.skip(f"Playwright has no Chromium (python -m playwright install --only-shell "
@@ -102,12 +109,6 @@ def chromium() -> Iterator[Chromium]:
     yield launched
     launched.close()
     playwright.stop()
-
-
-@pytest.fixture
-def browser(chromium) -> Any:
-    """The run's Chromium, launched again first if it has died since the last test."""
-    return chromium.connected()
 
 
 @pytest.fixture
@@ -132,11 +133,11 @@ def family(harness, wilma_cli, monkeypatch):  # noqa: F811
 
 
 @pytest.fixture
-def tab(browser, family, page):  # noqa: F811
+def tab(chromium, family, page):  # noqa: F811
     """The setup page, opened in a browser tab as the install line opens it. Once the test is done,
     nothing the page ran has thrown, so every text it showed exists, and it asked nothing of any
     address but its own server's."""
-    context = browser.new_context(locale="en-US")
+    context = chromium.new_context(locale="en-US")
     opened = context.new_page()
     thrown: list[str] = []
     elsewhere: list[str] = []
@@ -312,14 +313,38 @@ def at_the_ai_step(tab, harness, name: str, system: str) -> None:
 # ── The tests
 
 
-def test_a_browser_that_died_mid_run_is_launched_again_for_the_next_test(chromium):
-    """#828: Chromium closed partway through a run cost every later test, not just its own."""
-    dead = chromium.connected()
-    dead.close()  # as if it had crashed: the next test asks for a browser all the same
-    assert not dead.is_connected()
-    again = chromium.connected()
-    assert again.is_connected()
-    again.new_context().close()
+def test_a_browser_that_died_mid_run_is_launched_again_for_the_next_test():
+    """#828: Chromium closed partway through a run cost every later test, not just its own. Its
+    browsers here are stand-ins, since what is tested is only when a fresh one is launched."""
+    if sync_playwright is None:
+        pytest.skip("Playwright isn't installed: pip install -c constraints.txt -e '.[test]'")
+
+    class Browser:
+        alive = True
+
+        def new_context(self, **options: Any) -> dict[str, Any]:
+            if not self.alive:
+                raise PlaywrightError("Browser.new_context: Target page, context or browser "
+                                      "has been closed")
+            return options
+
+        def close(self) -> None:
+            if not self.alive:
+                raise PlaywrightError("Browser.close: Target closed")
+
+    launched: list[Browser] = []
+
+    def launch() -> Browser:
+        launched.append(Browser())
+        return launched[-1]
+
+    chromium = Chromium(launch)
+    assert chromium.new_context(locale="en-US") == {"locale": "en-US"}
+    launched[0].alive = False  # it crashed during that test
+    assert chromium.new_context(locale="en-US") == {"locale": "en-US"}
+    assert chromium.new_context(locale="fi-FI") == {"locale": "fi-FI"}
+    assert len(launched) == 2  # one fresh browser, kept for the tests after
+    chromium.close()
 
 
 def test_a_family_goes_from_the_language_to_finish_in_the_browser(tab):
