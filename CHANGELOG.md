@@ -2,6 +2,12 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## 0.13.1 · 2026-11-06
+
+### Added
+
+- The hosted sign-up page first asks what to call you: a short name of your choosing, such as "the Virtanens" or "Mia's mum", that only the maintainers see, so they know who signed up.
+
 ## 0.13.0 · 2026-11-06
 
 ### Added
