@@ -160,6 +160,7 @@ def test_a_night_with_only_held_back_messages_still_sends_a_brief_that_lists_the
         f"• Wilma · Opettaja Virtanen · Välituntitilanne · {WILMA_TENANT}/!7731905/messages/812\n\n"
         "📥 Read tonight: Gmail 0 messages · MyClub 0 events · Wilma 1 message · WhatsApp 0 messages\n\n"
         "Parent Recap, running on your own computer\n"
+        "Change settings: https://github.com/kinlace/parent-recap/blob/stable/README.md#change-settings\n"
         "This email comes from an address nobody reads. To reply, write to parent@example.com, "
         "who set up Parent Recap.")
     assert f"message:{WILMA_TAG}:812" in harness.state()["seen_message_ids"]["wilma"]  # not listed again tomorrow

@@ -59,6 +59,16 @@ Your own Claude or ChatGPT writes the Brief. Before anything leaves your compute
 
 This cuts down what the AI gets and guarantees nothing: the rest of each message still reaches it. Claude and ChatGPT process it in the US, and by default may use it to train their models. Turn that off under "Help improve Claude" in Claude's Settings > Privacy, or "Improve the model for everyone" in ChatGPT's Settings > Data controls. The details are in [What the AI sees](docs/config.md#what-the-ai-sees).
 
+## FAQ
+
+<a id="change-settings"></a>
+
+### How do I change a setting later?
+
+Paste the install line from [Install](#install) again: in Terminal on a Mac, in PowerShell on Windows. The setup page opens, and there you change who gets the Brief, its time, the WhatsApp groups and the Sources. Your settings are kept.
+
+Or, in Claude Code type `/parent-recap:manage`, in Codex `$parent-recap-manage`, or just say what you want to change.
+
 ## Thanks
 
 Parent Recap reads Wilma through Antti Karjalainen's [wilma CLI](https://github.com/aikarjal/wilmai) (WilmAI), free and open source under MIT. Without it there would be no Wilma in the Brief.

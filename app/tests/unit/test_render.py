@@ -4,6 +4,7 @@ make. The Briefs are the nights' model replies (nights.py) with the Sources thei
 from __future__ import annotations
 
 import copy
+import dataclasses
 import html
 from datetime import timezone
 from types import SimpleNamespace
@@ -197,7 +198,8 @@ def test_a_night_nothing_could_be_read_says_to_pair_again():
                                        [(t, [PARENT])], None, []))
 
     assert mail.text.endswith("\n• WhatsApp: needs a new pairing. Tell Claude “pair WhatsApp again” to fix it."
-                              "\n\nParent Recap, running on your own computer")
+                              "\n\nParent Recap, running on your own computer\nChange settings: "
+                              "https://github.com/kinlace/parent-recap/blob/stable/README.md#change-settings")
 
 
 def fallback(t: BriefText) -> Brief:
@@ -314,9 +316,43 @@ def test_every_kind_of_brief_ends_saying_which_version_sent_it(language, hosted,
     other = t.runs_on_own_computer if hosted else t.runs_hosted
 
     for kind, (text, page) in every_kind(t, hosted).items():
-        assert text.rsplit("\n\n", 1)[1].startswith(line + "\n" + t.unread_sender.format(address=PARENT)), kind
+        end = text.rsplit("\n\n", 1)[1]
+        assert end.startswith(line + "\n"), kind
+        assert end.endswith("\n" + t.unread_sender.format(address=PARENT)), kind
         assert f"<p style='color:#888;font-size:12px'>{html.escape(line)}</p>" in page, kind
         assert other not in text and html.escape(other) not in page, kind
+
+
+@pytest.mark.parametrize("language, label, readme", [
+    ("en", "Change settings", "README.md"),
+    ("zh", "修改设置", "README.zh-CN.md"),
+    ("fi", "Muuta asetuksia", "README.fi.md"),
+])
+def test_a_brief_from_the_family_computer_links_how_to_change_settings_in_its_language(language, label, readme):
+    t = TEXT[language]
+    url = f"https://github.com/kinlace/parent-recap/blob/stable/{readme}#change-settings"
+
+    for kind, (text, page) in every_kind(t, hosted=False).items():
+        end = text.rsplit("\n\n", 1)[1].splitlines()
+        assert end[:2] == [t.runs_on_own_computer, f"{label}: {url}"], kind
+        assert (f"<p style='color:#888;font-size:12px'><a href=\"{url}\" style='color:#888;"
+                f"text-decoration:underline'>{html.escape(label)}</a></p>") in page, kind
+
+
+def test_a_hosted_brief_has_no_settings_link():
+    for language, t in TEXT.items():
+        for kind, (text, page) in every_kind(t, hosted=True).items():
+            assert "#change-settings" not in text and "#change-settings" not in page, (language, kind)
+            assert t.change_settings not in text and t.change_settings not in page, (language, kind)
+
+
+def test_a_brief_in_an_unreviewed_language_links_the_english_readme():
+    t = dataclasses.replace(TEXT["en"], language_name="Svenska", change_settings="Ändra inställningar")
+
+    text, page = every_kind(t, hosted=False)["normal"]
+
+    url = "https://github.com/kinlace/parent-recap/blob/stable/README.md#change-settings"
+    assert f"Ändra inställningar: {url}" in text and f'href="{url}"' in page
 
 
 def test_the_imessage_is_the_plain_text_brief_in_the_brief_language(golden):

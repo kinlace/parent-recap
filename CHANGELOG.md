@@ -4,6 +4,10 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+### Added
+
+- A Brief from your own computer ends with a "Change settings" link to the README's new FAQ, in the Brief's language, which says how to change who gets the Brief, its time, the WhatsApp groups or the Sources later: paste the install line again, or ask Claude Code or Codex. A hosted family's Brief has no such link.
+
 ### Changed
 
 - The setup page's WhatsApp step says where Linked devices is on an iPhone, under the You tab (Android: Settings), and says to scan the code with the scanner that Link a device opens, not the camera in a chat, in English, Chinese and Finnish. Turning WhatsApp off and uninstall name the You tab too, where they tell you to remove Parent Recap from Linked devices.
