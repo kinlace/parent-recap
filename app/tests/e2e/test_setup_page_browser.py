@@ -559,10 +559,10 @@ def test_welcome_answers_which_browser_and_what_the_partner_s_address_is_for_fol
 
     tab.get_by_role("radio", name=text("welcome.partner.add")).check()
 
-    asked_and_closed(tab.locator("#partner-details"), "welcome.partner.why.more",
-                     "welcome.partner.why")
-    tab.get_by_text(text("welcome.partner.why.more")).click()
-    expect(tab.get_by_text(text("welcome.partner.why"), exact=True)).to_be_visible()
+    partner = tab.locator("#partner-details")
+    asked_and_closed(partner, "welcome.partner.why.more", "welcome.partner.why")
+    partner.get_by_text(text("welcome.partner.why.more"), exact=True).click()
+    expect(partner.get_by_text(text("welcome.partner.why"), exact=True)).to_be_visible()
 
 
 def test_recipients_added_in_the_chat_are_rows_the_page_changes(tab, family):
