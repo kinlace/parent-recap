@@ -555,7 +555,8 @@ def test_welcome_answers_which_browser_and_what_the_partner_s_address_is_for_fol
     # #823: a tester thought the browser's Google account and her second address mattered.
     in_english(tab)
     asked_and_closed(tab.locator("#welcome-form"), "welcome.browser.more", "welcome.browser")
-    expect(tab.get_by_text(text("welcome.partner.why.more"))).to_be_hidden()
+    tab.get_by_role("radio", name=text("welcome.partner.only-me")).check()
+    expect(tab.get_by_text(text("welcome.partner.why.more"))).to_be_hidden()  # with the field
 
     tab.get_by_role("radio", name=text("welcome.partner.add")).check()
 
