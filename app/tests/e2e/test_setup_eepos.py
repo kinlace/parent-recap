@@ -89,9 +89,11 @@ def test_nothing_typed_at_the_prompt_saves_nothing(harness, portal, capsys):
 
 
 @pytest.mark.parametrize("args, result", [
-    (("--school", "emo.example.fi", "--username", USERNAME), "not-a-school"),
+    (("--school", "e mo", "--username", USERNAME), "not-a-school"),
+    (("--school", "www.espoonkuvis.fi", "--username", USERNAME), "school-website"),
+    (("--school", "https://www.espoonkuvis.fi/", "--username", USERNAME), "school-website"),
     (("--school", "emo", "--username", " "), "no-username"),
-], ids=["not-eepos", "no-username"])
+], ids=["not-eepos", "website", "website-link", "no-username"])
 def test_what_isn_t_a_sign_in_is_refused_before_the_password_is_asked(harness, portal, capsys, args, result):
     code, out = setup_eepos(harness, capsys, *args)
 
@@ -236,9 +238,11 @@ def test_a_wrong_password_on_the_page_is_refused_and_keeps_the_one_that_works(ha
 
 
 @pytest.mark.parametrize("change, result", [
-    ({"school": "emo.example.fi"}, "not-a-school"),
+    ({"school": "e mo"}, "not-a-school"),
+    ({"school": "www.espoonkuvis.fi"}, "school-website"),
+    ({"school": "https://www.espoonkuvis.fi/"}, "school-website"),
     ({"username": " "}, "no-username"),
-], ids=["not-eepos", "no-username"])
+], ids=["not-eepos", "website", "website-link", "no-username"])
 def test_what_isn_t_a_sign_in_is_refused_without_signing_in(harness, page, portal, change, result):
     at_the_eepos_step(harness)
 

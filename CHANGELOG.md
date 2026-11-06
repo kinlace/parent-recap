@@ -7,6 +7,7 @@ What changes for families in each release, collected from the `What changes for 
 ### Changed
 
 - The setup page's WhatsApp step says where Linked devices is on an iPhone, under the You tab (Android: Settings), and says to scan the code with the scanner that Link a device opens, not the camera in a chat, in English, Chinese and Finnish. Turning WhatsApp off and uninstall name the You tab too, where they tell you to remove Parent Recap from Linked devices.
+- The Eepos school field, on the setup page and the hosted sign-up page, asks for the address in the browser on the school's Eepos sign-in page, such as espoo.eepos.fi, not the school's own website. A school's website typed there, such as www.espoonkuvis.fi, is said to be one, with where to copy the Eepos address from instead, in English, Finnish and Chinese.
 
 ## 0.13.1 · 2026-11-06
 
