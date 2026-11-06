@@ -1,7 +1,8 @@
 """`admin deploy` (ops/gateway/admin, #743, ADR 0036): a release tag, main or a commit on main is
 fetched from the repo, which is a real git repo under tmp_path here, and anything else is refused
 before anything changes; an unreleased commit only once its `test` check passed on GitHub, faked
-here; never while an evening run is due or running, or `admin households` marks a Household,
+here, or, while its own is missing or running, that of its PR's head with the same code built on
+main as it was when the PR landed (#818); never while an evening run is due or running, or `admin households` marks a Household,
 unless --anyway; each deploy kept under its commit and recorded, which `admin households` says;
 and checked after it is installed. gateway-setup.sh, systemctl, sudo and HTTP are faked."""
 from __future__ import annotations
