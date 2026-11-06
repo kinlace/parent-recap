@@ -2,6 +2,7 @@
 macOS's administrator dialog, so the Mac password never reaches the program."""
 from __future__ import annotations
 
+import dataclasses
 import re
 import subprocess
 
@@ -63,9 +64,7 @@ def _wakes(hour: int, minute: int) -> wake.WakeStatus:
 
 
 def status(hour: int, minute: int) -> wake.WakeStatus:
-    never = _never_sleeps()
-    found = _wakes(hour, minute)
-    return wake.WakeStatus(found.ours, found.others, never, found.old)
+    return dataclasses.replace(_wakes(hour, minute), never_sleeps=_never_sleeps())
 
 
 def _pmset_wake(hour: int, minute: int) -> str:
