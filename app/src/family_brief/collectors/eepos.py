@@ -89,12 +89,25 @@ class Student:
         return (self.first_name.split() or [self.nickname or self.called()])[0]
 
 
+def _host(text: str) -> str:
+    """The host of an address or a link typed or pasted, or the text itself when it has none."""
+    return re.sub(r"^[a-z]+://", "", text.strip().lower()).split("/", 1)[0]
+
+
 def school_of(text: str) -> str | None:
     """The school's own part of its Eepos address, `emo` for emo.eepos.fi, from that part, the
     address or a link into it; None when it isn't one."""
-    host = re.sub(r"^[a-z]+://", "", text.strip().lower()).split("/", 1)[0]
+    host = _host(text)
     school = host[:-len(DOMAIN) - 1] if host.endswith("." + DOMAIN) else host
     return school if re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", school) else None
+
+
+def is_website(text: str) -> bool:
+    """Whether `text` is the address of a site that isn't an Eepos school's, such as the school's
+    own website (www.espoonkuvis.fi), given where its Eepos address was asked for (#822)."""
+    host = _host(text)
+    return (not host.endswith("." + DOMAIN)
+            and re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", host) is not None)
 
 
 def address(school: str) -> str:

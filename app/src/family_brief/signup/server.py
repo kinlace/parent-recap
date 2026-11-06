@@ -421,7 +421,7 @@ def _eepos(kids: list[str], school_typed: str, username: str,
         return "eepos-incomplete", None
     school = eepos.school_of(school_typed)
     if school is None:
-        return "eepos-not-a-school", None
+        return "eepos-school-website" if eepos.is_website(school_typed) else "eepos-not-a-school", None
     try:
         checked = setup_eepos.check(Config(kids=[Kid(name=k) for k in kids]),
                                     EeposSignin(school=school, username=username), password)

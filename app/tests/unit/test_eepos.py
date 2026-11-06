@@ -22,6 +22,15 @@ def test_a_school_is_the_part_of_its_address_before_eepos_fi(given, school):
     assert eepos.school_of(given) == school
 
 
+@pytest.mark.parametrize("given, website", [
+    ("www.espoonkuvis.fi", True), ("https://www.espoonkuvis.fi/", True), ("emo.example.fi", True),
+    ("espoo", False), ("xyz", False), ("e mo", False), ("espoo.eepos.fi", False),
+    ("https://espoo.eepos.fi/#/splash", False), ("-emo.eepos.fi", False), ("", False),
+])
+def test_an_address_elsewhere_than_eepos_is_a_website(given, website):
+    assert eepos.is_website(given) is website
+
+
 def test_a_sign_in_s_secret_is_named_after_its_school_and_username_never_with_them():
     name = eepos.secret_name("emo", "Parent@Example.fi")
 

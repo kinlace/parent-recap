@@ -61,6 +61,10 @@ def add(path: Path, school_given: str, username: str) -> tuple[str, str | None, 
         return "bad-config", (f"The config at {path} can't be read. Run {program()} doctor, fix "
                               "what it names, then run this again."), {}
     school = eepos.school_of(school_given)
+    if school is None and eepos.is_website(school_given):
+        return "school-website", ("That looks like the school's website. Copy the address from "
+                                  "the browser on the school's Eepos sign-in page instead: it ends "
+                                  "in .eepos.fi, such as espoo.eepos.fi."), {}
     if school is None:
         return "not-a-school", ("That isn't an Eepos school's address. Give the part before "
                                 ".eepos.fi, such as emo for emo.eepos.fi."), {}

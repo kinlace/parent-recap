@@ -859,7 +859,9 @@ def test_a_wrong_eepos_password_is_said_and_nothing_is_made(signup, emo, caplog,
 
 @pytest.mark.parametrize("fields, answer, error", [
     ({"eepos_password": ""}, None, "eepos-incomplete"),
-    ({"eepos_school": "emo.example.com"}, None, "eepos-not-a-school"),
+    ({"eepos_school": "e mo"}, None, "eepos-not-a-school"),
+    ({"eepos_school": "www.espoonkuvis.fi"}, None, "eepos-school-website"),
+    ({"eepos_school": "https://www.espoonkuvis.fi/"}, None, "eepos-school-website"),
     ({}, (200, ")]}',\n{}"), "eepos-changed"),
     ({}, (502, "Bad gateway"), "eepos-no-answer"),
     ({}, eepos.requests.ConnectionError("no route"), "eepos-no-answer"),
@@ -877,6 +879,20 @@ def test_an_eepos_sign_in_that_won_t_do_is_said_and_nothing_is_made(
     assert said("en", error) in text(r)
     assert 'name="step" value="myclub"' in text(r)
     assert (signup.host.users, signup.host.keys) == ({}, {})
+
+
+@pytest.mark.parametrize("lang", ["en", "fi", "zh"])
+def test_a_school_s_website_given_for_its_eepos_address_is_said_in_the_family_s_language(
+        signup, emo, lang):
+    code = signup.invite(Recipient("parent@example.com", lang))
+    sign_in(signup, code, lang=lang)
+
+    r = links(signup, code, "", "", lang=lang, **EEPOS | {"eepos_school": "www.espoonkuvis.fi"})
+
+    html = text(r)
+    assert said(lang, "eepos-school-website") in html and said(lang, "eepos_school_hint") in html
+    assert said(lang, "eepos-not-a-school") not in html
+    assert emo.requests == [] and (signup.host.users, signup.host.keys) == ({}, {})
 
 
 # ── eVaka (#790)

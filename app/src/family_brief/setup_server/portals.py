@@ -26,10 +26,11 @@ from ..system import secrets
 from .context import Action, Phase, add_kid, keychain_code
 
 # What adding a sign-in can say, as `setup eepos` and `setup evaka` do, besides the place given
-# not being one: `not-a-school` or `not-a-city`.
+# not being one: `not-a-school` (or `school-website`, a site's address instead of its Eepos's)
+# or `not-a-city`.
 SIGNIN_RESULTS = ("saved", "no-username", "wrong-password", "changed", "no-answer",
                   "keychain-not-reachable", "not-stored", "save-failed")
-EEPOS_RESULTS = (*SIGNIN_RESULTS, "not-a-school")
+EEPOS_RESULTS = (*SIGNIN_RESULTS, "not-a-school", "school-website")
 EVAKA_RESULTS = (*SIGNIN_RESULTS, "not-a-city")
 
 # The cities on eVaka's own code as the family knows them, by the name the config keeps.
@@ -109,7 +110,7 @@ class _SignIns(Phase):
         answer = parse(self.SignIn, raw)
         place = self.of(getattr(answer, self.place))
         if place is None:
-            return HTTPStatus.OK, {"result": f"not-a-{self.place}"}
+            return HTTPStatus.OK, {"result": self.not_one(getattr(answer, self.place))}
         username = answer.username.strip()
         if not username:
             return HTTPStatus.OK, {"result": "no-username"}
@@ -213,6 +214,10 @@ class _SignIns(Phase):
         """The school or city as the config keeps it, from what the family typed or picked."""
         raise NotImplementedError
 
+    def not_one(self, given: str) -> str:
+        """Why what the family typed or picked, which `of` takes for none, isn't a school or city."""
+        return f"not-a-{self.place}"
+
 
 def _kids(cfg: Config, matched: dict[str, str]) -> list[str]:
     """The Household's Kids a sign-in's students or children matched, in the Kids' order."""
@@ -230,6 +235,9 @@ class Eepos(_SignIns):
 
     def of(self, given: str) -> str | None:
         return eepos.school_of(given)
+
+    def not_one(self, given: str) -> str:
+        return "school-website" if eepos.is_website(given) else super().not_one(given)
 
 
 class Evaka(_SignIns):

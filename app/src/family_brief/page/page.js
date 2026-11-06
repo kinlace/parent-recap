@@ -896,7 +896,8 @@ const FAILED = [
     "no-username", "wrong-password", "changed", "no-answer", "keychain-not-reachable",
     "not-stored", "save-failed",
   ].map((result) => `${name}.${result}`)),
-  "eepos.not-a-school", "evaka.not-a-city", "eepos.kid-exists", "evaka.kid-exists",
+  "eepos.not-a-school", "eepos.school-website", "evaka.not-a-city", "eepos.kid-exists",
+  "evaka.kid-exists",
   "whatsapp.failed", "whatsapp.no-library",
   "open.not-opened", "open.app-not-opened",
 ];

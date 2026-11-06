@@ -59,8 +59,9 @@ TEXT = {
                       "with your Eepos username and password, and their lessons, concerts and "
                       "holidays come in the Brief too. Leave it empty to skip.",
         "eepos_school": "School",
-        "eepos_school_hint": "The start of the school's Eepos address, such as emo for "
-                             "emo.eepos.fi.",
+        "eepos_school_hint": "The address in your browser when you sign in to the school's "
+                             "Eepos, such as espoo.eepos.fi (not the school's own website). "
+                             "Pasting the whole address works too.",
         "eepos_username": "Eepos username",
         "eepos_password": "Eepos password",
         "eepos_password_hint": "It is kept only on our server, to read Eepos for you.",
@@ -111,6 +112,9 @@ TEXT = {
                             "leave all three empty.",
         "eepos-not-a-school": "That isn't an Eepos school. Give the start of its address, such as "
                               "emo for emo.eepos.fi.",
+        "eepos-school-website": "That looks like the school's website. Copy the address from your "
+                                "browser on the school's Eepos sign-in page instead: it ends in "
+                                ".eepos.fi, such as espoo.eepos.fi.",
         "eepos-wrong-password": "Eepos didn't accept that username and password. Check them and "
                                 "try again. If you sign in to Eepos by an emailed link, first set "
                                 "a password with \"Forgot your password?\" on the school's Eepos "
@@ -196,8 +200,9 @@ TEXT = {
                       "lomat tulevat myös koosteeseen. Jätä kentät tyhjiksi, jos et tarvitse "
                       "sitä.",
         "eepos_school": "Koulu",
-        "eepos_school_hint": "Koulun Eepos-osoitteen alku, esimerkiksi emo, kun osoite on "
-                             "emo.eepos.fi.",
+        "eepos_school_hint": "Osoite selaimesi osoiterivillä, kun kirjaudut koulun Eepokseen, "
+                             "esimerkiksi espoo.eepos.fi (ei koulun omaa verkkosivua). Koko "
+                             "osoitteen voi myös liittää.",
         "eepos_username": "Eepoksen käyttäjätunnus",
         "eepos_password": "Eepoksen salasana",
         "eepos_password_hint": "Se säilytetään vain palvelimellamme, jotta voimme lukea Eeposta "
@@ -251,6 +256,9 @@ TEXT = {
                             "tyhjiksi.",
         "eepos-not-a-school": "Tämä ei ole Eepos-koulu. Anna osoitteen alku, esimerkiksi emo, kun "
                               "osoite on emo.eepos.fi.",
+        "eepos-school-website": "Tämä näyttää koulun verkkosivulta. Kopioi sen sijaan osoite "
+                                "selaimesta koulun Eepos-kirjautumissivulta: se päättyy "
+                                ".eepos.fi, esimerkiksi espoo.eepos.fi.",
         "eepos-wrong-password": "Eepos ei hyväksynyt käyttäjätunnusta ja salasanaa. Tarkista ne "
                                 "ja yritä uudelleen. Jos kirjaudut Eepokseen sähköpostilinkillä, "
                                 "aseta ensin salasana koulun Eepos-kirjautumissivulla salasanan "
@@ -325,7 +333,8 @@ TEXT = {
         "eepos_hint": "如果孩子在使用 Eepos 的音乐或艺术学校上课，用你的 Eepos 用户名和密码登录，"
                       "课程、音乐会和假期也会出现在摘要里。不需要就留空。",
         "eepos_school": "学校",
-        "eepos_school_hint": "学校 Eepos 网址的开头部分，例如 emo.eepos.fi 就填 emo。",
+        "eepos_school_hint": "登录 Eepos 时浏览器地址栏里的网址，例如 espoo.eepos.fi（不是学校官网）。"
+                             "直接粘贴整个网址也可以。",
         "eepos_username": "Eepos 用户名",
         "eepos_password": "Eepos 密码",
         "eepos_password_hint": "它只保存在我们的服务器上，用来替你读取 Eepos。",
@@ -360,6 +369,8 @@ TEXT = {
         "same-link": "{kid}：这个链接和另一个孩子的一样。每个孩子都有自己的 MyClub 日历链接。",
         "eepos-incomplete": "Eepos 的学校、用户名和密码请都填上，或者都留空。",
         "eepos-not-a-school": "这不是 Eepos 学校。请填网址的开头部分，例如 emo.eepos.fi 就填 emo。",
+        "eepos-school-website": "这看起来是学校官网的网址。请改为复制学校 Eepos 登录页在浏览器地址栏里的"
+                                "网址，它以 .eepos.fi 结尾，例如 espoo.eepos.fi。",
         "eepos-wrong-password": "Eepos 没有接受这个用户名和密码。请检查后再试一次。如果你平时通过邮件里的"
                                 "链接登录 Eepos，请先在学校的 Eepos 登录页用“忘记密码”设置一个密码。",
         "eepos-changed": "Eepos 的回应 Parent Recap 看不懂，所以什么都没有保存。可以把 Eepos 留空先开通，"
