@@ -12,6 +12,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from test_admin import Server, admin
@@ -51,7 +52,16 @@ class Origin:
         git(self.path, "checkout", "-q", "-b", "feature")
         git(self.path, "commit", "-q", "--allow-empty", "-m", "three")
         self.branch = git(self.path, "rev-parse", "HEAD")
+        # The PR `unreleased` came from: built on v1.0.0, which was main then, with the same code.
+        # A rebase merge gave its commit another hash on main.
+        git(self.path, "checkout", "-q", "-b", "pr", self.release)
+        (self.path / "ops" / "gateway" / "gateway-setup.sh").write_text("# v1 and a fix\n")
+        git(self.path, "commit", "-qam", "two, on the PR")
+        self.pr_head = git(self.path, "rev-parse", "HEAD")
         git(self.path, "checkout", "-q", "main")
+
+    def tree(self, commit: str) -> str:
+        return git(self.path, "rev-parse", f"{commit}^{{tree}}")
 
 
 class FakeEdge:
@@ -62,6 +72,8 @@ class FakeEdge:
         self.server = server
         self.ran: list[tuple[list[str], dict]] = []
         self.checks: dict[str, list[dict]] = {}
+        self.pulls: dict[str, list[dict]] = {}  # by commit, the PRs it came from
+        self.down: list[str] = []  # parts of the API URLs that fail
         self.statuses: dict[str, int] = {}
         self.marked = False  # admin households marks a Household
         self.setup_fails = False
@@ -131,9 +143,24 @@ class FakeEdge:
                             Result=self.run_ends, ExecMainStatus="0" if self.run_ends ==
                             "success" else "1")
 
-    def github(self, url: str) -> dict:
+    def github(self, url: str) -> Any:
+        """GitHub's API for the origin repo: check runs and the PRs a commit came from as set,
+        commits and comparisons from the repo itself. A URL containing a part of `down` fails."""
         self.asked.append(url)
-        commit = url.split("/commits/")[1].split("/")[0]
+        if any(part in url for part in self.down):
+            raise OSError("HTTP Error 500: Internal Server Error")
+        path = url.removeprefix(self.server.paths.github_api).split("?")[0]
+        origin = Path(self.server.paths.repo_url)
+        if path.startswith("/git/commits/"):
+            commit = path.split("/")[-1]
+            return {"sha": commit, "tree": {"sha": git(origin, "rev-parse", f"{commit}^{{tree}}")}}
+        if path.startswith("/compare/"):
+            base, head = path.split("/")[-1].split("...")
+            return {"ahead_by": int(git(origin, "rev-list", "--count", f"{base}..{head}")),
+                    "behind_by": int(git(origin, "rev-list", "--count", f"{head}..{base}"))}
+        commit = path.split("/commits/")[1].split("/")[0]
+        if path.endswith("/pulls"):
+            return self.pulls.get(commit, [])
         return {"check_runs": self.checks.get(commit, [])}
 
     def http_status(self, url: str) -> int:
@@ -284,6 +311,116 @@ def test_github_not_answering_refuses_an_unreleased_commit(deploy, capsys):
     assert deploy("deploy", "main") == 1
     nothing_changed(deploy)
     assert "no route to host" in capsys.readouterr().err
+
+
+# ── A commit whose code passed `test` on its PR (#818)
+
+
+def from_pr(deploy, head: str | None = None, base: str = "main") -> str:
+    """`unreleased` came from a PR whose head is `head`, the PR head by default."""
+    head = head or deploy.origin.pr_head
+    deploy.fake.pulls[deploy.origin.unreleased] = [
+        {"number": 816, "base": {"ref": base}, "head": {"sha": head}}]
+    return head
+
+
+@pytest.mark.parametrize("own", [[], [{"name": "test", "conclusion": None}]])
+def test_a_commit_whose_pr_head_had_the_same_code_and_passed_deploys_at_once(deploy, capsys,
+                                                                             own):
+    head = from_pr(deploy)
+    deploy.fake.checks[deploy.origin.unreleased] = own
+    deploy.fake.checks[head] = [{"name": "test", "conclusion": "success"}]
+    assert deploy.origin.tree(head) == deploy.origin.tree(deploy.origin.unreleased)
+    assert deploy("deploy", "main") == 0
+    assert records(deploy)[0]["commit"] == deploy.origin.unreleased
+    out = capsys.readouterr().out
+    assert (f"✅ {deploy.origin.unreleased[:12]} has the same code as {head[:12]}, whose test "
+            "check passed") in out
+    assert "#816" in out
+
+
+@pytest.mark.parametrize("ends", [[None], ["failure"], ["success", "cancelled"], []])
+def test_a_same_code_pr_head_whose_test_hasn_t_passed_is_refused(deploy, capsys, ends):
+    head = from_pr(deploy)
+    deploy.fake.checks[head] = [{"name": "test", "conclusion": e} for e in ends]
+    assert deploy("deploy", "main") == 1
+    nothing_changed(deploy)
+    err = capsys.readouterr().err
+    assert "test check" in err and head[:12] in err
+
+
+def test_a_pr_head_with_other_code_is_refused_until_the_commit_s_own_check_passed(deploy, capsys):
+    head = from_pr(deploy, deploy.origin.release)
+    deploy.fake.checks[head] = [{"name": "test", "conclusion": "success"}]
+    assert deploy("deploy", "main") == 1
+    nothing_changed(deploy)
+    err = capsys.readouterr().err
+    assert f"{deploy.origin.unreleased[:12]} has no test check on GitHub yet" in err
+    assert "other code" in err
+
+
+def test_a_commit_whose_own_check_failed_is_refused_though_its_pr_head_passed(deploy, capsys):
+    head = from_pr(deploy)
+    deploy.fake.checks[deploy.origin.unreleased] = [{"name": "test", "conclusion": "failure"}]
+    deploy.fake.checks[head] = [{"name": "test", "conclusion": "success"}]
+    assert deploy("deploy", "main") == 1
+    nothing_changed(deploy)
+    assert "failure" in capsys.readouterr().err
+    # A failure on main is never overridden: the PR isn't even asked about.
+    assert not any("/pulls" in url for url in deploy.fake.asked)
+
+
+def test_a_pr_head_built_on_an_older_main_is_refused_though_its_code_is_the_same(deploy, capsys):
+    # main moved on after the PR branched off, and the PR took the same change in its own
+    # commit: its test ran on its head merged into an older main, which isn't proven to be this
+    # code.
+    origin = deploy.origin.path
+    git(origin, "checkout", "-q", "main")
+    (origin / "other").write_text("on main\n")
+    git(origin, "add", "-A")
+    git(origin, "commit", "-qm", "main moves on")
+    (origin / "ops" / "gateway" / "gateway-setup.sh").write_text("# v1, the PR's fix\n")
+    git(origin, "commit", "-qam", "the PR's fix, rebased")
+    landed = git(origin, "rev-parse", "HEAD")
+    git(origin, "checkout", "-q", "-b", "stale", deploy.origin.unreleased)
+    (origin / "other").write_text("on main\n")
+    (origin / "ops" / "gateway" / "gateway-setup.sh").write_text("# v1, the PR's fix\n")
+    git(origin, "add", "-A")
+    git(origin, "commit", "-qm", "the PR's fix with main's change in it")
+    head = git(origin, "rev-parse", "HEAD")
+    git(origin, "checkout", "-q", "main")
+    assert deploy.origin.tree(head) == deploy.origin.tree(landed)
+    deploy.fake.pulls[landed] = [{"number": 816, "base": {"ref": "main"}, "head": {"sha": head}}]
+    deploy.fake.checks[head] = [{"name": "test", "conclusion": "success"}]
+    assert deploy("deploy", "main") == 1
+    nothing_changed(deploy)
+    assert "older main" in capsys.readouterr().err
+
+
+def test_a_pr_into_another_branch_isn_t_relied_on(deploy, capsys):
+    head = from_pr(deploy, base="refactor")
+    deploy.fake.checks[head] = [{"name": "test", "conclusion": "success"}]
+    assert deploy("deploy", "main") == 1
+    nothing_changed(deploy)
+    assert "has no test check on GitHub yet" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("down", ["/pulls", "/git/commits/", "/compare/", "PR_HEAD/check-runs"])
+def test_github_failing_on_a_same_code_question_refuses_and_says_so(deploy, capsys, down):
+    head = from_pr(deploy)
+    deploy.fake.checks[head] = [{"name": "test", "conclusion": "success"}]
+    deploy.fake.down = [down.replace("PR_HEAD", head)]
+    assert deploy("deploy", "main") == 1
+    nothing_changed(deploy)
+    err = capsys.readouterr().err
+    assert "couldn't ask GitHub" in err and "500" in err
+
+
+def test_an_answer_github_shouldn_t_give_refuses_and_says_so(deploy, capsys):
+    deploy.fake.pulls[deploy.origin.unreleased] = {"message": "Not Found"}  # type: ignore
+    assert deploy("deploy", "main") == 1
+    nothing_changed(deploy)
+    assert "couldn't ask GitHub" in capsys.readouterr().err
 
 
 def test_a_server_never_set_up_is_refused(deploy, capsys):
