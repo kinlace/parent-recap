@@ -9,7 +9,7 @@ Recipients' addresses. A link that fails, such as for a wrong Wilma password, st
 The Households' list holds only what the service needs to place the next one's evening jobs: each
 Household's user and the time its Brief comes, never the family's addresses or Kids; and its note,
 so the maintainers can tell whose it is: the one they gave its Invite Link, if any, joined with
-what the family asked to be called when signing up (#814), as `via Zhao 2026-11-06 #3 · Leo`.
+what the family asked to be called when signing up (#814), as `via Zhao 2026-11-06 #3 · Virtanens`.
 """
 from __future__ import annotations
 
