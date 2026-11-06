@@ -47,7 +47,7 @@ from conftest import eepos_entry, eepos_student, evaka_child, evaka_event, myclu
 from fake_sources import EEPOS_PASSWORD, EVAKA_PASSWORD
 from fake_household_host import FakeHouseholdHost
 from fake_system import LINUX
-from setup_page import CAN_LISTEN, Response, _Connection, _PairedServer
+from setup_page import CAN_LISTEN, Response, _Connection, _PairedServer, wait_for
 from test_setup_wilma import ESPOO, WILMA_PASSWORD, WilmaCLI
 from test_setup_wilma import wilma_cli  # noqa: F401
 
@@ -415,6 +415,8 @@ def test_the_maintainers_are_told_of_each_household_made_and_only_its_label(sign
     for n in range(2):
         code = signup.invite(Recipient(f"parent{n}@example.com", "fi"))
         assert submit(signup, code).status == 200
+        # The page says it's done before the maintainers are mailed.
+        wait_for(lambda: len(signup.host.told) == n + 1)
 
     assert signup.host.told == [h.user for h in signup.store.households()]
     assert len(set(signup.host.told)) == 2
