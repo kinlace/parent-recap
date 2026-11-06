@@ -16,7 +16,7 @@ Before publishing a spec or tickets, record in `docs/adr/` (via `/domain-modelin
 
 ### Landing changes
 
-`main` is protected: every change lands through a PR from its own branch, rebase-merged once the `test` and `gitleaks` checks pass. The PR body starts with `What changes for families:` and closes its issue (`Closes #N`). See [CONTRIBUTING.md](CONTRIBUTING.md#reviews).
+`main` is protected: every change lands through a PR from its own branch, rebase-merged once the `test` and `gitleaks` checks pass. Merging before CI (`--admin`) is for an urgent hotfix only, and only when Xi asks for it ("Urgent hotfix" in CONTRIBUTING.md). The PR body starts with `What changes for families:` and closes its issue (`Closes #N`). See [CONTRIBUTING.md](CONTRIBUTING.md#reviews).
 
 ### Gateway admin requests
 
