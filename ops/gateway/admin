@@ -403,6 +403,7 @@ CHECK_MINUTES = 20  # how long the check Household's evening run is waited for
 # A `test` check skipped because the commit changed only docs counts as passed, as for main's
 # ruleset (tests.yml).
 PASSED = ("success", "skipped")
+RUNNING = "still running"  # how a check run that hasn't ended is said
 HEALTH = (("Bifrost", 8080), ("the Brief relay", 8081), ("the sign-up service", 8082))
 DEPLOY_USAGE = "deploy vX.Y.Z|main|COMMIT [--anyway]"
 
@@ -567,9 +568,6 @@ def _rev(paths: Paths, name: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
-RUNNING = "still running"
-
-
 def _test_passed(paths: Paths, commit: str, edge: Edge) -> None:
     """An unreleased commit's `test` check passed on GitHub, or, while its own is missing or
     still running, that of the head of the PR it came from, with the same code (#818); a release
@@ -629,10 +627,10 @@ def _same_code_tested(paths: Paths, commit: str,
     is. A rebase merge puts the head's commits since its merge base with `commit` on top of main
     one for one, ending at `commit`, so the head was built on main as it was when the PR landed
     when it is as many commits past that merge base as `commit` is; if it was built on an older
-    main, `commit` is past it by main's commits since then too. (A rebase that dropped a head's
-    commit already on main could make up the count; the trees must be equal all the same, so the
-    merge tested added only what the head already made.) The trees being equal then makes the
-    tested code `commit`'s."""
+    main, `commit` is past it by main's commits since then too. The trees being equal then makes
+    the tested code `commit`'s. Not proven: a rebase that dropped head commits already on main
+    could make the counts match for a head built on an older main, and the tested merge could
+    then hold a change main later reverted; that takes both at once, so it is left open."""
     short = commit[:SHORT]
     tree = _git(paths, "rev-parse", f"{commit}^{{tree}}").stdout.strip()
     about = f"which PR {short} came from"
