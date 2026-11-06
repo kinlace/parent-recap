@@ -236,9 +236,11 @@ def test_the_step_names_linked_devices_as_whatsapp_does_in_each_language():
     texts = json.loads((Path(linked_device.__file__).parent / "page" / "text.json").read_text(
         encoding="utf-8"))
 
-    # Settings is the Android name; on an iPhone the same page is the You tab.
+    # Settings is the Android name; on an iPhone the same page is the You tab, the rightmost one
+    # in the bottom bar. Its Finnish label is unchecked, so fi points to the tab by its place.
     for language, words in {"en": ("Settings", "You", "Linked devices", "Link a device"),
-                            "fi": ("Asetukset", "Sinä", "Linkitetyt laitteet", "Linkitä laite"),
+                            "fi": ("Asetukset", "iPhonessa alapalkin oikeanpuoleisin välilehti",
+                                   "Linkitetyt laitteet", "Linkitä laite"),
                             "zh": ("设置", "自己", "已关联设备", "关联新设备")}.items():
         for said in words:
             assert said in texts[language]["whatsapp.step.link"], (language, said)
