@@ -196,9 +196,11 @@ def program(mac: dict, requires: tuple[str, ...], constraints: str = "",
     (app / "family_brief" / "__main__.py").write_text(
         "import os, sys\ndef main():\n    print('runs on', os.path.realpath(sys.executable))\n")
     # The real ones record what the install made (test_uninstall.py), put the command on the PATH
-    # (test_command_path.py), install the Baileys tree (test_baileys_install.py) and update the
-    # evening schedule (test_schedule_update.py). These note, in order, that they were asked.
-    for module in ("install_record", "command_path", "baileys_install", "schedule_update"):
+    # (test_command_path.py), install the Baileys tree (test_baileys_install.py), put Parent Recap
+    # Settings and Check in ~/Applications (test_program_entries.py) and update the evening
+    # schedule (test_schedule_update.py). These note, in order, that they were asked.
+    for module in ("install_record", "command_path", "baileys_install", "program_entries",
+                   "schedule_update"):
         (app / "family_brief" / f"{module}.py").write_text(
             "import pathlib, sys\n"
             "with open(pathlib.Path.home() / 'installer.calls', 'a') as calls:\n"
@@ -371,7 +373,25 @@ def test_every_install_on_a_mac_updates_the_evening_schedule_last(mac):
 
     assert (mac["home"] / "installer.calls").read_text() == (
         "install_record program\ncommand_path install\nbaileys_install install\n"
-        "schedule_update\n") * 2
+        "program_entries install\nschedule_update\n") * 2
+
+
+@pytest.mark.macos
+def test_every_install_on_a_mac_makes_settings_and_check_for_its_folder(mac):
+    # An update makes them again, so a family that installed before they existed gets them (ADR 0042).
+    wheel(mac["packages"], "pure-dep", "1.0")
+    program(mac, ("pure-dep",))
+    entries = mac["plugin"] / "app" / "family_brief" / "program_entries.py"
+    entries.write_text("import pathlib, sys\n"
+                       "with open(pathlib.Path.home() / 'entries.calls', 'a') as calls:\n"
+                       "    calls.write(' '.join(sys.argv[1:]) + '\\n')\n")
+
+    for _ in range(2):
+        result = install(mac)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    assert (mac["home"] / "entries.calls").read_text() == \
+        f"install {mac['home'] / 'ParentRecap'}\n" * 2
 
 
 @pytest.mark.macos
@@ -783,6 +803,8 @@ def test_a_linux_server_gets_the_linux_builds_for_its_chip(mac, machine, arch):
     last = result.stdout.splitlines()[-1]
     assert "parent-recap in a new login shell" in last
     assert (mac["home"] / "installer.calls").read_text().splitlines()[1] == "command_path install"
+    # A Hosted Household's server gets no Settings or Check entries (ADR 0042).
+    assert "program_entries install" not in (mac["home"] / "installer.calls").read_text()
 
 
 @pytest.mark.posix

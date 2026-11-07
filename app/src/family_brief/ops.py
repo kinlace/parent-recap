@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 from . import (baileys_install, google_packages, languages, own_node, private_files, secret_dialog,
                sources)
 from .config import Config
-from .system import jobs, profile, wake, windows_only
+from .system import entries, jobs, profile, wake, windows_only
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
 _STATUS_OF = {"ok": OK, "warn": WARN, "fail": FAIL}  # by llm.Finding's level
@@ -41,6 +41,7 @@ CHECK_ITEMS = (
     ("calendar", "Calendar"), ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"),
     ("schedule", "Schedule"), ("last-run", "Last run"),
     ("wake", "Wake"), ("sign-in-after-update", "Sign-in after updates"),
+    ("entries", "Settings and Check"),
 )
 _ITEMS = dict(CHECK_ITEMS)
 
@@ -164,6 +165,8 @@ def health_checks(config: str | None, skip_llm: bool = False, show: bool = False
             _check_wake_timers(cfg, add)
         if windows_only.offers("sign-in-after-update"):
             _check_sign_in_after_update(add)
+    if entries.offered():
+        _check_entries(add)
     return results
 
 
@@ -621,6 +624,20 @@ def _check_sign_in_after_update(add) -> None:
         add(WARN, key, "couldn't tell whether Windows signs you back in after it restarts for an "
             "update. If it doesn't, that night's Brief waits until someone signs in: check that "
             f"this is on: {setting}")
+
+
+def _check_entries(add) -> None:
+    """Parent Recap Settings and Parent Recap Check, which every install puts where the system
+    lists programs (ADR 0042). A warning, not a failure, when one is missing: the Brief doesn't
+    need them, and the install line, pasted again, puts them back."""
+    where = entries.where()
+    missing = [name for name in entries.NAMES if not entries.placed(name)]
+    if not missing:
+        add(OK, "entries", f"{entries.SETTINGS} and {entries.CHECK} are in {where}")
+    else:
+        verb = "isn't" if len(missing) == 1 else "aren't"
+        add(WARN, "entries", f"{' and '.join(missing)} {verb} in {where} (paste the install line "
+            "again)")
 
 
 # ---------------------------------------------------------------- discover

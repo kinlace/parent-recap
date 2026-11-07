@@ -19,7 +19,7 @@ import fake_node
 from family_brief import __main__ as cli, ops, setup_server, setup_steps
 from family_brief.llm import codex as codex_backend
 from family_brief.state import State
-from family_brief.system import jobs
+from family_brief.system import entries, jobs
 from conftest import NOW, TZ, program
 from fake_sources import GmailFolders
 from fake_system import LINUX, MACOS, WINDOWS
@@ -189,6 +189,50 @@ def test_doctor_says_a_tree_from_another_lockfile_is_not_the_pinned_one(harness,
 
     line = whatsapp_library_line(capsys.readouterr().out)
     assert line.startswith(ops.WARN.strip()) and "not the pinned tree" in line
+
+
+def entries_line(out: str) -> str:
+    [line] = [l for l in out.splitlines() if "Settings and Check:" in l]
+    return line
+
+
+@pytest.mark.parametrize("on", [MACOS, WINDOWS], ids=["macos", "windows"])
+def test_doctor_says_parent_recap_settings_and_check_are_there(harness, nothing_loaded, capsys, on):
+    harness.system = on
+    for name in entries.NAMES:
+        harness.entries.place(name, harness.home / "ParentRecap")
+
+    harness.cli("doctor", "--skip-llm")
+
+    line = entries_line(capsys.readouterr().out)
+    assert line == (f"{ops.OK} Settings and Check: Parent Recap Settings and Parent Recap Check "
+                    f"are in {harness.entries.where()}")
+
+
+@pytest.mark.parametrize("missing, says", [
+    ((entries.CHECK,), "Parent Recap Check isn't in"),
+    (entries.NAMES, "Parent Recap Settings and Parent Recap Check aren't in"),
+], ids=["one", "both"])
+def test_doctor_warns_of_a_missing_entry_and_says_to_paste_the_install_line_again(
+        harness, nothing_loaded, capsys, missing, says):
+    for name in entries.NAMES:
+        if name not in missing:
+            harness.entries.place(name, harness.home / "ParentRecap")
+
+    harness.cli("doctor", "--skip-llm")
+
+    line = entries_line(capsys.readouterr().out)
+    assert line.startswith(ops.WARN.strip()) and says in line
+    assert line.endswith("(paste the install line again)")
+
+
+def test_on_the_hosted_version_s_server_doctor_has_no_entries_line(harness, nothing_loaded,
+                                                                   capsys):
+    harness.system = LINUX
+
+    harness.cli("doctor", "--skip-llm")
+
+    assert "Settings and Check" not in capsys.readouterr().out
 
 
 @pytest.fixture
@@ -504,7 +548,8 @@ def test_renaming_a_check_in_doctor_s_words_leaves_what_the_setup_page_shows(har
 
     out = capsys.readouterr().out
     assert "Email inbox:" in out and "Brief text in zh:" in out
-    shown = [setup_server.health.health_check(c) for c in results]
+    shown = [setup_server.health.health_check(c) for c in results
+             if c.key not in setup_server.health.DOCTOR_ONLY]
     assert {"check": "gmail", "status": "fail"} in [{k: s[k] for k in ("check", "status")}
                                                     for s in shown]
     assert {"check": "language", "status": "ok", "language": "zh"} in shown

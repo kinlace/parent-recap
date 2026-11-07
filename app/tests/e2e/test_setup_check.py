@@ -557,6 +557,9 @@ def test_every_health_check_doctor_runs_has_a_name_on_the_page():
     added = set(re.findall(r'\badd\([^,]+, "([^"]+)"', Path(ops.__file__).read_text()))
 
     assert added and added <= keys, added - keys
-    assert keys - setup_server.health.SCHEDULE_CHECKS == set(setup_server.health.HEALTH_CHECKS)
+    # Doctor's own checks aren't the page's, at Check or at Finish.
+    assert keys - setup_server.health.SCHEDULE_CHECKS - setup_server.health.DOCTOR_ONLY == \
+        set(setup_server.health.HEALTH_CHECKS)
+    assert setup_server.health.DOCTOR_ONLY <= setup_server.health.FINISH_LEAVES_OUT
     assert setup_server.health.SCHEDULE_CHECKS - setup_server.health.FINISH_LEAVES_OUT <= \
         set(setup_server.health.FINISH_CHECKS)

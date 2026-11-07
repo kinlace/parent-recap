@@ -7,6 +7,7 @@ What changes for families in each release, collected from the `What changes for 
 ### Added
 
 - A Brief from your own computer ends with a "Change settings" link to the README's new FAQ, in the Brief's language, which says how to change who gets the Brief, its time, the WhatsApp groups or the Sources later: paste the install line again, or ask Claude Code or Codex. A hosted family's Brief has no such link.
+- The install adds Parent Recap Settings, which opens the setup page, and Parent Recap Check, which runs `parent-recap doctor` in a window that stays open for a screenshot, where your computer lists programs: on a Mac Spotlight (Command-Space) finds them, on Windows they're in the Start menu. Opening them asks for no permission. Pasting the install line again brings them to an existing install. Uninstall removes them, and `parent-recap doctor` warns when one is missing. The README's FAQ on changing settings starts with Parent Recap Settings. A hosted family gets none.
 
 ### Changed
 

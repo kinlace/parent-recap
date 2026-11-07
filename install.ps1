@@ -315,6 +315,10 @@
     Invoke-Logged $venvPython @('-m', 'family_brief.setup_wilma', 'update') | Out-Null
     # The Baileys tree the Linked Device runs on (ADR 0025), as install.sh installs it.
     Invoke-Logged $venvPython @('-m', 'family_brief.baileys_install', 'install') | Out-Null
+    # Parent Recap Settings and Parent Recap Check in the Start menu (ADR 0042), as install.sh
+    # puts them in ~/Applications: made again by every install, so an update brings them. It
+    # never fails the install.
+    Invoke-Logged $venvPython @('-m', 'family_brief.program_entries', 'install', $Target) | Out-Null
 
     Write-Host "Parent Recap $version is installed in $App"
     # This window's PATH is the one it opened with, before the user's PATH had the folder.

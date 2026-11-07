@@ -19,6 +19,7 @@ $Repo = Split-Path -Parent $PSScriptRoot
 $Install = Join-Path $Repo 'install.ps1'
 $Installed = "$env:LOCALAPPDATA\ParentRecap"
 $Py = "$Installed\app\.venv\Scripts\python.exe"
+$StartMenu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Parent Recap"
 # What a new window's PATH is, the PC's and the user's as Windows keeps them; this process's own
 # is the runner's, from before the install (#560). Single quotes only: Windows PowerShell drops
 # double quotes from a -Command argument.
@@ -121,6 +122,26 @@ function Test-OwnRuntimes {
     "the venv isn't on Parent Recap's own Python"
   Invoke-Py "import sys; from family_brief import baileys_install as b; print(b.folder(), b.installed_version()); sys.exit(not b.up_to_date())" `
     "the install didn't leave the pinned Baileys tree"
+  Test-Entries
+}
+
+# Parent Recap Settings and Parent Recap Check in the Start menu (ADR 0042), each running a
+# program that is there: the venv's pythonw.exe, and Windows PowerShell.
+function Test-Entries {
+  $shell = New-Object -ComObject WScript.Shell
+  foreach ($name in 'Parent Recap Settings', 'Parent Recap Check') {
+    $link = "$StartMenu\$name.lnk"
+    if (-not (Test-Path -LiteralPath $link)) { throw "the Start menu has no $name" }
+    $s = $shell.CreateShortcut($link)
+    Write-Host "${name}: $($s.TargetPath) $($s.Arguments)"
+    if (-not (Test-Path -LiteralPath $s.TargetPath -PathType Leaf)) { throw "$name runs $($s.TargetPath), which isn't there" }
+  }
+  if ($shell.CreateShortcut("$StartMenu\Parent Recap Settings.lnk").TargetPath -ne "$Installed\app\.venv\Scripts\pythonw.exe") {
+    throw "Parent Recap Settings doesn't run the venv's pythonw.exe"
+  }
+  if ($shell.CreateShortcut("$StartMenu\Parent Recap Check.lnk").Arguments -notmatch '^-NoExit .* -m family_brief doctor') {
+    throw "Parent Recap Check doesn't run doctor in a window that stays open"
+  }
 }
 
 function Test-NewWindow {
@@ -237,7 +258,7 @@ function Test-Uninstall {
   $left = @(
     Get-OurTasks | ForEach-Object { "task $_" }
     cmdkey /list | Select-String 'Parent Recap/' | ForEach-Object { "credential $($_.Line.Trim())" }
-    @($Installed, "$HOME\.family", "$HOME\ParentRecap") | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { "folder $_" }
+    @($Installed, "$HOME\.family", "$HOME\ParentRecap", $StartMenu) | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { "folder $_" }
     "$([Environment]::GetEnvironmentVariable('Path', 'User'))".Split(';') | Where-Object { $_ -like '*ParentRecap*' } | ForEach-Object { "PATH entry $_" }
   )
   if ($left.Count -ne 0) { throw "left behind: $($left -join '; ')" }

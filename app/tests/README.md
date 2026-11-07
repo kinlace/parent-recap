@@ -77,6 +77,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request                       |
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                                               |
 | `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                                         |
+| `test_program_entries.py`       | Parent Recap Settings and Check put where the system lists programs, again on update, none on a server       |
 | `test_eepos_collector.py`       | Eepos's collector on a fake portal: the sign-in, the calendar, failures, two schools                         |
 | `test_evaka_collector.py`       | eVaka's collector on a fake eVaka: the sign-in, the device cookie, the events, the messages, failures, two cities |
 | `test_email_gateway.py`         | The Brief sent through the gateway's relay: the request, refusals, a key, binding, doctor                    |
@@ -176,11 +177,13 @@ slowest tests, so add one for a main path, not for each result.
 | `test_secrets.py`               | macOS secrets: the Keychain through `/usr/bin/security`   |
 | `test_wake.py`                  | macOS wake: `pmset`                                       |
 | `test_user_path.py`             | macOS PATH: the marked line in `~/.zprofile`              |
+| `test_entries.py`               | macOS entries: app bundles in `~/Applications`            |
 | `test_desktop_windows.py`       | Windows desktop: browser, Notepad, PowerShell windows     |
 | `test_jobs_windows.py`          | Windows jobs: Task Scheduler tasks                        |
 | `test_secrets_windows.py`       | Windows secrets: Credential Manager                       |
 | `test_wake_windows.py`          | Windows wake: wake timers and sleep timeouts              |
 | `test_user_path_windows.py`     | Windows PATH: the user's Path in the registry             |
+| `test_entries_windows.py`       | Windows entries: Start menu shortcuts                     |
 | `test_windows_only.py`          | What only Windows checks for the evening run              |
 | `test_secrets_linux.py`         | Linux secrets: owner-only files, written for real         |
 | `test_user_path_linux.py`       | Linux PATH: links in `~/.local/bin`                       |

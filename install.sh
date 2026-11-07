@@ -254,6 +254,12 @@ if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_RO
 # lockfile this release pins. One that couldn't be installed leaves the one there, and the next
 # install tries again.
 "$APP/.venv/bin/python" -m family_brief.baileys_install install
+# Parent Recap Settings and Parent Recap Check in ~/Applications, where Spotlight finds them (ADR
+# 0042), made again by every install, so an update brings them. A server gets none: a Hosted
+# Household's settings are the maintainers'. It never fails the install.
+if [ "$OS" = macos ]; then
+  "$APP/.venv/bin/python" -m family_brief.program_entries install "$TARGET"
+fi
 # A Mac whose evening Brief is scheduled gets this release's jobs, and an older version's wake,
 # 5 minutes before the Brief, moved to the Brief's time (#832): macOS asks for the Mac password
 # to move it, and a closed dialog keeps the old wake. It never fails the install.

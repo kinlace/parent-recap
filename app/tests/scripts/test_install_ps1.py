@@ -63,6 +63,17 @@ def test_as_install_sh_it_puts_the_command_on_the_path_once_the_program_is_recor
     assert "parent-recap.exe" not in script_without_comments(body)
 
 
+def test_as_install_sh_it_makes_settings_and_check_on_every_run_once_the_program_is_recorded():
+    # On every run, so an update brings them (ADR 0042); CI's windows-install job checks the
+    # Start menu has them, and that uninstall takes them out.
+    body = (ROOT / "install.ps1").read_text().split("function Install-ParentRecap {", 1)[1]
+    made = "Invoke-Logged $venvPython @('-m', 'family_brief.program_entries', 'install', $Target)"
+
+    assert body.index("'-m', 'family_brief.install_record'") < body.index(made)
+    # Not inside any branch that a run with nothing new to do skips.
+    assert f"\n    {made} | Out-Null\n" in body
+
+
 def script_without_comments(script: str) -> str:
     return "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("#"))
 

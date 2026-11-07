@@ -18,11 +18,11 @@ import pytest
 import fake_node
 from test_codex_install import install_codex_skills
 
-from family_brief import (__main__ as cli, command_path, install_record, run_lock, setup_save,
-                          setup_wilma, tools)
+from family_brief import (__main__ as cli, command_path, install_record, program_entries,
+                          run_lock, setup_save, setup_wilma, tools)
 from family_brief.collectors import gmail
 from family_brief.config import Config
-from family_brief.system import jobs, profile, secrets, wake, windows_only
+from family_brief.system import entries, jobs, profile, secrets, wake, windows_only
 from family_brief.system.secrets_error import SecretsError
 from fake_system import LINUX, WINDOWS
 
@@ -74,8 +74,8 @@ PINNED_PYTHON = "ParentRecap/runtime/python-3.13.16-20261003/bin/python3.13"
 
 def make_program(home: Path, monkeypatch) -> Path:
     """What install.sh leaves in ~/ParentRecap/app, running as the program's own Python, its
-    pinned Python and Node in ~/ParentRecap/runtime, and the command in ~/ParentRecap/bin, on the
-    PATH."""
+    pinned Python and Node in ~/ParentRecap/runtime, the command in ~/ParentRecap/bin, on the
+    PATH, and Parent Recap Settings and Check where the system lists programs."""
     python = home / PINNED_PYTHON
     python.parent.mkdir(parents=True)
     python.write_text("")
@@ -92,6 +92,7 @@ def make_program(home: Path, monkeypatch) -> Path:
     (app / "VERSION").write_text("0.5.0\n")
     (home / "ParentRecap" / "logs").mkdir()
     assert command_path.install(home / "ParentRecap") == 0
+    assert program_entries.install(home / "ParentRecap") == 0
     # Uninstall finds the program it runs from by its own Python.
     monkeypatch.setattr(sys, "executable", str(app / ".venv" / "bin" / "python"))
     return app
@@ -117,7 +118,8 @@ def nothing_removed(harness) -> bool:
     return bool(harness.secrets) and harness.jobs.installed() == {jobs.DAILY} \
         and harness.wake.wakes == [our_wake(harness)] and harness.wake.asked == [] \
         and claude_code_removals(harness) == [] \
-        and harness.user_path.folders == [harness.home / "ParentRecap" / "bin"]
+        and harness.user_path.folders == [harness.home / "ParentRecap" / "bin"] \
+        and set(harness.entries.made) == set(entries.NAMES)
 
 
 def set_up(harness, monkeypatch, *, record: bool = True) -> None:
@@ -214,7 +216,8 @@ def test_on_the_hosted_version_s_server_it_lists_only_what_a_linux_install_made(
         assert item in out, item
     # A server never sleeps, and the hosted version has no WhatsApp, chat or Codex skills.
     assert harness.wake.wakes == [] and "Wake schedule" not in out
-    for absent in ("WhatsApp", "Linked Device", PHONE_NOTE, "Claude Code", ".agents/skills"):
+    for absent in ("WhatsApp", "Linked Device", PHONE_NOTE, "Claude Code", ".agents/skills",
+                   entries.SETTINGS, entries.CHECK):
         assert absent not in out, absent
     assert "Your accounts aren't touched: Gmail, MyClub, Wilma, Eepos, eVaka and Google" in out
 
@@ -371,6 +374,36 @@ def test_confirmed_with_the_archive_removed_leaves_nothing_of_parent_recap(harne
 
     assert leftovers(harness.home) == []
     assert harness.user_path.folders == []
+    assert harness.entries.made == {}
+
+
+def test_lists_parent_recap_settings_and_check_where_the_system_lists_programs(harness,
+                                                                              monkeypatch, capsys):
+    set_up(harness, monkeypatch)
+
+    assert uninstall(harness) == 0
+
+    out = capsys.readouterr().out
+    removes = out[out.index("Uninstall removes:"):out.index("You choose whether")]
+    for name in entries.NAMES:
+        assert f"  • {name}: {harness.entries.where()}\n" in removes
+
+
+def test_an_entry_with_parent_recap_s_name_the_install_didn_t_make_stops_it(harness, monkeypatch,
+                                                                           capsys):
+    set_up(harness, monkeypatch)
+    harness.entries.remove(entries.CHECK)
+    entries.path(entries.CHECK).parent.mkdir(parents=True)
+    entries.path(entries.CHECK).write_text("someone else's")
+    before = leftovers(harness.home)
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 1
+
+    out = capsys.readouterr().out
+    assert f"has the name of Parent Recap's {entries.CHECK}, but Parent Recap's install didn't " \
+        "make it" in out
+    assert leftovers(harness.home) == before
+    assert harness.entries.made == {entries.SETTINGS: harness.home / "ParentRecap"}
 
 
 def test_confirming_needs_a_choice_about_the_archive(harness, monkeypatch, capsys):
@@ -1126,12 +1159,12 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     items = out.split("\n\nLeft as it is:")[0].split("\n\nNothing has been removed yet")[0]
     listed = [line.split(": ", 1)[1].split(" (", 1)[0] for line in items.splitlines()
               if line.startswith("  • ")]
-    assert len(listed) == 25
+    assert len(listed) == 27
     for where in listed:
         name = where.rsplit("/", 1)[-1].strip().replace("parent@example.com", "<address>")
         name = name.replace("202609011200", "<date>").replace("1 day in ~", "~")
         ours = (our_wake(harness), f"~/Scheduler/{jobs.system_name(jobs.DAILY)}",
-                harness.user_path.where())  # the fakes' own
+                harness.user_path.where(), harness.entries.where())  # the fakes' own
         assert name in doc or where in ours, where
     # What the macOS adapters keep in their place.
     assert "com.parentrecap.daily.plist" in doc and "pmset repeat cancel" in doc

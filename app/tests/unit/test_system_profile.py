@@ -16,7 +16,7 @@ from family_brief import system
 from family_brief.system import profile_linux, profile_macos, profile_windows
 
 PROFILES = [profile_macos.PROFILE, profile_windows.PROFILE, profile_linux.PROFILE]
-CONCERNS = ["profile", "secrets", "dialog", "desktop", "user_path", "jobs", "wake"]
+CONCERNS = ["profile", "secrets", "dialog", "desktop", "user_path", "entries", "jobs", "wake"]
 PACKAGE = Path(family_brief.__file__).parent
 
 

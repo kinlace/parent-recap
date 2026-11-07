@@ -1,9 +1,10 @@
 """In-memory fakes of the OS services in `family_brief.system` (ADR 0020): secrets, the evening
-jobs, the daily wake, the user's PATH, the desktop and the secret dialog. The harness puts one in
-place of each interface's adapter, so the program reaches it through the same interface it uses
-on any system, and the tests of its callers fake none of these services' commands. Only the
-adapters' own tests (test_secrets.py, test_jobs.py, test_wake.py, test_user_path.py,
-test_desktop.py, test_dialog.py and their _windows twins) meet the system instead.
+jobs, the daily wake, the user's PATH, the entries where the system lists programs, the desktop
+and the secret dialog. The harness puts one in place of each interface's adapter, so the program
+reaches it through the same interface it uses on any system, and the tests of its callers fake
+none of these services' commands. Only the adapters' own tests (test_secrets.py, test_jobs.py,
+test_wake.py, test_user_path.py, test_entries.py, test_desktop.py, test_dialog.py and their
+_windows twins) meet the system instead.
 
 Each fake keeps what the system would keep, for a test to set up and check, and has its own
 names for what the family reads (where a secret is, a job's name, the wake's line), so a test
@@ -29,8 +30,9 @@ from typing import Any, Callable, ContextManager
 
 import pytest
 
-from family_brief.system import (desktop, dialog, jobs, profile, profile_linux, profile_macos,
-                                 profile_windows, secrets, user_path, wake, windows_only)
+from family_brief.system import (desktop, dialog, entries, jobs, profile, profile_linux,
+                                 profile_macos, profile_windows, secrets, user_path, wake,
+                                 windows_only)
 from family_brief.system.secrets_error import SecretsError
 
 MACOS, WINDOWS, LINUX = profile_macos.PROFILE, profile_windows.PROFILE, profile_linux.PROFILE
@@ -287,6 +289,42 @@ class FakeUserPath:
         return "the PATH"
 
 
+class FakeEntries:
+    """The entries the install put where the system lists programs: each one's name, with the
+    install folder it was made for. `foreign` names those with an entry's name the install didn't
+    make. A Linux server, the hosted version's, gets none."""
+
+    def __init__(self, linux: Callable[[], bool]) -> None:
+        self.made: dict[str, Path] = {}
+        self.foreign: set[str] = set()
+        self.refuses: OSError | None = None  # raised by every place
+        self._linux = linux
+
+    def offered(self) -> bool:
+        return not self._linux()
+
+    @staticmethod
+    def path(name: str) -> Path:
+        return Path.home() / "Entries" / name
+
+    def place(self, name: str, target: Path) -> None:
+        if self.refuses:
+            raise self.refuses
+        if name in self.foreign:
+            raise OSError(f"{self.path(name)} is there already, and Parent Recap's install didn't make it")
+        self.made[name] = target
+
+    def placed(self, name: str) -> bool:
+        return name in self.made
+
+    def remove(self, name: str) -> None:
+        self.made.pop(name, None)
+
+    @staticmethod
+    def where() -> str:
+        return "the programs list"
+
+
 @dataclass
 class Window:
     """A terminal window: the command it runs, the variables it's given and its title."""
@@ -358,13 +396,14 @@ class FakeDialog:
 
 class FakeSystem:
     """The fake of each OS service, in place of its adapter, as `secrets`, `jobs`, `wake`,
-    `user_path`, `desktop` and `dialog`, and `profile`, the system's profile the program sees."""
+    `user_path`, `entries`, `desktop` and `dialog`, and `profile`, the system's profile the program sees."""
 
     def __init__(self, mp: pytest.MonkeyPatch) -> None:
         self.secrets = FakeSecrets()
         self.jobs = FakeJobs(lambda: self.profile is LINUX)
         self.wake = FakeWake(lambda: self.profile is LINUX)
         self.user_path = FakeUserPath()
+        self.entries = FakeEntries(lambda: self.profile is LINUX)
         self.desktop = FakeDesktop()
         self.dialog = FakeDialog()
         # This system's, or macOS's on Linux, until a test makes it another's.
@@ -376,7 +415,8 @@ class FakeSystem:
         self.elevated = False  # whether it runs as administrator on Windows
         self.opened: list[str] = []  # what the macOS-only steps' `open` opened
         for module, fake in ((secrets, self.secrets), (jobs, self.jobs), (wake, self.wake),
-                             (user_path, self.user_path), (desktop, self.desktop),
+                             (user_path, self.user_path), (entries, self.entries),
+                             (desktop, self.desktop),
                              (dialog, self.dialog)):
             mp.setattr(module, "_adapter", fake)
         mp.setattr(profile, "current", lambda: self.profile)
