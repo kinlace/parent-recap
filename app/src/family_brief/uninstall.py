@@ -31,7 +31,7 @@ from . import (ai_filter_report, baileys_install, chat_install, command_path, in
 from .collectors import evaka
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
-from .system import desktop, jobs, profile, secrets, user_path, wake, windows_only
+from .system import desktop, entries, jobs, profile, secrets, user_path, wake, windows_only
 
 OK, FAIL = ops.OK, ops.FAIL
 # install.sh's and install.ps1's pinned ones, and the folders they download them into.
@@ -158,6 +158,7 @@ def survey(config: Path) -> Survey:
         if d.is_dir():
             s.items.append(_file("Logs", d))
     _job_logs(s, archive / "logs")
+    _entries(s)
     _command(s, usual)
     for p in programs:
         _program(s, p)  # last of all: this command may be running from it
@@ -508,6 +509,19 @@ def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Con
     for what, p in dict.fromkeys(found):
         if p.exists():
             s.items.append(_file(what, p))
+
+
+def _entries(s: Survey) -> None:
+    """Parent Recap Settings and Parent Recap Check, where the system lists programs
+    (program_entries.py), before the program they open."""
+    if not entries.offered():
+        return
+    for name in entries.NAMES:
+        if entries.placed(name):
+            s.items.append(Item(name, entries.where(), partial(entries.remove, name)))
+        elif entries.path(name).exists():
+            s.stops.append(f"{_show(entries.path(name))} has the name of Parent Recap's {name}, "
+                           "but Parent Recap's install didn't make it")
 
 
 def _command(s: Survey, usual: list[Path]) -> None:

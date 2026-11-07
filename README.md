@@ -65,9 +65,9 @@ This cuts down what the AI gets and guarantees nothing: the rest of each message
 
 ### How do I change a setting later?
 
-Paste the install line from [Install](#install) again: in Terminal on a Mac, in PowerShell on Windows. The setup page opens, and there you change who gets the Brief, its time, the WhatsApp groups and the Sources. Your settings are kept.
+Open Parent Recap Settings: on a Mac, search for it with Spotlight (Command-Space); on Windows, find it in the Start menu. The setup page opens, and there you change who gets the Brief, its time, the WhatsApp groups and the Sources. Your settings are kept.
 
-Or, in Claude Code type `/parent-recap:manage`, in Codex `$parent-recap-manage`, or just say what you want to change.
+Or paste the install line from [Install](#install) again: in Terminal on a Mac, in PowerShell on Windows. Or, in Claude Code type `/parent-recap:manage`, in Codex `$parent-recap-manage`, or just say what you want to change.
 
 ## Thanks
 

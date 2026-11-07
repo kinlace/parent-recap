@@ -65,9 +65,9 @@ Tämä vähentää sitä, mitä tekoäly saa, mutta ei takaa mitään: muu osa j
 
 ### Miten muutan asetuksia myöhemmin?
 
-Liitä kohdan [Asennus](#asennus) rivi uudelleen: Macilla Päätteeseen, Windowsissa PowerShelliin. Asetussivu aukeaa, ja siellä voit muuttaa, kuka koosteen saa, mihin aikaan se tulee, WhatsApp-ryhmät ja lähteet. Asetuksesi säilyvät.
+Avaa Parent Recap Settings: Macilla etsi se Spotlightilla (Komento-välilyönti), Windowsissa löydät sen Käynnistä-valikosta. Asetussivu aukeaa, ja siellä voit muuttaa, kuka koosteen saa, mihin aikaan se tulee, WhatsApp-ryhmät ja lähteet. Asetuksesi säilyvät.
 
-Tai kirjoita Claude Codessa `/parent-recap:manage` tai Codexissa `$parent-recap-manage`, tai kerro vain, mitä haluat muuttaa.
+Tai liitä kohdan [Asennus](#asennus) rivi uudelleen: Macilla Päätteeseen, Windowsissa PowerShelliin. Tai kirjoita Claude Codessa `/parent-recap:manage` tai Codexissa `$parent-recap-manage`, tai kerro vain, mitä haluat muuttaa.
 
 ## Kiitokset
 

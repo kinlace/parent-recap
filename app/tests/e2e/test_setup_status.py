@@ -19,7 +19,7 @@ from fake_sources import GmailFolders
 from fake_system import FakeWake
 
 from family_brief import gateway, install_record, ops
-from family_brief.system import jobs
+from family_brief.system import entries, jobs
 
 APP_PASSWORD = "abcdabcdabcdabcd"
 CLAUDE_TOKEN = "sk-ant-oat01-secret"
@@ -120,8 +120,10 @@ def test_on_windows_the_program_is_installed_with_install_ps1_s_venv(harness, of
 @pytest.fixture
 def healthy(harness, offline, monkeypatch) -> None:
     """Everything doctor checks works: Gmail signs in, Claude answers, the nightly job is loaded,
-    the install left the pinned Baileys tree."""
+    the install left the pinned Baileys tree and Parent Recap Settings and Check."""
     fake_node.install_baileys(fake_node.baileys_folder(harness.home))
+    for name in entries.NAMES:
+        harness.entries.place(name, harness.home / "ParentRecap")
     harness.secrets["gmail-imap-parent@example.com"] = APP_PASSWORD
     harness.secrets["claude-oauth-token"] = CLAUDE_TOKEN
     harness.store_gateway_key()

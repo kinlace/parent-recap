@@ -65,9 +65,9 @@ irm https://raw.githubusercontent.com/kinlace/parent-recap/stable/install.ps1 | 
 
 ### 以后怎么修改设置？
 
-再粘贴一次[安装](#安装)里的那一行：Mac 上粘贴到“终端”，Windows 上粘贴到 PowerShell。设置页面会打开，在那里可以修改谁收日报、几点收、WhatsApp 群和信息源。你原来的设置都会保留。
+打开 Parent Recap Settings：Mac 上用“聚焦搜索”（Command-空格）搜它，Windows 上在“开始”菜单里找到它。设置页面会打开，在那里可以修改谁收日报、几点收、WhatsApp 群和信息源。你原来的设置都会保留。
 
-或者，在 Claude Code 里输入 `/parent-recap:manage`，在 Codex 里输入 `$parent-recap-manage`，或者直接说你想改什么。
+也可以再粘贴一次[安装](#安装)里的那一行：Mac 上粘贴到“终端”，Windows 上粘贴到 PowerShell。或者，在 Claude Code 里输入 `/parent-recap:manage`，在 Codex 里输入 `$parent-recap-manage`，或者直接说你想改什么。
 
 ## 致谢
 

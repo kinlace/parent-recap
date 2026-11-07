@@ -27,7 +27,10 @@ SCHEDULE_CHECKS = frozenset({"schedule", "last-run", "wake", "sign-in-after-upda
 # wake outcome does, so Finish leaves it out.
 FINISH_CHECKS = {**HEALTH_CHECKS, "schedule": "schedule", "last-run": "last-run",
                  "sign-in-after-update": "sign-in-after-update"}
-FINISH_LEAVES_OUT = frozenset({"wake"})
+# Doctor's check of the Settings and Check entries, which the install made before the page opened:
+# not the page's to show.
+DOCTOR_ONLY = frozenset({"entries"})
+FINISH_LEAVES_OUT = frozenset({"wake", *DOCTOR_ONLY})
 HEALTH_STATUSES = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
 
 
@@ -48,7 +51,7 @@ def run(context: Context) -> None:
     Brief unless a check fails. How it went is the context's `health` run."""
     try:
         results = ops.health_checks(str(context.config), schedule=False)
-        checks = [health_check(c) for c in results if c.key not in SCHEDULE_CHECKS]
+        checks = [health_check(c) for c in results if c.key not in SCHEDULE_CHECKS | DOCTOR_ONLY]
         if any(c["status"] == "fail" for c in checks):
             done = {"result": "not-ok", "checks": checks}
         else:
