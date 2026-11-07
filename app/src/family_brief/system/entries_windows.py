@@ -81,7 +81,7 @@ def place(name: str, target: Path) -> None:
     try:
         subprocess.run([_powershell(), "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", _MAKE],
                        env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                       timeout=60, check=True,
+                       encoding="utf-8", errors="replace", timeout=60, check=True,
                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.CalledProcessError as e:
         raise OSError(f"Windows didn't make the shortcut {link}: {e.stderr.strip()}") from e
