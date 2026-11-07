@@ -4,8 +4,9 @@ remembering a command. Every install makes them again, so an update brings them 
 installed before they existed, and as this version has them. `system/entries.py` says what each
 system gets; a Hosted Household's server gets none.
 
-It never fails the install: a family without them still has the install line and the chat. An
-entry with their name that the install didn't make is left as it is.
+It never fails the install: a family without them still has the install line and the chat. On a
+Mac, an app with their name that the install didn't make is left as it is; on Windows they're in
+a Start menu folder of Parent Recap's own, so what has their names there is the install's.
 
 install.sh (on a Mac) and install.ps1 call it as
 `python -m family_brief.program_entries install <install folder>`.

@@ -519,7 +519,7 @@ def _entries(s: Survey) -> None:
     for name in entries.NAMES:
         if entries.placed(name):
             s.items.append(Item(name, entries.where(), partial(entries.remove, name)))
-        elif entries.path(name).exists():
+        elif entries.path(name).exists() or entries.path(name).is_symlink():
             s.stops.append(f"{_show(entries.path(name))} has the name of Parent Recap's {name}, "
                            "but Parent Recap's install didn't make it")
 

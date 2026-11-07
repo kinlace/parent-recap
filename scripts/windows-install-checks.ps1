@@ -126,7 +126,8 @@ function Test-OwnRuntimes {
 }
 
 # Parent Recap Settings and Parent Recap Check in the Start menu (ADR 0042), each running a
-# program that is there: the venv's pythonw.exe, and Windows PowerShell.
+# program that is there: the venv's pythonw.exe with task_run, as the evening task does, and
+# Windows PowerShell kept open.
 function Test-Entries {
   $shell = New-Object -ComObject WScript.Shell
   foreach ($name in 'Parent Recap Settings', 'Parent Recap Check') {
@@ -136,8 +137,10 @@ function Test-Entries {
     Write-Host "${name}: $($s.TargetPath) $($s.Arguments)"
     if (-not (Test-Path -LiteralPath $s.TargetPath -PathType Leaf)) { throw "$name runs $($s.TargetPath), which isn't there" }
   }
-  if ($shell.CreateShortcut("$StartMenu\Parent Recap Settings.lnk").TargetPath -ne "$Installed\app\.venv\Scripts\pythonw.exe") {
-    throw "Parent Recap Settings doesn't run the venv's pythonw.exe"
+  $settings = $shell.CreateShortcut("$StartMenu\Parent Recap Settings.lnk")
+  if ($settings.TargetPath -ne "$Installed\app\.venv\Scripts\pythonw.exe" -or
+      $settings.Arguments -notmatch '^-m family_brief\.system\.task_run .* -m family_brief setup page$') {
+    throw "Parent Recap Settings doesn't run the setup page with the venv's pythonw.exe and task_run"
   }
   if ($shell.CreateShortcut("$StartMenu\Parent Recap Check.lnk").Arguments -notmatch '^-NoExit .* -m family_brief doctor') {
     throw "Parent Recap Check doesn't run doctor in a window that stays open"

@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import plistlib
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -24,6 +25,7 @@ def target(home: Path) -> Path:
     command.parent.mkdir(parents=True)
     command.write_text(f'#!/bin/sh\necho "$@" >> {str(home / "asked")!r}\necho "ran $*"\n')
     command.chmod(0o755)
+    (command.parent / "python").symlink_to(sys.executable)  # the venv's, which Settings runs
     return target
 
 
@@ -60,7 +62,8 @@ def test_neither_tells_another_app_what_to_do(target, name):
 
 @pytest.mark.posix
 def test_settings_starts_the_setup_page_and_ends_at_once(home, target):
-    # An app still running is only brought forward when it's opened again, so the script ends.
+    # An app still running is only brought forward when it's opened again, so the script ends,
+    # and the page runs in a session of its own, which ending the app's process group leaves.
     entries.place(SETTINGS, target)
     script = bundle(SETTINGS) / "Contents" / "MacOS" / "settings"
 

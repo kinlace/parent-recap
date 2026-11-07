@@ -1,8 +1,9 @@
 """The entries on Windows: two Start menu shortcuts in a `Parent Recap` folder of the user's own
-Start menu, which needs no administrator. Settings runs the venv's `pythonw.exe`, which opens no
-console window, so none is left behind while the page is served. Check runs Windows PowerShell
-with `-NoExit`, so its window stays open once doctor ends. Both run the venv's own Python, not
-pip's launcher, which Defender can block (#591).
+Start menu, which needs no administrator. Settings runs the page as the evening task runs its job,
+through the venv's `pythonw.exe` and `task_run`, so no console window opens, nor stays open,
+while the page is served; what it prints goes to `logs\\settings-*.log`. Check runs Windows
+PowerShell with `-NoExit`, so its window stays open once doctor ends. Both run the venv's own
+Python, not pip's launcher, which Defender can block (#591).
 
 A shortcut is a binary file only Windows' own Shell writes, so Windows PowerShell makes it through
 the Shell's COM object, with each value passed in its own variable, which needs no quoting."""
@@ -12,7 +13,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from .entries import CHECK, SETTINGS
+from .entries import SETTINGS
 
 SINGLE_QUOTES = "'‘’‚‛"  # each ends a PowerShell '...' string
 _MAKE = (
@@ -46,12 +47,24 @@ def _quoted(word: str) -> str:
     return "'" + "".join(c * 2 if c in SINGLE_QUOTES else c for c in word) + "'"
 
 
+def _argument(word: str) -> str:
+    """`word` as one argument on a Windows command line. No Windows path has a double quote."""
+    return f'"{word}"' if " " in word else word
+
+
 def shortcut(name: str, target: Path) -> dict[str, str]:
     """What the shortcut `name` runs: its program, its arguments, the folder it starts in and the
     description Windows shows for it."""
     scripts = target / "app" / ".venv" / "Scripts"
     if name == SETTINGS:
-        return {"target": str(scripts / "pythonw.exe"), "arguments": "-m family_brief setup page",
+        # As the evening task runs its job (task_run.py): pythonw.exe opens no window, and starts
+        # the page's python.exe with a console that has none, which each program the page runs,
+        # such as node or claude, shares instead of opening a console window of its own.
+        logs = target / "logs"
+        words = ["-m", "family_brief.system.task_run", str(logs / "settings-stdout.log"),
+                 str(logs / "settings-stderr.log"), str(scripts / "python.exe"),
+                 "-m", "family_brief", "setup", "page"]
+        return {"target": str(scripts / "pythonw.exe"), "arguments": " ".join(map(_argument, words)),
                 "folder": str(target), "description": "Open Parent Recap's setup page"}
     command = f"& {_quoted(str(scripts / 'python.exe'))} -m family_brief doctor"
     return {"target": _powershell(), "arguments": f'-NoExit -NoLogo -NoProfile -Command "{command}"',
