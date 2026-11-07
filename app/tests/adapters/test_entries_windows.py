@@ -16,11 +16,18 @@ from family_brief.system.entries import CHECK, NAMES, SETTINGS
 TARGET = Path(r"C:\Users\O’Brien\AppData\Local\ParentRecap")
 
 
-def test_settings_runs_the_page_on_the_venv_s_pythonw_which_leaves_no_console_window():
-    made = entries.shortcut(SETTINGS, TARGET)
+def test_settings_runs_the_page_as_the_evening_task_runs_its_job_with_no_console_window():
+    # pythonw.exe opens none, and task_run gives the page's python.exe a console without one,
+    # which the programs the page runs share instead of each opening a window of its own.
+    target = Path(r"C:\Users\Aino Virtanen\AppData\Local\ParentRecap")  # a space, quoted below
+    scripts, logs = target / "app" / ".venv" / "Scripts", target / "logs"
 
-    assert made["target"] == str(TARGET / "app" / ".venv" / "Scripts" / "pythonw.exe")
-    assert made["arguments"] == "-m family_brief setup page"
+    made = entries.shortcut(SETTINGS, target)
+
+    assert made["target"] == str(scripts / "pythonw.exe")
+    assert made["arguments"] == (
+        f'-m family_brief.system.task_run "{logs / "settings-stdout.log"}" '
+        f'"{logs / "settings-stderr.log"}" "{scripts / "python.exe"}" -m family_brief setup page')
 
 
 def test_check_runs_doctor_in_a_powershell_window_that_stays_open(monkeypatch):

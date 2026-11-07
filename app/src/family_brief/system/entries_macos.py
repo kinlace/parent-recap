@@ -23,6 +23,9 @@ BUNDLE_IDS = {SETTINGS: "com.kinlace.parent-recap.settings", CHECK: "com.kinlace
 EXECUTABLES = {SETTINGS: "settings", CHECK: "check"}
 CHECK_SCRIPT = "Parent Recap Check.command"  # Terminal's window is titled after it
 MADE_BY = "# Made by Parent Recap's install; parent-recap uninstall removes it."
+# Starts the command after it in a new session, with no terminal to read or write, and returns.
+_DETACHED = ("import subprocess, sys; subprocess.Popen(sys.argv[1:], start_new_session=True, "
+             "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)")
 
 
 def offered() -> bool:
@@ -44,10 +47,12 @@ def _command(target: Path) -> str:
 def scripts(name: str, target: Path) -> dict[str, str]:
     """The entry's scripts, by their path in the bundle."""
     if name == SETTINGS:
-        # Started apart from the script, which then ends, and served until 30 minutes without use.
+        # Started in a session of its own, so nothing that ends the app's process group ends the
+        # page too, then the script ends; the page is served until 30 minutes without use.
+        python = shlex.quote(str(target / "app" / ".venv" / "bin" / "python"))
         return {f"Contents/MacOS/{EXECUTABLES[name]}": (
             f"#!/bin/sh\n{MADE_BY}\n"
-            f"nohup {_command(target)} setup page >/dev/null 2>&1 &\n")}
+            f"exec {python} -c {shlex.quote(_DETACHED)} {_command(target)} setup page\n")}
     return {
         f"Contents/MacOS/{EXECUTABLES[name]}": (
             f"#!/bin/sh\n{MADE_BY}\n"
