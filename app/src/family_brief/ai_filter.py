@@ -307,6 +307,11 @@ def _likeliest(seen: list[_Seen], before: str, after: str) -> str:
                                     counts[s.text])).text
 
 
+# What may follow a name in the same word: a Finnish case ending, also after a colon (Daniel:lle).
+# Latin letters only, so the Chinese text after a name stays.
+_WORD_REST = re.compile(r":?[A-Za-zÀ-ÖØ-öø-ÿ]+")
+
+
 class Placeholders:
     """One run's placeholders and the values they stand for, numbered per kind in the order the
     values are first met."""
@@ -418,17 +423,20 @@ class Placeholders:
         return token, next((last[len(s):] for s in stems if last.casefold().startswith(s.casefold())), "")
 
     def without_people(self, text: str, someone: str) -> str:
-        """`text` with each person this run masks written as `someone`, with the Finnish case
-        ending the name had, for text that names no one, such as a WhatsApp group's digest (#841).
-        A kept name in a case form (Leon for the Kid Leo) stays. Nothing is recorded for restore."""
+        """`text` with each person this run masks written as `someone`, for text that names no one,
+        such as a WhatsApp group's digest (#841). The whole word goes, with any case ending after
+        the name (Maijalle, Virtanen:lle), so no ending is left glued to `someone`. A kept name in a
+        case form (Leon for the Kid Leo) stays. Nothing is recorded for restore."""
         if not self._people_pattern:
             return text
-
-        def replace(m: re.Match[str]) -> str:
-            if self._kept_pattern and self._kept_pattern.fullmatch(m.group()):
-                return m.group()
-            return inflected(someone, self._token_and_ending(m)[1])
-        return self._people_pattern.sub(replace, text)
+        out, end = [], 0
+        for m in self._people_pattern.finditer(text):
+            if m.start() < end or (self._kept_pattern and self._kept_pattern.fullmatch(m.group())):
+                continue
+            rest = _WORD_REST.match(text, m.end())
+            out += [text[end:m.start()], someone]
+            end = rest.end() if rest else m.end()
+        return "".join([*out, text[end:]])
 
     def _person_text(self, token: str, ending: str, before: str, after: str) -> str:
         """What a person's placeholder with this Finnish case `ending` stood for: the exact text,
