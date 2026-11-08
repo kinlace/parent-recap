@@ -10,6 +10,7 @@ from datetime import timezone
 from types import SimpleNamespace
 
 import pytest
+from urllib.parse import parse_qs, urlsplit
 
 from conftest import NOW, TZ, html_for_golden, ics_for_golden, without_unread_note
 from fake_system import LINUX
@@ -17,7 +18,7 @@ from nights import ENGLISH_REPLY, normal_night
 
 from family_brief import render
 from family_brief.brief import Brief, parse
-from family_brief.brief_text import TEXT, BriefText
+from family_brief.brief_text import TEXT, BriefText, recommend_link
 from family_brief.collectors.base import Message
 from family_brief.summarize import extract_calendar_events
 
@@ -199,7 +200,8 @@ def test_a_night_nothing_could_be_read_says_to_pair_again():
 
     assert mail.text.endswith("\n• WhatsApp: needs a new pairing. Tell Claude “pair WhatsApp again” to fix it."
                               "\n\nParent Recap, running on your own computer\nChange settings: "
-                              "https://github.com/kinlace/parent-recap/blob/stable/README.md#change-settings")
+                              "https://github.com/kinlace/parent-recap/blob/stable/README.md#change-settings"
+                              f"\nRecommend to other parents: {recommend_link(t)}")
 
 
 def fallback(t: BriefText) -> Brief:
@@ -344,6 +346,48 @@ def test_a_hosted_brief_has_no_settings_link():
         for kind, (text, page) in every_kind(t, hosted=True).items():
             assert "#change-settings" not in text and "#change-settings" not in page, (language, kind)
             assert t.change_settings not in text and t.change_settings not in page, (language, kind)
+
+
+@pytest.mark.parametrize("language, label, message", [
+    ("en", "Recommend to other parents",
+     "I've been using a free little tool that turns Wilma, school emails and the parents' group chats into "
+     "one short summary every evening, in the language you choose. What the kids need to bring, hand in or "
+     "sign up for is clear at a glance, and it saves me a lot of hassle. You could try it too: "
+     "https://parentrecap.com"),
+    ("zh", "推荐给其他家长",
+     "我最近在用一个免费小工具，每晚把 Wilma、学校邮件和家长群的消息整理成一封中文日报，孩子要带什么、交什么、"
+     "有什么活动一眼就清楚，省了不少事。你也可以试试：https://parentrecap.com"),
+    ("fi", "Suosittele muille vanhemmille",
+     "Olen käyttänyt ilmaista pientä työkalua, joka kokoaa joka ilta Wilman, koulun sähköpostit ja vanhempien "
+     "WhatsApp-ryhmien viestit yhdeksi lyhyeksi koosteeksi haluamallasi kielellä. Siitä näkee yhdellä "
+     "silmäyksellä, mitä lapsen pitää ottaa mukaan tai palauttaa ja mitä tapahtumia on tulossa. Säästää "
+     "paljon vaivaa! Kokeile sinäkin: https://parentrecap.com"),
+])
+@pytest.mark.parametrize("hosted", [False, True])
+def test_every_brief_links_a_whatsapp_recommendation_in_its_language(language, label, message, hosted):
+    t = TEXT[language]
+
+    for kind, (text, page) in every_kind(t, hosted).items():
+        end = text.rsplit("\n\n", 1)[1].splitlines()
+        [line] = [line for line in end if line.startswith(f"{label}: ")]
+        url = line.removeprefix(f"{label}: ")
+        assert url.startswith("https://wa.me/?text="), kind
+        query = urlsplit(url).query
+        assert parse_qs(query) == {"text": [message]}, kind
+        assert " " not in url and "&" not in query, kind  # the whole message is one encoded value
+        assert end.index(line) == (1 if hosted else 2), kind  # after the version line and the settings link
+        assert (f"<p style='color:#888;font-size:12px'><a href=\"{html.escape(url)}\" style='color:#888;"
+                f"text-decoration:underline'>{html.escape(label)}</a></p>") in page, kind
+
+
+def test_the_recommendation_carries_nothing_from_the_households_brief():
+    for language, t in TEXT.items():
+        for hosted in (False, True):
+            for kind, (text, page) in every_kind(t, hosted).items():
+                assert recommend_link(t) in text and html.escape(recommend_link(t)) in page, (language, kind)
+        message = parse_qs(urlsplit(recommend_link(t)).query)["text"][0]
+        for detail in ("Mia", "Leo", "Opettaja", "Virtanen", "piano", PARENT):
+            assert detail not in message, (language, detail)
 
 
 def test_a_brief_in_an_unreviewed_language_links_the_english_readme():
