@@ -102,6 +102,8 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "runs_hosted": "Parent Recap hosted version, running on the parentrecap.com server",
   "runs_on_own_computer": "Parent Recap, running on your own computer",
   "change_settings": "Change settings",
+  "recommend": "Recommend to other parents",
+  "recommend_message": "I've been using a free little tool that turns Wilma, school emails and the parents' group chats into one short summary every evening, in the language you choose. What the kids need to bring, hand in or sign up for is clear at a glance, and it saves me a lot of hassle. You could try it too: {link}",
   "unread_sender": "This email comes from an address nobody reads. To reply, write to {address}, who set up Parent Recap.",
   "junk_at_first": "Found this in Junk? Mark it \"Not junk\" once, and the rest arrive in the inbox: Parent Recap's address is new, so Hotmail and Outlook.com may junk its first Brief.",
   "untitled": "(untitled)",

@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Annotated
+from urllib.parse import quote
 
 from pydantic import BeforeValidator, StringConstraints
 
@@ -103,6 +104,8 @@ class BriefText:
     runs_hosted: str                    # every Brief's footer, from a Hosted Household (#669)
     runs_on_own_computer: str           # every Brief's footer, from the family's own computer
     change_settings: str                # the link after it, to the README's FAQ (#824)
+    recommend: str                      # every Brief's footer link that opens WhatsApp with... (#845)
+    recommend_message: str              # ...this message, {link} the website; nothing from the Brief
     unread_sender: str                  # {address}, when the gateway's address nobody reads sent it
     junk_at_first: str                  # the first Brief from that address, to Hotmail or Outlook.com
     untitled: str
@@ -213,6 +216,11 @@ EN = BriefText(
     runs_hosted="Parent Recap hosted version, running on the parentrecap.com server",
     runs_on_own_computer="Parent Recap, running on your own computer",
     change_settings="Change settings",
+    recommend="Recommend to other parents",
+    recommend_message="I've been using a free little tool that turns Wilma, school emails and the parents' "
+                      "group chats into one short summary every evening, in the language you choose. "
+                      "What the kids need to bring, hand in or sign up for is clear at a glance, and it "
+                      "saves me a lot of hassle. You could try it too: {link}",
     unread_sender="This email comes from an address nobody reads. To reply, write to {address}, "
                   "who set up Parent Recap.",
     junk_at_first='Found this in Junk? Mark it "Not junk" once, and the rest arrive in the inbox: '
@@ -294,6 +302,9 @@ ZH = BriefText(
     runs_hosted="Parent Recap 托管版，在 parentrecap.com 的服务器上运行",
     runs_on_own_computer="Parent Recap，在你家的电脑上运行",
     change_settings="修改设置",
+    recommend="推荐给其他家长",
+    recommend_message="我最近在用一个免费小工具，每晚把 Wilma、学校邮件和家长群的消息整理成一封中文日报，"
+                      "孩子要带什么、交什么、有什么活动一眼就清楚，省了不少事。你也可以试试：{link}",
     unread_sender="这封邮件的发件地址无人查看。如需回复，请写信给设置 Parent Recap 的人：{address}。",
     junk_at_first="在垃圾邮件里找到这封？把它标记一次“不是垃圾邮件”，之后的就会进收件箱："
                   "Parent Recap 的地址是新的，Hotmail 和 Outlook.com 可能把第一份日报当成垃圾邮件。",
@@ -383,6 +394,12 @@ FI = BriefText(
     runs_hosted="Parent Recapin ylläpidetty versio, joka toimii parentrecap.com-palvelimella",
     runs_on_own_computer="Parent Recap, joka toimii omalla tietokoneellasi",
     change_settings="Muuta asetuksia",
+    recommend="Suosittele muille vanhemmille",
+    recommend_message="Olen käyttänyt ilmaista pientä työkalua, joka kokoaa joka ilta Wilman, koulun "
+                      "sähköpostit ja vanhempien WhatsApp-ryhmien viestit yhdeksi lyhyeksi koosteeksi "
+                      "haluamallasi kielellä. Siitä näkee yhdellä silmäyksellä, mitä lapsen pitää ottaa "
+                      "mukaan tai palauttaa ja mitä tapahtumia on tulossa. Säästää paljon vaivaa! "
+                      "Kokeile sinäkin: {link}",
     unread_sender="Tämä viesti tulee osoitteesta, jota kukaan ei lue. Jos haluat vastata, kirjoita "
                   "osoitteeseen {address}: hän otti Parent Recapin käyttöön.",
     junk_at_first="Löytyikö tämä roskapostista? Merkitse se kerran ”Ei roskapostia”, niin loput tulevat "
@@ -419,6 +436,18 @@ TEXT: dict[Language, BriefText] = {"en": EN, "zh": ZH, "fi": FI}  # the reviewed
 # anchor in each (#824); the `stable` branch's, so it matches the version the family runs.
 _README = {"en": "README.md", "zh": "README.zh-CN.md", "fi": "README.fi.md"}
 _SETTINGS_HELP = "https://github.com/kinlace/parent-recap/blob/stable/{readme}#change-settings"
+
+
+# Where a parent's recommendation sends other parents: the homepage, whose demo is a made-up
+# family's Brief (#845).
+WEBSITE = "https://parentrecap.com"
+
+
+def recommend_link(t: BriefText) -> str:
+    """The footer's WhatsApp link (#845): it opens WhatsApp, on a phone or a computer, with the
+    recommendation in the language of `t` ready to send to a person or a group. It carries nothing
+    from the Household's Brief."""
+    return "https://wa.me/?text=" + quote(t.recommend_message.format(link=WEBSITE), safe="")
 
 
 def settings_help(t: BriefText) -> str:

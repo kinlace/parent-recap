@@ -2,6 +2,12 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## Unreleased
+
+### Added
+
+- Every Brief, from your own computer or the hosted version, ends with a "Recommend to other parents" link in the Brief's language. It opens WhatsApp, on a phone or a computer, with a short ready-made message saying what Parent Recap does and linking to parentrecap.com, for you to send to a person or a group and change first if you like. The message carries nothing from your Brief: no names, school, class or schedule.
+
 ## 0.15.0 · 2026-11-08
 
 ### Added

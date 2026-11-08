@@ -14,7 +14,7 @@ from . import feedback
 from . import sources as source_registry
 from .actions import ics as ics_action
 from .brief import ActionItem, Brief
-from .brief_text import PRODUCT_NAME, BriefText, settings_help
+from .brief_text import PRODUCT_NAME, BriefText, recommend_link, settings_help
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, failed_sign_in
 from .utils.dates import to_local
 
@@ -514,20 +514,27 @@ def unread_sender(t: BriefText, write_to: str | None) -> str:
 class EndNote:
     """The last lines of every Brief: which version sent it, the hosted one or the family's own
     computer's; from the family's own computer, the link to how to change a setting (#824), which a
-    Hosted Household changes through the maintainers; then the `sender` line, if any."""
+    Hosted Household changes through the maintainers; the link that recommends Parent Recap to other
+    parents on WhatsApp (#845); then the `sender` line, if any."""
     t: BriefText
     hosted: bool
     sender: str
 
     def text(self) -> str:
-        link = "" if self.hosted else f"{self.t.change_settings}: {settings_help(self.t)}"
-        return "\n".join(line for line in (self._version, link, self.sender) if line)
+        links = "\n".join(f"{label}: {url}" for label, url in self._links)
+        return "\n".join(line for line in (self._version, links, self.sender) if line)
 
     def html(self) -> str:
-        link = "" if self.hosted else (
-            f"<p style='color:#888;font-size:12px'><a href=\"{_h.escape(settings_help(self.t))}\""
-            f" style='color:#888;text-decoration:underline'>{_h.escape(self.t.change_settings)}</a></p>")
-        return _small(self._version) + link + _small(self.sender)
+        links = "".join(
+            f"<p style='color:#888;font-size:12px'><a href=\"{_h.escape(url)}\""
+            f" style='color:#888;text-decoration:underline'>{_h.escape(label)}</a></p>"
+            for label, url in self._links)
+        return _small(self._version) + links + _small(self.sender)
+
+    @property
+    def _links(self) -> list[tuple[str, str]]:
+        settings = [] if self.hosted else [(self.t.change_settings, settings_help(self.t))]
+        return settings + [(self.t.recommend, recommend_link(self.t))]
 
     @property
     def _version(self) -> str:
