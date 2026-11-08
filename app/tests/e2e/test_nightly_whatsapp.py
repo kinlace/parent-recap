@@ -181,7 +181,26 @@ def test_a_group_digest_names_none_of_the_people_the_ai_filter_masks(harness, wh
     assert harness.run() == 0
 
     [email] = harness.sent
-    assert "- someone offered her home for the party; someonelle kiitos\n- Mia's class" in email.text
+    # The whole word goes, case ending and all: nothing is glued onto the Brief language's word.
+    assert "- someone offered her home for the party; someone kiitos\n- Mia's class" in email.text
+
+
+@pytest.mark.parametrize("language, digest, shown", [
+    ("zh", "- Maija Virtanen 提议在家里办聚会，Maijalle 表示感谢", "- 有人 提议在家里办聚会，有人 表示感谢"),
+    ("fi", "- Maija Virtanen tarjosi kotiaan juhliin; kiitos Maijalle ja Virtanen:lle", "- joku tarjosi kotiaan juhliin; kiitos joku ja joku"),
+])
+def test_a_group_digest_says_its_languages_own_word_for_a_masked_name(harness, whatsapp_only, language, digest, shown):
+    harness.config["summary_language"] = language
+    harness.config["whatsapp"]["chats"][0]["digest"] = True
+    harness.sources["whatsapp"].append(msg("whatsapp", "3EB0A4", "2026-09-27T20:30:00+03:00",
+                                           "We could hold the party at our place", sender="Maija Virtanen",
+                                           chat="3B parents", kid="Mia"))
+    harness.model_reply = {**SAYS_SOMETHING, "group_digests": [{"group": "3B parents", "text": digest}]}
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert f"💬 3B parents\n{shown}\n" in email.text
 
 
 def test_a_marked_groups_held_back_message_stays_held_back(harness, whatsapp_only):

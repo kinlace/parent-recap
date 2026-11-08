@@ -131,6 +131,10 @@ def system_prompt(language: str, t: BriefText | None = None, masked: bool = Fals
         + (_PLACEHOLDERS if masked else "") + (_KID_PLACEHOLDERS if masked and kids_masked else "")
 
 
+# The neutral word a group digest says in place of a person (#841); another language uses its someone.
+_NO_ONE = {"en": "someone", "zh": "有人", "fi": "joku"}
+
+
 def digest_groups(messages: list[Message]) -> dict[str, str]:
     """The groups tonight's `messages` come from that want a digest (#841), by their name folded,
     with the name as the messages give it."""
@@ -372,7 +376,7 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
     _wanted_groups(brief, groups)
     if placeholders is not None:  # a group digest names no one, whatever the model wrote
         for g in brief.groups:
-            g.text = placeholders.without_people(g.text, t.someone)
+            g.text = placeholders.without_people(g.text, _NO_ONE.get(language, t.someone))
     _call_kids(brief, cfg)
     cites = citations.resolve(brief, messages, upcoming_events, already_captured, earlier_briefs or [])
     return brief, RunNotes(incomplete=looks_cut_off(reply.data, reply.repaired), citations=cites), reply
