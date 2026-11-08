@@ -63,7 +63,9 @@ check_pins() {
   [ -n "$python" ] && [ -n "$build" ] && [ -n "$node" ] ||
     fail "install.sh pins PYTHON_VERSION=$python PYTHON_BUILD=$build NODE_VERSION=$node"
   sums="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/sums.XXXXXX")"
-  curl -fsSL "https://github.com/astral-sh/python-build-standalone/releases/download/$build/SHA256SUMS" > "$sums/python"
+  # From the first place that serves it, as install.sh downloads the Python (#843).
+  curl -fsSL "https://releases.astral.sh/github/python-build-standalone/releases/download/$build/SHA256SUMS" > "$sums/python" ||
+    curl -fsSL "https://github.com/astral-sh/python-build-standalone/releases/download/$build/SHA256SUMS" > "$sums/python"
   curl -fsSL "https://nodejs.org/dist/v$node/SHASUMS256.txt" > "$sums/node"
   wrong="$(
     mismatch PYTHON_SHA256_LINUX_AARCH64 "$sums/python" "cpython-$python+$build-aarch64-unknown-linux-gnu-install_only.tar.gz"

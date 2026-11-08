@@ -42,8 +42,13 @@
   $PythonVersion = '3.13.16'
   $PythonBuild = '20261003'
   $PythonSha256 = '5e100ee3d592ff500f4408a624f054d202e32d9dba8a12b2226bef81083fd778'
-  $PythonReleases = 'https://github.com/astral-sh/python-build-standalone/releases/download'
+  # Where the builds are, tried in turn, as in install.sh: Astral's mirror, which uv downloads from,
+  # then the project's GitHub releases (#843). The checksum decides what is used.
+  $PythonReleases = @(
+    'https://releases.astral.sh/github/python-build-standalone/releases/download',
+    'https://github.com/astral-sh/python-build-standalone/releases/download')
   $PythonFile = "cpython-$PythonVersion+$PythonBuild-x86_64-pc-windows-msvc-install_only.tar.gz"
+  $PythonUrls = @($PythonReleases | ForEach-Object { "$_/$PythonBuild/$PythonFile" })
   $Runtime = Join-Path $Runtimes "python-$PythonVersion-$PythonBuild"
   $Python = Join-Path $Runtime 'python.exe'
 
@@ -120,17 +125,23 @@
     if (Test-Path -LiteralPath $Folder) { Remove-Item -LiteralPath $Folder -Recurse -Force }
   }
 
-  # Downloads $Url into $Folder, checks it against $Sha256, and unpacks it into $Folder\unpacked
-  # without its top folder, where $Program must then be. Returns that folder.
-  function Get-Runtime([string]$What, [string]$Url, [string]$Sha256, [string]$Folder, [string]$Program) {
+  # Downloads the first of $Urls that serves the file into $Folder, checks it against $Sha256, and
+  # unpacks it into $Folder\unpacked without its top folder, where $Program must then be. Returns
+  # that folder.
+  function Get-Runtime([string]$What, [string[]]$Urls, [string]$Sha256, [string]$Folder, [string]$Program) {
     Write-Host "Downloading Parent Recap's own $What..."
-    $file = Join-Path $Folder ($Url -replace '.*/', '')
-    try {
-      Invoke-WebRequest -Uri $Url -OutFile $file -UseBasicParsing
-    } catch {
-      "Downloading $Url failed: $_" | Out-File -FilePath $Log -Append -Encoding utf8
-      Stop-Install "Parent Recap couldn't download its $What (is this PC online?)."
+    $file = Join-Path $Folder ($Urls[0] -replace '.*/', '')
+    $got = $false
+    foreach ($url in $Urls) {
+      try {
+        Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing
+        $got = $true
+        break
+      } catch {
+        "Downloading $url failed: $_" | Out-File -FilePath $Log -Append -Encoding utf8
+      }
     }
+    if (-not $got) { Stop-Install "Parent Recap couldn't download its $What (is this PC online?)." }
     if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $Sha256) {
       Stop-Install ("The $What Parent Recap downloaded isn't the one it expects (its checksum doesn't " +
         "match), so it wasn't used.")
@@ -148,14 +159,14 @@
   # checked in a folder next to the runtimes, so the last step is a rename on the same disk,
   # which can't leave half a runtime behind. A run that was cut off leaves only that folder,
   # which the next run clears, and a runtime that is in place stays for the next run.
-  function Install-Runtime([string]$What, [string]$Url, [string]$Sha256, [string]$Destination, [string]$Program) {
+  function Install-Runtime([string]$What, [string[]]$Urls, [string]$Sha256, [string]$Destination, [string]$Program) {
     if (Test-Path -LiteralPath (Join-Path $Destination $Program) -PathType Leaf) { return }
     $download = Join-Path $Runtimes '.download'
     Remove-Folder $download
     Remove-Folder $Destination
     New-Item -ItemType Directory -Path $download | Out-Null
     try {
-      $unpacked = Get-Runtime $What $Url $Sha256 $download $Program
+      $unpacked = Get-Runtime $What $Urls $Sha256 $download $Program
       try {
         Move-Item -LiteralPath $unpacked -Destination $Destination
       } catch {
@@ -233,7 +244,7 @@
       (Test-Path -LiteralPath (Join-Path $here 'app\pyproject.toml') -PathType Leaf))
     $plugin = if ($fromDownload) { Get-Stable } else { $here }
 
-    Install-Runtime 'Python' "$PythonReleases/$PythonBuild/$PythonFile" $PythonSha256 $Runtime 'python.exe'
+    Install-Runtime 'Python' $PythonUrls $PythonSha256 $Runtime 'python.exe'
     Install-Runtime 'Node' "$NodeReleases/v$NodeVersion/$NodeFile" $NodeSha256 $NodeRuntime 'node.exe'
 
     # The program, without what belongs to this PC (the venv, Python's caches and VERSION) and

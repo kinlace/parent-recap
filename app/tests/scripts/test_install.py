@@ -37,6 +37,9 @@ NODE_ARCHES = {"aarch64": "arm64", "x86_64": "x64"}
 MACOS = "15.5"
 # Each system as python-build-standalone names it, as nodejs.org does, and its pins' prefix.
 SYSTEMS = [("apple-darwin", "darwin", ""), ("unknown-linux-gnu", "linux", "LINUX_")]
+# Where install.sh downloads the pinned Python from, in turn: Astral's mirror, then GitHub (#843).
+MIRROR = "https://releases.astral.sh/github/python-build-standalone/releases/download"
+GITHUB = "https://github.com/astral-sh/python-build-standalone/releases/download"
 
 
 @pytest.fixture(scope="session")
@@ -74,13 +77,19 @@ def mac(tmp_path: Path, python_build: Path) -> dict:
     bin_.mkdir()
     m = {"tmp": tmp_path, "packages": packages, "plugin": plugin, "home": tmp_path / "home",
          "bin": bin_, "served": tmp_path / "served", "build": python_build,
-         "downloads": tmp_path / "downloads.log"}
+         "downloads": tmp_path / "downloads.log", "down": tmp_path / "down"}
     m["served"].mkdir()
-    # Serves the file named like the URL's last part, or fails as curl does offline.
+    # Serves the file named like the URL's last part, or fails as curl does offline, or as it
+    # does on a 504 for a URL starting with a line of `down`.
     fake(bin_ / "curl", f"""
 url=; out=
 while [ $# -gt 0 ]; do case "$1" in -o) out=$2; shift ;; http*) url=$1 ;; esac; shift; done
 echo "$url" >> "{m['downloads']}"
+if [ -f "{m['down']}" ]; then
+  while read -r down; do
+    case "$url" in "$down"*) echo "curl: (22) The requested URL returned error: 504" >&2; exit 22 ;; esac
+  done < "{m['down']}"
+fi
 served="{m['served']}/$(basename "$url")"
 [ -f "$served" ] || {{ echo "curl: (6) Could not resolve host: github.com" >&2; exit 6; }}
 cp "$served" "$out"
@@ -657,9 +666,36 @@ def test_picks_the_build_for_the_mac_s_chip_even_in_a_rosetta_terminal(mac, kind
     result = install(mac)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert downloads(mac) == ["https://github.com/astral-sh/python-build-standalone/releases/download/"
-                              f"20261003/{build_name(*PINNED, arch)}",
+    assert downloads(mac) == [f"{MIRROR}/20261003/{build_name(*PINNED, arch)}",
                               f"https://nodejs.org/dist/v{NODE}/{node_name(NODE, arch)}"]
+
+
+@pytest.mark.macos
+@pytest.mark.parametrize("down, used", [(MIRROR, GITHUB), (GITHUB, MIRROR)])
+def test_the_python_comes_from_whichever_of_the_mirror_and_github_serves_it(mac, down, used):
+    # GitHub answered every python-build-standalone download with 504 for hours (#843).
+    program(mac, ())
+    mac["down"].write_text(down + "\n")
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    python = [u for u in downloads(mac) if "cpython-" in u]
+    assert python[-1] == f"{used}/20261003/{build_name(*PINNED, 'aarch64')}"
+    assert real_python(mac).is_relative_to(runtimes(mac) / "python-3.13.16-20261003")
+
+
+@pytest.mark.macos
+def test_when_neither_serves_the_python_the_install_says_so_as_before(mac):
+    program(mac, ())
+    mac["down"].write_text(f"{MIRROR}\n{GITHUB}\n")
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    assert "couldn't download its Python" in result.stdout and "Nothing was changed" in result.stdout
+    assert [u.rsplit("/", 2)[0] for u in downloads(mac)] == [MIRROR, GITHUB]
+    assert not (mac["home"] / "ParentRecap").exists()
 
 
 @pytest.mark.macos
@@ -794,7 +830,7 @@ def test_a_linux_server_gets_the_linux_builds_for_its_chip(mac, machine, arch):
     python = build_name(*PINNED, arch, "unknown-linux-gnu")
     node = node_name(NODE, arch, "linux")
     assert downloads(mac) == [
-        f"https://github.com/astral-sh/python-build-standalone/releases/download/20261003/{python}",
+        f"{MIRROR}/20261003/{python}",
         f"https://nodejs.org/dist/v{NODE}/{node}"]
     assert real_python(mac).is_relative_to(runtimes(mac) / "python-3.13.16-20261003")
     ran = subprocess.run([venv_python(mac).parent / "parent-recap"], capture_output=True, text=True)

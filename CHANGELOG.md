@@ -8,6 +8,10 @@ What changes for families in each release, collected from the `What changes for 
 
 - A WhatsApp group can get its own short digest in the evening Brief: a few lines, in the Brief's language, on what the group talked about beyond your Kids' items, such as where the class is heading or what all the kids will do next week. It sums the talk up instead of translating each message, doesn't repeat your Kids' items, names no other parent or child, and is left out on an evening the group had no messages. It's off for every group: tick it under the group on the setup page's Check step, or ask Claude Code or Codex to turn it on or off. The messages go through the AI filter as before.
 
+### Fixed
+
+- Installing no longer depends on one download site for Parent Recap's own Python. When GitHub stopped serving it, a new install on a Mac, Windows PC or server stopped with "Parent Recap couldn't download its Python". The install now gets it from Astral's download site, which uv uses too, or from GitHub when that one is down, and checks it against the same checksum as before.
+
 ## 0.14.0 · 2026-11-07
 
 ### Added
