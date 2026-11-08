@@ -51,15 +51,23 @@ function Test-Pins {
     return $Matches[1]
   }
   $py = Pin PythonVersion; $build = Pin PythonBuild; $node = Pin NodeVersion
+  # Each list from the first place that serves it, as install.ps1 downloads the Python (#843).
   $pins = @(
-    @{ List = "https://github.com/astral-sh/python-build-standalone/releases/download/$build/SHA256SUMS"
+    @{ Lists = @("https://releases.astral.sh/github/python-build-standalone/releases/download/$build/SHA256SUMS",
+                 "https://github.com/astral-sh/python-build-standalone/releases/download/$build/SHA256SUMS")
        File = "cpython-$py+$build-x86_64-pc-windows-msvc-install_only.tar.gz"; Pinned = Pin PythonSha256 },
-    @{ List = "https://nodejs.org/dist/v$node/SHASUMS256.txt"
+    @{ Lists = @("https://nodejs.org/dist/v$node/SHASUMS256.txt")
        File = "node-v$node-win-x64.zip"; Pinned = Pin NodeSha256 })
   $sums = Join-Path $env:RUNNER_TEMP 'sums.txt'
   $wrong = @()
   foreach ($p in $pins) {
-    Invoke-WebRequest $p.List -OutFile $sums -UseBasicParsing
+    $got = $null
+    foreach ($list in $p.Lists) {
+      try { Invoke-WebRequest $list -OutFile $sums -UseBasicParsing; $got = $list; break }
+      catch { Write-Host "Downloading $list failed: $_" }
+    }
+    if (-not $got) { throw "none of $($p.Lists -join ', ') could be downloaded" }
+    $p.List = $got
     $line = Get-Content $sums | Where-Object { $_.Trim() -match ('\s\*?' + [regex]::Escape($p.File) + '$') }
     if (-not $line -or ($line -split '\s+')[0] -ne $p.Pinned) {
       $wrong += "$($p.File): install.ps1 pins $($p.Pinned), $($p.List) says: $line"
@@ -72,7 +80,8 @@ function Test-Pins {
 function Test-FailedDownload {
   # Beside install.ps1, which finds the checkout from its own folder.
   $offline = Join-Path $Repo 'install-offline.ps1'
-  (Get-Content $Install -Raw) -replace "PythonReleases = '[^']*'", "PythonReleases = 'https://github.com/kinlace/no-such-release'" |
+  # Every place it downloads the Python from fails.
+  (Get-Content $Install -Raw) -replace "(?s)PythonReleases = @\(.*?\)", "PythonReleases = @('https://github.com/kinlace/no-such-release')" |
     Set-Content $offline -Encoding ascii
   try {
     $out = powershell -NoProfile -ExecutionPolicy Bypass -File $offline *>&1 | Out-String

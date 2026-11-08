@@ -60,7 +60,13 @@ PYTHON_SHA256_AARCH64=d8975d7df4f08f7b1c7aafcdfacbddcec3d366415f2c1a72b2466b6850
 PYTHON_SHA256_X86_64=8e9cb087305bfb8969f68a905f79f41469d4aa5220c1aa71ada7fc9953bdba0f
 PYTHON_SHA256_LINUX_AARCH64=6477121f22904963a066ac8ff89983baae781510815590e894daa3c11ce86652
 PYTHON_SHA256_LINUX_X86_64=0a0272910b10417c659a9312fb3f2d7a6d774da7bd510999be7a3ba83273dc1f
-PYTHON_RELEASES=https://github.com/astral-sh/python-build-standalone/releases/download
+# Where the builds are, tried in turn: Astral's mirror, which uv downloads from, then the project's
+# GitHub releases, which once answered every download with 504 for hours (#843). Both serve the
+# same files, and the checksums above decide what is used.
+PYTHON_RELEASES=(
+  https://releases.astral.sh/github/python-build-standalone/releases/download
+  https://github.com/astral-sh/python-build-standalone/releases/download
+)
 # Each pinned version gets its own folder: macOS is assumed not to keep the permission for a
 # binary replaced at the same path (#168).
 RUNTIMES="$TARGET/runtime"
@@ -108,13 +114,17 @@ sha256() {
   if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1
 }
 
-# Downloads the pinned $1 (Python or Node) from $2, checks it against the checksum $3, and unpacks
-# it into $tmp/$1, where $4 must then be.
+# Downloads the pinned $1 (Python or Node) from the first of the URLs $4... that serves it, checks
+# it against the checksum $2, and unpacks it into $tmp/$1, where $3 must then be.
 fetch_runtime() {
-  local what=$1 url=$2 sha=$3 program=$4
-  local tarball
-  tarball="$tmp/$(basename "$url")"
-  curl -fsSL --retry 2 -o "$tarball" "$url" 2>/dev/null ||
+  local what=$1 sha=$2 program=$3
+  shift 3
+  local tarball url got=no
+  tarball="$tmp/$(basename "$1")"
+  for url in "$@"; do
+    if curl -fsSL --retry 2 -o "$tarball" "$url" 2>/dev/null; then got=yes; break; fi
+  done
+  [ "$got" = yes ] ||
     runtime_failed "Parent Recap couldn't download its $what (is this $COMPUTER online?)."
   [ "$(sha256 "$tarball")" = "$sha" ] ||
     runtime_failed "The $what Parent Recap downloaded isn't the one it expects (its checksum doesn't match), so it wasn't used."
@@ -155,11 +165,12 @@ install_runtimes() {
   fi
   tmp=$(mktemp -d)  # not local: the trap reads it when runtime_failed exits
   trap 'rm -rf "$tmp"' EXIT
-  [ "$python" = no ] || fetch_runtime Python \
-    "$PYTHON_RELEASES/$PYTHON_BUILD/cpython-$PYTHON_VERSION+$PYTHON_BUILD-$ARCH-$py_os-install_only.tar.gz" \
-    "$py_sha" bin/python3
-  [ "$node" = no ] || fetch_runtime Node \
-    "$NODE_RELEASES/v$NODE_VERSION/node-v$NODE_VERSION-$node_os-$node_arch.tar.xz" "$node_sha" bin/node
+  local py_file="cpython-$PYTHON_VERSION+$PYTHON_BUILD-$ARCH-$py_os-install_only.tar.gz"
+  # Each of PYTHON_RELEASES with the build's folder and the file after it.
+  [ "$python" = no ] || fetch_runtime Python "$py_sha" bin/python3 \
+    "${PYTHON_RELEASES[@]/%//$PYTHON_BUILD/$py_file}"
+  [ "$node" = no ] || fetch_runtime Node "$node_sha" bin/node \
+    "$NODE_RELEASES/v$NODE_VERSION/node-v$NODE_VERSION-$node_os-$node_arch.tar.xz"
   mkdir -p "$RUNTIMES"
   [ "$python" = no ] || place_runtime Python "$RUNTIME"
   [ "$node" = no ] || place_runtime Node "$NODE_RUNTIME"

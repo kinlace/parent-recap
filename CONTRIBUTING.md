@@ -89,9 +89,11 @@ python3 ../scripts/check_wheels.py
 `install.sh` downloads its own Python, a python-build-standalone `install_only` build, and builds the venv on it (ADR 0011). To move it to a newer Python or build, take one [release](https://github.com/astral-sh/python-build-standalone/releases) and change the six lines under `Parent Recap's own Python` in `install.sh`: `PYTHON_VERSION` and `PYTHON_BUILD` (the release's date tag), then `PYTHON_SHA256_AARCH64` and `PYTHON_SHA256_X86_64`, the checksums of the two `cpython-<version>+<build>-<arch>-apple-darwin-install_only.tar.gz` files, and `PYTHON_SHA256_LINUX_AARCH64` and `PYTHON_SHA256_LINUX_X86_64`, those of the two `-unknown-linux-gnu-` ones the hosted version's server installs (ADR 0029), from the release's `SHA256SUMS`:
 
 ```bash
-curl -fsSL https://github.com/astral-sh/python-build-standalone/releases/download/<build>/SHA256SUMS \
+curl -fsSL https://releases.astral.sh/github/python-build-standalone/releases/download/<build>/SHA256SUMS \
   | grep -E 'cpython-<version>\+<build>-(aarch64|x86_64)-(apple-darwin|unknown-linux-gnu)-install_only\.tar\.gz$'
 ```
+
+That's Astral's mirror of the release, which uv downloads from: both installs try it first and then GitHub's `https://github.com/astral-sh/python-build-standalone/releases/download/<build>/`, which serves the same files (#843), so only the checksums decide what gets installed.
 
 `install.ps1`, the Windows install, pins the same Python: change `$PythonVersion` and `$PythonBuild` there too, and `$PythonSha256` to the checksum of `cpython-<version>+<build>-x86_64-pc-windows-msvc-install_only.tar.gz` from the same `SHA256SUMS`. CI's windows-install and linux-install jobs check the pinned checksums against the published lists and prints the published line when one doesn't match; `tests/scripts/test_install_ps1.py` checks both scripts pin the same versions.
 
