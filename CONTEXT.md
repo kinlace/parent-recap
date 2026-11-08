@@ -7,12 +7,16 @@ Families know the product as Kinlace Parent Recap: the plugin is `parent-recap`,
 ## Output
 
 **Brief** (zh 日报, fi kooste):
-The daily message sent to a Household, containing the Digest, Notices, Action Items and new calendar events. There is one Brief per night; each Recipient receives it in their own language, with the same content.
+The daily message sent to a Household, containing the Digest, Notices, Action Items, new calendar events and any Group Digests. There is one Brief per night; each Recipient receives it in their own language, with the same content.
 _Avoid_: report, newsletter, daily digest, 家庭简报
 
 **Digest** (zh 摘要, fi yhteenveto):
 The short prose summary at the top of a Brief, grouped by Kid.
 _Avoid_: summary, message digest, 总结
+
+**Group Digest** (zh 群聊摘要, fi ryhmän yhteenveto):
+A few lines in the Brief, under a WhatsApp group's name, on what that group talked about beyond the Kids' items, for a group the parents marked for one. It sums the talk up instead of translating each message, and names no Third Party.
+_Avoid_: group translation, chat summary, 群聊翻译
 
 **Notice** (zh 注意事项, fi tiedoksi):
 Something a parent should know, with no action required.

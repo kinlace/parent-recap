@@ -102,18 +102,56 @@ Earlier Briefs (earlier_briefs in the payload):
 _PLACEHOLDERS = f"\nPlaceholders:\n- {ai_filter.INSTRUCTION}\n"
 _KID_PLACEHOLDERS = f"- {kid_placeholders.INSTRUCTION}\n"
 
+# Only on a night with messages from a WhatsApp group the parents want a digest of (#841), so the
+# prompt of every other night stays as it was.
+_GROUP_DIGESTS = Template("""
+Group digests:
+- The parents asked for a short digest of some WhatsApp groups: the messages whose metadata.digest is true come from them. Sort those messages out as above, then also add one entry per such group to a top-level list, "group_digests": [{"group": "<the group's chat_name, as the messages give it>", "text": "..."}]
+- Its text sums up in a few short Markdown points ("- " lines, at most 5), in $language, what the group talked about beyond the kids' items: where the class or team is heading, what all the kids will do, questions and worries the parents share. Sum the talk up; never translate or retell the messages one by one
+- Don't repeat what per_kid, calendar_events or the Digest already tell, and leave out greetings, thanks and small talk
+- Name no one in it: no parent, child, teacher or placeholder. Write "a parent", "some parents", "the teacher" instead
+- A group with no messages tonight, or nothing to tell beyond the kids' items, gets no entry
+""")
 
-def system_prompt(language: str, t: BriefText | None = None, masked: bool = False, kids_masked: bool = False) -> str:
+
+def system_prompt(language: str, t: BriefText | None = None, masked: bool = False, kids_masked: bool = False,
+                  digests: bool = False) -> str:
     """The summarize instructions, asking for a Brief in `language` with its program text `t`
     (by default the reviewed table), and saying how to treat placeholders when the payload is
-    `masked`, and the Kids' when `kids_masked`. A Finnish Brief has no Finnish words to translate."""
+    `masked`, and the Kids' when `kids_masked`, and asking for the group digests when tonight's
+    messages include a group's that wants one (`digests`). A Finnish Brief has no Finnish words to
+    translate."""
     t = t or TEXT[language]
     mom, dad, either = t.who
     keep_finnish = "" if is_finnish(language) else f". {FINNISH_TERMS}"
     return _SYSTEM_PROMPT.substitute(language=t.language_name, keep_finnish=keep_finnish, quotes=t.quotes,
                                      household=t.household, mom=mom, dad=dad, either=either,
-                                     reminder=t.re_reminder) + (_PLACEHOLDERS if masked else "") \
-        + (_KID_PLACEHOLDERS if masked and kids_masked else "")
+                                     reminder=t.re_reminder) \
+        + (_GROUP_DIGESTS.substitute(language=t.language_name) if digests else "") \
+        + (_PLACEHOLDERS if masked else "") + (_KID_PLACEHOLDERS if masked and kids_masked else "")
+
+
+def digest_groups(messages: list[Message]) -> dict[str, str]:
+    """The groups tonight's `messages` come from that want a digest (#841), by their name folded,
+    with the name as the messages give it."""
+    return {name.strip().casefold(): name for m in messages
+            if m.source == "whatsapp" and m.metadata.get("digest") and (name := m.chat_name)}
+
+
+def _wanted_groups(brief: Brief, groups: dict[str, str]) -> None:
+    """Keeps only the group digests of `groups` (digest_groups), each under the group's own name:
+    a group not marked, or without a message tonight, gets none, whatever the model wrote. With one
+    such group tonight, a digest under a name the model changed is that group's."""
+    kept = []
+    only = next(iter(groups.values())) if len(groups) == 1 and len(brief.groups) == 1 else None
+    for g in brief.groups:
+        name = groups.get(g.group.strip().casefold()) or only
+        if name is None:
+            log.warning("Dropped a group digest for a group that wants none tonight: %r", g.group)
+            continue
+        g.group = name
+        kept.append(g)
+    brief.groups = kept
 
 
 def placeholders_for(cfg: Config, run: ai_filter.Placeholders | None = None) -> ai_filter.Placeholders | None:
@@ -326,9 +364,15 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
             profile["aliases"] = []
     language = cfg.brief_language()
     t = languages.text(cfg, language)
-    reply = call_llm_filtered(cfg, intro, payload, lambda masked, kids: system_prompt(language, t, masked, kids),
+    groups = digest_groups(messages)
+    reply = call_llm_filtered(cfg, intro, payload,
+                              lambda masked, kids: system_prompt(language, t, masked, kids, bool(groups)),
                               t.placeholder_words(), placeholders, drop=NOT_FOR_THE_MODEL, budget=budget)
     brief = parse(reply.data)
+    _wanted_groups(brief, groups)
+    if placeholders is not None:  # a group digest names no one, whatever the model wrote
+        for g in brief.groups:
+            g.text = placeholders.without_people(g.text, t.someone)
     _call_kids(brief, cfg)
     cites = citations.resolve(brief, messages, upcoming_events, already_captured, earlier_briefs or [])
     return brief, RunNotes(incomplete=looks_cut_off(reply.data, reply.repaired), citations=cites), reply

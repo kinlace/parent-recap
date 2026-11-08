@@ -398,9 +398,7 @@ class Placeholders:
             found = m.group()
             if self._kept_pattern and self._kept_pattern.fullmatch(found):
                 continue
-            token, stems = self._forms[int((m.lastgroup or "f0")[1:])]
-            last = re.split(r"\s+", found)[-1]
-            ending = next((last[len(s):] for s in stems if last.casefold().startswith(s.casefold())), "")
+            token, ending = self._token_and_ending(m)
             placeholder = token + (f":{ending}" if ending else "")
             out += [text[end:m.start()], placeholder]
             length += m.start() - end
@@ -411,6 +409,26 @@ class Placeholders:
         for token, ending, found, start, stop in placed:
             self._seen.setdefault(token, []).append(_Seen(ending, found, *_around(masked, start, stop)))
         return masked
+
+    def _token_and_ending(self, m: re.Match[str]) -> tuple[str, str]:
+        """The placeholder of the person a match of the people's pattern names, and the Finnish
+        case ending the name has there."""
+        token, stems = self._forms[int((m.lastgroup or "f0")[1:])]
+        last = re.split(r"\s+", m.group())[-1]
+        return token, next((last[len(s):] for s in stems if last.casefold().startswith(s.casefold())), "")
+
+    def without_people(self, text: str, someone: str) -> str:
+        """`text` with each person this run masks written as `someone`, with the Finnish case
+        ending the name had, for text that names no one, such as a WhatsApp group's digest (#841).
+        A kept name in a case form (Leon for the Kid Leo) stays. Nothing is recorded for restore."""
+        if not self._people_pattern:
+            return text
+
+        def replace(m: re.Match[str]) -> str:
+            if self._kept_pattern and self._kept_pattern.fullmatch(m.group()):
+                return m.group()
+            return inflected(someone, self._token_and_ending(m)[1])
+        return self._people_pattern.sub(replace, text)
 
     def _person_text(self, token: str, ending: str, before: str, after: str) -> str:
         """What a person's placeholder with this Finnish case `ending` stood for: the exact text,

@@ -149,6 +149,8 @@ class WhatsAppChat(BaseModel):
     id: str | None = None           # its WhatsApp group id, ...@g.us
     kid: str | None = None          # a kid's short name, "both", or None
     label: str | None = None        # short topical label e.g. "class", "football", "piano"
+    # The Brief also sums up the group's general talk in a few lines, beyond the Kids' items (#841).
+    digest: bool = False
 
 
 class WhatsAppConfig(BaseModel):
@@ -163,15 +165,20 @@ class WhatsAppConfig(BaseModel):
         """The picked groups' ids, which the Linked Device keeps the messages of."""
         return list(dict.fromkeys(c.id for c in self.chats if c.id))
 
-    def kid_for(self, name: str, group_id: str | None = None) -> str | None:
-        """The Kid of the picked group with `group_id`, or else of the one named `name`."""
+    def chat_for(self, name: str, group_id: str | None = None) -> WhatsAppChat | None:
+        """The picked group with `group_id`, or else the one named `name`."""
         for c in self.chats:
             if group_id is not None and c.id == group_id:
-                return c.kid
+                return c
         for c in self.chats:
             if c.name == name:
-                return c.kid
+                return c
         return None
+
+    def kid_for(self, name: str, group_id: str | None = None) -> str | None:
+        """The Kid of the picked group with `group_id`, or else of the one named `name`."""
+        chat = self.chat_for(name, group_id)
+        return chat.kid if chat else None
 
 
 class CalendarConfig(BaseModel):

@@ -1,10 +1,11 @@
 """Tonight's Brief for a Recipient who reads another language than the first Recipient (ADR 0004).
 
 The model writes the Brief once; for each other language, one more call translates the finished
-summary. A reply that doesn't carry the same Brief (the same Kids, Notices, Action Items and
-calendar events, with the same due dates, times and refs) counts as a failed translation. Only
-text is taken from it: the translation is a copy of the original with its Digest, Notices, Action
-Items and calendar event titles and descriptions replaced, so its Sources are the original's too.
+summary. A reply that doesn't carry the same Brief (the same Kids, Notices, Action Items,
+calendar events and number of group digests, with the same due dates, times and refs) counts as a
+failed translation. Only text is taken from it: the translation is a copy of the original with its
+Digest, Notices, Action Items, calendar event titles and descriptions and group digests' text
+replaced, so its Sources and group names are the original's too.
 While the AI filter is on, the model gets the Brief with the night's placeholders (ADR 0013) and
 the reply gets the real values back before it is checked. `per_language` fans the Brief and
 Weekend Picks out to each language's Recipients."""
@@ -86,7 +87,7 @@ def _unprefixed(what: str, t: BriefText) -> str:
 
 
 def _has_text(brief: Brief) -> bool:
-    return bool(brief.digest or brief.events or any(brief.entries()))
+    return bool(brief.digest or brief.events or brief.groups or any(brief.entries()))
 
 
 def _skeleton(brief: Brief, label: Callable[[str | None], str | None] = lambda kid: kid) -> tuple:
@@ -94,7 +95,8 @@ def _skeleton(brief: Brief, label: Callable[[str | None], str | None] = lambda k
     `label` reads each Kid, so a translated Household label can count as the original's."""
     return ([(label(kid.kid), [n.refs or [] for n in kid.notices],
               [(a.by, a.refs or []) for a in kid.action_items]) for kid in brief.kids],
-            [(label(ev.kid), ev.start) for ev in brief.events])
+            [(label(ev.kid), ev.start) for ev in brief.events],
+            len(brief.groups))  # a group's name is the group's own, which a model may translate anyway
 
 
 def _check(original: Brief, reply: Brief, src: BriefText, dst: BriefText) -> None:
@@ -104,7 +106,7 @@ def _check(original: Brief, reply: Brief, src: BriefText, dst: BriefText) -> Non
         return src.household if kid == dst.household else kid
     if _skeleton(reply, label) != _skeleton(original):
         raise ValueError("the translation doesn't carry the same Kids, Notices, Action Items, "
-                         "calendar events, due dates or refs as the Brief")
+                         "calendar events, due dates, refs or group digests as the Brief")
 
 
 def _text(value: str | None, what: str) -> str:
@@ -135,6 +137,8 @@ def _merge(original: Brief, reply: Brief, src: BriefText, dst: BriefText) -> Bri
             a.what = prefix + _text(ta.what, "what")
             if a.who in src.who:
                 a.who = dst.who[src.who.index(a.who)]
+    for g, tg in zip(out.groups, reply.groups, strict=True):
+        g.text = _text(tg.text, "group digest")
     for ev, te in zip(out.events, reply.events, strict=True):
         relabel(ev)
         # A link the original didn't have would reach the calendar unchecked (#89).

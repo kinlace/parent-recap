@@ -1,7 +1,8 @@
 """The evening run reads WhatsApp from the Linked Device's message store (ADR 0027): the picked
 groups' messages reach the Brief once, the store is pruned, the picked groups' ids are written for
-the always-running job, and a link that needs a new pairing is in the coverage line. The Linked
-Device is faked as the files it leaves (fake_sources.WhatsApp)."""
+the always-running job, and a link that needs a new pairing is in the coverage line. A group marked
+for a digest gets a few lines of its other talk in the Brief (#841). The Linked Device is faked as
+the files it leaves (fake_sources.WhatsApp)."""
 from __future__ import annotations
 
 import json
@@ -14,7 +15,7 @@ import time_machine
 
 from conftest import CLASS_GROUP, NOW, PIANO_GROUP, SAYS_SOMETHING, msg, without_unread_note
 from fake_system import LINUX
-from nights import caught_up_last_night, payload_message_ids
+from nights import archived_summary, caught_up_last_night, payload_message_ids
 
 from family_brief import linked_device
 
@@ -112,6 +113,90 @@ def test_records_past_the_longest_lookback_and_a_margin_are_pruned(harness, what
     assert harness.run() == 0
 
     assert store_ids() == ["KEPT", "3EB0A1", "3EB0A2", "3EB0A3"]
+
+
+# ── Group digests (#841)
+
+CLASS_TALK = "- Parents plan a class party before the winter break\n- Some worry the homework load grew"
+WITH_DIGESTS = {**SAYS_SOMETHING, "group_digests": [
+    {"group": "3B parents", "text": CLASS_TALK},
+    {"group": "Leo piano", "text": "- Not asked for"}]}
+
+
+def digest_ids(harness) -> list[str]:
+    """The Messages the model is told come from a group that wants a digest."""
+    return [m["external_id"] for m in harness.model_payload()["messages"] if m["metadata"].get("digest")]
+
+
+def test_a_group_marked_for_a_digest_gets_a_few_lines_of_its_other_talk_in_the_brief(harness, whatsapp_only):
+    harness.config["whatsapp"]["chats"][0]["digest"] = True  # 3B parents
+    harness.model_reply = WITH_DIGESTS
+
+    assert harness.run() == 0
+
+    assert "group_digests" in harness.model_calls[0].system_prompt
+    assert "never translate or retell the messages one by one" in harness.model_calls[0].system_prompt
+    assert digest_ids(harness) == ["3EB0A2", "3EB0A3"]
+    [email] = harness.sent
+    assert f"💬 3B parents\n{CLASS_TALK}" in email.text
+    assert ("<h3>💬 3B parents</h3><ul><li>Parents plan a class party before the winter break</li>"
+            "<li>Some worry the homework load grew</li></ul>") in email.html
+    # A digest of a group not marked is dropped, whatever the model wrote.
+    assert "Not asked for" not in email.text and "Leo piano" not in email.html
+    assert archived_summary(harness)["group_digests"] == [{"group": "3B parents", "text": CLASS_TALK}]
+
+
+def test_without_a_group_marked_the_prompt_and_the_brief_are_as_before(harness, whatsapp_only):
+    harness.model_reply = WITH_DIGESTS
+
+    assert harness.run() == 0
+
+    assert "group_digests" not in harness.model_calls[0].system_prompt
+    assert digest_ids(harness) == []
+    [email] = harness.sent
+    assert "💬" not in email.text and "💬" not in email.html
+    assert "group_digests" not in archived_summary(harness)
+
+
+def test_a_marked_group_without_messages_tonight_gets_no_digest(harness, whatsapp_only):
+    harness.config["whatsapp"]["chats"][0]["digest"] = True  # 3B parents, quiet tonight
+    harness.sources["whatsapp"] = TONIGHT[:1]  # only Leo's piano group spoke
+    harness.model_reply = WITH_DIGESTS
+
+    assert harness.run() == 0
+
+    assert "group_digests" not in harness.model_calls[0].system_prompt
+    [email] = harness.sent
+    assert "💬" not in email.text
+
+
+def test_a_group_digest_names_none_of_the_people_the_ai_filter_masks(harness, whatsapp_only):
+    harness.config["whatsapp"]["chats"][0]["digest"] = True
+    harness.sources["whatsapp"].append(msg("whatsapp", "3EB0A4", "2026-09-27T20:30:00+03:00",
+                                           "We could hold the party at our place", sender="Maija Virtanen",
+                                           chat="3B parents", kid="Mia"))
+    harness.model_reply = {**SAYS_SOMETHING, "group_digests": [
+        {"group": "3B parents", "text": "- Maija Virtanen offered her home for the party; Maijalle kiitos\n- Mia's class"}]}
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "- someone offered her home for the party; someonelle kiitos\n- Mia's class" in email.text
+
+
+def test_a_marked_groups_held_back_message_stays_held_back(harness, whatsapp_only):
+    harness.config["whatsapp"]["chats"][0]["digest"] = True
+    harness.sources["whatsapp"].append(msg("whatsapp", "3EB0A4", "2026-09-27T20:30:00+03:00",
+                                           "Two older boys keep bullying a kid on the bus.",
+                                           sender="Parent rep", chat="3B parents", kid="Mia"))
+    harness.model_reply = WITH_DIGESTS
+
+    assert harness.run() == 0
+
+    assert digest_ids(harness) == ["3EB0A2", "3EB0A3"]  # not the held-back one
+    [email] = harness.sent
+    assert "💬 3B parents" in email.text
+    assert "3EB0A4" in archived_summary(harness)["_held_back"]
 
 
 # Each language's wording of it is test_render.py's.

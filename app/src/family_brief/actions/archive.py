@@ -56,6 +56,9 @@ def _render_markdown(t: BriefText, date_str: str, brief: Brief,
                 lines.append(f"- [ ] {a.what}  " + (f"_({when_who})_" if when_who else ""))
             lines.append("")
 
+    for g in brief.groups:
+        lines += [f"### 💬 {g.group}", "", g.text, ""]
+
     if calendar_created:
         lines += [t.archive_new_events, ""]
         for ev in calendar_created:

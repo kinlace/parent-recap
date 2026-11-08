@@ -117,7 +117,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_wilma_signins.py`           | Wilma read through a config of each run's own, passwords from the store (#710)          |
 | `test_eepos_source.py`            | Eepos lessons in the Brief, a wrong password or a changed portal, two schools (#755)    |
 | `test_evaka_source.py`            | eVaka events, closed days, the deadline and messages in the Brief, failures, two cities |
-| `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing                       |
+| `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing; Group Digests        |
 | `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish                                |
 | `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                                       |
 | `test_ai_filter_report.py`        | `parent-recap ai-filter-report` over an archive                                         |

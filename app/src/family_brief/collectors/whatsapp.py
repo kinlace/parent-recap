@@ -77,6 +77,9 @@ def to_messages(cfg: Config, state: State, records: Iterable[Mapping[str, Any]])
             chat_name=chat_name,
             body=body[:MAX_BODY_CHARS],
             kid_hint=cfg.whatsapp.kid_for(chat_name, group_id),
-            metadata={"from_me": bool(record.get("from_me"))},
+            metadata={"from_me": bool(record.get("from_me")),
+                      # A group the parents want the general talk of summed up too (#841).
+                      **({"digest": True} if (chat := cfg.whatsapp.chat_for(chat_name, group_id))
+                         and chat.digest else {})},
         ))
     return results

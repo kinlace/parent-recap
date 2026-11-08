@@ -1,5 +1,5 @@
 """The Brief as the model writes it, typed: the Digest, a section per Kid with its Notices and
-Action Items, and the calendar events. Beside it, the night's run notes: what the program
+Action Items, the calendar events, and a short digest of each WhatsApp group the parents asked for. Beside it, the night's run notes: what the program
 found out around the Brief (the model's error, what was read, the Held-back Messages, a reply
 cut off, the citation counts).
 
@@ -72,10 +72,19 @@ class Event(_Refs):
 
 
 @dataclass
+class GroupDigest:
+    """A few lines on what a WhatsApp group talked about tonight beyond the Kids' items, for a
+    group the parents marked for one (#841). `group` is the group's name as the payload has it."""
+    group: str
+    text: str
+
+
+@dataclass
 class Brief:
     digest: str = ""
     kids: list[KidSection] = field(default_factory=list)
     events: list[Event] = field(default_factory=list)
+    groups: list[GroupDigest] = field(default_factory=list)
 
     def entries(self) -> Iterator[Entry]:
         """Every Notice and Action Item, Kid by Kid."""
@@ -153,7 +162,20 @@ def _brief(data: dict[str, Any], archived: bool) -> Brief:
     # Archives from before the Brief had a language call the Digest message_digest_cn.
     digest = data.get("message_digest") or data.get("message_digest_cn")
     return Brief(_text(digest), _kids(data.get("per_kid"), archived),
-                 [_event(ev, archived) for ev in _objects(data.get("calendar_events"), "calendar event")])
+                 [_event(ev, archived) for ev in _objects(data.get("calendar_events"), "calendar event")],
+                 _groups(data.get("group_digests")))
+
+
+def _groups(value: Any) -> list[GroupDigest]:
+    """The group digests, each with its group's name and some text; one lacking either is dropped."""
+    out = []
+    for entry in _objects(value, "group digest"):
+        group, text = _scalar(entry, "group"), _scalar(entry, "text")
+        if group is None or text is None:
+            log.warning("Dropped a group digest with no group or no text: %r", entry)
+            continue
+        out.append(GroupDigest(group, text))
+    return out
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -258,6 +280,7 @@ def for_translation(brief: Brief, what: Callable[[str], str]) -> dict[str, Any]:
             "action_items": [{"what": what(a.what), "by": a.by, "refs": a.refs or []} for a in kid.action_items],
         } for kid in brief.kids],
         "calendar_events": [event(ev) for ev in brief.events],
+        **({"group_digests": [{"group": g.group, "text": g.text} for g in brief.groups]} if brief.groups else {}),
     }
 
 
@@ -283,6 +306,8 @@ def to_archive(brief: Brief, notes: RunNotes) -> dict[str, Any]:
         "calendar_events": [_event_json(ev) for ev in brief.events],
         "message_digest": brief.digest,
     }
+    if brief.groups:
+        out["group_digests"] = [{"group": g.group, "text": g.text} for g in brief.groups]
     if notes.incomplete:
         out["_incomplete"] = True
     if notes.citations is not None:

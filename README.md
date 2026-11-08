@@ -11,7 +11,7 @@ One short email every evening about your kids' school and clubs: what to know, w
 Every evening Parent Recap reads the places your kids' news comes from, has your own Claude or ChatGPT write a short Brief, and emails it to you and your partner, each in your own language:
 
 - **Wilma**: school messages, announcements and the next school day's timetable
-- **WhatsApp**: the parent, team and hobby groups you pick
+- **WhatsApp**: the parent, team and hobby groups you pick, and for a group you choose, a few lines on what else it talked about
 - **MyClub**: the club's training and match calendar
 - **Gmail**: mail from the schools, teachers and clubs you pick
 

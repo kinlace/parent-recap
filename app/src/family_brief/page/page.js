@@ -2462,8 +2462,7 @@ function renderCheck() {
   const { kids, whatsapp, senders, recipients, evening } = page.check;
   document.getElementById("check-kids").replaceChildren(...kids.map(kidRow));
   document.getElementById("check-whatsapp").hidden = whatsapp === null;
-  document.getElementById("check-groups").replaceChildren(...(whatsapp || []).map((group) =>
-    tickRow(group.name, group.ticked, group.kids.length ? { text: group.kids.join(", ") } : null)));
+  document.getElementById("check-groups").replaceChildren(...(whatsapp || []).map(groupRow));
   // No senders without Gmail, which a family skips when school mail doesn't come there.
   document.getElementById("check-mail").hidden = senders === null;
   document.getElementById("check-senders").replaceChildren(...(senders || []).map((sender) =>
@@ -2528,6 +2527,26 @@ function tickRow(value, ticked, detail) {
   return label;
 }
 
+// A WhatsApp group to tick, and under it, while it's ticked, whether the Brief also sums up the
+// group's general talk in a few lines (#841).
+function groupRow(group) {
+  const row = document.createElement("div");
+  row.className = "group";
+  const option = document.createElement("label");
+  option.className = "digest-option";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.className = "digest";
+  input.value = group.name;
+  input.checked = group.digest;
+  const text = document.createElement("span");
+  setText(text, "check.whatsapp.digest");
+  option.append(input, text);
+  row.append(tickRow(group.name, group.ticked, group.kids.length ? { text: group.kids.join(", ") } : null),
+    option);
+  return row;
+}
+
 function recipientRow({ address, language }, i) {
   const field = document.createElement("div");
   field.className = "field";
@@ -2556,13 +2575,13 @@ function allOption(allId, listId) {
   const all = document.getElementById(allId);
   const list = document.getElementById(listId);
   all.addEventListener("change", () => {
-    for (const box of list.querySelectorAll('input[type="checkbox"]')) box.checked = all.checked;
+    for (const box of list.querySelectorAll(TICK)) box.checked = all.checked;
   });
   list.addEventListener("change", () => syncAll(allId, listId));
 }
 
 function syncAll(allId, listId) {
-  const boxes = [...document.getElementById(listId).querySelectorAll('input[type="checkbox"]')];
+  const boxes = [...document.getElementById(listId).querySelectorAll(TICK)];
   document.getElementById(allId).checked = boxes.length > 0 && boxes.every((b) => b.checked);
 }
 
@@ -2580,9 +2599,18 @@ function addCheckKid() {
   input.value = "";
 }
 
+// An item's own tick box in a list, not a WhatsApp group's digest option under it.
+const TICK = 'input[type="checkbox"]:not(.digest)';
+
 function ticked(listId) {
-  return [...document.querySelectorAll(`#${listId} input[type="checkbox"]:checked`)]
-    .map((box) => box.value);
+  return [...document.querySelectorAll(`#${listId} ${TICK}:checked`)].map((box) => box.value);
+}
+
+// The ticked WhatsApp groups whose general talk the Brief sums up too.
+function digested() {
+  return [...document.querySelectorAll("#check-groups .group")]
+    .filter((row) => row.querySelector(`${TICK}:checked`) && row.querySelector("input.digest:checked"))
+    .map((row) => row.querySelector("input.digest").value);
 }
 
 async function confirmCheck(event) {
@@ -2595,6 +2623,7 @@ async function confirmCheck(event) {
   const answers = {
     kids,
     whatsapp: page.check.whatsapp === null ? null : ticked("check-groups"),
+    whatsapp_digest: page.check.whatsapp === null ? [] : digested(),
     senders: page.check.senders === null ? null : ticked("check-senders"),
     recipients: [...document.querySelectorAll("#check-recipients select")]
       .map((select) => ({ address: select.dataset.address, language: select.value })),

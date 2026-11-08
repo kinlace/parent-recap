@@ -14,7 +14,8 @@ from conftest import NOW, TZ, html_for_golden, ics_for_golden
 
 from family_brief import render
 from family_brief.actions import archive
-from family_brief.brief import Brief, Citations, EarlierBrief, KidSection, Notice, RunNotes, from_archive, to_archive
+from family_brief.brief import (Brief, Citations, EarlierBrief, GroupDigest, KidSection, Notice, RunNotes, from_archive,
+                                parse, to_archive)
 from family_brief.brief_text import TEXT
 from family_brief.collectors.base import Message
 from family_brief.summarize import extract_calendar_events
@@ -70,6 +71,17 @@ def test_the_rule_based_fallback_keeps_its_error():
     assert (brief, notes) == (Brief("⚠️ 今日 LLM 总结失败"), RunNotes(error="boom"))
     assert to_archive(Brief("raw list"), RunNotes(error="boom", coverage={})) == {
         "per_kid": [], "calendar_events": [], "message_digest": "raw list", "_coverage": {}, "_llm_error": "boom"}
+
+
+def test_the_group_digests_are_kept_and_one_without_a_group_or_text_is_dropped():
+    # #841: an archive without any, as every one before, is written back without the key.
+    brief = parse({"message_digest": "", "group_digests": [
+        {"group": "3B parents", "text": "- A class party"}, {"group": "3B parents"}, {"text": "- whose?"}, "text"]})
+
+    assert brief.groups == [GroupDigest("3B parents", "- A class party")]
+    assert to_archive(brief, RunNotes())["group_digests"] == [{"group": "3B parents", "text": "- A class party"}]
+    assert from_archive(to_archive(brief, RunNotes()))[0] == brief
+    assert "group_digests" not in to_archive(Brief("raw list"), RunNotes())
 
 
 @pytest.mark.parametrize("summary", [None, [], {}], ids=["null", "a list", "empty"])
