@@ -94,6 +94,35 @@ def test_translation_adds_no_link_to_an_event(harness):
     assert "pay-kilo" not in ics
 
 
+def test_a_group_digest_is_translated_and_keeps_its_groups_name(harness):
+    # #841: only the text is taken from the translation, so a group name it translated stays the group's.
+    two_languages(harness)
+    harness.config["whatsapp"]["chats"][0]["digest"] = True  # 3B parents
+    zh, en = harness.model_reply
+    zh["group_digests"] = [{"group": "3B parents", "text": "- 家长们在商量十二月的班级聚会"}]
+    en["group_digests"] = [{"group": "3B vanhemmat", "text": "- Parents are planning a class party in December"}]
+
+    assert harness.run() == 0
+
+    assert "家长们在商量十二月的班级聚会" in harness.model_prompt(1)  # the translation's
+    zh_mail, en_mail = harness.sent
+    assert "💬 3B parents\n- 家长们在商量十二月的班级聚会" in zh_mail.text
+    assert "💬 3B parents\n- Parents are planning a class party in December" in en_mail.text
+    assert archived_summary(harness)["group_digests"] == zh["group_digests"]
+
+
+def test_a_translation_without_the_group_digest_sends_that_recipient_the_original(harness):
+    two_languages(harness)
+    harness.config["whatsapp"]["chats"][0]["digest"] = True
+    harness.model_reply[0]["group_digests"] = [{"group": "3B parents", "text": "- 家长们在商量十二月的班级聚会"}]
+
+    assert harness.run() == 0
+
+    _zh, en = harness.sent
+    assert FAILED_EN in en.text
+    assert "💬 3B parents\n- 家长们在商量十二月的班级聚会" in en.text
+
+
 FAILED_EN = "⚠️ Tonight's Brief couldn't be translated, so here it is as it was written."
 FAILED_ZH = "⚠️ 今晚的日报没能翻译成功，下面是原文。"
 

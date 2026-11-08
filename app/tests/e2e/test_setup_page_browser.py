@@ -1977,9 +1977,16 @@ def test_finish_names_the_whatsapp_groups_and_changes_them_with_nothing_skipped(
     piano = tab.get_by_role("checkbox", name=re.compile("^Leo piano"))
     expect(piano).to_be_checked()
     piano.uncheck()
+    # #841: under each ticked group, whether the Brief sums up its other talk too, off at first.
+    digest = tab.get_by_role("checkbox", name=text("check.whatsapp.digest"))
+    expect(digest).to_have_count(1)  # not under the piano group, unticked now
+    expect(digest).not_to_be_checked()
+    digest.check()
     button(tab, "check.confirm").click()
     expect(heading(tab, "brief.title")).to_be_visible()
     expect(tab.get_by_text(text("brief.made"))).to_be_visible()
+    assert [(c.name, c.digest) for c in Config.load(config_file(family)).whatsapp.chats] == [
+        ("3B parents", True)]
     button(tab, "brief.done").click()
 
     expect(heading(tab, "finish.title")).to_be_visible()  # without loading the page again

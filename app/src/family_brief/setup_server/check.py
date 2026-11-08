@@ -6,7 +6,7 @@ import threading
 from http import HTTPStatus
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .. import failure, linked_device, ops, setup_connect, setup_gmail, setup_save
 from ..config import Config, Kid
@@ -35,6 +35,8 @@ class CheckAnswer(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kids: list[KidCheck]                  # the Kids ticked
     whatsapp: list[str] | None            # the groups ticked; None without WhatsApp
+    # Of those, the groups whose general talk the Brief sums up too (#841)
+    whatsapp_digest: list[str] = Field(default_factory=list)
     senders: list[str] | None             # the sender domains ticked; None without Gmail
     recipients: list[setup_save.RecipientAnswer]
     evening: str                          # HH:MM
@@ -108,9 +110,9 @@ class Check(Phase):
     def _check(self, progress: dict[str, Any]) -> dict[str, Any]:
         """What the check page shows, each list ticked by best guess: the Kids, all ticked with
         their everyday names; the WhatsApp groups, those linked to a Kid ticked (none without
-        WhatsApp); the Gmail senders that look like school, city or club mail ticked, and never
-        a public one, or none when Gmail was skipped; each Recipient with their language; and the
-        evening time. A pilot Household's feedback label isn't asked: setup makes it (#491).
+        WhatsApp), each saying whether the Brief sums up its general talk too (#841); the Gmail
+        senders that look like school, city or club mail ticked, and never a public one, or none
+        when Gmail was skipped; each Recipient with their language; and the evening time. A pilot Household's feedback label isn't asked: setup makes it (#491).
         `other_sources` is whether a Source besides Gmail brings news, so that a Gmail with no
         sender ticked is simply not read (#361, ADR 0032)."""
         cfg = self.context.model()
@@ -193,15 +195,17 @@ def _groups(cfg: Config, progress: dict[str, Any]) -> list[dict[str, Any]]:
     groups = []
     for chat in progress.get("whatsapp_chats") or []:
         kids = [k for k in (chat.get("hint") or {}).get("kids", []) if k in called]
+        picked = cfg.whatsapp.chat_for(chat["name"], chat.get("id"))
         groups.append({"name": chat["name"], "id": chat.get("id"), "last": chat.get("last"),
                        "archived": bool(chat.get("archived")), "kids": [called[k] for k in kids],
-                       "ticked": bool(kids) or chat["name"] in names or chat.get("id") in ids})
+                       "ticked": bool(kids) or chat["name"] in names or chat.get("id") in ids,
+                       "digest": bool(picked and picked.digest)})
     found = {g["name"] for g in groups} | {g["id"] for g in groups if g["id"]}
     for chat in cfg.whatsapp.chats:
         if chat.name not in found and (chat.id is None or chat.id not in found):
             kids = list(called) if chat.kid == "both" else [k for k in called if k == chat.kid]
             groups.append({"name": chat.name, "id": chat.id, "last": None, "archived": False,
-                           "kids": [called[k] for k in kids], "ticked": True})
+                           "kids": [called[k] for k in kids], "ticked": True, "digest": chat.digest})
     return groups
 
 
@@ -271,7 +275,8 @@ def _check_answers(answer: CheckAnswer, cfg: Config, progress: dict[str, Any]) -
                 kids = [chat.kid] if chat.kid in kept or chat.kid == "both" else []
                 label = chat.label
             chats.append({"name": name, "id": group_id, "label": label,
-                          "kid": kids[0] if len(kids) == 1 else ("both" if kids else None)})
+                          "kid": kids[0] if len(kids) == 1 else ("both" if kids else None),
+                          **({"digest": True} if name in answer.whatsapp_digest else {})})
         answers["sources"]["whatsapp"] = {"enabled": bool(chats), "chats": chats}
     return answers
 
@@ -295,6 +300,8 @@ def _check_errors(answer: CheckAnswer, offered: dict[str, Any], phase: str) -> l
     if (answer.whatsapp is None) != (groups is None) or \
             not set(answer.whatsapp or []) <= {g["name"] for g in groups or []}:
         errors.append("whatsapp: should be groups the check page lists, or null without WhatsApp")
+    if not set(answer.whatsapp_digest) <= set(answer.whatsapp or []):
+        errors.append("whatsapp_digest: should be groups ticked in whatsapp")
     senders = offered["senders"]
     if (answer.senders is None) != (senders is None) or \
             not set(answer.senders or []) <= {s["domain"] for s in senders or []}:

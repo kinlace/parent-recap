@@ -224,6 +224,25 @@ def test_the_whatsapp_groups_linked_to_a_kid_come_ticked_the_others_unticked(har
     ]
 
 
+def test_a_group_marked_for_a_digest_comes_marked_and_confirming_saves_the_marks(harness, page, health):
+    # #841: off for every group until the parent ticks it under the group.
+    harness.config["whatsapp"]["chats"] = [{"name": "Leo piano", "kid": "Leo", "label": "piano", "digest": True}]
+    at_the_check_step(harness)
+
+    groups = check_page(page.url)["whatsapp"]
+
+    assert [(g["name"], g["digest"]) for g in groups] == [
+        ("3B parents", False), ("Kilo School families 🏫", False), ("Neighbours ", False), ("Leo piano", True)]
+
+    r = confirm(page.url, whatsapp=["3B parents", "Leo piano"], whatsapp_digest=["3B parents"])
+
+    assert r.status == 200
+    cfg = Config.load(config_file(harness))
+    assert [(c.name, c.digest) for c in cfg.whatsapp.chats] == [("3B parents", True), ("Leo piano", False)]
+    saved = yaml.safe_load(config_file(harness).read_text())["whatsapp"]["chats"]
+    assert "digest" not in saved[1]  # off, as by default, isn't written
+
+
 def test_without_whatsapp_there_are_no_groups_to_tick(harness, page):
     at_the_check_step(harness, whatsapp_chats=[])
     more_progress(harness, sources={"whatsapp": "skipped"}, whatsapp_chats=None)
@@ -502,6 +521,7 @@ def test_a_skip_at_check_is_refused_for_the_ai_elsewhere_and_while_checking(harn
     {"senders": ["gmail.com"]},  # public mail is never offered
     {"senders": ["anything.example"]},
     {"whatsapp": ["Another group"]},
+    {"whatsapp": ["3B parents"], "whatsapp_digest": ["Kilo School families 🏫"]},  # not ticked
     {"kids": []},
     {"kids": [{"name": "Mia", "everyday_name": " "}]},
     {"kids": [{"name": "Mia", "everyday_name": "A"}, {"name": "mia", "everyday_name": "B"}]},

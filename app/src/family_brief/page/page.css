@@ -577,6 +577,13 @@ fieldset .field label {
 
 fieldset label.all { background: var(--panel); }
 
+/* A WhatsApp group's digest option, under the group while it's ticked (#841). */
+.group { display: grid; gap: 4px; }
+
+.group label.digest-option { margin-left: 26px; padding: 7px 12px; font-size: 13px; }
+
+.group:not(:has(> label:first-child input:checked)) .digest-option { display: none; }
+
 .kid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center; }
 
 .kid .name { overflow-wrap: anywhere; }

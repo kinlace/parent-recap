@@ -269,6 +269,11 @@ def _shown_digest(brief: Brief, t: BriefText) -> str:
     return "\n\n".join(sections)
 
 
+def _group_heading(group: str) -> str:
+    """A group digest's heading: the WhatsApp group's own name, the same in every language (#841)."""
+    return f"💬 {group}"
+
+
 def _daily_brief_html(brief: Brief, calendar_created: list[dict],
                       date_str: str, t: BriefText, tz: str, note: str = "", ics_attached: bool = False,
                       coverage: str = "", footer: str = "",
@@ -299,6 +304,8 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
             parts.append("<p><small style='color:#888'>"
                          f"{form_link(feedback.DIGEST_WRONG, t.feedback_digest_wrong, as_written)}"
                          "</small></p>")
+    for g in brief.groups:
+        parts.append(f"<h3>{_h.escape(_group_heading(g.group))}</h3>" + _digest_html(g.text))
     if held_back:
         parts.append(f"<h3>{_h.escape(t.held_back)}</h3><p style='color:#666'>"
                      f"{_h.escape(t.held_back_note.format(assistant=assistant))}</p><ul>")
@@ -378,6 +385,8 @@ def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: 
     digest = _shown_digest(brief, t)
     if digest:
         parts += ["", digest]
+    for g in brief.groups:
+        parts += ["", _group_heading(g.group), g.text]
     if held_back:
         parts += ["", *held_back]
     actions = _action_items(brief)
@@ -601,6 +610,7 @@ def preview(night: Night) -> dict[str, str | None]:
 
 def nothing_to_show(night: Night) -> bool:
     """Whether tonight's Brief would have only its header and the notes under it: no Digest, or
-    Notices standing in for one, no Action Items, events or Held-back Messages, and no warning."""
-    return not (_shown_digest(night.brief, night.t) or _action_items(night.brief) or night.created
+    Notices standing in for one, no group digest, Action Items, events or Held-back Messages, and
+    no warning."""
+    return not (_shown_digest(night.brief, night.t) or night.brief.groups or _action_items(night.brief) or night.created
                 or night.held_back or _top_note(night.incomplete, night.t, night.assistant))

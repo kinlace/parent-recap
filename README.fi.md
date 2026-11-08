@@ -11,7 +11,7 @@ Joka ilta yksi lyhyt sähköposti lastesi koulusta ja harrastuksista: mitä pit�
 Joka ilta Parent Recap lukee paikat, joista lastesi asiat tulevat, antaa oman Claudesi tai ChatGPT:si kirjoittaa lyhyen koosteen ja lähettää sen sähköpostilla sinulle ja kumppanillesi, kummallekin omalla kielellään:
 
 - **Wilma**: koulun viestit, tiedotteet ja seuraavan koulupäivän lukujärjestys
-- **WhatsApp**: valitsemasi vanhempien, joukkueiden ja harrastusten ryhmät
+- **WhatsApp**: valitsemasi vanhempien, joukkueiden ja harrastusten ryhmät, ja haluamistasi ryhmistä muutaman rivin yhteenveto muusta keskustelusta
 - **MyClub**: seuran harjoitusten ja otteluiden kalenteri
 - **Gmail**: valitsemiesi koulujen, opettajien ja seurojen sähköpostit
 

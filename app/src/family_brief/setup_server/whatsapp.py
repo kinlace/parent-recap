@@ -236,7 +236,7 @@ class WhatsApp(Phase):
         if cfg.whatsapp.chats:
             kept = setup_whatsapp.with_ids(cfg.whatsapp.chats, found)
             answers["sources"] = {"whatsapp": {
-                "enabled": True, "chats": [c.model_dump(exclude_none=True) for c in kept]}}
+                "enabled": True, "chats": [c.model_dump(exclude_defaults=True) for c in kept]}}
         status, out = context.connect.complete(
             "whatsapp", answers, keep_skipped=True,
             move_on=lambda progress: back is None and progress["source"] == "whatsapp")

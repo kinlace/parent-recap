@@ -313,7 +313,7 @@ def test_a_link_whatsapp_ended_is_paired_again_keeping_the_picked_groups(harness
     assert out["progress"]["sources"]["whatsapp"] == "done"
     cfg = saved_config(harness)
     assert cfg.whatsapp.enabled
-    assert [c.model_dump(exclude_none=True) for c in cfg.whatsapp.chats] == picked
+    assert [c.model_dump(exclude_defaults=True) for c in cfg.whatsapp.chats] == picked
     assert linked_device.link().paired and linked_device.link().ended_at is None
     assert harness.jobs.always_running
     assert opened(page.url)["progress"]["phase"] == "finish"  # nothing left to pair

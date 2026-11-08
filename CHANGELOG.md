@@ -2,6 +2,12 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## Unreleased
+
+### Added
+
+- A WhatsApp group can get its own short digest in the evening Brief: a few lines, in the Brief's language, on what the group talked about beyond your Kids' items, such as where the class is heading or what all the kids will do next week. It sums the talk up instead of translating each message, doesn't repeat your Kids' items, names no other parent or child, and is left out on an evening the group had no messages. It's off for every group: tick it under the group on the setup page's Check step, or ask Claude Code or Codex to turn it on or off. The messages go through the AI filter as before.
+
 ## 0.14.0 · 2026-11-07
 
 ### Added
