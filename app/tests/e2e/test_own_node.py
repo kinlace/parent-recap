@@ -157,7 +157,10 @@ def test_on_windows_doctor_runs_the_wilma_clis_script_on_parent_recaps_own_node_
     assert doctor_line(capsys, "Wilma").startswith(ops.OK)
     script = (fake_node.wilma_folder(harness.home) / "node_modules" / "@wilm-ai" / "wilma-cli"
               / "dist" / "index.js")
-    assert ran == [[str(node), str(script), "kids", "list", "--json"]]
+    # doctor also asks the CLI where each login's password is (`config secrets --json`): every
+    # call runs the CLI's own script on the pinned Node.
+    assert all(cmd[:2] == [str(node), str(script)] for cmd in ran)
+    assert [str(node), str(script), "kids", "list", "--json"] in ran
 
 
 @pytest.mark.windows
