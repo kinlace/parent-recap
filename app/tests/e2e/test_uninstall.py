@@ -25,6 +25,7 @@ from family_brief.config import Config
 from family_brief.system import entries, jobs, profile, secrets, wake, windows_only
 from family_brief.system.secrets_error import SecretsError
 from fake_system import LINUX, WINDOWS
+from test_setup_wilma import wilma_cli  # noqa: F401
 
 OTHER_WAKE = "wake every weekday at 07:00"
 APP_PASSWORD = "abcdabcdabcdabcd"
@@ -867,23 +868,30 @@ def test_removes_every_wilma_setup_signed_in_to(harness, monkeypatch, tmp_path, 
     assert "dad at https://helsinki.inschool.fi" in capsys.readouterr().out
 
 
+def signed_in_from_0_11_to_0_15(*accounts: tuple[dict, str]) -> list[str]:
+    """Setup's sign-ins as 0.11 to 0.15 kept them (#710), not yet moved by a run: each password in
+    the secret store, the rest in setup's own file. Returns their secrets' names."""
+    profiles = [{"id": f"{tenant['url']}|{username}", "tenantUrl": tenant["url"],
+                 "tenantName": tenant["name"], "username": username, "students": []}
+                for tenant, username in accounts]
+    setup_wilma._write_config(setup_wilma.signins_path(),
+                              {"profiles": profiles, "lastProfileId": profiles[-1]["id"]})
+    for p in profiles:
+        secrets.put(setup_wilma.secret_name(p["id"]), setup_wilma.obfuscate(WILMA_PASSWORD))
+    return [setup_wilma.secret_name(p["id"]) for p in profiles]
+
+
 @pytest.mark.macos
-def test_removes_setup_s_wilma_sign_ins_with_their_passwords_from_the_secret_store(
+def test_removes_setup_s_wilma_sign_ins_from_0_11_to_0_15_with_their_passwords(
         harness, monkeypatch, tmp_path, capsys):
-    # Since #710 setup keeps the password in the secret store and the rest in its own file, and a
-    # sign-in the family made before setup stays in the CLI's config.
+    # One no run has moved into the CLI's config yet (#849), and a sign-in the family made before
+    # setup stays in the CLI's config.
     set_up(harness, monkeypatch)
     config = wilma_and_claude(harness, monkeypatch, tmp_path, by_setup=False)
     theirs = config.read_text()
-    helsinki = {"url": "https://helsinki.inschool.fi", "name": "Helsinki"}
-    for tenant, username in ((ESPOO, "mia.parent"), (helsinki, "dad")):  # as the setup page does
-        before = [p["id"] for p in setup_wilma.signins()]
-        setup_wilma.record_profile(setup_wilma.save_signin(tenant, username, WILMA_PASSWORD),
-                                   before)
-    accounts = [setup_wilma.secret_name(OUR_PROFILE),
-                setup_wilma.secret_name("https://helsinki.inschool.fi|dad")]
-    assert all(a in harness.secrets for a in accounts)
-    with setup_wilma.run_folder():  # one a run killed outright left
+    accounts = signed_in_from_0_11_to_0_15(
+        (ESPOO, "mia.parent"), ({"url": "https://helsinki.inschool.fi", "name": "Helsinki"}, "dad"))
+    with setup_wilma.run_folder():  # one a check killed outright left
         pass
     (setup_wilma.runs_folder() / "run-left").mkdir()
 
@@ -901,6 +909,33 @@ def test_removes_setup_s_wilma_sign_ins_with_their_passwords_from_the_secret_sto
     assert not any(a in harness.secrets for a in accounts)
     assert not setup_wilma.signins_path().exists() and not setup_wilma.runs_folder().exists()
     assert config.read_text() == theirs  # the family's own sign-in, as it was
+
+
+@pytest.mark.macos
+def test_removes_setup_s_wilma_sign_in_with_its_password_from_the_keychain(
+        harness, monkeypatch, wilma_cli, capsys):
+    # From 2.5.0 the CLI keeps the password in the keychain, and removes it from there (#849).
+    wilma_cli.install()  # before set_up, which takes the Python its script runs on
+    set_up(harness, monkeypatch)
+    before = [p["id"] for p in setup_wilma.signins()]
+    setup_wilma.record_profile(setup_wilma.save_signin(ESPOO, "mia.parent", WILMA_PASSWORD),
+                               before)
+    [ours] = setup_wilma.signins()
+    assert wilma_cli.keychain_entries()[ours["secretId"]]["password"] == WILMA_PASSWORD
+
+    assert uninstall(harness) == 0
+
+    removes = capsys.readouterr().out.split("Uninstall removes:", 1)[1].split("\n\n", 1)[0]
+    assert "Wilma sign-in: mia.parent at https://espoo.inschool.fi, in " \
+           "~/.config/wilmai/config.json, its password in the keychain" in removes
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert wilma_cli.keychain_file.exists() and wilma_cli.keychain_entries() == {}
+    assert not wilma_cli.profile_path.exists()
+    assert ["accounts", "remove", "1", "--json"] in [c[2:] for c in harness.commands
+                                                     if fake_node.is_wilma(c)]
+    assert not fake_node.wilma_folder(harness.home).exists()  # the CLI after the sign-in
 
 
 @pytest.mark.macos

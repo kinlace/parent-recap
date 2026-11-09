@@ -20,8 +20,8 @@ log = logging.getLogger(__name__)
 
 MAX_BODY_CHARS = 8000
 NOT_INSTALLED = "the wilma CLI isn't installed (connect Wilma again: parent-recap setup wilma)"
-# The CLI's config of the reading in progress (`signed_in`), which each command reads.
-_reading: ContextVar[Path | None] = ContextVar("wilma_reading", default=None)
+# Whether a reading of Wilma is in progress (`signed_in`), whose commands share the CLI's session.
+_reading: ContextVar[bool] = ContextVar("wilma_reading", default=False)
 
 
 class WilmaError(Exception):
@@ -40,33 +40,36 @@ class WilmaError(Exception):
 
 
 @contextmanager
-def signed_in() -> Iterator[Path]:
-    """The CLI's config every command in the block reads, so they carry on with the one Wilma
-    session the CLI saves beside it: every sign-in with its password, in an owner-only folder that
-    goes when the block ends (`setup_wilma.run_config`, #710). Inside another, that one."""
-    current = _reading.get()
-    if current is not None:
-        yield current
+def signed_in() -> Iterator[None]:
+    """A reading of Wilma, whose commands carry on with the one Wilma session the CLI keeps beside
+    its own config. It starts by making setup's sign-ins ready for the CLI
+    (`setup_wilma.prepare`): one from 0.11 to 0.15 moved into its config, and the passwords into
+    the keychain (#849). Inside another, that one."""
+    if _reading.get():
+        yield
         return
     from .. import setup_wilma  # it reads this module's Kid list, so it is imported only here
-    with setup_wilma.run_config() as config:
-        token = _reading.set(config)
-        try:
-            yield config
-        finally:
-            _reading.reset(token)
+    try:
+        setup_wilma.prepare()
+    except Exception as e:  # noqa: BLE001 - the CLI still reads what its config has
+        log.warning("The Wilma sign-ins weren't made ready for the wilma CLI: %s", e)
+    token = _reading.set(True)
+    try:
+        yield
+    finally:
+        _reading.reset(token)
 
 
 def _run(args: list[str], config: Path | None = None) -> Any:
-    """`wilma <args> --json` on Parent Recap's own Node (ADR 0011), as JSON. `config` is the CLI's
-    config file to read; without one, that of the reading in progress (`signed_in`), or one of
-    its own."""
+    """`wilma <args> --json` on Parent Recap's own Node (ADR 0011), as JSON. `config` is a config
+    file of its own for the CLI to read, such as a sign-in's checked alone; without one, the CLI's
+    own, in the reading in progress (`signed_in`), or one of its own."""
     command = own_node.wilma()
     if command is None:
         raise WilmaError(NOT_INSTALLED)
-    if config is None:
-        with signed_in() as reading:
-            return _run(args, reading)
+    if config is None and not _reading.get():
+        with signed_in():
+            return _run(args)
     try:
         proc = retry_once_on_timeout(
             lambda: subprocess.run([*command, *args, "--json"], capture_output=True, text=True, encoding="utf-8",

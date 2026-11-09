@@ -6,6 +6,7 @@ What changes for families in each release, collected from the `What changes for 
 
 ### Changed
 
+- Parent Recap now uses version 2.5.0 of the wilma program it reads Wilma with, which keeps your Wilma password in your computer's own password store itself: the Keychain on a Mac, Credential Manager on Windows. The update moves your saved Wilma sign-in there without you signing in again. `parent-recap doctor` (Parent Recap Check) now says where your Wilma password is, and what to do if it isn't in the password store yet. A hosted family's password stays in a file on the maintainers' server that only the family's own user there can read, as before. If you also use WilmAI Home or the WilmAI extension for Claude Desktop with the same Wilma login, update them too (Home 0.4.0, the extension 2.5.0), since older versions can't read a password from the password store.
 - The product is called just Parent Recap, made by Kinlace, in the README and in the plugin's name in Claude Code and Codex.
 
 ### Added

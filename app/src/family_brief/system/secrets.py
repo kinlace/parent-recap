@@ -1,5 +1,6 @@
 """Reading, storing and deleting Parent Recap's secrets: the Gmail App Password, the Claude token,
-the Gateway Key and setup's Wilma passwords (ADR 0020, #710). Each system has its adapter: the Keychain on macOS, Credential
+the Gateway Key, the Eepos and eVaka passwords, and setup's Wilma passwords from 0.11 to 0.15 until
+they move to the wilma CLI's own keychain items (ADR 0020, #710, #849). Each system has its adapter: the Keychain on macOS, Credential
 Manager on Windows, owner-only files on Linux (ADR 0030)."""
 from __future__ import annotations
 

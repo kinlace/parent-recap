@@ -160,8 +160,8 @@ def _store_wilma(w: WilmaSignIn) -> dict[str, Any] | None:
     try:
         profile_id = setup_wilma.save_signin(w.tenant.model_dump(), w.username, w.password,
                                              w.students)
-    except secrets.SecretsError as e:
-        return outcome("wilma-not-stored", reason=str(e))
+    except OSError as e:  # the CLI's config's, never the password
+        return outcome("wilma-not-stored", reason=str(e)[:300])
     setup_wilma.record_profile(profile_id, before)
     return None
 

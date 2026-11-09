@@ -1,18 +1,18 @@
-"""Setup's Wilma sign-ins keep their passwords in the secret store, not in the wilma CLI's own
-config (#710). Every reading of Wilma, the evening run's, `doctor`'s and the preview's, gives the
-CLI a config of its own, written with those passwords into an owner-only folder that goes when the
-reading ends, however it ends. An install from before moves its sign-in there on its first run,
-without the family signing in again, and leaves a sign-in the family made themselves as it was.
+"""Setup's Wilma sign-ins are the wilma CLI's own profiles, and from 2.5.0 the CLI keeps their
+passwords in the system's keychain itself (#849): setup has it move them there with `wilma config
+secrets auto` after each sign-in, on every update, and before a reading until it's set. Every
+reading of Wilma, the evening run's, `doctor`'s and the preview's, reads the CLI's own config. An
+install from 0.11 to 0.15 (#710), which kept setup's password in Parent Recap's own secret store
+and the rest in ~/.family/wilma-signins.json, moves each sign-in back into the CLI's config on its
+first reading or update, without the family signing in again, and leaves a sign-in the family made
+themselves as it was. `doctor` says where each password is.
 
 The CLI is the fake one on Parent Recap's own Node (fake_sources.py), which notes the config each
 command read. All names, Wilmas and passwords are made up."""
 from __future__ import annotations
 
 import json
-import os
-import signal
-import sys
-from pathlib import Path
+import logging
 
 import pytest
 
@@ -23,10 +23,13 @@ from family_brief import install_record, ops, setup_wilma
 from family_brief.collectors import wilma
 from family_brief.collectors.base import Message
 from family_brief.system.secrets_error import SecretsError
+from fake_system import LINUX
 
 PASSWORD = "salasana-1"
 TWO_STEP = "JBSWY3DPEHPK3PXP"
 OURS = f"{FIRST['url']}|huoltaja"
+THEIRS = f"{OTHER['url']}|oma.huoltaja"
+SECURE = ["config", "secrets", "auto"]
 
 
 def signed_in_on_the_page() -> None:
@@ -35,19 +38,20 @@ def signed_in_on_the_page() -> None:
     setup_wilma.record_profile(setup_wilma.save_signin(FIRST, "huoltaja", PASSWORD, [MIA]), before)
 
 
-def signed_in_before_710() -> Path:
-    """The CLI's own config as an install from before #710 left it: a sign-in the family made with
-    the CLI themselves, then the setup page's, with a two-step key, signed in with last, and the
-    Wilma sessions the CLI saved beside them. Returns the config."""
-    config = setup_wilma.config_path()
-    setup_wilma.write_profile(config, OTHER, "oma.huoltaja", "oma-salasana", [LEO])
-    setup_wilma.write_profile(config, FIRST, "huoltaja", PASSWORD, [MIA])
-    saved = json.loads(config.read_text())
-    saved["profiles"][1]["totpSecretObfuscated"] = setup_wilma.obfuscate(TWO_STEP)
-    config.write_text(json.dumps(saved))
+def signed_in_from_0_11_to_0_15(harness) -> None:
+    """What an install of 0.11 to 0.15 left: a sign-in the family made with the CLI themselves in
+    the CLI's own config, and the setup page's, with a two-step key, signed in with last, its
+    secrets in the secret store and the rest in setup's own file."""
+    setup_wilma.write_profile(setup_wilma.config_path(), OTHER, "oma.huoltaja", "oma-salasana",
+                              [LEO])
+    ours = setup_wilma._profile([], FIRST, "huoltaja", PASSWORD, [MIA])
+    ours["lastUsedAt"] = "2026-09-28T00:00:00.000Z"  # after the family's own
+    harness.secrets[setup_wilma.secret_name(OURS)] = \
+        f"{ours.pop('passwordObfuscated')} {setup_wilma.obfuscate(TWO_STEP)}"
+    del ours["totpSecretObfuscated"]
+    setup_wilma._write_config(setup_wilma.signins_path(), {"profiles": [ours],
+                                                           "lastProfileId": OURS})
     install_record.add("wilma-profile", OURS)
-    config.with_name(setup_wilma.SESSIONS).write_text('{"x": {"state": "a session", "savedAt": 0}}')
-    return config
 
 
 def one_message(cli) -> None:
@@ -55,129 +59,218 @@ def one_message(cli) -> None:
                    ("messages", "read"): read(812, "Retki torstaina.")}
 
 
-def nothing_left() -> bool:
-    """No run's config is left, nor anything else readable of the password on disk."""
-    runs = setup_wilma.runs_folder()
-    readable = [p for p in (setup_wilma.signins_path(), setup_wilma.config_path()) if p.exists()]
-    return not (runs.exists() and list(runs.iterdir())) \
-        and not any(PASSWORD in p.read_text() or setup_wilma.obfuscate(PASSWORD) in p.read_text()
-                    for p in readable)
+def secured(cli) -> list[str | None]:
+    """The config each `wilma config secrets auto` was given."""
+    return [r[0] if r else None for c, r in zip(cli.ran, cli.read) if c[:3] == SECURE]
 
 
-def test_the_evening_run_reads_wilma_through_a_config_of_its_own_that_goes_after(harness, cli):
+def wilma_secrets(harness) -> list[str]:
+    """What of Wilma's Parent Recap's own secret store holds."""
+    return [name for name in harness.secrets if name.startswith("wilma-signin-")]
+
+
+def wilma_lines(capsys) -> list[str]:
+    return [line for line in capsys.readouterr().out.splitlines() if "Wilma:" in line]
+
+
+def test_the_evening_run_reads_wilma_from_the_cli_s_own_config(harness, cli):
     signed_in_on_the_page()
     one_message(cli)
 
     assert harness.run() == 0
 
-    # Every command read the one config, so they carried on with one Wilma session.
-    assert len(cli.read) > 1 and len({path for path, _ in cli.read}) == 1
-    path, config = cli.read[0]
-    assert Path(path).parent.parent == setup_wilma.runs_folder()
-    [profile] = config["profiles"]
+    # Saved in the CLI's own config, whose passwords the CLI then moved to the keychain.
+    [profile] = setup_wilma.signins()
     assert (profile["id"], profile["passwordObfuscated"]) == (OURS, setup_wilma.obfuscate(PASSWORD))
-    assert config["lastProfileId"] == OURS
-    assert not Path(path).parent.exists() and nothing_left()
-    assert not setup_wilma.config_path().exists()  # never the CLI's own
+    assert secured(cli)[0] == str(setup_wilma.config_path())
+    # Every command of the run read that config: none was given one of its own (#710).
+    reads = [r for c, r in zip(cli.ran, cli.read) if c[:3] != SECURE]
+    assert len(reads) > 1 and reads == [None] * len(reads)
+    assert not setup_wilma.signins_path().exists() and not setup_wilma.runs_folder().exists()
+    assert not wilma_secrets(harness)  # nothing of Wilma's in Parent Recap's own store
     [m] = archived(harness)
     assert wilma.link(Message.from_dict(m)) == f"{FIRST['url']}/!7731905/messages/812"
 
 
-def test_doctor_and_the_preview_read_wilma_the_same_way(harness, cli, capsys):
-    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
-    signed_in_on_the_page()
-    cli.answers = {("kids", "list"): {"students": [MIA]}}
+def test_a_reading_has_the_cli_keep_the_passwords_in_the_keychain_until_that_s_set(harness, cli):
+    setup_wilma.write_profile(setup_wilma.config_path(), FIRST, "huoltaja", PASSWORD, [MIA])
+    one_message(cli)
 
+    assert harness.run() == 0
+    assert secured(cli) == [str(setup_wilma.config_path())]
+
+    # Once set, the CLI moves a sign-in saved later itself.
+    config = json.loads(setup_wilma.config_path().read_text())
+    setup_wilma._write_config(setup_wilma.config_path(), {**config, "secretStore": "auto"})
+    cli.ran.clear()
+    cli.read.clear()
     harness.cli("doctor", "--skip-llm")
-    assert harness.run("--preview") == 0
-
-    assert any(line.startswith(ops.OK) for line in capsys.readouterr().out.splitlines()
-               if "Wilma:" in line)
-    assert {tuple(c[:2]) for c in cli.ran} >= {("kids", "list"), ("messages", "list")}
-    assert all(r is not None and r[1]["profiles"][0]["passwordObfuscated"]
-               == setup_wilma.obfuscate(PASSWORD) for r in cli.read)
-    assert nothing_left()
+    assert secured(cli) == []
 
 
-def test_an_install_from_before_moves_its_wilma_password_to_the_secret_store(harness, cli):
-    config = signed_in_before_710()
-    theirs = setup_wilma.profile(config, f"{OTHER['url']}|oma.huoltaja")
+def test_an_install_from_0_11_to_0_15_moves_its_sign_in_back_without_signing_in_again(harness,
+                                                                                      cli):
+    signed_in_from_0_11_to_0_15(harness)
+    theirs = setup_wilma.profile(setup_wilma.config_path(), THEIRS)
     one_message(cli)
 
     assert harness.run() == 0
 
-    # Setup's sign-in, with its two-step key, is in the store, and gone from the CLI's config
-    # with the sessions the CLI saved; the family's own is as it was.
-    assert harness.secrets[setup_wilma.secret_name(OURS)] == \
-        f"{setup_wilma.obfuscate(PASSWORD)} {setup_wilma.obfuscate(TWO_STEP)}"
-    assert json.loads(config.read_text())["profiles"] == [theirs]
-    assert not config.with_name(setup_wilma.SESSIONS).exists()
-    assert [p["id"] for p in setup_wilma.signins()] == [theirs["id"], OURS]
-    assert nothing_left()
-    # The run read both, setup's first, without the family signing in again.
-    path, read_config = cli.read[0]
-    assert read_config["lastProfileId"] == OURS
-    assert {p["username"]: (p["passwordObfuscated"], p["totpSecretObfuscated"])
-            for p in read_config["profiles"]} == {
-        "oma.huoltaja": (setup_wilma.obfuscate("oma-salasana"), None),
-        "huoltaja": (setup_wilma.obfuscate(PASSWORD), setup_wilma.obfuscate(TWO_STEP))}
-
-
-def test_a_sign_in_the_store_can_t_take_yet_stays_where_it_is_and_still_works(harness, cli,
-                                                                             capsys):
-    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
-    config = signed_in_before_710()
-    before = config.read_text()
-    harness.secrets.refuses = SecretsError("the store refused", "needs-prompt")
-    one_message(cli)
-
-    assert harness.run() == 0
-
-    assert config.read_text() == before
-    assert {p["username"] for p in cli.read[0][1]["profiles"]} == {"oma.huoltaja", "huoltaja"}
+    # Setup's sign-in, with its two-step key, is in the CLI's config beside the family's own, as
+    # it was, signed in with last, and gone from the secret store and setup's own file.
+    config = json.loads(setup_wilma.config_path().read_text())
+    assert [p["id"] for p in config["profiles"]] == [THEIRS, OURS]
+    assert config["profiles"][0] == theirs and config["lastProfileId"] == OURS
+    ours = config["profiles"][1]
+    assert (ours["passwordObfuscated"], ours["totpSecretObfuscated"]) == \
+        (setup_wilma.obfuscate(PASSWORD), setup_wilma.obfuscate(TWO_STEP))
+    assert [s["name"] for s in ours["students"]] == ["Mia"]
+    assert not wilma_secrets(harness) and not setup_wilma.signins_path().exists()
+    # Then the CLI moved both passwords to the keychain, and the run read both from its config.
+    assert secured(cli) == [str(setup_wilma.config_path())]
+    assert install_record.entries("wilma-profile") == [OURS]  # so uninstall still removes it
     assert archived(harness)
-    # The next reading, here doctor's, moves it once the store takes it.
-    harness.secrets.refuses = None
+
+
+def test_the_update_moves_it_too_and_a_password_the_keychain_doesn_t_take_isn_t_fatal(
+        harness, cli, caplog):
+    signed_in_from_0_11_to_0_15(harness)
+    cli.answers = {tuple(SECURE): (setup_wilma.MOVE_FAILED, {"setting": "auto", "moved": [
+        {"wilma": FIRST["name"], "username": "huoltaja", "to": "keychain", "outcome": "failed",
+         "message": "The keychain didn't keep the password as saved."}]})}
+
+    assert setup_wilma.main(["update"]) == 0  # as install.sh runs it
+
+    assert [p["id"] for p in setup_wilma.signins()] == [THEIRS, OURS]
+    assert not wilma_secrets(harness) and not setup_wilma.signins_path().exists()
+    assert secured(cli) == [str(setup_wilma.config_path())]
+    assert "The Wilma password of huoltaja at Kuvitteellisen kaupungin koulut stays in the wilma " \
+           "CLI's file for now" in caplog.text
+    assert PASSWORD not in caplog.text and setup_wilma.obfuscate(PASSWORD) not in caplog.text
+
+
+def test_a_sign_in_the_store_doesn_t_hand_over_yet_is_moved_by_a_later_reading(harness, cli):
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    signed_in_from_0_11_to_0_15(harness)
+    legacy = setup_wilma.signins_path().read_text()
+    harness.secrets.asks.add(setup_wilma.secret_name(OURS))  # nobody answers
+    one_message(cli)
+
+    assert harness.run() == 0
+
+    assert setup_wilma.signins_path().read_text() == legacy
+    assert [p["id"] for p in setup_wilma.signins()] == [THEIRS]
+    # The next reading, here doctor's, moves it once the store hands it over.
+    harness.secrets.asks.clear()
     cli.answers = {("kids", "list"): {"students": [MIA, LEO]}}
     harness.cli("doctor", "--skip-llm")
-    assert setup_wilma.secret_name(OURS) in harness.secrets
-    assert PASSWORD not in config.read_text() and setup_wilma.obfuscate(PASSWORD) not in \
-        config.read_text()
+    assert [p["id"] for p in setup_wilma.signins()] == [THEIRS, OURS]
+    assert not setup_wilma.signins_path().exists()
 
 
-@pytest.mark.parametrize("how", ["fails", pytest.param("is stopped", marks=pytest.mark.skipif(
-    sys.platform == "win32", reason="os.kill on Windows ends the process, as a kill does"))])
-def test_a_reading_that_fails_or_is_stopped_leaves_no_config_behind(harness, cli, how):
+def test_an_old_copy_the_store_doesn_t_let_go_of_is_left_for_uninstall(harness, cli):
+    signed_in_from_0_11_to_0_15(harness)
+    harness.secrets.refuses = SecretsError("the store refused", "needs-prompt")  # deleting
+    one_message(cli)
+
+    assert harness.run() == 0
+
+    assert [p["id"] for p in setup_wilma.signins()] == [THEIRS, OURS]  # moved all the same
+    assert not setup_wilma.signins_path().exists()
+    assert setup_wilma.secret_name(OURS) in install_record.entries("keychain")
+
+
+def test_a_sign_in_whose_password_is_gone_from_the_store_goes_and_says_to_sign_in_again(
+        harness, cli, caplog):
+    signed_in_from_0_11_to_0_15(harness)
+    harness.secrets[setup_wilma.secret_name(OURS)] = ""
+    one_message(cli)
+
+    assert harness.run() == 0
+
+    assert [p["id"] for p in setup_wilma.signins()] == [THEIRS]
+    assert not setup_wilma.signins_path().exists()
+    assert "no Wilma password for huoltaja: sign in to Wilma again" in caplog.text
+
+
+def test_signing_in_again_on_the_page_replaces_the_sign_in_from_0_11_to_0_15(harness, cli):
+    signed_in_from_0_11_to_0_15(harness)  # and no reading has moved it yet
+
     signed_in_on_the_page()
+    assert harness.run() == 0
 
-    def messages(_args: list[str]):
-        if how == "is stopped":  # as launchd or Task Scheduler stops the evening job
-            os.kill(os.getpid(), signal.SIGTERM)
-        raise RuntimeError("the CLI broke")
-    cli.answers = {("messages", "list"): messages}
-
-    if how == "is stopped":
-        with pytest.raises(SystemExit):
-            harness.run()
-        assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL  # as it was
-    else:
-        harness.run()
-
-    assert cli.read and nothing_left()
+    # The new sign-in, without the old one's two-step key, which no reading brings back.
+    assert [p["id"] for p in setup_wilma.signins()] == [THEIRS, OURS]
+    assert setup_wilma.signin(OURS)["totpSecretObfuscated"] is None
+    assert not wilma_secrets(harness) and not setup_wilma.signins_path().exists()
 
 
-def test_a_config_left_by_a_run_killed_outright_goes_with_the_next_run(harness, cli):
+@pytest.mark.parametrize("store, on, line", [
+    ("keychain", None, "✅ Wilma: the Wilma password of huoltaja at Kuvitteellisen kaupungin "
+                       "koulut is in the macOS Keychain"),
+    ("file", None, "⚠️  Wilma: the Wilma password of huoltaja at Kuvitteellisen kaupungin koulut "
+                   "is still in the wilma CLI's own file, not encrypted: moving it to the macOS "
+                   "Keychain didn't work yet."),
+    ("file", LINUX, "✅ Wilma: the Wilma password of huoltaja at Kuvitteellisen kaupungin koulut "
+                    "is in the wilma CLI's owner-only file, since this server has no keychain"),
+], ids=["in the keychain", "in the file", "on a server without a keychain"])
+def test_doctor_says_where_each_wilma_password_is(harness, cli, capsys, store, on, line):
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    if on is not None:
+        harness.system = on
     signed_in_on_the_page()
-    runs = setup_wilma.runs_folder()
-    killed = runs / "run-killed"  # its lock went with the run
+    usable = on is None
+    cli.answers = {("kids", "list"): {"students": [MIA]}, ("config", "secrets"): {
+        "setting": "auto", "logins": [{"wilma": FIRST["name"], "username": "huoltaja",
+                                       "store": store, "hasTotp": False}],
+        "keychain": {"kind": "macOS Keychain" if usable else "Secret Service", "usable": usable,
+                     **({} if usable else {"problem": "no D-Bus session"})}}}
+
+    harness.cli("doctor", "--skip-llm")
+
+    assert any(seen.startswith(line) for seen in wilma_lines(capsys)), line
+
+
+@pytest.mark.parametrize("code, says", [
+    ("secret_missing", "isn't in the keychain any more"),
+    ("secret_refused", "Unlock it, then run parent-recap doctor again"),
+    ("secret_unavailable", "a keychain this wilma CLI can't open here"),
+])
+def test_doctor_says_what_to_do_when_the_keychain_doesn_t_hand_the_password_over(
+        harness, cli, capsys, code, says):
+    del harness.config["kids"][0]["myclub_ical_url"]  # no network in tests
+    signed_in_on_the_page()
+    cli.answers = {("kids", "list"): (4, {"status": "error", "code": code, "message": "no"})}
+
+    harness.cli("doctor", "--skip-llm")
+
+    [line] = wilma_lines(capsys)
+    assert line.startswith(ops.FAIL) and says in line
+
+
+def test_a_check_s_folder_left_by_one_killed_outright_goes_with_the_next_reading(harness, cli):
+    signed_in_on_the_page()
+    killed = setup_wilma.runs_folder() / "run-killed"  # its lock went with the check
     killed.mkdir(parents=True)
     (killed / setup_wilma.RUN_LOCK).touch()
     (killed / "config.json").write_text(json.dumps({"profiles": [
         {"passwordObfuscated": setup_wilma.obfuscate(PASSWORD)}]}))
     one_message(cli)
 
-    with setup_wilma.run_folder() as going:  # another reading, still going
+    with setup_wilma.run_folder() as going:  # another check, still going
         assert harness.run() == 0
         assert going.exists()
 
-    assert not killed.exists() and nothing_left()
+    assert not killed.exists()
+
+
+def test_nothing_of_the_password_is_logged(harness, cli, caplog):
+    caplog.set_level(logging.DEBUG)
+    signed_in_from_0_11_to_0_15(harness)
+    one_message(cli)
+
+    assert harness.run() == 0
+
+    for secret in (PASSWORD, setup_wilma.obfuscate(PASSWORD), TWO_STEP):
+        assert secret not in caplog.text
+        assert not any(secret in arg for c in cli.ran for arg in c)

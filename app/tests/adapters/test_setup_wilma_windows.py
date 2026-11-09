@@ -90,6 +90,7 @@ def test_the_window_runs_wilma_s_sign_in_page_and_ends_it_once_signed_in(harness
     script = fake_node.wilma_package(harness.home) / fake_node.SCRIPT
     assert cli.argv == [str(node), str(script), "login"]
     assert cli.env["WILMAI_NO_UPDATE_CHECK"] == "1"  # Parent Recap installs the version it pins
+    assert cli.env["WILMAI_SECRET_STORE"] == "auto"  # its sign-in goes to Credential Manager (#849)
     assert cli.ended  # before it waits for more Wilmas
     assert status.read_text().strip() == "0"
     shown = capsys.readouterr().out
