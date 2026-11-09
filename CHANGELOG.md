@@ -4,6 +4,10 @@ What changes for families in each release, collected from the `What changes for 
 
 ## Unreleased
 
+### Changed
+
+- The product is called just Parent Recap, made by Kinlace, in the README and in the plugin's name in Claude Code and Codex.
+
 ### Added
 
 - Every Brief, from your own computer or the hosted version, ends with a "Recommend to other parents" link in the Brief's language. It opens WhatsApp, on a phone or a computer, with a short ready-made message saying what Parent Recap does and linking to parentrecap.com, for you to send to a person or a group and change first if you like. The message carries nothing from your Brief: no names, school, class or schedule.

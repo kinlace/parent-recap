@@ -1,4 +1,6 @@
-# Kinlace Parent Recap
+# Parent Recap
+
+<sub>由 Kinlace 出品</sub>
 
 [English](README.md) · [Suomi](README.fi.md) · **简体中文**
 

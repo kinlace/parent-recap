@@ -1,7 +1,7 @@
 {
   "name": "kinlace",
   "owner": { "name": "Kinlace" },
-  "description": "Kinlace Parent Recap: a nightly Brief of your kids' school and club news, in your language",
+  "description": "Parent Recap by Kinlace: an evening Brief of your kids' school and club news, in your language",
   "plugins": [
     {
       "name": "parent-recap",
