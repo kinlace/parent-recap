@@ -2,7 +2,7 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
-## Unreleased
+## 0.16.0 · 2026-11-09
 
 ### Changed
 
