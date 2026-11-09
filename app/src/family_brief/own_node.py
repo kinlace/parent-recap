@@ -168,8 +168,10 @@ def wilma() -> list[str] | None:
 def wilma_env(config: Path | None = None) -> dict[str, str]:
     """The environment the wilma CLI runs in: without its daily check for a newer version on npm,
     since Parent Recap installs the version it pins (ADR 0008) and the CLI's advice to run
-    `wilma update` would install another one, and with `config` as its config file when given."""
-    env = {**os.environ, "WILMAI_NO_UPDATE_CHECK": "1"}
+    `wilma update` would install another one, with a sign-in the CLI saves itself, as in the
+    Terminal sign-in window, going straight to the keychain where there is one (#849), and with
+    `config` as its config file when given."""
+    env = {**os.environ, "WILMAI_NO_UPDATE_CHECK": "1", "WILMAI_SECRET_STORE": "auto"}
     if config is not None:
         env["WILMAI_CONFIG_PATH"] = str(config)
     return env

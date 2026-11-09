@@ -146,12 +146,11 @@ class Wilma(Phase):
                     "invalid-answers", "Remove one of the Wilmas listed, while there are two or "
                     "more.", errors=["id: should be one of the Wilmas api/state lists, while it "
                                      "lists two or more"])
-            if answer.id in setup_wilma.profile_ids(setup_wilma.signins_path()):
+            try:
                 setup_wilma.remove_signin(answer.id)
-            # One the CLI's own config has for the account too would take its place.
-            cli = setup_wilma.config_path()
-            if answer.id in setup_wilma.profile_ids(cli):
-                setup_wilma.remove_profile(cli, answer.id)
+            except setup_wilma.SignInNotRemoved as e:  # the page says it wasn't saved
+                why = failure.logged("The Wilma sign-in wasn't removed", str(e))
+                return HTTPStatus.INTERNAL_SERVER_ERROR, {"result": "remove-failed", "reason": why}
             install_record.remove("wilma-profile", answer.id)
             left = setup_wilma.signins()
             still = {n.casefold() for p in left for n in setup_wilma.student_names(p)}

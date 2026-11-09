@@ -85,7 +85,8 @@ def test_doctor_runs_the_wilma_cli_on_parent_recaps_own_node(harness, no_node, m
     assert line.startswith(ops.OK) and "Mia, Leo" in line
     node = fake_node.pinned_node(harness.home)
     cli = fake_node.wilma_folder(harness.home) / "bin" / "wilma"
-    assert no_node == [[str(node), str(cli), "kids", "list", "--json"]]
+    assert no_node == [[str(node), str(cli), "kids", "list", "--json"],
+                       [str(node), str(cli), "config", "secrets", "--json"]]
 
 
 @pytest.mark.macos
@@ -110,10 +111,11 @@ def test_the_wilma_cli_never_checks_npm_for_a_newer_version(harness, no_node, ca
 
     assert len(no_node.envs) == len(no_node) > 1
     assert all(env and env["WILMAI_NO_UPDATE_CHECK"] == "1" for env in no_node.envs)
-    # Never the CLI's own config: one of each reading's own, gone once it ended (#710).
-    runs = setup_wilma.runs_folder()
-    assert all(Path(env["WILMAI_CONFIG_PATH"]).parent.parent == runs for env in no_node.envs)
-    assert not list(runs.iterdir())
+    # A sign-in the CLI saves itself goes straight to the keychain (#849), and each reading reads
+    # the CLI's own config, not one of its own as from 0.11 to 0.15 (#710).
+    assert all(env["WILMAI_SECRET_STORE"] == "auto" for env in no_node.envs)
+    assert not any("WILMAI_CONFIG_PATH" in env for env in no_node.envs)
+    assert not setup_wilma.runs_folder().exists()
 
 
 @pytest.mark.macos

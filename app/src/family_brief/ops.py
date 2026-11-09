@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import shlex
 import sys
@@ -22,6 +23,8 @@ from . import (baileys_install, google_packages, languages, own_node, private_fi
                sources)
 from .config import Config
 from .system import entries, jobs, profile, wake, windows_only
+
+log = logging.getLogger(__name__)
 
 OK, WARN, FAIL = "✅", "⚠️ ", "❌"
 _STATUS_OF = {"ok": OK, "warn": WARN, "fail": FAIL}  # by llm.Finding's level
@@ -295,15 +298,42 @@ def _check_llm(cfg: Config, add) -> None:
 def check_wilma(cfg: Config, add, config: str | None = None) -> None:
     if not cfg.wilma.enabled:
         return
-    from .collectors.wilma import NOT_INSTALLED, _run_or_log
+    from .collectors.wilma import NOT_INSTALLED, WilmaError, _run, signed_in
     if own_node.wilma() is None:
         add(FAIL, "wilma", NOT_INSTALLED)
         return
-    data = _run_or_log(["kids", "list"])
-    if data is None:
-        add(FAIL, "wilma", "wilma kids list failed: not signed in yet, or the password changed "
-            "(sign in again: parent-recap setup wilma)")
-        return
+    with signed_in():
+        try:
+            data = _run(["kids", "list"])
+        except WilmaError as e:
+            log.error("%s", e)
+            add(FAIL, "wilma", _wilma_not_read(e.code))
+            return
+        _check_wilma_signins(cfg, data, add)
+        check_wilma_passwords(add)
+
+
+# Why the wilma CLI (2.5.0 and later) couldn't read a sign-in's password from the keychain, by its
+# code, and what to do.
+WILMA_SECRET_FAILURES = {
+    "secret_missing": "the Wilma password isn't in the keychain any more, so Wilma can't be read "
+                      "(sign in again: parent-recap setup wilma)",
+    "secret_refused": "the keychain didn't hand over the Wilma password, so Wilma can't be read: "
+                      "the computer may be locked or asking for its password. Unlock it, then run "
+                      "parent-recap doctor again",
+    "secret_unavailable": "the Wilma password is in a keychain this wilma CLI can't open here, so "
+                          "Wilma can't be read (update Parent Recap: paste the install line "
+                          "again; or sign in again: parent-recap setup wilma)",
+}
+
+
+def _wilma_not_read(code: str | None) -> str:
+    return WILMA_SECRET_FAILURES.get(code or "", "wilma kids list failed: not signed in yet, or "
+                                     "the password changed (sign in again: parent-recap setup "
+                                     "wilma)")
+
+
+def _check_wilma_signins(cfg: Config, data, add) -> None:
     items = data if isinstance(data, list) else (data.get("kids") or data.get("students") or [])
     names = [str(k.get("name") or (k.get("student") or {}).get("name") or "?") for k in items]
     configured = {k.name for k in cfg.kids}
@@ -333,6 +363,47 @@ def check_wilma(cfg: Config, add, config: str | None = None) -> None:
             add(FAIL, "wilma", f"the sign-in as {who} doesn't work, so the Brief misses its Kids' "
                 f"messages: {why} (sign in to it again on the setup page's Wilma step, or: "
                 "parent-recap setup wilma)")
+
+
+def check_wilma_passwords(add) -> None:
+    """Where each sign-in's password is, as `wilma config secrets` (2.5.0 and later) says (#849):
+    in the keychain, or in the CLI's own file, which any program running as the family can read.
+    On a computer without a keychain, such as the hosted version's Linux server, the file is where
+    it belongs."""
+    from . import setup_wilma
+    from .collectors.wilma import WilmaError, _run
+    if not setup_wilma.keeps_secrets():
+        add(WARN, "wilma", f"the wilma CLI {setup_wilma.installed_version() or ''} keeps the Wilma "
+            "password in its own file, not encrypted: update Parent Recap (paste the install line "
+            "again), which installs one that keeps it in the keychain")
+        return
+    try:
+        said = _run(["config", "secrets"])
+    except WilmaError as e:
+        add(WARN, "wilma", f"couldn't tell where the Wilma password is kept: {e}")
+        return
+    keychain = said.get("keychain") if isinstance(said.get("keychain"), dict) else {}
+    kind = keychain.get("kind") or "keychain"
+    for login in said.get("logins") or []:
+        if not isinstance(login, dict):
+            continue
+        who = f"{login.get('username')} at {login.get('wilma')}"
+        if login.get("store") == "keychain":
+            add(OK, "wilma", f"the Wilma password of {who} is in the {kind}")
+        elif login.get("store") != "file":
+            add(WARN, "wilma", f"the Wilma password of {who} is kept where this wilma CLI doesn't "
+                "know: update Parent Recap (paste the install line again)")
+        elif not keychain.get("usable") and profile.current().system == "linux":
+            add(OK, "wilma", f"the Wilma password of {who} is in the wilma CLI's owner-only file, "
+                "since this server has no keychain")
+        elif not keychain.get("usable"):
+            add(WARN, "wilma", f"the Wilma password of {who} is in the wilma CLI's own file, not "
+                f"encrypted, since the {kind} can't be used here ({keychain.get('problem')}). If "
+                "this stays, tell the Parent Recap maintainers")
+        else:
+            add(WARN, "wilma", f"the Wilma password of {who} is still in the wilma CLI's own "
+                f"file, not encrypted: moving it to the {kind} didn't work yet. The next evening "
+                "run tries again; if this stays, sign in to Wilma again: parent-recap setup wilma")
 
 
 def check_myclub(cfg: Config, add, config: str | None = None) -> None:

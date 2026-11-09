@@ -283,31 +283,35 @@ def _delete_secret(account: str) -> None:
 
 
 def survey_wilma(s: Survey, programs: list[Path]) -> None:
-    """Setup's Wilma sign-ins, with their passwords in the secret store (#710), and a profile setup's
-    record has that is still in the wilma CLI's own config, from before that, since one that was
-    there before setup isn't Parent Recap's to remove, and the wilma CLI setup installed in Parent
-    Recap's folder (ADR 0011). A wilma CLI of the Mac's own isn't touched."""
+    """The sign-ins setup's record has in the wilma CLI's own config, with their passwords, which
+    the CLI keeps in the system's keychain from 2.5.0 (#849), since one that was there before setup
+    isn't Parent Recap's to remove; setup's sign-ins from 0.11 to 0.15 that no run has moved yet,
+    with their passwords in the secret store (#710); and the wilma CLI setup installed in Parent
+    Recap's folder (ADR 0011). A wilma CLI of the Mac's own isn't touched. The sign-ins go before
+    the CLI, which removes one whose password is in the keychain."""
     signins = setup_wilma.signins_path()
     for p in setup_wilma.profiles(signins):
         if isinstance(p.get("id"), str):
             account = setup_wilma.secret_name(p["id"])
             s.items.append(Item("Wilma sign-in", f"{p.get('username')} at {p.get('tenantUrl')}, "
                                 f"its password in the {secrets.STORE} ({secrets.where(account)})",
-                                partial(setup_wilma.remove_signin, p["id"]), account=account,
+                                partial(setup_wilma.remove_legacy, p["id"]), account=account,
                                 asks=secrets.deleting_asks()))
     if signins.exists():  # gone with the last sign-in, unless one stays
         s.items.append(Item("Setup's list of Wilma sign-ins", _show(signins),
                             partial(signins.unlink, missing_ok=True), path=signins))
     runs = setup_wilma.runs_folder()
     if runs.is_dir() and not runs.is_symlink():
-        s.items.append(_file("The wilma CLI's folder for each run", runs))
+        s.items.append(_file("The wilma CLI's folder for each check", runs))
     config = setup_wilma.config_path()
     for profile_id in install_record.entries("wilma-profile"):
         profile = setup_wilma.profile(config, profile_id)
         if profile is not None:
-            s.items.append(Item("Wilma sign-in", f"{profile.get('username')} at "
-                                f"{profile.get('tenantUrl')}, in {_show(config)}",
-                                partial(setup_wilma.remove_profile, config, profile_id)))
+            where = f"{profile.get('username')} at {profile.get('tenantUrl')}, in {_show(config)}"
+            if profile.get("secrets"):
+                where += ", its password in the keychain"
+            s.items.append(Item("Wilma sign-in", where,
+                                partial(setup_wilma.remove_signin, profile_id)))
     # Before ADR 0011 the record held the npm package's name, not a folder.
     recorded = [Path(p) for p in install_record.entries("wilma-cli") if Path(p).is_absolute()]
     usual = [*(p.parent / "wilma" for p in programs), Path.home() / "ParentRecap" / "wilma"]
@@ -607,6 +611,12 @@ def wilma_notes(cfg: Config) -> list[str]:
     folder = _show(wilma_config.parent)
     system = profile.current()
     remove = f"in {system.terminal}: {system.remove_folder.format(folder=folder)}"
+    theirs = [setup_wilma.profile(wilma_config, i) or {} for i in profiles if i not in ours]
+    if theirs and all(p.get("secrets") for p in theirs):  # the CLI keeps it in the keychain
+        return [f"The wilma CLI keeps a Wilma sign-in setup didn't make in {folder}, its password "
+                f"in the keychain under {setup_wilma.KEYCHAIN_SERVICE}, so uninstall leaves it. If "
+                f"you only used it for Parent Recap, remove the folder {remove}, and the keychain "
+                f"items named {setup_wilma.KEYCHAIN_SERVICE}"]
     return [f"The wilma CLI keeps a Wilma password, not encrypted, in {folder}, from a sign-in "
             "setup didn't make, so uninstall leaves it. If you only used it for Parent Recap, "
             f"remove it {remove}"]

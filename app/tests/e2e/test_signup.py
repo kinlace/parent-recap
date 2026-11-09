@@ -77,8 +77,11 @@ class SignUp:
     def __init__(self, tmp: Path) -> None:
         self.store = Store(tmp / "signup")
         # The server's shared copy (ADR 0035), as gateway-setup.sh leaves it: its venv, its own
-        # Node and the wilma CLI installed with it.
-        WilmaCLI(tmp / "lib").install()
+        # Node and the wilma CLI installed with it, on a server without the Secret Service, so
+        # the CLI keeps the passwords in its own file.
+        cli = WilmaCLI(tmp / "lib")
+        cli.keychain = None
+        cli.install()
         shared = tmp / "lib" / "ParentRecap"
         (shared / "app" / ".venv" / "bin").mkdir(parents=True)
         self.host = FakeHouseholdHost(tmp / "home", shared)
@@ -292,7 +295,8 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     assert [c[1:] for c in signup.host.commands] == [
         [PROGRAM, "signup", "household"],
         [PROGRAM, "run", "--first-brief", "--lookback-hours", "72"]]
-    assert sorted(p.name for p in user.home.iterdir()) == [".family", "ParentRecap"]
+    # Its home holds its own files and the wilma CLI's config (#849).
+    assert sorted(p.name for p in user.home.iterdir()) == [".config", ".family", "ParentRecap"]
     assert not (user.home / "ParentRecap" / "app").exists()  # its archive and logs only
     assert not (user.home / "ParentRecap" / "runtime").exists()
     # The first Brief, from Parent Recap's own address with the Household's key, to each
@@ -318,22 +322,23 @@ def test_a_good_sign_up_makes_the_household_and_sends_its_first_brief(
     assert cfg.wilma.enabled and not cfg.whatsapp.enabled
     assert cfg.google_calendar.mode == "ics"
     assert (cfg.schedule.daily_hour, cfg.schedule.daily_minute) == (21, 0)
-    account = setup_wilma.secret_name(f"{ESPOO}|mia.parent")
-    assert set(user.secrets) == {"gateway-key", account}
+    assert set(user.secrets) == {"gateway-key"}
     assert user.secrets["gateway-key"] == key
     assert user.jobs.installed() == {jobs.DAILY}
     # Its evening job runs the shared copy's Python, so a redeploy upgrades its next run.
     assert user.jobs.program(jobs.DAILY) == [str(signup.host.python), "-m", "family_brief", "run"]
     assert not any(k.myclub_ical_url for k in cfg.kids)  # no link given: MyClub off for both
-    # The Wilma sign-in: its password in the secret store, the rest in setup's own file, and
-    # nothing left of the config the first Brief's run read Wilma with (#710).
-    wilma = json.loads((user.home / ".family" / "wilma-signins.json").read_text())
+    # The Wilma sign-in, in the CLI's own owner-only config, where the CLI keeps the password on a
+    # server without a keychain (#849), set to move it to one where there is.
+    wilma = json.loads((user.home / ".config" / "wilmai" / "config.json").read_text())
     [profile] = wilma["profiles"]
     assert (profile["tenantUrl"], profile["username"]) == (ESPOO, "mia.parent")
-    assert "passwordObfuscated" not in profile
-    assert user.secrets[account] == setup_wilma.obfuscate(WILMA_PASSWORD)
+    assert profile["passwordObfuscated"] == setup_wilma.obfuscate(WILMA_PASSWORD)
+    assert wilma["secretStore"] == "auto" and "secrets" not in profile
     assert [s["name"] for s in profile["students"]] == ["Mia Virtanen", "Leo Virtanen"]
-    assert not list((user.home / ".family" / "wilma-runs").iterdir())
+    assert (user.home / ".config" / "wilmai" / "config.json").stat().st_mode & 0o777 == 0o600
+    assert not (user.home / ".family" / "wilma-signins.json").exists()
+    assert not (user.home / ".family" / "wilma-runs").exists()
     # Listed, without the family's addresses, and the link retired with its Recipients.
     [household] = signup.store.households()
     # Its note is the name the family gave, as its link had none (#814).
@@ -833,7 +838,8 @@ def test_a_family_with_wilma_adds_eepos(signup, harness, emo):
     [signin] = cfg.eepos.signins
     assert signin.kids == {"11": "Mia Virtanen", "12": "Leo Virtanen"}  # as Wilma lists them
     assert user.secrets[eepos.secret_name("emo", EEPOS_USERNAME)] == EEPOS_PASSWORD
-    assert setup_wilma.secret_name(f"{ESPOO}|mia.parent") in user.secrets
+    assert setup_wilma.signin(f"{ESPOO}|mia.parent") is None  # not the service's: the user's
+    assert (user.home / ".config" / "wilmai" / "config.json").exists()
     assert "Eepos 1 tapahtuma" in harness.sent[0].text
 
 
