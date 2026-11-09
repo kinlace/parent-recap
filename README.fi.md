@@ -1,4 +1,6 @@
-# Kinlace Parent Recap
+# Parent Recap
+
+<sub>Tekijä: Kinlace</sub>
 
 [English](README.md) · **Suomi** · [简体中文](README.zh-CN.md)
 
