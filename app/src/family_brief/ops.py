@@ -341,9 +341,8 @@ WILMA_UNREACHABLE = ("Wilma couldn't be reached from this server: the Finnish eg
 
 
 def _wilma_not_read(code: str | None) -> str:
-    if code == "login_blocked":
-        return WILMA_LOGIN_BLOCKED
-    return WILMA_SECRET_FAILURES.get(code or "", "wilma kids list failed: not signed in yet, or "
+    known = {**WILMA_SECRET_FAILURES, "login_blocked": WILMA_LOGIN_BLOCKED}
+    return known.get(code or "", "wilma kids list failed: not signed in yet, or "
                                      "the password changed (sign in again: parent-recap setup "
                                      "wilma)")
 

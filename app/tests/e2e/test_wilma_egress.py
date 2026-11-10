@@ -145,8 +145,9 @@ def test_with_no_egress_set_nothing_changes(harness, cli):  # noqa: F811
 
 @pytest.mark.parametrize("settings", ["", f"{wilma_egress.SETTING}=\n",
                                       f"{wilma_egress.SETTING}=egress.example.ts.net:8888\n",
-                                      f"{wilma_egress.SETTING}=socks5://egress.example.ts.net:8888\n"],
-                         ids=["empty-file", "empty", "no-scheme", "socks"])
+                                      f"{wilma_egress.SETTING}=socks5://egress.example.ts.net:8888\n",
+                                      f"{wilma_egress.SETTING}=http://user@egress.example.ts.net:8888/x\n"],
+                         ids=["empty-file", "empty", "no-scheme", "socks", "more-than-host-port"])
 def test_an_egress_setting_that_is_empty_or_no_http_proxy_is_none(tmp_path, settings):
     path = tmp_path / "wilma-egress.env"
     path.write_text(settings)
