@@ -80,7 +80,7 @@ usage: sudo admin <task> [arguments]
   autodeploy pause|resume|status             the morning's automatic deploy of each new
                                              release: stop it, start it again, or whether it
                                              is paused and how its last attempt ended
-  check [--mail]                            what is wrong tonight; --mail mails it, as nightly
+  check [--mail]                             what is wrong tonight; --mail mails it, as nightly
   signed-up ph-XXXXXXXX                      mail the maintainers that the sign-up made this
                                              Household (the sign-up service runs it)
 
@@ -536,7 +536,7 @@ def _deploy_ref(paths: Paths, ref: str, anyway: bool, edge: Edge) -> Deployed:
     _record(paths, deployed)
     print(f"recorded: {_running_deploy(paths)}", flush=True)
 
-    failed = _health(host, edge)
+    failed = _failed_checks(host, edge)
     if check:
         ran_ok, check_run = _evening_run(paths, check, edge)
         if not ran_ok:
@@ -1261,7 +1261,7 @@ def _rollback(paths: Paths, args: list[str], edge: Edge) -> int:
         return 1
     print(f"switched back from {_what(leaving)} to {_what(back)}: {_running_deploy(paths)}",
           flush=True)
-    if _health(host, edge):
+    if _failed_checks(host, edge):
         print("\n❌ switched back, but a check failed (above)", file=sys.stderr)
         return 1
     print("\n✅ switched back. Read the Households' next evening runs: sudo admin households")
@@ -1355,7 +1355,7 @@ def _start_timers(stopped: list[tuple[str, str]], edge: Edge) -> None:
         print("⚠️ couldn't start again: " + ", ".join(failed), file=sys.stderr)
 
 
-def _health(host: str, edge: Edge) -> list[str]:
+def _failed_checks(host: str, edge: Edge) -> list[str]:
     """Each service's /health and the 404 outside the routes, said on the terminal; returns
     those that failed."""
     failed = []
@@ -1506,10 +1506,10 @@ def _auto_status(state: dict) -> int:
     refused = state.get("refused")
     if isinstance(refused, dict) and refused.get("days"):
         print(f"refused {refused['days']} day{'' if refused['days'] == 1 else 's'} running, "
-              f"since {refused.get('since')}; mailed on the {REFUSED_DAYS}rd")
+              f"since {refused.get('since')}; mailed on the third")
     for tag, since in sorted((state.get("waiting") or {}).items()):
-        print(f"{tag} waits for a deploy by hand since {since}: switching back from it needs the "
-              f"snapshot (sudo admin deploy {tag})")
+        print(f"{tag} waits for a deploy by hand since {since}: its changelog says switching "
+              f"back from it needs the snapshot, or it failed a check (sudo admin deploy {tag})")
     return 0
 
 
@@ -1523,6 +1523,8 @@ def _auto_run(paths: Paths, state: dict, edge: Edge, smtp: Callable[..., Any] | 
         running = _running_commit(paths)
         if running and _git(paths, "merge-base", "--is-ancestor", commit,
                             running).returncode == 0:
+            # What waited for a deploy by hand is deployed now, or a later commit is.
+            state = {k: v for k, v in state.items() if k != "waiting"}
             return _auto_done(paths, state, edge,
                               f"nothing new: stable is {tag}, and the server runs "
                               f"{_runs_label(paths)}")
@@ -1556,6 +1558,8 @@ def _auto_run(paths: Paths, state: dict, edge: Edge, smtp: Callable[..., Any] | 
         print(f"\nswitching back from {tag}, as a check failed", flush=True)
         back = _rollback(paths, [], edge) == 0
         now = _runs_label(paths)
+        # Not tried again by itself, even when the switch-back was refused and so isn't recorded.
+        state = {**state, "waiting": {**(state.get("waiting") or {}), tag: _stamp(edge)}}
         _auto_done(paths, state, edge, f"{tag} failed a check and was switched back"
                    + ("" if back else ", but the switch-back didn't finish or its checks failed"))
         failed = "\n".join(f"- {f}" for f in deployed.failed)
@@ -1588,19 +1592,22 @@ def _auto_done(paths: Paths, state: dict, edge: Edge, outcome: str) -> int:
 def _auto_refused(paths: Paths, state: dict, tag: str, why: str, edge: Edge,
                   smtp: Callable[..., Any] | None) -> int:
     """Records a refused attempt; mails it on the REFUSED_DAYS-th day running it was refused,
-    and each REFUSED_DAYS-th day after. Days are Helsinki's; a second attempt on one day isn't
-    another day."""
-    today = edge.now().astimezone(ZoneInfo(ZONE)).date().isoformat()
+    and each REFUSED_DAYS-th day after. Days are Helsinki's: a second attempt on one day isn't
+    another day, and a day without a refused attempt (paused, the server down) starts the count
+    again."""
+    today = edge.now().astimezone(ZoneInfo(ZONE)).date()
     refused = state.get("refused") if isinstance(state.get("refused"), dict) else {}
-    days = int(refused.get("days") or 0)
-    new_day = refused.get("on") != today
-    days = days + 1 if new_day else max(days, 1)
+    days, since = int(refused.get("days") or 0), refused.get("since")
+    new_day = refused.get("on") != today.isoformat()
+    if refused.get("on") == (today - timedelta(days=1)).isoformat():
+        days += 1
+    elif new_day or not days:
+        days, since = 1, today.isoformat()
     outcome = f"{tag} not deployed, nothing changed: {why}"
     _auto_save(paths, {**state, "last": {"at": _stamp(edge), "outcome": outcome},
-                       "refused": {"days": days, "on": today,
-                                   "since": refused.get("since") or today}})
+                       "refused": {"days": days, "on": today.isoformat(), "since": since}})
     if not (new_day and days % REFUSED_DAYS == 0):
-        print(f"{outcome}. Tried again tomorrow; mailed on the {REFUSED_DAYS}rd day running",
+        print(f"{outcome}. Tried again tomorrow; mailed on the third day running",
               file=sys.stderr)
         return 0
     host = _env(paths.signup_env).get("GATEWAY_HOST") or "the server"

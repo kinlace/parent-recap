@@ -54,10 +54,11 @@ def mails(deploy) -> list[tuple[str, str]]:
 
 
 def runs(deploy) -> str:
+    """The deploy `current` points at: its commit's first 12 hex digits."""
     return deploy.server.paths.shared.joinpath("current").readlink().name
 
 
-def test_a_new_release_on_stable_is_deployed_checked_and_mailed(server, capsys):
+def test_a_new_release_on_stable_is_deployed_checked_and_mailed(server):
     commit = release(server, "1.1.0", "- The Brief comes on time again.")
     assert server("autodeploy", "run") == 0
     assert runs(server) == commit[:12]
@@ -146,7 +147,7 @@ def test_a_release_needing_the_snapshot_waits_for_a_deploy_by_hand(server):
     assert len(mails(server)) == 1 and server.fake.setups() == []
 
 
-def test_paused_it_checks_nothing_and_mails_nothing(server, capsys):
+def test_paused_it_checks_nothing_and_mails_nothing(server):
     release(server, "1.1.0")
     assert server("autodeploy", "pause") == 0
     server.server.paths.repo_url = str(server.origin.path / "gone")  # not even fetched
@@ -162,7 +163,7 @@ def test_paused_it_checks_nothing_and_mails_nothing(server, capsys):
 def test_a_refused_deploy_is_tried_again_and_mailed_on_the_third_day(server):
     release(server, "1.1.0")
     server.fake.marked = True  # admin households marks a Household
-    for day in range(2):
+    for _ in range(2):
         assert server("autodeploy", "run") == 0
         assert mails(server) == [] and len(records(server)) == 1
         server.fake.now += timedelta(days=1)
@@ -175,6 +176,57 @@ def test_a_refused_deploy_is_tried_again_and_mailed_on_the_third_day(server):
     assert server("autodeploy", "run") == 0
     assert [d["tag"] for d in records(server)][-1] == "v1.1.0"
     assert mails(server)[-1][0] == "Parent Recap server: v1.1.0 deployed"
+
+
+def test_refused_days_with_a_day_between_aren_t_running(server):
+    release(server, "1.1.0")
+    server.fake.marked = True
+    for skip in (0, 1, 0):  # refused, a day without an attempt, refused twice; the third below
+        server.fake.now += timedelta(days=skip)
+        server("autodeploy", "run")
+        server.fake.now += timedelta(days=1)
+    assert len(mails(server)) == 0
+    assert server("autodeploy", "run") == 1
+    assert mails(server)[0][0] == "Parent Recap server: v1.1.0 not deployed for 3 days"
+
+
+def test_a_second_attempt_on_one_day_isn_t_another_day(server):
+    release(server, "1.1.0")
+    server.fake.marked = True
+    for _ in range(3):
+        server("autodeploy", "run")
+    assert mails(server) == []
+
+
+def test_a_release_whose_switch_back_was_refused_isn_t_deployed_again(server):
+    release(server, "1.1.0")
+    system = server.fake.system
+
+    def first_setup_fails_and_runs_go_on(argv, capture=False, env=None):
+        server.fake.setup_fails = argv[0] == "bash" and not server.fake.setups()
+        if server.fake.setups():  # the check Household's run still runs: rollback refuses
+            server.fake.units["ph-30d2afe0"] = {"ActiveState": "active"}
+        return system(argv, capture, env)
+    server.fake.system = first_setup_fails_and_runs_go_on
+    assert server("autodeploy", "run") == 1
+    assert "Switching back didn't finish" in mails(server)[0][1]
+    assert not any(d.get("rolled_back_from") for d in records(server))
+    server.fake.system = system
+    server.fake.units.clear()
+    server.fake.ran.clear()
+    server.fake.now += timedelta(days=1)
+    assert server("autodeploy", "run") == 0
+    assert server.fake.setups() == [] and len(mails(server)) == 1
+
+
+def test_a_release_deployed_by_hand_no_longer_waits(server, capsys):
+    release(server, "1.1.0", f"- A change.\n\n{NEEDS_SNAPSHOT}")
+    server("autodeploy", "run")
+    assert server("deploy", "v1.1.0") == 0
+    server("autodeploy", "run")
+    capsys.readouterr()
+    server("autodeploy", "status")
+    assert "waits" not in capsys.readouterr().out
 
 
 def test_status_says_paused_and_the_last_attempt(server, capsys):
