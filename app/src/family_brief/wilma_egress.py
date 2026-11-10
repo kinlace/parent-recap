@@ -16,6 +16,7 @@ the maintainers.
 from __future__ import annotations
 
 import logging
+import re
 import socket
 import time
 from pathlib import Path
@@ -25,6 +26,7 @@ log = logging.getLogger(__name__)
 
 SETTINGS = Path("/etc/parent-recap/wilma-egress.env")
 SETTING = "WILMA_EGRESS_PROXY"
+ADDRESS = re.compile(r"http://[A-Za-z0-9.-]+:[0-9]{1,5}/?")  # as gateway-setup.sh checks it
 PROBE_SECONDS = 3.0
 FRESH_SECONDS = 120.0
 # Starts the reason of a Wilma error put down to the proxy not answering, which the Brief says in
@@ -52,11 +54,9 @@ def proxy(settings: Path | None = None) -> str | None:
 
 
 def _valid(address: str) -> bool:
-    try:
-        parts = urlsplit(address)
-        return parts.scheme == "http" and bool(parts.hostname) and parts.port is not None
-    except ValueError:
-        return False
+    """http://HOST:PORT, with a name or IPv4 address for HOST, as gateway-setup.sh and
+    `admin check` take it."""
+    return ADDRESS.fullmatch(address) is not None
 
 
 def env() -> dict[str, str]:
