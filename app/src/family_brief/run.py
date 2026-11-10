@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable, Literal
 from zoneinfo import ZoneInfo
 
-from . import ai_filter, feedback, gateway, languages, last_run, llm, private_files, render
+from . import ai_filter, feedback, gateway, languages, last_run, llm, private_files, render, wilma_egress
 from . import sources as source_registry
 from .actions import archive, calendar as calendar_action, email as email_action, imessage
 from .brief import Brief, EarlierBrief, RunNotes
@@ -679,7 +679,7 @@ def run_unless_caught_up(cfg: Config, options: Options, io: IO) -> int:
     try:
         code = run(cfg, options, io)
     except BaseException:
-        last_run.record(cfg, 1, time.monotonic() - started)
+        last_run.record(cfg, 1, time.monotonic() - started, wilma_egress.causes())
         raise
-    last_run.record(cfg, code, time.monotonic() - started)
+    last_run.record(cfg, code, time.monotonic() - started, wilma_egress.causes())
     return code

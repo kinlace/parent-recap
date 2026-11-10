@@ -20,7 +20,7 @@ from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 from . import (baileys_install, google_packages, languages, own_node, private_files, secret_dialog,
-               sources)
+               sources, wilma_egress)
 from .config import Config
 from .system import entries, jobs, profile, wake, windows_only
 
@@ -307,7 +307,8 @@ def check_wilma(cfg: Config, add, config: str | None = None) -> None:
             data = _run(["kids", "list"])
         except WilmaError as e:
             log.error("%s", e)
-            add(FAIL, "wilma", _wilma_not_read(e.code))
+            add(FAIL, "wilma", WILMA_UNREACHABLE if wilma_egress.UNREACHABLE in str(e)
+                else _wilma_not_read(e.code))
             return
         _check_wilma_signins(cfg, data, add)
         check_wilma_passwords(add)
@@ -327,7 +328,21 @@ WILMA_SECRET_FAILURES = {
 }
 
 
+# Wilma turned the sign-in away before checking the password (wilma CLI 2.5.1 on), as the Helsinki
+# and Vantaa Wilmas do for a request from outside Finland (#856).
+WILMA_LOGIN_BLOCKED = ("Wilma turned the sign-in away before checking the password "
+                       "(login_blocked): some Wilmas do that for a connection from outside Finland "
+                       "or through a VPN. Try again from a Finnish connection without a VPN; the "
+                       "password is not the problem")
+# On the hosted server, the Finnish egress for Wilma didn't answer, so Wilma turned it away (ADR 0046).
+WILMA_UNREACHABLE = ("Wilma couldn't be reached from this server: the Finnish egress its requests "
+                     "go through didn't answer, so they went direct and Wilma turned them away "
+                     "(ADR 0046). For the maintainers: sudo admin check")
+
+
 def _wilma_not_read(code: str | None) -> str:
+    if code == "login_blocked":
+        return WILMA_LOGIN_BLOCKED
     return WILMA_SECRET_FAILURES.get(code or "", "wilma kids list failed: not signed in yet, or "
                                      "the password changed (sign in again: parent-recap setup "
                                      "wilma)")

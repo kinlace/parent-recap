@@ -10,7 +10,7 @@ from datetime import date, datetime
 from typing import Callable, Literal, Union
 from zoneinfo import ZoneInfo
 
-from . import feedback
+from . import feedback, wilma_egress
 from . import sources as source_registry
 from .actions import ics as ics_action
 from .brief import ActionItem, Brief
@@ -49,10 +49,13 @@ def source_name(source: str) -> str:
     return "Calendar" if source == "calendar" else source_registry.label_of(source)
 
 
-def _problem(err: str) -> Literal["unreadable", "pairing", "permission", "login", "other"]:
+def _problem(err: str) -> Literal["unreadable", "pairing", "permission", "login", "unreachable",
+                                  "other"]:
     """What kind of error a Source reported, for what the Brief says about it."""
     if err.startswith(UNREADABLE_MESSAGE):
         return "unreadable"
+    if wilma_egress.UNREACHABLE in err:  # the hosted server's way to Wilma was down (ADR 0046)
+        return "unreachable"
     if err == source_registry.NEEDS_PAIRING:
         return "pairing"
     low = err.lower()
@@ -70,7 +73,8 @@ def _short_reason(err: str, t: BriefText) -> str:
     return {"unreadable": t.message_unreadable,  # without the Message's id and the error, which are for the log
             "pairing": t.needs_pairing,
             "permission": t.permission_denied,
-            "login": t.login_failed}.get(_problem(err)) or err.splitlines()[0][:60]
+            "login": t.login_failed,
+            "unreachable": t.unreachable}.get(_problem(err)) or err.splitlines()[0][:60]
 
 
 def _coverage_note(coverage: dict[str, dict], t: BriefText, hosted: bool) -> str:
@@ -105,8 +109,8 @@ def nothing_read_text(coverage: dict[str, dict], t: BriefText, assistant: str) -
     lines = [t.nothing_read]
     for source, c in coverage.items():
         name = source_name(source)
-        fix = {"login": t.fix_login, "permission": t.fix_permission,
-               "pairing": t.fix_pairing}.get(_problem(c["error"]), t.fix_other)
+        fix = {"login": t.fix_login, "permission": t.fix_permission, "pairing": t.fix_pairing,
+               "unreachable": t.fix_unreachable}.get(_problem(c["error"]), t.fix_other)
         lines.append(t.source_problem.format(source=name, reason=_short_reason(c["error"], t).rstrip(".。 "),
                                              fix=fix.format(assistant=assistant, source=name)))
     return "\n".join(lines)

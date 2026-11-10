@@ -170,8 +170,11 @@ def wilma_env(config: Path | None = None) -> dict[str, str]:
     since Parent Recap installs the version it pins (ADR 0008) and the CLI's advice to run
     `wilma update` would install another one, with a sign-in the CLI saves itself, as in the
     Terminal sign-in window, going straight to the keychain where there is one (#849), and with
-    `config` as its config file when given."""
-    env = {**os.environ, "WILMAI_NO_UPDATE_CHECK": "1", "WILMAI_SECRET_STORE": "auto"}
+    `config` as its config file when given. On the hosted server, through the Finnish egress
+    when one is set and answers (ADR 0046): only this environment gets it, never the program's."""
+    from . import wilma_egress
+    env = {**os.environ, "WILMAI_NO_UPDATE_CHECK": "1", "WILMAI_SECRET_STORE": "auto",
+           **wilma_egress.env()}
     if config is not None:
         env["WILMAI_CONFIG_PATH"] = str(config)
     return env

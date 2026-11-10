@@ -8,7 +8,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from family_brief.signup.status import Status, _checks, line, overdue
+from family_brief import last_run
+from family_brief.signup.status import CAUSES, Status, _checks, line, overdue
 
 HELSINKI = ZoneInfo("Europe/Helsinki")
 
@@ -77,3 +78,22 @@ def test_a_household_s_note_is_beside_its_user():
     assert line(Status("ph-0123abcd", "21:05", unknown="sudo couldn't be run",
                        note="赵晗博")) == \
         "❓ ph-0123abcd (赵晗博)  21:05  status unknown: sudo couldn't be run"
+
+
+def test_a_cause_the_household_named_marks_it_and_is_said_on_a_line_of_its_own():
+    """A Household whose Wilma couldn't be read because the Finnish egress didn't answer (ADR
+    0046) is marked, so the nightly check's mail has it, with the cause named."""
+    ran = datetime(2026, 10, 30, 18, 4, tzinfo=timezone.utc)
+
+    assert line(Status("ph-0123abcd", "21:05", ran, 0, checks={"wilma": "ok"},
+                       causes=("wilma-egress",))).splitlines() == [
+        "⚠️ ph-0123abcd  21:05  last run 2026-10-30 18:04 UTC, ok",
+        "   doctor: ✅ wilma",
+        "   cause: wilma: Finnish egress unreachable"]
+
+
+def test_only_cause_keys_are_taken():
+    assert last_run.causes(["wilma-egress", "wilma-egress", "Mia Virtanen", 3, "gmail"]) == \
+        ("wilma-egress", "gmail")
+    assert last_run.causes("wilma-egress") == ()
+    assert set(CAUSES) == {"wilma-egress"}  # and `status` keeps only these

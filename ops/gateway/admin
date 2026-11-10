@@ -20,7 +20,8 @@ maintainers how it went; `autodeploy pause` stops it.
 runs: the Households' status, the gateway's services and a pending reboot, mailed to the
 maintainers from the Brief's address through Email Delivery, as the relay sends, only when
 something is wrong. The mail holds only the status lines of the Households marked ❌, ⚠️ or ❓,
-the services' names and the reboot. `signed-up LABEL` (#814), which the sign-up service runs
+the services' names, the reboot, and the Finnish egress for Wilma (ADR 0046) when it doesn't
+answer, never its address. `signed-up LABEL` (#814), which the sign-up service runs
 through sudo once it has made a Household, mails them the same way that Household's label, its
 note in households.json, with the name the family gave, and the time its Brief comes: nothing else
 of it.
@@ -35,6 +36,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -165,6 +167,9 @@ class Paths:
     # mails, which gateway-setup.sh asks for.
     smtp_env: Path = Path("/etc/brief-relay/brief-relay.env")
     maintainers_env: Path = Path("/etc/brief-relay/maintainers.env")
+    # The Finnish egress the wilma CLI's requests go through (ADR 0046), which gateway-setup.sh
+    # writes, empty when there is none; the program reads it as family_brief/wilma_egress.py.
+    wilma_egress_env: Path = Path("/etc/parent-recap/wilma-egress.env")
     # Exists when a reboot is needed after updates (as `signup status` reads it), per
     # https://ubuntu.com/server/docs/how-to/software/upgrade-your-release/
     reboot_required: Path = Path("/run/reboot-required")
@@ -181,7 +186,8 @@ def main(argv: list[str], paths: Paths | None = None,
          edge: Edge | None = None,
          run: Callable[[list[str], dict], tuple[int, str]] | None = None,
          smtp: Callable[..., Any] | None = None,
-         ask: Callable[[str], str] | None = None) -> int:
+         ask: Callable[[str], str] | None = None,
+         answers: Callable[[str, int], bool] | None = None) -> int:
     paths = paths or Paths()
     exec_as = exec_as or _exec
     if not is_root():
@@ -247,7 +253,7 @@ def main(argv: list[str], paths: Paths | None = None,
             if args not in ([], ["--mail"]):
                 raise Usage("check [--mail]")
             return _check(paths, run or _run, mail=bool(args), smtp=smtp,
-                          today=today or _today())
+                          today=today or _today(), answers=answers or _answers)
         if task == "signed-up":
             if len(args) != 1 or not LABEL.fullmatch(args[0]):
                 raise Usage("signed-up ph-XXXXXXXX")
@@ -1674,10 +1680,15 @@ def _changelog(paths: Paths, commit: str, tag: str) -> str:
 # ── The nightly check (#745)
 
 def _check(paths: Paths, run: Callable[[list[str], dict], tuple[int, str]], mail: bool,
-           smtp: Callable[..., Any] | None, today: str) -> int:
+           smtp: Callable[..., Any] | None, today: str,
+           answers: Callable[[str, int], bool] | None = None) -> int:
     """Prints what is wrong, or that nothing is; with `mail`, mails it to the maintainers when
-    something is, and fails only when that mail couldn't go. Without, 1 when something is."""
+    something is, and fails only when that mail couldn't go. Without, 1 when something is. When
+    the server has a Finnish egress for Wilma, it first says whether that answers."""
     found = _problems(paths, run)
+    egress = _egress(paths, answers or _answers)
+    if egress:
+        found.append(egress)
     if not found:
         print("nothing wrong")
         return 0
@@ -1733,6 +1744,41 @@ def _problems(paths: Paths, run: Callable[[list[str], dict], tuple[int, str]]) -
         # As `signup status` says it (REBOOT_PENDING in family_brief/signup/status.py).
         found.append("Reboot pending: the server waits for a reboot to apply updates")
     return found
+
+
+EGRESS_SETTING = "WILMA_EGRESS_PROXY"  # as family_brief/wilma_egress.py reads it
+EGRESS = re.compile(r"http://(?P<host>[A-Za-z0-9.-]+|\[[0-9A-Fa-f:]+\]):(?P<port>[0-9]{1,5})/?")
+
+
+def _egress(paths: Paths, answers: Callable[[str, int], bool]) -> str | None:
+    """Prints whether the Finnish egress for Wilma (ADR 0046) answers, when the server has one,
+    and gives what is wrong with it, if anything. Neither says its address, which names a
+    maintainer's machine: wilma-egress.env has it."""
+    address = _env(paths.wilma_egress_env).get(EGRESS_SETTING, "").strip()
+    if not address:
+        return None
+    given = EGRESS.fullmatch(address)
+    if given is None:
+        print(f"❌ the Finnish egress for Wilma: {EGRESS_SETTING} in {paths.wilma_egress_env} "
+              "isn't http://HOST:PORT", flush=True)
+        return (f"The Finnish egress for Wilma isn't set right: {EGRESS_SETTING} in "
+                f"{paths.wilma_egress_env} isn't http://HOST:PORT, so the wilma CLI goes direct.")
+    if answers(given["host"].strip("[]"), int(given["port"])):
+        print("✅ the Finnish egress for Wilma answers", flush=True)
+        return None
+    print("❌ the Finnish egress for Wilma doesn't answer", flush=True)
+    return ("The Finnish egress for Wilma doesn't answer (ADR 0046): the wilma CLI goes direct, "
+            "which Wilmas that check for Finland, such as Helsinki's and Vantaa's, turn away. "
+            f"Its address is in {paths.wilma_egress_env}.")
+
+
+def _answers(host: str, port: int) -> bool:
+    """Whether `host` takes a connection on `port` within a few seconds."""
+    try:
+        socket.create_connection((host, port), timeout=5).close()
+        return True
+    except OSError:
+        return False
 
 
 def _marked(out: str) -> list[str]:

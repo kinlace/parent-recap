@@ -1113,6 +1113,25 @@ def test_a_wrong_wilma_password_is_said_on_the_page_and_nothing_is_made(signup, 
     assert submit(signup, code).status == 200  # and signs up with the right one
 
 
+@pytest.mark.parametrize("fails", [
+    ["wilma_error", "APIError: Wilma answered HTTP 403 for its login token"],
+    ["login_blocked", "Wilma blocked the sign-in before checking the password."],
+], ids=["403", "login_blocked"])
+def test_a_sign_in_wilma_turns_away_unchecked_says_wilma_can_t_be_reached_not_a_wrong_password(
+        signup, wilma_cli, fails):
+    # As the Helsinki and Vantaa Wilmas answer the server when the Finnish egress is down (#856).
+    wilma_cli.fails = fails
+    wilma_cli.install()
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    r = submit(signup, code, lang="fi")
+
+    assert r.status == 200
+    html = text(r)
+    assert said("fi", "sign-in-failed") in html and said("fi", "wrong-password") not in html
+    assert (signup.host.users, signup.host.keys) == ({}, {})
+
+
 @pytest.mark.parametrize("fields, error", [
     ({"town": "Atlantis"}, "invalid-town"),
     ({"password": ""}, "invalid-sign-in"),

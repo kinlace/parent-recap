@@ -4,11 +4,14 @@ the store it runs `signup health` with the shared program (ADR 0035) as that Hou
 through the household host, and prints one line: its user with the note its Invite Link carried,
 the time its Brief comes (its config's, which `signup health` says, #780), when its last run
 ended and how, how long it took and its peak memory, each of doctor's checks by its key with its
-status, and a mark when the last run failed or is overdue. Last, when the server waits for a reboot to apply updates, it says so (#745).
+status, and a mark when the last run failed or is overdue. A Household whose last run or doctor
+named a cause for what it couldn't read, such as the Finnish egress for Wilma not answering (ADR
+0046), is marked too, with that cause on a line of its own. Last, when the server waits for a reboot to apply updates, it says so (#745).
 
 `signup health` is the Household's side: it reads its own last-run.json and state.json, runs
 doctor's checks without the model's test call (which spends the Household's budget), and prints
-one line of JSON with only times, exit codes, durations, peak memory, check keys and statuses.
+one line of JSON with only times, exit codes, durations, peak memory, check keys and statuses,
+and cause keys.
 Doctor's words name the Recipients and the Kids, so none of them is sent; and the maintainers'
 side takes from that line only what has those shapes, so no message text, subject, address or
 Kid's name can reach its output whatever a Household's files hold.
@@ -25,7 +28,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .. import last_run, ops
+from .. import last_run, ops, wilma_egress
 from ..config import Config
 from ..state import State
 from .host import PROGRAM, HostError, HouseholdHost
@@ -45,6 +48,9 @@ EVENING = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
 REBOOT_REQUIRED = Path("/run/reboot-required")
 # Begins with no mark, so it isn't read as a Household's line (`admin check`, ops/gateway/admin).
 REBOOT_PENDING = "Reboot pending: the server waits for a reboot to apply updates"
+# What each cause key a Household's side gives means, as the maintainers read it; any other key is
+# left out.
+CAUSES = {wilma_egress.CAUSE: f"wilma: {wilma_egress.UNREACHABLE}"}
 
 
 # ---------------------------------------------------------------- the Household's side
@@ -63,6 +69,8 @@ def health(config: Path, now: datetime) -> dict[str, Any]:
         return {"checks": checks}
     last = last_run.read(cfg)
     state = State(cfg.resolved_state_path())
+    # The last run's, and doctor's just now.
+    causes = list(dict.fromkeys([*(last.causes if last else ()), *wilma_egress.causes()]))
     # Before this version noted how a run ended, only when it last got to its end.
     since = last.at if last else state.last_run_at or state.scheduled_at
     return {"last_run": last.at.isoformat() if last else None,
@@ -74,7 +82,8 @@ def health(config: Path, now: datetime) -> dict[str, Any]:
             # Its own time, which its timer follows, in its timezone: households.json's is only
             # the slot the sign-up handed out (#780).
             "evening": f"{cfg.schedule.daily_hour:02d}:{cfg.schedule.daily_minute:02d}",
-            "checks": checks}
+            "checks": checks,
+            **({"causes": causes} if causes else {})}
 
 
 def overdue(since: datetime | None, hour: int, minute: int, zone: str, now: datetime) -> bool:
@@ -101,6 +110,7 @@ class Status:
     peak_mb: int | None = None  # and the most memory it used
     unknown: str | None = None  # why the Household's status couldn't be read
     note: str = ""  # the maintainers' note its Invite Link carried
+    causes: tuple[str, ...] = ()  # the keys in CAUSES it named for what it couldn't read
 
     @property
     def failed(self) -> bool:
@@ -127,7 +137,8 @@ def status(host: HouseholdHost, household: HouseholdRecord) -> Status:
     return Status(household.user, evening, last_run=_time(said.get("last_run")),
                   exit=last_run.number(said.get("exit")), overdue=said.get("overdue") is True,
                   checks=_checks(said["checks"]), seconds=last_run.number(said.get("seconds")),
-                  peak_mb=last_run.number(said.get("peak_mb")), note=household.note)
+                  peak_mb=last_run.number(said.get("peak_mb")), note=household.note,
+                  causes=tuple(c for c in last_run.causes(said.get("causes")) if c in CAUSES))
 
 
 def _time(value: Any) -> datetime | None:
@@ -154,7 +165,7 @@ def line(s: Status) -> str:
     who = f"{s.user} ({s.note})" if s.note else s.user
     if s.unknown:
         return f"❓ {who}  {s.evening}  status unknown: {s.unknown}"
-    mark = MARKS["fail" if s.failed else "warn" if s.overdue else "ok"]
+    mark = MARKS["fail" if s.failed else "warn" if s.overdue or s.causes else "ok"]
     if s.last_run is None:
         run = "no run yet"
     else:
@@ -165,7 +176,8 @@ def line(s: Status) -> str:
                        if n is not None)
     doctor = "  ".join(f"{MARKS[level]} {key}" for key, level in s.checks.items())
     return (f"{mark} {who}  {s.evening}  {run}" + (", overdue" if s.overdue else "")
-            + f"\n   doctor: {doctor or '(no checks)'}")
+            + f"\n   doctor: {doctor or '(no checks)'}"
+            + "".join(f"\n   cause: {CAUSES[c]}" for c in s.causes))
 
 
 def report(store: Store, host: HouseholdHost,
@@ -191,8 +203,10 @@ def _households(store: Store, host: HouseholdHost) -> int:
     failed = sum(s.failed for s in found if not s.unknown)
     late = sum(s.overdue for s in found if not s.unknown)
     unknown = sum(bool(s.unknown) for s in found)
-    print(f"\n{len(found)} Households: {failed} failed, {late} overdue, {unknown} unknown")
-    return 1 if failed or late or unknown else 0
+    caused = sum(bool(s.causes) for s in found if not s.unknown)
+    print(f"\n{len(found)} Households: {failed} failed, {late} overdue, {unknown} unknown"
+          + (f", {caused} with a cause named" if caused else ""))
+    return 1 if failed or late or unknown or caused else 0
 
 
 def cmd_status(args: argparse.Namespace) -> int:

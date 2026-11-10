@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
-from .. import own_node
+from .. import own_node, wilma_egress
 from ..config import Config, Kid
 from ..state import State
 from .base import CalendarEvent, Collected, Message, retry_once_on_timeout, sign_in_failed, unreadable
@@ -35,7 +35,10 @@ class WilmaError(Exception):
     @property
     def wrong_password(self) -> bool:
         """Whether Wilma turned the username and password down, and nothing else went wrong. The
-        CLI before 2.0 said only "Wilma login failed"."""
+        CLI before 2.0 said only "Wilma login failed". Never when Wilma turned the sign-in away
+        before checking the password (#856), which the family can only try again later."""
+        if wilma_egress.blocked(str(self), self.code):
+            return False
         return self.code == "login_failed" or "Wilma login failed" in str(self)
 
 
@@ -101,7 +104,9 @@ def _failed(args: list[str], proc: subprocess.CompletedProcess) -> WilmaError:
     reason = message or proc.stderr.strip() or proc.stdout.strip()
     if code:
         reason = f"{code}: {reason}"
-    return WilmaError(f"wilma {' '.join(args)} failed: {reason[:200]}", code)
+    # Wilma turning the server away while the Finnish egress was down says so (ADR 0046).
+    reason = wilma_egress.explain(reason[:200], code)
+    return WilmaError(f"wilma {' '.join(args)} failed: {reason}", code)
 
 
 def _run_or_log(args: list[str]) -> Any:
@@ -220,8 +225,9 @@ class _Wilmas:
             who = ", ".join(f"{p.get('username')} at {p.get('tenantName') or p.get('tenantUrl')}"
                             for p in signins) or str(problem.get("wilma"))
             if not signins or any(self._setup.for_the_household(p, self.kids) for p in signins):
-                log.error("%s", sign_in_failed(str(problem.get("wilma") or "Wilma"),
-                                               str(problem.get("message")), who))
+                code = problem.get("code") if isinstance(problem.get("code"), str) else None
+                why = wilma_egress.explain(str(problem.get("message")), code)
+                log.error("%s", sign_in_failed(str(problem.get("wilma") or "Wilma"), why, who))
             else:
                 log.warning("wilma: %s (the sign-in as %s, for none of the Kids, so the Brief "
                             "doesn't say so)", problem.get("message"), who)

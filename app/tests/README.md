@@ -119,6 +119,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_source_failures.py`         | A Source's transport failing partway or timing out                                      |
 | `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON, exams in the calendar |
 | `test_wilma_signins.py`           | Wilma passwords in the keychain by the CLI, older sign-ins moved, doctor's report (#849) |
+| `test_wilma_egress.py`            | The hosted server's Wilma calls through the Finnish egress, direct when it's down (ADR 0046) |
 | `test_eepos_source.py`            | Eepos lessons in the Brief, a wrong password or a changed portal, two schools (#755)    |
 | `test_evaka_source.py`            | eVaka events, closed days, the deadline and messages in the Brief, failures, two cities |
 | `test_local_files_source.py`      | Local Files in the Brief, once each, the AI filter, a broken file, doctor, `setup save` |

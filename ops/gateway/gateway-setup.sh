@@ -124,6 +124,27 @@ install -m 0644 "$here/parent-recap-autodeploy.timer" /etc/systemd/system/parent
 systemctl daemon-reload
 systemctl enable --now parent-recap-autodeploy.timer
 
+# ── The Finnish egress for Wilma (README "The Finnish egress for Wilma", ADR 0046)
+# The HTTP CONNECT proxy in Finland the wilma CLI's requests go through, which
+# every Household's user and the sign-up service read: so readable by all, and
+# not secret, but the server's, never the repo's, as it names a maintainer's
+# machine. Made empty when missing (no egress: the CLI goes direct);
+# WILMA_EGRESS_PROXY=http://HOST:PORT sets it, and WILMA_EGRESS_PROXY=none
+# empties it again.
+egress=/etc/parent-recap/wilma-egress.env
+install -d -m 0755 /etc/parent-recap
+if [ "${WILMA_EGRESS_PROXY:-}" = none ]; then
+  printf 'WILMA_EGRESS_PROXY=\n' >"$egress"
+elif [ -n "${WILMA_EGRESS_PROXY:-}" ]; then
+  [[ "$WILMA_EGRESS_PROXY" =~ ^http://[A-Za-z0-9.-]+:[0-9]{1,5}/?$ ]] ||
+    { echo "WILMA_EGRESS_PROXY must be http://HOST:PORT (or none)" >&2; exit 1; }
+  printf 'WILMA_EGRESS_PROXY=%s\n' "$WILMA_EGRESS_PROXY" >"$egress"
+elif [ ! -f "$egress" ]; then
+  printf 'WILMA_EGRESS_PROXY=\n' >"$egress"
+fi
+chown root:root "$egress"
+chmod 0644 "$egress"
+
 # ── The shared program and the sign-up service (/join/, README "Hosted
 # Households", ADR 0031, ADR 0035)
 # Installed from PARENT_RECAP_RELEASE, the folder of an unpacked release of the
