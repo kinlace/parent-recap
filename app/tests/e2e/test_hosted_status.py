@@ -152,6 +152,24 @@ def test_a_run_noted_before_its_duration_and_peak_were_still_reads(signup, capsy
     assert f"✅ {name} ({FAMILY})  21:00  {FIRST_RUN}\n" in out
 
 
+def test_a_cause_the_last_run_named_is_said_and_marks_the_household(signup, capsys, monkeypatch):
+    # The evening run put Wilma's refusal down to the Finnish egress not answering (ADR 0046):
+    # test_wilma_egress has it note that.
+    name = sign_up(signup)
+    file = noted(signup, name, monkeypatch)
+    file.write_text(json.dumps({**json.loads(file.read_text()),
+                                "causes": ["wilma-egress", "Mia Virtanen"]}))
+    assert health_of(signup, name)["causes"] == ["wilma-egress"]
+
+    code, out = report(signup, capsys)
+
+    assert code == 1
+    assert f"⚠️ {name} ({FAMILY})  21:00  {FIRST_RUN}" in out
+    assert "\n   cause: wilma: Finnish egress unreachable\n" in out and "Mia" not in out
+    assert out.splitlines()[-1] == ("1 Households: 0 failed, 0 overdue, 0 unknown, "
+                                    "1 with a cause named")
+
+
 def test_a_household_without_the_health_command_is_said_to_be_unknown(
         signup, capsys, monkeypatch):
     name = sign_up(signup)

@@ -58,7 +58,8 @@ class BriefText:
     missed_sep: str
     permission_denied: str
     login_failed: str
-    message_unreadable: str             # a Source skipped a Message it couldn't read
+    unreachable: str                    # the hosted server couldn't reach the Source (ADR 0046)
+    message_unreadable: str            # a Source skipped a Message it couldn't read
     needs_pairing: str                  # the Linked Device's link ended, or it was never paired
     not_hosted: Plural                  # {sources} a Hosted Household can't have (ADR 0029, 0031)
     sources_sep: str                    # between those {sources}
@@ -69,7 +70,8 @@ class BriefText:
     fix_login: str                      # {assistant} {source}
     fix_permission: str                 # {assistant} {source}
     fix_pairing: str                    # {assistant} {source}
-    fix_other: str                      # {assistant}
+    fix_unreachable: str                # nothing for the family to do
+    fix_other: str                     # {assistant}
 
     # ── Rule-based fallback when the model fails
     fallback_header: str
@@ -174,6 +176,7 @@ EN = BriefText(
     missed_sep=", ",
     permission_denied="macOS permission denied",
     login_failed="login failed",
+    unreachable="couldn't be reached tonight, and the maintainers know",
     message_unreadable="a message couldn't be read",
     needs_pairing="needs a new pairing",
     not_hosted=Plural("{sources} isn't read in the hosted version.",
@@ -185,6 +188,7 @@ EN = BriefText(
     fix_login="Tell {assistant} “re-authorize {source}” to fix it.",
     fix_permission="Tell {assistant} “Parent Recap can't read {source}” to fix it.",
     fix_pairing="Tell {assistant} “pair {source} again” to fix it.",
+    fix_unreachable="There's nothing for you to do.",
     fix_other="If the Mac was offline, this fixes itself. If it happens again, tell {assistant} "
               "“check Parent Recap”.",
     fallback_header="⚠️ Tonight's Digest could not be written, so here are the raw messages "
@@ -267,6 +271,7 @@ ZH = BriefText(
     missed_sep="，",
     permission_denied="macOS 权限被拒绝",
     login_failed="登录失败",
+    unreachable="今晚连不上，维护人员已经知道",
     message_unreadable="有一条消息读不出来",
     needs_pairing="需要重新关联设备",
     not_hosted=Plural("托管版不读取 {sources}。", "托管版不读取 {sources}。"),
@@ -276,6 +281,7 @@ ZH = BriefText(
     fix_login="跟 {assistant} 说「重新授权 {source}」即可修复。",
     fix_permission="跟 {assistant} 说「Parent Recap 读不了 {source}」即可修复。",
     fix_pairing="跟 {assistant} 说「重新关联 {source}」即可修复。",
+    fix_unreachable="你这边什么都不用做。",
     fix_other="如果当时 Mac 没联网，会自己恢复。如果再次出现，跟 {assistant} 说「检查 Parent Recap」。",
     fallback_header="⚠️ 今日 LLM 总结失败，以下是原始消息清单（详见 ~/ParentRecap 归档）：",
     fallback_spent="⚠️ 今晚没能写摘要：Gateway Key 今天的额度已用完，一天之内会恢复，赶得上明晚的日报。"
@@ -349,6 +355,7 @@ FI = BriefText(
     missed_sep=", ",
     permission_denied="macOS ei antanut käyttöoikeutta",
     login_failed="kirjautuminen epäonnistui",
+    unreachable="siihen ei saatu tänä iltana yhteyttä, ja ylläpitäjät tietävät asiasta",
     needs_pairing="laite on linkitettävä uudelleen",
     not_hosted=Plural("{sources} ei ole mukana ylläpidetyssä versiossa.",
                       "{sources} eivät ole mukana ylläpidetyssä versiossa."),
@@ -371,6 +378,7 @@ FI = BriefText(
     fix_permission="Voit korjata tämän kirjoittamalla {assistant}-avustajalle "
                    "”Parent Recap ei pysty lukemaan lähdettä {source}”.",
     fix_pairing="Voit korjata tämän kirjoittamalla {assistant}-avustajalle ”linkitä {source} uudelleen”.",
+    fix_unreachable="Sinun ei tarvitse tehdä mitään.",
     fix_other="Jos Macissa ei ollut verkkoyhteyttä, tämä korjaantuu itsestään. Jos ongelma toistuu, kirjoita "
               "{assistant}-avustajalle ”tarkista Parent Recap”.",
     message_time="{day}.{month}. klo {hour}.{minute:02}",

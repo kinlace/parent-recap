@@ -35,7 +35,7 @@ import pytest
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli, feedback, gateway, tools
+from family_brief import __main__ as cli, feedback, gateway, tools, wilma_egress
 from family_brief.collectors import local_files
 from family_brief.collectors.base import CalendarEvent, Message
 from family_brief.llm import retry
@@ -83,6 +83,16 @@ def _a_family_s_own_computer_on_linux(monkeypatch: pytest.MonkeyPatch) -> None:
     version's, which reads fewer Sources (ADR 0029), and a test of a server sets LINUX."""
     if profile.current() is LINUX:
         monkeypatch.setattr(profile, "current", lambda: MACOS)
+
+
+@pytest.fixture(autouse=True)
+def _no_finnish_egress(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """No Finnish egress for Wilma (ADR 0046) whatever this computer's /etc has, and nothing a
+    test before found about one: a test of it sets its own (test_wilma_egress.py)."""
+    monkeypatch.setattr(wilma_egress, "SETTINGS", Path(__file__).with_name("no-wilma-egress.env"))
+    wilma_egress.reset()
+    yield
+    wilma_egress.reset()
 
 
 @pytest.fixture
@@ -224,6 +234,7 @@ class Processes:
 
     def __init__(self, mp: pytest.MonkeyPatch) -> None:
         self.commands: list[list[str]] = []
+        self.envs: list[dict[str, str] | None] = []  # each command's environment, None: the program's
         # Each takes the command, its program's name and run's arguments, and gives its result,
         # or None for a command it doesn't know.
         self.answers: list[Callable[..., subprocess.CompletedProcess | None]] = []
@@ -234,6 +245,7 @@ class Processes:
         prog, ext = os.path.splitext(Path(cmd[0]).name)
         prog = prog if ext.lower() in (".exe", ".cmd") else prog + ext
         self.commands.append(list(cmd))
+        self.envs.append(kwargs.get("env"))
         for answer in self.answers:
             result = answer(cmd, prog, **kwargs)
             if result is not None:

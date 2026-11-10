@@ -2,18 +2,22 @@
 `last-run.json` beside state.json.
 
 state.json's `last_run_at` is written only by a run that sent its Brief or had none to send, so it can't tell a run that failed from one that never started. This is written by every run that started, however it
-ended, and holds nothing of the Household's: a time and three numbers. The hosted version's status
-(`signup status`) reads it, and from the duration and peak memory the maintainers check that a run
-fits its unit's limits (#583)."""
+ended, and holds nothing of the Household's: a time, three numbers and the causes the run named
+for what it couldn't read, each a fixed key such as `wilma-egress` (ADR 0046). The hosted
+version's status (`signup status`) reads it, and from the duration and peak memory the maintainers
+check that a run fits its unit's limits (#583)."""
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import Config
 from .system import profile
+
+CAUSE = re.compile(r"[a-z][a-z0-9-]{0,39}")  # a cause's key, as wilma_egress.CAUSE
 
 
 @dataclass(frozen=True)
@@ -24,6 +28,7 @@ class LastRun:
     # none (Windows).
     seconds: int | None = None
     peak_mb: int | None = None
+    causes: tuple[str, ...] = ()  # why it couldn't read something, by key, such as wilma-egress
 
     @property
     def failed(self) -> bool:
@@ -51,15 +56,17 @@ def _peak() -> int | None:
                    resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss, unit)
 
 
-def record(cfg: Config, exit: int, seconds: float) -> None:
-    """Notes that a run ended now with `exit` after `seconds`, and the peak memory it and its
-    child processes used. Never fails the run it notes."""
+def record(cfg: Config, exit: int, seconds: float, causes: list[str] | tuple[str, ...] = ()) -> None:
+    """Notes that a run ended now with `exit` after `seconds`, the peak memory it and its child
+    processes used, and the `causes` it named. Never fails the run it notes."""
     try:
         noted: dict[str, object] = {"at": datetime.now(timezone.utc).isoformat(), "exit": exit,
                                     "seconds": round(seconds)}
         peak = _peak()
         if peak is not None:
             noted["peak_mb"] = peak
+        if causes:
+            noted["causes"] = list(causes)
         target = path(cfg)
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_name(f".{target.name}.tmp")
@@ -73,9 +80,16 @@ def read(cfg: Config) -> LastRun | None:
     try:
         raw = json.loads(path(cfg).read_text(encoding="utf-8"))
         return LastRun(datetime.fromisoformat(raw["at"]), int(raw["exit"]),
-                       number(raw.get("seconds")), number(raw.get("peak_mb")))
+                       number(raw.get("seconds")), number(raw.get("peak_mb")),
+                       causes(raw.get("causes")))
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
+
+
+def causes(value: object) -> tuple[str, ...]:
+    """The cause keys in `value`, in order and once each; anything else in it is left out."""
+    given = value if isinstance(value, list) else []
+    return tuple(dict.fromkeys(c for c in given if isinstance(c, str) and CAUSE.fullmatch(c)))
 
 
 def number(value: object) -> int | None:

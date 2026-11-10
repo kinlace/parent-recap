@@ -179,7 +179,11 @@ class Server:
             smtp_env=etc / "brief-relay" / "brief-relay.env",
             maintainers_env=etc / "brief-relay" / "maintainers.env",
             reboot_required=tmp_path / "run" / "reboot-required",
+            wilma_egress_env=etc / "parent-recap" / "wilma-egress.env",
         )
+        # The Finnish egress for Wilma (ADR 0046): whether its port answers, and each try.
+        self.egress_up = True
+        self.egress_tried: list[tuple[str, int]] = []
         self.bifrost = FakeBifrost([AI, SEND], logs=LOGS)
         self.ran: list[tuple[list[str], dict]] = []
         self.root_user = True
@@ -225,11 +229,16 @@ class Server:
         def exec_as(argv: list[str], env: dict) -> int:
             self.ran.append((argv, env))
             return 0
+
+        def egress_answers(host: str, port: int) -> bool:
+            self.egress_tried.append((host, port))
+            return self.egress_up
         try:
             return admin.main(list(args), paths=self.paths, is_root=lambda: self.root_user,
                               exec_as=exec_as, fetch=self.bifrost, today="2026-11-04",
                               run=self.run, smtp=self.smtp,
-                              ask=self.ask if self.answers is not None else None)
+                              ask=self.ask if self.answers is not None else None,
+                              answers=egress_answers)
         except SystemExit as e:
             if isinstance(e.code, str):
                 print(e.code, file=sys.stderr)
@@ -925,6 +934,72 @@ def test_a_service_not_enabled_isn_t_said_to_be_down(server):
     server.down = {"caddy"}
     assert server.admin("check", "--mail") == 0
     assert server.smtp.sent == []
+
+
+def an_egress(server, address: str = "http://egress.example.ts.net:8888") -> None:
+    """The Finnish egress for Wilma (ADR 0046) in the server's settings, as gateway-setup.sh
+    writes it."""
+    server.paths.wilma_egress_env.parent.mkdir(parents=True, exist_ok=True)
+    server.paths.wilma_egress_env.write_text(f"WILMA_EGRESS_PROXY={address}\n")
+
+
+def test_an_egress_that_answers_is_said_to_and_mails_nothing(server, capsys):
+    server.status = status_of(OK)
+    an_egress(server)
+
+    assert server.admin("check", "--mail") == 0
+
+    assert server.egress_tried == [("egress.example.ts.net", 8888)]
+    out = capsys.readouterr().out
+    assert "✅ the Finnish egress for Wilma answers" in out and "nothing wrong" in out
+    assert server.smtp.sent == []
+
+
+def test_an_egress_that_doesn_t_answer_is_in_the_mail_without_its_address(server, capsys):
+    server.status = status_of(OK)
+    an_egress(server)
+    server.egress_up = False
+
+    assert server.admin("check", "--mail") == 0
+
+    assert "❌ the Finnish egress for Wilma doesn't answer" in capsys.readouterr().out
+    body = mail(server)
+    assert "The Finnish egress for Wilma doesn't answer" in body
+    assert "egress.example.ts.net" not in body
+
+
+def test_an_egress_that_isn_t_an_http_address_is_in_the_mail(server):
+    server.status = status_of(OK)
+    an_egress(server, "socks5://egress.example.ts.net:1080")
+
+    assert server.admin("check", "--mail") == 0
+
+    assert server.egress_tried == []
+    assert "isn't set right" in mail(server)
+
+
+@pytest.mark.parametrize("settings", [None, "WILMA_EGRESS_PROXY=\n"], ids=["no-file", "empty"])
+def test_without_an_egress_nothing_is_said_of_one(server, capsys, settings):
+    server.status = status_of(OK)
+    if settings is not None:
+        server.paths.wilma_egress_env.parent.mkdir(parents=True)
+        server.paths.wilma_egress_env.write_text(settings)
+
+    assert server.admin("check", "--mail") == 0
+
+    assert server.egress_tried == [] and "egress" not in capsys.readouterr().out
+    assert server.smtp.sent == []
+
+
+def test_a_household_with_a_cause_named_is_in_the_mail_with_it(server):
+    caused = Status("ph-4444eeee", "21:20", exit=0, checks={"wilma": "ok"},
+                    causes=("wilma-egress",))
+    server.status = (1, line(caused) + "\n\n1 Households: ...\n")
+
+    assert server.admin("check", "--mail") == 0
+
+    body = mail(server)
+    assert "ph-4444eeee" in body and "cause: wilma: Finnish egress unreachable" in body
 
 
 def test_without_mail_it_prints_what_it_found_and_mails_nothing(server, capsys):

@@ -52,6 +52,7 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "missed_sep": ", ",
   "permission_denied": "macOS permission denied",
   "login_failed": "login failed",
+  "unreachable": "couldn't be reached tonight, and the maintainers know",
   "message_unreadable": "a message couldn't be read",
   "needs_pairing": "needs a new pairing",
   "not_hosted": {
@@ -64,6 +65,7 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "fix_login": "Tell {assistant} “re-authorize {source}” to fix it.",
   "fix_permission": "Tell {assistant} “Parent Recap can't read {source}” to fix it.",
   "fix_pairing": "Tell {assistant} “pair {source} again” to fix it.",
+  "fix_unreachable": "There's nothing for you to do.",
   "fix_other": "If the Mac was offline, this fixes itself. If it happens again, tell {assistant} “check Parent Recap”.",
   "fallback_header": "⚠️ Tonight's Digest could not be written, so here are the raw messages (all of them are in the archive in ~/ParentRecap):",
   "fallback_spent": "⚠️ Tonight's Digest could not be written: the Gateway Key has used up today's credit. It comes back within a day, in time for tomorrow evening's Brief. Here are the raw messages (all of them are in the archive in ~/ParentRecap):",
