@@ -14,7 +14,8 @@ answers as JSON on stdin, every key optional:
                "wilma": {"enabled": true},
                "whatsapp": {"enabled": true, "chats": [{"name": "3B", "id": "120363@g.us",
                                                         "kid": "Mia Virtanen", "label": "class"}]},
-               "myclub": {"enabled": false}},
+               "myclub": {"enabled": false},
+               "local_files": {"enabled": true, "folder": "~/ParentRecap/inbox"}},
    "feedback": {"enabled": true, "household_label": "Virtanen family"},
    "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"},
                 "partner": {"address": "partner@gmail.com", "language": "fi"},
@@ -38,7 +39,8 @@ into it.
 What the answers don't mention stays as it was. The Kids given are the Household's Kids: a Kid
 left out is removed, and each one given keeps what the answers don't say about them, such as a
 MyClub link, which only `setup myclub` and the setup page's MyClub field save; `"myclub":
-{"enabled": false}` removes every Kid's, as skipping MyClub on the setup page does. Turning pilot
+{"enabled": false}` removes every Kid's, as skipping MyClub on the setup page does. Turning Local Files
+on creates its folder if it isn't there, and is refused for a Hosted Household (ADR 0044). Turning pilot
 feedback on writes the pilot Form shipped with the program (feedback.pilot_form), and is refused
 in a version that ships none. Setup makes the `household_label` itself, a random
 `household-<hex>`, unless the answers or the config already give one; the family is never asked
@@ -126,11 +128,19 @@ class MyClubAnswer(_Strict):
     enabled: Literal[False]
 
 
+class LocalFilesAnswer(_Strict):
+    """Local Files turned on or off (ADR 0044), and the folder it reads, which turning it on
+    creates when it isn't there yet. Only the manage skill saves it."""
+    enabled: bool | None = None
+    folder: str | None = None
+
+
 class SourcesAnswer(_Strict):
     gmail: GmailAnswer | None = None
     wilma: WilmaAnswer | None = None
     whatsapp: WhatsAppAnswer | None = None
     myclub: MyClubAnswer | None = None
+    local_files: LocalFilesAnswer | None = None
 
 
 class FeedbackAnswer(_Strict):
@@ -262,9 +272,12 @@ def save(config: Path, raw: Any) -> dict[str, Any]:
                         "saved. Run parent-recap doctor, fix what it names, then save again.")
         _merge(data, answers, form)
         try:
-            Config.model_validate(data)
+            cfg = Config.model_validate(data)
         except ValidationError as e:
             return invalid(e)
+        if answers.sources and answers.sources.local_files and cfg.local_files.enabled:
+            if refused := _local_files_folder(cfg):
+                return refused
 
     if data is not None:
         _write_private(config, yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
@@ -274,6 +287,27 @@ def save(config: Path, raw: Any) -> dict[str, Any]:
         current = _merged_progress(current, answers.progress)
         _write_private(progress, json.dumps(current, ensure_ascii=False, indent=2))
     return outcome("saved", progress=current)
+
+
+def _local_files_folder(cfg: Config) -> dict[str, Any] | None:
+    """Makes the folder Local Files reads, when it isn't there yet, or says why it can't be turned
+    on: a Hosted Household never has it, and a folder that can't be made reads nothing."""
+    if cfg.hosted:
+        return outcome("invalid-answers", "A Hosted Household can't have Local Files: the hosted "
+                       "version reads no files. Nothing was saved.",
+                       errors=["sources.local_files.enabled: not in the hosted version"])
+    folder = cfg.local_files.resolved_folder()
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return outcome("invalid-answers", f"The folder {folder} couldn't be created ({e.strerror or e}), "
+                       "so nothing was saved. Choose another folder and save again.",
+                       errors=["sources.local_files.folder: couldn't be created"])
+    if not folder.is_dir():
+        return outcome("invalid-answers", f"{folder} is a file, not a folder, so nothing was saved. "
+                       "Choose a folder and save again.",
+                       errors=["sources.local_files.folder: not a folder"])
+    return None
 
 
 def _config_answers(answers: Answers) -> bool:
@@ -327,6 +361,8 @@ def _merge(data: dict[str, Any], a: Answers, form: dict[str, Any] | None) -> Non
         _section(data, "wilma")["enabled"] = sources.wilma.enabled
     if sources.whatsapp is not None:
         _section(data, "whatsapp").update(_given(sources.whatsapp))
+    if sources.local_files is not None:
+        _section(data, "local_files").update(_given(sources.local_files))
     if sources.myclub is not None:
         for kid in data.get("kids") or []:
             if isinstance(kid, dict):

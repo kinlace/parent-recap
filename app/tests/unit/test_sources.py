@@ -88,3 +88,16 @@ def test_the_household_uses_the_connected_sources_in_run_order(config, used):
     assert [s.name for s in sources.used(cfg)] == used
     assert cfg.default_sources() == used
     assert cfg.other_sources() == [s for s in used if s != "gmail"]
+
+
+@pytest.mark.parametrize("profile", [MACOS, WINDOWS, LINUX], ids=["macos", "windows", "linux"])
+def test_local_files_is_read_only_on_a_family_s_own_computer_and_never_named_on_the_hosted_brief(
+        system, profile):
+    # ADR 0044: the setup page doesn't offer it, so a Hosted Household isn't told it's missing.
+    system.profile = profile
+    cfg = Config(kids=[_KID], local_files={"enabled": True})
+
+    assert (sources.LOCAL_FILES in sources.used(cfg)) == (profile is not LINUX)
+    assert sources.LOCAL_FILES not in sources.used(cfg.model_copy(update={"hosted": True}))
+    assert sources.LOCAL_FILES not in sources.not_hosted()
+    assert not sources.LOCAL_FILES.setup_page and "local_files" not in setup_save.SOURCES

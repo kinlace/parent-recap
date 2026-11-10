@@ -86,6 +86,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_evening_run.py`           | The evening run through `run()`: it leaves its config as it was                                              |
 | `test_goldens.py`               | The golden files' check and `--update-goldens`                                                               |
 | `test_linked_device.py`         | The Linked Device's Node program's four modes on a fake Baileys                                              |
+| `test_local_files_collector.py` | Local Files' collector on a real folder: each kind of file, what it skips and why, the window, once each     |
 | `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code                                           |
 | `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses                                                 |
 | `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks                                            |
@@ -117,6 +118,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_wilma_signins.py`           | Wilma passwords in the keychain by the CLI, older sign-ins moved, doctor's report (#849) |
 | `test_eepos_source.py`            | Eepos lessons in the Brief, a wrong password or a changed portal, two schools (#755)    |
 | `test_evaka_source.py`            | eVaka events, closed days, the deadline and messages in the Brief, failures, two cities |
+| `test_local_files_source.py`      | Local Files in the Brief, once each, the AI filter, a broken file, doctor, `setup save` |
 | `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing; Group Digests        |
 | `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish                                |
 | `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                                       |
@@ -216,7 +218,7 @@ per outside edge of the program, each with its fakes in a module of its own:
 
 - `sources` (`fake_sources.py`): each Source's fake at its transport (Gmail's IMAP server, the
   MyClub feed, the wilma CLI, the Linked Device's store and status file, each Eepos school's
-  portal, each city's eVaka), as `sources.fakes[name]`, serving what `sources.tonight[name]` holds to the real
+  portal, each city's eVaka, the Local Files folder), as `sources.fakes[name]`, serving what `sources.tonight[name]` holds to the real
   collector. One is installed for each Source in the
   registry (ADR 0022), so a new Source adds its fake to `FAKES`. A test gives each Message the id
   its Source makes of it, and only the fields its transport carries.
@@ -245,7 +247,7 @@ out (iMessage, `open` for the Passwords app), the Sources' own programs, and Cla
 Codex's sign-in and plugin commands. A model call never does. `conftest.py` also has `pauses`
 (a busy model's pauses, on a fake clock), `golden`, `login_shell`, `windows_programs` (programs
 found as Windows finds them, on any system), `credential_manager`, and the builders `msg`,
-`myclub_event`, `eepos_entry`, `eepos_student`, `evaka_event`, `evaka_child`, `evaka_thread` and
+`local_message`, `myclub_event`, `eepos_entry`, `eepos_student`, `evaka_event`, `evaka_child`, `evaka_thread` and
 `evaka_sensitive_thread`.
 
 ## Other fakes and helpers

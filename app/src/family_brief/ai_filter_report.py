@@ -246,13 +246,15 @@ def _excerpt(text: str, start: int, end: int) -> str:
 
 def _held_back_line(m: Message, found: held_back.Match, zone: ZoneInfo) -> str:
     """A Held-back Message as --held-back lists it: its date, Source and category, the word that
-    matched as the message writes it, its sender and subject (a WhatsApp chat's name), and the text
-    around the word."""
+    matched as the message writes it, its sender and subject (a chat's name, for WhatsApp and Local
+    Files), and the text around the word."""
     text = held_back.fields(m)[found.field]
     start, end = _run_start(_LETTERS, text, found.start), _run_end(_LETTERS, text, found.end)
     excerpt = _excerpt(text, start, end)
     sender = _one_line(held_back.fields(m)["sender"]) or _one_line(m.sender or "")
-    subject = _one_line((m.chat_name if m.source == "whatsapp" else m.subject) or "") or "(no subject)"
+    source = sources.named(m.source)
+    group = source.group if source else None  # a chat's name, for a Source whose messages have none
+    subject = _one_line((group(m) if group else m.subject) or "") or "(no subject)"
     day = m.timestamp.astimezone(zone).date().isoformat()
     return (f"  {day}  {sources.label_of(m.source):<8}  {found.category:<8}  "
             f"[{_one_line(text[start:end])}]  {sender or '(no sender)'} · {subject} · \"{excerpt}\"")

@@ -181,6 +181,21 @@ class WhatsAppConfig(BaseModel):
         return chat.kid if chat else None
 
 
+class LocalFilesConfig(BaseModel):
+    """Local Files: messages from plain files the family puts in a folder of its own choosing
+    (ADR 0044), for news from a place Parent Recap doesn't read itself. Parent Recap only reads
+    the folder: it never moves, changes or deletes a file in it. A `.json` file is a list of
+    messages, each {"time": ISO 8601, "chat": ..., "sender": ..., "text": ...}, `chat` and
+    `sender` optional; a `.txt` or `.md` file is one message, in the chat its name gives, at the
+    time it was last changed. A Hosted Household never has it."""
+    enabled: bool = False
+    folder: str = "~/ParentRecap/inbox"
+    lookback_hours: int = 26  # older messages are left for good
+
+    def resolved_folder(self) -> Path:
+        return Path(_expand(self.folder))
+
+
 class CalendarConfig(BaseModel):
     # ics: new events ride along in the daily email as a .ics attachment (no OAuth needed)
     # google: written straight into Google Calendar via OAuth, with dedup + auto-invites
@@ -319,6 +334,7 @@ class Config(BaseModel):
     eepos: EeposConfig = EeposConfig()
     evaka: EvakaConfig = EvakaConfig()
     whatsapp: WhatsAppConfig = WhatsAppConfig()
+    local_files: LocalFilesConfig = LocalFilesConfig()
     google_calendar: CalendarConfig = CalendarConfig()
     imessage: IMessageConfig = IMessageConfig()
     email: EmailConfig = EmailConfig()

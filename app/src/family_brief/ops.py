@@ -525,6 +525,35 @@ def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:
             "you're signed in")
 
 
+def check_local_files(cfg: Config, add, config: str | None = None) -> None:
+    """The Local Files folder, once turned on: missing, files in it that couldn't be read, each
+    by name with why, or OK, with how many messages the next Brief gets from it, counted as the
+    evening run counts them. It reads only the folder's files, and prints no message."""
+    if not sources.LOCAL_FILES.connected(cfg):
+        return
+    from . import run
+    from .collectors import local_files
+    from .state import State
+    folder = local_files.shown(cfg.local_files.resolved_folder())
+    try:
+        found = local_files.read(cfg)
+    except local_files.FolderMissing as e:
+        add(FAIL, "local_files", f"{e}, so the Brief has no messages from it (create the folder, or "
+            "choose another one with the manage skill)")
+        return
+    tonight = cfg.model_copy(deep=True)  # the lookback tonight's run reads with
+    state = State(cfg.resolved_state_path())
+    run.catch_up_lookback(tonight, state)
+    n = len(local_files.waiting(tonight, state, found.messages))
+    waiting = f"{n} new message{'' if n == 1 else 's'} for the next Brief"
+    if found.problems:
+        files = "; ".join(f"{p.file}: {p.why}" for p in found.problems)
+        add(WARN, "local_files", f"reading {folder}, {waiting}, but skipping what couldn't be read "
+            f"({files})")
+    else:
+        add(OK, "local_files", f"reading {folder}, {waiting}")
+
+
 def _check_whatsapp_library(add) -> None:
     """The Baileys tree the install puts in place for the Linked Device (ADR 0025). A warning, not
     a failure, when it isn't the pinned one: WhatsApp is one Source, and the next install tries

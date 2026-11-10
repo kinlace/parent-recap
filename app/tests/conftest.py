@@ -36,6 +36,7 @@ import time_machine
 import yaml
 
 from family_brief import __main__ as cli, feedback, gateway, tools
+from family_brief.collectors import local_files
 from family_brief.collectors.base import CalendarEvent, Message
 from family_brief.llm import retry
 from family_brief.system import profile, profile_macos, secrets
@@ -500,6 +501,13 @@ def msg(source: str, ext_id: str, when: str, body: str, *, sender: str | None = 
                    timestamp=datetime.fromisoformat(when).astimezone(ZoneInfo("UTC")),
                    sender=sender, subject=subject, body=body, chat_name=chat, kid_hint=kid,
                    url=url, metadata=metadata or {})
+
+
+def local_message(when: str, text: str, *, chat: str, sender: str | None = None) -> Message:
+    """A message of a Local Files `.json` file, with the id its Source makes of it."""
+    timestamp = datetime.fromisoformat(when).astimezone(ZoneInfo("UTC"))
+    return Message(source="local_files", external_id=local_files.message_id(chat, sender, text, timestamp),
+                   timestamp=timestamp, sender=sender, body=text, chat_name=chat)
 
 
 def myclub_event(ext_id: str, title: str, start: str, end: str, kid: str = "Mia") -> CalendarEvent:
