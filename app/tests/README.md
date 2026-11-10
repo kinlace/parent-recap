@@ -61,6 +61,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_render.py`              | Each golden night's Brief rendered, against its golden files     |
 | `test_run_plan.py`            | Quiet nights, dry runs and the preview: what tonight's run does  |
 | `test_sources.py`             | The Source registry's records, and the Sources a Household uses  |
+| `test_schoolsoft_reads_and_redaction.py` | The SchoolSoft capture tool: every request a read, made-up samples redacted, its text |
 | `test_status_lines.py`        | The hosted status: an overdue run, a Household's line, its keys  |
 | `test_summarize_normalise.py` | The model's reply put in the schema's shape                      |
 | `test_system_profile.py`      | The systems' profiles; only `system/` checks the system          |
@@ -78,6 +79,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                                               |
 | `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                                         |
 | `test_program_entries.py`       | Parent Recap Settings and Check put where the system lists programs, again on update, none on a server       |
+| `test_schoolsoft_capture.py`    | The SchoolSoft capture tool on a fake SchoolSoft: sign-in, reads, the file, evening refreshes, the lock |
 | `test_eepos_collector.py`       | Eepos's collector on a fake portal: the sign-in, the calendar, failures, two schools                         |
 | `test_evaka_collector.py`       | eVaka's collector on a fake eVaka: the sign-in, the device cookie, the events, the messages, failures, two cities |
 | `test_email_gateway.py`         | The Brief sent through the gateway's relay: the request, refusals, a key, binding, doctor                    |
@@ -177,6 +179,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_dialog.py`                | The secret dialog: `osascript` on macOS, none elsewhere   |
 | `test_jobs.py`                  | macOS jobs: LaunchAgents and `launchctl`                  |
 | `test_secrets.py`               | macOS secrets: the Keychain through `/usr/bin/security`   |
+| `test_schoolsoft_capture_mac.py` | The SchoolSoft capture tool's Keychain item and evening job: `security`, `launchctl` |
 | `test_wake.py`                  | macOS wake: `pmset`                                       |
 | `test_user_path.py`             | macOS PATH: the marked line in `~/.zprofile`              |
 | `test_entries.py`               | macOS entries: app bundles in `~/Applications`            |
@@ -204,6 +207,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_install.py`          | `install.sh`: pinned Python and Node, prebuilt packages only    |
 | `test_install_ps1.py`      | `install.ps1` stays in step with `install.sh`                   |
 | `test_one_line_install.py` | `get.sh`, the line a family pastes                              |
+| `test_schoolsoft_capture_line.py` | The SchoolSoft capture's `get.sh` and `remove`, and the tool run without Parent Recap |
 | `test_codex_install.py`    | `install.sh --codex` installs the skills for Codex              |
 | `test_release.py`          | The release zip built from a tag                                |
 | `test_version.py`          | The plugin and the package ship the same version                |
@@ -258,6 +262,9 @@ found as Windows finds them, on any system), `credential_manager`, and the build
   and records each call the Linked Device's program makes. That program runs on a real Node,
   Parent Recap's own where it is installed, else one on PATH; CI's runners have one.
 - `fake_packages.py`: packages for tests that run the real pip offline.
+- `fake_schoolsoft.py`: a fake SchoolSoft on 127.0.0.1 for the SchoolSoft capture tool in
+  `tools/schoolsoft-capture/` (#876), which also plays the guardian's browser and BankID, and
+  records every request; with in-memory stand-ins for its Keychain item and evening job.
 - `fake_household_host.py`: the sign-up service's household host (ADR 0031): users as folders,
   each with its own secrets and jobs, removed with them, Gateway Keys as a dict, and
   `parent-recap` run as a user in-process with that user's HOME, only as `signup.sudoers` allows.
