@@ -1,0 +1,11 @@
+[Unit]
+Description=Parent Recap's automatic deploy, each morning (#872, ADR 0045)
+
+[Timer]
+# The morning after a release, far from the evening runs (21:00 to 21:55, Finnish time), with the
+# day left to fix one. No Persistent=: a morning the server was down waits for the next morning
+# rather than deploying at whatever hour it is up again.
+OnCalendar=*-*-* 10:00:00 Europe/Helsinki
+
+[Install]
+WantedBy=timers.target

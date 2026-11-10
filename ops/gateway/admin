@@ -11,7 +11,10 @@ terminal and writes no log of its own; no key's value is printed except by `key 
 (ADR 0036) snapshots the server's state, fetches a commit of the public repo and runs that
 commit's gateway-setup.sh with it, and notes each deploy in its record, which `households` reads
 to say which commit runs; `rollback` runs the deploy before's gateway-setup.sh again, and with
---restore first brings back the snapshot taken before the deploy it leaves.
+--restore first brings back the snapshot taken before the deploy it leaves. `autodeploy run`
+(ADR 0045), which parent-recap-autodeploy.timer runs each morning, deploys the release `stable`
+points at when the server doesn't run it, switches back when a check fails, and mails the
+maintainers how it went; `autodeploy pause` stops it.
 
 `check --mail` is the nightly check (#745), which parent-recap-check.timer runs after the evening
 runs: the Households' status, the gateway's services and a pending reboot, mailed to the
@@ -74,7 +77,10 @@ usage: sudo admin <task> [arguments]
   rollback [--restore]                       switch back whole to the deploy before the one that
                                              runs; --restore also brings back the state from the
                                              snapshot taken before the one that runs
-  check [--mail]                             what is wrong tonight; --mail mails it, as nightly
+  autodeploy pause|resume|status             the morning's automatic deploy of each new
+                                             release: stop it, start it again, or whether it
+                                             is paused and how its last attempt ended
+  check [--mail]                            what is wrong tonight; --mail mails it, as nightly
   signed-up ph-XXXXXXXX                      mail the maintainers that the sign-up made this
                                              Household (the sign-up service runs it)
 
@@ -143,6 +149,9 @@ class Paths:
     github_api: str = "https://api.github.com/repos/kinlace/parent-recap"
     repo: Path = Path("/var/lib/parent-recap-deploy/repo.git")
     record: Path = Path("/var/lib/parent-recap-deploy/deploys.json")
+    # `autodeploy` (ADR 0045): whether it is paused, its last attempt, the days running it was
+    # refused, and the releases that wait for a deploy by hand.
+    autodeploy: Path = Path("/var/lib/parent-recap-deploy/autodeploy.json")
     sources: Path = Path("/usr/local/lib/parent-recap-deploy")
     deploy_env: Path = Path("/etc/parent-recap-deploy/deploy.env")
     shared: Path = Path("/usr/local/lib/parent-recap")
@@ -192,6 +201,10 @@ def main(argv: list[str], paths: Paths | None = None,
                                        f"https://{host}", *args), _clean_env())
         if task == "households":
             print(_running_deploy(paths), flush=True)
+            auto = _auto_state(paths)
+            if auto.get("paused"):
+                print(f"automatic deploys are paused since {auto.get('paused_at')}: sudo admin "
+                      "autodeploy resume", flush=True)
             return exec_as(_as_service(paths, [], "signup", "status", *args), _clean_env())
         if task == "household":
             return _household(paths, args, exec_as)
@@ -203,6 +216,8 @@ def main(argv: list[str], paths: Paths | None = None,
             return _list_deploys(paths)
         if task == "rollback":
             return _rollback(paths, args, edge or Edge())
+        if task == "autodeploy":
+            return _autodeploy(paths, args, edge or Edge(), smtp)
         if task == "remove":
             if len(args) != 1:
                 raise Usage("remove ph-XXXXXXXX")
@@ -462,17 +477,35 @@ class Edge:
     uid: Callable[[str], int | None] = _uid
 
 
+@dataclass
+class Deployed:
+    """How a deploy ended, for `autodeploy` to mail: refused (nothing changed), its install
+    failed, a check failed, or every check passed (`failed` empty)."""
+    refused: str = ""
+    failed: tuple[str, ...] = ()
+    # How the check Household's evening run ended, as said on the terminal.
+    check_run: str = ""
+
+    @property
+    def code(self) -> int:
+        return 1 if self.refused or self.failed else 0
+
+
 def _deploy(paths: Paths, args: list[str], edge: Edge) -> int:
     anyway = "--anyway" in args
     refs = [a for a in args if a != "--anyway"]
     if len(refs) != 1 or refs[0].startswith("-"):
         raise Usage(DEPLOY_USAGE)
+    return _deploy_ref(paths, refs[0], anyway, edge).code
+
+
+def _deploy_ref(paths: Paths, ref: str, anyway: bool, edge: Edge) -> Deployed:
     try:
         host = _env(paths.signup_env).get("GATEWAY_HOST")
         if not host:
             raise Refused(f"GATEWAY_HOST is missing from {paths.signup_env}: the server's first "
                           "install is gateway-setup.sh's (README \"Building the server\")")
-        commit, tag = _resolve(paths, refs[0])
+        commit, tag = _resolve(paths, ref)
         short = commit[:SHORT]
         if tag is None:
             _test_passed(paths, commit, edge)
@@ -483,7 +516,7 @@ def _deploy(paths: Paths, args: list[str], edge: Edge) -> int:
         source = _checkout(paths, commit)
     except Refused as e:
         print(f"not deployed, nothing changed: {e}", file=sys.stderr)
-        return 1
+        return Deployed(refused=str(e))
 
     print(f"deploying {short} ({tag or 'unreleased, a commit on main'}) from {source}",
           flush=True)
@@ -499,18 +532,23 @@ def _deploy(paths: Paths, args: list[str], edge: Edge) -> int:
         print(f"❌ gateway-setup.sh of {short} failed (above), so this deploy is recorded as "
               f"failed. {_running_deploy(paths)}. To put the deploy before back whole: sudo "
               "admin rollback", file=sys.stderr)
-        return 1
+        return Deployed(failed=("its gateway-setup.sh failed partway",))
     _record(paths, deployed)
     print(f"recorded: {_running_deploy(paths)}", flush=True)
 
-    ok = _healthy(host, edge)
-    ok = (_evening_run(paths, check, edge) if check else _no_check()) and ok
-    if not ok:
+    failed = _health(host, edge)
+    if check:
+        ran_ok, check_run = _evening_run(paths, check, edge)
+        if not ran_ok:
+            failed.append(check_run)
+    else:
+        check_run = _no_check()
+    if failed:
         print(f"\n❌ {short} is deployed but a check failed (above): switch back with sudo admin "
               "rollback, as README \"Upgrade, check, switch back\" says", file=sys.stderr)
-        return 1
+        return Deployed(failed=tuple(failed), check_run=check_run)
     print(f"\n✅ {short} is deployed and checked")
-    return 0
+    return Deployed(check_run=check_run)
 
 
 def _git(paths: Paths, *args: str) -> subprocess.CompletedProcess:
@@ -1223,7 +1261,7 @@ def _rollback(paths: Paths, args: list[str], edge: Edge) -> int:
         return 1
     print(f"switched back from {_what(leaving)} to {_what(back)}: {_running_deploy(paths)}",
           flush=True)
-    if not _healthy(host, edge):
+    if _health(host, edge):
         print("\n❌ switched back, but a check failed (above)", file=sys.stderr)
         return 1
     print("\n✅ switched back. Read the Households' next evening runs: sudo admin households")
@@ -1317,32 +1355,41 @@ def _start_timers(stopped: list[tuple[str, str]], edge: Edge) -> None:
         print("⚠️ couldn't start again: " + ", ".join(failed), file=sys.stderr)
 
 
-def _healthy(host: str, edge: Edge) -> bool:
-    ok = True
+def _health(host: str, edge: Edge) -> list[str]:
+    """Each service's /health and the 404 outside the routes, said on the terminal; returns
+    those that failed."""
+    failed = []
     for name, port in HEALTH:
         status = edge.http_status(f"http://127.0.0.1:{port}/health")
         print(f"{'✅' if status == 200 else '❌'} {name} on /health: "
               f"{status or 'no answer'}", flush=True)
-        ok = ok and status == 200
+        if status != 200:
+            failed.append(f"{name} on /health answered {status or 'nothing'}")
     status = edge.http_status(f"https://{host}/")
     print(f"{'✅' if status == 404 else '❌'} https://{host}/ outside its routes: "
           f"{status or 'no answer'} (404 expected)", flush=True)
-    return ok and status == 404
+    if status != 404:
+        failed.append(f"https://{host}/ outside its routes answered {status or 'nothing'}, "
+                      "not 404")
+    return failed
 
 
-def _no_check() -> bool:
-    print("no Household yet, so no evening run checked this deploy")
-    return True
+def _no_check() -> str:
+    said = "no Household yet, so no evening run checked this deploy"
+    print(said)
+    return said
 
 
-def _evening_run(paths: Paths, user: str, edge: Edge) -> bool:
-    """Runs `user`'s evening run as its timer would, waits for it to end and says how."""
+def _evening_run(paths: Paths, user: str, edge: Edge) -> tuple[bool, str]:
+    """Runs `user`'s evening run as its timer would, waits for it to end and says how; returns
+    whether it ended ok, and how, as said."""
     before = _unit(edge, user, EVENING_JOB).get("ExecMainStartTimestampMonotonic", "")
     print(f"running {user}'s evening run, which sends its Brief to its Recipients...", flush=True)
     started = edge.system(["sudo", "-u", user, "-H", "--", paths.program, "schedule", "run-now"])
     if started.returncode != 0:
-        print(f"❌ {user}'s evening run didn't start (above)", flush=True)
-        return False
+        said = f"{user}'s evening run didn't start"
+        print(f"❌ {said} (above)", flush=True)
+        return False, said
     deadline = edge.monotonic() + CHECK_MINUTES * 60
     while True:
         unit = _unit(edge, user, EVENING_JOB)
@@ -1350,17 +1397,18 @@ def _evening_run(paths: Paths, user: str, edge: Edge) -> bool:
         if began not in ("", "0", before) and unit.get("ActiveState") in ("inactive", "failed"):
             break
         if edge.monotonic() >= deadline:
-            print(f"⚠️ {user}'s evening run hasn't ended after {CHECK_MINUTES} minutes: read "
-                  "sudo admin households once it has", flush=True)
-            return False
+            said = f"{user}'s evening run hasn't ended after {CHECK_MINUTES} minutes"
+            print(f"⚠️ {said}: read sudo admin households once it has", flush=True)
+            return False, said
         edge.sleep(5)
     if unit.get("Result") == "success":
-        print(f"✅ {user}'s evening run ended ok", flush=True)
-        return True
-    print(f"❌ {user}'s evening run failed ({unit.get('Result')}, exit "
-          f"{unit.get('ExecMainStatus')}): its log is ~{user}/ParentRecap/logs/run-stderr.log",
-          flush=True)
-    return False
+        said = f"{user}'s evening run ended ok"
+        print(f"✅ {said}", flush=True)
+        return True, said
+    said = (f"{user}'s evening run failed ({unit.get('Result')}, "
+            f"exit {unit.get('ExecMainStatus')})")
+    print(f"❌ {said}: its log is ~{user}/ParentRecap/logs/run-stderr.log", flush=True)
+    return False, said
 
 
 def _notes(path: Path) -> dict[str, str]:
@@ -1389,6 +1437,231 @@ def _relay(paths: Paths) -> Any:
         relay = sys.modules["brief_relay"] = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(relay)
     return relay
+
+
+# ── The morning's automatic deploy (#872, ADR 0045)
+
+AUTODEPLOY_USAGE = "autodeploy pause|resume|status|run"
+# The line a release's section of CHANGELOG.md carries when switching back from it needs the
+# snapshot (ADR 0036): an HTML comment, so a family reading the changelog doesn't see it.
+NEEDS_SNAPSHOT = re.compile(r"<!--\s*switching back needs the snapshot\s*-->", re.IGNORECASE)
+# A refused automatic deploy is mailed on the third day running it was refused, and every third
+# day after while it still is.
+REFUSED_DAYS = 3
+
+
+def _autodeploy(paths: Paths, args: list[str], edge: Edge,
+                smtp: Callable[..., Any] | None) -> int:
+    if len(args) != 1 or args[0] not in ("pause", "resume", "status", "run"):
+        raise Usage(AUTODEPLOY_USAGE)
+    verb = args[0]
+    state = _auto_state(paths)
+    if verb == "pause":
+        if not state.get("paused"):
+            _auto_save(paths, {**state, "paused": True, "paused_at": _stamp(edge)})
+        print("automatic deploys are paused: each morning's timer checks nothing and mails "
+              "nothing until sudo admin autodeploy resume")
+        return 0
+    if verb == "resume":
+        _auto_save(paths, {k: v for k, v in state.items() if k not in ("paused", "paused_at")})
+        print("automatic deploys are on again from tomorrow morning, 10:00 Helsinki time")
+        return 0
+    if verb == "status":
+        return _auto_status(state)
+    if state.get("paused"):
+        print("automatic deploys are paused, so nothing was checked: sudo admin autodeploy "
+              "resume")
+        return 0
+    return _auto_run(paths, state, edge, smtp)
+
+
+def _auto_state(paths: Paths) -> dict:
+    try:
+        state = json.loads(paths.autodeploy.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def _auto_save(paths: Paths, state: dict) -> None:
+    paths.autodeploy.parent.mkdir(parents=True, exist_ok=True)
+    incoming = paths.autodeploy.with_suffix(".incoming")
+    incoming.write_text(json.dumps(state, indent=1) + "\n", encoding="utf-8")
+    os.replace(incoming, paths.autodeploy)
+
+
+def _auto_status(state: dict) -> int:
+    if state.get("paused"):
+        print(f"automatic deploys are paused since {state.get('paused_at')}: sudo admin "
+              "autodeploy resume starts them again")
+    else:
+        print("automatic deploys are on: each morning at 10:00 Helsinki time the server deploys "
+              "the release stable points at, if it doesn't run it (sudo admin autodeploy pause "
+              "stops that)")
+    last = state.get("last")
+    if isinstance(last, dict):
+        print(f"last automatic attempt, {last.get('at')}: {last.get('outcome')}")
+    else:
+        print("no automatic attempt yet")
+    refused = state.get("refused")
+    if isinstance(refused, dict) and refused.get("days"):
+        print(f"refused {refused['days']} day{'' if refused['days'] == 1 else 's'} running, "
+              f"since {refused.get('since')}; mailed on the {REFUSED_DAYS}rd")
+    for tag, since in sorted((state.get("waiting") or {}).items()):
+        print(f"{tag} waits for a deploy by hand since {since}: switching back from it needs the "
+              f"snapshot (sudo admin deploy {tag})")
+    return 0
+
+
+def _auto_run(paths: Paths, state: dict, edge: Edge, smtp: Callable[..., Any] | None) -> int:
+    """What the morning's timer runs: deploys the release `stable` points at when the server
+    doesn't run it, nor a later commit, and mails the maintainers how it went."""
+    host = _env(paths.signup_env).get("GATEWAY_HOST") or "the server"
+    tag = "stable"
+    try:
+        tag, commit = _stable(paths)
+        running = _running_commit(paths)
+        if running and _git(paths, "merge-base", "--is-ancestor", commit,
+                            running).returncode == 0:
+            return _auto_done(paths, state, edge,
+                              f"nothing new: stable is {tag}, and the server runs "
+                              f"{_runs_label(paths)}")
+        if any(d.get("rolled_back_from") == commit for d in _deploys(paths)):
+            return _auto_done(paths, state, edge,
+                              f"{tag} isn't deployed again by itself: it was switched back "
+                              f"from. Deploy it by hand once fixed: sudo admin deploy {tag}")
+        if tag in (state.get("waiting") or {}):
+            return _auto_done(paths, state, edge,
+                              f"{tag} waits for a deploy by hand: sudo admin deploy {tag}")
+        section = _changelog(paths, commit, tag)
+        if NEEDS_SNAPSHOT.search(section):
+            state = {**state, "waiting": {**(state.get("waiting") or {}), tag: _stamp(edge)}}
+            _auto_done(paths, state, edge, f"{tag} waits for a deploy by hand: its changelog "
+                                           "says switching back from it needs the snapshot")
+            _mail(paths, f"Parent Recap server: {tag} waits for a deploy by hand",
+                  f"The server on {host} didn't deploy {tag} by itself: its changelog says "
+                  "switching back from it needs the snapshot (ADR 0036), which the automatic "
+                  f"switch-back doesn't restore. It runs {_runs_label(paths)}.\n\nDeploy it by "
+                  f"hand when you can watch it: SSH in and run sudo admin deploy {tag}\n\n"
+                  f"{tag}'s changelog:\n\n{section}\n", smtp)
+            return 0
+        before = _runs_label(paths)
+    except Refused as e:
+        return _auto_refused(paths, state, tag, str(e), edge, smtp)
+
+    deployed = _deploy_ref(paths, tag, False, edge)
+    if deployed.refused:
+        return _auto_refused(paths, state, tag, deployed.refused, edge, smtp)
+    if deployed.failed:
+        print(f"\nswitching back from {tag}, as a check failed", flush=True)
+        back = _rollback(paths, [], edge) == 0
+        now = _runs_label(paths)
+        _auto_done(paths, state, edge, f"{tag} failed a check and was switched back"
+                   + ("" if back else ", but the switch-back didn't finish or its checks failed"))
+        failed = "\n".join(f"- {f}" for f in deployed.failed)
+        switched = (f"It was switched back to {now}: its own checks passed." if back else
+                    "Switching back didn't finish, or its own checks failed: the server runs "
+                    f"{now}. SSH in, read journalctl -u parent-recap-autodeploy and run sudo "
+                    "admin deploys.")
+        _mail(paths, f"Parent Recap server: {tag} failed a check and was switched back",
+              f"The server on {host} deployed {tag} by itself, over {before}, and a check "
+              f"failed:\n\n{failed}\n\n{switched}\n\n{tag} isn't deployed again by itself; once "
+              f"it is fixed, deploy the fix by hand: sudo admin deploy vX.Y.Z\n", smtp)
+        return 1
+    _auto_done(paths, state, edge, f"{tag} deployed and checked")
+    _mail(paths, f"Parent Recap server: {tag} deployed",
+          f"The server on {host} deployed {tag} by itself and its checks passed.\n\n"
+          f"It now runs {_runs_label(paths)}, before: {before}.\n"
+          f"The check Household: {deployed.check_run}.\n\n"
+          f"{tag}'s changelog:\n\n{section}\n", smtp)
+    return 0
+
+
+def _auto_done(paths: Paths, state: dict, edge: Edge, outcome: str) -> int:
+    """Records an attempt that wasn't refused, which ends a run of refused days."""
+    print(outcome, flush=True)
+    _auto_save(paths, {**{k: v for k, v in state.items() if k != "refused"},
+                       "last": {"at": _stamp(edge), "outcome": outcome}})
+    return 0
+
+
+def _auto_refused(paths: Paths, state: dict, tag: str, why: str, edge: Edge,
+                  smtp: Callable[..., Any] | None) -> int:
+    """Records a refused attempt; mails it on the REFUSED_DAYS-th day running it was refused,
+    and each REFUSED_DAYS-th day after. Days are Helsinki's; a second attempt on one day isn't
+    another day."""
+    today = edge.now().astimezone(ZoneInfo(ZONE)).date().isoformat()
+    refused = state.get("refused") if isinstance(state.get("refused"), dict) else {}
+    days = int(refused.get("days") or 0)
+    new_day = refused.get("on") != today
+    days = days + 1 if new_day else max(days, 1)
+    outcome = f"{tag} not deployed, nothing changed: {why}"
+    _auto_save(paths, {**state, "last": {"at": _stamp(edge), "outcome": outcome},
+                       "refused": {"days": days, "on": today,
+                                   "since": refused.get("since") or today}})
+    if not (new_day and days % REFUSED_DAYS == 0):
+        print(f"{outcome}. Tried again tomorrow; mailed on the {REFUSED_DAYS}rd day running",
+              file=sys.stderr)
+        return 0
+    host = _env(paths.signup_env).get("GATEWAY_HOST") or "the server"
+    _mail(paths, f"Parent Recap server: {tag} not deployed for {days} days",
+          f"The server on {host} hasn't deployed {tag} by itself for {days} days running: "
+          f"{why}.\n\nIt runs {_runs_label(paths)}, and tries again each morning. SSH in and "
+          f"deploy it by hand once that is fixed (sudo admin deploy {tag}), or pause the "
+          "automatic deploys (sudo admin autodeploy pause).\n", smtp)
+    return 1
+
+
+def _stable(paths: Paths) -> tuple[str, str]:
+    """The release tag `stable` points at, fetched now, and its commit."""
+    _fetch(paths)
+    fetched = _git(paths, "fetch", "--quiet", "--no-auto-gc", paths.repo_url,
+                   "+refs/heads/stable:refs/heads/stable")
+    if fetched.returncode != 0:
+        raise Refused(f"couldn't fetch stable from {paths.repo_url}: {_why_not(fetched)}")
+    commit = _rev(paths, "refs/heads/stable")
+    tags = [t for t in _git(paths, "tag", "--points-at", commit or "").stdout.split()
+            if RELEASE_TAG.fullmatch(t)] if commit else []
+    if not commit or not tags:
+        raise Refused("stable points at no release tag (vX.Y.Z)")
+    return max(tags, key=lambda t: tuple(map(int, RELEASE_TAG.fullmatch(t).groups()))), commit
+
+
+def _running_commit(paths: Paths) -> str | None:
+    """The whole commit `current` is, by the record or the repo; None if it is neither's."""
+    name = _current(paths)
+    if name is None:
+        return None
+    mine = [d for d in _deploys(paths) if str(d.get("commit", ""))[:SHORT] == name]
+    if mine:
+        return str(mine[-1]["commit"])
+    return _rev(paths, name) if re.fullmatch(f"[0-9a-f]{{{SHORT}}}", name) else None
+
+
+def _runs_label(paths: Paths) -> str:
+    """What runs, as a mail says it: its tag and commit."""
+    name = _current(paths)
+    if name is None:
+        return "no program"
+    mine = [d for d in _deploys(paths) if str(d.get("commit", ""))[:SHORT] == name]
+    tag = mine[-1].get("tag") if mine else "not recorded"
+    return f"{tag} ({name})"
+
+
+def _changelog(paths: Paths, commit: str, tag: str) -> str:
+    """The section of `commit`'s CHANGELOG.md for release `tag`, from its heading to the next."""
+    shown = _git(paths, "show", f"{commit}:CHANGELOG.md")
+    version = tag.removeprefix("v")
+    kept: list[str] = []
+    for line in shown.stdout.splitlines() if shown.returncode == 0 else []:
+        if line.startswith("## "):
+            if kept:
+                break
+            if re.match(rf"## {re.escape(version)}(\s|$)", line):
+                kept.append(line)
+        elif kept:
+            kept.append(line)
+    return "\n".join(kept).strip() or f"(CHANGELOG.md has no section for {version})"
 
 
 # ── The nightly check (#745)

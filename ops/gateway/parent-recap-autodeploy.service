@@ -1,0 +1,14 @@
+[Unit]
+Description=Parent Recap's automatic deploy: the release stable points at, checked and mailed (#872)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# As root, as `sudo admin deploy` runs: it snapshots the server's state and runs the release's
+# gateway-setup.sh. Paused (`sudo admin autodeploy pause`), it checks nothing and mails nothing
+# (README "Upgrade, check, switch back").
+ExecStart=/usr/local/sbin/admin autodeploy run
+# The install, the check Household's evening run (up to 20 minutes) and a switch-back; one stuck
+# past this fails the unit (systemctl --failed) instead of hanging all day.
+TimeoutStartSec=2h

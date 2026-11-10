@@ -183,6 +183,7 @@ def deploy(tmp_path: Path, origin: Origin):
     server.paths.github_api = "https://api.github.example/repos/kinlace/parent-recap"
     server.paths.repo = tmp_path / "state" / "repo.git"
     server.paths.record = tmp_path / "state" / "deploys.json"
+    server.paths.autodeploy = tmp_path / "state" / "autodeploy.json"
     server.paths.sources = tmp_path / "sources"
     server.paths.deploy_env = tmp_path / "etc" / "deploy.env"
     server.paths.shared = tmp_path / "shared"
@@ -197,7 +198,8 @@ def deploy(tmp_path: Path, origin: Origin):
     def run(*args: str) -> int:
         try:
             return admin.main(list(args), paths=server.paths, is_root=lambda: True,
-                              exec_as=lambda argv, env: 0, edge=fake.edge())
+                              exec_as=lambda argv, env: 0, edge=fake.edge(),
+                              smtp=server.smtp)
         except SystemExit as e:
             return e.code if isinstance(e.code, int) else 1
     run.server, run.fake, run.origin = server, fake, origin

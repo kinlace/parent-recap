@@ -115,6 +115,15 @@ install -m 0644 "$here/parent-recap-check.timer" /etc/systemd/system/parent-reca
 systemctl daemon-reload
 systemctl enable --now parent-recap-check.timer
 
+# ── The morning's automatic deploy (README "Upgrade, check, switch back", #872)
+# `admin autodeploy run` at 10:00 Finnish time deploys the release `stable`
+# points at when the server doesn't run it, and mails the maintainers at the
+# address above how it went. `sudo admin autodeploy pause` stops it.
+install -m 0644 "$here/parent-recap-autodeploy.service" /etc/systemd/system/parent-recap-autodeploy.service
+install -m 0644 "$here/parent-recap-autodeploy.timer" /etc/systemd/system/parent-recap-autodeploy.timer
+systemctl daemon-reload
+systemctl enable --now parent-recap-autodeploy.timer
+
 # ── The shared program and the sign-up service (/join/, README "Hosted
 # Households", ADR 0031, ADR 0035)
 # Installed from PARENT_RECAP_RELEASE, the folder of an unpacked release of the

@@ -64,7 +64,15 @@ Add the release's `What changes for families:` lines to `CHANGELOG.md` and bump 
 git tag v0.4.0 && git push origin v0.4.0
 ```
 
-The tag push runs `.github/workflows/release.yml` (see [ADR 0002](docs/adr/0002-tags-are-releases-main-may-be-unstable.md)): the tests on macOS, then `scripts/release.py` builds `parent-recap-0.4.0.zip` and attaches it to a GitHub Release, then the `stable` branch moves to the tag if it is the highest version so far. Never push `stable` by hand. PRs and `main` run the same macOS tests, except a change that only touches docs no test reads (`docs/adr/`, `docs/agents/`, `CONTEXT.md`, `CONTRIBUTING.md`, `CLAUDE.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`), which skips them; every push and PR also runs a gitleaks secret scan (`.github/workflows/secret-scan.yml`) that fails on any finding.
+The tag push runs `.github/workflows/release.yml` (see [ADR 0002](docs/adr/0002-tags-are-releases-main-may-be-unstable.md)): the tests on macOS, then `scripts/release.py` builds `parent-recap-0.4.0.zip` and attaches it to a GitHub Release, then the `stable` branch moves to the tag if it is the highest version so far. Never push `stable` by hand. The next morning the hosted server deploys the release `stable` points at by itself, checks it, switches back if a check fails, and mails the maintainers how it went (ADR 0045, `ops/gateway/README.md` "The morning's automatic deploy").
+
+**A release that needs the snapshot to switch back.** A release must not leave a Household's data unreadable to the release before it (ADR 0036). One that has to, such as one that changes a stored file's format, carries this line in its section of `CHANGELOG.md`, under its `## X.Y.Z` heading:
+
+```markdown
+<!-- switching back needs the snapshot -->
+```
+
+It is an HTML comment, so families reading the changelog don't see it. The server then doesn't deploy that release by itself, since its automatic switch-back can't restore data: it mails the maintainers that the release waits, and a maintainer deploys it with `sudo admin deploy vX.Y.Z` while able to switch back with `sudo admin rollback --restore`. PRs and `main` run the same macOS tests, except a change that only touches docs no test reads (`docs/adr/`, `docs/agents/`, `CONTEXT.md`, `CONTRIBUTING.md`, `CLAUDE.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`), which skips them; every push and PR also runs a gitleaks secret scan (`.github/workflows/secret-scan.yml`) that fails on any finding.
 
 The zip is built from the tag with `git archive`, so local edits never get in. `.gitattributes` export-ignore rules keep developer-only files out, and the script refuses to build if the versions disagree or if a venv, cache or `.env` was committed. To build the same zip locally: `python3 scripts/release.py v0.4.0`.
 
