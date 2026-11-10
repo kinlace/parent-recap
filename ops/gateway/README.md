@@ -475,7 +475,7 @@ Every routine task is one command on the server: SSH in, then `sudo admin <task>
 | `deploy vX.Y.Z\|main\|COMMIT [--anyway]`     | Snapshots the state, fetches that commit and installs it all (see "Upgrade, check, switch back")                     |
 | `deploys`                                    | The deploys on disk, marking the current one (see "Upgrade, check, switch back")                                     |
 | `rollback [--restore]`                       | Switches back whole to the deploy before; `--restore` also restores its snapshot (see "Upgrade, check, switch back") |
-| `autodeploy pause\|resume\|status`           | Stops or starts the morning's automatic deploy, or says how it last ended (see "The morning's automatic deploy")      |
+| `autodeploy pause\|resume\|status`           | Stops or starts the morning's automatic deploy, or says how it last ended (see "The morning's automatic deploy")     |
 | `check [--mail]`                             | What is wrong tonight; `--mail` mails it, as at night (see "The nightly check")                                      |
 | `signed-up ph-XXXXXXXX`                      | Mails the maintainers a new Household's label, note and time; the sign-up runs it (see "What a sign-up does")        |
 
