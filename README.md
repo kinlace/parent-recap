@@ -73,7 +73,7 @@ Or paste the install line from [Install](#install) again: in Terminal on a Mac, 
 
 ## Thanks
 
-Parent Recap reads Wilma through Antti Karjalainen's [wilma CLI](https://github.com/aikarjal/wilmai) (WilmAI), free and open source under MIT. Without it there would be no Wilma in the Brief.
+Parent Recap reads Wilma through Antti Karjalainen's [wilma CLI](https://github.com/aikarjal/wilmai) (WilmAI), a separate project, free and open source under MIT. Without it there would be no Wilma in the Brief.
 
 ## Disclaimer
 
