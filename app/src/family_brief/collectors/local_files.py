@@ -99,7 +99,7 @@ def read(cfg: Config) -> Folder:
             out.problems.append(Problem(path.name, f"it couldn't be opened: {e.strerror or e}"))
             continue
         try:
-            text = raw.decode("utf-8-sig")
+            text = raw.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
         except UnicodeDecodeError:
             out.problems.append(Problem(path.name, "it isn't UTF-8 text"))
             continue

@@ -60,7 +60,7 @@ def test_a_json_file_s_messages_each_in_its_chat_or_the_file_s(cfg, folder):
 
 def test_a_text_or_markdown_file_is_one_message_named_by_the_file_at_its_last_change(cfg, folder):
     (folder / "Piano.txt").write_text("﻿Lessons start at 16:30\n", encoding="utf-8")
-    (folder / "Go club.MD").write_text("# Tournament\nSunday 10:00", encoding="utf-8")
+    (folder / "Go club.MD").write_bytes("# Tournament\r\nSunday 10:00".encode("utf-8"))  # Windows line ends
     (folder / "empty.txt").write_text("  \n")
     changed_at(folder / "Piano.txt", NOW - timedelta(hours=2))
     changed_at(folder / "Go club.MD", NOW - timedelta(hours=1))
