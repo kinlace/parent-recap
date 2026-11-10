@@ -92,6 +92,8 @@ class Source:
     survey: Callable[[Survey, list[Path]], None] | None = None
     # what uninstall leaves the family to do for it
     notes: Callable[[Config], list[str]] = _nothing
+    # whether it is an account of the family's, which uninstall says it never touches
+    account: bool = True
     # ── Held-back Messages (ADR 0013). A Source without these holds a message back when in doubt and
     # lists it by sender and subject, with no link.
     sent_to_everyone: Callable[[Message], bool] = lambda m: False  # so it is never held back
@@ -198,7 +200,18 @@ EVAKA = Source("evaka", _same_everywhere("eVaka"), lambda cfg: bool(cfg.evaka.si
                sent_to_everyone=_in("collectors.evaka", "sent_to_everyone"),
                withheld=_in("collectors.evaka", "withheld"), held_back_link=lambda m: m.url)
 
-ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP, EEPOS, EVAKA)
+# Messages from plain files the family puts in a folder it picks, for news from any place Parent
+# Recap doesn't read itself (ADR 0044). Turned on, and its folder chosen, with the manage skill
+# (`setup save`), never on the setup page. Only read on the family's own computer: a Hosted
+# Household never has it. A message in a chat has no subject: the Brief lists it by its chat.
+LOCAL_FILES = Source("local_files", {"en": "Local Files", "fi": "Paikalliset tiedostot", "zh": "本地文件"},
+                     _in("collectors.local_files", "connected"), skippable=True, connect_rank=9,
+                     collect=_collector("local_files"), systems=frozenset({"macos", "windows"}),
+                     hosted=False, setup_page=False, lookback=lambda cfg: cfg.local_files,
+                     check=_in("ops", "check_local_files"), notes=_in("uninstall", "local_files_notes"),
+                     account=False, group=lambda m: m.chat_name)
+
+ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP, EEPOS, EVAKA, LOCAL_FILES)
 
 
 def named(name: str) -> Source | None:
@@ -219,9 +232,10 @@ def available() -> list[Source]:
 
 def not_hosted() -> list[Source]:
     """The Sources a Hosted Household can't have: those the hosted version's system can't read and
-    those neither its sign-up nor the maintainers set up (ADR 0029, 0031), in the order the setup page's Connect list
-    shows them."""
-    return sorted((s for s in ALL if not s.hosted or HOSTED_SYSTEM not in s.systems),
+    those neither its sign-up nor the maintainers set up (ADR 0029, 0031), of those the setup page
+    offers, in the order its Connect list shows them. One the setup page doesn't offer, such as
+    Local Files, isn't one a family expects to have, so the hosted Brief doesn't name it."""
+    return sorted((s for s in ALL if s.setup_page and (not s.hosted or HOSTED_SYSTEM not in s.systems)),
                   key=lambda s: s.connect_rank)
 
 

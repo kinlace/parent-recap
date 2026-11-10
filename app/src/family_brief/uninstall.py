@@ -584,7 +584,7 @@ def _left_in(s: Survey, folder: Path, archive: Path) -> None:
 
 
 def _notes(s: Survey, cfg: Config) -> None:
-    accounts = ", ".join(source.label() for source in sources.available())
+    accounts = ", ".join(source.label() for source in sources.available() if source.account)
     s.notes.append(f"Your accounts aren't touched: {accounts} and Google stay as they are.")
     s.notes += [note for source in sources.available() for note in source.notes(cfg)]
     if cfg.google_calendar.mode == "google" or any(i.what == "Google Calendar authorization"
@@ -593,6 +593,15 @@ def _notes(s: Survey, cfg: Config) -> None:
                        "Google account: https://myaccount.google.com/connections")
     if s.claude_left:
         s.notes.append(s.claude_left)
+
+
+def local_files_notes(cfg: Config) -> list[str]:
+    """The Local Files folder is the family's: uninstall leaves it and its files as they are."""
+    if not cfg.local_files.enabled:
+        return []
+    from .collectors.local_files import shown
+    return [f"The Local Files folder {shown(cfg.local_files.resolved_folder())} and its files stay: "
+            "Parent Recap only read them. Delete the folder yourself if you no longer need it."]
 
 
 def gmail_notes(cfg: Config) -> list[str]:

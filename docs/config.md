@@ -48,6 +48,8 @@ One town outside the presets was set up end to end in a fresh-install test in Oc
 | `gmail.allowlist_senders`              | Individual teachers or coaches who use a personal address                                                                                                                                                                                                                                                                                                                |
 | `wilma.enabled`                        | Set to true only after signing in to Wilma with `parent-recap setup wilma`                                                                                                                                                                                                                                                                                               |
 | `whatsapp.chats[]`                     | Copy `name` exactly; `kid` is the Kid's full name or `both`; `label` is the kind of group; `digest: true` adds a few lines on the group's other talk to the Brief (see [WhatsApp group digests](#whatsapp-group-digests))                                                                                                                                                |
+| `local_files.enabled`                  | `true` reads the messages in the files of `local_files.folder` each evening, as a Source (see [Local Files](#local-files)). Off by default; a Hosted Household never has it |
+| `local_files.folder`                   | The folder Local Files reads, `~/ParentRecap/inbox` by default. Turning it on with `parent-recap setup save` creates it |
 | `google_calendar.mode`                 | `ics` / `google` / `off`                                                                                                                                                                                                                                                                                                                                                 |
 | `google_calendar.invite_attendees`     | In google mode, people automatically invited to new events                                                                                                                                                                                                                                                                                                               |
 | `llm.backend`                          | `claude` (Claude Pro/Max subscription), `codex` (ChatGPT account) or `gateway` (a Gateway Key from the maintainers, stored with `parent-recap setup gateway`; ADR 0014); `cli` in older configs means `claude`                                                                                                                                                           |
@@ -103,6 +105,22 @@ To turn the AI filter off, set `ai_filter.enabled: false`, or ask Claude or Code
 ## WhatsApp group digests
 
 The Brief only tells what concerns your Kids, so a group's general talk (where the class is heading, what all the kids will do next week, a worry parents share without naming anyone) doesn't reach it. For a group you pick, the Brief can also sum that talk up in a few lines, under the group's name, in the Brief's language. It is a summary, not a translation of each message, it doesn't repeat what the Brief already says for your Kids, and it names no other parent or child: the AI is told not to, and with the AI filter on, a name the filter masks, with any Finnish case ending, becomes the Brief language's own word there ("someone", "有人", "joku"). A group with no messages since the last Brief gets none. It is off for every group until you turn it on: tick "Also sum up the group's other talk in a few lines in the Brief" under the group on the setup page's Check step, or ask Claude Code or Codex to set `digest: true` on the group in `whatsapp.chats`. The group's messages go through the AI filter as all others do (see [What the AI sees](#what-the-ai-sees)), and a held-back message stays held back.
+
+## Local Files
+
+Local Files brings messages into the Brief from plain files you put in a folder: a notice you copy by hand, or messages a program of your own writes there, from any place Parent Recap doesn't read itself (ADR 0044). Ask Claude or Codex to turn it on and choose the folder, `~/ParentRecap/inbox` unless you pick another; it is created when it's turned on. Parent Recap only reads the folder and never moves, changes or deletes a file in it. Only the files right in the folder are read, of two kinds:
+
+- `.json`: a list of messages, each with `time` (ISO 8601, such as `2026-09-27T18:05:00+03:00`; without an offset, in your `timezone`) and `text`, and optionally `chat` and `sender`:
+
+  ```json
+  [{"time": "2026-09-27T18:05:00+03:00", "chat": "Chinese school", "sender": "Li Wei",
+    "text": "No class next Saturday"}]
+  ```
+
+  A message without a `chat` is in the chat the file's name gives.
+- `.txt` or `.md`: the whole file is one message, in the chat its name gives, at the time the file was last changed.
+
+Each evening the Brief gets the messages newer than the last Brief, each once, under their chat, through the AI filter like every other Source (see [What the AI sees](#what-the-ai-sees)). A file that can't be read is skipped, and `parent-recap doctor` names it with why. A Hosted Household doesn't have Local Files.
 
 ## Pilot feedback
 

@@ -188,7 +188,7 @@ def _windows(cfg: Config) -> list[tuple[str, source_registry.Window]]:
     return [(s.name, s.lookback(cfg)) for s in source_registry.ALL if s.lookback]
 
 
-def _catch_up_lookback(cfg: Config, state: State) -> None:
+def catch_up_lookback(cfg: Config, state: State) -> None:
     """After undelivered nights, or nights a Source failed, widen each Source's lookback to reach
     back to the last run that was caught up for it, so its Messages fall inside the window again.
     Capped at a week."""
@@ -594,7 +594,7 @@ def run(cfg: Config, options: Options, io: IO) -> int:
     private_files.tighten(cfg)
     state = io.load_state(cfg.resolved_state_path())
     if options.lookback_hours is None:
-        _catch_up_lookback(cfg, state)
+        catch_up_lookback(cfg, state)
 
     read = _read(cfg, options, io, state)
     tonight = plan(options, anything_new=read.anything_new,

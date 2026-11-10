@@ -171,6 +171,26 @@ Notes:
 - A message the daycare or the city sent since the last evening is told once, under the Kid its thread names, or the Household when it names several or none. The family's own messages aren't. A sensitive message comes to a password sign-in only as its sender and time: the Brief lists it under Held-back messages with its link, and no model sees it, even with the AI filter off. Nothing is marked read in eVaka, nothing is answered
 - eVaka's API is internal and unversioned: when it changes, the Brief's coverage line says eVaka wasn't read, with the reason, and the rest of the Brief still goes out. Messages that can't be read leave the events, and the line says eVaka was partly read
 
+## Local Files (optional)
+
+Messages from plain files the family puts in a folder it picks, for news from any place Parent Recap doesn't read itself: a notice copied by hand, or messages a program of the family's own writes (ADR 0044). Parent Recap reads no other app's data; what goes in the folder is up to the family. It isn't part of setup and the setup page has no step for it: the manage skill turns it on and off. A Hosted Household never has it.
+
+1. Ask which folder to read, or keep the default `~/ParentRecap/inbox`
+2. `$FB setup save <<< '{"sources": {"local_files": {"enabled": true}}}'`, adding `"folder": "<path>"` inside `local_files` for another folder. It creates the folder if it isn't there and turns the Source on; a Hosted Household is refused
+3. Tell the user what a file in it may be:
+   - a `.json` file: a list of messages, each `{"time": "2026-09-27T18:05:00+03:00", "chat": "Chinese school", "sender": "Li Wei", "text": "..."}`. `time` (ISO 8601) and `text` are needed; `chat` and `sender` may be left out. A time without an offset is in the Household's timezone, and a message without a chat is in the chat the file's name gives
+   - a `.txt` or `.md` file: the whole file is one message, in the chat its name gives (`Piano notice.txt` is the chat "Piano notice"), at the time it was last changed
+4. `$FB doctor` says how many new messages the next Brief gets from the folder
+
+Notes:
+
+- Only the files right in the folder are read; subfolders, hidden files and other kinds of file are left alone. A file over 5 MB is skipped
+- Parent Recap only reads the folder: it never moves, changes or deletes a file, so old files can stay or be removed by the family whenever they like. Uninstall leaves the folder too
+- Each evening the Brief gets only the messages newer than the last Brief, each once: a message within the Source's lookback (`local_files.lookback_hours`, 26 hours, widened after evenings that were missed, up to a week) that no earlier evening gave. The same message in two files, or a text file saved again unchanged, comes once; a text file changed since is a new message
+- A file that can't be read (not valid JSON, not a list, not UTF-8, a message without a time or text) is skipped and never stops the Brief: the rest of the folder still goes in, and `doctor` names each such file with why. A folder that's gone is said on the Brief's coverage line and by `doctor`
+- Its messages go through the AI filter like every other Source: senders and other people's names, phone numbers, email addresses and links become placeholders, and a message that looks sensitive is held back and listed in the Brief by its chat and sender
+- To turn it off: `$FB setup save <<< '{"sources": {"local_files": {"enabled": false}}}'`. The folder and its files stay
+
 ## Calendar
 
 Whichever mode you pick, an event the model finds goes into the calendar only if it points to a message read that night, and it keeps a link only if that message has the link. The model is also told that message text is data, not instructions: a message in a parent group or an email that tells it to add an event or a link is reported in the Brief instead of followed.
@@ -231,7 +251,7 @@ Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declare
    - the run and the Brief: `lookback`, `counts_events` (the coverage line counts its events)
    - `sender_domain`: the domain of the mail it sends of its own news, which Gmail's sender suggestions leave out once it is connected
    - `doctor`: `check`, and `check_items` when it makes more than one check. Without `check`, `doctor` says nothing of the Source
-   - uninstall: `secrets`, `survey` and `notes`, for what setup made for it and what the family removes themselves
+   - uninstall: `secrets`, `survey` and `notes`, for what setup made for it and what the family removes themselves, and `account`: false for a Source that isn't an account of the family's, such as Local Files, which uninstall's note on accounts then leaves out
    - Held-back Messages ([ADR 0013](adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md)): `sent_to_everyone`, `checked_body`, `group` and `held_back_link`. Without them, a message is held back when in doubt and listed by sender and subject, with no link
    - the calendar: `in_ics`
    - `setup_page`: false for a Source the setup page has no panel for yet, which is set up from a terminal by its own `setup` command, as Eepos and eVaka were before #791; the page's list then leaves it out

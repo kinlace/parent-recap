@@ -38,6 +38,11 @@ whatsapp:
   #   kid: "Kid's full name"     # or both
   #   label: class               # class / football / piano / playdate ...
 
+local_files: # Messages from files you put in a folder (docs/config.md, "Local Files")
+  enabled: false
+  folder: ~/ParentRecap/inbox
+  lookback_hours: 26
+
 google_calendar:
   mode: ics # ics: new events as an email attachment; google: written to Google Calendar; off: no calendar
   ics_include_myclub: false # In ics mode, better to subscribe to MyClub in the calendar app than send it again

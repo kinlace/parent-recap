@@ -37,12 +37,16 @@ _Avoid_: filtered message, hidden message, 敏感消息
 ## Inputs
 
 **Source** (zh 信息源, fi lähde):
-A place messages or events are read from for a Household, such as Gmail, Wilma, WhatsApp, MyClub, Eepos or eVaka.
+A place messages or events are read from for a Household, such as Gmail, Wilma, WhatsApp, MyClub, Eepos, eVaka or Local Files.
 _Avoid_: collector, channel, feed, 采集器, 来源
 
 **Linked Device** (zh 已关联设备, fi linkitetty laite):
 How the WhatsApp Source is read: Parent Recap is paired with a parent's WhatsApp account through a QR code, as WhatsApp Web is paired, and keeps the picked groups' messages. The only way on macOS and Windows alike (ADR 0025, ADR 0027).
 _Avoid_: headless source, wacli or Baileys (in user-facing text)
+
+**Local Files** (zh 本地文件, fi paikalliset tiedostot):
+The Source that reads messages from plain `.json`, `.txt` and `.md` files the family puts in a folder it picks (`~/ParentRecap/inbox` by default), for news from any place Parent Recap doesn't read itself. Parent Recap only reads the folder, never another app's data, and never changes a file in it. Turned on with `manage`; a Hosted Household never has it (ADR 0044).
+_Avoid_: inbox, import, drop folder, export (in user-facing text)
 
 **AI filter** (zh AI 过滤, fi tekoälysuodatin):
 The step on the Mac that every AI call of the evening Brief goes through: Third Parties' names, phone numbers, email addresses and links become placeholders, which the program turns back into the real values before the Brief goes out, and Held-back Messages are left out altogether (ADR 0013). It is on by default, and a parent can turn it off with `manage`.

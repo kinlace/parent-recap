@@ -1,7 +1,7 @@
 """Each Source's fake, at its transport, where the real thing varies (ADR 0022): Gmail's IMAP
 server, the MyClub feed over HTTP, the wilma CLI on Parent Recap's own Node, the Linked
 Device's message store and status file, each Eepos school's portal and each city's eVaka over
-HTTP. FakeSources, the `sources` fixture, installs the fake of
+HTTP, and the Local Files folder. FakeSources, the `sources` fixture, installs the fake of
 each Source in the registry, so the real collectors run in every test of the evening run; FAKES is
 the list it reads.
 
@@ -14,7 +14,8 @@ only the fields its transport carries, and the id the collector makes of it:
   - WhatsApp: its message id;
   - MyClub: the event's UID;
   - Eepos: a calendar entry as its portal's JSON has it (conftest's eepos_entry), not an event;
-  - eVaka: a calendar event as its citizen API's JSON has it (conftest's evaka_event).
+  - eVaka: a calendar event as its citizen API's JSON has it (conftest's evaka_event);
+  - Local Files: the id local_files.message_id makes of it (conftest's local_message).
 A Message older than the Source's lookback is skipped, as the collector skips it.
 """
 from __future__ import annotations
@@ -39,7 +40,7 @@ import requests
 import fake_node
 from family_brief import linked_device, own_node, sources as registry
 from family_brief.config import myclub_links
-from family_brief.collectors import eepos, evaka, gmail, myclub
+from family_brief.collectors import eepos, evaka, gmail, local_files, myclub
 from family_brief.collectors.base import CalendarEvent, Collected, Message
 from fake_system import FakeSecrets
 
@@ -687,9 +688,61 @@ class Evaka(SourceFake):
         return _response(404, "Not Found")
 
 
+# ── Local Files: the folder the family puts files in
+
+class LocalFiles(SourceFake):
+    """The folder Local Files reads (ADR 0044), made as `setup save` makes it when the config turns
+    it on, unless `made` is False. Tonight's Messages are written, each time the collector reads
+    the folder, into one `.json` file, `tonight.json`, as a program of the family's own would
+    write them: each its time, chat, sender and text. A test puts other files in with `write`.
+    An exception tonight is raised reading the folder."""
+    name = "local_files"
+    FILE = "tonight.json"
+
+    def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
+        super().__init__(sources)
+        self.made = True
+        read = local_files.read
+
+        def reading(cfg: Any) -> local_files.Folder:
+            given = self.tonight()
+            if given:
+                self.write(self.FILE, json.dumps([self.entry(m) for m in given], ensure_ascii=False))
+            return read(cfg)
+        mp.setattr(local_files, "read", reading)
+
+    def folder(self) -> Path:
+        section = self.sources.config.get("local_files") or {}
+        folder = section.get("folder") or "~/ParentRecap/inbox"
+        return Path(folder.replace("~", str(self.sources.home), 1))
+
+    def set_up(self) -> None:
+        if self.made and (self.sources.config.get("local_files") or {}).get("enabled"):
+            self.folder().mkdir(parents=True, exist_ok=True)
+
+    def write(self, name: str, text: str | bytes) -> Path:
+        """Puts a file named `name` in the folder, as the family would."""
+        path = self.folder() / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(text, bytes):
+            path.write_bytes(text)
+        else:
+            path.write_text(text, encoding="utf-8")
+        return path
+
+    @staticmethod
+    def entry(m: Message) -> dict[str, Any]:
+        """`m` as a `.json` file has it."""
+        _carries(m, "local_files", {"sender", "chat_name"})
+        assert m.chat_name, f"a Local Files Message from a .json file is in a chat: {m.external_id}"
+        assert m.external_id == local_files.message_id(m.chat_name, m.sender, m.body, m.timestamp), \
+            f"give {m.body!r} the id local_files.message_id makes of it"
+        return {"time": m.timestamp.isoformat(), "chat": m.chat_name, "sender": m.sender, "text": m.body}
+
+
 # The fake of each Source, by its name in the registry.
 FAKES: dict[str, Callable[[FakeSources, pytest.MonkeyPatch], SourceFake]] = {
-    f.name: f for f in (Gmail, MyClub, Wilma, WhatsApp, Eepos, Evaka)}
+    f.name: f for f in (Gmail, MyClub, Wilma, WhatsApp, Eepos, Evaka, LocalFiles)}
 
 
 class FakeSources:
