@@ -1,5 +1,5 @@
 """The nightly `parent-recap run`, end to end: the Brief a normal night makes, failures at the
-edges, odd-shaped replies, a night of Notices only, dated events without a start time, citations,
+edges, a computer that sleeps through the run, odd-shaped replies, a night of Notices only, dated events without a start time, citations,
 untrusted message text, and the feedback links and footer. Assertions are only on what leaves the
 system: the email (text, HTML, attachments), what the model is given, and persisted state."""
 from __future__ import annotations
@@ -112,6 +112,69 @@ def test_failing_model_sends_rule_based_fallback(harness, golden, language):
     golden(f"model_failed.{language}.html", html_for_golden(email.html))
     assert "OAuth" not in email.text  # the raw error never reaches the family
     assert not email.attachments      # no model, no extracted events; MyClub stays out of .ics
+
+
+# ── A computer that sleeps through the run (#887)
+
+@pytest.fixture
+def asleep_until_morning(clocks):
+    """The model's reply, given `answer` (or the exception it raises), once the computer that was
+    closed during the call is opened at 07:00 the next morning."""
+    morning = time_machine.travel(NOW + timedelta(hours=10), tick=False)
+    opened: list[bool] = []
+
+    def replying(answer):
+        def reply(_prompt):
+            if not opened:
+                clocks.sleep(10 * 3600)
+                morning.start()
+                opened.append(True)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        return reply
+    yield replying
+    if opened:
+        morning.stop()
+
+
+def test_a_brief_finished_the_next_morning_keeps_its_evening_and_says_the_computer_slept(
+        harness, asleep_until_morning):
+    normal_night(harness, "en")
+    harness.model_reply = asleep_until_morning(harness.model_reply)
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert email.subject == "Parent Recap · 2026-09-27"
+    assert email.text.startswith("👨‍👩‍👧‍👦 Parent Recap Sun 27 Sep\n\n💤 Your computer went to sleep "
+                                 "during last night's Brief, so it was finished when you opened it.\n")
+    assert "plug" not in email.text.lower()
+    assert sorted(p.name for p in harness.archive_dir.glob("*.md")) == ["2026-09-27.md"]
+
+
+def test_a_model_that_still_fails_after_the_sleep_says_the_computer_slept(harness, asleep_until_morning):
+    normal_night(harness, "en")
+    harness.model_reply = asleep_until_morning(RuntimeError("codex exec timed out twice"))
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert email.text.startswith(
+        "👨‍👩‍👧‍👦 Parent Recap Sun 27 Sep\n\n💤 Your computer went to sleep during last night's Brief, "
+        "so it was finished when you opened it.\n\n⚠️ The Digest still couldn't be written after your "
+        "computer woke up, so here are the raw messages")
+
+
+def test_a_hosted_brief_never_says_a_computer_slept(harness, asleep_until_morning):
+    normal_night(harness, "en")
+    harness.config["hosted"] = True
+    harness.model_reply = asleep_until_morning(harness.model_reply)
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "💤" not in email.text
 
 
 def test_model_reply_without_json_sends_rule_based_fallback(harness):

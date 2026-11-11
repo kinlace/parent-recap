@@ -24,7 +24,7 @@ import pytest
 import requests
 
 from family_brief import gateway as api, llm
-from family_brief.llm import claude, memory
+from family_brief.llm import claude, memory, retry
 from family_brief.llm.backend import LLMReply
 
 # The model's reply when a test gives none: it finds nothing to say, so the night sends no Brief
@@ -205,6 +205,8 @@ class ModelProcess:
         self.replies: Any = dict(QUIET)
         self.calls: list[ProcessCall] = []
         mp.setattr(subprocess, "run", self.run)
+        # The model call itself, which runs the program as subprocess.run would (llm/retry.py).
+        mp.setattr(retry, "_run", lambda cmd, timeout, running, **k: self.run(cmd, timeout=timeout, **k))
 
     def run(self, cmd: list[str], *_a: Any, input: str | None = None, cwd: str | None = None,
             env: dict[str, str] | None = None, stdin: Any = None,

@@ -5,11 +5,14 @@ import logging
 import os
 import re
 import subprocess
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeVar
+
+from .. import slept
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +35,9 @@ WONT_PASS = re.compile(r"not logged in|log ?in again|sign in again|/login|unauth
 _BUSY = re.compile(r"at capacity|overloaded|rate.?limit|too many requests|"
                    rf"{_STATUS}(?:429|5(?:00|02|03|04|29))\b|"
                    r"service unavailable|bad gateway|temporarily unavailable", re.I)
+
+# How often a running call looks whether the computer slept, in seconds it is awake.
+SLEEP_CHECK = 5
 
 # Seams for the tests, which record the pauses on a fake clock.
 _sleep = time.sleep
@@ -64,24 +70,87 @@ class Ran:
     waited: float
 
 
+def _run(cmd: list[str], timeout: int, running: list[subprocess.Popen], *, input: str | None = None,
+         **kwargs) -> subprocess.CompletedProcess:
+    """subprocess.run(cmd, input=input, timeout=timeout) with its text output captured, and the
+    process added to `running`, so that a call the computer slept through can be stopped."""
+    with subprocess.Popen(cmd, stdin=subprocess.PIPE if input is not None else None,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                          **kwargs) as process:
+        running.append(process)
+        try:
+            out, err = process.communicate(input, timeout=timeout)
+        except BaseException:
+            process.kill()
+            process.wait()
+            raise
+        return subprocess.CompletedProcess(process.args, process.poll(), out, err)
+
+
 def run_with_retry(cmd: list[str], timeout: int, what: str, budget: int = CALL_BUDGET,
                    **kwargs) -> Ran:
-    """Run an LLM CLI, retrying as with_retry does. Both CLIs occasionally hang on start."""
+    """Run an LLM CLI, retrying as with_retry does. Both CLIs occasionally hang on start. A try
+    the computer slept through is stopped before it is made again."""
+    running: list[subprocess.Popen] = []
+
+    def stop() -> None:
+        for process in running:
+            if process.poll() is None:
+                process.kill()
+
     proc, waited = with_retry(
-        lambda: subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout, **kwargs),
-        lambda proc: busy_reason(proc, kwargs.get("input")), timeout, what, budget)
+        lambda: _run(cmd, timeout, running, **kwargs),
+        lambda proc: busy_reason(proc, kwargs.get("input")), timeout, what, budget, stop)
     return Ran(proc, waited)
 
 
 _R = TypeVar("_R")
 
 
+class _Slept(Exception):
+    """The computer went to sleep while a call ran."""
+
+
+def _awake_call(call: Callable[[], _R], stop: Callable[[], None]) -> _R:
+    """`call()`, or _Slept once the computer is seen to have slept during it (#887): a sleep
+    stalls the call, whose timeout counts only the time awake, and often drops its connection.
+    The call runs beside the watch and is stopped with `stop` when the computer slept; one that
+    can't be stopped, the gateway's request, ends on its own timeout and its answer is dropped. A
+    call that answered across a sleep keeps its answer; one that failed across one slept."""
+    watch = slept.Watch()
+    done = threading.Event()
+    result: list[tuple[bool, object]] = []
+
+    def work() -> None:
+        try:
+            result.append((True, call()))
+        except BaseException as e:  # raised again below, in the caller's thread
+            result.append((False, e))
+        finally:
+            done.set()
+
+    threading.Thread(target=work, name="model-call", daemon=True).start()
+    while not done.wait(SLEEP_CHECK):
+        if watch.asleep():
+            stop()
+            raise _Slept
+    answered, value = result[0]
+    if answered:
+        return value  # type: ignore[return-value]
+    assert isinstance(value, BaseException)
+    if watch.asleep():
+        raise _Slept from value
+    raise value
+
+
 def with_retry(call: Callable[[], _R], busy_reason: Callable[[_R], str | None], timeout: int,
-               what: str, budget: int) -> tuple[_R, float]:
+               what: str, budget: int, stop: Callable[[], None] = lambda: None) -> tuple[_R, float]:
     """Make one model `call`, retrying once on timeout, and after each of BUSY_PAUSES while
     `busy_reason` says the model is busy, as long as the next try could still end within `budget`
     seconds of the first. Errors waiting won't fix, such as being signed out, come back at once.
-    Returns the last answer and the seconds paused for a busy model."""
+    A try the computer slept through is stopped with `stop` and made again at once: it counts
+    neither as a timeout nor against the budget. Returns the last answer and the seconds paused
+    for a busy model."""
     started = _clock()
     pauses = iter(BUSY_PAUSES)
     waited = 0.0
@@ -90,8 +159,13 @@ def with_retry(call: Callable[[], _R], busy_reason: Callable[[_R], str | None], 
     while True:
         attempt += 1
         log.info("Calling %s (attempt %d)", what, attempt)
+        tried = _clock()
         try:
-            answer = call()
+            answer = _awake_call(call, stop)
+        except _Slept:
+            log.warning("%s: the computer slept during attempt %d; trying again, not counted", what, attempt)
+            started += _clock() - tried
+            continue
         except (subprocess.TimeoutExpired, TimeoutError) as e:
             log.warning("%s timeout on attempt %d (%ds)", what, attempt, timeout)
             if timed_out:

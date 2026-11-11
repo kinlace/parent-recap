@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable, Literal
 from zoneinfo import ZoneInfo
 
-from . import ai_filter, feedback, gateway, languages, last_run, llm, private_files, render, wilma_egress
+from . import ai_filter, feedback, gateway, languages, last_run, llm, private_files, render, slept, wilma_egress
 from . import sources as source_registry
 from .actions import archive, calendar as calendar_action, email as email_action, imessage
 from .brief import Brief, EarlierBrief, RunNotes
@@ -230,7 +230,10 @@ def _nothing_could_be_read(cfg: Config, coverage: dict[str, dict]) -> bool:
 @dataclass
 class _Read:
     """What tonight's run read: the Sources' Messages and events, whether one of those events is
-    tomorrow, what each Source gave (`coverage`), and the earlier Briefs' points, some perhaps due soon."""
+    tomorrow, what each Source gave (`coverage`), and the earlier Briefs' points, some perhaps due
+    soon. `today` is the evening the run started on, which the Brief keeps even when a computer
+    that slept finishes it the next day (#887)."""
+    today: str
     messages: list[Message]
     direct_events: list[CalendarEvent]
     coverage: dict[str, dict]
@@ -243,7 +246,7 @@ class _Read:
         return bool(self.messages or self.direct_events or self.due_soon)
 
 
-def _read(cfg: Config, options: Options, io: IO, state: State) -> _Read:
+def _read(cfg: Config, options: Options, io: IO, state: State, today: str) -> _Read:
     sources = options.sources or cfg.default_sources()
     log.info("Running collectors: %s (dry_run=%s)", sources, options.dry_run or options.preview)
     io.wait_for_network(llm.backend(cfg).probe_host)
@@ -259,10 +262,9 @@ def _read(cfg: Config, options: Options, io: IO, state: State) -> _Read:
         log.warning("%s not read: %s", source, why.reason)
         since = why.since.astimezone(ZoneInfo(cfg.timezone)).isoformat() if why.since else None
         coverage[source] = {"count": 0, "error": why.reason, "since": since}
-    today = today_str(cfg.timezone)
     earlier = io.recent_points(cfg, today)
     tomorrow = date.fromisoformat(today) + timedelta(days=1)
-    return _Read(messages, direct_events, coverage, earlier, archive.has_due_soon(earlier, today),
+    return _Read(today, messages, direct_events, coverage, earlier, archive.has_due_soon(earlier, today),
                  any(e.start.date() == tomorrow for e in direct_events))
 
 
@@ -273,8 +275,9 @@ def _read(cfg: Config, options: Options, io: IO, state: State) -> _Read:
 PREVIEW_BUDGET = 10 * 60
 
 
-def _fallback_brief(messages: list[Message], err: str, t: BriefText, cfg: Config) -> Brief:
-    """Rule-based digest when the LLM call fails. Never leaks the raw error to iMessage."""
+def _fallback_brief(messages: list[Message], err: str, t: BriefText, cfg: Config, slept: bool = False) -> Brief:
+    """Rule-based digest when the LLM call fails. Never leaks the raw error to iMessage. After the
+    computer `slept` during the run, it says the model failed after it woke."""
     # Group by (kid_hint or 'unknown', source)
     buckets: dict[tuple[str, str], list[Message]] = {}
     for m in messages:
@@ -282,7 +285,8 @@ def _fallback_brief(messages: list[Message], err: str, t: BriefText, cfg: Config
         buckets.setdefault(key, []).append(m)
 
     # A Gateway Key out of credit for the day is no fault to look into: it says so, and when it ends.
-    lines = [t.fallback_spent if gateway.spent(err) else t.fallback_header, ""]
+    header = t.fallback_slept if slept else t.fallback_header
+    lines = [t.fallback_spent if gateway.spent(err) else header, ""]
     for (kid, source), msgs in sorted(buckets.items()):
         lines.append(f"**{kid} · {source}**{t.fallback_count.format(count=t.messages(len(msgs)))}")
         for m in msgs[:15]:
@@ -397,7 +401,10 @@ class _Written:
     placeholders: ai_filter.Placeholders | None
 
 
-def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sends: bool) -> _Written:
+def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sends: bool,
+           watch: slept.Watch) -> _Written:
+    """Tonight's Brief. When the computer slept since the run started (`watch`), the Brief says it
+    was finished late; the hosted server doesn't sleep, and its families have no computer to close."""
     if sends:  # a dry run leaves no trace, so it uses what is already there
         languages.prepare_each(cfg, cfg.brief_languages())
     t = languages.text(cfg, cfg.brief_language())
@@ -430,16 +437,20 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
                                      placeholders=placeholders)
         except Exception as e:
             log.error("Summarizer failed: %s (falling back to rule-based digest)", e)
-            brief, notes = _fallback_brief(for_ai, str(e), t, cfg), RunNotes(error=str(e))
+            brief, notes = _fallback_brief(for_ai, str(e), t, cfg, _asleep(cfg, watch)), RunNotes(error=str(e))
     else:
         brief, notes = Brief(), RunNotes()
+    asleep = _asleep(cfg, watch)
+    if asleep:
+        log.warning("The computer slept for %d min during tonight's run, so the Brief says it was finished late",
+                    watch.slept() // 60)
 
     notes.coverage = read.coverage  # kept in the archive for later checks
     if held:  # the messages in the archive that the AI never saw
         notes.held_back = [m.external_id for m in held]
     model_events = extract_calendar_events(brief, cfg.timezone, t.untitled)
     calendar = _write_calendar(cfg, io, state, model_events + read.direct_events, sends, google_ready)
-    date_str = today_str(cfg.timezone)
+    date_str = read.today
     form = feedback.Links(cfg, date_str, _form_people(cfg, placeholders, for_ai, read.earlier)) \
         if cfg.feedback.active() else None
     night = render.Night(
@@ -450,8 +461,12 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         # Source events listed before or Held-back Messages asks no model: nothing to judge and no model to credit.
         model_wrote=asks_model and notes.error is None, form=form,
         stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg),
-        hosted=cfg.hosted)
+        hosted=cfg.hosted, slept=asleep)
     return _Written(night, notes, for_ai, held, model_events, placeholders)
+
+
+def _asleep(cfg: Config, watch: slept.Watch) -> bool:
+    return not cfg.hosted and watch.asleep()
 
 
 def _form_people(cfg: Config, placeholders: ai_filter.Placeholders | None, for_ai: list[Message],
@@ -480,7 +495,7 @@ def _versions(cfg: Config, written: _Written) -> list[render.Version]:
         if translated is None:
             # The model is down, so there is nothing to translate; the raw list comes in their words.
             assert error is not None
-            return render.Version(t, to, _fallback_brief(written.for_ai, error, t, cfg))
+            return render.Version(t, to, _fallback_brief(written.for_ai, error, t, cfg, written.night.slept))
         events = extract_calendar_events(translated, cfg.timezone, t.untitled)
         return render.Version(t, to, translated, {
             (ev.title, ev.start_iso()): tev for ev, tev in zip(written.model_events, events)})
@@ -547,7 +562,7 @@ def _send_nothing_read(cfg: Config, io: IO, read: _Read) -> None:
     languages.prepare_each(cfg, cfg.brief_languages())
     readers = [(languages.text(cfg, language), to)
                for language, to in cfg.brief_recipients_by_language().items()] if cfg.email.enabled else []
-    for item in render.nothing_read(read.coverage, today_str(cfg.timezone), llm.backend(cfg).display_name,
+    for item in render.nothing_read(read.coverage, read.today, llm.backend(cfg).display_name,
                                     languages.text(cfg, cfg.brief_language()), readers, email_action.write_to(cfg),
                                     cfg.imessage.recipients if cfg.sends_imessage() else [], cfg.hosted):
         _send(cfg, io, "email" if isinstance(item, render.Mail) else "imessage", lambda: item)
@@ -586,6 +601,7 @@ def _quiet_night(state: State, coverage: dict[str, dict], sends: bool) -> int:
 
 def run(cfg: Config, options: Options, io: IO) -> int:
     """Tonight's evening run on `cfg`, which it leaves as it was given."""
+    watch, today = slept.Watch(), today_str(cfg.timezone)  # the evening it started, kept if it ends tomorrow
     cfg = cfg.model_copy(deep=True)  # tonight's lookbacks are tonight's alone
     if options.lookback_hours is not None:
         for _, source_cfg in _windows(cfg):
@@ -596,7 +612,7 @@ def run(cfg: Config, options: Options, io: IO) -> int:
     if options.lookback_hours is None:
         catch_up_lookback(cfg, state)
 
-    read = _read(cfg, options, io, state)
+    read = _read(cfg, options, io, state, today)
     tonight = plan(options, anything_new=read.anything_new,
                    nothing_could_be_read=_nothing_could_be_read(cfg, read.coverage))
     if tonight.ending == "nothing_read":
@@ -611,7 +627,7 @@ def run(cfg: Config, options: Options, io: IO) -> int:
             log.info("Nothing new; exiting.")
         return _quiet_night(state, read.coverage, tonight.sends)
 
-    written = _write(cfg, options, io, state, read, tonight.sends)
+    written = _write(cfg, options, io, state, read, tonight.sends, watch)
     night = written.night
     tonight = plan(options, anything_new=True, nothing_could_be_read=_nothing_could_be_read(cfg, read.coverage),
                    nothing_to_show=render.nothing_to_show(night))

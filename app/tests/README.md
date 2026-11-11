@@ -92,7 +92,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_local_files_collector.py` | Local Files' collector on a real folder: each kind of file, what it skips and why, the window, once each     |
 | `test_llm_claude.py`            | The Claude adapter, run isolated from the family's own Claude Code                                           |
 | `test_llm_codex.py`             | The Codex adapter, and a busy model tried again after pauses                                                 |
-| `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, its checks                                            |
+| `test_llm_gateway.py`           | The gateway adapter: what its HTTP answers mean, busy, a call the computer slept through, its checks         |
 | `test_setup_claude_token.py`    | The older Terminal script that stores the Claude token                                                       |
 | `test_setup_google_calendar.py` | The Google Calendar authorization script                                                                     |
 | `test_state.py`                 | The state file saved whole, so a reader never sees half of it                                                |
@@ -192,6 +192,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_user_path_windows.py`     | Windows PATH: the user's Path in the registry             |
 | `test_entries_windows.py`       | Windows entries: Start menu shortcuts                     |
 | `test_windows_only.py`          | What only Windows checks for the evening run              |
+| `test_model_process.py`         | The model's program run for real; a try slept through stopped |
 | `test_secrets_linux.py`         | Linux secrets: owner-only files, written for real         |
 | `test_user_path_linux.py`       | Linux PATH: links in `~/.local/bin`                       |
 | `test_desktop_linux.py`         | Linux desktop: a printed link, the locale's languages     |
@@ -251,7 +252,8 @@ it, and reach each fixture's fakes by its attributes (`harness.sources`, `.model
 the harness's one `subprocess.run` fake (`Processes`): the macOS-only features ADR 0020 leaves
 out (iMessage, `open` for the Passwords app), the Sources' own programs, and Claude Code's and
 Codex's sign-in and plugin commands. A model call never does. `conftest.py` also has `pauses`
-(a busy model's pauses, on a fake clock), `golden`, `login_shell`, `windows_programs` (programs
+(a busy model's pauses, on a fake clock), `clocks` (the computer's awake and wall clocks, which a
+sleep moves apart), `golden`, `login_shell`, `windows_programs` (programs
 found as Windows finds them, on any system), `credential_manager`, and the builders `msg`,
 `local_message`, `myclub_event`, `eepos_entry`, `eepos_student`, `evaka_event`, `evaka_child`, `evaka_thread` and
 `evaka_sensitive_thread`.
