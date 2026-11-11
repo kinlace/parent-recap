@@ -25,7 +25,6 @@ from .config import Config
 from .state import State
 from .summarize import add_the_nights_people, extract_calendar_events, for_the_ai, placeholders_for, summarize
 from .translate import per_language, translate
-from .utils.dates import today_str
 
 log = logging.getLogger("family_brief")
 
@@ -231,9 +230,9 @@ def _nothing_could_be_read(cfg: Config, coverage: dict[str, dict]) -> bool:
 class _Read:
     """What tonight's run read: the Sources' Messages and events, whether one of those events is
     tomorrow, what each Source gave (`coverage`), and the earlier Briefs' points, some perhaps due
-    soon. `today` is the evening the run started on, which the Brief keeps even when a computer
-    that slept finishes it the next day (#887)."""
-    today: str
+    soon. `started` is when the run started, in the Household's zone: the Brief is for that
+    evening even when a computer that slept finishes it the next day (#887)."""
+    started: datetime
     messages: list[Message]
     direct_events: list[CalendarEvent]
     coverage: dict[str, dict]
@@ -242,11 +241,15 @@ class _Read:
     event_tomorrow: bool
 
     @property
+    def today(self) -> str:
+        return self.started.strftime("%Y-%m-%d")
+
+    @property
     def anything_new(self) -> bool:
         return bool(self.messages or self.direct_events or self.due_soon)
 
 
-def _read(cfg: Config, options: Options, io: IO, state: State, today: str) -> _Read:
+def _read(cfg: Config, options: Options, io: IO, state: State, started: datetime) -> _Read:
     sources = options.sources or cfg.default_sources()
     log.info("Running collectors: %s (dry_run=%s)", sources, options.dry_run or options.preview)
     io.wait_for_network(llm.backend(cfg).probe_host)
@@ -262,9 +265,10 @@ def _read(cfg: Config, options: Options, io: IO, state: State, today: str) -> _R
         log.warning("%s not read: %s", source, why.reason)
         since = why.since.astimezone(ZoneInfo(cfg.timezone)).isoformat() if why.since else None
         coverage[source] = {"count": 0, "error": why.reason, "since": since}
+    today = started.strftime("%Y-%m-%d")
     earlier = io.recent_points(cfg, today)
-    tomorrow = date.fromisoformat(today) + timedelta(days=1)
-    return _Read(today, messages, direct_events, coverage, earlier, archive.has_due_soon(earlier, today),
+    tomorrow = started.date() + timedelta(days=1)
+    return _Read(started, messages, direct_events, coverage, earlier, archive.has_due_soon(earlier, today),
                  any(e.start.date() == tomorrow for e in direct_events))
 
 
@@ -434,16 +438,18 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
             already_captured = [e.to_dict() for e in read.direct_events]
             brief, notes = summarize(cfg, for_ai, upcoming, already_captured, read.earlier,
                                      budget=PREVIEW_BUDGET if options.preview else llm.CALL_BUDGET,
-                                     placeholders=placeholders)
+                                     placeholders=placeholders, now=read.started)
         except Exception as e:
             log.error("Summarizer failed: %s (falling back to rule-based digest)", e)
-            brief, notes = _fallback_brief(for_ai, str(e), t, cfg, _asleep(cfg, watch)), RunNotes(error=str(e))
+            brief, notes = Brief(), RunNotes(error=str(e))
     else:
         brief, notes = Brief(), RunNotes()
-    asleep = _asleep(cfg, watch)
+    asleep = not cfg.hosted and watch.asleep()  # the server doesn't sleep, nor is it "your computer"
     if asleep:
         log.warning("The computer slept for %d min during tonight's run, so the Brief says it was finished late",
                     watch.slept() // 60)
+    if notes.error is not None:
+        brief = _fallback_brief(for_ai, notes.error, t, cfg, asleep)
 
     notes.coverage = read.coverage  # kept in the archive for later checks
     if held:  # the messages in the archive that the AI never saw
@@ -465,10 +471,6 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
     return _Written(night, notes, for_ai, held, model_events, placeholders)
 
 
-def _asleep(cfg: Config, watch: slept.Watch) -> bool:
-    return not cfg.hosted and watch.asleep()
-
-
 def _form_people(cfg: Config, placeholders: ai_filter.Placeholders | None, for_ai: list[Message],
                  earlier: list[EarlierBrief]) -> ai_filter.Placeholders:
     """The placeholders the pilot feedback links carry for other people: tonight's, as the AI saw
@@ -488,7 +490,8 @@ def _versions(cfg: Config, written: _Written) -> list[render.Version]:
     original = cfg.brief_language()
 
     def translate_into(language: Language) -> Brief | None:
-        return None if error is not None else translate(cfg, brief, original, language, written.placeholders)
+        return None if error is not None else translate(cfg, brief, original, language, written.placeholders,
+                                                        written.night.date)
 
     def in_language(language: Language, to: list[str], translated: Brief | None) -> render.Version:
         t = languages.text(cfg, language)
@@ -601,7 +604,8 @@ def _quiet_night(state: State, coverage: dict[str, dict], sends: bool) -> int:
 
 def run(cfg: Config, options: Options, io: IO) -> int:
     """Tonight's evening run on `cfg`, which it leaves as it was given."""
-    watch, today = slept.Watch(), today_str(cfg.timezone)  # the evening it started, kept if it ends tomorrow
+    # The evening the run started, kept if it ends tomorrow, and whether the computer slept since.
+    watch, started = slept.Watch(), datetime.now(ZoneInfo(cfg.timezone))
     cfg = cfg.model_copy(deep=True)  # tonight's lookbacks are tonight's alone
     if options.lookback_hours is not None:
         for _, source_cfg in _windows(cfg):
@@ -612,7 +616,7 @@ def run(cfg: Config, options: Options, io: IO) -> int:
     if options.lookback_hours is None:
         catch_up_lookback(cfg, state)
 
-    read = _read(cfg, options, io, state, today)
+    read = _read(cfg, options, io, state, started)
     tonight = plan(options, anything_new=read.anything_new,
                    nothing_could_be_read=_nothing_could_be_read(cfg, read.coverage))
     if tonight.ending == "nothing_read":

@@ -394,9 +394,10 @@ def summarize(cfg: Config, messages: list[Message],
               already_captured: list[dict] | None = None,
               earlier_briefs: list[EarlierBrief] | None = None,
               budget: int = CALL_BUDGET,
-              placeholders: ai_filter.Placeholders | None = None) -> tuple[Brief, RunNotes]:
+              placeholders: ai_filter.Placeholders | None = None,
+              now: datetime | None = None) -> tuple[Brief, RunNotes]:
     brief, notes, _ = summarize_reply(cfg, messages, upcoming_events, already_captured, earlier_briefs,
-                                      budget=budget, placeholders=placeholders)
+                                      budget=budget, placeholders=placeholders, now=now)
     return brief, notes
 
 

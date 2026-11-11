@@ -206,7 +206,7 @@ EN = BriefText(
     fallback_more="  …{n} more in the archive",
     reply_incomplete="⚠️ {assistant}'s reply tonight was cut off, so this Brief may be missing some items. "
                      "All of tonight's messages are in the archive in ~/ParentRecap.",
-    slept="💤 Your computer went to sleep during last night's Brief, so it was finished when you opened it.",
+    slept="💤 Your computer went to sleep while making this Brief, so it was finished when you opened it.",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
     held_back="🔒 Held-back messages",
@@ -297,7 +297,7 @@ ZH = BriefText(
     fallback_count="（{count}）",
     fallback_more="  …另外 {n} 条，见归档",
     reply_incomplete="⚠️ 今晚 {assistant} 的回复不完整，这份日报可能漏了几条。今晚的原始消息都在 ~/ParentRecap 归档里。",
-    slept="💤 昨晚生成日报时电脑进入了睡眠，所以这份日报是你打开电脑后才完成的。",
+    slept="💤 生成这份日报时电脑进入了睡眠，所以它是你打开电脑后才完成的。",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ 今晚的日报没能翻译成功，下面是原文。",
     held_back="🔒 未交给 AI 的消息",
@@ -380,7 +380,7 @@ FI = BriefText(
     fallback_more="  …arkistossa vielä {n} lisää",
     reply_incomplete="⚠️ {assistant}-avustajan vastaus jäi tänä iltana kesken, joten koosteesta voi puuttua "
                      "joitakin kohtia. Kaikki tämäniltaiset viestit ovat tallessa arkistossa ~/ParentRecap.",
-    slept="💤 Tietokone meni lepotilaan eilisillan koosteen aikana, joten kooste valmistui vasta, kun avasit sen.",
+    slept="💤 Tietokone meni lepotilaan tämän koosteen tekemisen aikana, joten kooste valmistui vasta, kun avasit sen.",
     message_unreadable="yhtä viestiä ei voitu lukea",
     nothing_read="⚠️ Yhtäkään lähdettä ei voitu lukea tänä iltana, joten yhteenvetoa ei ole. Lähteiden viestit "
                  "tulevat mukaan ensimmäiseen koosteeseen, kun lähteet saadaan taas luettua.",

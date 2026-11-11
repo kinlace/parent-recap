@@ -192,7 +192,6 @@ slowest tests, so add one for a main path, not for each result.
 | `test_user_path_windows.py`     | Windows PATH: the user's Path in the registry             |
 | `test_entries_windows.py`       | Windows entries: Start menu shortcuts                     |
 | `test_windows_only.py`          | What only Windows checks for the evening run              |
-| `test_model_process.py`         | The model's program run for real; a try slept through stopped |
 | `test_secrets_linux.py`         | Linux secrets: owner-only files, written for real         |
 | `test_user_path_linux.py`       | Linux PATH: links in `~/.local/bin`                       |
 | `test_desktop_linux.py`         | Linux desktop: a printed link, the locale's languages     |
@@ -202,6 +201,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_brief_by_hand_windows.py` | A Brief started by hand on Windows                        |
 | `test_setup_page_windows.py`    | The setup page from a fresh install to Finish, on Windows |
 | `test_setup_wilma_windows.py`   | The Wilma sign-in window on Windows                       |
+| `test_model_process.py`         | The model's program run for real; a try slept through stopped |
 
 ## Script tests
 

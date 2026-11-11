@@ -148,9 +148,20 @@ def test_a_brief_finished_the_next_morning_keeps_its_evening_and_says_the_comput
     [email] = harness.sent
     assert email.subject == "Parent Recap · 2026-09-27"
     assert email.text.startswith("👨‍👩‍👧‍👦 Parent Recap Sun 27 Sep\n\n💤 Your computer went to sleep "
-                                 "during last night's Brief, so it was finished when you opened it.\n")
+                                 "while making this Brief, so it was finished when you opened it.\n")
     assert "plug" not in email.text.lower()
     assert sorted(p.name for p in harness.archive_dir.glob("*.md")) == ["2026-09-27.md"]
+
+
+def test_a_translation_made_the_next_morning_is_told_the_evening_s_tomorrow(harness, golden, asleep_until_morning):
+    two_languages(harness)
+    brief, translation = harness.model_reply
+    harness.model_reply = [asleep_until_morning(brief), translation]
+
+    assert harness.run() == 0
+
+    _, translate = harness.model_calls
+    golden("two_languages.translate.masked.model.txt", model_call_for_golden(translate))
 
 
 def test_a_model_that_still_fails_after_the_sleep_says_the_computer_slept(harness, asleep_until_morning):
@@ -161,7 +172,7 @@ def test_a_model_that_still_fails_after_the_sleep_says_the_computer_slept(harnes
 
     [email] = harness.sent
     assert email.text.startswith(
-        "👨‍👩‍👧‍👦 Parent Recap Sun 27 Sep\n\n💤 Your computer went to sleep during last night's Brief, "
+        "👨‍👩‍👧‍👦 Parent Recap Sun 27 Sep\n\n💤 Your computer went to sleep while making this Brief, "
         "so it was finished when you opened it.\n\n⚠️ The Digest still couldn't be written after your "
         "computer woke up, so here are the raw messages")
 
