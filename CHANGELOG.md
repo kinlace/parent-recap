@@ -2,6 +2,12 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## 0.17.1 · 2026-11-11
+
+### Fixed
+
+- A laptop that goes to sleep during the evening run, such as a MacBook closed on battery, now finishes a real Brief, dated for that evening, soon after it's opened, instead of sending the raw message list as an AI failure. The Brief starts with a line saying the computer slept. While the laptop stays closed overnight it makes no new AI requests, so a family on the maintainers' gateway doesn't use up its daily credit before the morning. The README's FAQ says why a closed laptop's Brief can come the next morning.
+
 ## 0.17.0 · 2026-11-11
 
 ### Added
