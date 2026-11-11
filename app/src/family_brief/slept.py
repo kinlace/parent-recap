@@ -28,6 +28,10 @@ class Watch:
     def __init__(self) -> None:
         self._awake, self._wall = _awake(), _wall()
 
+    def awake(self) -> float:
+        """Seconds the computer was awake since the watch started."""
+        return _awake() - self._awake
+
     def slept(self) -> float:
         """Seconds the computer was asleep since the watch started."""
         return max(0.0, (_wall() - self._wall) - (_awake() - self._awake))

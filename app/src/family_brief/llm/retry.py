@@ -38,10 +38,17 @@ _BUSY = re.compile(r"at capacity|overloaded|rate.?limit|too many requests|"
 
 # How often a running call looks whether the computer slept, in seconds it is awake.
 SLEEP_CHECK = 5
+# How long the computer must stay awake after a sleep before the call is made again, in seconds. A
+# closed laptop on battery wakes for a few seconds about every 16 minutes all night (#887's pmset
+# log); a try made on each of those would be stopped by the next sleep, and a gateway request,
+# which can't be stopped, is paid for each time. A minute awake is an opened laptop.
+AWAKE_AGAIN = 60
 
 # Seams for the tests, which record the pauses on a fake clock.
 _sleep = time.sleep
 _clock = time.monotonic
+# The wait between looks for whether the computer is awake again, a seam of its own for the tests.
+_nap = time.sleep
 
 
 def busy_reason(proc: subprocess.CompletedProcess, prompt: str | None) -> str | None:
@@ -146,13 +153,22 @@ def _awake_call(call: Callable[[], _R], stop: Callable[[], None]) -> _R:
     raise value
 
 
+def _until_awake() -> None:
+    """Return once the computer has been awake AWAKE_AGAIN seconds without sleeping."""
+    watch = slept.Watch()
+    while watch.awake() < AWAKE_AGAIN:
+        _nap(SLEEP_CHECK)
+        if watch.asleep():
+            watch = slept.Watch()
+
+
 def with_retry(call: Callable[[], _R], busy_reason: Callable[[_R], str | None], timeout: int,
                what: str, budget: int, stop: Callable[[], None] = lambda: None) -> tuple[_R, float]:
     """Make one model `call`, retrying once on timeout, and after each of BUSY_PAUSES while
     `busy_reason` says the model is busy, as long as the next try could still end within `budget`
     seconds of the first. Errors waiting won't fix, such as being signed out, come back at once.
-    A try the computer slept through is stopped with `stop` and made again at once: it counts
-    neither as a timeout nor against the budget. Returns the last answer and the seconds paused
+    A try the computer slept through is stopped with `stop` and made again once the computer has
+    stayed awake AWAKE_AGAIN seconds: it counts neither as a timeout nor against the budget. Returns the last answer and the seconds paused
     for a busy model."""
     started = _clock()
     pauses = iter(BUSY_PAUSES)
@@ -166,7 +182,9 @@ def with_retry(call: Callable[[], _R], busy_reason: Callable[[_R], str | None], 
         try:
             answer = _awake_call(call, stop)
         except _Slept:
-            log.warning("%s: the computer slept during attempt %d; trying again, not counted", what, attempt)
+            log.warning("%s: the computer slept during attempt %d; trying again once it stays awake, "
+                        "not counted", what, attempt)
+            _until_awake()
             started += _clock() - tried
             continue
         except (subprocess.TimeoutExpired, TimeoutError) as e:

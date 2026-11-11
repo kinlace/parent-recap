@@ -332,15 +332,21 @@ class Clocks:
     def sleep(self, seconds: float) -> None:
         self.wall += seconds
 
+    def stay_awake(self, seconds: float) -> None:
+        self.awake += seconds
+        self.wall += seconds
+
 
 @pytest.fixture
 def clocks(monkeypatch: pytest.MonkeyPatch) -> Clocks:
     """The computer's two clocks, which a test moves, and a running model call that looks at them
-    every hundredth of a second."""
+    every hundredth of a second. Waiting for the computer to stay awake after a sleep moves both
+    clocks on instead of being slept."""
     fake = Clocks()
     monkeypatch.setattr(slept, "_awake", lambda: fake.awake)
     monkeypatch.setattr(slept, "_wall", lambda: fake.wall)
     monkeypatch.setattr(retry, "SLEEP_CHECK", 0.01)
+    monkeypatch.setattr(retry, "_nap", fake.stay_awake)
     return fake
 
 

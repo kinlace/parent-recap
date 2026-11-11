@@ -15,6 +15,7 @@ import requests
 from fake_model import FailedCall, GatewayServer, HTTPReply
 from family_brief import gateway as api, llm, setup_ai
 from family_brief.config import LLMConfig
+from family_brief.llm import retry
 
 KEY = "sk-bf-fake-gateway-key"
 URL = "https://gateway.example.test"
@@ -227,6 +228,35 @@ def test_a_call_the_computer_slept_through_is_made_again_without_counting_as_a_t
     assert reply.data == REPLY  # the Brief, not the fallback: the one real timeout is the first
     assert len(server.requests) == 3
     assert "the computer slept during attempt 1" in caplog.text
+
+
+def test_a_night_of_short_wakes_makes_no_new_request_until_the_laptop_is_opened(
+        gateway, server, pauses, clocks, monkeypatch):
+    # A closed laptop on battery: a few seconds awake about every 16 minutes all night (#887's
+    # pmset log), then opened. Each short wake sees the sleep; none of them may send a request,
+    # which the gateway would charge for.
+    night = [(3, 960)] * 40
+    def wake_briefly_then_open(seconds: float) -> None:
+        if night:
+            awake, asleep = night[0]
+            clocks.stay_awake(min(seconds, awake))
+            night[0] = (awake - seconds, asleep)
+            if night[0][0] <= 0:
+                clocks.sleep(asleep)
+                night.pop(0)
+        else:
+            clocks.stay_awake(seconds)
+    monkeypatch.setattr(retry, "SLEEP_CHECK", 1)
+    monkeypatch.setattr(retry, "_nap", wake_briefly_then_open)
+
+    def asleep_at_once(_prompt):
+        clocks.sleep(960)
+        raise requests.ReadTimeout("read timed out")
+    server.replies = [asleep_at_once, REPLY]
+
+    assert gateway.run("p", "s", timeout=300, budget=llm.CALL_BUDGET).data == REPLY
+    assert not night  # the whole night went by before the second request
+    assert len(server.requests) == 2 and pauses == []
 
 
 def test_a_call_still_hanging_after_a_sleep_is_left_and_made_again_at_once(gateway, server, pauses, clocks):
