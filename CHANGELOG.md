@@ -2,6 +2,17 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## 0.17.0 · 2026-11-11
+
+### Added
+
+- A family running Parent Recap on its own computer can ask Claude or Codex to turn on Local Files: the messages in the `.json`, `.txt` and `.md` files they put in a folder (`~/ParentRecap/inbox` by default) go into the Brief each evening, through the AI filter like every other Source. Parent Recap only reads the folder and never changes or deletes a file.
+- A hosted family whose Kids use the Helsinki or Vantaa Wilma can sign up and have Wilma read each evening, and on a night Wilma can't be reached its Brief says so plainly instead of naming a failed login.
+
+### Changed
+
+- Hosted families get each new release the morning after it comes out, the same as families on their own computers, without waiting for a maintainer to update the server.
+
 ## 0.16.0 · 2026-11-09
 
 ### Changed
