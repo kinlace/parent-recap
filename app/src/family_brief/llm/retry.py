@@ -130,10 +130,13 @@ def _awake_call(call: Callable[[], _R], stop: Callable[[], None]) -> _R:
             done.set()
 
     threading.Thread(target=work, name="model-call", daemon=True).start()
-    while not done.wait(SLEEP_CHECK):
-        if watch.asleep():
-            stop()
-            raise _Slept
+    try:
+        while not done.wait(SLEEP_CHECK):
+            if watch.asleep():
+                raise _Slept
+    except BaseException:  # slept, or the run was stopped (Ctrl-C): no program is left running
+        stop()
+        raise
     answered, value = result[0]
     if answered:
         return value  # type: ignore[return-value]

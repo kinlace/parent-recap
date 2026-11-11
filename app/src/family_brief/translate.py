@@ -150,15 +150,16 @@ def _merge(original: Brief, reply: Brief, src: BriefText, dst: BriefText) -> Bri
 
 
 def translate(cfg: Config, brief: Brief, original: Language, target: Language,
-              placeholders: ai_filter.Placeholders | None = None) -> Brief:
+              placeholders: ai_filter.Placeholders | None = None, today: str | None = None) -> Brief:
     """`brief`, written in `original`, as a Recipient reading `target` gets it. Raises when the
     model call fails or its reply doesn't carry the same Brief; the caller then sends the original.
-    `placeholders` are the run's, so the model sees each value as the Brief's call did."""
+    `placeholders` are the run's, so the model sees each value as the Brief's call did. `today` is
+    the evening the Brief is for, the Household's today when None."""
     if not _has_text(brief):  # e.g. a night with only MyClub events: nothing for the model to do
         return brief
     src, dst = languages.text(cfg, original), languages.text(cfg, target)
     log.info("Translating the Brief from %s into %s", original, target)
-    tomorrow = date.fromisoformat(today_str(cfg.timezone)) + timedelta(days=1)
+    tomorrow = date.fromisoformat(today or today_str(cfg.timezone)) + timedelta(days=1)
     # Restored before the checks, which compare links with the original's.
     payload = for_translation(brief, lambda what: _unprefixed(what, src))
     reply = parse(call_llm_filtered(cfg, "", payload,
