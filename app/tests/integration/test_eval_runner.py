@@ -83,6 +83,7 @@ def model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         return subprocess.CompletedProcess(cmd, 0, json.dumps(envelope), "")
 
     monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(retry, "_run", lambda cmd, timeout, running, **k: run(cmd, timeout=timeout, **k))
     return state
 
 

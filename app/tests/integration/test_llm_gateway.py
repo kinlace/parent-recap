@@ -1,11 +1,13 @@
 """The gateway adapter of the llm package (ADR 0023): the maintainers' gateway called with the
-Gateway Key (ADR 0014), what its HTTP answers mean, a busy gateway tried again, doctor's check
-and setup's test call. The gateway is fake_model.GatewayServer, the secrets store the `system`
-fixture's, and the pauses are on the `pauses` fixture's clock."""
+Gateway Key (ADR 0014), what its HTTP answers mean, a busy gateway tried again, a call the
+computer slept through made again, doctor's check and setup's test call. The gateway is
+fake_model.GatewayServer, the secrets store the `system` fixture's, the pauses are on the
+`pauses` fixture's clock and a sleep on the `clocks` fixture's."""
 from __future__ import annotations
 
 import json
 import logging
+import threading
 
 import pytest
 import requests
@@ -210,6 +212,58 @@ def test_a_call_that_times_out_twice_fails(gateway, server, pauses):
         gateway.run("p", "s", timeout=60, budget=llm.CALL_BUDGET)
 
     assert len(server.requests) == 2
+
+
+def test_a_call_the_computer_slept_through_is_made_again_without_counting_as_a_timeout(
+        gateway, server, pauses, clocks, caplog):
+    def asleep_all_night(_prompt):
+        clocks.sleep(10 * 3600)
+        raise requests.ReadTimeout("read timed out")
+    server.replies = [asleep_all_night, requests.ReadTimeout("read timed out"), REPLY]
+
+    with caplog.at_level(logging.WARNING):
+        reply = gateway.run("p", "s", timeout=300, budget=llm.CALL_BUDGET)
+
+    assert reply.data == REPLY  # the Brief, not the fallback: the one real timeout is the first
+    assert len(server.requests) == 3
+    assert "the computer slept during attempt 1" in caplog.text
+
+
+def test_a_call_still_hanging_after_a_sleep_is_left_and_made_again_at_once(gateway, server, pauses, clocks):
+    woke = threading.Event()
+
+    def hangs_across_a_sleep(_prompt):
+        clocks.sleep(3600)
+        woke.wait(10)  # the connection the sleep dropped, which would answer only on its timeout
+        raise requests.ReadTimeout("read timed out")
+    server.replies = [hangs_across_a_sleep, REPLY]
+
+    try:
+        assert gateway.run("p", "s", timeout=300, budget=llm.CALL_BUDGET).data == REPLY
+    finally:
+        woke.set()
+
+    assert len(server.requests) == 2 and pauses == []
+
+
+def test_a_call_that_answers_across_a_short_nap_keeps_its_answer(gateway, server, clocks):
+    def answers_after_a_sleep(_prompt):
+        clocks.sleep(3600)
+        return REPLY
+    server.replies = [answers_after_a_sleep]
+
+    assert gateway.run("p", "s", timeout=300, budget=llm.CALL_BUDGET).data == REPLY
+    assert len(server.requests) == 1
+
+
+def test_a_clock_moved_less_than_a_minute_is_not_a_sleep(gateway, server, pauses, clocks):
+    def adjusted(_prompt):
+        clocks.sleep(30)
+        raise requests.ReadTimeout("read timed out")
+    server.replies = [adjusted, adjusted]
+
+    with pytest.raises(RuntimeError, match="timed out twice"):
+        gateway.run("p", "s", timeout=300, budget=llm.CALL_BUDGET)
 
 
 def test_a_gateway_that_cannot_be_reached_fails_at_once_saying_where(gateway, server, pauses):

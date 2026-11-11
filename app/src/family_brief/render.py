@@ -407,10 +407,12 @@ def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: 
     return "\n".join(parts)
 
 
-def _top_note(incomplete: bool, t: BriefText, assistant: str, translation_note: str = "") -> str:
-    """The warnings at the top of the Brief: its translation failed, or the model's reply was cut off."""
+def _top_note(incomplete: bool, t: BriefText, assistant: str, translation_note: str = "",
+              slept: bool = False) -> str:
+    """The notes at the top of the Brief: the computer slept during the run, so it came late; its
+    translation failed; or the model's reply was cut off."""
     cut_off = t.reply_incomplete.format(assistant=assistant) if incomplete else ""
-    return "\n".join(note for note in (translation_note, cut_off) if note)
+    return "\n".join(note for note in (t.slept if slept else "", translation_note, cut_off) if note)
 
 
 def _brief_text(brief: Brief, created: list[dict], date_str: str, t: BriefText, tz: str,
@@ -473,6 +475,9 @@ class Night:
     # reads (the gateway's, ADR 0028); None when the Household's own Gmail sends it.
     write_to: str | None = None
     hosted: bool = False  # a Hosted Household's, which the footer says, or the family's own computer's
+    # The computer went to sleep during the run, so the Brief was finished when it woke (#887). It
+    # alone doesn't make a quiet night's Brief worth sending.
+    slept: bool = False
 
     @property
     def subject(self) -> str:
@@ -483,7 +488,8 @@ class Night:
         return _brief_text(self.brief, self.created, self.date, self.t, self.tz,
                            _coverage_note(self.coverage, self.t, self.hosted),
                            _calendar_note(self.calendar_problem, bool(self.ics_events), self.t, self.assistant),
-                           _top_note(self.incomplete, self.t, self.assistant), self.held_back, self.assistant)
+                           _top_note(self.incomplete, self.t, self.assistant, slept=self.slept),
+                           self.held_back, self.assistant)
 
 
 @dataclass(frozen=True)
@@ -569,7 +575,7 @@ def mail(night: Night, v: Version) -> Mail:
     listed = v.translated_list(night.created)
     coverage_note = _coverage_note(night.coverage, t, night.hosted)
     calendar_note = _calendar_note(night.calendar_problem, bool(night.ics_events), t, assistant)
-    top_note = _top_note(night.incomplete, t, assistant, v.translation_note)
+    top_note = _top_note(night.incomplete, t, assistant, v.translation_note, night.slept)
     attachments = [(f"parent-recap-{night.date}.ics",
                     ics_action.build(night.ics_events, night.tz, night.stamp, v.translated_event),
                     "text/calendar")] if night.ics_events else []
@@ -611,7 +617,8 @@ def preview(night: Night) -> dict[str, str | None]:
                              coverage=_coverage_note(night.coverage, t, night.hosted),
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
                              feedback_link=form.link if form and night.model_wrote else None,
-                             top_note=_top_note(night.incomplete, t, assistant), held_back=night.held_back,
+                             top_note=_top_note(night.incomplete, t, assistant, slept=night.slept),
+                             held_back=night.held_back,
                              assistant=assistant, end_html=end.html())
     wrong = form.link(feedback.DIGEST_WRONG, _shown_digest(night.brief, t) if night.model_wrote else "") \
         if form else None

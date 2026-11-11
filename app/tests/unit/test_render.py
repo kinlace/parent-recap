@@ -232,6 +232,24 @@ def test_night_the_model_failed(golden, language):
     assert not mail.attachments
 
 
+@pytest.mark.parametrize("language", ["en", "zh", "fi"])
+def test_night_the_computer_slept_through(golden, language):
+    reply, sources = the_normal_night(language)
+    t = TEXT[language]
+    night = brief_of(written(reply, sources), t, slept=True)
+
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT, PARTNER], night.brief)], []))
+
+    check(golden, f"slept.{language}", mail)
+    assert mail.text.split("\n")[2] == t.slept  # under the heading, before the Brief
+
+
+def test_a_note_that_the_computer_slept_alone_is_nothing_to_send():
+    t = TEXT["en"]
+
+    assert render.nothing_to_show(brief_of(Brief(), t, slept=True))
+
+
 NOTHING_READ = {
     "gmail": {"count": 0, "error": "b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'"},
     "myclub": {"count": 0, "error": "MyClub fetch failed for Mia: example.myclub.fi: OSError"},

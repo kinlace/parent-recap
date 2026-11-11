@@ -35,7 +35,7 @@ import pytest
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli, feedback, gateway, tools, wilma_egress
+from family_brief import __main__ as cli, feedback, gateway, slept, tools, wilma_egress
 from family_brief.collectors import local_files
 from family_brief.collectors.base import CalendarEvent, Message
 from family_brief.llm import retry
@@ -320,6 +320,28 @@ def pauses(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     monkeypatch.setattr(retry, "_sleep", paused.append)
     monkeypatch.setattr(retry, "_clock", lambda: sum(paused))
     return paused
+
+
+class Clocks:
+    """The clock that stops while the computer sleeps and the wall clock (slept.py): `sleep`
+    moves the wall clock alone, as a closed laptop does."""
+
+    def __init__(self) -> None:
+        self.awake, self.wall = 1000.0, NOW.timestamp()
+
+    def sleep(self, seconds: float) -> None:
+        self.wall += seconds
+
+
+@pytest.fixture
+def clocks(monkeypatch: pytest.MonkeyPatch) -> Clocks:
+    """The computer's two clocks, which a test moves, and a running model call that looks at them
+    every hundredth of a second."""
+    fake = Clocks()
+    monkeypatch.setattr(slept, "_awake", lambda: fake.awake)
+    monkeypatch.setattr(slept, "_wall", lambda: fake.wall)
+    monkeypatch.setattr(retry, "SLEEP_CHECK", 0.01)
+    return fake
 
 
 # ── Harness

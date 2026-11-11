@@ -76,12 +76,15 @@ class BriefText:
     # ── Rule-based fallback when the model fails
     fallback_header: str
     fallback_spent: str                 # the header when the Gateway Key used up today's credit
+    fallback_slept: str                 # the header when the model failed after the computer slept
     unsorted: str
     fallback_count: str                 # {count}, as `messages` gives it
     fallback_more: str                  # {n}
     # At the top of a Brief made from a model reply that was cut off
     reply_incomplete: str               # {assistant}
-    message_time: str                   # when a message came: {day} {month} {hour} {minute}
+    # At the top of a Brief the computer slept through, finished when it woke (#887)
+    slept: str
+    message_time: str                  # when a message came: {day} {month} {hour} {minute}
 
     # ── At the top of the original, sent to a Recipient whose translation failed
     translation_failed: str
@@ -196,11 +199,14 @@ EN = BriefText(
     fallback_spent="⚠️ Tonight's Digest could not be written: the Gateway Key has used up today's credit. "
                    "It comes back within a day, in time for tomorrow evening's Brief. Here are the raw "
                    "messages (all of them are in the archive in ~/ParentRecap):",
+    fallback_slept="⚠️ The Digest still couldn't be written after your computer woke up, so here are the raw "
+                   "messages (all of them are in the archive in ~/ParentRecap):",
     unsorted="Unsorted",
     fallback_count=" ({count})",
     fallback_more="  …{n} more in the archive",
     reply_incomplete="⚠️ {assistant}'s reply tonight was cut off, so this Brief may be missing some items. "
                      "All of tonight's messages are in the archive in ~/ParentRecap.",
+    slept="💤 Your computer went to sleep during last night's Brief, so it was finished when you opened it.",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
     held_back="🔒 Held-back messages",
@@ -286,10 +292,12 @@ ZH = BriefText(
     fallback_header="⚠️ 今日 LLM 总结失败，以下是原始消息清单（详见 ~/ParentRecap 归档）：",
     fallback_spent="⚠️ 今晚没能写摘要：Gateway Key 今天的额度已用完，一天之内会恢复，赶得上明晚的日报。"
                    "以下是原始消息清单（详见 ~/ParentRecap 归档）：",
+    fallback_slept="⚠️ 电脑醒来后 LLM 总结仍然失败，以下是原始消息清单（详见 ~/ParentRecap 归档）：",
     unsorted="未分类",
     fallback_count="（{count}）",
     fallback_more="  …另外 {n} 条，见归档",
     reply_incomplete="⚠️ 今晚 {assistant} 的回复不完整，这份日报可能漏了几条。今晚的原始消息都在 ~/ParentRecap 归档里。",
+    slept="💤 昨晚生成日报时电脑进入了睡眠，所以这份日报是你打开电脑后才完成的。",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ 今晚的日报没能翻译成功，下面是原文。",
     held_back="🔒 未交给 AI 的消息",
@@ -365,11 +373,14 @@ FI = BriefText(
     fallback_spent="⚠️ Tämäniltaista yhteenvetoa ei saatu kirjoitettua: gateway-avaimen tämän päivän "
                    "kiintiö on käytetty. Se nollautuu huomiseen mennessä, joten huomisillan kooste kirjoitetaan "
                    "normaalisti. Tässä ovat viestit sellaisenaan (kaikki ovat tallessa arkistossa ~/ParentRecap):",
+    fallback_slept="⚠️ Yhteenvetoa ei saatu kirjoitettua vielä senkään jälkeen, kun tietokone heräsi, joten tässä "
+                   "ovat viestit sellaisenaan (kaikki ovat tallessa arkistossa ~/ParentRecap):",
     unsorted="Muut viestit",
     fallback_count=" ({count})",
     fallback_more="  …arkistossa vielä {n} lisää",
     reply_incomplete="⚠️ {assistant}-avustajan vastaus jäi tänä iltana kesken, joten koosteesta voi puuttua "
                      "joitakin kohtia. Kaikki tämäniltaiset viestit ovat tallessa arkistossa ~/ParentRecap.",
+    slept="💤 Tietokone meni lepotilaan eilisillan koosteen aikana, joten kooste valmistui vasta, kun avasit sen.",
     message_unreadable="yhtä viestiä ei voitu lukea",
     nothing_read="⚠️ Yhtäkään lähdettä ei voitu lukea tänä iltana, joten yhteenvetoa ei ole. Lähteiden viestit "
                  "tulevat mukaan ensimmäiseen koosteeseen, kun lähteet saadaan taas luettua.",
