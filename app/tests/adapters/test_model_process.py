@@ -38,6 +38,7 @@ def test_a_try_the_computer_slept_through_is_stopped_and_made_again(tmp_path: Pa
                "mark.touch(); time.sleep(30)\n")
     monkeypatch.setattr(slept, "_wall", lambda: 3600.0 if mark.exists() else 0.0)
     monkeypatch.setattr(retry, "SLEEP_CHECK", 0.05)
+    monkeypatch.setattr(retry, "AWAKE_AGAIN", 0.2)
     started = time.monotonic()
 
     ran = retry.run_with_retry([*PYTHON, program], 20, "the model", input="")
