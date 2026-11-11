@@ -71,6 +71,10 @@ Avaa Parent Recap Settings: Macilla etsi se Spotlightilla (Komento-välilyönti)
 
 Tai liitä kohdan [Asennus](#asennus) rivi uudelleen: Macilla Päätteeseen, Windowsissa PowerShelliin. Tai kirjoita Claude Codessa `/parent-recap:manage` tai Codexissa `$parent-recap-manage`, tai kerro vain, mitä haluat muuttaa.
 
+### Kannettavani oli illalla kiinni. Miksi kooste tuli vasta seuraavana aamuna?
+
+Tietokone herää koostetta varten, mutta suljettu kannettava voi etenkin akulla mennä takaisin lepotilaan ennen kuin kooste on valmis. Silloin kooste valmistuu, kun seuraavan kerran avaat kannettavan, ja sen alussa kerrotaan siitä. Mitään ei jää pois: kooste kattaa silti sen illan. Jos haluat koosteen ajallaan joka ilta ilman, että tietokone on päällä, kysy ylläpitäjiltä ylläpidetystä versiosta (katso [Asennus](#asennus)).
+
 ## Kiitokset
 
 Parent Recap lukee Wilmaa Antti Karjalaisen [wilma CLI:n](https://github.com/aikarjal/wilmai) (WilmAI) avulla. Se on ilmaista ja avointa lähdekoodia MIT-lisenssillä. Ilman sitä koosteessa ei olisi Wilmaa.

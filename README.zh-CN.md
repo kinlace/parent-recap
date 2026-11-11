@@ -71,6 +71,10 @@ irm https://raw.githubusercontent.com/kinlace/parent-recap/stable/install.ps1 | 
 
 也可以再粘贴一次[安装](#安装)里的那一行：Mac 上粘贴到“终端”，Windows 上粘贴到 PowerShell。或者，在 Claude Code 里输入 `/parent-recap:manage`，在 Codex 里输入 `$parent-recap-manage`，或者直接说你想改什么。
 
+### 晚上笔记本合着盖子，为什么日报第二天早上才到？
+
+电脑会为日报醒来，但合上盖子的笔记本（尤其是用电池时）可能在日报写完之前又睡着。那样日报会在你下次打开笔记本时完成，并在开头说明这一点。内容不会少：它照样是那天晚上的日报。如果你想每天晚上准时收到日报，又不想让电脑一直开着，可以问维护者托管版的事（见[安装](#安装)）。
+
 ## 致谢
 
 Parent Recap 通过 Antti Karjalainen 的 [wilma CLI](https://github.com/aikarjal/wilmai)（WilmAI）读取 Wilma，它免费开源，采用 MIT 许可。没有它，摘要里就没有 Wilma 的内容。

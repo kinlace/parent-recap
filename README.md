@@ -71,6 +71,10 @@ Open Parent Recap Settings: on a Mac, search for it with Spotlight (Command-Spac
 
 Or paste the install line from [Install](#install) again: in Terminal on a Mac, in PowerShell on Windows. Or, in Claude Code type `/parent-recap:manage`, in Codex `$parent-recap-manage`, or just say what you want to change.
 
+### My laptop was closed in the evening. Why did the Brief come the next morning?
+
+The computer wakes up for the Brief, but a closed laptop, on battery especially, can go back to sleep before the Brief is done. Then it is finished when you next open the laptop, and it says so at the top. Nothing is lost: it still covers that evening. If you want the Brief on time every evening without leaving a computer on, ask the maintainers about the hosted version (see [Install](#install)).
+
 ## Thanks
 
 Parent Recap reads Wilma through Antti Karjalainen's [wilma CLI](https://github.com/aikarjal/wilmai) (WilmAI), free and open source under MIT. Without it there would be no Wilma in the Brief.
