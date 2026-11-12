@@ -29,7 +29,8 @@ def principals(signers: Path = SIGNERS) -> list[str]:
 def verified(zip_path: Path, signature: Path, signers: Path = SIGNERS) -> bool:
     """True when `signature` is a signature of `zip_path` under NAMESPACE by one of the keys in
     `signers`. False for a changed zip or signature, another key, another namespace or no
-    signature file. Raises OSError when ssh-keygen can't be run at all."""
+    signature file. Raises OSError when ssh-keygen can't be run at all, and
+    subprocess.TimeoutExpired when it doesn't answer within two minutes."""
     if not signature.is_file():
         return False
     for principal in principals(signers):
