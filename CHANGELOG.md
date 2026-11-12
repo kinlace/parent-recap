@@ -2,6 +2,17 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## 0.19.0 · 2026-11-12
+
+### Added
+
+- A family whose school uses Social Schools (the Netherlands) can have the school's announcements and its calendar for the next four weeks in the Brief and its calendar attachment, for the right Kid. For now it is added from a terminal on the family's own computer (`parent-recap setup socialschools`), with an email and password account.
+- A family whose daycare or after-school care (BSO) uses a Konnect parent portal (`<provider>.ouderportaal.nl`) can have it set up from a terminal (`parent-recap setup konnect`), and its messages, news, newsletters and the times a Kid is booked there come into the evening Brief.
+
+### Changed
+
+- On a Mac, installing a new version no longer replaces the running one until the new one has finished installing, and `parent-recap switch-back` goes back to the version before if the new one turns out bad.
+
 ## 0.18.0 · 2026-11-12
 
 ### Changed
