@@ -680,17 +680,29 @@ def _latest_evening(cfg: Config, now: datetime) -> datetime:
     return evening - timedelta(days=1) if evening > now else evening
 
 
-def _missed_by(cfg: Config, state: State) -> timedelta | None:
-    """How long ago the evening run's latest time, in the Household's zone, went by with no run
-    since; None when a run has been since. Before the first run, since the evening job was
-    installed: it is installed with its first start still to come. A run that sent the Brief
-    counts, even if a later step failed."""
+@dataclass(frozen=True)
+class _SinceEvening:
+    """How long ago the evening run's latest time, in the Household's zone, went by, and whether a
+    run has been since. Before the first run, since the evening job was installed: it is installed
+    with its first start still to come. A run that sent the Brief counts, even if a later step
+    failed."""
+    ago: timedelta
+    ran: bool
+
+    @property
+    def missed(self) -> timedelta | None:
+        """How long ago the evening went by with no run since; None when a run has been."""
+        return None if self.ran else self.ago
+
+
+def _since_evening(cfg: Config, state: State) -> _SinceEvening | None:
+    """None when the state doesn't say when the last run was."""
     last = state.last_run_at or state.scheduled_at
     if last is None:  # installed by a version that didn't note when
         return None
     now = datetime.now(ZoneInfo(cfg.timezone))
     evening = _latest_evening(cfg, now)
-    return now - evening if last < evening else None
+    return _SinceEvening(now - evening, ran=last >= evening)
 
 
 # A missed evening is caught up only this long after its time (#894): later, the next evening's
@@ -739,15 +751,17 @@ def run_unless_caught_up(cfg: Config, options: Options, io: IO) -> int:
     """`run`, or with `if_missed` only when the evening run was missed (#386). A start by the
     scheduler (`scheduled`, or `if_missed`, the Windows sign-in task's) well after the Brief's time
     with no run since catches up the missed evening, with a line that says so, but only within
-    CATCH_UP_LIMIT of it; after that it is left to the next evening run (#894). Checked under the
-    run lock, so a catch-up started beside the evening run sees the state that run left. A run
-    that isn't a dry run notes how it ended in last-run.json, a crash as exit 1, with how long it
-    took."""
+    CATCH_UP_LIMIT of it; after that it is left to the next evening run (#894). One that finds a
+    run since, such as Windows' late start of a missed task after its sign-in task caught the
+    evening up, does nothing. Checked under the run lock, so a catch-up started beside the evening
+    run sees the state that run left. A run that isn't a dry run notes how it ended in
+    last-run.json, a crash as exit 1, with how long it took."""
     caught_up = False
     by_hand = options.scheduled and _started_by_hand(cfg)
-    if options.if_missed or (options.scheduled and not by_hand):
-        missed = _missed_by(cfg, io.load_state(cfg.resolved_state_path()))
-        if options.if_missed and missed is None:
+    if options.if_missed or (options.scheduled and not by_hand and not cfg.hosted):
+        since = _since_evening(cfg, io.load_state(cfg.resolved_state_path()))
+        missed = since.missed if since else None
+        if (options.if_missed and missed is None) or (since and since.ran):
             log.info("The evening run has run since its last time, so there is nothing to catch up")
             return 0
         if missed is not None and missed > ON_TIME and not cfg.hosted:
