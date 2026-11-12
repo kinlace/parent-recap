@@ -105,6 +105,15 @@ On Windows the secrets go into Credential Manager instead, and any program run a
 
 Keep `~/.family` and `~/.config/wilmai` out of cloud sync, dotfiles repos and backups you share. How to remove the Wilma file when you stop using Parent Recap, and what to do if it may have leaked, is in [docs/sources.md](docs/sources.md#where-the-wilma-password-is-stored).
 
+## Release signatures
+
+Every release zip on the [Releases page](https://github.com/kinlace/parent-recap/releases) has an OpenSSH signature beside it, `parent-recap-<version>.zip.sig`, made with `ssh-keygen -Y sign` under the namespace `release@parentrecap.com`, so a signature one of the keys made for anything else is never a release's (ADR 0047). The program ships the two public keys a release may be signed with, in [`app/src/family_brief/release_signers`](app/src/family_brief/release_signers), and checks a zip against them with the system's own `/usr/bin/ssh-keygen` (`family_brief/release_signature.py`), so verifying installs nothing:
+
+- **`workflow`** is the release workflow's key. It is the secret `RELEASE_SIGNING_KEY` of the GitHub environment `release-signing`, which only `v*` tags may use; only the step that signs is given it, in a job that can read the repository and nothing more. The workflow checks the signature against this key before it publishes the release or moves `stable`.
+- **`backup`** is held by a maintainer outside GitHub. It signs a release by hand when the workflow's key is lost or leaked, so a new workflow key can reach installed programs in a release they already trust ([CONTRIBUTING.md](CONTRIBUTING.md#releasing)).
+
+A signature says a zip is one of ours, not which release it is. To check one yourself: `ssh-keygen -Y verify -f app/src/family_brief/release_signers -I workflow -n release@parentrecap.com -s parent-recap-<version>.zip.sig < parent-recap-<version>.zip` (`-I backup` for one the backup signed).
+
 ## On Windows
 
 On a Windows 11 PC ([Parent Recap on Windows](docs/windows.md), ADR 0019) data flows as above, and the setup page works the same way. What differs is where things are kept and who on the PC can read them.

@@ -64,7 +64,7 @@ Add the release's `What changes for families:` lines to `CHANGELOG.md` and bump 
 git tag v0.4.0 && git push origin v0.4.0
 ```
 
-The tag push runs `.github/workflows/release.yml` (see [ADR 0002](docs/adr/0002-tags-are-releases-main-may-be-unstable.md)): the tests on macOS, then `scripts/release.py` builds `parent-recap-0.4.0.zip` and attaches it to a GitHub Release, then the `stable` branch moves to the tag if it is the highest version so far. Never push `stable` by hand. PRs and `main` run the same macOS tests, except a change that only touches docs no test reads (`docs/adr/`, `docs/agents/`, `CONTEXT.md`, `CONTRIBUTING.md`, `CLAUDE.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`), which skips them; every push and PR also runs a gitleaks secret scan (`.github/workflows/secret-scan.yml`) that fails on any finding. The next morning the hosted server deploys the release `stable` points at by itself, checks it, switches back if a check fails, and mails the maintainers how it went (ADR 0045, `ops/gateway/README.md` "The morning's automatic deploy").
+The tag push runs `.github/workflows/release.yml` (see [ADR 0002](docs/adr/0002-tags-are-releases-main-may-be-unstable.md)): the tests on macOS, then `scripts/release.py` builds `parent-recap-0.4.0.zip`, which is signed (below) and attached with its signature to a GitHub Release, then the `stable` branch moves to the tag if it is the highest version so far. Never push `stable` by hand. PRs and `main` run the same macOS tests, except a change that only touches docs no test reads (`docs/adr/`, `docs/agents/`, `CONTEXT.md`, `CONTRIBUTING.md`, `CLAUDE.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`), which skips them; every push and PR also runs a gitleaks secret scan (`.github/workflows/secret-scan.yml`) that fails on any finding. The next morning the hosted server deploys the release `stable` points at by itself, checks it, switches back if a check fails, and mails the maintainers how it went (ADR 0045, `ops/gateway/README.md` "The morning's automatic deploy").
 
 **A release that needs the snapshot to switch back.** A release must not leave a Household's data unreadable to the release before it (ADR 0036). One that has to, such as one that changes a stored file's format, carries this line in its section of `CHANGELOG.md`, under its `## X.Y.Z` heading:
 
@@ -73,6 +73,20 @@ The tag push runs `.github/workflows/release.yml` (see [ADR 0002](docs/adr/0002-
 ```
 
 It is an HTML comment, so families reading the changelog don't see it. The server then doesn't deploy that release by itself, since its automatic switch-back can't restore data: it mails the maintainers that the release waits, and a maintainer deploys it with `sudo admin deploy vX.Y.Z` while able to switch back with `sudo admin rollback --restore`.
+
+**The signature.** Before anything is published, the workflow's `sign` job signs the zip with `ssh-keygen -Y sign` under the namespace `release@parentrecap.com` (ADR 0047), and the release gets the signature beside the zip as `parent-recap-0.4.0.zip.sig`. The key is the secret `RELEASE_SIGNING_KEY` of the environment `release-signing`, which only `v*` tags may use; only the signing step is given it. The `publish` job then builds the zip again and checks the signature against the workflow's public key in `app/src/family_brief/release_signers`; when the secret is missing or the signature doesn't verify, the release stops before it is published and before `stable` moves. A family's computer accepts a zip signed by either key in that file: `workflow`, the workflow's key, or `backup`, an Ed25519 key a maintainer holds outside GitHub.
+
+**Signing with the backup key by hand.** When the workflow's key is lost (GitHub never shows a secret again) or leaked, replace it: make a new key with `ssh-keygen -t ed25519 -C "" -f release-workflow-key`, put `release-workflow-key.pub`'s key on the `workflow` line of `app/src/family_brief/release_signers` in a PR, store the private key with `gh secret set RELEASE_SIGNING_KEY --env release-signing < release-workflow-key`, and delete the key file. Installed programs still trust only the old keys, so the next release has to carry the backup's signature: once its workflow published it, sign the zip by hand and replace the signature (`ssh-keygen` is on every Mac):
+
+```bash
+gh release download v0.4.0 -p parent-recap-0.4.0.zip
+ssh-keygen -Y sign -f <the backup key> -n release@parentrecap.com parent-recap-0.4.0.zip
+ssh-keygen -Y verify -f app/src/family_brief/release_signers -I backup -n release@parentrecap.com \
+  -s parent-recap-0.4.0.zip.sig < parent-recap-0.4.0.zip
+gh release upload v0.4.0 parent-recap-0.4.0.zip.sig --clobber
+```
+
+Do it the day the release is out: a family's computer takes a release only once it is a day old, and one that reads the workflow's signature before the replacement fails to verify it and tries again the next evening. Programs from that release on trust the new workflow key. Never keep the backup key in GitHub or on a shared machine.
 
 The zip is built from the tag with `git archive`, so local edits never get in. `.gitattributes` export-ignore rules keep developer-only files out, and the script refuses to build if the versions disagree or if a venv, cache or `.env` was committed. To build the same zip locally: `python3 scripts/release.py v0.4.0`.
 

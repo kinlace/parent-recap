@@ -1,7 +1,8 @@
 name: release
 
-# Pushing a vX.Y.Z tag is a release (ADR 0002): the macOS and Windows tests, then the zip on a
-# GitHub Release, then `stable` moves to the tag if it is the highest version so far.
+# Pushing a vX.Y.Z tag is a release (ADR 0002): the macOS and Windows tests, then the zip is
+# signed (ADR 0047), then the zip and its signature on a GitHub Release, then `stable` moves to
+# the tag if it is the highest version so far.
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
@@ -15,13 +16,55 @@ jobs:
   test:
     uses: ./.github/workflows/tests.yml
 
-  publish:
+  # Builds the zip and signs it. The signing key is the secret RELEASE_SIGNING_KEY of the
+  # environment release-signing, which only v* tags may use (#913), and only the step that signs
+  # is given it. The job can read the repository and nothing more.
+  sign:
     needs: test
+    runs-on: ubuntu-latest
+    environment: release-signing
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.ref_name }}
+      NAMESPACE: release@parentrecap.com
+    outputs:
+      signature: ${{ steps.sign.outputs.signature }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Build zip
+        run: python scripts/release.py "$TAG"
+      - name: Sign zip
+        id: sign
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          zip="dist/parent-recap-${TAG#v}.zip"
+          if [ -z "$RELEASE_SIGNING_KEY" ]; then
+            echo "::error::The secret RELEASE_SIGNING_KEY of the environment release-signing is missing or empty."
+            exit 1
+          fi
+          key="$RUNNER_TEMP/release-signing-key"
+          trap 'rm -f "$key"' EXIT
+          (umask 077 && printf '%s\n' "$RELEASE_SIGNING_KEY" > "$key")
+          ssh-keygen -Y sign -f "$key" -n "$NAMESPACE" "$zip"
+          { echo "signature<<END_OF_SIGNATURE"; cat "$zip.sig"; echo END_OF_SIGNATURE; } >> "$GITHUB_OUTPUT"
+
+  # Builds the same zip again from the tag (git archive is byte for byte the same), checks the
+  # signature against the workflow's public key in the tree, publishes both and moves `stable`.
+  publish:
+    needs: sign
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       TAG: ${{ github.ref_name }}
+      NAMESPACE: release@parentrecap.com
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,6 +76,20 @@ jobs:
           python-version: "3.13"
       - name: Build zip
         run: python scripts/release.py "$TAG"
+      - name: Verify the signature
+        # Against the workflow's key the program ships, under the program's namespace
+        # (family_brief/release_signature.py), so a release no installed program could verify
+        # never gets published or moves `stable`.
+        env:
+          SIGNATURE: ${{ needs.sign.outputs.signature }}
+        run: |
+          zip="dist/parent-recap-${TAG#v}.zip"
+          printf '%s\n' "$SIGNATURE" > "$zip.sig"
+          if ! ssh-keygen -Y verify -f app/src/family_brief/release_signers -I workflow \
+              -n "$NAMESPACE" -s "$zip.sig" < "$zip"; then
+            echo "::error::The signature of $zip doesn't verify against the workflow key in app/src/family_brief/release_signers."
+            exit 1
+          fi
       - name: Check whether the tag is the highest version
         id: highest
         run: |
@@ -41,10 +98,10 @@ jobs:
       - name: Publish GitHub Release
         # Skip if the release exists, so re-running after a failed `stable` push
         # goes straight to the push. A hotfix on an older line must not become
-        # the Releases page's "Latest".
+        # the Releases page's "Latest". The signature goes beside the zip.
         run: >-
           gh release view "$TAG" >/dev/null 2>&1 ||
-          gh release create "$TAG" "dist/parent-recap-${TAG#v}.zip"
+          gh release create "$TAG" "dist/parent-recap-${TAG#v}.zip" "dist/parent-recap-${TAG#v}.zip.sig"
           --title "$TAG"
           --latest=${{ steps.highest.outputs.value }}
           --notes "What changes for families: see [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/$TAG/CHANGELOG.md)."
