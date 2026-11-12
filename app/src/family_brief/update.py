@@ -26,8 +26,8 @@ Once installed, the new version's `doctor` runs. A failure it reports that the v
 didn't (its `doctor` runs first) switches back to that version (versions.py).
 
 The verified installer makes requests of its own, to the hosts an install already uses (Python
-packages, the Linked Device's npm tree, a new Python or Node). Those aren't this module's, and
-SECURITY.md lists them.
+packages, the Linked Device's npm tree, a new Python or Node). Those aren't this module's;
+SECURITY.md is to list them (#919).
 
 Only on a Mac, and only for a program run from an installed release: on the hosted version the
 server is deployed by its maintainers (ADR 0045), and Windows is decided separately.
@@ -75,6 +75,7 @@ TIMEOUT = 60                      # seconds without an answer from GitHub
 INSTALL_TIMEOUT = 60 * 60         # the installer builds a venv and may fetch a Python or Node
 DOCTOR_TIMEOUT = 15 * 60
 MAX_REDIRECTS = 5
+DOCTOR_DIDNT_RUN = "doctor didn't run"  # the failing item when a version's doctor couldn't run
 
 
 class Refused(Exception):
@@ -130,7 +131,8 @@ def state(folder: Path | None = None) -> dict:
 
 
 def _save(folder: Path, **changes) -> None:
-    data = {**state(folder), **changes}
+    """Records a look and what came of it: `last_look` is now, unless given."""
+    data = {**state(folder), "last_look": _now(), **changes}
     (folder / UPDATE).mkdir(mode=0o700, parents=True, exist_ok=True)
     incoming = folder / UPDATE / f".{STATE}.incoming"  # renamed over it: never half written
     private_files.write(incoming, json.dumps(data, indent=2) + "\n")
@@ -309,7 +311,8 @@ def _is_parent_recap(plugin: Path) -> bool:
 class _Updater:
     def __init__(self, folder: Path, config: str | None, log: _Log) -> None:
         self.folder, self.config, self.log = folder, config, log
-        self.had_plugin = True  # until `install` looks: a restore then removes nothing
+        self.had_plugin = False
+        self.moved = False  # whether `install` changed the plugin copy, which a restore undoes
 
     def program(self) -> list[str]:
         """The `parent-recap` `app` points at, with the config the update was given."""
@@ -323,7 +326,7 @@ class _Updater:
                                capture_output=True, text=True, timeout=DOCTOR_TIMEOUT)
             output = r.stdout
         except (OSError, subprocess.TimeoutExpired) as e:
-            output = f"❌ doctor: couldn't run ({type(e).__name__})"
+            output = f"❌ {DOCTOR_DIDNT_RUN}: {type(e).__name__}"
         failing = doctor_failures(output)
         self.log("check", f"{version}'s doctor: "
                  + (f"{len(failing)} failing: {', '.join(sorted(failing))}" if failing else "no failures"))
@@ -338,6 +341,7 @@ class _Updater:
         if target.exists() and not _is_parent_recap(target):
             raise Refused(f"{target} holds something that isn't Parent Recap, so it was left as it is")
         self.had_plugin = target.exists()
+        self.moved = True
         if self.had_plugin:
             os.rename(target, spare)
         os.rename(plugin, target)
@@ -361,12 +365,16 @@ class _Updater:
         return switched
 
     def restore_plugin(self, spare: Path) -> None:
-        """Puts the plugin copy back as it was before `install`: the one before, or none."""
+        """Puts the plugin copy back as it was before `install`: the one before, or none.
+        Nothing when `install` didn't change it."""
+        if not self.moved:
+            return
         target = self.folder / PLUGIN
         if spare.exists() or not self.had_plugin:
             shutil.rmtree(target, ignore_errors=True)
         if spare.exists():
             os.rename(spare, target)
+        self.moved = False
 
 
 def update(config: str | None = None, *, retry_failed: bool = True) -> Outcome:
@@ -385,16 +393,16 @@ def update(config: str | None = None, *, retry_failed: bool = True) -> Outcome:
         wanted = stable_version(session)
     except Refused as e:
         log("look", f"installed {installed}; stable couldn't be read: {e}")
-        _save(folder, last_look=_now(), last_result=f"look failed: {e}")
+        _save(folder,last_result=f"look failed: {e}")
         return Outcome("failed", f"Parent Recap couldn't look for a newer release: {e}. "
                        "Nothing was changed.", installed)
     log("look", f"installed {installed}, stable holds {wanted}")
     if not newer(wanted, installed):
-        _save(folder, last_look=_now(), last_result=f"up to date at {installed}")
+        _save(folder,last_result=f"up to date at {installed}")
         return Outcome("up-to-date", f"Parent Recap is up to date: it runs version {installed}, "
                        "the newest release.", installed)
     if not retry_failed and state(folder)["failed"] == wanted:
-        _save(folder, last_look=_now(), last_result=f"{wanted} failed before; not tried again")
+        _save(folder,last_result=f"{wanted} failed before; not tried again")
         return Outcome("failed", f"Version {wanted} failed its check before, so it wasn't tried "
                        "again. Nothing was changed.", installed)
     return _update_to(folder, config, log, session, installed, wanted)
@@ -406,6 +414,7 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
     work = Path(tempfile.mkdtemp(prefix=DOWNLOAD, dir=folder / UPDATE))
     updater = _Updater(folder, config, log)
     spare = work / "plugin-before"
+    keep = False  # whether the plugin copy stays the new version's
     try:
         name = f"parent-recap-{wanted}.zip"
         zip_path, signature = work / name, work / f"{name}.sig"
@@ -437,22 +446,29 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
         if not updater.install(plugin, wanted, spare):
             updater.restore_plugin(spare)
             log("install", f"{wanted}: not installed; {installed} runs as it did")
-            _save(folder, last_look=_now(), last_result=f"{wanted} didn't install", failed=wanted)
+            _save(folder,last_result=f"{wanted} didn't install", failed=wanted)
             return Outcome("failed", f"Version {wanted} couldn't be installed, so Parent Recap "
                            f"runs version {installed} as it did. The update log is "
                            f"{log.path}.", installed)
         log("switch", f"{installed} -> {wanted}")
-        new = updater.doctor(wanted) - before
+        after = updater.doctor(wanted)
+        # A doctor that didn't run is a failure even where the one before didn't run either.
+        new = (after - before) | (after & {DOCTOR_DIDNT_RUN})
         if new:
-            return _switch_back(folder, log, updater, spare, installed, wanted, new)
-        _save(folder, last_look=_now(), last_result=f"updated {installed} to {wanted}", failed=None)
+            outcome = _switch_back(folder, log, updater, spare, installed, wanted, new)
+            keep = outcome.version == wanted
+            return outcome
+        keep = True
+        _save(folder,last_result=f"updated {installed} to {wanted}", failed=None)
         return Outcome("updated", f"✅ Parent Recap updated from version {installed} to "
                        f"{wanted}, and its checks pass as before.", wanted)
     except Refused as e:
-        _save(folder, last_look=_now(), last_result=f"{wanted} refused: {e}")
+        _save(folder,last_result=f"{wanted} refused: {e}")
         return Outcome("failed", f"Version {wanted} wasn't installed: {e}. Nothing was "
                        "changed.", installed)
     finally:
+        if not keep:  # whatever ended the update, the plugin copy is the running version's
+            updater.restore_plugin(spare)
         shutil.rmtree(work, ignore_errors=True)
 
 
@@ -462,11 +478,16 @@ def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, instal
     try:
         with open(log.path, "a", encoding="utf-8") as out:
             running, _ = versions.switch_back_whole(folder, stdout=out, stderr=out)
-    except versions.NoPrevious:
-        running = wanted
+    except versions.NoPrevious:  # install.sh keeps the version before, so only if it was removed
+        log("switch", f"{wanted}: no previous version to switch back to")
+        _save(folder, last_result=f"{wanted} failed its check; no version to switch back to",
+              failed=wanted)
+        return Outcome("failed", f"Version {wanted} was installed, but its check failed where "
+                       f"version {installed} passed ({failing}), and there is no previous "
+                       f"version to switch back to. The update log is {log.path}.", wanted)
     updater.restore_plugin(spare)
     log("switch", f"{wanted} -> {running}: back, as {wanted} fails {failing}")
-    _save(folder, last_look=_now(), last_result=f"{wanted} failed its check; back on {running}",
+    _save(folder,last_result=f"{wanted} failed its check; back on {running}",
           failed=wanted)
     return Outcome("switched-back", f"Version {wanted} was installed, but its check failed where "
                    f"version {installed} passed ({failing}), so Parent Recap switched back to "
