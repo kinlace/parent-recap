@@ -12,7 +12,7 @@ import traceback
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Literal
+from typing import TYPE_CHECKING, Callable, Literal
 from zoneinfo import ZoneInfo
 
 from . import ai_filter, feedback, gateway, languages, last_run, llm, private_files, render, slept, wilma_egress
@@ -23,8 +23,12 @@ from .brief_text import BriefText, Language
 from .collectors.base import CalendarEvent, Message
 from .config import Config
 from .state import State
+from .system import profile
 from .summarize import add_the_nights_people, extract_calendar_events, for_the_ai, placeholders_for, summarize
 from .translate import per_language, translate
+
+if TYPE_CHECKING:
+    from .update import BriefNote
 
 log = logging.getLogger("family_brief")
 
@@ -471,8 +475,35 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         # Source events listed before or Held-back Messages asks no model: nothing to judge and no model to credit.
         model_wrote=asks_model and notes.error is None, form=form,
         stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg),
-        hosted=cfg.hosted, slept=asleep, caught_up=caught_up)
+        hosted=cfg.hosted, slept=asleep, caught_up=caught_up, update=_update_note(cfg, options))
     return _Written(night, notes, for_ai, held, model_events, placeholders)
+
+
+def _update_note(cfg: Config, options: Options) -> BriefNote | None:
+    """What the evening's update did since the last Brief, for this one to say (#916): only on a
+    family's own Mac, where the program updates itself (ADR 0047), and not in the setup page's
+    Brief. A note that can't be read is left out, never the Brief."""
+    if cfg.hosted or options.preview or options.first or profile.current().system != "macos":
+        return None
+    from . import own_node, update
+    if (folder := own_node.running_from()) is None:
+        return None
+    try:
+        return update.brief_note(folder)
+    except Exception as e:  # noqa: BLE001 - the Brief goes out without the line
+        log.warning("The update's note for the Brief couldn't be read: %s", e)
+        return None
+
+
+def _update_told(note: BriefNote) -> None:
+    """Notes that tonight's Brief said what the update did, so the next one doesn't."""
+    from . import own_node, update
+    if (folder := own_node.running_from()) is None:
+        return
+    try:
+        update.told(folder, note)
+    except OSError as e:
+        log.warning("Couldn't note that the Brief said what the update did: %s", e)
 
 
 def _form_people(cfg: Config, placeholders: ai_filter.Placeholders | None, for_ai: list[Message],
@@ -672,6 +703,8 @@ def _run(cfg: Config, options: Options, io: IO, caught_up: bool) -> _Ended:
             state.mark_event_created(calendar_action.event_hash(e), "ics")
     if delivered:
         state.mark_caught_up_now(read=read.coverage, behind=_behind(read.coverage))
+        if night.update is not None:
+            _update_told(night.update)
     else:
         # Nobody saw tonight's Brief: leave its Messages unseen so tomorrow's Brief picks them up.
         log.warning("Brief not delivered; its messages will be collected again next run")

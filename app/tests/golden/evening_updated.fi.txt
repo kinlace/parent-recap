@@ -1,0 +1,8 @@
+👨‍👩‍👧‍👦 Parent Recap ti 29.9.
+
+🔄 Parent Recap päivitti itsensä versioon 0.20.0. Mitä muuttui: https://github.com/kinlace/parent-recap/blob/v0.20.0/CHANGELOG.md
+Parent Recap asentaa nyt jokaisen uuden version itse iltakoosteen jälkeen. Sen voi kytkeä pois Parent Recap Settingsistä.
+
+- Library books are due back on Friday
+
+📥 Luettu tänä iltana: Gmail 1 viesti · MyClub 0 tapahtumaa · Wilma 0 viestiä · WhatsApp 0 viestiä
