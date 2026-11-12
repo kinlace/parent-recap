@@ -130,6 +130,14 @@ def test_a_job_runs_at_its_time_with_owner_only_logs_in_the_log_folder(harness, 
     assert plist["Umask"] == 0o077  # launchd creates the log files owner-only
 
 
+def test_the_evening_job_tells_its_run_launchd_started_it(harness, launchctl, tmp_path):
+    # So a late start after a wake is told from a run by hand, and caught up only within 10 hours (#894).
+    jobs.install(both(tmp_path))
+
+    plist = plistlib.loads((jobs_macos.LAUNCH_AGENTS / "com.parentrecap.daily.plist").read_bytes())
+    assert plist["EnvironmentVariables"][jobs.SCHEDULED] == "1"
+
+
 def job_path() -> list[str]:
     plist = plistlib.loads((jobs_macos.LAUNCH_AGENTS / "com.parentrecap.daily.plist").read_bytes())
     return plist["EnvironmentVariables"]["PATH"].split(":")

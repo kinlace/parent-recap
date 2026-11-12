@@ -250,6 +250,21 @@ def test_a_note_that_the_computer_slept_alone_is_nothing_to_send():
     assert render.nothing_to_show(brief_of(Brief(), t, slept=True))
 
 
+def test_a_catch_up_that_also_slept_says_both_the_catch_up_first():
+    reply, sources = the_normal_night("en")
+    t = TEXT["en"]
+    night = brief_of(written(reply, sources), t, slept=True, caught_up=True)
+
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
+
+    assert mail.text.split("\n")[2:4] == [t.caught_up, t.slept]
+    assert t.caught_up in mail.html
+
+
+def test_a_note_that_the_brief_catches_up_alone_is_nothing_to_send():
+    assert render.nothing_to_show(brief_of(Brief(), TEXT["en"], caught_up=True))
+
+
 NOTHING_READ = {
     "gmail": {"count": 0, "error": "b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'"},
     "myclub": {"count": 0, "error": "MyClub fetch failed for Mia: example.myclub.fi: OSError"},

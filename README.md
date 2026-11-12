@@ -75,6 +75,10 @@ Or paste the install line from [Install](#install) again: in Terminal on a Mac, 
 
 The computer wakes up for the Brief, but a closed laptop, on battery especially, can go back to sleep before the Brief is done. Then it is finished when you next open the laptop, and it says so at the top. Nothing is lost: it still covers that evening. If you want the Brief on time every evening without leaving a computer on, ask the maintainers about the hosted version (see [Install](#install)).
 
+### My computer was off at Brief time. When does the Brief come?
+
+If the computer was off, asleep or signed out at Brief time, the missed Brief is sent when the computer is back on, as long as that is within 10 hours of the Brief time (for 21:00, until 07:00 the next morning). It says at the top that it was sent late, and covers everything since the last Brief. Later than that, nothing is sent then: the next evening's Brief covers the missed evening too, so you don't get two Briefs an hour apart. A Brief you start yourself always runs.
+
 ## Thanks
 
 Parent Recap reads Wilma through Antti Karjalainen's [wilma CLI](https://github.com/aikarjal/wilmai) (WilmAI), free and open source under MIT. Without it there would be no Wilma in the Brief.

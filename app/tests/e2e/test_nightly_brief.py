@@ -20,6 +20,7 @@ from conftest import GATEWAY_KEY, NOW, html_for_golden, ics_for_golden, msg, wit
 from family_brief import feedback
 from fake_system import LINUX, WINDOWS
 from family_brief.gateway import GatewayError
+from family_brief.system import jobs
 from nights import (ENGLISH_REPLY, FEEDBACK, FORM, NORMAL_NIGHT_IDS, PARTNER_EN, archived_summary,
                     caught_up_last_night, feedback_links, model_call_for_golden, normal_night,
                     payload_message_ids, two_languages)
@@ -151,6 +152,22 @@ def test_a_brief_finished_the_next_morning_keeps_its_evening_and_says_the_comput
                                  "while making this Brief, so it was finished when you opened it.\n")
     assert "plug" not in email.text.lower()
     assert sorted(p.name for p in harness.archive_dir.glob("*.md")) == ["2026-09-27.md"]
+
+
+def test_an_evening_job_that_started_on_time_and_slept_is_no_catch_up(harness, asleep_until_morning,
+                                                                      monkeypatch):
+    # It ends ten hours after the Brief's time, but it started at it (#894).
+    monkeypatch.setenv(jobs.SCHEDULED, "1")
+    normal_night(harness, "en")
+    harness.model_reply = asleep_until_morning(harness.model_reply)
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert email.subject == "Parent Recap · 2026-09-27"
+    assert email.text.split("\n")[2] == ("💤 Your computer went to sleep while making this Brief, so it "
+                                         "was finished when you opened it.")
+    assert email.text.count("💤") == 1
 
 
 def test_a_translation_made_the_next_morning_is_told_the_evening_s_tomorrow(harness, golden, asleep_until_morning):

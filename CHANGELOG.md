@@ -2,6 +2,12 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## Unreleased
+
+### Changed
+
+- A Brief missed because the computer was off, asleep or signed out at Brief time is now sent when the computer is back on only within 10 hours of the Brief time (until 07:00 for a 21:00 Brief), and it says at the top that it was sent late and covers everything since the last Brief. Later than that it isn't sent: the next evening's Brief covers the missed evening, so a family no longer gets a catch-up Brief half an hour before the regular one. A Brief you start yourself always runs.
+
 ## 0.17.1 · 2026-11-11
 
 ### Fixed

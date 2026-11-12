@@ -66,7 +66,8 @@ def _plist(job: jobs.Job) -> dict:
         "StartCalendarInterval": interval,
         "StandardOutPath": str(job.log_dir / f"{job.subcommand}-stdout.log"),
         "StandardErrorPath": str(job.log_dir / f"{job.subcommand}-stderr.log"),
-        "EnvironmentVariables": {"PATH": _path_env(), "HOME": str(Path.home())},
+        "EnvironmentVariables": {"PATH": _path_env(), "HOME": str(Path.home()),
+                                 jobs.SCHEDULED: "1"},
         "Umask": private_files.UMASK,  # launchd creates the log files with the job's umask
         "RunAtLoad": False,
     }

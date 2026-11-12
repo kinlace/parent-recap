@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from .collectors.base import Message
 from .config import Config
 from .state import State
 from .summarize import for_the_ai, summarize
+from .system import jobs
 
 
 logging.basicConfig(
@@ -30,7 +32,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     options = evening.Options(dry_run=args.dry_run or args.preview, preview=args.preview,
                               sources=args.sources.split(",") if args.sources else None,
                               lookback_hours=args.lookback_hours, if_missed=args.if_missed,
-                              first=args.first_brief)
+                              first=args.first_brief, scheduled=bool(os.environ.get(jobs.SCHEDULED)))
     io = evening.IO.real()
     if options.dry_run:  # writes nothing, so it can't clash with a run that is going
         return evening.run_unless_caught_up(cfg, options, io)

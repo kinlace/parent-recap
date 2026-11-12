@@ -40,6 +40,9 @@ class Options:
     sources: list[str] | None = None  # the connected ones when None
     lookback_hours: int | None = None  # each Source's own, caught up, when None
     if_missed: bool = False
+    # Started by the system's scheduler (jobs.SCHEDULED), not by hand: a start well after the
+    # Brief's time catches up a missed evening, and only within CATCH_UP_LIMIT (#894).
+    scheduled: bool = False
 
 
 @dataclass(frozen=True)
@@ -406,9 +409,10 @@ class _Written:
 
 
 def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sends: bool,
-           watch: slept.Watch) -> _Written:
+           watch: slept.Watch, caught_up: bool) -> _Written:
     """Tonight's Brief. When the computer slept since the run started (`watch`), the Brief says it
-    was finished late; the hosted server doesn't sleep, and its families have no computer to close."""
+    was finished late; the hosted server doesn't sleep, and its families have no computer to close.
+    A Brief that catches up a missed evening (`caught_up`) says so too (#894)."""
     if sends:  # a dry run leaves no trace, so it uses what is already there
         languages.prepare_each(cfg, cfg.brief_languages())
     t = languages.text(cfg, cfg.brief_language())
@@ -467,7 +471,7 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         # Source events listed before or Held-back Messages asks no model: nothing to judge and no model to credit.
         model_wrote=asks_model and notes.error is None, form=form,
         stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg),
-        hosted=cfg.hosted, slept=asleep)
+        hosted=cfg.hosted, slept=asleep, caught_up=caught_up)
     return _Written(night, notes, for_ai, held, model_events, placeholders)
 
 
@@ -602,8 +606,9 @@ def _quiet_night(state: State, coverage: dict[str, dict], sends: bool) -> int:
     return 0
 
 
-def run(cfg: Config, options: Options, io: IO) -> int:
-    """Tonight's evening run on `cfg`, which it leaves as it was given."""
+def run(cfg: Config, options: Options, io: IO, caught_up: bool = False) -> int:
+    """Tonight's evening run on `cfg`, which it leaves as it was given. `caught_up`: the scheduler
+    started it late, for an evening the computer was off, asleep or signed out at (#894)."""
     # The evening the run started, kept if it ends tomorrow, and whether the computer slept since.
     watch, started = slept.Watch(), datetime.now(ZoneInfo(cfg.timezone))
     cfg = cfg.model_copy(deep=True)  # tonight's lookbacks are tonight's alone
@@ -631,7 +636,7 @@ def run(cfg: Config, options: Options, io: IO) -> int:
             log.info("Nothing new; exiting.")
         return _quiet_night(state, read.coverage, tonight.sends)
 
-    written = _write(cfg, options, io, state, read, tonight.sends, watch)
+    written = _write(cfg, options, io, state, read, tonight.sends, watch, caught_up)
     night = written.night
     tonight = plan(options, anything_new=True, nothing_could_be_read=_nothing_could_be_read(cfg, read.coverage),
                    nothing_to_show=render.nothing_to_show(night))
@@ -668,36 +673,96 @@ def run(cfg: Config, options: Options, io: IO) -> int:
     return 1 if options.first and not everyone else 0
 
 
-def _evening_missed(cfg: Config, state: State) -> bool:
-    """Whether the evening run's latest time, in the Household's zone, has gone by with no run
-    since. Before the first run, since the evening job was installed: it is installed with its
-    first start still to come. A run that sent the Brief counts, even if a later step failed."""
-    last = state.last_run_at or state.scheduled_at
-    if last is None:  # installed by a version that didn't note when
-        return False
-    now = datetime.now(ZoneInfo(cfg.timezone))
+def _latest_evening(cfg: Config, now: datetime) -> datetime:
+    """The evening run's latest time at or before `now`, in the Household's zone."""
     evening = now.replace(hour=cfg.schedule.daily_hour, minute=cfg.schedule.daily_minute,
                           second=0, microsecond=0)
-    if evening > now:
-        evening -= timedelta(days=1)
-    return last < evening
+    return evening - timedelta(days=1) if evening > now else evening
+
+
+def _missed_by(cfg: Config, state: State) -> timedelta | None:
+    """How long ago the evening run's latest time, in the Household's zone, went by with no run
+    since; None when a run has been since. Before the first run, since the evening job was
+    installed: it is installed with its first start still to come. A run that sent the Brief
+    counts, even if a later step failed."""
+    last = state.last_run_at or state.scheduled_at
+    if last is None:  # installed by a version that didn't note when
+        return None
+    now = datetime.now(ZoneInfo(cfg.timezone))
+    evening = _latest_evening(cfg, now)
+    return now - evening if last < evening else None
+
+
+# A missed evening is caught up only this long after its time (#894): later, the next evening's
+# run is near, and its lookback covers the missed one anyway.
+CATCH_UP_LIMIT = timedelta(hours=10)
+# A start by the scheduler this long after the Brief's time is still the evening's own, not a
+# catch-up: a computer woken for the Brief, or the network it waits for, takes a while.
+ON_TIME = timedelta(minutes=30)
+# A start by hand through the scheduler (`schedule run-now`) leaves this file beside the state;
+# the run it starts takes it, if it is this fresh, as a run by hand.
+BY_HAND = "run-now"
+BY_HAND_FRESH = timedelta(minutes=10)
+
+
+def by_hand_path(cfg: Config) -> Path:
+    """Where `schedule run-now` leaves its note for the run it starts."""
+    return cfg.resolved_state_path().with_name(BY_HAND)
+
+
+def mark_started_by_hand(cfg: Config) -> None:
+    """Notes that a person is starting the evening job now, through the scheduler, so that run
+    runs at any hour and isn't a catch-up."""
+    path = by_hand_path(cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
+
+
+def forget_started_by_hand(cfg: Config) -> None:
+    """Takes back mark_started_by_hand's note, when the job wasn't started."""
+    by_hand_path(cfg).unlink(missing_ok=True)
+
+
+def _started_by_hand(cfg: Config) -> bool:
+    """Whether `schedule run-now` started this run, a few minutes ago. Its note is used up."""
+    path = by_hand_path(cfg)
+    try:
+        noted = path.read_text(encoding="utf-8").strip()
+        path.unlink()
+        at = datetime.fromisoformat(noted)
+    except (OSError, ValueError):
+        return False
+    return abs(datetime.now(timezone.utc) - at) < BY_HAND_FRESH
 
 
 def run_unless_caught_up(cfg: Config, options: Options, io: IO) -> int:
-    """`run`, or with `if_missed` only when the evening run was missed (#386). Checked under the
+    """`run`, or with `if_missed` only when the evening run was missed (#386). A start by the
+    scheduler (`scheduled`, or `if_missed`, the Windows sign-in task's) well after the Brief's time
+    with no run since catches up the missed evening, with a line that says so, but only within
+    CATCH_UP_LIMIT of it; after that it is left to the next evening run (#894). Checked under the
     run lock, so a catch-up started beside the evening run sees the state that run left. A run
     that isn't a dry run notes how it ended in last-run.json, a crash as exit 1, with how long it
     took."""
-    if options.if_missed:
-        if not _evening_missed(cfg, io.load_state(cfg.resolved_state_path())):
+    caught_up = False
+    by_hand = options.scheduled and _started_by_hand(cfg)
+    if options.if_missed or (options.scheduled and not by_hand):
+        missed = _missed_by(cfg, io.load_state(cfg.resolved_state_path()))
+        if options.if_missed and missed is None:
             log.info("The evening run has run since its last time, so there is nothing to catch up")
             return 0
-        log.info("The evening run was missed, so it runs now")
+        if missed is not None and missed > ON_TIME and not cfg.hosted:
+            if missed >= CATCH_UP_LIMIT:
+                log.info("The evening run was missed %d hours ago, too long ago to catch up (%d hours "
+                         "or more), so it is left to the next evening run, which covers it",
+                         missed // timedelta(hours=1), CATCH_UP_LIMIT // timedelta(hours=1))
+                return 0
+            caught_up = True
+            log.info("The evening run was missed, so it runs now")
     if options.dry_run:
-        return run(cfg, options, io)
+        return run(cfg, options, io, caught_up)
     started = time.monotonic()
     try:
-        code = run(cfg, options, io)
+        code = run(cfg, options, io, caught_up)
     except BaseException:
         last_run.record(cfg, 1, time.monotonic() - started, wilma_egress.causes())
         raise
