@@ -217,7 +217,7 @@ SOCIALSCHOOLS = Source("socialschools", _same_everywhere("Social Schools"),
                        held_back_link=lambda m: m.url)
 
 # A Dutch childcare or after-school care (BSO) on Konnect's parent portal, read through the JSON
-# its own web app reads with a password in the secret store (ADR 0049): the messages, news and
+# its own web app reads with a password in the secret store (ADR 0050): the messages, news and
 # newsletters it sends parents, and each time a child is planned to be there, which go into the
 # .ics as eVaka's events do. Never its timeline, with the children's photos and health entries.
 # Set up one sign-in per provider from a terminal (`setup konnect`), never on the setup page, so

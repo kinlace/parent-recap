@@ -1,6 +1,6 @@
 """The Konnect Source: a Dutch childcare or after-school care (BSO) on Konnect's parent portal,
 `<provider>.ouderportaal.nl`, read through the JSON its own web app reads, with the parent's
-username and password (ADR 0049).
+username and password (ADR 0050).
 
 Each provider is its own address with sessions of its own, so a Household is one Konnect sign-in
 per provider, as it is one eVaka sign-in per city. A parent signs in with

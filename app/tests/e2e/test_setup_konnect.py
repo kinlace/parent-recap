@@ -1,4 +1,4 @@
-"""Adding a Konnect sign-in with `parent-recap setup konnect` (ADR 0049, #905), `doctor`'s check
+"""Adding a Konnect sign-in with `parent-recap setup konnect` (ADR 0050, #905), `doctor`'s check
 of it and uninstall: the password goes from the secret store's own prompt to one sign-in and the
 store, never into the config, the command's output or a dialog; the children are matched to the
 Kids by name; a portal that wants a new password says what to do. The outside edges are faked:
