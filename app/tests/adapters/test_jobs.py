@@ -110,6 +110,51 @@ def test_the_evening_jobs_run_under_caffeinate_so_the_mac_stays_awake_through_th
         (sys.executable, "-m", "family_brief", "weekend-events")}
 
 
+def test_installing_a_job_as_it_is_leaves_its_file_and_its_load_alone(harness, launchctl,
+                                                                      tmp_path):
+    # An update that doesn't change a job's definition (ADR 0047): macOS has nothing to announce.
+    jobs.install(both(tmp_path)[:1])
+    plist = jobs_macos.LAUNCH_AGENTS / "com.parentrecap.daily.plist"
+    os.utime(plist, (1_000_000, 1_000_000))
+    launchctl.ran.clear()
+
+    jobs.install(both(tmp_path)[:1])
+
+    assert plist.stat().st_mtime == 1_000_000
+    assert launchctl.verbs("load") == [] and launchctl.verbs("unload") == []
+    assert jobs.installed() == {"daily"}
+    assert install_record.entries("launchd") == [str(plist)]
+
+
+def test_a_changed_job_or_one_not_loaded_is_installed_again(harness, launchctl, tmp_path):
+    jobs.install(both(tmp_path)[:1])
+    launchctl.loaded.clear()  # after a restart, seen from SSH
+
+    jobs.install(both(tmp_path)[:1])
+    jobs.install([jobs.Job(jobs.DAILY, "run", None, 20, 30, tmp_path)])
+
+    assert len(launchctl.verbs("load")) == 3
+    plist = plistlib.loads((jobs_macos.LAUNCH_AGENTS / "com.parentrecap.daily.plist").read_bytes())
+    assert plist["StartCalendarInterval"] == {"Hour": 20, "Minute": 30}
+
+
+def test_a_job_installed_from_a_versions_own_python_runs_it_through_app(harness, launchctl,
+                                                                        tmp_path, monkeypatch):
+    # The venv's scripts name their version's folder; the job must name `app`, which the next
+    # version is switched to (ADR 0047).
+    folder = harness.home / "ParentRecap"
+    (folder / "versions" / "1.0.abc123").mkdir(parents=True)
+    (folder / "runtime").mkdir()
+    (folder / "app").symlink_to("versions/1.0.abc123")
+    monkeypatch.setattr(sys, "executable",
+                        str(folder / "versions" / "1.0.abc123" / ".venv" / "bin" / "python"))
+
+    jobs.install(both(tmp_path)[:1])
+
+    assert jobs.program("daily") == [str(folder / "app" / ".venv" / "bin" / "python"), "-m",
+                                     "family_brief", "run"]
+
+
 def test_a_plist_from_before_caffeinate_still_reads_as_its_program(harness, launchctl, tmp_path):
     jobs_macos.LAUNCH_AGENTS.mkdir(parents=True)
     (jobs_macos.LAUNCH_AGENTS / "com.parentrecap.daily.plist").write_bytes(plistlib.dumps(
@@ -232,6 +277,22 @@ def test_the_always_running_job_is_installed_running_stopped_and_removed(harness
     assert jobs.always_status() == jobs.AlwaysStatus(installed=False, running=False)
     assert list(jobs_macos.LAUNCH_AGENTS.iterdir()) == []
     jobs.remove_always()  # nothing left to remove
+
+
+def test_restarting_the_always_running_job_kickstarts_it_only_while_it_runs(harness, launchctl,
+                                                                            tmp_path):
+    # After a switch of version (ADR 0047), so it runs the version switched to.
+    jobs.restart_always()  # not installed
+    jobs.install_always(FOLLOW, tmp_path)
+    jobs.stop_always()
+    jobs.restart_always()  # stopped: it starts at the next login
+    assert launchctl.verbs("kickstart") == []
+
+    jobs.install_always(FOLLOW, tmp_path)
+    jobs.restart_always()
+
+    assert launchctl.verbs("kickstart") == [
+        ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/com.parentrecap.linked-device"]]
 
 
 def test_the_evening_jobs_leave_the_always_running_job_be_and_remove_all_takes_it(harness,

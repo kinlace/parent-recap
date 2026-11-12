@@ -358,6 +358,14 @@ def remove_always() -> None:
             raise RuntimeError(f"Task Scheduler didn't remove {task}: {_error(r)}")
 
 
+def restart_always() -> None:
+    task = system_name(jobs.ALWAYS)
+    stop_always()
+    r = _schtasks("/Run", "/TN", task)
+    if r.returncode != 0:
+        raise RuntimeError(f"Task Scheduler couldn't start {task}: {_error(r)}")
+
+
 def always_status() -> jobs.AlwaysStatus:
     task = system_name(jobs.ALWAYS)
     installed = task in _names()

@@ -109,6 +109,7 @@ class FakeJobs:
         self.always: list[str] | None = None   # the always-running job's command, if installed
         self.always_log_dir: Path | None = None
         self.always_running = False            # stopped, or ended with its link, when False
+        self.always_restarts = 0               # how often restart_always started it again
 
     @property
     def OWN_CLOCK(self) -> bool:
@@ -158,6 +159,9 @@ class FakeJobs:
 
     def stop_always(self) -> None:
         self.always_running = False
+
+    def restart_always(self) -> None:
+        self.always_restarts += 1
 
     def system_name(self, name: str) -> str:
         return f"Parent Recap {name}"

@@ -1,7 +1,11 @@
 #!/bin/bash
-# Install or update Parent Recap into ~/ParentRecap/app, on a Mac or, for the hosted version
+# Install or update Parent Recap into ~/ParentRecap, on a Mac or, for the hosted version
 # (ADR 0029), on a Linux server, where ops/gateway/gateway-setup.sh runs it as root into the one
 # copy every Hosted Household runs (ADR 0035).
+# Each install goes into a folder of its own in ~/ParentRecap/versions, beside the running
+# version, which keeps running until it finished; then ~/ParentRecap/app, the one path the jobs
+# and entries start the program from, is switched to it, and the version before is kept to
+# switch back to (`parent-recap switch-back`, ADR 0047; family_brief/versions.py).
 # Safe to re-run: never touches the config, tokens or Keychain. It only adds what it creates to
 # setup's record (~/.family/install-record.json), so `parent-recap uninstall` can remove it.
 set -euo pipefail
@@ -9,6 +13,7 @@ set -euo pipefail
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="${PARENT_RECAP_HOME:-$HOME/ParentRecap}"
 APP="$TARGET/app"
+VERSIONS="$TARGET/versions"
 
 # ── Old install check
 # An install from before ADR 0010 lives in ~/FamilyBrief and runs the jobs com.family.brief and
@@ -178,35 +183,29 @@ install_runtimes() {
   trap - EXIT
 }
 
-# The venv's Python with its links followed, so a new pinned Python rebuilds the venv; empty
-# without a venv.
-venv_real_python() {
-  [ -e "$APP/.venv/bin/python" ] || [ -L "$APP/.venv/bin/python" ] || return 0
-  "$PY" -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$APP/.venv/bin/python"
-}
-
 [ "$OS" = linux ] || refuse_old_macos
 refuse_old_install
 install_runtimes
 
-mkdir -p "$APP" "$TARGET/logs"
+mkdir -p "$VERSIONS" "$TARGET/logs"
 # The archive holds every collected message and the logs, so only this account may read them
 # (home folders on macOS let every standard account in, and Households share a server). This also
 # fixes installs from before it was done.
 chmod 700 "$TARGET"
 chmod -R go-rwx "$TARGET"
 mkdir -p "$HOME/.family" && chmod 700 "$HOME/.family"
-rsync -a --delete --exclude .venv --exclude '__pycache__' --exclude '*.egg-info' --exclude /tests "$PLUGIN_ROOT/app/" "$APP/"
 VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$PLUGIN_ROOT/.claude-plugin/plugin.json" | head -1)
-echo "${VERSION:-unknown}" > "$APP/VERSION"
-
-# A venv on another Python (Homebrew's, before ADR 0011) or an older pinned one is rebuilt.
-OLD_REAL_PY=$(venv_real_python)
-REAL_PY=$("$PY" -c 'import os, sys; print(os.path.realpath(sys.executable))')
-if [ "$OLD_REAL_PY" != "$REAL_PY" ] || ! "$APP/.venv/bin/python" -c '' 2>/dev/null; then
-  rm -rf "$APP/.venv"
-  "$PY" -m venv "$APP/.venv"
-fi
+# This release's own folder, beside the running version, which goes on as it was until the switch
+# below. Built where it stays, as a venv names its own folder. One an install that failed or was
+# cut off left is removed by the next one's switch.
+NEW=$(mktemp -d "$VERSIONS/${VERSION:-unknown}.XXXXXX")
+trap 'rm -rf "$NEW"' EXIT  # until the switch: an install that fails leaves nothing of itself
+chmod 700 "$NEW"
+rsync -a --exclude .venv --exclude '__pycache__' --exclude '*.egg-info' --exclude /tests "$PLUGIN_ROOT/app/" "$NEW/"
+echo "${VERSION:-unknown}" > "$NEW/VERSION"
+# The runtimes this version runs on, which the switch keeps while it's running or kept.
+printf '%s\n' "$(basename "$RUNTIME")" "$(basename "$NODE_RUNTIME")" > "$NEW/RUNTIMES"
+"$PY" -m venv "$NEW/.venv"
 
 # pip's full output goes to a dated log, not the Terminal: a failed build is pages of compiler
 # output a family can't act on. The log starts with the one line triage needs about this Mac,
@@ -220,7 +219,7 @@ pip_failed() {
 # Prebuilt packages only: building one from source can download a compiler and still fail, and
 # then pip picks the newest version with a ready-made package for this Mac. Pinned to what was
 # tested (app/constraints.txt, see CONTRIBUTING.md), not to what was published this morning.
-PIP=("$APP/.venv/bin/pip" install --only-binary :all:)
+PIP=("$NEW/.venv/bin/pip" install --only-binary :all:)
 # pip upgrades itself first, so the line names the pip that installs the packages.
 UPGRADE=$("${PIP[@]}" --upgrade pip 2>&1) && UPGRADED=yes || UPGRADED=no
 tilde() {
@@ -236,22 +235,26 @@ else
   MAC="Mac: $ARCH, macOS $(sw_vers -productVersion 2>/dev/null || echo unknown),"
 fi
 MAC+=" Python $(tilde "$PY") ($("$PY" -c 'import platform; print(platform.python_version())' 2>/dev/null || echo unknown)),"
-MAC+=" pip $("$APP/.venv/bin/python" -c 'from importlib.metadata import version; print(version("pip"))' 2>/dev/null || echo unknown), cc $(tilde "$CC")"
+MAC+=" pip $("$NEW/.venv/bin/python" -c 'from importlib.metadata import version; print(version("pip"))' 2>/dev/null || echo unknown), cc $(tilde "$CC")"
 printf '%s\n%s\n' "$MAC" "$UPGRADE" > "$LOG"
 [ "$UPGRADED" = yes ] || pip_failed
-"${PIP[@]}" -c "$APP/constraints.txt" -e "$APP" >> "$LOG" 2>&1 || pip_failed
+"${PIP[@]}" -c "$NEW/constraints.txt" -e "$NEW" >> "$LOG" 2>&1 || pip_failed
 # Google's packages only for a Household whose config uses Google Calendar: turning it on in
 # manage runs this script again, and an update keeps them.
-if "$APP/.venv/bin/python" -m family_brief.google_packages wanted; then
-  "${PIP[@]}" -c "$APP/constraints.txt" -e "$APP[google]" >> "$LOG" 2>&1 || pip_failed
+if "$NEW/.venv/bin/python" -m family_brief.google_packages wanted; then
+  "${PIP[@]}" -c "$NEW/constraints.txt" -e "$NEW[google]" >> "$LOG" 2>&1 || pip_failed
 fi
-# Only once the program runs on the new Python, so a failed pip step keeps the old one. The
-# wilma CLI runs on whichever Node is there, so an old Node goes with it.
-for old in "$RUNTIMES"/python-* "$RUNTIMES"/node-*; do
-  [ "$old" = "$RUNTIME" ] || [ "$old" = "$NODE_RUNTIME" ] || rm -rf "$old"
-done
+
+# ── The switch (ADR 0047)
+# The install finished: `app` now points at it, the version it pointed at before is kept as
+# versions/previous (an install from before versions is moved there first), and every other
+# version, with the runtimes neither of the two runs on, is removed. From here on the program is
+# run through `app`, as the jobs and the entries run it. A switch cut off may already point `app`
+# at the new version, so it's no longer removed on the way out; the next switch clears what's left.
+trap - EXIT
+"$NEW/.venv/bin/python" -m family_brief.versions switch "$TARGET" "$NEW"
 RECORD=("$APP/.venv/bin/python" -m family_brief.install_record)
-"${RECORD[@]}" program "$APP" logs "$TARGET/logs" runtime "$RUNTIMES"
+"${RECORD[@]}" program "$APP" versions "$VERSIONS" logs "$TARGET/logs" runtime "$RUNTIMES"
 # The copy of the plugin the install line downloads, which the Codex skills run from; Claude
 # Code manages its own copy.
 if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_ROOT"; fi
@@ -265,6 +268,9 @@ if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_RO
 # lockfile this release pins. One that couldn't be installed leaves the one there, and the next
 # install tries again.
 "$APP/.venv/bin/python" -m family_brief.baileys_install install
+# A Linked Device running now is started again, so it runs this version. It never fails the
+# install.
+"$APP/.venv/bin/python" -m family_brief.linked_device restart
 # Parent Recap Settings and Parent Recap Check in ~/Applications, where Spotlight finds them (ADR
 # 0042), made again by every install, so an update brings them. A server gets none: a Hosted
 # Household's settings are the maintainers'. It never fails the install.

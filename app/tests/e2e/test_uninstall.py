@@ -430,6 +430,50 @@ def test_leaves_files_it_did_not_create_in_its_folders(harness, monkeypatch, cap
     assert "notes.txt" in out and "other-tool.yaml" in out
 
 
+def as_versions(home: Path) -> Path:
+    """The program as install.sh leaves it since ADR 0047: `app` a link to the running version's
+    folder in ~/ParentRecap/versions, with the version before kept beside it, and the folder in
+    the record. Returns that folder."""
+    target = home / "ParentRecap"
+    versions_folder = target / "versions"
+    versions_folder.mkdir()
+    (target / "app").rename(versions_folder / "0.6.0.abc123")
+    (target / "app").symlink_to("versions/0.6.0.abc123")
+    before = versions_folder / "0.5.0.def456"
+    shutil.copytree(versions_folder / "0.6.0.abc123", before, symlinks=True)
+    (before / "VERSION").write_text("0.5.0\n")
+    (versions_folder / "previous").symlink_to(before.name)
+    install_record.main(["versions", str(versions_folder)])
+    return versions_folder
+
+
+@pytest.mark.posix
+def test_removes_the_version_kept_to_switch_back_to_with_the_program(harness, monkeypatch,
+                                                                     capsys):
+    set_up(harness, monkeypatch)
+    versions_folder = as_versions(harness.home)
+    assert install_record.entries("versions") == [str(versions_folder)]
+
+    assert uninstall(harness) == 0
+    assert "ParentRecap/versions" in capsys.readouterr().out
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert leftovers(harness.home) == []
+
+
+@pytest.mark.posix
+def test_stops_on_a_versions_folder_with_files_that_are_not_parent_recap_s(harness, monkeypatch,
+                                                                          capsys):
+    set_up(harness, monkeypatch)
+    (as_versions(harness.home) / "notes.txt").write_text("mine\n")
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 1
+
+    assert "ParentRecap/versions is where the program's versions go" in capsys.readouterr().out
+    assert (harness.home / "ParentRecap" / "versions" / "notes.txt").exists()
+
+
 def test_a_denied_keychain_deletion_is_reported_and_the_rest_still_removed(harness,
                                                                          monkeypatch, capsys):
     set_up(harness, monkeypatch)

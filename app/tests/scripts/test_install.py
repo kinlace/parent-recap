@@ -205,11 +205,12 @@ def program(mac: dict, requires: tuple[str, ...], constraints: str = "",
     (app / "family_brief" / "__main__.py").write_text(
         "import os, sys\ndef main():\n    print('runs on', os.path.realpath(sys.executable))\n")
     # The real ones record what the install made (test_uninstall.py), put the command on the PATH
-    # (test_command_path.py), install the Baileys tree (test_baileys_install.py), put Parent Recap
-    # Settings and Check in ~/Applications (test_program_entries.py) and update the evening
-    # schedule (test_schedule_update.py). These note, in order, that they were asked.
-    for module in ("install_record", "command_path", "baileys_install", "program_entries",
-                   "schedule_update"):
+    # (test_command_path.py), install the Baileys tree (test_baileys_install.py), restart the
+    # Linked Device (test_jobs.py), put Parent Recap Settings and Check in ~/Applications
+    # (test_program_entries.py) and update the evening schedule (test_schedule_update.py). These
+    # note, in order, that they were asked.
+    for module in ("install_record", "command_path", "baileys_install", "linked_device",
+                   "program_entries", "schedule_update"):
         (app / "family_brief" / f"{module}.py").write_text(
             "import pathlib, sys\n"
             "with open(pathlib.Path.home() / 'installer.calls', 'a') as calls:\n"
@@ -226,6 +227,15 @@ def program(mac: dict, requires: tuple[str, ...], constraints: str = "",
         "config = pathlib.Path.home() / '.family' / 'config.yaml'\n"
         "sys.exit(0 if config.exists() and 'mode: google' in config.read_text() else 1)\n")
     (app / "constraints.txt").write_text(constraints)
+    # The real one, which install.sh runs to switch to the version it installed (ADR 0047).
+    shutil.copy(ROOT / "app" / "src" / "family_brief" / "versions.py",
+                app / "family_brief" / "versions.py")
+
+
+def version(mac: dict, number: str) -> None:
+    """The release the plugin folder holds."""
+    (mac["plugin"] / ".claude-plugin" / "plugin.json").write_text(
+        json.dumps({"name": "parent-recap", "version": number}))
 
 
 def google_mode(mac: dict) -> None:
@@ -382,7 +392,7 @@ def test_every_install_on_a_mac_updates_the_evening_schedule_last(mac):
 
     assert (mac["home"] / "installer.calls").read_text() == (
         "install_record program\ncommand_path install\nbaileys_install install\n"
-        "program_entries install\nschedule_update\n") * 2
+        "linked_device restart\nprogram_entries install\nschedule_update\n") * 2
 
 
 @pytest.mark.macos
@@ -416,6 +426,186 @@ def test_the_last_lines_say_the_command_for_a_new_window_and_for_this_one(mac):
     assert "parent-recap in a new Terminal window" in last
     assert str(mac["home"] / "ParentRecap" / "app" / ".venv" / "bin" / "parent-recap") in last
     assert (mac["home"] / "installer.calls").read_text().splitlines()[1] == "command_path install"
+
+
+# --- Each version beside the running one (ADR 0047) ----------------------------------------------
+
+def target(mac: dict) -> Path:
+    return mac["home"] / "ParentRecap"
+
+
+def running(mac: dict) -> Path:
+    """The version's folder `app` points at."""
+    app = target(mac) / "app"
+    assert app.is_symlink(), "app isn't a link to a version"
+    return Path(os.path.realpath(app))
+
+
+def kept(mac: dict) -> Path | None:
+    link = target(mac) / "versions" / "previous"
+    return Path(os.path.realpath(link)) if link.is_symlink() else None
+
+
+def runs(mac: dict) -> str:
+    """What the program says it runs on, started as the jobs and entries start it."""
+    ran = subprocess.run([target(mac) / "app" / ".venv" / "bin" / "parent-recap"],
+                         capture_output=True, text=True)
+    assert ran.returncode == 0, ran.stderr
+    return ran.stdout.strip()
+
+
+def code_of(mac: dict) -> Path:
+    """The folder the program's code is imported from, run through `app`."""
+    ran = subprocess.run([target(mac) / "app" / ".venv" / "bin" / "python", "-c",
+                          "import family_brief, os; print(os.path.realpath(family_brief.__file__))"],
+                         capture_output=True, text=True, check=True)
+    return Path(ran.stdout.strip()).parents[1]
+
+
+def watch_app_during_install(mac: dict) -> Path:
+    """Has the install's step that runs on the new version before the switch note what `app`
+    held then."""
+    seen = mac["home"] / "app-during-install"
+    (mac["plugin"] / "app" / "family_brief" / "google_packages.py").write_text(
+        "import pathlib, sys\n"
+        "app = pathlib.Path.home() / 'ParentRecap' / 'app' / 'VERSION'\n"
+        f"pathlib.Path({str(seen)!r}).write_text(app.read_text() if app.exists() else 'none')\n"
+        "sys.exit(1)\n")
+    return seen
+
+
+@pytest.mark.macos
+def test_an_install_over_an_older_version_switches_to_it_only_once_it_finished(mac):
+    program(mac, ())
+    assert install(mac).returncode == 0
+    old = running(mac)
+    seen = watch_app_during_install(mac)
+    version(mac, "9.9.10")
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert seen.read_text() == "9.9.9\n"  # the running version, while the new one installed
+    new = running(mac)
+    assert new != old and new.parent == target(mac) / "versions" and new.name.startswith("9.9.10.")
+    assert (target(mac) / "app" / "VERSION").read_text() == "9.9.10\n"
+    assert code_of(mac) == new
+    # The version before is kept as it was, to switch back to.
+    assert kept(mac) == old and (old / "VERSION").read_text() == "9.9.9\n"
+    assert subprocess.run([old / ".venv" / "bin" / "python", "-c", ""]).returncode == 0
+    assert "installed to" in result.stdout
+
+
+@pytest.mark.macos
+def test_an_install_that_fails_part_way_leaves_the_running_version_with_nothing_switched(mac):
+    program(mac, ())
+    assert install(mac).returncode == 0
+    old, before = running(mac), runs(mac)
+    sdist(mac["packages"], "needs-compiling", "1.0", build_marker=mac["tmp"] / "compiled")
+    shutil.rmtree(mac["plugin"] / "app")
+    program(mac, ("needs-compiling",))
+    version(mac, "9.9.10")
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    assert "couldn't install its Python packages" in result.stdout
+    assert running(mac) == old and kept(mac) is None and runs(mac) == before
+    # Nothing of the failed install is left beside it.
+    assert sorted(p.name for p in (target(mac) / "versions").iterdir()) == [old.name]
+
+
+@pytest.mark.macos
+def test_a_third_install_removes_the_oldest_version(mac):
+    program(mac, ())
+    assert install(mac).returncode == 0
+    first = running(mac)
+    version(mac, "9.9.10")
+    assert install(mac).returncode == 0
+    second = running(mac)
+    version(mac, "9.9.11")
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert kept(mac) == second and not first.exists()
+    assert sorted(p.name for p in (target(mac) / "versions").iterdir()) == sorted(
+        [second.name, running(mac).name, "previous"])
+
+
+@pytest.mark.macos
+def test_installing_the_same_version_again_keeps_the_one_before_it(mac):
+    # As manage does to add Google's packages: switching back still goes to another version.
+    program(mac, ())
+    assert install(mac).returncode == 0
+    first = running(mac)
+    version(mac, "9.9.10")
+    assert install(mac).returncode == 0
+    replaced = running(mac)
+
+    assert install(mac).returncode == 0
+
+    assert kept(mac) == first and running(mac) != replaced and not replaced.exists()
+
+
+@pytest.mark.macos
+def test_switching_back_runs_the_previous_version_on_its_own_python_from_the_same_path(mac):
+    from family_brief import versions
+    program(mac, ())
+    assert install(mac).returncode == 0
+    old, on_old = running(mac), runs(mac)
+    serve(mac, "3.13.17", "20261101")
+    version(mac, "9.9.10")
+    assert install(mac).returncode == 0
+    new, on_new = running(mac), runs(mac)
+    assert on_new != on_old and "python-3.13.17-20261101" in on_new
+
+    assert versions.switch_back(target(mac)) == ("9.9.9", "9.9.10")
+
+    # Started from the same path, it's the version before, on the Python it was installed on.
+    assert running(mac) == old and kept(mac) == new
+    assert runs(mac) == on_old and code_of(mac) == old
+
+    assert versions.switch_back(target(mac)) == ("9.9.10", "9.9.9")
+    assert running(mac) == new and runs(mac) == on_new
+
+
+def legacy_install(mac: dict, number: str) -> Path:
+    """An install from before versions, as its install.sh left it: the program in `app` itself,
+    with a venv built there on the pinned Python, which a first install here put in runtime/."""
+    program(mac, ())
+    assert install(mac).returncode == 0
+    shutil.rmtree(target(mac) / "versions")
+    (target(mac) / "app").unlink()
+    app = target(mac) / "app"
+    shutil.copytree(mac["plugin"] / "app", app)
+    (app / "VERSION").write_text(f"{number}\n")
+    python = runtimes(mac) / "python-3.13.16-20261003" / "bin" / "python3"
+    subprocess.run([python, "-m", "venv", app / ".venv"], check=True)
+    env = {**os.environ, "PIP_NO_INDEX": "1", "PIP_FIND_LINKS": str(mac["packages"]),
+           "PIP_DISABLE_PIP_VERSION_CHECK": "1", "PIP_NO_CACHE_DIR": "1"}
+    subprocess.run([app / ".venv" / "bin" / "pip", "install", "-q", "-e", app], env=env,
+                   check=True, capture_output=True)
+    return app
+
+
+@pytest.mark.macos
+def test_an_install_from_before_versions_is_taken_over_without_a_reinstall(mac):
+    from family_brief import versions
+    legacy_install(mac, "9.9.8")
+    on_legacy = runs(mac)
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    before = kept(mac)
+    assert before is not None and before.name == "9.9.8.before"
+    assert running(mac).name.startswith("9.9.9.")
+
+    # Its venv names `app`, so it runs again once `app` points at it.
+    versions.switch_back(target(mac))
+    assert (target(mac) / "app" / "VERSION").read_text() == "9.9.8\n"
+    assert runs(mac) == on_legacy and code_of(mac) == before
 
 
 # --- The install log -------------------------------------------------------------------------
@@ -733,11 +923,14 @@ def test_a_new_pinned_version_goes_into_a_new_folder_and_asks_nothing_of_the_fam
     assert install(mac).returncode == 0
     old = real_python(mac)
     serve(mac, "3.13.17", "20261101")
+    version(mac, "9.9.10")
 
     result = install(mac)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert sorted(p.name for p in runtimes(mac).iterdir()) == [f"node-v{NODE}", "python-3.13.17-20261101"]
+    # The old one stays while the version before, which runs on it, is kept (ADR 0047).
+    assert sorted(p.name for p in runtimes(mac).iterdir()) == [
+        f"node-v{NODE}", "python-3.13.16-20261003", "python-3.13.17-20261101"]
     assert real_python(mac).is_relative_to(runtimes(mac) / "python-3.13.17-20261101") and real_python(mac) != old
     # No permission names the Python since WhatsApp is no longer read from this Mac (ADR 0027).
     assert "grant" not in result.stdout.lower() and "Privacy & Security" not in result.stdout
@@ -745,17 +938,23 @@ def test_a_new_pinned_version_goes_into_a_new_folder_and_asks_nothing_of_the_fam
 
 
 @pytest.mark.macos
-def test_a_new_pinned_node_replaces_the_old_one(mac):
+def test_a_new_pinned_node_replaces_the_old_one_once_no_kept_version_runs_on_it(mac):
     program(mac, ())
     assert install(mac).returncode == 0
     python = real_python(mac)
     serve_node(mac, "24.22.0")
+    version(mac, "9.9.10")
 
     result = install(mac)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert sorted(p.name for p in runtimes(mac).iterdir()) == ["node-v24.22.0", "python-3.13.16-20261003"]
+    assert sorted(p.name for p in runtimes(mac).iterdir()) == [
+        f"node-v{NODE}", "node-v24.22.0", "python-3.13.16-20261003"]
     assert real_python(mac) == python
+
+    version(mac, "9.9.11")
+    assert install(mac).returncode == 0
+    assert sorted(p.name for p in runtimes(mac).iterdir()) == ["node-v24.22.0", "python-3.13.16-20261003"]
 
 
 @pytest.mark.macos

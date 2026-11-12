@@ -19,7 +19,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Callable
 
-from .. import install_record, private_files, tools
+from .. import install_record, private_files, tools, versions
 from . import jobs  # its names are read at call time: jobs imports this module first
 
 LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
@@ -62,7 +62,8 @@ def _plist(job: jobs.Job) -> dict:
         interval = {"Weekday": job.weekday, **interval}
     return {
         "Label": system_name(job.name),
-        "ProgramArguments": [*AWAKE, sys.executable, "-m", "family_brief", job.subcommand],
+        "ProgramArguments": [*AWAKE, str(versions.stable(Path(sys.executable))), "-m",
+                             "family_brief", job.subcommand],
         "StartCalendarInterval": interval,
         "StandardOutPath": str(job.log_dir / f"{job.subcommand}-stdout.log"),
         "StandardErrorPath": str(job.log_dir / f"{job.subcommand}-stderr.log"),
@@ -74,19 +75,30 @@ def _plist(job: jobs.Job) -> dict:
 
 
 def install(wanted: list[jobs.Job]) -> None:
+    loaded = _loaded()
     for job in wanted:
         label = system_name(job.name)
         path = _path(label)
-        LAUNCH_AGENTS.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
-        with path.open("wb") as f:
-            plistlib.dump(_plist(job), f)
-        subprocess.run(["launchctl", "load", str(path)], check=True)
+        plist = plistlib.dumps(_plist(job))
+        # A job that is already as wanted keeps its file, as after an update that doesn't
+        # change it (ADR 0047), so macOS has nothing new to announce.
+        if not (label in loaded and _same(path, plist)):
+            LAUNCH_AGENTS.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
+            path.write_bytes(plist)
+            subprocess.run(["launchctl", "load", str(path)], check=True)
         install_record.add("launchd", str(path))
     kept = {system_name(job.name) for job in wanted}
     for label in OURS:
         if label not in kept:
             _remove(_path(label))
+
+
+def _same(path: Path, plist: bytes) -> bool:
+    try:
+        return path.read_bytes() == plist
+    except OSError:
+        return False
 
 
 def _remove(path: Path) -> None:
@@ -184,6 +196,15 @@ def install_always(program: list[str], log_dir: Path) -> None:
 
 def remove_always() -> None:
     _remove(_path(ALWAYS_LABEL))
+
+
+def restart_always() -> None:
+    target = f"{_domain()}/{ALWAYS_LABEL}"
+    kick = subprocess.run(["launchctl", "kickstart", "-k", target], capture_output=True, text=True,
+                          encoding="utf-8")
+    if kick.returncode != 0:
+        raise RuntimeError(f"launchctl couldn't restart {ALWAYS_LABEL}: "
+                           f"{kick.stderr.strip() or kick.returncode}")
 
 
 def always_status() -> jobs.AlwaysStatus:

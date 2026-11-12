@@ -81,6 +81,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request                       |
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                                               |
 | `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                                         |
+| `test_versions.py`              | The install's switch to a new version, the previous one kept, `switch-back` (ADR 0047)                       |
 | `test_program_entries.py`       | Parent Recap Settings and Check put where the system lists programs, again on update, none on a server       |
 | `test_schoolsoft_capture.py`    | The SchoolSoft capture tool on a fake SchoolSoft: sign-in, reads, the file, evening refreshes, the lock |
 | `test_eepos_collector.py`       | Eepos's collector on a fake portal: the sign-in, the calendar, failures, two schools                         |

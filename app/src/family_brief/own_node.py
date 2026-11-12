@@ -23,7 +23,7 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 
-from . import failure, install_record
+from . import failure, install_record, versions
 from .system import profile
 
 WILMA_PACKAGE = "@wilm-ai/wilma-cli"
@@ -42,8 +42,9 @@ def home() -> Path:
 
 def running_from() -> Path | None:
     """The folder the install put the running program in, from its venv (`<folder>/app/.venv`
-    beside `<folder>/runtime`), or None when it runs from anywhere else."""
-    venv = Path(sys.prefix)
+    beside `<folder>/runtime`, or a version's `<folder>/versions/<version>/.venv` that `app`
+    leads to, ADR 0047), or None when it runs from anywhere else."""
+    venv = versions.stable(Path(sys.prefix))
     folder = venv.parent.parent
     if venv.name == ".venv" and venv.parent.name == "app" and (folder / "runtime").is_dir():
         return folder
