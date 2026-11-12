@@ -30,7 +30,7 @@ jobs:
     outputs:
       code: ${{ steps.diff.outputs.code }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - id: diff
@@ -67,10 +67,10 @@ jobs:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # A python-build-standalone Python, the kind install.sh gives families. test_install.py's
       # stand-in pinned Python is a copy of it, which a python.org framework build can't stand in for.
-      - uses: astral-sh/setup-uv@v10.2.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Python
         run: |
           uv python install 3.13
@@ -110,7 +110,7 @@ jobs:
         id: playwright
         run: echo "version=$(python -c 'from importlib.metadata import version; print(version("playwright"))')" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright's Chromium
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/Library/Caches/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
@@ -121,7 +121,7 @@ jobs:
         run: python -m pytest -m browser -n auto -rs --durations=15 --cov --cov-append --cov-report=term --cov-report=html
       - name: Upload the coverage report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: coverage
           path: app/htmlcov
@@ -158,8 +158,8 @@ jobs:
         # Not bash: Git Bash would turn the /s switch into a path.
         shell: pwsh
         run: tzutil /s "FLE Standard Time"
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.2.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Python
         run: |
           uv python install 3.13
@@ -193,9 +193,9 @@ jobs:
       # The tests pin the local timezone to Helsinki through time-machine, as on macOS.
       TZ: Europe/Helsinki
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # A python-build-standalone Python, as on macOS: test_install.py copies it for its pinned one.
-      - uses: astral-sh/setup-uv@v10.2.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Python
         run: |
           uv python install 3.13
@@ -229,7 +229,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The pinned Linux Python and Node are the ones their projects published
         run: scripts/linux-install-checks.sh pins
       - name: Install
@@ -258,7 +258,7 @@ jobs:
       run:
         shell: powershell
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The pinned Python and Node are the ones their projects published
         run: scripts\windows-install-checks.ps1 pins
       - name: A download that fails says so and leaves nothing half there
