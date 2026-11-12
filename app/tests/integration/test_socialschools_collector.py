@@ -66,7 +66,10 @@ def test_it_signs_in_as_the_ios_app_does_and_then_only_reads(sources, portal):
                          ("POST", login, "/connect/token")]
     authorize = portal.requests[0]["query"]
     assert authorize["client_id"] == "eu.socialschools.ios" and authorize["code_challenge_method"] == "S256"
-    assert "offline_access" not in authorize["scope"].split() and portal.refresh_tokens == 0
+    # The scopes ha-socialschools verified live; the refresh token that comes back is never used.
+    assert authorize["scope"] == "openid profile SocsWebApi email offline_access SocsNotificationApi"
+    assert len(portal.refresh_tokens) == 1
+    assert not [r for r in portal.requests if (r["form"] or {}).get("grant_type") == "refresh_token"]
     assert portal.requests[2]["form"]["Username"] == USERNAME
     # After the sign-in only GETs, and only of the account, the feed and the calendar: no post's own
     # page, no "seen" statistics, no conversations inbox.

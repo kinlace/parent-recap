@@ -125,7 +125,9 @@ def test_nothing_of_the_children_but_their_names_is_kept_and_nothing_is_written(
     kept += [json.dumps([call.prompt, call.system_prompt]) for call in harness.model_calls]
     kept += [e.text + (e.html or "") for e in harness.sent]
     assert not [value for value in private for text in kept if value in text]
-    assert SOCIALSCHOOLS_PASSWORD not in "".join(kept)
     fake = harness.source_fakes["socialschools"]
+    assert SOCIALSCHOOLS_PASSWORD not in "".join(kept)
+    assert fake.refresh_tokens and not [t for t in fake.refresh_tokens if t in "".join(kept)]
+    assert not [n for n in harness.secrets if "refresh" in n]
     assert {r["method"] for r in fake.requests if r["host"] == socialschools.API_HOST} == {"GET"}
     assert [r["path"] for r in fake.requests if r["method"] == "POST"] == ["/Account/Login", "/connect/token"]
