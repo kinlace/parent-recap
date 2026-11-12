@@ -34,6 +34,14 @@ _Avoid_: weekend events, weekend brief
 A message that looked sensitive, such as health, special support or bullying, and was not sent to the AI. Announcements and other messages sent to everyone are never held back. A message its Source gives only as a stub, such as a sensitive eVaka message, is always held back, even with the AI filter off. The Brief lists it by Source, sender and subject so the Recipient reads it where it came from (ADR 0013).
 _Avoid_: filtered message, hidden message, 敏感消息
 
+**Run Report** (zh 运行报告, fi ajoraportti):
+What a Household's computer sends the maintainers after each evening run: how the run ended, in fixed words and numbers, with nothing of the Household's Messages, names or addresses (ADR 0048).
+_Avoid_: telemetry, log upload, diagnostics, 日志
+
+**Problem Report** (zh 问题报告, fi vikailmoitus):
+What a parent sends the maintainers from Parent Recap Check when something is wrong: the check's results and the last lines of the program's logs, shown to them first and sent only when they press Send (ADR 0048).
+_Avoid_: bug report, feedback, log upload
+
 ## Inputs
 
 **Source** (zh 信息源, fi lähde):
