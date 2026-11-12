@@ -136,6 +136,9 @@ class Mac:
         (self.folder / "runtime" / "python-1").mkdir(parents=True)
         self.fails: dict[str, list[str]] = {}
         self.installer_fails = False
+        self.installer_interrupted = False
+        self.installer_cannot_start = False
+        self.doctor_cannot_run: set[str] = set()  # versions whose doctor doesn't answer
         self.installs: list[list[str]] = []
         self.install_envs: list[dict[str, str]] = []
         running = self.built(INSTALLED, "aaa")
@@ -167,6 +170,8 @@ class Mac:
             return self.install(cmd, k["env"])
         if cmd[0] == str(self.folder / "app" / ".venv" / "bin" / "parent-recap") and cmd[-1] == "doctor":
             version = self.version()
+            if version in self.doctor_cannot_run:
+                raise subprocess.TimeoutExpired(cmd, update.DOCTOR_TIMEOUT)
             out = "✅ Config file: fine\n" + "".join(f"❌ {item}: broken in {version}\n"
                                                    for item in self.fails.get(version, []))
             return subprocess.CompletedProcess(cmd, 1 if self.fails.get(version) else 0, out, "")
@@ -191,6 +196,10 @@ class Mac:
         assert env["PARENT_RECAP_HOME"] == str(self.folder)
         if self.installer_fails:
             return subprocess.CompletedProcess(cmd, 1, "", "❌ pip failed\n")
+        if self.installer_interrupted:
+            raise KeyboardInterrupt  # the family pressed Ctrl-C in the Terminal
+        if self.installer_cannot_start:
+            raise OSError("bash is missing")
         versions.switch(self.folder, self.built(version, f"x{len(self.installs)}"))
         return subprocess.CompletedProcess(cmd, 0, f"✅ Parent Recap {version} installed\n", "")
 
@@ -216,7 +225,7 @@ def update_log(mac: Mac) -> str:
 
 def no_downloads(mac: Mac) -> bool:
     folder = mac.folder / update.UPDATE
-    return not folder.exists() or [p.name for p in folder.iterdir()] == [update.STATE]
+    return not folder.exists() or [p.name for p in folder.iterdir()] in ([], [update.STATE])
 
 
 # ---------------------------------------------------------------- what it does
@@ -352,9 +361,7 @@ def test_a_failure_both_versions_have_does_not_switch_back(harness, github, mac,
 
 
 def test_an_installer_that_fails_leaves_the_running_version_and_the_plugin_copy(harness, github, mac, capsys):
-    (mac.folder / "plugin" / ".claude-plugin").mkdir(parents=True)
-    (mac.folder / "plugin" / ".claude-plugin" / "plugin.json").write_text(
-        json.dumps({"name": "parent-recap", "version": INSTALLED}))
+    a_plugin_copy(mac)
     github.stable = "0.20.0"
     github.publish("0.20.0")
     mac.installer_fails = True
@@ -388,17 +395,50 @@ def test_the_update_state_is_kept_across_the_switch_and_the_switch_back(harness,
     assert (mac.folder / update.UPDATE / update.STATE).is_file()
 
 
-def test_the_evening_s_look_does_not_try_a_version_that_failed_again(harness, github, mac, capsys):
+def a_plugin_copy(mac: Mac, version: str = INSTALLED) -> Path:
+    """The plugin copy the install line left in ~/ParentRecap/plugin."""
+    (mac.folder / "plugin" / ".claude-plugin").mkdir(parents=True)
+    plugin_json = mac.folder / "plugin" / ".claude-plugin" / "plugin.json"
+    plugin_json.write_text(json.dumps({"name": "parent-recap", "version": version}))
+    return plugin_json
+
+
+def test_an_installer_that_cannot_start_leaves_the_running_version_and_the_plugin_copy(harness, github, mac, capsys):
+    plugin_json = a_plugin_copy(mac)
     github.stable = "0.20.0"
     github.publish("0.20.0")
-    mac.fails["0.20.0"] = ["Calendar"]
-    update_command(harness, capsys)
-    installs = len(mac.installs)
+    mac.installer_cannot_start = True
 
-    outcome = update.update(None, retry_failed=False)
+    code, out = update_command(harness, capsys)
 
-    assert outcome.result == "failed" and "failed its check before" in outcome.message
-    assert len(mac.installs) == installs
+    assert code == 1 and "couldn't be installed" in out
+    assert mac.version() == INSTALLED
+    assert json.loads(plugin_json.read_text())["version"] == INSTALLED and no_downloads(mac)
+
+
+def test_an_update_interrupted_mid_install_puts_the_plugin_copy_back_and_leaves_no_download(harness, github, mac, capsys):
+    plugin_json = a_plugin_copy(mac)
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    mac.installer_interrupted = True
+
+    with pytest.raises(KeyboardInterrupt):
+        update_command(harness, capsys)
+
+    assert mac.version() == INSTALLED
+    assert json.loads(plugin_json.read_text())["version"] == INSTALLED and no_downloads(mac)
+
+
+def test_a_new_version_whose_doctor_does_not_run_is_switched_back_even_if_the_old_one_s_did_not(harness, github, mac, capsys):
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    mac.doctor_cannot_run = {INSTALLED, "0.20.0"}
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 1 and "switched back to version 0.19.0" in out
+    assert update.DOCTOR_DIDNT_RUN in out
+    assert mac.version() == INSTALLED
 
 
 def test_the_update_log_has_each_step_with_versions_and_times_and_nothing_of_the_family_s(harness, github, mac, capsys):
