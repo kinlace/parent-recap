@@ -557,6 +557,19 @@ def test_an_on_time_start_by_the_scheduler_says_nothing_about_catching_up(harnes
     assert "💤" not in email.text
 
 
+def test_a_start_by_the_scheduler_a_moment_before_the_brief_time_is_tonight_s_run(harness, by_the_scheduler):
+    # A clock set back as the job starts puts the start seconds before the Brief's time, when the
+    # latest evening gone by is still yesterday's, which did run.
+    normal_night(harness, "en")
+    last_run_hours_before_now(harness, 23.9)
+
+    with time_machine.travel(NOW - timedelta(seconds=20), tick=False):
+        assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "💤" not in email.text
+
+
 def test_a_run_by_hand_runs_at_any_hour_and_says_nothing_about_catching_up(harness):
     started_late(harness, hours=15, last_run_hours_ago=39)
 

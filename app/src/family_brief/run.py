@@ -673,6 +673,11 @@ def run(cfg: Config, options: Options, io: IO, caught_up: bool = False) -> int:
     return 1 if options.first and not everyone else 0
 
 
+# A start by the scheduler this long before the Brief's time still counts as at it: a clock set
+# back as the job starts, or a scheduler a moment early.
+EARLY = timedelta(minutes=5)
+
+
 def _latest_evening(cfg: Config, now: datetime) -> datetime:
     """The evening run's latest time at or before `now`, in the Household's zone."""
     evening = now.replace(hour=cfg.schedule.daily_hour, minute=cfg.schedule.daily_minute,
@@ -701,8 +706,10 @@ def _since_evening(cfg: Config, state: State) -> _SinceEvening | None:
     if last is None:  # installed by a version that didn't note when
         return None
     now = datetime.now(ZoneInfo(cfg.timezone))
-    evening = _latest_evening(cfg, now)
-    return _SinceEvening(now - evening, ran=last >= evening)
+    # A start just before the Brief's time is that evening's: without this the latest evening gone
+    # by is yesterday's, which did run, and tonight's Brief would be skipped.
+    evening = _latest_evening(cfg, now + EARLY)
+    return _SinceEvening(max(now - evening, timedelta(0)), ran=last >= evening)
 
 
 # A missed evening is caught up only this long after its time (#894): later, the next evening's
