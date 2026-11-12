@@ -45,7 +45,7 @@ _Avoid_: bug report, feedback, log upload
 ## Inputs
 
 **Source** (zh 信息源, fi lähde):
-A place messages or events are read from for a Household, such as Gmail, Wilma, WhatsApp, MyClub, Eepos, eVaka, Social Schools or Local Files.
+A place messages or events are read from for a Household, such as Gmail, Wilma, WhatsApp, MyClub, Eepos, eVaka, Social Schools, Konnect or Local Files.
 _Avoid_: collector, channel, feed, 采集器, 来源
 
 **Linked Device** (zh 已关联设备, fi linkitetty laite):

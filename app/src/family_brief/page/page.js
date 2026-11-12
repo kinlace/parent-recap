@@ -2688,7 +2688,7 @@ function healthResult(out) {
     const item = document.createElement("li");
     item.dataset.status = check.status;
     const language = page.languages.find((l) => l.code === check.language);
-    const values = { kid: check.kid, school: check.school, city: check.city, language: language ? language.name : check.language };
+    const values = { kid: check.kid, school: check.school, city: check.city, portal: check.portal, language: language ? language.name : check.language };
     const name = document.createElement("span");
     setText(name, "health.check." + check.check, values);
     const status = document.createElement("span");
@@ -3539,7 +3539,7 @@ function failedChecks(checks) {
     const item = document.createElement("li");
     item.dataset.status = check.status;
     const language = page.languages.find((l) => l.code === check.language);
-    const values = { kid: check.kid, school: check.school, city: check.city, language: language ? language.name : check.language };
+    const values = { kid: check.kid, school: check.school, city: check.city, portal: check.portal, language: language ? language.name : check.language };
     const name = document.createElement("span");
     setText(name, "health.check." + check.check, values);
     const status = document.createElement("span");

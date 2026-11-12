@@ -26,7 +26,8 @@ def test_a_language_without_reviewed_text_gets_the_english_label():
 
 def test_the_connect_list_puts_wilma_first_and_gmail_last():
     # #708: few families read Gmail, and its App Password is where setup gets stuck. Eepos and
-    # eVaka have steps of their own since #791, before Gmail's.
+    # eVaka have steps of their own since #791, before Gmail's. Konnect has none (#905): it is set
+    # up from a terminal, so a family elsewhere doesn't see a step for it.
     assert [s.name for s in sources.in_connect_order() if s.setup_page] == \
         ["wilma", "whatsapp", "myclub", "eepos", "evaka", "gmail"]
     assert setup_save.SOURCES == ("wilma", "ai", "whatsapp", "myclub", "eepos", "evaka", "gmail")
@@ -43,8 +44,9 @@ def test_the_hosted_version_never_reads_whatsapp(system):
     system.profile = LINUX
     cfg = Config(kids=[_KID], wilma={"enabled": True})
 
-    assert [s.name for s in sources.available()] == ["gmail", "myclub", "wilma", "eepos", "evaka"]
-    assert [s.name for s in sources.in_connect_order()] == ["wilma", "myclub", "eepos", "evaka", "gmail"]
+    assert [s.name for s in sources.available()] == ["gmail", "myclub", "wilma", "eepos", "evaka", "konnect"]
+    assert [s.name for s in sources.in_connect_order()] == ["wilma", "myclub", "eepos", "evaka", "gmail",
+                                                            "konnect"]
     assert [s.name for s in sources.used(cfg)] == ["wilma"]
     assert cfg.other_sources() == ["wilma"]
 
@@ -53,7 +55,8 @@ def test_the_hosted_version_never_reads_whatsapp(system):
 def test_a_hosted_household_can_t_have_whatsapp_or_gmail_wherever_it_s_asked(system, profile):
     system.profile = profile  # ADR 0029: no WhatsApp on its server; ADR 0031: no Gmail step
     # #769: the hosted sign-up can add an Eepos sign-in; #768: eVaka has no sign-up step yet, but
-    # the maintainers can add its sign-ins. So neither is here
+    # the maintainers can add its sign-ins. Konnect has no sign-up step either (#905), but the
+    # maintainers can add it too. So none of them is here
 
     assert sources.not_hosted() == [sources.WHATSAPP, sources.GMAIL]
 
@@ -80,8 +83,9 @@ _KID = {"name": "Mia Virtanen"}
       "whatsapp": {"enabled": True, "chats": [{"name": "3B"}]}}, ["myclub", "wilma"]),
     ({"eepos": {"signins": [{"school": "emo", "username": "parent"}]}}, ["eepos"]),
     ({"evaka": {"signins": [{"city": "espoo", "username": "parent@example.fi"}]}}, ["evaka"]),
+    ({"konnect": {"signins": [{"portal": "mijnbso", "username": "parent@example.nl"}]}}, ["konnect"]),
 ], ids=["nothing", "gmail", "wilma", "gmail-and-wilma", "whatsapp-no-groups", "whatsapp", "all-but-gmail",
-        "eepos", "evaka"])
+        "eepos", "evaka", "konnect"])
 def test_the_household_uses_the_connected_sources_in_run_order(config, used):
     cfg = Config(**{"kids": [_KID], **config})
 

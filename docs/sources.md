@@ -190,6 +190,22 @@ Notes:
 - Read only: the Source only asks for the account, the announcements and the calendar. It never opens a post's own page, never sends the "seen" statistics the web app sends, and never reads the conversations inbox, whose messages may be marked read as they are fetched. The attachments are named, never downloaded
 - Social Schools' API is internal and unversioned: when it changes, the Brief's coverage line says Social Schools wasn't read, with the reason, and the rest of the Brief still goes out. Announcements that can't be read leave the events, and the line says it was partly read
 - It hasn't been tried against a real account yet (#904)
+## Konnect (optional, the Netherlands)
+
+A Dutch daycare or after-school care (BSO) whose parent portal runs on Konnect, at `<provider>.ouderportaal.nl` (Partou, Kibeo, Kappio and others), gives the messages the group sends the parents, the news and the newsletters as Messages for the Brief, and each time a Kid is booked there in the next 14 days as a calendar event in the Brief and its `.ics`, read through the portal with the parent's own username and password (ADR 0049). Only the portal's lists are read, never an item's own page, which would mark it read, and never the timeline, with the children's photos and the day reports (sleep, meals, medication, temperature).
+
+**Setup page**: none, so families elsewhere don't see a step for it. A Konnect sign-in is added from a terminal, once for each portal, with the family:
+
+1. **Terminal**: `$FB setup konnect --portal partou --username <the parent's portal username>`. The password is typed at the secret store's own prompt (the Keychain asks twice), so it never reaches the chat or a command line. The command signs in with it, reads the parent's children, the next 14 days and the last day's messages, and only then stores the password (Keychain `family-brief` / `konnect-signin-<16 hex digits>`) and the sign-in in the config's `konnect.signins`. It prints which Kid each child is, matched by name; a child who matches none has their times go to the whole Household until their portal name is added to the Kid's `aliases` and the command run again
+2. `$FB doctor` signs in to each portal and lists its children; a password the portal no longer takes is ❌ with the command to type it again, and a portal that wants a new password (`mustResetPassword`) is ❌ with where to set it first, in a browser
+
+Notes:
+
+- The hosted sign-up has no Konnect step
+- Each sign-in is fresh each evening: the portal's token lasts 15 minutes and isn't kept
+- A message the group sent since the last evening is told once, under the Kid it is about, or the Household when it is about several or none; a reply in the same conversation is told as a new one. The family's own messages aren't. News and newsletters are told by their title and the start of their text, which is all the list gives, and count as sent to everyone. Nothing is marked read on the portal, nothing is answered
+- A planned time is told with "optie" for an option and "aangevraagd" for a request not yet answered; an absence, or a request turned down, isn't one. Parent meetings and activities in the Agenda aren't read yet
+- The portal has no published API: when it changes, the Brief's coverage line says Konnect wasn't read, with the reason, and the rest of the Brief still goes out. Messages that can't be read leave the planned times, and the line says Konnect was partly read
 
 ## Local Files (optional)
 
