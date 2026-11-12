@@ -1,9 +1,9 @@
 """Each Source's fake, at its transport, where the real thing varies (ADR 0022): Gmail's IMAP
 server, the MyClub feed over HTTP, the wilma CLI on Parent Recap's own Node, the Linked
-Device's message store and status file, each Eepos school's portal and each city's eVaka over
-HTTP, and the Local Files folder. FakeSources, the `sources` fixture, installs the fake of
-each Source in the registry, so the real collectors run in every test of the evening run; FAKES is
-the list it reads.
+Device's message store and status file, each Eepos school's portal, each city's eVaka and Social
+Schools' sign-in and API over HTTP, and the Local Files folder. FakeSources, the `sources`
+fixture, installs the fake of each Source in the registry, so the real collectors run in every
+test of the evening run; FAKES is the list it reads.
 
 A fake serves what `sources.tonight[name]` holds when the collector reaches it: tonight's Messages
 and events, an exception its transport raises, or a function returning either. A Message is
@@ -15,11 +15,15 @@ only the fields its transport carries, and the id the collector makes of it:
   - MyClub: the event's UID;
   - Eepos: a calendar entry as its portal's JSON has it (conftest's eepos_entry), not an event;
   - eVaka: a calendar event as its citizen API's JSON has it (conftest's evaka_event);
+  - Social Schools: a post or an event as its API's JSON has it (conftest's socialschools_post and
+    socialschools_event);
   - Local Files: the id local_files.message_id makes of it (conftest's local_message).
 A Message older than the Source's lookback is skipped, as the collector skips it.
 """
 from __future__ import annotations
 
+import base64
+import html
 import imaplib
 import json
 import re
@@ -31,7 +35,7 @@ from email.message import EmailMessage
 from email.utils import format_datetime
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 import icalendar
 import pytest
@@ -40,7 +44,7 @@ import requests
 import fake_node
 from family_brief import linked_device, own_node, sources as registry
 from family_brief.config import myclub_links
-from family_brief.collectors import eepos, evaka, gmail, local_files, myclub
+from family_brief.collectors import eepos, evaka, gmail, local_files, myclub, socialschools
 from family_brief.collectors.base import CalendarEvent, Collected, Message
 from fake_system import FakeSecrets
 
@@ -690,6 +694,214 @@ class Evaka(SourceFake):
         return _response(404, "Not Found")
 
 
+# ── Social Schools: its sign-in at login.socialschools.eu and its API at api.socialschools.eu
+
+SOCIALSCHOOLS_PASSWORD = "socialschools-password"
+_LOGIN_PAGE = """<!DOCTYPE html><html><head><title>Social Schools</title></head><body>
+<div class="login-page">{error}
+<form method="post" action="/Account/Login?ReturnUrl={return_url_in_action}">
+<input type="email" name="Username" value="" autofocus>
+<input type="password" name="Password">
+<input type="hidden" name="ReturnUrl" value="{return_url}">
+<button type="submit" name="button" value="login">Inloggen</button>
+<input name="__RequestVerificationToken" type="hidden" value="{token}">
+</form>
+<a href="/Account/ExternalLogin?scheme=Google&amp;returnUrl={return_url_in_action}">Google</a>
+<a href="/Account/ExternalLogin?scheme=Microsoft&amp;returnUrl={return_url_in_action}">Microsoft</a>
+<a href="/Account/ExternalLogin?scheme=Apple&amp;returnUrl={return_url_in_action}">Apple</a>
+</div></body></html>"""
+
+
+class SocialSchoolsSchool:
+    """One school on Social Schools: its name, and the children it lists to the parent under their
+    parent role there (conftest's socialschools_child), with their groups."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.children: list[dict[str, Any]] = []
+
+
+class SocialSchools(SourceFake):
+    """Social Schools: its identity provider at login.socialschools.eu and its API at
+    api.socialschools.eu/api/v1/, as the iOS app meets them.
+
+    The sign-in is OpenID Connect with PKCE: GET connect/authorize, for the iOS app's client only,
+    redirects to the login form at Account/Login, whose page carries a request verification token
+    and the ReturnUrl; POSTing the form with an email and the password `accounts` has for it, and
+    that token, redirects to the ReturnUrl, connect/authorize/callback, which redirects to the app's
+    own address with a one-time code; a wrong password shows the form again. `ways` says how an
+    account signs in instead of with its password: "two-step" asks for a code on another page,
+    "external" sends the browser on to Google. POST connect/token takes the code with its verifier
+    and gives an access token, and no refresh token unless offline_access was asked for.
+
+    With the token, the API's GET useraccounts/current lists the parent's role at each of `schools`
+    (by id) with its `children`, and a role of another kind; GET communityposts, for the school in
+    the Schoolid header, a page of tonight's posts there (conftest's socialschools_post), the
+    latest first; GET events that school's events of tonight (conftest's socialschools_event)
+    between its from and until. Tonight's items carry the `school` they are at, which the fake
+    leaves out. `answers` maps a host's path to what it answers there instead: an HTTP status and
+    the text, or an exception the request raises. `requests` records each request: its method,
+    host, path, query, form, and its headers but the token. Any other address goes to requests as
+    before."""
+    name = "socialschools"
+
+    def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
+        super().__init__(sources)
+        self.accounts: dict[str, str] = {}
+        self.ways: dict[str, str] = {}
+        self.schools: dict[int, SocialSchoolsSchool] = {}
+        self.answers: dict[str, tuple[int, str] | BaseException] = {}
+        self.requests: list[dict[str, Any]] = []
+        self.tokens: dict[str, str] = {}  # an access token: its email
+        self.refresh_tokens = 0
+        self._codes: dict[str, tuple[str, str, str]] = {}  # a code: its email, challenge and scope
+        self._signed_in: dict[str, str] = {}  # the identity provider's cookie: its email
+        self._forms: set[str] = set()  # the request verification tokens of the forms it showed
+        other = requests.Session.request
+
+        def request(session: requests.Session, method: str, url: str, **k: Any) -> requests.Response:
+            host = urlsplit(url).hostname or ""
+            if host not in (socialschools.LOGIN_HOST, socialschools.API_HOST):
+                return other(session, method, url, **k)
+            assert k.get("allow_redirects") is False, "every redirect is followed by the Source itself"
+            return self.answer(session, method, url, **k)
+        mp.setattr(requests.Session, "request", request)
+
+    def school(self, school_id: int, name: str = "Basisschool De Kilo") -> SocialSchoolsSchool:
+        return self.schools.setdefault(school_id, SocialSchoolsSchool(name))
+
+    def set_up(self) -> None:
+        for signin in (self.sources.config.get("socialschools") or {}).get("signins") or []:
+            self.accounts.setdefault(signin["username"].lower(), SOCIALSCHOOLS_PASSWORD)
+            self.sources.secrets.setdefault(socialschools.secret_name(signin["username"]),
+                                            SOCIALSCHOOLS_PASSWORD)
+
+    def answer(self, session: requests.Session, method: str, url: str, **k: Any) -> requests.Response:
+        parts = urlsplit(requests.Request(method, url, params=k.get("params")).prepare().url)
+        host, path = parts.hostname or "", parts.path
+        query = {key: v for key, [v] in parse_qs(parts.query).items()}
+        headers = {**session.headers, **(k.get("headers") or {})}
+        self.requests.append({"method": method, "host": host, "path": path, "query": query,
+                              "form": k.get("data"), "headers": {h: v for h, v in headers.items()
+                                                                 if h != "Authorization"}})
+        instead = self.answers.get(path if host == socialschools.LOGIN_HOST else path.removeprefix("/api/v1/"))
+        if isinstance(instead, BaseException):
+            raise instead
+        if instead is not None:
+            return _response(*instead)
+        if host == socialschools.LOGIN_HOST:
+            return self._identity(session, method, path, query, k.get("data") or {})
+        return self._api(method, path.removeprefix("/api/v1/"), query, headers)
+
+    # ── The identity provider
+
+    def _identity(self, session: requests.Session, method: str, path: str, query: dict[str, str],
+                  form: dict[str, str]) -> requests.Response:
+        host = socialschools.LOGIN_HOST
+        if (method, path) == ("GET", socialschools.AUTHORIZE):
+            if query.get("client_id") != socialschools.CLIENT_ID or query.get("redirect_uri") != \
+                    socialschools.REDIRECT_URI or query.get("code_challenge_method") != "S256":
+                return _response(400, "<html>invalid_request</html>")
+            back = socialschools.CALLBACK + "?" + parts_of(query)
+            return _redirect(f"{socialschools.LOGIN_FORM}?ReturnUrl={quote(back, safe='')}")
+        if (method, path) == ("GET", socialschools.LOGIN_FORM):
+            return self._login_page(session, query["ReturnUrl"])
+        if (method, path) == ("POST", socialschools.LOGIN_FORM):
+            token = form.get("__RequestVerificationToken")
+            if token not in self._forms or session.cookies.get(".AspNetCore.Antiforgery", domain=host) != token:
+                return _response(400, "<html>Bad Request</html>")
+            email = str(form.get("Username") or "").strip().lower()
+            way = self.ways.get(email)
+            if way == "external":
+                return _redirect("https://accounts.google.com/o/oauth2/v2/auth?client_id=socialschools")
+            if not form.get("Password") or self.accounts.get(email) != form.get("Password"):
+                return self._login_page(session, form["ReturnUrl"], error="Ongeldige gebruikersnaam of wachtwoord")
+            if way == "two-step":
+                return _redirect("/Account/LoginWith2fa?ReturnUrl=" + quote(form["ReturnUrl"], safe=""))
+            cookie = tokens.token_hex(8)
+            self._signed_in[cookie] = email
+            session.cookies.set("idsrv", cookie, domain=host)
+            return _redirect(form["ReturnUrl"])
+        if (method, path) == ("GET", "/Account/LoginWith2fa"):
+            return _response(200, "<html><body><form method='post'><input name='TwoFactorCode'></form></body></html>")
+        if (method, path) == ("GET", socialschools.CALLBACK):
+            email = self._signed_in.get(session.cookies.get("idsrv", domain=host) or "")
+            if email is None:
+                return _redirect(f"{socialschools.LOGIN_FORM}?ReturnUrl=" + quote(path + "?" + parts_of(query), safe=""))
+            code = tokens.token_hex(16)
+            self._codes[code] = (email, query["code_challenge"], query["scope"])
+            return _redirect(f"{query['redirect_uri']}?" + urlencode({
+                "code": code, "scope": query["scope"], "state": query["state"],
+                "session_state": tokens.token_hex(8), "iss": socialschools.ISSUER}))
+        if (method, path) == ("POST", socialschools.TOKEN):
+            got = self._codes.pop(form.get("code") or "", None)
+            verifier = (form.get("code_verifier") or "").encode()
+            challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier).digest()).rstrip(b"=").decode()
+            if got is None or got[1] != challenge or form.get("client_id") != socialschools.CLIENT_ID \
+                    or form.get("redirect_uri") != socialschools.REDIRECT_URI \
+                    or form.get("grant_type") != "authorization_code":
+                return _response(400, json.dumps({"error": "invalid_grant"}))
+            access = tokens.token_urlsafe(24)
+            self.tokens[access] = got[0]
+            answer = {"access_token": access, "expires_in": 3600, "token_type": "Bearer", "scope": got[2]}
+            if "offline_access" in got[2].split():
+                self.refresh_tokens += 1
+                answer["refresh_token"] = tokens.token_urlsafe(24)
+            return _response(200, json.dumps(answer))
+        return _response(404, "<html>Not found</html>")
+
+    def _login_page(self, session: requests.Session, return_url: str, error: str = "") -> requests.Response:
+        token = tokens.token_urlsafe(16)
+        self._forms.add(token)
+        session.cookies.set(".AspNetCore.Antiforgery", token, domain=socialschools.LOGIN_HOST)
+        page = _LOGIN_PAGE.format(error=f'<div class="alert">{error}</div>' if error else "",
+                                  return_url=html.escape(return_url),
+                                  return_url_in_action=html.escape(quote(return_url, safe="")), token=token)
+        return _response(200, page)
+
+    # ── The API
+
+    def _api(self, method: str, path: str, query: dict[str, str], headers: dict[str, Any]) -> requests.Response:
+        email = self.tokens.get(str(headers.get("Authorization", "")).removeprefix("Bearer "))
+        if email is None:
+            return _response(401, "")
+        if method != "GET":
+            return _response(405, "")
+        if path == "useraccounts/current":
+            roles = [{"id": 500 + school_id, "type": 1, "school": {"id": school_id, "displayName": school.name},
+                      "connections": school.children} for school_id, school in self.schools.items()]
+            roles.append({"id": 599, "type": 2, "school": {"id": 99, "displayName": "Werkgever"}})
+            return _response(200, json.dumps({"userProfileId": 4242, "displayName": "Ouder Testpersoon",
+                                              "email": email, "roles": roles}, ensure_ascii=False))
+        school = int(headers.get("Schoolid") or 0)
+        if school not in self.schools or headers.get("Roletypeid") != "1":
+            return _response(403, "")
+        here = [{k: v for k, v in item.items() if k != "school"} for item in self.tonight()
+                if item["school"] == school]
+        if path == "communityposts":
+            posts = sorted((p for p in here if "created" in p), key=lambda p: p["created"], reverse=True)
+            offset, limit = int(query["offset"]), int(query["limit"])
+            return _response(200, json.dumps({"values": posts[offset:offset + limit], "totalCount": len(posts),
+                                              "timeStamp": "2026-09-27T15:00:00Z"}, ensure_ascii=False))
+        if path == "events":
+            first, last = datetime.fromisoformat(query["from"]), datetime.fromisoformat(query["until"])
+            return _response(200, json.dumps(
+                [e for e in here if "start" in e and datetime.fromisoformat(e["start"].replace("Z", "+00:00")) <= last
+                 and datetime.fromisoformat((e.get("end") or e["start"]).replace("Z", "+00:00")) >= first],
+                ensure_ascii=False))
+        return _response(404, "")
+
+
+def parts_of(query: dict[str, str]) -> str:
+    return urlencode(query)
+
+
+def _redirect(location: str) -> requests.Response:
+    r = _response(302, "")
+    r.headers["Location"] = location
+    return r
+
+
 # ── Local Files: the folder the family puts files in
 
 class LocalFiles(SourceFake):
@@ -744,7 +956,7 @@ class LocalFiles(SourceFake):
 
 # The fake of each Source, by its name in the registry.
 FAKES: dict[str, Callable[[FakeSources, pytest.MonkeyPatch], SourceFake]] = {
-    f.name: f for f in (Gmail, MyClub, Wilma, WhatsApp, Eepos, Evaka, LocalFiles)}
+    f.name: f for f in (Gmail, MyClub, Wilma, WhatsApp, Eepos, Evaka, SocialSchools, LocalFiles)}
 
 
 class FakeSources:

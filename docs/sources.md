@@ -171,6 +171,26 @@ Notes:
 - A message the daycare or the city sent since the last evening is told once, under the Kid its thread names, or the Household when it names several or none. The family's own messages aren't. A sensitive message comes to a password sign-in only as its sender and time: the Brief lists it under Held-back messages with its link, and no model sees it, even with the AI filter off. Nothing is marked read in eVaka, nothing is answered
 - eVaka's API is internal and unversioned: when it changes, the Brief's coverage line says eVaka wasn't read, with the reason, and the rest of the Brief still goes out. Messages that can't be read leave the events, and the line says eVaka was partly read
 
+## Social Schools (optional)
+
+Many schools in the Netherlands send parents their news through Social Schools, and some of it is only there: its email notifications don't carry everything. The Social Schools Source puts each school's announcements (their text, and the names of the files attached) and its calendar for the next four weeks into the Brief, for the Kid whose group each was posted in, read through the API Social Schools' own apps read, with the parent's email and password (ADR 0047). The events go into the Brief's `.ics` too.
+
+It isn't on the setup page yet and isn't in the hosted version: a family on its own computer adds it from a terminal, guided by the manage skill.
+
+1. Ask how the parent signs in to Social Schools. Only an email and password on Social Schools' own login page works: an account that signs in with Google, Microsoft or Apple, or asks for a code after the password, can't be read this way. Say so, and stop there
+2. **Terminal**: `$FB setup socialschools --username <the parent's Social Schools email>`. The password is typed at the secret store's own prompt (the Keychain asks twice), so it never reaches the chat or a command line. The command signs in with it, reads the schools, the children and the next four weeks, and only then stores the password (Keychain `family-brief` / `socialschools-signin-<16 hex digits>`) and the sign-in in the config's `socialschools.signins`. It prints the schools and which Kid each child is, matched by name; a child who matches none has their announcements and events go to the whole Household until their Social Schools name is added to the Kid's `aliases` and the command run again. An account it can't sign in to says `other-sign-in`, with why
+3. `$FB doctor` signs in and lists the schools and the children; a password Social Schools no longer takes is ❌ with the command to type it again, and an account that signs in another way is ❌ with why
+
+Notes:
+
+- The sign-in is the one Social Schools' iOS app does at `login.socialschools.eu`, done without a browser: the login form with the email and password, then an access token for the API at `api.socialschools.eu`. No refresh token is asked for, so each evening run signs in again
+- One account covers all its schools: each school the parent has a parent's role at is read, each with its own children
+- A post is a Kid's when it was posted in that Kid's group only, as Social Schools names the groups. One posted in several Kids' groups, or in a group of the whole school, is the Household's. Every post went to a group, so none is held back for its words (ADR 0013); like every other Source's messages, they go through the AI filter
+- An announcement is told once, the first evening after it was posted. A whole day in the calendar stays on its dates, as Social Schools writes them
+- Read only: the Source only asks for the account, the announcements and the calendar. It never opens a post's own page, never sends the "seen" statistics the web app sends, and never reads the conversations inbox, whose messages may be marked read as they are fetched. The attachments are named, never downloaded
+- Social Schools' API is internal and unversioned: when it changes, the Brief's coverage line says Social Schools wasn't read, with the reason, and the rest of the Brief still goes out. Announcements that can't be read leave the events, and the line says it was partly read
+- It hasn't been tried against a real account yet (#904)
+
 ## Local Files (optional)
 
 Messages from plain files the family puts in a folder it picks, for news from any place Parent Recap doesn't read itself: a notice copied by hand, or messages a program of the family's own writes (ADR 0044). Parent Recap reads no other app's data; what goes in the folder is up to the family. It isn't part of setup and the setup page has no step for it: the manage skill turns it on and off. A Hosted Household never has it.
@@ -197,7 +217,7 @@ Whichever mode you pick, an event the model finds goes into the calendar only if
 
 There are two modes. Setup always starts with ics; a family who wants Google Calendar turns it on later with `/parent-recap:manage`, once they have the Google app file:
 
-**ics (default)**: `google_calendar.mode: ics`. New events the model finds in Wilma, mail and group chats (parent evenings, trips, deadlines …), and those of Wilma's exam list, Eepos and eVaka, are put in one `.ics` attachment on the Brief email. Tap the attachment on the phone to add them to the calendar (on iPhone choose "Add All"). Each event is sent only once, and its UID in the attachment is fixed, so importing it again doesn't create duplicates.
+**ics (default)**: `google_calendar.mode: ics`. New events the model finds in Wilma, mail and group chats (parent evenings, trips, deadlines …), and those of Wilma's exam list, Eepos, eVaka and Social Schools, are put in one `.ics` attachment on the Brief email. Tap the attachment on the phone to add them to the calendar (on iPhone choose "Add All"). Each event is sent only once, and its UID in the attachment is fixed, so importing it again doesn't create duplicates.
 
 **google**: `mode: google` writes straight into Google Calendar, removes duplicates, and can invite a partner automatically.
 The plugin doesn't include a Google app. Authorizing needs a Google app file (the JSON of a Desktop OAuth client); either:

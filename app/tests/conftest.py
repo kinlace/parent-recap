@@ -656,3 +656,37 @@ def evaka_sensitive_thread(sender: str, sent_at: str, *, unread: bool = True) ->
             "sender": {"id": "5e6f7a8b-0000-4000-8000-0000000000f0", "name": sender, "type": "PERSONAL",
                        "personId": None},
             "lastMessageSentAt": sent_at, "hasUnreadMessages": unread}
+
+
+def socialschools_child(first: str, display: str, groups: tuple[str, ...]) -> dict[str, Any]:
+    """One of a parent's children as Social Schools lists it under the parent's role at a school:
+    its names and its groups' names, with the ids, year and photo it sends too, which Parent Recap
+    never keeps."""
+    return {"id": 600 + len(first), "roleType": 3, "uniqueId": 700 + len(display), "firstName": first,
+            "displayName": display, "groups": list(groups), "yearClass": "leerjaar-5",
+            "avatarUrl": "https://files.socialschools.eu/avatars/child-0001.jpg"}
+
+
+def socialschools_post(post_id: int, title: str, body: str, created: str, *, groups: tuple[str, ...] = ("Groep 5",),
+                       school: int = 7, author: str = "Juf Bakker", attachments: tuple[str, ...] = ()
+                       ) -> dict[str, Any]:
+    """A post of a school's feed as Social Schools' `communityposts` gives it, at `school` (which
+    the fake serves it at and leaves out): its HTML `body`, posted in each of `groups` at `created`,
+    with each of `attachments` by its file name and a signed link."""
+    return {"school": school, "id": post_id, "title": title, "body": body, "created": created,
+            "communities": [{"id": 900 + n, "groupId": 3, "name": g} for n, g in enumerate(groups)],
+            "author": {"id": 77, "displayName": author, "avatarUrl": None},
+            "commentsCount": 0, "likesCount": 2, "isPinned": False,
+            "media": [{"id": 300 + n, "fileName": name, "url": f"https://files.socialschools.eu/{n}?sig=x"}
+                      for n, name in enumerate(attachments)]}
+
+
+def socialschools_event(event_id: int, title: str, start: str, end: str | None = None, *, all_day: bool = False,
+                        groups: tuple[str, ...] = ("Groep 5",), school: int = 7, description: str = "",
+                        location: str = "") -> dict[str, Any]:
+    """An event of a school's calendar as Social Schools' `events` gives it, at `school` (which the
+    fake serves it at and leaves out): a whole day as midnight UTC to the midnight after its last
+    day, as Social Schools writes it, or a time with its offset."""
+    return {"school": school, "id": event_id, "title": title, "description": description, "start": start,
+            "end": end, "allDay": all_day, "location": location,
+            "communities": [{"id": 900 + n, "name": g} for n, g in enumerate(groups)]}

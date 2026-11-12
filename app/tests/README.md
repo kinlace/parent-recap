@@ -49,6 +49,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_citations.py`           | The model's citations checked against what the program supplied  |
 | `test_eepos.py`               | Eepos: a school's address, a student as a Kid, entries as events |
 | `test_evaka.py`               | eVaka: a city and its host, a child as a Kid, events, closed days, the deadline |
+| `test_socialschools.py`       | Social Schools: a post's HTML as text, its times, whole days, a child and a post as a Kid's |
 | `test_eval_scoring.py`        | The eval's deterministic scoring                                 |
 | `test_failure.py`             | Why a setup step failed, as the setup page shows and copies it   |
 | `test_held_back.py`           | Which texts look sensitive, against `sensitive_words.yaml`       |
@@ -83,6 +84,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_schoolsoft_capture.py`    | The SchoolSoft capture tool on a fake SchoolSoft: sign-in, reads, the file, evening refreshes, the lock |
 | `test_eepos_collector.py`       | Eepos's collector on a fake portal: the sign-in, the calendar, failures, two schools                         |
 | `test_evaka_collector.py`       | eVaka's collector on a fake eVaka: the sign-in, the device cookie, the events, the messages, failures, two cities |
+| `test_socialschools_collector.py` | Social Schools' collector on a fake Social Schools: the iOS app's sign-in, only GETs, posts, events, failures, two schools |
 | `test_email_gateway.py`         | The Brief sent through the gateway's relay: the request, refusals, a key, binding, doctor                    |
 | `test_email_gmail.py`           | The Brief sent from the Household's own Gmail (ADR 0034): the message, which way, refusals                   |
 | `test_eval_runner.py`           | The eval runner end to end, only the model process faked                                                     |
@@ -122,6 +124,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_wilma_egress.py`            | The hosted server's Wilma calls through the Finnish egress, direct when it's down (ADR 0046) |
 | `test_eepos_source.py`            | Eepos lessons in the Brief, a wrong password or a changed portal, two schools (#755)    |
 | `test_evaka_source.py`            | eVaka events, closed days, the deadline and messages in the Brief, failures, two cities |
+| `test_socialschools_source.py`    | Social Schools' announcements and events in the Brief, a wrong password or a Google sign-in, nothing written |
 | `test_local_files_source.py`      | Local Files in the Brief, once each, the AI filter, a broken file, doctor, `setup save` |
 | `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing; Group Digests        |
 | `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish                                |
@@ -143,6 +146,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_setup_gmail.py`, `_wilma`, `_myclub` | Each Source's `setup` command, then its step on the page               |
 | `test_setup_eepos.py`                      | `setup eepos` from a terminal, the page's Eepos step and its Kids (#796), doctor, uninstall |
 | `test_setup_evaka.py`                      | `setup evaka` from a terminal, the page's eVaka step and its Kids (#796), doctor, uninstall |
+| `test_setup_socialschools.py`              | `setup socialschools` from a terminal, other sign-ins refused, doctor, uninstall |
 | `test_setup_whatsapp.py`                   | WhatsApp's step: the Linked Device's `pair` on a real Node, the job    |
 | `test_setup_back_to_connect.py`            | The way back from Check and Finish to Connect, for a skipped Source    |
 | `test_setup_claude.py`                     | `setup claude` and its terminal window                                 |
@@ -164,8 +168,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_hosted_status.py`                    | `signup status`: each Household's last run and doctor, nothing private |
 | `test_hosted_household.py`                 | `signup show`, `recipients`, `myclub`: one Household seen and changed  |
 
-The page's server, its calls and the steps more than one file walks through are in
-`e2e/setup_page.py`.
+The page's server, its calls and the steps several files walk through are in `e2e/setup_page.py`.
 
 A setup step's answers, results and files get an HTTP test, as the page's script calls the server.
 What only the page does gets a browser test: a step it shows or hides, a button it enables, the
@@ -225,7 +228,7 @@ per outside edge of the program, each with its fakes in a module of its own:
 
 - `sources` (`fake_sources.py`): each Source's fake at its transport (Gmail's IMAP server, the
   MyClub feed, the wilma CLI, the Linked Device's store and status file, each Eepos school's
-  portal, each city's eVaka, the Local Files folder), as `sources.fakes[name]`, serving what `sources.tonight[name]` holds to the real
+  portal, each city's eVaka, Social Schools' sign-in and API, the Local Files folder), as `sources.fakes[name]`, serving what `sources.tonight[name]` holds to the real
   collector. One is installed for each Source in the
   registry (ADR 0022), so a new Source adds its fake to `FAKES`. A test gives each Message the id
   its Source makes of it, and only the fields its transport carries.
@@ -255,8 +258,8 @@ Codex's sign-in and plugin commands. A model call never does. `conftest.py` also
 (a busy model's pauses, on a fake clock), `clocks` (the computer's awake and wall clocks, which a
 sleep moves apart), `golden`, `login_shell`, `windows_programs` (programs
 found as Windows finds them, on any system), `credential_manager`, and the builders `msg`,
-`local_message`, `myclub_event`, `eepos_entry`, `eepos_student`, `evaka_event`, `evaka_child`, `evaka_thread` and
-`evaka_sensitive_thread`.
+`local_message`, `myclub_event`, `eepos_entry`, `eepos_student`, `evaka_event`, `evaka_child`, `evaka_thread`,
+`evaka_sensitive_thread`, `socialschools_child`, `socialschools_post` and `socialschools_event`.
 
 ## Other fakes and helpers
 

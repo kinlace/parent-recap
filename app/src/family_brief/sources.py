@@ -200,6 +200,22 @@ EVAKA = Source("evaka", _same_everywhere("eVaka"), lambda cfg: bool(cfg.evaka.si
                sent_to_everyone=_in("collectors.evaka", "sent_to_everyone"),
                withheld=_in("collectors.evaka", "withheld"), held_back_link=lambda m: m.url)
 
+# A school's announcements and calendar on Social Schools, which many schools in the Netherlands
+# use, read through the API its own apps read, signing in as its iOS app does with a password in
+# the secret store (ADR 0047). Its events go into the .ics, as eVaka's do. Every post goes to a
+# group or the whole school, so none is held back for its words. Set up from a terminal for now
+# (`setup socialschools`), on a family's own computer only: the hosted version doesn't offer it,
+# and its Brief doesn't name it, since the setup page doesn't either.
+SOCIALSCHOOLS = Source("socialschools", _same_everywhere("Social Schools"),
+                       lambda cfg: bool(cfg.socialschools.signins),
+                       skippable=True, connect_rank=10, collect=_collector("socialschools"),
+                       counts_events=True, systems=frozenset({"macos", "windows"}), hosted=False,
+                       setup_page=False, lookback=lambda cfg: cfg.socialschools,
+                       check=_in("ops", "check_socialschools"),
+                       secrets=_in("collectors.socialschools", "secrets_of"),
+                       sent_to_everyone=_in("collectors.socialschools", "sent_to_everyone"),
+                       held_back_link=lambda m: m.url)
+
 # Messages from plain files the family puts in a folder it picks, for news from any place Parent
 # Recap doesn't read itself (ADR 0044). Turned on, and its folder chosen, with the manage skill
 # (`setup save`), never on the setup page. Only read on the family's own computer: a Hosted
@@ -211,7 +227,7 @@ LOCAL_FILES = Source("local_files", {"en": "Local Files", "fi": "Paikalliset tie
                      check=_in("ops", "check_local_files"), notes=_in("uninstall", "local_files_notes"),
                      account=False, group=lambda m: m.chat_name)
 
-ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP, EEPOS, EVAKA, LOCAL_FILES)
+ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP, EEPOS, EVAKA, SOCIALSCHOOLS, LOCAL_FILES)
 
 
 def named(name: str) -> Source | None:

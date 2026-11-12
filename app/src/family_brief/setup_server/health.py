@@ -17,6 +17,7 @@ HEALTH_CHECKS = {"config": "config", "recipients": "recipients", "language": "la
                  "wilma": "wilma", "whatsapp": "whatsapp",
                  "whatsapp-library": "whatsapp-library",
                  "myclub": "myclub", "eepos": "eepos", "evaka": "evaka", "local_files": "local_files",
+                 "socialschools": "socialschools",
                  "calendar": "calendar",
                  "feedback": "feedback", "weekend": "weekend"}
 # A language's, a Kid's MyClub, an Eepos school's and an eVaka city's checks carry the language,
