@@ -97,17 +97,32 @@ def test_a_release_seen_on_one_evening_is_installed_the_next_and_runs_the_evenin
     assert mac.version() == INSTALLED and mac.installs == []
     assert update.state(mac.folder)["seen"]["version"] == "0.20.0"
 
-    with at(NOW + DAY - timedelta(minutes=1)):  # the next evening, a minute short of a day
-        assert evening.run() == 0
-    assert mac.version() == INSTALLED and mac.installs == []
-
-    with at(NOW + 2 * DAY):
+    # The next evening's run starts a moment sooner after the Brief's time than tonight's look.
+    with at(NOW + DAY - timedelta(seconds=30)):
         assert evening.run() == 0
     assert mac.version() == "0.20.0"
     assert versions.version(versions.previous(mac.folder)) == INSTALLED
     # The jobs are as they were: the evening job starts `app`, which now points at 0.20.0.
     assert (dict(evening.jobs.programs), list(evening.jobs.always)) == plists
     assert evening.jobs.installed() == {jobs.DAILY}
+
+
+def test_a_release_this_mac_first_saw_less_than_a_day_ago_is_left_for_a_later_evening(
+        evening, github, mac):  # noqa: F811
+    release_out(github, "0.20.0")
+    normal_night(evening, "en")
+    last_run(evening, 48)  # last evening's run was missed
+    with at(NOW - timedelta(hours=15)):  # this morning's catch-up of it sends its Brief
+        assert evening.run() == 0
+    assert len(evening.sent) == 1 and update.state(mac.folder)["seen"]["version"] == "0.20.0"
+    first = update.state(mac.folder)["seen"]["at"]
+
+    assert evening.run() == 0  # tonight's evening run, 15 hours later
+
+    assert mac.installs == [] and update.state(mac.folder)["seen"]["at"] == first
+    with at(NOW + DAY):
+        assert evening.run() == 0
+    assert mac.version() == "0.20.0"
 
 
 def test_a_newer_release_on_stable_while_one_waits_starts_its_own_day(evening, github, mac):  # noqa: F811

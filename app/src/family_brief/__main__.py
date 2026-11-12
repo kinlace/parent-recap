@@ -38,7 +38,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         return evening.run_unless_caught_up(cfg, options, io)
     # The program's update follows the evening job's run, under its lock (ADR 0047).
     from . import update
-    then = lambda: update.evening(args.config)  # noqa: E731
+
+    def then() -> None:
+        log.info("Update: %s", update.evening(args.config).message)
     return run_lock.run_alone(cfg, "Brief", lambda: evening.run_unless_caught_up(cfg, options, io, then))
 
 
