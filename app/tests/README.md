@@ -7,7 +7,10 @@ What each test checks is in its module's docstring and its name; this page is th
 From `app/`:
 
 ```bash
-python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'   # once, in an isolated env
+# once, in an isolated env: pip, then the packages by checksum, then the program (CONTRIBUTING.md, "Pinned packages")
+python -m pip install --only-binary :all: --require-hashes -c constraints.txt pip
+python -m pip install --only-binary :all: --require-hashes -c constraints.txt $(python -I requirements.py test google)
+python -m pip install --no-deps --no-build-isolation -e .
 python -m pytest                                # whole suite
 python -m pytest -m unit                        # one layer (or: python -m pytest tests/unit)
 python -m pytest tests/e2e/test_nightly_brief.py  # one file

@@ -97,7 +97,7 @@ def chromium() -> Iterator[Chromium]:
     if not CAN_LISTEN:
         pytest.skip("no port can be listened on here (a sandbox), and the browser needs one")
     if sync_playwright is None:
-        pytest.skip("Playwright isn't installed: pip install -c constraints.txt -e '.[test]'")
+        pytest.skip("Playwright isn't installed: install the test packages as tests/README.md says")
     expect.set_options(timeout=SLOW_MS)
     playwright = sync_playwright().start()
     try:
@@ -317,7 +317,7 @@ def test_a_browser_that_died_mid_run_is_launched_again_for_the_next_test():
     """#828: Chromium closed partway through a run cost every later test, not just its own. Its
     browsers here are stand-ins, since what is tested is only when a fresh one is launched."""
     if sync_playwright is None:
-        pytest.skip("Playwright isn't installed: pip install -c constraints.txt -e '.[test]'")
+        pytest.skip("Playwright isn't installed: install the test packages as tests/README.md says")
 
     class Browser:
         alive = True

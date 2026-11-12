@@ -216,12 +216,14 @@ pip_failed() {
   echo "   Run the install again. If it fails again, send that log to the Parent Recap team."
   exit 1
 }
-# Prebuilt packages only: building one from source can download a compiler and still fail, and
-# then pip picks the newest version with a ready-made package for this Mac. Pinned to what was
-# tested (app/constraints.txt, see CONTRIBUTING.md), not to what was published this morning.
-PIP=("$NEW/.venv/bin/pip" install --only-binary :all:)
-# pip upgrades itself first, so the line names the pip that installs the packages.
-UPGRADE=$("${PIP[@]}" --upgrade pip 2>&1) && UPGRADED=yes || UPGRADED=no
+# Prebuilt packages only: building one from source can download a compiler and still fail. Each
+# at the version that was tested (app/constraints.txt, see CONTRIBUTING.md), not what was
+# published this morning, and checked against the checksums that file holds (--require-hashes):
+# a package file that doesn't match, or a package the file doesn't pin, stops the install.
+PIP=("$NEW/.venv/bin/pip" install --only-binary :all: --require-hashes -c "$NEW/constraints.txt")
+# pip moves to the version the file pins first, so the line names the pip that installs the
+# packages.
+UPGRADE=$("${PIP[@]}" pip 2>&1) && UPGRADED=yes || UPGRADED=no
 tilde() {
   case "$1" in
     "$HOME"/*) [ "${HOME:-/}" != / ] && echo "~/${1:${#HOME}+1}" || echo "$1" ;;
@@ -238,11 +240,22 @@ MAC+=" Python $(tilde "$PY") ($("$PY" -c 'import platform; print(platform.python
 MAC+=" pip $("$NEW/.venv/bin/python" -c 'from importlib.metadata import version; print(version("pip"))' 2>/dev/null || echo unknown), cc $(tilde "$CC")"
 printf '%s\n%s\n' "$MAC" "$UPGRADE" > "$LOG"
 [ "$UPGRADED" = yes ] || pip_failed
-"${PIP[@]}" -c "$NEW/constraints.txt" -e "$NEW" >> "$LOG" 2>&1 || pip_failed
+# The packages the program needs (app/requirements.py names them; one a word), by checksum.
+packages() {
+  local names
+  names=$("$NEW/.venv/bin/python" -I "$NEW/requirements.py" "$@" 2>> "$LOG") || pip_failed
+  [ -n "$names" ] || return 0
+  # shellcheck disable=SC2086 # split into one argument a name
+  "${PIP[@]}" $names >> "$LOG" 2>&1 || pip_failed
+}
+packages
+# Then the program from this release's folder, which pip can't check by checksum: with nothing of
+# its own, as everything it needs is installed above, and built with the setuptools installed there.
+"$NEW/.venv/bin/pip" install --no-deps --no-build-isolation -e "$NEW" >> "$LOG" 2>&1 || pip_failed
 # Google's packages only for a Household whose config uses Google Calendar: turning it on in
 # manage runs this script again, and an update keeps them.
 if "$NEW/.venv/bin/python" -m family_brief.google_packages wanted; then
-  "${PIP[@]}" -c "$NEW/constraints.txt" -e "$NEW[google]" >> "$LOG" 2>&1 || pip_failed
+  packages google
 fi
 
 # ── The switch (ADR 0047)

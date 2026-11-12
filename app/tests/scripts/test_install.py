@@ -11,7 +11,9 @@ fails, so nothing runs on a Python the Mac already has.
 """
 from __future__ import annotations
 
+import ensurepip
 import hashlib
+import importlib.metadata
 import itertools
 import json
 import os
@@ -94,8 +96,7 @@ served="{m['served']}/$(basename "$url")"
 [ -f "$served" ] || {{ echo "curl: (6) Could not resolve host: github.com" >&2; exit 6; }}
 cp "$served" "$out"
 """)
-    fake(bin_ / "python3", 'echo "the Mac\'s own python3 was run" >&2; exit 97')
-    a_mac(m, "arm64")
+    fake(bin_ / "python3", 'echo "the Mac\'s own python3 was run" >&2; exit 97')    a_mac(m, "arm64")
     macos(m, MACOS)
     serve(m, *PINNED)
     serve_node(m, NODE)
@@ -194,12 +195,14 @@ def node_offline(mac: dict) -> None:
         tarball.unlink()
 
 
-def program(mac: dict, requires: tuple[str, ...], constraints: str = "",
+def program(mac: dict, requires: tuple[str, ...], constraints: str | None = None,
             google: tuple[str, ...] = ()) -> None:
     """A stand-in for app/: a `family-brief` that needs `requires`, and `google` in its google
-    extra, with its constraints file."""
+    extra, with its constraints file pinning `constraints` (`name==version` lines), or every
+    package in the packages folder, each with the checksums of its files there."""
     app = project(mac["plugin"] / "app", "family-brief", "9.9.9", requires, extras={"google": list(google)},
                   scripts={"parent-recap": "family_brief.__main__:main"})
+    shutil.copy(ROOT / "app" / "requirements.py", app / "requirements.py")
     (app / "family_brief").mkdir()
     (app / "family_brief" / "__init__.py").write_text("")
     (app / "family_brief" / "__main__.py").write_text(
@@ -226,10 +229,32 @@ def program(mac: dict, requires: tuple[str, ...], constraints: str = "",
         "import pathlib, sys\n"
         "config = pathlib.Path.home() / '.family' / 'config.yaml'\n"
         "sys.exit(0 if config.exists() and 'mode: google' in config.read_text() else 1)\n")
-    (app / "constraints.txt").write_text(constraints)
+    (app / "constraints.txt").write_text(pinned(mac["packages"], constraints))
     # The real one, which install.sh runs to switch to the version it installed (ADR 0047).
     shutil.copy(ROOT / "app" / "src" / "family_brief" / "versions.py",
                 app / "family_brief" / "versions.py")
+
+
+def pinned(packages: Path, constraints: str | None) -> str:
+    """A constraints file as scripts/pin_hashes.py writes one: each `name==version` line of
+    `constraints`, or by default each package in `packages`, with the checksums of its files
+    there. pip is pinned at the version a new venv already has, as nothing serves another."""
+    files: dict[tuple[str, str], list[str]] = {}
+    for path in sorted(p for p in packages.iterdir() if p.is_file()):
+        name, version = path.name.removesuffix(".tar.gz").split("-")[:2]
+        files.setdefault((canonical(name), version), []).append(hashlib.sha256(path.read_bytes()).hexdigest())
+    if constraints is None:
+        pins = list(files)
+    else:
+        pins = [(canonical(name), version) for name, version in
+                (line.split("==") for line in constraints.splitlines() if line)]
+    if "pip" not in dict(pins):
+        pins.append(("pip", ensurepip.version()))
+    # A pin with no file here gets a checksum nothing has: the venv's own pip is already
+    # installed, so pip doesn't look at it.
+    return "".join(f"{name}=={version} "
+                   + " ".join(f"--hash=sha256:{h}" for h in files.get((name, version), ["0" * 64])) + "\n"
+                   for name, version in pins)
 
 
 def version(mac: dict, number: str) -> None:
@@ -638,7 +663,8 @@ def test_a_failing_pip_step_shows_a_plain_message_and_the_log_instead_of_pips_ou
     assert "needs-compiling" not in shown
     first, *rest = log.read_text().splitlines()
     assert first.startswith("Mac: ")
-    assert any("No matching distribution found for needs-compiling" in line for line in rest)
+    # pip's words when the only file of the pinned version is one it would have to compile.
+    assert "no matching distributions available" in "\n".join(rest) and "    needs-compiling" in rest
 
 
 @pytest.mark.macos
@@ -681,40 +707,150 @@ def test_the_log_writes_the_home_folder_as_a_tilde_so_it_names_no_account(mac):
     assert str(mac["home"]) not in first
 
 
+# --- Every package checked against the checksums the release holds (#931) ---------------------
+
+def tamper(mac: dict, name: str, version: str) -> None:
+    """The package's file as served now isn't the one its checksum was taken of."""
+    wheel(mac["packages"], name, version, files={"tampered.py": "print('not what was pinned')\n"})
+
+
 @pytest.mark.macos
-def test_an_older_prebuilt_version_is_picked_over_a_newer_one_that_would_compile(mac):
-    wheel(mac["packages"], "needs-compiling", "1.0")
-    built = mac["tmp"] / "compiled"
-    sdist(mac["packages"], "needs-compiling", "2.0", build_marker=built)
-    program(mac, ("needs-compiling",))
+def test_a_package_that_doesnt_match_its_checksum_stops_an_update_and_the_running_version_works(mac):
+    wheel(mac["packages"], "pure-dep", "1.0")
+    program(mac, ("pure-dep",))
+    assert install(mac).returncode == 0
+    old, before = running(mac), runs(mac)
+    version(mac, "9.9.10")
+    tamper(mac, "pure-dep", "1.0")
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    assert "couldn't install its Python packages" in result.stdout
+    assert "DO NOT MATCH THE HASHES" in "".join(p.read_text() for p in (target(mac) / "logs").glob("install-*.log"))
+    assert running(mac) == old and runs(mac) == before
+    assert sorted(p.name for p in (target(mac) / "versions").iterdir()) == [old.name]
+
+
+@pytest.mark.macos
+def test_googles_packages_are_checked_against_their_checksums_too(mac):
+    wheel(mac["packages"], "google-dep", "1.0")
+    program(mac, (), google=("google-dep",))
+    google_mode(mac)
+    tamper(mac, "google-dep", "1.0")
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    assert "couldn't install its Python packages" in result.stdout
+    assert "DO NOT MATCH THE HASHES" in install_log(mac).read_text()
+    assert not (target(mac) / "app").exists()
+
+
+@pytest.mark.macos
+def test_a_package_the_constraints_dont_pin_is_refused(mac):
+    # One a pinned package brings in, which a newer version of it may name.
+    wheel(mac["packages"], "pure-dep", "1.0", requires=("unpinned-dep",))
+    wheel(mac["packages"], "unpinned-dep", "1.0")
+    program(mac, ("pure-dep",), "pure-dep==1.0\n")
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    assert "unpinned-dep" in install_log(mac).read_text()
+    assert not (target(mac) / "app").exists()
+
+
+@pytest.fixture(scope="session")
+def pip_wheel(tmp_path_factory) -> Path:
+    """The pip running the tests, as a wheel of version 99.0, which no venv comes with."""
+    folder = tmp_path_factory.mktemp("pip-wheel")
+    files = {f.as_posix(): f.locate().read_bytes() for f in importlib.metadata.distribution("pip").files
+             if f.parts[0] == "pip" and "__pycache__" not in f.parts}
+    return wheel(folder, "pip", "99.0", files=files, scripts={"pip": "pip._internal.cli.main:main"})
+
+
+@pytest.mark.macos
+def test_pip_is_installed_at_the_version_the_constraints_pin_not_the_newest(mac, pip_wheel):
+    shutil.copy(pip_wheel, mac["packages"])
+    wheel(mac["packages"], "pure-dep", "1.0")
+    program(mac, ("pure-dep",))
 
     result = install(mac)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert not built.exists()
-    assert installed(mac)["needs-compiling"] == "1.0"
+    assert installed(mac)["pip"] == "99.0"
+    # The log names the pip that installed the packages.
+    assert ", pip 99.0, " in install_log(mac).read_text().splitlines()[0]
+
+
+def test_the_installs_and_ci_take_no_newest_package_and_check_every_one():
+    # The program from its own folder is the one install without checksums, and brings nothing.
+    for path in ("install.sh", "install.ps1", ".github/workflows/tests.yml", "app/tests/README.md"):
+        text = script_without_comments((ROOT / path).read_text())
+        assert "--upgrade" not in text and "-U " not in text, path
+        assert "--require-hashes" in text, path
+        assert re.search(r"--no-deps['\",]*\s+['\"]?--no-build-isolation", text), path
+        assert not re.search(r"pip install[^\n]*-c constraints\.txt -e", text), path
+
+
+def script_without_comments(text: str) -> str:
+    return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+
+
+# --- What the release's own folder asks pip for (app/requirements.py) ----------------------------
+
+def requirements(*extras: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, "-I", str(ROOT / "app" / "requirements.py"), *extras],
+                          capture_output=True, text=True)
+
+
+def test_it_names_the_build_system_and_the_dependencies_and_only_the_extras_asked_for():
+    project_ = tomllib.loads((ROOT / "app" / "pyproject.toml").read_text())["project"]
+
+    default, google = requirements().stdout.split(), requirements("google").stdout.split()
+
+    assert default[0] == "setuptools" and "pydantic" in default and "PyYAML" in default
+    assert not {n for n in default if n.startswith("google") or n in ("pytest", "playwright")}
+    assert google[:len(default)] == default
+    assert set(google) - set(default) == {"google-api-python-client", "google-auth-oauthlib", "google-auth-httplib2"}
+    assert len(project_["dependencies"]) + 1 == len(default)
+
+
+def test_an_extra_pyproject_doesnt_have_fails():
+    result = requirements("gogle")
+
+    assert result.returncode != 0 and "gogle" in result.stderr and result.stdout == ""
 
 
 # --- The shipped constraints file ------------------------------------------------------------
 
+def shipped() -> dict[str, tuple[str, list[str]]]:
+    """Each pin in app/constraints.txt, by name: its version and its checksums."""
+    text = (ROOT / "app" / "constraints.txt").read_text().replace("\\\n", " ")
+    lines = [line.split() for line in text.splitlines() if line and not line.startswith("#")]
+    return {canonical(spec.split("==")[0]): (spec.split("==")[1], [h.removeprefix("--hash=sha256:") for h in rest])
+            for spec, *rest in lines}
+
+
 def pins() -> dict[str, str]:
-    lines = (ROOT / "app" / "constraints.txt").read_text().splitlines()
-    pairs = [line.split("==") for line in lines if line and not line.startswith("#")]
-    return {canonical(name): version for name, version in pairs}
+    return {name: version for name, (version, _) in shipped().items()}
 
 
 def canonical(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
-def test_the_constraints_pin_every_dependency_to_one_version():
-    project_ = tomllib.loads((ROOT / "app" / "pyproject.toml").read_text())["project"]
-    extras = project_["optional-dependencies"]
-    wanted = [*project_["dependencies"], *extras["test"], *extras["google"]]
+def test_the_constraints_pin_every_dependency_pip_and_the_build_system_to_one_version_and_its_checksums():
+    pyproject = tomllib.loads((ROOT / "app" / "pyproject.toml").read_text())
+    project_, extras = pyproject["project"], pyproject["project"]["optional-dependencies"]
+    wanted = [*pyproject["build-system"]["requires"], *project_["dependencies"], *extras["test"], *extras["google"]]
     names = {canonical(re.match(r"[\w.-]+", d).group()) for d in wanted}
 
-    assert names <= pins().keys()
+    assert names | {"pip"} <= pins().keys()
     assert all(re.fullmatch(r"[\w.+!]+", v) for v in pins().values())
+    assert all(hashes and all(re.fullmatch(r"[0-9a-f]{64}", h) for h in hashes)
+               for _, hashes in shipped().values())
 
 
 def test_a_default_install_brings_in_no_google_package_and_no_cryptography():
@@ -774,6 +910,32 @@ def test_the_check_fails_when_a_pin_has_no_intel_wheel(tmp_path):
     assert "Apple Silicon" not in result.stderr
     assert "native-dep" in result.stderr
     assert not (tmp_path / "compiled").exists()
+
+
+# --- Regenerating the pins with their checksums (scripts/pin_hashes.py) ----------------------
+
+def pin_hashes():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    try:
+        import pin_hashes
+    finally:
+        sys.path.pop(0)
+    return pin_hashes
+
+
+def test_regenerating_keeps_the_comments_and_pins_each_package_with_every_wheels_checksum():
+    wheels = {("pip", "26.3"): ["b" * 64], ("PyYAML", "6.0.3"): ["d" * 64, "c" * 64, "d" * 64]}
+    header = "# The versions...\n# cryptography stays below 49.\n"
+
+    text = pin_hashes().pinned(header, "PyYAML==6.0.3\npip==26.3\n", lambda n, v: wheels[n, v])
+
+    assert text == (header + f"pip==26.3 \\\n    --hash=sha256:{'b' * 64}\n"
+                    f"PyYAML==6.0.3 \\\n    --hash=sha256:{'c' * 64} \\\n    --hash=sha256:{'d' * 64}\n")
+
+
+def test_regenerating_stops_at_a_package_with_no_wheel():
+    with pytest.raises(SystemExit, match="only-sdist 1.0 has no wheel"):
+        pin_hashes().pinned("", "only-sdist==1.0\n", lambda n, v: [])
 
 
 @pytest.mark.macos

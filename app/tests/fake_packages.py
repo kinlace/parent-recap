@@ -44,8 +44,12 @@ def project(folder: Path, name: str, version: str, requires: tuple[str, ...] = (
     """A source tree pip builds with this module, with `extras` such as {"google": [...]} and
     `scripts` such as {"parent-recap": "family_brief.__main__:main"}."""
     folder.mkdir(parents=True, exist_ok=True)
+    # The [project] table only says what it needs, as a real one does, for app/requirements.py.
     (folder / "pyproject.toml").write_text(
-        '[build-system]\nrequires = []\nbuild-backend = "fake_packages"\nbackend-path = ["."]\n')
+        '[build-system]\nrequires = []\nbuild-backend = "fake_packages"\nbackend-path = ["."]\n\n'
+        f'[project]\nname = "{name}"\nversion = "{version}"\ndependencies = {json.dumps(list(requires))}\n\n'
+        "[project.optional-dependencies]\n"
+        + "".join(f"{extra} = {json.dumps(list(rs))}\n" for extra, rs in (extras or {}).items()))
     shutil.copy(__file__, folder / "fake_packages.py")
     (folder / "fake-package.json").write_text(json.dumps({
         "name": name, "version": version, "requires": list(requires), "extras": extras or {},
