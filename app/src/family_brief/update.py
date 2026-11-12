@@ -502,14 +502,19 @@ def brief_note(folder: Path) -> BriefNote | None:
                      running=failed["running"] if failed else None)
 
 
-def told(folder: Path, note: BriefNote) -> None:
-    """Notes that a Brief said `note`, so the next one doesn't say it again."""
+def told(folder: Path, note: BriefNote | None) -> None:
+    """Notes that a Brief went out saying `note` (brief_note's), so the next one doesn't say it
+    again. An `updated` line it left out, as that version no longer runs, is dropped too, so a
+    switch forward by hand later isn't said to be an update."""
     data = state(folder)
-    if note.updated is not None:
-        data.update(tell_updated=None, told_updates_itself=True)
-    if note.failed is not None:
+    before = dict(data)
+    data.update(tell_updated=None)
+    if note is not None and note.updated is not None:
+        data.update(told_updates_itself=True)
+    if note is not None and note.failed is not None:
         data.update(tell_failed=None)
-    _write_state(folder, data)
+    if data != before:
+        _write_state(folder, data)
 
 
 def _seen(folder: Path, version: str) -> dict:
@@ -567,7 +572,7 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
             _save(folder, last_result=f"{wanted} didn't install", failed=wanted)
             return Outcome("failed", f"Version {wanted} couldn't be installed, so Parent Recap "
                            f"runs version {installed} as it did. The update log is "
-                           f"{log.path}.", installed, wanted)
+                           f"{log.path}.", installed, tried=wanted)
         log("switch", f"{installed} -> {wanted}")
         after = updater.doctor(wanted)
         # A doctor that didn't run is a failure even where the one before didn't run either.
@@ -579,11 +584,11 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
         keep = True
         _save(folder, last_result=f"updated {installed} to {wanted}", failed=None)
         return Outcome("updated", f"✅ Parent Recap updated from version {installed} to "
-                       f"{wanted}, and its checks pass as before.", wanted, wanted)
+                       f"{wanted}, and its checks pass as before.", wanted, tried=wanted)
     except Refused as e:
         _save(folder, last_result=f"{wanted} refused: {e}")
         return Outcome("failed", f"Version {wanted} wasn't installed: {e}. Nothing was "
-                       "changed.", installed, tried)
+                       "changed.", installed, tried=tried)
     finally:
         if not keep:  # whatever ended the update, the plugin copy is the running version's
             updater.restore_plugin(spare)
@@ -602,14 +607,14 @@ def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, instal
               failed=wanted)
         return Outcome("failed", f"Version {wanted} was installed, but its check failed where "
                        f"version {installed} passed ({failing}), and there is no previous "
-                       f"version to switch back to. The update log is {log.path}.", wanted, wanted)
+                       f"version to switch back to. The update log is {log.path}.", wanted, tried=wanted)
     updater.restore_plugin(spare)
     log("switch", f"{wanted} -> {running}: back, as {wanted} fails {failing}")
     _save(folder, last_result=f"{wanted} failed its check; back on {running}",
           failed=wanted)
     return Outcome("switched-back", f"Version {wanted} was installed, but its check failed where "
                    f"version {installed} passed ({failing}), so Parent Recap switched back to "
-                   f"version {running}. The update log is {log.path}.", running, wanted)
+                   f"version {running}. The update log is {log.path}.", running, tried=wanted)
 
 
 # ---------------------------------------------------------------- parent-recap update

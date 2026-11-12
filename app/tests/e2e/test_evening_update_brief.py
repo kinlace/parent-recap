@@ -122,12 +122,38 @@ def test_after_a_switch_back_by_hand_the_brief_doesn_t_say_it_updated(evening, g
     installed_on_evening_1(evening, github, mac)
     assert evening.cli("switch-back") == 0
     assert mac.version() == INSTALLED
+    github.stable = INSTALLED  # as the maintainers would after a bad release: nothing to update to
 
     a_message(evening, 2)
     evening_on(evening, 2)
 
     [email] = evening.sent
     assert UPDATE_MARK not in email.text
+    # Switched forward again by hand, as `switch-back` does run again: that's no update either.
+    assert evening.cli("switch-back") == 0
+    assert mac.version() == "0.20.0"
+    a_message(evening, 3)
+    evening_on(evening, 3)
+    assert UPDATE_MARK not in evening.sent[-1].text
+
+
+def test_a_brief_that_reached_nobody_leaves_the_line_for_the_next(evening, github, mac):  # noqa: F811
+    from family_brief.gateway import GatewayError
+    t = TEXT["en"]
+    evening.config["summary_language"] = "en"
+    installed_on_evening_1(evening, github, mac)
+    evening.email_error = GatewayError("couldn't reach the gateway at gateway.parentrecap.com (ConnectionError)")
+    a_message(evening, 2)
+    evening_on(evening, 2)
+    assert evening.sent == []
+
+    evening.email_error = None
+    a_message(evening, 3)
+    evening_on(evening, 3)
+
+    [email] = evening.sent
+    assert top(email.text) == [t.updated.format(version="0.20.0", link=CHANGES.format("0.20.0")),
+                               t.updates_itself]
 
 
 # ---------------------------------------------------------------- after a failed update

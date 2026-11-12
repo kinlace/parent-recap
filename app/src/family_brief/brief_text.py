@@ -90,7 +90,7 @@ class BriefText:
     updated: str                        # {version} it now runs, {link} to what changed in it
     updates_itself: str                 # after the first `updated` line a Household gets
     update_failed: str                  # {version} that failed, {running} the one it still runs
-    message_time: str                 # when a message came: {day} {month} {hour} {minute}
+    message_time: str                  # when a message came: {day} {month} {hour} {minute}
 
     # ── At the top of the original, sent to a Recipient whose translation failed
     translation_failed: str

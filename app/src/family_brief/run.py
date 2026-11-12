@@ -475,18 +475,25 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         # Source events listed before or Held-back Messages asks no model: nothing to judge and no model to credit.
         model_wrote=asks_model and notes.error is None, form=form,
         stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg),
-        hosted=cfg.hosted, slept=asleep, caught_up=caught_up, update=_update_note(cfg, options))
+        hosted=cfg.hosted, slept=asleep, caught_up=caught_up, update=_what_the_update_did(cfg, options))
     return _Written(night, notes, for_ai, held, model_events, placeholders)
 
 
-def _update_note(cfg: Config, options: Options) -> BriefNote | None:
-    """What the evening's update did since the last Brief, for this one to say (#916): only on a
-    family's own Mac, where the program updates itself (ADR 0047), and not in the setup page's
-    Brief. A note that can't be read is left out, never the Brief."""
+def _update_folder(cfg: Config, options: Options) -> Path | None:
+    """Parent Recap's folder where tonight's Brief says what the evening's update did (#916): only
+    on a family's own Mac, where the program updates itself (ADR 0047), and not in the setup
+    page's Brief."""
     if cfg.hosted or options.preview or options.first or profile.current().system != "macos":
         return None
-    from . import own_node, update
-    if (folder := own_node.running_from()) is None:
+    from . import own_node
+    return own_node.running_from()
+
+
+def _what_the_update_did(cfg: Config, options: Options) -> BriefNote | None:
+    """What the evening's update did since the last Brief, for this one to say. A note that can't
+    be read is left out, never the Brief."""
+    from . import update
+    if (folder := _update_folder(cfg, options)) is None:
         return None
     try:
         return update.brief_note(folder)
@@ -495,10 +502,10 @@ def _update_note(cfg: Config, options: Options) -> BriefNote | None:
         return None
 
 
-def _update_told(note: BriefNote) -> None:
-    """Notes that tonight's Brief said what the update did, so the next one doesn't."""
-    from . import own_node, update
-    if (folder := own_node.running_from()) is None:
+def _update_told(cfg: Config, options: Options, note: BriefNote | None) -> None:
+    """Notes that tonight's Brief went out saying what the update did, so the next one doesn't."""
+    from . import update
+    if (folder := _update_folder(cfg, options)) is None:
         return
     try:
         update.told(folder, note)
@@ -703,8 +710,7 @@ def _run(cfg: Config, options: Options, io: IO, caught_up: bool) -> _Ended:
             state.mark_event_created(calendar_action.event_hash(e), "ics")
     if delivered:
         state.mark_caught_up_now(read=read.coverage, behind=_behind(read.coverage))
-        if night.update is not None:
-            _update_told(night.update)
+        _update_told(cfg, options, night.update)
     else:
         # Nobody saw tonight's Brief: leave its Messages unseen so tomorrow's Brief picks them up.
         log.warning("Brief not delivered; its messages will be collected again next run")
