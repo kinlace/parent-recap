@@ -1,4 +1,4 @@
-"""The Konnect Source's collector (ADR 0049) against each provider's fake parent portal
+"""The Konnect Source's collector (ADR 0050) against each provider's fake parent portal
 (fake_sources.Konnect), which answers as the portal's JSON does: the sign-in it sends, the list
 addresses it reads and the ones it never reads (the timeline, an item's own page), the planned
 times it makes events of for the right Kid, the daycare's new messages told once, and how a wrong

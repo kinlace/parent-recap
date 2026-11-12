@@ -1,4 +1,4 @@
-"""The Konnect Source in the evening run (ADR 0049, #905), against each provider's fake parent
+"""The Konnect Source in the evening run (ADR 0050, #905), against each provider's fake parent
 portal, which answers with the portal's own JSON: the daycare's new messages, news and planned
 times in the Brief, its .ics and its coverage line, told once; a wrong password, a portal that
 wants a new password or a changed portal said there while the rest still goes out; nothing of the

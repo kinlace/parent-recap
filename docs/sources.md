@@ -192,7 +192,7 @@ Notes:
 - It hasn't been tried against a real account yet (#904)
 ## Konnect (optional, the Netherlands)
 
-A Dutch daycare or after-school care (BSO) whose parent portal runs on Konnect, at `<provider>.ouderportaal.nl` (Partou, Kibeo, Kappio and others), gives the messages the group sends the parents, the news and the newsletters as Messages for the Brief, and each time a Kid is booked there in the next 14 days as a calendar event in the Brief and its `.ics`, read through the portal with the parent's own username and password (ADR 0049). Only the portal's lists are read, never an item's own page, which would mark it read, and never the timeline, with the children's photos and the day reports (sleep, meals, medication, temperature).
+A Dutch daycare or after-school care (BSO) whose parent portal runs on Konnect, at `<provider>.ouderportaal.nl` (Partou, Kibeo, Kappio and others), gives the messages the group sends the parents, the news and the newsletters as Messages for the Brief, and each time a Kid is booked there in the next 14 days as a calendar event in the Brief and its `.ics`, read through the portal with the parent's own username and password (ADR 0050). Only the portal's lists are read, never an item's own page, which would mark it read, and never the timeline, with the children's photos and the day reports (sleep, meals, medication, temperature).
 
 **Setup page**: none, so families elsewhere don't see a step for it. A Konnect sign-in is added from a terminal, once for each portal, with the family:
 

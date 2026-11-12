@@ -1,4 +1,4 @@
-"""The Konnect Source's pure parts (ADR 0049): a portal's address, a child matched to a Kid by
+"""The Konnect Source's pure parts (ADR 0050): a portal's address, a child matched to a Kid by
 name, a message's HTML as text, the Messages page's lists as Messages and the Agenda's planned
 times as events. All names and messages are made up."""
 from __future__ import annotations

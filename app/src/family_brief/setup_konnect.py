@@ -1,4 +1,4 @@
-"""Adding a Konnect sign-in from a terminal (ADR 0049). The setup page has no Konnect step, so a
+"""Adding a Konnect sign-in from a terminal (ADR 0050). The setup page has no Konnect step, so a
 family elsewhere doesn't see one; `remove` and `remove_all` are for removing sign-ins by hand.
 
 `setup konnect --portal partou --username NAME` has the parent's password typed at the secret

@@ -157,7 +157,7 @@ class SocialSchoolsConfig(BaseModel):
 
 
 class KonnectSignin(BaseModel):
-    """A parent's sign-in at one provider's Konnect parent portal (ADR 0049). Its password is in
+    """A parent's sign-in at one provider's Konnect parent portal (ADR 0050). Its password is in
     the system's secret store, never here (collectors/konnect.secret_name). `kids` names the Kid
     each of the parent's children is, by its id on Konnect, as `setup konnect` matched them by
     name; a child not in it is matched by name each evening."""
@@ -182,7 +182,7 @@ class KonnectSignin(BaseModel):
 
 class KonnectConfig(BaseModel):
     """Konnect's parent portal, which Dutch childcare and after-school care (BSO) providers run at
-    `<provider>.ouderportaal.nl` (ADR 0049): one sign-in per provider, each with its own session."""
+    `<provider>.ouderportaal.nl` (ADR 0050): one sign-in per provider, each with its own session."""
     signins: list[KonnectSignin] = Field(default_factory=list)
     lookback_hours: int = 26  # older messages are marked seen without being told
 
