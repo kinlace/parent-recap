@@ -1,7 +1,8 @@
 """The nightly `parent-recap run` across nights, end to end: quiet nights and what carries over, a
 Gmail with no sender ticked, and catching up a missed evening, at sign-in with `run --if-missed` or
-when the scheduler starts the run late, only within 10 hours and in the Household's zone. Assertions are only on what leaves the system: the email (text, HTML, attachments), the
-model command line, and persisted state."""
+when the scheduler starts the run late, only within 10 hours and in the Household's zone.
+Assertions are only on what leaves the system: the email (text, HTML, attachments), the model
+command line, persisted state, and the log line a skipped catch-up leaves."""
 from __future__ import annotations
 
 import json
@@ -537,9 +538,9 @@ def test_a_start_by_the_scheduler_ten_hours_late_sends_nothing_and_the_next_even
 def test_several_missed_evenings_get_one_catch_up_brief_that_covers_them(harness, by_the_scheduler):
     started_late(harness, hours=2, last_run_hours_ago=74)
 
+    assert harness.run("--if-missed") == 0  # Windows' sign-in task
+    # Task Scheduler's own late start of the missed task finds the evening caught up.
     assert harness.run() == 0
-    # Another start, such as Windows' sign-in task's, finds the evening caught up.
-    assert harness.run("--if-missed") == 0
 
     [email] = harness.sent
     assert CAUGHT_UP in email.text
