@@ -43,7 +43,7 @@ import subprocess
 import tempfile
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
@@ -76,6 +76,9 @@ INSTALL_TIMEOUT = 60 * 60         # the installer builds a venv and may fetch a 
 DOCTOR_TIMEOUT = 15 * 60
 MAX_REDIRECTS = 5
 DOCTOR_DIDNT_RUN = "doctor didn't run"  # the failing item when a version's doctor couldn't run
+# The evening run installs a release only once this Mac has seen it on `stable` this long: time
+# for the maintainers to stop a bad release before families take it (ADR 0047).
+DAY = timedelta(hours=24)
 
 
 class Refused(Exception):
@@ -84,8 +87,9 @@ class Refused(Exception):
 
 @dataclass(frozen=True)
 class Outcome:
-    """What `update` did. `result` is one of: not-applicable, up-to-date, updated, switched-back,
-    failed. `version` is the one it now runs, where it got that far."""
+    """What `update` did. `result` is one of: not-applicable, up-to-date, waiting (a release not
+    yet a day old, for the evening run), updated, switched-back, failed. `version` is the one it
+    now runs, where it got that far."""
     result: str
     message: str
     version: str | None = None
@@ -119,14 +123,16 @@ def doctor_failures(output: str) -> set[str]:
 
 def state(folder: Path | None = None) -> dict:
     """The update's state: `last_look` and `last_result` (when it last read `stable`'s version and
-    what came of it) and `failed` (a version whose install or check failed, or None). Kept in
-    Parent Recap's folder outside the versions, so a switch and a switch back keep it."""
+    what came of it), `failed` (a version whose install or check failed, or None) and `seen` (the
+    version `stable` held when it changed and when this Mac first saw it there, or None), which
+    the evening run's day's wait counts from. Kept in Parent Recap's folder outside the versions,
+    so a switch and a switch back keep it."""
     path = (folder or own_node.home()) / UPDATE / STATE
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         data = {}
-    return {"last_look": None, "last_result": None, "failed": None,
+    return {"last_look": None, "last_result": None, "failed": None, "seen": None,
             **(data if isinstance(data, dict) else {})}
 
 
@@ -377,11 +383,13 @@ class _Updater:
         self.moved = False
 
 
-def update(config: str | None = None, *, retry_failed: bool = True) -> Outcome:
+def update(config: str | None = None, *, retry_failed: bool = True,
+           wait: timedelta | None = None) -> Outcome:
     """Looks for a newer release on `stable` and installs it, checks it with `doctor` and switches
     back when it fails a check the version before didn't. With `retry_failed` False, a version
-    that failed before isn't tried again (the evening run's). Never raises for what the network
-    or the release did: the Outcome says it."""
+    that failed before isn't tried again; with `wait`, a version is installed only once this Mac
+    has seen it on `stable` that long (the evening run's, `evening`). Never raises for what the
+    network or the release did: the Outcome says it."""
     if (reason := not_applicable(config)) is not None:
         return Outcome("not-applicable", reason)
     folder = own_node.running_from()
@@ -393,19 +401,56 @@ def update(config: str | None = None, *, retry_failed: bool = True) -> Outcome:
         wanted = stable_version(session)
     except Refused as e:
         log("look", f"installed {installed}; stable couldn't be read: {e}")
-        _save(folder,last_result=f"look failed: {e}")
+        _save(folder, last_result=f"look failed: {e}")
         return Outcome("failed", f"Parent Recap couldn't look for a newer release: {e}. "
                        "Nothing was changed.", installed)
     log("look", f"installed {installed}, stable holds {wanted}")
+    seen = _seen(folder, wanted)
     if not newer(wanted, installed):
-        _save(folder,last_result=f"up to date at {installed}")
+        _save(folder, last_result=f"up to date at {installed}", seen=seen)
         return Outcome("up-to-date", f"Parent Recap is up to date: it runs version {installed}, "
                        "the newest release.", installed)
     if not retry_failed and state(folder)["failed"] == wanted:
-        _save(folder,last_result=f"{wanted} failed before; not tried again")
+        log("look", f"{wanted} failed before; not tried again")
+        _save(folder, last_result=f"{wanted} failed before; not tried again", seen=seen)
         return Outcome("failed", f"Version {wanted} failed its check before, so it wasn't tried "
                        "again. Nothing was changed.", installed)
+    if wait is not None:
+        first = datetime.fromisoformat(seen["at"])
+        if datetime.now(timezone.utc) - first < wait:
+            log("look", f"{wanted} first seen {seen['at']}; installed once it has been out "
+                f"{wait // timedelta(hours=1)} hours")
+            _save(folder, last_result=f"{wanted} waits until it is a day old", seen=seen)
+            return Outcome("waiting", f"Version {wanted} is installed once it has been out a "
+                           "day.", installed)
+    _save(folder, seen=seen)
     return _update_to(folder, config, log, session, installed, wanted)
+
+
+def evening(config: str | None = None) -> Outcome:
+    """The update the evening run starts once its Brief is sent, or it decided to send nothing
+    (ADR 0047): `update`, for a release this Mac has seen on `stable` a day, and not for one that
+    failed before. It runs in the background, so nothing it starts asks for a password
+    (schedule_update.UPDATING), and inside the evening job, under its run lock, so the evening
+    jobs aren't installed again: they start the program from the same path, which now points at
+    the version switched to. It never raises: the evening run's result stays as it was."""
+    try:
+        return update(config, retry_failed=False, wait=DAY)
+    except Exception as e:  # noqa: BLE001 - the Brief is out; the next evening looks again
+        return Outcome("failed", f"The update stopped: {type(e).__name__}. Nothing more was "
+                       "changed.")
+
+
+def _seen(folder: Path, version: str) -> dict:
+    """`state`'s `seen` for `version`, on `stable` now: when this Mac first saw it there."""
+    seen = state(folder)["seen"]
+    if isinstance(seen, dict) and seen.get("version") == version and isinstance(seen.get("at"), str):
+        try:
+            datetime.fromisoformat(seen["at"])
+            return seen
+        except ValueError:
+            pass
+    return {"version": version, "at": _now()}
 
 
 def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Session,
@@ -446,7 +491,7 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
         if not updater.install(plugin, wanted, spare):
             updater.restore_plugin(spare)
             log("install", f"{wanted}: not installed; {installed} runs as it did")
-            _save(folder,last_result=f"{wanted} didn't install", failed=wanted)
+            _save(folder, last_result=f"{wanted} didn't install", failed=wanted)
             return Outcome("failed", f"Version {wanted} couldn't be installed, so Parent Recap "
                            f"runs version {installed} as it did. The update log is "
                            f"{log.path}.", installed)
@@ -459,11 +504,11 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
             keep = outcome.version == wanted
             return outcome
         keep = True
-        _save(folder,last_result=f"updated {installed} to {wanted}", failed=None)
+        _save(folder, last_result=f"updated {installed} to {wanted}", failed=None)
         return Outcome("updated", f"✅ Parent Recap updated from version {installed} to "
                        f"{wanted}, and its checks pass as before.", wanted)
     except Refused as e:
-        _save(folder,last_result=f"{wanted} refused: {e}")
+        _save(folder, last_result=f"{wanted} refused: {e}")
         return Outcome("failed", f"Version {wanted} wasn't installed: {e}. Nothing was "
                        "changed.", installed)
     finally:
@@ -487,7 +532,7 @@ def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, instal
                        f"version to switch back to. The update log is {log.path}.", wanted)
     updater.restore_plugin(spare)
     log("switch", f"{wanted} -> {running}: back, as {wanted} fails {failing}")
-    _save(folder,last_result=f"{wanted} failed its check; back on {running}",
+    _save(folder, last_result=f"{wanted} failed its check; back on {running}",
           failed=wanted)
     return Outcome("switched-back", f"Version {wanted} was installed, but its check failed where "
                    f"version {installed} passed ({failing}), so Parent Recap switched back to "

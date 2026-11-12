@@ -597,18 +597,31 @@ def _deliver(cfg: Config, io: IO, state: State, written: _Written) -> tuple[bool
     return email_sent, delivered, everyone
 
 
-def _quiet_night(state: State, coverage: dict[str, dict], sends: bool) -> int:
+def _quiet_night(state: State, coverage: dict[str, dict], sends: bool) -> _Ended:
     """The end of a night that sends no Brief: it still ran, and read what it read."""
     state.mark_run_now()
     state.mark_caught_up_now(read=coverage, behind=_behind(coverage))
     if sends:
         state.save()
-    return 0
+        return _Ended(0, "quiet")
+    return _Ended(0)
+
+
+@dataclass(frozen=True)
+class _Ended:
+    """How a run ended: its exit code, and `night`: "sent" when its Brief reached a Recipient,
+    "quiet" when it decided to send nothing, None for a dry run or a Brief that went nowhere."""
+    code: int
+    night: Literal["sent", "quiet"] | None = None
 
 
 def run(cfg: Config, options: Options, io: IO, caught_up: bool = False) -> int:
     """Tonight's evening run on `cfg`, which it leaves as it was given. `caught_up`: the scheduler
     started it late, for an evening the computer was off, asleep or signed out at (#894)."""
+    return _run(cfg, options, io, caught_up).code
+
+
+def _run(cfg: Config, options: Options, io: IO, caught_up: bool) -> _Ended:
     # The evening the run started, kept if it ends tomorrow, and whether the computer slept since.
     watch, started = slept.Watch(), datetime.now(ZoneInfo(cfg.timezone))
     cfg = cfg.model_copy(deep=True)  # tonight's lookbacks are tonight's alone
@@ -650,7 +663,7 @@ def run(cfg: Config, options: Options, io: IO, caught_up: bool = False) -> int:
         # Dry runs leave no trace but a preview's log line: no archive, no state, no email.
         body = night.text()
         log.info("DRY-RUN: body (%d chars):\n%s", len(body), body)
-        return 0
+        return _Ended(0)
 
     email_sent, delivered, everyone = _deliver(cfg, io, state, written)
     # Only mark .ics events as sent once the email actually went out, so a failed send retries tomorrow.
@@ -670,7 +683,7 @@ def run(cfg: Config, options: Options, io: IO, caught_up: bool = False) -> int:
     md_path = io.write_archive(cfg, night.date, read.messages, night.brief, written.notes, night.created, delivered)
     log.info("Archive written to %s", md_path)
     # A first Brief a Recipient didn't get fails, so the sign-up isn't said to have sent it.
-    return 1 if options.first and not everyone else 0
+    return _Ended(1 if options.first and not everyone else 0, "sent" if delivered else None)
 
 
 # A start by the scheduler this long before the Brief's time still counts as at it: a clock set
@@ -754,7 +767,8 @@ def _started_by_hand(cfg: Config) -> bool:
     return abs(datetime.now(timezone.utc) - at) < BY_HAND_FRESH
 
 
-def run_unless_caught_up(cfg: Config, options: Options, io: IO) -> int:
+def run_unless_caught_up(cfg: Config, options: Options, io: IO,
+                         then: Callable[[], object] | None = None) -> int:
     """`run`, or with `if_missed` only when the evening run was missed (#386). A start by the
     scheduler (`scheduled`, or `if_missed`, the Windows sign-in task's) well after the Brief's time
     with no run since catches up the missed evening, with a line that says so, but only within
@@ -783,9 +797,22 @@ def run_unless_caught_up(cfg: Config, options: Options, io: IO) -> int:
         return run(cfg, options, io, caught_up)
     started = time.monotonic()
     try:
-        code = run(cfg, options, io, caught_up)
+        ended = _run(cfg, options, io, caught_up)
     except BaseException:
         last_run.record(cfg, 1, time.monotonic() - started, wilma_egress.causes())
         raise
-    last_run.record(cfg, code, time.monotonic() - started, wilma_egress.causes())
-    return code
+    last_run.record(cfg, ended.code, time.monotonic() - started, wilma_egress.causes())
+    if then is not None and _updates_after(cfg, options, by_hand, caught_up, ended):
+        try:
+            then()
+        except Exception:  # noqa: BLE001 - the Brief is out; the next evening tries again
+            log.exception("The update after the evening run stopped; the run's result stands")
+    return ended.code
+
+
+def _updates_after(cfg: Config, options: Options, by_hand: bool, caught_up: bool,
+                   ended: _Ended) -> bool:
+    """Whether the program's update follows this run (run_unless_caught_up's `then`)."""
+    if not options.scheduled or by_hand or cfg.hosted or options.first or options.preview:
+        return False
+    return ended.night == "sent" or (ended.night == "quiet" and not caught_up)
