@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from family_brief import versions
 
@@ -84,7 +85,11 @@ def test_the_same_version_installed_again_keeps_the_version_before_it(folder):
     again = install(folder, "1_1.ccc")
 
     assert versions.current(folder) == again and versions.previous(folder) == old
+    # The copy it replaced may still be running a Brief: it goes with the next switch.
+    assert (folder / "versions" / "1_1.bbb").is_dir()
+    install(folder, "1_2.ddd")
     assert not (folder / "versions" / "1_1.bbb").exists()
+    assert versions.previous(folder) == again
 
 
 def test_what_an_install_that_failed_left_goes_with_the_next_switch(folder):
@@ -150,6 +155,38 @@ def test_a_path_in_a_version_is_its_path_through_app(folder, inside):
 def test_a_path_named_versions_elsewhere_is_left_as_it_is(tmp_path):
     path = tmp_path / "versions" / "1.0" / "x"
     assert versions.stable(path) == path
+
+
+# ── the Linked Device after an install
+
+def test_the_install_puts_a_running_linked_device_on_this_versions_command_and_node(harness,
+                                                                                    folder):
+    # Its job named the Node pinned before, which goes once no kept version runs on it.
+    from family_brief import linked_device
+    from family_brief.config import Config
+    import fake_node
+    node = fake_node.pinned_node(harness.home, "26.0.0")
+    fake_node.install_baileys(fake_node.baileys_folder(harness.home))
+    config = harness.home / ".family" / "config.yaml"  # the Household's, where the install reads it
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(yaml.safe_dump(harness.config))
+    harness.jobs.install_always([str(folder / "runtime" / "node-v24.0.0" / "bin" / "node"),
+                                 "follow"], folder / "logs")
+
+    assert linked_device.main(["restart"]) == 0
+
+    assert harness.jobs.always == linked_device.command("follow", Config.load(None))
+    assert harness.jobs.always[0] == str(node) and harness.jobs.always_running
+
+
+def test_the_install_leaves_a_linked_device_that_isnt_running_as_it_is(harness, folder):
+    from family_brief import linked_device
+    harness.jobs.install_always(["node", "follow"], folder / "logs")
+    harness.jobs.stop_always()
+
+    assert linked_device.main(["restart"]) == 0
+
+    assert harness.jobs.always == ["node", "follow"] and not harness.jobs.always_running
 
 
 # ── parent-recap switch-back
