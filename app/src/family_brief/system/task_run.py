@@ -9,7 +9,11 @@ and exits with its exit code, which Task Scheduler shows as the task's last resu
 The always-running job's task starts it with `--restart-unless <code>` first: the command is run
 again, after RESTART_AFTER seconds, each time it exits with another code. Task Scheduler's own
 restart on failure is for a task that couldn't start, not one whose program exits, so this does
-what launchd's KeepAlive does on macOS. Ending its task ends the command too."""
+what launchd's KeepAlive does on macOS. Ending its task ends the command too.
+
+The evening run it starts is told it was started by Task Scheduler (`jobs.SCHEDULED`), so a late
+start that catches up a missed evening is told from a run by hand (#894). An older version's
+task starts this module too, so it needs no new task."""
 from __future__ import annotations
 
 import os
@@ -23,6 +27,17 @@ UTF8 = {"PYTHONUTF8": "1"}
 RESTART_AFTER = 10  # seconds, as launchd waits before starting a job that exited again
 
 
+def environment(command: list[str]) -> dict[str, str]:
+    """The environment `command` runs in: this one, with UTF8, and for the evening run, marked as
+    started by the scheduler. Other programs started through here, such as the Settings entry's
+    setup page, are not: what they start in turn, such as its preview run, isn't the scheduler's."""
+    from . import jobs  # here: jobs imports the Windows adapter, which imports this module
+    env = {**os.environ, **UTF8}
+    if command[1:4] == ["-m", "family_brief", "run"]:
+        env[jobs.SCHEDULED] = "1"
+    return env
+
+
 def main(argv: list[str]) -> int:
     unless: int | None = None
     if argv[:1] == ["--restart-unless"]:
@@ -33,7 +48,7 @@ def main(argv: list[str]) -> int:
     with open(stdout, "ab") as out, open(stderr, "ab") as err:
         while True:
             proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=out, stderr=err,
-                                    env={**os.environ, **UTF8},
+                                    env=environment(command),
                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             if ends_with_this:
                 ends_with_this(proc)

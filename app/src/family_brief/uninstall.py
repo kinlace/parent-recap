@@ -496,6 +496,7 @@ def _job_logs(s: Survey, logs: Path) -> None:
 
 
 def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Config) -> None:
+    from . import run as evening  # here: the run module imports most of the program
     family = config.parent
     state = defaults.resolved_state_path()
     found: list[tuple[str, Path]] = []
@@ -504,6 +505,8 @@ def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Con
     found += [("Config backup", p) for p in sorted(family.glob(config.name + ".bak*"))]
     found += [("Setup's progress", setup_save.progress_path(config)),
               ("State", state), ("Run lock", run_lock.lock_path(defaults)),
+              # `schedule run-now`'s note for the run it starts, which that run takes (#894).
+              ("A Brief started by hand", evening.by_hand_path(defaults)),
               ("The program's text in other languages", state.parent / "languages"),
               ("Where Claude, Codex and Node were found", tools.remembered_path()),
               ("Google Calendar app file", family / "calendar_credentials.json"),

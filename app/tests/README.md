@@ -104,7 +104,7 @@ the import path, so a test may import a helper from a test in another layer.
 | File                              | What it covers                                                                          |
 | --------------------------------- | --------------------------------------------------------------------------------------- |
 | `test_nightly_brief.py`           | The Brief a normal night makes, failures at the edges                                   |
-| `test_nightly_continuity.py`      | Nights in a row, quiet nights, `run --if-missed` in the Household's zone                |
+| `test_nightly_continuity.py`      | Nights in a row, quiet nights, catching up a missed evening within 10 hours             |
 | `test_nightly_google_calendar.py` | Google Calendar mode                                                                    |
 | `test_nightly_languages.py`       | Recipients in their own languages                                                       |
 | `test_nightly_placeholders.py`    | The AI filter's placeholders, end to end (ADR 0013)                                     |

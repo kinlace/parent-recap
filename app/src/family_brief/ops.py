@@ -966,14 +966,21 @@ def install_jobs(cfg: Config) -> None:
         pass
 
 
-def _run_now(name: str, log_dir: Path) -> int:
+def _run_now(cfg: Config, name: str, log_dir: Path) -> int:
     """Asks the system to start the installed job, which then runs with the job's own Python,
-    PATH, environment and log files. Doesn't wait for it."""
+    PATH, environment and log files. Doesn't wait for it. The evening run it starts is one by
+    hand, which runs at any hour and isn't a catch-up (#894)."""
     label = jobs.system_name(name)
     logs = log_dir / ("weekend-events" if name == jobs.WEEKEND else "run")
     where = f"Its logs:\n  {logs}-stdout.log\n  {logs}-stderr.log"
+    from . import run
+    by_hand = name == jobs.DAILY
+    if by_hand:
+        run.mark_started_by_hand(cfg)
+    started = False
     try:
         jobs.run_now(name)
+        started = True
     except jobs.NotInstalled:
         print(f"{FAIL} {label} isn't installed. Run family-brief schedule install first.")
         return 1
@@ -984,6 +991,9 @@ def _run_now(name: str, log_dir: Path) -> int:
     except jobs.NotStarted as e:
         print(f"{FAIL} {e}")
         return 1
+    finally:
+        if by_hand and not started:  # no run of this call's takes the note
+            run.forget_started_by_hand(cfg)
     print(f"{OK} Started {label}. It runs in the background, so this doesn't wait for the Brief. "
           f"{where}")
     return 0
@@ -997,7 +1007,7 @@ def cmd_schedule(args: argparse.Namespace) -> int:
     sc = cfg.schedule
 
     if args.action == "run-now":
-        return _run_now(jobs.WEEKEND if args.weekend else jobs.DAILY, log_dir)
+        return _run_now(cfg, jobs.WEEKEND if args.weekend else jobs.DAILY, log_dir)
 
     if args.action == "install":
         install_jobs(cfg)

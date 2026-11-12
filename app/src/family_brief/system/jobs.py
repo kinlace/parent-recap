@@ -24,6 +24,10 @@ ALWAYS = "linked-device"  # the always-running job's name
 # rest, so it is 0, and the program must end any other way, a crash or an empty event loop
 # included, with another code.
 LINK_ENDED = 0
+# Set in the environment of an evening run the system's scheduler starts (launchd's plist on
+# macOS, task_run on Windows), so the run can tell a late start that catches up a missed evening
+# from one a person makes by hand (#894). The hosted server's jobs don't set it.
+SCHEDULED = "PARENT_RECAP_SCHEDULED"
 
 
 @dataclass(frozen=True)

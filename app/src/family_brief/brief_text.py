@@ -84,6 +84,8 @@ class BriefText:
     reply_incomplete: str               # {assistant}
     # At the top of a Brief the computer slept through, finished when it woke (#887)
     slept: str
+    # At the top of a Brief that catches up an evening the computer was off at (#894)
+    caught_up: str
     message_time: str                  # when a message came: {day} {month} {hour} {minute}
 
     # ── At the top of the original, sent to a Recipient whose translation failed
@@ -207,6 +209,8 @@ EN = BriefText(
     reply_incomplete="⚠️ {assistant}'s reply tonight was cut off, so this Brief may be missing some items. "
                      "All of tonight's messages are in the archive in ~/ParentRecap.",
     slept="💤 Your computer went to sleep while making this Brief, so it was finished when you opened it.",
+    caught_up="💤 Your computer was off at the last Brief time, so this Brief was sent when it came back on. "
+              "It covers everything since then.",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
     held_back="🔒 Held-back messages",
@@ -298,6 +302,7 @@ ZH = BriefText(
     fallback_more="  …另外 {n} 条，见归档",
     reply_incomplete="⚠️ 今晚 {assistant} 的回复不完整，这份日报可能漏了几条。今晚的原始消息都在 ~/ParentRecap 归档里。",
     slept="💤 生成这份日报时电脑进入了睡眠，所以它是你打开电脑后才完成的。",
+    caught_up="💤 上次日报时间电脑没开，所以这份是开机后补发的，包含从那以后的消息。",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ 今晚的日报没能翻译成功，下面是原文。",
     held_back="🔒 未交给 AI 的消息",
@@ -381,6 +386,8 @@ FI = BriefText(
     reply_incomplete="⚠️ {assistant}-avustajan vastaus jäi tänä iltana kesken, joten koosteesta voi puuttua "
                      "joitakin kohtia. Kaikki tämäniltaiset viestit ovat tallessa arkistossa ~/ParentRecap.",
     slept="💤 Tietokone meni lepotilaan tämän koosteen tekemisen aikana, joten kooste valmistui vasta, kun avasit sen.",
+    caught_up="💤 Tietokone ei ollut päällä edellisen koosteen aikaan, joten tämä kooste lähetettiin, kun se "
+              "taas käynnistyi. Siinä on kaikki sen jälkeen tullut.",
     message_unreadable="yhtä viestiä ei voitu lukea",
     nothing_read="⚠️ Yhtäkään lähdettä ei voitu lukea tänä iltana, joten yhteenvetoa ei ole. Lähteiden viestit "
                  "tulevat mukaan ensimmäiseen koosteeseen, kun lähteet saadaan taas luettua.",

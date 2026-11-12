@@ -16,6 +16,17 @@ def test_starts_the_evening_job_and_says_where_its_logs_are(harness, capsys):
     assert "run-stdout.log" in out and "run-stderr.log" in out
 
 
+def test_the_evening_job_it_starts_finds_a_note_that_a_person_started_it(harness):
+    # So it runs at any hour and isn't a catch-up (#894); one it didn't start leaves none.
+    note = harness.state_path.with_name("run-now")
+    assert harness.cli("schedule", "run-now") == 1
+    assert not note.exists()
+
+    harness.jobs.add(jobs.DAILY)
+    assert harness.cli("schedule", "run-now") == 0
+    assert note.exists()
+
+
 def test_weekend_starts_the_weekend_job(harness, capsys):
     harness.jobs.add(jobs.DAILY, jobs.WEEKEND)
     assert harness.cli("schedule", "run-now", "--weekend") == 0

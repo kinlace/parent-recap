@@ -124,6 +124,19 @@ def test_the_runner_appends_the_jobs_output_to_its_log_files_and_gives_its_exit_
     assert err.read_text().strip() == "UTF-8 1"
 
 
+def test_the_runner_tells_the_evening_run_task_scheduler_started_it(tmp_path, monkeypatch):
+    # The evening task's and the sign-in task's, so a late start that catches up a missed evening
+    # is told from a run by hand (#894); an older version's tasks run this module too.
+    monkeypatch.delenv(jobs.SCHEDULED, raising=False)
+    python = str(tmp_path / "python.exe")
+
+    assert task_run.environment([python, "-m", "family_brief", "run"])[jobs.SCHEDULED] == "1"
+    assert task_run.environment([python, "-m", "family_brief", "run", "--if-missed"])[jobs.SCHEDULED] == "1"
+    # The Settings entry's setup page isn't, nor what it starts, such as its preview run.
+    assert jobs.SCHEDULED not in task_run.environment([python, "-m", "family_brief", "setup", "page"])
+    assert jobs.SCHEDULED not in task_run.environment([python, "-m", "family_brief", "weekend-events"])
+
+
 # ── the always-running job's task
 
 

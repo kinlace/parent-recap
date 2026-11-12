@@ -1,6 +1,6 @@
 """The nightly `parent-recap run` across nights, end to end: quiet nights and what carries over, a
-Gmail with no sender ticked, and catching up at sign-in with `run --if-missed`, in the Household's
-zone. Assertions are only on what leaves the system: the email (text, HTML, attachments), the
+Gmail with no sender ticked, and catching up a missed evening, at sign-in with `run --if-missed` or
+when the scheduler starts the run late, only within 10 hours and in the Household's zone. Assertions are only on what leaves the system: the email (text, HTML, attachments), the
 model command line, and persisted state."""
 from __future__ import annotations
 
@@ -16,8 +16,9 @@ from conftest import NOW, html_for_golden, msg, myclub_event, without_unread_not
 from fake_system import WINDOWS
 
 from family_brief.actions import archive
+from family_brief.system import jobs
 
-from nights import normal_night, payload_message_ids
+from nights import normal_night, payload_message_ids, two_languages
 
 
 # ── Quiet nights and continuity
@@ -319,11 +320,15 @@ def test_broken_archive_is_skipped(harness):
 
 # ── Catching up at sign-in: Windows' sign-in task runs `run --if-missed` (#386)
 
-def signing_in_ten_hours_after_the_brief_time(h, last_run_hours_ago: float | None) -> None:
-    """NOW is the family signing in, ten hours after the Brief's time on the PC's own clock, which
+CAUGHT_UP = ("💤 Your computer was off at the last Brief time, so this Brief was sent when it came "
+             "back on. It covers everything since then.")
+
+
+def signing_in_after_the_brief_time(h, last_run_hours_ago: float | None, hours: float = 9) -> None:
+    """NOW is the family signing in, `hours` after the Brief's time on the PC's own clock, which
     Task Scheduler keeps; the last run ended, caught up, `last_run_hours_ago`, if there was one."""
     normal_night(h, "en")
-    evening = (NOW - timedelta(hours=10)).astimezone()
+    evening = (NOW - timedelta(hours=hours)).astimezone()
     h.config["schedule"] = {"daily_hour": evening.hour, "daily_minute": evening.minute}
     if last_run_hours_ago is not None:
         at = (NOW - timedelta(hours=last_run_hours_ago)).isoformat()
@@ -331,27 +336,43 @@ def signing_in_ten_hours_after_the_brief_time(h, last_run_hours_ago: float | Non
         h.state_path.write_text(json.dumps({"last_run_at": at, "caught_up_at": at}))
 
 
-def test_signing_in_after_the_evening_run_was_missed_sends_that_evenings_brief(harness):
-    signing_in_ten_hours_after_the_brief_time(harness, last_run_hours_ago=34)
+def test_signing_in_after_the_evening_run_was_missed_sends_a_brief_that_says_it_catches_up(harness):
+    signing_in_after_the_brief_time(harness, last_run_hours_ago=33)
 
     assert harness.run("--if-missed") == 0
 
     [email] = harness.sent
     assert email.subject == "Parent Recap · 2026-09-27"
+    assert email.text.split("\n")[2] == CAUGHT_UP  # under the heading, before the Brief
     assert harness.state()["last_run_at"] == "2026-09-27T18:00:00+00:00"
 
 
 def test_one_catch_up_covers_several_missed_evenings(harness):
-    signing_in_ten_hours_after_the_brief_time(harness, last_run_hours_ago=82)
+    signing_in_after_the_brief_time(harness, last_run_hours_ago=81)
 
     assert harness.run("--if-missed") == 0
 
     assert len(harness.sent) == 1
-    assert harness.lookback_hours["gmail"] == [84]  # back to the last run, with its 2 hours' slack
+    assert harness.lookback_hours["gmail"] == [83]  # back to the last run, with its 2 hours' slack
+
+
+def test_signing_in_ten_hours_after_a_missed_evening_leaves_it_to_the_next_evening_run(harness, caplog):
+    signing_in_after_the_brief_time(harness, last_run_hours_ago=34, hours=10)
+    before = harness.state_path.read_text()
+
+    with caplog.at_level("INFO", logger="family_brief"):
+        assert harness.run("--if-missed") == 0
+
+    assert harness.sent == [] and harness.model_calls == []
+    assert harness.state_path.read_text() == before
+    assert not harness.state_path.with_name("last-run.json").exists()  # not a run that failed
+    assert [r.getMessage() for r in caplog.records if "left to the next evening run" in r.getMessage()] == [
+        "The evening run was missed 10 hours ago, too long ago to catch up (10 hours or more), so it "
+        "is left to the next evening run, which covers it"]
 
 
 def test_signing_in_after_the_evening_run_ran_sends_nothing(harness):
-    signing_in_ten_hours_after_the_brief_time(harness, last_run_hours_ago=9.9)
+    signing_in_after_the_brief_time(harness, last_run_hours_ago=8.9)
     before = harness.state_path.read_text()
 
     assert harness.run("--if-missed") == 0
@@ -370,7 +391,7 @@ def scheduled_on_windows(h, hours_ago: float) -> None:
 
 
 def test_signing_in_after_missing_the_first_evening_since_setup_sends_its_brief(harness):
-    signing_in_ten_hours_after_the_brief_time(harness, last_run_hours_ago=None)
+    signing_in_after_the_brief_time(harness, last_run_hours_ago=None)
     scheduled_on_windows(harness, hours_ago=12)
 
     assert harness.run("--if-missed") == 0
@@ -380,7 +401,7 @@ def test_signing_in_after_missing_the_first_evening_since_setup_sends_its_brief(
 
 
 def test_signing_in_before_the_first_evening_since_setup_sends_nothing(harness):
-    signing_in_ten_hours_after_the_brief_time(harness, last_run_hours_ago=None)
+    signing_in_after_the_brief_time(harness, last_run_hours_ago=None)
     scheduled_on_windows(harness, hours_ago=8)
 
     assert harness.run("--if-missed") == 0
@@ -421,15 +442,17 @@ needs_tzset = pytest.mark.skipif(not hasattr(time, "tzset"),
 
 
 @needs_tzset
-def test_a_missed_evening_is_caught_up_at_any_hour_on_a_computer_in_another_zone(harness):
-    # Last night's 21:00 in Helsinki went by with no run; signing in at 19:00 there catches it up.
+def test_a_missed_evening_is_caught_up_within_ten_hours_of_it_in_the_household_s_zone(harness):
+    # Last night's 21:00 in Helsinki went by with no run. Signing in at 06:30 there, 08:30 on the
+    # computer's own clock, is 9.5 hours after it, and 11.5 after 21:00 in Karachi.
     normal_night(harness, "en")
     last_run_hours_before_now(harness, 24)
 
-    with time_machine.travel(EARLY_IN_KARACHI + timedelta(days=1), tick=False):
+    with time_machine.travel(EARLY_IN_KARACHI + timedelta(hours=11, minutes=30), tick=False):
         assert harness.run("--if-missed") == 0
 
-    assert len(harness.sent) == 1
+    [email] = harness.sent
+    assert CAUGHT_UP in email.text
 
 
 @needs_tzset
@@ -442,3 +465,128 @@ def test_signing_in_early_on_a_computer_in_another_zone_after_the_evening_ran_se
         assert harness.run("--if-missed") == 0
 
     assert harness.sent == [] and harness.model_calls == []
+
+
+# ── A late start by the scheduler catches up only within 10 hours (#894): launchd's after a wake
+# on macOS, and on Windows Task Scheduler's start of a missed task (jobs.SCHEDULED)
+
+CAUGHT_UP_IN = {
+    "en": CAUGHT_UP,
+    "zh": "💤 上次日报时间电脑没开，所以这份是开机后补发的，包含从那以后的消息。",
+    "fi": "💤 Tietokone ei ollut päällä edellisen koosteen aikaan, joten tämä kooste lähetettiin, kun se "
+          "taas käynnistyi. Siinä on kaikki sen jälkeen tullut.",
+}
+
+
+@pytest.fixture
+def by_the_scheduler(monkeypatch):
+    """The run is the evening job's, which the system's scheduler started."""
+    monkeypatch.setenv(jobs.SCHEDULED, "1")
+
+
+def started_late(h, hours: float, last_run_hours_ago: float, language: str = "en") -> None:
+    """NOW is `hours` after the Brief's time, which went by with no run: the last one ended
+    `last_run_hours_ago`."""
+    signing_in_after_the_brief_time(h, last_run_hours_ago, hours)
+    normal_night(h, language)
+
+
+@pytest.mark.parametrize("language", ["en", "zh", "fi"])
+def test_a_late_start_by_the_scheduler_sends_a_brief_that_says_it_catches_up(harness, by_the_scheduler,
+                                                                             language):
+    started_late(harness, hours=9.9, last_run_hours_ago=34, language=language)
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert email.text.split("\n")[2] == CAUGHT_UP_IN[language]  # under the heading, before the Brief
+    assert CAUGHT_UP_IN[language] in email.html
+
+
+def test_a_catch_up_says_so_in_each_recipient_s_language(harness, by_the_scheduler):
+    started_late(harness, hours=3, last_run_hours_ago=27)
+    two_languages(harness)
+
+    assert harness.run() == 0
+
+    by_address = {email.to[0]: email for email in harness.sent}
+    assert by_address["parent@example.com"].text.split("\n")[2] == CAUGHT_UP_IN["zh"]
+    assert by_address["partner@example.com"].text.split("\n")[2] == CAUGHT_UP_IN["en"]
+
+
+def test_a_start_by_the_scheduler_ten_hours_late_sends_nothing_and_the_next_evening_covers_it(
+        harness, by_the_scheduler, caplog):
+    started_late(harness, hours=10, last_run_hours_ago=34)
+    before = harness.state_path.read_text()
+
+    with caplog.at_level("INFO", logger="family_brief"):
+        assert harness.run() == 0
+
+    assert harness.sent == [] and harness.model_calls == []
+    assert harness.state_path.read_text() == before
+    assert not harness.state_path.with_name("last-run.json").exists()  # not a run that failed
+    assert sum("left to the next evening run" in r.getMessage() for r in caplog.records) == 1
+    # The next evening's run, on time, reaches back to the last run, over the missed evening.
+    with time_machine.travel(NOW + timedelta(hours=14), tick=False):
+        assert harness.run() == 0
+    [email] = harness.sent
+    assert "💤" not in email.text
+    assert harness.lookback_hours["gmail"] == [50]  # 48 hours back to the last run, and 2 of slack
+
+
+def test_several_missed_evenings_get_one_catch_up_brief_that_covers_them(harness, by_the_scheduler):
+    started_late(harness, hours=2, last_run_hours_ago=74)
+
+    assert harness.run() == 0
+    # Another start, such as Windows' sign-in task's, finds the evening caught up.
+    assert harness.run("--if-missed") == 0
+
+    [email] = harness.sent
+    assert CAUGHT_UP in email.text
+    assert harness.lookback_hours["gmail"] == [76]  # back to the last run, with its 2 hours' slack
+
+
+def test_an_on_time_start_by_the_scheduler_says_nothing_about_catching_up(harness, by_the_scheduler):
+    normal_night(harness, "en")
+    last_run_hours_before_now(harness, 24)
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "💤" not in email.text
+
+
+def test_a_run_by_hand_runs_at_any_hour_and_says_nothing_about_catching_up(harness):
+    started_late(harness, hours=15, last_run_hours_ago=39)
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "💤" not in email.text
+
+
+def test_the_evening_job_started_by_hand_runs_at_any_hour_and_says_nothing_about_catching_up(
+        harness, by_the_scheduler):
+    started_late(harness, hours=15, last_run_hours_ago=39)
+    before = harness.state_path.read_text()
+    harness.jobs.add(jobs.DAILY)
+    assert harness.cli("schedule", "run-now") == 0
+
+    assert harness.run() == 0  # the evening job, which run-now started
+
+    [email] = harness.sent
+    assert "💤" not in email.text
+    # Its note that it was started by hand is used up: the scheduler's next late start is its own.
+    harness.state_path.write_text(before)
+    assert harness.run() == 0
+    assert len(harness.sent) == 1
+
+
+def test_a_hosted_household_s_run_is_never_a_catch_up(harness, by_the_scheduler):
+    started_late(harness, hours=15, last_run_hours_ago=39)
+    harness.config["hosted"] = True
+
+    assert harness.run() == 0
+
+    [email] = harness.sent
+    assert "💤" not in email.text

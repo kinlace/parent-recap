@@ -75,6 +75,10 @@ Tai liitä kohdan [Asennus](#asennus) rivi uudelleen: Macilla Päätteeseen, Win
 
 Tietokone herää koostetta varten, mutta suljettu kannettava voi etenkin akulla mennä takaisin lepotilaan ennen kuin kooste on valmis. Silloin kooste valmistuu, kun seuraavan kerran avaat kannettavan, ja sen alussa kerrotaan siitä. Mitään ei jää pois: kooste kattaa silti sen illan. Jos haluat koosteen ajallaan joka ilta ilman, että tietokone on päällä, kysy ylläpitäjiltä ylläpidetystä versiosta (katso [Asennus](#asennus)).
 
+### Tietokone ei ollut päällä koosteen aikaan. Milloin kooste tulee?
+
+Jos tietokone oli koosteen aikaan sammutettu, lepotilassa tai kukaan ei ollut kirjautuneena, väliin jäänyt kooste lähetetään, kun tietokone on taas päällä, kunhan koosteen ajasta on alle 10 tuntia (klo 21:n koosteelle seuraavaan aamuun klo 7:ään asti). Sen alussa kerrotaan, että se lähetettiin myöhässä, ja siinä on kaikki edellisen koosteen jälkeen tullut. Myöhemmin sitä ei enää lähetetä: seuraavan illan kooste kattaa myös väliin jääneen illan, joten et saa kahta koostetta tunnin välein. Itse käynnistämäsi kooste tehdään aina.
+
 ## Kiitokset
 
 Parent Recap lukee Wilmaa Antti Karjalaisen [wilma CLI:n](https://github.com/aikarjal/wilmai) (WilmAI) avulla. Se on ilmaista ja avointa lähdekoodia MIT-lisenssillä. Ilman sitä koosteessa ei olisi Wilmaa.

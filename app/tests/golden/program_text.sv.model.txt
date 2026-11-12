@@ -75,6 +75,7 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "fallback_more": "  …{n} more in the archive",
   "reply_incomplete": "⚠️ {assistant}'s reply tonight was cut off, so this Brief may be missing some items. All of tonight's messages are in the archive in ~/ParentRecap.",
   "slept": "💤 Your computer went to sleep while making this Brief, so it was finished when you opened it.",
+  "caught_up": "💤 Your computer was off at the last Brief time, so this Brief was sent when it came back on. It covers everything since then.",
   "message_time": "{month:02}-{day:02} {hour:02}:{minute:02}",
   "translation_failed": "⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
   "held_back": "🔒 Held-back messages",
