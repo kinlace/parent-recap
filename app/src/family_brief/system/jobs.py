@@ -115,6 +115,14 @@ def stop_always() -> None:
     _adapter.stop_always()
 
 
+def restart_always() -> None:
+    """Starts the always-running job again, as it's installed, if it's running now, so it runs
+    the version of the program an install or `switch-back` switched to; one that isn't running
+    is left as it is."""
+    if _adapter.always_status().running:
+        _adapter.restart_always()
+
+
 def waiting_for_login() -> set[str]:
     """The names of our jobs that are installed but run only once the family logs in to the
     desktop: after a restart, or seen over SSH."""

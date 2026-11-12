@@ -48,7 +48,7 @@ parent-recap schedule install
 parent-recap doctor
 ```
 
-`install.sh` doesn't touch the config, the Keychain or the archive.
+`install.sh` doesn't touch the config, the Keychain or the archive. On a Mac it installs the new version beside the running one and switches to it only once it finished, keeping the version before. If the new version turns out bad, `parent-recap switch-back` runs the version before again: the evening job, the Linked Device and Parent Recap Settings and Check then run it. Running it again switches forward.
 
 ## Uninstalling
 

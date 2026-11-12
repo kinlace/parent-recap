@@ -27,7 +27,8 @@ import yaml
 from pydantic import ValidationError
 
 from . import (ai_filter_report, baileys_install, chat_install, command_path, install_record,
-               linked_device, llm, ops, own_node, run_lock, setup_save, setup_wilma, sources, tools)
+               linked_device, llm, ops, own_node, run_lock, setup_save, setup_wilma, sources, tools,
+               versions)
 from .collectors import evaka
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
@@ -162,6 +163,10 @@ def survey(config: Path) -> Survey:
     _command(s, usual)
     for p in programs:
         _program(s, p)  # last of all: this command may be running from it
+    kept = [*(Path(p) for p in install_record.entries("versions")),
+            *(p.parent / versions.VERSIONS for p in programs)]
+    for d in dict.fromkeys(kept):
+        _versions(s, d)
     runtimes = [*(Path(p) for p in install_record.entries("runtime")), *(f / "runtime" for f in usual)]
     for d in dict.fromkeys(runtimes):
         _runtime(s, d)
@@ -562,6 +567,31 @@ def _program(s: Survey, program: Path) -> None:
         s.items.append(_file("The program", program, running=True))
     else:
         s.stops.append(f"{_show(program)} is where the program goes, but it isn't Parent Recap")
+
+
+def _versions(s: Survey, folder: Path) -> None:
+    """The folder install.sh installs each version in, with the one `app` points at and the one
+    kept to switch back to (ADR 0047)."""
+    if not folder.is_dir() or folder.is_symlink():
+        return
+
+    def ours(p: Path) -> bool:
+        if p.is_symlink():  # `previous`, or a new one a switch cut off left
+            return True
+        if not p.is_dir():
+            return False
+        try:  # one an install cut off before it copied the program is empty
+            return not any(p.iterdir()) or bool(re.search(
+                r'^name\s*=\s*"family-brief"',
+                (p / "pyproject.toml").read_text(encoding="utf-8"), re.M))
+        except OSError:
+            return False
+
+    if all(ours(p) for p in folder.iterdir()):
+        s.items.append(_file("The program's installed versions", folder, running=True))
+    else:
+        s.stops.append(f"{_show(folder)} is where the program's versions go, but it holds other "
+                       "files too")
 
 
 def _runtime(s: Survey, runtime: Path) -> None:

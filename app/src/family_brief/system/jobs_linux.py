@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from .. import private_files, tools
+from .. import private_files, tools, versions
 from . import jobs  # its names are read at call time: jobs imports this module first
 
 UNITS = Path.home() / ".config" / "systemd" / "user"
@@ -90,7 +90,8 @@ def _command_line(command: list[str]) -> str:
 
 
 def _service(job: jobs.Job) -> str:
-    command = [sys.executable, "-m", "family_brief", job.subcommand]
+    # Through `app`, so an update doesn't change the job (ADR 0047).
+    command = [str(versions.stable(Path(sys.executable))), "-m", "family_brief", job.subcommand]
     env = {"PATH": _path_env(), "HOME": str(Path.home())}
     log = job.log_dir / job.subcommand
     lines = [
@@ -240,6 +241,10 @@ def always_status() -> jobs.AlwaysStatus:
 
 
 def stop_always() -> None:
+    pass
+
+
+def restart_always() -> None:
     pass
 
 

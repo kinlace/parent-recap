@@ -13,13 +13,14 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from . import baileys_install, own_node, private_files
+from . import baileys_install, own_node, private_files, versions
 from .system import jobs
 
 if TYPE_CHECKING:
@@ -89,7 +90,8 @@ def _command(mode: str, log: Path, timeout: int | None = None) -> list[str] | No
     node = own_node.node()
     if node is None or baileys_install.installed_version() is None:
         return None
-    out = [str(node), str(PROGRAM), mode, "--modules", str(baileys_install.folder()),
+    # Through `app`, so the always-running job names the same program after an update (ADR 0047).
+    out = [str(node), str(versions.stable(PROGRAM)), mode, "--modules", str(baileys_install.folder()),
            "--auth", str(auth_folder()), "--log", str(log)]
     if mode == "follow":
         out += ["--picked", str(picked_file()), "--store", str(store()), "--status", str(status_file())]
@@ -266,3 +268,22 @@ def picked_records(cfg: Config, found: Iterable[dict[str, Any]]) -> list[dict[st
     they're pruned, but they aren't read."""
     picked = set(cfg.whatsapp.picked_ids())
     return [r for r in found if r.get("group_id") in picked]
+
+
+def main(argv: list[str]) -> int:
+    """`python -m family_brief.linked_device restart`, which install.sh runs once it has switched
+    to the version it installed: a running Linked Device is started again, so it runs that
+    version (ADR 0047). It never fails the install: it runs that version from its next start."""
+    if argv != ["restart"]:
+        print("Usage: python -m family_brief.linked_device restart", file=sys.stderr)
+        return 2
+    try:
+        jobs.restart_always()
+    except Exception as e:  # noqa: BLE001 - the install goes on
+        print(f"The Linked Device wasn't restarted ({e}); it runs this version from its next "
+              "start.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
