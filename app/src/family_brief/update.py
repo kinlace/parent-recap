@@ -91,10 +91,28 @@ class Refused(Exception):
 class Outcome:
     """What `update` did. `result` is one of: not-applicable, up-to-date, waiting (a release not
     yet a day old, for the evening run), updated, switched-back, failed. `version` is the one it
-    now runs, where it got that far."""
+    now runs, where it got that far, and `tried` the release it downloaded to install, where it
+    got that far."""
     result: str
     message: str
     version: str | None = None
+    tried: str | None = None
+
+
+@dataclass(frozen=True)
+class BriefNote:
+    """What the next Brief says at its top about the evening's update (#916): the version it
+    `updated` to, with `first` when it's the first such line the Household gets, which also says
+    that Parent Recap updates itself; or the version whose update `failed`, with the one `running`
+    as before."""
+    updated: str | None = None
+    first: bool = False
+    failed: str | None = None
+    running: str | None = None
+
+    def link(self) -> str:
+        """What changed in the release it updated to: its CHANGELOG, newest release first."""
+        return f"https://github.com/{REPOSITORY}/blob/v{self.updated}/CHANGELOG.md"
 
 
 # ---------------------------------------------------------------- versions
@@ -127,20 +145,28 @@ def state(folder: Path | None = None) -> dict:
     """The update's state: `last_look` and `last_result` (when it last read `stable`'s version and
     what came of it), `failed` (a version whose install or check failed, or None) and `seen` (the
     version `stable` held when it changed and when this Mac first saw it there, or None), which
-    the evening run's day's wait counts from. Kept in Parent Recap's folder outside the versions,
-    so a switch and a switch back keep it."""
+    the evening run's day's wait counts from. For the next Brief (BriefNote): `tell_updated` (the
+    version an evening update installed, until a Brief says so), `tell_failed` (the version whose
+    evening update failed and the one still running, until a Brief says so), `told_failed` (the
+    last failed version a Brief was to say so of, so each is said once) and `told_updates_itself`
+    (whether a Brief has said that Parent Recap updates itself). Kept in Parent Recap's folder
+    outside the versions, so a switch and a switch back keep it."""
     path = (folder or own_node.home()) / UPDATE / STATE
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         data = {}
     return {"last_look": None, "last_result": None, "failed": None, "seen": None,
-            **(data if isinstance(data, dict) else {})}
+            "tell_updated": None, "tell_failed": None, "told_failed": None,
+            "told_updates_itself": False, **(data if isinstance(data, dict) else {})}
 
 
 def _save(folder: Path, **changes) -> None:
     """Records a look and what came of it: `last_look` is now, unless given."""
-    data = {**state(folder), "last_look": _now(), **changes}
+    _write_state(folder, {**state(folder), "last_look": _now(), **changes})
+
+
+def _write_state(folder: Path, data: dict) -> None:
     (folder / UPDATE).mkdir(mode=0o700, parents=True, exist_ok=True)
     incoming = folder / UPDATE / f".{STATE}.incoming"  # renamed over it: never half written
     private_files.write(incoming, json.dumps(data, indent=2) + "\n")
@@ -435,8 +461,55 @@ def evening(config: str | None = None) -> Outcome:
     (schedule_update.UPDATING), and inside the evening job, under its run lock, so the evening
     jobs aren't installed again: they start the program from the same path, which now points at
     the version switched to. The evening run catches and logs whatever it raises
-    (run.run_unless_caught_up), so the run's result stays as it was."""
-    return update(config, retry_failed=False, wait=EVENING_WAIT)
+    (run.run_unless_caught_up), so the run's result stays as it was. What came of it is kept for
+    the next Brief to say (BriefNote)."""
+    outcome = update(config, retry_failed=False, wait=EVENING_WAIT)
+    if (folder := own_node.running_from()) is not None and outcome.tried is not None:
+        _tell(folder, outcome)
+    return outcome
+
+
+def _tell(folder: Path, outcome: Outcome) -> None:
+    """Keeps for the next Brief that the evening's update installed `outcome.tried`, or that it
+    failed and the version before still runs. A failure is said once per version; one where the
+    failed version still runs, as no version was left to switch back to, isn't said."""
+    data = state(folder)
+    if outcome.result == "updated":
+        data.update(tell_updated=outcome.tried, tell_failed=None)
+    elif outcome.version != outcome.tried and data["told_failed"] != outcome.tried:
+        data.update(tell_failed={"version": outcome.tried, "running": outcome.version},
+                    told_failed=outcome.tried)
+    else:
+        return
+    _write_state(folder, data)
+
+
+def brief_note(folder: Path) -> BriefNote | None:
+    """What the next Brief says about the evening's update, or None. An `updated` line is dropped
+    once that version no longer runs, as after `parent-recap switch-back`."""
+    data = state(folder)
+    updated, failed = data["tell_updated"], data["tell_failed"]
+    current = versions.current(folder)
+    if not isinstance(updated, str) or current is None or versions.version(current) != updated:
+        updated = None
+    if not (isinstance(failed, dict) and isinstance(failed.get("version"), str)
+            and isinstance(failed.get("running"), str)):
+        failed = None
+    if updated is None and failed is None:
+        return None
+    return BriefNote(updated=updated, first=updated is not None and not data["told_updates_itself"],
+                     failed=failed["version"] if failed else None,
+                     running=failed["running"] if failed else None)
+
+
+def told(folder: Path, note: BriefNote) -> None:
+    """Notes that a Brief said `note`, so the next one doesn't say it again."""
+    data = state(folder)
+    if note.updated is not None:
+        data.update(tell_updated=None, told_updates_itself=True)
+    if note.failed is not None:
+        data.update(tell_failed=None)
+    _write_state(folder, data)
 
 
 def _seen(folder: Path, version: str) -> dict:
@@ -458,6 +531,7 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
     updater = _Updater(folder, config, log)
     spare = work / "plugin-before"
     keep = False  # whether the plugin copy stays the new version's
+    tried = None  # `wanted`, once it is downloaded
     try:
         name = f"parent-recap-{wanted}.zip"
         zip_path, signature = work / name, work / f"{name}.sig"
@@ -468,6 +542,7 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
             log("download", f"{wanted}: failed: {e}")
             raise
         log("download", f"{wanted}: {name} ({zip_path.stat().st_size} bytes) and its signature")
+        tried = wanted
         try:
             good = release_signature.verified(zip_path, signature)
         except (OSError, subprocess.TimeoutExpired) as e:
@@ -492,7 +567,7 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
             _save(folder, last_result=f"{wanted} didn't install", failed=wanted)
             return Outcome("failed", f"Version {wanted} couldn't be installed, so Parent Recap "
                            f"runs version {installed} as it did. The update log is "
-                           f"{log.path}.", installed)
+                           f"{log.path}.", installed, wanted)
         log("switch", f"{installed} -> {wanted}")
         after = updater.doctor(wanted)
         # A doctor that didn't run is a failure even where the one before didn't run either.
@@ -504,11 +579,11 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
         keep = True
         _save(folder, last_result=f"updated {installed} to {wanted}", failed=None)
         return Outcome("updated", f"✅ Parent Recap updated from version {installed} to "
-                       f"{wanted}, and its checks pass as before.", wanted)
+                       f"{wanted}, and its checks pass as before.", wanted, wanted)
     except Refused as e:
         _save(folder, last_result=f"{wanted} refused: {e}")
         return Outcome("failed", f"Version {wanted} wasn't installed: {e}. Nothing was "
-                       "changed.", installed)
+                       "changed.", installed, tried)
     finally:
         if not keep:  # whatever ended the update, the plugin copy is the running version's
             updater.restore_plugin(spare)
@@ -527,14 +602,14 @@ def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, instal
               failed=wanted)
         return Outcome("failed", f"Version {wanted} was installed, but its check failed where "
                        f"version {installed} passed ({failing}), and there is no previous "
-                       f"version to switch back to. The update log is {log.path}.", wanted)
+                       f"version to switch back to. The update log is {log.path}.", wanted, wanted)
     updater.restore_plugin(spare)
     log("switch", f"{wanted} -> {running}: back, as {wanted} fails {failing}")
     _save(folder, last_result=f"{wanted} failed its check; back on {running}",
           failed=wanted)
     return Outcome("switched-back", f"Version {wanted} was installed, but its check failed where "
                    f"version {installed} passed ({failing}), so Parent Recap switched back to "
-                   f"version {running}. The update log is {log.path}.", running)
+                   f"version {running}. The update log is {log.path}.", running, wanted)
 
 
 # ---------------------------------------------------------------- parent-recap update

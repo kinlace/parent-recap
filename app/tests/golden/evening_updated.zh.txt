@@ -1,0 +1,8 @@
+👨‍👩‍👧‍👦 Parent Recap 9月29日 周二
+
+🔄 Parent Recap 已自动更新到 0.20.0 版。更新内容：https://github.com/kinlace/parent-recap/blob/v0.20.0/CHANGELOG.md
+Parent Recap 现在会在晚间日报发出后自动安装每个新版本。要关掉的话，打开 Parent Recap Settings。
+
+- Library books are due back on Friday
+
+📥 今晚读取：Gmail 1 条 · MyClub 0 个日程 · Wilma 0 条 · WhatsApp 0 条

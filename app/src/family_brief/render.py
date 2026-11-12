@@ -7,7 +7,7 @@ import html as _h
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Callable, Literal, Union
+from typing import TYPE_CHECKING, Callable, Literal, Union
 from zoneinfo import ZoneInfo
 
 from . import feedback, wilma_egress
@@ -17,6 +17,9 @@ from .brief import ActionItem, Brief
 from .brief_text import PRODUCT_NAME, BriefText, recommend_link, settings_help
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, failed_sign_in
 from .utils.dates import to_local
+
+if TYPE_CHECKING:  # update.py's note is plain data; the module itself reaches the network
+    from .update import BriefNote
 
 
 @dataclass(frozen=True)
@@ -278,6 +281,10 @@ def _group_heading(group: str) -> str:
     return f"💬 {group}"
 
 
+# A link in the notes at the top of the Brief, made one in its HTML.
+_LINK = re.compile(r"https://[^\s<]+")
+
+
 def _daily_brief_html(brief: Brief, calendar_created: list[dict],
                       date_str: str, t: BriefText, tz: str, note: str = "", ics_attached: bool = False,
                       coverage: str = "", footer: str = "",
@@ -298,7 +305,8 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
                 f" style='color:#888;text-decoration:underline'>{_h.escape(label)}</a>")
     parts = [f"<h2>👨‍👩‍👧‍👦 {PRODUCT_NAME} · {_h.escape(_header_date(date_str, t))}</h2>"]
     if top_note:
-        warnings = _h.escape(top_note).replace("\n", "<br>")
+        warnings = _LINK.sub(lambda m: f'<a href="{m[0]}" style=\'color:#a33\'>{m[0]}</a>',
+                             _h.escape(top_note)).replace("\n", "<br>")
         parts.append(f"<p style='color:#a33'>{warnings}</p>")
     digest = _shown_digest(brief, t)
     if digest:
@@ -408,13 +416,30 @@ def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: 
 
 
 def _top_note(incomplete: bool, t: BriefText, assistant: str, translation_note: str = "",
-              slept: bool = False, caught_up: bool = False) -> str:
+              slept: bool = False, caught_up: bool = False, update: BriefNote | None = None) -> str:
     """The notes at the top of the Brief: it catches up an evening the computer was off at; the
-    computer slept during the run, so it came late; its translation failed; or the model's reply
-    was cut off."""
+    evening's update installed a new version or failed (#916); the computer slept during the run,
+    so it came late; its translation failed; or the model's reply was cut off."""
     cut_off = t.reply_incomplete.format(assistant=assistant) if incomplete else ""
-    notes = (t.caught_up if caught_up else "", t.slept if slept else "", translation_note, cut_off)
+    notes = (t.caught_up if caught_up else "", _update_note(update, t), t.slept if slept else "",
+             translation_note, cut_off)
     return "\n".join(note for note in notes if note)
+
+
+def _update_note(note: BriefNote | None, t: BriefText) -> str:
+    """What the evening's update did, in the program's own words: the version it updated to, with
+    a link to what changed and, the first time, that Parent Recap updates itself and where to turn
+    that off; or the version whose update failed, and that the one before still runs."""
+    if note is None:
+        return ""
+    lines = []
+    if note.updated is not None:
+        lines.append(t.updated.format(version=note.updated, link=note.link()))
+        if note.first:
+            lines.append(t.updates_itself)
+    if note.failed is not None:
+        lines.append(t.update_failed.format(version=note.failed, running=note.running))
+    return "\n".join(lines)
 
 
 def _brief_text(brief: Brief, created: list[dict], date_str: str, t: BriefText, tz: str,
@@ -483,6 +508,9 @@ class Night:
     # The scheduler started the run late, for an evening the computer was off at, so the Brief
     # catches it up (#894). Nor does this alone make a quiet night's Brief worth sending.
     caught_up: bool = False
+    # What the evening's update did since the last Brief, on the family's own Mac (#916). Nor does
+    # this alone make a quiet night's Brief worth sending: the next Brief sent says it.
+    update: BriefNote | None = None
 
     @property
     def subject(self) -> str:
@@ -494,7 +522,7 @@ class Night:
                            _coverage_note(self.coverage, self.t, self.hosted),
                            _calendar_note(self.calendar_problem, bool(self.ics_events), self.t, self.assistant),
                            _top_note(self.incomplete, self.t, self.assistant, slept=self.slept,
-                                     caught_up=self.caught_up),
+                                     caught_up=self.caught_up, update=self.update),
                            self.held_back, self.assistant)
 
 
@@ -582,7 +610,7 @@ def mail(night: Night, v: Version) -> Mail:
     coverage_note = _coverage_note(night.coverage, t, night.hosted)
     calendar_note = _calendar_note(night.calendar_problem, bool(night.ics_events), t, assistant)
     top_note = _top_note(night.incomplete, t, assistant, v.translation_note, night.slept,
-                         night.caught_up)
+                         night.caught_up, night.update)
     attachments = [(f"parent-recap-{night.date}.ics",
                     ics_action.build(night.ics_events, night.tz, night.stamp, v.translated_event),
                     "text/calendar")] if night.ics_events else []
@@ -625,7 +653,7 @@ def preview(night: Night) -> dict[str, str | None]:
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
                              feedback_link=form.link if form and night.model_wrote else None,
                              top_note=_top_note(night.incomplete, t, assistant, slept=night.slept,
-                                                caught_up=night.caught_up),
+                                                caught_up=night.caught_up, update=night.update),
                              held_back=night.held_back,
                              assistant=assistant, end_html=end.html())
     wrong = form.link(feedback.DIGEST_WRONG, _shown_digest(night.brief, t) if night.model_wrote else "") \

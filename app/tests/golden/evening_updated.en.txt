@@ -1,0 +1,8 @@
+👨‍👩‍👧‍👦 Parent Recap Tue 29 Sep
+
+🔄 Parent Recap updated itself to version 0.20.0. What changed: https://github.com/kinlace/parent-recap/blob/v0.20.0/CHANGELOG.md
+Parent Recap now installs each new release by itself after the evening Brief. To turn this off, open Parent Recap Settings.
+
+- Library books are due back on Friday
+
+📥 Read tonight: Gmail 1 message · MyClub 0 events · Wilma 0 messages · WhatsApp 0 messages

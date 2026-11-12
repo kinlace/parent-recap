@@ -184,10 +184,11 @@ slowest tests, so add one for a main path, not for each result.
 
 ## End-to-end tests: the update
 
-| File                     | What it covers                                                                                        |
-| ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `test_update.py`         | `update` (ADR 0047): installs, refuses, switches back; its hosts, requests, writes, commands          |
-| `test_evening_update.py` | The evening run's own update (#915): a day's wait, only after a scheduled Brief, no dialog, jobs kept |
+| File                           | What it covers                                                                                        |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `test_update.py`               | `update` (ADR 0047): installs, refuses, switches back; its hosts, requests, writes, commands          |
+| `test_evening_update.py`       | The evening run's own update (#915): a day's wait, only after a scheduled Brief, no dialog, jobs kept |
+| `test_evening_update_brief.py` | The next Brief says what the evening's update did (#916): updated or failed, once, in each language   |
 
 ## Adapter tests
 

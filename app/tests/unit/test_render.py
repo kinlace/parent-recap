@@ -16,7 +16,7 @@ from conftest import NOW, TZ, html_for_golden, ics_for_golden, without_unread_no
 from fake_system import LINUX
 from nights import ENGLISH_REPLY, normal_night
 
-from family_brief import render
+from family_brief import render, update
 from family_brief.brief import Brief, parse
 from family_brief.brief_text import TEXT, BriefText, recommend_link
 from family_brief.collectors.base import Message
@@ -263,6 +263,12 @@ def test_a_catch_up_that_also_slept_says_both_the_catch_up_first():
 
 def test_a_note_that_the_brief_catches_up_alone_is_nothing_to_send():
     assert render.nothing_to_show(brief_of(Brief(), TEXT["en"], caught_up=True))
+
+
+def test_a_note_of_the_evening_s_update_alone_is_nothing_to_send():
+    # The next Brief that is sent says it (#916).
+    note = update.BriefNote(updated="0.20.0", first=True, failed="0.21.0", running="0.20.0")
+    assert render.nothing_to_show(brief_of(Brief(), TEXT["en"], update=note))
 
 
 NOTHING_READ = {
