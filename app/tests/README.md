@@ -209,6 +209,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_setup_page_windows.py`    | The setup page from a fresh install to Finish, on Windows |
 | `test_setup_wilma_windows.py`   | The Wilma sign-in window on Windows                       |
 | `test_model_process.py`         | The model's program run for real; a try slept through stopped |
+| `test_release_signature.py`     | A release zip's signature through `/usr/bin/ssh-keygen`, with keys made in the test |
 
 ## Script tests
 
@@ -221,7 +222,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_codex_install.py`    | `install.sh --codex` installs the skills for Codex              |
 | `test_release.py`          | The release zip built from a tag                                |
 | `test_version.py`          | The plugin and the package ship the same version                |
-| `test_workflows.py`        | Every GitHub Actions workflow parses, and what `tests.yml` runs |
+| `test_workflows.py`        | Every GitHub Actions workflow parses, what `tests.yml` runs, and `release.yml`'s signing and verify steps run as written |
 | `test_issue_loop.py`       | `issue-loop.sh`'s merge step and its checker                    |
 | `test_tests_readme.py`     | This page lists every test file, in short sections              |
 

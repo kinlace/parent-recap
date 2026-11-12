@@ -1,0 +1,5 @@
+# The keys a release zip may be signed with (ADR 0047), in ssh-keygen's allowed signers format.
+# `workflow` is the release workflow's key, the secret RELEASE_SIGNING_KEY of the environment
+# release-signing; `backup` is held by a maintainer outside GitHub (CONTRIBUTING.md, "Releasing").
+workflow namespaces="release@parentrecap.com" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMlgmC+GM8Ibijhy11C2GbmAI1+XZ2fafcGMDPOHEDWw
+backup namespaces="release@parentrecap.com" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILRVwI3p+XA3qeq4r+KPrcrzhDR/Vpa9Q874aEcX9n5U
