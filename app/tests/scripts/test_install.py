@@ -96,7 +96,8 @@ served="{m['served']}/$(basename "$url")"
 [ -f "$served" ] || {{ echo "curl: (6) Could not resolve host: github.com" >&2; exit 6; }}
 cp "$served" "$out"
 """)
-    fake(bin_ / "python3", 'echo "the Mac\'s own python3 was run" >&2; exit 97')    a_mac(m, "arm64")
+    fake(bin_ / "python3", 'echo "the Mac\'s own python3 was run" >&2; exit 97')
+    a_mac(m, "arm64")
     macos(m, MACOS)
     serve(m, *PINNED)
     serve_node(m, NODE)
