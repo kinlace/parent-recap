@@ -272,13 +272,17 @@ def picked_records(cfg: Config, found: Iterable[dict[str, Any]]) -> list[dict[st
 
 def main(argv: list[str]) -> int:
     """`python -m family_brief.linked_device restart`, which install.sh runs once it has switched
-    to the version it installed: a running Linked Device is started again, so it runs that
-    version (ADR 0047). It never fails the install: it runs that version from its next start."""
+    to the version it installed: a running Linked Device is installed again with this version's
+    command, which starts it again, so it runs this version on the Node this version pins (ADR
+    0047): a Node the job named before goes once no kept version runs on it. It never fails the
+    install: it runs this version from its next start."""
     if argv != ["restart"]:
         print("Usage: python -m family_brief.linked_device restart", file=sys.stderr)
         return 2
     try:
-        jobs.restart_always()
+        if jobs.always_status().running:
+            from .config import Config
+            install_follow(Config.load(None))
     except Exception as e:  # noqa: BLE001 - the install goes on
         print(f"The Linked Device wasn't restarted ({e}); it runs this version from its next "
               "start.")

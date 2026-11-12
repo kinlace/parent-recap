@@ -94,13 +94,15 @@ def _take_over(folder: Path) -> Path | None:
     versions = folder / VERSIONS
     versions.mkdir(mode=0o700, exist_ok=True)
     name = f"{version(app)}.before"
-    n = 1
+    tries = 1
     while (versions / name).exists() or (versions / name).is_symlink():
-        n += 1
-        name = f"{version(app)}.before{n}"
+        tries += 1
+        name = f"{version(app)}.before{tries}"
     if not (app / RUNTIMES).exists():
         names = sorted(p.name for p in (folder / RUNTIME).glob("*") if not p.name.startswith("."))
-        (app / RUNTIMES).write_text("".join(f"{n}\n" for n in names), encoding="utf-8")
+        (app / RUNTIMES).write_text("".join(f"{r}\n" for r in names), encoding="utf-8")
+    # `app` is missing from here until switch's link: the one moment an install from before
+    # versions has none, once.
     os.rename(app, versions / name)
     return versions / name
 
@@ -109,19 +111,24 @@ def switch(folder: Path, new: Path) -> None:
     """Points `app` in `folder` at the version installed in `new`, once its install finished.
     The version `app` pointed at before is kept as the previous one, unless it's the same version
     as `new` (the install run again, as manage does to add Google's packages), which keeps the
-    previous one there was. Then removes every other version's folder, such as one an install
-    that failed left, and the runtimes neither version runs on."""
+    previous one there was; that copy stays until the next switch, as a run started from it may
+    still be going. Then removes every other version's folder, such as one an install that
+    failed left, and the runtimes none of them runs on."""
     new = folder / VERSIONS / new.name
     old = _take_over(folder) or current(folder)
     before = previous(folder)
-    if old is not None and old != new and version(old) != version(new):
-        before = old
+    spare = None
+    if old is not None and old != new:
+        if version(old) != version(new):
+            before = old
+        else:
+            spare = old
     _point(folder / APP, f"{VERSIONS}/{new.name}")
     if before is not None and before != new:
         _point(folder / VERSIONS / PREVIOUS, before.name)
     else:
         (folder / VERSIONS / PREVIOUS).unlink(missing_ok=True)
-    _clean(folder)
+    _clean(folder, spare)
 
 
 def switch_back(folder: Path) -> tuple[str, str]:
@@ -144,8 +151,8 @@ def _runtimes(of: Path) -> set[str] | None:
     return {line.strip() for line in text.splitlines() if line.strip()}
 
 
-def _clean(folder: Path) -> None:
-    kept = [v for v in (current(folder), previous(folder)) if v is not None]
+def _clean(folder: Path, spare: Path | None = None) -> None:
+    kept = [v for v in (current(folder), previous(folder), spare) if v is not None]
     for child in (folder / VERSIONS).iterdir():
         if child.name != PREVIOUS and child not in kept:
             if child.is_symlink() or not child.is_dir():

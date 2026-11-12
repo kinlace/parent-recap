@@ -245,7 +245,7 @@ def stop_always() -> None:
 
 
 def restart_always() -> None:
-    pass
+    pass  # there is no always-running job on Linux (NO_ALWAYS)
 
 
 # ---------------------------------------------------------------- one-off runs

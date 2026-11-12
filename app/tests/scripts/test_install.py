@@ -545,7 +545,12 @@ def test_installing_the_same_version_again_keeps_the_one_before_it(mac):
 
     assert install(mac).returncode == 0
 
-    assert kept(mac) == first and running(mac) != replaced and not replaced.exists()
+    assert kept(mac) == first and running(mac) != replaced
+    # It may still be running a Brief, so it goes with the next install.
+    assert replaced.is_dir()
+    version(mac, "9.9.11")
+    assert install(mac).returncode == 0
+    assert not replaced.exists() and not first.exists()
 
 
 @pytest.mark.macos

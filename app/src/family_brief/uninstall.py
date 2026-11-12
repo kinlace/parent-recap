@@ -556,14 +556,19 @@ def _command(s: Survey, usual: list[Path]) -> None:
                            "files too")
 
 
+def _is_program(folder: Path) -> bool:
+    """Whether `folder` holds Parent Recap's program: its pyproject.toml names `family-brief`."""
+    try:
+        text = (folder / "pyproject.toml").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return bool(re.search(r'^name\s*=\s*"family-brief"', text, re.M))
+
+
 def _program(s: Survey, program: Path) -> None:
     if not program.exists():
         return
-    try:
-        ours = re.search(r'^name\s*=\s*"family-brief"', (program / "pyproject.toml").read_text(encoding="utf-8"), re.M)
-    except OSError:
-        ours = None
-    if ours:
+    if _is_program(program):
         s.items.append(_file("The program", program, running=True))
     else:
         s.stops.append(f"{_show(program)} is where the program goes, but it isn't Parent Recap")
@@ -578,14 +583,8 @@ def _versions(s: Survey, folder: Path) -> None:
     def ours(p: Path) -> bool:
         if p.is_symlink():  # `previous`, or a new one a switch cut off left
             return True
-        if not p.is_dir():
-            return False
-        try:  # one an install cut off before it copied the program is empty
-            return not any(p.iterdir()) or bool(re.search(
-                r'^name\s*=\s*"family-brief"',
-                (p / "pyproject.toml").read_text(encoding="utf-8"), re.M))
-        except OSError:
-            return False
+        # One an install cut off before it copied the program is empty.
+        return p.is_dir() and (not any(p.iterdir()) or _is_program(p))
 
     if all(ours(p) for p in folder.iterdir()):
         s.items.append(_file("The program's installed versions", folder, running=True))
