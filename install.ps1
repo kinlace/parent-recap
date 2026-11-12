@@ -269,10 +269,13 @@
       }
     }
 
-    # Prebuilt packages only, at the versions that were tested (app\constraints.txt, see
-    # CONTRIBUTING.md), as install.sh installs them. What they were installed for is noted in the
-    # venv: the same again needs no pip, so a run with nothing new to do needs no network. The
-    # program's own code is installed in place (-e), so a new copy of it needs no pip either.
+    # Prebuilt packages only, at the versions that were tested and checked against the checksums
+    # app\constraints.txt holds (see CONTRIBUTING.md), as install.sh installs them: pip first, then
+    # what the program needs (app\requirements.py names it), then the program itself from $App,
+    # which pip can't check by checksum, with nothing of its own. What they were installed for is
+    # noted in the venv: the same again needs no pip, so a run with nothing new to do needs no
+    # network. The program's own code is installed in place (-e), so a new copy of it needs no pip
+    # either.
     $stamp = Join-Path $App '.venv\parent-recap-packages.txt'
     $had = if (Test-Path -LiteralPath $stamp -PathType Leaf) { (Get-Content -LiteralPath $stamp -Raw).Trim() } else { '' }
     $packages = @(
@@ -282,14 +285,22 @@
     $pipFailed = "Parent Recap couldn't install its Python packages. The full log is at $Log"
     $sendLog = 'Run the install line again. If it fails again, send that log to the Parent Recap team.'
     $pip = @('-m', 'pip', 'install', '--only-binary', ':all:', '--disable-pip-version-check',
-      '-c', (Join-Path $App 'constraints.txt'))
+      '--require-hashes', '-c', (Join-Path $App 'constraints.txt'))
+    # The packages the program needs, with those of $Extras, by checksum.
+    function Install-Packages([string[]]$Extras) {
+      $names = @(& $venvPython -I (Join-Path $App 'requirements.py') @Extras)
+      if ($LASTEXITCODE -ne 0) { Stop-Install $pipFailed $sendLog }
+      if ($names.Count -gt 0 -and (Invoke-Logged $venvPython ($pip + $names)) -ne 0) { Stop-Install $pipFailed $sendLog }
+    }
     $installed = $false
     if (-not $had.StartsWith("$packages ")) {
       Write-Host "Installing Parent Recap's Python packages..."
-      if ((Invoke-Logged $venvPython @('-m', 'pip', 'install', '--only-binary', ':all:', '--upgrade', 'pip')) -ne 0) {
+      if ((Invoke-Logged $venvPython ($pip + @('pip'))) -ne 0) { Stop-Install $pipFailed $sendLog }
+      Install-Packages @()
+      if ((Invoke-Logged $venvPython @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-deps',
+          '--no-build-isolation', '-e', $App)) -ne 0) {
         Stop-Install $pipFailed $sendLog
       }
-      if ((Invoke-Logged $venvPython ($pip + @('-e', $App))) -ne 0) { Stop-Install $pipFailed $sendLog }
       $installed = $true
     }
     # Google's packages only for a Household whose config uses Google Calendar, which the program
@@ -299,7 +310,7 @@
     $wanted = "$packages google=$google"
     if ($google -and ($installed -or $had -ne $wanted)) {
       if (-not $installed) { Write-Host "Installing Parent Recap's Python packages..." }
-      if ((Invoke-Logged $venvPython ($pip + @('-e', "$($App)[google]"))) -ne 0) { Stop-Install $pipFailed $sendLog }
+      Install-Packages @('google')
       $installed = $true
     }
     if ($had -ne $wanted) { Set-Content -LiteralPath $stamp -Value $wanted -Encoding ascii }

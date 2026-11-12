@@ -76,12 +76,15 @@ jobs:
           uv python install 3.13
           uv venv --seed --python 3.13
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-      # As install.sh installs: prebuilt packages only, at the pinned versions, with the google
-      # extra a Google Calendar Household gets.
+      # As install.sh installs: prebuilt packages only, at the pinned versions and checked against
+      # their checksums, pip first, with the google extra a Google Calendar Household gets; then
+      # the program from this folder with nothing of its own (CONTRIBUTING.md, "Pinned packages").
       - name: Install
         # Quoted as a block: in plain YAML, the colon and space after `:all:` would start a mapping.
         run: |
-          python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
+          python -m pip install --only-binary :all: --require-hashes -c constraints.txt pip
+          python -m pip install --only-binary :all: --require-hashes -c constraints.txt $(python -I requirements.py test google)
+          python -m pip install --no-deps --no-build-isolation -e .
       # This runner is an Apple Silicon Mac. The check covers Intel Macs too.
       - name: Check every pinned package has a wheel for both kinds of Mac
         run: python ../scripts/check_wheels.py
@@ -165,9 +168,12 @@ jobs:
           uv python install 3.13
           uv venv --seed --python 3.13
           cygpath -w "$PWD/.venv/Scripts" >> "$GITHUB_PATH"
+      # As on macOS.
       - name: Install
         run: |
-          python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
+          python -m pip install --only-binary :all: --require-hashes -c constraints.txt pip
+          python -m pip install --only-binary :all: --require-hashes -c constraints.txt $(python -I requirements.py test google)
+          python -m pip install --no-deps --no-build-isolation -e .
       - name: Unit tests
         run: python -m pytest -m unit --durations=15
       - name: Integration tests
@@ -201,9 +207,12 @@ jobs:
           uv python install 3.13
           uv venv --seed --python 3.13
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      # As on macOS.
       - name: Install
         run: |
-          python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
+          python -m pip install --only-binary :all: --require-hashes -c constraints.txt pip
+          python -m pip install --only-binary :all: --require-hashes -c constraints.txt $(python -I requirements.py test google)
+          python -m pip install --no-deps --no-build-isolation -e .
       - name: Unit tests
         run: python -m pytest -m unit --durations=15
       - name: Integration tests

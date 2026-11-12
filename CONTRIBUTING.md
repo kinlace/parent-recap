@@ -18,7 +18,9 @@ A maintainer reviews and merges it once CI is green. Security problems go throug
 3. Build the test environment and run the tests, before and after changing code (in the `app/` folder):
 
    ```bash
-   python -m pip install --only-binary :all: -c constraints.txt -e '.[test,google]'
+   python -m pip install --only-binary :all: --require-hashes -c constraints.txt pip
+   python -m pip install --only-binary :all: --require-hashes -c constraints.txt $(python -I requirements.py test google)
+   python -m pip install --no-deps --no-build-isolation -e .
    python -m pytest
    ```
 
@@ -92,17 +94,21 @@ The zip is built from the tag with `git archive`, so local edits never get in. `
 
 ## Pinned packages
 
-`install.sh` and CI install only prebuilt packages (wheels), at the versions in `app/constraints.txt`, so every family gets what CI tested and no install compiles anything. The file also pins the `google` extra (Google's packages, and `cryptography` with them), which `install.sh` adds only when the config's calendar mode is google. CI's `scripts/check_wheels.py` fails if a pinned package has no wheel for Apple Silicon or Intel Macs on Python 3.11 to 3.14.
+`install.sh`, `install.ps1` and CI install only prebuilt packages (wheels), at the versions in `app/constraints.txt`, so every family gets what CI tested and no install compiles anything. The file pins every package, pip and the build system's setuptools included, with the SHA-256 checksums of all its wheels on PyPI, and the installs run pip with `--require-hashes`: a package file that doesn't match its checksum, or a package the file doesn't pin, stops the install before anything is installed. pip first, at its pinned version; then the packages `app/requirements.py` names (the build system and the dependencies in `app/pyproject.toml`, and the extras asked for); then the program itself from its own folder, which pip can't check by checksum, with `--no-deps --no-build-isolation`, so it brings in nothing. The file also pins the `google` extra (Google's packages, and `cryptography` with them), which the installs add only when the config's calendar mode is google. CI's `scripts/check_wheels.py` fails if a pinned package has no wheel for Apple Silicon or Intel Macs on Python 3.11 to 3.14.
 
 To move the pins (a new dependency, or newer versions), regenerate the file from a fresh environment that passes the tests, from `app/`:
 
 ```bash
 python3 -m venv "$TMPDIR/pins"
+"$TMPDIR/pins/bin/pip" install --upgrade pip setuptools
 "$TMPDIR/pins/bin/pip" install --only-binary :all: -e '.[test,google]' 'cryptography<49'
 "$TMPDIR/pins/bin/python" -m pytest
-"$TMPDIR/pins/bin/pip" freeze --exclude-editable   # replaces every line below the comments in constraints.txt
+"$TMPDIR/pins/bin/pip" freeze --all --exclude-editable > "$TMPDIR/pins.txt"
+python3 ../scripts/pin_hashes.py "$TMPDIR/pins.txt"   # rewrites everything below the comments in constraints.txt
 python3 ../scripts/check_wheels.py
 ```
+
+`scripts/pin_hashes.py` takes each version's checksums from PyPI's JSON API, every wheel's, so the same file serves every Mac, Linux server and Windows PC. Review the diff before committing: PyPI never replaces a file, so a version that didn't move keeps its checksums, and gains one only where a wheel was added to it since.
 
 `cryptography<49` stays while Intel Macs are supported: 49 and later have no Intel wheel. Drop it there and in the file's comment once they aren't.
 
