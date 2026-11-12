@@ -17,12 +17,13 @@ HEALTH_CHECKS = {"config": "config", "recipients": "recipients", "language": "la
                  "wilma": "wilma", "whatsapp": "whatsapp",
                  "whatsapp-library": "whatsapp-library",
                  "myclub": "myclub", "eepos": "eepos", "evaka": "evaka", "local_files": "local_files",
-                 "socialschools": "socialschools",
+                 "socialschools": "socialschools", "konnect": "konnect",
                  "calendar": "calendar",
                  "feedback": "feedback", "weekend": "weekend"}
-# A language's, a Kid's MyClub, an Eepos school's and an eVaka city's checks carry the language,
-# the Kid, the school or the city too, from their subject.
-HEALTH_SUBJECTS = {"language": "language", "myclub": "kid", "eepos": "school", "evaka": "city"}
+# A language's, a Kid's MyClub, an Eepos school's, an eVaka city's and a Konnect portal's checks
+# carry the language, the Kid, the school, the city or the portal too, from their subject.
+HEALTH_SUBJECTS = {"language": "language", "myclub": "kid", "eepos": "school", "evaka": "city",
+                   "konnect": "portal"}
 # The scheduled job's checks, which aren't run before Finish installs it; Windows adds the last two.
 SCHEDULE_CHECKS = frozenset({"schedule", "last-run", "wake", "sign-in-after-update"})
 # Doctor's checks as Finish names them, with the scheduled job's. Windows' Wake check says what the

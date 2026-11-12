@@ -216,6 +216,20 @@ SOCIALSCHOOLS = Source("socialschools", _same_everywhere("Social Schools"),
                        sent_to_everyone=_in("collectors.socialschools", "sent_to_everyone"),
                        held_back_link=lambda m: m.url)
 
+# A Dutch childcare or after-school care (BSO) on Konnect's parent portal, read through the JSON
+# its own web app reads with a password in the secret store (ADR 0049): the messages, news and
+# newsletters it sends parents, and each time a child is planned to be there, which go into the
+# .ics as eVaka's events do. Never its timeline, with the children's photos and health entries.
+# Set up one sign-in per provider from a terminal (`setup konnect`), never on the setup page, so
+# a family elsewhere doesn't see a step for it; the maintainers can add one on the hosted server,
+# so a hosted Brief doesn't call it unread.
+KONNECT = Source("konnect", _same_everywhere("Konnect"), lambda cfg: bool(cfg.konnect.signins),
+                 skippable=True, connect_rank=11, collect=_collector("konnect"), counts_events=True,
+                 setup_page=False, lookback=lambda cfg: cfg.konnect, check=_in("ops", "check_konnect"),
+                 check_items={"konnect": "Konnect ({})"}, secrets=_in("collectors.konnect", "secrets_of"),
+                 sent_to_everyone=_in("collectors.konnect", "sent_to_everyone"),
+                 held_back_link=lambda m: m.url)
+
 # Messages from plain files the family puts in a folder it picks, for news from any place Parent
 # Recap doesn't read itself (ADR 0044). Turned on, and its folder chosen, with the manage skill
 # (`setup save`), never on the setup page. Only read on the family's own computer: a Hosted
@@ -227,7 +241,7 @@ LOCAL_FILES = Source("local_files", {"en": "Local Files", "fi": "Paikalliset tie
                      check=_in("ops", "check_local_files"), notes=_in("uninstall", "local_files_notes"),
                      account=False, group=lambda m: m.chat_name)
 
-ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP, EEPOS, EVAKA, SOCIALSCHOOLS, LOCAL_FILES)
+ALL: tuple[Source, ...] = (GMAIL, MYCLUB, WILMA, WHATSAPP, EEPOS, EVAKA, SOCIALSCHOOLS, KONNECT, LOCAL_FILES)
 
 
 def named(name: str) -> Source | None:

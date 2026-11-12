@@ -50,6 +50,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_eepos.py`               | Eepos: a school's address, a student as a Kid, entries as events |
 | `test_evaka.py`               | eVaka: a city and its host, a child as a Kid, events, closed days, the deadline |
 | `test_socialschools.py`       | Social Schools: a post's HTML as text, its times, whole days, a child and a post as a Kid's |
+| `test_konnect.py`             | Konnect: a portal's address, a child as a Kid, message HTML as text, the lists as Messages, planned times |
 | `test_eval_scoring.py`        | The eval's deterministic scoring                                 |
 | `test_failure.py`             | Why a setup step failed, as the setup page shows and copies it   |
 | `test_held_back.py`           | Which texts look sensitive, against `sensitive_words.yaml`       |
@@ -85,6 +86,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_eepos_collector.py`       | Eepos's collector on a fake portal: the sign-in, the calendar, failures, two schools                         |
 | `test_evaka_collector.py`       | eVaka's collector on a fake eVaka: the sign-in, the device cookie, the events, the messages, failures, two cities |
 | `test_socialschools_collector.py` | Social Schools' collector on a fake Social Schools: the iOS app's sign-in, only GETs, posts, events, failures, two schools |
+| `test_konnect_collector.py`     | Konnect's collector on a fake portal: the sign-in, the lists read and the timeline never, planned times, messages, failures, two portals |
 | `test_email_gateway.py`         | The Brief sent through the gateway's relay: the request, refusals, a key, binding, doctor                    |
 | `test_email_gmail.py`           | The Brief sent from the Household's own Gmail (ADR 0034): the message, which way, refusals                   |
 | `test_eval_runner.py`           | The eval runner end to end, only the model process faked                                                     |
@@ -125,6 +127,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_eepos_source.py`            | Eepos lessons in the Brief, a wrong password or a changed portal, two schools (#755)    |
 | `test_evaka_source.py`            | eVaka events, closed days, the deadline and messages in the Brief, failures, two cities |
 | `test_socialschools_source.py`    | Social Schools' announcements and events in the Brief, a wrong password or a Google sign-in, nothing written |
+| `test_konnect_source.py`          | Konnect messages, news and planned times in the Brief, once; a wrong or expired password, a changed portal |
 | `test_local_files_source.py`      | Local Files in the Brief, once each, the AI filter, a broken file, doctor, `setup save` |
 | `test_nightly_whatsapp.py`        | WhatsApp from the Linked Device's store; a link needing a pairing; Group Digests        |
 | `test_overlapping_runs.py`        | Runs never overlap; `bg` says when its run didn't finish                                |
@@ -143,7 +146,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_setup_page.py`                       | The page's server, its safeguards, the language, resuming, Source list |
 | `test_setup_welcome.py`                    | Welcome                                                                |
 | `test_setup_ai.py`                         | The AI sign-in, the gateway, changing the AI on Finish                 |
-| `test_setup_gmail.py`, `_wilma`, `_myclub` | Each Source's `setup` command, then its step on the page               |
+| `test_setup_gmail.py`, `_wilma`, `_myclub`, `_konnect` | Each Source's `setup` command, then its step on the page, if any |
 | `test_setup_eepos.py`                      | `setup eepos` from a terminal, the page's Eepos step and its Kids (#796), doctor, uninstall |
 | `test_setup_evaka.py`                      | `setup evaka` from a terminal, the page's eVaka step and its Kids (#796), doctor, uninstall |
 | `test_setup_socialschools.py`              | `setup socialschools` from a terminal, other sign-ins refused, doctor, uninstall |
@@ -228,7 +231,7 @@ per outside edge of the program, each with its fakes in a module of its own:
 
 - `sources` (`fake_sources.py`): each Source's fake at its transport (Gmail's IMAP server, the
   MyClub feed, the wilma CLI, the Linked Device's store and status file, each Eepos school's
-  portal, each city's eVaka, Social Schools' sign-in and API, the Local Files folder), as `sources.fakes[name]`, serving what `sources.tonight[name]` holds to the real
+  portal, each city's eVaka, Social Schools' sign-in and API, each Konnect parent portal, the Local Files folder), as `sources.fakes[name]`, serving what `sources.tonight[name]` holds to the real
   collector. One is installed for each Source in the
   registry (ADR 0022), so a new Source adds its fake to `FAKES`. A test gives each Message the id
   its Source makes of it, and only the fields its transport carries.
@@ -256,10 +259,10 @@ the harness's one `subprocess.run` fake (`Processes`): the macOS-only features A
 out (iMessage, `open` for the Passwords app), the Sources' own programs, and Claude Code's and
 Codex's sign-in and plugin commands. A model call never does. `conftest.py` also has `pauses`
 (a busy model's pauses, on a fake clock), `clocks` (the computer's awake and wall clocks, which a
-sleep moves apart), `golden`, `login_shell`, `windows_programs` (programs
-found as Windows finds them, on any system), `credential_manager`, and the builders `msg`,
-`local_message`, `myclub_event`, `eepos_entry`, `eepos_student`, `evaka_event`, `evaka_child`, `evaka_thread`,
-`evaka_sensitive_thread`, `socialschools_child`, `socialschools_post` and `socialschools_event`.
+sleep moves apart), `golden`, `login_shell`, `windows_programs` (programs found as Windows finds them, on any system),
+`credential_manager`, and the builders `msg`, `local_message`, `myclub_event`, `eepos_entry`, `eepos_student`, `evaka_event`,
+`evaka_child`, `evaka_thread`, `evaka_sensitive_thread`, `socialschools_child`, `socialschools_post`, `socialschools_event`,
+`konnect_child`, `konnect_conversation`, `konnect_news`, `konnect_newsletter` and `konnect_planned`.
 
 ## Other fakes and helpers
 

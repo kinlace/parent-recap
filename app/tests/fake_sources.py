@@ -1,9 +1,9 @@
 """Each Source's fake, at its transport, where the real thing varies (ADR 0022): Gmail's IMAP
 server, the MyClub feed over HTTP, the wilma CLI on Parent Recap's own Node, the Linked
-Device's message store and status file, each Eepos school's portal, each city's eVaka and Social
-Schools' sign-in and API over HTTP, and the Local Files folder. FakeSources, the `sources`
-fixture, installs the fake of each Source in the registry, so the real collectors run in every
-test of the evening run; FAKES is the list it reads.
+Device's message store and status file, each Eepos school's portal, each city's eVaka, Social
+Schools' sign-in and API and each Konnect parent portal over HTTP, and the Local Files folder.
+FakeSources, the `sources` fixture, installs the fake of each Source in the registry, so the real
+collectors run in every test of the evening run; FAKES is the list it reads.
 
 A fake serves what `sources.tonight[name]` holds when the collector reaches it: tonight's Messages
 and events, an exception its transport raises, or a function returning either. A Message is
@@ -17,6 +17,7 @@ only the fields its transport carries, and the id the collector makes of it:
   - eVaka: a calendar event as its citizen API's JSON has it (conftest's evaka_event);
   - Social Schools: a post or an event as its API's JSON has it (conftest's socialschools_post and
     socialschools_event);
+  - Konnect: a planned time as its Agenda's JSON has it (conftest's konnect_planned), not an event;
   - Local Files: the id local_files.message_id makes of it (conftest's local_message).
 A Message older than the Source's lookback is skipped, as the collector skips it.
 """
@@ -44,7 +45,7 @@ import requests
 import fake_node
 from family_brief import linked_device, own_node, sources as registry
 from family_brief.config import myclub_links
-from family_brief.collectors import eepos, evaka, gmail, local_files, myclub, socialschools
+from family_brief.collectors import eepos, evaka, gmail, konnect, local_files, myclub, socialschools
 from family_brief.collectors.base import CalendarEvent, Collected, Message
 from fake_system import FakeSecrets
 
@@ -902,6 +903,155 @@ def _redirect(location: str) -> requests.Response:
     return r
 
 
+# ── Konnect: each provider's parent portal over HTTP
+
+KONNECT_PASSWORD = "konnect-password"
+# What the portal's own app may see, as `parent/authorizations` lists it for a parent of a BSO.
+KONNECT_AUTHORIZATIONS = ["WEB_PHOTOS_RECENT", "WEB_JOURNAL_PARENT_VIEW", "WEB_PARENT_LOGBOOK",
+                          "WEB_HTML_NEWS_VIEW", "WEB_PARENT_BOOKING_OVERVIEW",
+                          "WEB_ONLY_HTML_NEWSLETTER_ARCHIVE"]
+
+
+class KonnectPortal:
+    """One provider's parent portal: its parents' passwords by username, those whose password it
+    wants changed first (`must_reset`), the children it lists to each of them, whole, what the
+    account may see (`authorizations`), and the Messages page's three lists: the `conversations`
+    (conftest's konnect_conversation), the `news` (konnect_news) and the `newsletters`
+    (konnect_newsletter), each listed when its time is in the range asked for."""
+
+    def __init__(self) -> None:
+        self.accounts: dict[str, str] = {}
+        self.must_reset: set[str] = set()
+        self.children: list[dict[str, Any]] = []
+        self.authorizations: list[str] = list(KONNECT_AUTHORIZATIONS)
+        self.conversations: list[dict[str, Any]] = []
+        self.news: list[dict[str, Any]] = []
+        self.newsletters: list[dict[str, Any]] = []
+
+
+def _amsterdam_day(millis: int) -> date:
+    return datetime.fromtimestamp(millis / 1000, konnect.PORTAL_ZONE).date()
+
+
+class Konnect(SourceFake):
+    """Each provider's parent portal at <portal>.ouderportaal.nl (`portals`, by the part before
+    .ouderportaal.nl), as its JSON answers. A parent signs in with PUT auth-api/login, a JSON body
+    of the username, the password, which the portal's `accounts` must have, and `childMinder:
+    false`, and gets a token; a wrong one is answered 401. Every read under restservices-parent/
+    needs the token as a Bearer, else 401, and a browser's User-Agent, else 403, as some of the
+    portal's addresses check it. `children/`, `parent/authorizations`, `htmlnews/view` and
+    `newsletter` answer in the portal's `{result, payload, messages}` envelope, `logbook/overview`
+    with a bare list, as the portal does, and `calendar/<from>/until/<to>` with the Agenda's days.
+
+    Tonight's items are planned times as the Agenda gives them (conftest's konnect_planned), each
+    with the `portal` and the child's id, which the fake puts each in its day. `answers` maps a
+    portal and a path to what the portal answers there instead: an HTTP status and the text, or an
+    exception the request raises. `requests` records each request: its method, portal, path,
+    query, JSON body and headers. Any other address goes to requests as before."""
+    name = "konnect"
+
+    def __init__(self, sources: FakeSources, mp: pytest.MonkeyPatch) -> None:
+        super().__init__(sources)
+        self.portals: dict[str, KonnectPortal] = {}
+        self.answers: dict[tuple[str, str], tuple[int, str] | BaseException] = {}
+        self.requests: list[dict[str, Any]] = []
+        self._tokens: dict[str, tuple[str, str]] = {}  # a token: its portal and username
+        other = requests.Session.request
+
+        def request(session: requests.Session, method: str, url: str, **k: Any) -> requests.Response:
+            host = urlsplit(url).hostname or ""
+            if not host.endswith("." + konnect.DOMAIN):
+                return other(session, method, url, **k)
+            return self.answer(session, method, url, **k)
+        mp.setattr(requests.Session, "request", request)
+
+    def portal(self, portal: str) -> KonnectPortal:
+        return self.portals.setdefault(portal, KonnectPortal())
+
+    def set_up(self) -> None:
+        for signin in (self.sources.config.get("konnect") or {}).get("signins") or []:
+            portal = konnect.portal_of(signin["portal"]) or signin["portal"]
+            self.portal(portal).accounts.setdefault(signin["username"], KONNECT_PASSWORD)
+            self.sources.secrets.setdefault(konnect.secret_name(portal, signin["username"]), KONNECT_PASSWORD)
+
+    def paths(self) -> list[str]:
+        """The paths asked for, each once, in the order first asked."""
+        return list(dict.fromkeys(r["path"] for r in self.requests))
+
+    def answer(self, session: requests.Session, method: str, url: str, **k: Any) -> requests.Response:
+        parts = urlsplit(requests.Request(method, url, params=k.get("params")).prepare().url)
+        portal_name = (parts.hostname or "").removesuffix("." + konnect.DOMAIN)
+        path = parts.path.lstrip("/")
+        query = {key: v for key, [v] in parse_qs(parts.query).items()}
+        headers = dict(session.headers)
+        self.requests.append({"method": method, "portal": portal_name, "path": path, "query": query,
+                              "body": k.get("json"), "headers": headers})
+        instead = self.answers.get((portal_name, path))
+        if isinstance(instead, BaseException):
+            raise instead
+        if instead is not None:
+            return _response(*instead)
+        portal = self.portals.get(portal_name)
+        if portal is None:
+            return _response(404, "<html>Not found</html>")
+        if (method, path) == ("PUT", "auth-api/login"):
+            body = k.get("json") or {}
+            username = body.get("username")
+            if body.get("childMinder") is not False or not body.get("password") \
+                    or portal.accounts.get(username) != body.get("password"):
+                return _response(401, json.dumps({"message": "bad credentials"}))
+            token = tokens.token_hex(8)
+            self._tokens[token] = (portal_name, username)
+            return _response(200, json.dumps({
+                "authToken": token, "expiration": int((datetime.now(timezone.utc).timestamp() + 900) * 1000),
+                "refreshToken": None, "mustResetPassword": username in portal.must_reset}))
+        if not path.startswith(konnect.DATA):
+            return _response(404, "<html>Not found</html>")
+        signed_in = self._tokens.get(str(headers.get("Authorization", "")).removeprefix("Bearer "))
+        if signed_in is None or signed_in[0] != portal_name or signed_in[1] in portal.must_reset:
+            return _response(401, json.dumps({}))
+        if "Mozilla/" not in str(headers.get("User-Agent", "")):
+            return _response(403, "<html>Forbidden</html>")
+        path = path.removeprefix(konnect.DATA)
+
+        def enveloped(payload: Any) -> requests.Response:
+            return _response(200, json.dumps({"result": True, "payload": payload, "messages": None},
+                                             ensure_ascii=False))
+
+        def listed(items: list[dict[str, Any]], field: str) -> list[dict[str, Any]]:
+            first, last = date.fromisoformat(query["from"]), date.fromisoformat(query["to"])
+            return [i for i in items if first <= _amsterdam_day(i[field]) <= last]
+        if (method, path) == ("GET", "children/"):
+            return enveloped({"activeChildren": portal.children, "inactiveChildren": []})
+        if (method, path) == ("GET", "parent/authorizations"):
+            return enveloped({"systemFunctions": portal.authorizations, "hasActiveChildren": True})
+        if (method, path) == ("GET", "logbook/overview"):
+            return _response(200, json.dumps(listed(portal.conversations, "date"), ensure_ascii=False))
+        if (method, path) == ("GET", "htmlnews/view"):
+            return enveloped({"unreadNewsCount": 0, "newsItems": listed(portal.news, "publishDate")})
+        if (method, path) == ("GET", "newsletter"):
+            return enveloped({"moreItems": False, "newsletterItems": listed(portal.newsletters, "sendDate")})
+        if method == "GET" and (m := re.fullmatch(r"calendar/(\d{8})/until/(\d{8})", path)):
+            first, last = (datetime.strptime(d, "%Y%m%d").date() for d in m.groups())
+            days: dict[date, dict[str, Any]] = {}
+            for p in self.tonight():
+                if p["portal"] != portal_name or not first <= _amsterdam_day(p["startTime"]) <= last:
+                    continue
+                on = _amsterdam_day(p["startTime"])
+                day = days.setdefault(on, {"title": None, "dayOfMonth": on.day, "dayType": "schoolday",
+                                           "date": p["startTime"], "children": [], "hasMore": False,
+                                           "plannableActivities": {"agendaActivities": []},
+                                           "parentMeetings": [], "activityPrograms": []})
+                child = next(c for c in portal.children if c["id"] == p["child"])
+                day["children"].append({
+                    "child": {k: child[k] for k in ("id", "fullname", "firstName", "lastName")} | {"avatar": None},
+                    "showLocationName": True, "toConfirmPlannedAttendancesIds": [],
+                    "combinedPlanningParts": [{"planningParts": [
+                        {k: v for k, v in p.items() if k not in ("portal", "child")}], "subscriptions": []}]})
+            return enveloped({"days": [days[d] for d in sorted(days)]})
+        return _response(404, "<html>Not found</html>")
+
+
 # ── Local Files: the folder the family puts files in
 
 class LocalFiles(SourceFake):
@@ -956,7 +1106,8 @@ class LocalFiles(SourceFake):
 
 # The fake of each Source, by its name in the registry.
 FAKES: dict[str, Callable[[FakeSources, pytest.MonkeyPatch], SourceFake]] = {
-    f.name: f for f in (Gmail, MyClub, Wilma, WhatsApp, Eepos, Evaka, SocialSchools, LocalFiles)}
+    f.name: f for f in (Gmail, MyClub, Wilma, WhatsApp, Eepos, Evaka, SocialSchools, Konnect,
+                        LocalFiles)}
 
 
 class FakeSources:

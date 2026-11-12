@@ -647,6 +647,67 @@ def evaka_thread(title: str, content: str, sent_at: str, *, children: tuple[str,
                            for n, (name, kind_, at) in enumerate(replies, 1))]}
 
 
+def _millis(when: str) -> int:
+    """An ISO time as the epoch milliseconds Konnect gives times in."""
+    return int(datetime.fromisoformat(when).timestamp() * 1000)
+
+
+def konnect_child(child_id: str, first: str, last: str) -> dict[str, Any]:
+    """One of a parent's children as a Konnect portal lists them: with the group, its phone number,
+    the location, the avatar and the birth date the portal sends too, which Parent Recap never
+    keeps."""
+    return {"id": child_id, "fullname": f"{first} {last}", "firstName": first, "middleName": None,
+            "lastName": last, "hasActivePlacements": True, "dateOfBirth": 1462053600000,
+            "avatar": {"resourceItemId": "avatar-77", "fileName": "cropPhoto.jpg", "contentType": "image/jpeg"},
+            "avatars": {"thumbUrl": "https://resource.example.test/avatar-77-thumb.jpg?Signature=sig"},
+            "childGroup": {"id": "group-9", "name": "Groep Zonnebloem", "phoneNumber": "+31600000009",
+                           "location": {"id": "loc-9", "name": "BSO Locatie Testlaan"}}}
+
+
+def konnect_conversation(subject: str, html: str, sent: str, *, children: tuple[dict[str, Any], ...] = (),
+                         written: str = "Groep Zonnebloem", from_parent: bool = False,
+                         message_id: str | None = None) -> dict[str, Any]:
+    """A conversation as the portal's Messages page lists it (`logbook/overview`): its latest
+    message in full, as HTML, written by `written` at `sent`, about each of `children` (as
+    konnect_child gives them, whole), or the parent's own when `from_parent`."""
+    message_id = message_id or "msg-" + hashlib.sha256(f"{subject}{sent}".encode()).hexdigest()[:8]
+    return {"lastLogMessageMessageId": message_id, "logMessageIds": [f"log-{message_id}"],
+            "logMessageMessageId": message_id, "subject": subject, "message": html,
+            "lastWritten": written, "type": "from_parent_message" if from_parent else "to_parent_message",
+            "date": _millis(sent), "childFirstName": children[0]["firstName"] if children else None,
+            "children": list(children), "isNew": False, "lastFromParent": from_parent, "unread": True}
+
+
+def konnect_news(title: str, snippet: str, published: str, *, attachment: bool = False) -> dict[str, Any]:
+    """A news item as the portal's Messages page lists it (`htmlnews/view`): the start of its text."""
+    return {"id": "news-" + hashlib.sha256(f"{title}{published}".encode()).hexdigest()[:8], "title": title,
+            "contentSnippet": snippet, "publishDate": _millis(published), "isNew": True,
+            "containsAttachment": attachment}
+
+
+def konnect_newsletter(subject: str, snippet: str, sent: str, *, service: bool = False) -> dict[str, Any]:
+    """A newsletter or service message as the portal's Messages page lists it (`newsletter`)."""
+    return {"generatedHtmlNewsLetterId": "nl-" + hashlib.sha256(f"{subject}{sent}".encode()).hexdigest()[:8],
+            "sendDate": _millis(sent), "mailSubject": subject, "contentSnippet": snippet, "fullSource": None,
+            "newsLetterType": "servicemessage" if service else "newsletter", "unread": True}
+
+
+def konnect_planned(child: str, start: str, end: str, *, portal: str = "mijnbso", code: str = "attend",
+                    booking_type: str | None = None, status: str | None = None) -> dict[str, Any]:
+    """A time the child `child` (by its id) is planned at `portal`'s care, as its Agenda gives it
+    (a planning part), with the portal and the child, which the fake portal puts it in its day by."""
+    return {"portal": portal, "child": child, "startTime": _millis(start), "endTime": _millis(end),
+            "attend": code != "absent", "option": code == "tentative", "extraInfo": None,
+            "absentType": None, "bookingType": booking_type,
+            "bookingStatus": f"booking.status.{status}" if status else None,
+            "childGroup": {"id": "group-9", "name": "Groep Zonnebloem",
+                           "location": {"id": "loc-9", "name": "BSO Locatie Testlaan"}},
+            "bookingId": None, "canCancel": False, "toConfirmProduct": None,
+            "plannedAttendanceCode": {"code": code, "label": f"planned.attendance.code.{code}"},
+            "plannedAttendanceSubCode": {"code": "planned", "label": "planned.attendance.sub.code.planned"},
+            "interchangeFromDate": None, "interchangeToDate": None, "readOnly": False}
+
+
 def evaka_sensitive_thread(sender: str, sent_at: str, *, unread: bool = True) -> dict[str, Any]:
     """A sensitive thread as eVaka gives it to a guardian signed in with a password
     (CitizenMessageThread.Redacted): its sender, when its last message was sent and whether it is

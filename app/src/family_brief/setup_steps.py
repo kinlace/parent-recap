@@ -24,13 +24,16 @@ setup evaka — have a city's eVaka guardian password typed at the secret store'
 setup socialschools — have a parent's Social Schools password typed at the secret store's own
                       prompt in the terminal, sign in with it, match the children to the Kids and
                       save the sign-in (the setup page has no Social Schools step yet)
+setup konnect — have a Konnect parent portal's password typed at the secret store's own prompt in
+                the terminal, sign in with it, match the children to the Kids and save the
+                sign-in; the setup page has no Konnect step
 setup save — save the Household's answers into the config, and setup's progress (in setup_save.py)
 setup status — whether setup is done (in setup_status.py)
 setup page — serve the setup page on this Mac and open it in the browser (in setup_server/)
 
 This module is the chat's side only: the arguments, the dialogs and what each command prints. What
 a step does, which the setup page does too, is in its own module: setup_gmail, setup_wilma,
-setup_ai, setup_myclub, setup_eepos, setup_evaka and setup_socialschools.
+setup_ai, setup_myclub, setup_eepos, setup_evaka, setup_socialschools and setup_konnect.
 
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
@@ -146,6 +149,16 @@ def register(sub) -> None:
                                "once, the children matched to the Kids by name")
     psocial.add_argument("--username", required=True, help="The parent's Social Schools email")
     psocial.set_defaults(func=cmd_socialschools)
+
+    pkonnect = steps.add_parser("konnect", help="Add a parent's sign-in at a Konnect parent portal "
+                                "(<provider>.ouderportaal.nl): the password typed at the secret "
+                                "store's own prompt, checked at once, the children matched to the "
+                                "Kids by name")
+    pkonnect.add_argument("--portal", required=True,
+                          help="The portal's address, or its part before .ouderportaal.nl: partou "
+                               "for partou.ouderportaal.nl")
+    pkonnect.add_argument("--username", required=True, help="The parent's Konnect username")
+    pkonnect.set_defaults(func=cmd_konnect)
 
     from . import setup_save, setup_server, setup_status
     setup_save.register(steps)
@@ -489,4 +502,14 @@ def cmd_socialschools(args: argparse.Namespace) -> int:
     dialog, chat or command line, and the one line of JSON never has it."""
     from . import setup_socialschools
     result, next_, extra = setup_socialschools.cmd(args)
+    return report(result, next_, **extra)
+
+
+# ---------------------------------------------------------------- konnect
+
+def cmd_konnect(args: argparse.Namespace) -> int:
+    """The password is typed at the secret store's own prompt in this terminal, so it reaches no
+    dialog, chat or command line, and the one line of JSON never has it."""
+    from . import setup_konnect
+    result, next_, extra = setup_konnect.cmd(args)
     return report(result, next_, **extra)

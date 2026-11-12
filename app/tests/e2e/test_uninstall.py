@@ -220,7 +220,7 @@ def test_on_the_hosted_version_s_server_it_lists_only_what_a_linux_install_made(
     for absent in ("WhatsApp", "Linked Device", PHONE_NOTE, "Claude Code", ".agents/skills",
                    entries.SETTINGS, entries.CHECK):
         assert absent not in out, absent
-    assert "Your accounts aren't touched: Gmail, MyClub, Wilma, Eepos, eVaka and Google" in out
+    assert "Your accounts aren't touched: Gmail, MyClub, Wilma, Eepos, eVaka, Konnect and Google" in out
 
     assert uninstall(harness, "--confirm", "--remove-archive") == 0
 
