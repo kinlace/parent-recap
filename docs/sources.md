@@ -173,7 +173,7 @@ Notes:
 
 ## Social Schools (optional)
 
-Many schools in the Netherlands send parents their news through Social Schools, and some of it is only there: its email notifications don't carry everything. The Social Schools Source puts each school's announcements (their text, and the names of the files attached) and its calendar for the next four weeks into the Brief, for the Kid whose group each was posted in, read through the API Social Schools' own apps read, with the parent's email and password (ADR 0047). The events go into the Brief's `.ics` too.
+Many schools in the Netherlands send parents their news through Social Schools, and some of it is only there: its email notifications don't carry everything. The Social Schools Source puts each school's announcements (their text, and the names of the files attached) and its calendar for the next four weeks into the Brief, for the Kid whose group each was posted in, read through the API Social Schools' own apps read, with the parent's email and password (ADR 0049). The events go into the Brief's `.ics` too.
 
 It isn't on the setup page yet and isn't in the hosted version: a family on its own computer adds it from a terminal, guided by the manage skill.
 

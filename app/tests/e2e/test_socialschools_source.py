@@ -1,4 +1,4 @@
-"""The Social Schools Source in the evening run (ADR 0047, #904), against the fake Social Schools,
+"""The Social Schools Source in the evening run (ADR 0049, #904), against the fake Social Schools,
 which signs in and answers as its identity provider and API do: a new announcement in the Brief
 under its Kid once, through the AI filter; the coming events in the Brief, its .ics and its
 coverage line; a wrong password or an account that signs in another way said there while the rest

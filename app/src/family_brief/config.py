@@ -142,7 +142,7 @@ class EvakaConfig(BaseModel):
 
 
 class SocialSchoolsSignin(BaseModel):
-    """A parent's sign-in at Social Schools (ADR 0047): one account, whatever its schools. Its
+    """A parent's sign-in at Social Schools (ADR 0049): one account, whatever its schools. Its
     password is in the system's secret store, never here (collectors/socialschools.secret_name).
     `kids` names the Kid each of the parent's children is, by the child's name on Social Schools,
     as `setup socialschools` matched them; a child not in it is matched by name each evening."""
@@ -151,7 +151,7 @@ class SocialSchoolsSignin(BaseModel):
 
 
 class SocialSchoolsConfig(BaseModel):
-    """Social Schools, the parent app of many schools in the Netherlands (ADR 0047)."""
+    """Social Schools, the parent app of many schools in the Netherlands (ADR 0049)."""
     signins: list[SocialSchoolsSignin] = Field(default_factory=list)
     lookback_hours: int = 26  # older announcements are marked seen without being told
 

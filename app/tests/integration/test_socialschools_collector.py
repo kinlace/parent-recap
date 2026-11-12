@@ -1,4 +1,4 @@
-"""The Social Schools Source's collector (ADR 0047) against the fake Social Schools
+"""The Social Schools Source's collector (ADR 0049) against the fake Social Schools
 (fake_sources.SocialSchools), which signs in and answers as its identity provider and API do: the
 iOS app's sign-in it goes through, the requests it makes and the ones it never makes, the
 announcements it tells once for the right Kid, the events it makes, and how a wrong password, an

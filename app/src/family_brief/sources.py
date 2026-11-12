@@ -202,7 +202,7 @@ EVAKA = Source("evaka", _same_everywhere("eVaka"), lambda cfg: bool(cfg.evaka.si
 
 # A school's announcements and calendar on Social Schools, which many schools in the Netherlands
 # use, read through the API its own apps read, signing in as its iOS app does with a password in
-# the secret store (ADR 0047). Its events go into the .ics, as eVaka's do. Every post goes to a
+# the secret store (ADR 0049). Its events go into the .ics, as eVaka's do. Every post goes to a
 # group or the whole school, so none is held back for its words. Set up from a terminal for now
 # (`setup socialschools`), on a family's own computer only: the hosted version doesn't offer it,
 # and its Brief doesn't name it, since the setup page doesn't either.

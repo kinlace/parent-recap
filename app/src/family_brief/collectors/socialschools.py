@@ -1,6 +1,6 @@
 """The Social Schools Source: the announcements and calendar of a school on Social Schools, the
 parent app many schools in the Netherlands use, read through the API its own apps read, with the
-parent's email and password (ADR 0047).
+parent's email and password (ADR 0049).
 
 Social Schools has no feed for parents and no published API. Its iOS app signs in through OpenID
 Connect at login.socialschools.eu: an authorization request with PKCE, the normal login form
