@@ -753,7 +753,7 @@ class SocialSchools(SourceFake):
         self.answers: dict[str, tuple[int, str] | BaseException] = {}
         self.requests: list[dict[str, Any]] = []
         self.tokens: dict[str, str] = {}  # an access token: its email
-        self.refresh_tokens = 0
+        self.refresh_tokens: list[str] = []  # each one it gave, which the Source never keeps
         self._codes: dict[str, tuple[str, str, str]] = {}  # a code: its email, challenge and scope
         self._signed_in: dict[str, str] = {}  # the identity provider's cookie: its email
         self._forms: set[str] = set()  # the request verification tokens of the forms it showed
@@ -845,8 +845,8 @@ class SocialSchools(SourceFake):
             self.tokens[access] = got[0]
             answer = {"access_token": access, "expires_in": 3600, "token_type": "Bearer", "scope": got[2]}
             if "offline_access" in got[2].split():
-                self.refresh_tokens += 1
                 answer["refresh_token"] = tokens.token_urlsafe(24)
+                self.refresh_tokens.append(answer["refresh_token"])
             return _response(200, json.dumps(answer))
         return _response(404, "<html>Not found</html>")
 

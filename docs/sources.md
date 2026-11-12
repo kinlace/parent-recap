@@ -183,7 +183,7 @@ It isn't on the setup page yet and isn't in the hosted version: a family on its 
 
 Notes:
 
-- The sign-in is the one Social Schools' iOS app does at `login.socialschools.eu`, done without a browser: the login form with the email and password, then an access token for the API at `api.socialschools.eu`. No refresh token is asked for, so each evening run signs in again
+- The sign-in is the one Social Schools' iOS app does at `login.socialschools.eu`, done without a browser: the login form with the email and password, then an access token for the API at `api.socialschools.eu`. It asks for the same scopes the iOS app does; the refresh token that comes with them is never kept or used, so each evening run signs in again
 - One account covers all its schools: each school the parent has a parent's role at is read, each with its own children
 - A post is a Kid's when it was posted in that Kid's group only, as Social Schools names the groups. One posted in several Kids' groups, or in a group of the whole school, is the Household's. Every post went to a group, so none is held back for its words (ADR 0013); like every other Source's messages, they go through the AI filter
 - An announcement is told once, the first evening after it was posted. A whole day in the calendar stays on its dates, as Social Schools writes them

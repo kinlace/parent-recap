@@ -9,7 +9,8 @@ the token endpoint turns into an access token. The Source does the same without 
 follows the redirects itself, fills in the form, and stops at the redirect to the app. A sign-in
 that leaves login.socialschools.eu (Google, Microsoft or Apple) or asks for a further step after
 the password can't be done this way: it is Unsupported, and setup and `doctor` say so. The access
-token lasts about an hour and no refresh token is asked for, so each evening run signs in again,
+token lasts about an hour; the refresh token that comes with it is never kept or used, so each
+evening run signs in again,
 with the password in the system's secret store (`system/secrets`).
 
 With the token, the run reads from api.socialschools.eu, and only reads (ALLOWED, all GETs):
@@ -57,11 +58,12 @@ LOGIN_HOST = "login.socialschools.eu"
 API = "https://api.socialschools.eu/api/v1/"
 API_HOST = "api.socialschools.eu"
 WEB = "https://app.socialschools.eu"
-# The iOS app's own client, as it signs in (HAChoresManager/ha-socialschools). Without
-# offline_access no refresh token is made: the run signs in again each evening.
+# The iOS app's own client and scopes, exactly as ha-socialschools verified them live. With
+# offline_access the token endpoint gives a refresh token too; it is dropped unread, and the run
+# signs in again each evening.
 CLIENT_ID = "eu.socialschools.ios"
 REDIRECT_URI = "eu.socialschools.ios:/oauthredirect"
-SCOPES = "openid profile email SocsWebApi"
+SCOPES = "openid profile SocsWebApi email offline_access SocsNotificationApi"
 AUTHORIZE = "/connect/authorize"
 CALLBACK = "/connect/authorize/callback"
 TOKEN = "/connect/token"

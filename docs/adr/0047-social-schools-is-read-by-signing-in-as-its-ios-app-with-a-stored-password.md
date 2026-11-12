@@ -4,13 +4,15 @@ Many schools in the Netherlands send parents their news through Social Schools, 
 
 ## Considered Options
 
-- **A refresh token, kept in the secret store instead of the password, as the iOS app and ha-socialschools keep it.** Rejected for now: how long a refresh token lives, and whether each use replaces it, isn't known, and a lost one would need the family to type the password again anyway. Signing in fresh each evening needs nothing kept but what eVaka and Eepos keep, and the sign-in asks for no `offline_access`, so Social Schools makes no long-lived grant each evening. The access token lives only in the evening run's memory.
+- **A refresh token, kept in the secret store instead of the password, as the iOS app and ha-socialschools keep it.** Rejected for now: how long a refresh token lives, and whether each use replaces it, isn't known, and a lost one would need the family to type the password again anyway. Signing in fresh each evening needs nothing kept but what eVaka and Eepos keep. The access token lives only in the evening run's memory.
 - **Signing in through a browser on the family's computer.** Rejected: an evening run has no one at the browser, and the web client's token lasts about an hour with no refresh token.
 - **The email notifications alone, through the Gmail Source.** Rejected: they don't carry everything a school posts, which is why the family asked.
 - **Reading the conversations inbox too.** Rejected for now: fetching a conversation's messages may mark them read at Social Schools, and Parent Recap never changes anything in a Source. The family's own conversations with teachers stay in the app.
 - **Opening each post's own page (`communityposts/{id}`) for its full text.** Rejected: the feed already carries the whole body, and opening a post is what the web app does when a parent reads it, which may count as seen.
 
 ## Consequences
+
+- The sign-in asks for exactly the scopes the iOS app does, as ha-socialschools verified them live (`openid profile SocsWebApi email offline_access SocsNotificationApi`), rather than a narrower set that hasn't been tried: there is one real test to get it right. So the token endpoint also gives a refresh token, and Social Schools may keep a grant for each evening's sign-in; Parent Recap drops that refresh token unread, never stores it and never uses it.
 
 - The sign-in and the API are internal to Social Schools' apps and unversioned. When an answer isn't what they gave before, the Source says Social Schools "changed" on the Brief's coverage line, the rest of the Brief still goes out, and `doctor` says the same.
 - Only the login form coming back after the email and password were sent is taken as a wrong password. An account that signs in only with Google, Microsoft or Apple has no Social Schools password, so it looks the same, and setup and `doctor` say so with it. A sign-in that leaves `login.socialschools.eu` or shows another page after the password (a code, a consent) is Unsupported: it is never followed, setup saves nothing and says why, and the Brief says the login failed. Such an account can't use this Source.
