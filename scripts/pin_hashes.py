@@ -25,15 +25,19 @@ ROOT = Path(__file__).resolve().parents[1]
 def pypi_wheels(name: str, version: str) -> list[str]:
     """The SHA-256 checksums of every wheel PyPI has for this version. A read cut off is tried
     again, twice."""
-    for attempt in range(3):
+    url = f"https://pypi.org/pypi/{name}/{version}/json"
+    for _ in range(2):
         try:
-            with urllib.request.urlopen(f"https://pypi.org/pypi/{name}/{version}/json", timeout=60) as answer:
-                files = json.load(answer)["urls"]
-            return [f["digests"]["sha256"] for f in files if f["packagetype"] == "bdist_wheel"]
+            return wheel_hashes(url)
         except (OSError, http.client.HTTPException):
-            if attempt == 2:
-                raise
-    raise AssertionError("unreachable")
+            pass
+    return wheel_hashes(url)
+
+
+def wheel_hashes(url: str) -> list[str]:
+    with urllib.request.urlopen(url, timeout=60) as answer:
+        files = json.load(answer)["urls"]
+    return [f["digests"]["sha256"] for f in files if f["packagetype"] == "bdist_wheel"]
 
 
 def pinned(header: str, freeze: str, wheels: Callable[[str, str], list[str]]) -> str:

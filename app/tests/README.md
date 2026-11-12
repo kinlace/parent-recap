@@ -228,7 +228,7 @@ slowest tests, so add one for a main path, not for each result.
 
 | File                       | What it covers                                                  |
 | -------------------------- | --------------------------------------------------------------- |
-| `test_install.py`          | `install.sh`: pinned Python and Node, prebuilt packages only    |
+| `test_install.py`          | `install.sh`: pinned Python and Node, prebuilt packages only, each by its checksum |
 | `test_install_ps1.py`      | `install.ps1` stays in step with `install.sh`                   |
 | `test_one_line_install.py` | `get.sh`, the line a family pastes                              |
 | `test_schoolsoft_capture_line.py` | The SchoolSoft capture's `get.sh` and `remove`, and the tool run without Parent Recap |
