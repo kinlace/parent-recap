@@ -20,7 +20,7 @@ import sys
 import zipfile
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pytest
 import requests
@@ -141,6 +141,8 @@ class Mac:
         self.doctor_cannot_run: set[str] = set()  # versions whose doctor doesn't answer
         self.installs: list[list[str]] = []
         self.install_envs: list[dict[str, str]] = []
+        # What the release's install.sh runs once it has switched, as a test gives it: its output.
+        self.after_switch: Callable[[dict[str, str]], str] | None = None
         running = self.built(INSTALLED, "aaa")
         versions.switch(self.folder, running)
         install_record.add("program", str(self.folder / "app"))
@@ -201,7 +203,8 @@ class Mac:
         if self.installer_cannot_start:
             raise OSError("bash is missing")
         versions.switch(self.folder, self.built(version, f"x{len(self.installs)}"))
-        return subprocess.CompletedProcess(cmd, 0, f"✅ Parent Recap {version} installed\n", "")
+        out = self.after_switch(env) if self.after_switch else ""
+        return subprocess.CompletedProcess(cmd, 0, f"{out}✅ Parent Recap {version} installed\n", "")
 
 
 @pytest.fixture

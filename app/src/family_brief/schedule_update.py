@@ -30,15 +30,22 @@ def update(config: str | None = None) -> None:
               f"parent-recap doctor, fix what it names, then run {SCHEDULE_INSTALL}.")
         return
     if run_lock.is_busy(cfg):  # installing the job again would stop the run
-        print(f"{ops.WARN}The evening Brief's job wasn't updated, since a Brief is being made right "
-              f"now. Run {SCHEDULE_INSTALL} once it has gone out.")
-        return
-    try:
-        ops.install_jobs(cfg)
-    except Exception:  # noqa: BLE001 - the job installed before keeps running
-        print(f"{ops.WARN}The evening Brief's job couldn't be updated, so it runs as it did. Run "
-              f"{SCHEDULE_INSTALL} to update it.")
-        return
+        if not os.environ.get(UPDATING):
+            print(f"{ops.WARN}The evening Brief's job wasn't updated, since a Brief is being made "
+                  f"right now. Run {SCHEDULE_INSTALL} once it has gone out.")
+            return
+        # As the evening run's own update (update.evening) is, inside the job: the jobs stay as
+        # they are and start the program from the same path, which now points at this version.
+        # The wake below still says what it would ask for.
+        print("The evening Brief's job was left as it is, since a Brief run is going: it starts "
+              f"this version from the same path. {SCHEDULE_INSTALL} installs it again.")
+    else:
+        try:
+            ops.install_jobs(cfg)
+        except Exception:  # noqa: BLE001 - the job installed before keeps running
+            print(f"{ops.WARN}The evening Brief's job couldn't be updated, so it runs as it did. "
+                  f"Run {SCHEDULE_INSTALL} to update it.")
+            return
     hour, minute = cfg.schedule.daily_hour, cfg.schedule.daily_minute
     if not (wake.sleeps() and wake.has_own_schedule()):
         return
