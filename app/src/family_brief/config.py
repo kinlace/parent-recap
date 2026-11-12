@@ -141,6 +141,21 @@ class EvakaConfig(BaseModel):
     lookback_hours: int = 26  # older messages are marked seen without being told
 
 
+class SocialSchoolsSignin(BaseModel):
+    """A parent's sign-in at Social Schools (ADR 0047): one account, whatever its schools. Its
+    password is in the system's secret store, never here (collectors/socialschools.secret_name).
+    `kids` names the Kid each of the parent's children is, by the child's name on Social Schools,
+    as `setup socialschools` matched them; a child not in it is matched by name each evening."""
+    username: str                   # the parent's email
+    kids: dict[str, str] = Field(default_factory=dict)
+
+
+class SocialSchoolsConfig(BaseModel):
+    """Social Schools, the parent app of many schools in the Netherlands (ADR 0047)."""
+    signins: list[SocialSchoolsSignin] = Field(default_factory=list)
+    lookback_hours: int = 26  # older announcements are marked seen without being told
+
+
 class WhatsAppChat(BaseModel):
     """A picked group. The Linked Device keeps its messages by `id`, so a renamed group stays
     picked; `name` is for the Brief and the Kid hints. Groups picked before the Linked Device have
@@ -333,6 +348,7 @@ class Config(BaseModel):
     myclub: MyClubConfig = MyClubConfig()
     eepos: EeposConfig = EeposConfig()
     evaka: EvakaConfig = EvakaConfig()
+    socialschools: SocialSchoolsConfig = SocialSchoolsConfig()
     whatsapp: WhatsAppConfig = WhatsAppConfig()
     local_files: LocalFilesConfig = LocalFilesConfig()
     google_calendar: CalendarConfig = CalendarConfig()

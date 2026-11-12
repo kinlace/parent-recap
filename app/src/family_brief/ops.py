@@ -504,6 +504,45 @@ def check_evaka(cfg: Config, add, config: str | None = None) -> None:
             add(OK, "evaka", detail, subject=where)
 
 
+def check_socialschools(cfg: Config, add, config: str | None = None) -> None:
+    """Each Social Schools sign-in: signs in with the password in the secret store as the evening
+    run does, and reads the schools, the children, the coming events and the latest announcements.
+    A child who is none of the Kids is a warning: their announcements and events go to the whole
+    Household. So are announcements that can't be read while the rest can. An account that signs in
+    with Google, Microsoft or Apple, or asks for a further step, fails with why."""
+    from . import setup_socialschools
+    from .collectors import socialschools
+    for signin in cfg.socialschools.signins:
+        again = setup_socialschools.again(signin.username)
+        try:
+            checked = setup_socialschools.check(cfg, signin, socialschools.password_of(signin))
+        except socialschools.WrongPassword as e:
+            add(FAIL, "socialschools", f"the sign-in as {signin.username} doesn't work: {e}. "
+                f"{setup_socialschools.OTHER_SIGN_IN} (type the password again: {again})")
+            continue
+        except socialschools.Unsupported as e:
+            add(FAIL, "socialschools", f"the sign-in as {signin.username} can't be done: {e}. "
+                f"{setup_socialschools.OTHER_SIGN_IN}")
+            continue
+        except socialschools.SocialSchoolsError as e:
+            add(FAIL, "socialschools", f"couldn't be read: {e}")
+            continue
+        named = [f"{c.called()} ({kid})" if kid else c.called() for c, kid in checked["children"]]
+        posts = checked["posts"]
+        read = "announcements readable" if isinstance(posts, int) else "no announcements"
+        detail = (f"signed in as {signin.username}, {len(checked['schools'])} "
+                  f"school{'s' * (len(checked['schools']) != 1)}, {checked['events']} events in the next "
+                  f"{socialschools.LOOKAHEAD_DAYS} days, {read}; children: {', '.join(named) or '(none)'}")
+        if isinstance(posts, str):
+            add(WARN, "socialschools", f"{detail}. The announcements couldn't be read: {posts}")
+        elif unmatched := [c.called() for c, kid in checked["children"] if not kid]:
+            add(WARN, "socialschools", f"{detail}. {', '.join(unmatched)} match no Kid in the config, so "
+                "their announcements and events go to the whole Household (add the name as one of the "
+                "Kid's aliases)")
+        else:
+            add(OK, "socialschools", detail)
+
+
 def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:
     """The Linked Device's link, once groups are picked: connected, last connected, or needs a new
     pairing, as the always-running job's status file has it, with the picked groups by name.
