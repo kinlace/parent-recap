@@ -1,6 +1,7 @@
 """Every GitHub Actions workflow parses, so a broken one fails here instead of silently running
 no jobs. A tests workflow that doesn't parse reports no check at all, and PRs then merge on the
-other checks alone (#128)."""
+other checks alone (#128). Below that, what `tests.yml` runs, and `release.yml`'s signing and
+verify steps run as written (#912), with the runner's own `ssh-keygen` from PATH."""
 from __future__ import annotations
 
 import os
@@ -165,6 +166,7 @@ def test_a_change_to_a_script_still_runs_the_tests():
 # written, with a key pair of the test's own; no private key is in the repository.
 
 RELEASE = WORKFLOW_DIR / "release.yml"
+RELEASE_NAMESPACE = "release@parentrecap.com"
 
 
 def release_jobs() -> dict:
@@ -211,30 +213,28 @@ def release_tree(tmp_path: Path) -> dict:
     runner_temp.mkdir()
     return {"tree": tree, "key": key.read_text(), "runner_temp": runner_temp,
             "output": tmp_path / "github-output", "signers": signers,
-            "zip": tree / "dist" / "parent-recap-1.2.3.zip"}
+            "zip": tree / "dist" / "parent-recap-1.2.3.zip",
+            "sig": tree / "dist" / "parent-recap-1.2.3.zip.sig"}
 
 
-def sign_in(release_tree: dict, key: str) -> subprocess.CompletedProcess:
+def run_sign_step(release_tree: dict, key: str) -> subprocess.CompletedProcess:
     return run_release_step("sign", "Sign zip", release_tree["tree"], {
         "RELEASE_SIGNING_KEY": key, "RUNNER_TEMP": str(release_tree["runner_temp"]),
         "GITHUB_OUTPUT": str(release_tree["output"])})
 
 
-def signed_in(release_tree: dict) -> str:
+def signature_from_sign_step(release_tree: dict) -> str:
     """Signs the zip with the test's key and returns the signature the sign job hands on."""
-    result = sign_in(release_tree, release_tree["key"])
+    result = run_sign_step(release_tree, release_tree["key"])
     assert result.returncode == 0, result.stdout + result.stderr
     # As on the publish job's runner, which has only the signature the sign job passed it.
-    release_tree["zip"].with_name(release_tree["zip"].name + ".sig").unlink()
+    release_tree["sig"].unlink()
     return outputs(release_tree["output"])["signature"]
 
 
-def verify_in(release_tree: dict, signature: str) -> subprocess.CompletedProcess:
+def run_verify_step(release_tree: dict, signature: str) -> subprocess.CompletedProcess:
     return run_release_step("publish", "Verify the signature", release_tree["tree"],
                             {"SIGNATURE": signature})
-
-
-RELEASE_NAMESPACE = "release@parentrecap.com"
 
 
 def test_the_workflow_signs_under_the_namespace_and_keys_the_program_verifies_with():
@@ -271,34 +271,33 @@ def test_the_signature_is_verified_before_anything_is_published_and_published_be
 
 @pytest.mark.posix
 def test_the_signing_step_signs_the_zip_and_the_verify_step_accepts_it(release_tree):
-    signature = signed_in(release_tree)
+    signature = signature_from_sign_step(release_tree)
     # The key file is gone once the step ends.
     assert list(release_tree["runner_temp"].iterdir()) == []
     assert signature.startswith("-----BEGIN SSH SIGNATURE-----")
 
-    verified = verify_in(release_tree, signature)
+    verified = run_verify_step(release_tree, signature)
 
     assert verified.returncode == 0, verified.stdout + verified.stderr
-    sig_file = release_tree["zip"].with_name(release_tree["zip"].name + ".sig")
-    assert sig_file.read_text().strip() == signature.strip()
+    assert release_tree["sig"].read_text().strip() == signature.strip()
 
 
 @pytest.mark.posix
 def test_the_signing_step_fails_when_the_secret_is_missing(release_tree):
-    signed = sign_in(release_tree, "")
+    signed = run_sign_step(release_tree, "")
 
     assert signed.returncode == 1
     assert "::error::The secret RELEASE_SIGNING_KEY" in signed.stdout
-    assert not release_tree["zip"].with_name(release_tree["zip"].name + ".sig").exists()
+    assert not release_tree["sig"].exists()
 
 
 @pytest.mark.posix
 def test_the_verify_step_fails_for_a_signature_the_tree_key_did_not_make(release_tree):
-    signature = signed_in(release_tree)
+    signature = signature_from_sign_step(release_tree)
     # The tree's real keys, not the one this test signed with.
     release_tree["signers"].write_text((ROOT / "app/src/family_brief/release_signers").read_text())
 
-    verified = verify_in(release_tree, signature)
+    verified = run_verify_step(release_tree, signature)
 
     assert verified.returncode == 1
     assert "::error::The signature of dist/parent-recap-1.2.3.zip doesn't verify" in verified.stdout
@@ -306,7 +305,13 @@ def test_the_verify_step_fails_for_a_signature_the_tree_key_did_not_make(release
 
 @pytest.mark.posix
 def test_the_verify_step_fails_for_a_zip_other_than_the_one_signed(release_tree):
-    signature = signed_in(release_tree)
+    signature = signature_from_sign_step(release_tree)
     release_tree["zip"].write_bytes(release_tree["zip"].read_bytes() + b"changed")
 
-    assert verify_in(release_tree, signature).returncode == 1
+    assert run_verify_step(release_tree, signature).returncode == 1
+
+
+def test_the_signing_job_checks_out_as_the_publish_job_does():
+    # publish builds the zip again; the signature verifies only if it is byte for byte the same.
+    sign, publish = (release_jobs()[job]["steps"][0]["with"] for job in ("sign", "publish"))
+    assert sign["fetch-depth"] == publish["fetch-depth"] == 0
