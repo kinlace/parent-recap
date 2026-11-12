@@ -76,9 +76,11 @@ INSTALL_TIMEOUT = 60 * 60         # the installer builds a venv and may fetch a 
 DOCTOR_TIMEOUT = 15 * 60
 MAX_REDIRECTS = 5
 DOCTOR_DIDNT_RUN = "doctor didn't run"  # the failing item when a version's doctor couldn't run
-# The evening run installs a release only once this Mac has seen it on `stable` this long: time
-# for the maintainers to stop a bad release before families take it (ADR 0047).
-DAY = timedelta(hours=24)
+# The evening run installs a release only once this Mac has seen it on `stable` a day: time for
+# the maintainers to stop a bad release before families take it (ADR 0047). It first sees it after
+# an evening's Brief, so the next evening's look, which can come a little sooner after its time or
+# across a change to summer time, counts as a day: it was out before this Mac first saw it.
+EVENING_WAIT = timedelta(hours=24) - timedelta(hours=2)
 
 
 class Refused(Exception):
@@ -418,8 +420,7 @@ def update(config: str | None = None, *, retry_failed: bool = True,
     if wait is not None:
         first = datetime.fromisoformat(seen["at"])
         if datetime.now(timezone.utc) - first < wait:
-            log("look", f"{wanted} first seen {seen['at']}; installed once it has been out "
-                f"{wait // timedelta(hours=1)} hours")
+            log("look", f"{wanted} first seen {seen['at']}; installed on an evening a day later")
             _save(folder, last_result=f"{wanted} waits until it is a day old", seen=seen)
             return Outcome("waiting", f"Version {wanted} is installed once it has been out a "
                            "day.", installed)
@@ -433,12 +434,9 @@ def evening(config: str | None = None) -> Outcome:
     failed before. It runs in the background, so nothing it starts asks for a password
     (schedule_update.UPDATING), and inside the evening job, under its run lock, so the evening
     jobs aren't installed again: they start the program from the same path, which now points at
-    the version switched to. It never raises: the evening run's result stays as it was."""
-    try:
-        return update(config, retry_failed=False, wait=DAY)
-    except Exception as e:  # noqa: BLE001 - the Brief is out; the next evening looks again
-        return Outcome("failed", f"The update stopped: {type(e).__name__}. Nothing more was "
-                       "changed.")
+    the version switched to. The evening run catches and logs whatever it raises
+    (run.run_unless_caught_up), so the run's result stays as it was."""
+    return update(config, retry_failed=False, wait=EVENING_WAIT)
 
 
 def _seen(folder: Path, version: str) -> dict:
@@ -446,8 +444,8 @@ def _seen(folder: Path, version: str) -> dict:
     seen = state(folder)["seen"]
     if isinstance(seen, dict) and seen.get("version") == version and isinstance(seen.get("at"), str):
         try:
-            datetime.fromisoformat(seen["at"])
-            return seen
+            if datetime.fromisoformat(seen["at"]).tzinfo is not None:
+                return seen
         except ValueError:
             pass
     return {"version": version, "at": _now()}
