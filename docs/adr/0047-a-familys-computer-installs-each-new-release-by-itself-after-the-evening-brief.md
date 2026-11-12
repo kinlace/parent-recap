@@ -17,7 +17,7 @@ A program that downloads and runs code in the background is what malware does, a
 ## Consequences
 
 - Pushing a `v*` tag now puts code on every updating Household's computer a day or more later, with no person in between. The tag ruleset of ADR 0045 and the signature are what stand in front of that; a release found to be bad within the day is stopped by moving `stable` only forward to a fixed one.
-- The day's wait means the server's own deploy and its check (ADR 0045) have run on the release before a family's computer takes it. It doesn't promise a whole evening on the server first.
+- The day's wait is time for the maintainers to notice a bad release and cut a fixed one before families take it. It isn't a test: the server deploys the release in that day (ADR 0045), but it runs without the Mac install, the scheduled job, the Keychain or the Linked Device, so its check says little about a family's computer.
 - A release that needs the family (a password dialog, a new permission, a QR scan) is marked as such when it is cut and is never installed in the background: the Brief and the setup page say an update is waiting and how to start it.
 - The signing key can't be replaced quietly: a program trusts only the key it was installed with, so a new key has to arrive in a release signed by the old one. If the old key is lost, each Household pastes the install line once.
 - `doctor` passing is the whole check. A fault it doesn't see shows the next evening, and going back from there is the family pasting the install line or the maintainers cutting a fix.
