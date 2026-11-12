@@ -1,4 +1,4 @@
-"""Adding a Social Schools sign-in with `parent-recap setup socialschools` (ADR 0047, #904),
+"""Adding a Social Schools sign-in with `parent-recap setup socialschools` (ADR 0049, #904),
 `doctor`'s check of it and uninstall: the password goes from the secret store's own prompt to one
 sign-in and the store, never into the config, the command's output or a dialog; the children are
 matched to the Kids by name; an account that signs in with Google, Microsoft or Apple, or asks for

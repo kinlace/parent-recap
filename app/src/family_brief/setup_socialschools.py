@@ -1,4 +1,4 @@
-"""Adding a Social Schools sign-in from a terminal (ADR 0047), as `setup evaka` adds an eVaka one.
+"""Adding a Social Schools sign-in from a terminal (ADR 0049), as `setup evaka` adds an eVaka one.
 
 `setup socialschools --username EMAIL` has the parent's password typed at the secret store's own
 prompt in that terminal (`secrets.put_typed`), so it passes through no dialog, chat or command

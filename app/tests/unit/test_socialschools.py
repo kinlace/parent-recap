@@ -1,4 +1,4 @@
-"""Social Schools (ADR 0047): a post's HTML as text, its times, a whole day kept on its dates, a
+"""Social Schools (ADR 0049): a post's HTML as text, its times, a whole day kept on its dates, a
 child as a Kid and a post or an event as a Kid's by its groups. All names are made up."""
 from __future__ import annotations
 
