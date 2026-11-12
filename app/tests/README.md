@@ -56,6 +56,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_held_back.py`           | Which texts look sensitive, against `sensitive_words.yaml`       |
 | `test_install_share.py`       | An AI installer's download share, read from what it prints       |
 | `test_kid_placeholders.py`    | Each Kid as Kid A, Kid B and back                                |
+| `test_update_versions.py`     | The update's version order and doctor's failing checks (ADR 0047) |
 | `test_last_run.py`            | A run's peak memory, from the run's and its children's sizes     |
 | `test_llm_memory.py`          | The llm package's in-memory adapter (ADR 0023)                   |
 | `test_llm_parse.py`           | The model's reply parsed, tier by tier, and the CLI's envelope   |
@@ -135,7 +136,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_private_files.py`           | Other accounts can't read what Parent Recap keeps                                       |
 | `test_ai_filter_report.py`        | `parent-recap ai-filter-report` over an archive                                         |
 | `test_schedule_run_now.py`        | `schedule run-now`                                                                      |
-| `test_schedule_update.py`         | An update installs the evening job again and moves an older version's wake              |
+| `test_schedule_update.py`         | An update installs the evening job again and moves an older version's wake, but not for `update` |
 | `test_without_google_packages.py` | Everything but google mode runs without Google's packages                               |
 
 The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights.py`.
@@ -179,6 +180,12 @@ What only the page does gets a browser test: a step it shows or hides, a button 
 text it picks for a result, or a path a family clicks through. These are marked `browser`, run
 headless Chromium through Playwright and skip, saying why, where it isn't installed. They are the
 slowest tests, so add one for a main path, not for each result.
+
+## End-to-end tests: the update
+
+| File             | What it covers                                                                                |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `test_update.py` | `update` (ADR 0047): installs, refuses, switches back; its hosts, requests, writes, commands |
 
 ## Adapter tests
 

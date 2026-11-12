@@ -28,7 +28,7 @@ from pydantic import ValidationError
 
 from . import (ai_filter_report, baileys_install, chat_install, command_path, install_record,
                linked_device, llm, ops, own_node, run_lock, setup_save, setup_wilma, sources, tools,
-               versions)
+               update, versions)
 from .collectors import evaka
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
@@ -159,6 +159,9 @@ def survey(config: Path) -> Survey:
         if d.is_dir():
             s.items.append(_file("Logs", d))
     _job_logs(s, archive / "logs")
+    for d in dict.fromkeys([*(p.parent / update.UPDATE for p in programs),
+                            *(f / update.UPDATE for f in usual)]):
+        _update_folder(s, d)
     _entries(s)
     _command(s, usual)
     for p in programs:
@@ -590,6 +593,17 @@ def _versions(s: Survey, folder: Path) -> None:
         s.items.append(_file("The program's installed versions", folder, running=True))
     else:
         s.stops.append(f"{_show(folder)} is where the program's versions go, but it holds other "
+                       "files too")
+
+
+def _update_folder(s: Survey, folder: Path) -> None:
+    """`parent-recap update`'s state and the downloads an update cut off left (ADR 0047)."""
+    if not folder.is_dir() or folder.is_symlink():
+        return
+    if all(p.name in update.FILES or p.name.startswith(update.DOWNLOAD) for p in folder.iterdir()):
+        s.items.append(_file("Updates' state and downloads", folder))
+    else:
+        s.stops.append(f"{_show(folder)} is where Parent Recap's updates go, but it holds other "
                        "files too")
 
 

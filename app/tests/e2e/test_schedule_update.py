@@ -47,6 +47,20 @@ def test_an_older_versions_wake_moves_to_the_jobs_time_and_the_job_is_installed_
     assert "Wake: the Mac wakes at 21:00" in out
 
 
+def test_run_for_parent_recap_update_it_asks_for_no_password_and_keeps_the_older_wake(
+        harness, capsys, monkeypatch):
+    old = harness.wake.old_line(21, 0)
+    path = scheduled(harness, old)
+    monkeypatch.setenv(schedule_update.UPDATING, "1")  # as `parent-recap update` runs install.sh
+
+    schedule_update.update(str(path))
+
+    out = capsys.readouterr().out
+    assert harness.wake.asked == [] and harness.wake.wakes == [old]
+    assert harness.jobs.installed() == {jobs.DAILY}
+    assert "wasn't moved to 21:00" in out and "parent-recap schedule install" in out
+
+
 @pytest.mark.parametrize("dialog", ["cancel", "none"])
 def test_a_wake_that_couldnt_be_moved_keeps_the_older_versions_and_says_how(
         harness, capsys, dialog):

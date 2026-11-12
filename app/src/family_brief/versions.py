@@ -192,24 +192,32 @@ def _steps(folder: Path) -> list[list[str]]:
     return steps
 
 
-def cmd_switch_back(_args) -> int:
-    from . import own_node
+def switch_back_whole(folder: Path, **run) -> tuple[str, str]:
+    """`switch_back`, then has the version switched to put its own pieces back and restarts the
+    Linked Device, as `parent-recap switch-back` and the update (update.py) do. `run` goes to
+    each step's subprocess.run, such as where its output goes. Raises NoPrevious."""
     from .system import jobs
-    folder = own_node.home()
-    try:
-        running, kept = switch_back(folder)
-    except NoPrevious:
-        print("There is no previous version to switch back to: only the one running now is "
-              "installed. Nothing was changed.")
-        return 1
+    running, kept = switch_back(folder)
     for step in _steps(folder):
-        subprocess.run(step, stdin=subprocess.DEVNULL, check=False)
+        subprocess.run(step, stdin=subprocess.DEVNULL, check=False, **run)
     # From here, not with the version switched to: one from before versions has no restart.
     try:
         jobs.restart_always()  # the Linked Device's, so it runs the version switched to
     except Exception as e:  # noqa: BLE001 - it runs that version from its next start
         print(f"The Linked Device wasn't restarted ({e}); it runs version {running} from its "
               "next start.")
+    return running, kept
+
+
+def cmd_switch_back(_args) -> int:
+    from . import own_node
+    folder = own_node.home()
+    try:
+        running, kept = switch_back_whole(folder)
+    except NoPrevious:
+        print("There is no previous version to switch back to: only the one running now is "
+              "installed. Nothing was changed.")
+        return 1
     print(f"✅ Parent Recap runs version {running} again. Version {kept} is kept: "
           "`parent-recap switch-back` switches to it again.")
     return 0

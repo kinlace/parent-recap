@@ -7,6 +7,7 @@ It says what it couldn't do and how to do it by hand, and never fails the instal
 updated keeps working as it did. A dialog that's closed keeps the older version's wake."""
 from __future__ import annotations
 
+import os
 import sys
 
 from . import ops, private_files, run_lock
@@ -14,6 +15,9 @@ from .config import Config
 from .system import jobs, wake
 
 SCHEDULE_INSTALL = "parent-recap schedule install"  # what the family runs to do it by hand
+# Set by `parent-recap update` (update.py) for the release's installer it runs: nothing may ask
+# for a password then.
+UPDATING = "PARENT_RECAP_UPDATING"
 
 
 def update(config: str | None = None) -> None:
@@ -41,6 +45,11 @@ def update(config: str | None = None) -> None:
     status = wake.status(hour, minute)
     if status.ours or not status.old:
         return  # already moved, or none of ours to move: doctor says if one is missing
+    if os.environ.get(UPDATING):
+        # `parent-recap update` asks for no password (ADR 0047): the older wake keeps working.
+        print(f"{ops.WARN}The Mac's wake wasn't moved to {hour:02d}:{minute:02d}, since that asks "
+              f"for your Mac password. Run {SCHEDULE_INSTALL} to move it.")
+        return
     print(f"\nParent Recap now wakes the Mac at {hour:02d}:{minute:02d}, when the Brief starts, "
           "instead of 5 minutes before, so the Brief starts as the Mac wakes, before a MacBook "
           "with its lid closed can go back to sleep. "
