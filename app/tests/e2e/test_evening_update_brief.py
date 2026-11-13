@@ -235,6 +235,113 @@ def test_a_network_that_is_down_during_the_update_is_no_failed_update(evening, g
     assert UPDATE_MARK not in evening.sent[-1].text
 
 
+# ---------------------------------------------------------------- with updates turned off (#917)
+
+def updates_off(h) -> None:
+    h.config["updates"] = {"enabled": False}
+
+
+@pytest.mark.parametrize("language", ["en", "zh", "fi"])
+def test_with_updates_off_the_next_brief_says_once_that_a_newer_release_is_out(
+        evening, github, mac, language):  # noqa: F811
+    t = TEXT[language]
+    evening.config["summary_language"] = language
+    updates_off(evening)
+    release_out(github, "0.20.0")
+    quiet(evening)
+    evening_on(evening, 0)  # the look after a quiet evening finds 0.20.0
+    assert evening.sent == []
+
+    a_message(evening, 1)
+    evening_on(evening, 1)
+
+    [email] = evening.sent
+    assert top(email.text) == [t.update_available.format(version="0.20.0")]
+    assert "0.20.0" in email.html and mac.version() == INSTALLED and mac.installs == []
+    # Once per release: the evenings after look again and find the same one.
+    a_message(evening, 2)
+    evening_on(evening, 2)
+    a_message(evening, 3)
+    evening_on(evening, 3)
+    assert len(evening.sent) == 3
+    assert all(UPDATE_MARK not in later.text for later in evening.sent[1:])
+
+
+def test_the_line_says_how_to_get_the_release_in_each_reviewed_language():
+    for language, button in {"en": "Update now", "zh": "立即更新", "fi": "Päivitä nyt"}.items():
+        line = TEXT[language].update_available
+        assert "{version}" in line and "Parent Recap Settings" in line and button in line, language
+
+
+def test_with_updates_off_each_newer_release_is_said_once(evening, github, mac):  # noqa: F811
+    t = TEXT["en"]
+    evening.config["summary_language"] = "en"
+    updates_off(evening)
+    release_out(github, "0.20.0")
+    quiet(evening)
+    evening_on(evening, 0)
+    a_message(evening, 1)
+    release_out(github, "0.21.0")
+    evening_on(evening, 1)  # says 0.20.0, then the look finds 0.21.0
+
+    a_message(evening, 2)
+    evening_on(evening, 2)
+
+    first, second = evening.sent
+    assert top(first.text) == [t.update_available.format(version="0.20.0")]
+    assert top(second.text) == [t.update_available.format(version="0.21.0")]
+
+
+def test_each_recipient_reads_that_a_release_is_out_in_their_language(evening, github, mac):  # noqa: F811
+    evening.config["summary_language"] = "zh"
+    evening.config["email"]["to"] = ["parent@example.com", PARTNER_EN, {"address": "mummo@example.com",
+                                                                        "language": "fi"}]
+    updates_off(evening)
+    release_out(github, "0.20.0")
+    quiet(evening)
+    evening_on(evening, 0)
+
+    a_message(evening, 1)
+    reply = evening.model_reply
+    english = {**reply, "message_digest": "- Library books are due back on Friday"}
+    finnish = {**reply, "message_digest": "- Kirjaston kirjat palautetaan perjantaina"}
+    evening.model_reply = [reply, english, finnish]
+    evening_on(evening, 1)
+
+    by_language = {"zh": "parent@example.com", "en": "partner@example.com", "fi": "mummo@example.com"}
+    for language, address in by_language.items():
+        [email] = [e for e in evening.sent if address in e.to]
+        assert top(email.text)[0] == TEXT[language].update_available.format(version="0.20.0")
+
+
+def test_a_release_installed_by_hand_or_updates_turned_on_again_is_not_said_to_be_out(
+        evening, github, mac):  # noqa: F811
+    evening.config["summary_language"] = "en"
+    updates_off(evening)
+    release_out(github, "0.20.0")
+    quiet(evening)
+    evening_on(evening, 0)
+    assert update.state(mac.folder)["tell_available"] == "0.20.0"
+    assert evening.cli("update") == 0  # the family updates when it chooses
+    assert mac.version() == "0.20.0"
+
+    a_message(evening, 1)
+    evening_on(evening, 1)
+
+    assert UPDATE_MARK not in evening.sent[-1].text
+    # And with updates on again, the evening installs a newer release and says only that.
+    evening.config["updates"] = {"enabled": True}
+    release_out(github, "0.21.0")
+    quiet(evening)
+    evening_on(evening, 2)
+    evening_on(evening, 3)
+    a_message(evening, 4)
+    evening_on(evening, 4)
+    assert top(evening.sent[-1].text)[0] == TEXT["en"].updated.format(
+        version="0.21.0", link=CHANGES.format("0.21.0"))
+    assert TEXT["en"].update_available.format(version="0.21.0") not in evening.sent[-1].text
+
+
 # ---------------------------------------------------------------- each Recipient, every form
 
 def test_each_recipient_reads_the_line_in_their_language_and_the_imessage_carries_it(

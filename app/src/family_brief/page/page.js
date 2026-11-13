@@ -7,7 +7,7 @@ const page = {
   about: null,
   progress: null, welcome: null, connect: null, gmail: null, myclub: null, wilma: null,
   eepos: null, evaka: null,
-  sending: null,
+  sending: null, updates: null,
   check: null, brief: null, welcomeShown: false, connectShown: false, workingShown: false,
   checkShown: false, briefShown: false, finishShown: false, finished: false,
 };
@@ -164,14 +164,16 @@ function showReason(area, step, reason) {
   shown.textContent = reason || "";
 }
 
-// What Copy puts on the clipboard: the reason, then Parent Recap's version, the system, the step
-// and when it failed, so we needn't ask which version or computer.
+// What Copy puts on the clipboard: the reason, then Parent Recap's version, the system, the
+// update state as doctor says it (ADR 0047), the step and when it failed, so we needn't ask which
+// version or computer, or whether an update went wrong.
 function reasonReport(block) {
   return [
     block.querySelector(".reason").textContent,
     "",
     `Parent Recap ${page.about.version}`,
     `System: ${page.about.os}`,
+    `Updates: ${page.updates.report}`,
     `Step: ${block.dataset.step}`,
     `Time: ${block.dataset.time}`,
   ].join("\n");
@@ -3179,6 +3181,9 @@ function enterFinish() {
   document.getElementById("finish-ai-open").addEventListener("click", openFinishAI);
   document.getElementById("finish-ai-form").addEventListener("submit", signInFinishAI);
   document.getElementById("finish-sending-switch").addEventListener("click", switchSending);
+  document.getElementById("finish-updates-on").addEventListener("change", switchUpdates);
+  document.getElementById("finish-updates-now").addEventListener("click", updateNow);
+  showUpdates();
   setUpFinishRecipients();
   document.getElementById("finish-whatsapp-off").addEventListener("click", turnWhatsAppOff);
   document.getElementById("finish-whatsapp-change").addEventListener("click",
@@ -3346,6 +3351,86 @@ async function switchSending() {
   } finally {
     button.disabled = false;
   }
+}
+
+// ── Finish: the program's own update (ADR 0047). The installed version is always shown. Where
+// the program updates itself, so not on Windows or for a Hosted Household, the page also says
+// that it does, with the switch that turns that off and, once a newer release is out, Update now,
+// whose outcome it shows: updated, nothing newer, failed, or switched back.
+
+const UPDATE_MS = 2000;
+const updateStep = { timer: null };
+
+function showUpdates() {
+  const updates = page.updates;
+  setText(document.getElementById("finish-updates-version"), "finish.updates.version",
+    { version: updates.version });
+  document.getElementById("finish-updates-setting").hidden = !updates.available;
+  if (!updates.available) return;
+  document.getElementById("finish-updates-on").checked = updates.on;
+  document.getElementById("finish-updates-newer").hidden = !updates.newer;
+  if (updates.newer) {
+    setText(document.getElementById("finish-updates-newer-version"), "finish.updates.newer",
+      { version: updates.newer });
+  }
+}
+
+async function switchUpdates() {
+  clearError();
+  const box = document.getElementById("finish-updates-on");
+  box.disabled = true;
+  try {
+    const out = await post("api/updates", { on: box.checked });
+    page.updates = out.updates;
+    const saved = document.getElementById("finish-updates-saved");
+    setText(saved, out.result === "saved"
+      ? "finish.updates.saved." + (out.updates.on ? "on" : "off") : "finish.updates." + out.result);
+    saved.classList.toggle("fail", out.result !== "saved");
+    saved.hidden = false;
+    showUpdates();
+  } catch (e) {
+    box.checked = page.updates.on;
+    failed(e);
+  } finally {
+    box.disabled = false;
+  }
+}
+
+async function updateNow() {
+  clearError();
+  try {
+    updateResult(await post("api/updates/now", {}));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+async function checkUpdate() {
+  clearTimeout(updateStep.timer);
+  try {
+    updateResult(await post("api/updates/check", {}));
+  } catch (e) {
+    failed(e);
+  }
+}
+
+function updateResult(out) {
+  clearTimeout(updateStep.timer);
+  const running = out.result === "updating";
+  document.getElementById("finish-updates-now").disabled = running;
+  document.getElementById("finish-updates-on").disabled = running;
+  const status = document.getElementById("finish-updates-status");
+  status.hidden = false;
+  status.dataset.result = "finish.updates." + out.result;
+  status.classList.toggle("fail", ["failed", "switched-back"].includes(out.result));
+  setText(document.getElementById("finish-updates-message"), "finish.updates." + out.result,
+    { version: out.version, tried: out.tried });
+  showReason("finish-updates", "finish.updates." + out.result, out.reason);
+  if (out.updates) {
+    page.updates = out.updates;
+    showUpdates();
+  }
+  if (running) updateStep.timer = setTimeout(checkUpdate, UPDATE_MS);
 }
 
 // ── Finish: changing the AI, for one that stopped working, or a new Gateway Key (ADR 0017). The
@@ -3583,6 +3668,11 @@ function closed() {
     "finish-recipients-open", "finish-recipients-form", "finish-back"]) {
     document.getElementById(id).hidden = true;
   }
+  // The updates' switch and Update now need the server: the page says where to change them.
+  clearTimeout(updateStep.timer);
+  document.getElementById("finish-updates-on").disabled = true;
+  document.getElementById("finish-updates-newer").hidden = true;
+  document.getElementById("finish-updates-closed").hidden = false;
   document.getElementById("finish-closed").hidden = false;
 }
 
@@ -3692,6 +3782,7 @@ async function start() {
   page.whatsapp = state.whatsapp;
   page.wilma = state.wilma;
   page.sending = state.sending;
+  page.updates = state.updates;
   page.check = state.check;
   page.brief = state.brief;
   // Said before the family types a password: in tmux or SSH, none can be saved.

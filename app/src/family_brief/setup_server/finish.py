@@ -6,7 +6,7 @@ import threading
 from http import HTTPStatus
 from typing import Any, Literal
 
-from .. import failure, ops, sending, setup_connect, setup_save, setup_status
+from .. import failure, ops, sending, setup_connect, setup_save, setup_status, update
 from ..config import Config
 from ..setup_connect import Strict, parse
 from ..system import wake
@@ -112,16 +112,19 @@ class Finish(Phase):
     def check_finish(self, raw: Any) -> Reply:
         """How Finish went: each outcome and whether it's true, without its reason, which can name
         an address, and how setting the wake-up went. Once every outcome is true, the server stops
-        after saying so, unless the page was opened again after setup with a Source skipped: then
-        it `stays`, for the way back to Connect to add it, until 30 minutes without a request."""
+        after saying so, unless the page was opened again after setup with a Source skipped, or
+        where the program updates itself: then it `stays`, for the way back to Connect to add the
+        Source and for the updates' switch and Update now (#917), until 30 minutes without a
+        request."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
         finish = self.context.runs.get("finish")
         if finish is None:
             return HTTPStatus.OK, {"result": "no-finish"}
         if finish["result"] == "done":
-            if self._opened_at_finish and \
-                    setup_connect.skipped(self.context.connect.progress()["sources"]):
+            if self._opened_at_finish and (
+                    setup_connect.skipped(self.context.connect.progress()["sources"])
+                    or update.not_applicable(str(self.context.config)) is None):
                 return HTTPStatus.OK, {**finish, "stays": True}
             self.context.closing = True
         return HTTPStatus.OK, finish

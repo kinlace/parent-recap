@@ -101,6 +101,9 @@ llm:
 ai_filter:
   enabled: true # The AI gets placeholders for phone numbers, email addresses and links, and the Brief shows the real ones. Messages that look sensitive never reach the AI: the Brief lists them to read where they came from
 
+updates:
+  enabled: true # On a Mac, Parent Recap installs each new release by itself after the evening Brief. false: it still looks each evening whether a newer release is out, says so in the Brief, and downloads nothing
+
 archive:
   dir: ~/ParentRecap
 

@@ -12,9 +12,10 @@ from .gmail import Gmail
 from .health import Health
 from .myclub import MyClub
 from .portals import Eepos, Evaka
+from .updates import Updates
 from .welcome import Welcome
 from .whatsapp import WhatsApp
 from .wilma import Wilma
 
 PHASES = (Welcome, Connect, Wilma, Gmail, AISignIn, WhatsApp, MyClub, Eepos, Evaka, Check, Health,
-          FirstBrief, Finish, Chat)
+          FirstBrief, Finish, Updates, Chat)

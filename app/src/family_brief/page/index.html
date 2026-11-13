@@ -709,6 +709,34 @@
           <div id="finish-sending-confirm" class="confirm" hidden></div>
         </div>
       </div>
+      <!-- The program's own update (ADR 0047): the installed version always; the sentence, the
+           switch and Update now only where the program updates itself, so not on Windows or for
+           a Hosted Household. -->
+      <div id="finish-updates">
+        <h3 data-text="finish.updates.title"></h3>
+        <p id="finish-updates-version"></p>
+        <div id="finish-updates-setting" hidden>
+          <p data-text="finish.updates.about"></p>
+          <fieldset>
+            <label><input type="checkbox" id="finish-updates-on"><span data-text="finish.updates.on"></span></label>
+          </fieldset>
+          <p class="hint" data-text="finish.updates.off-note"></p>
+          <p id="finish-updates-saved" role="status" hidden></p>
+          <p id="finish-updates-closed" class="hint" data-text="finish.updates.closed" hidden></p>
+          <div id="finish-updates-newer" hidden>
+            <p id="finish-updates-newer-version"></p>
+            <p><button type="button" id="finish-updates-now" class="secondary" data-text="finish.updates.now"></button></p>
+          </div>
+          <div id="finish-updates-status" class="status" role="status" hidden>
+            <p id="finish-updates-message"></p>
+            <details id="finish-updates-why" class="why" hidden>
+              <summary data-text="fail.details"></summary>
+              <pre id="finish-updates-reason" class="reason"></pre>
+              <button type="button" class="secondary" data-text="copy"></button>
+            </details>
+          </div>
+        </div>
+      </div>
       <div id="finish-whatsapp" hidden>
         <h3 data-text="source.whatsapp"></h3>
         <div id="finish-whatsapp-picked">

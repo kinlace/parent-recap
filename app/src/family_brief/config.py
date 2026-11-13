@@ -366,6 +366,14 @@ class ScheduleConfig(BaseModel):
     weekend_hour: int = 16
 
 
+class UpdatesConfig(BaseModel):
+    """Whether Parent Recap on a family's Mac installs each new release by itself after the
+    evening Brief (ADR 0047): on unless the family turned it off, on the setup page or with
+    `parent-recap update off`. Turned off, the evening run still reads the newest release's
+    version, to say in the Brief that one is out, and downloads nothing."""
+    enabled: bool = True
+
+
 class Config(BaseModel):
     timezone: str = "Europe/Helsinki"
     summary_language: Language = "en"   # the language of Recipients who haven't picked one
@@ -392,6 +400,7 @@ class Config(BaseModel):
     weekend_events: WeekendEventsConfig = WeekendEventsConfig()
     feedback: FeedbackConfig = FeedbackConfig()
     schedule: ScheduleConfig = ScheduleConfig()
+    updates: UpdatesConfig = UpdatesConfig()
     state_path: str = "~/.family/state.json"
 
     def resolved_state_path(self) -> Path:

@@ -496,7 +496,7 @@ def _what_the_update_did(cfg: Config, options: Options) -> BriefNote | None:
     if (folder := _update_folder(cfg, options)) is None:
         return None
     try:
-        return update.brief_note(folder)
+        return update.brief_note(folder, updates_on=cfg.updates.enabled)
     except Exception as e:  # noqa: BLE001 - the Brief goes out without the line
         log.warning("The update's note for the Brief couldn't be read: %s", e)
         return None
