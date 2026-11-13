@@ -189,7 +189,7 @@ slowest tests, so add one for a main path, not for each result.
 
 | File                           | What it covers                                                                                        |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `test_update.py`               | `update` (ADR 0047): installs, refuses, switches back; its hosts, requests, writes, commands; on, off |
+| `test_update.py`               | `update` (ADR 0047): installs, refuses, switches back; its hosts, requests, writes, commands; on, off; the READMEs and docs say it |
 | `test_evening_update.py`       | The evening run's own update (#915): a day's wait, only after a scheduled Brief, no dialog, jobs kept |
 | `test_evening_update_brief.py` | The next Brief says what the evening's update did (#916): updated or failed, once, in each language   |
 | `test_setup_updates.py`        | The setup page's Updates (#917): the switch, the installed version, Update now and how it ended       |
