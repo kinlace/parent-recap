@@ -104,11 +104,14 @@ python3 -m venv "$TMPDIR/pins"
 "$TMPDIR/pins/bin/pip" install --only-binary :all: -e '.[test,google]' 'cryptography<49'
 "$TMPDIR/pins/bin/python" -m pytest
 "$TMPDIR/pins/bin/pip" freeze --all --exclude-editable > "$TMPDIR/pins.txt"
+echo 'colorama==0.4.6' >> "$TMPDIR/pins.txt"   # Windows only, so a Mac's freeze leaves it out
 python3 ../scripts/pin_hashes.py "$TMPDIR/pins.txt"   # rewrites everything below the comments in constraints.txt
 python3 ../scripts/check_wheels.py
 ```
 
 `scripts/pin_hashes.py` takes each version's checksums from PyPI's JSON API, every wheel's, so the same file serves every Mac, Linux server and Windows PC. Review the diff before committing: a changed checksum on a version that didn't move needs explaining before it goes in.
+
+The `colorama` line is there because pytest needs colorama on Windows and nowhere else, so the freeze taken on a Mac doesn't list it, and with `--require-hashes` CI's `windows` job stops at a package the file doesn't pin. Add a line the same way for any other package only Windows installs; that job fails naming it.
 
 `cryptography<49` stays while Intel Macs are supported: 49 and later have no Intel wheel. Drop it there and in the file's comment once they aren't.
 
