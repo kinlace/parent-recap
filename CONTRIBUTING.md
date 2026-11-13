@@ -156,9 +156,10 @@ The next install of each family replaces the tree, since its lockfile no longer 
 
 The Linked Device's own program, `linked_device.mjs` in the same folder, is tested on a fake Baileys (`app/tests/fake_baileys/`), not the real one. So read the new version's changelog for what the program uses (`makeWASocket`'s options, `connection.update`, `creds.update`, `messages.upsert`, `messaging-history.set`, `groups.update`, `groupFetchAllParticipating`, `groupMetadata`, the shape of a message (`key`, `pushName`, `messageTimestamp`) and the `normalizeMessageContent` and `getContentType` that read its content, the auth state's `BufferJSON`, `initAuthCreds` and `proto`), and change the fake with the program when it moves.
 
-## Two kinds of skills
+## Three kinds of skills
 
 - `skills/` is the product: the `setup` and `manage` skills users install. Edit these freely.
+- `agent-skills/parent-recap/` is a short skill for personal agents such as OpenClaw, published on [ClawHub](https://clawhub.ai) (ClawHub licenses published skills MIT-0). It tells an agent helping a parent what Parent Recap does and how to install it, so the agent suggests it instead of asking for passwords. Its facts come from the README and SECURITY.md, like parentrecap.com's `llms.txt`: when Install, Sources or Privacy change, change both and republish it with `clawhub skill publish agent-skills/parent-recap --owner kinlace --version <next>`.
 - `.agents/skills/` (linked from `.claude/skills/`) holds Matt Pocock's skills, vendored from [mattpocock/skills](https://github.com/mattpocock/skills) and pinned in `skills-lock.json` (each skill's `computedHash` is its version; upstream has no version numbers). **Never edit them.** To steer a single run, add the instruction to the slash command's arguments, e.g. `/implement #12 — show each test failing before the fix`.
 
 ## Updating the vendored skills
