@@ -111,7 +111,7 @@ Keep `~/.family` and `~/.config/wilmai` out of cloud sync, dotfiles repos and ba
 
 ## How Parent Recap updates itself
 
-On a Mac, Parent Recap installs each new release by itself after the evening Brief (ADR 0047). A program that downloads and runs code in the background deserves a close read, so this section says what the update asks for, what it runs, what it writes and what it never does. [`app/src/family_brief/update.py`](app/src/family_brief/update.py) starts with the same statements, and a test shows each one. On Windows and for a Hosted Household the program doesn't update itself: none of this runs there. How it looks to a family, and how to turn it off, is in [Updating](docs/install.md#updating).
+On a Mac, Parent Recap installs each new release by itself after the evening Brief (ADR 0047). A program that downloads and runs code in the background deserves a close read, so this section says what the update asks for, what it runs, what it writes and what it never does. [`app/src/family_brief/update.py`](app/src/family_brief/update.py) starts with the same statements, and the tests in `app/tests` show them. On Windows and for a Hosted Household the program doesn't update itself: none of this runs there. How it looks to a family, and how to turn it off, is in [Updating](docs/install.md#updating).
 
 A Household that set up after this shipped saw it on the setup page, by the switch that turns it off. A Household installed before learns of it from the first Brief after an update, which says that Parent Recap now updates itself and where to turn that off.
 
@@ -142,28 +142,29 @@ The verified `install.sh` makes requests of its own, to the hosts any install us
 
 | What                                                                                        | From                                                                                                  | How it is checked                                                                                                                         |
 | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| The Python packages, pip included (Google's too, for a Household that uses Google Calendar) | PyPI: `pypi.org`, `files.pythonhosted.org`                                                            | By checksum: each against the SHA-256 checksums in the release's `app/constraints.txt` (pip's `--require-hashes`; #931 has shipped)       |
+| The Python packages, pip included (Google's too, for a Household that uses Google Calendar) | PyPI: `pypi.org`, `files.pythonhosted.org`                                                            | By checksum: each against the SHA-256 checksums in the release's `app/constraints.txt` (pip's `--require-hashes`) |
 | The Linked Device's npm tree                                                                | `registry.npmjs.org`                                                                                  | By checksum: against the lockfile in the release (`npm ci`, with package scripts off)                                                     |
 | A new Python, when the release pins another one                                             | `releases.astral.sh`, or else `github.com` (astral-sh/python-build-standalone) and where it redirects | By checksum: the SHA-256 pinned in the release's `install.sh`                                                                             |
 | A new Node, when the release pins another one                                               | `nodejs.org`                                                                                          | By checksum: the SHA-256 pinned in the release's `install.sh`                                                                             |
-| The wilma CLI, for a Household with a Wilma sign-in, when the release pins another version  | `registry.npmjs.org`                                                                                  | By its pinned version only (`@wilm-ai/wilma-cli@<version>`), not by a checksum the release holds; the same goes for the packages it needs |
+| The wilma CLI, where it is installed (a Household that connected Wilma), when the release pins another version | `registry.npmjs.org`                                                                                  | By its pinned version only (`@wilm-ai/wilma-cli@<version>`), not by a checksum the release holds; the same goes for the packages it needs |
 
-So the signature covers everything an update installs except the wilma CLI and its packages. A download that doesn't match its checksum, or a Python package the release doesn't pin, stops the install, and the version already installed keeps running ([What the install puts on the computer](#what-the-install-puts-on-the-computer)).
+So the signature covers everything an update installs except the wilma CLI and its packages. A Python, a Node or a Python package that doesn't match its checksum, or a Python package the release doesn't pin, stops the install before the switch, and the version already installed keeps running ([What the install puts on the computer](#what-the-install-puts-on-the-computer)). The npm tree and the wilma CLI are fetched after the switch: one that fails leaves the tree or the CLI already there, the new version runs with it, and the next install tries again.
 
 ### Where an update writes
 
 An update writes where an install already writes, and nowhere else:
 
 - In Parent Recap's folder, `~/ParentRecap`: `update/` (its state, `state.json`, and the download's folder, removed when the update ends), `plugin/` (the release), `versions/` and the `app` link (the new version beside the one before), `runtime/` (a new Python or Node), `baileys/`, `wilma/`, `bin/` and `logs/` (`update.log`, and the install's log).
-- `~/.family/install-record.json`, setup's record of what the install put on the Mac.
+- In `~/.family`: `install-record.json`, setup's record of what the install put on the Mac. An update the family started, which installs the evening jobs again, also notes the time in `state.json` and takes group and other access off Parent Recap's files, as every run does.
 - The marked line in `~/.zprofile` that puts `parent-recap` on the PATH.
 - `~/Applications/Parent Recap Settings.app` and `~/Applications/Parent Recap Check.app`.
-- The evening jobs' files in `~/Library/LaunchAgents` (`com.parentrecap.*`), written again only when a release changes a job's definition. The evening's own update leaves them as they are.
+- The evening jobs' files in `~/Library/LaunchAgents` (`com.parentrecap.*`), written again only when a job's definition changed or the job isn't loaded. The evening's own update leaves them as they are.
+- The Mac's wake schedule (`pmset repeat`), only when the family started a release that needs them and an older version's wake has to move: macOS then asks for the Mac password in its administrator dialog. Never in the background.
 - For a Household with a Wilma sign-in, the wilma CLI's `~/.config/wilmai/config.json` and the Keychain items it keeps its passwords in.
 - For a Household that uses Codex, the two skills in `~/.agents/skills`, `parent-recap-setup` and `parent-recap-manage`.
 - pip's cache, `~/Library/Caches/pip`. The downloads of a new Python or Node and npm's cache go in temporary folders that are removed.
 
-It doesn't change the config, the Sources' passwords, the Linked Device's pairing or the archive of Briefs. [docs/setup-internals.md](docs/setup-internals.md#how-an-update-works) says what each step writes.
+It doesn't change the config, the Keychain items Parent Recap stored, the Linked Device's pairing or the archive of Briefs. [docs/setup-internals.md](docs/setup-internals.md#how-an-update-works) says what each step writes.
 
 ### What it never does
 
