@@ -46,11 +46,24 @@ Or from the package file, for Claude Code or Codex:
 
 ## Updating
 
-- **Installed with the line**: paste it into Terminal again. With Claude Code, also type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`
-- **Installed by hand in Claude Code**: type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`
-- **From the package file**: unzip the zip from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) over `~/ParentRecap/plugin`, then in Claude Code type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace`, or for Codex run `bash ~/ParentRecap/plugin/install.sh --codex` in Terminal again
+On a Mac, Parent Recap updates itself ([ADR 0047](adr/0047-a-familys-computer-installs-each-new-release-by-itself-after-the-evening-brief.md)). You don't need to do anything:
 
-After updating, tell Claude or Codex "upgrade Parent Recap"; it syncs the program and runs a check.
+- **When.** Each evening, once the Brief is sent or there was nothing to send, it looks which version the `stable` branch holds. A newer release is installed after a later evening's Brief, a day or more after this Mac first saw it. A Brief you start yourself, a preview and Weekend Picks never update.
+- **How.** It downloads that release's zip and its signature from this repository's [Releases](https://github.com/kinlace/parent-recap/releases), checks the signature against the keys the installed program holds, installs the release beside the running version, switches to it and runs `parent-recap doctor`. If a check fails that passed before, it switches back to the version before. Your settings, passwords and past Briefs stay as they are, and nothing asks for a password. [How Parent Recap updates itself](../SECURITY.md#how-parent-recap-updates-itself) lists what it downloads, from which hosts and how each download is checked.
+- **What you see.** The next Brief says at its top which version Parent Recap now runs, with a link to what changed, or that the update didn't work and the version before still runs. [Updates](troubleshooting.md#updates) says what each line means.
+- **A release that needs you.** A release that would ask for the Mac password, a new permission or a QR scan isn't installed by itself. The Brief and the setup page say it is waiting and what it will ask, and you start it yourself, as below.
+
+**Turning it off.** Open Parent Recap Settings (search for it with Spotlight) and turn off the switch on its last step, or type `parent-recap update off` in Terminal; `parent-recap update on` turns it on again. Turned off, Parent Recap still looks once each evening whether a newer release is out and says so in the Brief, once for each release. It downloads nothing.
+
+**Updating by hand.** Press **Update now** in Parent Recap Settings, or type `parent-recap update` in Terminal. It installs the newest release right away, without the day's wait, whether the switch is on or off, and checks it and switches back the same way. Pasting the install line into Terminal again updates too.
+
+What still updates the old way:
+
+- **Windows**: Parent Recap doesn't update itself there yet. Paste the install line into PowerShell again ([On Windows](windows.md#updating))
+- **Claude Code's own copy of the plugin**: Claude Code keeps the Parent Recap skills in a copy of its own, which the update doesn't touch, so the skills there can be older than the program. To update them, type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace` in Claude Code. The Codex skills are updated with the program
+- **A Parent Recap installed before it could update itself**: paste the install line into Terminal once; from then on it updates itself. `parent-recap doctor` has an Updates line that says whether this install does; a `doctor` without that line is from before
+- **Installed from the package file, by hand**: to update by hand without the install line, unzip the zip from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) over `~/ParentRecap/plugin`, then tell Claude or Codex "upgrade Parent Recap"; it syncs the program and runs a check. For Codex, run `bash ~/ParentRecap/plugin/install.sh --codex` in Terminal instead
+- **The hosted version**: the maintainers update their server; there is nothing for you to update
 
 ### From an older version
 

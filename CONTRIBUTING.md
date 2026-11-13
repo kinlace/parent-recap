@@ -60,7 +60,7 @@ Maintainers' own PRs don't wait for a review. Once CI is green, the author **reb
 
 ## Releasing
 
-Add the release's `What changes for families:` lines to `CHANGELOG.md` and bump the version in `.claude-plugin/plugin.json` and `app/pyproject.toml` on `main`, raise the value in `release.json` if the release needs the family at the computer ("A release that needs the family" below), then tag that commit and push the tag:
+Add the release's `What changes for families:` lines to `CHANGELOG.md` (an `## Unreleased` section there becomes the release's own) and bump the version in `.claude-plugin/plugin.json` and `app/pyproject.toml` on `main`, raise the value in `release.json` if the release needs the family at the computer ("A release that needs the family" below), then tag that commit and push the tag:
 
 ```bash
 git tag v0.4.0 && git push origin v0.4.0
