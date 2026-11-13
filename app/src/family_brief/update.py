@@ -31,6 +31,14 @@ SECURITY.md is to list them (#919).
 
 Only on a Mac, and only for a program run from an installed release: on the hosted version the
 server is deployed by its maintainers (ADR 0045), and Windows is decided separately.
+
+How to turn it off: the config's `updates.enabled`, which the setup page's switch and
+`parent-recap update off` save (`set_enabled`). It is on unless the family turned it off. Turned
+off, the evening run still reads the version `stable` holds, that one request and no other, so
+the next Brief can say once per release that a newer one is out; it downloads nothing.
+`parent-recap update` and the setup page's Update now still install the newest release when the
+family asks. `status` is what the setup page, `doctor` and the report a family sends show of all
+this, and it asks no host.
 """
 from __future__ import annotations
 
@@ -90,9 +98,9 @@ class Refused(Exception):
 @dataclass(frozen=True)
 class Outcome:
     """What `update` did. `result` is one of: not-applicable, up-to-date, waiting (a release not
-    yet a day old, for the evening run), updated, switched-back, failed. `version` is the one it
-    now runs, where it got that far, and `tried` the release it downloaded to install, where it
-    got that far."""
+    yet a day old, for the evening run), available (a newer release the evening run left alone,
+    as updates are off), updated, switched-back, failed. `version` is the one it now runs, where
+    it got that far, and `tried` the release it downloaded to install, where it got that far."""
     result: str
     message: str
     version: str | None = None
@@ -103,12 +111,13 @@ class Outcome:
 class BriefNote:
     """What the next Brief says at its top about the evening's update (#916): the version it
     `updated` to, with `first` when it's the first such line the Household gets, which also says
-    that Parent Recap updates itself; or the version whose update `failed`, with the one `running`
-    as before."""
+    that Parent Recap updates itself; the version whose update `failed`, with the one `running`
+    as before; or the newer version that is `available` while updates are off (#917)."""
     updated: str | None = None
     first: bool = False
     failed: str | None = None
     running: str | None = None
+    available: str | None = None
 
     def link(self) -> str:
         """What changed in the release it updated to: its CHANGELOG, newest release first."""
@@ -149,8 +158,10 @@ def state(folder: Path | None = None) -> dict:
     version an evening update installed, until a Brief says so), `tell_failed` (the version whose
     evening update failed and the one still running, until a Brief says so), `told_failed` (the
     last failed version a Brief was to say so of, so each is said once) and `told_updates_itself`
-    (whether a Brief has said that Parent Recap updates itself). Kept in Parent Recap's folder
-    outside the versions, so a switch and a switch back keep it."""
+    (whether a Brief has said that Parent Recap updates itself), and with updates off
+    `tell_available` (the newer version on `stable`, until a Brief says so) and `told_available`
+    (the last version a Brief was to say so of, so each is said once). Kept in Parent Recap's
+    folder outside the versions, so a switch and a switch back keep it."""
     path = (folder or own_node.home()) / UPDATE / STATE
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -158,7 +169,8 @@ def state(folder: Path | None = None) -> dict:
         data = {}
     return {"last_look": None, "last_result": None, "failed": None, "seen": None,
             "tell_updated": None, "tell_failed": None, "told_failed": None,
-            "told_updates_itself": False, **(data if isinstance(data, dict) else {})}
+            "told_updates_itself": False, "tell_available": None, "told_available": None,
+            **(data if isinstance(data, dict) else {})}
 
 
 def _save(folder: Path, **changes) -> None:
@@ -227,6 +239,71 @@ def _hosted(config: str | None) -> bool:
         return Config.load(config).hosted
     except Exception:  # noqa: BLE001 - no config yet: a family's own computer
         return False
+
+
+# ---------------------------------------------------------------- the setting and the state
+
+def enabled(config: str | None = None) -> bool:
+    """Whether the evening run installs a newer release by itself: the config's `updates.enabled`,
+    on for every Household that hasn't turned it off, also one installed before the setting."""
+    from .config import Config
+    try:
+        return Config.load(config).updates.enabled
+    except Exception:  # noqa: BLE001 - no config yet, or one doctor names: nothing turned it off
+        return True
+
+
+def set_enabled(config: Path, on: bool) -> bool:
+    """Turns the program's updates on or off in the config at `config`, as the setup page's
+    switch and `parent-recap update on|off` do. Returns whether it was saved."""
+    from . import setup_save
+    return setup_save.save(config, {"updates": on})["result"] == "saved"
+
+
+@dataclass(frozen=True)
+class Status:
+    """The update state, as the setup page, `doctor` and the report a family sends show it: the
+    installed `version`; why the program doesn't update itself here (`unavailable`), or None
+    where it does; whether updates are `enabled`; when it last looked for a newer release and
+    what came of it; and the `newer` version this computer has seen on `stable`, if any."""
+    version: str
+    unavailable: str | None = None
+    enabled: bool = True
+    last_look: str | None = None
+    last_result: str | None = None
+    newer: str | None = None
+
+    def line(self) -> str:
+        """All of it on one line, in `doctor`'s words."""
+        if self.unavailable is not None:
+            return f"version {self.version}; updates aren't available here: {self.unavailable}"
+        setting = ("updates are on (parent-recap update off turns them off)" if self.enabled else
+                   "updates are off: the evening run still looks for a newer release and "
+                   "downloads nothing (parent-recap update on turns them on)")
+        looked = (f"last looked {self.last_look}: {self.last_result}" if self.last_look
+                  else "hasn't looked for a newer release yet")
+        return f"version {self.version}; {setting}; {looked}"
+
+
+def status(config: str | None = None) -> Status:
+    """The update state of this program, for the config at `config`. Asks no host."""
+    if (reason := not_applicable(config)) is not None:
+        return Status(_program_version(), unavailable=reason)
+    folder = own_node.running_from()
+    assert folder is not None
+    installed = versions.version(versions.current(folder))  # type: ignore[arg-type]
+    data = state(folder)
+    seen = data["seen"]
+    on_stable = seen.get("version") if isinstance(seen, dict) else None
+    return Status(installed, enabled=enabled(config), last_look=data["last_look"],
+                  last_result=data["last_result"],
+                  newer=on_stable if isinstance(on_stable, str) and newer(on_stable, installed) else None)
+
+
+def _program_version() -> str:
+    """The running program's version, where it isn't an installed release's."""
+    from . import failure
+    return failure.about()["version"]
 
 
 # ---------------------------------------------------------------- the network
@@ -425,19 +502,10 @@ def update(config: str | None = None, *, retry_failed: bool = True,
     log = _Log(folder)
     installed = versions.version(versions.current(folder))  # type: ignore[arg-type]
     session = _session()
-    try:
-        wanted = stable_version(session)
-    except Refused as e:
-        log("look", f"installed {installed}; stable couldn't be read: {e}")
-        _save(folder, last_result=f"look failed: {e}")
-        return Outcome("failed", f"Parent Recap couldn't look for a newer release: {e}. "
-                       "Nothing was changed.", installed)
-    log("look", f"installed {installed}, stable holds {wanted}")
+    wanted = _look(folder, log, session, installed)
+    if isinstance(wanted, Outcome):
+        return wanted
     seen = _seen(folder, wanted)
-    if not newer(wanted, installed):
-        _save(folder, last_result=f"up to date at {installed}", seen=seen)
-        return Outcome("up-to-date", f"Parent Recap is up to date: it runs version {installed}, "
-                       "the newest release.", installed)
     if not retry_failed and state(folder)["failed"] == wanted:
         log("look", f"{wanted} failed before; not tried again")
         _save(folder, last_result=f"{wanted} failed before; not tried again", seen=seen)
@@ -454,6 +522,45 @@ def update(config: str | None = None, *, retry_failed: bool = True,
     return _update_to(folder, config, log, session, installed, wanted)
 
 
+def _look(folder: Path, log: _Log, session: requests.Session, installed: str) -> str | Outcome:
+    """The version `stable` holds, when it is higher than the `installed` one. Otherwise what
+    came of the look, which is recorded: it couldn't be read, or nothing newer is out."""
+    try:
+        wanted = stable_version(session)
+    except Refused as e:
+        log("look", f"installed {installed}; stable couldn't be read: {e}")
+        _save(folder, last_result=f"look failed: {e}")
+        return Outcome("failed", f"Parent Recap couldn't look for a newer release: {e}. "
+                       "Nothing was changed.", installed)
+    log("look", f"installed {installed}, stable holds {wanted}")
+    if not newer(wanted, installed):
+        _save(folder, last_result=f"up to date at {installed}", seen=_seen(folder, wanted))
+        return Outcome("up-to-date", f"Parent Recap is up to date: it runs version {installed}, "
+                       "the newest release.", installed)
+    return wanted
+
+
+def look(config: str | None = None) -> Outcome:
+    """The evening run's look with updates turned off: it reads the version `stable` holds, that
+    one request, and downloads nothing. A newer version is kept for the next Brief to say is
+    out, once per release (BriefNote), and for the setup page to offer."""
+    if (reason := not_applicable(config)) is not None:
+        return Outcome("not-applicable", reason)
+    folder = own_node.running_from()
+    assert folder is not None
+    log = _Log(folder)
+    installed = versions.version(versions.current(folder))  # type: ignore[arg-type]
+    wanted = _look(folder, log, _session(), installed)
+    if isinstance(wanted, Outcome):
+        return wanted
+    log("look", f"{wanted} is out; updates are off, so nothing was downloaded")
+    tell = {} if state(folder)["told_available"] == wanted else {"tell_available": wanted}
+    _save(folder, last_result=f"{wanted} is out; not installed, as updates are off",
+          seen=_seen(folder, wanted), **tell)
+    return Outcome("available", f"Version {wanted} is out. Updates are off, so it wasn't "
+                   "installed: parent-recap update installs it.", installed)
+
+
 def evening(config: str | None = None) -> Outcome:
     """The update the evening run starts once its Brief is sent, or it decided to send nothing
     (ADR 0047): `update`, for a release this Mac has seen on `stable` a day, and not for one that
@@ -462,7 +569,9 @@ def evening(config: str | None = None) -> Outcome:
     jobs aren't installed again: they start the program from the same path, which now points at
     the version switched to. The evening run catches and logs whatever it raises
     (run.run_unless_caught_up), so the run's result stays as it was. What came of it is kept for
-    the next Brief to say (BriefNote)."""
+    the next Brief to say (BriefNote). With updates turned off it only looks (`look`)."""
+    if not enabled(config):
+        return look(config)
     outcome = update(config, retry_failed=False, wait=EVENING_WAIT)
     if (folder := own_node.running_from()) is not None and outcome.tried is not None:
         _tell(folder, outcome)
@@ -484,22 +593,27 @@ def _tell(folder: Path, outcome: Outcome) -> None:
     _write_state(folder, data)
 
 
-def brief_note(folder: Path) -> BriefNote | None:
+def brief_note(folder: Path, updates_on: bool = True) -> BriefNote | None:
     """What the next Brief says about the evening's update, or None. An `updated` line is dropped
-    once that version no longer runs, as after `parent-recap switch-back`."""
+    once that version no longer runs, as after `parent-recap switch-back`. That a newer release
+    is `available` is said only while updates are off (`updates_on` False) and the running
+    version is still older."""
     data = state(folder)
-    updated, failed = data["tell_updated"], data["tell_failed"]
+    updated, failed, available = data["tell_updated"], data["tell_failed"], data["tell_available"]
     current = versions.current(folder)
-    if not isinstance(updated, str) or current is None or versions.version(current) != updated:
+    running = versions.version(current) if current is not None else None
+    if not isinstance(updated, str) or running != updated:
         updated = None
     if not (isinstance(failed, dict) and isinstance(failed.get("version"), str)
             and isinstance(failed.get("running"), str)):
         failed = None
-    if updated is None and failed is None:
+    if updates_on or not isinstance(available, str) or running is None or not newer(available, running):
+        available = None
+    if updated is None and failed is None and available is None:
         return None
     return BriefNote(updated=updated, first=updated is not None and not data["told_updates_itself"],
                      failed=failed["version"] if failed else None,
-                     running=failed["running"] if failed else None)
+                     running=failed["running"] if failed else None, available=available)
 
 
 def told(folder: Path, note: BriefNote | None) -> None:
@@ -513,6 +627,8 @@ def told(folder: Path, note: BriefNote | None) -> None:
         data.update(told_updates_itself=True)
     if note is not None and note.failed is not None:
         data.update(tell_failed=None)
+    if note is not None and note.available is not None:
+        data.update(tell_available=None, told_available=note.available)
     if data != before:
         _write_state(folder, data)
 
@@ -619,13 +735,41 @@ def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, instal
 
 # ---------------------------------------------------------------- parent-recap update
 
+ON = ("Updates are on: Parent Recap installs each new release by itself after the evening Brief. "
+      "parent-recap update off turns that off.")
+OFF = ("Updates are off: Parent Recap still looks once each evening whether a newer release is "
+       "out, says so in the Brief, and downloads nothing. parent-recap update installs the newest "
+       "release when you choose, and parent-recap update on turns updates on again.")
+
+
 def cmd_update(args: argparse.Namespace) -> int:
+    if args.setting is not None:
+        return _cmd_setting(args.config, args.setting == "on")
     outcome = update(args.config)
     print(outcome.message)
     return 1 if outcome.result in ("failed", "switched-back") else 0
 
 
+def _cmd_setting(config: str | None, on: bool) -> int:
+    """`parent-recap update on|off`: saves the setting and says which it now is. Where the
+    program doesn't update itself, it says why and saves nothing."""
+    if (reason := not_applicable(config)) is not None:
+        print(reason)
+        return 0
+    path = Path(os.path.expanduser(os.path.expandvars(config or "~/.family/config.yaml")))
+    if not set_enabled(path, on):
+        print(f"The setting couldn't be saved in {path}, so updates are still "
+              f"{'on' if enabled(config) else 'off'}. Run parent-recap doctor and fix what it names.")
+        return 1
+    print(ON if on else OFF)
+    return 0
+
+
 def register(sub) -> None:
     p = sub.add_parser("update", help="Install the newest release, check it with doctor and "
-                       "switch back if the check fails (on a Mac)")
+                       "switch back if the check fails (on a Mac); with on or off, turn the "
+                       "evening's own update on or off")
+    p.add_argument("setting", nargs="?", choices=["on", "off"],
+                   help="Turn updating by itself after the evening Brief on or off, instead of "
+                        "updating now")
     p.set_defaults(func=cmd_update)

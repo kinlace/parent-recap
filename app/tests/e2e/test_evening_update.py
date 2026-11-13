@@ -211,6 +211,50 @@ def test_with_the_network_down_the_run_ends_as_usual_and_the_next_evening_looks_
     assert github.requests and update.state(mac.folder)["seen"]["version"] == "0.20.0"
 
 
+# ---------------------------------------------------------------- with updates turned off (#917)
+
+def test_with_updates_off_an_evening_run_reads_only_the_version_and_downloads_nothing(
+        evening, github, mac):  # noqa: F811
+    evening.config["updates"] = {"enabled": False}
+    release_out(github, "0.20.0")
+    normal_night(evening, "en")
+
+    assert evening.run() == 0
+    for day in (1, 2):  # a day old and more: with updates on, it would be installed by now
+        with at(NOW + day * DAY):
+            assert evening.run() == 0
+
+    assert len(evening.sent) == 3  # the Brief went out as on any evening
+    assert mac.version() == INSTALLED and mac.installs == []
+    # One request an evening, for the version `stable` holds: no zip, no signature.
+    assert [r["url"] for r in github.requests] == [update.STABLE_VERSION] * 3
+    assert not list((mac.folder / update.UPDATE).glob(f"{update.DOWNLOAD}*"))
+    state = update.state(mac.folder)
+    assert state["last_look"] is not None and "0.20.0 is out" in state["last_result"]
+    assert "updates are off, so nothing was downloaded" in update_log(mac)
+
+
+def test_with_updates_off_and_nothing_newer_out_the_look_says_up_to_date(evening, github, mac):  # noqa: F811
+    evening.config["updates"] = {"enabled": False}
+
+    assert evening.run() == 0
+
+    assert [r["url"] for r in github.requests] == [update.STABLE_VERSION]
+    assert update.state(mac.folder)["last_result"] == f"up to date at {INSTALLED}"
+
+
+def test_updates_turned_on_again_install_the_release_this_mac_has_seen_a_day(evening, github, mac):  # noqa: F811
+    evening.config["updates"] = {"enabled": False}
+    release_out(github, "0.20.0")
+    assert evening.run() == 0
+    evening.config["updates"] = {"enabled": True}  # as the switch and `update on` save it
+
+    with at(NOW + DAY):
+        assert evening.run() == 0
+
+    assert mac.version() == "0.20.0"
+
+
 # ---------------------------------------------------------------- runs that don't update
 
 def no_look(github, mac) -> bool:  # noqa: F811
@@ -288,8 +332,12 @@ def test_a_hosted_household_does_not_update(evening, github, mac):  # noqa: F811
     assert len(evening.sent) == 1 and no_look(github, mac)
 
 
-def test_windows_does_not_update(evening, github, mac):  # noqa: F811
+@pytest.mark.parametrize("updates", [None, {"enabled": False}])
+def test_windows_does_not_update(evening, github, mac, updates):  # noqa: F811
+    # No host is asked for a version either, whatever a config brought from a Mac says (#917).
     evening.system = WINDOWS
+    if updates is not None:
+        evening.config["updates"] = updates
     release_out(github, "0.20.0")
 
     with at(NOW + DAY):

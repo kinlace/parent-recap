@@ -90,6 +90,7 @@ class BriefText:
     updated: str                        # {version} it now runs, {link} to what changed in it
     updates_itself: str                 # after the first `updated` line a Household gets
     update_failed: str                  # {version} that failed, {running} the one it still runs
+    update_available: str               # {version} that is out, while updates are turned off (#917)
     message_time: str                  # when a message came: {day} {month} {hour} {minute}
 
     # ── At the top of the original, sent to a Recipient whose translation failed
@@ -220,6 +221,8 @@ EN = BriefText(
                    "this off, open Parent Recap Settings.",
     update_failed="🔄 An update of Parent Recap to version {version} didn't work, so it still runs version "
                   "{running}, as before. Nothing is needed from you.",
+    update_available="🔄 Version {version} of Parent Recap is out. Updates are turned off, so it wasn't "
+                     "installed. To install it, open Parent Recap Settings and press Update now.",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
     held_back="🔒 Held-back messages",
@@ -315,6 +318,8 @@ ZH = BriefText(
     updated="🔄 Parent Recap 已自动更新到 {version} 版。更新内容：{link}",
     updates_itself="Parent Recap 现在会在晚间日报发出后自动安装每个新版本。要关掉的话，打开 Parent Recap Settings。",
     update_failed="🔄 Parent Recap 更新到 {version} 版没有成功，所以它仍然运行原来的 {running} 版。你不需要做任何事。",
+    update_available="🔄 Parent Recap 有新版本 {version} 了。自动更新已关闭，所以没有安装。要安装的话，"
+                     "打开 Parent Recap Settings，点“立即更新”。",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ 今晚的日报没能翻译成功，下面是原文。",
     held_back="🔒 未交给 AI 的消息",
@@ -405,6 +410,8 @@ FI = BriefText(
                    "pois Parent Recap Settingsistä.",
     update_failed="🔄 Parent Recapin päivitys versioon {version} ei onnistunut, joten se toimii edelleen "
                   "aiemmalla versiolla {running}. Sinun ei tarvitse tehdä mitään.",
+    update_available="🔄 Parent Recapista on ilmestynyt versio {version}. Päivitykset on kytketty pois, joten "
+                     "sitä ei asennettu. Asenna se avaamalla Parent Recap Settings ja painamalla Päivitä nyt.",
     message_unreadable="yhtä viestiä ei voitu lukea",
     nothing_read="⚠️ Yhtäkään lähdettä ei voitu lukea tänä iltana, joten yhteenvetoa ei ole. Lähteiden viestit "
                  "tulevat mukaan ensimmäiseen koosteeseen, kun lähteet saadaan taas luettua.",

@@ -31,7 +31,7 @@ import fake_node
 from conftest import CLASS_GROUP, PIANO_GROUP, eepos_student, evaka_child
 from fake_sources import EEPOS_PASSWORD, EVAKA_PASSWORD
 from family_brief import (failure, gateway, linked_device, ops, setup_connect, setup_gmail,
-                          setup_wilma)
+                          setup_wilma, update)
 from family_brief.collectors import evaka, myclub
 from family_brief.config import Config
 from fake_system import MACOS
@@ -45,6 +45,7 @@ from test_setup_gmail import TYPED
 from test_setup_myclub import LINK as MYCLUB_LINK, STEPS as MYCLUB_STEPS
 from test_setup_page_windows import Web, school_mail
 from test_setup_status import install_program
+from test_update import github, mac  # noqa: F401  the fixtures
 from test_setup_whatsapp import CLASS, FOOTBALL, SCANNED, at_the_whatsapp_step
 from test_setup_whatsapp import phone  # noqa: F401
 from test_setup_wilma import timed_out, wilma_cli  # noqa: F401
@@ -1567,14 +1568,15 @@ def copying(tab) -> None:
                  "(t) => { window.copied.push(t); return Promise.resolve(); }; }")
 
 
-def assert_report(tab, said: str, step: str) -> None:
-    """What Copy put on the clipboard: what failed, then the version, the system, the step and
-    when, as for a step that failed (#487)."""
+def assert_report(tab, family, said: str, step: str) -> None:
+    """What Copy put on the clipboard: what failed, then the version, the system, the update
+    state as doctor says it (#917), the step and when, as for a step that failed (#487)."""
     tab.wait_for_function("() => window.copied.length > 0")
     [report] = tab.evaluate("() => window.copied")
     about = failure.about()
     *lines, time = report.splitlines()
     assert lines == [said, "", f"Parent Recap {about['version']}", f"System: {about['os']}",
+                     f"Updates: {update.status(str(config_file(family))).line()}",
                      f"Step: {step}"]
     assert re.fullmatch(r"Time: \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", time)
 
@@ -1605,7 +1607,7 @@ def test_a_failed_check_without_a_reason_folds_what_it_said_under_its_hint_with_
     item.get_by_text(text("fail.details")).click()
     expect(reason).to_have_text(said)
     item.get_by_role("button", name=text("copy"), exact=True).click()
-    assert_report(tab, said, f"{prefix}.fail.calendar")
+    assert_report(tab, family, said, f"{prefix}.fail.calendar")
     # Skipping is the check page's, for a Source Connect's list offers; the calendar isn't one.
     expect(item.locator("xpath=./button")).to_have_count(0)
 
@@ -1719,9 +1721,7 @@ def test_a_failed_step_shows_why_copy_says_where_and_trying_again_clears_it(
     at_finish(family)
     schedule.load_fails = True
     tab.reload()
-    # Copy writes to the clipboard, which a headless browser keeps to itself.
-    tab.evaluate("() => { window.copied = []; navigator.clipboard.writeText = "
-                 "(t) => { window.copied.push(t); return Promise.resolve(); }; }")
+    copying(tab)
 
     button(tab, "finish.start").click()
 
@@ -1737,13 +1737,7 @@ def test_a_failed_step_shows_why_copy_says_where_and_trying_again_clears_it(
     status.get_by_text(text("fail.details")).click()  # folded until opened
     status.get_by_role("button", name=text("copy"), exact=True).click()
 
-    tab.wait_for_function("() => window.copied.length > 0")
-    [report] = tab.evaluate("() => window.copied")
-    about = failure.about()
-    *lines, time = report.splitlines()
-    assert lines == [said, "", f"Parent Recap {about['version']}", f"System: {about['os']}",
-                     "Step: finish.install-failed"]
-    assert re.fullmatch(r"Time: \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", time)
+    assert_report(tab, family, said, "finish.install-failed")
 
     # Turn it on again: the reason goes as it starts, and once it works nothing more is shown.
     schedule.load_fails = False
@@ -1751,6 +1745,93 @@ def test_a_failed_step_shows_why_copy_says_where_and_trying_again_clears_it(
     expect(status).to_have_attribute("data-result", "finish.done")
     expect(reason).to_be_hidden()
     expect(status.get_by_role("button", name=text("copy"), exact=True)).to_be_hidden()
+
+
+# ── Finish: the program's own update (ADR 0047, #917). `mac` is test_update.py's Parent Recap
+# installed from a release, which updates itself; it comes first, so the family's program is it.
+
+
+def updates_switch(tab):
+    return tab.get_by_role("checkbox", name=text("finish.updates.on"), exact=True)
+
+
+@pytest.mark.posix
+def test_finish_says_parent_recap_updates_itself_and_its_switch_turns_that_off(
+        mac, github, tab, family, health):  # noqa: F811
+    at_finish(family)
+    tab.reload()
+    version = update.status(str(config_file(family))).version
+
+    expect(tab.get_by_text(text("finish.updates.version", version=version))).to_be_visible()
+    expect(tab.get_by_text(text("finish.updates.about"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.updates.off-note"))).to_be_visible()
+    expect(updates_switch(tab)).to_be_checked()
+    expect(button(tab, "finish.updates.now")).to_be_hidden()  # nothing newer is out
+
+    updates_switch(tab).uncheck()
+
+    expect(tab.get_by_text(text("finish.updates.saved.off"))).to_be_visible()
+    assert Config.load(config_file(family)).updates.enabled is False
+    tab.reload()  # saved: a page opened later shows it off
+    expect(updates_switch(tab)).not_to_be_checked()
+    updates_switch(tab).check()
+    expect(tab.get_by_text(text("finish.updates.saved.on"))).to_be_visible()
+    assert Config.load(config_file(family)).updates.enabled is True
+    assert github.requests == []
+
+
+@pytest.mark.posix
+def test_update_now_shows_a_failure_with_the_update_state_to_copy_and_then_the_new_version(
+        mac, github, tab, family, health):  # noqa: F811
+    family.config["updates"] = {"enabled": False}
+    at_finish(family)
+    github.stable = "0.20.0"
+    github.publish("0.20.0", sig=b"not a signature")
+    # An evening's look, with updates off, has found the release.
+    assert update.look(str(config_file(family))).result == "available"
+    tab.reload()
+    copying(tab)
+    expect(tab.get_by_text(text("finish.updates.newer", version="0.20.0"))).to_be_visible()
+    expect(updates_switch(tab)).not_to_be_checked()
+
+    button(tab, "finish.updates.now").click()
+
+    status = tab.locator("#finish-updates-status")
+    expect(status).to_have_attribute("data-result", "finish.updates.failed")
+    expect(status.get_by_text(text("finish.updates.failed"))).to_be_visible()
+    status.get_by_text(text("fail.details")).click()  # folded until opened
+    expect(tab.locator("#finish-updates-reason")).to_contain_text("signature doesn't verify")
+    status.get_by_role("button", name=text("copy"), exact=True).click()
+    tab.wait_for_function("() => window.copied.length > 0")
+    [report] = tab.evaluate("() => window.copied")
+    [state] = [line for line in report.splitlines() if line.startswith("Updates: ")]
+    assert "updates are off" in state and "0.20.0 refused" in state
+
+    github.publish("0.20.0")  # the release as it should be
+    button(tab, "finish.updates.now").click()
+
+    expect(status).to_have_attribute("data-result", "finish.updates.updated")
+    expect(status.get_by_text(text("finish.updates.updated", version="0.20.0"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.updates.version", version="0.20.0"))).to_be_visible()
+    expect(button(tab, "finish.updates.now")).to_be_hidden()
+    expect(tab.locator("#finish-updates-reason")).to_be_hidden()
+    assert mac.version() == "0.20.0"
+
+
+@pytest.mark.parametrize("on", ["macos", "windows"])
+def test_where_parent_recap_doesn_t_update_itself_finish_shows_only_the_version(
+        tab, family, health, on):
+    # The server says so on Windows, for a Hosted Household, and here, where the program isn't an
+    # installed release (test_setup_updates.py); the page then shows no sentence, switch or button.
+    at_finish(family)
+    as_on(tab, on)
+
+    version = failure.about()["version"]
+    expect(tab.get_by_text(text("finish.updates.version", version=version))).to_be_visible()
+    expect(tab.get_by_text(text("finish.updates.about"))).to_be_hidden()
+    expect(tab.get_by_text(text("finish.updates.off-note"))).to_be_hidden()
+    expect(updates_switch(tab)).to_be_hidden()
+    expect(button(tab, "finish.updates.now")).to_be_hidden()
 
 
 def test_finish_moves_connect_s_sign_ins_into_changing_the_ai(tab, family, health):

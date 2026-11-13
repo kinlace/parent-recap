@@ -44,7 +44,7 @@ CHECK_ITEMS = (
     ("calendar", "Calendar"), ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"),
     ("schedule", "Schedule"), ("last-run", "Last run"),
     ("wake", "Wake"), ("sign-in-after-update", "Sign-in after updates"),
-    ("entries", "Settings and Check"),
+    ("entries", "Settings and Check"), ("updates", "Updates"),
 )
 _ITEMS = dict(CHECK_ITEMS)
 
@@ -170,6 +170,7 @@ def health_checks(config: str | None, skip_llm: bool = False, show: bool = False
             _check_sign_in_after_update(add)
     if entries.offered():
         _check_entries(add)
+    _check_updates(config, add)
     return results
 
 
@@ -832,6 +833,15 @@ def _check_entries(add) -> None:
         verb = "isn't" if len(missing) == 1 else "aren't"
         add(WARN, "entries", f"{' and '.join(missing)} {verb} in {where} (paste the install line "
             "again)")
+
+
+def _check_updates(config: str | None, add) -> None:
+    """The program's own update (ADR 0047), on one line: the version, whether updates are on,
+    when it last looked for a newer release and what came of it; or that updates aren't
+    available here. Always OK: updates turned off are the family's choice, and a failed update
+    left the version before running. It reads what the last look left and asks no host."""
+    from . import update
+    add(OK, "updates", update.status(config).line())
 
 
 # ---------------------------------------------------------------- discover

@@ -16,13 +16,14 @@ import time_machine
 import yaml
 
 import fake_node
-from family_brief import __main__ as cli, ops, setup_server, setup_steps
+from family_brief import __main__ as cli, failure, ops, setup_server, setup_steps
 from family_brief.llm import codex as codex_backend
 from family_brief.state import State
 from family_brief.system import entries, jobs
 from conftest import NOW, TZ, program
 from fake_sources import GmailFolders
 from fake_system import LINUX, MACOS, WINDOWS
+from test_update import INSTALLED, github, mac  # noqa: F401  the fixtures
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
 
@@ -233,6 +234,84 @@ def test_on_the_hosted_version_s_server_doctor_has_no_entries_line(harness, noth
     harness.cli("doctor", "--skip-llm")
 
     assert "Settings and Check" not in capsys.readouterr().out
+
+
+# ── The program's own update, on one line (ADR 0047, #917)
+
+
+def updates_line(harness, capsys) -> str:
+    capsys.readouterr()
+    harness.cli("doctor", "--skip-llm")
+    [line] = [l for l in capsys.readouterr().out.splitlines() if " Updates: " in l]
+    return line
+
+
+@pytest.mark.posix
+def test_doctor_says_the_version_that_updates_are_on_and_what_the_last_look_found(
+        harness, nothing_loaded, github, mac, capsys):
+    assert updates_line(harness, capsys) == (
+        f"{ops.OK} Updates: version {INSTALLED}; updates are on (parent-recap update off turns "
+        "them off); hasn't looked for a newer release yet")
+    assert github.requests == []  # doctor reads what the last look left, and asks no host
+
+    harness.cli("update")  # a look: stable holds the installed version
+
+    line = updates_line(harness, capsys)
+    assert re.fullmatch(rf"{ops.OK} Updates: version {re.escape(INSTALLED)}; updates are on \(.+\); "
+                        rf"last looked 2026-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d: "
+                        rf"up to date at {re.escape(INSTALLED)}", line), line
+
+
+@pytest.mark.posix
+def test_doctor_stays_ok_with_updates_off_and_says_the_evening_still_looks(
+        harness, nothing_loaded, github, mac, capsys):
+    harness.config["updates"] = {"enabled": False}
+
+    line = updates_line(harness, capsys)
+
+    assert line.startswith(f"{ops.OK} Updates: version {INSTALLED}; updates are off")
+    assert "still looks for a newer release and downloads nothing" in line
+    assert "parent-recap update on" in line
+
+
+@pytest.mark.posix
+def test_doctor_shows_an_update_that_failed_and_stays_ok(harness, nothing_loaded, github, mac, capsys):
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    mac.fails["0.20.0"] = ["Calendar"]
+    assert harness.cli("update") == 1
+
+    line = updates_line(harness, capsys)
+
+    assert line.startswith(f"{ops.OK} Updates: version {INSTALLED}; updates are on")
+    assert line.endswith(f"0.20.0 failed its check; back on {INSTALLED}")
+
+
+@pytest.mark.posix
+@pytest.mark.parametrize("on, hosted, why", [
+    (WINDOWS, False, "Parent Recap doesn't update itself on Windows yet"),
+    (LINUX, False, "This is the hosted version"),
+    (MACOS, True, "This is the hosted version"),
+], ids=["windows", "server", "hosted-household"])
+def test_on_windows_and_for_a_hosted_household_doctor_says_updates_aren_t_available_here(
+        harness, nothing_loaded, github, mac, capsys, on, hosted, why):
+    harness.system = on
+    harness.config["hosted"] = hosted
+
+    line = updates_line(harness, capsys)
+
+    assert line.startswith(f"{ops.OK} Updates: version ")
+    assert f"updates aren't available here: {why}" in line
+    assert github.requests == []
+
+
+def test_a_program_not_run_from_an_installed_release_has_its_version_and_no_updates(
+        harness, nothing_loaded, capsys):
+    line = updates_line(harness, capsys)
+
+    assert line.startswith(f"{ops.OK} Updates: version {failure.about()['version']}; "
+                           "updates aren't available here: ")
+    assert "doesn't run from an installed release" in line
 
 
 @pytest.fixture

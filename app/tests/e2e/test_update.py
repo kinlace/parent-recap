@@ -24,6 +24,7 @@ from typing import Any, Callable
 
 import pytest
 import requests
+import yaml
 
 from family_brief import install_record, release_signature, update, versions
 from fake_system import LINUX, WINDOWS
@@ -610,3 +611,96 @@ def test_uninstall_removes_the_downloads_the_state_and_the_update_log(harness, g
 
     assert not (mac.folder / update.UPDATE).exists()
     assert not (mac.folder / "logs").exists()
+
+
+# ---------------------------------------------------------------- the setting (#917)
+
+def config_path(harness) -> Path:
+    return harness.home / ".family" / "config.yaml"
+
+
+def saved_config(harness) -> dict[str, Any]:
+    return yaml.safe_load(config_path(harness).read_text())
+
+
+def test_a_new_install_and_one_from_before_the_setting_have_updates_on(harness, github, mac, capsys):
+    # The config says nothing of updates: a new one, and one written before the setting.
+    assert "updates" not in harness.config
+    update_command(harness, capsys)  # writes the harness's config, as any command does here
+
+    status = update.status(str(config_path(harness)))
+
+    assert status.enabled and status.unavailable is None and status.version == INSTALLED
+    assert "updates" not in saved_config(harness)
+
+
+def test_update_off_and_on_save_the_setting_and_say_which_it_now_is(harness, github, mac, capsys):
+    assert harness.cli("update", "off") == 0
+
+    out = capsys.readouterr().out
+    assert out.startswith("Updates are off") and "downloads nothing" in out
+    assert "parent-recap update on" in out
+    assert saved_config(harness)["updates"] == {"enabled": False}
+    assert update.status(str(config_path(harness))).enabled is False
+    assert github.requests == []  # the setting asks no host
+
+    harness.config = saved_config(harness)
+    assert harness.cli("update", "on") == 0
+
+    out = capsys.readouterr().out
+    assert out.startswith("Updates are on") and "parent-recap update off" in out
+    assert saved_config(harness)["updates"] == {"enabled": True}
+    # Everything else the config says is as it was.
+    assert {k: v for k, v in saved_config(harness).items() if k != "updates"} \
+        == {k: v for k, v in harness.config.items() if k != "updates"}
+
+
+def test_the_setting_survives_an_update_and_a_switch_back(harness, github, mac, capsys):
+    harness.config["updates"] = {"enabled": False}
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+
+    code, _ = update_command(harness, capsys)  # by hand: off only stops the evening's own
+
+    assert code == 0 and mac.version() == "0.20.0"
+    assert saved_config(harness)["updates"] == {"enabled": False}
+    assert update.status(str(config_path(harness))).enabled is False
+    assert harness.cli("switch-back") == 0
+    assert mac.version() == INSTALLED and saved_config(harness)["updates"] == {"enabled": False}
+
+
+@pytest.mark.parametrize("setting", ["on", "off"])
+@pytest.mark.parametrize("on, says", [(WINDOWS, "doesn't update itself on Windows"),
+                                      (LINUX, "This is the hosted version")])
+def test_on_windows_and_on_the_hosted_server_the_setting_explains_and_saves_nothing(
+        harness, github, mac, capsys, on, says, setting):
+    harness.system = on
+
+    assert harness.cli("update", setting) == 0
+
+    assert says in capsys.readouterr().out
+    assert "updates" not in saved_config(harness) and github.requests == []
+
+
+def test_for_a_hosted_household_the_setting_explains_and_saves_nothing(harness, github, mac, capsys):
+    harness.config["hosted"] = True
+
+    assert harness.cli("update", "off") == 0
+
+    assert "This is the hosted version" in capsys.readouterr().out
+    assert "updates" not in saved_config(harness)
+
+
+def test_the_manage_skill_says_how_to_turn_updates_off_or_on_and_how_to_update_now():
+    skill = (Path(__file__).parents[3] / "skills" / "manage" / "SKILL.md").read_text(encoding="utf-8")
+    [row] = [line for line in skill.splitlines() if line.startswith("| Turn updates off or on")]
+
+    for command in ("`$FB update off`", "`$FB update on`", "`$FB update` installs the newest release now"):
+        assert command in row, command
+    assert "downloads nothing" in row  # what off leaves on, said before turning it off
+
+
+def test_update_takes_nothing_but_on_or_off(harness, mac, capsys):
+    with pytest.raises(SystemExit):
+        harness.cli("update", "never")
+    assert "invalid choice" in capsys.readouterr().err
