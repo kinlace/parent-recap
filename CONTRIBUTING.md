@@ -108,7 +108,7 @@ python3 ../scripts/pin_hashes.py "$TMPDIR/pins.txt"   # rewrites everything belo
 python3 ../scripts/check_wheels.py
 ```
 
-`scripts/pin_hashes.py` takes each version's checksums from PyPI's JSON API, every wheel's, so the same file serves every Mac, Linux server and Windows PC. Review the diff before committing: PyPI never replaces a file, so a version that didn't move keeps its checksums, and gains one only where a wheel was added to it since.
+`scripts/pin_hashes.py` takes each version's checksums from PyPI's JSON API, every wheel's, so the same file serves every Mac, Linux server and Windows PC. Review the diff before committing: a changed checksum on a version that didn't move needs explaining before it goes in.
 
 `cryptography<49` stays while Intel Macs are supported: 49 and later have no Intel wheel. Drop it there and in the file's comment once they aren't.
 
