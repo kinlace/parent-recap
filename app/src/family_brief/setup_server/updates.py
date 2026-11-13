@@ -10,14 +10,16 @@ from typing import Any
 
 from pydantic import StrictBool
 
-from .. import failure, update
+from .. import failure, run_lock, update
+from ..config import Config
 from ..setup_connect import Strict, parse
 from .context import Action, Context, Phase, Reply, nothing_to_give
 
 # Update now: `updating` while the release is downloaded, verified, installed and checked, then
-# how update.update ended, and `no-update` when this server hasn't started one.
+# how update.update ended; `busy` when a Brief is being made right now, so nothing was started;
+# and `no-update` when this server hasn't started one.
 NOW_RESULTS = ("updating", "updated", "up-to-date", "switched-back", "failed", "not-available",
-               "no-update")
+               "busy", "no-update")
 
 
 class SwitchAnswer(Strict):
@@ -56,6 +58,8 @@ class Updates(Phase):
         context = self.context
         if update.not_applicable(str(context.config)) is not None:
             return HTTPStatus.OK, {"result": "not-available"}
+        if _run_is_going(context):
+            return HTTPStatus.OK, {"result": "busy"}
         with context.working:
             if self._now is None or self._now["result"] != "updating":
                 self._now = {"result": "updating"}
@@ -94,6 +98,15 @@ class Updates(Phase):
             done = {"result": "failed", "reason": failure.logged(
                 "Update now stopped", failure.of(e, "The update"))}
         self._now = done
+
+
+def _run_is_going(context: Context) -> bool:
+    """Whether a Brief is being made right now: its run holds the run lock, and the evening run's
+    own update runs under it, so Update now waits rather than install beside it."""
+    try:
+        return run_lock.is_busy(Config.load(context.config))
+    except Exception:  # noqa: BLE001 - no config that can be read: no run is going on it
+        return False
 
 
 def shown(context: Context) -> dict[str, Any]:

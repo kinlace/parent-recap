@@ -3416,6 +3416,7 @@ async function checkUpdate() {
 
 function updateResult(out) {
   clearTimeout(updateStep.timer);
+  if (out.result === "no-update") return; // the server started again: nothing to show
   const running = out.result === "updating";
   document.getElementById("finish-updates-now").disabled = running;
   document.getElementById("finish-updates-on").disabled = running;

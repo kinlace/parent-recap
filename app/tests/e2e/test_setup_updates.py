@@ -14,7 +14,8 @@ from typing import Any
 import pytest
 import yaml
 
-from family_brief import failure, update
+from family_brief import failure, run_lock, update
+from family_brief.config import Config
 from fake_system import LINUX, MACOS, WINDOWS
 from setup_page import (PAGE_DIR, at_finish, call, config_file, connect_done, finish, finished,
                         inside, more_progress, wait_for)
@@ -216,6 +217,19 @@ def test_update_now_that_stops_says_so_and_never_leaves_the_page_updating(
     out = update_now(page.url)
 
     assert out["result"] == "failed" and "RuntimeError: disk full" in out["reason"]
+
+
+def test_update_now_waits_while_a_brief_is_being_made(household, github, mac, page):  # noqa: F811
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    cfg = Config.load(config_file(household))
+
+    with run_lock.exclusive(cfg):  # the evening run, whose own update runs under its lock
+        r = call(page.url, "api/updates/now", method="POST", body={})
+
+    assert r.json() == {"result": "busy"}
+    assert github.requests == [] and mac.installs == []
+    assert update_now(page.url)["result"] == "updated"  # once the run has ended
 
 
 def test_update_now_takes_nothing_and_says_when_none_was_started(household, page):
