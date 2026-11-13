@@ -43,7 +43,7 @@ Before your first evening, check the two settings above:
 
 ## Updating
 
-Paste the install line into PowerShell again. It updates what it installed and never touches your settings or passwords.
+On Windows Parent Recap doesn't update itself yet, as it does [on a Mac](install.md#updating). Paste the install line into PowerShell again. It updates what it installed and never touches your settings or passwords.
 
 ## Checking how it runs
 

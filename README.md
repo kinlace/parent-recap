@@ -41,6 +41,8 @@ A setup page opens in your browser and walks you through the rest in Finnish, En
 
 The computer needs to be on or asleep around 9 pm, with you logged in. No computer like that? The maintainers host Parent Recap for a few invited families, reading Wilma and MyClub only.
 
+On a Mac, Parent Recap updates itself: after the evening Brief it installs each new release, a day or more after the release comes out, and a switch on the setup page turns that off. [Updating](docs/install.md#updating) says how it works, and [SECURITY.md](SECURITY.md#how-parent-recap-updates-itself) what it downloads and how each download is checked.
+
 More in [Installing Parent Recap](docs/install.md): what you need, the hosted version, other ways to install, updating and uninstalling. [On Windows](docs/windows.md) says what differs there.
 
 ## Privacy

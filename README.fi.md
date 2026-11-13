@@ -41,6 +41,8 @@ Selaimeen aukeaa asetussivu, joka opastaa loput suomeksi, englanniksi tai kiinak
 
 Tietokoneen täytyy olla noin klo 21 päällä tai lepotilassa, ja sinun täytyy olla kirjautuneena. Eikö sinulla ole sellaista tietokonetta? Ylläpitäjät ajavat Parent Recapia muutamalle kutsutulle perheelle, ja silloin se lukee vain Wilmaa ja MyClubia.
 
+Macilla Parent Recap päivittää itsensä: iltakoosteen jälkeen se asentaa jokaisen uuden version, aikaisintaan vuorokauden kuluttua sen julkaisusta, ja asetussivun kytkimellä tämän saa pois päältä. [Updating](docs/install.md#updating) (englanniksi) kertoo, miten se toimii, ja [SECURITY.md](SECURITY.md#how-parent-recap-updates-itself) (englanniksi), mitä se lataa ja miten jokainen lataus tarkistetaan.
+
 Lisää ohjeessa [Installing Parent Recap](docs/install.md) (englanniksi): mitä tarvitset, ylläpidetty versio, muut asennustavat, päivittäminen ja poistaminen. [On Windows](docs/windows.md) (englanniksi) kertoo, mikä Windowsilla on toisin.
 
 ## Yksityisyys

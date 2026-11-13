@@ -780,6 +780,28 @@ def test_the_manage_skill_says_how_to_turn_updates_off_or_on_and_how_to_update_n
     assert "downloads nothing" in row  # what off leaves on, said before turning it off
 
 
+def test_each_readme_says_it_updates_itself_and_links_to_how_and_to_what_it_downloads():
+    root = Path(__file__).parents[3]
+    for name, says in (("README.md", "updates itself"), ("README.fi.md", "päivittää itsensä"),
+                       ("README.zh-CN.md", "自动更新")):
+        text = (root / name).read_text(encoding="utf-8")
+        [sentence] = [line for line in text.splitlines() if says in line]
+        assert "(docs/install.md#updating)" in sentence, name
+        assert "(SECURITY.md#how-parent-recap-updates-itself)" in sentence, name
+    assert "\n## Updating\n" in (root / "docs" / "install.md").read_text(encoding="utf-8")
+
+
+def test_no_page_claims_more_than_the_update_does():
+    # The installer fetches from other hosts than GitHub, an install writes outside Parent
+    # Recap's folder, and /bin/bash runs the verified installer (#919).
+    root = Path(__file__).parents[3]
+    for path in [*root.glob("README*.md"), *(root / "docs").glob("*.md")]:
+        text = " ".join(path.read_text(encoding="utf-8").lower().split())
+        for claim in ("downloads only from github", "writes only inside parent recap's folder",
+                      "no script is run by a shell"):
+            assert claim not in text, f"{path.name}: {claim}"
+
+
 def test_update_takes_nothing_but_on_or_off(harness, mac, capsys):
     with pytest.raises(SystemExit):
         harness.cli("update", "never")

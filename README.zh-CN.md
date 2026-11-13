@@ -41,6 +41,8 @@ irm https://raw.githubusercontent.com/kinlace/parent-recap/stable/install.ps1 | 
 
 每天晚上 9 点左右，这台电脑需要开着或在睡眠中，并且你保持登录。没有这样的电脑？维护者为少数受邀家庭托管运行 Parent Recap，只读 Wilma 和 MyClub。
 
+在 Mac 上，Parent Recap 会自动更新：每个新版本发布至少一天之后，它会在晚间日报发出后自己安装，设置页面上有一个开关可以关掉。[更新](docs/install.md#updating)（英文）说明它怎么运作，[SECURITY.md](SECURITY.md#how-parent-recap-updates-itself)（英文）说明它下载什么、每样下载怎么校验。
+
 更多内容见[安装 Parent Recap](docs/install.md)（英文）：需要什么、托管版、其他安装方式、更新和卸载。[Windows 版](docs/windows.md)（英文）说明 Windows 上有哪些不同。
 
 ## 隐私

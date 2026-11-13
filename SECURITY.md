@@ -109,6 +109,79 @@ On Windows the secrets go into Credential Manager instead, and any program run a
 
 Keep `~/.family` and `~/.config/wilmai` out of cloud sync, dotfiles repos and backups you share. How to remove the Wilma file when you stop using Parent Recap, and what to do if it may have leaked, is in [docs/sources.md](docs/sources.md#where-the-wilma-password-is-stored).
 
+## How Parent Recap updates itself
+
+On a Mac, Parent Recap installs each new release by itself after the evening Brief (ADR 0047). A program that downloads and runs code in the background deserves a close read, so this section says what the update asks for, what it runs, what it writes and what it never does. [`app/src/family_brief/update.py`](app/src/family_brief/update.py) starts with the same statements, and a test shows each one. On Windows and for a Hosted Household the program doesn't update itself: none of this runs there. How it looks to a family, and how to turn it off, is in [Updating](docs/install.md#updating).
+
+A Household that set up after this shipped saw it on the setup page, by the switch that turns it off. A Household installed before learns of it from the first Brief after an update, which says that Parent Recap now updates itself and where to turn that off.
+
+### What the update asks for, and from where
+
+The update's own requests go to this repository on GitHub, `kinlace/parent-recap`, and nowhere else. The repository and the host names are constants in the program, so nothing read from the network changes where it downloads from:
+
+| Host                                                                    | What is asked                                                                                                                                       |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `raw.githubusercontent.com`                                             | The version the `stable` branch holds (its `.claude-plugin/plugin.json`), once each evening after the Brief                                         |
+| `github.com`                                                            | A newer release's zip and its signature, `releases/download/v<version>/parent-recap-<version>.zip` and `.zip.sig`                                   |
+| `objects.githubusercontent.com`, `release-assets.githubusercontent.com` | The same two files, where GitHub redirects their download. A redirect to any other host, or to an address that isn't HTTPS, is refused, not followed |
+
+Each request is a plain GET over HTTPS with nothing about the Household in it: no cookie, no sign-in, no name or address, no version of its own, and no proxy or `.netrc` setting from the Mac. Its `User-Agent` is `parent-recap-update`. GitHub sees the Mac's IP address, as it does for any download.
+
+### What is verified, and what runs
+
+- The zip is checked against its signature and the two public keys the installed program holds ([Release signatures](#release-signatures)) before anything in it is used. A zip that doesn't verify is deleted, and its installer never starts.
+- The version `stable` holds isn't signed, so after verifying the zip the program reads the version inside it: it must be the one asked for and higher than the installed one. An older signed zip in a newer release's place is refused.
+- Whether a release needs the family at the computer is read from `release.json` inside the verified zip, and nowhere else.
+- Nothing is piped from the network into a shell. The program downloads and unpacks the zip itself, without `curl`, `unzip` or a shell.
+- What runs is the verified release's own installer: its `install.sh`, run as a file with `/bin/bash`. So a shell does run a script during an update, but only one the signature covers.
+- Then the new version's `parent-recap doctor` runs. A check it fails that the version before passed switches back to that version.
+
+### What the installer fetches
+
+The verified `install.sh` makes requests of its own, to the hosts any install uses. Each fetch happens only when the release needs it:
+
+| What                                                                                        | From                                                                                                  | How it is checked                                                                                                                         |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| The Python packages, pip included (Google's too, for a Household that uses Google Calendar) | PyPI: `pypi.org`, `files.pythonhosted.org`                                                            | By checksum: each against the SHA-256 checksums in the release's `app/constraints.txt` (pip's `--require-hashes`; #931 has shipped)       |
+| The Linked Device's npm tree                                                                | `registry.npmjs.org`                                                                                  | By checksum: against the lockfile in the release (`npm ci`, with package scripts off)                                                     |
+| A new Python, when the release pins another one                                             | `releases.astral.sh`, or else `github.com` (astral-sh/python-build-standalone) and where it redirects | By checksum: the SHA-256 pinned in the release's `install.sh`                                                                             |
+| A new Node, when the release pins another one                                               | `nodejs.org`                                                                                          | By checksum: the SHA-256 pinned in the release's `install.sh`                                                                             |
+| The wilma CLI, for a Household with a Wilma sign-in, when the release pins another version  | `registry.npmjs.org`                                                                                  | By its pinned version only (`@wilm-ai/wilma-cli@<version>`), not by a checksum the release holds; the same goes for the packages it needs |
+
+So the signature covers everything an update installs except the wilma CLI and its packages. A download that doesn't match its checksum, or a Python package the release doesn't pin, stops the install, and the version already installed keeps running ([What the install puts on the computer](#what-the-install-puts-on-the-computer)).
+
+### Where an update writes
+
+An update writes where an install already writes, and nowhere else:
+
+- In Parent Recap's folder, `~/ParentRecap`: `update/` (its state, `state.json`, and the download's folder, removed when the update ends), `plugin/` (the release), `versions/` and the `app` link (the new version beside the one before), `runtime/` (a new Python or Node), `baileys/`, `wilma/`, `bin/` and `logs/` (`update.log`, and the install's log).
+- `~/.family/install-record.json`, setup's record of what the install put on the Mac.
+- The marked line in `~/.zprofile` that puts `parent-recap` on the PATH.
+- `~/Applications/Parent Recap Settings.app` and `~/Applications/Parent Recap Check.app`.
+- The evening jobs' files in `~/Library/LaunchAgents` (`com.parentrecap.*`), written again only when a release changes a job's definition. The evening's own update leaves them as they are.
+- For a Household with a Wilma sign-in, the wilma CLI's `~/.config/wilmai/config.json` and the Keychain items it keeps its passwords in.
+- For a Household that uses Codex, the two skills in `~/.agents/skills`, `parent-recap-setup` and `parent-recap-manage`.
+- pip's cache, `~/Library/Caches/pip`. The downloads of a new Python or Node and npm's cache go in temporary folders that are removed.
+
+It doesn't change the config, the Sources' passwords, the Linked Device's pairing or the archive of Briefs. [docs/setup-internals.md](docs/setup-internals.md#how-an-update-works) says what each step writes.
+
+### What it never does
+
+- It never asks for admin rights or a password in the background, and opens no dialog. A release that would ask for one (the Mac password, a new permission, a QR scan) isn't installed by itself: it waits for the family to start it, and only then does its installer run with its dialogs.
+- It adds no background item. The evening jobs start the program from one path that stays the same across versions, so an update leaves them as they are and macOS has nothing new to announce.
+- It reads nothing the maintainers' gateway answers. Nothing the gateway says can start an update or choose what a Household gets: every Household takes the same release from the same public address.
+- It sends the maintainers nothing. The update makes no request to the gateway; how an update went stays in the Mac's own `~/ParentRecap/logs/update.log`, which names versions and steps and nothing of the family's messages.
+- It never installs a version that isn't higher than the one installed.
+- It never starts by itself outside the evening run: a Brief started by hand, a preview and Weekend Picks don't update.
+
+### With the switch off
+
+The switch on the setup page, or `parent-recap update off`, turns updating off (the config's `updates.enabled`). Parent Recap then still asks `raw.githubusercontent.com` once each evening which version `stable` holds, that one request and no other, so the Brief can say once that a newer release is out. It downloads nothing: no zip and no signature. `parent-recap update` and **Update now** on the setup page still install the newest release when the family asks.
+
+### The install line
+
+The update is signed; the install line is not, as before. The line in the README fetches `get.sh` from the `stable` branch over HTTPS and runs it in a shell, and `get.sh` downloads the `stable` branch and runs its `install.sh`, with no signature checked. Whoever would rather check one downloads the release zip, verifies it by hand as [Release signatures](#release-signatures) says, and installs from the package file ([Other ways to install](docs/install.md#other-ways-to-install)).
+
 ## Release signatures
 
 Every release zip on the [Releases page](https://github.com/kinlace/parent-recap/releases) has an OpenSSH signature beside it, `parent-recap-<version>.zip.sig`, made with `ssh-keygen -Y sign` under the namespace `release@parentrecap.com`, so a signature one of the keys made for anything else is never a release's (ADR 0047). The program ships the two public keys a release may be signed with, in [`app/src/family_brief/release_signers`](app/src/family_brief/release_signers), and checks a zip against them with the system's own `/usr/bin/ssh-keygen` (`family_brief/release_signature.py`), so verifying installs nothing:

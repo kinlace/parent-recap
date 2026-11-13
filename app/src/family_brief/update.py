@@ -35,8 +35,8 @@ Once installed, the new version's `doctor` runs. A failure it reports that the v
 didn't (its `doctor` runs first) switches back to that version (versions.py).
 
 The verified installer makes requests of its own, to the hosts an install already uses (Python
-packages, the Linked Device's npm tree, a new Python or Node). Those aren't this module's;
-SECURITY.md is to list them (#919).
+packages, the Linked Device's npm tree, a new Python or Node, the wilma CLI). Those aren't this
+module's; SECURITY.md, "How Parent Recap updates itself", lists them and how each is checked.
 
 Only on a Mac, and only for a program run from an installed release: on the hosted version the
 server is deployed by its maintainers (ADR 0045), and Windows is decided separately.
