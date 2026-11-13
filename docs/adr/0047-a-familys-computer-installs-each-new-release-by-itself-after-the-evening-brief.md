@@ -8,7 +8,7 @@ A program that downloads and runs code in the background is what malware does, a
 - The update's own requests go only to this repository on GitHub, at an address the program holds and nothing remote can change, and they carry nothing about the Household.
 - Nothing it downloads is run before its signature verified, and nothing is piped from the network into a shell. What runs is the verified release's own installer.
 - That installer fetches what the release pins from the hosts an install already uses (the Python packages, the Linked Device's npm tree, and a new Python or Node when the release changes them). `SECURITY.md` lists those hosts and how each download is checked.
-- It adds no background job of its own and asks for no password.
+- It adds no background job of its own and asks for no password: a release that would ask for one isn't installed in the background, and waits for the family to start it (below).
 - It writes only to the places an install already writes, which `SECURITY.md` lists: Parent Recap's folder and the few files outside it that belong to the install.
 - It reads nothing the maintainers' gateway answers, so the Run Report (ADR 0048) can't start an update or choose what a Household gets: every Household takes the same release from the same public address.
 

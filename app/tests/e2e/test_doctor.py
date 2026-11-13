@@ -275,6 +275,28 @@ def test_doctor_stays_ok_with_updates_off_and_says_the_evening_still_looks(
 
 
 @pytest.mark.posix
+def test_doctor_says_an_update_is_waiting_what_it_asks_and_how_to_start_it(
+        harness, nothing_loaded, github, mac, capsys):
+    from family_brief import update
+    from test_update import ASKS, needing_family
+    github.stable = "0.20.0"
+    github.publish("0.20.0", needing_family("0.20.0"))
+    harness.cli("doctor", "--skip-llm")  # writes the harness's config, as any command does here
+    # An evening's update read that the release needs the family, and left it for them.
+    assert update.update(None, by_family=False).result == "needs-family"
+
+    line = updates_line(harness, capsys)
+
+    assert line.startswith(f"{ops.OK} Updates: version {INSTALLED}; updates are on")
+    assert line.endswith(f"an update is waiting: version 0.20.0 needs you at the computer "
+                         f"({ASKS['en']}), so it isn't installed by itself (parent-recap update "
+                         "installs it)")
+
+    assert harness.cli("update") == 0  # the family starts it
+    assert "waiting" not in updates_line(harness, capsys)
+
+
+@pytest.mark.posix
 def test_doctor_shows_an_update_that_failed_and_stays_ok(harness, nothing_loaded, github, mac, capsys):
     github.stable = "0.20.0"
     github.publish("0.20.0")

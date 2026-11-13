@@ -21,7 +21,7 @@ from setup_page import (PAGE_DIR, at_finish, call, config_file, connect_done, fi
                         inside, more_progress, wait_for)
 from setup_page import clock, health, page, schedule  # noqa: F401
 from test_setup_finish import opened_again  # noqa: F401
-from test_update import INSTALLED, github, mac  # noqa: F401  the fixtures
+from test_update import ASKS, INSTALLED, github, mac, needing_family  # noqa: F401  the fixtures
 
 # install.sh's layout, on a Mac.
 pytestmark = pytest.mark.posix
@@ -68,6 +68,7 @@ def test_the_page_shows_the_installed_version_and_that_updates_are_on(household,
     shown = updates(page.url)
 
     assert shown == {"available": True, "version": INSTALLED, "on": True, "newer": None,
+                     "waiting": None,
                      "report": update.status(str(config_file(household))).line()}
     assert github.requests == []  # showing it asks no host
     assert "updates" not in saved(household)  # on without the family doing anything
@@ -82,6 +83,8 @@ def test_the_finish_page_has_the_sentence_the_switch_the_version_and_update_now(
     assert 'id="finish-updates-version"' in block and 'id="finish-updates-version"' not in setting
     for needed in ['data-text="finish.updates.about"', 'type="checkbox" id="finish-updates-on"',
                    'data-text="finish.updates.off-note"', 'id="finish-updates-now"',
+                   'id="finish-updates-waiting" hidden', 'data-text="finish.updates.waiting"',
+                   'id="finish-updates-asks"',
                    'id="finish-updates-message"', 'id="finish-updates-reason"']:
         assert needed in setting, needed
     assert 'id="finish-updates-setting" hidden' in block
@@ -102,7 +105,8 @@ def test_the_sentence_by_the_switch_says_what_off_leaves_on_in_all_three_languag
 def test_every_updates_text_is_in_all_three_languages():
     from family_brief.setup_server import updates as step
     keys = ["title", "version", "about", "on", "off-note", "saved.on", "saved.off", "save-failed",
-            "closed", "newer", "now", *(r for r in step.NOW_RESULTS if r != "no-update")]
+            "closed", "newer", "waiting", "now",
+            *(r for r in step.NOW_RESULTS if r != "no-update")]
     for language, table in TEXT.items():
         for key in keys:
             assert table.get(f"finish.updates.{key}", "").strip(), (language, key)
@@ -112,6 +116,9 @@ def test_every_updates_text_is_in_all_three_languages():
         # The Brief sends a family here by the button's name (brief_text's update_available).
         from family_brief.brief_text import TEXT as BRIEF
         assert table["finish.updates.now"] in BRIEF[language].update_available, language
+        # And so do the Brief's line on an update that waits, and the page's own sentence on it.
+        assert table["finish.updates.now"] in BRIEF[language].update_waiting, language
+        assert table["finish.updates.now"] in table["finish.updates.waiting"], language
 
 
 def test_the_switch_is_saved_and_turned_on_again(household, github, page):
@@ -174,6 +181,61 @@ def test_a_newer_release_this_mac_has_seen_is_offered_and_update_now_installs_it
     assert mac.version() == "0.20.0" and len(mac.installs) == 1
     assert out["updates"]["version"] == "0.20.0" and out["updates"]["newer"] is None
     assert github.hosts() <= set(update.HOSTS)
+
+
+# ── A release that needs the family waits for Update now (#918)
+
+
+def an_evening_left_it_for_the_family(household, github, version: str) -> None:
+    """`version` needs the family, and an evening's update, a day after this Mac first saw it,
+    read that from its verified zip and left it for them to start."""
+    config_file(household).write_text(yaml.safe_dump(household.config, allow_unicode=True))
+    github.stable = version
+    github.publish(version, needing_family(version))
+    config = str(config_file(household))
+    assert update.update(config, by_family=False).result == "needs-family"
+
+
+def test_a_release_that_waits_for_the_family_is_shown_with_what_it_asks_and_update_now_installs_it(
+        household, github, mac, page):  # noqa: F811
+    an_evening_left_it_for_the_family(household, github, "0.20.0")
+    assert mac.version() == INSTALLED and mac.installs == []
+
+    shown = updates(page.url)
+
+    assert shown["newer"] == "0.20.0" and shown["on"] is True
+    assert shown["waiting"] == {"version": "0.20.0", "asks": ASKS}
+    assert "an update is waiting: version 0.20.0 needs you at the computer" in shown["report"]
+    asked_before = len(github.requests)
+    updates(page.url)
+    assert len(github.requests) == asked_before  # showing it asks no host
+
+    out = update_now(page.url)
+
+    assert out == {"result": "updated", "version": "0.20.0", "tried": "0.20.0",
+                   "updates": updates(page.url)}
+    assert mac.version() == "0.20.0"
+    # Started from the page, its installer runs with its dialogs.
+    assert ["PARENT_RECAP_UPDATING" in env for env in mac.install_envs] == [False]
+    assert out["updates"]["waiting"] is None and out["updates"]["newer"] is None
+
+
+def test_a_waiting_release_whose_check_fails_switches_back_and_still_waits(
+        household, github, mac, page):  # noqa: F811
+    an_evening_left_it_for_the_family(household, github, "0.20.0")
+    mac.fails["0.20.0"] = ["Calendar"]
+
+    out = update_now(page.url)
+
+    assert (out["result"], out["version"], out["tried"]) == ("switched-back", INSTALLED, "0.20.0")
+    assert mac.version() == INSTALLED
+    assert out["updates"]["waiting"] == {"version": "0.20.0", "asks": ASKS}
+
+
+def test_a_release_that_needs_nobody_is_not_shown_as_waiting(household, github, mac, page):  # noqa: F811
+    a_look_found(household, github, "0.20.0")
+
+    assert updates(page.url)["waiting"] is None
 
 
 def test_update_now_with_nothing_newer_out_says_it_is_up_to_date(household, github, mac, page):  # noqa: F811

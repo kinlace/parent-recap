@@ -7,6 +7,11 @@ Usage: python scripts/release.py v0.4.0
 The zip comes from `git archive` of the tag, so local edits never leak in, and
 `.gitattributes` export-ignore rules drop the developer-only files. Unzipping it
 gives a `parent-recap/` folder that families move to ~/ParentRecap/plugin.
+
+The zip carries `release.json` as the tag has it: whether the release needs the family at the
+computer (ADR 0047, CONTRIBUTING.md "A release that needs the family"). The file is in the tree,
+so a release whose maintainer says nothing carries the value of the release before it forward as
+it is, and the build refuses a tag that dropped or lowered it.
 """
 from __future__ import annotations
 
@@ -27,6 +32,12 @@ VERSION_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 LOCAL_ARTEFACT = re.compile(r"(^|/)(\.git|\.venv|venv|__pycache__|\.scratch|\.pytest_cache|dist)(/|$)"
                             r"|\.py[co]$|(^|/)\.env(\..+)?$|(^|/)\.DS_Store$"
                             r"|(^|/)(google_oauth_client|calendar_credentials|calendar_token)\.json$")
+# Whether the release needs the family (ADR 0047): `background_from`, the lowest version that can
+# take it in the background, or null when every version can, and `asks`, a sentence in each of
+# ASKS_LANGUAGES on what the family will be asked. The program reads it from the verified zip
+# (family_brief/update.py).
+NEEDS_FAMILY = "release.json"
+ASKS_LANGUAGES = ("en", "fi", "zh")
 
 
 def git(*args: str) -> subprocess.CompletedProcess:
@@ -48,18 +59,70 @@ def is_highest(tag: str) -> bool:
     A hotfix on an older release line is not: moving `stable` back would downgrade every
     marketplace family, because Claude Code updates on any version change.
     """
-    def version(name: str) -> tuple[int, ...] | None:
-        m = VERSION_TAG.match(name)
-        return tuple(map(int, m.groups())) if m else None
-
     require_tag(tag)
-    if not (new := version(tag)):
+    if not (new := _version(tag)):
         fail(f"{tag} is not a vX.Y.Z tag")
-    return new == max(filter(None, map(version, git("tag", "--list").stdout.split())))
+    return new == max(filter(None, map(_version, git("tag", "--list").stdout.split())))
+
+
+def _version(name: str) -> tuple[int, ...] | None:
+    """A vX.Y.Z tag's version as numbers, or None for any other name."""
+    m =VERSION_TAG.match(name)
+    return tuple(map(int, m.groups())) if m else None
+
+
+def background_from(tag: str) -> str | None:
+    """The lowest version that can take `tag`'s release in the background, as its release.json
+    says, or None when it names none (or the tag is from before the file). Fails on a file the
+    program couldn't read."""
+    shown = git("show", f"{tag}:{NEEDS_FAMILY}")
+    if shown.returncode != 0:
+        return None
+    where = f"{NEEDS_FAMILY} at {tag}"
+    try:
+        data = json.loads(shown.stdout)
+    except ValueError:
+        fail(f"{where} isn't JSON")
+    if not isinstance(data, dict):
+        fail(f"{where} isn't a JSON object")
+    value, asks = data.get("background_from"), data.get("asks")
+    if value is None:
+        if asks:
+            fail(f"{where} has asks but no background_from: name the version, or set asks to null")
+        return None
+    if not isinstance(value, str) or not _version(f"v{value}"):
+        fail(f"{where}: background_from must be a version such as 0.4.0, or null")
+    if _version(f"v{value}") > _version(tag):
+        fail(f"{where}: background_from is {value}, higher than the release itself")
+    missing = [language for language in ASKS_LANGUAGES
+               if not (isinstance(asks, dict) and isinstance(asks.get(language), str)
+                       and asks[language].strip())]
+    if missing:
+        fail(f"{where}: asks needs a sentence on what the family will be asked in each of "
+             f"{', '.join(ASKS_LANGUAGES)}; missing: {', '.join(missing)}")
+    return value
+
+
+def check_needs_family(tag: str) -> None:
+    """Refuses a release whose release.json can't be read, or that dropped or lowered the value
+    of the release before it: a Household several releases behind is held back by the newest
+    release alone, so each release carries the value forward unless it raises it."""
+    value = background_from(tag)
+    new = _version(tag)
+    older = [t for t in git("tag", "--list").stdout.split() if (v := _version(t)) and v < new]
+    if not older:
+        return
+    before = max(older, key=_version)
+    carried = background_from(before)
+    if carried and (value is None or _version(f"v{value}") < _version(f"v{carried}")):
+        fail(f"{NEEDS_FAMILY} at {tag} names {value or 'no version'}, but {before} named {carried}: "
+             f"carry it forward (background_from {carried}, with its asks) or raise it")
 
 
 def build(tag: str) -> Path:
     require_tag(tag)
+    if not _version(tag):
+        fail(f"{tag} is not a vX.Y.Z tag")
 
     def at_tag(path: str) -> str:
         return git("show", f"{tag}:{path}").stdout
@@ -71,6 +134,7 @@ def build(tag: str) -> Path:
              f"   tag: {tag}\n"
              f"   .claude-plugin/plugin.json: {plugin}\n"
              f"   app/pyproject.toml: {package}")
+    check_needs_family(tag)
 
     with tempfile.TemporaryDirectory() as tmp:
         built = Path(tmp) / "release.zip"

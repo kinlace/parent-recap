@@ -60,7 +60,7 @@ Maintainers' own PRs don't wait for a review. Once CI is green, the author **reb
 
 ## Releasing
 
-Add the release's `What changes for families:` lines to `CHANGELOG.md` and bump the version in `.claude-plugin/plugin.json` and `app/pyproject.toml` on `main`, then tag that commit and push the tag:
+Add the release's `What changes for families:` lines to `CHANGELOG.md` and bump the version in `.claude-plugin/plugin.json` and `app/pyproject.toml` on `main`, raise the value in `release.json` if the release needs the family at the computer ("A release that needs the family" below), then tag that commit and push the tag:
 
 ```bash
 git tag v0.4.0 && git push origin v0.4.0
@@ -75,6 +75,26 @@ The tag push runs `.github/workflows/release.yml` (see [ADR 0002](docs/adr/0002-
 ```
 
 It is an HTML comment, so families reading the changelog don't see it. The server then doesn't deploy that release by itself, since its automatic switch-back can't restore data: it mails the maintainers that the release waits, and a maintainer deploys it with `sudo admin deploy vX.Y.Z` while able to switch back with `sudo admin rollback --restore`.
+
+**A release that needs the family.** A family's computer installs each release in the background, with nobody at it (ADR 0047). A release that can't be installed that way says so in `release.json` at the root, which ships in the zip, so the signature covers it. A release must raise the value to itself when installing it over an older version:
+
+- asks for the Mac password, a new permission or a QR scan, or shows any other dialog, or
+- changes the config or the state in a way the version before can't read, so that switching back wouldn't be safe. Until #549 settles how configs migrate, every such release raises the value.
+
+To raise it, set `background_from` to the release's own version, the lowest version that can take it in the background, and `asks` to one sentence in each of `en`, `fi` and `zh` on what the family will be asked, in the same commit as the version bump:
+
+```json
+{
+  "background_from": "0.4.0",
+  "asks": {
+    "en": "macOS asks for your Mac password once, to move the Mac's wake-up.",
+    "fi": "macOS kysyy Macin salasanaa kerran, jotta Macin herätys voidaan siirtää.",
+    "zh": "macOS 会问一次 Mac 密码，用来调整 Mac 的唤醒时间。"
+  }
+}
+```
+
+A Household on a version below `background_from` is never updated in the background: its Brief says once that the update is waiting and what it asks, the setup page shows the same with Update now, and the install then runs with its dialogs. A release that needs nothing leaves the file as it is, which carries the value forward: a Household several releases behind reads only the newest release's file, so the value may never be lowered or dropped, and `scripts/release.py` refuses to build a tag that does either, or whose file the program couldn't read. When a release raises a value that an earlier release set, its `asks` should still cover what that earlier release asks, as a Household from before both gets both. With no release that needed the family, `background_from` and `asks` are `null`.
 
 **The signature.** Before anything is published, the workflow's `sign` job signs the zip with `ssh-keygen -Y sign` under the namespace `release@parentrecap.com` (ADR 0047), and the release gets the signature beside the zip as `parent-recap-0.4.0.zip.sig`. The key is the secret `RELEASE_SIGNING_KEY` of the environment `release-signing`, which only `v*` tags may use; only the signing step is given it. The `publish` job then builds the zip again and checks the signature against the workflow's public key in `app/src/family_brief/release_signers`; when the secret is missing or the signature doesn't verify, the release stops before it is published and before `stable` moves. A family's computer accepts a zip signed by either key in that file: `workflow`, the workflow's key, or `backup`, an Ed25519 key a maintainer holds outside GitHub.
 

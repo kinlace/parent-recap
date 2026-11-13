@@ -1,6 +1,8 @@
 """The next Brief says what the evening's update did (ADR 0047, #916): that Parent Recap updated
 itself and to which version, with a link to what changed, the first time also that it updates
 itself and where to turn that off; or that an update failed and the version before still runs.
+With updates off it says that a newer release is out (#917), and for a release that needs the
+family, that it is waiting, what it will ask and how to start it (#918).
 
 Driven through main() as test_evening_update.py drives the evening run, with its fake GitHub and
 installed program. Each evening the run sends the Brief, or sends nothing, and then the update
@@ -19,7 +21,7 @@ from family_brief import update
 from family_brief.brief_text import TEXT
 from nights import PARTNER_EN
 from test_evening_update import DAY, at, evening, release_out  # noqa: F401  the fixture
-from test_update import INSTALLED, github, mac  # noqa: F401  the fixtures
+from test_update import ASKS, INSTALLED, github, mac, needing_family  # noqa: F401  the fixtures
 
 pytestmark = pytest.mark.macos
 
@@ -290,6 +292,139 @@ def test_with_updates_off_each_newer_release_is_said_once(evening, github, mac):
     first, second = evening.sent
     assert top(first.text) == [t.update_available.format(version="0.20.0")]
     assert top(second.text) == [t.update_available.format(version="0.21.0")]
+
+
+# ---------------------------------------------------------------- a release that needs the family (#918)
+
+def waits_for_the_family(h, github, mac, version: str = "0.20.0") -> None:  # noqa: F811
+    """`version` needs the family: out on NOW's evening, and a day later the evening run reads
+    that from its verified zip and leaves it for them."""
+    github.stable = version
+    github.publish(version, needing_family(version))
+    quiet(h)
+    evening_on(h, 0)
+    evening_on(h, 1)
+    assert mac.version() == INSTALLED and update.state(mac.folder)["waiting"]["version"] == version
+
+
+def waiting_line(language: str, version: str = "0.20.0") -> str:
+    return TEXT[language].update_waiting.format(version=version, asks=ASKS[language])
+
+
+@pytest.mark.parametrize("language", ["en", "zh", "fi"])
+def test_the_brief_says_once_that_an_update_is_waiting_what_it_asks_and_how_to_start_it(
+        evening, github, mac, golden, language):  # noqa: F811
+    evening.config["summary_language"] = language
+    waits_for_the_family(evening, github, mac)
+    assert evening.sent == []
+
+    a_message(evening, 2)
+    evening_on(evening, 2)
+
+    [email] = evening.sent
+    assert top(email.text) == [waiting_line(language)]
+    assert ASKS[language] in email.text and ASKS[language] in email.html
+    golden(f"evening_update_waiting.{language}.txt", without_unread_note(email.text))
+    golden(f"evening_update_waiting.{language}.html", html_for_golden(email.html))
+
+    # Once: the evenings after leave it waiting, and say nothing more of it.
+    a_message(evening, 3)
+    evening_on(evening, 3)
+    a_message(evening, 4)
+    evening_on(evening, 4)
+    assert len(evening.sent) == 3
+    assert all(UPDATE_MARK not in later.text for later in evening.sent[1:])
+    assert mac.version() == INSTALLED and mac.installs == []
+
+
+def test_the_waiting_line_says_how_to_start_it_in_each_reviewed_language():
+    for language, button in {"en": "Update now", "zh": "立即更新", "fi": "Päivitä nyt"}.items():
+        line = TEXT[language].update_waiting
+        assert "{version}" in line and "{asks}" in line, language
+        assert "Parent Recap Settings" in line and button in line, language
+
+
+def test_a_waiting_update_is_no_failed_update_in_the_brief(evening, github, mac):  # noqa: F811
+    evening.config["summary_language"] = "en"
+    waits_for_the_family(evening, github, mac)
+
+    a_message(evening, 2)
+    evening_on(evening, 2)
+
+    [email] = evening.sent
+    assert TEXT["en"].update_failed.split("{")[0] not in email.text
+
+
+def test_each_recipient_reads_what_a_waiting_update_asks_in_their_language(evening, github, mac):  # noqa: F811
+    evening.config["summary_language"] = "zh"
+    evening.config["email"]["to"] = ["parent@example.com", PARTNER_EN, {"address": "mummo@example.com",
+                                                                        "language": "fi"}]
+    waits_for_the_family(evening, github, mac)
+
+    a_message(evening, 2)
+    reply = evening.model_reply
+    english = {**reply, "message_digest": "- Library books are due back on Friday"}
+    finnish = {**reply, "message_digest": "- Kirjaston kirjat palautetaan perjantaina"}
+    evening.model_reply = [reply, english, finnish]
+    evening_on(evening, 2)
+
+    by_language = {"zh": "parent@example.com", "en": "partner@example.com", "fi": "mummo@example.com"}
+    for language, address in by_language.items():
+        [email] = [e for e in evening.sent if address in e.to]
+        assert top(email.text) == [waiting_line(language)]
+
+
+def test_a_newer_release_that_waits_in_its_place_is_said_once_too(evening, github, mac):  # noqa: F811
+    evening.config["summary_language"] = "en"
+    waits_for_the_family(evening, github, mac)
+    a_message(evening, 2)
+    github.stable = "0.21.0"
+    github.publish("0.21.0", needing_family("0.21.0", below="0.20.0"))
+    evening_on(evening, 2)  # says 0.20.0 waits, then this Mac first sees 0.21.0
+    quiet(evening)
+    evening_on(evening, 3)  # a day old: read, and it waits too
+
+    a_message(evening, 4)
+    evening_on(evening, 4)
+    a_message(evening, 5)
+    evening_on(evening, 5)
+
+    first, second, third = evening.sent
+    assert top(first.text) == [waiting_line("en")]
+    assert top(second.text) == [waiting_line("en", "0.21.0")]
+    assert UPDATE_MARK not in third.text
+
+
+def test_once_the_family_installed_it_the_brief_no_longer_says_it_waits(evening, github, mac):  # noqa: F811
+    evening.config["summary_language"] = "en"
+    waits_for_the_family(evening, github, mac)
+    assert evening.cli("update") == 0  # the family starts it before any Brief said so
+    assert mac.version() == "0.20.0"
+
+    a_message(evening, 2)
+    evening_on(evening, 2)
+
+    [email] = evening.sent
+    assert UPDATE_MARK not in email.text
+
+
+def test_with_updates_off_the_brief_says_only_that_a_release_that_needs_the_family_is_out(
+        evening, github, mac):  # noqa: F811
+    evening.config["summary_language"] = "en"
+    updates_off(evening)
+    github.stable = "0.20.0"
+    github.publish("0.20.0", needing_family("0.20.0"))
+    quiet(evening)
+    evening_on(evening, 0)
+    evening_on(evening, 1)
+
+    a_message(evening, 2)
+    evening_on(evening, 2)
+
+    [email] = evening.sent
+    assert top(email.text) == [TEXT["en"].update_available.format(version="0.20.0")]
+    assert ASKS["en"] not in email.text
+    assert not any(r["url"].endswith(".zip") for r in github.requests)  # nothing downloaded
 
 
 def test_each_recipient_reads_that_a_release_is_out_in_their_language(evening, github, mac):  # noqa: F811

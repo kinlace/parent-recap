@@ -234,7 +234,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_one_line_install.py` | `get.sh`, the line a family pastes                              |
 | `test_schoolsoft_capture_line.py` | The SchoolSoft capture's `get.sh` and `remove`, and the tool run without Parent Recap |
 | `test_codex_install.py`    | `install.sh --codex` installs the skills for Codex              |
-| `test_release.py`          | The release zip built from a tag                                |
+| `test_release.py`          | The release zip built from a tag, and its `release.json` (#918) |
 | `test_version.py`          | The plugin and the package ship the same version                |
 | `test_workflows.py`        | Every GitHub Actions workflow parses, what `tests.yml` runs, and `release.yml`'s signing and verify steps run as written |
 | `test_issue_loop.py`       | `issue-loop.sh`'s merge step and its checker                    |

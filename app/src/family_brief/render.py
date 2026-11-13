@@ -14,7 +14,7 @@ from . import feedback, wilma_egress
 from . import sources as source_registry
 from .actions import ics as ics_action
 from .brief import ActionItem, Brief
-from .brief_text import PRODUCT_NAME, BriefText, recommend_link, settings_help
+from .brief_text import PRODUCT_NAME, BriefText, recommend_link, reviewed_language, settings_help
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, failed_sign_in
 from .utils.dates import to_local
 
@@ -429,8 +429,9 @@ def _top_note(incomplete: bool, t: BriefText, assistant: str, translation_note: 
 def _update_note(note: BriefNote | None, t: BriefText) -> str:
     """What the evening's update did, in the program's own words: the version it updated to, with
     a link to what changed and, the first time, that Parent Recap updates itself and where to turn
-    that off; the version whose update failed, and that the one before still runs; or, with
-    updates turned off, that a newer version is out and how to get it (#917)."""
+    that off; the version whose update failed, and that the one before still runs; with updates
+    turned off, that a newer version is out and how to get it (#917); or that a version waits for
+    the family, what it will ask of them and how to start it (#918)."""
     if note is None:
         return ""
     lines = []
@@ -442,6 +443,10 @@ def _update_note(note: BriefNote | None, t: BriefText) -> str:
         lines.append(t.update_failed.format(version=note.failed, running=note.running))
     if note.available is not None:
         lines.append(t.update_available.format(version=note.available))
+    if note.waiting is not None:
+        # The release's own sentence, in a reviewed language or English; none leaves no gap.
+        line = t.update_waiting.format(version=note.waiting, asks=note.asked(reviewed_language(t)))
+        lines.append(" ".join(line.split()))
     return "\n".join(lines)
 
 

@@ -115,6 +115,7 @@ function choose(language) {
   const choice = document.querySelector(`input[name="language"][value="${language}"]`);
   if (choice) choice.checked = true;
   applyText();
+  if (page.updates) showUpdates(); // what a waiting update asks is the release's text, by language
 }
 
 function renderChoices() {
@@ -3356,7 +3357,8 @@ async function switchSending() {
 // ── Finish: the program's own update (ADR 0047). The installed version is always shown. Where
 // the program updates itself, so not on Windows or for a Hosted Household, the page also says
 // that it does, with the switch that turns that off and, once a newer release is out, Update now,
-// whose outcome it shows: updated, nothing newer, failed, or switched back.
+// whose outcome it shows: updated, nothing newer, failed, or switched back. A release that needs
+// the family at the computer isn't installed by itself: the page says it waits and what it asks.
 
 const UPDATE_MS = 2000;
 const updateStep = { timer: null };
@@ -3372,6 +3374,16 @@ function showUpdates() {
   if (updates.newer) {
     setText(document.getElementById("finish-updates-newer-version"), "finish.updates.newer",
       { version: updates.newer });
+  }
+  // A release that needs the family waits for Update now: the page says so, with the release's
+  // own sentence on what it will ask, in the page's language or else in English.
+  const waiting = updates.waiting;
+  document.getElementById("finish-updates-waiting").hidden = !waiting;
+  if (waiting) {
+    const asks = waiting.asks[page.language] || waiting.asks.en || "";
+    const said = document.getElementById("finish-updates-asks");
+    said.textContent = asks;
+    said.hidden = !asks;
   }
 }
 
