@@ -15,8 +15,17 @@ What it downloads, from where, how it is verified and what it never does:
   it: it must be the one asked for and higher than the installed one.
 - It reads nothing from the maintainers' gateway, so nothing the gateway answers (to a Run
   Report, ADR 0048, or anything else) can start an update or choose a release.
-- Nothing asks for admin rights: the installer is told it runs for an update
+- In the background nothing asks for admin rights: the installer is told it runs for an update
   (schedule_update.UPDATING), and leaves what would ask for a password as it is.
+- A release that needs the family at the computer (a password dialog, a new permission, a QR
+  scan, a config or state the version before can't read) says so in `release.json` inside the
+  zip, where the signature covers it: the lowest version that can take it in the background, and
+  a sentence in each language on what the family will be asked. It is read from nowhere but the
+  verified zip, and only the newest release's is read. The evening run never installs such a
+  release on an older version: it downloads it once to read that, keeps in the state that it
+  waits and what it asks, and doesn't download that version again. The family starts it, with
+  `parent-recap update` or the setup page's Update now, and then its installer runs with its
+  dialogs (without schedule_update.UPDATING).
 - It writes only to the places an install already writes: Parent Recap's folder (its `update/`
   folder for downloads and its state, `plugin/`, `versions/` and `app` through the installer,
   `logs/update.log`) and the files outside it that belong to the install, which
@@ -37,7 +46,8 @@ How to turn it off: the config's `updates.enabled`, which the setup page's switc
 off, the evening run still reads the version `stable` holds, that one request and no other, so
 the next Brief can say once per release that a newer one is out; it downloads nothing.
 `parent-recap update` and the setup page's Update now still install the newest release when the
-family asks. `status` is what the setup page, `doctor` and the report a family sends show of all
+family asks. Nothing is downloaded while it is off, so the program can't know whether that
+release needs the family: the Brief says only that it is out. `status` is what the setup page, `doctor` and the report a family sends show of all
 this, and it asks no host.
 """
 from __future__ import annotations
@@ -53,6 +63,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 from urllib.parse import urljoin, urlsplit
 
 import requests
@@ -76,6 +87,7 @@ FILES = (STATE, f".{STATE}.incoming")  # what else UPDATE holds
 LOG = "update.log"          # in Parent Recap's logs folder
 PLUGIN = "plugin"           # the plugin copy the install line puts in Parent Recap's folder
 PREFIX = "parent-recap"     # the folder a release zip unpacks into (scripts/release.py)
+NEEDS_FAMILY = "release.json"  # in a release zip: whether it needs the family (scripts/release.py)
 
 VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 MAX_DOWNLOAD = 200 * 1024 * 1024  # a release zip is a few MB: more is not one
@@ -98,8 +110,10 @@ class Refused(Exception):
 @dataclass(frozen=True)
 class Outcome:
     """What `update` did. `result` is one of: not-applicable, up-to-date, waiting (a release not
-    yet a day old, for the evening run), available (a newer release the evening run left alone,
-    as updates are off), updated, switched-back, failed. `version` is the one it now runs, where
+    yet a day old, for the evening run), needs-family (a release the evening run left for the
+    family to start, as it needs them at the computer), available (a newer release the evening
+    run left alone, as updates are off), updated, switched-back, failed. `version` is the one it
+    now runs, where
     it got that far, and `tried` the release it downloaded to install, where it got that far."""
     result: str
     message: str
@@ -112,12 +126,20 @@ class BriefNote:
     """What the next Brief says at its top about the evening's update (#916): the version it
     `updated` to, with `first` when it's the first such line the Household gets, which also says
     that Parent Recap updates itself; the version whose update `failed`, with the one `running`
-    as before; or the newer version that is `available` while updates are off (#917)."""
+    as before; the newer version that is `available` while updates are off (#917); or the version
+    that is `waiting` for the family to start it, with what it `asks` of them by language
+    (#918)."""
     updated: str | None = None
     first: bool = False
     failed: str | None = None
     running: str | None = None
     available: str | None = None
+    waiting: str | None = None
+    asks: dict[str, str] | None = None
+
+    def asked(self, language: str) -> str:
+        """What the waiting release asks of the family, in `language` or else in English."""
+        return asked(self.asks, language)
 
     def link(self) -> str:
         """What changed in the release it updated to: its CHANGELOG, newest release first."""
@@ -160,8 +182,12 @@ def state(folder: Path | None = None) -> dict:
     last failed version a Brief was to say so of, so each is said once) and `told_updates_itself`
     (whether a Brief has said that Parent Recap updates itself), and with updates off
     `tell_available` (the newer version on `stable`, until a Brief says so) and `told_available`
-    (the last version a Brief was to say so of, so each is said once). Kept in Parent Recap's
-    folder outside the versions, so a switch and a switch back keep it."""
+    (the last version a Brief was to say so of, so each is said once). For a release that needs
+    the family: `waiting` (its `version`, the lowest version that takes it in the background,
+    `from`, and what it `asks` by language, as its verified zip said; or None), which keeps the
+    evening run from downloading that version again, and `told_waiting` (the last version a Brief
+    said is waiting, so each is said once). Kept in Parent Recap's folder outside the versions,
+    so a switch and a switch back keep it."""
     path = (folder or own_node.home()) / UPDATE / STATE
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -170,6 +196,7 @@ def state(folder: Path | None = None) -> dict:
     return {"last_look": None, "last_result": None, "failed": None, "seen": None,
             "tell_updated": None, "tell_failed": None, "told_failed": None,
             "told_updates_itself": False, "tell_available": None, "told_available": None,
+            "waiting": None, "told_waiting": None,
             **(data if isinstance(data, dict) else {})}
 
 
@@ -265,13 +292,16 @@ class Status:
     """The update state, as the setup page, `doctor` and the report a family sends show it: the
     installed `version`; why the program doesn't update itself here (`unavailable`), or None
     where it does; whether updates are `enabled`; when it last looked for a newer release and
-    what came of it; and the `newer` version this computer has seen on `stable`, if any."""
+    what came of it; the `newer` version this computer has seen on `stable`, if any; and when
+    that version is `waiting` for the family to start it, what it `asks` of them by language."""
     version: str
     unavailable: str | None = None
     enabled: bool = True
     last_look: str | None = None
     last_result: str | None = None
     newer: str | None = None
+    waiting: str | None = None
+    asks: dict[str, str] | None = None
 
     def line(self) -> str:
         """All of it on one line, in `doctor`'s words."""
@@ -282,7 +312,12 @@ class Status:
                    "downloads nothing (parent-recap update on turns them on)")
         looked = (f"last looked {self.last_look}: {self.last_result}" if self.last_look
                   else "hasn't looked for a newer release yet")
-        return f"version {self.version}; {setting}; {looked}"
+        if self.waiting is None:
+            return f"version {self.version}; {setting}; {looked}"
+        asks = asked(self.asks, "en")
+        return (f"version {self.version}; {setting}; {looked}; an update is waiting: version "
+                f"{self.waiting} needs you at the computer{f' ({asks})' if asks else ''}, so it "
+                "isn't installed by itself (parent-recap update installs it)")
 
 
 def status(config: str | None = None) -> Status:
@@ -295,9 +330,14 @@ def status(config: str | None = None) -> Status:
     data = state(folder)
     seen = data["seen"]
     on_stable = seen.get("version") if isinstance(seen, dict) else None
+    waiting = _waiting(data, installed)
+    if waiting is not None and waiting["version"] != on_stable:
+        waiting = None  # a newer release is out since: what that one asks isn't known yet
     return Status(installed, enabled=enabled(config), last_look=data["last_look"],
                   last_result=data["last_result"],
-                  newer=on_stable if isinstance(on_stable, str) and newer(on_stable, installed) else None)
+                  newer=on_stable if isinstance(on_stable, str) and newer(on_stable, installed) else None,
+                  waiting=waiting["version"] if waiting else None,
+                  asks=waiting["asks"] if waiting else None)
 
 
 def _program_version() -> str:
@@ -417,6 +457,71 @@ def _is_parent_recap(plugin: Path) -> bool:
         return False
 
 
+# ---------------------------------------------------------------- a release that needs the family
+
+@dataclass(frozen=True)
+class _Needs:
+    """What a verified release zip says of needing the family: the lowest version that can take
+    it in the background (`background_from`), or None when every version can, and what the
+    family will be asked, by language."""
+    background_from: str | None = None
+    asks: dict[str, str] | None = None
+
+    def family(self, installed: str) -> bool:
+        """Whether a program at `installed` must wait for the family to take this release."""
+        return self.background_from is not None and newer(self.background_from, installed)
+
+
+def _needs(plugin: Path) -> _Needs:
+    """What the unpacked, verified release in `plugin` says of needing the family. A release
+    from before the file says nothing. One that can't be read raises Refused: scripts/release.py
+    builds none, and what it would ask is unknown."""
+    path = plugin / NEEDS_FAMILY
+    if not path.exists():
+        return _Needs()
+    unread = Refused(f"its {NEEDS_FAMILY}, which says whether it needs you at the computer, "
+                     "can't be read")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise unread from e
+    if not isinstance(data, dict):
+        raise unread
+    value = data.get("background_from")
+    if value is None:
+        return _Needs()
+    if not isinstance(value, str) or parsed(value) is None:
+        raise unread
+    return _Needs(value.strip(), _asks(data.get("asks")))
+
+
+def _asks(asks: object) -> dict[str, str]:
+    """The sentences of `asks` that are text, by language."""
+    if not isinstance(asks, dict):
+        return {}
+    return {language: text.strip() for language, text in asks.items()
+            if isinstance(language, str) and isinstance(text, str) and text.strip()}
+
+
+def asked(asks: dict[str, str] | None, language: str) -> str:
+    """What a release asks of the family, in `language` or else in English; empty when it didn't
+    say."""
+    return (asks or {}).get(language) or (asks or {}).get("en") or ""
+
+
+def _waiting(data: dict, installed: str | None) -> dict | None:
+    """`state`'s `waiting`, the release that waits for the family, while it still does: it is
+    whole, and the `installed` version is lower than the one that takes it in the background
+    (`from`). Once the family brought the program to that version or above, by this release or
+    another, nothing waits."""
+    waiting = data["waiting"]
+    if not (isinstance(waiting, dict) and isinstance(waiting.get("version"), str)
+            and isinstance(waiting.get("from"), str) and installed is not None
+            and newer(waiting["version"], installed) and newer(waiting["from"], installed)):
+        return None
+    return {"version": waiting["version"], "asks": _asks(waiting.get("asks"))}
+
+
 # ---------------------------------------------------------------- the update
 
 class _Updater:
@@ -443,11 +548,12 @@ class _Updater:
                  + (f"{len(failing)} failing: {', '.join(sorted(failing))}" if failing else "no failures"))
         return failing
 
-    def install(self, plugin: Path, version: str, spare: Path) -> bool:
+    def install(self, plugin: Path, version: str, spare: Path, dialogs: bool = False) -> bool:
         """Puts the release in `plugin/`, where the install line puts it, and runs its own
         installer, which installs it beside the running version and switches `app` to it. The
-        plugin copy before goes in `spare` until the update is done. Returns whether `app` now
-        points at `version`."""
+        plugin copy before goes in `spare` until the update is done. The installer is told it
+        runs for an update, so nothing asks for a password, unless `dialogs`: a release that
+        needs the family, which they started. Returns whether `app` now points at `version`."""
         target = self.folder / PLUGIN
         if target.exists() and not _is_parent_recap(target):
             raise Refused(f"{target} holds something that isn't Parent Recap, so it was left as it is")
@@ -459,8 +565,13 @@ class _Updater:
         command = ["/bin/bash", str(target / "install.sh")]
         if install_record.entries("codex-skill"):
             command.append("--codex")  # the Codex skills come with the release, as the line does
-        env = {**os.environ, "PARENT_RECAP_HOME": str(self.folder), UPDATING: "1"}
-        self.log("install", f"{version}: running its install.sh")
+        env = {**os.environ, "PARENT_RECAP_HOME": str(self.folder)}
+        if dialogs:
+            env.pop(UPDATING, None)
+        else:
+            env[UPDATING] = "1"
+        self.log("install", f"{version}: running its install.sh"
+                 + (", with its dialogs, as the family started it" if dialogs else ""))
         try:
             r = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True,
                                env=env, timeout=INSTALL_TIMEOUT)
@@ -489,12 +600,16 @@ class _Updater:
 
 
 def update(config: str | None = None, *, retry_failed: bool = True,
-           wait: timedelta | None = None) -> Outcome:
+           wait: timedelta | None = None, by_family: bool = True,
+           say: Callable[[str], None] | None = None) -> Outcome:
     """Looks for a newer release on `stable` and installs it, checks it with `doctor` and switches
     back when it fails a check the version before didn't. With `retry_failed` False, a version
     that failed before isn't tried again; with `wait`, a version is installed only once this Mac
-    has seen it on `stable` that long (the evening run's, `evening`). Never raises for what the
-    network or the release did: the Outcome says it."""
+    has seen it on `stable` that long (the evening run's, `evening`). With `by_family` False, as
+    in the evening run, a release that needs the family isn't installed: it is downloaded once,
+    and kept in the state as waiting. Started by the family, it installs with its dialogs, and
+    `say` is first told what it will ask. Never raises for what the network or the release did:
+    the Outcome says it."""
     if (reason := not_applicable(config)) is not None:
         return Outcome("not-applicable", reason)
     folder = own_node.running_from()
@@ -506,6 +621,12 @@ def update(config: str | None = None, *, retry_failed: bool = True,
     if isinstance(wanted, Outcome):
         return wanted
     seen = _seen(folder, wanted)
+    # Before a version that failed: one the family started and that switched back still waits.
+    waiting = _waiting(state(folder), installed)
+    if not by_family and waiting is not None and waiting["version"] == wanted:
+        log("look", f"{wanted} waits for the family; not downloaded again")
+        _save(folder, last_result=f"{wanted} waits for the family to start it", seen=seen)
+        return _left_for_the_family(installed, wanted)
     if not retry_failed and state(folder)["failed"] == wanted:
         log("look", f"{wanted} failed before; not tried again")
         _save(folder, last_result=f"{wanted} failed before; not tried again", seen=seen)
@@ -519,7 +640,14 @@ def update(config: str | None = None, *, retry_failed: bool = True,
             return Outcome("waiting", f"Version {wanted} is installed once it has been out a "
                            "day.", installed)
     _save(folder, seen=seen)
-    return _update_to(folder, config, log, session, installed, wanted)
+    return _update_to(folder, config, log, session, installed, wanted, by_family, say)
+
+
+def _left_for_the_family(installed: str, wanted: str) -> Outcome:
+    """What the evening run's update comes to for a release that needs the family: nothing was
+    installed, and nothing failed."""
+    return Outcome("needs-family", f"Version {wanted} needs you at the computer, so it wasn't "
+                   "installed by itself: parent-recap update installs it.", installed)
 
 
 def _look(folder: Path, log: _Log, session: requests.Session, installed: str) -> str | Outcome:
@@ -572,7 +700,7 @@ def evening(config: str | None = None) -> Outcome:
     the next Brief to say (BriefNote). With updates turned off it only looks (`look`)."""
     if not enabled(config):
         return look(config)
-    outcome = update(config, retry_failed=False, wait=EVENING_WAIT)
+    outcome = update(config, retry_failed=False, wait=EVENING_WAIT, by_family=False)
     if (folder := own_node.running_from()) is not None and outcome.tried is not None:
         _tell(folder, outcome)
     return outcome
@@ -597,7 +725,8 @@ def brief_note(folder: Path, updates_on: bool = True) -> BriefNote | None:
     """What the next Brief says about the evening's update, or None. An `updated` line is dropped
     once that version no longer runs, as after `parent-recap switch-back`. That a newer release
     is `available` is said only while updates are off (`updates_on` False) and the running
-    version is still older."""
+    version is still older; that one is `waiting` for the family only while they are on, the
+    running version is still older, and no Brief has said so of that version."""
     data = state(folder)
     updated, failed, available = data["tell_updated"], data["tell_failed"], data["tell_available"]
     current = versions.current(folder)
@@ -609,11 +738,16 @@ def brief_note(folder: Path, updates_on: bool = True) -> BriefNote | None:
         failed = None
     if updates_on or not isinstance(available, str) or running is None or not newer(available, running):
         available = None
-    if updated is None and failed is None and available is None:
+    waiting = _waiting(data, running) if updates_on else None
+    if waiting is not None and data["told_waiting"] == waiting["version"]:
+        waiting = None
+    if updated is None and failed is None and available is None and waiting is None:
         return None
     return BriefNote(updated=updated, first=updated is not None and not data["told_updates_itself"],
                      failed=failed["version"] if failed else None,
-                     running=failed["running"] if failed else None, available=available)
+                     running=failed["running"] if failed else None, available=available,
+                     waiting=waiting["version"] if waiting else None,
+                     asks=waiting["asks"] if waiting else None)
 
 
 def told(folder: Path, note: BriefNote | None) -> None:
@@ -629,6 +763,8 @@ def told(folder: Path, note: BriefNote | None) -> None:
         data.update(tell_failed=None)
     if note is not None and note.available is not None:
         data.update(tell_available=None, told_available=note.available)
+    if note is not None and note.waiting is not None:
+        data.update(told_waiting=note.waiting)
     if data != before:
         _write_state(folder, data)
 
@@ -646,7 +782,8 @@ def _seen(folder: Path, version: str) -> dict:
 
 
 def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Session,
-               installed: str, wanted: str) -> Outcome:
+               installed: str, wanted: str, by_family: bool = True,
+               say: Callable[[str], None] | None = None) -> Outcome:
     (folder / UPDATE).mkdir(mode=0o700, parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix=DOWNLOAD, dir=folder / UPDATE))
     updater = _Updater(folder, config, log)
@@ -681,8 +818,25 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
             raise Refused(f"the release zip holds version {inside}, not {wanted}, a version "
                           f"higher than the installed {installed}, so it was deleted")
         log("verify", f"{wanted}: the zip holds version {inside}")
+        needs = _needs(plugin)
+        dialogs = needs.family(installed)
+        waits = {"version": wanted, "from": needs.background_from, "asks": needs.asks}
+        if dialogs and not by_family:
+            log("verify", f"{wanted}: needs the family below {needs.background_from}; left for "
+                "them to start")
+            _save(folder, last_result=f"{wanted} waits for the family to start it", waiting=waits)
+            return _left_for_the_family(installed, wanted)
+        if dialogs:
+            log("verify", f"{wanted}: needs the family below {needs.background_from}; they "
+                "started it")
+            # Kept also when they start it before any evening read it: if it fails or switches
+            # back, it still waits for them, and the evening run doesn't download it to find out.
+            _save(folder, waiting=waits)
+            if say is not None:
+                say(f"Version {wanted} needs you at the computer. "
+                    f"{asked(needs.asks, 'en')}".rstrip())
         before = updater.doctor(installed)
-        if not updater.install(plugin, wanted, spare):
+        if not updater.install(plugin, wanted, spare, dialogs):
             updater.restore_plugin(spare)
             log("install", f"{wanted}: not installed; {installed} runs as it did")
             _save(folder, last_result=f"{wanted} didn't install", failed=wanted)
@@ -745,7 +899,7 @@ OFF = ("Updates are off: Parent Recap still looks once each evening whether a ne
 def cmd_update(args: argparse.Namespace) -> int:
     if args.setting is not None:
         return _cmd_setting(args.config, args.setting == "on")
-    outcome = update(args.config)
+    outcome = update(args.config, say=lambda text: print(text, flush=True))
     print(outcome.message)
     return 1 if outcome.result in ("failed", "switched-back") else 0
 

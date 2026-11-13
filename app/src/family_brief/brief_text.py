@@ -91,6 +91,9 @@ class BriefText:
     updates_itself: str                 # after the first `updated` line a Household gets
     update_failed: str                  # {version} that failed, {running} the one it still runs
     update_available: str               # {version} that is out, while updates are turned off (#917)
+    # {version} that waits for the family to start it, {asks}: the release's own sentence on
+    # what they will be asked, in this language or English (#918)
+    update_waiting: str
     message_time: str                  # when a message came: {day} {month} {hour} {minute}
 
     # ── At the top of the original, sent to a Recipient whose translation failed
@@ -223,6 +226,9 @@ EN = BriefText(
                   "{running}, as before. Nothing is needed from you.",
     update_available="🔄 Version {version} of Parent Recap is out. Updates are turned off, so it wasn't "
                      "installed. To install it, open Parent Recap Settings and press Update now.",
+    update_waiting="🔄 Version {version} of Parent Recap is out, and installing it needs you at the "
+                   "computer, so it is waiting for you. {asks} To install it, open Parent Recap Settings "
+                   "and press Update now.",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
     held_back="🔒 Held-back messages",
@@ -320,6 +326,8 @@ ZH = BriefText(
     update_failed="🔄 Parent Recap 更新到 {version} 版没有成功，所以它仍然运行原来的 {running} 版。你不需要做任何事。",
     update_available="🔄 Parent Recap 有新版本 {version} 了。自动更新已关闭，所以没有安装。要安装的话，"
                      "打开 Parent Recap Settings，点“立即更新”。",
+    update_waiting="🔄 Parent Recap 有新版本 {version} 了。安装它需要你在电脑前操作，所以它在等你来安装。{asks}"
+                   "要安装的话，打开 Parent Recap Settings，点“立即更新”。",
     message_time="{month:02}-{day:02} {hour:02}:{minute:02}",
     translation_failed="⚠️ 今晚的日报没能翻译成功，下面是原文。",
     held_back="🔒 未交给 AI 的消息",
@@ -412,6 +420,9 @@ FI = BriefText(
                   "aiemmalla versiolla {running}. Sinun ei tarvitse tehdä mitään.",
     update_available="🔄 Parent Recapista on ilmestynyt versio {version}. Päivitykset on kytketty pois, joten "
                      "sitä ei asennettu. Asenna se avaamalla Parent Recap Settings ja painamalla Päivitä nyt.",
+    update_waiting="🔄 Parent Recapista on ilmestynyt versio {version}. Sen asennus tarvitsee sinua "
+                   "tietokoneen ääressä, joten se odottaa sinua. {asks} Asenna se avaamalla Parent Recap "
+                   "Settings ja painamalla Päivitä nyt.",
     message_unreadable="yhtä viestiä ei voitu lukea",
     nothing_read="⚠️ Yhtäkään lähdettä ei voitu lukea tänä iltana, joten yhteenvetoa ei ole. Lähteiden viestit "
                  "tulevat mukaan ensimmäiseen koosteeseen, kun lähteet saadaan taas luettua.",
@@ -503,8 +514,13 @@ def recommend_link(t: BriefText) -> str:
 def settings_help(t: BriefText) -> str:
     """The README FAQ entry on changing a setting, in the language of `t`: a reviewed one's own,
     or the English one for any other language."""
-    code = next((code for code, text in TEXT.items() if text == t), "en")
-    return _SETTINGS_HELP.format(readme=_README.get(code, _README["en"]))
+    return _SETTINGS_HELP.format(readme=_README.get(reviewed_language(t), _README["en"]))
+
+
+def reviewed_language(t: BriefText) -> str:
+    """The code of the reviewed language `t` is the table of, or `en` for any other language's:
+    what the program has text of its own in beside the table."""
+    return next((code for code, text in TEXT.items() if text == t), "en")
 
 
 @dataclass(frozen=True)

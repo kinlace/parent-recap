@@ -1,6 +1,7 @@
 """The release command builds the zip families install from, straight from a tag."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -194,3 +195,109 @@ def test_is_highest_refuses_unknown_tag(repo):
 
     assert result.returncode != 0
     assert "v9.9.9" in result.stderr
+
+
+# ── A release that needs the family (ADR 0047, #918): release.json, which the zip carries
+
+ASKS = {"en": "macOS asks for your Mac password once.", "fi": "macOS kysyy Macin salasanaa kerran.",
+        "zh": "macOS 会问一次 Mac 密码。"}
+
+
+def needs_family(repo: Path, value: object, asks: object = None) -> None:
+    (repo / "release.json").write_text(json.dumps({"background_from": value, "asks": asks}))
+
+
+def cut(repo: Path, version: str) -> subprocess.CompletedProcess:
+    """A release as the release steps cut it: the versions bumped, tagged and built."""
+    set_versions(repo, version, version)
+    tag(repo, f"v{version}")
+    return release(repo, f"v{version}")
+
+
+def in_zip(repo: Path, version: str) -> dict:
+    with zipfile.ZipFile(repo / "dist" / f"parent-recap-{version}.zip") as z:
+        return json.loads(z.read("parent-recap/release.json"))
+
+
+def test_a_release_nobody_said_anything_of_names_no_version(repo):
+    assert cut(repo, "1.2.0").returncode == 0
+
+    assert in_zip(repo, "1.2.0") == {"background_from": None, "asks": None}
+
+
+def test_a_release_said_to_need_the_family_carries_the_version_and_what_it_asks_in_the_zip(repo):
+    needs_family(repo, "1.2.0", ASKS)
+
+    result = cut(repo, "1.2.0")
+
+    assert result.returncode == 0, result.stderr
+    assert in_zip(repo, "1.2.0") == {"background_from": "1.2.0", "asks": ASKS}
+
+
+def test_later_releases_carry_the_value_forward_when_the_maintainer_says_nothing(repo):
+    needs_family(repo, "1.2.0", ASKS)
+    assert cut(repo, "1.2.0").returncode == 0
+
+    for later in ("1.2.1", "1.3.0"):  # nothing said: the file is as the release before left it
+        result = cut(repo, later)
+        assert result.returncode == 0, result.stderr
+        assert in_zip(repo, later) == {"background_from": "1.2.0", "asks": ASKS}
+
+
+def test_a_later_release_may_raise_the_value(repo):
+    needs_family(repo, "1.2.0", ASKS)
+    assert cut(repo, "1.2.0").returncode == 0
+    needs_family(repo, "1.3.0", {**ASKS, "en": "You scan a QR code with WhatsApp."})
+
+    result = cut(repo, "1.3.0")
+
+    assert result.returncode == 0, result.stderr
+    assert in_zip(repo, "1.3.0")["background_from"] == "1.3.0"
+
+
+@pytest.mark.parametrize(("value", "says"), [(None, "names no version"), ("1.1.0", "names 1.1.0")])
+def test_refuses_a_release_that_dropped_or_lowered_the_value_of_the_release_before(repo, value, says):
+    needs_family(repo, "1.2.0", ASKS)
+    assert cut(repo, "1.2.0").returncode == 0
+    needs_family(repo, value, ASKS if value else None)
+
+    result = cut(repo, "1.3.0")
+
+    assert result.returncode != 0
+    assert says in result.stderr and "v1.2.0 named 1.2.0" in result.stderr
+    assert not (repo / "dist" / "parent-recap-1.3.0.zip").exists()
+
+
+def test_a_hotfix_on_an_older_line_answers_to_the_release_before_it_not_the_newest(repo):
+    assert cut(repo, "1.2.0").returncode == 0
+    needs_family(repo, "1.3.0", ASKS)
+    assert cut(repo, "1.3.0").returncode == 0
+    needs_family(repo, None)
+
+    result = cut(repo, "1.2.1")
+
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(("value", "asks", "says"), [
+    ("1.2.0", None, "missing: en, fi, zh"),
+    ("1.2.0", {**ASKS, "fi": " "}, "missing: fi"),
+    ("1.3.0", ASKS, "higher than the release itself"),
+    ("soon", ASKS, "must be a version"),
+    (None, ASKS, "asks but no background_from"),
+])
+def test_refuses_a_release_whose_note_the_program_could_not_read(repo, value, asks, says):
+    needs_family(repo, value, asks)
+
+    result = cut(repo, "1.2.0")
+
+    assert result.returncode != 0 and says in result.stderr
+    assert not (repo / "dist").exists()
+
+
+def test_refuses_a_note_that_is_not_json(repo):
+    (repo / "release.json").write_text("background_from: 1.2.0\n")
+
+    result = cut(repo, "1.2.0")
+
+    assert result.returncode != 0 and "isn't JSON" in result.stderr

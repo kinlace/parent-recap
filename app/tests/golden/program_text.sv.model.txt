@@ -80,6 +80,7 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "updates_itself": "Parent Recap now installs each new release by itself after the evening Brief. To turn this off, open Parent Recap Settings.",
   "update_failed": "🔄 An update of Parent Recap to version {version} didn't work, so it still runs version {running}, as before. Nothing is needed from you.",
   "update_available": "🔄 Version {version} of Parent Recap is out. Updates are turned off, so it wasn't installed. To install it, open Parent Recap Settings and press Update now.",
+  "update_waiting": "🔄 Version {version} of Parent Recap is out, and installing it needs you at the computer, so it is waiting for you. {asks} To install it, open Parent Recap Settings and press Update now.",
   "message_time": "{month:02}-{day:02} {hour:02}:{minute:02}",
   "translation_failed": "⚠️ Tonight's Brief couldn't be translated, so here it is as it was written.",
   "held_back": "🔒 Held-back messages",

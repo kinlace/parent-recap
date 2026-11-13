@@ -725,6 +725,12 @@
           <p id="finish-updates-closed" class="hint" data-text="finish.updates.closed" hidden></p>
           <div id="finish-updates-newer" hidden>
             <p id="finish-updates-newer-version"></p>
+            <!-- A release that needs the family at the computer waits for this button (#918):
+                 that it waits, and the release's own sentence on what it will ask. -->
+            <div id="finish-updates-waiting" hidden>
+              <p data-text="finish.updates.waiting"></p>
+              <p id="finish-updates-asks"></p>
+            </div>
             <p><button type="button" id="finish-updates-now" class="secondary" data-text="finish.updates.now"></button></p>
           </div>
           <div id="finish-updates-status" class="status" role="status" hidden>

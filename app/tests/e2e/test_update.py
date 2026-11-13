@@ -1,6 +1,7 @@
 """`parent-recap update` (ADR 0047): it installs the newest release `stable` holds, checks it with
 `doctor` and switches back when that fails where the version before passed; and each line of the
-statement at the top of family_brief/update.py.
+statement at the top of family_brief/update.py. A release that says in its zip that it needs the
+family (#918) installs with its dialogs when they start it.
 
 Driven through main() on real folders in a temporary HOME. The network edge is a fake GitHub
 (`Releases`) behind `requests`, which records every request. The release's own programs are the
@@ -611,6 +612,85 @@ def test_uninstall_removes_the_downloads_the_state_and_the_update_log(harness, g
 
     assert not (mac.folder / update.UPDATE).exists()
     assert not (mac.folder / "logs").exists()
+
+
+# ---------------------------------------------------------------- a release that needs the family (#918)
+
+ASKS = {"en": "macOS asks for your Mac password once.", "fi": "macOS kysyy Macin salasanaa kerran.",
+        "zh": "macOS 会问一次 Mac 密码。"}
+
+
+def needing_family(version: str, below: str | None = None, asks: Any = ASKS) -> bytes:
+    """A release zip that says it needs the family on every version below `below` (itself,
+    unless given), as scripts/release.py builds it from release.json."""
+    note = json.dumps({"background_from": below or version, "asks": asks})
+    return release_zip(version, extra={"parent-recap/release.json": note})
+
+
+def test_started_by_the_command_a_release_that_needs_the_family_installs_with_its_dialogs(
+        harness, github, mac, capsys):
+    github.stable = "0.20.0"
+    github.publish("0.20.0", needing_family("0.20.0"))
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 0 and mac.version() == "0.20.0"
+    # It first says what the family will be asked, then how it went.
+    asks, done = out.strip().split("\n")
+    assert asks == f"Version 0.20.0 needs you at the computer. {ASKS['en']}"
+    assert "updated from version 0.19.0 to 0.20.0" in done
+    # The installer isn't told to leave out what asks for a password.
+    assert ["PARENT_RECAP_UPDATING" in env for env in mac.install_envs] == [False]
+    assert "with its dialogs" in update_log(mac)
+    assert update.status(str(config_path(harness))).waiting is None
+
+
+def test_a_household_at_or_above_the_version_a_release_names_takes_it_as_any_other(
+        harness, github, mac, capsys):
+    github.stable = "0.21.0"
+    github.publish("0.21.0", needing_family("0.21.0", below=INSTALLED))  # carried forward
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 0 and mac.version() == "0.21.0"
+    assert "needs you at the computer" not in out
+    assert [env["PARENT_RECAP_UPDATING"] for env in mac.install_envs] == ["1"]
+
+
+def test_a_zip_whose_needs_family_value_was_changed_does_not_verify(harness, github, mac, capsys):
+    github.stable = "0.20.0"
+    signed = needing_family("0.20.0")
+    # Someone took the value out of the zip, so that it would install in the background.
+    github.publish("0.20.0", release_zip("0.20.0", extra={"parent-recap/release.json": json.dumps(
+        {"background_from": None, "asks": None})}), signature(signed))
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 1 and "signature doesn't verify" in out
+    assert mac.installs == [] and mac.version() == INSTALLED and no_downloads(mac)
+
+
+@pytest.mark.parametrize("note", ["not json", "[]", json.dumps({"background_from": "soon"}),
+                                  json.dumps({"background_from": 20})])
+def test_a_release_whose_needs_family_note_cannot_be_read_is_not_installed(harness, github, mac, capsys, note):
+    github.stable = "0.20.0"
+    github.publish("0.20.0", release_zip("0.20.0", extra={"parent-recap/release.json": note}))
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 1 and "release.json" in out and "can't be read" in out
+    assert mac.installs == [] and mac.version() == INSTALLED and no_downloads(mac)
+
+
+def test_a_release_that_names_no_version_installs_as_any_other(harness, github, mac, capsys):
+    github.stable = "0.20.0"
+    github.publish("0.20.0", release_zip("0.20.0", extra={"parent-recap/release.json": json.dumps(
+        {"background_from": None, "asks": None})}))
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 0 and mac.version() == "0.20.0" and "needs you" not in out
+    assert [env["PARENT_RECAP_UPDATING"] for env in mac.install_envs] == ["1"]
 
 
 # ---------------------------------------------------------------- the setting (#917)

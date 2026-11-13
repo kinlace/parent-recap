@@ -1,6 +1,7 @@
 """Updates, under Finish's "Later, if you need it": that Parent Recap installs new releases by
 itself after the evening Brief (ADR 0047), the switch that turns that off, the installed version,
-and Update now once a newer release is out. Where the program doesn't update itself (Windows, the
+and Update now once a newer release is out, with what it will ask when it is one that waits for
+the family (#918). Where the program doesn't update itself (Windows, the
 hosted version, a program not run from an installed release) the page gets the version alone."""
 from __future__ import annotations
 
@@ -111,12 +112,15 @@ def _run_is_going(context: Context) -> bool:
 
 def shown(context: Context) -> dict[str, Any]:
     """The update state as the page shows it: the installed version, whether the program updates
-    itself here (`available`), and where it does, whether that's turned on and the newer version
-    this computer has seen is out, if any. `report` is doctor's line of it, which the page puts
-    in what a family copies to us."""
+    itself here (`available`), and where it does, whether that's turned on, the newer version
+    this computer has seen is out, if any, and the version that is `waiting` for the family to
+    start it, as it needs them at the computer, with what it `asks` of them by language (#918).
+    `report` is doctor's line of it, which the page puts in what a family copies to us."""
     status = update.status(str(context.config))
     out: dict[str, Any] = {"available": status.unavailable is None, "version": status.version,
                            "report": status.line()}
     if status.unavailable is None:
-        out |= {"on": status.enabled, "newer": status.newer}
+        waiting = None if status.waiting is None else {"version": status.waiting,
+                                                       "asks": status.asks or {}}
+        out |= {"on": status.enabled, "newer": status.newer, "waiting": waiting}
     return out

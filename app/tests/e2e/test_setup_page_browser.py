@@ -1781,6 +1781,37 @@ def test_finish_says_parent_recap_updates_itself_and_its_switch_turns_that_off(
 
 
 @pytest.mark.posix
+def test_finish_shows_an_update_that_waits_for_the_family_with_what_it_asks_and_installs_it(
+        mac, github, tab, family, health):  # noqa: F811
+    from test_update import ASKS, needing_family
+    at_finish(family)
+    github.stable = "0.20.0"
+    github.publish("0.20.0", needing_family("0.20.0"))
+    # An evening's update read that the release needs the family, and left it for them (#918).
+    assert update.update(str(config_file(family)), by_family=False).result == "needs-family"
+    tab.reload()
+
+    expect(tab.get_by_text(text("finish.updates.newer", version="0.20.0"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.updates.waiting"))).to_be_visible()
+    expect(tab.locator("#finish-updates-asks")).to_have_text(ASKS["en"])
+    expect(updates_switch(tab)).to_be_checked()
+    # What it asks is the release's own sentence, in the page's language.
+    tab.locator("#language-switch").select_option("fi")
+    expect(tab.locator("#finish-updates-asks")).to_have_text(ASKS["fi"])
+    tab.locator("#language-switch").select_option("en")
+    expect(tab.locator("#finish-updates-asks")).to_have_text(ASKS["en"])
+
+    button(tab, "finish.updates.now").click()
+
+    status = tab.locator("#finish-updates-status")
+    expect(status).to_have_attribute("data-result", "finish.updates.updated")
+    expect(tab.get_by_text(text("finish.updates.version", version="0.20.0"))).to_be_visible()
+    expect(tab.locator("#finish-updates-waiting")).to_be_hidden()
+    assert mac.version() == "0.20.0"
+    assert ["PARENT_RECAP_UPDATING" in env for env in mac.install_envs] == [False]
+
+
+@pytest.mark.posix
 def test_update_now_shows_a_failure_with_the_update_state_to_copy_and_then_the_new_version(
         mac, github, tab, family, health):  # noqa: F811
     family.config["updates"] = {"enabled": False}
