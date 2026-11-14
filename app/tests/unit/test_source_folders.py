@@ -23,7 +23,7 @@ LISTS = {
 }
 
 # A module named in a string, as a record's `_in` names its hooks: sources.<group>.<name>...
-NAMED_IN_TEXT = re.compile(r"""["'](sources(?:\.\w+){2,})""")
+NAMED_IN_TEXT = re.compile(r"""["'](?:family_brief\.)?(sources(?:\.\w+){2,})""")
 
 
 def folders() -> list[str]:
@@ -58,9 +58,11 @@ def named(path: str, text: str) -> set[str]:
 
 
 def reached(path: str, text: str, folder: str) -> set[str]:
-    """The modules of the Source folder `folder` the file at `path` names."""
+    """The modules of the Source folder `folder` the file at `path` names, its group's package
+    among them, through which the folder can be reached too."""
     top = f"{ROOT}.sources.{folder.replace('/', '.')}"
-    return {m for m in named(path, text) if m == top or m.startswith(top + ".")}
+    group = top.rpartition(".")[0]
+    return {m for m in named(path, text) if m in (top, group) or m.startswith(top + ".")}
 
 
 def shared_files() -> list[str]:
@@ -94,6 +96,8 @@ def test_each_place_that_may_name_a_source_s_folder_is_shared_code():
     ("run.py", "import family_brief.sources.nl.konnect.doctor"),
     ("sources/record.py", "from .nl.konnect.record import KONNECT"),
     ("uninstall.py", 'check = _in("sources.nl.konnect.doctor", "check")'),
+    ("ops.py", 'importlib.import_module("family_brief.sources.nl.konnect.doctor")'),
+    ("ops.py", "from .sources import nl"),
 ])
 def test_a_shared_module_reaching_into_a_source_s_folder_is_found(path, text):
     assert reached(path, text, "nl/konnect")
@@ -103,7 +107,7 @@ def test_a_shared_module_reaching_into_a_source_s_folder_is_found(path, text):
     ("ops.py", "from . import sources"),
     ("ops.py", "from .sources import record"),
     ("run.py", "import family_brief.sources"),
-    ("collectors/evaka.py", "from ..sources.nl import other"),
+    ("collectors/evaka.py", "from ..sources import record as other"),
     ("ops.py", 'add(FAIL, "konnect", "sources.nl")'),
 ])
 def test_shared_code_naming_only_the_registry_is_not_reaching_into_a_folder(path, text):

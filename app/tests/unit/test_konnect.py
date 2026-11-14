@@ -6,8 +6,8 @@ from __future__ import annotations
 import pytest
 
 from conftest import konnect_child, konnect_conversation, konnect_news, konnect_planned
-from family_brief.sources.nl.konnect import collector as konnect
 from family_brief.config import Config
+from family_brief.sources.nl.konnect import collector as konnect
 from family_brief.sources.nl.konnect.config import KonnectSignin
 
 

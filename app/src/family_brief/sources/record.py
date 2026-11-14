@@ -137,5 +137,3 @@ def _collector(module: str) -> Callable[[Config, State, list[str]], Collected]:
 def _same_everywhere(label: str) -> dict[str, str]:
     """A brand's name, which each language writes as it is."""
     return {"en": label, "fi": label, "zh": label}
-
-
