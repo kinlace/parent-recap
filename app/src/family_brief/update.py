@@ -368,9 +368,7 @@ def status(config: str | None = None) -> Status:
     data = state(folder)
     seen = data["seen"]
     on_stable = seen.get("version") if isinstance(seen, dict) else None
-    skipped = _skipped(data, installed)
-    if skipped is not None:
-        on_stable = None  # the last look skipped what `stable` holds: nothing waits to be installed
+    skipped = _skipped(data, installed)  # a look that skips keeps no `seen`, so nothing is newer
     waiting = _waiting(data, installed)
     if waiting is not None and waiting["version"] != on_stable:
         waiting = None  # a newer release is out since: what that one asks isn't known yet
@@ -833,8 +831,8 @@ def _look(folder: Path, config: str | None, log: _Log, session: requests.Session
                        "the newest release.", installed)
     if not release.changes(installed, _used_parts(config)):
         log("look", f"{wanted} changes nothing this Household uses; not downloaded")
-        _save(folder, last_result=f"{wanted} is out and changes nothing this Household uses, so "
-              "it isn't installed", seen=None, skipped=wanted)
+        # What `status` says of `skipped` follows this on doctor's line, so it isn't said twice.
+        _save(folder, last_result=f"{wanted} is out", seen=None, skipped=wanted)
         return Outcome("skipped", SKIPPED[0].format(version=wanted, installed=installed),
                        installed, skipped=wanted)
     return wanted
@@ -899,7 +897,9 @@ def brief_note(folder: Path, updates_on: bool = True) -> BriefNote | None:
     once that version no longer runs, as after `parent-recap switch-back`. That a newer release
     is `available` is said only while updates are off (`updates_on` False) and the running
     version is still older; that one is `waiting` for the family only while they are on, the
-    running version is still older, and no Brief has said so of that version."""
+    running version is still older, and no Brief has said so of that version. Neither is said
+    once the last look skipped what `stable` holds, as it changes nothing the Household uses
+    (ADR 0051)."""
     data = state(folder)
     updated, failed, available = data["tell_updated"], data["tell_failed"], data["tell_available"]
     current = versions.current(folder)
@@ -911,10 +911,10 @@ def brief_note(folder: Path, updates_on: bool = True) -> BriefNote | None:
         failed = None
     if updates_on or not isinstance(available, str) or running is None or not newer(available, running):
         available = None
-    skipped = _skipped(data, running) is not None  # what `stable` holds isn't for this Household
-    if skipped:
+    skips = _skipped(data, running) is not None
+    if skips:
         available = None
-    waiting = _waiting(data, running) if updates_on and not skipped else None
+    waiting = _waiting(data, running) if updates_on and not skips else None
     if waiting is not None and data["told_waiting"] == waiting["version"]:
         waiting = None
     if updated is None and failed is None and available is None and waiting is None:

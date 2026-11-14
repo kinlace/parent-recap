@@ -128,7 +128,7 @@ def test_a_core_changed_in_a_release_between_is_installed_with_the_newest(harnes
     assert mac.version() == "0.21.0"
 
 
-@pytest.mark.parametrize("parts, konnect", [
+@pytest.mark.parametrize("said, konnect", [
     (None, False),                                     # a release.json from before `parts`
     ("everything", False),                             # `parts` that isn't one
     (without("core"), False),                          # without the core's
@@ -136,10 +136,10 @@ def test_a_core_changed_in_a_release_between_is_installed_with_the_newest(harnes
     (without("nl/konnect"), True),                     # without a connected Source's own part
     ({**parts(), "nl/konnect": None}, True),
 ])
-def test_what_the_file_does_not_say_counts_as_changed(harness, github, mac, capsys, parts, konnect):  # noqa: F811
+def test_what_the_file_does_not_say_counts_as_changed(harness, github, mac, capsys, said, konnect):  # noqa: F811
     if konnect:
         with_konnect(harness)
-    out_on_stable(github, "0.20.0", parts)
+    out_on_stable(github, "0.20.0", said)
 
     assert update_command(harness, capsys)[0] == 0
 
@@ -196,8 +196,7 @@ def test_the_evening_run_skips_it_with_one_request_and_no_brief_names_it(evening
     assert all(UPDATE_MARK not in brief.text and "0.20.0" not in brief.text for brief in evening.sent)
     state = update.state(mac.folder)
     assert state["skipped"] == "0.20.0" and state["seen"] is None
-    assert state["last_result"] == ("0.20.0 is out and changes nothing this Household uses, so it "
-                                    "isn't installed")
+    assert state["last_result"] == "0.20.0 is out"
     # No failure, and nothing waits for the family.
     assert (state["failed"], state["tell_failed"], state["waiting"]) == (None, None, None)
 
@@ -299,9 +298,9 @@ def test_doctor_says_a_skipped_release_is_no_failure_and_no_waiting_update(
     line = updates_line(harness, capsys)
 
     assert line.startswith(f"{ops.OK} Updates: version {INSTALLED}; updates are on")
-    assert line.endswith("0.20.0 is out and changes nothing this Household uses, so it isn't "
-                         "installed; nothing to install: version 0.20.0 changes nothing this "
-                         "Household uses")
+    assert line.endswith(": 0.20.0 is out; nothing to install: version 0.20.0 changes nothing "
+                         "this Household uses")
+    assert line.count("changes nothing") == 1
     assert "waiting" not in line and "fail" not in line
     status = update.status(None)
     assert (status.skipped, status.newer, status.waiting) == ("0.20.0", None, None)
