@@ -2878,7 +2878,12 @@ async function askConfirmed(round) {
   try {
     out = await post("api/gmail/confirmed", {});
   } catch {
-    if (round === confirmWatch.round) confirmWatch.asking = false;
+    if (round !== confirmWatch.round) return;
+    if (alive.restarting) { // the program is starting again in a newer version: asked again
+      confirmWatch.timer = setTimeout(() => askConfirmed(round), CONFIRM_MS);
+      return;
+    }
+    confirmWatch.asking = false;
     return; // the server's gone, which watchServer says
   }
   if (round !== confirmWatch.round) return;

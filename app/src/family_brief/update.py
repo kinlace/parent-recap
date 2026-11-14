@@ -632,7 +632,7 @@ class _Updater:
 
     def program(self) -> list[str]:
         """The `parent-recap` `app` points at, with the config the update was given."""
-        command = [str(self.folder / versions.APP / ".venv" / "bin" / "parent-recap")]
+        command = [installed_program(self.folder)]
         return command + (["-c", self.config] if self.config else [])
 
     def doctor(self, version: str) -> set[str]:
@@ -1151,12 +1151,17 @@ def before_adding(part: str | None, config: str | None = None,
     return None if outcome.result in ("up-to-date", "skipped", "not-applicable") else outcome
 
 
+def installed_program(folder: Path) -> str:
+    """The `parent-recap` of the version `app` points at in Parent Recap's `folder`."""
+    return str(folder / versions.APP / ".venv" / "bin" / "parent-recap")
+
+
 def run_again(arguments: list[str]) -> int:
     """Runs the installed program, the version `app` now points at, with `arguments`, in this
     terminal, and returns its exit status: how a step goes on once `before_adding` updated."""
     folder = own_node.running_from()
     assert folder is not None
-    program = str(folder / versions.APP / ".venv" / "bin" / "parent-recap")
+    program = installed_program(folder)
     try:
         return subprocess.run([program, *arguments], check=False).returncode
     except OSError as e:

@@ -131,8 +131,6 @@ class Context:
     # it couldn't, or None to go on. Updates puts its own in.
     newest_first: Callable[[str | None], dict[str, Any] | None] = field(
         default=lambda part: None, init=False)
-    # An update on this page installed a newer version than the one this server runs.
-    outdated: bool = field(default=False, init=False)
     # The server stops to be started again by the installed version, at the same address.
     restart: bool = field(default=False, init=False)
 

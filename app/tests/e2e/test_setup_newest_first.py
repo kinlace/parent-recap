@@ -80,7 +80,7 @@ def nothing_was_added(harness, portal) -> bool:  # noqa: F811
 # ---------------------------------------------------------------- it updates first
 
 def test_setup_konnect_updates_first_and_the_new_version_runs_the_step(
-        github, harness,mac, portal, new_version, capsys):  # noqa: F811
+        github, harness, mac, portal, new_version, capsys):  # noqa: F811
     out_on_stable(github, "0.20.0", KONNECT_ONLY)
     asked_before_the_switch: list[int] = []
     mac.after_switch = lambda _env: asked_before_the_switch.append(len(portal.requests)) or ""
@@ -104,7 +104,7 @@ def test_setup_konnect_updates_first_and_the_new_version_runs_the_step(
 
 
 def test_a_household_that_skipped_the_release_before_gets_it_when_it_adds_konnect(
-        github, harness,mac, portal, new_version, capsys):  # noqa: F811
+        github, harness, mac, portal, new_version, capsys):  # noqa: F811
     out_on_stable(github, "0.20.0", KONNECT_ONLY)
     assert harness.cli("update") == 0  # skipped: this Household has no Konnect
     assert mac.version() == INSTALLED and update.state(mac.folder)["skipped"] == "0.20.0"
@@ -117,7 +117,7 @@ def test_a_household_that_skipped_the_release_before_gets_it_when_it_adds_konnec
 
 
 def test_a_release_that_needs_the_family_installs_with_its_dialogs_as_one_they_started(
-        github, harness,mac, portal, new_version, capsys):  # noqa: F811
+        github, harness, mac, portal, new_version, capsys):  # noqa: F811
     out_on_stable(github, "0.20.0", KONNECT_ONLY)
     github.publish("0.20.0", needing_family("0.20.0"))
 
@@ -128,7 +128,7 @@ def test_a_release_that_needs_the_family_installs_with_its_dialogs_as_one_they_s
     assert "Version 0.20.0 needs you at the computer." in err
 
 
-def test_every_source_with_a_part_of_its_own_has_the_same_step(github, harness,mac, capsys):  # noqa: F811
+def test_every_source_with_a_part_of_its_own_has_the_same_step(github, harness, mac, capsys):  # noqa: F811
     with_parts = [s.name for s in sources.ALL if s.part is not None]
     assert sorted(with_parts) == ["eepos", "evaka", "konnect", "myclub", "socialschools"]
     arguments = {"eepos": ("--school", "emo", "--username", "a"),
@@ -152,7 +152,7 @@ def test_every_source_with_a_part_of_its_own_has_the_same_step(github, harness,m
     ("0.21.0", parts(core="0.21.0", myclub="0.20.0")),        # or changed another Source
 ])
 def test_a_part_that_is_not_newer_runs_the_step_at_once_and_downloads_nothing(
-        github, harness,mac, portal, new_version, capsys, on_stable, said):  # noqa: F811
+        github, harness, mac, portal, new_version, capsys, on_stable, said):  # noqa: F811
     out_on_stable(github, on_stable, said)
     before = update.state(mac.folder)
 
@@ -165,11 +165,12 @@ def test_a_part_that_is_not_newer_runs_the_step_at_once_and_downloads_nothing(
     assert update.state(mac.folder) == before  # the evening's look is left as it was
 
 
-def test_a_step_whose_source_has_no_part_asks_no_host(github, harness,mac, capsys):  # noqa: F811
+def test_a_source_without_a_part_and_a_step_that_adds_none_ask_no_host(github, harness, mac, capsys):  # noqa: F811
     out_on_stable(github, "0.20.0", parts(core="0.20.0"))
+    # Gmail's code is still in the shared modules: its changes are the core's.
     assert sources.GMAIL.part is None and update.needed_to_add(sources.GMAIL.part) is None
 
-    code, out, _ = step(harness, capsys, "setup", "status", typed=None)
+    step(harness, capsys, "setup", "status", typed=None)
 
     assert github.requests == [] and mac.version() == INSTALLED
 
@@ -185,7 +186,7 @@ def test_a_program_that_does_not_update_itself_runs_the_step_at_once(github, har
 
 @pytest.mark.parametrize("said", [None, {"core": INSTALLED}, {**KONNECT_ONLY, "nl/konnect": "soon"}])
 def test_what_the_file_does_not_say_of_the_part_counts_as_changed(
-        github, harness,mac, portal, new_version, capsys, said):  # noqa: F811
+        github, harness, mac, portal, new_version, capsys, said):  # noqa: F811
     out_on_stable(github, "0.20.0", said)
 
     code, out, _ = step(harness, capsys, *KONNECT)
@@ -202,7 +203,7 @@ SAYS = {"en": ("has to update itself before Konnect is added", "wasn't added and
 
 @pytest.mark.parametrize("language", ["en", "fi", "zh"])
 def test_without_a_network_the_step_says_so_in_the_family_s_language_and_stops(
-        github, harness,mac, portal, new_version, capsys, language):  # noqa: F811
+        github, harness, mac, portal, new_version, capsys, language):  # noqa: F811
     harness.config["summary_language"] = language
     github.stable = None  # the look gets no answer it can read
 
@@ -216,7 +217,7 @@ def test_without_a_network_the_step_says_so_in_the_family_s_language_and_stops(
     assert mac.version() == INSTALLED
 
 
-def test_a_language_without_reviewed_text_gets_it_in_english(github, harness,mac, portal, capsys):  # noqa: F811
+def test_a_language_without_reviewed_text_gets_it_in_english(github, harness, mac, portal, capsys):  # noqa: F811
     harness.config["summary_language"] = "sv"
     github.stable = None
 
@@ -226,7 +227,7 @@ def test_a_language_without_reviewed_text_gets_it_in_english(github, harness,mac
 
 
 def test_a_signature_that_does_not_verify_stops_the_step_with_the_old_code(
-        github, harness,mac, portal, new_version, capsys):  # noqa: F811
+        github, harness, mac, portal, new_version, capsys):  # noqa: F811
     out_on_stable(github, "0.20.0", KONNECT_ONLY)
     data = release_zip("0.20.0")
     github.publish("0.20.0", data, signature(data, key="someone-else"))
@@ -240,7 +241,7 @@ def test_a_signature_that_does_not_verify_stops_the_step_with_the_old_code(
 
 
 def test_a_release_that_fails_its_check_switches_back_and_stops_the_step(
-        github, harness,mac, portal, new_version, capsys):  # noqa: F811
+        github, harness, mac, portal, new_version, capsys):  # noqa: F811
     out_on_stable(github, "0.20.0", KONNECT_ONLY)
     mac.fails["0.20.0"] = ["Calendar"]
 
@@ -254,7 +255,7 @@ def test_a_release_that_fails_its_check_switches_back_and_stops_the_step(
 
 @pytest.mark.parametrize("language", ["en", "fi", "zh"])
 def test_while_a_brief_is_being_made_the_step_says_it_is_busy_and_stops(
-        github, harness,mac, portal, new_version, capsys, language):  # noqa: F811
+        github, harness, mac, portal, new_version, capsys, language):  # noqa: F811
     harness.config["summary_language"] = language
     out_on_stable(github, "0.20.0", KONNECT_ONLY)
     busy = {"en": "it is busy right now", "fi": "juuri nyt muuta tekeillä", "zh": "它现在正忙"}

@@ -28,7 +28,7 @@ from pathlib import Path
 from secrets import token_urlsafe
 from typing import Any, TypeVar
 
-from .. import own_node, setup_connect, setup_report, setup_save, versions
+from .. import own_node, setup_connect, setup_report, setup_save, update
 from ..system import desktop, profile, secrets
 from .context import Action, Context, Page, Phase
 from .phases import PHASES
@@ -70,9 +70,11 @@ def cmd_page(args: argparse.Namespace) -> int:
     at = _started_again()
     if at is not None:
         try:  # at the address the page in the browser already has
-            return serve(SetupServer(Context(config), port=at[0], code=at[1]), opened=True)
+            server = SetupServer(Context(config), port=at[0], code=at[1])
         except OSError:  # the port is taken since: a new page, as if started by hand
             pass
+        else:
+            return serve(server, opened=True)
     return serve(SetupServer(Context(config)))
 
 
@@ -98,11 +100,12 @@ def serve(server: SetupServer, opened: bool = False) -> int:
         print(json.dumps(out, ensure_ascii=False), flush=True)
     try:
         server.serve_until_idle()
-    except KeyboardInterrupt:
+    except KeyboardInterrupt:  # the family ended it: it isn't started again
         server.stop()
-    if server.context.restart:
-        server.stop()  # what a phase has under way ends first
-        start_again(server)  # which doesn't come back when it works
+    else:
+        if server.context.restart:
+            server.stop()  # what a phase has under way ends first
+            start_again(server)  # which doesn't come back when it works
     print(closed_line(server.context.chosen_language() or "en"), flush=True)
     return 0
 
@@ -116,8 +119,8 @@ def start_again(server: SetupServer) -> None:
     folder = own_node.running_from()
     if folder is None:
         return
-    program = str(folder / versions.APP / ".venv" / "bin" / "parent-recap")
-    env = {**os.environ, STARTED_AGAIN: f"{server.address[1]} {server.code}"}
+    program = update.installed_program(folder)
+    env ={**os.environ, STARTED_AGAIN: f"{server.address[1]} {server.code}"}
     sys.stdout.flush()
     sys.stderr.flush()
     try:
@@ -270,6 +273,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(*reply)
             if setup.context.closing:  # setup is done, and the page has been told
                 setup.stop()
+            elif setup.context.restart:  # the page has been told to wait for the new version
+                setup.context.stopped.set()
             return None
         return self._send(HTTPStatus.NOT_FOUND, b"Not found\n", "text/plain; charset=utf-8")
 
