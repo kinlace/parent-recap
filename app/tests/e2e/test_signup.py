@@ -48,7 +48,7 @@ from conftest import eepos_entry, eepos_student, evaka_child, evaka_event, myclu
 from fake_sources import EEPOS_PASSWORD, EVAKA_PASSWORD
 from fake_household_host import FakeHouseholdHost
 from fake_system import LINUX
-from setup_page import CAN_LISTEN, Response, _Connection, _PairedServer, wait_for
+from setup_page import CAN_LISTEN, Response, _Connection, _PairedServer, pause, wait_for
 from test_setup_wilma import ESPOO, WILMA_PASSWORD, WilmaCLI
 from test_setup_wilma import wilma_cli  # noqa: F401
 
@@ -169,7 +169,7 @@ def result(s: SignUp, code: str) -> Response:
         if REFRESH not in text(r):
             return r
         assert time.monotonic() < deadline, text(r)
-        time.sleep(0.05)
+        pause(0.05)
 
 
 def until(s: SignUp, code: str, shows: Callable[[str], bool]) -> str:
@@ -181,7 +181,7 @@ def until(s: SignUp, code: str, shows: Callable[[str], bool]) -> str:
         if shows(html):
             return html
         assert time.monotonic() < deadline, html
-        time.sleep(0.05)
+        pause(0.05)
 
 
 def marks(html: str, language: str, steps: tuple[str, ...] = STEPS) -> str:
