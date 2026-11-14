@@ -17,9 +17,8 @@ from typing import Any
 import pytest
 import yaml
 
-from family_brief import feedback, ops, setup_save, setup_server
+from family_brief import ops, setup_save, setup_server
 from family_brief.config import Config
-from nights import FEEDBACK
 from test_setup_steps import HeaderImap
 from setup_page import (APP_PASSWORD, PAGE_DIR, Response, at_the_check_step, call, check_page, config_file,
                         confirm, connect_done, health_result, more_progress, save_progress, wait_for)
@@ -362,8 +361,7 @@ def test_a_health_check_that_fails_keeps_the_page_and_says_which_check(harness, 
     health.results = [
         (ops.OK, "config", "Config file", "~/.family/config.yaml, 2 kids"),
         (ops.FAIL, "gmail", "Gmail", "IMAP login failed: parent@example.com rejected"),
-        (ops.WARN, "feedback", "Pilot feedback", "feedback is on but prefill_base_url or fields is "
-         "missing"),
+        (ops.WARN, "weekend", "Weekend Picks", "no event source answered"),
         ops.Check(ops.FAIL, "myclub", "MyClub (Mia)",
                   "subscription link doesn't open: x.myclub.fi answered HTTP 404", subject="Mia")]
 
@@ -376,8 +374,7 @@ def test_a_health_check_that_fails_keeps_the_page_and_says_which_check(harness, 
         {"check": "config", "status": "ok"},
         {"check": "gmail", "status": "fail",
          "detail": "IMAP login failed: parent@example.com rejected"},
-        {"check": "feedback", "status": "warn",
-         "detail": "feedback is on but prefill_base_url or fields is missing"},
+        {"check": "weekend", "status": "warn", "detail": "no event source answered"},
         {"check": "myclub", "status": "fail", "kid": "Mia",
          "detail": "subscription link doesn't open: x.myclub.fi answered HTTP 404"}]}
     assert "config.yaml" not in json.dumps(out)
@@ -390,36 +387,11 @@ def test_a_health_check_that_fails_keeps_the_page_and_says_which_check(harness, 
 
 def test_warnings_alone_let_setup_move_on(harness, page, health):
     at_the_check_step(harness)
-    health.results.append((ops.WARN, "feedback", "Pilot feedback", "feedback.household_label is empty"))
+    health.results.append((ops.WARN, "weekend", "Weekend Picks", "no event source answered"))
 
     confirm(page.url)
 
     assert health_result(page.url)["result"] == "ok"
-
-
-def test_a_pilot_household_is_not_asked_for_a_feedback_label_setup_makes_its_pseudonym(
-        harness, page, health):
-    # #491: nothing to fill in for pilot feedback. Setup makes the label, a random one (#493), which
-    # stays on the Mac, and the Form only ever gets the pseudonym made from it.
-    harness.config["feedback"] = {k: v for k, v in FEEDBACK.items() if k != "household_label"}
-    at_the_check_step(harness)
-
-    assert "feedback" not in check_page(page.url)
-    assert confirm(page.url, household_label="Virtanen family").status == 400
-
-    assert confirm(page.url).json()["result"] == "checking"
-    label = Config.load(config_file(harness)).feedback.household_label
-    assert re.fullmatch(r"household-[0-9a-f]{8}", label)
-    assert re.fullmatch(r"Household [0-9a-f]{6}", feedback.pseudonym(label))
-
-
-def test_a_pilot_household_keeps_the_label_it_has(harness, page, health):
-    harness.config["feedback"] = FEEDBACK  # the label is 王家
-    at_the_check_step(harness)
-
-    assert confirm(page.url).json()["result"] == "checking"
-
-    assert Config.load(config_file(harness)).feedback.household_label == "王家"
 
 
 def signed_in(harness, ai, monkeypatch) -> None:

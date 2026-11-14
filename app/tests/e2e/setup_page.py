@@ -223,7 +223,7 @@ def offered_ais(url: str) -> list[str]:
 def welcome(url: str, **answers: Any) -> Response:
     """Welcome's answers, with the AI the page offers first on this system unless given."""
     return call(url, "api/welcome", method="POST",
-                body={"ai": offered_ais(url)[0], "partner": None, "feedback": False, **answers})
+                body={"ai": offered_ais(url)[0], "partner": None, **answers})
 
 
 def check_ai(url: str, name: str) -> Response:

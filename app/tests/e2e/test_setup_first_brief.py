@@ -7,7 +7,6 @@ Assertions are on what the page and the family see: the responses, the config an
 and what was opened."""
 from __future__ import annotations
 
-import html
 import json
 import re
 import threading
@@ -16,13 +15,12 @@ from typing import Any
 import pytest
 import yaml
 
-from family_brief import feedback, gateway, run_lock, setup_save, setup_server, setup_status
+from family_brief import gateway, run_lock, setup_save, setup_server, setup_status
 from family_brief.config import Config
 from family_brief.system import jobs
 from conftest import GATEWAY_KEY, msg
-from nights import FEEDBACK, FORM, feedback_links
 from setup_page import (APP_PASSWORD, PAGE_DIR, Response, at_the_check_step, call, config_file, connect_done,
-                        more_progress, wait_for)
+                        inside, more_progress, wait_for)
 from setup_page import clock, page  # noqa: F401
 
 
@@ -126,8 +124,7 @@ def test_the_page_shows_progress_while_the_brief_is_made(harness, page, monkeypa
         assert go.wait(5)
         lines.extend(['{"preview": "writing"}',
                       json.dumps({"preview": "made", "subject": "Parent Recap · 2026-09-27",
-                                  "text": "Brief", "html": "<html><body>Brief</body></html>",
-                                  "feedback": None})])
+                                  "text": "Brief", "html": "<html><body>Brief</body></html>"})])
         return 0, "\n".join(lines) + "\n"
     monkeypatch.setattr(jobs, "run_detached", job)
 
@@ -354,29 +351,18 @@ def test_it_is_not_sent_while_an_evening_run_is_going(harness, page):
     assert send_it_to_me(page.url).json()["result"] == "sent"
 
 
-def test_a_pilot_household_can_say_something_is_wrong_through_the_feedback_form(harness, page):
-    at_the_first_brief(harness, feedback=FEEDBACK)
+def test_a_config_with_pilot_feedback_still_on_makes_a_first_brief_without_a_feedback_button(harness, page):
+    # Pilot feedback is gone (#939): a config written before still turns it on, to no effect.
+    at_the_first_brief(harness, feedback={"enabled": True, "household_label": "王家",
+                                          "prefill_base_url": "https://docs.google.com/forms/d/e/FORM_ID/viewform"})
     make_brief(page.url)
 
     out = brief_made(page.url)
 
-    assert out["feedback"] is True
-    assert FORM not in json.dumps({k: v for k, v in out.items() if k != "html"})
-    r = call(page.url, "api/brief/feedback", method="POST", body={})
-    assert r.json() == {"result": "opened"}
-    # The Brief's own Digest link, pre-filled with tonight's Digest.
-    [(_, answers, _)] = feedback_links(f'<a href="{html.escape(harness.desktop.opened[-1])}">x</a>')
-    assert answers["verdict"] == feedback.DIGEST_WRONG and answers["item_text"] == BRIEF_TEXT
-    assert answers["household"] == "Household 24ebb1"  # 王家's pseudonym, as in the evening's Brief
-
-
-def test_only_a_pilot_household_has_the_feedback_button(harness, page):
-    at_the_first_brief(harness, feedback={**FEEDBACK, "enabled": False})
-    make_brief(page.url)
-
-    assert brief_made(page.url)["feedback"] is False
-    r = call(page.url, "api/brief/feedback", method="POST", body={})
-    assert r.status == 400 and harness.desktop.opened == []
+    assert set(out) == {"result", "html"} and "docs.google.com/forms" not in out["html"]
+    assert call(page.url, "api/brief/feedback", method="POST", body={}).status == 404
+    assert harness.desktop.opened == []
+    assert "feedback" not in inside((PAGE_DIR / "index.html").read_text(), "brief-actions")
 
 
 def test_every_first_brief_result_is_explained_in_all_three_languages():

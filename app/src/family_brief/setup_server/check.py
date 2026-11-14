@@ -112,7 +112,7 @@ class Check(Phase):
         their everyday names; the WhatsApp groups, those linked to a Kid ticked (none without
         WhatsApp), each saying whether the Brief sums up its general talk too (#841); the Gmail
         senders that look like school, city or club mail ticked, and never a public one, or none
-        when Gmail was skipped; each Recipient with their language; and the evening time. A pilot Household's feedback label isn't asked: setup makes it (#491).
+        when Gmail was skipped; each Recipient with their language; and the evening time.
         `other_sources` is whether a Source besides Gmail brings news, so that a Gmail with no
         sender ticked is simply not read (#361, ADR 0032)."""
         cfg = self.context.model()

@@ -1,6 +1,6 @@
 """Each Kid as Kid A, Kid B, in the Household's Kid order (ADR 0013): for Weekend Picks' model,
-which never sees a Kid's name, for the pilot feedback links, which never carry one, and for the
-evening Brief's model calls while the AI filter's mask_kids switch is on (#268)."""
+which never sees a Kid's name, and for the evening Brief's model calls while the AI filter's
+mask_kids switch is on (#268)."""
 from __future__ import annotations
 
 import re

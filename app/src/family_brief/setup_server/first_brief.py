@@ -11,7 +11,7 @@ from typing import Any
 from .. import gateway, run_lock, send_key, setup_save
 from ..actions import email as email_action
 from ..state import State
-from ..system import desktop, jobs
+from ..system import jobs
 from .context import Action, Context, Page, Phase, Reply, Served, nothing_to_give
 from .gmail import confirmation
 
@@ -43,8 +43,7 @@ class FirstBrief(Phase):
 
     def routes(self) -> dict[str, Action]:
         return {"api/brief": self.make_brief, "api/brief/check": self.check_brief,
-                "api/brief/send": self.send_brief, "api/brief/done": self.brief_done,
-                "api/brief/feedback": self.open_feedback}
+                "api/brief/send": self.send_brief, "api/brief/done": self.brief_done}
 
     def pages(self) -> dict[str, Page]:
         return {"brief.html": self.brief_page}
@@ -68,16 +67,14 @@ class FirstBrief(Phase):
 
     def check_brief(self, raw: Any) -> Reply:
         """How far making the Brief is: `making`, with the Sources and the one it's on, or
-        `writing`; once `made`, its email HTML and whether the Household is a pilot one, with
-        the feedback button. The feedback link stays here: the page opens it through the server."""
+        `writing`; once `made`, its email HTML."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
         brief = self._brief
         if brief is None:
             return HTTPStatus.OK, {"result": "no-brief"}
         if brief["result"] == "made":
-            return HTTPStatus.OK, {"result": "made", "html": brief["html"],
-                                   "feedback": brief["feedback"] is not None}
+            return HTTPStatus.OK, {"result": "made", "html": brief["html"]}
         return HTTPStatus.OK, brief
 
     def brief_page(self) -> Served | None:
@@ -96,7 +93,7 @@ class FirstBrief(Phase):
                 output=self._brief_progress)
             made = next((line for line in reversed(_preview_lines(out))
                          if line["preview"] == "made"), None)
-            done = {"result": "made", **{k: made[k] for k in ("subject", "text", "html", "feedback")}} \
+            done = {"result": "made", **{k: made[k] for k in ("subject", "text", "html")}} \
                 if code == 0 and made else {"result": "make-failed"}
         except Exception:  # its error can name an address: never leave the page making it
             done = {"result": "make-failed"}
@@ -163,17 +160,6 @@ class FirstBrief(Phase):
         if out["result"] != "saved":
             return HTTPStatus.CONFLICT, out
         return HTTPStatus.OK, out
-
-    def open_feedback(self, raw: Any) -> Reply:
-        """"Something's wrong, tell us", for a pilot Household: opens the Brief's own Digest
-        feedback link, pre-filled with the Brief made, in the default browser."""
-        brief = self._brief
-        link = brief.get("feedback") if brief and brief["result"] == "made" else None
-        if raw != {} or not link:
-            return HTTPStatus.BAD_REQUEST, setup_save.outcome(
-                "invalid-answers", "Only a pilot Household's Brief has the feedback link.",
-                errors=["answers: should be {}, once a pilot Household's Brief is made"])
-        return HTTPStatus.OK, {"result": "opened" if desktop.open_url(link) else "not-opened"}
 
     def _brief_sent(self) -> bool:
         """Whether a Brief has reached the setup parent, the first Recipient."""

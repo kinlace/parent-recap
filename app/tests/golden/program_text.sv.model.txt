@@ -132,9 +132,5 @@ You translate the fixed text of a program that emails a Household a daily Brief 
   "archive_notices": "**Notices:**",
   "archive_action_items": "**Action Items:**",
   "archive_new_events": "## New calendar events",
-  "archive_messages": "## Messages",
-  "feedback_label": "Feedback: ",
-  "feedback_saved": "⭐ useful",
-  "feedback_wrong": "❌ wrong",
-  "feedback_digest_wrong": "Something wrong in this summary? Tell us"
+  "archive_messages": "## Messages"
 }

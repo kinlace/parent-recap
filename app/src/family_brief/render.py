@@ -7,10 +7,10 @@ import html as _h
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Callable, Literal, Union
+from typing import TYPE_CHECKING, Literal, Union
 from zoneinfo import ZoneInfo
 
-from . import feedback, wilma_egress
+from . import wilma_egress
 from . import sources as source_registry
 from .actions import ics as ics_action
 from .brief import ActionItem, Brief
@@ -287,22 +287,12 @@ _LINK = re.compile(r"https://[^\s<]+")
 
 def _daily_brief_html(brief: Brief, calendar_created: list[dict],
                       date_str: str, t: BriefText, tz: str, note: str = "", ics_attached: bool = False,
-                      coverage: str = "", footer: str = "",
-                      feedback_link: Callable[..., str] | None = None,
-                      original: Brief | None = None, top_note: str = "",
+                      coverage: str = "", footer: str = "", top_note: str = "",
                       held_back: list[HeldBack] | None = None, assistant: str = "",
                       end_html: str = "") -> str:
-    """Simple HTML rendering of the Brief, safe for Gmail. `brief` is translated from
-    `original` for a Recipient in another language; feedback links carry the original's text, so
-    the Form gets the same words from every language version (ADR 0004). `top_note` holds the
-    warnings shown above the Digest (see _top_note), and `held_back` the Held-back Messages, which
-    were not sent to the `assistant`. `end_html` is the Brief's last lines, already HTML (EndNote.html)."""
-    original = original or brief
-
-    def form_link(verdict: str, label: str, text: str, **kw) -> str:
-        assert feedback_link is not None
-        return (f'<a href="{_h.escape(feedback_link(verdict, text, **kw))}"'
-                f" style='color:#888;text-decoration:underline'>{_h.escape(label)}</a>")
+    """Simple HTML rendering of the Brief, safe for Gmail. `top_note` holds the warnings shown
+    above the Digest (see _top_note), and `held_back` the Held-back Messages, which were not sent
+    to the `assistant`. `end_html` is the Brief's last lines, already HTML (EndNote.html)."""
     parts = [f"<h2>👨‍👩‍👧‍👦 {PRODUCT_NAME} · {_h.escape(_header_date(date_str, t))}</h2>"]
     if top_note:
         warnings = _LINK.sub(lambda m: f'<a href="{m[0]}" style=\'color:#a33\'>{m[0]}</a>',
@@ -311,11 +301,6 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
     digest = _shown_digest(brief, t)
     if digest:
         parts.append(_digest_html(digest))
-        if feedback_link:
-            as_written = _shown_digest(original, t)
-            parts.append("<p><small style='color:#888'>"
-                         f"{form_link(feedback.DIGEST_WRONG, t.feedback_digest_wrong, as_written)}"
-                         "</small></p>")
     for g in brief.groups:
         parts.append(f"<h3>{_h.escape(_group_heading(g.group))}</h3>" + _digest_html(g.text))
     if held_back:
@@ -329,18 +314,10 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
     all_actions = _action_items(brief)
     if all_actions:
         parts.append(f"<h3>{t.action_items}</h3><ul>")
-        for (kid, a), (kid_as_written, as_written) in zip(all_actions, _action_items(original)):
+        for kid, a in all_actions:
             what = _h.escape(a.what)
             meta = _h.escape(_action_meta(kid, a, t))
-            links = ""
-            if feedback_link:
-                kw = {"kid": kid_as_written, "source": as_written.source or []}
-                what_text = as_written.what
-                # Its own small grey line, so the links read as a question, not part of the item (#803).
-                links = (f"<br><small style='color:#888'>{_h.escape(t.feedback_label)}"
-                         f"{form_link(feedback.SAVED, t.feedback_saved, what_text, **kw)}"
-                         f" · {form_link(feedback.WRONG, t.feedback_wrong, what_text, **kw)}</small>")
-            parts.append(f"<li>{what}<small style='color:#666'> {meta}</small>{links}</li>")
+            parts.append(f"<li>{what}<small style='color:#666'> {meta}</small></li>")
         parts.append("</ul>")
     if calendar_created:
         # After a mid-run Google failure the list mixes written events with attached ones.
@@ -491,7 +468,7 @@ class Night:
     what was read (`coverage`), the Held-back Messages, the calendar events listed (`created`)
     and those attached as .ics, why Google Calendar did not take them, and whether the model's
     reply looked cut off (`incomplete`). The model wrote the Brief unless it failed or wasn't
-    asked (`model_wrote`); then the Brief has no feedback links and doesn't credit the `assistant`."""
+    asked (`model_wrote`); then the Brief doesn't credit the `assistant`."""
     date: str
     tz: str
     t: BriefText
@@ -504,7 +481,6 @@ class Night:
     calendar_problem: CalendarProblem | None = None
     ics_events: list[CalendarEvent] = field(default_factory=list)
     model_wrote: bool = True
-    form: feedback.Links | None = None
     incomplete: bool = False
     # Where a Recipient writes instead of replying, when the Brief comes from an address nobody
     # reads (the gateway's, ADR 0028); None when the Household's own Gmail sends it.
@@ -622,12 +598,11 @@ def mail(night: Night, v: Version) -> Mail:
     attachments = [(f"parent-recap-{night.date}.ics",
                     ics_action.build(night.ics_events, night.tz, night.stamp, v.translated_event),
                     "text/calendar")] if night.ics_events else []
-    links = night.form.link if night.form and night.model_wrote else None
     end = EndNote(t, night.hosted, unread_sender(t, night.write_to))
     html = _daily_brief_html(v.brief, listed, night.date, t, night.tz, calendar_note,
                              ics_attached=bool(attachments), coverage=coverage_note,
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
-                             feedback_link=links, original=night.brief, top_note=top_note,
+                             top_note=top_note,
                              held_back=night.held_back, assistant=assistant, end_html=end.html())
     return Mail(to=v.to, subject=night.subject,
                 text=_with_note(_brief_text(v.brief, listed, night.date, t, night.tz, coverage_note,
@@ -652,22 +627,17 @@ def brief(night: Night, versions: list[Version], imessage_to: list[str]) -> list
 
 def preview(night: Night) -> dict[str, str | None]:
     """The first Recipient's email as tonight's Brief would send it, for the setup page: its
-    subject, text and HTML, and for a pilot Household (with its Form links) the Digest's
-    feedback link. It is the first Brief, which setup sends to the setup parent only."""
-    t, assistant, form = night.t, night.assistant, night.form
+    subject, text and HTML. It is the first Brief, which setup sends to the setup parent only."""
+    t, assistant = night.t, night.assistant
     end = EndNote(t, night.hosted, first_sender_note(t, night.write_to))
     html = _daily_brief_html(night.brief, night.created, night.date, t, night.tz,
                              coverage=_coverage_note(night.coverage, t, night.hosted),
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
-                             feedback_link=form.link if form and night.model_wrote else None,
                              top_note=_top_note(night.incomplete, t, assistant, slept=night.slept,
                                                 caught_up=night.caught_up, update=night.update),
                              held_back=night.held_back,
                              assistant=assistant, end_html=end.html())
-    wrong = form.link(feedback.DIGEST_WRONG, _shown_digest(night.brief, t) if night.model_wrote else "") \
-        if form else None
-    return {"subject": night.subject, "text": _with_note(night.text(), end.text()),
-            "html": html, "feedback": wrong}
+    return {"subject": night.subject, "text": _with_note(night.text(), end.text()), "html": html}
 
 
 def nothing_to_show(night: Night) -> bool:

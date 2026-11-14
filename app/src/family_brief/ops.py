@@ -40,7 +40,7 @@ CHECK_ITEMS = (
     ("gateway", "AI gateway"), ("gateway-key", "Gateway Key"),
     *(item for s in sources.ALL for item in s.doctor_items().items()),
     ("whatsapp-library", "WhatsApp library"),
-    ("calendar", "Calendar"), ("feedback", "Pilot feedback"), ("weekend", "Weekend Picks"),
+    ("calendar", "Calendar"), ("weekend", "Weekend Picks"),
     ("schedule", "Schedule"), ("last-run", "Last run"),
     ("wake", "Wake"), ("sign-in-after-update", "Sign-in after updates"),
     ("entries", "Settings and Check"), ("updates", "Updates"),
@@ -155,8 +155,6 @@ def health_checks(config: str | None, skip_llm: bool = False, show: bool = False
     if sources.WHATSAPP.available():
         _check_whatsapp_library(add)
     _check_calendar(cfg, add)
-    if cfg.feedback.enabled:
-        _check_feedback(cfg, add)
     if cfg.weekend_events.enabled:
         _check_weekend(add)
     if schedule:
@@ -531,20 +529,6 @@ def _check_calendar(cfg: Config, add) -> None:
                     "run scripts/setup_google_calendar.py again")
             else:
                 add(FAIL, "calendar", f"Google Calendar call failed: {msg[:120]}")
-
-
-def _check_feedback(cfg: Config, add) -> None:
-    fb = cfg.feedback
-    if not fb.active():
-        add(WARN, "feedback", "feedback is on but prefill_base_url or fields is missing, so the "
-            "Brief has no ⭐/❌ links (turn it on again with parent-recap setup save <<< "
-            "'{\"feedback\": {\"enabled\": true}}', which writes the pilot form this version ships)")
-    elif not fb.household_label:
-        # One Form serves every pilot Household; without a label their rows can't be told apart.
-        add(WARN, "feedback", "feedback.household_label is empty, so the feedback sheet "
-            "can't tell which Household a row came from (set one with parent-recap setup save)")
-    else:
-        add(OK, "feedback", f"the Brief has ⭐/❌ links, Household label {fb.household_label}")
 
 
 def _check_weekend(add) -> None:

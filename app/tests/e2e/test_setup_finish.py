@@ -229,7 +229,7 @@ def test_a_failed_health_check_names_the_checks_that_aren_t_ok(harness, page, sc
 
 def test_warnings_alone_dont_hold_finish_up_and_are_listed(harness, page, schedule, health):
     at_finish(harness)
-    health.results += [(ops.WARN, "feedback", "Pilot feedback", "feedback.household_label is empty"),
+    health.results += [(ops.WARN, "weekend", "Weekend Picks", "no event source answered"),
                        ops.Check(ops.WARN, "language", "Language sv",
                                  "the Brief's own text in sv isn't ready yet", subject="sv")]
 
@@ -239,7 +239,7 @@ def test_warnings_alone_dont_hold_finish_up_and_are_listed(harness, page, schedu
     assert out["result"] == "done"
     doctor = next(o for o in out["outcomes"] if o["outcome"] == "doctor")
     assert doctor == {"outcome": "doctor", "ok": True, "checks": [
-        {"check": "feedback", "status": "warn", "detail": "feedback.household_label is empty"},
+        {"check": "weekend", "status": "warn", "detail": "no event source answered"},
         {"check": "language", "status": "warn", "language": "sv",
          "detail": "the Brief's own text in sv isn't ready yet"}]}
 

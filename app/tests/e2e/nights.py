@@ -1,6 +1,6 @@
 """The nights and helpers the nightly-run tests (`test_nightly_*.py`) share: the normal night and
-the model's reply to it in each language, the night in two languages, the payload's message ids, the
-archived summary and the feedback links.
+the model's reply to it in each language, the night in two languages, the payload's message ids and
+the archived summary.
 
 Not a conftest.py: one in e2e/ would replace tests/conftest.py as the `conftest` module and break
 every `from conftest import`."""
@@ -10,8 +10,6 @@ import copy
 import json
 import re
 from datetime import timedelta
-from html import unescape
-from urllib.parse import parse_qs, urlsplit
 
 from conftest import NOW, msg, myclub_event
 
@@ -146,26 +144,6 @@ NORMAL_NIGHT_IDS = ["1101", "1102", "1:2", "2:1", "message:55"]
 
 def archived_summary(h, day: str = "2026-09-27") -> dict:
     return json.loads((h.archive_dir / f"{day}.raw.json").read_text())["summary"]
-
-
-FORM = "https://docs.google.com/forms/d/e/FORM_ID/viewform"
-FEEDBACK = {"enabled": True, "prefill_base_url": FORM, "household_label": "王家",
-            "fields": {"verdict": "entry.1", "item_text": "entry.2", "source": "entry.3",
-                       "backend": "entry.4", "date": "entry.5", "household": "entry.6", "kid": "entry.7"}}
-FIELDS = {v: k for k, v in FEEDBACK["fields"].items()}
-
-
-def feedback_links(html: str) -> list[tuple[str, dict[str, str], str]]:
-    """(link label, pre-filled answers by field name, full URL) for every Form link in the Brief."""
-    out = []
-    for href, label in re.findall(r'<a href="([^"]+)"[^>]*>([^<]+)</a>', html):
-        url = unescape(href)
-        if not url.startswith(FORM + "?"):
-            continue
-        query = parse_qs(urlsplit(url).query, keep_blank_values=True)
-        assert query.pop("usp") == ["pp_url"]
-        out.append((label, {FIELDS[k]: v for k, [v] in query.items()}, url))
-    return out
 
 
 PARTNER_EN = {"address": "partner@example.com", "language": "en"}

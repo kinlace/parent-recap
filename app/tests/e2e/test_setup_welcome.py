@@ -15,7 +15,6 @@ import yaml
 
 from family_brief import setup_server
 from family_brief.config import Config
-from conftest import PILOT_FORM_FIELDS, PILOT_FORM_URL
 from setup_page import PAGE_DIR, call, check_ai, config_file, inside, welcome
 from setup_page import ai, clock, page  # noqa: F401
 
@@ -24,59 +23,45 @@ from setup_page import ai, clock, page  # noqa: F401
 
 
 def test_each_welcome_choice_has_a_default(harness, page):
-    harness.ship_pilot_form()
     call(page.url, "api/language", method="POST", body={"language": "zh"})
 
     state = call(page.url, "api/state").json()
     assert state["welcome"] == {
         "ai": state["ais"][0],  # Claude, or on Windows the gateway, for now
         "partner": {"add": True, "address": "", "language": "zh"},
-        "feedback": True,
     }
 
 
 @pytest.mark.macos
 def test_the_welcome_answers_are_saved(harness, page):
-    harness.ship_pilot_form()
     call(page.url, "api/language", method="POST", body={"language": "fi"})
 
-    r = welcome(page.url, ai="codex", partner={"address": "partner@example.com", "language": "zh"},
-                feedback=False)
+    r = welcome(page.url, ai="codex", partner={"address": "partner@example.com", "language": "zh"})
 
     assert r.status == 200 and r.json()["result"] == "saved"
     cfg = Config.load(config_file(harness))
     assert cfg.llm.backend == "codex"
-    assert cfg.feedback.enabled is False
     progress = call(page.url, "api/state").json()["progress"]
     assert progress["phase"] == "connect" and progress["source"] == "wilma"
     assert call(page.url, "api/state").json()["welcome"] == {
         "ai": "codex",
         "partner": {"add": True, "address": "partner@example.com", "language": "zh"},
-        "feedback": False,
     }
 
 
-def test_a_pilot_household_s_opt_in_writes_the_whole_feedback_section(harness, page):
-    harness.ship_pilot_form()
+def test_welcome_doesnt_ask_about_pilot_feedback_and_leaves_an_old_answer_alone(harness, page):
+    # Pilot feedback is gone (#939): Welcome neither offers nor takes it, and a config that still
+    # has its section keeps it as it was, unread.
+    harness.config["feedback"] = {"enabled": True, "household_label": "household-0123abcd"}
     config_file(harness).parent.mkdir(parents=True, exist_ok=True)
     config_file(harness).write_text(yaml.safe_dump(harness.config, allow_unicode=True))
 
-    assert welcome(page.url, feedback=True).status == 200
+    assert "feedback" not in call(page.url, "api/state").json()["welcome"]
+    assert call(page.url, "api/welcome", method="POST",
+                body={"ai": "claude", "partner": None, "feedback": True}).status == 400
+    assert welcome(page.url).status == 200
 
-    cfg = Config.load(config_file(harness))
-    assert cfg.feedback.active()
-    assert cfg.feedback.prefill_base_url == PILOT_FORM_URL
-    assert cfg.feedback.fields.model_dump() == PILOT_FORM_FIELDS
-    assert re.fullmatch(r"household-[0-9a-f]{8}", cfg.feedback.household_label)  # random (#493)
-
-
-def test_without_a_shipped_pilot_form_welcome_doesnt_ask_about_feedback(harness, page):
-    assert call(page.url, "api/state").json()["welcome"]["feedback"] is None
-    assert welcome(page.url, feedback=True).status == 400  # nothing to opt in to
-    assert not config_file(harness).exists()
-    assert welcome(page.url, feedback=False).status == 200
-
-    assert "feedback" not in yaml.safe_load(config_file(harness).read_text())
+    assert yaml.safe_load(config_file(harness).read_text())["feedback"] == harness.config["feedback"]
 
 
 def test_the_partner_comes_after_the_parent_once_the_parent_s_gmail_is_known(harness, page):
@@ -131,9 +116,9 @@ def test_the_partner_s_email_and_language_are_asked_only_when_a_partner_is_added
                                                          "language": "sv"}]:
         r = welcome(page.url, partner=partner)
         assert r.status == 400 and r.json()["result"] == "invalid-answers", partner
-    for body in [{"ai": "gemini", "partner": None, "feedback": True},
-                 {"ai": "claude", "partner": None, "feedback": "yes"},
-                 {"ai": "claude", "feedback": True}]:
+    for body in [{"ai": "gemini", "partner": None},
+                 {"ai": "claude", "partner": None, "feedback": True},
+                 {"ai": "claude"}]:
         r = call(page.url, "api/welcome", method="POST", body=body)
         assert r.status == 400, body
     assert not config_file(harness).exists()
@@ -255,9 +240,9 @@ def test_welcome_names_each_ai_s_plan_beside_it_and_nothing_comes_next():
     for language, table in text.items():
         assert "Pro" in table["welcome.ai.claude.plan"] and "Max" in table["welcome.ai.claude.plan"]
         assert "welcome.ai.plan" not in table and "welcome.next" not in table, language
-    # What pilot feedback sends is folded under the question.
-    assert re.search(r'<details class="more">\s*<summary data-text="welcome.feedback.more"></summary>'
-                     r'\s*<p data-text="welcome.feedback.note"></p>', welcome)
+    # Pilot feedback is gone (#939).
+    assert "feedback" not in welcome
+    assert not any(key.startswith("welcome.feedback") for table in text.values() for key in table)
 
 
 # What Welcome's "Have these ready" list says in each language (#298), one line each (#491): the
