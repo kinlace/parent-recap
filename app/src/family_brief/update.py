@@ -17,7 +17,8 @@ What it downloads, from where, how it is verified and what it never does:
   Report, ADR 0048, or anything else) can start an update or choose a release.
 - In the background the wake's password dialog never starts: the installer is told it runs for
   an update (schedule_update.UPDATING), and leaves the wake, which would ask for the Mac
-  password, as it is. That is the one dialog this code stops; any other is the next point's.
+  password, as it is. That is the one dialog this code stops; a release that would open any
+  other is covered by the next point.
 - A release that needs the family at the computer (a password dialog, a new permission, a QR
   scan, a config or state the version before can't read) says so in `release.json` inside the
   zip, where the signature covers it: the lowest version that can take it in the background, and
@@ -553,7 +554,7 @@ class _Updater:
         """Puts the release in `plugin/`, where the install line puts it, and runs its own
         installer, which installs it beside the running version and switches `app` to it. The
         plugin copy before goes in `spare` until the update is done. The installer is told it
-        runs for an update, so nothing asks for a password, unless `dialogs`: a release that
+        runs for an update, so the wake's password dialog doesn't start, unless `dialogs`: a release that
         needs the family, which they started. Returns whether `app` now points at `version`."""
         target = self.folder / PLUGIN
         if target.exists() and not _is_parent_recap(target):
@@ -693,7 +694,7 @@ def look(config: str | None = None) -> Outcome:
 def evening(config: str | None = None) -> Outcome:
     """The update the evening run starts once its Brief is sent, or it decided to send nothing
     (ADR 0047): `update`, for a release this Mac has seen on `stable` a day, and not for one that
-    failed before. It runs in the background, so nothing it starts asks for a password
+    failed before. It runs in the background, so the wake's password dialog doesn't start
     (schedule_update.UPDATING), and inside the evening job, under its run lock, so the evening
     jobs aren't installed again: they start the program from the same path, which now points at
     the version switched to. The evening run catches and logs whatever it raises

@@ -181,7 +181,7 @@ The switch on the setup page, or `parent-recap update off`, turns updating off (
 
 ### The install line
 
-The signature protects updates. The first install, and a reinstall with the install line, check no signature: they trust GitHub over HTTPS, and the maintainers' accounts there. A check inside `get.sh` wouldn't change that, since it would come from the same place as `get.sh`. The line in the README fetches `get.sh` from the `stable` branch over HTTPS and runs it in a shell, and `get.sh` downloads the `stable` branch and runs its `install.sh`, with no signature checked. Whoever would rather check one downloads the release zip, verifies it by hand as [Release signatures](#release-signatures) says, and installs from the package file ([Other ways to install](docs/install.md#other-ways-to-install)).
+The signature protects updates. The first install, and a reinstall with the install line, check no signature: they trust GitHub over HTTPS, and the maintainers' accounts there. A check inside `get.sh` wouldn't change that, since it would come from the same place as `get.sh`. The line in the README fetches `get.sh` from the `stable` branch over HTTPS and runs it in a shell, and `get.sh` downloads the `stable` branch and runs its `install.sh`. Whoever would rather check one downloads the release zip, verifies it by hand as [Release signatures](#release-signatures) says, and installs from the package file ([Other ways to install](docs/install.md#other-ways-to-install)).
 
 ## Release signatures
 
