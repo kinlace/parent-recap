@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .fi.eepos.record import EEPOS
 from .nl.konnect.record import KONNECT
 from .nl.socialschools.record import SOCIALSCHOOLS
 from .record import (EVERY_SYSTEM, HOSTED_SYSTEM, NEEDS_PAIRING, Add, Source, Unread, Window,
@@ -62,16 +63,6 @@ WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), _in("collectors.what
                   unread=_in("collectors.whatsapp", "unread"),
                   check=_in("ops", "check_whatsapp"), survey=_in("uninstall", "survey_whatsapp"),
                   notes=_in("uninstall", "whatsapp_notes"), group=lambda m: m.chat_name)
-
-# A music or art school's calendar, read through its portal's own JSON API with a password in the
-# secret store (ADR 0038). Its lessons and holidays are events, which nothing else puts in a
-# calendar, so they go into the .ics. Set up one sign-in per school on the setup page's step
-# (#791), from a terminal (`setup eepos`) or at the hosted sign-up (#769). A Hosted Household can
-# have it, so its Brief doesn't call it unread there.
-EEPOS = Source("eepos", _same_everywhere("Eepos"), lambda cfg: bool(cfg.eepos.signins),
-               skippable=True, connect_rank=6, collect=_collector("eepos"), counts_events=True,
-               check=_in("ops", "check_eepos"),
-               check_items={"eepos": "Eepos ({})"}, secrets=_in("collectors.eepos", "secrets_of"))
 
 # A public daycare's calendar and messages, read through eVaka's citizen API with a password in
 # the secret store (ADR 0039): its events, the days the unit is closed and the reservation

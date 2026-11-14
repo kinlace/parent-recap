@@ -13,6 +13,7 @@ from ..system import profile
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from types import ModuleType
 
     from ..collectors.base import Collected, Message
     from ..config import Config
@@ -116,6 +117,15 @@ class Source:
     def doctor_items(self) -> Mapping[str, str]:
         """The key of each of doctor's checks of it, and the item doctor prints for it."""
         return self.check_items if self.check_items is not None else {self.name: self.label()}
+
+    def code(self, module: str) -> ModuleType:
+        """`module` of its folder, such as `collector` or `setup`, for shared code that still has a
+        part of this Source in it: the setup page's and the hosted sign-up's steps, until those
+        pages are split by Source (ADR 0051). It reaches the folder through the registry, never by
+        the folder's name."""
+        if self.part is None:
+            raise LookupError(f"{self.name} has no folder of its own")
+        return importlib.import_module(f"{_PROGRAM}.sources.{self.part.replace('/', '.')}.{module}")
 
 
 _PROGRAM = __name__.split(".")[0]  # family_brief, which `_in`'s modules are named within

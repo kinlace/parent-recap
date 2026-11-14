@@ -11,7 +11,7 @@ from fake_sources import EEPOS_PASSWORD
 from fake_system import LINUX
 from nights import normal_night
 
-from family_brief.collectors import eepos
+from family_brief.sources.fi.eepos import collector as eepos
 
 
 def with_eepos(h, *more_schools: dict) -> None:

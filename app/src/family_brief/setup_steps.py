@@ -33,9 +33,9 @@ setup page — serve the setup page on this Mac and open it in the browser (in s
 
 This module is the chat's side only: the arguments, the dialogs and what each command prints. What
 a step does, which the setup page does too, is in its own module: setup_gmail, setup_wilma,
-setup_ai, setup_myclub, setup_eepos and setup_evaka, and a Source in a folder of its own (ADR
-0051) has its command there too, which this module only lists: Social Schools's is in
-sources/nl/socialschools/setup and Konnect's in sources/nl/konnect/setup.
+setup_ai, setup_myclub and setup_evaka, and a Source in a folder of its own (ADR 0051) has its
+command there too, which this module only lists: Eepos's is in sources/fi/eepos/setup, Social
+Schools's in sources/nl/socialschools/setup and Konnect's in sources/nl/konnect/setup.
 
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
@@ -128,14 +128,10 @@ def register(sub) -> None:
                          help="Don't open MyClub's page again, only ask for the link")
     pmyclub.set_defaults(func=cmd_myclub)
 
-    peepos = steps.add_parser("eepos", help="Add a guardian's sign-in at an Eepos school: the "
-                              "password typed at the secret store's own prompt, checked at once, "
-                              "the students matched to the Kids by name")
-    peepos.add_argument("--school", required=True,
-                        help="The school's Eepos address, or its part before .eepos.fi: emo for "
-                             "emo.eepos.fi")
-    peepos.add_argument("--username", required=True, help="The guardian's Eepos username")
-    peepos.set_defaults(func=cmd_eepos)
+    # A Source in a folder of its own (ADR 0051) adds its step from there; Eepos's in its place in
+    # setup's help, ahead of eVaka's, as it has always been listed.
+    from .sources.fi.eepos import setup as eepos_setup
+    eepos_setup.register(steps)
 
     pevaka = steps.add_parser("evaka", help="Add a guardian's sign-in in a city's eVaka: the "
                               "password typed at the secret store's own prompt, checked at once, "
@@ -460,16 +456,6 @@ def cmd_myclub(args: argparse.Namespace) -> int:
                      f"{again} --no-open",
     }.get(result)
     return report(result, next_, **({"kid": args.kid} if result == "saved" else {}), **extra)
-
-
-# ---------------------------------------------------------------- eepos
-
-def cmd_eepos(args: argparse.Namespace) -> int:
-    """The password is typed at the secret store's own prompt in this terminal, so it reaches no
-    dialog, chat or command line, and the one line of JSON never has it."""
-    from . import setup_eepos
-    result, next_, extra = setup_eepos.cmd(args)
-    return report(result, next_, **extra)
 
 
 # ---------------------------------------------------------------- evaka

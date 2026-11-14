@@ -40,11 +40,16 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 import yaml
 
-from .. import gateway, ops, setup_eepos, setup_evaka, setup_save, setup_wilma
-from ..collectors import eepos, evaka, myclub
-from ..config import Config, EeposSignin, EvakaSignin, myclub_links
+from .. import gateway, ops, setup_evaka, setup_save, setup_wilma, sources
+from ..collectors import evaka, myclub
+from ..config import Config, EvakaSignin, myclub_links
 from ..setup_report import outcome
 from ..system import jobs, secrets
+
+# Eepos's code is in its folder (ADR 0051); the sign-up reaches it through its record until the
+# sign-up is split by Source.
+eepos, setup_eepos = sources.EEPOS.code("collector"), sources.EEPOS.code("setup")
+EeposSignin = sources.EEPOS.code("config").EeposSignin
 
 
 class _Strict(BaseModel):

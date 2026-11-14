@@ -18,12 +18,16 @@ from typing import Any, ClassVar
 import yaml
 from pydantic import BaseModel, Field
 
-from .. import setup_eepos, setup_evaka, setup_save
-from ..collectors import eepos, evaka
+from .. import setup_evaka, setup_save, sources
+from ..collectors import evaka
 from ..config import Config
 from ..setup_connect import Nothing, Reply, Strict, parse
 from ..system import secrets
 from .context import Action, Phase, add_kid, keychain_code
+
+# Eepos's code is in its folder (ADR 0051); this page's step reaches it through its record until
+# the page is split by Source.
+eepos, setup_eepos = sources.EEPOS.code("collector"), sources.EEPOS.code("setup")
 
 # What adding a sign-in can say, as `setup eepos` and `setup evaka` do, besides the place given
 # not being one: `not-a-school` (or `school-website`, for another site's address, such as the
