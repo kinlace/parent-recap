@@ -72,7 +72,7 @@ def shared_files() -> list[str]:
                   if not p.startswith(inside))
 
 
-@pytest.mark.parametrize("folder", ["fi/eepos", "fi/evaka", "nl/konnect", "nl/socialschools"])
+@pytest.mark.parametrize("folder", ["fi/eepos", "fi/evaka", "fi/myclub", "nl/konnect", "nl/socialschools"])
 def test_a_moved_source_is_in_a_folder_of_its_own(folder):
     assert folder in folders()
 
@@ -124,6 +124,7 @@ def test_each_source_in_a_folder_says_which_part_it_is_and_the_rest_say_none():
     assert sources.SOCIALSCHOOLS.part == "nl/socialschools"
     assert sources.EEPOS.part == "fi/eepos"
     assert sources.EVAKA.part == "fi/evaka"
+    assert sources.MYCLUB.part == "fi/myclub"
     assert sources.WILMA.part is None
 
 

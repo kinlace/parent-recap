@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, "src")
-from family_brief.collectors.myclub import download, save_link  # noqa
+from family_brief.sources.fi.myclub.collector import download, save_link  # noqa
 
 
 def main() -> int:

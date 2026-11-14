@@ -32,11 +32,11 @@ setup status — whether setup is done (in setup_status.py)
 setup page — serve the setup page on this Mac and open it in the browser (in setup_server/)
 
 This module is the chat's side only: the arguments, the dialogs and what each command prints. What
-a step does, which the setup page does too, is in its own module: setup_gmail, setup_wilma,
-setup_ai and setup_myclub, and a Source in a folder of its own (ADR 0051) has its command there
-too, which this module only lists: Eepos's is in sources/fi/eepos/setup, eVaka's in
-sources/fi/evaka/setup, Social Schools's in sources/nl/socialschools/setup and Konnect's in
-sources/nl/konnect/setup.
+a step does, which the setup page does too, is in its own module: setup_gmail, setup_wilma and
+setup_ai, and a Source in a folder of its own (ADR 0051) has its command there too, which this
+module only lists: MyClub's is in sources/fi/myclub/setup, Eepos's in sources/fi/eepos/setup,
+eVaka's in sources/fi/evaka/setup, Social Schools's in sources/nl/socialschools/setup and
+Konnect's in sources/nl/konnect/setup.
 
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
@@ -46,12 +46,11 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from . import secret_dialog, setup_ai, setup_gmail, setup_myclub, setup_wilma
+from . import secret_dialog, setup_ai, setup_gmail, setup_wilma
 from .config import Config, LLMConfig
 from .setup_ai import CLAUDE_WINDOW, setup_token_window
 from .setup_report import KEYCHAIN_WARNING, PLAIN_TERMINAL, program, report
@@ -118,21 +117,12 @@ def register(sub) -> None:
     psending.add_argument("to", choices=["gmail", "gateway"])
     psending.set_defaults(func=cmd_sending)
 
-    pmyclub = steps.add_parser("myclub", help="Ask for a Kid's MyClub calendar link in a dialog, "
-                               "download it once and save it in the config")
-    pmyclub.add_argument("--kid", default=None, help="The Kid's name, exactly as under kids: in "
-                         "the config")
-    pmyclub.add_argument("--another", action="store_true",
-                         help="Add the link beside the Kid's links, for another club, instead of "
-                              "in place of them")
-    pmyclub.add_argument("--no-open", action="store_true",
-                         help="Don't open MyClub's page again, only ask for the link")
-    pmyclub.set_defaults(func=cmd_myclub)
-
-    # A Source in a folder of its own (ADR 0051) adds its step from there; Eepos's and eVaka's in
-    # their place in setup's help, as they have always been listed.
+    # A Source in a folder of its own (ADR 0051) adds its step from there; MyClub's, Eepos's and
+    # eVaka's in their place in setup's help, as they have always been listed.
     from .sources.fi.eepos import setup as eepos_setup
     from .sources.fi.evaka import setup as evaka_setup
+    from .sources.fi.myclub import setup as myclub_setup
+    myclub_setup.register(steps)
     eepos_setup.register(steps)
     evaka_setup.register(steps)
 
@@ -393,61 +383,3 @@ def _gateway_use(config: str | None) -> tuple[str, bool]:
     except Exception:  # no config yet: setup can store the key before writing it
         return LLMConfig().gateway_url, False
     return cfg.llm.gateway_url, cfg.llm.backend != "gateway"
-
-
-# ---------------------------------------------------------------- myclub
-
-def cmd_myclub(args: argparse.Namespace) -> int:
-    """The link carries the Kid's personal token, so it's handled like the other secrets: the
-    result and any error name only MyClub's server and the HTTP status, never the link."""
-    path = Path(os.path.expanduser(os.path.expandvars(args.config or "~/.family/config.yaml")))
-    try:
-        kids = [k.name for k in Config.load(path).kids]
-    except FileNotFoundError:
-        return report("no-config", "The config isn't written yet. Write it with the Kids first, "
-                      "then run this again.")
-    except Exception:  # not its error: a config check quotes values, which can be other links
-        return report("bad-config", f"The config at {path} can't be read. Run {program()} "
-                      "doctor, fix what it names, then run this again.")
-    if args.kid not in kids:
-        return report("no-kid" if args.kid is None else "no-such-kid", "Run it again with --kid "
-                      f"and one of the Kids' names: {program()} setup myclub --kid NAME",
-                      kids=kids)
-    again = (f"{program()} setup myclub --kid {shlex.quote(args.kid)}"
-             + (" --another" if args.another else ""))
-    if not args.no_open:
-        desktop.open_url(setup_myclub.MYCLUB_URL)
-
-    try:
-        url = secret_dialog.ask(
-            f"Paste {args.kid}'s MyClub calendar link.\n\nIn MyClub's New calendar subscription "
-            f"form ({setup_myclub.MYCLUB_URL}, after signing in), type any name, choose Selected "
-            f"member accounts (Valitut jäsentilit) with only {args.kid} ticked, leave Indication on "
-            "All, press Create, then Copy link, and copy the link starting with webcal://.")
-    except secret_dialog.Cancelled:
-        return report("cancelled", "The family closed the dialog. Run this again when they're "
-                      f"ready: {again}")
-    except secret_dialog.NoWayToAsk:
-        return report("no-prompt", "No dialog or Terminal prompt could be shown here. The family "
-                      f"runs this in Terminal: {again} --no-open")
-
-    result, extra = setup_myclub.save_link(path, args.kid, url, another=args.another)
-    next_ = {
-        "not-a-myclub-link": "That wasn't a MyClub calendar link. Copy it with Copy link "
-                             "(Kopioi linkki) on MyClub's Calendar subscriptions page, starting "
-                             f"with webcal://, and run this again: {again} --no-open",
-        "link-failed": "The link didn't open, so it wasn't saved. Copy it again from MyClub and "
-                       f"run this again: {again} --no-open",
-        "not-a-calendar": "The link opened a page, not a calendar, so it wasn't saved. Copy it "
-                          "with Copy link (Kopioi linkki) on MyClub's Calendar subscriptions "
-                          f"page, not from the browser's address bar: {again} --no-open",
-        "save-failed": "The link works, but it couldn't be saved in the config (see error).",
-        "already-saved": f"That link is already saved for {args.kid}, so nothing changed. For "
-                         f"another club, copy the link from that club's MyClub: {again} --no-open",
-        "same-link": f"That link is already saved for {extra.get('other_kid')}, so it wasn't saved "
-                     f"again. Each Kid needs their own link: make a new calendar subscription, "
-                     f"choose Valitut jäsentilit, tick only {args.kid}, and copy that link: "
-                     f"{again} --no-open",
-    }.get(result)
-    return report(result, next_, **({"kid": args.kid} if result == "saved" else {}), **extra)
-

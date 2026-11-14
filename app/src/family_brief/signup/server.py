@@ -60,15 +60,16 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs
 
-from .. import failure, setup_myclub, setup_wilma, sources
+from .. import failure, setup_wilma, sources
 from ..config import Config, Kid
 from ..setup_server.first_brief import BRIEF_LOOKBACK_HOURS
 from . import page
 from .host import PROGRAM, HostError, HouseholdHost, user_name
 from .invites import LANGUAGES, HouseholdRecord, Recipient, Store
 
-# Eepos's and eVaka's code is in their folders (ADR 0051); the sign-up's Eepos and eVaka steps
-# reach it through their records until the page is split by Source.
+# MyClub's, Eepos's and eVaka's code is in their folders (ADR 0051); the sign-up's MyClub, Eepos
+# and eVaka steps reach it through their records until the page is split by Source.
+setup_myclub = sources.MYCLUB.code("setup")
 eepos, setup_eepos = sources.EEPOS.code("collector"), sources.EEPOS.code("setup")
 EeposSignin = sources.EEPOS.code("config").EeposSignin
 evaka, setup_evaka = sources.EVAKA.code("collector"), sources.EVAKA.code("setup")

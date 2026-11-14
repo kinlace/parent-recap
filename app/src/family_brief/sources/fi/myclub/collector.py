@@ -1,3 +1,5 @@
+"""How MyClub is read: each Kid's calendar links, downloaded each evening, and saving them in the
+config (ADR 0041)."""
 from __future__ import annotations
 
 import hashlib
@@ -11,9 +13,10 @@ import requests
 import yaml
 from icalendar import Calendar
 
-from ..config import Config, myclub_links
-from ..state import State
-from .base import CalendarEvent, Collected, retry_once_on_timeout
+from ....collectors.base import CalendarEvent, Collected, retry_once_on_timeout
+from ....config import Config
+from ....state import State
+from .config import myclub_links
 
 log = logging.getLogger(__name__)
 

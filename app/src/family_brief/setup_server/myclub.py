@@ -5,10 +5,14 @@ from __future__ import annotations
 from http import HTTPStatus
 from typing import Any
 
-from .. import setup_myclub, setup_save
-from ..config import myclub_links
+from .. import setup_save, sources
 from ..setup_connect import Nothing, Reply, Strict, parse
 from .context import Action, Phase, add_kid
+
+# MyClub's code is in its folder (ADR 0051); this page's step reaches it through its record until
+# the page is split by Source.
+setup_myclub = sources.MYCLUB.code("setup")
+myclub_links = sources.MYCLUB.code("config").myclub_links
 
 # What saving a Kid's MyClub calendar link can say, as `setup myclub` does. Adding a Kid by the
 # name the family calls them, for a Household without Wilma, says one of context.KID_RESULTS.

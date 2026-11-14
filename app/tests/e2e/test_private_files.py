@@ -12,8 +12,8 @@ import requests
 import yaml
 
 from conftest import SAYS_SOMETHING, msg
-from family_brief.collectors import myclub
 from family_brief.config import Kid
+from family_brief.sources.fi.myclub import collector as myclub
 
 TOKEN = "s3cr3t-t0ken"
 LINK = f"https://example.myclub.fi/ical/{TOKEN}?key={TOKEN}"

@@ -617,7 +617,7 @@ def test_no_two_checks_share_a_key():
 
 def test_a_check_keeps_its_key_whatever_language_or_kid_it_is_about(harness, nothing_loaded,
                                                                      monkeypatch):
-    from family_brief.collectors import myclub
+    from family_brief.sources.fi.myclub import collector as myclub
     harness.config["email"]["to"] = [{"address": "parent@example.com", "language": "zh"},
                                      {"address": "partner@example.com", "language": "fi"}]
     for kid in harness.config["kids"]:

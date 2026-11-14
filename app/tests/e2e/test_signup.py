@@ -682,7 +682,7 @@ def test_a_myclub_link_that_won_t_do_is_said_and_nothing_is_made(
     elif status is not None:
         from fake_sources import _Feed
         monkeypatch.setattr(mia_plays, "get", lambda url, *a, **k: _Feed(200, status))
-        from family_brief.collectors import myclub
+        from family_brief.sources.fi.myclub import collector as myclub
         monkeypatch.setattr(myclub.requests, "get", mia_plays.get)
     assert sign_in(signup, code).status == 200
 
