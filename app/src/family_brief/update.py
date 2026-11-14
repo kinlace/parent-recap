@@ -34,7 +34,10 @@ What it downloads, from where, how it is verified and what it never does:
   docs/setup-internals.md lists.
 
 Once installed, the new version's `doctor` runs. A failure it reports that the version before
-didn't (its `doctor` runs first) switches back to that version (versions.py).
+didn't (its `doctor` runs first) switches back to that version (versions.py). So does an update
+that didn't finish: an installer that ends with a non-zero exit status, or is ended at its time
+limit, once it has switched, and a `doctor` that ends with a non-zero exit status without
+printing a failing check, as one that crashes does.
 
 The verified installer makes requests of its own, to the hosts an install already uses (Python
 packages, the Linked Device's npm tree, a new Python or Node, the wilma CLI). Those aren't this
@@ -538,24 +541,37 @@ class _Updater:
         return command + (["-c", self.config] if self.config else [])
 
     def doctor(self, version: str) -> set[str]:
-        """The checks the version `app` points at fails, by its own `doctor`."""
+        """The checks the version `app` points at fails, by its own `doctor`. One that couldn't
+        be started, was ended at its time limit, or ended with a non-zero exit status without
+        printing a failing check, as one that ends with a traceback does, fails
+        DOCTOR_DIDNT_RUN. What it wrote to stderr isn't kept: a traceback may name what is the
+        Household's."""
+        why = ""
         try:
             r = subprocess.run([*self.program(), "doctor"], stdin=subprocess.DEVNULL,
                                capture_output=True, text=True, timeout=DOCTOR_TIMEOUT)
-            output = r.stdout
+            failing = doctor_failures(r.stdout)
+            if r.returncode != 0 and not failing:
+                failing = {DOCTOR_DIDNT_RUN}
+                why = f" (it ended with exit status {r.returncode} and printed no failing check)"
         except (OSError, subprocess.TimeoutExpired) as e:
-            output = f"❌ {DOCTOR_DIDNT_RUN}: {type(e).__name__}"
-        failing = doctor_failures(output)
+            failing = {DOCTOR_DIDNT_RUN}
+            why = f" ({type(e).__name__})"
         self.log("check", f"{version}'s doctor: "
-                 + (f"{len(failing)} failing: {', '.join(sorted(failing))}" if failing else "no failures"))
+                 + (f"{len(failing)} failing: {', '.join(sorted(failing))}{why}" if failing
+                    else "no failures"))
         return failing
 
-    def install(self, plugin: Path, version: str, spare: Path, dialogs: bool = False) -> bool:
+    def install(self, plugin: Path, version: str, spare: Path,
+                dialogs: bool = False) -> tuple[bool, str | None]:
         """Puts the release in `plugin/`, where the install line puts it, and runs its own
         installer, which installs it beside the running version and switches `app` to it. The
         plugin copy before goes in `spare` until the update is done. The installer is told it
         runs for an update, so the wake's password dialog doesn't start, unless `dialogs`: a release that
-        needs the family, which they started. Returns whether `app` now points at `version`."""
+        needs the family, which they started. Returns whether `app` now points at `version`, and
+        how the installer ended when it didn't finish (a non-zero exit status, or ended at its
+        time limit), or None when it did: it runs more steps once it has switched, so `app` can
+        point at a version whose install didn't finish."""
         target = self.folder / PLUGIN
         if target.exists() and not _is_parent_recap(target):
             raise Refused(f"{target} holds something that isn't Parent Recap, so it was left as it is")
@@ -578,15 +594,20 @@ class _Updater:
             r = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True,
                                env=env, timeout=INSTALL_TIMEOUT)
             self.log.output("install.sh", r.stdout + r.stderr)
-            code = r.returncode
-        except (OSError, subprocess.TimeoutExpired) as e:
-            code = None
-            self.log.output("install.sh", f"couldn't finish: {type(e).__name__}")
+            finished = r.returncode == 0
+            ended = f"ended with exit status {r.returncode}"
+        except subprocess.TimeoutExpired as e:
+            self.log.output("install.sh", _text(e.stdout) + _text(e.stderr))
+            finished = False
+            ended = f"was ended at its time limit of {INSTALL_TIMEOUT // 60} minutes"
+        except OSError as e:
+            finished = False
+            ended = f"couldn't be started ({type(e).__name__})"
         now = versions.current(self.folder)
         switched = now is not None and versions.version(now) == version
-        self.log("install", f"{version}: install.sh ended with {code}; app points at "
+        self.log("install", f"{version}: install.sh {ended}; app points at "
                  f"{versions.version(now) if now else 'nothing'}")
-        return switched
+        return switched, None if finished else f"install.sh {ended}"
 
     def restore_plugin(self, spare: Path) -> None:
         """Puts the plugin copy back as it was before `install`: the one before, or none.
@@ -599,6 +620,22 @@ class _Updater:
         if spare.exists():
             os.rename(spare, target)
         self.moved = False
+
+
+def _text(output: str | bytes | None) -> str:
+    """What a program ended at its time limit had written: subprocess gives it as bytes."""
+    if isinstance(output, bytes):
+        return output.decode("utf-8", "replace")
+    return output or ""
+
+
+@dataclass(frozen=True)
+class _Failed:
+    """Why a version `app` was switched to is taken as failed: in the `message` to the family
+    (what follows "Version X"), in the state's `last_result`, and in the update log's line."""
+    message: str
+    result: str
+    log_line: str
 
 
 def update(config: str | None = None, *, retry_failed: bool = True,
@@ -838,7 +875,8 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
                 say(f"Version {wanted} needs you at the computer. "
                     f"{asked(needs.asks, 'en')}".rstrip())
         before = updater.doctor(installed)
-        if not updater.install(plugin, wanted, spare, dialogs):
+        switched, unfinished = updater.install(plugin, wanted, spare, dialogs)
+        if not switched:
             updater.restore_plugin(spare)
             log("install", f"{wanted}: not installed; {installed} runs as it did")
             _save(folder, last_result=f"{wanted} didn't install", failed=wanted)
@@ -846,11 +884,25 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
                            f"runs version {installed} as it did. The update log is "
                            f"{log.path}.", installed, tried=wanted)
         log("switch", f"{installed} -> {wanted}")
-        after = updater.doctor(wanted)
-        # A doctor that didn't run is a failure even where the one before didn't run either.
-        new = (after - before) | (after & {DOCTOR_DIDNT_RUN})
-        if new:
-            outcome = _switch_back(folder, log, updater, spare, installed, wanted, new)
+        failed = None
+        if unfinished is not None:
+            # The installer switched and then didn't finish, so a step of its after the switch
+            # (the record, the command, the Linked Device's restart, the evening jobs, the
+            # Codex skills) didn't run or didn't end: the version isn't whole, whatever its
+            # doctor would say.
+            failed = _Failed(f"was switched to, but its installer didn't finish ({unfinished})",
+                             f"{wanted}'s installer didn't finish",
+                             f"{wanted}'s {unfinished} after the switch")
+        else:
+            after = updater.doctor(wanted)
+            # A doctor that didn't run is a failure even where the one before didn't run either.
+            new = ", ".join(sorted((after - before) | (after & {DOCTOR_DIDNT_RUN})))
+            if new:
+                failed = _Failed("was installed, but its check failed where version "
+                                 f"{installed} passed ({new})",
+                                 f"{wanted} failed its check", f"{wanted} fails {new}")
+        if failed is not None:
+            outcome = _switch_back(folder, log, updater, spare, wanted, failed)
             keep = outcome.version == wanted
             return outcome
         keep = True
@@ -867,26 +919,27 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
         shutil.rmtree(work, ignore_errors=True)
 
 
-def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, installed: str,
-                 wanted: str, new: set[str]) -> Outcome:
-    failing = ", ".join(sorted(new))
+def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, wanted: str,
+                 failed: _Failed) -> Outcome:
+    """Switches back from `wanted`, which `app` points at and which `failed`, as
+    `parent-recap switch-back` does, puts the plugin copy before back and keeps the version as
+    failed."""
     try:
         with open(log.path, "a", encoding="utf-8") as out:
             running, _ = versions.switch_back_whole(folder, stdout=out, stderr=out)
     except versions.NoPrevious:  # install.sh keeps the version before, so only if it was removed
-        log("switch", f"{wanted}: no previous version to switch back to")
-        _save(folder, last_result=f"{wanted} failed its check; no version to switch back to",
+        log("switch", f"{wanted}: no previous version to switch back to, though {failed.log_line}")
+        _save(folder, last_result=f"{failed.result}; no version to switch back to",
               failed=wanted)
-        return Outcome("failed", f"Version {wanted} was installed, but its check failed where "
-                       f"version {installed} passed ({failing}), and there is no previous "
-                       f"version to switch back to. The update log is {log.path}.", wanted, tried=wanted)
+        return Outcome("failed", f"Version {wanted} {failed.message}, and "
+                       "there is no previous version to switch back to. The update log is "
+                       f"{log.path}.", wanted, tried=wanted)
     updater.restore_plugin(spare)
-    log("switch", f"{wanted} -> {running}: back, as {wanted} fails {failing}")
-    _save(folder, last_result=f"{wanted} failed its check; back on {running}",
-          failed=wanted)
-    return Outcome("switched-back", f"Version {wanted} was installed, but its check failed where "
-                   f"version {installed} passed ({failing}), so Parent Recap switched back to "
-                   f"version {running}. The update log is {log.path}.", running, tried=wanted)
+    log("switch", f"{wanted} -> {running}: back, as {failed.log_line}")
+    _save(folder, last_result=f"{failed.result}; back on {running}", failed=wanted)
+    return Outcome("switched-back", f"Version {wanted} {failed.message}, so "
+                   f"Parent Recap switched back to version {running}. The update log is "
+                   f"{log.path}.", running, tried=wanted)
 
 
 # ---------------------------------------------------------------- parent-recap update
