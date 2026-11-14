@@ -41,13 +41,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 import yaml
 
 from .. import gateway, ops, setup_save, setup_wilma, sources
-from ..collectors import myclub
-from ..config import Config, myclub_links
+from ..config import Config
 from ..setup_report import outcome
 from ..system import jobs, secrets
 
-# Eepos's and eVaka's code is in their folders (ADR 0051); the sign-up reaches it through their
-# records until the sign-up is split by Source.
+# MyClub's, Eepos's and eVaka's code is in their folders (ADR 0051); the sign-up reaches it through
+# their records until the sign-up is split by Source.
+myclub, myclub_links = sources.MYCLUB.code("collector"), sources.MYCLUB.code("config").myclub_links
 eepos, setup_eepos = sources.EEPOS.code("collector"), sources.EEPOS.code("setup")
 EeposSignin = sources.EEPOS.code("config").EeposSignin
 evaka, setup_evaka = sources.EVAKA.code("collector"), sources.EVAKA.code("setup")

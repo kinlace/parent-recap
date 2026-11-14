@@ -29,9 +29,12 @@ from typing import Any
 
 import yaml
 
-from .. import send_key, setup_myclub, setup_save
+from .. import send_key, setup_save, sources
 from ..config import Config
 from .invites import LANGUAGES
+
+# MyClub's code is in its folder (ADR 0051); `signup myclub` reaches it through its record.
+setup_myclub = sources.MYCLUB.code("setup")
 
 NONE = "none"
 

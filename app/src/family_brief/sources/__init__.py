@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from .fi.eepos.record import EEPOS
 from .fi.evaka.record import EVAKA
+from .fi.myclub.record import MYCLUB
 from .nl.konnect.record import KONNECT
 from .nl.socialschools.record import SOCIALSCHOOLS
 from .record import (EVERY_SYSTEM, HOSTED_SYSTEM, NEEDS_PAIRING, Add, Source, Unread, Window,
@@ -38,14 +39,6 @@ GMAIL = Source("gmail", _same_everywhere("Gmail"),
                secrets=_in("uninstall", "gmail_secrets"), notes=_in("uninstall", "gmail_notes"),
                sent_to_everyone=_in("collectors.gmail", "sent_to_everyone"),
                checked_body=_in("collectors.gmail", "checked_body"), held_back_link=lambda m: m.url)
-# Checked once for each Kid with a subscription link. Its feed is usually subscribed to in the
-# calendar app directly, so its events go into the .ics only when asked.
-MYCLUB = Source("myclub", _same_everywhere("MyClub"),
-                lambda cfg: any(k.myclub_ical_url for k in cfg.kids),
-                skippable=True, connect_rank=4, collect=_collector("myclub"), counts_events=True,
-                sender_domain="myclub.fi", check=_in("ops", "check_myclub"),
-                check_items={"myclub": "MyClub ({})"},
-                in_ics=lambda cfg: cfg.google_calendar.ics_include_myclub, utc_hash_before_0_4=True)
 # Skippable for a school that doesn't use it.
 WILMA = Source("wilma", _same_everywhere("Wilma"), lambda cfg: cfg.wilma.enabled,
                skippable=True, connect_rank=0, collect=_collector("wilma"), lookback=lambda cfg: cfg.wilma,

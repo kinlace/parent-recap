@@ -283,7 +283,7 @@ Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declare
 
 ### Where a Source's code goes
 
-A Source's Python lives in a folder of its own, `family_brief/sources/<group>/<name>`, so that a release changing only that folder changes nothing another Source's Household runs ([ADR 0051](adr/0051-a-familys-computer-skips-a-release-that-changes-nothing-it-uses.md)). The groups are `fi`, `nl` and `shared` (the Sources no country owns), and `<name>` is the Source's name. Konnect was the first, in `sources/nl/konnect`, Social Schools is in `sources/nl/socialschools`, Eepos in `sources/fi/eepos` and eVaka in `sources/fi/evaka`; the other Sources move in one by one, and until then their code is in the shared modules named below. A folder holds, each in a module of its own:
+A Source's Python lives in a folder of its own, `family_brief/sources/<group>/<name>`, so that a release changing only that folder changes nothing another Source's Household runs ([ADR 0051](adr/0051-a-familys-computer-skips-a-release-that-changes-nothing-it-uses.md)). The groups are `fi`, `nl` and `shared` (the Sources no country owns), and `<name>` is the Source's name. Konnect was the first, in `sources/nl/konnect`, Social Schools is in `sources/nl/socialschools`, Eepos in `sources/fi/eepos`, eVaka in `sources/fi/evaka` and MyClub in `sources/fi/myclub`; the other Sources move in one by one, and until then their code is in the shared modules named below. A folder holds, each in a module of its own:
 
 - `collector`: how it is read
 - `config`: its config section's models
@@ -297,7 +297,7 @@ Code in the folder may import any shared module. Shared code may name a Source's
 A new Source needs:
 
 1. **Its collector**: a module in its folder, or still in `family_brief.collectors`, with one function, `collect(cfg, state, kid_terms)`, returning a `Collected` (`family_brief.collectors.base`) with the Source's Messages, its events or both. It reads only its own transport (IMAP, HTTP, a command-line program, a local database) and skips what is older than its lookback
-2. **Its config model**: a section of `Config` in `family_brief.config`, its model in its folder's `config`, for what setup saves, or a field on `Kid` when each Kid has their own, as MyClub's link. A section with `lookback_hours` lets the run widen the lookback after nights the Source missed
+2. **Its config model**: a section of `Config` in `family_brief.config`, its model in its folder's `config`, for what setup saves, or a field on `Kid` when each Kid has their own, as MyClub's link, which its folder's `config` says how to read (`myclub_links`). A section with `lookback_hours` lets the run widen the lookback after nights the Source missed
 3. **Its record** in its folder's `record`, imported by `family_brief.sources` and added to `ALL` at its place in the run's order. Every record has a name, a label in each reviewed language (en, fi, zh), `connected` (whether the Household's config has it read), `skippable` (on the setup page), `connect_rank` (its place on the setup page's list, one of its own) and `collect`. The other fields are optional hooks, each with a default, as `Source` describes them:
    - the run and the Brief: `lookback`, `counts_events` (the coverage line counts its events)
    - `sender_domain`: the domain of the mail it sends of its own news, which Gmail's sender suggestions leave out once it is connected

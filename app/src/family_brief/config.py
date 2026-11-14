@@ -12,16 +12,11 @@ from .brief_text import Language
 # The sections of the Sources in folders of their own (ADR 0051), listed in Config below.
 from .sources.fi.eepos.config import EeposConfig
 from .sources.fi.evaka.config import EvakaConfig
+# MyClub's links stay on each Kid, where every config written before has them.
+from .sources.fi.myclub.config import MyClubConfig, myclub_links
 from .sources.nl.konnect.config import KonnectConfig
 from .sources.nl.socialschools.config import SocialSchoolsConfig
 from .system import macos_only
-
-
-def myclub_links(value: object) -> list[str]:
-    """A Kid's MyClub calendar links as the config holds them under `myclub_ical_url`: one link, as
-    every config written before #810 has it, or a list of them, one per club (ADR 0041)."""
-    given = value if isinstance(value, list) else [value]
-    return [v for v in given if isinstance(v, str) and v.strip()]
 
 
 def _expand(p: str | None) -> str | None:
@@ -78,11 +73,6 @@ class GmailConfig(BaseModel):
     allowlist_senders: list[str] = Field(default_factory=list)
     # Optional extra keywords — only applied *on top of* allowlist match (never as catchall).
     extra_keywords: list[str] = Field(default_factory=list)
-
-
-class MyClubConfig(BaseModel):
-    # Case-insensitive substrings; matching MyClub events are dropped (club-wide events unrelated to your kid).
-    blocklist: list[str] = Field(default_factory=list)
 
 
 class WilmaConfig(BaseModel):

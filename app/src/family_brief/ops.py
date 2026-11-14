@@ -12,7 +12,6 @@ import argparse
 import json
 import logging
 import re
-import shlex
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -419,29 +418,6 @@ def check_wilma_passwords(add) -> None:
             add(WARN, "wilma", f"the Wilma password of {who} is still in the wilma CLI's own "
                 f"file, not encrypted: moving it to the {kind} didn't work yet. The next evening "
                 "run tries again; if this stays, sign in to Wilma again: parent-recap setup wilma")
-
-
-def check_myclub(cfg: Config, add, config: str | None = None) -> None:
-    """Each Kid's subscription links, since each Kid can have clubs of their own (#810)."""
-    for kid in cfg.kids:
-        links = kid.myclub_ical_url
-        for i, url in enumerate(links, 1):
-            _check_myclub(kid.name, url, add, f"link {i} of {len(links)}" if len(links) > 1 else "link")
-
-
-def _check_myclub(kid: str, url: str, add, which: str = "link") -> None:
-    from .collectors import myclub
-    try:
-        text = myclub.download(url)
-        n = text.count("BEGIN:VEVENT")
-        add(OK, "myclub", f"subscription {which} works, {n} events in the calendar", subject=kid)
-    except Exception as e:
-        fix = ("remove it on the setup page's MyClub step and add a new one" if which != "link"
-               else f"save a new one with parent-recap setup myclub --kid {shlex.quote(kid)}")
-        add(FAIL, "myclub", f"subscription {which} doesn't open: {e} ({fix})", subject=kid)
-    except Exception as e:
-        add(FAIL, "myclub", f"subscription link doesn't open: {e} (save a new one with "
-            f"parent-recap setup myclub --kid {shlex.quote(kid)})", subject=kid)
 
 
 def check_whatsapp(cfg: Config, add, config: str | None = None) -> None:

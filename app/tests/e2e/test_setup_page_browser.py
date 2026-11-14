@@ -32,9 +32,9 @@ from conftest import CLASS_GROUP, PIANO_GROUP, eepos_student, evaka_child
 from fake_sources import EEPOS_PASSWORD, EVAKA_PASSWORD
 from family_brief import (failure, gateway, linked_device, ops, setup_connect, setup_gmail,
                           setup_wilma, update)
-from family_brief.collectors import myclub
 from family_brief.config import Config
 from family_brief.sources.fi.evaka import collector as evaka
+from family_brief.sources.fi.myclub import collector as myclub
 from fake_system import MACOS
 from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, config_file,
                         more_progress, progress_file, save_progress, wait_for)
