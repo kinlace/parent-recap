@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .nl.konnect.record import KONNECT
+from .nl.socialschools.record import SOCIALSCHOOLS
 from .record import (EVERY_SYSTEM, HOSTED_SYSTEM, NEEDS_PAIRING, Add, Source, Unread, Window,
                      _collector, _in, _same_everywhere)
 
@@ -85,22 +86,6 @@ EVAKA = Source("evaka", _same_everywhere("eVaka"), lambda cfg: bool(cfg.evaka.si
                survey=_in("uninstall", "survey_evaka"),
                sent_to_everyone=_in("collectors.evaka", "sent_to_everyone"),
                withheld=_in("collectors.evaka", "withheld"), held_back_link=lambda m: m.url)
-
-# A school's announcements and calendar on Social Schools, which many schools in the Netherlands
-# use, read through the API its own apps read, signing in as its iOS app does with a password in
-# the secret store (ADR 0049). Its events go into the .ics, as eVaka's do. Every post goes to a
-# group or the whole school, so none is held back for its words. Set up from a terminal for now
-# (`setup socialschools`), on a family's own computer only: the hosted version doesn't offer it,
-# and its Brief doesn't name it, since the setup page doesn't either.
-SOCIALSCHOOLS = Source("socialschools", _same_everywhere("Social Schools"),
-                       lambda cfg: bool(cfg.socialschools.signins),
-                       skippable=True, connect_rank=10, collect=_collector("socialschools"),
-                       counts_events=True, systems=frozenset({"macos", "windows"}), hosted=False,
-                       setup_page=False, lookback=lambda cfg: cfg.socialschools,
-                       check=_in("ops", "check_socialschools"),
-                       secrets=_in("collectors.socialschools", "secrets_of"),
-                       sent_to_everyone=_in("collectors.socialschools", "sent_to_everyone"),
-                       held_back_link=lambda m: m.url)
 
 # Messages from plain files the family puts in a folder it picks, for news from any place Parent
 # Recap doesn't read itself (ADR 0044). Turned on, and its folder chosen, with the manage skill

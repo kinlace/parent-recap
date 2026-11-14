@@ -15,8 +15,8 @@ import time_machine
 
 from conftest import NOW, socialschools_child, socialschools_event, socialschools_post
 from fake_sources import SOCIALSCHOOLS_PASSWORD
-from family_brief.collectors import socialschools
 from family_brief.config import Config
+from family_brief.sources.nl.socialschools import collector as socialschools
 from family_brief.state import State
 
 TZ = ZoneInfo("Europe/Helsinki")

@@ -33,9 +33,9 @@ setup page — serve the setup page on this Mac and open it in the browser (in s
 
 This module is the chat's side only: the arguments, the dialogs and what each command prints. What
 a step does, which the setup page does too, is in its own module: setup_gmail, setup_wilma,
-setup_ai, setup_myclub, setup_eepos, setup_evaka and setup_socialschools, and a Source in a folder
-of its own (ADR 0051) has its command there too, which this module only lists: Konnect's is in
-sources/nl/konnect/setup.
+setup_ai, setup_myclub, setup_eepos and setup_evaka, and a Source in a folder of its own (ADR
+0051) has its command there too, which this module only lists: Social Schools's is in
+sources/nl/socialschools/setup and Konnect's in sources/nl/konnect/setup.
 
 Each prints one line of JSON for the assistant, and nothing else: `result` says what happened
 and, when something went wrong, `next` says what the family does about it. A secret is never in
@@ -146,14 +146,10 @@ def register(sub) -> None:
     pevaka.add_argument("--username", required=True, help="The guardian's eVaka email")
     pevaka.set_defaults(func=cmd_evaka)
 
-    psocial = steps.add_parser("socialschools", help="Add a parent's sign-in at Social Schools: "
-                               "the password typed at the secret store's own prompt, checked at "
-                               "once, the children matched to the Kids by name")
-    psocial.add_argument("--username", required=True, help="The parent's Social Schools email")
-    psocial.set_defaults(func=cmd_socialschools)
-
     # The steps of the Sources in folders of their own (ADR 0051), each added by its own module.
     from .sources.nl.konnect import setup as konnect_setup
+    from .sources.nl.socialschools import setup as socialschools_setup
+    socialschools_setup.register(steps)
     konnect_setup.register(steps)
 
     from . import setup_save, setup_server, setup_status
@@ -488,14 +484,4 @@ def cmd_evaka(args: argparse.Namespace) -> int:
     dialog, chat or command line, and the one line of JSON never has it."""
     from . import setup_evaka
     result, next_, extra = setup_evaka.cmd(args)
-    return report(result, next_, **extra)
-
-
-# ---------------------------------------------------------------- socialschools
-
-def cmd_socialschools(args: argparse.Namespace) -> int:
-    """The password is typed at the secret store's own prompt in this terminal, so it reaches no
-    dialog, chat or command line, and the one line of JSON never has it."""
-    from . import setup_socialschools
-    result, next_, extra = setup_socialschools.cmd(args)
     return report(result, next_, **extra)

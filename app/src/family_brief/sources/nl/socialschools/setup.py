@@ -1,4 +1,6 @@
-"""Adding a Social Schools sign-in from a terminal (ADR 0049), as `setup evaka` adds an eVaka one.
+"""Social Schools's setup step, `setup socialschools`: adding a Social Schools sign-in from a
+terminal (ADR 0049), as `setup evaka` adds an eVaka one. `register` adds the command to setup's,
+which lists it among the Sources' (setup_steps).
 
 `setup socialschools --username EMAIL` has the parent's password typed at the secret store's own
 prompt in that terminal (`secrets.put_typed`), so it passes through no dialog, chat or command
@@ -14,6 +16,7 @@ password, can't be signed in to this way: this says so, and saves nothing.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import shlex
 import sys
@@ -23,12 +26,13 @@ from typing import Any
 
 import yaml
 
-from . import install_record
-from .collectors import socialschools
-from .config import Config, SocialSchoolsSignin
-from .setup_report import PLAIN_TERMINAL, keychain_failure, program
-from .setup_save import _write_private
-from .system import secrets
+from .... import install_record
+from ....config import Config
+from ....setup_report import PLAIN_TERMINAL, keychain_failure, program, report
+from ....setup_save import _write_private
+from ....system import secrets
+from . import collector as socialschools
+from .config import SocialSchoolsSignin
 
 # What the family is told when the sign-in can't be done with a password: as setup, `doctor` and
 # docs/sources.md say it.
@@ -187,6 +191,22 @@ def _save(path: Path, signin: SocialSchoolsSignin) -> None:
         new = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
     Config.model_validate(yaml.safe_load(new))
     _write_private(path, new)
+
+
+def register(steps: Any) -> None:
+    """Adds `setup socialschools` to setup's commands, `steps`."""
+    step = steps.add_parser("socialschools", help="Add a parent's sign-in at Social Schools: the "
+                            "password typed at the secret store's own prompt, checked at once, the "
+                            "children matched to the Kids by name")
+    step.add_argument("--username", required=True, help="The parent's Social Schools email")
+    step.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> int:
+    """`setup socialschools`. The password is typed at the secret store's own prompt in this
+    terminal, so it reaches no dialog, chat or command line, and the one line of JSON never has it."""
+    result, next_, extra = cmd(args)
+    return report(result, next_, **extra)
 
 
 def cmd(args: Any) -> tuple[str, str | None, dict[str, Any]]:

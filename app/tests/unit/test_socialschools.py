@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from family_brief.collectors import socialschools as ss
 from family_brief.config import Kid
+from family_brief.sources.nl.socialschools import collector as ss
 
 TZ = "Europe/Helsinki"
 MIA = ss.Child("Mia", "Mia Virtanen", frozenset({"groep 5"}))
