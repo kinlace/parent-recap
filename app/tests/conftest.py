@@ -35,7 +35,7 @@ import pytest
 import time_machine
 import yaml
 
-from family_brief import __main__ as cli, feedback, gateway, slept, tools, wilma_egress
+from family_brief import __main__ as cli, gateway, slept, tools, wilma_egress
 from family_brief.collectors import local_files
 from family_brief.collectors.base import CalendarEvent, Message
 from family_brief.llm import retry
@@ -58,11 +58,6 @@ NOW = datetime(2026, 9, 27, 21, 0, tzinfo=ZoneInfo(TZ))
 # The default config's picked WhatsApp groups, by their ids
 CLASS_GROUP, PIANO_GROUP = "120363000000000001@g.us", "120363000000000002@g.us"
 GOLDEN_DIR = Path(__file__).parent / "golden"
-# A stand-in for the pilot Form the team ships: no real Form is needed.
-PILOT_FORM_URL = "https://docs.google.com/forms/d/e/PILOT_FORM/viewform"
-PILOT_FORM_FIELDS = {"verdict": "entry.11", "item_text": "entry.12", "source": "entry.13",
-                     "backend": "entry.14", "date": "entry.15", "household": "entry.16",
-                     "kid": "entry.17"}
 
 
 REAL_RUN = subprocess.run  # before the harness fakes it
@@ -463,7 +458,7 @@ class Harness:
             mp.setattr(sys, "argv", argv)
             return cli.main()
 
-    # What no fixture fakes: the network the run waits for, and the pilot Form
+    # What no fixture fakes: the network the run waits for
     def _install(self, mp: pytest.MonkeyPatch) -> None:
         self.probed: list[str] = []  # each host the run waited for the network on
 
@@ -471,14 +466,6 @@ class Harness:
             self.probed.append(address[0])
             return _FakeSocket()
         mp.setattr(socket, "create_connection", connect)
-
-        # Whether this version ships the pilot Form is each test's to say, with ship_pilot_form.
-        mp.setattr(feedback, "PILOT_FORM", self.home / "pilot_feedback.yaml")
-
-    def ship_pilot_form(self) -> None:
-        """This version ships the pilot Form's block, as ops/feedback-form's log prints it."""
-        feedback.PILOT_FORM.write_text(yaml.safe_dump({"feedback": {
-            "prefill_base_url": PILOT_FORM_URL, "fields": PILOT_FORM_FIELDS}}))
 
     def authorize_google_calendar(self) -> None:
         self.outbox.authorize_google_calendar()

@@ -230,28 +230,6 @@ class WeekendEventsConfig(BaseModel):
         return Path(_expand(self.dir))
 
 
-class FeedbackFields(BaseModel):
-    """The pilot Form's pre-fill ids (`entry.N`), as printed by ops/feedback-form."""
-    verdict: str
-    item_text: str
-    source: str
-    backend: str
-    date: str
-    household: str
-    kid: str
-
-
-class FeedbackConfig(BaseModel):
-    """Pilot feedback: ⭐/❌ links in the HTML Brief that open the shared, pre-filled Google Form."""
-    enabled: bool = False
-    prefill_base_url: str = ""
-    household_label: str = ""   # stays on the Mac: the Form gets its pseudonym (feedback.pseudonym)
-    fields: FeedbackFields | None = None
-
-    def active(self) -> bool:
-        return self.enabled and bool(self.prefill_base_url) and self.fields is not None
-
-
 class ScheduleConfig(BaseModel):
     daily_hour: int = 21
     daily_minute: int = 0
@@ -265,6 +243,12 @@ class UpdatesConfig(BaseModel):
     `parent-recap update off`. Turned off, the evening run still reads the newest release's
     version, to say in the Brief that one is out, and downloads nothing."""
     enabled: bool = True
+
+
+# Sections an older version wrote that this one no longer reads: a config with them still loads,
+# since Config ignores keys it doesn't know, and is still Parent Recap's (uninstall.py). Pilot
+# feedback's was removed in #939.
+RETIRED_SECTIONS = frozenset({"feedback"})
 
 
 class Config(BaseModel):
@@ -291,7 +275,6 @@ class Config(BaseModel):
     ai_filter: AIFilterConfig = AIFilterConfig()
     archive: ArchiveConfig = ArchiveConfig()
     weekend_events: WeekendEventsConfig = WeekendEventsConfig()
-    feedback: FeedbackConfig = FeedbackConfig()
     schedule: ScheduleConfig = ScheduleConfig()
     updates: UpdatesConfig = UpdatesConfig()
     state_path: str = "~/.family/state.json"

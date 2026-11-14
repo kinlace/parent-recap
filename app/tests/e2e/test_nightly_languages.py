@@ -11,8 +11,7 @@ import pytest
 
 from conftest import html_for_golden, ics_for_golden
 
-from nights import (ENGLISH_REPLY, FEEDBACK, PARTNER_EN, archived_summary, feedback_links,
-                    model_call_for_golden, normal_night, two_languages)
+from nights import ENGLISH_REPLY, PARTNER_EN, archived_summary, model_call_for_golden, normal_night, two_languages
 
 
 # ── Recipients in their own language
@@ -54,11 +53,10 @@ def test_second_recipient_gets_the_brief_translated_into_their_language(harness,
     golden("two_languages.translate.masked.model.txt", model_call_for_golden(translate))
 
 
-def test_translation_shares_calendar_archive_and_feedback_text_with_the_original(harness):
+def test_translation_shares_calendar_and_archive_with_the_original(harness):
     two_languages(harness)
     harness.config["google_calendar"] = {"mode": "google"}
     harness.authorize_google_calendar()
-    harness.config["feedback"] = FEEDBACK
 
     assert harness.run() == 0
 
@@ -74,12 +72,6 @@ def test_translation_shares_calendar_archive_and_feedback_text_with_the_original
     summary = archived_summary(harness)
     assert summary["message_digest"].startswith("**Mia**\n- 周四远足，周二前在 Wilma 签同意书")
     assert summary["per_kid"][0]["action_items"][0]["what"] == "在 Wilma 签远足同意书"
-    # Feedback from the English Brief reaches the Form in the original's words.
-    en_links, zh_links = feedback_links(en.html), feedback_links(zh.html)
-    assert [label for label, _, _ in en_links[:3]] == \
-        ["Something wrong in this summary? Tell us", "⭐ useful", "❌ wrong"]
-    assert [answers for _, answers, _ in en_links] == [answers for _, answers, _ in zh_links]
-    assert en_links[1][1]["item_text"] == "在 Wilma 签远足同意书"
 
 
 def test_translation_adds_no_link_to_an_event(harness):
@@ -172,19 +164,18 @@ def test_failed_translation_sends_that_recipient_the_original(harness, golden, t
     assert harness.state()["caught_up_at"] is not None
 
 
-def test_failed_translation_leaves_the_shared_calendar_and_feedback_text_alone(harness):
+def test_failed_translation_leaves_the_shared_calendar_alone(harness):
     two_languages(harness)
     harness.model_reply[1] = edited_translation(lambda r: r["per_kid"][0]["action_items"].pop(1))
     harness.config["google_calendar"] = {"mode": "google"}
     harness.authorize_google_calendar()
-    harness.config["feedback"] = FEEDBACK
 
     assert harness.run() == 0
 
     assert [e["summary"] for e in harness.calendar.inserted] == \
         ["3B 远足 Nuuksio", "钢琴课（改期）", "⚽ FC Kilo P2017 vs HJK"]
     zh, en = harness.sent
-    assert (en.text, en.html) == with_note(zh, FAILED_EN)  # feedback links and Google links included
+    assert (en.text, en.html) == with_note(zh, FAILED_EN)  # Google links included
     assert FAILED_EN not in zh.text
 
 

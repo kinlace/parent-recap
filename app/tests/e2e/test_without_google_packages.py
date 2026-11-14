@@ -87,8 +87,6 @@ def test_weekend_picks_without_them_still_go_out(harness, monkeypatch, no_google
 
 
 def test_setup_saves_and_reports_without_them(harness, offline, no_google, capsys):
-    harness.ship_pilot_form()
-
     assert save(harness, ANSWERS) == 0
     assert saved(harness)["kids"]
     capsys.readouterr()

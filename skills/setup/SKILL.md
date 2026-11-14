@@ -82,7 +82,6 @@ $FB setup save <<'EOF'
  "evening": "21:00",
  "sources": {"gmail": {"address": "parent@gmail.com", "allowlist_domains": ["espoo.fi"], "allowlist_senders": []},
              "wilma": {"enabled": true}},
- "feedback": {"enabled": true},
  "progress": {"phase": "connect", "source": "gmail", "sources": {"wilma": "done"}}}
 EOF
 ```
@@ -99,7 +98,7 @@ EOF
 Every step of the setup page has a **Continue in the chat** button, for a family that gets stuck there or would rather talk it through. In Claude Code it opens this skill in a Terminal window; in Codex the family types `$parent-recap-setup`. Either way, setup has already started: carry on from the step the page reached, keeping the answers already given, instead of starting over. Do the same for a setup that stopped part-way in an earlier chat.
 
 1. Run `$FB setup save --read`. `phase` is the phase reached, `source` the Source the parent was on in Connect (null once each is done or skipped), and `sources` each Source's status.
-2. Read the answers already given with `grep -vE 'myclub_ical_url|myclub\.fi/' ~/.family/config.yaml`. `summary_language` is the language the parent picked on the page: use it from your first line, since they haven't written anything yet, and don't ask for it again. The AI (`llm.backend`), pilot feedback (`feedback.enabled`), the Recipients (`email.to`), the Gmail address (`gmail.username`, only when Gmail is read), the city and the Kids are answers too. Without `llm.backend` yet (the parent left Welcome before saving it), the AI is the one whose chat you're in.
+2. Read the answers already given with `grep -vE 'myclub_ical_url|myclub\.fi/' ~/.family/config.yaml`. `summary_language` is the language the parent picked on the page: use it from your first line, since they haven't written anything yet, and don't ask for it again. The AI (`llm.backend`), the Recipients (`email.to`), the Gmail address (`gmail.username`, only when Gmail is read), the city and the Kids are answers too. Without `llm.backend` yet (the parent left Welcome before saving it), the AI is the one whose chat you're in.
 3. The progress can also have `partner`, Welcome's choice of partner (see "Saving answers and progress"), `whatsapp_chats`, the WhatsApp groups the page found, each with its `name` and a `hint` naming the Kids it seems to be about, and `gmail_senders`, the Gmail senders the page read in Working, in the same form as `senders` from `discover gmail-senders --json`, for Check. Use them instead of asking again.
 4. The program is already installed, since it serves the page: skip "Get the Mac ready first" and `install.sh` unless `$FB` is missing.
 5. In one short message, say you're carrying on from where setup got to: the phase, and in Connect the Source list with its statuses. Ask the parent to carry on here rather than on the page, which they can close. Then go straight to that step and end with its one thing to do. On Welcome, ask only what isn't answered yet. Don't redo a Source that's `done`; a `skipped` one stays skipped unless the parent asks for it. If the parent says what went wrong on the page, help with that first.
@@ -109,23 +108,22 @@ Every step of the setup page has a **Continue in the chat** button, for a family
 **Introduction.** In a few sentences: every evening Parent Recap reads the Kids' school mail, Wilma and MyClub, and emails each parent a short Brief in their own language, with new events attached for the calendar. Then say:
 
 - What a Brief looks like: the link to the demo in the invite the Parent Recap team sent them. If they don't have it, describe a Brief in a sentence: grouped by Kid, with Notices and Action Items with due dates
-- Where the data goes: it's read on this Mac. Only that night's messages from the Kids' Sources go to the AI the family already uses, to write the Brief. The Brief is sent from Parent Recap's own address, `brief@parentrecap.com`, through the Parent Recap team's server, which keeps neither the Brief nor the addresses. Nobody reads that address: each Brief says to write to the parent instead. Nothing else goes to the Parent Recap team, except the ⭐ / ❌ feedback a pilot family chooses to send.
+- Where the data goes: it's read on this Mac. Only that night's messages from the Kids' Sources go to the AI the family already uses, to write the Brief. The Brief is sent from Parent Recap's own address, `brief@parentrecap.com`, through the Parent Recap team's server, which keeps neither the Brief nor the addresses. Nobody reads that address: each Brief says to write to the parent instead. Nothing else goes to the Parent Recap team.
 - What it costs: Claude needs the paid plan the family already has, Claude Pro or Max. ChatGPT works on any plan, Free included. Nothing else costs money.
 - That it needs a Mac that is on in the evening. Every Brief is sent with a Gateway Key: setup gets one for sending by itself, and each Recipient confirms their address once through a link in an email from `brief@parentrecap.com`. Gmail is only needed if school mail arrives there, and is only read.
 
 **The defaults card.** End the introduction with the defaults, as choices the parent only changes where they're wrong:
 
-| Default      | How you pick it                                                                                                                   |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| Language     | The one they write in. It's setup's language and their Brief's                                                                    |
-| AI           | Claude in Claude Code; **ChatGPT** ("runs through Codex") in Codex. Say Claude needs a paid plan; ChatGPT works on any plan       |
-| Recipients   | The parent and their partner ("Add my partner"), or "Only me"                                                                     |
-| Pilot family | Yes. Only when `PLUGIN/app/src/family_brief/pilot_feedback.yaml` exists; without it, leave this line and every pilot question out |
+| Default    | How you pick it                                                                                                             |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Language   | The one they write in. It's setup's language and their Brief's                                                              |
+| AI         | Claude in Claude Code; **ChatGPT** ("runs through Codex") in Codex. Say Claude needs a paid plan; ChatGPT works on any plan |
+| Recipients | The parent and their partner ("Add my partner"), or "Only me"                                                               |
 
 The card has no calendar question: new events always come as an `.ics` attachment on the Brief, which one tap adds to any calendar. If the parent asks about Google Calendar, say it can be turned on later through `/parent-recap:manage`, once the Parent Recap team has given them the Google app file it needs.
 
-- **In Claude Code**, make one AskUserQuestion call with four questions, the default first in each: language (the one you guessed first, then whichever of English, Chinese and Finnish are left, at most four options; "Other" covers any other language), AI (Claude / ChatGPT, runs through Codex), Recipients (Add my partner / Only me) and pilot family (yes / no), when the card has it.
-- **In Codex**, list language, AI and pilot family as numbered lines and ask the parent to reply "ok", or the number of a line to change; then ask that line's question as a numbered list. Once the card is settled, ask Recipients as its own numbered choice (1. Add my partner, 2. Only me).
+- **In Claude Code**, make one AskUserQuestion call with three questions, the default first in each: language (the one you guessed first, then whichever of English, Chinese and Finnish are left, at most four options; "Other" covers any other language), AI (Claude / ChatGPT, runs through Codex) and Recipients (Add my partner / Only me).
+- **In Codex**, list language and AI as numbered lines and ask the parent to reply "ok", or the number of a line to change; then ask that line's question as a numbered list. Once the card is settled, ask Recipients as its own numbered choice (1. Add my partner, 2. Only me).
 
 Then, one message each:
 
@@ -244,9 +242,7 @@ Give each list an "all" line the parent can tick instead of going through it. Th
 
 Then save it with `$FB setup save`: `kids` with every ticked Kid's `name`, `everyday_name` and `aliases`; `sources.gmail` with the ticked domains in `allowlist_domains` and the ticked addresses in `allowlist_senders`; and `"progress": {"phase": "check"}`.
 
-**Pilot feedback**, if the card says pilot family. Read the "Pilot feedback" section of `PLUGIN/docs/config.md` and tell the parent every point the parents must know before turning it on, in your own words, leaving none out, especially that "just opening the link without submitting still leaves a record". End with one choice: turn it on, or not now. If not, save no `feedback`, and say they can turn it on later with `/parent-recap:manage`. If they agree, save `"feedback": {"enabled": true}` with `$FB setup save`: it writes the rest of the section from the pilot form the program ships, with a `household_label` it makes itself. Don't ask for a label. Nothing is pasted.
-
-Then run `$FB doctor` once more. Fix every ❌, and with pilot feedback on, any ⚠️ on its line. Other ⚠️ don't stop setup: tell the parent what each one means and what to do, as doctor says.
+Then run `$FB doctor` once more. Fix every ❌. ⚠️ don't stop setup: tell the parent what each one means and what to do, as doctor says.
 
 ## 5. First Brief
 
@@ -256,7 +252,6 @@ Save `"progress": {"phase": "first-brief"}` first.
 2. **The real Brief**: `$FB bg run --lookback-hours 72`. It goes to both Recipients.
 3. Each run can take several minutes. Never start one while another is going. If your tool cut the real run off, don't run it again: it may still be going and will send the Brief. Wait a few minutes, then check with `$FB setup status` whether it went out. A run started while another is going stops at once with "Another Parent Recap run is still going"; then wait, don't retry.
 4. With the partner in another language, the preview shows only the parent's. Ask the parent to have their partner check that their copy came in their language, without a line at the top saying it couldn't be translated.
-5. With pilot feedback on, the preview has no ⭐ / ❌. Ask the parent to check the real Brief has a ⭐ and a ❌ next to each Action Item, and one ❌ under the Digest.
 
 ## 6. Finish
 

@@ -147,12 +147,6 @@ class BriefText:
     archive_new_events: str
     archive_messages: str
 
-    # ── Feedback link labels (the Form's own choices are English for every language, see feedback.py)
-    feedback_label: str  # plain text before an Action Item's two links
-    feedback_saved: str
-    feedback_wrong: str
-    feedback_digest_wrong: str
-
     def placeholder_words(self) -> dict[str, str]:
         """What this language says in place of a placeholder the model changed beyond repair, by kind."""
         return {"phone": self.phone_number, "email": self.email_address, "link": self.link,
@@ -275,10 +269,6 @@ EN = BriefText(
     archive_action_items="**Action Items:**",
     archive_new_events="## New calendar events",
     archive_messages="## Messages",
-    feedback_label="Feedback: ",
-    feedback_saved="⭐ useful",
-    feedback_wrong="❌ wrong",
-    feedback_digest_wrong="Something wrong in this summary? Tell us",
 )
 
 ZH = BriefText(
@@ -369,10 +359,6 @@ ZH = BriefText(
     archive_action_items="**待办：**",
     archive_new_events="## 新日历事件",
     archive_messages="## 原始消息",
-    feedback_label="反馈：",
-    feedback_saved="⭐ 有用",
-    feedback_wrong="❌ 有错",
-    feedback_digest_wrong="这段摘要有错？告诉我们",
 )
 
 FI = BriefText(
@@ -485,10 +471,6 @@ FI = BriefText(
     archive_action_items="**Hoidettavat:**",
     archive_new_events="## Uudet kalenteritapahtumat",
     archive_messages="## Viestit",
-    feedback_label="Palaute: ",
-    feedback_saved="⭐ hyödyllinen",
-    feedback_wrong="❌ väärin",
-    feedback_digest_wrong="Onko tiivistelmässä virhe? Kerro meille",
 )
 
 TEXT: dict[Language, BriefText] = {"en": EN, "zh": ZH, "fi": FI}  # the reviewed languages

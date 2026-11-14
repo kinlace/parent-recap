@@ -130,7 +130,7 @@ def walk_to_finish(harness, url: str, reads_gmail: bool = True) -> dict[str, Any
     assert state["system"] == ("windows" if sys.platform == "win32" else "macos")
     assert call(url, "api/language", method="POST", body={"language": "en"}).status == 200
     assert call(url, "api/welcome", method="POST",
-                body={"ai": "gateway", "partner": None, "feedback": False}).status == 200
+                body={"ai": "gateway", "partner": None}).status == 200
     assert save_recipients(url, {"address": PARENT, "language": "en"}).json()["result"] == "saved"
 
     listed = [s["name"] for s in call(url, "api/state").json()["connect"]["sources"]]
@@ -266,7 +266,7 @@ def a_key_for_sending_is_saved(harness, url: str) -> None:
     skip, and doctor's sending check, which sends nothing, passes with it."""
     assert call(url, "api/language", method="POST", body={"language": "en"}).status == 200
     assert call(url, "api/welcome", method="POST",
-                body={"ai": "codex", "partner": None, "feedback": False}).status == 200
+                body={"ai": "codex", "partner": None}).status == 200
     assert source(url, "wilma", "skip").status == 200
 
     out = save_recipients(url, {"address": PARENT, "language": "en"}, key=GATEWAY_KEY).json()

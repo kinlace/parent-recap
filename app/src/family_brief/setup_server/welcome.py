@@ -1,14 +1,14 @@
-"""Welcome: the page's language, the AI picked and whether it's ready, the partner or only me,
-and pilot feedback."""
+"""Welcome: the page's language, the AI picked and whether it's ready, and the partner or only
+me."""
 from __future__ import annotations
 
 import re
 from http import HTTPStatus
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .. import failure, feedback, setup_save
+from .. import failure, setup_save
 from ..system import desktop, profile, secrets
 from . import ai, gmail
 from .context import (LANGUAGES, Action, Phase, Reply, ais, chats, claude_missing, not_offered,
@@ -29,7 +29,6 @@ class WelcomeAnswer(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ai: Literal["claude", "codex", "gateway"]
     partner: PartnerAnswer | None  # None for only me
-    feedback: StrictBool
 
 
 class Welcome(Phase):
@@ -79,8 +78,8 @@ class Welcome(Phase):
         return HTTPStatus.OK, {**ai.status(self.context, program, name), "ai": name}
 
     def save_welcome(self, raw: Any) -> Reply:
-        """Saves Welcome's choices: the AI, the partner or only me, and pilot feedback, and moves
-        setup on to Connect. The partner waits in the progress for Connect's first step, where
+        """Saves Welcome's choices: the AI and the partner or only me, and moves setup on
+        to Connect. The partner waits in the progress for Connect's first step, where
         the Recipients are saved; once they are, as the chat setup may have, the answer changes them
         (gmail.with_partner), and no Recipient but the first is dropped unless it's "Only me"."""
         try:
@@ -94,8 +93,6 @@ class Welcome(Phase):
             "ai": answer.ai,
             "progress": {"phase": "connect", "source": "wilma", "partner": partner},
         }
-        if answer.feedback or feedback.pilot_form():  # without a pilot Form, setup save refuses yes
-            answers["feedback"] = {"enabled": answer.feedback}
         recipients = gmail.with_partner(self.context, partner)
         if recipients:
             answers["recipients"] = recipients
@@ -123,12 +120,7 @@ class Welcome(Phase):
             partner |= {k: v for k, v in saved.items() if k in ("address", "language")}
         backend = section(data, "llm").get("backend")
         offered = ais()
-        enabled = section(data, "feedback").get("enabled")
-        # None when this version ships no pilot Form: the page doesn't ask, so nothing half-set
-        # is ever written.
-        pilot = (enabled if isinstance(enabled, bool) else True) if feedback.pilot_form() else None
-        return {"ai": backend if backend in offered else offered[0], "partner": partner,
-                "feedback": pilot}
+        return {"ai": backend if backend in offered else offered[0], "partner": partner}
 
 
 def preferred_language() -> str:

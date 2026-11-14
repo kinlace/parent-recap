@@ -8,6 +8,10 @@ What changes for families in each release, collected from the `What changes for 
 
 - On a Mac, Parent Recap now updates itself. After the evening Brief it installs each new release, a day after it first saw that release at the earliest, checks that everything still works and goes back to the version before if it doesn't. The next Brief says at its top which version it now runs. To turn this off, open Parent Recap Settings and turn off the switch on its last step, or type `parent-recap update off` in Terminal; it then only tells you in the Brief that a newer release is out. **Update now** in Parent Recap Settings, or `parent-recap update`, installs the newest release whenever you choose. A release that needs you at the computer, such as one that asks for the Mac password, waits for you to start it. If your Parent Recap is from before this release, paste the install line into Terminal once to get it. Windows still updates by pasting the install line again. [Updating](docs/install.md#updating) says how it works, and [SECURITY.md](SECURITY.md#how-parent-recap-updates-itself) what it downloads and how each download is checked.
 
+### Removed
+
+- Pilot feedback is gone: no Brief has the ⭐ / ❌ links under its Action Items or the "Something wrong in this summary? Tell us" link under the Digest any more, and setup no longer asks whether you're a pilot family. A config that still turns it on keeps working as it is; nothing needs changing.
+
 ## 0.19.0 · 2026-11-12
 
 ### Added

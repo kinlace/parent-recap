@@ -19,7 +19,7 @@ HEALTH_CHECKS = {"config": "config", "recipients": "recipients", "language": "la
                  "myclub": "myclub", "eepos": "eepos", "evaka": "evaka", "local_files": "local_files",
                  "socialschools": "socialschools", "konnect": "konnect",
                  "calendar": "calendar",
-                 "feedback": "feedback", "weekend": "weekend"}
+                 "weekend": "weekend"}
 # A language's, a Kid's MyClub, an Eepos school's, an eVaka city's and a Konnect portal's checks
 # carry the language, the Kid, the school, the city or the portal too, from their subject.
 HEALTH_SUBJECTS = {"language": "language", "myclub": "kid", "eepos": "school", "evaka": "city",

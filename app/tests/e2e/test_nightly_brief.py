@@ -1,6 +1,6 @@
 """The nightly `parent-recap run`, end to end: the Brief a normal night makes, failures at the
 edges, a computer that sleeps through the run, odd-shaped replies, a night of Notices only, dated events without a start time, citations,
-untrusted message text, and the feedback links and footer. Assertions are only on what leaves the
+untrusted message text, and the footer. Assertions are only on what leaves the
 system: the email (text, HTML, attachments), what the model is given, and persisted state."""
 from __future__ import annotations
 
@@ -10,20 +10,17 @@ import logging
 import re
 from datetime import timedelta
 from html import escape
-from pathlib import Path
 
 import pytest
 import time_machine
 
 from conftest import GATEWAY_KEY, NOW, html_for_golden, ics_for_golden, msg, without_unread_note
 
-from family_brief import feedback
 from fake_system import LINUX, WINDOWS
 from family_brief.gateway import GatewayError
 from family_brief.system import jobs
-from nights import (ENGLISH_REPLY, FEEDBACK, FORM, NORMAL_NIGHT_IDS, PARTNER_EN, archived_summary,
-                    caught_up_last_night, feedback_links, model_call_for_golden, normal_night,
-                    payload_message_ids, two_languages)
+from nights import (ENGLISH_REPLY, NORMAL_NIGHT_IDS, PARTNER_EN, archived_summary, caught_up_last_night,
+                    model_call_for_golden, normal_night, payload_message_ids, two_languages)
 
 
 # ── Normal night
@@ -964,116 +961,46 @@ def test_fallback_summary_is_not_counted(harness):
     assert "_citations" not in archived_summary(harness)
 
 
-# ── Feedback links and footer
+# ── Footer, and a config with pilot feedback left in it
 
 
-def test_feedback_links_prefill_each_action_item_and_the_digest(harness):
+def test_a_config_with_pilot_feedback_still_on_sends_the_brief_without_feedback_links(harness):
+    # Pilot feedback is gone (#939): a config written before still has its section, which loads
+    # and adds nothing to the Brief.
     normal_night(harness)
-    harness.config["feedback"] = FEEDBACK
+    harness.config["feedback"] = {
+        "enabled": True, "prefill_base_url": "https://docs.google.com/forms/d/e/FORM_ID/viewform",
+        "household_label": "王家",
+        "fields": {"verdict": "entry.1", "item_text": "entry.2", "source": "entry.3", "backend": "entry.4",
+                   "date": "entry.5", "household": "entry.6", "kid": "entry.7"}}
 
     assert harness.run() == 0
 
     [email] = harness.sent
-    links = feedback_links(email.html)
-    # Household 24ebb1 is the pseudonym for 王家, which a new version must keep too.
-    common = {"backend": "claude", "date": "2026-09-27", "household": "Household 24ebb1"}
-    digest = "**Kid A**\n- 周四远足，周二前在 Wilma 签同意书\n- 下周一数学考试\n\n**Kid B**\n- 周三拍班级照\n- 钢琴课本周改到周三 17:30"
-    assert [(label, answers) for label, answers, _ in links] == [
-        ("这段摘要有错？告诉我们", {"verdict": "❌ The Digest has a mistake", "item_text": digest, "source": "", "kid": "", **common}),
-        ("⭐ 有用", {"verdict": "⭐ Glad this was here", "item_text": "在 Wilma 签远足同意书", "source": "gmail",
-                         "kid": "Kid A", **common}),
-        ("❌ 有错", {"verdict": "❌ This is wrong", "item_text": "在 Wilma 签远足同意书", "source": "gmail",
-                        "kid": "Kid A", **common}),
-        ("⭐ 有用", {"verdict": "⭐ Glad this was here", "item_text": "签 reissuvihko", "source": "whatsapp",
-                         "kid": "Kid A", **common}),
-        ("❌ 有错", {"verdict": "❌ This is wrong", "item_text": "签 reissuvihko", "source": "whatsapp",
-                        "kid": "Kid A", **common}),
-        ("⭐ 有用", {"verdict": "⭐ Glad this was here", "item_text": "给 Kid B 准备拍照穿的衣服 <整洁>",
-                         "source": "gmail", "kid": "Kid B", **common}),
-        ("❌ 有错", {"verdict": "❌ This is wrong", "item_text": "给 Kid B 准备拍照穿的衣服 <整洁>",
-                        "source": "gmail", "kid": "Kid B", **common}),
-    ]
-    # Each item's links sit on a small grey line of their own, after a plain label (#803).
-    assert email.html.count("<br><small style='color:#888'>反馈：<a href=") == 3
-    assert FORM not in email.text
+    assert "docs.google.com/forms" not in email.html
+    assert "反馈" not in email.html and "告诉我们" not in email.html
+    assert "<li>在 Wilma 签远足同意书<small style='color:#666'>" in email.html
 
 
-def test_feedback_links_carry_only_the_derived_source(harness):
+def test_no_footer_on_the_rule_based_fallback(harness):
+    # The fallback is a raw message list, not something the model wrote: no model to credit.
     normal_night(harness)
-    harness.config["feedback"] = FEEDBACK
-    harness.model_reply["per_kid"] = [
-        {"kid": "Mia", "notices": [],
-         "action_items": [{"what": "签 reissuvihko 和远足同意书", "by": "2026-09-28", "refs": ["1:2", "1101"],
-                           "source": "wilma"},  # a model-written Source is ignored
-                          {"what": "交班费 20€", "by": "2026-09-29", "refs": ["g-404"]},
-                          {"what": "带手工材料", "by": "2026-09-30"}]},
-    ]
-
-    assert harness.run() == 0
-
-    items = [answers for label, answers, _ in feedback_links(harness.sent[0].html) if label == "❌ 有错"]
-    assert [(a["item_text"], a["source"]) for a in items] == [
-        ("签 reissuvihko 和远足同意书", "gmail,whatsapp"), ("交班费 20€", ""), ("带手工材料", "")]
-
-
-def test_long_feedback_text_is_truncated_to_keep_urls_short(harness):
-    normal_night(harness)
-    harness.config["feedback"] = FEEDBACK
-    long_item = "在 Wilma 签远足同意书，" * 200
-    harness.model_reply["per_kid"][0]["action_items"][0]["what"] = long_item
-    harness.model_reply["message_digest"] = "**Mia**\n- 周四远足\n" * 300
-
-    assert harness.run() == 0
-
-    links = feedback_links(harness.sent[0].html)
-    assert len(links) == 7
-    assert all(len(url) <= 2000 for _, _, url in links)
-    digest_text = links[0][1]["item_text"]
-    assert digest_text.startswith("**Kid A**\n- 周四远足\n") and digest_text.endswith("…")
-    item_text = links[1][1]["item_text"]
-    assert long_item.startswith(item_text[:-1]) and item_text.endswith("…") and len(item_text) > 50
-    assert links[3][1]["item_text"] == "签 reissuvihko"  # short text stays whole
-
-
-def test_no_feedback_links_unless_enabled(harness):
-    normal_night(harness)
-    harness.config["feedback"] = {**FEEDBACK, "enabled": False}
-
-    assert harness.run() == 0
-
-    assert "docs.google.com/forms" not in harness.sent[0].html
-
-
-def test_no_feedback_links_or_footer_on_the_rule_based_fallback(harness):
-    # The fallback is a raw message list, not something the model wrote: nothing to judge or credit.
-    normal_night(harness)
-    harness.config["feedback"] = FEEDBACK
     harness.model_error = "boom"
 
     assert harness.run() == 0
 
-    assert feedback_links(harness.sent[0].html) == []
     assert "生成" not in harness.sent[0].html
 
 
-def test_english_feedback_links_label_the_forms_choices_in_english(harness):
-    # The shared Form's choices are English for every language; a zh Brief labels them in Chinese.
+def test_an_english_brief_credits_the_model_and_lists_each_action_item(harness):
     normal_night(harness, "en")
-    harness.config["feedback"] = FEEDBACK
 
     assert harness.run() == 0
 
     [email] = harness.sent
-    links = feedback_links(email.html)
-    assert [(label, answers["verdict"]) for label, answers, _ in links[:3]] == [
-        ("Something wrong in this summary? Tell us", "❌ The Digest has a mistake"),
-        ("⭐ useful", "⭐ Glad this was here"),
-        ("❌ wrong", "❌ This is wrong"),
-    ]
-    assert "<br><small style='color:#888'>Feedback: <a href=" in email.html
     assert "Written by Claude" in email.html
     assert "<h3>✅ Action Items</h3>" in email.html
-    assert "Sign the reissuvihko<small style='color:#666'> (Mia) · by Mon 28 Sep · Mom · WhatsApp</small>" \
+    assert "<li>Sign the reissuvihko<small style='color:#666'> (Mia) · by Mon 28 Sep · Mom · WhatsApp</small></li>" \
         in email.html
 
 
@@ -1083,13 +1010,11 @@ def test_footer_names_the_codex_backend(harness, tmp_path):
     codex.write_text("#!/bin/sh\n")
     codex.chmod(0o755)
     harness.config["llm"] = {"backend": "codex", "codex_path": str(codex)}
-    harness.config["feedback"] = FEEDBACK
 
     assert harness.run() == 0
 
     [email] = harness.sent
     assert "由 Codex 生成" in email.html and "由 Claude 生成" not in email.html
-    assert {answers["backend"] for _, answers, _ in feedback_links(email.html)} == {"codex"}
 
 
 def test_a_config_from_before_hosted_existed_reads_as_the_family_s_own_computer(harness):
@@ -1103,20 +1028,3 @@ def test_a_config_from_before_hosted_existed_reads_as_the_family_s_own_computer(
     line = "Parent Recap, running on your own computer"
     assert email.text.rsplit("\n\n", 1)[1].startswith(line + "\n")
     assert f">{line}</p>" in email.html
-
-
-def test_feedback_verdicts_match_the_forms_choices():
-    script = (Path(__file__).resolve().parents[3] / "ops" / "feedback-form" / "create_feedback_form.gs").read_text()
-    [choices] = re.findall(r"const VERDICTS = \[(.*?)\];", script, re.S)
-    assert re.findall(r"'([^']+)'", choices) == [feedback.SAVED, feedback.WRONG, feedback.DIGEST_WRONG]
-
-
-def test_the_pilot_form_keeps_its_fields_in_their_order():
-    # The Household's pseudonym and Kid A go in the Form's own Household and Kid fields (#195).
-    script = (Path(__file__).resolve().parents[3] / "ops" / "feedback-form" / "create_feedback_form.gs").read_text()
-    [fields] = re.findall(r"const PREFILL_FIELDS = \[(.*?)\];", script, re.S)
-    titles = re.findall(r"key: '([^']+)', title: '([^']+)'", fields)
-    assert titles == [("verdict", "Feedback"), ("item_text", "Item"), ("source", "Source"), ("backend", "AI (backend)"),
-                      ("date", "Brief date"), ("household", "Household"), ("kid", "Kid")]
-    if feedback.PILOT_FORM.exists():  # until the team ships one, setup doesn't offer it
-        assert list(feedback.pilot_form()["fields"]) == [key for key, _ in titles]

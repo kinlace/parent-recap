@@ -72,22 +72,6 @@ weekend_events:
   parent_preferences: |
     - The parents would like the Kids to try art and music now and then
 
-# Pilot feedback (optional): when on, the emailed Brief has ⭐ / ❌ links next to every Action Item and a ❌ link under the Digest.
-# Clicking one opens a pre-filled Google Form that sends the item's text, Source, AI, date, Household and Kid to the Parent Recap team.
-# Setup writes the whole section when a pilot family opts in, from the form the program ships; change only household_label. Leave it out if you're not in the pilot.
-# feedback:
-#   enabled: true
-#   prefill_base_url: https://docs.google.com/forms/d/e/.../viewform
-#   household_label: "Virtanen family"  # Tells Households apart in the response sheet
-#   fields:                      # Pre-fill ids of the form's questions
-#     verdict: entry.111
-#     item_text: entry.222
-#     source: entry.333
-#     backend: entry.444
-#     date: entry.555
-#     household: entry.666
-#     kid: entry.777
-
 schedule:
   daily_hour: 21
   daily_minute: 0

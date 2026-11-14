@@ -30,7 +30,7 @@ from . import (ai_filter_report, baileys_install, chat_install, command_path, in
                linked_device, llm, ops, own_node, run_lock, setup_save, setup_wilma, sources, tools,
                update, versions)
 from .collectors.gmail import keychain_account, username_of
-from .config import Config
+from .config import RETIRED_SECTIONS, Config
 from .system import desktop, entries, jobs, profile, secrets, user_path, wake, windows_only
 
 OK, FAIL = ops.OK, ops.FAIL
@@ -204,7 +204,7 @@ def _config(path: Path, s: Survey) -> Config | None:
         cfg = Config.model_validate(data)
         # A setup stopped before the Recipients saves no gmail or email, only keys of its own (#725)
         if isinstance(data, dict) and ("gmail" in data or "email" in data
-                                       or data.keys() <= Config.model_fields.keys()):
+                                       or data.keys() <= Config.model_fields.keys() | RETIRED_SECTIONS):
             return cfg
     except (OSError, yaml.YAMLError, ValidationError):
         pass

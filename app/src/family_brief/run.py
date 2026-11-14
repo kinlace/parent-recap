@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 from zoneinfo import ZoneInfo
 
-from . import ai_filter, feedback, gateway, languages, last_run, llm, private_files, render, slept, wilma_egress
+from . import ai_filter, gateway, languages, last_run, llm, private_files, render, slept, wilma_egress
 from . import sources as source_registry
 from .actions import archive, calendar as calendar_action, email as email_action, imessage
 from .brief import Brief, EarlierBrief, RunNotes
@@ -25,7 +25,7 @@ from .config import Config
 from .llm import retry
 from .state import State
 from .system import profile
-from .summarize import add_the_nights_people, extract_calendar_events, for_the_ai, placeholders_for, summarize
+from .summarize import extract_calendar_events, for_the_ai, placeholders_for, summarize
 from .translate import per_language, translate
 
 if TYPE_CHECKING:
@@ -482,15 +482,13 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
     model_events = extract_calendar_events(brief, cfg.timezone, t.untitled)
     calendar = _write_calendar(cfg, io, state, model_events + read.direct_events, sends, google_ready)
     date_str = read.today
-    form = feedback.Links(cfg, date_str, _form_people(cfg, placeholders, for_ai, read.earlier)) \
-        if cfg.feedback.active() else None
     night = render.Night(
         date=date_str, tz=cfg.timezone, t=t, assistant=llm.backend(cfg).display_name, brief=brief,
         coverage=read.coverage, created=calendar.created, held_back=_held_back(held),
         calendar_problem=calendar.problem, ics_events=calendar.ics_events,
         # The rule-based fallback is a raw message list the model never wrote, and a night with only
         # Source events listed before or Held-back Messages asks no model: nothing to judge and no model to credit.
-        model_wrote=asks_model and notes.error is None, form=form,
+        model_wrote=asks_model and notes.error is None,
         stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg),
         hosted=cfg.hosted, slept=asleep, caught_up=caught_up, update=_what_the_update_did(cfg, options))
     return _Written(night, notes, for_ai, held, model_events, placeholders, asks_model)
@@ -530,20 +528,9 @@ def _update_told(cfg: Config, options: Options, note: BriefNote | None) -> None:
         log.warning("Couldn't note that the Brief said what the update did: %s", e)
 
 
-def _form_people(cfg: Config, placeholders: ai_filter.Placeholders | None, for_ai: list[Message],
-                 earlier: list[EarlierBrief]) -> ai_filter.Placeholders:
-    """The placeholders the pilot feedback links carry for other people: tonight's, as the AI saw
-    them. With the AI filter off, new ones for the same people, since the links go to the team."""
-    if placeholders is not None:
-        return placeholders
-    people = ai_filter.Placeholders()
-    add_the_nights_people(cfg, people, [m.to_dict() for m in for_ai], earlier)
-    return people
-
-
 def _versions(cfg: Config, written: _Written) -> list[render.Version]:
     """One version of tonight's Brief per language among the Recipients, the original first.
-    Everything the Household shares (Google Calendar, the archive, feedback text) stays the
+    Everything the Household shares (Google Calendar, the archive) stays the
     original's (ADR 0004). Translations use tonight's placeholders."""
     brief, error = written.night.brief, written.notes.error
     original = cfg.brief_language()

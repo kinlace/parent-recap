@@ -154,13 +154,14 @@ def test_the_health_check_names_the_checks_that_arent_ok(harness, healthy, capsy
 
 
 def test_warnings_alone_dont_hold_the_health_check_up_but_are_named(harness, healthy, capsys):
-    harness.config["feedback"] = {"enabled": True}  # no pilot form in this config: a warning
+    # Not the pinned WhatsApp library: a warning
+    fake_node.install_baileys(fake_node.baileys_folder(harness.home), version="0.0.1")
 
     _, report = status(harness, capsys)
 
     doctor = outcome(report, "doctor")
     assert doctor["ok"] is True, doctor
-    assert "Pilot feedback" in doctor["reason"] and "parent-recap doctor" in doctor["reason"]
+    assert "WhatsApp library" in doctor["reason"] and "parent-recap doctor" in doctor["reason"]
 
 
 def test_without_a_claude_token_the_health_check_isnt_ok(harness, healthy, capsys):

@@ -1646,10 +1646,8 @@ def test_a_failed_check_of_a_source_the_family_can_do_without_offers_skip_and_se
     assert not Config.load(config_file(family)).wilma.enabled
 
 
-def test_the_check_page_reveals_add_a_kid_on_a_click_and_asks_no_feedback_label(
-        tab, family, health):
-    # #491: "Add a Kid" is a link until it's needed, and a pilot family has nothing to fill in.
-    family.config["feedback"] = {"enabled": True}
+def test_the_check_page_reveals_add_a_kid_on_a_click(tab, family, health):
+    # #491: "Add a Kid" is a link until it's needed.
     at_the_check_step(family)
     tab.reload()
     expect(heading(tab, "check.title")).to_be_visible()
@@ -1664,7 +1662,6 @@ def test_the_check_page_reveals_add_a_kid_on_a_click_and_asks_no_feedback_label(
     field.fill("Ella")
     button(tab, "check.kid.add").click()
     expect(tab.get_by_role("checkbox", name="Ella")).to_be_checked()
-    expect(tab.locator("#check-household-label")).to_have_count(0)
 
 
 @pytest.mark.macos

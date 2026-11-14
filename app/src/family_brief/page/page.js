@@ -218,7 +218,7 @@ function renderPhase() {
   });
 }
 
-// ── Welcome: the AI, the partner and pilot feedback, each with its default.
+// ── Welcome: the AI and the partner, each with its default.
 
 const RECHECK_MS = 5000;
 const ai = { result: null, checking: 0, timer: null };
@@ -239,13 +239,10 @@ function offerAIs(name) {
 }
 
 function renderWelcome() {
-  const { ai: chosen, partner, feedback } = page.welcome;
+  const { ai: chosen, partner } = page.welcome;
   offerAIs("ai");
   pick("ai", chosen);
   pick("partner", partner.add ? "add" : "only-me");
-  // Asked only when this version ships the pilot Form.
-  document.getElementById("welcome-feedback").hidden = feedback === null;
-  pick("feedback", feedback ? "yes" : "no");
   document.getElementById("partner-address").value = partner.address;
   const select = document.getElementById("partner-language");
   for (const { code, name } of page.languages) {
@@ -347,7 +344,6 @@ async function saveWelcome(event) {
       address: document.getElementById("partner-address").value.trim(),
       language: document.getElementById("partner-language").value,
     } : null,
-    feedback: page.welcome.feedback !== null && picked("feedback") === "yes",
   };
   try {
     const r = await fetch("api/welcome", {
@@ -3039,7 +3035,6 @@ const briefStep = { timer: null };
 function enterBrief() {
   document.getElementById("brief-again").addEventListener("click", makeBrief);
   document.getElementById("brief-send").addEventListener("click", sendBrief);
-  document.getElementById("brief-feedback-open").addEventListener("click", openFeedback);
   document.getElementById("brief-done").addEventListener("click", briefDone);
   document.getElementById("brief-reminder-resend").addEventListener("click",
     () => resendFrom("brief-reminder", "brief"));
@@ -3083,7 +3078,6 @@ function briefResult(out) {
   if (made) frame.src = "brief.html?" + Date.now(); // the one just made, not one kept from before
   frame.hidden = !made;
   document.getElementById("brief-actions").hidden = !made;
-  document.getElementById("brief-feedback-open").hidden = !(made && out.feedback);
   if (making) briefStep.timer = setTimeout(checkBrief, BRIEF_MS);
 }
 
@@ -3139,16 +3133,6 @@ async function sendBrief(event) {
 function showSent(key, values) {
   setText(document.getElementById("brief-sent-message"), key, values);
   document.getElementById("brief-sent").hidden = false;
-}
-
-async function openFeedback() {
-  clearError();
-  try {
-    const out = await post("api/brief/feedback", {});
-    if (out.result !== "opened") showError("brief.feedback.not-opened");
-  } catch (e) {
-    failed(e);
-  }
 }
 
 async function briefDone(event) {
