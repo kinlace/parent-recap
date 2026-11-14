@@ -1151,6 +1151,14 @@ def before_adding(part: str | None, config: str | None = None,
     return None if outcome.result in ("up-to-date", "skipped", "not-applicable") else outcome
 
 
+def installed_version() -> str | None:
+    """The version `app` points at where the running program was installed, or None for a
+    program that doesn't run from an installed release. Reads two files and asks nothing else."""
+    folder = own_node.running_from()
+    current = versions.current(folder) if folder is not None else None
+    return versions.version(current) if current is not None else None
+
+
 def installed_program(folder: Path) -> str:
     """The `parent-recap` of the version `app` points at in Parent Recap's `folder`."""
     return str(folder / versions.APP / ".venv" / "bin" / "parent-recap")

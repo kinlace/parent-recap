@@ -51,7 +51,7 @@ class Updates(Phase):
         self._now: dict[str, Any] | None = None  # Update now, once started
         self._thread: threading.Thread | None = None
         # The installed version this server was started from, whose code it runs until it stops.
-        self._runs = update.status(str(context.config)).version
+        self._runs = update.installed_version()
         context.newest_first = self.first
 
     def routes(self) -> dict[str, Action]:
@@ -98,7 +98,7 @@ class Updates(Phase):
         with context.working:
             if context.restart or (self._now or {}).get("result") == "updating":
                 return {"result": "updating-first"}  # the page asks `check_now` how it goes
-            if update.status(str(context.config)).version != self._runs:
+            if update.installed_version() != self._runs:
                 context.restart = True  # the server stops once this is answered (server.py)
                 return {"result": "updating-first"}
         try:
