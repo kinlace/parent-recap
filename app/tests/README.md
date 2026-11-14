@@ -67,7 +67,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_render.py`              | Each golden night's Brief rendered, against its golden files     |
 | `test_run_plan.py`            | Quiet nights, dry runs and the preview: what tonight's run does  |
 | `test_sources.py`             | The Source registry's records, and the Sources a Household uses  |
-| `test_source_folders.py`      | Shared code names a Source's folder only where it lists the Sources (ADR 0051) |
+| `test_source_folders.py`      | Shared code names a Source's folder only where it lists the Sources (ADR 0051), and reaches it elsewhere through its record |
 | `test_schoolsoft_reads_and_redaction.py` | The SchoolSoft capture tool: every request a read, made-up samples redacted, its text |
 | `test_status_lines.py`        | The hosted status: an overdue run, a Household's line, its keys  |
 | `test_summarize_normalise.py` | The model's reply put in the schema's shape                      |
