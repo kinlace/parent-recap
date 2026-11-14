@@ -172,11 +172,18 @@ def page(harness, clock):
     wait_for(lambda: runs.get("finish", {}).get("result") not in finish_step.UNDER_WAY, 30)
 
 
+# The real sleep, kept before any fixture replaces `time.sleep`: the Wilma fixtures make it do
+# nothing to skip the program's waits, and a test that then asks a local server again without a
+# pause opens thousands of connections a second, until the Mac has no port left for the next
+# one (Errno 49, #675).
+pause = time.sleep
+
+
 def wait_for(condition, seconds: float = 5) -> None:
     deadline = time.monotonic() + seconds
     while not condition():
         assert time.monotonic() < deadline, "timed out"
-        time.sleep(0.01)
+        pause(0.01)
 
 
 def refuse_secrets(harness, code: int) -> None:
