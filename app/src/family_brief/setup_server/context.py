@@ -126,6 +126,15 @@ class Context:
     # Turns on the evening Brief in the background, as Finish's Turn it on does, once the first
     # Brief has been sent (#733): True if it started. Finish puts its own in.
     turn_on: Callable[[], bool] = field(default=lambda: False, init=False)
+    # What a step that adds a Source asks first, with the Source's part of a release (ADR 0051):
+    # the answer to give in place of adding it, while Parent Recap updates itself first or when
+    # it couldn't, or None to go on. Updates puts its own in.
+    newest_first: Callable[[str | None], dict[str, Any] | None] = field(
+        default=lambda part: None, init=False)
+    # An update on this page installed a newer version than the one this server runs.
+    outdated: bool = field(default=False, init=False)
+    # The server stops to be started again by the installed version, at the same address.
+    restart: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         self.connect = setup_connect.ConnectSteps(self.config)

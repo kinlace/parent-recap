@@ -3,7 +3,17 @@ itself after the evening Brief (ADR 0047), the switch that turns that off, the i
 and Update now once a newer release is out, with what it will ask when it is one that waits for
 the family (#918). A newer release that changes nothing the Household uses (ADR 0051) is said to
 be out and not installed, without Update now. Where the program doesn't update itself (Windows, the
-hosted version, a program not run from an installed release) the page gets the version alone."""
+hosted version, a program not run from an installed release) the page gets the version alone.
+
+And the update before a Source is added (ADR 0051, #961): a Household that skipped releases may
+hold an old copy of a Source it never connected. A step that adds a Source with a part of its
+own asks `Updates.first` before it sends anything to the Source. When the Source's part changed
+since the installed version, the newest release is installed as Update now installs it, and the
+step answers `updating-first` in place of adding anything: what the family typed stays on the
+page, which asks `check_now` how the update goes. Once it is installed, the server stops and the
+installed version starts it again at the same address (server.start_again), and the page sends
+the step again, to the new version. When the update can't be done, the step says so and nothing
+is added with the old code."""
 from __future__ import annotations
 
 import threading
@@ -24,6 +34,11 @@ from .context import Action, Context, Phase, Reply, nothing_to_give
 # server hasn't started one.
 NOW_RESULTS = ("updating", "updated", "up-to-date", "skipped", "switched-back", "failed",
                "not-available", "busy", "no-update")
+# What a step that adds a Source answers in place of adding it (`Updates.first`): `updating-first`
+# while Parent Recap updates itself first, or while the server is about to start again in the
+# newer version; `update-failed`, with the reason, when it couldn't look for a newer release; and
+# `update-busy` when a Brief is being made or another update is running, so none was started.
+FIRST_RESULTS = ("updating-first", "update-failed", "update-busy")
 
 
 class SwitchAnswer(Strict):
@@ -35,6 +50,7 @@ class Updates(Phase):
         super().__init__(context)
         self._now: dict[str, Any] | None = None  # Update now, once started
         self._thread: threading.Thread | None = None
+        context.newest_first = self.first
 
     def routes(self) -> dict[str, Action]:
         return {"api/updates": self.switch, "api/updates/now": self.update_now,
@@ -61,35 +77,50 @@ class Updates(Phase):
         another update holds it, nothing is started and the answer is `busy`."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
-        context = self.context
-        if update.not_applicable(str(context.config)) is not None:
+        if update.not_applicable(str(self.context.config)) is not None:
             return HTTPStatus.OK, {"result": "not-available"}
+        return HTTPStatus.OK, {"result": self._start()}
+
+    def first(self, part: str | None) -> dict[str, Any] | None:
+        """What a step that adds the Source whose part of a release is `part` answers in place
+        of adding it (FIRST_RESULTS), or None when it goes on: the Source has no part, or its
+        part didn't change since the installed version, which one request to `stable` says
+        (update.needed_to_add). When it did, the newest release is installed in the background
+        as Update now installs it, with that part counted as one the Household uses, and the
+        server then starts again in it. A server that an update on this page already left
+        behind the installed version starts again at once."""
+        context = self.context
+        if part is None:
+            return None
         with context.working:
-            if self._now is not None and self._now["result"] == "updating":
-                return HTTPStatus.OK, {"result": "updating"}  # this page's own, still going
-            held = ExitStack()
-            try:
-                held.enter_context(update.alone(str(context.config)))
-            except run_lock.Busy:
-                return HTTPStatus.OK, {"result": "busy"}
-            before = self._now
-            self._now = {"result": "updating"}  # before it starts: it ends by saying how it went
-            try:
-                self._thread = threading.Thread(target=self._updating, args=(held,), daemon=True)
-                self._thread.start()
-            except BaseException:  # no update runs to let go of the lock
-                self._now = before
-                held.close()
-                raise
-        return HTTPStatus.OK, {"result": "updating"}
+            if context.restart or (self._now or {}).get("result") == "updating":
+                return {"result": "updating-first"}  # the page asks `check_now` how it goes
+            if context.outdated:
+                self._start_again()
+                return {"result": "updating-first"}
+        try:
+            wanted = update.needed_to_add(part, str(context.config))
+        except update.Refused as e:
+            return {"result": "update-failed", "reason": failure.logged(
+                "The update before a Source is added didn't start",
+                f"Parent Recap couldn't look for a newer release: {e}.")}
+        if wanted is None:
+            return None
+        if self._start(adding=part) == "busy":
+            return {"result": "update-busy"}
+        return {"result": "updating-first", "version": wanted}
 
     def check_now(self, raw: Any) -> Reply:
         """How Update now went: the version that runs now, the one it tried, and for an update
         that failed or switched back, what the program says of it, for the family to copy to us.
-        With it, the update state as it is now."""
+        With it, the update state as it is now. A server about to start again in the newer
+        version is still `updating`: the one started in its place has started no update, and
+        says `no-update`."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
         now = self._now or {"result": "no-update"}
+        if self.context.restart:
+            return HTTPStatus.OK, {"result": "updating"}
         if now["result"] in ("updating", "no-update"):
             return HTTPStatus.OK, now
         return HTTPStatus.OK, {**now, "updates": shown(self.context)}
@@ -99,12 +130,40 @@ class Updates(Phase):
         if self._thread is not None:
             self._thread.join()
 
-    def _updating(self, held: ExitStack) -> None:
-        """The update, holding the run lock `update_now` took (`held`), which it lets go of once
-        the update ended, before the page is told how."""
+    def _start(self, adding: str | None = None) -> str:
+        """Starts the update in the background, holding the run lock from here: `updating`, also
+        for one of this page's own still going, or `busy` while a run or another update holds
+        the lock. With `adding`, the part of the Source a step is adding."""
+        context = self.context
+        with context.working:
+            if self._now is not None and self._now["result"] == "updating":
+                return "updating"  # this page's own, still going
+            held = ExitStack()
+            try:
+                held.enter_context(update.alone(str(context.config)))
+            except run_lock.Busy:
+                return "busy"
+            before = self._now
+            self._now = {"result": "updating"}  # before it starts: it ends by saying how it went
+            try:
+                self._thread = threading.Thread(target=self._updating, args=(held, adding),
+                                                daemon=True)
+                self._thread.start()
+            except BaseException:  # no update runs to let go of the lock
+                self._now = before
+                held.close()
+                raise
+        return "updating"
+
+    def _updating(self, held: ExitStack, adding: str | None) -> None:
+        """The update, holding the run lock `_start` took (`held`), which it lets go of once
+        the update ended, before the page is told how. From then the server runs an older
+        version than the installed one (`outdated`); one that updated to add a Source starts
+        again in the installed version."""
+        context = self.context
         with held:
             try:
-                outcome = update.update(str(self.context.config))
+                outcome = update.update(str(context.config), adding=adding)
                 done: dict[str, Any] = {"result": "not-available"
                                         if outcome.result == "not-applicable" else outcome.result}
                 if outcome.version is not None:
@@ -118,7 +177,17 @@ class Updates(Phase):
             except Exception as e:  # never leave the page updating
                 done = {"result": "failed", "reason": failure.logged(
                     "Update now stopped", failure.of(e, "The update"))}
+        if done["result"] == "updated":
+            context.outdated = True
+            context.restart = adding is not None  # before the page is told: `check_now` says so
         self._now = done
+        if context.restart:
+            context.stopped.set()
+
+    def _start_again(self) -> None:
+        """Stops the server, for the installed version to start it again (server.start_again)."""
+        self.context.restart = True
+        self.context.stopped.set()
 
 
 def shown(context: Context) -> dict[str, Any]:

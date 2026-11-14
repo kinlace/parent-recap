@@ -196,6 +196,8 @@ slowest tests, so add one for a main path, not for each result.
 | `test_evening_update.py`       | The evening run's own update (#915): a day's wait, only after a scheduled Brief, no dialog, jobs kept |
 | `test_evening_update_brief.py` | The next Brief says what the evening's update did (#916): updated or failed, once, in each language   |
 | `test_setup_updates.py`        | The setup page's Updates (#917): the switch, the installed version, Update now, how it ended, and `busy` beside a run or another update     |
+| `test_setup_newest_first.py`   | A Source's `setup` step in Terminal updates first when the Source changed since the installed version (ADR 0051, #961), and the new version runs the step |
+| `test_setup_page_newest_first.py` | The same on the setup page (#961): `updating-first`, the program started again at the page's address, and what the page says when the update can't be done |
 
 ## Adapter tests
 

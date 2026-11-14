@@ -46,6 +46,7 @@ from test_setup_gmail import TYPED
 from test_setup_myclub import LINK as MYCLUB_LINK, STEPS as MYCLUB_STEPS
 from test_setup_page_windows import Web, school_mail
 from test_setup_status import install_program
+from test_setup_page_newest_first import started_again, stopped_to_start_again  # noqa: F401
 from test_update import github, mac  # noqa: F401  the fixtures
 from test_setup_whatsapp import CLASS, FOOTBALL, SCANNED, at_the_whatsapp_step
 from test_setup_whatsapp import phone  # noqa: F401
@@ -1866,6 +1867,69 @@ def test_finish_says_a_release_that_changes_nothing_the_family_uses_is_out_and_n
     expect(tab.locator("#finish-updates-waiting")).to_be_hidden()
     expect(tab.locator("#finish-updates-status")).to_be_hidden()
     assert mac.version() == version and mac.installs == []
+
+
+def eepos_changed_since(github, family) -> str:  # noqa: F811
+    """0.20.0 is out, and Eepos alone changed since the version this family runs, which is
+    returned (ADR 0051)."""
+    from test_update_skips import KONNECT_ONLY, out_on_stable
+    version = update.status(str(config_file(family))).version
+    out_on_stable(github, "0.20.0", {**dict.fromkeys(KONNECT_ONLY, version), "fi/eepos": "0.20.0"})
+    return version
+
+
+def type_the_eepos_sign_in(tab) -> None:
+    tab.get_by_label(text("eepos.school"), exact=True).fill("emo")
+    tab.get_by_label(text("eepos.username")).fill(PARENT)
+    tab.get_by_label(text("eepos.password")).fill(EEPOS_PASSWORD)
+    button(tab, "eepos.save").click()
+
+
+# `github` first, so the Eepos fake, which passes on what isn't Eepos's, is in front of it.
+@pytest.mark.posix
+def test_adding_eepos_updates_parent_recap_first_and_then_adds_it_with_what_was_typed(
+        github, mac, tab, family, page, started_again):  # noqa: F811
+    from test_setup_eepos import at_the_eepos_step
+    at_the_eepos_step(family)
+    eepos_changed_since(github, family)
+    tab.reload()
+
+    type_the_eepos_sign_in(tab)
+
+    # In place of signing in: the page says Parent Recap updates itself first, and waits.
+    expect(tab.get_by_text(text("source.updating-first", source="Eepos"))).to_be_visible()
+    wait_for(lambda: stopped_to_start_again(page), SLOW_MS / 1000)
+    assert mac.version() == "0.20.0" and family.source_fakes["eepos"].requests == []
+    # The installed version starts the page's program again at the same address; the page, which
+    # didn't take its program for gone, sends the step again by itself.
+    started_again(page)
+
+    expect(tab.get_by_text(text("eepos.saved", events=0))).to_be_visible()
+    expect(tab.locator("#eepos-signin-list li")).to_have_text([
+        f"emo.eepos.fi ({PARENT}): Mia {text('eepos.remove')}"])
+    expect(tab.get_by_text(text("error.closed"))).to_be_hidden()
+    expect(tab.get_by_label(text("eepos.password"))).to_have_value("")
+    assert len(mac.installs) == 1
+
+
+@pytest.mark.posix
+def test_adding_eepos_says_when_the_update_before_it_could_not_be_done(
+        github, mac, tab, family, page):  # noqa: F811
+    from test_setup_eepos import at_the_eepos_step
+    at_the_eepos_step(family)
+    version = eepos_changed_since(github, family)
+    github.publish("0.20.0", sig=b"not a signature")
+    tab.reload()
+
+    type_the_eepos_sign_in(tab)
+
+    status = tab.locator("#source-status")
+    expect(status).to_have_attribute("data-result", "source.update-failed")
+    expect(status.get_by_text(text("source.update-failed", source="Eepos"))).to_be_visible()
+    status.get_by_text(text("fail.details")).click()  # folded until opened
+    expect(tab.locator("#source-reason")).to_contain_text("signature doesn't verify")
+    assert mac.version() == version and family.source_fakes["eepos"].requests == []
+    assert "eepos" not in yaml.safe_load(config_file(family).read_text())
 
 
 @pytest.mark.parametrize("on", ["macos", "windows"])
