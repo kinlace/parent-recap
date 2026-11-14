@@ -15,8 +15,9 @@ What it downloads, from where, how it is verified and what it never does:
   it: it must be the one asked for and higher than the installed one.
 - It reads nothing from the maintainers' gateway, so nothing the gateway answers (to a Run
   Report, ADR 0048, or anything else) can start an update or choose a release.
-- In the background nothing asks for admin rights: the installer is told it runs for an update
-  (schedule_update.UPDATING), and leaves what would ask for a password as it is.
+- In the background the wake's password dialog never starts: the installer is told it runs for
+  an update (schedule_update.UPDATING), and leaves the wake, which would ask for the Mac
+  password, as it is. That is the one dialog this code stops; any other is the next point's.
 - A release that needs the family at the computer (a password dialog, a new permission, a QR
   scan, a config or state the version before can't read) says so in `release.json` inside the
   zip, where the signature covers it: the lowest version that can take it in the background, and
