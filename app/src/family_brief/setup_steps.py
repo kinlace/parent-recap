@@ -149,7 +149,7 @@ def register(sub) -> None:
     # The steps of the Sources in folders of their own (ADR 0051), each added by its own module.
     from .sources.nl.konnect import setup as konnect_setup
     from .sources.nl.socialschools import setup as socialschools_setup
-    socialschools_setup.register(steps)
+    socialschools_setup.register(steps)  # before Konnect's, as setup's help has always listed them
     konnect_setup.register(steps)
 
     from . import setup_save, setup_server, setup_status
