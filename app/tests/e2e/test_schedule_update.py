@@ -119,6 +119,21 @@ def test_a_brief_being_made_isnt_stopped_by_installing_its_job_again(harness, ca
     assert "parent-recap schedule install once it has gone out" in capsys.readouterr().out
 
 
+def test_a_lock_held_by_an_update_the_family_started_is_no_brief_being_made(
+        harness, capsys, monkeypatch):
+    path = scheduled(harness, harness.wake.old_line(21, 0))
+    # As `parent-recap update` and Update now run install.sh, holding the run lock themselves.
+    monkeypatch.setenv(schedule_update.HOLDS_RUN_LOCK, "1")
+
+    with run_lock.exclusive(Config.load(path)):
+        schedule_update.update(str(path))
+
+    out = capsys.readouterr().out
+    assert harness.jobs.installed() == {jobs.DAILY}
+    assert harness.wake.asked == ["set 21:00"]
+    assert "a Brief is being made" not in out and "left as it is" not in out
+
+
 def test_a_config_that_cant_be_read_leaves_the_schedule_and_says_so(harness, capsys):
     path = scheduled(harness, harness.wake.old_line(21, 0))
     path.write_text("schedule: [", encoding="utf-8")

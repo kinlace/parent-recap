@@ -55,7 +55,7 @@ On a Mac, Parent Recap updates itself ([ADR 0047](adr/0047-a-familys-computer-in
 
 **Turning it off.** Open Parent Recap Settings (search for it with Spotlight) and turn off the switch on its last step, or type `parent-recap update off` in Terminal; `parent-recap update on` turns it on again. Turned off, Parent Recap still looks once each evening whether a newer release is out and says so in the Brief, once for each release. It downloads nothing.
 
-**Updating by hand.** Press **Update now** in Parent Recap Settings, or type `parent-recap update` in Terminal. It installs the newest release right away, without the day's wait, whether the switch is on or off, and checks it and switches back the same way. Pasting the install line into Terminal again updates too.
+**Updating by hand.** Press **Update now** in Parent Recap Settings, or type `parent-recap update` in Terminal. It installs the newest release right away, without the day's wait, whether the switch is on or off, and checks it and switches back the same way. Only one update runs at a time, and never while a Brief is being made: it then says Parent Recap is busy and changes nothing, so try again in a few minutes. Pasting the install line into Terminal again updates too.
 
 What the update doesn't cover:
 

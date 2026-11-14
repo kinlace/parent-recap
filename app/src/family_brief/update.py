@@ -43,6 +43,14 @@ The verified installer makes requests of its own, to the hosts an install alread
 packages, the Linked Device's npm tree, a new Python or Node, the wilma CLI). Those aren't this
 module's; SECURITY.md, "How Parent Recap updates itself", lists them and how each is checked.
 
+One update runs at a time, and never beside a run (#977): two at once would both move the plugin
+copy, and one could remove the version the other is installing. The evening's update runs inside
+the evening job, under its run lock (run_lock.py). The two the family starts, `parent-recap
+update` and the setup page's Update now, take that lock themselves before the look and hold it
+until the update ended, a switch back included (`alone`). While a run or another update holds it
+they say Parent Recap is busy and change nothing, and a run that starts during one stops as it
+does beside another run.
+
 Only on a Mac, and only for a program run from an installed release: on the hosted version the
 server is deployed by its maintainers (ADR 0045), and Windows is decided separately.
 
@@ -65,16 +73,17 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 from urllib.parse import urljoin, urlsplit
 
 import requests
 
-from . import install_record, own_node, private_files, release_signature, versions
-from .schedule_update import UPDATING
+from . import install_record, own_node, private_files, release_signature, run_lock, versions
+from .schedule_update import HOLDS_RUN_LOCK, UPDATING
 from .system import profile
 
 REPOSITORY = "kinlace/parent-recap"
@@ -562,13 +571,14 @@ class _Updater:
                     else "no failures"))
         return failing
 
-    def install(self, plugin: Path, version: str, spare: Path,
-                dialogs: bool = False) -> tuple[bool, str | None]:
+    def install(self, plugin: Path, version: str, spare: Path, dialogs: bool = False,
+                by_family: bool = True) -> tuple[bool, str | None]:
         """Puts the release in `plugin/`, where the install line puts it, and runs its own
         installer, which installs it beside the running version and switches `app` to it. The
         plugin copy before goes in `spare` until the update is done. The installer is told it
         runs for an update, so the wake's password dialog doesn't start, unless `dialogs`: a release that
-        needs the family, which they started. Returns whether `app` now points at `version`, and
+        needs the family, which they started. Started `by_family`, it is also told that the run
+        lock it finds held is this update's (`steps_env`). Returns whether `app` now points at `version`, and
         how the installer ended when it didn't finish (a non-zero exit status, or ended at its
         time limit), or None when it did: it runs more steps once it has switched, so `app` can
         point at a version whose install didn't finish."""
@@ -583,7 +593,7 @@ class _Updater:
         command = ["/bin/bash", str(target / "install.sh")]
         if install_record.entries("codex-skill"):
             command.append("--codex")  # the Codex skills come with the release, as the line does
-        env = {**os.environ, "PARENT_RECAP_HOME": str(self.folder)}
+        env = {**steps_env(by_family), "PARENT_RECAP_HOME": str(self.folder)}
         if dialogs:
             env.pop(UPDATING, None)
         else:
@@ -622,6 +632,20 @@ class _Updater:
         self.moved = False
 
 
+def steps_env(by_family: bool) -> dict[str, str]:
+    """The environment of the steps an update runs that look at the run lock: a release's
+    installer, and a switch back's steps (schedule_update). In an update the family started, the
+    lock is held by the update itself (`alone`) and no run is going, which HOLDS_RUN_LOCK tells
+    them, so the evening jobs are installed again and a wake that waits for the family can move.
+    In the evening's update the lock is the run's, and nothing says otherwise."""
+    env = dict(os.environ)
+    if by_family:
+        env[HOLDS_RUN_LOCK] = "1"
+    else:
+        env.pop(HOLDS_RUN_LOCK, None)
+    return env
+
+
 def _text(output: str | bytes | None) -> str:
     """What a program ended at its time limit had written: subprocess gives it as bytes."""
     if isinstance(output, bytes):
@@ -648,7 +672,8 @@ def update(config: str | None = None, *, retry_failed: bool = True,
     in the evening run, a release that needs the family isn't installed: it is downloaded once,
     and kept in the state as waiting. Started by the family, it installs with its dialogs, and
     `say` is first told what it will ask. Never raises for what the network or the release did:
-    the Outcome says it."""
+    the Outcome says it. It takes no lock itself: the evening run holds its own, and what the
+    family starts calls it inside `alone`."""
     if (reason := not_applicable(config)) is not None:
         return Outcome("not-applicable", reason)
     folder = own_node.running_from()
@@ -680,6 +705,21 @@ def update(config: str | None = None, *, retry_failed: bool = True,
                            "day.", installed)
     _save(folder, seen=seen)
     return _update_to(folder, config, log, session, installed, wanted, by_family, say)
+
+
+@contextmanager
+def alone(config: str | None = None) -> Iterator[None]:
+    """Holds the evening run's lock (run_lock.py) for the block, as an update the family starts
+    does from before its look until it ended, so no run and no other update goes beside it.
+    Raises run_lock.Busy when a run or another update holds it. With a config that can't be read
+    no run can be going, and the lock is where a config that names no other place has it."""
+    from .config import Config
+    try:
+        cfg = Config.load(config)
+    except Exception:  # noqa: BLE001 - doctor says what's wrong with it
+        cfg = Config(kids=[])
+    with run_lock.exclusive(cfg):
+        yield
 
 
 def _left_for_the_family(installed: str, wanted: str) -> Outcome:
@@ -732,9 +772,9 @@ def evening(config: str | None = None) -> Outcome:
     """The update the evening run starts once its Brief is sent, or it decided to send nothing
     (ADR 0047): `update`, for a release this Mac has seen on `stable` a day, and not for one that
     failed before. It runs in the background, so the wake's password dialog doesn't start
-    (schedule_update.UPDATING), and inside the evening job, under its run lock, so the evening
-    jobs aren't installed again: they start the program from the same path, which now points at
-    the version switched to. The evening run catches and logs whatever it raises
+    (schedule_update.UPDATING), and inside the evening job, under its run lock, which it doesn't
+    take a second time, so the evening jobs aren't installed again: they start the program from
+    the same path, which now points at the version switched to. The evening run catches and logs whatever it raises
     (run.run_unless_caught_up), so the run's result stays as it was. What came of it is kept for
     the next Brief to say (BriefNote). With updates turned off it only looks (`look`)."""
     if not enabled(config):
@@ -875,7 +915,7 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
                 say(f"Version {wanted} needs you at the computer. "
                     f"{asked(needs.asks, 'en')}".rstrip())
         before = updater.doctor(installed)
-        switched, unfinished = updater.install(plugin, wanted, spare, dialogs)
+        switched, unfinished = updater.install(plugin, wanted, spare, dialogs, by_family)
         if not switched:
             updater.restore_plugin(spare)
             log("install", f"{wanted}: not installed; {installed} runs as it did")
@@ -902,7 +942,7 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
                                  f"{installed} passed ({new})",
                                  f"{wanted} failed its check", f"{wanted} fails {new}")
         if failed is not None:
-            outcome = _switch_back(folder, log, updater, spare, wanted, failed)
+            outcome = _switch_back(folder, log, updater, spare, wanted, failed, by_family)
             keep = outcome.version == wanted
             return outcome
         keep = True
@@ -920,13 +960,14 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
 
 
 def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, wanted: str,
-                 failed: _Failed) -> Outcome:
+                 failed: _Failed, by_family: bool = True) -> Outcome:
     """Switches back from `wanted`, which `app` points at and which `failed`, as
     `parent-recap switch-back` does, puts the plugin copy before back and keeps the version as
-    failed."""
+    failed. Its steps run with the environment the installer had (`steps_env`)."""
     try:
         with open(log.path, "a", encoding="utf-8") as out:
-            running, _ = versions.switch_back_whole(folder, stdout=out, stderr=out)
+            running, _ = versions.switch_back_whole(folder, stdout=out, stderr=out,
+                                                    env=steps_env(by_family))
     except versions.NoPrevious:  # install.sh keeps the version before, so only if it was removed
         log("switch", f"{wanted}: no previous version to switch back to, though {failed.log_line}")
         _save(folder, last_result=f"{failed.result}; no version to switch back to",
@@ -951,10 +992,29 @@ OFF = ("Updates are off: Parent Recap still looks once each evening whether a ne
        "release when you choose, and parent-recap update on turns updates on again.")
 
 
+# What `parent-recap update` says when a run or another update holds the run lock, in each of
+# the program's languages: it can't tell which one the family reads.
+BUSY = ("Parent Recap is busy right now: a Brief is being made, or another update is running, so "
+        "this update wasn't started and nothing was changed. Try again in a few minutes.",
+        "Parent Recapilla on juuri nyt muuta tekeillä: koostetta tehdään tai toinen päivitys on "
+        "käynnissä, joten tätä päivitystä ei aloitettu eikä mitään muutettu. Yritä uudelleen "
+        "muutaman minuutin kuluttua.",
+        "Parent Recap 正忙：正在生成日报，或者另一个更新正在进行，所以这次更新没有开始，也没有改动任何东西。"
+        "请过几分钟再试。")
+
+
 def cmd_update(args: argparse.Namespace) -> int:
     if args.setting is not None:
         return _cmd_setting(args.config, args.setting == "on")
-    outcome = update(args.config, say=lambda text: print(text, flush=True))
+    if (reason := not_applicable(args.config)) is not None:
+        print(reason)  # before the lock: there is nothing to update here, whatever else is going
+        return 0
+    try:
+        with alone(args.config):
+            outcome = update(args.config, say=lambda text: print(text, flush=True))
+    except run_lock.Busy:
+        print("\n".join(BUSY))
+        return run_lock.BUSY
     print(outcome.message)
     return 1 if outcome.result in ("failed", "switched-back") else 0
 

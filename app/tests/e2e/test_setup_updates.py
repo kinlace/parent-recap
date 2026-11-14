@@ -8,6 +8,7 @@ harness, with test_update.py's fake GitHub and installed program. Assertions are
 the config written, the version that runs afterwards and which hosts were asked."""
 from __future__ import annotations
 
+import argparse
 import json
 from typing import Any
 
@@ -21,7 +22,8 @@ from setup_page import (PAGE_DIR, at_finish, call, config_file, connect_done, fi
                         inside, more_progress, wait_for)
 from setup_page import clock, health, page, schedule  # noqa: F401
 from test_setup_finish import opened_again  # noqa: F401
-from test_update import ASKS, INSTALLED, github, mac, needing_family  # noqa: F401  the fixtures
+from test_update import (ASKS, INSTALLED, changed_since, github, mac, needing_family,  # noqa: F401  the fixtures
+                         snapshot, while_installing)
 
 # install.sh's layout, on a Mac.
 pytestmark = pytest.mark.posix
@@ -292,6 +294,68 @@ def test_update_now_waits_while_a_brief_is_being_made(household, github, mac, pa
     assert r.json() == {"result": "busy"}
     assert github.requests == [] and mac.installs == []
     assert update_now(page.url)["result"] == "updated"  # once the run has ended
+
+
+def test_update_now_holds_the_run_lock_from_before_the_look_until_the_update_ended(
+        household, github, mac, page, capsys):  # noqa: F811
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    mac.fails["0.20.0"] = ["Calendar"]  # so it switches back, still holding it
+    cfg = Config.load(config_file(household))
+    during: dict[str, Any] = {}
+    look = github.request
+
+    def at_the_look(*a: Any, **k: Any):
+        during.setdefault("held at the look", run_lock.is_busy(cfg))
+        return look(*a, **k)
+    github.request = at_the_look
+
+    def at_a_step_of_the_switch_back(cmd: list[str], _prog: str, **_k: Any) -> None:
+        if cmd[0] == str(mac.folder / "app" / ".venv" / "bin" / "python"):
+            during["held at the switch back"] = run_lock.is_busy(cfg)
+    household.processes.answers.insert(0, at_a_step_of_the_switch_back)
+
+    def beside_the_install() -> None:
+        before = snapshot(household.home)
+        during["parent-recap update"] = update.cmd_update(
+            argparse.Namespace(setting=None, config=str(config_file(household))))
+        during["it changed"] = changed_since(before, household.home)
+        # And the button pressed again starts no second update.
+        during["pressed again"] = call(page.url, "api/updates/now", method="POST", body={}).json()
+    while_installing(mac, beside_the_install)
+
+    out = update_now(page.url)
+
+    assert out["result"] == "switched-back" and mac.version() == INSTALLED
+    assert during == {"held at the look": True, "held at the switch back": True,
+                      "parent-recap update": run_lock.BUSY, "it changed": set(),
+                      "pressed again": {"result": "updating"}}
+    assert len(mac.installs) == 1
+    assert not run_lock.is_busy(cfg)  # let go of once it ended
+
+
+def test_update_now_while_another_update_is_going_says_busy_and_changes_nothing(
+        household, github, mac, page):  # noqa: F811
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    config = str(config_file(household))
+
+    with update.alone(config):  # `parent-recap update` in Terminal, still going
+        before = snapshot(household.home)
+        r = call(page.url, "api/updates/now", method="POST", body={})
+        changed = changed_since(before, household.home)
+
+    assert r.json() == {"result": "busy"}
+    assert changed == set() and github.requests == [] and mac.installs == []
+    assert call(page.url, "api/updates/check", method="POST", body={}).json() == {
+        "result": "no-update"}
+    # What the page then says names both a Brief and another update, and when to try again.
+    says = {"en": ("a Brief is being made", "another update is running", "in a few minutes"),
+            "fi": ("koostetta tehdään", "toinen päivitys on käynnissä", "muutaman minuutin kuluttua"),
+            "zh": ("正在生成日报", "另一个更新正在进行", "过几分钟")}
+    for language, table in TEXT.items():
+        for words in says[language]:
+            assert words in table["finish.updates.busy"], (language, words)
 
 
 def test_update_now_takes_nothing_and_says_when_none_was_started(household, page):
