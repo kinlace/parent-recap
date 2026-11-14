@@ -14,9 +14,9 @@ import time_machine
 
 from conftest import NOW, eepos_entry, eepos_student
 from fake_sources import EEPOS_PASSWORD
-from family_brief.collectors import eepos
 from family_brief.collectors.base import failed_sign_in
 from family_brief.config import Config
+from family_brief.sources.fi.eepos import collector as eepos
 from family_brief.state import State
 
 TZ = ZoneInfo("Europe/Helsinki")

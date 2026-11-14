@@ -32,12 +32,13 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from ..system import secrets
-from .base import CalendarEvent, Collected, retry_once_on_timeout, sign_in_failed
+from ....collectors.base import CalendarEvent, Collected, retry_once_on_timeout, sign_in_failed
+from ....system import secrets
 
 if TYPE_CHECKING:
-    from ..config import Config, EeposSignin, Kid
-    from ..state import State
+    from ....config import Config, Kid
+    from ....state import State
+    from .config import EeposSignin
 
 log = logging.getLogger(__name__)
 

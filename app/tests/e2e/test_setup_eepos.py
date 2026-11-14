@@ -16,7 +16,7 @@ from test_uninstall import set_up, uninstall
 from conftest import eepos_entry, eepos_student
 from fake_sources import EEPOS_PASSWORD
 from family_brief import install_record, ops
-from family_brief.collectors import eepos
+from family_brief.sources.fi.eepos import collector as eepos
 from setup_page import (Response, assert_never_leaked, call, config_file, refuse_secrets,
                         save_progress, source, statuses)
 from setup_page import clock, page  # noqa: F401

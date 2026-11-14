@@ -72,7 +72,7 @@ def shared_files() -> list[str]:
                   if not p.startswith(inside))
 
 
-@pytest.mark.parametrize("folder", ["nl/konnect", "nl/socialschools"])
+@pytest.mark.parametrize("folder", ["fi/eepos", "nl/konnect", "nl/socialschools"])
 def test_a_moved_source_is_in_a_folder_of_its_own(folder):
     assert folder in folders()
 
@@ -122,4 +122,15 @@ def test_each_source_in_a_folder_says_which_part_it_is_and_the_rest_say_none():
             assert source.part.rpartition("/")[2] == source.name
     assert sources.KONNECT.part == "nl/konnect"
     assert sources.SOCIALSCHOOLS.part == "nl/socialschools"
+    assert sources.EEPOS.part == "fi/eepos"
     assert sources.WILMA.part is None
+
+
+def test_shared_code_reaches_a_source_s_folder_through_its_record():
+    from family_brief.sources.fi.eepos import setup
+    assert sources.EEPOS.code("setup") is setup
+
+
+def test_a_source_without_a_folder_has_no_code_to_reach():
+    with pytest.raises(LookupError, match="wilma"):
+        sources.WILMA.code("collector")

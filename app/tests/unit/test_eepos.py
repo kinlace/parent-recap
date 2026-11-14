@@ -8,8 +8,9 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from conftest import eepos_entry
-from family_brief.collectors import eepos
-from family_brief.config import Config, EeposSignin
+from family_brief.config import Config
+from family_brief.sources.fi.eepos import collector as eepos
+from family_brief.sources.fi.eepos.config import EeposSignin
 
 TZ = ZoneInfo("Europe/Helsinki")
 

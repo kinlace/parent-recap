@@ -20,9 +20,10 @@ import yaml
 from conftest import REAL_RUN, eepos_student, msg
 from fake_sources import EEPOS_PASSWORD
 from family_brief import gateway, ops
-from family_brief.collectors import eepos, myclub
+from family_brief.collectors import myclub
 from family_brief.config import Config
 from family_brief.setup_server.gmail import MAX_RECIPIENTS
+from family_brief.sources.fi.eepos import collector as eepos
 from family_brief.system import jobs, jobs_windows, secrets, wake, wake_windows, windows_only
 from setup_page import (APP_PASSWORD, call, check_page, clock, config_file,  # noqa: F401
                         finish, finished, health_result, page, source, wait_for)

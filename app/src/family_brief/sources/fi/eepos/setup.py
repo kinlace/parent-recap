@@ -1,6 +1,8 @@
-"""Adding an Eepos sign-in from a terminal (ADR 0038), for the maintainers to turn Eepos on for a
-Household by hand. The setup page's Eepos step (#791) keeps and removes a sign-in through `keep`
-and `remove` here, and the hosted sign-up (#769) reuses `check` and `_save`.
+"""Eepos's setup step, `setup eepos`: adding an Eepos sign-in from a terminal (ADR 0038), for the
+maintainers to turn Eepos on for a Household by hand. `register` adds the command to setup's, which
+lists it among the Sources' (setup_steps). The setup page's Eepos step (#791) keeps and removes a
+sign-in through `keep` and `remove` here, and the hosted sign-up (#769) reuses `check` and `_save`,
+both reaching this module through Eepos's record (`Source.code`).
 
 `setup eepos --school emo --username NAME` has the guardian's password typed at the secret store's
 own prompt in that terminal (`secrets.put_typed`), so it passes through no dialog, chat or command
@@ -13,6 +15,7 @@ again replaces that sign-in, and a second school is a sign-in of its own.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import shlex
 import sys
@@ -23,12 +26,13 @@ from typing import Any
 
 import yaml
 
-from . import install_record
-from .collectors import eepos
-from .config import Config, EeposSignin
-from .setup_report import PLAIN_TERMINAL, keychain_failure, program
-from .setup_save import _write_private
-from .system import secrets
+from .... import install_record
+from ....config import Config
+from ....setup_report import PLAIN_TERMINAL, keychain_failure, program, report
+from ....setup_save import _write_private
+from ....system import secrets
+from . import collector as eepos
+from .config import EeposSignin
 
 
 def again(school: str, username: str) -> str:
@@ -228,6 +232,25 @@ def _save(path: Path, signin: EeposSignin) -> None:
         new = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
     Config.model_validate(yaml.safe_load(new))
     _write_private(path, new)
+
+
+def register(steps: Any) -> None:
+    """Adds `setup eepos` to setup's commands, `steps`."""
+    step = steps.add_parser("eepos", help="Add a guardian's sign-in at an Eepos school: the "
+                            "password typed at the secret store's own prompt, checked at once, "
+                            "the students matched to the Kids by name")
+    step.add_argument("--school", required=True,
+                      help="The school's Eepos address, or its part before .eepos.fi: emo for "
+                           "emo.eepos.fi")
+    step.add_argument("--username", required=True, help="The guardian's Eepos username")
+    step.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> int:
+    """`setup eepos`. The password is typed at the secret store's own prompt in this terminal, so
+    it reaches no dialog, chat or command line, and the one line of JSON never has it."""
+    result, next_, extra = cmd(args)
+    return report(result, next_, **extra)
 
 
 def cmd(args: Any) -> tuple[str, str | None, dict[str, Any]]:

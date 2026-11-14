@@ -60,13 +60,18 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs
 
-from .. import failure, setup_eepos, setup_evaka, setup_myclub, setup_wilma
-from ..collectors import eepos, evaka
-from ..config import Config, EeposSignin, EvakaSignin, Kid
+from .. import failure, setup_evaka, setup_myclub, setup_wilma, sources
+from ..collectors import evaka
+from ..config import Config, EvakaSignin, Kid
 from ..setup_server.first_brief import BRIEF_LOOKBACK_HOURS
 from . import page
 from .host import PROGRAM, HostError, HouseholdHost, user_name
 from .invites import LANGUAGES, HouseholdRecord, Recipient, Store
+
+# Eepos's code is in its folder (ADR 0051); the sign-up's Eepos step reaches it through its record
+# until the page is split by Source.
+eepos, setup_eepos = sources.EEPOS.code("collector"), sources.EEPOS.code("setup")
+EeposSignin = sources.EEPOS.code("config").EeposSignin
 
 log = logging.getLogger("family_brief.signup")
 
