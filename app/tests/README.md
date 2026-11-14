@@ -60,7 +60,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_install_share.py`       | An AI installer's download share, read from what it prints       |
 | `test_kid_placeholders.py`    | Each Kid as Kid A, Kid B and back                                |
 | `test_update_versions.py`     | The update's version order and doctor's failing checks (ADR 0047) |
-| `test_last_run.py`            | A run's peak memory, from the run's and its children's sizes     |
+| `test_last_run.py`            | A run's peak memory; the Run Report's fields and keys, no free text |
 | `test_llm_memory.py`          | The llm package's in-memory adapter (ADR 0023)                   |
 | `test_llm_parse.py`           | The model's reply parsed, tier by tier, and the CLI's envelope   |
 | `test_per_language.py`        | The Brief's and Weekend Picks' versions, one per language        |
@@ -115,6 +115,7 @@ the import path, so a test may import a helper from a test in another layer.
 | --------------------------------- | --------------------------------------------------------------------------------------- |
 | `test_nightly_brief.py`           | The Brief a normal night makes, failures at the edges                                   |
 | `test_nightly_continuity.py`      | Nights in a row, quiet nights, catching up a missed evening within 10 hours             |
+| `test_run_report.py`             | The Run Report each run leaves (ADR 0048), however it ended, and doctor's line for it   |
 | `test_nightly_google_calendar.py` | Google Calendar mode                                                                    |
 | `test_nightly_languages.py`       | Recipients in their own languages                                                       |
 | `test_nightly_placeholders.py`    | The AI filter's placeholders, end to end (ADR 0013)                                     |
