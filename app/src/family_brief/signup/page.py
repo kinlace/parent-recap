@@ -427,8 +427,8 @@ def _connecting() -> None:
 
 
 _connecting()
-# eVaka's cities as a family writes them, for the city field to offer: the CITIES of
-# eVaka's collector, in its folder (ADR 0051).
+# eVaka's cities as a family writes them, for the city field to offer:
+# sources/fi/evaka/collector.CITIES's.
 EVAKA_CITIES = ("Espoo", "Tampere", "Turku", "Oulu", "Hämeenkyrö", "Orivesi", "Ylöjärvi",
                 "Pirkkala", "Nokia", "Lempäälä", "Vesilahti", "Kangasala")
 MAX_RECIPIENTS = 10  # the Brief relay's, for one message
