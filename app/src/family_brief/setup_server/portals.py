@@ -85,6 +85,7 @@ class EvakaKid(Strict):
 class _SignIns(Phase):
     """A Source read with a guardian's sign-in per school or city, `place` naming which."""
     name: ClassVar[str]
+    source: ClassVar[sources.Source]  # its record, whose part of a release is the Source's code
     place: ClassVar[str]
     people: ClassVar[str]  # what `keep` calls the students or children it found
     steps: ClassVar[Any]   # setup_eepos or setup_evaka
@@ -110,8 +111,12 @@ class _SignIns(Phase):
         once that works, keeps the sign-in, in place of one for the same username there. Then the
         Source is done, and the step stays for another school or city until Continue. A password
         that doesn't work is said to be wrong and replaces nothing. The password is never
-        returned, logged or put on a command line."""
+        returned, logged or put on a command line. When the Source changed since the installed
+        version, Parent Recap updates itself first (ADR 0051) and the answer is one of
+        updates.FIRST_RESULTS: nothing was sent to the Source, and the password is dropped."""
         answer = parse(self.SignIn, raw)
+        if (first := self.context.newest_first(self.source.part)) is not None:
+            return HTTPStatus.OK, first
         place = self.of(getattr(answer, self.place))
         if place is None:
             return HTTPStatus.OK, {"result": self.refusal(getattr(answer, self.place))}
@@ -230,6 +235,7 @@ def _kids(cfg: Config, matched: dict[str, str]) -> list[str]:
 
 class Eepos(_SignIns):
     name, place, people, steps = "eepos", "school", "students", setup_eepos
+    source = sources.EEPOS
     SignIn, Removal, Kid = EeposSignIn, EeposRemoval, EeposKid
 
     def signins(self) -> list[dict[str, Any]]:
@@ -246,6 +252,7 @@ class Eepos(_SignIns):
 
 class Evaka(_SignIns):
     name, place, people, steps = "evaka", "city", "children", setup_evaka
+    source = sources.EVAKA
     SignIn, Removal, Kid = EvakaSignIn, EvakaRemoval, EvakaKid
 
     def state(self, progress: dict[str, Any]) -> dict[str, Any]:

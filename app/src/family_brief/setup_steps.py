@@ -50,7 +50,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from . import secret_dialog, setup_ai, setup_gmail, setup_wilma
+from . import secret_dialog, setup_ai, setup_gmail, setup_wilma, sources
 from .config import Config, LLMConfig
 from .setup_ai import CLAUDE_WINDOW, setup_token_window
 from .setup_report import KEYCHAIN_WARNING, PLAIN_TERMINAL, program, report
@@ -137,10 +137,39 @@ def register(sub) -> None:
     setup_status.register(steps)
     setup_server.register(steps)
 
+    # The step of a Source in a folder of its own updates Parent Recap first when that Source
+    # changed since the installed version (ADR 0051).
+    for source in sources.ALL:
+        if source.part is not None and source.name in steps.choices:
+            step = steps.choices[source.name]
+            step.set_defaults(func=_newest_first(source, step.get_default("func")))
+
     # Every step but `status`, which only reads, writes what the evening Brief reads.
     for name, step in steps.choices.items():
         if name != "status":
             step.set_defaults(func=_not_as_administrator(step.get_default("func")))
+
+
+def _newest_first(source: sources.Source, func: Step) -> Step:
+    """`func`, the `setup` step of `source`, which has a part of its own in a release (ADR 0051):
+    a Household that skipped releases while it didn't have the Source may hold an old copy of
+    it. So when that part changed since the installed version, Parent Recap first updates
+    itself, as `parent-recap update` does, and the step is run again by the new version, in the
+    same terminal, with what it was given. When the update can't be done the step says so, in
+    the Household's language, and nothing is asked, sent to the Source or saved. What the update
+    says while it works goes to stderr: the step's one line of JSON is all there is on stdout."""
+    def step(args: argparse.Namespace) -> int:
+        from . import update
+        outcome = update.before_adding(
+            source.part, args.config, say=lambda text: print(text, file=sys.stderr, flush=True))
+        if outcome is None:
+            return func(args)
+        if outcome.result == "updated":
+            return update.run_again(sys.argv[1:])
+        return report("update-busy" if outcome.result == "busy" else "update-failed",
+                      update.not_added(outcome, source.label(), args.config),
+                      **({} if outcome.result == "busy" else {"error": outcome.message}))
+    return step
 
 
 def _not_as_administrator(func: Step) -> Step:

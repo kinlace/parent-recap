@@ -49,12 +49,16 @@ class MyClub(Phase):
         Kids and saves it beside the links they have, for another club (#810), as the chat's
         MyClub step saves one. Once a link is saved, MyClub is done, and setup moves on once every
         Kid has one, unless it was another club's; until then the parent can add the next Kid's
-        or another club's.
+        or another club's. When MyClub changed since the installed version, Parent Recap updates
+        itself first and the answer is one of updates.FIRST_RESULTS, with nothing downloaded.
         The link is a secret (ADR 0007): it's never returned, logged or put on a command line."""
         answer = parse(MyClubLink, raw)
         if answer.kid not in self._kid_names():  # named only: the answers carry the link
             return HTTPStatus.BAD_REQUEST, setup_save.outcome(
                 "invalid-answers", "Pick one of the Kids.", errors=["kid: should be a Kid's name"])
+        # Before the link goes to MyClub's code: an old copy of it is updated first (ADR 0051).
+        if (first := self.context.newest_first(sources.MYCLUB.part)) is not None:
+            return HTTPStatus.OK, first
         connect = self.context.connect
         another = any(k["linked"] for k in self._myclub()["kids"] if k["name"] == answer.kid)
         # Downloaded before the lock, so a slow MyClub holds up no other save.

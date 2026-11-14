@@ -59,6 +59,16 @@ until the update ended, a switch back included (`alone`). While a run or another
 they say Parent Recap is busy and change nothing, and a run that starts during one stops as it
 does beside another run.
 
+A Household that skipped releases may hold an old copy of a Source it never connected. So adding
+a Source, with its `setup` step in a terminal or on the setup page, first reads the file `stable`
+holds, that one request, and when the Source's part changed in a version higher than the
+installed one, installs the newest release as an update the family started does, before anything
+is typed or sent to the Source (`needed_to_add`, `before_adding`). The step then goes on in the
+new version: a terminal's step is run again with it (`run_again`), and the setup page starts its
+program again (setup_server). An update that can't be done stops the step, so a family never
+signs in to a Source with code older than the newest. A Source without a part, and a program
+that doesn't update itself, go on at once and ask no host.
+
 Only on a Mac, and only for a program run from an installed release: on the hosted version the
 server is deployed by its maintainers (ADR 0045), and Windows is decided separately.
 
@@ -80,6 +90,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 from contextlib import contextmanager
@@ -438,16 +449,17 @@ class _Release:
     def changes(self, installed: str, used: list[str] | None) -> bool:
         """Whether the release changes something a Household at `installed` uses, whose
         connected Sources' parts are `used` (None when they can't be told): the core, or one of
-        those parts, was last changed in a version higher than `installed`. What the file doesn't
-        say counts as changed: a file without `parts`, and a part it doesn't name or gives no
-        version for."""
-        if used is None or self.parts is None:
+        those parts, was last changed in a version higher than `installed`."""
+        return used is None or any(self.changed(part, installed) for part in (CORE, *used))
+
+    def changed(self, part: str, installed: str) -> bool:
+        """Whether `part` was last changed in a version higher than `installed`. What the file
+        doesn't say counts as changed: a file without `parts`, and a part it doesn't name or
+        gives no version for."""
+        if self.parts is None:
             return True
-        for part in (CORE, *used):
-            changed = self.parts.get(part)
-            if not isinstance(changed, str) or parsed(changed) is None or newer(changed, installed):
-                return True
-        return False
+        changed = self.parts.get(part)
+        return not isinstance(changed, str) or parsed(changed) is None or newer(changed, installed)
 
 
 def stable_release(session: requests.Session | None = None) -> _Release:
@@ -467,17 +479,19 @@ def stable_release(session: requests.Session | None = None) -> _Release:
     return _Release(version.strip(), parts if isinstance(parts, dict) else None)
 
 
-def _used_parts(config: str | None) -> list[str] | None:
+def _used_parts(config: str | None, adding: str | None = None) -> list[str] | None:
     """The parts of a release that are the Household's connected Sources' (ADR 0051): the folder
-    of each Source its config has read that has one. A Source without a folder has no part, as
-    its changes are the core's. None when the config can't be read, so nothing is skipped."""
+    of each Source its config has read that has one, and `adding`, the part of a Source the
+    family is adding now. A Source without a folder has no part, as its changes are the core's.
+    None when the config can't be read, so nothing is skipped."""
     from . import sources
     from .config import Config
     try:
         cfg = Config.load(config)
-        return [s.part for s in sources.ALL if s.part is not None and s.connected(cfg)]
+        used = [s.part for s in sources.ALL if s.part is not None and s.connected(cfg)]
     except Exception:  # noqa: BLE001 - no config yet, or one doctor names
         return None
+    return used if adding is None or adding in used else [*used, adding]
 
 
 def _download(session: requests.Session, url: str, to: Path) -> None:
@@ -748,14 +762,15 @@ class _Failed:
 
 def update(config: str | None = None, *, retry_failed: bool = True,
            wait: timedelta | None = None, by_family: bool = True,
-           say: Callable[[str], None] | None = None) -> Outcome:
+           say: Callable[[str], None] | None = None, adding: str | None = None) -> Outcome:
     """Looks for a newer release on `stable` and installs it, checks it with `doctor` and switches
     back when it fails a check the version before didn't. With `retry_failed` False, a version
     that failed before isn't tried again; with `wait`, a version is installed only once this Mac
     has seen it on `stable` that long (the evening run's, `evening`). With `by_family` False, as
     in the evening run, a release that needs the family isn't installed: it is downloaded once,
     and kept in the state as waiting. Started by the family, it installs with its dialogs, and
-    `say` is first told what it will ask. Never raises for what the network or the release did:
+    `say` is first told what it will ask. With `adding`, the part of a Source the family is
+    adding now, that part counts as one the Household uses. Never raises for what the network or the release did:
     the Outcome says it. It takes no lock itself: the evening run holds its own, and what the
     family starts calls it inside `alone`."""
     if (reason := not_applicable(config)) is not None:
@@ -765,7 +780,7 @@ def update(config: str | None = None, *, retry_failed: bool = True,
     log = _Log(folder)
     installed = versions.version(versions.current(folder))  # type: ignore[arg-type]
     session = _session()
-    wanted = _look(folder, config, log, session, installed)
+    wanted = _look(folder, config, log, session, installed, adding)
     if isinstance(wanted, Outcome):
         return wanted
     seen = _seen(folder, wanted)
@@ -809,9 +824,9 @@ def _left_for_the_family(installed: str, wanted: str) -> Outcome:
 
 
 def _look(folder: Path, config: str | None, log: _Log, session: requests.Session,
-          installed: str) -> str | Outcome:
+          installed: str, adding: str | None = None) -> str | Outcome:
     """The version `stable` holds, when it is higher than the `installed` one and changes
-    something the Household uses (ADR 0051). Otherwise what came of the look, which is recorded:
+    something the Household uses (ADR 0051), the Source it is `adding` included. Otherwise what came of the look, which is recorded:
     it couldn't be read, nothing newer is out, or the newer release is skipped. A skipped release
     isn't kept as `seen`: the day's wait counts from the look that first finds a release this Mac
     would install."""
@@ -829,7 +844,7 @@ def _look(folder: Path, config: str | None, log: _Log, session: requests.Session
               skipped=None)
         return Outcome("up-to-date", f"Parent Recap is up to date: it runs version {installed}, "
                        "the newest release.", installed)
-    if not release.changes(installed, _used_parts(config)):
+    if not release.changes(installed, _used_parts(config, adding)):
         log("look", f"{wanted} changes nothing this Household uses; not downloaded")
         # What `status` says of `skipped` follows this on doctor's line, so it isn't said twice.
         _save(folder, last_result=f"{wanted} is out", seen=None, skipped=wanted)
@@ -1078,6 +1093,115 @@ def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, wanted
     return Outcome("switched-back", f"Version {wanted} {failed.message}, so "
                    f"Parent Recap switched back to version {running}. The update log is "
                    f"{log.path}.", running, tried=wanted)
+
+
+# ---------------------------------------------------------------- adding a Source
+
+def needed_to_add(part: str | None, config: str | None = None) -> str | None:
+    """The version to install before the family adds the Source whose part is `part` (ADR
+    0051): the one `stable` holds, when that part changed in a version higher than the installed
+    one, as it can for a Household that skipped releases while it didn't have the Source.
+    Otherwise None: the part isn't newer, or the Source has no part (`part` is None) or the
+    program doesn't update itself here, which both ask no host. One request, for the file
+    `stable` holds; it downloads nothing and leaves the update's state as it is. Raises Refused
+    when that file can't be read, as the installed copy then can't be told from an old one."""
+    if part is None or not_applicable(config) is not None:
+        return None
+    folder = own_node.running_from()
+    assert folder is not None
+    log = _Log(folder)
+    installed = versions.version(versions.current(folder))  # type: ignore[arg-type]
+    try:
+        release = stable_release()
+    except Refused as e:
+        log("look", f"installed {installed}, adding {part}; stable couldn't be read: {e}")
+        raise
+    needed = newer(release.version, installed) and release.changed(part, installed)
+    log("look", f"installed {installed}, stable holds {release.version}; adding {part}, which "
+        + ("changed since: updating first" if needed else "didn't change since"))
+    return release.version if needed else None
+
+
+def before_adding(part: str | None, config: str | None = None,
+                  say: Callable[[str], None] | None = None) -> Outcome | None:
+    """What a Source's `setup` step in a terminal does first (ADR 0051): when the Source's part
+    changed after the installed version (`needed_to_add`), it installs the newest release, under
+    the rules of an update the family started: alone (`alone`), at once, with its dialogs, and a
+    version that failed before tried again. `say` is told that it updates first, and what a
+    release that needs the family will ask. None when the step goes on as it is; an Outcome
+    whose result is `updated` when it goes on in the new version (`run_again`); any other
+    Outcome is why the update couldn't be done, `busy` while a run or another update holds the
+    lock, and the step doesn't go on with the old code."""
+    try:
+        wanted = needed_to_add(part, config)
+    except Refused as e:
+        return Outcome("failed", f"Parent Recap couldn't look for a newer release: {e}. "
+                       "Nothing was changed.")
+    if wanted is None:
+        return None
+    if say is not None:
+        say(f"Updating Parent Recap to version {wanted} first, as this part of it changed since "
+            "the installed version. This can take a few minutes.")
+    try:
+        with alone(config):
+            outcome = update(config, say=say, adding=part)
+    except run_lock.Busy:
+        return Outcome("busy", BUSY[0])
+    # `stable` went back between the two looks: there is nothing newer to add it with.
+    return None if outcome.result in ("up-to-date", "skipped", "not-applicable") else outcome
+
+
+def run_again(arguments: list[str]) -> int:
+    """Runs the installed program, the version `app` now points at, with `arguments`, in this
+    terminal, and returns its exit status: how a step goes on once `before_adding` updated."""
+    folder = own_node.running_from()
+    assert folder is not None
+    program = str(folder / versions.APP / ".venv" / "bin" / "parent-recap")
+    try:
+        return subprocess.run([program, *arguments], check=False).returncode
+    except OSError as e:
+        print(f"Parent Recap was updated, but {program} couldn't be started "
+              f"({type(e).__name__}). Run the command again.", file=sys.stderr)
+        return 1
+
+
+# What a Source's step says, in the family's language, when Parent Recap had to update itself
+# before the Source is added and couldn't (ADR 0051). `{source}` is the Source's name.
+NOT_ADDED = {
+    "en": "Parent Recap has to update itself before {source} is added, as its code for {source} "
+          "changed since the installed version, and the update couldn't be done. So {source} "
+          "wasn't added and nothing was changed. Check that this computer is online and try "
+          "again.",
+    "fi": "Parent Recapin on päivitettävä itsensä ennen kuin {source} lisätään, koska sen "
+          "{source}-osa on muuttunut asennetun version jälkeen, eikä päivitys onnistunut. Siksi "
+          "{source} jäi lisäämättä eikä mitään muutettu. Tarkista, että tietokone on verkossa, ja "
+          "yritä uudelleen.",
+    "zh": "添加 {source} 之前，Parent Recap 需要先更新自己，因为其中 {source} 的部分在已安装的版本之后"
+          "有过改动，但这次更新没有成功。所以 {source} 没有添加，也没有改动任何东西。请确认这台电脑已联网，"
+          "然后再试一次。",
+}
+NOT_ADDED_BUSY = {
+    "en": "Parent Recap has to update itself before {source} is added, and it is busy right now: "
+          "a Brief is being made, or another update is running. So {source} wasn't added and "
+          "nothing was changed. Try again in a few minutes.",
+    "fi": "Parent Recapin on päivitettävä itsensä ennen kuin {source} lisätään, ja sillä on juuri "
+          "nyt muuta tekeillä: koostetta tehdään tai toinen päivitys on käynnissä. Siksi {source} "
+          "jäi lisäämättä eikä mitään muutettu. Yritä uudelleen muutaman minuutin kuluttua.",
+    "zh": "添加 {source} 之前，Parent Recap 需要先更新自己，但它现在正忙：正在生成日报，或者另一个更新"
+          "正在进行。所以 {source} 没有添加，也没有改动任何东西。请过几分钟再试。",
+}
+
+
+def not_added(outcome: Outcome, source: str, config: str | None = None) -> str:
+    """What the step for `source` says of `outcome`, an update `before_adding` couldn't do, in
+    the Household's language where the program has reviewed text in it, or else in English."""
+    from .config import Config
+    try:
+        language = Config.load(config).summary_language
+    except Exception:  # noqa: BLE001 - no config yet, or one doctor names
+        language = "en"
+    texts = NOT_ADDED_BUSY if outcome.result == "busy" else NOT_ADDED
+    return texts.get(language, texts["en"]).format(source=source)
 
 
 # ---------------------------------------------------------------- parent-recap update

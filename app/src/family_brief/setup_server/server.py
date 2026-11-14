@@ -19,6 +19,7 @@ import hmac
 import json
 import os
 import socketserver
+import sys
 import threading
 from collections.abc import Iterable, Mapping, Set
 from http import HTTPStatus
@@ -27,7 +28,7 @@ from pathlib import Path
 from secrets import token_urlsafe
 from typing import Any, TypeVar
 
-from .. import setup_connect, setup_report, setup_save
+from .. import own_node, setup_connect, setup_report, setup_save, versions
 from ..system import desktop, profile, secrets
 from .context import Action, Context, Page, Phase
 from .phases import PHASES
@@ -43,6 +44,9 @@ FILES = {  # what the page is made of, by the path under its address
 FAVICON = "/favicon.ico"  # which the browser asks for at the root, outside the code, on every load
 STATE = "api/state"  # the page's state, which every phase adds its part to
 ALIVE = "api/alive"  # what the page asks every few seconds to see its program is still there
+# In the environment of a program started again for a page that is open (`start_again`): the
+# port and the one-time code it serves that page at, with a space between.
+STARTED_AGAIN = "PARENT_RECAP_SETUP_PAGE"
 MAX_BODY = 64 * 1024
 HEADERS = {
     "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; "
@@ -63,25 +67,63 @@ def register(steps) -> None:
 
 def cmd_page(args: argparse.Namespace) -> int:
     config = Path(os.path.expanduser(os.path.expandvars(args.config or "~/.family/config.yaml")))
+    at = _started_again()
+    if at is not None:
+        try:  # at the address the page in the browser already has
+            return serve(SetupServer(Context(config), port=at[0], code=at[1]), opened=True)
+        except OSError:  # the port is taken since: a new page, as if started by hand
+            pass
     return serve(SetupServer(Context(config)))
 
 
-def serve(server: SetupServer) -> int:
-    """Opens `server`'s page in the browser and serves it until it stops, saying so in the window
-    the page runs from."""
-    out: dict[str, Any] = {"result": "opened", "url": server.url}
-    if not desktop.open_url(server.url):
-        out = {"result": "not-opened", "url": server.url,
-               "next": f"The browser didn't open. Open this address in it: {server.url}"}
-    if not secrets.reachable():  # the page says so too
-        out["warning"] = setup_report.KEYCHAIN_WARNING
-    print(json.dumps(out, ensure_ascii=False), flush=True)
+def _started_again() -> tuple[int, str] | None:
+    """The port and the one-time code of the page this program is started again for
+    (`start_again`), taken out of the environment so nothing this program starts gets them; None
+    for a program started any other way."""
+    port, _, code = os.environ.pop(STARTED_AGAIN, "").partition(" ")
+    return (int(port), code) if port.isdigit() and code else None
+
+
+def serve(server: SetupServer, opened: bool = False) -> int:
+    """Opens `server`'s page in the browser, unless it is `opened` there already, and serves it
+    until it stops, saying so in the window the page runs from. A server that stopped to be
+    started again by a newer version (ADR 0051) is, in this window, and says nothing here."""
+    if not opened:
+        out: dict[str, Any] = {"result": "opened", "url": server.url}
+        if not desktop.open_url(server.url):
+            out = {"result": "not-opened", "url": server.url,
+                   "next": f"The browser didn't open. Open this address in it: {server.url}"}
+        if not secrets.reachable():  # the page says so too
+            out["warning"] = setup_report.KEYCHAIN_WARNING
+        print(json.dumps(out, ensure_ascii=False), flush=True)
     try:
         server.serve_until_idle()
     except KeyboardInterrupt:
         server.stop()
+    if server.context.restart:
+        server.stop()  # what a phase has under way ends first
+        start_again(server)  # which doesn't come back when it works
     print(closed_line(server.context.chosen_language() or "en"), flush=True)
     return 0
+
+
+def start_again(server: SetupServer) -> None:
+    """Replaces this program with the installed version's, serving the same page: after an
+    update that a step adding a Source started (updates.py), so the step goes on in the new
+    version's code. The new program listens on the same port with the same one-time code, which
+    it gets through its environment, so the page open in the browser goes on where it was. It
+    returns only when that program couldn't be started; the page then says its program has gone."""
+    folder = own_node.running_from()
+    if folder is None:
+        return
+    program = str(folder / versions.APP / ".venv" / "bin" / "parent-recap")
+    env = {**os.environ, STARTED_AGAIN: f"{server.address[1]} {server.code}"}
+    sys.stdout.flush()
+    sys.stderr.flush()
+    try:
+        os.execve(program, [program, "-c", str(server.context.config), "setup", "page"], env)
+    except OSError:
+        return
 
 
 def closed_line(language: str) -> str:
@@ -93,17 +135,20 @@ def closed_line(language: str) -> str:
 
 class SetupServer:
     """The setup page's server for `context`'s config, listening from when it's made, answering
-    the calls of each of `phases`, through `listener` on 127.0.0.1's free port."""
+    the calls of each of `phases`, through `listener` on 127.0.0.1's free port, or on `port` with
+    the one-time `code` a server before it had."""
 
     def __init__(self, context: Context, phases: Iterable[type[Phase]] = PHASES,
-                 listener: type[ThreadingHTTPServer] | None = None) -> None:
+                 listener: type[ThreadingHTTPServer] | None = None, port: int = 0,
+                 code: str | None = None) -> None:
         self.context = context
         self.phases = [phase(context) for phase in phases]
         reserved = {*FILES, STATE}
         self.actions: dict[str, Action] = _routes(reserved, (p.routes() for p in self.phases))
         self.pages: dict[str, Page] = _routes(reserved, (p.pages() for p in self.phases))
-        self.code = token_urlsafe(32)
-        self._httpd = (listener or _HTTPServer)(("127.0.0.1", 0), _Handler)
+        # A free port and a new code, or those of the page it is started again for (start_again).
+        self.code = code or token_urlsafe(32)
+        self._httpd = (listener or _HTTPServer)(("127.0.0.1", port), _Handler)
         self._httpd.setup = self  # type: ignore[attr-defined]
         host, port = self._httpd.server_address[:2]
         self.address = (str(host), int(port))

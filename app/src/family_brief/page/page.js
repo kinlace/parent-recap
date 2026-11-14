@@ -380,6 +380,81 @@ async function post(path, body) {
   return out;
 }
 
+// ── Adding a Source that changed since the installed version (ADR 0051, #961). A Household that
+// skipped releases may hold an old copy of a Source it never connected, so the server answers
+// such a step with `updating-first` in place of adding anything: Parent Recap updates itself,
+// its program starts again in the new version at this page's address, and the step is then
+// sent again, as it was typed. While that goes on the page says so and doesn't take the
+// program for gone. An update that can't be done ends the step with `update-failed` or
+// `update-busy`, which `showFirst` shows, and nothing was added.
+const FIRST_RESULTS = ["update-failed", "update-busy"];
+const FIRST_SENDS = 4; // how often a step is sent again before the page gives up
+const RESTART_TRIES = 30; // how many checks may go unanswered while the program starts again
+
+async function postNewest(path, body, source) {
+  for (let sent = 1; ; sent += 1) {
+    let out;
+    try {
+      out = await post(path, body);
+    } catch (e) {
+      // The new version's page may send this step another way: load it.
+      if (sent > 1 && !(e instanceof TypeError)) location.reload();
+      throw e;
+    }
+    if (out.result !== "updating-first") return out;
+    if (sent === FIRST_SENDS) return { result: "update-failed" };
+    showSource("source.updating-first", { values: { source: t("source." + source) } });
+    const stopped = await updatedFirst();
+    if (stopped) return stopped;
+  }
+}
+
+// Waits for the update a step started and for the program to start again: null once the step
+// can be sent again, or how the step ends when the update couldn't be done.
+async function updatedFirst() {
+  alive.restarting = true;
+  clearTimeout(alive.timer);
+  try {
+    for (let unanswered = 0; unanswered <= RESTART_TRIES;) {
+      await new Promise((resolve) => { setTimeout(resolve, UPDATE_MS); });
+      let out;
+      try {
+        out = await post("api/updates/check", {});
+      } catch (e) {
+        if (!(e instanceof TypeError)) throw e;
+        unanswered += 1; // the program is starting again
+        continue;
+      }
+      unanswered = 0;
+      if (out.result === "updating") continue;
+      if (out.result === "busy") return { result: "update-busy" };
+      if (["failed", "switched-back", "not-available"].includes(out.result)) {
+        if (out.updates) page.updates = out.updates;
+        return { result: "update-failed", reason: out.reason };
+      }
+      try {
+        page.updates = (await getJSON("api/state")).updates; // the version it runs now
+        showUpdates();
+      } catch (e) {
+        // Shown as it was: the step goes on.
+      }
+      return null;
+    }
+    throw new TypeError("the program didn't start again");
+  } finally {
+    alive.restarting = false;
+    watchServer();
+  }
+}
+
+// Shows how a step ended when Parent Recap had to update itself first and couldn't; false for
+// any other result.
+function showFirst(out, source) {
+  if (!FIRST_RESULTS.includes(out.result)) return false;
+  showSource("source." + out.result, { reason: out.reason, values: { source: t("source." + source) } });
+  return true;
+}
+
 // Connect's steps, which the list shows in the order the server sends (page.connect.sources). A
 // step's panel is the element `source-<name>`, shown while it's the current step; its "Skip
 // <Source> for now" links are its `[data-skip]` buttons; the rest of the step is its entry here,
@@ -897,6 +972,7 @@ const FAILED = [
   ].map((result) => `${name}.${result}`)),
   "eepos.not-a-school", "eepos.school-website", "evaka.not-a-city", "eepos.kid-exists",
   "evaka.kid-exists",
+  "source.update-failed", "source.update-busy",
   "whatsapp.failed", "whatsapp.no-library",
   "open.not-opened", "open.app-not-opened",
 ];
@@ -2061,16 +2137,17 @@ async function saveMyClubLink(event) {
   showSource("myclub.checking");
   const link = document.getElementById("myclub-link");
   try {
-    const out = await post("api/myclub", { kid: myclubStep.kid, link: link.value });
+    const out = await postNewest("api/myclub", { kid: myclubStep.kid, link: link.value }, "myclub");
     // Kept only when trying again may work as it is.
-    if (out.result !== "link-failed" && out.result !== "save-failed") link.value = "";
+    const again = ["link-failed", "save-failed", ...FIRST_RESULTS];
+    if (!again.includes(out.result)) link.value = "";
     if (out.result === "saved") {
       page.progress = out.progress;
       page.myclub.kids = out.kids;
       myclubStep.kid = null; // the next Kid without a link
       renderSources();
     }
-    showSource("myclub." + out.result);
+    if (!showFirst(out, "myclub")) showSource("myclub." + out.result);
     // The result is shown under the whole step: bring it into view next to the button.
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     document.getElementById("source-status").scrollIntoView({ behavior: still ? "auto" : "smooth",
@@ -2215,8 +2292,9 @@ async function addSignin(name, event) {
   const password = document.getElementById(`${name}-password`);
   const which = { [key]: given(), username: username.value };
   try {
-    const out = await post(`api/${name}`, { [key]: given(), username: username.value,
-                                           password: password.value });
+    // Sent again by itself when Parent Recap updates itself first: until then it stays here.
+    const out = await postNewest(`api/${name}`, { [key]: given(), username: username.value,
+                                                 password: password.value }, name);
     // The password is never kept on the page: a wrong one is typed again.
     password.value = "";
     if (out.result === "saved") {
@@ -2227,7 +2305,7 @@ async function addSignin(name, event) {
       renderSources();
       signinFound[name] = { which, found: out.found, events: out.events };
       showFound(name);
-    } else {
+    } else if (!showFirst(out, name)) {
       showSource(`${name}.${out.result}`);
     }
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -3807,17 +3885,18 @@ async function start() {
 // it, and a step where the family reads, types or waits sends nothing, so the page asks every few
 // seconds while it's in view (#601). Asking isn't use: the server still stops when idle.
 const ALIVE_MS = 3000;
-const alive = { timer: null, gone: false };
+// Not while the program starts again in a newer version (`updatedFirst`), which waits for it.
+const alive = { timer: null, gone: false, restarting: false };
 
 function watchServer() {
   clearTimeout(alive.timer);
-  if (alive.gone || page.finished || document.hidden) return;
+  if (alive.gone || alive.restarting || page.finished || document.hidden) return;
   alive.timer = setTimeout(async () => {
     try {
       await fetch("api/alive", { cache: "no-store" });
     } catch (e) {
       // After Finish, the server stopped on purpose and the page already says so.
-      if (e instanceof TypeError && !page.finished) return serverGone();
+      if (e instanceof TypeError && !page.finished && !alive.restarting) return serverGone();
     }
     watchServer();
   }, ALIVE_MS);
