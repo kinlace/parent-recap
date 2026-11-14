@@ -156,9 +156,8 @@ def register(steps: Any) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
-    """`setup myclub`. The link carries the Kid's personal token, so it's handled like the other
-    secrets: the result and any error name only MyClub's server and the HTTP status, never the
-    link."""
+    """`setup myclub`: asks for the link in a dialog, or a hidden Terminal prompt, and saves it
+    with `save_link`."""
     path = Path(os.path.expanduser(os.path.expandvars(args.config or "~/.family/config.yaml")))
     try:
         kids = [k.name for k in Config.load(path).kids]
