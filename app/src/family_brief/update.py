@@ -77,7 +77,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import TYPE_CHECKING, Callable, Iterator
 from urllib.parse import urljoin, urlsplit
 
 import requests
@@ -85,6 +85,9 @@ import requests
 from . import install_record, own_node, private_files, release_signature, run_lock, versions
 from .schedule_update import HOLDS_RUN_LOCK, UPDATING
 from .system import profile
+
+if TYPE_CHECKING:
+    from .config import Config
 
 REPOSITORY = "kinlace/parent-recap"
 # Every host the update asks, and the only ones a redirect may lead to: the `stable` branch's
@@ -571,8 +574,8 @@ class _Updater:
                     else "no failures"))
         return failing
 
-    def install(self, plugin: Path, version: str, spare: Path, dialogs: bool = False,
-                by_family: bool = True) -> tuple[bool, str | None]:
+    def install(self, plugin: Path, version: str, spare: Path, dialogs: bool,
+                by_family: bool) -> tuple[bool, str | None]:
         """Puts the release in `plugin/`, where the install line puts it, and runs its own
         installer, which installs it beside the running version and switches `app` to it. The
         plugin copy before goes in `spare` until the update is done. The installer is told it
@@ -593,7 +596,7 @@ class _Updater:
         command = ["/bin/bash", str(target / "install.sh")]
         if install_record.entries("codex-skill"):
             command.append("--codex")  # the Codex skills come with the release, as the line does
-        env = {**steps_env(by_family), "PARENT_RECAP_HOME": str(self.folder)}
+        env = {**steps_env(self.config, by_family), "PARENT_RECAP_HOME": str(self.folder)}
         if dialogs:
             env.pop(UPDATING, None)
         else:
@@ -632,18 +635,30 @@ class _Updater:
         self.moved = False
 
 
-def steps_env(by_family: bool) -> dict[str, str]:
+def steps_env(config: str | None, by_family: bool) -> dict[str, str]:
     """The environment of the steps an update runs that look at the run lock: a release's
     installer, and a switch back's steps (schedule_update). In an update the family started, the
-    lock is held by the update itself (`alone`) and no run is going, which HOLDS_RUN_LOCK tells
-    them, so the evening jobs are installed again and a wake that waits for the family can move.
-    In the evening's update the lock is the run's, and nothing says otherwise."""
+    lock is held by the update itself (`alone`) and no run is going on it, which HOLDS_RUN_LOCK
+    tells them by naming that lock's file, so the evening jobs are installed again and a wake
+    that waits for the family can move. A step that finds another lock held, as when the update
+    was given another config than the one the step reads, still takes it for a run. In the
+    evening's update the lock is the run's, and nothing says otherwise."""
     env = dict(os.environ)
     if by_family:
-        env[HOLDS_RUN_LOCK] = "1"
+        env[HOLDS_RUN_LOCK] = str(run_lock.lock_path(_lock_config(config)))
     else:
         env.pop(HOLDS_RUN_LOCK, None)
     return env
+
+
+def _lock_config(config: str | None) -> Config:
+    """The config whose run lock an update the family started holds: the one at `config`, or
+    where it can't be read, when no run can be going on it, one that names no other place."""
+    from .config import Config
+    try:
+        return Config.load(config)
+    except Exception:  # noqa: BLE001 - doctor says what's wrong with it
+        return Config(kids=[])
 
 
 def _text(output: str | bytes | None) -> str:
@@ -711,14 +726,8 @@ def update(config: str | None = None, *, retry_failed: bool = True,
 def alone(config: str | None = None) -> Iterator[None]:
     """Holds the evening run's lock (run_lock.py) for the block, as an update the family starts
     does from before its look until it ended, so no run and no other update goes beside it.
-    Raises run_lock.Busy when a run or another update holds it. With a config that can't be read
-    no run can be going, and the lock is where a config that names no other place has it."""
-    from .config import Config
-    try:
-        cfg = Config.load(config)
-    except Exception:  # noqa: BLE001 - doctor says what's wrong with it
-        cfg = Config(kids=[])
-    with run_lock.exclusive(cfg):
+    Raises run_lock.Busy when a run or another update holds it."""
+    with run_lock.exclusive(_lock_config(config)):
         yield
 
 
@@ -960,14 +969,14 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
 
 
 def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, wanted: str,
-                 failed: _Failed, by_family: bool = True) -> Outcome:
+                 failed: _Failed, by_family: bool) -> Outcome:
     """Switches back from `wanted`, which `app` points at and which `failed`, as
     `parent-recap switch-back` does, puts the plugin copy before back and keeps the version as
     failed. Its steps run with the environment the installer had (`steps_env`)."""
     try:
         with open(log.path, "a", encoding="utf-8") as out:
             running, _ = versions.switch_back_whole(folder, stdout=out, stderr=out,
-                                                    env=steps_env(by_family))
+                                                    env=steps_env(updater.config, by_family))
     except versions.NoPrevious:  # install.sh keeps the version before, so only if it was removed
         log("switch", f"{wanted}: no previous version to switch back to, though {failed.log_line}")
         _save(folder, last_result=f"{failed.result}; no version to switch back to",

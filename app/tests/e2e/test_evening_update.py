@@ -311,7 +311,8 @@ def test_started_by_the_family_a_waiting_release_installs_with_its_dialog(evenin
     assert mac.version() == "0.20.0"
     assert schedule_update.UPDATING not in mac.install_envs[0]
     # The update holds the run lock itself, and its installer is told so: no Brief is being made.
-    assert mac.install_envs[0][schedule_update.HOLDS_RUN_LOCK] == "1"
+    assert mac.install_envs[0][schedule_update.HOLDS_RUN_LOCK] == str(
+        evening.state_path.with_name("run.lock"))
     # The step the background leaves out ran: macOS asked for the password, and the wake moved.
     assert evening.wake.asked == ["set 21:00"]
     assert evening.wake.wakes == [evening.wake.line(21, 0)]

@@ -23,7 +23,7 @@ from setup_page import (PAGE_DIR, at_finish, call, config_file, connect_done, fi
 from setup_page import clock, health, page, schedule  # noqa: F401
 from test_setup_finish import opened_again  # noqa: F401
 from test_update import (ASKS, INSTALLED, changed_since, github, mac, needing_family,  # noqa: F401  the fixtures
-                         snapshot, while_installing)
+                         snapshot, where_the_lock_is_held, while_installing)
 
 # install.sh's layout, on a Mac.
 pytestmark = pytest.mark.posix
@@ -303,17 +303,7 @@ def test_update_now_holds_the_run_lock_from_before_the_look_until_the_update_end
     mac.fails["0.20.0"] = ["Calendar"]  # so it switches back, still holding it
     cfg = Config.load(config_file(household))
     during: dict[str, Any] = {}
-    look = github.request
-
-    def at_the_look(*a: Any, **k: Any):
-        during.setdefault("held at the look", run_lock.is_busy(cfg))
-        return look(*a, **k)
-    github.request = at_the_look
-
-    def at_a_step_of_the_switch_back(cmd: list[str], _prog: str, **_k: Any) -> None:
-        if cmd[0] == str(mac.folder / "app" / ".venv" / "bin" / "python"):
-            during["held at the switch back"] = run_lock.is_busy(cfg)
-    household.processes.answers.insert(0, at_a_step_of_the_switch_back)
+    held = where_the_lock_is_held(household, github, mac, cfg)
 
     def beside_the_install() -> None:
         before = snapshot(household.home)
@@ -327,8 +317,8 @@ def test_update_now_holds_the_run_lock_from_before_the_look_until_the_update_end
     out = update_now(page.url)
 
     assert out["result"] == "switched-back" and mac.version() == INSTALLED
-    assert during == {"held at the look": True, "held at the switch back": True,
-                      "parent-recap update": run_lock.BUSY, "it changed": set(),
+    assert held == {"look": True, "switch back": True}
+    assert during == {"parent-recap update": run_lock.BUSY, "it changed": set(),
                       "pressed again": {"result": "updating"}}
     assert len(mac.installs) == 1
     assert not run_lock.is_busy(cfg)  # let go of once it ended

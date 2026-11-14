@@ -968,6 +968,24 @@ def while_installing(mac: Mac, then: Callable[[], Any]) -> None:
     mac.after_switch = after_switch
 
 
+def where_the_lock_is_held(harness, github: Releases, mac: Mac, cfg: Config) -> dict[str, bool]:
+    """Whether `cfg`'s run lock is held at an update's `look` and at a step of its `switch
+    back`, filled in as the update gets to each."""
+    held: dict[str, bool] = {}
+    look = github.request
+
+    def at_the_look(*a: Any, **k: Any) -> requests.Response:
+        held.setdefault("look", run_lock.is_busy(cfg))
+        return look(*a, **k)
+    github.request = at_the_look  # type: ignore[method-assign]
+
+    def at_a_step_of_the_switch_back(cmd: list[str], _prog: str, **_k: Any) -> None:
+        if cmd[0] == str(mac.folder / "app" / ".venv" / "bin" / "python"):
+            held["switch back"] = run_lock.is_busy(cfg)
+    harness.processes.answers.insert(0, at_a_step_of_the_switch_back)
+    return held
+
+
 def changed_since(before: dict[str, tuple], home: Path) -> set[str]:
     """The paths under `home` that differ from the snapshot `before`, but for the config, which
     the test's own command line writes again."""
@@ -1042,18 +1060,7 @@ def test_the_lock_is_held_from_before_the_look_through_the_switch_back_and_then_
     github.publish("0.20.0")
     mac.fails["0.20.0"] = ["Calendar"]
     cfg = Config.model_validate(harness.config)
-    held: dict[str, bool] = {}
-    look = github.request
-
-    def at_the_look(*a: Any, **k: Any) -> requests.Response:
-        held.setdefault("look", run_lock.is_busy(cfg))
-        return look(*a, **k)
-    github.request = at_the_look  # type: ignore[method-assign]
-
-    def at_a_step_of_the_switch_back(cmd: list[str], _prog: str, **_k: Any) -> None:
-        if cmd[0] == str(mac.folder / "app" / ".venv" / "bin" / "python"):
-            held["switch back"] = run_lock.is_busy(cfg)
-    harness.processes.answers.insert(0, at_a_step_of_the_switch_back)
+    held = where_the_lock_is_held(harness, github, mac, cfg)
 
     code, out = update_command(harness, capsys)
 
