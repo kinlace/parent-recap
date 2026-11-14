@@ -1852,11 +1852,12 @@ def test_finish_says_a_release_that_changes_nothing_the_family_uses_is_out_and_n
         mac, github, tab, family, health):  # noqa: F811
     from test_update_skips import KONNECT_ONLY, out_on_stable
     at_finish(family)
-    out_on_stable(github, "0.20.0", KONNECT_ONLY)
+    version = update.status(str(config_file(family))).version  # the one `family` installed
+    # Konnect alone changed since the version this family runs.
+    out_on_stable(github, "0.20.0", {**dict.fromkeys(KONNECT_ONLY, version), "nl/konnect": "0.20.0"})
     # An evening's look found the release, and skipped it: this family has no Konnect (ADR 0051).
     assert update.update(str(config_file(family)), by_family=False).result == "skipped"
     tab.reload()
-    version = update.status(str(config_file(family))).version
 
     line = tab.locator("#finish-updates-skipped")
     expect(line).to_have_text(text("finish.updates.skipped", skipped="0.20.0", version=version))
