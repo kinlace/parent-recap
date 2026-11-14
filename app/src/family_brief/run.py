@@ -530,8 +530,8 @@ def _update_told(cfg: Config, options: Options, note: BriefNote | None) -> None:
 
 def _versions(cfg: Config, written: _Written) -> list[render.Version]:
     """One version of tonight's Brief per language among the Recipients, the original first.
-    Everything the Household shares (Google Calendar, the archive) stays the
-    original's (ADR 0004). Translations use tonight's placeholders."""
+    Everything the Household shares (Google Calendar, the archive) stays the original's (ADR
+    0004). Translations use tonight's placeholders."""
     brief, error = written.night.brief, written.notes.error
     original = cfg.brief_language()
 
