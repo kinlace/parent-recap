@@ -1,4 +1,5 @@
-"""The release command builds the zip families install from, straight from a tag."""
+"""The release command builds the zip families install from, straight from a tag, and writes
+release.json's version and parts (ADR 0051) from the paths changed since the release before."""
 from __future__ import annotations
 
 import importlib.util
@@ -329,6 +330,7 @@ SOURCES = "app/src/family_brief/sources"
 VERSION_FILES = {
     ".claude-plugin/plugin.json": '{\n  "name": "parent-recap",\n  "version": "{v}",\n  "x": 1\n}\n',
     "app/pyproject.toml": '[project]\nname = "family-brief"\nversion = "{v}"\ndependencies = ["a==1"]\n',
+    "app/uv.lock": '[[package]]\nname = "family-brief"\nversion = "{v}"\nsource = { editable = "." }\n',
 }
 
 
@@ -380,7 +382,7 @@ def parts(repo: Path) -> dict:
     return json.loads((repo / "release.json").read_text())["parts"]
 
 
-def write_parts(repo: Path, version: str) -> dict:
+def bump_and_write_parts(repo: Path, version: str) -> dict:
     set_versions(repo, version, version)
     result = release(repo, "--parts")
     assert result.returncode == 0, result.stderr
@@ -404,13 +406,13 @@ def released(repo: Path) -> Path:
 def test_writes_the_version_and_parts_and_writing_again_changes_nothing(released):
     change(released, f"{SOURCES}/nl/konnect/collector.py")
 
-    first = write_parts(released, "1.3.0")
+    first = bump_and_write_parts(released, "1.3.0")
     text = (released / "release.json").read_text()
 
     assert first["version"] == "1.3.0"
     assert first["parts"]["nl/konnect"] == "1.3.0"
     assert list(first) == ["version", "background_from", "asks", "parts"]
-    assert write_parts(released, "1.3.0") == first
+    assert bump_and_write_parts(released, "1.3.0") == first
     assert (released / "release.json").read_text() == text
 
 
@@ -418,7 +420,7 @@ def test_a_change_only_inside_one_sources_folder_raises_only_that_part(released)
     change(released, f"{SOURCES}/nl/konnect/collector.py")
     git(released, "commit", "-qam", "konnect fix")  # committed or not, the paths count
 
-    written = write_parts(released, "1.3.0")["parts"]
+    written = bump_and_write_parts(released, "1.3.0")["parts"]
 
     assert written["nl/konnect"] == "1.3.0"
     assert {part: v for part, v in written.items() if part != "nl/konnect"} == \
@@ -431,7 +433,7 @@ def test_a_change_only_to_paths_that_count_for_nothing_raises_no_part(released):
                  "CHANGELOG.md"):
         change(released, path)
 
-    written = write_parts(released, "1.3.0")["parts"]  # the version lines and release.json change too
+    written = bump_and_write_parts(released, "1.3.0")["parts"]  # the version lines and release.json change too
 
     assert set(written.values()) == {"1.2.0"}
 
@@ -439,7 +441,7 @@ def test_a_change_only_to_paths_that_count_for_nothing_raises_no_part(released):
 def test_any_other_change_raises_the_core(released):
     change(released, "install.sh")
 
-    written = write_parts(released, "1.3.0")["parts"]
+    written = bump_and_write_parts(released, "1.3.0")["parts"]
 
     assert written["core"] == "1.3.0"
     assert {v for part, v in written.items() if part != "core"} == {"1.2.0"}
@@ -451,7 +453,7 @@ def test_a_release_whose_predecessor_has_no_parts_gets_the_core_at_its_own_versi
     tag(repo, "v1.2.0", parts=False)
     change(repo, "docs/x.md")
 
-    written = write_parts(repo, "1.3.0")["parts"]
+    written = bump_and_write_parts(repo, "1.3.0")["parts"]
 
     assert set(written.values()) == {"1.3.0"} and "core" in written
 
@@ -460,7 +462,7 @@ def test_a_new_sources_folder_gets_the_release_version_and_a_removed_one_leaves_
     change(released, f"{SOURCES}/xx/newone/collector.py")
     shutil.rmtree(released / SOURCES / "nl" / "socialschools")
 
-    written = write_parts(released, "1.3.0")["parts"]
+    written = bump_and_write_parts(released, "1.3.0")["parts"]
 
     assert written["xx/newone"] == "1.3.0"
     assert "nl/socialschools" not in written
@@ -475,7 +477,7 @@ def test_a_hotfix_on_a_release_branch_is_compared_with_the_tag_it_comes_from(rel
     git(released, "checkout", "-q", "-b", "release-1.2", "v1.2.0")
     change(released, f"{SOURCES}/nl/konnect/collector.py")
 
-    written = write_parts(released, "1.2.1")["parts"]
+    written = bump_and_write_parts(released, "1.2.1")["parts"]
 
     assert written["nl/konnect"] == "1.2.1"
     assert written["fi/myclub"] == "1.2.0"  # not 1.3.0, which the hotfix doesn't come from
@@ -483,6 +485,21 @@ def test_a_hotfix_on_a_release_branch_is_compared_with_the_tag_it_comes_from(rel
     set_versions(released, "1.2.1", "1.2.1")
     tag(released, "v1.2.1")
     assert release(released, "v1.2.1").returncode == 0
+
+
+def test_a_release_on_main_after_a_hotfix_it_does_not_hold_answers_to_that_hotfix(released):
+    git(released, "checkout", "-q", "-b", "release-1.2")
+    change(released, "install.sh")  # the hotfix changes the core
+    set_versions(released, "1.2.1", "1.2.1")
+    tag(released, "v1.2.1")
+    git(released, "checkout", "-q", "-")
+    change(released, f"{SOURCES}/nl/konnect/collector.py")
+
+    written = bump_and_write_parts(released, "1.3.0")["parts"]
+
+    # A Household on 1.2.1 runs a core 1.3.0 doesn't have, so the core counts as changed.
+    assert written["core"] == "1.3.0" and written["nl/konnect"] == "1.3.0"
+    assert written["fi/myclub"] == "1.2.0"
 
 
 def test_the_build_takes_a_tag_whose_parts_the_paths_give(released):
@@ -502,7 +519,7 @@ def test_the_build_takes_a_tag_whose_parts_the_paths_give(released):
 ])
 def test_the_build_refuses_a_tag_whose_version_or_parts_are_not_what_the_paths_give(released, edit):
     change(released, f"{SOURCES}/nl/konnect/collector.py")
-    note = write_parts(released, "1.3.0")
+    note = bump_and_write_parts(released, "1.3.0")
     (released / "release.json").write_text(json.dumps(edit(note)))
     tag(released, "v1.3.0", parts=False)
 
@@ -514,7 +531,7 @@ def test_the_build_refuses_a_tag_whose_version_or_parts_are_not_what_the_paths_g
 
 
 def test_a_change_after_the_parts_were_written_is_refused_by_the_build(released):
-    write_parts(released, "1.3.0")
+    bump_and_write_parts(released, "1.3.0")
     change(released, "install.sh")  # the core, after --parts ran
     tag(released, "v1.3.0", parts=False)
 

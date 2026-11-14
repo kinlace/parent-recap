@@ -63,9 +63,10 @@ COUNTS_FOR_NOTHING = re.compile(
 VERSION_LINES = {
     ".claude-plugin/plugin.json": re.compile(r'(?m)^(\s*"version":\s*")[^"]*(")'),
     "app/pyproject.toml": re.compile(r'(?m)^(version = ")[^"]*(")'),
+    "app/uv.lock": re.compile(r'(?m)^(name = "family-brief"\nversion = ")[^"]*(")'),
 }
 CORE = "core"
-PARTS_COMMAND = "python scripts/release.py --parts"
+PARTS_COMMAND = "python3 scripts/release.py --parts"
 
 
 def git(*args: str) -> subprocess.CompletedProcess:
@@ -136,11 +137,8 @@ def check_needs_family(tag: str) -> None:
     of the release before it: a Household several releases behind is held back by the newest
     release alone, so each release carries the value forward unless it raises it."""
     value = background_from(tag)
-    new = _version(tag)
-    older = [t for t in git("tag", "--list").stdout.split() if (v := _version(t)) and v < new]
-    if not older:
+    if not (before := release_before(_version(tag))):
         return
-    before = max(older, key=_version)
     carried = background_from(before)
     if carried and (value is None or _version(f"v{value}") < _version(f"v{carried}")):
         fail(f"{NEEDS_FAMILY} at {tag} names {value or 'no version'}, but {before} named {carried}: "
@@ -163,19 +161,26 @@ def part_of(path: str, old: str | None = None, new: str | None = None) -> str | 
     return CORE
 
 
-def release_before(version: tuple[int, ...], commit: str) -> str | None:
-    """The tag a release at `version` on `commit` follows: the highest vX.Y.Z tag below it in its
-    history. A hotfix on a release branch so follows the tag it comes from, not the highest one."""
-    older = sorted((t for t in git("tag", "--list").stdout.split() if (v := _version(t)) and v < version),
-                   key=_version, reverse=True)
-    return next((t for t in older if git("merge-base", "--is-ancestor", t, commit).returncode == 0), None)
+def release_before(version: tuple[int, ...]) -> str | None:
+    """The release one at `version` follows: the highest vX.Y.Z tag below it, so a hotfix on a
+    release branch follows the tag it comes from, not the highest tag. Not the newest in the
+    release's history: a release on `main` after a hotfix it doesn't hold answers to that hotfix,
+    which a Household may run."""
+    older = [t for t in git("tag", "--list").stdout.split() if (v := _version(t)) and v < version]
+    return max(older, key=_version, default=None)
+
+
+def _show(ref: str, path: str) -> str | None:
+    """The text of `path` at `ref`, or None where it isn't there."""
+    shown = git("show", f"{ref}:{path}")
+    return shown.stdout if shown.returncode == 0 else None
 
 
 def _parts_at(tag: str) -> dict[str, str]:
     """The parts `tag`'s release.json names, leaving out what isn't a part and a version; empty
     for a release from before `parts`."""
     try:
-        parts = json.loads(git("show", f"{tag}:{NEEDS_FAMILY}").stdout).get("parts")
+        parts = json.loads(_show(tag, NEEDS_FAMILY) or "{}").get("parts")
     except (ValueError, AttributeError):
         return {}
     if not isinstance(parts, dict):
@@ -197,13 +202,7 @@ def work_out_parts(version: str, before: str | None, files: list[str], changed: 
     sources = sorted({f"{m[1]}/{m[2]}" for path in files if (m := SOURCE_FOLDER.match(path))})
     previous = _parts_at(before) if before else {}
 
-    def old(path: str) -> str | None:
-        if not before:
-            return None
-        shown = git("show", f"{before}:{path}")
-        return shown.stdout if shown.returncode == 0 else None
-
-    raised = {part_of(path, *((old(path), read(path)) if path in VERSION_LINES else ()))
+    raised = {part_of(path, *((before and _show(before, path), read(path)) if path in VERSION_LINES else ()))
               for path in changed}
     return {part: version if part in raised or part not in previous else previous[part]
             for part in (CORE, *sources)}
@@ -213,22 +212,17 @@ def parts_at_tag(tag: str, before: str | None) -> dict[str, str]:
     """What the paths changed from `before` to `tag` give as `tag`'s parts."""
     files = _lines(git("ls-tree", "-r", "--name-only", "-z", tag).stdout)
     changed = _lines(git("diff", "--name-only", "--no-renames", "-z", before, tag).stdout) if before else files
-
-    def read(path: str) -> str | None:
-        shown = git("show", f"{tag}:{path}")
-        return shown.stdout if shown.returncode == 0 else None
-
-    return work_out_parts(tag.removeprefix("v"), before, files, changed, read)
+    return work_out_parts(tag.removeprefix("v"), before, files, changed, lambda path: _show(tag, path))
 
 
-def write_parts() -> Path:
+def write_parts() -> None:
     """Writes the release's `version` and `parts` into the working tree's release.json, from the
     version in .claude-plugin/plugin.json and the paths changed since the release before,
     committed or not. Running it again changes nothing."""
     version = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
     if not (numbers := _version(f"v{version}")):
         fail(f".claude-plugin/plugin.json: version {version} isn't X.Y.Z")
-    before = release_before(numbers, "HEAD")
+    before = release_before(numbers)
     files = [f for f in _lines(git("ls-files", "-co", "--exclude-standard", "-z").stdout)
              if (ROOT / f).is_file()]
     if before:
@@ -253,7 +247,6 @@ def write_parts() -> Path:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     print(f"{NEEDS_FAMILY}: version {version}, parts since {before or 'the start'}: "
           + ", ".join(f"{part} {value}" for part, value in parts.items()))
-    return path
 
 
 def check_parts(tag: str) -> None:
@@ -265,7 +258,7 @@ def check_parts(tag: str) -> None:
         data = json.loads(shown.stdout) if shown.returncode == 0 else {}
     except ValueError:
         fail(f"{NEEDS_FAMILY} at {tag} isn't JSON")
-    before = release_before(_version(tag), tag)
+    before = release_before(_version(tag))
     expected = parts_at_tag(tag, before)
     said = data.get("version"), data.get("parts")
     if said != (version, expected):
