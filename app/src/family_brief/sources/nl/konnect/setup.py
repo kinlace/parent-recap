@@ -14,6 +14,7 @@ again replaces that sign-in, and a second provider is a sign-in of its own.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import shlex
 import sys
@@ -257,7 +258,7 @@ def register(steps: Any) -> None:
     step.set_defaults(func=run)
 
 
-def run(args: Any) -> int:
+def run(args: argparse.Namespace) -> int:
     """`setup konnect`. The password is typed at the secret store's own prompt in this terminal,
     so it reaches no dialog, chat or command line, and the one line of JSON never has it."""
     result, next_, extra = cmd(args)

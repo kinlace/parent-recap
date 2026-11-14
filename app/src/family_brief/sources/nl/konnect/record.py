@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from ...record import Source, _in, _same_everywhere
 
-_HERE = "sources.nl.konnect"
+_HERE = __package__.partition(".")[2]  # sources.nl.konnect, as `_in` names it
 
 KONNECT = Source("konnect", _same_everywhere("Konnect"), lambda cfg: bool(cfg.konnect.signins),
                  skippable=True, connect_rank=11, collect=_in(f"{_HERE}.collector", "collect"),

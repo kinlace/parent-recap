@@ -145,8 +145,8 @@ COLLECTOR_LOGS = ("family_brief.collectors", "family_brief.sources")
 def _source_of(logger: str) -> str:
     """The Source whose collector logs as `logger`."""
     parts = logger.split(".")
-    if parts[:2] == ["family_brief", "sources"] and len(parts) > 3:
-        return parts[3]
+    if parts[:2] == ["family_brief", "sources"]:  # a Source's folder, or the registry: no Source
+        return parts[3] if len(parts) > 3 else logger
     return parts[-1]
 
 
