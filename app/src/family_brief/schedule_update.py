@@ -15,8 +15,8 @@ from .config import Config
 from .system import jobs, wake
 
 SCHEDULE_INSTALL = "parent-recap schedule install"  # what the family runs to do it by hand
-# Set by `parent-recap update` (update.py) for the release's installer it runs: nothing may ask
-# for a password then.
+# Set by `parent-recap update` (update.py) for the release's installer it runs: the wake's
+# password dialog may not start then.
 UPDATING = "PARENT_RECAP_UPDATING"
 
 
@@ -53,7 +53,7 @@ def update(config: str | None = None) -> None:
     if status.ours or not status.old:
         return  # already moved, or none of ours to move: doctor says if one is missing
     if os.environ.get(UPDATING):
-        # `parent-recap update` asks for no password (ADR 0047): the older wake keeps working.
+        # `parent-recap update` doesn't start the wake's dialog (ADR 0047): the older wake keeps working.
         print(f"{ops.WARN}The Mac's wake wasn't moved to {hour:02d}:{minute:02d}, since that asks "
               f"for your Mac password. Run {SCHEDULE_INSTALL} to move it.")
         return

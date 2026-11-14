@@ -525,7 +525,7 @@ def test_it_starts_no_sudo_admin_dialog_curl_or_shell_with_downloaded_text(harne
         assert not any("administrator" in part for part in cmd)
         if name == "bash":  # only the verified release's own installer, as a file
             assert cmd == ["/bin/bash", str(mac.folder / "plugin" / "install.sh")]
-    # And the installer is told it runs for an update, so it asks for no password.
+    # And the installer is told it runs for an update, so the wake's password dialog doesn't start.
     assert all(env["PARENT_RECAP_UPDATING"] == "1" for env in mac.install_envs)
     assert harness.wake.asked == []
 
