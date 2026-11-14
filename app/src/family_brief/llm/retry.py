@@ -36,6 +36,13 @@ _BUSY = re.compile(r"at capacity|overloaded|rate.?limit|too many requests|"
                    rf"{_STATUS}(?:429|5(?:00|02|03|04|29))\b|"
                    r"service unavailable|bad gateway|temporarily unavailable", re.I)
 
+
+def busy(said: str) -> bool:
+    """Whether `said`, a failed call's output or error, says the model is busy and waiting would
+    help."""
+    return not WONT_PASS.search(said) and _BUSY.search(said) is not None
+
+
 # How often a running call looks whether the computer slept, in seconds it is awake.
 SLEEP_CHECK = 5
 # How long the computer must stay awake after a sleep before the call is made again, in seconds. A

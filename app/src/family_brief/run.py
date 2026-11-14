@@ -22,6 +22,7 @@ from .brief import Brief, EarlierBrief, RunNotes
 from .brief_text import BriefText, Language
 from .collectors.base import CalendarEvent, Message
 from .config import Config
+from .llm import retry
 from .state import State
 from .system import profile
 from .summarize import add_the_nights_people, extract_calendar_events, for_the_ai, placeholders_for, summarize
@@ -410,6 +411,7 @@ class _Written:
     held: list[Message]
     model_events: list[CalendarEvent]
     placeholders: ai_filter.Placeholders | None
+    asked_model: bool = False
 
 
 def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sends: bool,
@@ -476,7 +478,7 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         model_wrote=asks_model and notes.error is None, form=form,
         stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg),
         hosted=cfg.hosted, slept=asleep, caught_up=caught_up, update=_what_the_update_did(cfg, options))
-    return _Written(night, notes, for_ai, held, model_events, placeholders)
+    return _Written(night, notes, for_ai, held, model_events, placeholders, asks_model)
 
 
 def _update_folder(cfg: Config, options: Options) -> Path | None:
@@ -645,6 +647,36 @@ def _quiet_night(state: State, coverage: dict[str, dict], sends: bool) -> _Ended
     return _Ended(0)
 
 
+def _report_sources(report: last_run.Report, coverage: dict[str, dict]) -> None:
+    """Each Source's result for the Run Report: what it read, or why it failed by a cause's key,
+    never its error's text."""
+    for source, c in coverage.items():
+        if c["error"]:
+            report.failed(source, _source_cause(c["error"]))
+        else:
+            report.read(source, c["count"])
+
+
+def _source_cause(error: str) -> str:
+    """The key of the cause of a Source's `error`, or UNKNOWN when it has none yet."""
+    if error.startswith(wilma_egress.UNREACHABLE):
+        return wilma_egress.CAUSE
+    if error == source_registry.NEEDS_PAIRING:
+        return last_run.NEEDS_PAIRING
+    return last_run.UNKNOWN
+
+
+def _ai_result(error: str | None) -> str:
+    """The AI's result for the Run Report, from the error the Brief's model call ended on."""
+    if error is None:
+        return "ok"
+    if "timed out" in error.lower():
+        return "timed-out"
+    if retry.busy(error):
+        return "busy"
+    return "failed"
+
+
 @dataclass(frozen=True)
 class _Ended:
     """How a run ended: its exit code, and `night`: "sent" when its Brief reached a Recipient,
@@ -659,7 +691,11 @@ def run(cfg: Config, options: Options, io: IO, caught_up: bool = False) -> int:
     return _run(cfg, options, io, caught_up).code
 
 
-def _run(cfg: Config, options: Options, io: IO, caught_up: bool) -> _Ended:
+def _run(cfg: Config, options: Options, io: IO, caught_up: bool,
+         report: last_run.Report | None = None) -> _Ended:
+    """Tonight's run, telling `report` what each Source gave, the AI's result and the Brief's
+    outcome as it goes."""
+    report = report if report is not None else last_run.Report()
     # The evening the run started, kept if it ends tomorrow, and whether the computer slept since.
     watch, started = slept.Watch(), datetime.now(ZoneInfo(cfg.timezone))
     cfg = cfg.model_copy(deep=True)  # tonight's lookbacks are tonight's alone
@@ -673,9 +709,11 @@ def _run(cfg: Config, options: Options, io: IO, caught_up: bool) -> _Ended:
         catch_up_lookback(cfg, state)
 
     read = _read(cfg, options, io, state, started)
+    _report_sources(report, read.coverage)
     tonight = plan(options, anything_new=read.anything_new,
                    nothing_could_be_read=_nothing_could_be_read(cfg, read.coverage))
     if tonight.ending == "nothing_read":
+        report.brief_ended("failed", last_run.NOTHING_READ)
         log.warning("No Source could be read; sending a short Brief that says so")
         if tonight.sends:
             _send_nothing_read(cfg, io, read)
@@ -685,14 +723,18 @@ def _run(cfg: Config, options: Options, io: IO, caught_up: bool) -> _Ended:
     if tonight.ending != "brief":
         if tonight.ending == "quiet":
             log.info("Nothing new; exiting.")
+            report.brief_ended("nothing-to-tell")
         return _quiet_night(state, read.coverage, tonight.sends)
 
     written = _write(cfg, options, io, state, read, tonight.sends, watch, caught_up)
     night = written.night
+    if written.asked_model:
+        report.asked_ai(cfg.llm.backend, _ai_result(written.notes.error))
     tonight = plan(options, anything_new=True, nothing_could_be_read=_nothing_could_be_read(cfg, read.coverage),
                    nothing_to_show=render.nothing_to_show(night))
     if tonight.ending == "quiet":
         log.info("Nothing to tell the family tonight; no Brief sent.")
+        report.brief_ended("nothing-to-tell")
         return _quiet_night(state, read.coverage, tonight.sends)
     if tonight.shows:
         _preview_step("made", **render.preview(night))
@@ -704,6 +746,7 @@ def _run(cfg: Config, options: Options, io: IO, caught_up: bool) -> _Ended:
         return _Ended(0)
 
     email_sent, delivered, everyone = _deliver(cfg, io, state, written)
+    report.brief_ended("sent" if delivered else "failed")
     # Only mark .ics events as sent once the email actually went out, so a failed send retries tomorrow.
     if email_sent:
         for e in night.ics_events:
@@ -814,8 +857,8 @@ def run_unless_caught_up(cfg: Config, options: Options, io: IO,
     CATCH_UP_LIMIT of it; after that it is left to the next evening run (#894). One that finds a
     run since, such as Windows' late start of a missed task after its sign-in task caught the
     evening up, does nothing. Checked under the run lock, so a catch-up started beside the evening
-    run sees the state that run left. A run that isn't a dry run notes how it ended in
-    last-run.json, a crash as exit 1, with how long it took."""
+    run sees the state that run left. A run that isn't a dry run leaves its Run Report in
+    last-run.json (ADR 0048), a crash as exit 1 with the exception's type and line."""
     caught_up = False
     by_hand = options.scheduled and _started_by_hand(cfg)
     if options.if_missed or (options.scheduled and not by_hand and not cfg.hosted):
@@ -835,18 +878,28 @@ def run_unless_caught_up(cfg: Config, options: Options, io: IO,
     if options.dry_run:
         return run(cfg, options, io, caught_up)
     started = time.monotonic()
+    report = last_run.Report(_how_started(options, by_hand, caught_up))
     try:
-        ended = _run(cfg, options, io, caught_up)
-    except BaseException:
-        last_run.record(cfg, 1, time.monotonic() - started, wilma_egress.causes())
+        ended = _run(cfg, options, io, caught_up, report)
+    except BaseException as e:
+        report.ended_on(e)
+        last_run.record(cfg, 1, time.monotonic() - started, wilma_egress.causes(), report)
         raise
-    last_run.record(cfg, ended.code, time.monotonic() - started, wilma_egress.causes())
+    last_run.record(cfg, ended.code, time.monotonic() - started, wilma_egress.causes(), report)
     if then is not None and _updates_after(cfg, options, by_hand, caught_up, ended):
         try:
             then()
         except Exception:  # noqa: BLE001 - the Brief is out; the next evening tries again
             log.exception("The update after the evening run stopped; the run's result stands")
     return ended.code
+
+
+def _how_started(options: Options, by_hand: bool, caught_up: bool) -> str:
+    """How the run was started, as the Run Report says it (last_run.STARTED)."""
+    if caught_up:
+        return "catch-up"
+    # The Windows sign-in task's start (if_missed) is the scheduler's too.
+    return "schedule" if (options.scheduled or options.if_missed) and not by_hand else "by-hand"
 
 
 def _updates_after(cfg: Config, options: Options, by_hand: bool, caught_up: bool,

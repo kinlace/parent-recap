@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
-from . import (baileys_install, google_packages, languages, own_node, private_files, secret_dialog,
-               sources, wilma_egress)
+from . import (baileys_install, google_packages, languages, last_run, own_node, private_files,
+               secret_dialog, sources, wilma_egress)
 from .config import Config
 from .system import entries, jobs, profile, wake, windows_only
 
@@ -757,12 +757,22 @@ def _check_schedule(cfg: Config, add) -> None:
             add(WARN, "schedule", f"installed but not running: {name}. It starts again when you "
                 "sign in, unless WhatsApp ended its link")
     last = state.last_run_at
+    report = last_run.read(cfg)
+    # How the last run ended, from its Run Report, which a run that failed leaves too.
+    ended = (f"; the last run ended {_hours_ago(report.at):.0f} hours ago: {last_run.how(report)}"
+             if report else "")
     if last:
-        hours = (datetime.now(timezone.utc) - last).total_seconds() / 3600
+        hours = _hours_ago(last)
         status = OK if hours < 30 else WARN
         why = profile.current().missed_run
         add(status, "last-run", f"{hours:.0f} hours ago" + ("" if hours < 30 else
-            f" (no run for over a day; {why})"))
+            f" (no run for over a day; {why})") + ended)
+    elif report:
+        add(WARN, "last-run", f"no run has finished yet{ended}")
+
+
+def _hours_ago(at: datetime) -> float:
+    return (datetime.now(timezone.utc) - at).total_seconds() / 3600
 
 
 def _check_time_zone(cfg: Config, add) -> None:
