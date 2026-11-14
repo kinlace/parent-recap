@@ -279,11 +279,25 @@ In google calendar mode, the picks are written to the calendar as tentative even
 
 ## Adding a Source
 
-Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declared-in-one-registry.md)). The evening run, the catch-up lookback, the Brief's coverage line, `doctor` and uninstall go through the records and name no Source themselves. The e2e test modules `test_nightly_new_source` and `test_new_source_doctor_uninstall` register a made-up Source and nothing else, and show what each part of its record reaches. A new Source needs:
+Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declared-in-one-registry.md)). The evening run, the catch-up lookback, the Brief's coverage line, `doctor` and uninstall go through the records and name no Source themselves. The e2e test modules `test_nightly_new_source` and `test_new_source_doctor_uninstall` register a made-up Source and nothing else, and show what each part of its record reaches.
 
-1. **Its collector**: a module in `family_brief.collectors` with one function, `collect(cfg, state, kid_terms)`, returning a `Collected` (`family_brief.collectors.base`) with the Source's Messages, its events or both. It reads only its own transport (IMAP, HTTP, a command-line program, a local database) and skips what is older than its lookback
-2. **Its config model**: a section of `Config` in `family_brief.config` for what setup saves, or a field on `Kid` when each Kid has their own, as MyClub's link. A section with `lookback_hours` lets the run widen the lookback after nights the Source missed
-3. **Its record** in `family_brief.sources`, added to `ALL` at its place in the run's order. Every record has a name, a label in each reviewed language (en, fi, zh), `connected` (whether the Household's config has it read), `skippable` (on the setup page), `connect_rank` (its place on the setup page's list, one of its own) and `collect`. The other fields are optional hooks, each with a default, as `Source` describes them:
+### Where a Source's code goes
+
+A Source's Python lives in a folder of its own, `family_brief/sources/<group>/<name>`, so that a release changing only that folder changes nothing another Source's Household runs ([ADR 0051](adr/0051-a-familys-computer-skips-a-release-that-changes-nothing-it-uses.md)). The groups are `fi`, `nl` and `shared` (the Sources no country owns), and `<name>` is the Source's name. Konnect is the first, in `sources/nl/konnect`; the other Sources move in one by one, and until then their code is in the shared modules named below. A folder holds, each in a module of its own:
+
+- `collector`: how it is read
+- `config`: its config section's models
+- `setup`: its `setup <name>` command, with a `register(steps)` that adds it to setup's commands
+- `doctor`: what `doctor` checks of it
+- `record`: its record in the registry, whose `part` says its folder (`nl/konnect`); a Source still in the shared modules has `part` None
+
+Code in the folder may import any shared module. Shared code may name a Source's folder only where it lists the Sources: the registry's list (`family_brief/sources/__init__.py`), the config's sections (`family_brief/config.py`) and the setup commands (`family_brief/setup_steps.py`). Everywhere else reaches the Source through its record, and its hooks name their modules through `_in`, inside the folder. `tests/unit/test_source_folders.py` fails when other shared code imports from, or names, any Source's folder. The setup page's script, markup and texts are one file each for now and stay outside the folders.
+
+A new Source needs:
+
+1. **Its collector**: a module in its folder, or still in `family_brief.collectors`, with one function, `collect(cfg, state, kid_terms)`, returning a `Collected` (`family_brief.collectors.base`) with the Source's Messages, its events or both. It reads only its own transport (IMAP, HTTP, a command-line program, a local database) and skips what is older than its lookback
+2. **Its config model**: a section of `Config` in `family_brief.config`, its model in its folder's `config`, for what setup saves, or a field on `Kid` when each Kid has their own, as MyClub's link. A section with `lookback_hours` lets the run widen the lookback after nights the Source missed
+3. **Its record** in its folder's `record`, imported by `family_brief.sources` and added to `ALL` at its place in the run's order. Every record has a name, a label in each reviewed language (en, fi, zh), `connected` (whether the Household's config has it read), `skippable` (on the setup page), `connect_rank` (its place on the setup page's list, one of its own) and `collect`. The other fields are optional hooks, each with a default, as `Source` describes them:
    - the run and the Brief: `lookback`, `counts_events` (the coverage line counts its events)
    - `sender_domain`: the domain of the mail it sends of its own news, which Gmail's sender suggestions leave out once it is connected
    - `doctor`: `check`, and `check_items` when it makes more than one check. Without `check`, `doctor` says nothing of the Source
@@ -292,7 +306,7 @@ Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declare
    - the calendar: `in_ics`
    - `setup_page`: false for a Source the setup page has no panel for yet, which is set up from a terminal by its own `setup` command, as Eepos and eVaka were before #791; the page's list then leaves it out
 
-   A hook in another module goes through `_in`, which imports it when called
+   A hook in another module goes through `_in`, which imports it when called, by its name within the program (`sources.nl.konnect.doctor`)
 
 4. **Its transport fake**: a `SourceFake` in the tests' `fake_sources`, listed in `FAKES` under the Source's name; the tests' `sources` fixture refuses to start without one. It serves what a test puts in `sources.tonight[name]` (`harness.sources[name]` in an end-to-end test) the way the transport carries it, so the real collector runs in every test of the evening run
 5. **Its setup answers**: a field of `SourcesAnswer` in `family_brief.setup_save`, and the lines there that write it into its config section. The chat and the setup page both save through `setup save`, so they write the same config. A Source that only saves a secret, or a link per Kid as MyClub does, saves it in its own setup module instead
@@ -302,4 +316,4 @@ Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declare
    - the panel in the page's `index.html`, an element with the id `source-<name>`
    - its entry in the `STEPS` table of the page's `page.js`: what runs as its panel is first shown, drawn again and left, its line on the Working step after Connect, and what the first Brief's progress calls it. Without one the page never shows the Source's panel, and setup can't get past it
    - its text in the page's `text.json`, `source.<name>`, `health.check.<name>` and the panel's own keys, in each of en, fi and zh
-7. **Its chat setup**: a `setup <name>` command for the agent, and a section above saying how to guide the user through it
+7. **Its chat setup**: a `setup <name>` command for the agent, in its folder's `setup` and added in `family_brief.setup_steps`'s list, and a section above saying how to guide the user through it

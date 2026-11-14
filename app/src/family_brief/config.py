@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import sources
 from .brief_text import Language
+# The sections of the Sources in folders of their own (ADR 0051), listed in Config below.
+from .sources.nl.konnect.config import KonnectConfig
 from .system import macos_only
 
 
@@ -154,37 +156,6 @@ class SocialSchoolsConfig(BaseModel):
     """Social Schools, the parent app of many schools in the Netherlands (ADR 0049)."""
     signins: list[SocialSchoolsSignin] = Field(default_factory=list)
     lookback_hours: int = 26  # older announcements are marked seen without being told
-
-
-class KonnectSignin(BaseModel):
-    """A parent's sign-in at one provider's Konnect parent portal (ADR 0050). Its password is in
-    the system's secret store, never here (collectors/konnect.secret_name). `kids` names the Kid
-    each of the parent's children is, by its id on Konnect, as `setup konnect` matched them by
-    name; a child not in it is matched by name each evening."""
-    portal: str                     # the provider's own part of its address: partou for partou.ouderportaal.nl
-    username: str
-    kids: dict[str, str] = Field(default_factory=dict)
-
-    @field_validator("portal")
-    @classmethod
-    def _portal(cls, v: str) -> str:
-        from .collectors.konnect import portal_of
-        portal = portal_of(v)
-        if portal is None:
-            raise ValueError("not a Konnect portal's address, such as partou for partou.ouderportaal.nl")
-        return portal
-
-    @field_validator("kids", mode="before")
-    @classmethod
-    def _ids(cls, v: object) -> object:
-        return {str(k): kid for k, kid in v.items()} if isinstance(v, dict) else v
-
-
-class KonnectConfig(BaseModel):
-    """Konnect's parent portal, which Dutch childcare and after-school care (BSO) providers run at
-    `<provider>.ouderportaal.nl` (ADR 0050): one sign-in per provider, each with its own session."""
-    signins: list[KonnectSignin] = Field(default_factory=list)
-    lookback_hours: int = 26  # older messages are marked seen without being told
 
 
 class WhatsAppChat(BaseModel):

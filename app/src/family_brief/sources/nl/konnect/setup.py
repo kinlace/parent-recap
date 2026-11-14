@@ -1,5 +1,7 @@
-"""Adding a Konnect sign-in from a terminal (ADR 0050). The setup page has no Konnect step, so a
-family elsewhere doesn't see one; `remove` and `remove_all` are for removing sign-ins by hand.
+"""Konnect's setup step, `setup konnect`: adding a Konnect sign-in from a terminal (ADR 0050).
+The setup page has no Konnect step, so a family elsewhere doesn't see one; `remove` and
+`remove_all` are for removing sign-ins by hand. `register` adds the command to setup's, which
+lists it among the Sources' (setup_steps).
 
 `setup konnect --portal partou --username NAME` has the parent's password typed at the secret
 store's own prompt in that terminal (`secrets.put_typed`), so it passes through no dialog, chat or
@@ -22,12 +24,13 @@ from typing import Any
 
 import yaml
 
-from . import install_record
-from .collectors import konnect
-from .config import Config, KonnectSignin
-from .setup_report import PLAIN_TERMINAL, keychain_failure, program
-from .setup_save import _write_private
-from .system import secrets
+from .... import install_record
+from ....config import Config
+from ....setup_report import PLAIN_TERMINAL, keychain_failure, program, report
+from ....setup_save import _write_private
+from ....system import secrets
+from . import collector as konnect
+from .config import KonnectSignin
 
 
 def again(portal: str, username: str) -> str:
@@ -239,6 +242,26 @@ def _save(path: Path, signin: KonnectSignin) -> None:
         new = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
     Config.model_validate(yaml.safe_load(new))
     _write_private(path, new)
+
+
+def register(steps: Any) -> None:
+    """Adds `setup konnect` to setup's commands, `steps`."""
+    step = steps.add_parser("konnect", help="Add a parent's sign-in at a Konnect parent portal "
+                            "(<provider>.ouderportaal.nl): the password typed at the secret "
+                            "store's own prompt, checked at once, the children matched to the "
+                            "Kids by name")
+    step.add_argument("--portal", required=True,
+                      help="The portal's address, or its part before .ouderportaal.nl: partou "
+                           "for partou.ouderportaal.nl")
+    step.add_argument("--username", required=True, help="The parent's Konnect username")
+    step.set_defaults(func=run)
+
+
+def run(args: Any) -> int:
+    """`setup konnect`. The password is typed at the secret store's own prompt in this terminal,
+    so it reaches no dialog, chat or command line, and the one line of JSON never has it."""
+    result, next_, extra = cmd(args)
+    return report(result, next_, **extra)
 
 
 def cmd(args: Any) -> tuple[str, str | None, dict[str, Any]]:

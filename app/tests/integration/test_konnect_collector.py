@@ -16,7 +16,7 @@ import time_machine
 from conftest import (NOW, konnect_child, konnect_conversation, konnect_news, konnect_newsletter,
                       konnect_planned)
 from fake_sources import KONNECT_PASSWORD
-from family_brief.collectors import konnect
+from family_brief.sources.nl.konnect import collector as konnect
 from family_brief.collectors.base import failed_sign_in
 from family_brief.config import Config
 from family_brief.state import State

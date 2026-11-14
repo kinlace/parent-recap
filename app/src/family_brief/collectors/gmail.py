@@ -262,7 +262,7 @@ def _to_a_mailing_list(msg: EmailMessage) -> bool:
         str(msg.get("Precedence") or "").strip().casefold() in ("bulk", "list")
 
 
-# ── Held-back Messages (ADR 0013), as the Gmail record in sources.py hooks them in. Wilma's
+# ── Held-back Messages (ADR 0013), as the Gmail record in `sources` hooks them in. Wilma's
 # notification emails, by their subject in Finnish, English and Swedish. One can gather several kinds
 # of new items, each under its own heading: announcements (Tiedotteet), which go to everyone, and
 # messages, lesson notes, exams and exam grades, which go to the Household. A heading is a line with
