@@ -17,7 +17,7 @@ from fake_sources import EVAKA_PASSWORD
 from fake_system import LINUX
 from nights import normal_night
 
-from family_brief.collectors import evaka
+from family_brief.sources.fi.evaka import collector as evaka
 
 MIA, LEO = "1a2b3c4d-0000-4000-8000-000000000011", "1a2b3c4d-0000-4000-8000-000000000012"
 

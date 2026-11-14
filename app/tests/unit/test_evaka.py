@@ -9,8 +9,9 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from conftest import evaka_event
-from family_brief.collectors import evaka
-from family_brief.config import Config, EvakaSignin
+from family_brief.config import Config
+from family_brief.sources.fi.evaka import collector as evaka
+from family_brief.sources.fi.evaka.config import EvakaSignin
 
 TZ = ZoneInfo("Europe/Helsinki")
 MIA, LEO = "1a2b3c4d-0000-4000-8000-000000000011", "1a2b3c4d-0000-4000-8000-000000000012"

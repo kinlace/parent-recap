@@ -72,7 +72,7 @@ def shared_files() -> list[str]:
                   if not p.startswith(inside))
 
 
-@pytest.mark.parametrize("folder", ["fi/eepos", "nl/konnect", "nl/socialschools"])
+@pytest.mark.parametrize("folder", ["fi/eepos", "fi/evaka", "nl/konnect", "nl/socialschools"])
 def test_a_moved_source_is_in_a_folder_of_its_own(folder):
     assert folder in folders()
 
@@ -108,7 +108,7 @@ def test_a_shared_module_reaching_into_a_source_s_folder_is_found(path, text):
     ("ops.py", "from . import sources"),
     ("ops.py", "from .sources import record"),
     ("run.py", "import family_brief.sources"),
-    ("collectors/evaka.py", "from ..sources import record as other"),
+    ("collectors/gmail.py", "from ..sources import record as other"),
     ("ops.py", 'add(FAIL, "konnect", "sources.nl")'),
 ])
 def test_shared_code_naming_only_the_registry_is_not_reaching_into_a_folder(path, text):
@@ -123,6 +123,7 @@ def test_each_source_in_a_folder_says_which_part_it_is_and_the_rest_say_none():
     assert sources.KONNECT.part == "nl/konnect"
     assert sources.SOCIALSCHOOLS.part == "nl/socialschools"
     assert sources.EEPOS.part == "fi/eepos"
+    assert sources.EVAKA.part == "fi/evaka"
     assert sources.WILMA.part is None
 
 

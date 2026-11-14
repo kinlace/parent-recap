@@ -283,12 +283,13 @@ Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declare
 
 ### Where a Source's code goes
 
-A Source's Python lives in a folder of its own, `family_brief/sources/<group>/<name>`, so that a release changing only that folder changes nothing another Source's Household runs ([ADR 0051](adr/0051-a-familys-computer-skips-a-release-that-changes-nothing-it-uses.md)). The groups are `fi`, `nl` and `shared` (the Sources no country owns), and `<name>` is the Source's name. Konnect was the first, in `sources/nl/konnect`, Social Schools is in `sources/nl/socialschools` and Eepos in `sources/fi/eepos`; the other Sources move in one by one, and until then their code is in the shared modules named below. A folder holds, each in a module of its own:
+A Source's Python lives in a folder of its own, `family_brief/sources/<group>/<name>`, so that a release changing only that folder changes nothing another Source's Household runs ([ADR 0051](adr/0051-a-familys-computer-skips-a-release-that-changes-nothing-it-uses.md)). The groups are `fi`, `nl` and `shared` (the Sources no country owns), and `<name>` is the Source's name. Konnect was the first, in `sources/nl/konnect`, Social Schools is in `sources/nl/socialschools`, Eepos in `sources/fi/eepos` and eVaka in `sources/fi/evaka`; the other Sources move in one by one, and until then their code is in the shared modules named below. A folder holds, each in a module of its own:
 
 - `collector`: how it is read
 - `config`: its config section's models
 - `setup`: its `setup <name>` command, with a `register(steps)` that adds it to setup's commands
 - `doctor`: what `doctor` checks of it
+- `uninstall`: what uninstall removes of it besides its secrets, its record's `survey`, for a Source that has one, as eVaka's device cookies
 - `record`: its record in the registry, whose `part` says its folder (`nl/konnect`); a Source still in the shared modules has `part` None
 
 Code in the folder may import any shared module. Shared code may name a Source's folder only where it lists the Sources: the registry's list (`family_brief/sources/__init__.py`), the config's sections (`family_brief/config.py`) and the setup commands (`family_brief/setup_steps.py`). Everywhere else reaches the Source through its record, and its hooks name their modules through `_in`, inside the folder. `tests/unit/test_source_folders.py` fails when other shared code imports from, or names, any Source's folder. The setup page's script, markup and texts are one file each for now and stay outside the folders. So do the setup page's and the hosted sign-up's Python steps of a Source until those pages are split by Source: they get its modules from its record, as `EEPOS.code("setup")` does, never by the folder's name.

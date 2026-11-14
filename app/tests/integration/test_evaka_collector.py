@@ -19,9 +19,9 @@ import time_machine
 
 from conftest import NOW, evaka_child, evaka_event, evaka_sensitive_thread, evaka_thread
 from fake_sources import EVAKA_PASSWORD
-from family_brief.collectors import evaka
 from family_brief.collectors.base import failed_sign_in
 from family_brief.config import Config
+from family_brief.sources.fi.evaka import collector as evaka
 from family_brief.state import State
 
 TZ = ZoneInfo("Europe/Helsinki")

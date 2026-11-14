@@ -29,7 +29,6 @@ from pydantic import ValidationError
 from . import (ai_filter_report, baileys_install, chat_install, command_path, install_record,
                linked_device, llm, ops, own_node, run_lock, setup_save, setup_wilma, sources, tools,
                update, versions)
-from .collectors import evaka
 from .collectors.gmail import keychain_account, username_of
 from .config import Config
 from .system import desktop, entries, jobs, profile, secrets, user_path, wake, windows_only
@@ -333,14 +332,6 @@ def survey_wilma(s: Survey, programs: list[Path]) -> None:
         else:
             s.stops.append(f"{_show(folder)} is where Parent Recap installs the wilma CLI, but "
                            f"it holds other files too: {', '.join(others)}")
-
-
-def survey_evaka(s: Survey, programs: list[Path]) -> None:
-    """The device cookies eVaka's sign-ins left, kept beside the state so a city doesn't email
-    about a new device every evening (ADR 0039). The passwords go with the other secrets."""
-    devices = evaka.devices_path(Config(kids=[]))
-    if devices.exists():
-        s.items.append(_file("eVaka's device cookies", devices))
 
 
 def survey_whatsapp(s: Survey, programs: list[Path]) -> None:
