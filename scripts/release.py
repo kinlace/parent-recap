@@ -3,6 +3,7 @@
 
 Usage: python scripts/release.py v0.4.0
        python scripts/release.py --is-highest v0.4.0   # prints true or false
+       python scripts/release.py --parts               # writes version and parts in release.json
 
 The zip comes from `git archive` of the tag, so local edits never leak in, and
 `.gitattributes` export-ignore rules drop the developer-only files. Unzipping it
@@ -12,6 +13,11 @@ The zip carries `release.json` as the tag has it: whether the release needs the 
 computer (ADR 0047, CONTRIBUTING.md "A release that needs the family"). The file is in the tree,
 so a release whose maintainer says nothing carries the value of the release before it forward as
 it is, and the build refuses a tag that dropped or lowered it.
+
+The file also says the release's `version` and its `parts` (ADR 0051): for the core and for each
+Source with a folder of its own, the last version that changed it. `--parts` works them out in the
+release's pull request from the paths changed since the release before, and the build works them
+out again and refuses a tag whose file says otherwise.
 """
 from __future__ import annotations
 
@@ -23,6 +29,7 @@ import sys
 import tempfile
 import tomllib
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +45,27 @@ LOCAL_ARTEFACT = re.compile(r"(^|/)(\.git|\.venv|venv|__pycache__|\.scratch|\.py
 # (family_brief/update.py).
 NEEDS_FAMILY = "release.json"
 ASKS_LANGUAGES = ("en", "fi", "zh")
+
+# What a release changed (ADR 0051). A path inside a Source's folder is that Source's part,
+# `<group>/<name>`; a path on COUNTS_FOR_NOTHING is no part's; every other path is the core's, so
+# a path nobody thought of costs one install too many, never one too few. Keep the list short:
+# each entry is a path no family's computer runs, or one every release changes.
+SOURCE_FOLDER = re.compile(r"^app/src/family_brief/sources/([^/]+)/([^/]+)/")
+COUNTS_FOR_NOTHING = re.compile(
+    # The documents. Not SECURITY.md: the manage skill reads it on the family's computer.
+    r"^docs/|^(README(\.[a-zA-Z-]+)?|CONTRIBUTING|CONTEXT|CLAUDE|THIRD_PARTY_NOTICES)\.md$"
+    r"|^app/tests/"        # the tests
+    r"|^\.github/"         # the workflows, and GitHub's other settings
+    r"|^CHANGELOG\.md$"
+    r"|^release\.json$")
+# The files that hold the version, and their line that does: a change to that line alone counts
+# for nothing, any other change to the file is the core's.
+VERSION_LINES = {
+    ".claude-plugin/plugin.json": re.compile(r'(?m)^(\s*"version":\s*")[^"]*(")'),
+    "app/pyproject.toml": re.compile(r'(?m)^(version = ")[^"]*(")'),
+}
+CORE = "core"
+PARTS_COMMAND = "python scripts/release.py --parts"
 
 
 def git(*args: str) -> subprocess.CompletedProcess:
@@ -119,6 +147,134 @@ def check_needs_family(tag: str) -> None:
              f"carry it forward (background_from {carried}, with its asks) or raise it")
 
 
+# ---------------------------------------------------------------- what a release changed (ADR 0051)
+
+def part_of(path: str, old: str | None = None, new: str | None = None) -> str | None:
+    """The part a changed path is: a Source's `<group>/<name>`, the core's, or None when it counts
+    for nothing. `old` and `new` are the file's text before and after, read only for the files that
+    hold the version (None where it didn't exist)."""
+    if m := SOURCE_FOLDER.match(path):
+        return f"{m[1]}/{m[2]}"
+    if COUNTS_FOR_NOTHING.match(path):
+        return None
+    if (line := VERSION_LINES.get(path)) and old is not None and new is not None \
+            and line.sub(r"\1\2", old) == line.sub(r"\1\2", new):
+        return None
+    return CORE
+
+
+def release_before(version: tuple[int, ...], commit: str) -> str | None:
+    """The tag a release at `version` on `commit` follows: the highest vX.Y.Z tag below it in its
+    history. A hotfix on a release branch so follows the tag it comes from, not the highest one."""
+    older = sorted((t for t in git("tag", "--list").stdout.split() if (v := _version(t)) and v < version),
+                   key=_version, reverse=True)
+    return next((t for t in older if git("merge-base", "--is-ancestor", t, commit).returncode == 0), None)
+
+
+def _parts_at(tag: str) -> dict[str, str]:
+    """The parts `tag`'s release.json names, leaving out what isn't a part and a version; empty
+    for a release from before `parts`."""
+    try:
+        parts = json.loads(git("show", f"{tag}:{NEEDS_FAMILY}").stdout).get("parts")
+    except (ValueError, AttributeError):
+        return {}
+    if not isinstance(parts, dict):
+        return {}
+    return {part: value for part, value in parts.items()
+            if isinstance(part, str) and isinstance(value, str) and _version(f"v{value}")}
+
+
+def _lines(output: str) -> list[str]:
+    return [line for line in output.split("\0") if line]
+
+
+def work_out_parts(version: str, before: str | None, files: list[str], changed: list[str],
+                   read: Callable[[str], str | None]) -> dict[str, str]:
+    """The parts of a release at `version` whose tree holds `files`, `changed` since `before`, the
+    release it follows (None for the first): each part a changed path is raised to `version`, and
+    one the release before didn't name too; the others keep the version they had. `read(path)` is
+    the file's text in this release, or None."""
+    sources = sorted({f"{m[1]}/{m[2]}" for path in files if (m := SOURCE_FOLDER.match(path))})
+    previous = _parts_at(before) if before else {}
+
+    def old(path: str) -> str | None:
+        if not before:
+            return None
+        shown = git("show", f"{before}:{path}")
+        return shown.stdout if shown.returncode == 0 else None
+
+    raised = {part_of(path, *((old(path), read(path)) if path in VERSION_LINES else ()))
+              for path in changed}
+    return {part: version if part in raised or part not in previous else previous[part]
+            for part in (CORE, *sources)}
+
+
+def parts_at_tag(tag: str, before: str | None) -> dict[str, str]:
+    """What the paths changed from `before` to `tag` give as `tag`'s parts."""
+    files = _lines(git("ls-tree", "-r", "--name-only", "-z", tag).stdout)
+    changed = _lines(git("diff", "--name-only", "--no-renames", "-z", before, tag).stdout) if before else files
+
+    def read(path: str) -> str | None:
+        shown = git("show", f"{tag}:{path}")
+        return shown.stdout if shown.returncode == 0 else None
+
+    return work_out_parts(tag.removeprefix("v"), before, files, changed, read)
+
+
+def write_parts() -> Path:
+    """Writes the release's `version` and `parts` into the working tree's release.json, from the
+    version in .claude-plugin/plugin.json and the paths changed since the release before,
+    committed or not. Running it again changes nothing."""
+    version = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
+    if not (numbers := _version(f"v{version}")):
+        fail(f".claude-plugin/plugin.json: version {version} isn't X.Y.Z")
+    before = release_before(numbers, "HEAD")
+    files = [f for f in _lines(git("ls-files", "-co", "--exclude-standard", "-z").stdout)
+             if (ROOT / f).is_file()]
+    if before:
+        changed = sorted({*_lines(git("diff", "--name-only", "--no-renames", "-z", before).stdout),
+                          *_lines(git("ls-files", "-o", "--exclude-standard", "-z").stdout)})
+    else:
+        changed = files
+
+    def read(path: str) -> str | None:
+        return (ROOT / path).read_text() if (ROOT / path).is_file() else None
+
+    parts = work_out_parts(version, before, files, changed, read)
+    path = ROOT / NEEDS_FAMILY
+    try:
+        data = json.loads(path.read_text()) if path.exists() else {}
+    except ValueError:
+        fail(f"{NEEDS_FAMILY} isn't JSON")
+    if not isinstance(data, dict):
+        fail(f"{NEEDS_FAMILY} isn't a JSON object")
+    data = {"version": version, "background_from": None, "asks": None, **data}
+    data.update(version=version, parts=parts)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    print(f"{NEEDS_FAMILY}: version {version}, parts since {before or 'the start'}: "
+          + ", ".join(f"{part} {value}" for part, value in parts.items()))
+    return path
+
+
+def check_parts(tag: str) -> None:
+    """Refuses a tag whose release.json doesn't say the release's version, or parts other than
+    the paths changed since the release before give."""
+    version = tag.removeprefix("v")
+    shown = git("show", f"{tag}:{NEEDS_FAMILY}")
+    try:
+        data = json.loads(shown.stdout) if shown.returncode == 0 else {}
+    except ValueError:
+        fail(f"{NEEDS_FAMILY} at {tag} isn't JSON")
+    before = release_before(_version(tag), tag)
+    expected = parts_at_tag(tag, before)
+    said = data.get("version"), data.get("parts")
+    if said != (version, expected):
+        fail(f"{NEEDS_FAMILY} at {tag} says version {said[0]} and parts {json.dumps(said[1])}, but the "
+             f"release is {version} and the paths changed since {before or 'the start'} give "
+             f"{json.dumps(expected)}: run `{PARTS_COMMAND}` on the release's commit and commit "
+             f"{NEEDS_FAMILY}")
+
+
 def build(tag: str) -> Path:
     require_tag(tag)
     if not _version(tag):
@@ -135,6 +291,7 @@ def build(tag: str) -> Path:
              f"   .claude-plugin/plugin.json: {plugin}\n"
              f"   app/pyproject.toml: {package}")
     check_needs_family(tag)
+    check_parts(tag)
 
     with tempfile.TemporaryDirectory() as tmp:
         built = Path(tmp) / "release.zip"
@@ -156,11 +313,14 @@ def main() -> None:
     match sys.argv[1:]:
         case ["--is-highest", tag]:
             print("true" if is_highest(tag) else "false")
+        case ["--parts"]:
+            write_parts()
         case [tag] if not tag.startswith("-"):
             print(f"✅ {build(tag)}")
         case _:
             sys.exit("usage: python3 scripts/release.py <tag>   e.g. v0.4.0\n"
-                     "       python3 scripts/release.py --is-highest <tag>")
+                     "       python3 scripts/release.py --is-highest <tag>\n"
+                     "       python3 scripts/release.py --parts")
 
 
 if __name__ == "__main__":
