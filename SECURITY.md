@@ -168,7 +168,7 @@ It doesn't change the config, the Keychain items Parent Recap stored, the Linked
 
 ### What it never does
 
-- It never asks for admin rights or a password in the background, and opens no dialog. A release that would ask for one (the Mac password, a new permission, a QR scan) isn't installed by itself: it waits for the family to start it, and only then does its installer run with its dialogs.
+- The update code never starts the wake's password dialog in the background. Moving an older version's wake is the step of an install that asks for the Mac password, and an install that runs for an update skips it (`PARENT_RECAP_UPDATING`, which `family_brief/schedule_update.py` reads), unless the family started a release that needs them. That is the one dialog the code stops. A release that would open any other dialog (a new permission, a QR scan, another password) is marked as needing the family when it is cut, in `release.json`, which the release steps require ([CONTRIBUTING.md](CONTRIBUTING.md#releasing), "A release that needs the family"). A release marked so isn't installed by itself: it waits for the family to start it, and only then does its installer run with its dialogs. So that nothing else opens a dialog in the background is a rule of how the maintainers cut releases, not something the program checks.
 - It adds no background item. The evening jobs start the program from one path that stays the same across versions, so an update leaves them as they are and macOS has nothing new to announce.
 - It reads nothing the maintainers' gateway answers. Nothing the gateway says can start an update or choose what a Household gets: every Household takes the same release from the same public address.
 - It sends the maintainers nothing. The update makes no request to the gateway; how an update went stays in the Mac's own `~/ParentRecap/logs/update.log`, which names versions and steps and nothing of the family's messages.
@@ -181,7 +181,7 @@ The switch on the setup page, or `parent-recap update off`, turns updating off (
 
 ### The install line
 
-The update is signed; the install line is not, as before. The line in the README fetches `get.sh` from the `stable` branch over HTTPS and runs it in a shell, and `get.sh` downloads the `stable` branch and runs its `install.sh`, with no signature checked. Whoever would rather check one downloads the release zip, verifies it by hand as [Release signatures](#release-signatures) says, and installs from the package file ([Other ways to install](docs/install.md#other-ways-to-install)).
+The signature protects updates. The first install, and a reinstall with the install line, check no signature: they trust GitHub over HTTPS, and the maintainers' accounts there. A check inside `get.sh` wouldn't change that, since it would come from the same place as `get.sh`. The line in the README fetches `get.sh` from the `stable` branch over HTTPS and runs it in a shell, and `get.sh` downloads the `stable` branch and runs its `install.sh`, with no signature checked. Whoever would rather check one downloads the release zip, verifies it by hand as [Release signatures](#release-signatures) says, and installs from the package file ([Other ways to install](docs/install.md#other-ways-to-install)).
 
 ## Release signatures
 
