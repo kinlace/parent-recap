@@ -70,7 +70,7 @@ def test_the_page_shows_the_installed_version_and_that_updates_are_on(household,
     shown = updates(page.url)
 
     assert shown == {"available": True, "version": INSTALLED, "on": True, "newer": None,
-                     "waiting": None,
+                     "waiting": None, "skipped": None,
                      "report": update.status(str(config_file(household))).line()}
     assert github.requests == []  # showing it asks no host
     assert "updates" not in saved(household)  # on without the family doing anything

@@ -1,7 +1,8 @@
 """Updates, under Finish's "Later, if you need it": that Parent Recap installs new releases by
 itself after the evening Brief (ADR 0047), the switch that turns that off, the installed version,
 and Update now once a newer release is out, with what it will ask when it is one that waits for
-the family (#918). Where the program doesn't update itself (Windows, the
+the family (#918). A newer release that changes nothing the Household uses (ADR 0051) is said to
+be out and not installed, without Update now. Where the program doesn't update itself (Windows, the
 hosted version, a program not run from an installed release) the page gets the version alone."""
 from __future__ import annotations
 
@@ -17,11 +18,12 @@ from ..setup_connect import Strict, parse
 from .context import Action, Context, Phase, Reply, nothing_to_give
 
 # Update now: `updating` while the release is downloaded, verified, installed and checked, then
-# how update.update ended; `busy` when a Brief is being made right now, or another update is
+# how update.update ended (`skipped` for a newer release that changes nothing the Household uses,
+# ADR 0051); `busy` when a Brief is being made right now, or another update is
 # running (`parent-recap update` in Terminal), so nothing was started; and `no-update` when this
 # server hasn't started one.
-NOW_RESULTS = ("updating", "updated", "up-to-date", "switched-back", "failed", "not-available",
-               "busy", "no-update")
+NOW_RESULTS = ("updating", "updated", "up-to-date", "skipped", "switched-back", "failed",
+               "not-available", "busy", "no-update")
 
 
 class SwitchAnswer(Strict):
@@ -109,6 +111,8 @@ class Updates(Phase):
                     done["version"] = outcome.version
                 if outcome.tried is not None:
                     done["tried"] = outcome.tried
+                if outcome.skipped is not None:
+                    done["skipped"] = outcome.skipped
                 if outcome.result in ("failed", "switched-back"):
                     done["reason"] = failure.logged("Update now didn't update", outcome.message)
             except Exception as e:  # never leave the page updating
@@ -121,7 +125,8 @@ def shown(context: Context) -> dict[str, Any]:
     """The update state as the page shows it: the installed version, whether the program updates
     itself here (`available`), and where it does, whether that's turned on, the newer version
     this computer has seen is out, if any, and the version that is `waiting` for the family to
-    start it, as it needs them at the computer, with what it `asks` of them by language (#918).
+    start it, as it needs them at the computer, with what it `asks` of them by language (#918),
+    or the newer version the last look `skipped`, as it changes nothing the Household uses.
     `report` is doctor's line of it, which the page puts in what a family copies to us."""
     status = update.status(str(context.config))
     out: dict[str, Any] = {"available": status.unavailable is None, "version": status.version,
@@ -129,5 +134,6 @@ def shown(context: Context) -> dict[str, Any]:
     if status.unavailable is None:
         waiting = None if status.waiting is None else {"version": status.waiting,
                                                        "asks": status.asks or {}}
-        out |= {"on": status.enabled, "newer": status.newer, "waiting": waiting}
+        out |= {"on": status.enabled, "newer": status.newer, "waiting": waiting,
+                "skipped": status.skipped}
     return out

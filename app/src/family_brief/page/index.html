@@ -723,6 +723,9 @@
             </div>
             <p><button type="button" id="finish-updates-now" class="secondary" data-text="finish.updates.now"></button></p>
           </div>
+          <!-- A newer release that changes nothing the Household uses isn't installed (ADR
+               0051): the page says so, and offers no Update now for it. -->
+          <p id="finish-updates-skipped" hidden></p>
           <div id="finish-updates-status" class="status" role="status" hidden>
             <p id="finish-updates-message"></p>
             <details id="finish-updates-why" class="why" hidden>

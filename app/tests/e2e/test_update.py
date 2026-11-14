@@ -70,12 +70,16 @@ class CutOff(io.BytesIO):
 
 
 class Releases:
-    """This repository on GitHub: the version `stable` holds, and each release's zip and
-    signature, served through a redirect to where GitHub keeps release files, as GitHub does.
-    `requests` records each request: its URL, headers and what else it carried."""
+    """This repository on GitHub: `release.json` on `stable`, which says the version `stable`
+    holds and, once `parts` is given, the last version that changed each part (ADR 0051), and
+    each release's zip and signature, served through a redirect to where GitHub keeps release
+    files, as GitHub does. `stable_file` is the file as it is served, when a test writes it
+    itself. `requests` records each request: its URL, headers and what else it carried."""
 
     def __init__(self, mp: pytest.MonkeyPatch) -> None:
         self.stable: str | None = INSTALLED
+        self.parts: dict[str, Any] | None = None
+        self.stable_file: bytes | None = None
         self.files: dict[str, bytes] = {}  # by name in the release: parent-recap-X.zip, .sig
         self.cut_off: set[str] = set()
         self.redirect_to = "release-assets.githubusercontent.com"
@@ -101,8 +105,13 @@ class Releases:
                               "allow_redirects": k.get("allow_redirects")})
         path = url.split(host, 1)[1]
         if host == "raw.githubusercontent.com":
-            if path == "/kinlace/parent-recap/stable/.claude-plugin/plugin.json" and self.stable:
-                return response(200, json.dumps({"name": "parent-recap", "version": self.stable}).encode())
+            if path == "/kinlace/parent-recap/stable/release.json" and self.stable_file is not None:
+                return response(200, self.stable_file)
+            if path == "/kinlace/parent-recap/stable/release.json" and self.stable:
+                said: dict[str, Any] = {"version": self.stable, "background_from": None, "asks": None}
+                if self.parts is not None:
+                    said["parts"] = self.parts
+                return response(200, json.dumps(said).encode())
             return response(404, b"")
         prefix = "/kinlace/parent-recap/releases/download/"
         if host == "github.com" and path.startswith(prefix):
