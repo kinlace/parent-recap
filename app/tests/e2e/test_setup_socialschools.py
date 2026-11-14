@@ -17,7 +17,7 @@ from test_uninstall import set_up, uninstall
 from conftest import socialschools_child, socialschools_event
 from fake_sources import SOCIALSCHOOLS_PASSWORD
 from family_brief import install_record, ops
-from family_brief.collectors import socialschools
+from family_brief.sources.nl.socialschools import collector as socialschools
 
 USERNAME = "parent@example.nl"
 SECRET = socialschools.secret_name(USERNAME)

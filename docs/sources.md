@@ -283,7 +283,7 @@ Each Source is one record in a registry ([ADR 0022](adr/0022-sources-are-declare
 
 ### Where a Source's code goes
 
-A Source's Python lives in a folder of its own, `family_brief/sources/<group>/<name>`, so that a release changing only that folder changes nothing another Source's Household runs ([ADR 0051](adr/0051-a-familys-computer-skips-a-release-that-changes-nothing-it-uses.md)). The groups are `fi`, `nl` and `shared` (the Sources no country owns), and `<name>` is the Source's name. Konnect is the first, in `sources/nl/konnect`; the other Sources move in one by one, and until then their code is in the shared modules named below. A folder holds, each in a module of its own:
+A Source's Python lives in a folder of its own, `family_brief/sources/<group>/<name>`, so that a release changing only that folder changes nothing another Source's Household runs ([ADR 0051](adr/0051-a-familys-computer-skips-a-release-that-changes-nothing-it-uses.md)). The groups are `fi`, `nl` and `shared` (the Sources no country owns), and `<name>` is the Source's name. Konnect was the first, in `sources/nl/konnect`, and Social Schools is in `sources/nl/socialschools`; the other Sources move in one by one, and until then their code is in the shared modules named below. A folder holds, each in a module of its own:
 
 - `collector`: how it is read
 - `config`: its config section's models

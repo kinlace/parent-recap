@@ -15,7 +15,7 @@ from conftest import NOW, SAYS_SOMETHING, socialschools_child, socialschools_eve
     without_unread_note
 from fake_sources import SOCIALSCHOOLS_PASSWORD
 from nights import normal_night
-from family_brief.collectors import socialschools
+from family_brief.sources.nl.socialschools import collector as socialschools
 
 USERNAME = "parent@example.nl"
 

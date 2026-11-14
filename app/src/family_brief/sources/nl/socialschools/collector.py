@@ -43,12 +43,13 @@ from zoneinfo import ZoneInfo
 import requests
 from bs4 import BeautifulSoup
 
-from ..system import secrets
-from .base import CalendarEvent, Collected, Message, retry_once_on_timeout, sign_in_failed
+from ....collectors.base import CalendarEvent, Collected, Message, retry_once_on_timeout, sign_in_failed
+from ....system import secrets
 
 if TYPE_CHECKING:
-    from ..config import Config, Kid, SocialSchoolsSignin
-    from ..state import State
+    from ....config import Config, Kid
+    from ....state import State
+    from .config import SocialSchoolsSignin
 
 log = logging.getLogger(__name__)
 

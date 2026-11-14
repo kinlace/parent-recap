@@ -45,9 +45,10 @@ import requests
 import fake_node
 from family_brief import linked_device, own_node, sources as registry
 from family_brief.config import myclub_links
-from family_brief.collectors import eepos, evaka, gmail, local_files, myclub, socialschools
+from family_brief.collectors import eepos, evaka, gmail, local_files, myclub
 from family_brief.collectors.base import CalendarEvent, Collected, Message
 from family_brief.sources.nl.konnect import collector as konnect
+from family_brief.sources.nl.socialschools import collector as socialschools
 from fake_system import FakeSecrets
 
 # Where a Gmail Message's url points: Gmail's search for its Message-ID header.
