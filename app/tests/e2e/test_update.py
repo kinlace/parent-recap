@@ -27,7 +27,8 @@ import pytest
 import requests
 import yaml
 
-from family_brief import install_record, release_signature, update, versions
+from family_brief import install_record, release_signature, run_lock, update, versions
+from family_brief.config import Config
 from fake_system import LINUX, WINDOWS
 
 # install.sh's layout, on a Mac.
@@ -949,3 +950,130 @@ def test_update_takes_nothing_but_on_or_off(harness, mac, capsys):
     with pytest.raises(SystemExit):
         harness.cli("update", "never")
     assert "invalid choice" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------- one update at a time (#977)
+
+BUSY_SAYS = ("Parent Recap is busy", "Try again in a few minutes",
+             "Parent Recapilla on juuri nyt muuta tekeillä", "muutaman minuutin kuluttua",
+             "Parent Recap 正忙", "过几分钟再试")
+
+
+def while_installing(mac: Mac, then: Callable[[], Any]) -> None:
+    """Has `then` run once while the update's installer runs, after its switch."""
+    def after_switch(_env: dict[str, str]) -> str:
+        mac.after_switch = None
+        then()
+        return ""
+    mac.after_switch = after_switch
+
+
+def changed_since(before: dict[str, tuple], home: Path) -> set[str]:
+    """The paths under `home` that differ from the snapshot `before`, but for the config, which
+    the test's own command line writes again."""
+    after = snapshot(home)
+    return {p for p in before.keys() | after.keys()
+            if before.get(p) != after.get(p)} - {".family/config.yaml"}
+
+
+def test_a_second_update_while_one_is_going_says_it_is_busy_and_changes_nothing(
+        harness, github, mac, capsys):
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    second: dict[str, Any] = {}
+
+    def a_second_update() -> None:
+        capsys.readouterr()
+        before, asked = snapshot(harness.home), len(github.requests)
+        second["code"] = harness.cli("update")
+        second["out"] = capsys.readouterr().out
+        second["changed"] = changed_since(before, harness.home)
+        second["asked"] = len(github.requests) - asked
+    while_installing(mac, a_second_update)
+
+    code, out = update_command(harness, capsys)
+
+    assert second["code"] == run_lock.BUSY
+    for words in BUSY_SAYS:
+        assert words in second["out"], words
+    assert second["changed"] == set() and second["asked"] == 0
+    # The first went on as if nothing had been tried beside it.
+    assert code == 0 and "updated from version 0.19.0 to 0.20.0" in out
+    assert mac.version() == "0.20.0" and len(mac.installs) == 1
+
+
+def test_update_while_a_brief_is_being_made_says_it_is_busy_and_changes_nothing(
+        harness, github, mac, capsys):
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    assert harness.cli("update", "on") == 0  # the config is there, as on a Household's Mac
+
+    with run_lock.exclusive(Config.model_validate(harness.config)):  # the evening run
+        before = snapshot(harness.home)
+        code, out = update_command(harness, capsys)
+        changed = changed_since(before, harness.home)
+
+    assert code == run_lock.BUSY
+    for words in BUSY_SAYS:
+        assert words in out, words
+    assert changed == set()
+    assert github.requests == [] and mac.installs == [] and no_downloads(mac)
+    assert update_command(harness, capsys)[0] == 0 and mac.version() == "0.20.0"  # once it ended
+
+
+def test_an_evening_run_that_starts_during_a_family_s_update_stops_as_beside_another_run(
+        harness, github, mac, capsys, caplog):
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    run: dict[str, Any] = {}
+    while_installing(mac, lambda: run.update(code=harness.run()))
+
+    code, _ = update_command(harness, capsys)
+
+    assert run["code"] == run_lock.BUSY
+    assert "Another Parent Recap run is still going" in caplog.text
+    assert harness.sent == [] and harness.model_calls == []
+    assert code == 0 and mac.version() == "0.20.0"
+
+
+def test_the_lock_is_held_from_before_the_look_through_the_switch_back_and_then_let_go(
+        harness, github, mac, capsys):
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    mac.fails["0.20.0"] = ["Calendar"]
+    cfg = Config.model_validate(harness.config)
+    held: dict[str, bool] = {}
+    look = github.request
+
+    def at_the_look(*a: Any, **k: Any) -> requests.Response:
+        held.setdefault("look", run_lock.is_busy(cfg))
+        return look(*a, **k)
+    github.request = at_the_look  # type: ignore[method-assign]
+
+    def at_a_step_of_the_switch_back(cmd: list[str], _prog: str, **_k: Any) -> None:
+        if cmd[0] == str(mac.folder / "app" / ".venv" / "bin" / "python"):
+            held["switch back"] = run_lock.is_busy(cfg)
+    harness.processes.answers.insert(0, at_a_step_of_the_switch_back)
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 1 and "switched back to version 0.19.0" in out and mac.version() == INSTALLED
+    assert held == {"look": True, "switch back": True}
+    assert not run_lock.is_busy(cfg)
+
+
+@pytest.mark.parametrize("on", [WINDOWS, LINUX])
+def test_where_it_does_not_apply_it_takes_no_lock(harness, github, mac, capsys, on):
+    harness.system = on
+
+    with run_lock.exclusive(Config.model_validate(harness.config)):
+        code, out = update_command(harness, capsys)
+
+    assert code == 0 and "Parent Recap is busy" not in out
+
+
+def test_update_on_and_off_are_saved_while_a_brief_is_being_made(harness, github, mac, capsys):
+    with run_lock.exclusive(Config.model_validate(harness.config)):
+        assert harness.cli("update", "off") == 0
+
+    assert saved_config(harness)["updates"] == {"enabled": False}

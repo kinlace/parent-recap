@@ -155,7 +155,7 @@ So the signature covers everything an update installs except the wilma CLI and i
 An update writes where an install already writes, and nowhere else:
 
 - In Parent Recap's folder, `~/ParentRecap`: `update/` (its state, `state.json`, and the download's folder, removed when the update ends), `plugin/` (the release), `versions/` and the `app` link (the new version beside the one before), `runtime/` (a new Python or Node), `baileys/`, `wilma/`, `bin/` and `logs/` (`update.log`, and the install's log).
-- In `~/.family`: `install-record.json`, setup's record of what the install put on the Mac. An update the family started, which installs the evening jobs again, also notes the time in `state.json` and takes group and other access off Parent Recap's files, as every run does.
+- In `~/.family`: `install-record.json`, setup's record of what the install put on the Mac. An update the family started holds `run.lock`, the evening run's lock, for as long as it runs, so no Brief is made and no other update runs beside it; it makes that empty file if it isn't there. Such an update, which installs the evening jobs again, also takes group and other access off Parent Recap's files, as every run does.
 - The marked line in `~/.zprofile` that puts `parent-recap` on the PATH.
 - `~/Applications/Parent Recap Settings.app` and `~/Applications/Parent Recap Check.app`.
 - The evening jobs' files in `~/Library/LaunchAgents` (`com.parentrecap.*`), written again only when a job's definition changed or the job isn't loaded. The evening's own update leaves them as they are.

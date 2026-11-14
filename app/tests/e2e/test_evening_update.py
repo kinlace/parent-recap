@@ -57,10 +57,13 @@ def evening(harness, mac, monkeypatch):  # noqa: F811
         out = io.StringIO()
         with pytest.MonkeyPatch.context() as mp, contextlib.redirect_stdout(out):
             mp.setenv("PARENT_RECAP_HOME", env["PARENT_RECAP_HOME"])
-            if schedule_update.UPDATING in env:
-                mp.setenv(schedule_update.UPDATING, env[schedule_update.UPDATING])
-            else:  # a release that needs the family, started by them: with its dialogs
-                mp.delenv(schedule_update.UPDATING, raising=False)
+            # UPDATING is missing for a release that needs the family, started by them: with its
+            # dialogs. HOLDS_RUN_LOCK is there for every update they started.
+            for name in (schedule_update.UPDATING, schedule_update.HOLDS_RUN_LOCK):
+                if name in env:
+                    mp.setenv(name, env[name])
+                else:
+                    mp.delenv(name, raising=False)
             schedule_update.update(None)
         return out.getvalue()
     mac.after_switch = install_sh_after_switch
@@ -307,6 +310,8 @@ def test_started_by_the_family_a_waiting_release_installs_with_its_dialog(evenin
 
     assert mac.version() == "0.20.0"
     assert schedule_update.UPDATING not in mac.install_envs[0]
+    # The update holds the run lock itself, and its installer is told so: no Brief is being made.
+    assert mac.install_envs[0][schedule_update.HOLDS_RUN_LOCK] == "1"
     # The step the background leaves out ran: macOS asked for the password, and the wake moved.
     assert evening.wake.asked == ["set 21:00"]
     assert evening.wake.wakes == [evening.wake.line(21, 0)]
@@ -544,6 +549,8 @@ def test_the_background_install_opens_no_dialog_and_the_update_log_says_what_it_
     assert evening.wake.asked == [] and evening.wake.wakes == old_wake
     assert evening.dialog.shown == []
     assert mac.install_envs[0][schedule_update.UPDATING] == "1"
+    # The lock is the run's own, which the update inside it didn't take again or wait for.
+    assert schedule_update.HOLDS_RUN_LOCK not in mac.install_envs[0]
     log = update_log(mac)
     assert "wasn't moved to 21:00" in log and "asks for your Mac password" in log
     assert "left as it is" in log  # the evening job, which the update runs inside

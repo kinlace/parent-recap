@@ -18,6 +18,9 @@ SCHEDULE_INSTALL = "parent-recap schedule install"  # what the family runs to do
 # Set by `parent-recap update` (update.py) for the release's installer it runs: the wake's
 # password dialog may not start then.
 UPDATING = "PARENT_RECAP_UPDATING"
+# Set by an update the family started (update.steps_env), which holds the run lock itself for as
+# long as it runs (#977): the lock is held, and no Brief is being made.
+HOLDS_RUN_LOCK = "PARENT_RECAP_UPDATE_HOLDS_RUN_LOCK"
 
 
 def update(config: str | None = None) -> None:
@@ -29,7 +32,10 @@ def update(config: str | None = None) -> None:
         print(f"{ops.WARN}The evening Brief's job wasn't updated: the config can't be read. Run "
               f"parent-recap doctor, fix what it names, then run {SCHEDULE_INSTALL}.")
         return
-    if run_lock.is_busy(cfg):  # installing the job again would stop the run
+    # Installing the job again would stop a run that is going. The lock an update the family
+    # started holds is no run's: the job is installed again, as it was before such an update
+    # held the lock.
+    if run_lock.is_busy(cfg) and not os.environ.get(HOLDS_RUN_LOCK):
         if not os.environ.get(UPDATING):
             print(f"{ops.WARN}The evening Brief's job wasn't updated, since a Brief is being made "
                   f"right now. Run {SCHEDULE_INSTALL} once it has gone out.")

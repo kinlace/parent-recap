@@ -6,19 +6,20 @@ hosted version, a program not run from an installed release) the page gets the v
 from __future__ import annotations
 
 import threading
+from contextlib import ExitStack
 from http import HTTPStatus
 from typing import Any
 
 from pydantic import StrictBool
 
 from .. import failure, run_lock, update
-from ..config import Config
 from ..setup_connect import Strict, parse
 from .context import Action, Context, Phase, Reply, nothing_to_give
 
 # Update now: `updating` while the release is downloaded, verified, installed and checked, then
-# how update.update ended; `busy` when a Brief is being made right now, so nothing was started;
-# and `no-update` when this server hasn't started one.
+# how update.update ended; `busy` when a Brief is being made right now, or another update is
+# running (`parent-recap update` in Terminal), so nothing was started; and `no-update` when this
+# server hasn't started one.
 NOW_RESULTS = ("updating", "updated", "up-to-date", "switched-back", "failed", "not-available",
                "busy", "no-update")
 
@@ -53,19 +54,31 @@ class Updates(Phase):
 
     def update_now(self, raw: Any) -> Reply:
         """Installs the newest release now, as `parent-recap update` does, in the background: the
-        page asks how it went with `check_now`. One at a time."""
+        page asks how it went with `check_now`. One at a time: it takes the run lock here, before
+        the update's look, and the update holds it until it ended (update.alone). While a run or
+        another update holds it, nothing is started and the answer is `busy`."""
         if raw != {}:
             return HTTPStatus.BAD_REQUEST, nothing_to_give()
         context = self.context
         if update.not_applicable(str(context.config)) is not None:
             return HTTPStatus.OK, {"result": "not-available"}
-        if _run_is_going(context):
-            return HTTPStatus.OK, {"result": "busy"}
         with context.working:
-            if self._now is None or self._now["result"] != "updating":
-                self._now = {"result": "updating"}
-                self._thread = threading.Thread(target=self._updating, daemon=True)
+            if self._now is not None and self._now["result"] == "updating":
+                return HTTPStatus.OK, {"result": "updating"}  # this page's own, still going
+            held = ExitStack()
+            try:
+                held.enter_context(update.alone(str(context.config)))
+            except run_lock.Busy:
+                return HTTPStatus.OK, {"result": "busy"}
+            before = self._now
+            self._now = {"result": "updating"}  # before it starts: it ends by saying how it went
+            try:
+                self._thread = threading.Thread(target=self._updating, args=(held,), daemon=True)
                 self._thread.start()
+            except BaseException:  # no update runs to let go of the lock
+                self._now = before
+                held.close()
+                raise
         return HTTPStatus.OK, {"result": "updating"}
 
     def check_now(self, raw: Any) -> Reply:
@@ -84,30 +97,24 @@ class Updates(Phase):
         if self._thread is not None:
             self._thread.join()
 
-    def _updating(self) -> None:
-        try:
-            outcome = update.update(str(self.context.config))
-            done: dict[str, Any] = {"result": "not-available" if outcome.result == "not-applicable"
-                                    else outcome.result}
-            if outcome.version is not None:
-                done["version"] = outcome.version
-            if outcome.tried is not None:
-                done["tried"] = outcome.tried
-            if outcome.result in ("failed", "switched-back"):
-                done["reason"] = failure.logged("Update now didn't update", outcome.message)
-        except Exception as e:  # never leave the page updating
-            done = {"result": "failed", "reason": failure.logged(
-                "Update now stopped", failure.of(e, "The update"))}
+    def _updating(self, held: ExitStack) -> None:
+        """The update, holding the run lock `update_now` took (`held`), which it lets go of once
+        the update ended, before the page is told how."""
+        with held:
+            try:
+                outcome = update.update(str(self.context.config))
+                done: dict[str, Any] = {"result": "not-available"
+                                        if outcome.result == "not-applicable" else outcome.result}
+                if outcome.version is not None:
+                    done["version"] = outcome.version
+                if outcome.tried is not None:
+                    done["tried"] = outcome.tried
+                if outcome.result in ("failed", "switched-back"):
+                    done["reason"] = failure.logged("Update now didn't update", outcome.message)
+            except Exception as e:  # never leave the page updating
+                done = {"result": "failed", "reason": failure.logged(
+                    "Update now stopped", failure.of(e, "The update"))}
         self._now = done
-
-
-def _run_is_going(context: Context) -> bool:
-    """Whether a Brief is being made right now: its run holds the run lock, and the evening run's
-    own update runs under it, so Update now waits rather than install beside it."""
-    try:
-        return run_lock.is_busy(Config.load(context.config))
-    except Exception:  # noqa: BLE001 - no config that can be read: no run is going on it
-        return False
 
 
 def shown(context: Context) -> dict[str, Any]:
