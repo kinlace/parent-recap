@@ -302,7 +302,7 @@ A new Source needs:
    - the run and the Brief: `lookback`, `counts_events` (the coverage line counts its events)
    - `sender_domain`: the domain of the mail it sends of its own news, which Gmail's sender suggestions leave out once it is connected
    - `doctor`: `check`, and `check_items` when it makes more than one check. Without `check`, `doctor` says nothing of the Source
-   - uninstall: `secrets`, `survey` and `notes`, for what setup made for it and what the family removes themselves, and `account`: false for a Source that isn't an account of the family's, such as Local Files, which uninstall's note on accounts then leaves out
+   - uninstall: `secrets`, `survey` and `notes`, for what setup made for it and what the family removes themselves (`survey` in its folder's `uninstall`, as eVaka's), and `account`: false for a Source that isn't an account of the family's, such as Local Files, which uninstall's note on accounts then leaves out
    - Held-back Messages ([ADR 0013](adr/0013-the-ai-gets-placeholders-for-third-parties-and-nothing-of-sensitive-messages.md)): `sent_to_everyone`, `checked_body`, `group` and `held_back_link`. Without them, a message is held back when in doubt and listed by sender and subject, with no link
    - the calendar: `in_ics`
    - `setup_page`: false for a Source the setup page has no panel for yet, which is set up from a terminal by its own `setup` command, as Eepos and eVaka were before #791; the page's list then leaves it out
