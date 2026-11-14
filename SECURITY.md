@@ -134,7 +134,7 @@ Each request is a plain GET over HTTPS with nothing about the Household in it: n
 - Whether a release needs the family at the computer is read from `release.json` inside the verified zip, and nowhere else.
 - Nothing is piped from the network into a shell. The program downloads and unpacks the zip itself, without `curl`, `unzip` or a shell.
 - What runs is the verified release's own installer: its `install.sh`, run as a file with `/bin/bash`. So a shell does run a script during an update, but only one the signature covers.
-- Then the new version's `parent-recap doctor` runs. A check it fails that the version before passed switches back to that version.
+- Then the new version's `parent-recap doctor` runs. A check it fails that the version before passed switches back to that version. So does an installer that didn't finish once it had switched (a non-zero exit status, or ended at its time limit), and a `doctor` that didn't run or crashed.
 
 ### What the installer fetches
 

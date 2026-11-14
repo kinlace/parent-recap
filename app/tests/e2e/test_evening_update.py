@@ -575,6 +575,28 @@ def test_the_linked_device_runs_the_new_version_and_after_a_switch_back_the_old_
     assert evening.jobs.always == always and pairing.read_text() == '{"me": "paired"}'
 
 
+def test_an_installer_that_fails_after_the_switch_puts_the_linked_device_back_on_the_version_before(
+        evening, github, mac):  # noqa: F811
+    pairing = mac.folder / "linked-device" / "auth" / "creds.json"
+    always = list(evening.jobs.always)
+    release_out(github, "0.20.0")
+    mac.installer_ends_after_switch = 1
+    assert evening.run() == 0
+    with at(NOW + DAY):
+        assert evening.run() == 0
+
+    assert mac.version() == INSTALLED and len(mac.installs) == 1
+    # Restarted by the installer once it switched, and again by the switch back.
+    assert evening.jobs.always_restarts == 2
+    assert evening.jobs.always == always and evening.jobs.always_running
+    assert pairing.read_text() == '{"me": "paired"}'
+    assert exit_recorded(evening) == 0
+    # It failed, so it isn't tried again the next evening.
+    with at(NOW + 2 * DAY):
+        assert evening.run() == 0
+    assert len(mac.installs) == 1
+
+
 def test_a_version_that_failed_is_not_downloaded_again_and_a_newer_one_is_tried(
         evening, github, mac):  # noqa: F811
     release_out(github, "0.20.0")

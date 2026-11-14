@@ -183,6 +183,46 @@ def test_the_brief_after_an_update_that_failed_its_check_says_the_old_version_st
     assert len(evening.sent) == 2 and UPDATE_MARK not in evening.sent[-1].text
 
 
+@pytest.mark.parametrize("ends", [1, "time limit"])
+def test_the_brief_after_an_installer_that_did_not_finish_says_the_old_version_still_runs_once(
+        evening, github, mac, ends):  # noqa: F811
+    t = TEXT["en"]
+    evening.config["summary_language"] = "en"
+    release_out(github, "0.20.0")
+    mac.installer_ends_after_switch = ends  # after it switched `app` to 0.20.0
+    evening_on(evening, 0)
+    evening_on(evening, 1)
+    assert mac.version() == INSTALLED and len(mac.installs) == 1
+    assert update.state(mac.folder)["failed"] == "0.20.0"
+
+    a_message(evening, 2)
+    evening_on(evening, 2)
+
+    [email] = evening.sent
+    assert top(email.text) == [t.update_failed.format(version="0.20.0", running=INSTALLED)]
+    assert len(mac.installs) == 1  # not tried again
+
+    a_message(evening, 3)
+    evening_on(evening, 3)
+    assert len(evening.sent) == 2 and UPDATE_MARK not in evening.sent[-1].text
+
+
+def test_the_brief_after_a_doctor_that_crashed_says_the_old_version_still_runs(evening, github, mac):  # noqa: F811
+    t = TEXT["en"]
+    evening.config["summary_language"] = "en"
+    release_out(github, "0.20.0")
+    mac.doctor_crashes = {"0.20.0": ""}
+    evening_on(evening, 0)
+    evening_on(evening, 1)
+    assert mac.version() == INSTALLED
+
+    a_message(evening, 2)
+    evening_on(evening, 2)
+
+    [email] = evening.sent
+    assert top(email.text) == [t.update_failed.format(version="0.20.0", running=INSTALLED)]
+
+
 def test_a_zip_that_doesn_t_verify_is_said_once_though_each_evening_tries_it_again(
         evening, github, mac):  # noqa: F811
     t = TEXT["en"]

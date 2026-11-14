@@ -12,6 +12,15 @@ A program that downloads and runs code in the background is what malware does, a
 - It writes only to the places an install already writes, which `SECURITY.md` lists: Parent Recap's folder and the few files outside it that belong to the install.
 - It reads nothing the maintainers' gateway answers, so the Run Report (ADR 0048) can't start an update or choose what a Household gets: every Household takes the same release from the same public address.
 
+## Check and switch back
+
+Once the installer has switched to the new version, the update is a success only when the installer finished and the new version's `doctor` reports no failure the version before didn't have (its `doctor` runs first). Otherwise the program switches back to the version before, as `parent-recap switch-back` does, keeps the version as failed so that no evening tries it again, and the next Brief says the update failed. Two cases count as a failed update though no check is reported as failing (#976):
+
+- **The installer didn't finish after the switch.** `install.sh` switches before its last steps: the install record, the command, the wilma CLI, the Baileys tree, the Linked Device's restart, Settings and Check, the evening jobs, and the Codex skills where the Household has them. One that ends with a non-zero exit status once it has switched, or is ended at its time limit, left some of them undone, so the update failed whatever `doctor` would say, and `doctor` isn't run. The steps that say they never fail the install end with 0: a wilma CLI or a Baileys tree that couldn't be installed leaves the update a success.
+- **`doctor` didn't run.** A `doctor` that couldn't be started, was ended at its time limit, or ended with a non-zero exit status without printing a failing check, as one that ends with a traceback does, counts as a failure the version before didn't have, also when the version before's `doctor` didn't run either. A `doctor` that exits non-zero because a check failed is read from its lines.
+
+The update log says how the installer ended and why the update was taken as failed.
+
 ## Considered Options
 
 - **Tell the family and let them press a button.** Rejected as the default: a parent who isn't technical leaves it, and the Household stays behind. It remains the path for a release that needs the family (below).
@@ -33,6 +42,6 @@ A program that downloads and runs code in the background is what malware does, a
 - The Python packages an install fetches, pip included, are checked against the SHA-256 checksums the release pins in `app/constraints.txt` (#931), so the signature covers them: one that doesn't match stops the install. `SECURITY.md` says how each download is checked.
 - A Household installed before this never saw the setup page's sentence: it learns of the update from the first Brief after one, which says where to turn it off.
 - GitHub never gives a secret back, so the key in the release workflow can be lost with the environment that holds it. The program therefore trusts two keys: the workflow's, and a backup that a maintainer holds outside GitHub. Signatures are made under a namespace of Parent Recap's own, so one a key made for anything else isn't a release's. A program trusts only the keys it was installed with, so a new key has to arrive in a release signed by one of them; the backup is what signs that release when the workflow's key is lost or leaked. If both are lost, each Household pastes the install line once.
-- `doctor` passing is the whole check. A fault it doesn't see shows the next evening, and going back from there is the family pasting the install line or the maintainers cutting a fix.
+- The installer finishing and `doctor` passing are the whole check ("Check and switch back"). A fault they don't see shows the next evening, and going back from there is the family pasting the install line or the maintainers cutting a fix.
 - Claude Code keeps its own copy of the plugin, which this doesn't update, so the skills there can be older than the program.
 - Windows isn't covered: a background download there is what Defender's rules stop (#591), and it is decided separately.

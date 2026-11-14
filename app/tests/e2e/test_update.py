@@ -140,7 +140,12 @@ class Mac:
         self.installer_fails = False
         self.installer_interrupted = False
         self.installer_cannot_start = False
+        # How the release's install.sh ends once it has switched, where it doesn't finish: its
+        # exit status, or "time limit" when it is ended there.
+        self.installer_ends_after_switch: int | str | None = None
         self.doctor_cannot_run: set[str] = set()  # versions whose doctor doesn't answer
+        # Versions whose doctor ends with a traceback: what it printed before, then a non-zero exit.
+        self.doctor_crashes: dict[str, str] = {}
         self.installs: list[list[str]] = []
         self.install_envs: list[dict[str, str]] = []
         # What the release's install.sh runs once it has switched, as a test gives it: its output.
@@ -176,6 +181,10 @@ class Mac:
             version = self.version()
             if version in self.doctor_cannot_run:
                 raise subprocess.TimeoutExpired(cmd, update.DOCTOR_TIMEOUT)
+            if version in self.doctor_crashes:
+                return subprocess.CompletedProcess(
+                    cmd, 1, self.doctor_crashes[version],
+                    "Traceback (most recent call last):\nKeyError: 'parent@example.com'\n")
             out = "✅ Config file: fine\n" + "".join(f"❌ {item}: broken in {version}\n"
                                                    for item in self.fails.get(version, []))
             return subprocess.CompletedProcess(cmd, 1 if self.fails.get(version) else 0, out, "")
@@ -206,6 +215,11 @@ class Mac:
             raise OSError("bash is missing")
         versions.switch(self.folder, self.built(version, f"x{len(self.installs)}"))
         out = self.after_switch(env) if self.after_switch else ""
+        if self.installer_ends_after_switch == "time limit":
+            raise subprocess.TimeoutExpired(cmd, update.INSTALL_TIMEOUT, output=out)
+        if self.installer_ends_after_switch is not None:  # a step after the switch, under set -e
+            return subprocess.CompletedProcess(cmd, self.installer_ends_after_switch, out,
+                                               "❌ a step after the switch failed\n")
         return subprocess.CompletedProcess(cmd, 0, f"{out}✅ Parent Recap {version} installed\n", "")
 
 
@@ -380,6 +394,74 @@ def test_an_installer_that_fails_leaves_the_running_version_and_the_plugin_copy(
     assert "pip failed" in update_log(mac)
 
 
+@pytest.mark.parametrize("ends, says", [(1, "ended with exit status 1"), (143, "ended with exit status 143"),
+                                        ("time limit", "was ended at its time limit of 60 minutes")])
+def test_an_installer_that_does_not_finish_after_the_switch_is_a_failed_update_and_switches_back(
+        harness, github, mac, capsys, ends, says):
+    plugin_json = a_plugin_copy(mac)
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    mac.installer_ends_after_switch = ends
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 1
+    assert f"its installer didn't finish (install.sh {says})" in out
+    assert "switched back to version 0.19.0" in out
+    assert mac.version() == INSTALLED
+    assert versions.version(versions.previous(mac.folder)) == "0.20.0"
+    # What a switch back restores: the version's own pieces, by its own steps, and its plugin copy.
+    python = str(mac.folder / "app" / ".venv" / "bin" / "python")
+    assert [python, "-m", "family_brief.setup_wilma", "update"] in harness.commands
+    assert json.loads(plugin_json.read_text())["version"] == INSTALLED and no_downloads(mac)
+    state = update.state(mac.folder)
+    assert state["failed"] == "0.20.0"
+    assert state["last_result"] == "0.20.0's installer didn't finish; back on 0.19.0"
+    # The log says how the installer ended and why the update was taken as failed.
+    log = update_log(mac)
+    assert f"install: 0.20.0: install.sh {says}; app points at 0.20.0" in log
+    assert f"switch: 0.20.0 -> 0.19.0: back, as 0.20.0's install.sh {says} after the switch" in log
+    # The new version wasn't checked: only the version before's doctor ran.
+    assert log.count("'s doctor:") == 1
+
+
+def test_an_installer_that_does_not_finish_with_no_version_to_switch_back_to_says_so(
+        harness, github, mac, capsys):
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    mac.installer_ends_after_switch = 1
+    mac.after_switch = lambda env: (mac.folder / "versions" / "previous").unlink() or ""
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 1 and mac.version() == "0.20.0"
+    assert "its installer didn't finish (install.sh ended with exit status 1)" in out
+    assert "no previous version to switch back to" in out
+    assert update.state(mac.folder)["failed"] == "0.20.0"
+    assert update_log(mac).count("no previous version to switch back to") == 1
+
+
+def test_a_wilma_cli_or_a_baileys_tree_that_could_not_be_installed_leaves_the_update_a_success(
+        harness, github, mac, capsys):
+    """install.sh's steps that never fail the install say what they couldn't do and end with 0
+    (test_setup_wilma.py, test_baileys_install.py), so the installer does too."""
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    mac.after_switch = lambda env: (
+        "⚠️  The wilma CLI couldn't be updated to 2.5.0, so Wilma is read with the one already "
+        "there. Run the install again later.\n"
+        "⚠️  The Linked Device's WhatsApp library couldn't be installed. WhatsApp can't be read "
+        "as a Linked Device until it is. Run the install again later.\n")
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 0 and "updated from version 0.19.0 to 0.20.0" in out
+    assert mac.version() == "0.20.0" and update.state(mac.folder)["failed"] is None
+    log = update_log(mac)
+    assert "The wilma CLI couldn't be updated" in log  # the installer's own output is kept
+    assert "install: 0.20.0: install.sh ended with exit status 0; app points at 0.20.0" in log
+
+
 def test_the_update_state_is_kept_across_the_switch_and_the_switch_back(harness, github, mac, capsys):
     github.stable = "0.20.0"
     github.publish("0.20.0")
@@ -443,6 +525,50 @@ def test_a_new_version_whose_doctor_does_not_run_is_switched_back_even_if_the_ol
 
     assert code == 1 and "switched back to version 0.19.0" in out
     assert update.DOCTOR_DIDNT_RUN in out
+    assert mac.version() == INSTALLED
+
+
+@pytest.mark.parametrize("printed", ["", "✅ Config file: fine\n"], ids=["nothing", "passing checks"])
+@pytest.mark.parametrize("before_too", [False, True])
+def test_a_new_version_whose_doctor_crashes_did_not_run_and_is_switched_back(
+        harness, github, mac, capsys, printed, before_too):
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    mac.doctor_crashes = {"0.20.0": printed, **({INSTALLED: printed} if before_too else {})}
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 1 and "switched back to version 0.19.0" in out
+    assert f"check failed where version 0.19.0 passed ({update.DOCTOR_DIDNT_RUN})" in out
+    assert mac.version() == INSTALLED and update.state(mac.folder)["failed"] == "0.20.0"
+    log = update_log(mac)
+    assert ("0.20.0's doctor: 1 failing: doctor didn't run (it ended with exit status 1 and "
+            "printed no failing check)") in log
+    assert "back, as 0.20.0 fails doctor didn't run" in log
+    # What the traceback said isn't kept: it may name what is the Household's.
+    assert "Traceback" not in log and "parent@example.com" not in log
+
+
+def test_a_doctor_that_exits_non_zero_over_a_failing_check_is_read_from_its_lines(harness, github, mac, capsys):
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    mac.fails = {INSTALLED: ["Gmail"], "0.20.0": ["Gmail"]}  # each doctor exits with 1
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 0 and mac.version() == "0.20.0"
+    log = update_log(mac)
+    assert "0.20.0's doctor: 1 failing: Gmail\n" in log and update.DOCTOR_DIDNT_RUN not in log
+
+
+def test_a_doctor_that_crashes_after_a_failing_check_is_read_from_its_lines(harness, github, mac, capsys):
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    mac.doctor_crashes = {"0.20.0": "❌ Calendar: broken in 0.20.0\n"}
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 1 and "check failed where version 0.19.0 passed (Calendar)" in out
     assert mac.version() == INSTALLED
 
 
