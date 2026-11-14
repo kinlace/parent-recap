@@ -10,7 +10,7 @@ whatever its words, and with the AI filter off too.
 
 A message sent to everyone is never held back, whatever words it has: the word lists can't tell a
 notice to the whole school from a message about one child, but the Sources can, each in its record
-(sources.py). One whose record can't tell is checked. match_message() holds that rule, so the
+(`sources`). One whose record can't tell is checked. match_message() holds that rule, so the
 evening run and ai-filter-report both follow it.
 
 The module knows nothing of the Brief, so other tools can check text with it too."""

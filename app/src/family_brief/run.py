@@ -134,7 +134,20 @@ class _CollectorErrors(logging.Handler):
         self.first: dict[str, str] = {}
 
     def emit(self, record: logging.LogRecord) -> None:
-        self.first.setdefault(record.name.rsplit(".", 1)[-1], record.getMessage())
+        self.first.setdefault(_source_of(record.name), record.getMessage())
+
+
+# Where collectors log: in `collectors`, one module per Source named after it, and in a Source's
+# own folder, `sources/<group>/<name>` (ADR 0051), named after the folder.
+COLLECTOR_LOGS = ("family_brief.collectors", "family_brief.sources")
+
+
+def _source_of(logger: str) -> str:
+    """The Source whose collector logs as `logger`."""
+    parts = logger.split(".")
+    if parts[:2] == ["family_brief", "sources"] and len(parts) > 3:
+        return parts[3]
+    return parts[-1]
 
 
 def collect(cfg: Config, state: State, sources: list[str],
@@ -148,8 +161,9 @@ def collect(cfg: Config, state: State, sources: list[str],
     messages: list[Message] = []
     direct_events: list[CalendarEvent] = []
     errors = _CollectorErrors()
-    collectors_log = logging.getLogger("family_brief.collectors")
-    collectors_log.addHandler(errors)
+    collectors_logs = [logging.getLogger(name) for name in COLLECTOR_LOGS]
+    for collectors_log in collectors_logs:
+        collectors_log.addHandler(errors)
     try:
         for record in source_registry.ALL:
             source = record.name
@@ -177,7 +191,8 @@ def collect(cfg: Config, state: State, sources: list[str],
                 if messages_too:
                     coverage[source]["messages"] = messages_too
     finally:
-        collectors_log.removeHandler(errors)
+        for collectors_log in collectors_logs:
+            collectors_log.removeHandler(errors)
     return messages, direct_events
 
 

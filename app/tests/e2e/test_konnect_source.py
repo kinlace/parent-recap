@@ -15,7 +15,7 @@ from conftest import (NOW, SAYS_SOMETHING, konnect_child, konnect_conversation, 
 from fake_sources import KONNECT_PASSWORD
 from nights import normal_night
 
-from family_brief.collectors import konnect
+from family_brief.sources.nl.konnect import collector as konnect
 
 MIA, LEO = "c0ffee0000000000000000000000a001", "c0ffee0000000000000000000000a002"
 TRIP = "Beste ouders, morgen gaan we naar de kinderboerderij. Graag laarzen mee!"

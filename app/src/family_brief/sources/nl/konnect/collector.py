@@ -1,4 +1,4 @@
-"""The Konnect Source: a Dutch childcare or after-school care (BSO) on Konnect's parent portal,
+"""How the Konnect Source is read: a Dutch childcare or after-school care (BSO) on Konnect's parent portal,
 `<provider>.ouderportaal.nl`, read through the JSON its own web app reads, with the parent's
 username and password (ADR 0050).
 
@@ -42,12 +42,13 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from ..system import secrets
-from .base import CalendarEvent, Collected, Message, retry_once_on_timeout, sign_in_failed
+from ....collectors.base import CalendarEvent, Collected, Message, retry_once_on_timeout, sign_in_failed
+from ....system import secrets
 
 if TYPE_CHECKING:
-    from ..config import Config, Kid, KonnectSignin
-    from ..state import State
+    from ....config import Config, Kid
+    from ....state import State
+    from .config import KonnectSignin
 
 log = logging.getLogger(__name__)
 

@@ -16,7 +16,7 @@ from test_uninstall import set_up, uninstall
 from conftest import konnect_child, konnect_conversation, konnect_planned
 from fake_sources import KONNECT_PASSWORD
 from family_brief import ops
-from family_brief.collectors import konnect
+from family_brief.sources.nl.konnect import collector as konnect
 from setup_page import PAGE_DIR, call, source
 from setup_page import clock, page  # noqa: F401
 
