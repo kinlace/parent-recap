@@ -693,6 +693,23 @@ def test_a_release_that_names_no_version_installs_as_any_other(harness, github, 
     assert [env["PARENT_RECAP_UPDATING"] for env in mac.install_envs] == ["1"]
 
 
+@pytest.mark.parametrize("below", [None, "0.20.0"])
+def test_a_release_json_that_also_says_the_version_and_parts_is_read_as_before(
+        harness, github, mac, capsys, below):
+    """The keys of #958 (ADR 0051) change nothing for the version before, which reads only what
+    it reads of needing the family."""
+    github.stable = "0.20.0"
+    github.publish("0.20.0", release_zip("0.20.0", extra={"parent-recap/release.json": json.dumps(
+        {"version": "0.20.0", "background_from": below, "asks": ASKS if below else None,
+         "parts": {"core": "0.19.0", "nl/konnect": "0.20.0"}})}))
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 0 and mac.version() == "0.20.0"
+    assert ("needs you at the computer" in out) == bool(below)
+    assert [("PARENT_RECAP_UPDATING" in env) for env in mac.install_envs] == [not below]
+
+
 # ---------------------------------------------------------------- the setting (#917)
 
 def config_path(harness) -> Path:
