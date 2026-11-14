@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A family's computer skips a release that changes nothing it uses
 
-Proposed by Xi on 2026-11-14 for #947, and waiting for Zhao's answer there: nothing is built until both maintainers agree.
+Decided by Xi on 2026-11-14 for #947.
 
 Every release goes to every Household. A fix to Konnect for a test family in the Netherlands (ADR 0050) is a release that every Finnish family's computer installs too, by itself and with nobody watching (ADR 0047), though nothing it runs has changed. The test families who report a problem still need the fix the same evening, so releasing less often isn't the answer. Instead a release stays what it is, one signed zip under one version, and says which of its parts changed: each release puts on `stable`, beside the version, a small JSON file that names for the core and for each Source the last version that changed it. A family's computer reads it where it already reads the version, after the evening Brief is sent, and installs the release only when the core, or a Source the Household has connected, changed in a version newer than the one installed. Otherwise it stays on its version and the Brief says nothing of a newer one.
 
@@ -26,6 +26,6 @@ For that file to say anything, a Source has to be code a release can change with
 - A path nobody thought about counts as the core's, so the mistake a new file can make is one install too many, never one too few. A file that can't be read, or that doesn't name a Source the Household has, means the release is installed as it is today.
 - A Household that adds a Source later may hold an old copy of it. Adding a Source on the setup page or from a terminal updates Parent Recap first when that Source changed after the installed version.
 - A Household with updates turned off is told in the Brief of a newer release only when it changes something the Household uses.
-- The file must be one more file on `stable`, not a field in `.claude-plugin/plugin.json`, unless Claude Code is shown to accept a field it doesn't know. That makes the evening's look two requests to the same address instead of one, and `SECURITY.md` says so.
+- The file is Parent Recap's own, one more file on `stable`, and not a field in `.claude-plugin/plugin.json`, which is Claude Code's. That makes the evening's look two requests to the same address instead of one, and `SECURITY.md` says so.
 - The hosted server keeps deploying every release (ADR 0045), and Claude Code's own copy of the plugin still follows every version on `stable` (ADR 0002). Windows has no background update to skip (ADR 0047).
 - A change to shared code still reaches every Household. Until the Sources are in their folders nearly every release is one, so the file saves nothing before that refactoring is done.
