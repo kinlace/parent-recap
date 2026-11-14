@@ -33,10 +33,10 @@ import pytest
 import yaml
 
 from family_brief import setup_wilma
-from family_brief.collectors import evaka
 from family_brief.brief_text import TEXT
 from family_brief.config import Config
 from family_brief.sources.fi.eepos import collector as eepos
+from family_brief.sources.fi.evaka import collector as evaka
 from family_brief.last_run import path as last_run_path
 from family_brief.signup import page, status
 from family_brief.signup.host import PROGRAM

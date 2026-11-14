@@ -16,8 +16,8 @@ from test_uninstall import set_up, uninstall
 from conftest import evaka_child, evaka_event
 from fake_sources import EVAKA_PASSWORD
 from family_brief import install_record, ops
-from family_brief.collectors import evaka
 from family_brief.config import Config
+from family_brief.sources.fi.evaka import collector as evaka
 from setup_page import Response, assert_never_leaked, call, config_file, save_progress, source
 from setup_page import clock, page  # noqa: F401
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .fi.eepos.record import EEPOS
+from .fi.evaka.record import EVAKA
 from .nl.konnect.record import KONNECT
 from .nl.socialschools.record import SOCIALSCHOOLS
 from .record import (EVERY_SYSTEM, HOSTED_SYSTEM, NEEDS_PAIRING, Add, Source, Unread, Window,
@@ -63,20 +64,6 @@ WHATSAPP = Source("whatsapp", _same_everywhere("WhatsApp"), _in("collectors.what
                   unread=_in("collectors.whatsapp", "unread"),
                   check=_in("ops", "check_whatsapp"), survey=_in("uninstall", "survey_whatsapp"),
                   notes=_in("uninstall", "whatsapp_notes"), group=lambda m: m.chat_name)
-
-# A public daycare's calendar and messages, read through eVaka's citizen API with a password in
-# the secret store (ADR 0039): its events, the days the unit is closed and the reservation
-# deadline, which go into the .ics, as Eepos's do, and the messages the daycare sends guardians
-# (#786). A sensitive one comes only as a stub, which is withheld and named. Set up one sign-in per
-# city on the setup page's step (#791), from a terminal (`setup evaka`) or at the hosted sign-up
-# (#790), as Eepos's.
-EVAKA = Source("evaka", _same_everywhere("eVaka"), lambda cfg: bool(cfg.evaka.signins),
-               skippable=True, connect_rank=7, collect=_collector("evaka"), counts_events=True,
-               lookback=lambda cfg: cfg.evaka, check=_in("ops", "check_evaka"),
-               check_items={"evaka": "eVaka ({})"}, secrets=_in("collectors.evaka", "secrets_of"),
-               survey=_in("uninstall", "survey_evaka"),
-               sent_to_everyone=_in("collectors.evaka", "sent_to_everyone"),
-               withheld=_in("collectors.evaka", "withheld"), held_back_link=lambda m: m.url)
 
 # Messages from plain files the family puts in a folder it picks, for news from any place Parent
 # Recap doesn't read itself (ADR 0044). Turned on, and its folder chosen, with the manage skill

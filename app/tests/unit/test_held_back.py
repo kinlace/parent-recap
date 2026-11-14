@@ -16,8 +16,9 @@ import yaml
 
 from conftest import evaka_sensitive_thread, evaka_thread
 from family_brief import held_back
-from family_brief.collectors import evaka, gmail, wilma as wilma_source
+from family_brief.collectors import gmail, wilma as wilma_source
 from family_brief.collectors.base import Message
+from family_brief.sources.fi.evaka import collector as evaka
 
 # A message about one person's sensitive situation, written as parents and schools write it:
 # Finnish with its case endings and compounds, Chinese with no spaces between words.

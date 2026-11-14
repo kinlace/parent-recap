@@ -1,6 +1,8 @@
-"""Adding an eVaka sign-in from a terminal (ADR 0039), for the maintainers to turn eVaka on for a
-Household by hand. The setup page's eVaka step (#791) keeps and removes a sign-in through `keep`
-and `remove` here, and the hosted sign-up (#790) reuses `check` and `_save`.
+"""eVaka's setup step, `setup evaka`: adding an eVaka sign-in from a terminal (ADR 0039), for the
+maintainers to turn eVaka on for a Household by hand. `register` adds the command to setup's, which
+lists it among the Sources' (setup_steps). The setup page's eVaka step (#791) keeps and removes a
+sign-in through `keep` and `remove` here, and the hosted sign-up (#790) reuses `check` and `_save`,
+both reaching this module through eVaka's record (`Source.code`).
 
 `setup evaka --city espoo --username EMAIL` has the guardian's password typed at the secret store's
 own prompt in that terminal (`secrets.put_typed`), so it passes through no dialog, chat or command
@@ -14,6 +16,7 @@ replaces that sign-in, and a second city is a sign-in of its own.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import shlex
 import sys
@@ -23,12 +26,13 @@ from typing import Any
 
 import yaml
 
-from . import install_record
-from .collectors import evaka
-from .config import Config, EvakaSignin
-from .setup_report import PLAIN_TERMINAL, keychain_failure, program
-from .setup_save import _write_private
-from .system import secrets
+from .... import install_record
+from ....config import Config
+from ....setup_report import PLAIN_TERMINAL, keychain_failure, program, report
+from ....setup_save import _write_private
+from ....system import secrets
+from . import collector as evaka
+from .config import EvakaSignin
 
 
 def again(city: str, username: str) -> str:
@@ -228,6 +232,25 @@ def _save(path: Path, signin: EvakaSignin) -> None:
         new = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
     Config.model_validate(yaml.safe_load(new))
     _write_private(path, new)
+
+
+def register(steps: Any) -> None:
+    """Adds `setup evaka` to setup's commands, `steps`."""
+    step = steps.add_parser("evaka", help="Add a guardian's sign-in in a city's eVaka: the "
+                            "password typed at the secret store's own prompt, checked at once, "
+                            "the children matched to the Kids by name")
+    step.add_argument("--city", required=True,
+                      help="The city, one of " + ", ".join(evaka.CITIES) + ", or the host of its "
+                           "eVaka")
+    step.add_argument("--username", required=True, help="The guardian's eVaka email")
+    step.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> int:
+    """`setup evaka`. The password is typed at the secret store's own prompt in this terminal, so
+    it reaches no dialog, chat or command line, and the one line of JSON never has it."""
+    result, next_, extra = cmd(args)
+    return report(result, next_, **extra)
 
 
 def cmd(args: Any) -> tuple[str, str | None, dict[str, Any]]:

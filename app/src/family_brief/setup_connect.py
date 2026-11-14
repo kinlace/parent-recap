@@ -7,7 +7,6 @@ read with a typed model through `parse`, so a malformed one gets the same 400 fr
 """
 from __future__ import annotations
 
-import importlib
 import threading
 from collections.abc import Callable
 from http import HTTPStatus
@@ -36,22 +35,16 @@ SKIP_ANSWERS: dict[str, dict[str, Any]] = {
 }
 
 
-def _remove_all(module: str) -> Callable[[Path], None]:
+def _remove_signins(source: source_registry.Source) -> Callable[[Path], None]:
     def remove(config: Path) -> None:
-        importlib.import_module(f"{__package__}.{module}").remove_all(config)
+        source.code("setup").remove_all(config)
     return remove
-
-
-def _remove_eepos(config: Path) -> None:
-    source_registry.EEPOS.code("setup").remove_all(config)
 
 
 # What skipping a Source removes besides its answers: Eepos's and eVaka's sign-ins, each with its
 # password in the secret store, which an answer can't reach.
 SKIP_REMOVES: dict[str, Callable[[Path], None]] = {
-    source_registry.EEPOS.name: _remove_eepos,
-    source_registry.EVAKA.name: _remove_all("setup_evaka"),
-}
+    s.name: _remove_signins(s) for s in (source_registry.EEPOS, source_registry.EVAKA)}
 
 
 class Strict(BaseModel):
