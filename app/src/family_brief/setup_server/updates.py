@@ -50,6 +50,8 @@ class Updates(Phase):
         super().__init__(context)
         self._now: dict[str, Any] | None = None  # Update now, once started
         self._thread: threading.Thread | None = None
+        # The installed version this server was started from, whose code it runs until it stops.
+        self._runs = update.status(str(context.config)).version
         context.newest_first = self.first
 
     def routes(self) -> dict[str, Action]:
@@ -87,16 +89,17 @@ class Updates(Phase):
         part didn't change since the installed version, which one request to `stable` says
         (update.needed_to_add). When it did, the newest release is installed in the background
         as Update now installs it, with that part counted as one the Household uses, and the
-        server then starts again in it. A server that an update on this page already left
-        behind the installed version starts again at once."""
+        server then starts again in it. A server that no longer runs the installed version,
+        after Update now, an evening's update or `parent-recap update` in Terminal while the
+        page was open, starts again once it has answered, without another update."""
         context = self.context
         if part is None:
             return None
         with context.working:
             if context.restart or (self._now or {}).get("result") == "updating":
                 return {"result": "updating-first"}  # the page asks `check_now` how it goes
-            if context.outdated:
-                self._start_again()
+            if update.status(str(context.config)).version != self._runs:
+                context.restart = True  # the server stops once this is answered (server.py)
                 return {"result": "updating-first"}
         try:
             wanted = update.needed_to_add(part, str(context.config))
@@ -157,9 +160,8 @@ class Updates(Phase):
 
     def _updating(self, held: ExitStack, adding: str | None) -> None:
         """The update, holding the run lock `_start` took (`held`), which it lets go of once
-        the update ended, before the page is told how. From then the server runs an older
-        version than the installed one (`outdated`); one that updated to add a Source starts
-        again in the installed version."""
+        the update ended, before the page is told how. A server that updated to add a Source
+        then stops, to start again in the installed version."""
         context = self.context
         with held:
             try:
@@ -177,17 +179,11 @@ class Updates(Phase):
             except Exception as e:  # never leave the page updating
                 done = {"result": "failed", "reason": failure.logged(
                     "Update now stopped", failure.of(e, "The update"))}
-        if done["result"] == "updated":
-            context.outdated = True
-            context.restart = adding is not None  # before the page is told: `check_now` says so
+        if done["result"] == "updated" and adding is not None:
+            context.restart = True  # before the page is told: `check_now` then says to wait
         self._now = done
         if context.restart:
             context.stopped.set()
-
-    def _start_again(self) -> None:
-        """Stops the server, for the installed version to start it again (server.start_again)."""
-        self.context.restart = True
-        self.context.stopped.set()
 
 
 def shown(context: Context) -> dict[str, Any]:

@@ -262,10 +262,43 @@ def test_after_update_now_the_server_starts_again_before_a_source_is_added(
     assert portal.requests == [] and len(mac.installs) == 1 and len(github.requests) == asked
 
 
+def test_after_an_update_started_elsewhere_the_server_starts_again_too(
+        github, harness, mac, page, portal, capsys):  # noqa: F811
+    # The evening's update, or `parent-recap update` in Terminal, while the page is open.
+    at_the_eepos_step(harness)
+    out_on_stable(github, "0.20.0", parts(core="0.20.0"))
+    assert update.update(str(config_file(harness))).result == "updated"
+    asked = len(github.requests)
+
+    r = sign_in(page.url)
+
+    assert r.json() == {"result": "updating-first"}
+    wait_for(lambda: stopped_to_start_again(page))
+    assert portal.requests == [] and len(mac.installs) == 1 and len(github.requests) == asked
+
+
 # ---------------------------------------------------------------- the program started again
 
 class Replaced(Exception):
     """The program was replaced: `os.execve` doesn't come back."""
+
+
+def test_a_server_the_family_ended_with_ctrl_c_is_not_started_again(
+        github, harness, mac, clock, monkeypatch, capsys):  # noqa: F811
+    if not CAN_LISTEN:
+        pytest.skip("needs a port to listen on")
+    server = setup_server.SetupServer(context(config_file(harness), clock))
+    started: list[Any] = []
+    monkeypatch.setattr(os, "execve", lambda *a: started.append(a))
+
+    def interrupted() -> None:
+        server.context.restart = True  # an update for a Source had just ended
+        raise KeyboardInterrupt
+    monkeypatch.setattr(server, "serve_until_idle", interrupted)
+
+    assert page_server.serve(server, opened=True) == 0
+    assert started == []
+    assert capsys.readouterr().out.strip() == page_server.closed_line("en")
 
 
 def test_the_server_that_stopped_is_replaced_by_the_installed_version_at_its_address(
