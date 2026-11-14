@@ -4,11 +4,13 @@ Report may hold: only the listed fields, each a number, a time or one of a fixed
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
 from family_brief import last_run, run
 from family_brief.last_run import peak_mb
+from family_brief.llm import retry
 from family_brief.system import profile_linux, profile_macos, profile_windows
 
 LINUX, MACOS = profile_linux.PROFILE.maxrss_unit, profile_macos.PROFILE.maxrss_unit
@@ -99,9 +101,31 @@ def test_an_exception_is_its_type_and_the_line_of_own_code_never_its_message():
     assert re.fullmatch(r"last_run\.py:[0-9]+", report.exception["at"])
 
 
+class _Cfg:
+    def __init__(self, state: Path) -> None:
+        self.state = state
+
+    def resolved_state_path(self) -> Path:
+        return self.state
+
+
+def test_what_signup_status_reads_is_written_even_when_the_rest_cant_be(tmp_path, monkeypatch):
+    def broken() -> dict[str, str]:
+        raise ValueError("no system")
+    monkeypatch.setattr(last_run, "_about", broken)
+    cfg = _Cfg(tmp_path / "state.json")
+
+    last_run.record(cfg, 1, 12.4, ["wilma-egress"], last_run.Report("schedule"))  # type: ignore[arg-type]
+
+    noted = last_run.read(cfg)  # type: ignore[arg-type]
+    assert noted is not None
+    assert (noted.exit, noted.seconds, noted.causes) == (1, 12, ("wilma-egress",))
+    assert noted.report == {}
+
+
 @pytest.mark.parametrize("error, result", [
     (None, "ok"),
-    ("Claude timed out twice after 600s each", "timed-out"),
+    (f"Claude {retry.TIMED_OUT} after 600s each", "timed-out"),
     ("claude -p failed: API Error: 529 Overloaded", "busy"),
     ("Error: usage limit reached, too many requests", "failed"),  # waiting won't help
     ("Error: something went wrong for teacher.3b@kilo.example.fi", "failed"),
