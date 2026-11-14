@@ -670,9 +670,9 @@ def _ai_result(error: str | None) -> str:
     """The AI's result for the Run Report, from the error the Brief's model call ended on."""
     if error is None:
         return "ok"
-    if "timed out" in error.lower():
+    if retry.TIMED_OUT in error:
         return "timed-out"
-    if retry.busy(error):
+    if retry.busy(error) is not None:
         return "busy"
     return "failed"
 

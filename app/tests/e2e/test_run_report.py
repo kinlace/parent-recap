@@ -120,17 +120,13 @@ def test_a_run_that_ended_on_an_exception_names_its_type_and_line_not_its_messag
     assert report["brief"] == {"outcome": "sent"}  # sent before the archive failed
 
 
-def test_writing_the_report_never_fails_the_run(harness, monkeypatch):
+def test_writing_the_report_never_fails_the_run(harness):
     normal_night(harness, "en")
-
-    def broken() -> dict[str, str]:
-        raise ValueError("no system")
-    monkeypatch.setattr(last_run, "_about", broken)
+    harness.state_path.with_name("last-run.json").mkdir(parents=True)  # a file can't replace it
 
     assert harness.run() == 0
 
     assert len(harness.sent) == 1
-    assert not harness.state_path.with_name("last-run.json").exists()
 
 
 def test_a_run_by_the_scheduler_says_whether_it_was_on_time_or_caught_up(harness, monkeypatch):

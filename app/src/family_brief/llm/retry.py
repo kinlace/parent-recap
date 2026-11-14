@@ -37,10 +37,17 @@ _BUSY = re.compile(r"at capacity|overloaded|rate.?limit|too many requests|"
                    r"service unavailable|bad gateway|temporarily unavailable", re.I)
 
 
-def busy(said: str) -> bool:
-    """Whether `said`, a failed call's output or error, says the model is busy and waiting would
-    help."""
-    return not WONT_PASS.search(said) and _BUSY.search(said) is not None
+def busy(said: str) -> str | None:
+    """What in `said`, a failed call's output or error, says the model is busy, or None when
+    nothing does or waiting won't help."""
+    if WONT_PASS.search(said):
+        return None
+    found = _BUSY.search(said)
+    return found.group(0) if found else None
+
+
+# Ends the error of a call that timed out on both its tries, which the Run Report counts.
+TIMED_OUT = "timed out twice"
 
 
 # How often a running call looks whether the computer slept, in seconds it is awake.
@@ -67,10 +74,7 @@ def busy_reason(proc: subprocess.CompletedProcess, prompt: str | None) -> str | 
     said = f"{proc.stdout}\n{proc.stderr}"
     if prompt:
         said = said.replace(prompt, "")
-    if WONT_PASS.search(said):
-        return None
-    busy = _BUSY.search(said)
-    return busy.group(0) if busy else None
+    return busy(said)
 
 
 def _minutes(seconds: float) -> str:
@@ -197,7 +201,7 @@ def with_retry(call: Callable[[], _R], busy_reason: Callable[[_R], str | None], 
         except (subprocess.TimeoutExpired, TimeoutError) as e:
             log.warning("%s timeout on attempt %d (%ds)", what, attempt, timeout)
             if timed_out:
-                raise RuntimeError(f"{what} timed out twice after {timeout}s each") from e
+                raise RuntimeError(f"{what} {TIMED_OUT} after {timeout}s each") from e
             timed_out = True
             _sleep(5)
             continue

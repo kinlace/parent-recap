@@ -768,7 +768,8 @@ def _check_schedule(cfg: Config, add) -> None:
         add(status, "last-run", f"{hours:.0f} hours ago" + ("" if hours < 30 else
             f" (no run for over a day; {why})") + ended)
     elif report:
-        add(WARN, "last-run", f"no run has finished yet{ended}")
+        # Every run so far ended before it got to mark the state.
+        add(WARN, "last-run", f"no run has got through yet{ended}")
 
 
 def _hours_ago(at: datetime) -> float:

@@ -23,10 +23,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, get_args
 
 from . import wilma_egress
-from .config import Config
+from .config import Config, LLMConfig
 from .system import profile
 
 log = logging.getLogger(__name__)
@@ -48,11 +48,10 @@ CAUSES = frozenset({wilma_egress.CAUSE, NEEDS_PAIRING, NOTHING_READ, UNKNOWN})
 STARTED = ("schedule", "catch-up", "by-hand")
 SYSTEMS = ("macos", "windows", "linux")
 AI_RESULTS = ("ok", "busy", "timed-out", "failed")
-BRIEF_OUTCOMES = ("sent", "nothing-to-tell", "failed")
-BACKENDS = ("claude", "codex", "gateway")  # llm's adapters
+BACKENDS = get_args(LLMConfig.model_fields["backend"].annotation)  # the config's llm.backend
 
 _VERSION = re.compile(r"[0-9]+(\.[0-9]+)*([.+-][0-9A-Za-z.]+)?|unknown")
-_SYSTEM_VERSION = re.compile(r"[0-9][0-9A-Za-z._-]{0,39}|unknown")
+_SYSTEM_VERSION = re.compile(r"[0-9][0-9A-Za-z.+_-]{0,39}|unknown")
 _TYPE = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,99}")  # an exception's class, with its module
 _WHERE = re.compile(r"[a-z_][a-z0-9_]*(/[a-z_][a-z0-9_]*)*\.py:[0-9]{1,6}")  # within family_brief
 _OWN_CODE = Path(__file__).resolve().parent
@@ -180,10 +179,11 @@ def record(cfg: Config, exit: int, seconds: float, causes: list[str] | tuple[str
             noted["peak_mb"] = peak
         if causes:
             noted["causes"] = list(causes)
-        noted.update(_about())
-        if report is not None:
-            noted.update(report.fields())
-        noted = only_listed(noted)
+        try:  # what signup status reads is written even when the rest can't be
+            noted = only_listed({**noted, **_about(), **(report.fields() if report else {})})
+        except Exception as e:  # noqa: BLE001
+            log.warning("The Run Report holds only how the run ended: %s", type(e).__name__)
+            noted = only_listed(noted)
         target = path(cfg)
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_name(f".{target.name}.tmp")
@@ -322,7 +322,8 @@ def how(last: LastRun) -> str:
     elif "brief" in r:
         b = r["brief"]
         said = {"sent": "its Brief was sent", "nothing-to-tell": "nothing to tell, so no Brief"}.get(
-            b["outcome"], f"its Brief wasn't sent ({b.get('cause', UNKNOWN)})")
+            b["outcome"], "no Source could be read" if b.get("cause") == NOTHING_READ
+            else f"its Brief wasn't sent ({b.get('cause', UNKNOWN)})")
     else:
         said = f"exit code {last.exit}"
     failed = [f"{name} ({result['failed']})" for name, result in r.get("sources", {}).items()
