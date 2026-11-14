@@ -111,7 +111,7 @@ Keep `~/.family` and `~/.config/wilmai` out of cloud sync, dotfiles repos and ba
 
 ## How Parent Recap updates itself
 
-On a Mac, Parent Recap installs each new release by itself after the evening Brief (ADR 0047). A program that downloads and runs code in the background deserves a close read, so this section says what the update asks for, what it runs, what it writes and what it never does. [`app/src/family_brief/update.py`](app/src/family_brief/update.py) starts with the same statements, and the tests in `app/tests` show them. On Windows and for a Hosted Household the program doesn't update itself: none of this runs there. How it looks to a family, and how to turn it off, is in [Updating](docs/install.md#updating).
+On a Mac, Parent Recap installs new releases by itself after the evening Brief (ADR 0047), those that change something the Household uses (ADR 0051). A program that downloads and runs code in the background deserves a close read, so this section says what the update asks for, what it runs, what it writes and what it never does. [`app/src/family_brief/update.py`](app/src/family_brief/update.py) starts with the same statements, and the tests in `app/tests` show them. On Windows and for a Hosted Household the program doesn't update itself: none of this runs there. How it looks to a family, and how to turn it off, is in [Updating](docs/install.md#updating).
 
 A Household that set up after this shipped saw it on the setup page, by the switch that turns it off. A Household installed before learns of it from the first Brief after an update, which says that Parent Recap now updates itself and where to turn that off.
 
@@ -121,7 +121,7 @@ The update's own requests go to this repository on GitHub, `kinlace/parent-recap
 
 | Host                                                                    | What is asked                                                                                                                                       |
 | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `raw.githubusercontent.com`                                             | The version the `stable` branch holds (its `.claude-plugin/plugin.json`), once each evening after the Brief                                         |
+| `raw.githubusercontent.com`                                             | `release.json` on the `stable` branch: the version it holds and the last version that changed each part, once each evening after the Brief          |
 | `github.com`                                                            | A newer release's zip and its signature, `releases/download/v<version>/parent-recap-<version>.zip` and `.zip.sig`                                   |
 | `objects.githubusercontent.com`, `release-assets.githubusercontent.com` | The same two files, where GitHub redirects their download. A redirect to any other host, or to an address that isn't HTTPS, is refused, not followed |
 
@@ -130,7 +130,8 @@ Each request is a plain GET over HTTPS with nothing about the Household in it: n
 ### What is verified, and what runs
 
 - The zip is checked against its signature and the two public keys the installed program holds ([Release signatures](#release-signatures)) before anything in it is used. A zip that doesn't verify is deleted, and its installer never starts.
-- The version `stable` holds isn't signed, so after verifying the zip the program reads the version inside it: it must be the one asked for and higher than the installed one. An older signed zip in a newer release's place is refused.
+- The `release.json` that `stable` holds isn't signed, so after verifying the zip the program reads the version inside it: it must be the one asked for and higher than the installed one. An older signed zip in a newer release's place is refused.
+- A release that changes nothing the Household uses isn't installed, and nothing of it is downloaded (ADR 0051). `release.json` on `stable` says, for the core and for each Source whose code is in a folder of its own, the last version that changed it. The program installs the release only when the core, or a Source the Household has connected, changed in a version newer than the installed one; a Source without a folder of its own counts as the core. Where the file doesn't say (it has no `parts`, or lacks the core or a connected Source), or the Household's config can't be read, the release is installed. A file that can't be read ends that evening's look with nothing installed, and the next evening looks again. Since the file isn't signed, a false one could make a Mac skip a release, as holding `stable` back could, or download one, whose signature is then checked as above.
 - Whether a release needs the family at the computer is read from `release.json` inside the verified zip, and nowhere else.
 - Nothing is piped from the network into a shell. The program downloads and unpacks the zip itself, without `curl`, `unzip` or a shell.
 - What runs is the verified release's own installer: its `install.sh`, run as a file with `/bin/bash`. So a shell does run a script during an update, but only one the signature covers.
@@ -177,7 +178,7 @@ It doesn't change the config, the Keychain items Parent Recap stored, the Linked
 
 ### With the switch off
 
-The switch on the setup page, or `parent-recap update off`, turns updating off (the config's `updates.enabled`). Parent Recap then still asks `raw.githubusercontent.com` once each evening which version `stable` holds, that one request and no other, so the Brief can say once that a newer release is out. It downloads nothing: no zip and no signature. `parent-recap update` and **Update now** on the setup page still install the newest release when the family asks.
+The switch on the setup page, or `parent-recap update off`, turns updating off (the config's `updates.enabled`). Parent Recap then still asks `raw.githubusercontent.com` once each evening for `release.json` on `stable`, that one request and no other, so the Brief can say once that a newer release is out, when that release changes something the Household uses. It downloads nothing: no zip and no signature. `parent-recap update` and **Update now** on the setup page still install the newest release when the family asks.
 
 ### The install line
 

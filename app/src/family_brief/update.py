@@ -2,8 +2,9 @@
 
 What it downloads, from where, how it is verified and what it never does:
 
-- It reads the version the `stable` branch holds, and downloads that version's release zip and
-  its signature, from this repository's releases on GitHub. The repository is REPOSITORY, a
+- It reads `release.json` on the `stable` branch, which says the version `stable` holds and the
+  last version that changed each part of it (ADR 0051), and downloads that version's release zip
+  and its signature, from this repository's releases on GitHub. The repository is REPOSITORY, a
   constant: nothing read from the network changes where it downloads from. Its requests go only
   to the hosts in HOSTS, all GitHub's for this repository, and carry nothing about the Household:
   no cookie, no sign-in, no name, no version of its own.
@@ -11,8 +12,15 @@ What it downloads, from where, how it is verified and what it never does:
 - Nothing it downloads is run before its signature verified (release_signature.py), and nothing
   is piped from the network into a shell. What runs is the verified release's own installer, its
   `install.sh`, run as a file.
-- The version `stable` holds isn't signed. After verifying the zip it reads the version inside
+- The file `stable` holds isn't signed. After verifying the zip it reads the version inside
   it: it must be the one asked for and higher than the installed one.
+- A release that changes nothing the Household uses isn't installed, and nothing of it is
+  downloaded (ADR 0051): one whose core, and the part of each Source the Household has connected,
+  was last changed in a version no higher than the installed one. A Source whose code has no
+  folder of its own has no part: its changes are the core's. A file without `parts`, or without
+  the core's or a connected Source's, counts as changed, as does a Household whose config can't
+  be read. So the unsigned file can make a computer skip a release, which holding `stable` back
+  already can, or download one, whose signature is then checked as before.
 - It reads nothing from the maintainers' gateway, so nothing the gateway answers (to a Run
   Report, ADR 0048, or anything else) can start an update or choose a release.
 - In the background the wake's password dialog never starts: the installer is told it runs for
@@ -56,8 +64,9 @@ server is deployed by its maintainers (ADR 0045), and Windows is decided separat
 
 How to turn it off: the config's `updates.enabled`, which the setup page's switch and
 `parent-recap update off` save (`set_enabled`). It is on unless the family turned it off. Turned
-off, the evening run still reads the version `stable` holds, that one request and no other, so
-the next Brief can say once per release that a newer one is out; it downloads nothing.
+off, the evening run still reads the file `stable` holds, that one request and no other, so
+the next Brief can say once per release that a newer one is out, when it changes something the
+Household uses; it downloads nothing.
 `parent-recap update` and the setup page's Update now still install the newest release when the
 family asks. Nothing is downloaded while it is off, so the program can't know whether that
 release needs the family: the Brief says only that it is out. `status` is what the setup page, `doctor` and the report a family sends show of all
@@ -94,7 +103,7 @@ REPOSITORY = "kinlace/parent-recap"
 # files, the releases page, and where GitHub keeps a release's files.
 HOSTS = ("raw.githubusercontent.com", "github.com", "objects.githubusercontent.com",
          "release-assets.githubusercontent.com")
-STABLE_VERSION = f"https://raw.githubusercontent.com/{REPOSITORY}/stable/.claude-plugin/plugin.json"
+STABLE_RELEASE = f"https://raw.githubusercontent.com/{REPOSITORY}/stable/release.json"
 RELEASES = f"https://github.com/{REPOSITORY}/releases/download"
 
 UPDATE = "update"           # in Parent Recap's folder: STATE and the downloads
@@ -105,6 +114,7 @@ LOG = "update.log"          # in Parent Recap's logs folder
 PLUGIN = "plugin"           # the plugin copy the install line puts in Parent Recap's folder
 PREFIX = "parent-recap"     # the folder a release zip unpacks into (scripts/release.py)
 NEEDS_FAMILY = "release.json"  # in a release zip: whether it needs the family (scripts/release.py)
+CORE = "core"               # in release.json's `parts`: all that isn't a Source's own folder
 
 VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 MAX_DOWNLOAD = 200 * 1024 * 1024  # a release zip is a few MB: more is not one
@@ -129,13 +139,15 @@ class Outcome:
     """What `update` did. `result` is one of: not-applicable, up-to-date, waiting (a release not
     yet a day old, for the evening run), needs-family (a release the evening run left for the
     family to start, as it needs them at the computer), available (a newer release the evening
-    run left alone, as updates are off), updated, switched-back, failed. `version` is the one it
-    now runs, where
-    it got that far, and `tried` the release it downloaded to install, where it got that far."""
+    run left alone, as updates are off), skipped (a newer release that changes nothing the
+    Household uses, ADR 0051: `skipped` is its version), updated, switched-back, failed.
+    `version` is the one it now runs, where it got that far, and `tried` the release it
+    downloaded to install, where it got that far."""
     result: str
     message: str
     version: str | None = None
     tried: str | None = None
+    skipped: str | None = None
 
 
 @dataclass(frozen=True)
@@ -193,7 +205,10 @@ def state(folder: Path | None = None) -> dict:
     """The update's state: `last_look` and `last_result` (when it last read `stable`'s version and
     what came of it), `failed` (a version whose install or check failed, or None) and `seen` (the
     version `stable` held when it changed and when this Mac first saw it there, or None), which
-    the evening run's day's wait counts from. For the next Brief (BriefNote): `tell_updated` (the
+    the evening run's day's wait counts from, and `skipped` (the newer version `stable` held at
+    the last look, when it changes nothing the Household uses, or None, ADR 0051): a skipped
+    release isn't `seen`, so the day's wait counts from the look that first found a release this
+    Mac would install. For the next Brief (BriefNote): `tell_updated` (the
     version an evening update installed, until a Brief says so), `tell_failed` (the version whose
     evening update failed and the one still running, until a Brief says so), `told_failed` (the
     last failed version a Brief was to say so of, so each is said once) and `told_updates_itself`
@@ -210,7 +225,7 @@ def state(folder: Path | None = None) -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         data = {}
-    return {"last_look": None, "last_result": None, "failed": None, "seen": None,
+    return {"last_look": None, "last_result": None, "failed": None, "seen": None, "skipped": None,
             "tell_updated": None, "tell_failed": None, "told_failed": None,
             "told_updates_itself": False, "tell_available": None, "told_available": None,
             "waiting": None, "told_waiting": None,
@@ -309,8 +324,10 @@ class Status:
     """The update state, as the setup page, `doctor` and the report a family sends show it: the
     installed `version`; why the program doesn't update itself here (`unavailable`), or None
     where it does; whether updates are `enabled`; when it last looked for a newer release and
-    what came of it; the `newer` version this computer has seen on `stable`, if any; and when
-    that version is `waiting` for the family to start it, what it `asks` of them by language."""
+    what came of it; the `newer` version this computer has seen on `stable`, if any; when
+    that version is `waiting` for the family to start it, what it `asks` of them by language;
+    and the newer version it `skipped` at its last look, as it changes nothing the Household
+    uses (ADR 0051), which is neither `newer` nor `waiting`."""
     version: str
     unavailable: str | None = None
     enabled: bool = True
@@ -319,6 +336,7 @@ class Status:
     newer: str | None = None
     waiting: str | None = None
     asks: dict[str, str] | None = None
+    skipped: str | None = None
 
     def line(self) -> str:
         """All of it on one line, in `doctor`'s words."""
@@ -329,6 +347,9 @@ class Status:
                    "downloads nothing (parent-recap update on turns them on)")
         looked = (f"last looked {self.last_look}: {self.last_result}" if self.last_look
                   else "hasn't looked for a newer release yet")
+        if self.skipped is not None:
+            return (f"version {self.version}; {setting}; {looked}; nothing to install: version "
+                    f"{self.skipped} changes nothing this Household uses")
         if self.waiting is None:
             return f"version {self.version}; {setting}; {looked}"
         asks = asked(self.asks, "en")
@@ -347,6 +368,9 @@ def status(config: str | None = None) -> Status:
     data = state(folder)
     seen = data["seen"]
     on_stable = seen.get("version") if isinstance(seen, dict) else None
+    skipped = _skipped(data, installed)
+    if skipped is not None:
+        on_stable = None  # the last look skipped what `stable` holds: nothing waits to be installed
     waiting = _waiting(data, installed)
     if waiting is not None and waiting["version"] != on_stable:
         waiting = None  # a newer release is out since: what that one asks isn't known yet
@@ -354,7 +378,15 @@ def status(config: str | None = None) -> Status:
                   last_result=data["last_result"],
                   newer=on_stable if isinstance(on_stable, str) and newer(on_stable, installed) else None,
                   waiting=waiting["version"] if waiting else None,
-                  asks=waiting["asks"] if waiting else None)
+                  asks=waiting["asks"] if waiting else None, skipped=skipped)
+
+
+def _skipped(data: dict, installed: str | None) -> str | None:
+    """`state`'s `skipped`, the release the last look skipped, while it is still newer than the
+    `installed` version."""
+    skipped = data["skipped"]
+    return skipped if isinstance(skipped, str) and installed is not None \
+        and newer(skipped, installed) else None
 
 
 def _program_version() -> str:
@@ -397,18 +429,57 @@ def _get(session: requests.Session, url: str) -> requests.Response:
     raise Refused("GitHub redirected the download too many times")
 
 
-def stable_version(session: requests.Session | None = None) -> str:
-    """The version the `stable` branch holds. Raises Refused."""
-    r = _get(session or _session(), STABLE_VERSION)
+@dataclass(frozen=True)
+class _Release:
+    """What `release.json` on `stable` says of the release there (ADR 0051): its `version`, and
+    its `parts`, the last version that changed the core and each Source with a folder of its own,
+    or None when the file has none."""
+    version: str
+    parts: dict | None = None
+
+    def changes(self, installed: str, used: list[str] | None) -> bool:
+        """Whether the release changes something a Household at `installed` uses, whose
+        connected Sources' parts are `used` (None when they can't be told): the core, or one of
+        those parts, was last changed in a version higher than `installed`. What the file doesn't
+        say counts as changed: a file without `parts`, and a part it doesn't name or gives no
+        version for."""
+        if used is None or self.parts is None:
+            return True
+        for part in (CORE, *used):
+            changed = self.parts.get(part)
+            if not isinstance(changed, str) or parsed(changed) is None or newer(changed, installed):
+                return True
+        return False
+
+
+def stable_release(session: requests.Session | None = None) -> _Release:
+    """What `release.json` on the `stable` branch says: the one request a look makes. Raises
+    Refused when it, or the version in it, can't be read."""
+    r = _get(session or _session(), STABLE_RELEASE)
     try:
-        version = json.loads(r.content)["version"]
+        data = json.loads(r.content)
+        version = data["version"]
     except (requests.RequestException, OSError, ValueError, KeyError, TypeError) as e:
         raise Refused("the version on stable couldn't be read") from e
     finally:
         r.close()
     if not isinstance(version, str) or parsed(version) is None:
         raise Refused("the version on stable isn't one Parent Recap knows how to read")
-    return version
+    parts = data.get("parts")
+    return _Release(version.strip(), parts if isinstance(parts, dict) else None)
+
+
+def _used_parts(config: str | None) -> list[str] | None:
+    """The parts of a release that are the Household's connected Sources' (ADR 0051): the folder
+    of each Source its config has read that has one. A Source without a folder has no part, as
+    its changes are the core's. None when the config can't be read, so nothing is skipped."""
+    from . import sources
+    from .config import Config
+    try:
+        cfg = Config.load(config)
+        return [s.part for s in sources.ALL if s.part is not None and s.connected(cfg)]
+    except Exception:  # noqa: BLE001 - no config yet, or one doctor names
+        return None
 
 
 def _download(session: requests.Session, url: str, to: Path) -> None:
@@ -696,29 +767,30 @@ def update(config: str | None = None, *, retry_failed: bool = True,
     log = _Log(folder)
     installed = versions.version(versions.current(folder))  # type: ignore[arg-type]
     session = _session()
-    wanted = _look(folder, log, session, installed)
+    wanted = _look(folder, config, log, session, installed)
     if isinstance(wanted, Outcome):
         return wanted
     seen = _seen(folder, wanted)
+    found = {"seen": seen, "skipped": None}  # a release to install: none is skipped any more
     # Before a version that failed: one the family started and that switched back still waits.
     waiting = _waiting(state(folder), installed)
     if not by_family and waiting is not None and waiting["version"] == wanted:
         log("look", f"{wanted} waits for the family; not downloaded again")
-        _save(folder, last_result=f"{wanted} waits for the family to start it", seen=seen)
+        _save(folder, last_result=f"{wanted} waits for the family to start it", **found)
         return _left_for_the_family(installed, wanted)
     if not retry_failed and state(folder)["failed"] == wanted:
         log("look", f"{wanted} failed before; not tried again")
-        _save(folder, last_result=f"{wanted} failed before; not tried again", seen=seen)
+        _save(folder, last_result=f"{wanted} failed before; not tried again", **found)
         return Outcome("failed", f"Version {wanted} failed its check before, so it wasn't tried "
                        "again. Nothing was changed.", installed)
     if wait is not None:
         first = datetime.fromisoformat(seen["at"])
         if datetime.now(timezone.utc) - first < wait:
             log("look", f"{wanted} first seen {seen['at']}; installed on an evening a day later")
-            _save(folder, last_result=f"{wanted} waits until it is a day old", seen=seen)
+            _save(folder, last_result=f"{wanted} waits until it is a day old", **found)
             return Outcome("waiting", f"Version {wanted} is installed once it has been out a "
                            "day.", installed)
-    _save(folder, seen=seen)
+    _save(folder, **found)
     return _update_to(folder, config, log, session, installed, wanted, by_family, say)
 
 
@@ -738,41 +810,54 @@ def _left_for_the_family(installed: str, wanted: str) -> Outcome:
                    "installed by itself: parent-recap update installs it.", installed)
 
 
-def _look(folder: Path, log: _Log, session: requests.Session, installed: str) -> str | Outcome:
-    """The version `stable` holds, when it is higher than the `installed` one. Otherwise what
-    came of the look, which is recorded: it couldn't be read, or nothing newer is out."""
+def _look(folder: Path, config: str | None, log: _Log, session: requests.Session,
+          installed: str) -> str | Outcome:
+    """The version `stable` holds, when it is higher than the `installed` one and changes
+    something the Household uses (ADR 0051). Otherwise what came of the look, which is recorded:
+    it couldn't be read, nothing newer is out, or the newer release is skipped. A skipped release
+    isn't kept as `seen`: the day's wait counts from the look that first finds a release this Mac
+    would install."""
     try:
-        wanted = stable_version(session)
+        release = stable_release(session)
     except Refused as e:
         log("look", f"installed {installed}; stable couldn't be read: {e}")
         _save(folder, last_result=f"look failed: {e}")
         return Outcome("failed", f"Parent Recap couldn't look for a newer release: {e}. "
                        "Nothing was changed.", installed)
+    wanted = release.version
     log("look", f"installed {installed}, stable holds {wanted}")
     if not newer(wanted, installed):
-        _save(folder, last_result=f"up to date at {installed}", seen=_seen(folder, wanted))
+        _save(folder, last_result=f"up to date at {installed}", seen=_seen(folder, wanted),
+              skipped=None)
         return Outcome("up-to-date", f"Parent Recap is up to date: it runs version {installed}, "
                        "the newest release.", installed)
+    if not release.changes(installed, _used_parts(config)):
+        log("look", f"{wanted} changes nothing this Household uses; not downloaded")
+        _save(folder, last_result=f"{wanted} is out and changes nothing this Household uses, so "
+              "it isn't installed", seen=None, skipped=wanted)
+        return Outcome("skipped", SKIPPED[0].format(version=wanted, installed=installed),
+                       installed, skipped=wanted)
     return wanted
 
 
 def look(config: str | None = None) -> Outcome:
-    """The evening run's look with updates turned off: it reads the version `stable` holds, that
-    one request, and downloads nothing. A newer version is kept for the next Brief to say is
-    out, once per release (BriefNote), and for the setup page to offer."""
+    """The evening run's look with updates turned off: it reads the file `stable` holds, that
+    one request, and downloads nothing. A newer version that changes something the Household
+    uses is kept for the next Brief to say is out, once per release (BriefNote), and for the
+    setup page to offer; one that changes nothing it uses is skipped, and no Brief names it."""
     if (reason := not_applicable(config)) is not None:
         return Outcome("not-applicable", reason)
     folder = own_node.running_from()
     assert folder is not None
     log = _Log(folder)
     installed = versions.version(versions.current(folder))  # type: ignore[arg-type]
-    wanted = _look(folder, log, _session(), installed)
+    wanted = _look(folder, config, log, _session(), installed)
     if isinstance(wanted, Outcome):
         return wanted
     log("look", f"{wanted} is out; updates are off, so nothing was downloaded")
     tell = {} if state(folder)["told_available"] == wanted else {"tell_available": wanted}
     _save(folder, last_result=f"{wanted} is out; not installed, as updates are off",
-          seen=_seen(folder, wanted), **tell)
+          seen=_seen(folder, wanted), skipped=None, **tell)
     return Outcome("available", f"Version {wanted} is out. Updates are off, so it wasn't "
                    "installed: parent-recap update installs it.", installed)
 
@@ -826,7 +911,10 @@ def brief_note(folder: Path, updates_on: bool = True) -> BriefNote | None:
         failed = None
     if updates_on or not isinstance(available, str) or running is None or not newer(available, running):
         available = None
-    waiting = _waiting(data, running) if updates_on else None
+    skipped = _skipped(data, running) is not None  # what `stable` holds isn't for this Household
+    if skipped:
+        available = None
+    waiting = _waiting(data, running) if updates_on and not skipped else None
     if waiting is not None and data["told_waiting"] == waiting["version"]:
         waiting = None
     if updated is None and failed is None and available is None and waiting is None:
@@ -1001,6 +1089,19 @@ OFF = ("Updates are off: Parent Recap still looks once each evening whether a ne
        "release when you choose, and parent-recap update on turns updates on again.")
 
 
+# What `parent-recap update` says of a newer release it didn't install, as it changes nothing the
+# Household uses (ADR 0051), in each of the program's languages, as BUSY is. The first is the
+# Outcome's message.
+SKIPPED = ("Version {version} of Parent Recap is out, but it changes nothing your family uses, so "
+           "it wasn't installed and nothing was downloaded. Parent Recap stays on version "
+           "{installed}.",
+           "Parent Recapista on ilmestynyt versio {version}, mutta se ei muuta mitään, mitä "
+           "perheesi käyttää, joten sitä ei asennettu eikä mitään ladattu. Parent Recap pysyy "
+           "versiossa {installed}.",
+           "Parent Recap 有新版本 {version} 了，但它没有改动你家用到的任何部分，所以没有安装，也没有下载"
+           "任何东西。Parent Recap 仍然是 {installed} 版。")
+
+
 # What `parent-recap update` says when a run or another update holds the run lock, in each of
 # the program's languages: it can't tell which one the family reads.
 BUSY = ("Parent Recap is busy right now: a Brief is being made, or another update is running, so "
@@ -1024,7 +1125,11 @@ def cmd_update(args: argparse.Namespace) -> int:
     except run_lock.Busy:
         print("\n".join(BUSY))
         return run_lock.BUSY
-    print(outcome.message)
+    if outcome.result == "skipped":
+        print("\n".join(text.format(version=outcome.skipped, installed=outcome.version)
+                        for text in SKIPPED))
+    else:
+        print(outcome.message)
     return 1 if outcome.result in ("failed", "switched-back") else 0
 
 

@@ -1847,6 +1847,26 @@ def test_update_now_shows_a_failure_with_the_update_state_to_copy_and_then_the_n
     assert mac.version() == "0.20.0"
 
 
+@pytest.mark.posix
+def test_finish_says_a_release_that_changes_nothing_the_family_uses_is_out_and_not_installed(
+        mac, github, tab, family, health):  # noqa: F811
+    from test_update_skips import KONNECT_ONLY, out_on_stable
+    at_finish(family)
+    out_on_stable(github, "0.20.0", KONNECT_ONLY)
+    # An evening's look found the release, and skipped it: this family has no Konnect (ADR 0051).
+    assert update.update(str(config_file(family)), by_family=False).result == "skipped"
+    tab.reload()
+    version = update.status(str(config_file(family))).version
+
+    line = tab.locator("#finish-updates-skipped")
+    expect(line).to_have_text(text("finish.updates.skipped", skipped="0.20.0", version=version))
+    # It is no update that waits: nothing to press, and nothing failed.
+    expect(button(tab, "finish.updates.now")).to_be_hidden()
+    expect(tab.locator("#finish-updates-waiting")).to_be_hidden()
+    expect(tab.locator("#finish-updates-status")).to_be_hidden()
+    assert mac.version() == version and mac.installs == []
+
+
 @pytest.mark.parametrize("on", ["macos", "windows"])
 def test_where_parent_recap_doesn_t_update_itself_finish_shows_only_the_version(
         tab, family, health, on):

@@ -3343,6 +3343,8 @@ async function switchSending() {
 // that it does, with the switch that turns that off and, once a newer release is out, Update now,
 // whose outcome it shows: updated, nothing newer, failed, or switched back. A release that needs
 // the family at the computer isn't installed by itself: the page says it waits and what it asks.
+// A newer release that changes nothing the Household uses isn't installed at all (ADR 0051): the
+// page says it is out and skipped, by its line or, right after Update now, by that one's outcome.
 
 const UPDATE_MS = 2000;
 const updateStep = { timer: null };
@@ -3368,6 +3370,15 @@ function showUpdates() {
     const said = document.getElementById("finish-updates-asks");
     said.textContent = asks;
     said.hidden = !asks;
+  }
+  const skipped = document.getElementById("finish-updates-skipped");
+  const status = document.getElementById("finish-updates-status");
+  // Not beside Update now's own outcome, which says the same.
+  skipped.hidden = !updates.skipped
+    || (!status.hidden && status.dataset.result === "finish.updates.skipped");
+  if (updates.skipped) {
+    setText(skipped, "finish.updates.skipped",
+      { skipped: updates.skipped, version: updates.version });
   }
 }
 
@@ -3421,7 +3432,7 @@ function updateResult(out) {
   status.dataset.result = "finish.updates." + out.result;
   status.classList.toggle("fail", ["failed", "switched-back"].includes(out.result));
   setText(document.getElementById("finish-updates-message"), "finish.updates." + out.result,
-    { version: out.version, tried: out.tried });
+    { version: out.version, tried: out.tried, skipped: out.skipped });
   showReason("finish-updates", "finish.updates." + out.result, out.reason);
   if (out.updates) {
     page.updates = out.updates;

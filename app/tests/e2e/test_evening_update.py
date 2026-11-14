@@ -386,7 +386,7 @@ def test_with_updates_off_a_release_that_needs_the_family_is_not_downloaded_to_f
             assert evening.run() == 0
 
     assert downloads(github, "0.20.0") == []
-    assert [r["url"] for r in github.requests] == [update.STABLE_VERSION] * 3
+    assert [r["url"] for r in github.requests] == [update.STABLE_RELEASE] * 3
     state = update.state(mac.folder)
     assert state["waiting"] is None and state["tell_available"] == "0.20.0"
 
@@ -405,7 +405,7 @@ def test_with_updates_off_an_evening_run_reads_only_the_version_and_downloads_no
     assert len(evening.sent) == 3  # the Brief went out as on any evening
     assert mac.version() == INSTALLED and mac.installs == []
     # One request an evening, for the version `stable` holds: no zip, no signature.
-    assert [r["url"] for r in github.requests] == [update.STABLE_VERSION] * 3
+    assert [r["url"] for r in github.requests] == [update.STABLE_RELEASE] * 3
     assert not list((mac.folder / update.UPDATE).glob(f"{update.DOWNLOAD}*"))
     state = update.state(mac.folder)
     assert state["last_look"] is not None and "0.20.0 is out" in state["last_result"]
@@ -417,7 +417,7 @@ def test_with_updates_off_and_nothing_newer_out_the_look_says_up_to_date(evening
 
     assert evening.run() == 0
 
-    assert [r["url"] for r in github.requests] == [update.STABLE_VERSION]
+    assert [r["url"] for r in github.requests] == [update.STABLE_RELEASE]
     assert update.state(mac.folder)["last_result"] == f"up to date at {INSTALLED}"
 
 
