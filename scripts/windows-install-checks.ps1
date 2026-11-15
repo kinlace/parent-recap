@@ -17,6 +17,8 @@ $ErrorActionPreference = 'Stop'
 
 $Repo = Split-Path -Parent $PSScriptRoot
 $Install = Join-Path $Repo 'install.ps1'
+# The release's installer install.ps1 hands over to once it has the pinned Python (#990).
+$Installer = Join-Path $Repo 'app\windows_install.py'
 $Installed = "$env:LOCALAPPDATA\ParentRecap"
 $Py = "$Installed\app\.venv\Scripts\python.exe"
 $StartMenu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Parent Recap"
@@ -43,21 +45,29 @@ function Invoke-NewWindow([string]$Code, [switch]$PSReadLine) {
 
 # ---------------------------------------------------------------- the checks
 
-# Prints the published line for a pin that doesn't match, so a bump can copy it.
+# Prints the published line for a pin that doesn't match, so a bump can copy it. install.ps1 pins
+# the Python it downloads, the installer it hands over to the Node (and the same Python, which
+# tests\scripts\test_install_ps1.py checks).
 function Test-Pins {
   $ps1 = Get-Content $Install -Raw
+  $installerText = Get-Content $Installer -Raw
   function Pin([string]$Name) {
     if ($ps1 -notmatch ('(?m)^\s*\$' + $Name + " = '([^']*)'")) { throw "install.ps1 pins no $Name" }
     return $Matches[1]
   }
-  $py = Pin PythonVersion; $build = Pin PythonBuild; $node = Pin NodeVersion
+  function PyPin([string]$Name) {
+    if ($installerText -notmatch ('(?m)^' + $Name + ' = "([^"]*)"')) { throw "windows_install.py pins no $Name" }
+    return $Matches[1]
+  }
+  $py = Pin PythonVersion; $build = Pin PythonBuild; $node = PyPin NODE_VERSION
   # Each list from the first place that serves it, as install.ps1 downloads the Python (#843).
   $pins = @(
     @{ Lists = @("https://releases.astral.sh/github/python-build-standalone/releases/download/$build/SHA256SUMS",
                  "https://github.com/astral-sh/python-build-standalone/releases/download/$build/SHA256SUMS")
-       File = "cpython-$py+$build-x86_64-pc-windows-msvc-install_only.tar.gz"; Pinned = Pin PythonSha256 },
+       File = "cpython-$py+$build-x86_64-pc-windows-msvc-install_only.tar.gz"; Pinned = Pin PythonSha256
+       Script = 'install.ps1' },
     @{ Lists = @("https://nodejs.org/dist/v$node/SHASUMS256.txt")
-       File = "node-v$node-win-x64.zip"; Pinned = Pin NodeSha256 })
+       File = "node-v$node-win-x64.zip"; Pinned = PyPin NODE_SHA256; Script = 'app\windows_install.py' })
   $sums = Join-Path $env:RUNNER_TEMP 'sums.txt'
   $wrong = @()
   foreach ($p in $pins) {
@@ -70,7 +80,7 @@ function Test-Pins {
     $p.List = $got
     $line = Get-Content $sums | Where-Object { $_.Trim() -match ('\s\*?' + [regex]::Escape($p.File) + '$') }
     if (-not $line -or ($line -split '\s+')[0] -ne $p.Pinned) {
-      $wrong += "$($p.File): install.ps1 pins $($p.Pinned), $($p.List) says: $line"
+      $wrong += "$($p.File): $($p.Script) pins $($p.Pinned), $($p.List) says: $line"
     }
   }
   Remove-Item $sums
@@ -93,6 +103,46 @@ function Test-FailedDownload {
   if ($code -ne 1) { throw "exited with $code, not 1" }
   if ($out -notmatch "couldn't download its Python") { throw 'no message about the download' }
   if (Get-ChildItem "$Installed\runtime" -Filter 'python-*') { throw 'a Python was left behind' }
+  Test-FailedHandOver
+}
+
+# Past the hand-over: a release whose installer can't download the Node, run as a file. It gets the
+# real pinned Python, hands over, fails there with install.ps1's words and exit code, and leaves the
+# Python for the next run, which the install check below is.
+function Test-FailedHandOver {
+  $release = Join-Path $env:RUNNER_TEMP 'release-without-node'
+  New-Item -ItemType Directory -Force $release | Out-Null
+  Copy-Item $Install $release
+  Copy-Item (Join-Path $Repo '.claude-plugin') $release -Recurse
+  robocopy (Join-Path $Repo 'app') (Join-Path $release 'app') /E /XD (Join-Path $Repo 'app\tests') /NFL /NDL /NJH /NJS /NP | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "robocopy couldn't copy the release ($LASTEXITCODE)" }
+  $copy = Join-Path $release 'app\windows_install.py'
+  $text = (Get-Content $copy -Raw) -replace '(?m)^NODE_RELEASES = .*$', 'NODE_RELEASES = ("https://github.com/kinlace/no-such-release",)'
+  if ($text -notmatch 'no-such-release') { throw 'windows_install.py has no NODE_RELEASES line to change' }
+  [IO.File]::WriteAllText($copy, $text)
+  try {
+    $out = powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $release 'install.ps1') *>&1 | Out-String
+    $code = $LASTEXITCODE
+  } finally {
+    Remove-Item $release -Recurse -Force
+  }
+  Write-Host $out
+  if ($code -ne 1) { throw "past the hand-over, exited with $code, not 1" }
+  if ($out -notmatch "Parent Recap wasn't installed. Parent Recap couldn't download its Node \(is this PC online\?\)") {
+    throw 'no message about the Node download'
+  }
+  if ($out -notmatch 'Run the install line again') { throw 'no word on what to do' }
+  if (Get-ChildItem "$Installed\runtime" -Filter 'node-*') { throw 'a Node was left behind' }
+  if (Test-Path -LiteralPath "$Installed\runtime\.download") { throw 'the download folder was left behind' }
+  if (-not (Test-Path "$Installed\runtime\python-*\python.exe")) { throw "the Python got before the hand-over wasn't kept" }
+  $log = Get-ChildItem "$Installed\logs\install-*.log" | Sort-Object LastWriteTime | Select-Object -Last 1
+  Get-Content $log.FullName
+  if (-not (Select-String -LiteralPath $log.FullName -Pattern '^Installer: .*windows_install\.py' -Quiet)) {
+    throw "the install log doesn't say the installer ran"
+  }
+  if (-not (Select-String -LiteralPath $log.FullName -Pattern 'no-such-release.* failed' -Quiet)) {
+    throw "the install log doesn't say which download failed"
+  }
 }
 
 # A family's PowerShell window has PSReadLine loaded, which CI's shell and -File don't, and its
@@ -115,9 +165,16 @@ function Test-NetTypes {
 }
 
 function Test-Install {
-  powershell -NoProfile -ExecutionPolicy Bypass -Command 'Import-Module PSReadLine; & $env:PARENT_RECAP; exit $LASTEXITCODE'
-  if ($LASTEXITCODE -ne 0) { throw "exited with $LASTEXITCODE" }
+  $out = powershell -NoProfile -ExecutionPolicy Bypass -Command 'Import-Module PSReadLine; & $env:PARENT_RECAP; exit $LASTEXITCODE' *>&1 |
+    Out-String
+  $code = $LASTEXITCODE
+  Write-Host $out
+  if ($code -ne 0) { throw "exited with $code" }
   Get-Content "$Installed\logs\*.log" -Tail 20
+  # It picks up where the failed hand-over above stopped: the Python is there, the Node isn't.
+  if ($out -match "own Python") { throw 'it downloaded the Python the run before had left' }
+  if ($out -notmatch "own Node") { throw "it didn't download the Node, which only the installer it hands over to does" }
+  if ($out -notmatch 'is installed in') { throw "the installer it hands over to didn't say the install worked" }
   # A step that ends in a traceback still lets the install go on, so only its log tells (#596).
   if (Select-String -Path "$Installed\logs\*.log" -Pattern '^Traceback' -Quiet) { throw 'a Python step ended in a traceback' }
 }

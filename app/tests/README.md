@@ -36,7 +36,7 @@ folder's name, so `-m <layer>` runs one layer. A file outside these folders stop
 | `integration` | `tests/integration/` | In-memory fakes around one module, which is called through its interface.                                                                                                  |
 | `e2e`         | `tests/e2e/`         | Only the OS and network edge and the model (`conftest.py`'s harness); drives `main()` or the setup page over HTTP.                                                         |
 | `adapters`    | `tests/adapters/`    | The command an OS adapter calls (`launchctl`, `security`, `pmset`), or nothing where the real OS runs (Credential Manager, Task Scheduler); the `_windows` twins are here. |
-| `scripts`     | `tests/scripts/`     | The downloads and programs `install.sh`, `install.ps1`, `release.py` and `issue-loop.sh` call; the workflows are read as written.                                          |
+| `scripts`     | `tests/scripts/`     | The downloads and programs `install.sh`, `install.ps1`, `windows_install.py`, `release.py` and `issue-loop.sh` call; the workflows are read as written.                                          |
 
 A branch a unit test covers gets no end-to-end test of its own (#427). Every layer's folder is on
 the import path, so a test may import a helper from a test in another layer.
@@ -235,7 +235,8 @@ slowest tests, so add one for a main path, not for each result.
 | File                       | What it covers                                                  |
 | -------------------------- | --------------------------------------------------------------- |
 | `test_install.py`          | `install.sh`: pinned Python and Node, prebuilt packages only, each by its checksum |
-| `test_install_ps1.py`      | `install.ps1` stays in step with `install.sh`                   |
+| `test_install_ps1.py`      | `install.ps1` stays in step with `install.sh`, and hands over  |
+| `test_windows_install.py`  | `app/windows_install.py`, the Windows install's steps once a Python is there: standard library only, runtimes by checksum, its exit code and words |
 | `test_one_line_install.py` | `get.sh`, the line a family pastes                              |
 | `test_schoolsoft_capture_line.py` | The SchoolSoft capture's `get.sh` and `remove`, and the tool run without Parent Recap |
 | `test_codex_install.py`    | `install.sh --codex` installs the skills for Codex              |
@@ -334,8 +335,8 @@ a step of their own, after Chromium is installed. They are the page script's tes
 sends the page (`as_on` in `test_setup_page_browser.py`).
 
 CI runs the suite on macOS, on Linux all but the browser tests, and on Windows the unit,
-integration and adapter layers and the end-to-end tests marked `windows`. `install.ps1` itself
-runs for real in CI's windows-install job, and `install.sh` on Linux in its linux-install job.
+integration and adapter layers and the end-to-end tests marked `windows`. `install.ps1` and the
+`windows_install.py` it hands over to run for real in CI's windows-install job, and `install.sh` on Linux in its linux-install job.
 
 ## Golden files
 

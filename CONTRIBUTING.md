@@ -148,7 +148,7 @@ curl -fsSL https://releases.astral.sh/github/python-build-standalone/releases/do
 
 That's Astral's mirror of the release, which uv downloads from: both installs try it first and then GitHub's `https://github.com/astral-sh/python-build-standalone/releases/download/<build>/`, which serves the same files (#843), so only the checksums decide what gets installed.
 
-`install.ps1`, the Windows install, pins the same Python: change `$PythonVersion` and `$PythonBuild` there too, and `$PythonSha256` to the checksum of `cpython-<version>+<build>-x86_64-pc-windows-msvc-install_only.tar.gz` from the same `SHA256SUMS`. CI's windows-install and linux-install jobs check the pinned checksums against the published lists and prints the published line when one doesn't match; `tests/scripts/test_install_ps1.py` checks both scripts pin the same versions.
+The Windows install pins the same Python twice: in `install.ps1`, which downloads it before any Python is there, and in `app/windows_install.py`, the installer `install.ps1` hands over to, which downloads it itself when the Python it runs on isn't the release's (as an update's may be). Change `$PythonVersion` and `$PythonBuild` in `install.ps1`, and `PYTHON_VERSION` and `PYTHON_BUILD` in `app/windows_install.py`, and in both `$PythonSha256` and `PYTHON_SHA256` to the checksum of `cpython-<version>+<build>-x86_64-pc-windows-msvc-install_only.tar.gz` from the same `SHA256SUMS`. CI's windows-install and linux-install jobs check the pinned checksums against the published lists and prints the published line when one doesn't match; `tests/scripts/test_install_ps1.py` checks the three files pin the same versions, and the two Windows ones the same checksum.
 
 A new minor Python also goes into `PYTHONS` in `scripts/check_wheels.py`. Each version goes into its own folder.
 
@@ -160,7 +160,7 @@ A new minor Python also goes into `PYTHONS` in `scripts/check_wheels.py`. Each v
 curl -fsSL https://nodejs.org/dist/v<version>/SHASUMS256.txt | grep -E '(darwin|linux)-(arm64|x64)\.tar\.xz$'
 ```
 
-In `install.ps1`, change `$NodeVersion` too, and `$NodeSha256` to the checksum of `node-v<version>-win-x64.zip` from the same `SHASUMS256.txt`.
+The Windows install's Node is pinned in `app/windows_install.py`, the installer `install.ps1` hands over to, which downloads it: change `NODE_VERSION` there too, and `NODE_SHA256` to the checksum of `node-v<version>-win-x64.zip` from the same `SHASUMS256.txt`.
 
 The wilma CLI already installed keeps working on a new Node: the next install replaces the old one.
 

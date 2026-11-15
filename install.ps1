@@ -7,6 +7,10 @@
 # Pasted that way, it downloads the `stable` branch into %LOCALAPPDATA%\ParentRecap\plugin first,
 # installs from there, and opens the setup page. Run as a file next to `app\` (a checkout or an
 # unzipped release), it installs from that folder, and only installs.
+# It does only what must happen before any Python is there: the checks below, the download of
+# `stable` and Parent Recap's own Python, by checksum. Then it hands over to the release's
+# app\windows_install.py on that Python, which does the install's other steps (#990), so that an
+# update can run them without starting a .ps1 file.
 # Needs no administrator rights, and refuses to run as administrator (#464): it writes only under %LOCALAPPDATA%\ParentRecap and setup's
 # record (~\.family\install-record.json), so `parent-recap uninstall` can remove what it made.
 # Safe to re-run: a run that stopped partway picks up from where it got to, and a run with
@@ -37,8 +41,8 @@
   $Tar = Join-Path $env:SystemRoot 'System32\tar.exe'
 
   # -- Parent Recap's own Python (ADR 0011)
-  # The python-build-standalone build install.sh pins, for Windows x64. To bump it, see
-  # CONTRIBUTING.md.
+  # The python-build-standalone build install.sh pins, for Windows x64, the same one
+  # app\windows_install.py pins. To bump it, see CONTRIBUTING.md.
   $PythonVersion = '3.13.16'
   $PythonBuild = '20261003'
   $PythonSha256 = '5e100ee3d592ff500f4408a624f054d202e32d9dba8a12b2226bef81083fd778'
@@ -51,15 +55,6 @@
   $PythonUrls = @($PythonReleases | ForEach-Object { "$_/$PythonBuild/$PythonFile" })
   $Runtime = Join-Path $Runtimes "python-$PythonVersion-$PythonBuild"
   $Python = Join-Path $Runtime 'python.exe'
-
-  # -- Parent Recap's own Node (ADR 0011)
-  # The nodejs.org LTS release install.sh pins, for Windows x64, which the wilma CLI runs on
-  # (own_node.py). To bump it, see CONTRIBUTING.md.
-  $NodeVersion = '24.21.0'
-  $NodeSha256 = '158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541'
-  $NodeReleases = 'https://nodejs.org/dist'
-  $NodeFile = "node-v$NodeVersion-win-x64.zip"
-  $NodeRuntime = Join-Path $Runtimes "node-v$NodeVersion"
 
   $TryAgain = 'Run the install line again. If it fails again, tell the Parent Recap team.'
 
@@ -208,15 +203,6 @@
     return $plugin
   }
 
-  # The folder of the Python the venv in $App was made with, from its pyvenv.cfg; empty without one.
-  function Get-VenvHome {
-    $cfg = Join-Path $App '.venv\pyvenv.cfg'
-    if (-not (Test-Path -LiteralPath $cfg -PathType Leaf)) { return '' }
-    $line = Get-Content -LiteralPath $cfg | Where-Object { $_ -match '^home\s*=' } | Select-Object -First 1
-    if ($line) { return ($line -replace '^home\s*=\s*', '').TrimEnd('\') }
-    return ''
-  }
-
   function Install-ParentRecap {
     if ([Environment]::OSVersion.Platform -ne 'Win32NT') {
       Stop-Install 'This install line is for Windows.' 'On a Mac, paste the line in the README into Terminal.'
@@ -237,7 +223,7 @@
     New-Item -ItemType Directory -Path $Target, $Logs, $Runtimes -Force | Out-Null
     $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
     $pc = if ($os) { "$($os.Caption) $($os.Version)" } else { 'Windows' }
-    Set-Content -LiteralPath $Log -Value "PC: x64, $pc, Python $PythonVersion, Node $NodeVersion" -Encoding utf8
+    Set-Content -LiteralPath $Log -Value "PC: x64, $pc, Python $PythonVersion" -Encoding utf8
 
     $here = $PSScriptRoot
     $fromDownload = -not ($here -and (Test-ParentRecap $here) -and
@@ -245,114 +231,37 @@
     $plugin = if ($fromDownload) { Get-Stable } else { $here }
 
     Install-Runtime 'Python' $PythonUrls $PythonSha256 $Runtime 'python.exe'
-    Install-Runtime 'Node' "$NodeReleases/v$NodeVersion/$NodeFile" $NodeSha256 $NodeRuntime 'node.exe'
 
-    # The program, without what belongs to this PC (the venv, Python's caches and VERSION) and
-    # without the tests, which don't go to families.
-    $code = Invoke-Logged robocopy @((Join-Path $plugin 'app'), $App, '/MIR',
-      '/XD', '.venv', '__pycache__', '*.egg-info', (Join-Path $plugin 'app\tests'), '/XF', 'VERSION',
-      '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
-    if ($code -ge 8) { Stop-Install "Parent Recap couldn't copy its program into $App (is the disk full?)." }
-    $manifest = Get-Content -LiteralPath (Join-Path $plugin '.claude-plugin\plugin.json') -Raw | ConvertFrom-Json
-    $version = if ($manifest.PSObject.Properties['version']) { $manifest.version } else { 'unknown' }
-    $versionFile = Join-Path $App 'VERSION'
-    if (-not (Test-Path -LiteralPath $versionFile) -or (Get-Content -LiteralPath $versionFile -Raw).Trim() -ne $version) {
-      Set-Content -LiteralPath $versionFile -Value $version -Encoding ascii
-    }
-
-    # A venv on another Python, such as an older pinned one, is made again.
-    $venvPython = Join-Path $App '.venv\Scripts\python.exe'
-    if ((Get-VenvHome) -ne $Runtime -or -not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
-      Remove-Folder (Join-Path $App '.venv')
-      if ((Invoke-Logged $Python @('-m', 'venv', (Join-Path $App '.venv'))) -ne 0) {
-        Stop-Install "Parent Recap couldn't set up its Python in $App. The full log is at $Log"
-      }
-    }
-
-    # Prebuilt packages only, at the versions that were tested and checked against the checksums
-    # app\constraints.txt holds (see CONTRIBUTING.md), as install.sh installs them: pip first, then
-    # what the program needs (app\requirements.py names it), then the program itself from $App,
-    # which pip can't check by checksum, with nothing of its own. What they were installed for is
-    # noted in the venv: the same again needs no pip, so a run with nothing new to do needs no
-    # network. The program's own code is installed in place (-e), so a new copy of it needs no pip
-    # either.
-    $stamp = Join-Path $App '.venv\parent-recap-packages.txt'
-    $had = if (Test-Path -LiteralPath $stamp -PathType Leaf) { (Get-Content -LiteralPath $stamp -Raw).Trim() } else { '' }
-    $packages = @(
-      (Get-FileHash -LiteralPath (Join-Path $App 'constraints.txt') -Algorithm SHA256).Hash,
-      (Get-FileHash -LiteralPath (Join-Path $App 'pyproject.toml') -Algorithm SHA256).Hash
-    ) -join ' '
-    $pipFailed = "Parent Recap couldn't install its Python packages. The full log is at $Log"
-    $sendLog = 'Run the install line again. If it fails again, send that log to the Parent Recap team.'
-    $pip = @('-m', 'pip', 'install', '--only-binary', ':all:', '--disable-pip-version-check',
-      '--require-hashes', '-c', (Join-Path $App 'constraints.txt'))
-    # The packages the program needs, with those of $Extras, by checksum.
-    function Install-Packages([string[]]$Extras) {
-      $names = @(& $venvPython -I (Join-Path $App 'requirements.py') @Extras)
-      if ($LASTEXITCODE -ne 0) { Stop-Install $pipFailed $sendLog }
-      if ($names.Count -gt 0 -and (Invoke-Logged $venvPython ($pip + $names)) -ne 0) { Stop-Install $pipFailed $sendLog }
-    }
-    $installed = $false
-    if (-not $had.StartsWith("$packages ")) {
-      Write-Host "Installing Parent Recap's Python packages..."
-      if ((Invoke-Logged $venvPython ($pip + @('pip'))) -ne 0) { Stop-Install $pipFailed $sendLog }
-      Install-Packages @()
-      if ((Invoke-Logged $venvPython @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-deps',
-          '--no-build-isolation', '-e', $App)) -ne 0) {
-        Stop-Install $pipFailed $sendLog
-      }
-      $installed = $true
-    }
-    # Google's packages only for a Household whose config uses Google Calendar, which the program
-    # installed above reads: turning it on in manage runs the install again, and an update keeps
-    # them.
-    $google = (Invoke-Logged $venvPython @('-m', 'family_brief.google_packages', 'wanted')) -eq 0
-    $wanted = "$packages google=$google"
-    if ($google -and ($installed -or $had -ne $wanted)) {
-      if (-not $installed) { Write-Host "Installing Parent Recap's Python packages..." }
-      Install-Packages @('google')
-      $installed = $true
-    }
-    if ($had -ne $wanted) { Set-Content -LiteralPath $stamp -Value $wanted -Encoding ascii }
-    if (-not $installed) { Write-Host "Parent Recap's Python packages are up to date." }
-
-    # Only once the program runs on the new Python, so a failed pip step keeps the old one. The
-    # wilma CLI runs on whichever Node is there, so an old Node goes with it.
-    Get-ChildItem -LiteralPath $Runtimes -Directory |
-      Where-Object { ($_.Name -like 'python-*' -or $_.Name -like 'node-*') -and
-        $_.FullName -ne $Runtime -and $_.FullName -ne $NodeRuntime } |
-      Remove-Item -Recurse -Force
-    $record = @('-m', 'family_brief.install_record', 'program', $App, 'logs', $Logs, 'runtime', $Runtimes)
-    if ($fromDownload) { $record += @('plugin', $plugin) }
-    if ((Invoke-Logged $venvPython $record) -ne 0) {
-      Stop-Install "Parent Recap couldn't write setup's record. The full log is at $Log"
-    }
-    # `parent-recap` in a folder of its own, $Target\bin, on the user's PATH, so every new
-    # PowerShell window runs it without its full path (#560).
-    if ((Invoke-Logged $venvPython @('-m', 'family_brief.command_path', 'install', $Target)) -ne 0) {
-      Stop-Install "Parent Recap couldn't put its command on the PATH. The full log is at $Log"
-    }
-    # A Household that connected Wilma gets the wilma CLI version this release pins (ADR 0008), on
-    # the Node above. One that couldn't be updated keeps working, and the next install tries again.
-    Invoke-Logged $venvPython @('-m', 'family_brief.setup_wilma', 'update') | Out-Null
-    # The Baileys tree the Linked Device runs on (ADR 0025), as install.sh installs it.
-    Invoke-Logged $venvPython @('-m', 'family_brief.baileys_install', 'install') | Out-Null
-    # Parent Recap Settings and Parent Recap Check in the Start menu (ADR 0042), as install.sh
-    # puts them in ~/Applications: made again by every install, so an update brings them. It
-    # never fails the install.
-    Invoke-Logged $venvPython @('-m', 'family_brief.program_entries', 'install', $Target) | Out-Null
-
-    Write-Host "Parent Recap $version is installed in $App"
-    # This window's PATH is the one it opened with, before the user's PATH had the folder.
-    Write-Host "   Command: parent-recap in a new PowerShell window; in this one: $(Join-Path $Target 'bin\parent-recap.cmd')"
+    # What the release's own installer is run with: by path and with -I, so the standard library
+    # only, on the Python above, appending to this log.
+    $installer = @('-I', (Join-Path $plugin 'app\windows_install.py'), '--log', $Log)
+    if ($fromDownload) { $installer += '--downloaded' }
+    return $installer
   }
 
   $failed = $false
   try {
-    Install-ParentRecap
+    $installer = @(Install-ParentRecap)
   } catch {
     Write-Host "Parent Recap wasn't installed. $($_.Exception.Message)" -ForegroundColor Red
     $failed = $true
+  }
+  # The hand-over: the release's installer does the rest (the Node, the program, its venv and
+  # packages, the record, the command, the Start menu entries), says in this window what it does
+  # and, when a step fails, what the family can do, and exits with 1 then. Started here rather than
+  # inside a function, so what it says comes to the window as it goes.
+  if (-not $failed) {
+    $before = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+      & $Python @installer
+      $failed = $LASTEXITCODE -ne 0
+    } catch {
+      Write-Host "Parent Recap wasn't installed. $($_.Exception.Message)`n   $TryAgain" -ForegroundColor Red
+      $failed = $true
+    } finally {
+      $ErrorActionPreference = $before
+    }
   }
   # Run as a file, a failed install exits with 1, and one that worked with 0, whatever the last
   # program it ran exited with. Pasted into PowerShell, exiting would close the family's window,

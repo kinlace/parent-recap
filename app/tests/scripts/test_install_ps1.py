@@ -1,5 +1,6 @@
-"""`install.ps1`, the Windows install (ADR 0019), stays in step with `install.sh`. CI's
-windows-install job runs it for real on a clean Windows runner, with the real downloads."""
+"""`install.ps1`, the Windows install (ADR 0019), stays in step with `install.sh` and hands over to
+the release's `app/windows_install.py` once it has the pinned Python (#990). CI's windows-install
+job runs it for real on a clean Windows runner, with the real downloads."""
 from __future__ import annotations
 
 import re
@@ -14,16 +15,37 @@ def pins(script: str, pattern: str) -> dict[str, str]:
 
 def test_windows_gets_the_python_and_node_versions_macos_gets():
     sh = pins("install.sh", r"^(PYTHON_VERSION|PYTHON_BUILD|NODE_VERSION)=(\S+)$")
-    ps1 = pins("install.ps1", r"^\s*\$(PythonVersion|PythonBuild|NodeVersion) = '([^']*)'$")
+    ps1 = pins("install.ps1", r"^\s*\$(PythonVersion|PythonBuild|PythonSha256) = '([^']*)'$")
+    py = pins("app/windows_install.py", r'^(PYTHON_VERSION|PYTHON_BUILD|PYTHON_SHA256|NODE_VERSION) = "([^"]*)"$')
 
-    assert ps1 == {"PythonVersion": sh["PYTHON_VERSION"], "PythonBuild": sh["PYTHON_BUILD"],
-                   "NodeVersion": sh["NODE_VERSION"]}
+    assert (ps1["PythonVersion"], ps1["PythonBuild"]) == (sh["PYTHON_VERSION"], sh["PYTHON_BUILD"])
+    # The Python install.ps1 downloads is the one the installer it hands over to expects.
+    assert (py["PYTHON_VERSION"], py["PYTHON_BUILD"], py["PYTHON_SHA256"]) == (
+        ps1["PythonVersion"], ps1["PythonBuild"], ps1["PythonSha256"])
+    assert py["NODE_VERSION"] == sh["NODE_VERSION"]
+
+
+def test_it_hands_over_to_the_release_s_installer_once_it_has_the_pinned_python():
+    script = (ROOT / "install.ps1").read_text()
+    body = script.split("function Install-ParentRecap {", 1)[1]
+
+    assert body.index("Install-Runtime 'Python'") < body.index("'app\\windows_install.py'")
+    # By path and with -I, on the pinned Python, appending to the same dated log.
+    assert "$installer = @('-I', (Join-Path $plugin 'app\\windows_install.py'), '--log', $Log)" in body
+    assert "if ($fromDownload) { $installer += '--downloaded' }" in body
+    handover = script.split("$installer = @(Install-ParentRecap)", 1)[1]
+    assert "& $Python @installer\n      $failed = $LASTEXITCODE -ne 0" in handover
+    # The Node and everything after the Python are the installer's.
+    assert "Node" not in script_without_comments(script)
+    assert "family_brief" not in script_without_comments(script.split("$failed = $false", 1)[0])
 
 
 def test_the_pasted_line_ends_on_the_setup_page_and_a_file_run_only_installs():
     script = (ROOT / "install.ps1").read_text()
-    end = script.split("Install-ParentRecap\n  } catch", 1)[1]
+    end = script.split("$installer = @(Install-ParentRecap)\n  } catch", 1)[1]
 
+    # The hand-over comes before the exit and the page, so either waits for its result.
+    assert end.index("& $Python @installer") < end.index("if ($PSCommandPath) { exit [int]$failed }")
     # As get.sh on a Mac: the family pastes one line and lands on the page, served from the window.
     opened = re.search(r"if \(-not \$failed -and -not \$PSCommandPath\) \{(.*?)\n  \}", end, re.S)
     assert opened, "the page opens only after an install that worked, pasted"
@@ -43,42 +65,12 @@ def test_run_as_administrator_it_stops_before_it_makes_anything():
     assert "Run as administrator" in body.split("if (Test-Elevated) {", 1)[1].split("}", 1)[0]
 
 
-def test_as_install_sh_it_installs_the_baileys_tree_once_the_runtimes_are_recorded():
-    # CI's windows-install job runs it for real; this says where.
-    body = (ROOT / "install.ps1").read_text().split("function Install-ParentRecap {", 1)[1]
-
-    recorded = body.index("'-m', 'family_brief.install_record'")
-    assert recorded < body.index("@('-m', 'family_brief.baileys_install', 'install')")
-
-
-def test_as_install_sh_it_puts_the_command_on_the_path_once_the_program_is_recorded():
-    # CI's windows-install job opens a PowerShell with the user's PATH and runs it from there.
-    body = (ROOT / "install.ps1").read_text().split("function Install-ParentRecap {", 1)[1]
-
-    recorded = body.index("'-m', 'family_brief.install_record'")
-    assert recorded < body.index("@('-m', 'family_brief.command_path', 'install', $Target)")
-    # This window's PATH is the one it opened with, so it also says the full path.
-    said = body.split("is installed in $App", 1)[1].split("\n  }", 1)[0]
-    assert "new PowerShell window" in said and "'bin\\parent-recap.cmd'" in said
-    assert "parent-recap.exe" not in script_without_comments(body)
-
-
-def test_as_install_sh_it_makes_settings_and_check_on_every_run_once_the_program_is_recorded():
-    # On every run, so an update brings them (ADR 0042); CI's windows-install job checks the
-    # Start menu has them, and that uninstall takes them out.
-    body = (ROOT / "install.ps1").read_text().split("function Install-ParentRecap {", 1)[1]
-    made = "Invoke-Logged $venvPython @('-m', 'family_brief.program_entries', 'install', $Target)"
-
-    assert body.index("'-m', 'family_brief.install_record'") < body.index(made)
-    # Not inside any branch that a run with nothing new to do skips.
-    assert f"\n    {made} | Out-Null\n" in body
-
-
 def script_without_comments(script: str) -> str:
     return "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("#"))
 
 
-def test_install_ps1_is_ascii_only():
+def test_install_ps1_and_its_installer_are_ascii_only():
     # Windows PowerShell 5.1 reads a script file without a byte order mark in the PC's own code
-    # page, so anything else would come out garbled.
+    # page, so anything else would come out garbled; the installer's text goes to the same window.
     (ROOT / "install.ps1").read_bytes().decode("ascii")
+    (ROOT / "app" / "windows_install.py").read_bytes().decode("ascii")
