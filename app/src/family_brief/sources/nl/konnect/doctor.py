@@ -38,8 +38,9 @@ def check(cfg: Config, add: Add, config: str | None = None) -> None:
         messages = checked["messages"]
         read = (f"{messages} message{'s' * (messages != 1)} in the last day" if isinstance(messages, int)
                 else "no messages")
-        detail = (f"signed in as {signin.username}, {checked['events']} planned times in the next "
-                  f"{konnect.LOOKAHEAD_DAYS} days, {read}; children: {', '.join(named) or '(none)'}")
+        events = checked["events"]
+        detail = (f"signed in as {signin.username}, {events} planned time{'s' * (events != 1)} in the "
+                  f"next {konnect.LOOKAHEAD_DAYS} days, {read}; children: {', '.join(named) or '(none)'}")
         if isinstance(messages, str):
             add(WARN, "konnect", f"{detail}. The messages couldn't be read: {messages}", subject=where)
         elif unmatched := [c.called() for c, kid in checked["children"] if not kid]:
