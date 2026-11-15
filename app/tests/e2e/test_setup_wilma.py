@@ -32,7 +32,7 @@ from typing import Any
 import pytest
 
 import fake_node
-from family_brief import failure, install_record, setup_server, setup_wilma
+from family_brief import failure, install_record, own_node, setup_server, setup_wilma
 from family_brief.config import Config
 from fake_system import WINDOWS, Window
 from conftest import program
@@ -142,7 +142,8 @@ class Wilma:
         self.terminal_runs = True     # False: the family never finishes in the window
         self.npm_works = True         # False: npm can't reach its registry
         self.npm_ended = False        # True: npm is ended at the time limit, halfway through
-        self.window = ""              # everything the terminal window showed
+        self.npm_mismatch = False     # True: a package npm downloads isn't the one the lockfile pins
+        self.window = ""            # everything the terminal window showed
 
     @property
     def config_path(self) -> Path:
@@ -152,10 +153,13 @@ class Wilma:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         self.config_path.write_text(json.dumps(wilma_config(tenant_url)))
 
-    def install(self, version: str = setup_wilma.WILMA_CLI_VERSION, prefix: Path | None = None) -> None:
-        """The fake CLI, in Parent Recap's folder or in npm's `prefix`."""
+    def install(self, version: str = setup_wilma.WILMA_CLI_VERSION, prefix: Path | None = None,
+                locked: bool = False) -> None:
+        """The fake CLI, in Parent Recap's folder as a global install put it there before #975,
+        or `locked`, as `npm ci` leaves it, in npm's `prefix` when given."""
         bin_wilma = fake_node.install_wilma(
-            self.home, FAKE_WILMA.format(python=sys.executable, clear=CLEAR), version, prefix)
+            self.home, FAKE_WILMA.format(python=sys.executable, clear=CLEAR), version, prefix,
+            locked)
         config = wilma_config(self.signs_in_to) if self.signs_in_to else None
         (bin_wilma.parent / "wilma.json").write_text(json.dumps(
             {"signs_in_to": self.signs_in_to, "config": config, "exit": self.exit,
@@ -195,13 +199,18 @@ def wilma(harness, tmp_path, monkeypatch) -> Wilma:
             harness.commands.append(list(cmd))
             if not w.npm_works:
                 return subprocess.CompletedProcess(cmd, 1, "", "npm error code ENOTFOUND")
-            if w.npm_ended:  # the package half unpacked, and no bin/wilma yet
-                package = fake_node.npm_prefix(cmd) / fake_node.PACKAGE
+            if w.npm_mismatch:  # as npm says it, and nothing of the tree is left
+                return subprocess.CompletedProcess(cmd, 1, "", NPM_EINTEGRITY)
+            if w.npm_ended:  # the package half unpacked, and no script yet
+                package = fake_node.npm_prefix(cmd) / fake_node.LOCKED_PACKAGE
                 package.mkdir(parents=True)
                 (package / "package.json").write_text("{")
                 raise subprocess.TimeoutExpired(cmd, k["timeout"])
-            w.install(prefix=fake_node.npm_prefix(cmd))
-            return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
+            for name in ("package.json", "package-lock.json"):  # what `npm ci` installs from
+                assert (fake_node.npm_prefix(cmd) / name).read_bytes() == \
+                    (setup_wilma.PINNED / name).read_bytes()
+            w.install(prefix=fake_node.npm_prefix(cmd), locked=True)
+            return subprocess.CompletedProcess(cmd, 0, "added 169 packages", "")
         return others(cmd, *a, **k)
     monkeypatch.setattr(subprocess, "run", run)
     return w
@@ -530,11 +539,19 @@ def package_version(harness) -> str:
     return json.loads((fake_node.wilma_package(harness.home) / "package.json").read_text())["version"]
 
 
+# What `npm ci` ends with when a package it downloaded isn't the one the lockfile pins.
+NPM_EINTEGRITY = ("npm error code EINTEGRITY\n"
+                  "npm error sha512-AAAA integrity checksum failed when using sha512: wanted "
+                  "sha512-AAAA but got sha512-BBBB. (1234 bytes)")
+
+
 def pinned_install(cmd: list[str]) -> bool:
-    """Whether npm installed the pinned CLI into a new folder next to Parent Recap's own, as a
-    global install, the folder gone now that it has taken the place of Parent Recap's own."""
+    """Whether npm installed the tree the committed npm files pin (`npm ci`), without package
+    scripts, into a new folder next to Parent Recap's own, the folder gone now that it has taken
+    the place of Parent Recap's own."""
     staging = fake_node.npm_prefix(cmd)
-    return cmd[2:] == ["install", "-g", "--prefix", str(staging), "@wilm-ai/wilma-cli@2.5.0"] \
+    return cmd[2:] == ["ci", "--prefix", str(staging), "--ignore-scripts", "--no-audit",
+                       "--no-fund"] \
         and staging.parent == fake_node.wilma_folder(Path.home()).parent \
         and staging.name.startswith(".wilma-") and not staging.exists()
 
@@ -626,6 +643,50 @@ def test_an_update_without_its_own_node_says_to_run_the_install_again(harness, w
 
     assert "Node is missing" in capsys.readouterr().out
     assert package_version(harness) == "1.6.2"
+
+
+@pytest.mark.macos
+def test_a_package_that_does_not_match_the_lockfile_stops_the_install_and_the_cli_stays(
+        harness, wilma, capsys, caplog):
+    wilma.install("1.6.2")
+    wilma.signed_in_before("https://espoo.inschool.fi")
+    wilma.npm_mismatch = True
+
+    assert setup_wilma.main(["update"]) == 0
+
+    npm = [c for c in harness.commands if fake_node.is_npm(c)]
+    assert [pinned_install(c) for c in npm] == [True]  # `npm ci`, which checks each hash
+    assert "couldn't be updated to 2.5.0" in capsys.readouterr().out
+    assert "npm error code EINTEGRITY" in caplog.text  # why, logged
+    assert setup_wilma.installed() and package_version(harness) == "1.6.2"
+    assert nothing_left_beside_the_cli(harness)
+    assert harness.cli("setup", "wilma", "--no-open") == 0  # the CLI that was there still signs in
+    assert result(capsys)[0]["result"] == "signed-in"
+
+
+@pytest.mark.macos
+def test_a_first_install_whose_package_does_not_match_the_lockfile_leaves_no_cli(harness, wilma,
+                                                                                 capsys):
+    wilma.npm_mismatch = True
+
+    assert harness.cli("setup", "wilma") == 1
+
+    assert result(capsys)[0]["result"] == "not-installed"
+    assert not setup_wilma.installed() and not fake_node.wilma_folder(harness.home).exists()
+
+
+@pytest.mark.macos
+def test_the_locked_tree_takes_the_place_of_a_cli_installed_before_the_lockfile(harness, wilma):
+    wilma.install("1.6.2")  # a global install: bin/wilma, and the package in lib/node_modules
+    folder = fake_node.wilma_folder(harness.home)
+    assert sorted(p.name for p in folder.iterdir()) == ["bin", "lib"]
+
+    assert setup_wilma.update() == "updated"
+
+    assert sorted(p.name for p in folder.iterdir()) == \
+        ["node_modules", "package-lock.json", "package.json"]
+    assert setup_wilma.installed() and setup_wilma.installed_version() == "2.5.0"
+    assert setup_wilma.update() == "up-to-date"
 
 
 def nothing_left_beside_the_cli(harness) -> bool:
@@ -884,10 +945,11 @@ class WilmaCLI:
         """The ids of the sign-ins each run of the CLI reads, in its config's order."""
         return [p["id"] for p in setup_wilma.signins()]
 
-    def install(self, prefix: Path | None = None) -> None:
-        """The fake CLI, in Parent Recap's folder or in npm's `prefix`."""
+    def install(self, prefix: Path | None = None, locked: bool = False) -> None:
+        """The fake CLI, in Parent Recap's folder as a global install put it there before #975,
+        or `locked`, as `npm ci` leaves it, in npm's `prefix` when given."""
         package = fake_node.install_wilma(self.home, FAKE_WILMA_CLI.format(python=sys.executable),
-                                          prefix=prefix).resolve().parents[1]
+                                          prefix=prefix, locked=locked).resolve().parents[1]
         if self.ships_tenants:
             client = package / "node_modules" / "@wilm-ai" / "wilma-client"
             client.mkdir(parents=True, exist_ok=True)
@@ -944,8 +1006,8 @@ def wilma_cli(harness, monkeypatch) -> WilmaCLI:
                 return subprocess.CompletedProcess(cmd, 1, "", "npm error code E404")
             if w.npm is not None:
                 return w.npm(cmd)
-            w.install(prefix=fake_node.npm_prefix(cmd))
-            return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
+            w.install(prefix=fake_node.npm_prefix(cmd), locked=True)
+            return subprocess.CompletedProcess(cmd, 0, "added 169 packages", "")
         return others(cmd, *a, **k)
     monkeypatch.setattr(subprocess, "run", run)
     return w
@@ -1023,10 +1085,15 @@ def test_setup_installs_the_pinned_wilma_cli_with_its_own_node_when_it_is_missin
     assert r.status == 200 and r.json() == {"result": "installed"}  # no reason to show
     prefix = str(wilma_cli.prefix)
     # Into a folder of its own next to Parent Recap's, which then takes its place.
-    [[*args, staging, version]] = wilma_cli.installs
-    assert (args, version) == (["install", "-g", "--prefix"], "@wilm-ai/wilma-cli@2.5.0")
+    # The tree the release's lockfile pins, and no package's install script runs (#975).
+    [[*args, staging, scripts, _audit, _fund]] = wilma_cli.installs
+    assert (args, scripts) == (["ci", "--prefix"], "--ignore-scripts")
     assert Path(staging).parent == wilma_cli.prefix.parent and not Path(staging).exists()
     assert sorted(p.name for p in wilma_cli.prefix.parent.iterdir()) == ["runtime", "wilma"]
+    # In the layout `npm ci` leaves on every system, with the npm files it ran from.
+    assert sorted(p.name for p in wilma_cli.prefix.iterdir()) == \
+        ["node_modules", "package-lock.json", "package.json"]
+    assert own_node.wilma_cli() == wilma_cli.prefix / fake_node.LOCKED_PACKAGE / fake_node.SCRIPT
     [npm] = [c for c in harness.commands if fake_node.is_npm(c)]
     assert npm[0] == str(wilma_cli.node)
     # Its package scripts find that Node too, and its cache leaves nothing behind.
@@ -1103,12 +1170,12 @@ def cannot_run(cmd: list[str]) -> Any:
 def test_each_other_way_npm_fails_says_which_in_one_line_on_the_page(harness, page, wilma_cli,
                                                                      caplog, npm, said):
     def wrong_version(cmd: list[str]) -> Any:
-        fake_node.install_wilma(harness.home, "", "1.6.2", fake_node.npm_prefix(cmd))
+        fake_node.install_wilma(harness.home, "", "1.6.2", fake_node.npm_prefix(cmd), locked=True)
         return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
 
     def no_cli(cmd: list[str]) -> Any:
-        fake_node.install_wilma(harness.home, "", prefix=fake_node.npm_prefix(cmd))
-        (fake_node.npm_prefix(cmd) / fake_node.PACKAGE / fake_node.SCRIPT).unlink()
+        fake_node.install_wilma(harness.home, "", prefix=fake_node.npm_prefix(cmd), locked=True)
+        (fake_node.npm_prefix(cmd) / fake_node.LOCKED_PACKAGE / fake_node.SCRIPT).unlink()
         return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
     wilma_cli.npm = {"silent": lambda cmd: subprocess.CompletedProcess(cmd, 1, "", ""),
                      "nothing": lambda cmd: subprocess.CompletedProcess(cmd, 0, "up to date", ""),

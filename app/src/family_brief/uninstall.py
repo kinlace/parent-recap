@@ -26,7 +26,7 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import (ai_filter_report, baileys_install, chat_install, command_path, install_record,
+from . import (ai_filter_report, chat_install, command_path, install_record,
                linked_device, llm, ops, own_node, run_lock, setup_save, setup_wilma, sources, tools,
                update, versions)
 from .collectors.gmail import keychain_account, username_of
@@ -36,11 +36,13 @@ from .system import desktop, entries, jobs, profile, secrets, user_path, wake, w
 OK, FAIL = ops.OK, ops.FAIL
 # install.sh's and install.ps1's pinned ones, and the folders they download them into.
 RUNTIMES = re.compile(r"^(python-[\w.+-]+|node-v[\w.-]+|\.incoming|\.download)$")
-# What `npm install -g --prefix` makes in the wilma CLI's folder; on Windows the package goes in
-# node_modules, with npm's wrappers for each of its commands beside it (_npm_made).
-NPM_PREFIX = {"bin", "lib", "etc", "share", "node_modules"}
-# What the install's `npm ci` leaves in the Baileys tree's folder: the npm files it ran from.
-NPM_CI = {*baileys_install.NPM_FILES, "node_modules"}
+# What the install's `npm ci` leaves in the Baileys tree's folder and the wilma CLI's: the tree,
+# and the npm files it ran from.
+NPM_CI = {*own_node.NPM_FILES, "node_modules"}
+# What is in the wilma CLI's folder: that, or what `npm install -g --prefix` made there before
+# #975; on Windows that put the package in node_modules, with npm's wrappers for each of its
+# commands beside it (_npm_made).
+NPM_PREFIX = {"bin", "lib", "etc", "share"} | NPM_CI
 DATED = re.compile(r"^\d{4}-\d{2}-\d{2}\.(md|raw\.json)$")  # an archived Brief and its messages
 MARKETPLACE = "kinlace"
 

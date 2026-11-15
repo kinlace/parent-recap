@@ -1,0 +1,9 @@
+{
+  "name": "parent-recap-wilma-cli",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "@wilm-ai/wilma-cli": "2.5.0"
+  }
+}

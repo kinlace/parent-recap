@@ -8,6 +8,9 @@ install.sh moves an installed one to it (update()), and tests/e2e/test_setup_wil
 profile written against that version's way of reading it.
 
 The CLI is installed and run with Parent Recap's own Node, in its own folder (`own_node`, ADR 0011).
+Its whole npm tree is pinned by `package.json` and `package-lock.json` in `wilma_cli/` beside this
+module, with each package's integrity hash, and installed with `npm ci` without package scripts,
+as the Linked Device's Baileys tree is (`baileys_install`, #975).
 The town list is Wilma's public tenant list, the copy the CLI ships inside its wilma-client.
 
 From 2.5.0 the CLI keeps a saved sign-in's password and two-step key in the system's keychain
@@ -70,6 +73,7 @@ SECRETS_SECONDS = 120  # a keychain call may wait up to 15 seconds for each sign
 MOVE_FAILED = 4  # `wilma config secrets auto`'s exit status when a sign-in couldn't be moved
 KEYCHAIN_SERVICE = "ai.wilm.wilma-cli"  # the name of the CLI's keychain items, one per sign-in
 PACKAGE = own_node.WILMA_PACKAGE
+PINNED = Path(__file__).parent / "wilma_cli"  # the npm files that pin the CLI's whole tree
 INSTALL_SECONDS = 300
 SALT = "wilmai::"  # the CLI's own, in front of the password before it's Base64-encoded
 # What the CLI keeps next to its config: the Wilma sessions its commands carry on with (from 2.0),
@@ -152,7 +156,7 @@ def installed() -> bool:
 def installed_version(folder: Path | None = None) -> str | None:
     """The version of the wilma CLI in `folder` (Parent Recap's own, unless given), as its package
     says, or None."""
-    package = own_node.modules(folder or own_node.wilma_folder()) / PACKAGE / "package.json"
+    package = own_node.wilma_package(folder) / "package.json"
     try:
         version = json.loads(package.read_text(encoding="utf-8")).get("version")
     except (OSError, ValueError, AttributeError):
@@ -179,7 +183,8 @@ def install() -> dict[str, Any]:
 def update() -> str:
     """Moves the wilma CLI in Parent Recap's folder to the pinned version, which install.sh asks
     for on every update, so a Household that connected Wilma gets the version a release pins. A
-    CLI left half there, as by an npm ended partway before the install was staged, is installed
+    CLI at that version stays as it is, also one installed before the lockfile (#975), which the
+    locked tree replaces when the pinned version next changes. A CLI left half there, as by an npm ended partway before the install was staged, is installed
     again when the CLI's config has a sign-in. Returns `not-installed` (no CLI to update, so
     nothing is installed), `up-to-date`, `updated`, `no-node` or `update-failed`, which leaves the
     CLI that was there as it was."""
@@ -202,7 +207,7 @@ def _half_there() -> bool:
 
 
 def _npm_install(npm: list[str]) -> str | None:
-    """Has `npm`, on Parent Recap's own Node, install the pinned CLI. Returns why it didn't, which
+    """Has `npm`, on Parent Recap's own Node, install the pinned tree. Returns why it didn't, which
     is also logged, or None once it did. It installs into a new folder next to the CLI's, which
     takes the CLI's place only once npm has finished and left the pinned version, so an npm that
     fails, or is ended at the time limit, changes nothing."""
@@ -211,11 +216,11 @@ def _npm_install(npm: list[str]) -> str | None:
 
 
 def _npm_run(npm: list[str], staging: Path) -> str | None:
-    """Runs `npm` to install the pinned CLI into `staging`. Returns why that didn't leave the CLI
-    there, in words a photo of the setup page carries, or None."""
-    proc = own_node.run_npm(npm, install_args(staging), INSTALL_SECONDS)
-    if proc.returncode != 0:
-        return failure.exited("npm", proc.returncode, proc.stderr, proc.stdout)
+    """Has `npm` install the tree the committed npm files pin into `staging` (`npm ci`, without
+    package scripts). Returns why that didn't leave the CLI there, as when a package doesn't match
+    the lockfile's integrity hash, in words a photo of the setup page carries, or None."""
+    if reason := own_node.npm_ci(npm, PINNED, staging, INSTALL_SECONDS):
+        return reason
     version = installed_version(staging)
     if version is None:
         return "npm finished without installing the wilma program."
@@ -224,14 +229,6 @@ def _npm_run(npm: list[str], staging: Path) -> str | None:
     if own_node.wilma_cli(staging) is None:
         return "npm installed the wilma program without the file that runs it."
     return None
-
-
-def install_args(folder: Path) -> list[str]:
-    """npm's arguments that install the pinned CLI (ADR 0008) into `folder`, laid out as a global
-    install: `bin/wilma`, and the package in `lib/node_modules` (`own_node` has Windows' layout).
-    `_npm_install` gives a new folder,
-    which then takes the place of Parent Recap's own."""
-    return ["install", "-g", "--prefix", str(folder), f"{PACKAGE}@{WILMA_CLI_VERSION}"]
 
 
 def tenants() -> list[dict[str, Any]] | None:

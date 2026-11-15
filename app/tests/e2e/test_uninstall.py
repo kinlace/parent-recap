@@ -650,6 +650,25 @@ def test_on_windows_the_wilma_cli_npm_installed_is_recognised(harness, monkeypat
     assert not folder.exists()
 
 
+def test_the_wilma_cli_npm_ci_installed_goes_with_the_npm_files_it_ran_from(harness, monkeypatch,
+                                                                           capsys):
+    set_up(harness, monkeypatch)
+    # What `npm ci` leaves (#975): the tree, and the package.json and lockfile it installed from.
+    fake_node.install_wilma(harness.home, "", locked=True)
+    folder = fake_node.wilma_folder(harness.home)
+    assert sorted(p.name for p in folder.iterdir()) == \
+        ["node_modules", "package-lock.json", "package.json"]
+    install_record.add("wilma-cli", str(folder))
+
+    assert uninstall(harness) == 0
+    removes = capsys.readouterr().out.split("Uninstall removes:", 1)[1].split("\n\n", 1)[0]
+    assert "The wilma CLI: ~/ParentRecap/wilma" in removes
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    assert not folder.exists()
+
+
 def test_a_wilma_cli_folder_holding_something_else_names_it(harness, monkeypatch, capsys):
     set_up(harness, monkeypatch)
     folder = fake_node.wilma_folder(harness.home)

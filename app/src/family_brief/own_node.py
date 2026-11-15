@@ -7,9 +7,14 @@ puts the Linked Device's Baileys tree into `baileys/` the same way (`baileys_ins
 staged by `install_staged`. The CLI always runs on that Node, so a Node the computer has, or
 having none, changes nothing, and nothing outside Parent Recap's folder can update either of them.
 
-Node and npm lay their files out differently on Windows: `node.exe` at the top of Node's folder
-with npm beside it in `node_modules`, and a global install's packages in `<prefix>/node_modules`
-with only `.cmd` wrappers beside them, so the CLI runs from its package's own script there.
+Both are the tree a lockfile in the release pins, which `npm ci` puts in `<folder>/node_modules`
+on every system (`npm_ci`); the CLI runs from its package's own script there. Until #975 the CLI
+was a global install into `wilma/` (`npm install -g --prefix`), and one installed that way is
+still found: `bin/wilma` with the package in `lib/node_modules`, or on Windows the package in
+`node_modules` with only `.cmd` wrappers beside it.
+
+Node lays its own files out differently on Windows: `node.exe` at the top of Node's folder with
+npm beside it in `node_modules`.
 """
 from __future__ import annotations
 
@@ -27,6 +32,7 @@ from . import failure, install_record, versions
 from .system import profile
 
 WILMA_PACKAGE = "@wilm-ai/wilma-cli"
+NPM_FILES = ("package.json", "package-lock.json")  # what `npm ci` installs a tree from
 
 
 def home() -> Path:
@@ -97,6 +103,20 @@ def run_npm(npm: list[str], args: list[str], seconds: int,
                               env=env, cwd=cwd)
 
 
+def npm_ci(npm: list[str], pinned: Path, staging: Path, seconds: int) -> str | None:
+    """Has `npm` install into `staging` exactly the tree the `package.json` and
+    `package-lock.json` in `pinned` name: each package the one the lockfile resolved, checked
+    against its integrity hash, and no package's install script run. Returns why npm failed, as
+    on a package that doesn't match its hash, or None."""
+    for name in NPM_FILES:
+        shutil.copyfile(pinned / name, staging / name)
+    proc = run_npm(npm, ["ci", "--prefix", str(staging), "--ignore-scripts", "--no-audit",
+                         "--no-fund"], seconds, cwd=staging)
+    if proc.returncode != 0:
+        return failure.exited("npm", proc.returncode, proc.stderr, proc.stdout)
+    return None
+
+
 def install_staged(folder: Path, install: Callable[[Path], str | None], what: str,
                    seconds: int) -> str | None:
     """Has `install` put what npm installs into a new folder next to `folder`, which takes
@@ -136,18 +156,33 @@ def _replace(folder: Path, new: Path) -> None:
 
 
 def wilma_folder() -> Path:
-    """Where the setup page installs the wilma CLI, as npm's prefix."""
+    """Where the setup page installs the wilma CLI: the folder `npm ci` runs in, and npm's
+    prefix for a CLI from before #975."""
     return home() / "wilma"
 
 
-def wilma_cli(prefix: Path | None = None) -> Path | None:
-    """The wilma CLI's script npm installed in `prefix` (Parent Recap's own unless given), which
-    Node runs, or None when it isn't there."""
-    prefix = prefix or wilma_folder()
-    if profile.current().npm_links_programs:
-        cli = prefix / "bin" / "wilma"
+def _locked(folder: Path) -> Path:
+    """Where `npm ci` puts the wilma CLI's package in `folder`."""
+    return folder / "node_modules" / WILMA_PACKAGE
+
+
+def wilma_package(folder: Path | None = None) -> Path:
+    """The wilma CLI's package in `folder` (Parent Recap's own unless given): where `npm ci`
+    puts it, or else where a global install did."""
+    folder = folder or wilma_folder()
+    locked = _locked(folder)
+    return locked if (locked / "package.json").is_file() else modules(folder) / WILMA_PACKAGE
+
+
+def wilma_cli(folder: Path | None = None) -> Path | None:
+    """The wilma CLI's script npm installed in `folder` (Parent Recap's own unless given), which
+    Node runs, or None when it isn't there: the script its package names, or the `bin/wilma` a
+    global install linked to it."""
+    folder = folder or wilma_folder()
+    package = wilma_package(folder)
+    if package != _locked(folder) and profile.current().npm_links_programs:
+        cli = folder / "bin" / "wilma"
         return cli if cli.is_file() else None
-    package = modules(prefix) / WILMA_PACKAGE
     try:
         bin_ = json.loads((package / "package.json").read_text(encoding="utf-8")).get("bin")
     except (OSError, ValueError, AttributeError):

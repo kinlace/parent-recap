@@ -10,6 +10,10 @@ What changes for families in each release, collected from the `What changes for 
 - A Mac no longer installs a release that changes nothing your family uses, such as a fix for a school system you haven't connected. It stays on its version, downloads nothing, and the Brief doesn't mention that release; **Update now** and `parent-recap update` say that a newer release is out and changes nothing your family uses. The next release that changes the program itself or something you have connected is installed as before.
 - When you add a school system or club that changed in a release your Mac skipped, Parent Recap now updates itself first and then goes on adding it, so you never sign in with an old copy of it. On the setup page, MyClub, Eepos and eVaka say that Parent Recap is updating itself, which can take a few minutes, and are then added by themselves with what you typed; `setup myclub`, `setup eepos`, `setup evaka`, `setup socialschools` and `setup konnect` in Terminal do the same. If the update can't be done, such as without a network, it says so and adds nothing; try again once the Mac is online.
 
+### Changed
+
+- For a family that connected Wilma, the wilma program that signs in to Wilma is now installed with every package it needs checked against a list of checksums the release ships, and none of those packages may run a script of its own while installing. Before, only the wilma program's own version was fixed, and the packages it needs were whatever was newest that day. A wilma program already on the computer stays as it is; the checked one takes its place the next time Parent Recap moves to a newer wilma program. [SECURITY.md](SECURITY.md#what-the-install-puts-on-the-computer) says what an install puts on the computer.
+
 ### Removed
 
 - Pilot feedback is gone: no Brief has the ⭐ / ❌ links under its Action Items or the "Something wrong in this summary? Tell us" link under the Digest any more, and setup no longer asks whether you're a pilot family. A config that still turns it on keeps working as it is; nothing needs changing.
