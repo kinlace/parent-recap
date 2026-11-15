@@ -178,6 +178,18 @@ The next install of each family replaces the tree, since its lockfile no longer 
 
 The Linked Device's own program, `linked_device.mjs` in the same folder, is tested on a fake Baileys (`app/tests/fake_baileys/`), not the real one. So read the new version's changelog for what the program uses (`makeWASocket`'s options, `connection.update`, `creds.update`, `messages.upsert`, `messaging-history.set`, `groups.update`, `groupFetchAllParticipating`, `groupMetadata`, the shape of a message (`key`, `pushName`, `messageTimestamp`) and the `normalizeMessageContent` and `getContentType` that read its content, the auth state's `BufferJSON`, `initAuthCreds` and `proto`), and change the fake with the program when it moves.
 
+## Pinned wilma CLI
+
+Wilma is read through the wilma CLI (ADR 0008), whose whole npm tree is pinned the same way in `app/src/family_brief/wilma_cli/`: `package.json` names the CLI's version, and `package-lock.json` pins every package with its integrity hash. Setup and the installers install exactly that tree with `npm ci --ignore-scripts`. To move the CLI to a newer version, change the pin, `WILMA_CLI_VERSION` in `family_brief/setup_wilma.py` and the same version in that `package.json`, then make the lockfile again in that folder with the pinned Node's npm and review its diff:
+
+```bash
+npm install --package-lock-only --ignore-scripts
+```
+
+No package's install script runs, so one that needs its script wouldn't work: `tests/unit/test_wilma_pin.py` fails when the new tree has a package with `hasInstallScript`, as it does when the lockfile's CLI isn't the pinned version, or a package has no integrity hash or comes from another host than `registry.npmjs.org`. Then install the tree once in a scratch folder (`npm ci --ignore-scripts` beside copies of the two files) and run `node node_modules/@wilm-ai/wilma-cli/dist/index.js --version`.
+
+The next install of each family that connected Wilma replaces its CLI with the new tree. The profile setup writes isn't a documented format, so `tests/e2e/test_setup_wilma.py` checks it against the pinned version's way of reading it: read the new version's changelog for its config and for `kids list`, `config secrets` and `accounts remove`, and change the fake CLI with it.
+
 ## Three kinds of skills
 
 - `skills/` is the product: the `setup` and `manage` skills users install. Edit these freely.

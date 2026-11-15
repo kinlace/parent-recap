@@ -17,6 +17,7 @@ import pytest
 
 import fake_node
 from conftest import REAL_RUN, program
+from fake_system import LINUX, MACOS, WINDOWS
 from nights import caught_up_last_night
 from test_source_failures import payload_ids
 
@@ -221,3 +222,54 @@ def test_a_program_installed_elsewhere_runs_its_own_node_whatever_the_record_say
     # Run from a checkout, with no runtime/ beside it, the record's folder counts.
     shutil.rmtree(shared / "runtime")
     assert own_node.home() == harness.home / "ParentRecap"
+
+
+# ── where the CLI is found: the tree `npm ci` leaves (#975), and a global install from before it
+
+SYSTEMS = pytest.mark.parametrize("profile", [MACOS, LINUX, WINDOWS],
+                                  ids=["macOS", "Linux", "Windows"])
+
+
+def global_install(folder: Path, system: Any, version: str = "2.5.0") -> Path:
+    """The CLI in `folder` as `npm install -g --prefix` put it there on `system`, before #975.
+    Returns the file Parent Recap runs: bin/wilma, or on Windows the package's own script."""
+    package = folder / system.node_modules / "@wilm-ai" / "wilma-cli"
+    (package / "dist").mkdir(parents=True)
+    (package / "dist" / "index.js").write_text("")
+    (package / "package.json").write_text(json.dumps(
+        {"name": "@wilm-ai/wilma-cli", "version": version, "bin": {"wilma": "dist/index.js"}}))
+    if not system.npm_links_programs:
+        return package / "dist" / "index.js"
+    (folder / "bin").mkdir()
+    (folder / "bin" / "wilma").write_text("")  # npm's link to the script
+    return folder / "bin" / "wilma"
+
+
+@SYSTEMS
+def test_the_cli_npm_ci_installed_is_found_on_every_system(harness, profile):
+    harness.system = profile
+    script = fake_node.install_wilma(harness.home, "", locked=True)
+
+    assert script == (fake_node.wilma_folder(harness.home) / "node_modules" / "@wilm-ai"
+                      / "wilma-cli" / "dist" / "index.js")
+    assert own_node.wilma_cli() == script
+    assert setup_wilma.installed_version() == setup_wilma.WILMA_CLI_VERSION
+
+
+@SYSTEMS
+def test_a_cli_installed_before_the_lockfile_is_still_found_on_every_system(harness, profile):
+    harness.system = profile
+    cli = global_install(fake_node.wilma_folder(harness.home), profile)
+
+    assert own_node.wilma_cli() == cli
+    assert setup_wilma.installed_version() == "2.5.0"
+
+
+@SYSTEMS
+def test_without_a_cli_none_is_found(harness, profile):
+    harness.system = profile
+    assert own_node.wilma_cli() is None and setup_wilma.installed_version() is None
+
+    # A package without the file that runs it, as an npm ended partway left it.
+    fake_node.install_wilma(harness.home, "", locked=True).unlink()
+    assert own_node.wilma_cli() is None

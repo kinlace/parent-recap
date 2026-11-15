@@ -22,6 +22,7 @@ WINDOWS = sys.platform == "win32"
 # node_modules beside node.exe and the commands, elsewhere in lib/ beside bin/.
 MODULES = Path("node_modules") if WINDOWS else Path("lib") / "node_modules"
 PACKAGE = MODULES / "@wilm-ai" / "wilma-cli"
+LOCKED_PACKAGE = Path("node_modules") / "@wilm-ai" / "wilma-cli"  # where `npm ci` puts it
 SCRIPT = Path("dist") / "index.js"  # the package's `bin`
 
 
@@ -48,23 +49,33 @@ def wilma_folder(home: Path) -> Path:
 
 
 def wilma_package(home: Path) -> Path:
-    return wilma_folder(home) / PACKAGE
+    """The CLI's package in wilma/: where `npm ci` put it, or else where a global install did."""
+    locked = wilma_folder(home) / LOCKED_PACKAGE
+    return locked if locked.is_dir() else wilma_folder(home) / PACKAGE
 
 
 def install_wilma(home: Path, script: str, version: str = setup_wilma.WILMA_CLI_VERSION,
-                  prefix: Path | None = None) -> Path:
-    """The wilma CLI's package in wilma/, or in `prefix`, as `npm install -g --prefix` puts it
-    there, with `script` as its dist/index.js and its package.json saying `version`, the pinned
-    one unless given. Elsewhere than Windows bin/wilma links to the script by a relative path,
-    and is returned; on Windows, where npm's wilma.cmd wrapper isn't what Parent Recap runs, the
-    script is returned."""
+                  prefix: Path | None = None, locked: bool = False) -> Path:
+    """The wilma CLI's package in wilma/, or in `prefix`, with `script` as its dist/index.js and
+    its package.json saying `version`, the pinned one unless given.
+
+    As `npm install -g --prefix` put it there before #975, unless `locked`: elsewhere than
+    Windows bin/wilma links to the script by a relative path, and is returned; on Windows, where
+    npm's wilma.cmd wrapper isn't what Parent Recap runs, the script is returned.
+
+    `locked`: as `npm ci` leaves it from the committed npm files, the same on every system: the
+    package in node_modules beside the npm files, and its script returned."""
     folder = prefix or wilma_folder(home)
-    dist = folder / PACKAGE / SCRIPT.parent
-    dist.mkdir(parents=True, exist_ok=True)
-    (folder / PACKAGE / SCRIPT).write_text(script)
-    (folder / PACKAGE / SCRIPT).chmod(0o755)
-    (folder / PACKAGE / "package.json").write_text(json.dumps(
+    package = folder / (LOCKED_PACKAGE if locked else PACKAGE)
+    (package / SCRIPT.parent).mkdir(parents=True, exist_ok=True)
+    (package / SCRIPT).write_text(script)
+    (package / SCRIPT).chmod(0o755)
+    (package / "package.json").write_text(json.dumps(
         {"name": setup_wilma.PACKAGE, "version": version, "bin": {"wilma": SCRIPT.as_posix()}}))
+    if locked:
+        for name in ("package.json", "package-lock.json"):
+            (folder / name).write_bytes((setup_wilma.PINNED / name).read_bytes())
+        return package / SCRIPT
     if WINDOWS:
         return folder / PACKAGE / SCRIPT
     link = folder / "bin" / "wilma"
@@ -106,9 +117,9 @@ def is_wilma(cmd: list[str]) -> bool:
     if len(cmd) < 2 or Path(cmd[0]).stem != "node":
         return False
     cli = Path(cmd[1])
-    return cli.name == "wilma" or cli.as_posix().endswith((PACKAGE / SCRIPT).as_posix())
+    return cli.name == "wilma" or cli.as_posix().endswith((LOCKED_PACKAGE / SCRIPT).as_posix())
 
 
 def npm_prefix(cmd: list[str]) -> Path:
-    """The folder an `npm install -g --prefix <folder>` command installs into."""
+    """The folder an `npm ci --prefix <folder>` command installs into."""
     return Path(cmd[cmd.index("--prefix") + 1])

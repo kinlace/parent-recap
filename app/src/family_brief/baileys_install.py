@@ -12,7 +12,6 @@ install, once the runtimes are recorded.
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 from pathlib import Path
 
@@ -21,7 +20,7 @@ from . import failure, install_record, own_node, private_files, sources
 BAILEYS_PACKAGE = "@whiskeysockets/baileys"
 BAILEYS_VERSION = "7.0.0-rc14"
 PINNED = Path(__file__).parent / "baileys"
-NPM_FILES = ("package.json", "package-lock.json")
+NPM_FILES = own_node.NPM_FILES
 INSTALL_SECONDS = 600  # about 90 MB
 
 
@@ -79,12 +78,8 @@ def install() -> str:
 def _npm_ci(npm: list[str], staging: Path) -> str | None:
     """Has `npm` install the tree the committed npm files pin into `staging`. Returns why that
     didn't leave the pinned tree there, or None."""
-    for name in NPM_FILES:
-        shutil.copyfile(PINNED / name, staging / name)
-    proc = own_node.run_npm(npm, ["ci", "--prefix", str(staging), "--ignore-scripts",
-                                  "--no-audit", "--no-fund"], INSTALL_SECONDS, cwd=staging)
-    if proc.returncode != 0:
-        return failure.exited("npm", proc.returncode, proc.stderr, proc.stdout)
+    if reason := own_node.npm_ci(npm, PINNED, staging, INSTALL_SECONDS):
+        return reason
     version = installed_version(staging)
     if version is None:
         return "npm finished without installing the WhatsApp library."
