@@ -228,7 +228,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_setup_page_windows.py`    | The setup page from a fresh install to Finish, on Windows |
 | `test_setup_wilma_windows.py`   | The Wilma sign-in window on Windows                       |
 | `test_model_process.py`         | The model's program run for real; a try slept through stopped |
-| `test_release_signature.py`     | A release zip's signature through `/usr/bin/ssh-keygen`, with keys made in the test |
+| `test_release_signature.py`     | A release zip's signature through the system's own `ssh-keygen` (Windows' too), with keys made in the test |
 
 ## Script tests
 

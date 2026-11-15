@@ -41,6 +41,13 @@ def _os_version() -> str:
     return f"Windows {platform.version() or 'unknown'} ({platform.machine()})"
 
 
+def _ssh_keygen() -> Path:
+    # Windows' own OpenSSH client, an optional feature that Windows 10 1809 and later install by
+    # default: in System32, which only an administrator can write to, not wherever the PATH says.
+    root = os.environ.get("SystemRoot") or r"C:\Windows"
+    return Path(root, "System32", "OpenSSH", "ssh-keygen.exe")
+
+
 PROFILE = profile.Profile(
     system="windows",
     computer="PC",
@@ -77,4 +84,5 @@ PROFILE = profile.Profile(
     removes_running=False,  # Windows doesn't let a running program, or its Python, be removed
     os_version=_os_version,
     maxrss_unit=None,  # Python's `resource` isn't on Windows
+    ssh_keygen=_ssh_keygen(),
 )

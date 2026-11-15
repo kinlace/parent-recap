@@ -64,4 +64,5 @@ PROFILE = Profile(
     removes_running=True,
     os_version=_os_version,
     maxrss_unit=1,  # bytes
+    ssh_keygen=Path("/usr/bin/ssh-keygen"),  # every Mac has it
 )
