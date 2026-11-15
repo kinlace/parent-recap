@@ -296,7 +296,8 @@ def test_an_install_from_before_versions_is_taken_over_with_the_linked_device_st
     rename = versions.os.rename
 
     def watched_rename(a, b):
-        moved_while.append(harness.jobs.always_running)
+        if Path(a) == app and not links.is_link(app):  # not a junction's own rename on Windows
+            moved_while.append(harness.jobs.always_running)
         rename(a, b)
     harness.jobs.install_always(["node", "follow"], folder / "logs")
     with pytest.MonkeyPatch.context() as mp:
