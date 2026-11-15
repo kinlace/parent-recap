@@ -468,6 +468,11 @@ def steps(result: subprocess.CompletedProcess) -> list[str]:
     return [line for line in result.stdout.splitlines() if STEP.match(line)]
 
 
+def line_with(lines: list[str], text: str) -> int:
+    """The index of the first of `lines` that holds `text`."""
+    return next(i for i, line in enumerate(lines) if text in line)
+
+
 def say_when_run(mac: dict) -> None:
     """Has the downloads, the wilma CLI's update and the Baileys tree's install each print a line
     when they run, so the output shows where the step lines fall."""
@@ -495,10 +500,9 @@ def test_a_fresh_install_says_each_numbered_step_before_it_starts(mac):
         "[4/4] Finishing...",
     ]
     one, two, three, four = (lines.index(line) for line in steps(result))
-    installed_to = next(i for i, line in enumerate(lines) if "installed to" in line)
     assert one < lines.index("(curl ran)") < two < three
     assert three < lines.index("(wilma ran)") < four and three < lines.index("(baileys ran)") < four
-    assert four < installed_to
+    assert four < line_with(lines, "installed to")
     assert "parent-recap in a new Terminal window" in lines[-1]
 
 
@@ -536,7 +540,7 @@ def test_a_failed_download_ends_with_its_message_after_the_first_step(mac):
     assert result.returncode != 0
     lines = result.stdout.splitlines()
     assert steps(result) == ["[1/4] Downloading Parent Recap's own Python and Node..."]
-    assert lines.index(steps(result)[0]) < next(i for i, line in enumerate(lines) if "couldn't download" in line)
+    assert lines.index(steps(result)[0]) < line_with(lines, "couldn't download")
 
 
 @pytest.mark.macos
@@ -549,8 +553,7 @@ def test_a_failed_pip_step_ends_with_its_message_after_the_second_step(mac):
     assert result.returncode != 0
     lines = result.stdout.splitlines()
     assert [STEP.match(line)[1] for line in steps(result)] == ["1", "2"]
-    assert lines.index(steps(result)[1]) < next(
-        i for i, line in enumerate(lines) if "couldn't install its Python packages" in line)
+    assert lines.index(steps(result)[1]) < line_with(lines, "couldn't install its Python packages")
 
 
 @pytest.mark.posix
