@@ -180,9 +180,10 @@ jobs:
         run: python -m pytest -m integration --durations=15
       - name: Adapter tests
         run: python -m pytest -m adapters --durations=15
-      # The end-to-end tests that need Windows run nowhere else.
+      # The end-to-end tests that need Windows run nowhere else; those marked windows_too, such as
+      # the update's on a PC (#993), run on every system.
       - name: End-to-end tests that need Windows
-        run: python -m pytest -m "e2e and windows" --durations=15
+        run: python -m pytest -m "e2e and (windows or windows_too)" --durations=15
 
   linux:
     needs: changes

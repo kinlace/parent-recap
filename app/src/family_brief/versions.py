@@ -116,16 +116,18 @@ def _unpoint(link: Path) -> None:
 
 
 @contextmanager
-def _still(folder: Path, config: str | None = None) -> Iterator[None]:
+def _still(folder: Path, config: str | None = None, locked: bool = False) -> Iterator[None]:
     """Where a link isn't replaced in one step (Windows), holds the run lock for the block, so no
     Brief runs while `app` may be missing, and stops the Linked Device's job, which runs from
     `app`, starting it again after. Raises run_lock.Busy when a run holds the lock of the config
-    at `config` (the Household's own unless given). On a Mac and a Linux server, nothing."""
+    at `config` (the Household's own unless given). With `locked`, the caller holds that lock
+    already in this process, as the update's switch back does, so it isn't taken again: a
+    second hold of it in one process would find it busy. On a Mac and a Linux server, nothing."""
     if links.one_step():
         yield
         return
     from .system import jobs
-    with _run_lock(config):
+    with ExitStack() if locked else _run_lock(config):
         try:
             running = jobs.always_status().running
         except Exception:  # noqa: BLE001 - one that can't be read is left as it is
@@ -236,14 +238,15 @@ def switch(folder: Path, new: Path) -> None:
     _clean(folder, spare)
 
 
-def switch_back(folder: Path, config: str | None = None) -> tuple[str, str]:
+def switch_back(folder: Path, config: str | None = None, locked: bool = False) -> tuple[str, str]:
     """Points `app` at the previous version, and keeps the one switched from as the previous one,
     so running it again switches forward. Returns the version now running and the one kept.
-    Raises NoPrevious when there is none, or run_lock.Busy on Windows, having changed nothing."""
+    Raises NoPrevious when there is none, or run_lock.Busy on Windows, having changed nothing.
+    `locked`: the caller holds the run lock (`_still`)."""
     now, before = current(folder), previous(folder)
     if now is None or before is None or before == now:
         raise NoPrevious()
-    with _still(folder, config):
+    with _still(folder, config, locked):
         _point(folder / APP, f"{VERSIONS}/{before.name}")
         _point(folder / VERSIONS / PREVIOUS, now.name)
     return version(before), version(now)
@@ -300,13 +303,14 @@ def _steps(folder: Path) -> list[list[str]]:
     return steps
 
 
-def switch_back_whole(folder: Path, config: str | None = None, **run) -> tuple[str, str]:
+def switch_back_whole(folder: Path, config: str | None = None, locked: bool = False,
+                      **run) -> tuple[str, str]:
     """`switch_back`, then has the version switched to put its own pieces back and restarts the
     Linked Device, as `parent-recap switch-back` and the update (update.py) do. `run` goes to
-    each step's subprocess.run, such as where its output goes. Raises NoPrevious, or
-    run_lock.Busy on Windows."""
+    each step's subprocess.run, such as where its output goes. `locked`: the caller holds the
+    run lock (`_still`). Raises NoPrevious, or run_lock.Busy on Windows."""
     from .system import jobs
-    running, kept = switch_back(folder, config)
+    running, kept = switch_back(folder, config, locked)
     for step in _steps(folder):
         subprocess.run(step, stdin=subprocess.DEVNULL, check=False, **run)
     # From here, not with the version switched to: one from before versions has no restart.
@@ -358,6 +362,12 @@ def main(argv: list[str]) -> int:
         switch(Path(argv[1]), Path(argv[2]))
     except Held as e:
         print(e)
+        return 1
+    except OSError as e:
+        # A link the system didn't let it make, in its own words, which the installer says and
+        # an update keeps in its log (ADR 0052). links.point puts back a link it couldn't replace.
+        print(f"Parent Recap couldn't switch {Path(argv[1]) / APP} to the new version "
+              f"({type(e).__name__}: {e}).")
         return 1
     except Exception as e:
         # Only here: a switch the run lock stops, on Windows, has the program's packages to

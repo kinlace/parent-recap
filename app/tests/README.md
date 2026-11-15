@@ -192,6 +192,7 @@ slowest tests, so add one for a main path, not for each result.
 | File                           | What it covers                                                                                        |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
 | `test_update.py`               | `update` (ADR 0047): installs, refuses, switches back; its hosts, requests, writes, commands; on, off; one update at a time, never beside a run (#977); the READMEs and docs say it |
+| `test_update_windows.py`       | `update` on a Windows PC (ADR 0052, #993), on every system and Windows' CI (`windows_too`): a test key's signature checked by the real `ssh-keygen`, the release's Python installer with no PowerShell, switch back, no `ssh-keygen`, the Linked Device and the lock, a step the system stops |
 | `test_update_skips.py`         | A release that changes nothing the Household uses is skipped (ADR 0051, #960), and everything says so |
 | `test_evening_update.py`       | The evening run's own update (#915): a day's wait, only after a scheduled Brief, no dialog, jobs kept |
 | `test_evening_update_brief.py` | The next Brief says what the evening's update did (#916): updated or failed, once, in each language   |
@@ -329,6 +330,8 @@ a test needs, and skip it elsewhere, so each CI job runs every other test:
 - `@pytest.mark.windows`: the Windows adapters and Windows' own layout. The Credential Manager and
   Task Scheduler tests use the real ones, under a test name of their own, and delete what they
   made.
+- `@pytest.mark.windows_too`: an end-to-end test that runs on every system, which Windows' CI
+  runs too, such as the update's on a PC (`test_update_windows.py`).
 
 `browser` marks the tests that drive the setup page in a real browser; CI's macOS job runs them in
 a step of their own, after Chromium is installed. They are the page script's tests: no test reads
@@ -336,7 +339,7 @@ a step of their own, after Chromium is installed. They are the page script's tes
 sends the page (`as_on` in `test_setup_page_browser.py`).
 
 CI runs the suite on macOS, on Linux all but the browser tests, and on Windows the unit,
-integration and adapter layers and the end-to-end tests marked `windows`. `install.ps1` and the
+integration and adapter layers and the end-to-end tests marked `windows` or `windows_too`. `install.ps1` and the
 `windows_install.py` it hands over to run for real in CI's windows-install job, and `install.sh` on Linux in its linux-install job.
 
 ## Golden files

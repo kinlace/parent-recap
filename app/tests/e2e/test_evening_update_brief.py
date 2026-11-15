@@ -607,7 +607,8 @@ def test_a_hosted_household_s_brief_never_carries_the_line(evening, mac):  # noq
     assert UPDATE_MARK not in email.text and UPDATE_MARK not in email.html
 
 
-def test_a_windows_household_s_brief_never_carries_the_line(evening, mac):  # noqa: F811
+def test_a_windows_household_s_brief_carries_the_line_too(evening, mac):  # noqa: F811
+    # A PC updates itself as a Mac does, and its Brief says so the same way (ADR 0052).
     evening.system = WINDOWS
     a_note_waits(mac)
     a_message(evening, 0)
@@ -615,4 +616,4 @@ def test_a_windows_household_s_brief_never_carries_the_line(evening, mac):  # no
     evening_on(evening, 0)
 
     [email] = evening.sent
-    assert UPDATE_MARK not in email.text and UPDATE_MARK not in email.html
+    assert email.text.count(UPDATE_MARK) == 2

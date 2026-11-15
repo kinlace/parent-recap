@@ -29,7 +29,7 @@ import yaml
 
 from family_brief import install_record, release_signature, run_lock, update, versions
 from family_brief.config import Config
-from fake_system import LINUX, WINDOWS
+from fake_system import LINUX, WINDOWS_WITHOUT_SSH_KEYGEN
 
 # install.sh's layout, on a Mac.
 pytestmark = pytest.mark.posix
@@ -703,9 +703,17 @@ def test_every_path_it_changes_is_in_parent_recap_s_folder_or_where_an_install_w
     assert outside == []
 
 
-@pytest.mark.parametrize("on, says", [(WINDOWS, "doesn't update itself on Windows"),
-                                      (LINUX, "This is the hosted version")])
-def test_on_windows_and_on_the_hosted_server_it_does_not_apply(harness, github, mac, capsys, on, says):
+NO_SSH_KEYGEN_SAYS = ("This PC can't update Parent Recap by itself: it has no ssh-keygen at "
+                      f"{WINDOWS_WITHOUT_SSH_KEYGEN.ssh_keygen}, the program that checks a release "
+                      "is Parent Recap's. To update Parent Recap, paste the install line into "
+                      "PowerShell.")
+
+
+@pytest.mark.parametrize("on, says", [(WINDOWS_WITHOUT_SSH_KEYGEN, NO_SSH_KEYGEN_SAYS),
+                                      (LINUX, "This is the hosted version")],
+                         ids=["pc-without-ssh-keygen", "server"])
+def test_on_a_pc_without_ssh_keygen_and_on_the_hosted_server_it_does_not_apply(
+        harness, github, mac, capsys, on, says):
     harness.system = on
     github.stable = "0.20.0"
 
@@ -903,9 +911,10 @@ def test_the_setting_survives_an_update_and_a_switch_back(harness, github, mac, 
 
 
 @pytest.mark.parametrize("setting", ["on", "off"])
-@pytest.mark.parametrize("on, says", [(WINDOWS, "doesn't update itself on Windows"),
-                                      (LINUX, "This is the hosted version")])
-def test_on_windows_and_on_the_hosted_server_the_setting_explains_and_saves_nothing(
+@pytest.mark.parametrize("on, says", [(WINDOWS_WITHOUT_SSH_KEYGEN, NO_SSH_KEYGEN_SAYS),
+                                      (LINUX, "This is the hosted version")],
+                         ids=["pc-without-ssh-keygen", "server"])
+def test_on_a_pc_without_ssh_keygen_and_on_the_hosted_server_the_setting_explains_and_saves_nothing(
         harness, github, mac, capsys, on, says, setting):
     harness.system = on
 
@@ -1078,7 +1087,7 @@ def test_the_lock_is_held_from_before_the_look_through_the_switch_back_and_then_
     assert not run_lock.is_busy(cfg)
 
 
-@pytest.mark.parametrize("on", [WINDOWS, LINUX])
+@pytest.mark.parametrize("on", [WINDOWS_WITHOUT_SSH_KEYGEN, LINUX])
 def test_where_it_does_not_apply_it_takes_no_lock(harness, github, mac, capsys, on):
     harness.system = on
 

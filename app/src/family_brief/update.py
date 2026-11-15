@@ -10,8 +10,9 @@ What it downloads, from where, how it is verified and what it never does:
   no cookie, no sign-in, no name, no version of its own.
 - It downloads and unpacks inside the program, without `curl`, `unzip` or a shell.
 - Nothing it downloads is run before its signature verified (release_signature.py), and nothing
-  is piped from the network into a shell. What runs is the verified release's own installer, its
-  `install.sh`, run as a file.
+  is piped from the network into a shell. What runs is the verified release's own installer, run
+  as a file: on a Mac its `install.sh`, with `/bin/bash`; on Windows its `app/windows_install.py`,
+  with the installed version's Python (ADR 0052), so no `powershell.exe` and no `.ps1` file.
 - The file `stable` holds isn't signed. After verifying the zip it reads the version inside
   it: it must be the one asked for and higher than the installed one.
 - A release that changes nothing the Household uses isn't installed, and nothing of it is
@@ -69,8 +70,14 @@ program again (setup_server). An update that can't be done stops the step, so a 
 signs in to a Source with code older than the newest. A Source without a part, and a program
 that doesn't update itself, go on at once and ask no host.
 
-Only on a Mac, and only for a program run from an installed release: on the hosted version the
-server is deployed by its maintainers (ADR 0045), and Windows is decided separately.
+On a Mac and on a Windows PC (ADR 0052), only for a program run from an installed release, and
+only on a computer with its own `ssh-keygen` to check a signature: on the hosted version the server
+is deployed by its maintainers (ADR 0045). On Windows `app` is a junction, which isn't replaced in
+one step, so the switch and the switch back happen under the run lock the update holds, with the
+Linked Device's task stopped before them and started after (versions.py). A step the system stops,
+as a company's Defender rule may (the download, the unpacking, the link, the installer, `doctor`),
+is named in the update log with the system's error word for word, and leaves the installed version
+running and the scheduled tasks as they were.
 
 How to turn it off: the config's `updates.enabled`, which the setup page's switch and
 `parent-recap update off` save (`set_enabled`). It is on unless the family turned it off. Turned
@@ -283,11 +290,8 @@ class _Log:
 
 def not_applicable(config: str | None = None) -> str | None:
     """Why the update doesn't apply to this program, or None when it does. Asks no host."""
-    system = profile.current().system
-    if system == "windows":
-        return ("Parent Recap doesn't update itself on Windows yet. To update it, paste the "
-                "install line into PowerShell again.")
-    if system != "macos" or _hosted(config):
+    here = profile.current()
+    if here.system not in ("macos", "windows") or _hosted(config):
         return ("This is the hosted version: the Parent Recap team updates the server, so there "
                 "is nothing to update here.")
     folder = own_node.running_from()
@@ -296,11 +300,22 @@ def not_applicable(config: str | None = None) -> str | None:
                 "its code), so it doesn't update itself.")
     if versions.current(folder) is None:
         return ("This Parent Recap was installed before it could update itself. Paste the install "
-                "line into Terminal once; from then on it updates itself.")
+                f"line into {here.terminal} once; from then on it updates itself.")
     if parsed(versions.version(versions.current(folder))) is None:
         return ("The installed version can't be told, so Parent Recap doesn't update itself. Paste "
-                "the install line into Terminal to update it.")
+                f"the install line into {here.terminal} to update it.")
+    if not release_signature.ssh_keygen().is_file():
+        return no_ssh_keygen(f"it has no ssh-keygen at {release_signature.ssh_keygen()}")
     return None
+
+
+def no_ssh_keygen(why: str) -> str:
+    """What the update says on a computer that can't check a release's signature, `why` being
+    what it lacks (ADR 0052): it can't update itself, and the family pastes the install line."""
+    here = profile.current()
+    return (f"This {here.computer} can't update Parent Recap by itself: {why}, the program that "
+            "checks a release is Parent Recap's. To update Parent Recap, paste the install line "
+            f"into {here.terminal}.")
 
 
 def _hosted(config: str | None) -> bool:
@@ -425,8 +440,8 @@ def _get(session: requests.Session, url: str) -> requests.Response:
         try:
             r = session.get(url, stream=True, allow_redirects=False, timeout=TIMEOUT)
         except requests.RequestException as e:
-            raise Refused(f"GitHub couldn't be reached ({type(e).__name__}): is this Mac "
-                          "online?") from e
+            raise Refused(f"GitHub couldn't be reached ({type(e).__name__}): is this "
+                          f"{profile.current().computer} online?") from e
         if r.is_redirect:
             url = urljoin(url, r.headers.get("location", ""))
             r.close()
@@ -632,7 +647,7 @@ class _Updater:
 
     def program(self) -> list[str]:
         """The `parent-recap` `app` points at, with the config the update was given."""
-        command = [installed_program(self.folder)]
+        command = installed_program(self.folder)
         return command + (["-c", self.config] if self.config else [])
 
     def doctor(self, version: str) -> set[str]:
@@ -640,18 +655,21 @@ class _Updater:
         be started, was ended at its time limit, or ended with a non-zero exit status without
         printing a failing check, as one that ends with a traceback does, fails
         DOCTOR_DIDNT_RUN. What it wrote to stderr isn't kept: a traceback may name what is the
-        Household's."""
+        Household's. One the system didn't start is logged with the system's words."""
         why = ""
         try:
             r = subprocess.run([*self.program(), "doctor"], stdin=subprocess.DEVNULL,
-                               capture_output=True, text=True, timeout=DOCTOR_TIMEOUT)
+                               capture_output=True, timeout=DOCTOR_TIMEOUT, **_quiet())
             failing = doctor_failures(r.stdout)
             if r.returncode != 0 and not failing:
                 failing = {DOCTOR_DIDNT_RUN}
                 why = f" (it ended with exit status {r.returncode} and printed no failing check)"
-        except (OSError, subprocess.TimeoutExpired) as e:
+        except subprocess.TimeoutExpired as e:
             failing = {DOCTOR_DIDNT_RUN}
             why = f" ({type(e).__name__})"
+        except OSError as e:
+            failing = {DOCTOR_DIDNT_RUN}
+            why = f" ({_system_said(e)})"
         self.log("check", f"{version}'s doctor: "
                  + (f"{len(failing)} failing: {', '.join(sorted(failing))}{why}" if failing
                     else "no failures"))
@@ -673,37 +691,40 @@ class _Updater:
             raise Refused(f"{target} holds something that isn't Parent Recap, so it was left as it is")
         self.had_plugin = target.exists()
         self.moved = True
-        if self.had_plugin:
-            os.rename(target, spare)
-        os.rename(plugin, target)
-        command = ["/bin/bash", str(target / "install.sh")]
-        if install_record.entries("codex-skill"):
-            command.append("--codex")  # the Codex skills come with the release, as the line does
+        try:
+            if self.had_plugin:
+                os.rename(target, spare)
+            os.rename(plugin, target)
+        except OSError as e:
+            self.log("install", f"{version}: the release couldn't be put in {target} "
+                     f"({_system_said(e)})")
+            raise Refused(f"the release couldn't be put in {target} ({e.strerror or e})") from e
+        name, command = installer(self.folder, target)
         env = {**steps_env(self.config, by_family), "PARENT_RECAP_HOME": str(self.folder)}
         if dialogs:
             env.pop(UPDATING, None)
         else:
             env[UPDATING] = "1"
-        self.log("install", f"{version}: running its install.sh"
+        self.log("install", f"{version}: running its {name}"
                  + (", with its dialogs, as the family started it" if dialogs else ""))
         try:
-            r = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                               env=env, timeout=INSTALL_TIMEOUT)
-            self.log.output("install.sh", r.stdout + r.stderr)
+            r = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True,
+                               timeout=INSTALL_TIMEOUT, **_quiet(env))
+            self.log.output(name, r.stdout + r.stderr)
             finished = r.returncode == 0
             ended = f"ended with exit status {r.returncode}"
         except subprocess.TimeoutExpired as e:
-            self.log.output("install.sh", _text(e.stdout) + _text(e.stderr))
+            self.log.output(name, _text(e.stdout) + _text(e.stderr))
             finished = False
             ended = f"was ended at its time limit of {INSTALL_TIMEOUT // 60} minutes"
         except OSError as e:
             finished = False
-            ended = f"couldn't be started ({type(e).__name__})"
+            ended = f"couldn't be started ({_system_said(e)})"
         now = versions.current(self.folder)
         switched = now is not None and versions.version(now) == version
-        self.log("install", f"{version}: install.sh {ended}; app points at "
+        self.log("install", f"{version}: {name} {ended}; app points at "
                  f"{versions.version(now) if now else 'nothing'}")
-        return switched, None if finished else f"install.sh {ended}"
+        return switched, None if finished else f"{name} {ended}"
 
     def restore_plugin(self, spare: Path) -> None:
         """Puts the plugin copy back as it was before `install`: the one before, or none.
@@ -716,6 +737,47 @@ class _Updater:
         if spare.exists():
             os.rename(spare, target)
         self.moved = False
+
+
+def installer(folder: Path, release: Path) -> tuple[str, list[str]]:
+    """The verified `release`'s own installer, by its name, and the command that runs it as a
+    file. On a Mac its `install.sh`, with `/bin/bash`, as the install line runs it. On Windows
+    its `app/windows_install.py`, which `install.ps1` hands over to, run with the Python of the
+    version `app` in Parent Recap's `folder` points at, by that version's own folder, with `-I`
+    as install.ps1 runs it: no PowerShell and no `.ps1` file (ADR 0052). `--downloaded`, as the
+    pasted line says it, since the release is in Parent Recap's `plugin` folder, which setup's
+    record then lists so uninstall removes it."""
+    if profile.current().system == "windows":
+        running = versions.current(folder)
+        assert running is not None  # not_applicable: an install from before versions isn't updated
+        python = running / ".venv" / profile.current().python
+        return "windows_install.py", [str(python), "-I", str(release / "app" / "windows_install.py"),
+                                      "--downloaded"]
+    command = ["/bin/bash", str(release / "install.sh")]
+    if install_record.entries("codex-skill"):
+        command.append("--codex")  # the Codex skills come with the release, as the line does
+    return "install.sh", command
+
+
+def _quiet(env: dict[str, str] | None = None) -> dict:
+    """What a program the update starts runs with, besides its arguments: its output is read as
+    UTF-8, which it is told to write (piped, Python on Windows would write the PC's code page,
+    which has no ❌, #596), and on Windows it opens no console window, as the evening's update
+    runs from pythonw.exe."""
+    return {"text": True, "encoding": "utf-8", "errors": "replace",
+            "env": {**(os.environ if env is None else env), "PYTHONUTF8": "1"},
+            "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+
+
+def _system_said(error: BaseException) -> str:
+    """The system's own words for what stopped a step, word for word, for the update log: the
+    OSError `error` is or was raised from (a requests error is one), with its kind, as a
+    Defender rule's "Operation did not complete successfully because the file contains a virus"
+    comes. Empty when there is none."""
+    for e in (error, error.__cause__):
+        if isinstance(e, OSError):
+            return f"{type(e).__name__}: {e}"
+    return ""
 
 
 def steps_env(config: str | None, by_family: bool) -> dict[str, str]:
@@ -988,21 +1050,34 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
             for file in (zip_path, signature):
                 _download(session, f"{RELEASES}/v{wanted}/{file.name}", file)
         except Refused as e:
-            log("download", f"{wanted}: failed: {e}")
+            said = _system_said(e)
+            log("download", f"{wanted}: failed: {e}" + (f" ({said})" if said else ""))
             raise
         log("download", f"{wanted}: {name} ({zip_path.stat().st_size} bytes) and its signature")
         tried = wanted
         try:
             good = release_signature.verified(zip_path, signature)
-        except (OSError, subprocess.TimeoutExpired) as e:
+        except release_signature.NoSshKeygen as e:
+            log("verify", f"{wanted}: couldn't be checked: {_system_said(e)}")
+            raise Refused(f"its signature couldn't be checked, so it was deleted. "
+                          f"{no_ssh_keygen(str(e))}") from e
+        except subprocess.TimeoutExpired as e:
             log("verify", f"{wanted}: couldn't be checked: {type(e).__name__}")
+            raise Refused("its signature couldn't be checked, so it was deleted") from e
+        except OSError as e:
+            log("verify", f"{wanted}: couldn't be checked: {_system_said(e)}")
             raise Refused("its signature couldn't be checked, so it was deleted") from e
         if not good:
             log("verify", f"{wanted}: the signature doesn't verify; deleted")
             raise Refused("its signature doesn't verify against Parent Recap's release keys, so "
                           "it isn't a release of Parent Recap's and was deleted")
         log("verify", f"{wanted}: the signature verifies")
-        plugin = _unpack(zip_path, work / "unpacked")
+        try:
+            plugin = _unpack(zip_path, work / "unpacked")
+        except Refused as e:
+            said = _system_said(e)
+            log("unpack", f"{wanted}: failed: {e}" + (f" ({said})" if said else ""))
+            raise
         inside = _zip_version(plugin)
         if inside != wanted or not newer(inside, installed):
             log("verify", f"{wanted}: the zip holds version {inside}; refused and deleted")
@@ -1078,8 +1153,19 @@ def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, wanted
     failed. Its steps run with the environment the installer had (`steps_env`)."""
     try:
         with open(log.path, "a", encoding="utf-8") as out:
+            # The update holds the run lock already, the evening run's or its own (`alone`).
             running, _ = versions.switch_back_whole(folder, updater.config, stdout=out, stderr=out,
-                                                    env=steps_env(updater.config, by_family))
+                                                    env=steps_env(updater.config, by_family),
+                                                    locked=True,
+                                                    creationflags=_quiet()["creationflags"])
+    except OSError as e:  # a link the system didn't let it change: the version that failed runs
+        now = versions.current(folder)
+        log("switch", f"{wanted}: couldn't switch back ({_system_said(e)}), though "
+            f"{failed.log_line}; app points at {versions.version(now) if now else 'nothing'}")
+        _save(folder, last_result=f"{failed.result}; the switch back failed", failed=wanted)
+        return Outcome("failed", f"Version {wanted} {failed.message}, and switching back to "
+                       f"the version before failed ({e.strerror or e}). The update log is "
+                       f"{log.path}.", versions.version(now) if now else None, tried=wanted)
     except versions.NoPrevious:  # install.sh keeps the version before, so only if it was removed
         log("switch", f"{wanted}: no previous version to switch back to, though {failed.log_line}")
         _save(folder, last_result=f"{failed.result}; no version to switch back to",
@@ -1159,9 +1245,16 @@ def installed_version() -> str | None:
     return versions.version(current) if current is not None else None
 
 
-def installed_program(folder: Path) -> str:
-    """The `parent-recap` of the version `app` points at in Parent Recap's `folder`."""
-    return str(folder / versions.APP / ".venv" / "bin" / "parent-recap")
+def installed_program(folder: Path) -> list[str]:
+    """The command that runs `parent-recap` of the version `app` points at in Parent Recap's
+    `folder`: on a Mac its venv's `parent-recap`; on Windows its venv's Python with
+    `-m family_brief`, as the PATH's `parent-recap.cmd` runs it, not pip's launcher, which
+    Defender can block (#591)."""
+    here = profile.current()
+    venv = folder / versions.APP / ".venv"
+    if here.system == "windows":
+        return [str(venv / here.python), "-m", "family_brief"]
+    return [str(venv / "bin" / "parent-recap")]
 
 
 def run_again(arguments: list[str]) -> int:
@@ -1171,9 +1264,9 @@ def run_again(arguments: list[str]) -> int:
     assert folder is not None
     program = installed_program(folder)
     try:
-        return subprocess.run([program, *arguments], check=False).returncode
+        return subprocess.run([*program, *arguments], check=False).returncode
     except OSError as e:
-        print(f"Parent Recap was updated, but {program} couldn't be started "
+        print(f"Parent Recap was updated, but {program[0]} couldn't be started "
               f"({type(e).__name__}). Run the command again.", file=sys.stderr)
         return 1
 
@@ -1287,7 +1380,7 @@ def _cmd_setting(config: str | None, on: bool) -> int:
 
 def register(sub) -> None:
     p = sub.add_parser("update", help="Install the newest release, check it with doctor and "
-                       "switch back if the check fails (on a Mac); with on or off, turn the "
+                       "switch back if the check fails (on a Mac or a PC); with on or off, turn the "
                        "evening's own update on or off")
     p.add_argument("setting", nargs="?", choices=["on", "off"],
                    help="Turn updating by itself after the evening Brief on or off, instead of "

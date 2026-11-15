@@ -22,7 +22,7 @@ from family_brief.state import State
 from family_brief.system import entries, jobs
 from conftest import NOW, TZ, program
 from fake_sources import GmailFolders
-from fake_system import LINUX, MACOS, WINDOWS
+from fake_system import LINUX, MACOS, WINDOWS, WINDOWS_WITHOUT_SSH_KEYGEN
 from test_update import INSTALLED, github, mac  # noqa: F401  the fixtures
 
 HAN = re.compile(r"[　-〿一-鿿＀-￯]")
@@ -311,11 +311,12 @@ def test_doctor_shows_an_update_that_failed_and_stays_ok(harness, nothing_loaded
 
 @pytest.mark.posix
 @pytest.mark.parametrize("on, hosted, why", [
-    (WINDOWS, False, "Parent Recap doesn't update itself on Windows yet"),
+    (WINDOWS_WITHOUT_SSH_KEYGEN, False, "This PC can't update Parent Recap by itself: it has no "
+                                        "ssh-keygen at"),
     (LINUX, False, "This is the hosted version"),
     (MACOS, True, "This is the hosted version"),
-], ids=["windows", "server", "hosted-household"])
-def test_on_windows_and_for_a_hosted_household_doctor_says_updates_aren_t_available_here(
+], ids=["pc-without-ssh-keygen", "server", "hosted-household"])
+def test_on_a_pc_without_ssh_keygen_and_for_a_hosted_household_doctor_says_updates_aren_t_available_here(
         harness, nothing_loaded, github, mac, capsys, on, hosted, why):
     harness.system = on
     harness.config["hosted"] = hosted

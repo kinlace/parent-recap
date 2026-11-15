@@ -496,9 +496,10 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
 
 def _update_folder(cfg: Config, options: Options) -> Path | None:
     """Parent Recap's folder where tonight's Brief says what the evening's update did (#916): only
-    on a family's own Mac, where the program updates itself (ADR 0047), and not in the setup
-    page's Brief."""
-    if cfg.hosted or options.preview or options.first or profile.current().system != "macos":
+    on a family's own Mac or PC, where the program updates itself (ADR 0047, ADR 0052), and not
+    in the setup page's Brief."""
+    if cfg.hosted or options.preview or options.first or \
+            profile.current().system not in ("macos", "windows"):
         return None
     from . import own_node
     return own_node.running_from()

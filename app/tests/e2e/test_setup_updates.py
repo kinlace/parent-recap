@@ -17,7 +17,7 @@ import yaml
 
 from family_brief import failure, run_lock, update
 from family_brief.config import Config
-from fake_system import LINUX, MACOS, WINDOWS
+from fake_system import LINUX, MACOS, WINDOWS_WITHOUT_SSH_KEYGEN
 from setup_page import (PAGE_DIR, at_finish, call, config_file, connect_done, finish, finished,
                         inside, more_progress, wait_for)
 from setup_page import clock, health, page, schedule  # noqa: F401
@@ -359,9 +359,10 @@ def test_update_now_takes_nothing_and_says_when_none_was_started(household, page
 # ── Windows, the hosted version and a program not run from an installed release
 
 
-@pytest.mark.parametrize("on, hosted", [(WINDOWS, False), (LINUX, False), (MACOS, True)],
-                         ids=["windows", "server", "hosted-household"])
-def test_on_windows_and_for_a_hosted_household_the_page_gets_the_version_alone(
+@pytest.mark.parametrize("on, hosted", [(WINDOWS_WITHOUT_SSH_KEYGEN, False), (LINUX, False),
+                                        (MACOS, True)],
+                         ids=["pc-without-ssh-keygen", "server", "hosted-household"])
+def test_on_a_pc_without_ssh_keygen_and_for_a_hosted_household_the_page_gets_the_version_alone(
         harness, github, mac, page, on, hosted):  # noqa: F811
     harness.system = on
     connect_done(harness, hosted=hosted)

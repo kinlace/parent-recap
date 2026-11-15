@@ -62,6 +62,7 @@ markers = [
     "scripts: install.sh, install.ps1, release.py, issue-loop.sh and the workflows",
     "macos: needs macOS (a macOS adapter, a macOS-only feature, or what Windows can't do yet); skipped elsewhere",
     "windows: needs Windows (a Windows adapter or Windows' own layout); skipped elsewhere",
+    "windows_too: an end-to-end test that runs everywhere and on Windows' CI too, which runs only the end-to-end tests marked windows or this",
     "posix: needs macOS or Linux (permission bits, symlinks, a Linux adapter run for real); skipped on Windows",
     "browser: drives the setup page in a real browser with Playwright; skipped without its Chromium",
 ]
