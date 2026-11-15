@@ -204,7 +204,7 @@ class Mac:
 
     def ssh_keygen(self, cmd: list[str], stdin) -> subprocess.CompletedProcess:
         args = dict(zip(cmd[1::2], cmd[2::2]))
-        assert cmd[0] == release_signature.SSH_KEYGEN and args["-Y"] == "verify"
+        assert cmd[0] == str(release_signature.ssh_keygen()) and args["-Y"] == "verify"
         assert args["-f"] == str(release_signature.SIGNERS)
         sig = Path(args["-s"]).read_bytes()
         good = args["-n"] == release_signature.NAMESPACE and sig == signature(stdin.read(), args["-I"])

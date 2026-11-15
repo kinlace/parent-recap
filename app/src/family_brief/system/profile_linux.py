@@ -58,4 +58,5 @@ PROFILE = Profile(
     removes_running=True,
     os_version=_os_version,
     maxrss_unit=1024,  # kilobytes
+    ssh_keygen=Path("/usr/bin/ssh-keygen"),  # openssh-client, on every server the maintainers run
 )
