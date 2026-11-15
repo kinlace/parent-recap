@@ -281,6 +281,8 @@ function Test-SetupPage {
 function Test-SecondInstall {
   $watched = @("$Installed\runtime", $Py, "$Installed\app\.venv\parent-recap-packages.txt", "$Installed\baileys")
   $before = $watched | ForEach-Object { (Get-Item $_).LastWriteTimeUtc.Ticks }
+  $running = Get-Running
+  $versionsBefore = @(Get-ChildItem "$Installed\versions" -Force | ForEach-Object Name) -join ','
   $out = powershell -NoProfile -ExecutionPolicy Bypass -File $Install *>&1 | Out-String
   if ($LASTEXITCODE -ne 0) { throw "exited with $LASTEXITCODE" }
   Write-Host $out
@@ -288,7 +290,13 @@ function Test-SecondInstall {
   if ($out -notmatch 'up to date') { throw 'no word that the packages are up to date' }
   $after = $watched | ForEach-Object { (Get-Item $_).LastWriteTimeUtc.Ticks }
   if (Compare-Object $before $after) { throw 'the second install changed the runtimes, the venv or the Baileys tree' }
-  if ((Get-Running) -ne $running) { throw "the second install made a new version, $(Get-Running)" }
+  # The same version again goes in its own folder: versions holds what it held, app points there.
+  $now = Split-Path -Leaf (Get-Running)
+  $kept = @(Get-ChildItem "$Installed\versions" -Force | ForEach-Object Name) -join ','
+  Write-Host "versions before: $versionsBefore; after: $kept; app points at $now"
+  if ($kept -ne $versionsBefore -or $now -ne (Split-Path -Leaf $running)) {
+    throw "the second install changed the versions: before $versionsBefore (app at $running), after $kept (app at $now)"
+  }
   # Then the versions side by side (#991), with the real install: an install from before versions
   # taken over while its Linked Device's task runs, then a switch back and forward again.
   Test-TakeOver
