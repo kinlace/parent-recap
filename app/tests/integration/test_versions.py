@@ -332,6 +332,24 @@ def test_a_folder_something_else_holds_stops_the_switch_and_changes_nothing(
     assert harness.jobs.always_running  # started again
 
 
+def test_a_link_that_couldnt_be_made_after_the_take_over_puts_the_program_back(
+        harness, folder, in_two_steps, monkeypatch):
+    app = folder / "app"
+    (app / ".venv").mkdir(parents=True)
+    (app / "VERSION").write_text("0.9.0\n")
+    new = built(folder, "1_0.aaa")
+
+    def refused(link, to):
+        raise PermissionError(5, "Access is denied", str(link))
+    monkeypatch.setattr(links, "point", refused)
+
+    with pytest.raises(PermissionError):
+        versions.switch(folder, new)
+
+    assert not links.is_link(app) and (app / "VERSION").read_text() == "0.9.0\n"
+    assert not (folder / "versions" / "0.9.0.before").exists()
+
+
 @pytest.mark.windows
 def test_on_windows_a_file_open_in_the_program_s_folder_stops_the_take_over(harness, folder,
                                                                             capsys):
