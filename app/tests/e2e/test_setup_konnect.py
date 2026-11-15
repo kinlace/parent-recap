@@ -108,6 +108,17 @@ def test_doctor_signs_in_to_each_portal_and_names_its_children(harness, nothing_
             "Leo Testzoon (Leo)") in lines
 
 
+def test_doctor_counts_one_planned_time_as_one(harness, nothing_loaded, portal, capsys):  # noqa: F811
+    harness.config["konnect"] = {"signins": [{"portal": "mijnbso", "username": USERNAME}]}
+    harness.secrets[SECRET] = KONNECT_PASSWORD
+    harness.sources["konnect"] = harness.sources["konnect"][:1]
+
+    harness.cli("doctor", "--skip-llm")
+
+    [line] = [l for l in capsys.readouterr().out.splitlines() if "Konnect" in l]
+    assert "1 planned time in the next 14 days" in line
+
+
 def test_doctor_says_what_to_do_when_the_portal_wants_a_new_password(harness, nothing_loaded, portal,  # noqa: F811
                                                                      capsys):
     harness.config["konnect"] = {"signins": [{"portal": "mijnbso", "username": USERNAME}]}
