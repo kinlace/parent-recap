@@ -31,7 +31,7 @@ from . import (ai_filter_report, chat_install, command_path, install_record,
                update, versions)
 from .collectors.gmail import keychain_account, username_of
 from .config import RETIRED_SECTIONS, Config
-from .system import desktop, entries, jobs, profile, secrets, user_path, wake, windows_only
+from .system import desktop, entries, jobs, links, profile, secrets, user_path, wake, windows_only
 
 OK, FAIL = ops.OK, ops.FAIL
 # install.sh's and install.ps1's pinned ones, and the folders they download them into.
@@ -65,8 +65,22 @@ class Item:
 
 
 def _file(what: str, p: Path, **kw) -> Item:
-    remove = partial(shutil.rmtree, p) if p.is_dir() and not p.is_symlink() else p.unlink
+    if links.is_link(p):  # `app`: the link only, never the version it points at
+        remove = partial(links.remove, p)
+    elif p.is_dir():
+        remove = partial(_remove_folder, p)
+    else:
+        remove = p.unlink
     return Item(what, _show(p), remove, path=p, **kw)
+
+
+def _remove_folder(folder: Path) -> None:
+    """Removes `folder`, its links (`versions/previous`) first, as links, so nothing is removed
+    through one."""
+    for p in folder.iterdir():
+        if links.is_link(p):
+            links.remove(p)
+    shutil.rmtree(folder)
 
 
 @dataclass
@@ -573,11 +587,11 @@ def _program(s: Survey, program: Path) -> None:
 def _versions(s: Survey, folder: Path) -> None:
     """The folder install.sh installs each version in, with the one `app` points at and the one
     kept to switch back to (ADR 0047)."""
-    if not folder.is_dir() or folder.is_symlink():
+    if not folder.is_dir() or links.is_link(folder):
         return
 
     def ours(p: Path) -> bool:
-        if p.is_symlink():  # `previous`, or a new one a switch cut off left
+        if links.is_link(p):  # `previous`, or a new one a switch cut off left
             return True
         # One an install cut off before it copied the program is empty.
         return p.is_dir() and (not any(p.iterdir()) or _is_program(p))

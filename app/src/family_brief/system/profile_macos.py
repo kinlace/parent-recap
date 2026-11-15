@@ -56,6 +56,7 @@ PROFILE = Profile(
     program_folders=_program_folders,
     install_folders=_install_folders,
     command=Path("bin/family-brief"),
+    python=Path("bin/python"),
     path_command=Path("bin/parent-recap"),
     links_command=True,
     node=Path("bin/node"),

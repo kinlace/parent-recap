@@ -207,6 +207,11 @@ def restart_always() -> None:
                            f"{kick.stderr.strip() or kick.returncode}")
 
 
+def start_always() -> None:
+    # stop_always unloaded it: loaded again, RunAtLoad starts it.
+    subprocess.run(["launchctl", "load", str(_path(ALWAYS_LABEL))], check=True)
+
+
 def always_status() -> jobs.AlwaysStatus:
     probe = subprocess.run(["launchctl", "print", f"{_domain()}/{ALWAYS_LABEL}"],
                            capture_output=True, text=True, encoding="utf-8")

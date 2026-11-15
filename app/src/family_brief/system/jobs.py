@@ -115,6 +115,14 @@ def stop_always() -> None:
     _adapter.stop_always()
 
 
+def start_always() -> None:
+    """Starts the always-running job, as it's installed, after stop_always stopped it; one that
+    isn't installed, or is running, is left as it is."""
+    status = _adapter.always_status()
+    if status.installed and not status.running:
+        _adapter.start_always()
+
+
 def restart_always() -> None:
     """Starts the always-running job again, as it's installed, if it's running now, so it runs
     the version of the program an install or `switch-back` switched to; one that isn't running

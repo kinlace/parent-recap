@@ -110,6 +110,7 @@ class FakeJobs:
         self.always_log_dir: Path | None = None
         self.always_running = False            # stopped, or ended with its link, when False
         self.always_restarts = 0               # how often restart_always started it again
+        self.always_starts = 0                 # how often start_always started it after a stop
 
     @property
     def OWN_CLOCK(self) -> bool:
@@ -159,6 +160,10 @@ class FakeJobs:
 
     def stop_always(self) -> None:
         self.always_running = False
+
+    def start_always(self) -> None:
+        self.always_running = True
+        self.always_starts += 1
 
     def restart_always(self) -> None:
         self.always_restarts += 1

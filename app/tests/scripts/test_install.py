@@ -234,6 +234,11 @@ def program(mac: dict, requires: tuple[str, ...], constraints: str | None = None
     # The real one, which install.sh runs to switch to the version it installed (ADR 0047).
     shutil.copy(ROOT / "app" / "src" / "family_brief" / "versions.py",
                 app / "family_brief" / "versions.py")
+    # With the links it makes, the system's own (system/links.py).
+    (app / "family_brief" / "system").mkdir()
+    for module in ("__init__", "links", "links_macos", "links_linux"):
+        shutil.copy(ROOT / "app" / "src" / "family_brief" / "system" / f"{module}.py",
+                    app / "family_brief" / "system" / f"{module}.py")
 
 
 def pinned(packages: Path, constraints: str | None) -> str:

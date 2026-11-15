@@ -230,3 +230,26 @@ def test_a_program_s_folder_goes_once_the_program_running_from_it_has_ended(tmp_
     while own.exists() and time.time() < deadline:
         time.sleep(1)
     assert not own.exists()
+
+
+@pytest.mark.windows
+def test_a_junction_goes_as_the_link_alone_never_what_is_in_the_folder_it_points_at(tmp_path):
+    # `app` and `versions\previous` are junctions (#991), which Windows PowerShell's Remove-Item
+    # -Recurse would follow. Here they point outside what goes, so what they point at must stay.
+    from family_brief.system import links
+    own, kept = tmp_path / "ParentRecap", tmp_path / "kept"
+    (kept / "version").mkdir(parents=True)
+    (kept / "version" / "VERSION").write_text("1.0\n")
+    (own / "versions" / "1.1.bbb").mkdir(parents=True)
+    links.point(own / "app", kept / "version")
+    links.point(own / "versions" / "previous", kept / "version")
+    ended = subprocess.Popen([sys.executable, "-c", "pass"])
+    ended.wait()
+
+    windows_only.remove_after_exit([own / "app", own / "versions"], [own], pid=ended.pid)
+
+    deadline = time.time() + 60
+    while own.exists() and time.time() < deadline:
+        time.sleep(1)
+    assert not own.exists()
+    assert (kept / "version" / "VERSION").read_text() == "1.0\n"

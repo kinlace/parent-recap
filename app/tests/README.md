@@ -86,7 +86,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request                       |
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                                               |
 | `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                                         |
-| `test_versions.py`              | The install's switch to a new version, the previous one kept, `switch-back` (ADR 0047)                       |
+| `test_versions.py`              | The install's switch to a new version, the previous one kept, `switch-back` (ADR 0047); on Windows with the Linked Device stopped and under the run lock (#991) |
 | `test_update_look.py`           | The update's look for the evening run: a version that failed isn't tried again (ADR 0047)                    |
 | `test_program_entries.py`       | Parent Recap Settings and Check put where the system lists programs, again on update, none on a server       |
 | `test_schoolsoft_capture.py`    | The SchoolSoft capture tool on a fake SchoolSoft: sign-in, reads, the file, evening refreshes, the lock |
@@ -229,6 +229,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_setup_wilma_windows.py`   | The Wilma sign-in window on Windows                       |
 | `test_model_process.py`         | The model's program run for real; a try slept through stopped |
 | `test_release_signature.py`     | A release zip's signature through the system's own `ssh-keygen` (Windows' too), with keys made in the test |
+| `test_links.py`                 | Links to a folder: symlinks on macOS and Linux, junctions on Windows (#991) |
 
 ## Script tests
 
@@ -236,7 +237,7 @@ slowest tests, so add one for a main path, not for each result.
 | -------------------------- | --------------------------------------------------------------- |
 | `test_install.py`          | `install.sh`: pinned Python and Node, prebuilt packages only, each by its checksum |
 | `test_install_ps1.py`      | `install.ps1` stays in step with `install.sh`, and hands over  |
-| `test_windows_install.py`  | `app/windows_install.py`, the Windows install's steps once a Python is there: standard library only, runtimes by checksum, its exit code and words |
+| `test_windows_install.py`  | `app/windows_install.py`, the Windows install's steps once a Python is there: standard library only, runtimes by checksum, its exit code and words, each version in a folder of its own beside the running one |
 | `test_one_line_install.py` | `get.sh`, the line a family pastes                              |
 | `test_schoolsoft_capture_line.py` | The SchoolSoft capture's `get.sh` and `remove`, and the tool run without Parent Recap |
 | `test_codex_install.py`    | `install.sh --codex` installs the skills for Codex              |

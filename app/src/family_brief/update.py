@@ -1078,7 +1078,7 @@ def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, wanted
     failed. Its steps run with the environment the installer had (`steps_env`)."""
     try:
         with open(log.path, "a", encoding="utf-8") as out:
-            running, _ = versions.switch_back_whole(folder, stdout=out, stderr=out,
+            running, _ = versions.switch_back_whole(folder, updater.config, stdout=out, stderr=out,
                                                     env=steps_env(updater.config, by_family))
     except versions.NoPrevious:  # install.sh keeps the version before, so only if it was removed
         log("switch", f"{wanted}: no previous version to switch back to, though {failed.log_line}")

@@ -98,14 +98,23 @@ def _elevation_type() -> int | None:
 
 # Waits for the process, then removes each path, trying again for a minute while the launchers
 # that started it (parent-recap.cmd's cmd.exe, the venv's python.exe) end too, then the folders left empty.
+# A junction (`app`, `versions\previous`), the path or one in it, goes as the link alone, before
+# the rest: Windows PowerShell's Remove-Item -Recurse would remove what is in the folder it points
+# at. A link that points nowhere is still there, which Test-Path doesn't say.
 _REMOVE = (
     "$ErrorActionPreference = 'SilentlyContinue'; "
     "Wait-Process -Id ([int]$env:PARENT_RECAP_PID); "
     "$paths = @($env:PARENT_RECAP_PATHS -split \"`n\" | Where-Object { $_ }); "
+    "$link = [IO.FileAttributes]::ReparsePoint; "
     "for ($i = 0; $i -lt 60; $i++) { "
-    "$left = @($paths | Where-Object { Test-Path -LiteralPath $_ }); "
+    "$left = @($paths | Where-Object { Get-Item -LiteralPath $_ -Force }); "
     "if ($left.Count -eq 0) { break }; "
-    "foreach ($p in $left) { Remove-Item -LiteralPath $p -Recurse -Force }; "
+    "foreach ($p in $left) { "
+    "$item = Get-Item -LiteralPath $p -Force; "
+    "if ($item.Attributes -band $link) { $item.Delete(); continue }; "
+    "if ($item.PSIsContainer) { Get-ChildItem -LiteralPath $p -Force | "
+    "Where-Object { $_.Attributes -band $link } | ForEach-Object { $_.Delete() } }; "
+    "Remove-Item -LiteralPath $p -Recurse -Force }; "
     "Start-Sleep -Seconds 1 }; "
     "foreach ($f in @($env:PARENT_RECAP_FOLDERS -split \"`n\" | Where-Object { $_ })) { "
     "if ((Test-Path -LiteralPath $f -PathType Container) -and "

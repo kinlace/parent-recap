@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
+from .. import versions
 from . import jobs, task_run  # jobs' names are read at call time: jobs imports this module first
 
 PREFIX = "Parent Recap "
@@ -75,10 +76,16 @@ def _error(r: subprocess.CompletedProcess) -> str:
 
 # ---------------------------------------------------------------- the evening jobs
 
+def _python() -> str:
+    """This Python, through `app` when it's an installed version's (ADR 0047), so the next
+    version's install leaves the tasks as they are."""
+    return str(versions.stable(Path(sys.executable)))
+
+
 def _pythonw() -> str:
     """This Python's windowless twin, which a venv on Windows has beside python.exe."""
-    pythonw = Path(sys.executable).with_name("pythonw.exe")
-    return str(pythonw) if pythonw.exists() else sys.executable
+    pythonw = Path(_python()).with_name("pythonw.exe")
+    return str(pythonw) if pythonw.exists() else _python()
 
 
 def _next(hour: int, minute: int, now: datetime) -> datetime:
@@ -107,7 +114,7 @@ def _task(job: jobs.Job, description: str, trigger: Callable[[ET.Element], None]
     return _xml(description, trigger, [
         str(job.log_dir / f"{job.subcommand}-stdout.log"),
         str(job.log_dir / f"{job.subcommand}-stderr.log"),
-        sys.executable, "-m", "family_brief", job.subcommand, *more_args], wake=wake)
+        _python(), "-m", "family_brief", job.subcommand, *more_args], wake=wake)
 
 
 def _at_sign_in(delay: str | None) -> Callable[[ET.Element], None]:
@@ -359,8 +366,12 @@ def remove_always() -> None:
 
 
 def restart_always() -> None:
-    task = system_name(jobs.ALWAYS)
     stop_always()
+    start_always()
+
+
+def start_always() -> None:
+    task = system_name(jobs.ALWAYS)
     r = _schtasks("/Run", "/TN", task)
     if r.returncode != 0:
         raise RuntimeError(f"Task Scheduler couldn't start {task}: {_error(r)}")

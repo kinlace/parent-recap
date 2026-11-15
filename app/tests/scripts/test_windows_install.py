@@ -187,6 +187,12 @@ class Recorded(wi.Log):
         self.ran.append(command)
         return 1 if any(part in command for part in self.fails) else 0
 
+    def run_saying(self, command: list[str]) -> tuple[int, str]:
+        code = self.run(command)
+        return code, self.says if code else ""
+
+    says = ""  # what a program that fails prints
+
 
 @pytest.fixture
 def installed(tmp_path) -> wi.Install:
@@ -223,16 +229,20 @@ def test_setup_s_record_comes_first_then_the_command_the_wilma_cli_baileys_and_t
 
     assert modules(installed.log) == ["family_brief.install_record", "family_brief.command_path",
                                       "family_brief.setup_wilma", "family_brief.baileys_install",
-                                      "family_brief.program_entries"]
+                                      "family_brief.linked_device", "family_brief.program_entries"]
     record = installed.log.ran[0]
-    # The copy of stable the pasted line downloaded is recorded, so uninstall removes it.
+    # The copy of stable the pasted line downloaded is recorded, so uninstall removes it, and so
+    # are `app` and the versions.
     assert record[record.index("plugin") + 1] == str(installed.plugin)
-    # On the venv's python.exe, never pip's parent-recap.exe, which Defender can block (#591).
-    assert {c[0] for c in installed.log.ran} == {str(installed.venv_python)}
+    assert record[record.index("versions") + 1] == str(installed.target / "versions")
+    # Through `app`, on the venv's python.exe, never pip's parent-recap.exe, which Defender can
+    # block (#591).
+    assert {c[0] for c in installed.log.ran} == {str(installed.app / ".venv" / "Scripts" / "python.exe")}
 
 
 def test_a_wilma_cli_or_baileys_tree_that_couldnt_be_updated_doesnt_fail_the_install(installed):
-    installed.log.fails = ("family_brief.setup_wilma", "family_brief.baileys_install", "family_brief.program_entries")
+    installed.log.fails = ("family_brief.setup_wilma", "family_brief.baileys_install", "family_brief.linked_device",
+                           "family_brief.program_entries")
 
     installed.run_program_steps()
 
@@ -246,25 +256,100 @@ def test_a_record_that_couldnt_be_written_fails_the_install_naming_the_log(insta
         installed.run_program_steps()
 
 
-def test_runtimes_the_program_no_longer_runs_on_go_and_the_others_stay(installed):
-    runtimes = installed.runtimes
-    for name in ("python-3.12.1-20240101", "node-v20.0.0", installed.runtime.name, installed.node_runtime.name,
-                 "wilma-something"):
-        (runtimes / name).mkdir()
-
-    installed.remove_old_runtimes()
-
-    assert sorted(p.name for p in runtimes.iterdir()) == sorted([installed.runtime.name, installed.node_runtime.name,
-                                                                 "wilma-something"])
 
 
-def test_the_python_the_installer_runs_on_stays_when_the_release_pins_another(installed, monkeypatch):
-    # As an update's may: started on the version before's Python, which Windows won't let go while
-    # it runs. The next install, on the new one, removes it.
-    running = installed.runtimes / "python-3.12.1-20240101"
-    running.mkdir()
-    monkeypatch.setattr(wi.sys, "base_prefix", str(running))
+# --- Versions side by side (#991) ----------------------------------------------------------------
 
-    installed.remove_old_runtimes()
+@pytest.fixture
+def release(tmp_path, monkeypatch) -> wi.Install:
+    """A release of version 2.0 to install into a Parent Recap folder with its pinned runtimes in
+    place, whose robocopy, venv and pip steps are recorded rather than run."""
+    plugin = tmp_path / "plugin"
+    (plugin / ".claude-plugin").mkdir(parents=True)
+    (plugin / ".claude-plugin" / "plugin.json").write_text('{"name": "parent-recap", "version": "2.0"}')
+    (plugin / "app").mkdir()
+    (plugin / "app" / "pyproject.toml").write_text("[project]\nname = 'family-brief'\n")
+    target = tmp_path / "ParentRecap"
+    install = wi.Install(plugin, target, Recorded(tmp_path / "install.log", fails=("wanted",)), downloaded=False)
+    for runtime, program in ((install.runtime, "python.exe"), (install.node_runtime, "node.exe")):
+        runtime.mkdir(parents=True)
+        (runtime / program).write_bytes(b"MZ")
+    monkeypatch.setattr(wi.Install, "install_packages", lambda self: None)
+    return install
 
-    assert running.is_dir()
+
+def version_folder(target: Path, name: str, version: str) -> Path:
+    folder = target / "versions" / name
+    (folder / ".venv" / "Scripts").mkdir(parents=True)
+    (folder / "VERSION").write_text(f"{version}\n")
+    return folder
+
+
+def switches(log: Recorded) -> list[list[str]]:
+    return [c for c in log.ran if "family_brief.versions" in c]
+
+
+def test_a_new_version_is_installed_in_a_folder_of_its_own_and_switched_to(release, capsys):
+    before = version_folder(release.target, "1.0.abc", "1.0")
+    (release.target / "app").symlink_to(Path("versions") / before.name)  # a junction on Windows
+
+    release.run()
+
+    new = release.folder
+    assert new.parent == release.target / "versions" and new.name.startswith("2.0.") and new != before
+    assert (new / "VERSION").read_text() == "2.0\n"
+    # The runtimes it runs on, which the switch keeps while it's kept.
+    assert (new / "RUNTIMES").read_text().split() == [release.runtime.name, release.node_runtime.name]
+    assert switches(release.log) == [[str(new / ".venv" / "Scripts" / "python.exe"), "-m", "family_brief.versions",
+                                      "switch", str(release.target), str(new)]]
+    # The robocopy and the venv went into the new folder, not through `app`.
+    assert all(str(release.target / "app") not in " ".join(c) for c in release.log.ran[:2])
+    assert "Parent Recap 2.0 is installed in" in capsys.readouterr().out
+
+
+def test_the_same_version_again_is_installed_in_its_own_folder(release):
+    running = version_folder(release.target, "2.0.abc", "2.0")
+    (release.target / "app").symlink_to(Path("versions") / running.name)
+
+    release.run()
+
+    assert release.folder == running
+    assert sorted(p.name for p in (release.target / "versions").iterdir()) == ["2.0.abc"]
+
+
+def test_an_install_from_before_versions_is_left_to_the_switch_to_take_over(release):
+    app = release.target / "app"
+    (app / ".venv" / "Scripts").mkdir(parents=True)
+    (app / "VERSION").write_text("2.0\n")
+
+    release.run()
+
+    assert release.folder.parent == release.target / "versions"
+    assert switches(release.log)[0][-1] == str(release.folder)
+
+
+def test_a_step_that_fails_before_the_switch_leaves_nothing_of_the_new_version(release):
+    before = version_folder(release.target, "1.0.abc", "1.0")
+    (release.target / "app").symlink_to(Path("versions") / before.name)
+    release.log.fails = ("venv",)
+
+    with pytest.raises(wi.Stop, match="couldn't set up its Python"):
+        release.run()
+
+    assert sorted(p.name for p in (release.target / "versions").iterdir()) == ["1.0.abc"]
+    assert switches(release.log) == []
+
+
+def test_a_switch_that_changed_nothing_says_why_and_leaves_nothing_of_the_new_version(release):
+    before = version_folder(release.target, "1.0.abc", "1.0")
+    (release.target / "app").symlink_to(Path("versions") / before.name)
+    release.log.fails = ("switch",)
+    release.log.says = "Parent Recap couldn't move its program in C:\\x\\app to make room for the new version."
+
+    with pytest.raises(wi.Stop) as stopped:
+        release.run()
+
+    assert str(stopped.value) == (release.log.says + "\n   If it fails again, tell the Parent Recap team.")
+    assert sorted(p.name for p in (release.target / "versions").iterdir()) == ["1.0.abc"]
+    assert os.readlink(release.target / "app") == str(Path("versions") / "1.0.abc")
+    assert not any("family_brief.install_record" in c for c in release.log.ran)

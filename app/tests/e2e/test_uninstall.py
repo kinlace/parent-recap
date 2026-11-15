@@ -22,7 +22,7 @@ from family_brief import (__main__ as cli, command_path, install_record, program
                           run_lock, setup_save, setup_wilma, tools)
 from family_brief.collectors import gmail
 from family_brief.config import Config
-from family_brief.system import entries, jobs, profile, secrets, wake, windows_only
+from family_brief.system import entries, jobs, links, profile, secrets, wake, windows_only
 from family_brief.system.secrets_error import SecretsError
 from fake_system import LINUX, WINDOWS
 from test_setup_wilma import wilma_cli  # noqa: F401
@@ -49,7 +49,13 @@ class Handover:
         self.handed.append((list(paths), list(folders)))
         if self.keeps:
             return
-        for p in paths:
+        for p in paths:  # as Windows' own does: a link as the link alone, before the rest
+            if links.is_link(p):
+                links.remove(p)
+                continue
+            for inside in p.iterdir():
+                if links.is_link(inside):
+                    links.remove(inside)
             shutil.rmtree(p)
         for f in sorted(folders, key=lambda f: len(f.parts), reverse=True):
             if f.is_dir() and not any(f.iterdir()):
@@ -438,11 +444,11 @@ def as_versions(home: Path) -> Path:
     versions_folder = target / "versions"
     versions_folder.mkdir()
     (target / "app").rename(versions_folder / "0.6.0.abc123")
-    (target / "app").symlink_to("versions/0.6.0.abc123")
+    links.point(target / "app", Path("versions/0.6.0.abc123"))  # a junction on Windows
     before = versions_folder / "0.5.0.def456"
     shutil.copytree(versions_folder / "0.6.0.abc123", before, symlinks=True)
     (before / "VERSION").write_text("0.5.0\n")
-    (versions_folder / "previous").symlink_to(before.name)
+    links.point(versions_folder / "previous", Path(before.name))
     install_record.main(["versions", str(versions_folder)])
     return versions_folder
 
@@ -601,6 +607,30 @@ def test_on_windows_the_program_and_its_python_go_once_uninstall_has_ended(harne
     assert "The program goes once uninstall has ended: ~/ParentRecap/app" in out
     assert "this PC" in out and "Mac" not in out
     assert "macOS" not in out
+
+
+@pytest.mark.posix
+def test_on_windows_app_and_the_versions_go_once_uninstall_has_ended_never_through_app(
+        harness, handover, monkeypatch, capsys):
+    # `app` a junction on Windows (#991): only the link goes with it, and the versions with theirs.
+    set_up(harness, monkeypatch)
+    as_windows(harness, monkeypatch)
+    versions_folder = as_versions(harness.home)
+    app = harness.home / "ParentRecap" / "app"
+    handover.keeps = True
+
+    assert uninstall(harness, "--confirm", "--remove-archive") == 0
+
+    [(paths, _)] = handover.handed
+    assert app in paths and versions_folder in paths
+    # Neither goes while uninstall runs from them, and nothing in a version went through `app`.
+    assert links.is_link(app) and links.is_link(versions_folder / "previous")
+    assert (versions_folder / "0.6.0.abc123" / "pyproject.toml").is_file()
+    assert (versions_folder / "0.5.0.def456" / "pyproject.toml").is_file()
+    assert "The program's installed versions goes once uninstall has ended" in capsys.readouterr().out
+    handover.keeps = False
+    handover(*handover.handed[0])
+    assert leftovers(harness.home) == []
 
 
 def test_on_windows_a_program_that_couldn_t_be_handed_over_is_reported(harness, handover,

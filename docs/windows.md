@@ -43,7 +43,7 @@ Before your first evening, check the two settings above:
 
 ## Updating
 
-On Windows Parent Recap doesn't update itself yet, as it does [on a Mac](install.md#updating). Paste the install line into PowerShell again. It updates what it installed and never touches your settings or passwords.
+On Windows Parent Recap doesn't update itself yet, as it does [on a Mac](install.md#updating). Paste the install line into PowerShell again. It updates what it installed and never touches your settings or passwords. It installs the new version beside the one you have and switches to it only once it finished, keeping the version before: if the new one turns out bad, `parent-recap switch-back` runs the version before again, and running it again switches forward. If the install says another program uses Parent Recap's folder, close Parent Recap Settings and any window that runs Parent Recap, then paste the line again.
 
 ## Checking how it runs
 

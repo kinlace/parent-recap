@@ -36,6 +36,7 @@ class Profile:
     program_folders: Callable[[], list[str]]  # where installers put programs, besides the home's
     install_folders: Callable[[Path], list[Path]]  # where the install puts Parent Recap, for a home
     command: Path                 # the program's command, in its venv
+    python: Path                  # the venv's Python, which runs the program's own steps
     path_command: Path            # what the PATH's `parent-recap` runs, in its venv
     links_command: bool           # whether that is a link to it, or a .cmd that runs it -m family_brief
     node: Path                    # `node`, in the folder Node was unpacked into
