@@ -1,7 +1,10 @@
 """A release zip verifies against its signature with either key the program ships, through the
-system's ssh-keygen (ADR 0047). Each test makes its own keys; no private key is in the repo."""
+system's own ssh-keygen (ADR 0047): /usr/bin's on macOS and Linux, System32's OpenSSH on Windows
+(ADR 0052). Each test makes its own keys; no private key is in the repo."""
 from __future__ import annotations
 
+import dataclasses
+import os
 import subprocess
 import tomllib
 from pathlib import Path
@@ -9,9 +12,8 @@ from pathlib import Path
 import pytest
 
 from family_brief import release_signature
-from family_brief.release_signature import NAMESPACE, SIGNERS, verified
-
-pytestmark = pytest.mark.posix
+from family_brief.release_signature import NAMESPACE, SIGNERS, NoSshKeygen, verified
+from family_brief.system import profile
 
 # The two public keys of #913, the workflow's and the backup.
 WORKFLOW_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMlgmC+GM8Ibijhy11C2GbmAI1+XZ2fafcGMDPOHEDWw"
@@ -20,7 +22,7 @@ BACKUP_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILRVwI3p+XA3qeq4r+KPrcrzhDR/Vp
 
 def make_key(folder: Path, name: str) -> Path:
     key = folder / name
-    subprocess.run([release_signature.SSH_KEYGEN, "-q", "-t", "ed25519", "-N", "", "-C", "",
+    subprocess.run([str(release_signature.ssh_keygen()), "-q", "-t", "ed25519", "-N", "", "-C", "",
                     "-f", str(key)], check=True)
     return key
 
@@ -30,7 +32,7 @@ def public(key: Path) -> str:
 
 
 def sign(key: Path, data: Path, namespace: str = NAMESPACE) -> Path:
-    subprocess.run([release_signature.SSH_KEYGEN, "-Y", "sign", "-f", str(key), "-n", namespace,
+    subprocess.run([str(release_signature.ssh_keygen()), "-Y", "sign", "-f", str(key), "-n", namespace,
                     str(data)], check=True, capture_output=True)
     return data.with_name(data.name + ".sig")
 
@@ -44,7 +46,8 @@ def keys(tmp_path: Path) -> dict[str, Path]:
     signers.write_text(
         "# Like the shipped file.\n"
         + "".join(f'{name} namespaces="{NAMESPACE}" {public(made[name])}\n'
-                  for name in ("workflow", "backup")))
+                  for name in ("workflow", "backup")),
+        newline="\n")  # as the shipped file is, on Windows too
     return {**made, "signers": signers}
 
 
@@ -75,7 +78,7 @@ def test_a_changed_signature_fails(keys, release_zip):
     # A letter in the middle of the armoured body, which holds the signature bytes.
     middle = len(lines) // 2
     lines[middle] = lines[middle][:10] + ("A" if lines[middle][10] != "A" else "B") + lines[middle][11:]
-    signature.write_text("\n".join(lines) + "\n")
+    signature.write_text("\n".join(lines) + "\n", newline="\n")
 
     assert not verified(release_zip, signature, signers=keys["signers"])
 
@@ -94,6 +97,42 @@ def test_a_signature_made_under_another_namespace_fails(keys, release_zip):
 
 def test_a_missing_signature_fails(keys, release_zip, tmp_path):
     assert not verified(release_zip, tmp_path / "none.sig", signers=keys["signers"])
+
+
+def test_ssh_keygen_is_started_by_the_profiles_full_path_without_a_window(
+        keys, release_zip, monkeypatch):
+    signature = sign(keys["workflow"], release_zip)
+    started = []
+    run = subprocess.run
+
+    def spy(cmd, **kwargs):
+        started.append((cmd[0], kwargs.get("creationflags")))
+        return run(cmd, **kwargs)
+    monkeypatch.setattr(subprocess, "run", spy)
+
+    assert verified(release_zip, signature, signers=keys["signers"])
+    assert started == [(str(profile.current().ssh_keygen),
+                        getattr(subprocess, "CREATE_NO_WINDOW", 0))]
+    assert profile.current().ssh_keygen.is_absolute()
+
+
+def test_a_computer_without_ssh_keygen_says_so_rather_than_not_verified(
+        keys, release_zip, tmp_path, monkeypatch):
+    signature = sign(keys["workflow"], release_zip)
+    without = dataclasses.replace(profile.current(), ssh_keygen=tmp_path / "no" / "ssh-keygen")
+    monkeypatch.setattr(profile, "current", lambda: without)
+
+    with pytest.raises(NoSshKeygen):
+        verified(release_zip, signature, signers=keys["signers"])
+    # Even with no signature file, which is otherwise "not verified".
+    with pytest.raises(NoSshKeygen):
+        verified(release_zip, tmp_path / "none.sig", signers=keys["signers"])
+
+
+@pytest.mark.windows
+def test_on_windows_it_is_the_openssh_client_under_system32():
+    assert profile.current().ssh_keygen == Path(
+        os.environ["SystemRoot"], "System32", "OpenSSH", "ssh-keygen.exe")
 
 
 def test_a_signature_from_a_test_key_fails_against_the_shipped_keys(keys, release_zip):
