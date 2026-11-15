@@ -2,6 +2,12 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## 0.20.1 · 2026-11-15
+
+### Fixed
+
+- For a family that connected a Konnect parent portal, Parent Recap Check and `parent-recap doctor` now say "1 planned time" when a Kid has one booked time in the next two weeks, not "1 planned times".
+
 ## 0.20.0 · 2026-11-15
 
 ### Added
