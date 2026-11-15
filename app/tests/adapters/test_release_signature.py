@@ -1,6 +1,6 @@
 """A release zip verifies against its signature with either key the program ships, through the
 system's own ssh-keygen (ADR 0047): /usr/bin's on macOS and Linux, System32's OpenSSH on Windows
-(ADR 0052). Each test makes its own keys; no private key is in the repo."""
+(#953). Each test makes its own keys; no private key is in the repo."""
 from __future__ import annotations
 
 import dataclasses
@@ -14,6 +14,8 @@ import pytest
 from family_brief import release_signature
 from family_brief.release_signature import NAMESPACE, SIGNERS, NoSshKeygen, verified
 from family_brief.system import profile
+
+PROFILE = profile.current()
 
 # The two public keys of #913, the workflow's and the backup.
 WORKFLOW_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMlgmC+GM8Ibijhy11C2GbmAI1+XZ2fafcGMDPOHEDWw"
@@ -127,6 +129,20 @@ def test_a_computer_without_ssh_keygen_says_so_rather_than_not_verified(
     # Even with no signature file, which is otherwise "not verified".
     with pytest.raises(NoSshKeygen):
         verified(release_zip, tmp_path / "none.sig", signers=keys["signers"])
+
+
+@pytest.mark.posix
+def test_an_ssh_keygen_too_old_to_verify_is_told_apart_too(keys, release_zip, tmp_path, monkeypatch):
+    signature = sign(keys["workflow"], release_zip)
+    old = tmp_path / "old" / "ssh-keygen"
+    old.parent.mkdir()
+    # What OpenSSH before 8.1 answers to -Y.
+    old.write_text("#!/bin/sh\necho 'ssh-keygen: unknown option -- Y' >&2\nexit 1\n")
+    old.chmod(0o755)
+    monkeypatch.setattr(profile, "current", lambda: dataclasses.replace(PROFILE, ssh_keygen=old))
+
+    with pytest.raises(NoSshKeygen):
+        verified(release_zip, signature, signers=keys["signers"])
 
 
 @pytest.mark.windows
