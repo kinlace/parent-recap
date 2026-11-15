@@ -17,3 +17,6 @@ htmlcov/
 .loop/
 # Claude Code's worktrees, kept inside the repo because its sandbox writes only here
 .claude/worktrees/
+# nix build's link to what it built: scripts/release.py --parts counts every file that isn't
+# ignored, so left unignored it marks the core as changed
+result
