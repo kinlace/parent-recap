@@ -312,7 +312,11 @@ def switch_back_whole(folder: Path, config: str | None = None, locked: bool = Fa
     from .system import jobs
     running, kept = switch_back(folder, config, locked)
     for step in _steps(folder):
-        subprocess.run(step, stdin=subprocess.DEVNULL, check=False, **run)
+        try:
+            subprocess.run(step, stdin=subprocess.DEVNULL, check=False, **run)
+        except OSError as e:  # each never fails the switch back, which is done
+            print(f"{step[2] if len(step) > 2 else step[0]} couldn't be started ({e}).",
+                  file=run.get("stdout") or sys.stdout)
     # From here, not with the version switched to: one from before versions has no restart.
     try:
         jobs.restart_always()  # the Linked Device's, so it runs the version switched to

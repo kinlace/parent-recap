@@ -133,6 +133,7 @@ class Log:
                                       env=env).returncode
             except OSError as e:
                 f.write(f"Couldn't start {command[0]}: {e}\n".encode())
+                not_started(command, e)
                 return 1
 
     def run_saying(self, command: list[str]) -> tuple[int, str]:
@@ -144,11 +145,19 @@ class Log:
                 r = subprocess.run(command, stdout=subprocess.PIPE, stderr=f, stdin=subprocess.DEVNULL, env=env)
             except OSError as e:
                 f.write(f"Couldn't start {command[0]}: {e}\n".encode())
+                not_started(command, e)
                 return 1, ""
             said = r.stdout.decode("utf-8", "replace").strip()
             if said:
                 f.write(f"{said}\n".encode())
         return r.returncode, said
+
+
+def not_started(command: list[str], error: OSError) -> None:
+    """Says in the window that the system didn't start a program, in its own words, as a Defender
+    rule's: an update keeps what this prints in its update log (ADR 0052), where the install log
+    isn't."""
+    print(f"Windows didn't start {command[0]}: {error}", flush=True)
 
 
 def remove_folder(folder: Path) -> None:
@@ -169,6 +178,7 @@ def download(what: str, urls: list[str], sha256: str, folder: Path, program: str
             break
         except (OSError, ValueError) as e:
             log.write(f"Downloading {url} failed: {e}")
+            print(f"Downloading {url} failed: {e}", flush=True)  # for an update's log too
     else:
         raise Stop(f"Parent Recap couldn't download its {what} (is this PC online?).")
     if file_hash(file) != sha256.upper():

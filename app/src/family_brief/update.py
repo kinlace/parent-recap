@@ -305,7 +305,7 @@ def not_applicable(config: str | None = None) -> str | None:
         return ("The installed version can't be told, so Parent Recap doesn't update itself. Paste "
                 f"the install line into {here.terminal} to update it.")
     if not release_signature.ssh_keygen().is_file():
-        return no_ssh_keygen(f"it has no ssh-keygen at {release_signature.ssh_keygen()}")
+        return no_ssh_keygen(f"there is no ssh-keygen at {release_signature.ssh_keygen()}")
     return None
 
 
@@ -313,8 +313,8 @@ def no_ssh_keygen(why: str) -> str:
     """What the update says on a computer that can't check a release's signature, `why` being
     what it lacks (ADR 0052): it can't update itself, and the family pastes the install line."""
     here = profile.current()
-    return (f"This {here.computer} can't update Parent Recap by itself: {why}, the program that "
-            "checks a release is Parent Recap's. To update Parent Recap, paste the install line "
+    return (f"This {here.computer} can't update Parent Recap by itself: it can't check that a "
+            f"release is Parent Recap's, as {why}. To update Parent Recap, paste the install line "
             f"into {here.terminal}.")
 
 
@@ -1037,8 +1037,14 @@ def _seen(folder: Path, version: str) -> dict:
 def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Session,
                installed: str, wanted: str, by_family: bool = True,
                say: Callable[[str], None] | None = None) -> Outcome:
-    (folder / UPDATE).mkdir(mode=0o700, parents=True, exist_ok=True)
-    work = Path(tempfile.mkdtemp(prefix=DOWNLOAD, dir=folder / UPDATE))
+    try:
+        (folder / UPDATE).mkdir(mode=0o700, parents=True, exist_ok=True)
+        work = Path(tempfile.mkdtemp(prefix=DOWNLOAD, dir=folder / UPDATE))
+    except OSError as e:
+        log("download", f"{wanted}: its folder couldn't be made ({_system_said(e)})")
+        _save(folder, last_result=f"{wanted} refused: its download folder couldn't be made")
+        return Outcome("failed", f"Version {wanted} wasn't installed: its download folder "
+                       f"couldn't be made ({e.strerror or e}). Nothing was changed.", installed)
     updater = _Updater(folder, config, log)
     spare = work / "plugin-before"
     keep = False  # whether the plugin copy stays the new version's
@@ -1059,6 +1065,8 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
             good = release_signature.verified(zip_path, signature)
         except release_signature.NoSshKeygen as e:
             log("verify", f"{wanted}: couldn't be checked: {_system_said(e)}")
+            # Kept as failed, so the evening run doesn't download it again to find the same.
+            _save(folder, failed=wanted)
             raise Refused(f"its signature couldn't be checked, so it was deleted. "
                           f"{no_ssh_keygen(str(e))}") from e
         except subprocess.TimeoutExpired as e:
@@ -1140,6 +1148,16 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
         _save(folder, last_result=f"{wanted} refused: {e}")
         return Outcome("failed", f"Version {wanted} wasn't installed: {e}. Nothing was "
                        "changed.", installed, tried=tried)
+    except OSError as e:
+        # A step the system stopped that nothing above names, such as a downloaded zip a
+        # Defender rule took away: in the log in the system's words (ADR 0052).
+        now = versions.current(folder)
+        running = versions.version(now) if now is not None else installed
+        log("update", f"{wanted}: stopped ({_system_said(e)}); app points at {running}")
+        _save(folder, last_result=f"{wanted} stopped: {e.strerror or e}")
+        return Outcome("failed", f"Version {wanted} wasn't installed: the system stopped the "
+                       f"update ({e.strerror or e}). Parent Recap runs version {running}. The "
+                       f"update log is {log.path}.", running, tried=tried)
     finally:
         if not keep:  # whatever ended the update, the plugin copy is the running version's
             updater.restore_plugin(spare)
@@ -1158,7 +1176,7 @@ def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, wanted
                                                     env=steps_env(updater.config, by_family),
                                                     locked=True,
                                                     creationflags=_quiet()["creationflags"])
-    except OSError as e:  # a link the system didn't let it change: the version that failed runs
+    except OSError as e:  # a link the system didn't let it change (its steps never raise)
         now = versions.current(folder)
         log("switch", f"{wanted}: couldn't switch back ({_system_said(e)}), though "
             f"{failed.log_line}; app points at {versions.version(now) if now else 'nothing'}")

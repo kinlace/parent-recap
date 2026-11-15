@@ -91,6 +91,24 @@ def test_a_step_that_worked_exits_with_0(tmp_path):
     assert wi.finish(lambda: None, wi.Log(tmp_path / "install.log")) == 0
 
 
+@pytest.mark.parametrize("run", ["run", "run_saying"])
+def test_a_program_the_system_did_not_start_is_said_in_its_words_in_the_window_and_the_log(
+        tmp_path, capsys, run):
+    """An update keeps the window's text in its log (ADR 0052, #993), not the install log."""
+    log = wi.Log(tmp_path / "install.log")
+    missing = str(tmp_path / "no-such-program.exe")
+    try:
+        subprocess.run([missing])
+    except OSError as e:
+        said = str(e)
+
+    result = getattr(log, run)([missing])
+
+    assert (result if run == "run" else result[0]) == 1
+    assert f"Windows didn't start {missing}: {said}" in capsys.readouterr().out
+    assert f"Couldn't start {missing}: {said}" in log.path.read_text(encoding="utf-8")
+
+
 # --- The pinned runtimes, by checksum ------------------------------------------------------------
 
 @pytest.fixture

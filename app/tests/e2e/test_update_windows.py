@@ -336,8 +336,8 @@ def test_a_pc_without_ssh_keygen_says_it_can_t_update_itself_and_downloads_nothi
     code, out = update_command(harness, capsys)
 
     assert code == 0
-    assert out.strip() == (f"This PC can't update Parent Recap by itself: it has no ssh-keygen at "
-                           f"{missing}, the program that checks a release is Parent Recap's. To "
+    assert out.strip() == ("This PC can't update Parent Recap by itself: it can't check that a "
+                           f"release is Parent Recap's, as there is no ssh-keygen at {missing}. To "
                            "update Parent Recap, paste the install line into PowerShell.")
     assert github.requests == [] and harness.commands == [] and no_downloads(pc)
     # doctor and the setup page say the same.
@@ -358,6 +358,8 @@ def test_an_ssh_keygen_too_old_to_verify_says_the_pc_can_t_update_itself(
     assert "This PC can't update Parent Recap by itself" in out
     assert "paste the install line into PowerShell" in out
     assert pc.installs == [] and pc.version() == INSTALLED and no_downloads(pc)
+    # Kept as failed, so the evening run doesn't download it every evening to find the same.
+    assert update.state(pc.folder)["failed"] == "0.20.0"
 
 
 def test_an_install_from_before_versions_is_told_to_paste_the_install_line_into_powershell_once(
@@ -517,3 +519,29 @@ def test_a_step_the_system_stops_is_in_the_update_log_word_for_word_and_the_inst
     assert pc.version() == INSTALLED
     assert pc.tasks() == tasks
     assert not (pc.folder / "plugin").exists() and no_downloads(pc)
+
+
+def test_a_zip_taken_away_once_downloaded_is_in_the_update_log_in_the_system_s_words(
+        harness, github, keys, pc, capsys, monkeypatch):
+    """As Defender quarantines a file it finds once it was written."""
+    release(github, keys, "0.20.0")
+    tasks = pc.tasks()
+    download = update._download
+    said: list[str] = []
+
+    def then_quarantined(session: requests.Session, url: str, to: Path) -> None:
+        download(session, url, to)
+        if to.suffix == ".sig":
+            zip_path = to.with_suffix("")
+            zip_path.unlink()
+            try:
+                zip_path.stat()
+            except OSError as e:
+                said.append(f"{type(e).__name__}: {e}")
+    monkeypatch.setattr(update, "_download", then_quarantined)
+
+    code, out = update_command(harness, capsys)
+
+    assert code == 1 and "the system stopped the update" in out
+    assert f"update: 0.20.0: stopped ({said[0]}); app points at {INSTALLED}" in update_log(pc)
+    assert pc.version() == INSTALLED and pc.tasks() == tasks and no_downloads(pc)

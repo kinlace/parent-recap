@@ -311,8 +311,8 @@ def test_doctor_shows_an_update_that_failed_and_stays_ok(harness, nothing_loaded
 
 @pytest.mark.posix
 @pytest.mark.parametrize("on, hosted, why", [
-    (WINDOWS_WITHOUT_SSH_KEYGEN, False, "This PC can't update Parent Recap by itself: it has no "
-                                        "ssh-keygen at"),
+    (WINDOWS_WITHOUT_SSH_KEYGEN, False, "This PC can't update Parent Recap by itself: it can't "
+                                        "check that a release is Parent Recap's"),
     (LINUX, False, "This is the hosted version"),
     (MACOS, True, "This is the hosted version"),
 ], ids=["pc-without-ssh-keygen", "server", "hosted-household"])

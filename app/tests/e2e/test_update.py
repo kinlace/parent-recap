@@ -703,10 +703,10 @@ def test_every_path_it_changes_is_in_parent_recap_s_folder_or_where_an_install_w
     assert outside == []
 
 
-NO_SSH_KEYGEN_SAYS = ("This PC can't update Parent Recap by itself: it has no ssh-keygen at "
-                      f"{WINDOWS_WITHOUT_SSH_KEYGEN.ssh_keygen}, the program that checks a release "
-                      "is Parent Recap's. To update Parent Recap, paste the install line into "
-                      "PowerShell.")
+NO_SSH_KEYGEN_SAYS = ("This PC can't update Parent Recap by itself: it can't check that a release "
+                      "is Parent Recap's, as there is no ssh-keygen at "
+                      f"{WINDOWS_WITHOUT_SSH_KEYGEN.ssh_keygen}. To update Parent Recap, paste the "
+                      "install line into PowerShell.")
 
 
 @pytest.mark.parametrize("on, says", [(WINDOWS_WITHOUT_SSH_KEYGEN, NO_SSH_KEYGEN_SAYS),
