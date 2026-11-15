@@ -108,6 +108,14 @@ case "$(uname)" in
   *) echo "❌ Only macOS and Linux are supported for now"; exit 1 ;;
 esac
 
+# A numbered line before each step that can take long, so a first install's minutes of downloads,
+# pip and npm don't look like a hang (#1001). Every install says all four, also when a step has
+# nothing to do: a count of steps, as pip and npm give no total to make a percentage of.
+STEPS=4
+step() {
+  echo "[$1/$STEPS] $2"
+}
+
 runtime_failed() {
   echo "❌ $1 Nothing was changed."
   echo "   Run the install again. If it fails again, tell the Parent Recap team."
@@ -156,7 +164,12 @@ install_runtimes() {
   local python=no node=no
   [ -x "$PY" ] || python=yes
   [ -x "$NODE" ] || node=yes
-  [ "$python$node" != nono ] || return 0
+  case "$python$node" in
+    nono) step 1 "Parent Recap's own Python and Node are already here."; return 0 ;;
+    yesyes) step 1 "Downloading Parent Recap's own Python and Node..." ;;
+    yesno) step 1 "Downloading Parent Recap's own Python..." ;;
+    noyes) step 1 "Downloading Parent Recap's own Node..." ;;
+  esac
   local py_sha=$PYTHON_SHA256_X86_64 node_arch=x64 node_sha=$NODE_SHA256_X64
   local py_os=apple-darwin node_os=darwin
   if [ "$ARCH" = aarch64 ]; then
@@ -187,6 +200,7 @@ install_runtimes() {
 refuse_old_install
 install_runtimes
 
+step 2 "Installing Parent Recap's Python packages. This can take a few minutes..."
 mkdir -p "$VERSIONS" "$TARGET/logs"
 # The archive holds every collected message and the logs, so only this account may read them
 # (home folders on macOS let every standard account in, and Households share a server). This also
@@ -274,6 +288,7 @@ if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_RO
 # `parent-recap` in a folder of its own, $TARGET/bin, with a line in ~/.zprofile that puts it on
 # the PATH of every new Terminal window (#560), or on Linux linked into ~/.local/bin.
 "$APP/.venv/bin/python" -m family_brief.command_path install "$TARGET"
+step 3 "Installing what reads WhatsApp and Wilma..."
 # A Household that connected Wilma gets the wilma CLI version this release pins (ADR 0008), on
 # the Node above. One that couldn't be updated keeps working, and the next install tries again.
 "$APP/.venv/bin/python" -m family_brief.setup_wilma update
@@ -281,6 +296,7 @@ if [ "$PLUGIN_ROOT" = "$TARGET/plugin" ]; then "${RECORD[@]}" plugin "$PLUGIN_RO
 # lockfile this release pins. One that couldn't be installed leaves the one there, and the next
 # install tries again.
 "$APP/.venv/bin/python" -m family_brief.baileys_install install
+step 4 "Finishing..."
 # A Linked Device running now is started again, so it runs this version. It never fails the
 # install.
 "$APP/.venv/bin/python" -m family_brief.linked_device restart

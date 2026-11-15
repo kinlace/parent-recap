@@ -18,7 +18,7 @@ No computer that stays on? Ask the maintainers to host Parent Recap for you. The
 
 ## What the install line does
 
-It downloads the latest stable release into `~/ParentRecap/plugin`, installs the program from it and opens the setup page in your browser. Keep the Terminal window open until setup is done: the page runs from it, on your Mac only. Once you pick Claude or ChatGPT on the page, it also installs the Parent Recap plugin in Claude Code, or the two Parent Recap skills in Codex, so you can ask for changes in the chat later.
+It downloads the latest stable release into `~/ParentRecap/plugin`, installs the program from it and opens the setup page in your browser. While it installs, Terminal shows which of four steps it is on, from `[1/4] Downloading Parent Recap's own Python and Node...` to `[4/4] Finishing...`; on a first install the downloads and the Python packages take a few minutes, so a step that stays on screen a while hasn't stopped. Keep the Terminal window open until setup is done: the page runs from it, on your Mac only. Once you pick Claude or ChatGPT on the page, it also installs the Parent Recap plugin in Claude Code, or the two Parent Recap skills in Codex, so you can ask for changes in the chat later.
 
 The line fetches [`get.sh`](../get.sh) and everything else from the `stable` branch, which only ever holds a tested release. Unlike an update, whose signature is checked, the install line checks none: the first install trusts GitHub over HTTPS ([The install line](../SECURITY.md#the-install-line)). Running it again is safe: it updates what it installed and takes you back to the step setup got to.
 

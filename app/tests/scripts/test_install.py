@@ -459,6 +459,112 @@ def test_the_last_lines_say_the_command_for_a_new_window_and_for_this_one(mac):
     assert (mac["home"] / "installer.calls").read_text().splitlines()[1] == "command_path install"
 
 
+# --- The steps it says it's on (#1001) -----------------------------------------------------------
+
+STEP = re.compile(r"\[(\d)/(\d)\] ")
+
+
+def steps(result: subprocess.CompletedProcess) -> list[str]:
+    return [line for line in result.stdout.splitlines() if STEP.match(line)]
+
+
+def say_when_run(mac: dict) -> None:
+    """Has the downloads, the wilma CLI's update and the Baileys tree's install each print a line
+    when they run, so the output shows where the step lines fall."""
+    curl = mac["bin"] / "curl"
+    curl.write_text(curl.read_text().replace("#!/bin/sh\n", "#!/bin/sh\necho '(curl ran)'\n", 1))
+    for module, said in (("setup_wilma", "(wilma ran)"), ("baileys_install", "(baileys ran)")):
+        path = mac["plugin"] / "app" / "family_brief" / f"{module}.py"
+        path.write_text(path.read_text() + f"print({said!r})\n")
+
+
+@pytest.mark.macos
+def test_a_fresh_install_says_each_numbered_step_before_it_starts(mac):
+    wheel(mac["packages"], "pure-dep", "1.0")
+    program(mac, ("pure-dep",))
+    say_when_run(mac)
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    lines = result.stdout.splitlines()
+    assert steps(result) == [
+        "[1/4] Downloading Parent Recap's own Python and Node...",
+        "[2/4] Installing Parent Recap's Python packages. This can take a few minutes...",
+        "[3/4] Installing what reads WhatsApp and Wilma...",
+        "[4/4] Finishing...",
+    ]
+    one, two, three, four = (lines.index(line) for line in steps(result))
+    installed_to = next(i for i, line in enumerate(lines) if "installed to" in line)
+    assert one < lines.index("(curl ran)") < two < three
+    assert three < lines.index("(wilma ran)") < four and three < lines.index("(baileys ran)") < four
+    assert four < installed_to
+    assert "parent-recap in a new Terminal window" in lines[-1]
+
+
+@pytest.mark.macos
+def test_an_install_that_finds_the_runtimes_there_says_the_same_number_of_steps(mac):
+    program(mac, ())
+    assert install(mac).returncode == 0
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert [STEP.match(line).groups() for line in steps(result)] == [(str(n), "4") for n in range(1, 5)]
+    assert steps(result)[0] == "[1/4] Parent Recap's own Python and Node are already here."
+
+
+@pytest.mark.macos
+def test_a_new_pinned_node_alone_says_it_downloads_only_the_node(mac):
+    program(mac, ())
+    assert install(mac).returncode == 0
+    serve_node(mac, "24.22.0")
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert steps(result)[0] == "[1/4] Downloading Parent Recap's own Node..."
+
+
+@pytest.mark.macos
+def test_a_failed_download_ends_with_its_message_after_the_first_step(mac):
+    program(mac, ())
+    offline(mac)
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    lines = result.stdout.splitlines()
+    assert steps(result) == ["[1/4] Downloading Parent Recap's own Python and Node..."]
+    assert lines.index(steps(result)[0]) < next(i for i, line in enumerate(lines) if "couldn't download" in line)
+
+
+@pytest.mark.macos
+def test_a_failed_pip_step_ends_with_its_message_after_the_second_step(mac):
+    sdist(mac["packages"], "needs-compiling", "1.0", build_marker=mac["tmp"] / "compiled")
+    program(mac, ("needs-compiling",))
+
+    result = install(mac)
+
+    assert result.returncode != 0
+    lines = result.stdout.splitlines()
+    assert [STEP.match(line)[1] for line in steps(result)] == ["1", "2"]
+    assert lines.index(steps(result)[1]) < next(
+        i for i, line in enumerate(lines) if "couldn't install its Python packages" in line)
+
+
+@pytest.mark.posix
+def test_a_linux_server_says_the_same_steps(mac):
+    program(mac, ())
+    a_linux_server(mac, "aarch64")
+
+    result = install(mac)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert len(steps(result)) == 4
+    assert "parent-recap in a new login shell" in result.stdout.splitlines()[-1]
+
+
 # --- Each version beside the running one (ADR 0047) ----------------------------------------------
 
 def target(mac: dict) -> Path:
