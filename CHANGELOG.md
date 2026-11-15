@@ -2,6 +2,12 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## 0.20.2 · 2026-11-15
+
+### Changed
+
+- Nothing a family notices. The program that checks a release's signature can now also do it on a Windows PC, which the Windows update will build on; a Mac checks it as before.
+
 ## 0.20.1 · 2026-11-15
 
 ### Fixed

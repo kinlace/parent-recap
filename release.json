@@ -1,9 +1,9 @@
 {
-  "version": "0.20.1",
+  "version": "0.20.2",
   "background_from": null,
   "asks": null,
   "parts": {
-    "core": "0.20.0",
+    "core": "0.20.2",
     "fi/eepos": "0.20.0",
     "fi/evaka": "0.20.0",
     "fi/myclub": "0.20.0",
