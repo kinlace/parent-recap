@@ -21,6 +21,7 @@ FakeSystem, the `system` fixture, puts all of them in place."""
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import io
 import subprocess
 import sys
@@ -36,6 +37,10 @@ from family_brief.system import (desktop, dialog, entries, jobs, profile, profil
 from family_brief.system.secrets_error import SecretsError
 
 MACOS, WINDOWS, LINUX = profile_macos.PROFILE, profile_windows.PROFILE, profile_linux.PROFILE
+# A PC whose OpenSSH client was removed: it can't check a release's signature, so it doesn't
+# update itself (ADR 0052).
+WINDOWS_WITHOUT_SSH_KEYGEN = dataclasses.replace(
+    WINDOWS, ssh_keygen=Path(__file__).parent / "no-such-folder" / "ssh-keygen.exe")
 
 
 class FakeSecrets(dict):

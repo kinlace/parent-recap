@@ -21,7 +21,7 @@ import requests
 import time_machine
 
 from conftest import NOW
-from fake_system import WINDOWS
+from fake_system import WINDOWS_WITHOUT_SSH_KEYGEN
 from family_brief import schedule_update, update, versions
 from family_brief.system import jobs
 from nights import normal_night
@@ -511,9 +511,10 @@ def test_a_hosted_household_does_not_update(evening, github, mac):  # noqa: F811
 
 
 @pytest.mark.parametrize("updates", [None, {"enabled": False}])
-def test_windows_does_not_update(evening, github, mac, updates):  # noqa: F811
-    # No host is asked for a version either, whatever a config brought from a Mac says (#917).
-    evening.system = WINDOWS
+def test_a_pc_without_ssh_keygen_does_not_update(evening, github, mac, updates):  # noqa: F811
+    # No host is asked for a version either, whatever a config brought from a Mac says (#917):
+    # it couldn't check what it downloads (ADR 0052).
+    evening.system = WINDOWS_WITHOUT_SSH_KEYGEN
     if updates is not None:
         evening.config["updates"] = updates
     release_out(github, "0.20.0")

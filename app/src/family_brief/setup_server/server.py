@@ -124,7 +124,7 @@ def start_again(server: SetupServer) -> None:
     sys.stdout.flush()
     sys.stderr.flush()
     try:
-        os.execve(program, [program, "-c", str(server.context.config), "setup", "page"], env)
+        os.execve(program[0], [*program, "-c", str(server.context.config), "setup", "page"], env)
     except OSError:
         return
 

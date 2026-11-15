@@ -61,7 +61,7 @@ On a Mac, Parent Recap updates itself ([ADR 0047](adr/0047-a-familys-computer-in
 
 What the update doesn't cover:
 
-- **Windows**: Parent Recap doesn't update itself there yet. Paste the install line into PowerShell again ([On Windows](windows.md#updating))
+- **Windows**: a Windows PC updates itself the same way; what differs there is in [On Windows](windows.md#updating)
 - **Claude Code's own copy of the plugin**: Claude Code keeps the Parent Recap skills in a copy of its own, which the update doesn't touch, so the skills there can be older than the program. To update them, type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace` in Claude Code. The Codex skills are updated with the program
 - **A Parent Recap installed before it could update itself**: paste the install line into Terminal once; from then on it updates itself. `parent-recap doctor` has an Updates line that says whether this install does; a `doctor` without that line is from before
 - **Installed from the package file, by hand**: to update by hand without the install line, unzip the zip from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) over `~/ParentRecap/plugin`, then tell Claude or Codex "upgrade Parent Recap"; it syncs the program and runs a check. For Codex, run `bash ~/ParentRecap/plugin/install.sh --codex` in Terminal instead

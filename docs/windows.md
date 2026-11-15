@@ -43,7 +43,14 @@ Before your first evening, check the two settings above:
 
 ## Updating
 
-On Windows Parent Recap doesn't update itself yet, as it does [on a Mac](install.md#updating). Paste the install line into PowerShell again. It updates what it installed and never touches your settings or passwords. It installs the new version beside the one you have and switches to it only once it finished, keeping the version before: if the new one turns out bad, `parent-recap switch-back` runs the version before again, and running it again switches forward. If the install says another program uses Parent Recap's folder, close Parent Recap Settings and any window that runs Parent Recap, then paste the line again.
+Parent Recap updates itself on a Windows PC as it does [on a Mac](install.md#updating) (ADR 0052): after the evening Brief, a day or more after the PC first saw a new release, it downloads the release, checks its signature with Windows' own `ssh-keygen`, installs it beside the version you have, switches to it and runs `parent-recap doctor`, and switches back if a check fails that passed before or the install didn't finish. `parent-recap update off` and `parent-recap update on` in PowerShell turn it off and on, and `parent-recap update` installs the newest release now. It starts no PowerShell and runs no `.ps1` file: the release's own installer is a Python program, run with Parent Recap's own Python. If something on the PC stops a step, such as a company's Defender rule, the version you have keeps running, and `%LOCALAPPDATA%\ParentRecap\logs\update.log` names the step and the error Windows gave.
+
+Paste the install line into PowerShell again instead when:
+
+- Parent Recap was installed before it could update itself: once, and from then on it updates itself
+- The PC has no `ssh-keygen` in `C:\Windows\System32\OpenSSH` (someone removed Windows' OpenSSH client): then it can't check a release's signature, so it doesn't update itself, and `parent-recap doctor` says so
+
+The install line updates what it installed and never touches your settings or passwords. It too installs the new version beside the one you have and switches to it only once it finished, keeping the version before: if the new one turns out bad, `parent-recap switch-back` runs the version before again, and running it again switches forward. If the install says another program uses Parent Recap's folder, close Parent Recap Settings and any window that runs Parent Recap, then paste the line again.
 
 ## Checking how it runs
 
