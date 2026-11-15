@@ -223,7 +223,7 @@ class Install:
         self.make_venv()
         self.install_packages()
         self.remove_old_runtimes()
-        self.record_and_link()
+        self.run_program_steps()
         print(f"Parent Recap {version} is installed in {self.app}")
         # The window's PATH is the one it opened with, before the user's PATH had the folder.
         print(f"   Command: parent-recap in a new PowerShell window; in this one: "
@@ -290,10 +290,12 @@ class Install:
         if not installed:
             print("Parent Recap's Python packages are up to date.", flush=True)
 
+    def pip_failed(self) -> Stop:
+        return Stop(f"Parent Recap couldn't install its Python packages. The full log is at {self.log.path}", SEND_LOG)
+
     def pip_or_stop(self, command: list[str]) -> None:
         if self.log.run(command) != 0:
-            raise Stop(f"Parent Recap couldn't install its Python packages. The full log is at {self.log.path}",
-                       SEND_LOG)
+            raise self.pip_failed()
 
     def pip(self, *names: str) -> None:
         """Installs `names` by checksum, prebuilt only, at the versions constraints.txt pins."""
@@ -307,21 +309,25 @@ class Install:
             asked = subprocess.run([str(self.venv_python), "-I", str(self.app / "requirements.py"), *extras],
                                    stdout=subprocess.PIPE, stderr=errors, stdin=subprocess.DEVNULL)
         if asked.returncode != 0:
-            raise Stop(f"Parent Recap couldn't install its Python packages. The full log is at {self.log.path}",
-                       SEND_LOG)
+            raise self.pip_failed()
         names = asked.stdout.decode("utf-8", "replace").split()
         if names:
             self.pip(*names)
 
     def remove_old_runtimes(self) -> None:
         """Only once the program runs on the new Python, so a failed pip step keeps the old one. The
-        wilma CLI runs on whichever Node is there, so an old Node goes with it."""
+        wilma CLI runs on whichever Node is there, so an old Node goes with it. The Python this runs
+        on stays, as an update's may be an older one: Windows doesn't let a running program's files be
+        removed, and the next install, on the new one, removes it."""
+        keep = (self.runtime, self.node_runtime, Path(sys.base_prefix))
         for folder in self.runtimes.iterdir():
             if (folder.is_dir() and folder.name.startswith(("python-", "node-"))
-                    and not same_path(folder, self.runtime) and not same_path(folder, self.node_runtime)):
+                    and not any(same_path(folder, kept) for kept in keep)):
                 shutil.rmtree(folder)
 
-    def record_and_link(self) -> None:
+    def run_program_steps(self) -> None:
+        """The program's own steps, on the venv's python.exe as install.sh runs them: setup's record,
+        the command, the wilma CLI, the Baileys tree, and Parent Recap Settings and Check."""
         python = str(self.venv_python)
         record = [python, "-m", "family_brief.install_record", "program", str(self.app), "logs", str(self.logs),
                   "runtime", str(self.runtimes)]

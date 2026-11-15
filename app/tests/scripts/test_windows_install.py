@@ -219,7 +219,7 @@ def test_with_the_packages_installed_for_the_same_files_no_package_is_installed(
 
 
 def test_setup_s_record_comes_first_then_the_command_the_wilma_cli_baileys_and_the_start_menu(installed):
-    installed.record_and_link()
+    installed.run_program_steps()
 
     assert modules(installed.log) == ["family_brief.install_record", "family_brief.command_path",
                                       "family_brief.setup_wilma", "family_brief.baileys_install",
@@ -234,7 +234,7 @@ def test_setup_s_record_comes_first_then_the_command_the_wilma_cli_baileys_and_t
 def test_a_wilma_cli_or_baileys_tree_that_couldnt_be_updated_doesnt_fail_the_install(installed):
     installed.log.fails = ("family_brief.setup_wilma", "family_brief.baileys_install", "family_brief.program_entries")
 
-    installed.record_and_link()
+    installed.run_program_steps()
 
     assert modules(installed.log)[-1] == "family_brief.program_entries"
 
@@ -243,7 +243,7 @@ def test_a_record_that_couldnt_be_written_fails_the_install_naming_the_log(insta
     installed.log.fails = ("family_brief.install_record",)
 
     with pytest.raises(wi.Stop, match="couldn't write setup's record. The full log is at .*install.log"):
-        installed.record_and_link()
+        installed.run_program_steps()
 
 
 def test_runtimes_the_program_no_longer_runs_on_go_and_the_others_stay(installed):
@@ -256,3 +256,15 @@ def test_runtimes_the_program_no_longer_runs_on_go_and_the_others_stay(installed
 
     assert sorted(p.name for p in runtimes.iterdir()) == sorted([installed.runtime.name, installed.node_runtime.name,
                                                                  "wilma-something"])
+
+
+def test_the_python_the_installer_runs_on_stays_when_the_release_pins_another(installed, monkeypatch):
+    # As an update's may: started on the version before's Python, which Windows won't let go while
+    # it runs. The next install, on the new one, removes it.
+    running = installed.runtimes / "python-3.12.1-20240101"
+    running.mkdir()
+    monkeypatch.setattr(wi.sys, "base_prefix", str(running))
+
+    installed.remove_old_runtimes()
+
+    assert running.is_dir()
