@@ -75,6 +75,7 @@ PROFILE = profile.Profile(
     program_folders=_program_folders,
     install_folders=_install_folders,
     command=Path("Scripts/parent-recap.exe"),
+    python=Path("Scripts/python.exe"),
     path_command=Path("Scripts/python.exe"),
     # Not pip's launcher, which Defender can block (command_path.py), and a link needs Developer Mode.
     links_command=False,

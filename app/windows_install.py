@@ -6,8 +6,11 @@ the Windows install once a Python is there (ADR 0019, ADR 0011).
 checksum) and then runs this file on that Python, from the release it downloaded. So that an update
 can run the same steps without starting a `.ps1` file, they are here, in Python (#990): the pinned
 Node by checksum, the pinned Python too when the one this runs on isn't the release's, the program
-copied into %LOCALAPPDATA%\\ParentRecap\\app, its venv, the packages by checksum, setup's record,
-the `parent-recap` command, the wilma CLI, the Baileys tree, and Parent Recap Settings and Check.
+copied into a folder of its own in %LOCALAPPDATA%\\ParentRecap\\versions beside the version that
+runs, its venv, the packages by checksum, the switch of `app` to it (#991), setup's record, the
+`parent-recap` command, the wilma CLI, the Baileys tree, the Linked Device on the new version, and
+Parent Recap Settings and Check. Nothing needs an administrator or Developer Mode: `app` is a
+junction.
 
 Run by path and with -I, so the standard library only: nothing of this release is installed yet.
 
@@ -18,7 +21,7 @@ starts one of its own in the logs folder. `--downloaded` says the release is the
 the pasted line downloaded into %LOCALAPPDATA%\\ParentRecap\\plugin, which setup's record then
 lists so uninstall removes it. Everything the programs it runs print goes to the log, not the
 window. It exits with 0 when the install worked and 1 when it didn't, having said why and what the
-family can do. Safe to re-run: a run that stopped partway picks up from where it got to, and a run
+family can do; one that didn't leaves `app` pointing at the version before. Safe to re-run: a run that stopped partway picks up from where it got to, and a run
 with nothing new to do downloads and installs nothing. It never touches the config or the secrets.
 """
 from __future__ import annotations
@@ -32,6 +35,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 import traceback
 import urllib.request
 from collections.abc import Callable
@@ -130,6 +134,21 @@ class Log:
                 f.write(f"Couldn't start {command[0]}: {e}\n".encode())
                 return 1
 
+    def run_saying(self, command: list[str]) -> tuple[int, str]:
+        """`run`, for a program whose output is meant for the family: returns its exit code and
+        what it printed, which goes to the log too."""
+        env = {**os.environ, "PYTHONUTF8": "1"}
+        with self.path.open("ab") as f:
+            try:
+                r = subprocess.run(command, stdout=subprocess.PIPE, stderr=f, stdin=subprocess.DEVNULL, env=env)
+            except OSError as e:
+                f.write(f"Couldn't start {command[0]}: {e}\n".encode())
+                return 1, ""
+            said = r.stdout.decode("utf-8", "replace").strip()
+            if said:
+                f.write(f"{said}\n".encode())
+        return r.returncode, said
+
 
 def remove_folder(folder: Path) -> None:
     if folder.exists():
@@ -198,62 +217,138 @@ def venv_home(app: Path) -> str:
     return ""
 
 
+def is_link(path: Path) -> bool:
+    """Whether `path` is a junction, as `app` is on Windows, or a symlink."""
+    return path.is_junction() or path.is_symlink()
+
+
+def linked_version(target: Path) -> Path | None:
+    """The version's folder in `target`\\versions that `app` is a link to, or None when `app` isn't
+    one, as in an install from before versions (family_brief/versions.py, which this can't import
+    yet)."""
+    app = target / "app"
+    if not is_link(app):
+        return None
+    to = os.readlink(app)
+    folder = target / "versions" / Path(to.removeprefix("\\\\?\\")).name
+    return folder if folder.is_dir() else None
+
+
+def version_of(folder: Path) -> str:
+    try:
+        return (folder / "VERSION").read_text(encoding="ascii", errors="replace").strip()
+    except OSError:
+        return ""
+
+
 class Install:
-    """One run of the install, from the release `plugin` into Parent Recap's folder `target`."""
+    """One run of the install, from the release `plugin` into Parent Recap's folder `target`.
+
+    Each release goes in a folder of its own, `versions\\<version>.<random>`, beside the version that
+    runs, which goes on as it was; once it is installed, the new version's own `versions switch`
+    makes `app` a junction to it, keeps the version before to switch back to, and takes over an
+    install from before versions (ADR 0047, family_brief/versions.py). The same version installed
+    again, as a run with nothing new to do or manage adding Google's packages, is installed again
+    in its own folder, so nothing is downloaded or installed that is there."""
 
     def __init__(self, plugin: Path, target: Path, log: Log, downloaded: bool):
         self.plugin, self.target, self.log, self.downloaded = plugin, target, log, downloaded
         self.app = target / "app"
+        self.versions = target / "versions"
         self.logs = target / "logs"
         self.runtimes = target / "runtime"
         self.runtime = self.runtimes / f"python-{PYTHON_VERSION}-{PYTHON_BUILD}"
         self.node_runtime = self.runtimes / f"node-v{NODE_VERSION}"
-        self.venv_python = self.app / ".venv" / "Scripts" / "python.exe"
+        self.folder = self.app  # the version's folder, once `place` has chosen it
+        self.new = False  # whether that folder is this run's own, which it removes if it fails
+
+    @property
+    def venv_python(self) -> Path:
+        return self.folder / ".venv" / "Scripts" / "python.exe"
 
     def run(self) -> None:
         if not (is_parent_recap(self.plugin) and (self.plugin / "app" / "pyproject.toml").is_file()):
             raise Stop(f"{self.plugin} isn't a release of Parent Recap, so nothing was installed from it.")
         # The Python this runs on is the release's when install.ps1 started it; one the release
-        # moved on from, as an update's may be, is replaced here.
+        # moved on from, as an update's may be, is fetched here.
         install_runtime("Python", [f"{r}/{PYTHON_BUILD}/{PYTHON_FILE}" for r in PYTHON_RELEASES], PYTHON_SHA256,
                         self.runtime, "python.exe", self.log)
         install_runtime("Node", [f"{r}/v{NODE_VERSION}/{NODE_FILE}" for r in NODE_RELEASES], NODE_SHA256,
                         self.node_runtime, "node.exe", self.log)
-        version = self.copy_program()
-        self.make_venv()
-        self.install_packages()
-        self.remove_old_runtimes()
+        version = self.place()
+        try:
+            self.copy_program(version)
+            self.make_venv()
+            self.install_packages()
+            self.switch()
+        except BaseException:
+            # An install that fails leaves nothing of itself, and `app` as it was. A switch that
+            # failed once it pointed `app` here leaves it to the next switch to clear up.
+            if self.new and linked_version(self.target) != self.folder:
+                shutil.rmtree(self.folder, ignore_errors=True)
+            raise
         self.run_program_steps()
         print(f"Parent Recap {version} is installed in {self.app}")
         # The window's PATH is the one it opened with, before the user's PATH had the folder.
         print(f"   Command: parent-recap in a new PowerShell window; in this one: "
               f"{self.target / 'bin' / 'parent-recap.cmd'}")
 
-    def copy_program(self) -> str:
-        """Copies the program, without what belongs to this PC (the venv, Python's caches and
-        VERSION) and without the tests, which don't go to families, then writes VERSION. Returns the
-        version."""
+    def release_version(self) -> str:
+        manifest = json.loads((self.plugin / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8-sig"))
+        return str(manifest.get("version", "unknown"))
+
+    def place(self) -> str:
+        """Chooses the version's folder: the one `app` points at when it holds this version, else
+        a new one of this run's own. Returns the version."""
+        version = self.release_version()
+        self.versions.mkdir(exist_ok=True)
+        running = linked_version(self.target)
+        if running is not None and version_of(running) == version:
+            self.folder, self.new = running, False
+        else:
+            self.folder = Path(tempfile.mkdtemp(prefix=f"{version}.", dir=self.versions))
+            self.new = True
+        return version
+
+    def copy_program(self, version: str) -> None:
+        """Copies the program, without what belongs to this PC (the venv, Python's caches, VERSION
+        and RUNTIMES) and without the tests, which don't go to families, then writes VERSION and
+        RUNTIMES, the runtimes it runs on, which the switch keeps while it's kept."""
         source = self.plugin / "app"
-        code = self.log.run([ROBOCOPY, str(source), str(self.app), "/MIR",
-                             "/XD", ".venv", "__pycache__", "*.egg-info", str(source / "tests"), "/XF", "VERSION",
+        code = self.log.run([ROBOCOPY, str(source), str(self.folder), "/MIR",
+                             "/XD", ".venv", "__pycache__", "*.egg-info", str(source / "tests"),
+                             "/XF", "VERSION", "RUNTIMES",
                              "/NFL", "/NDL", "/NJH", "/NJS", "/NP"])
         # robocopy's 8 and above are failures; below, what it copied.
         if code >= 8:
-            raise Stop(f"Parent Recap couldn't copy its program into {self.app} (is the disk full?).")
-        manifest = json.loads((self.plugin / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8-sig"))
-        version = str(manifest.get("version", "unknown"))
-        version_file = self.app / "VERSION"
-        if not version_file.is_file() or version_file.read_text(encoding="ascii", errors="replace").strip() != version:
-            version_file.write_text(version + "\n", encoding="ascii")
-        return version
+            raise Stop(f"Parent Recap couldn't copy its program into {self.folder} (is the disk full?).")
+        for name, text in (("VERSION", f"{version}\n"),
+                           ("RUNTIMES", f"{self.runtime.name}\n{self.node_runtime.name}\n")):
+            file = self.folder / name
+            if not file.is_file() or file.read_text(encoding="ascii", errors="replace") != text:
+                file.write_text(text, encoding="ascii", newline="\n")
 
     def make_venv(self) -> None:
         """A venv on another Python, such as an older pinned one, is made again."""
-        if same_path(venv_home(self.app), self.runtime) and self.venv_python.is_file():
+        if same_path(venv_home(self.folder), self.runtime) and self.venv_python.is_file():
             return
-        remove_folder(self.app / ".venv")
-        if self.log.run([str(self.runtime / "python.exe"), "-m", "venv", str(self.app / ".venv")]) != 0:
-            raise Stop(f"Parent Recap couldn't set up its Python in {self.app}. The full log is at {self.log.path}")
+        remove_folder(self.folder / ".venv")
+        if self.log.run([str(self.runtime / "python.exe"), "-m", "venv", str(self.folder / ".venv")]) != 0:
+            raise Stop(f"Parent Recap couldn't set up its Python in {self.folder}. The full log is at {self.log.path}")
+
+    def switch(self) -> None:
+        """Points `app` at the version's folder with the new version's own `versions switch`, which
+        says why when it can't, and then removes the versions and runtimes no kept version runs on.
+        The Python this runs on, which an update's may be, stays while it runs: Windows doesn't let
+        a running program's files be removed, and the next install removes it."""
+        # What it prints says why it changed nothing, for the window as well as the log.
+        code, said = self.log.run_saying([str(self.venv_python), "-m", "family_brief.versions", "switch",
+                                          str(self.target), str(self.folder)])
+        if code != 0:
+            if said:
+                raise Stop(said, "If it fails again, tell the Parent Recap team.")
+            raise Stop(f"Parent Recap couldn't switch to the new version. The full log is at {self.log.path}",
+                       SEND_LOG)
 
     def install_packages(self) -> None:
         """Prebuilt packages only, at the versions that were tested and checked against the checksums
@@ -263,16 +358,16 @@ class Install:
         noted in the venv: the same again needs no pip, so a run with nothing new to do needs no
         network. The program's own code is installed in place (-e), so a new copy of it needs no pip
         either."""
-        stamp = self.app / ".venv" / "parent-recap-packages.txt"
+        stamp = self.folder / ".venv" / "parent-recap-packages.txt"
         had = stamp.read_text(encoding="ascii", errors="replace").strip() if stamp.is_file() else ""
-        packages = f"{file_hash(self.app / 'constraints.txt')} {file_hash(self.app / 'pyproject.toml')}"
+        packages = f"{file_hash(self.folder / 'constraints.txt')} {file_hash(self.folder / 'pyproject.toml')}"
         installed = False
         if not had.startswith(f"{packages} "):
             print("Installing Parent Recap's Python packages...", flush=True)
             self.pip("pip")
             self.install_required()
             self.pip_or_stop([str(self.venv_python), "-m", "pip", "install", "--disable-pip-version-check", "--no-deps",
-                              "--no-build-isolation", "-e", str(self.app)])
+                              "--no-build-isolation", "-e", str(self.folder)])
             installed = True
         # Google's packages only for a Household whose config uses Google Calendar, which the
         # program installed above reads: turning it on in manage runs the install again, and an
@@ -300,13 +395,13 @@ class Install:
     def pip(self, *names: str) -> None:
         """Installs `names` by checksum, prebuilt only, at the versions constraints.txt pins."""
         self.pip_or_stop([str(self.venv_python), "-m", "pip", "install", "--only-binary", ":all:",
-                          "--disable-pip-version-check", "--require-hashes", "-c", str(self.app / "constraints.txt"),
+                          "--disable-pip-version-check", "--require-hashes", "-c", str(self.folder / "constraints.txt"),
                           *names])
 
     def install_required(self, *extras: str) -> None:
         """The packages the program needs, with those of `extras`, by checksum."""
         with self.log.path.open("ab") as errors:
-            asked = subprocess.run([str(self.venv_python), "-I", str(self.app / "requirements.py"), *extras],
+            asked = subprocess.run([str(self.venv_python), "-I", str(self.folder / "requirements.py"), *extras],
                                    stdout=subprocess.PIPE, stderr=errors, stdin=subprocess.DEVNULL)
         if asked.returncode != 0:
             raise self.pip_failed()
@@ -314,23 +409,13 @@ class Install:
         if names:
             self.pip(*names)
 
-    def remove_old_runtimes(self) -> None:
-        """Only once the program runs on the new Python, so a failed pip step keeps the old one. The
-        wilma CLI runs on whichever Node is there, so an old Node goes with it. The Python this runs
-        on stays, as an update's may be an older one: Windows doesn't let a running program's files be
-        removed, and the next install, on the new one, removes it."""
-        keep = (self.runtime, self.node_runtime, Path(sys.base_prefix))
-        for folder in self.runtimes.iterdir():
-            if (folder.is_dir() and folder.name.startswith(("python-", "node-"))
-                    and not any(same_path(folder, kept) for kept in keep)):
-                shutil.rmtree(folder)
-
     def run_program_steps(self) -> None:
-        """The program's own steps, on the venv's python.exe as install.sh runs them: setup's record,
-        the command, the wilma CLI, the Baileys tree, and Parent Recap Settings and Check."""
-        python = str(self.venv_python)
-        record = [python, "-m", "family_brief.install_record", "program", str(self.app), "logs", str(self.logs),
-                  "runtime", str(self.runtimes)]
+        """The program's own steps, through `app` on the venv's python.exe as install.sh runs them:
+        setup's record, the command, the wilma CLI, the Baileys tree, the Linked Device on this
+        version, and Parent Recap Settings and Check."""
+        python = str(self.app / ".venv" / "Scripts" / "python.exe")
+        record = [python, "-m", "family_brief.install_record", "program", str(self.app), "versions", str(self.versions),
+                  "logs", str(self.logs), "runtime", str(self.runtimes)]
         if self.downloaded:
             record += ["plugin", str(self.plugin)]
         if self.log.run(record) != 0:
@@ -345,6 +430,9 @@ class Install:
         self.log.run([python, "-m", "family_brief.setup_wilma", "update"])
         # The Baileys tree the Linked Device runs on (ADR 0025), as install.sh installs it.
         self.log.run([python, "-m", "family_brief.baileys_install", "install"])
+        # A Linked Device running now is started again on this version's command and Node, which
+        # may be new. It never fails the install.
+        self.log.run([python, "-m", "family_brief.linked_device", "restart"])
         # Parent Recap Settings and Parent Recap Check in the Start menu (ADR 0042), as install.sh
         # puts them in ~/Applications: made again by every install, so an update brings them. It
         # never fails the install.

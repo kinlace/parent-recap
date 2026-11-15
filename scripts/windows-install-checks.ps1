@@ -37,6 +37,16 @@ function Invoke-Py([string]$Code, [string]$Failure) {
   if ($LASTEXITCODE -ne 0) { throw $Failure }
 }
 
+# The version's folder `app` is a junction to (#991); throws when it isn't one into versions.
+function Get-Running {
+  $app = Get-Item -LiteralPath "$Installed\app" -Force
+  if ($app.LinkType -ne 'Junction') { throw "app is a $(if ($app.LinkType) { $app.LinkType } else { 'folder' }), not a junction" }
+  $target = "$(@($app.Target)[0])" -replace '^\\\\\?\\', ''
+  if ((Split-Path -Parent $target) -ne "$Installed\versions") { throw "app points at $target, not into versions" }
+  if (-not (Test-Path -LiteralPath $target -PathType Container)) { throw "app points at $target, which isn't there" }
+  return $target
+}
+
 # Runs PowerShell code in a new window's PATH, its output passed on.
 function Invoke-NewWindow([string]$Code, [switch]$PSReadLine) {
   $first = if ($PSReadLine) { 'Import-Module PSReadLine; ' } else { '' }
@@ -175,6 +185,11 @@ function Test-Install {
   if ($out -match "own Python") { throw 'it downloaded the Python the run before had left' }
   if ($out -notmatch "own Node") { throw "it didn't download the Node, which only the installer it hands over to does" }
   if ($out -notmatch 'is installed in') { throw "the installer it hands over to didn't say the install worked" }
+  # `app` is a junction into versions, the one path everything starts the program from (#991).
+  $running = Get-Running
+  Write-Host "app: a junction to $running"
+  $versions = @(Get-ChildItem "$Installed\versions" -Force | ForEach-Object Name) -join ','
+  if ($versions -ne (Split-Path -Leaf $running)) { throw "versions holds $versions, not only the version app points at" }
   # A step that ends in a traceback still lets the install go on, so only its log tells (#596).
   if (Select-String -Path "$Installed\logs\*.log" -Pattern '^Traceback' -Quiet) { throw 'a Python step ended in a traceback' }
 }
@@ -273,6 +288,96 @@ function Test-SecondInstall {
   if ($out -notmatch 'up to date') { throw 'no word that the packages are up to date' }
   $after = $watched | ForEach-Object { (Get-Item $_).LastWriteTimeUtc.Ticks }
   if (Compare-Object $before $after) { throw 'the second install changed the runtimes, the venv or the Baileys tree' }
+  if ((Get-Running) -ne $running) { throw "the second install made a new version, $(Get-Running)" }
+  # Then the versions side by side (#991), with the real install: an install from before versions
+  # taken over while its Linked Device's task runs, then a switch back and forward again.
+  Test-TakeOver
+  Test-SwitchBack
+}
+
+# Makes the install one from before versions, with the program in `app` itself at version 0.0.1,
+# as 0.20 and older left it: a copy of the running version, its editable install pointed at `app`.
+function Set-BeforeVersions {
+  $running = Get-Running
+  [IO.Directory]::Delete("$Installed\app")  # the junction alone
+  robocopy $running "$Installed\app" /E /XD __pycache__ /NFL /NDL /NJH /NJS /NP | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "robocopy couldn't copy the program into app ($LASTEXITCODE)" }
+  [IO.File]::WriteAllText("$Installed\app\VERSION", "0.0.1`n")
+  Remove-Item -LiteralPath "$Installed\app\RUNTIMES"
+  & $Py -m pip install --disable-pip-version-check --no-index --no-deps --no-build-isolation -e "$Installed\app" | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "the copy's editable install couldn't be pointed at app" }
+  # It holds no junction: there is no previous version yet.
+  Remove-Item -LiteralPath "$Installed\versions" -Recurse -Force
+  Invoke-Py "import family_brief, sys; print(family_brief.__file__); sys.exit(not family_brief.__file__.startswith(r'$Installed\app' + chr(92)))" `
+    "the program in app doesn't run from app"
+}
+
+# The Linked Device's task, running from `app` as a paired one does, with its pairing: a program
+# that only waits stands in for the Linked Device, which needs a phone to pair.
+function Start-StandInLinkedDevice {
+  Invoke-Py "import sys; from pathlib import Path; from family_brief import linked_device; from family_brief.system import jobs; a = linked_device.auth_folder(); a.mkdir(parents=True, exist_ok=True); (a / 'creds.json').write_text('{}'); jobs.install_always([sys.executable, '-c', 'import time; time.sleep(3600)'], Path(r'$Installed\logs')); print(jobs.program(jobs.ALWAYS))" `
+    "the stand-in Linked Device's task wasn't installed"
+  Assert-LinkedDevice 'once installed'
+}
+
+# The Linked Device's task runs, from `app`, and its pairing is there.
+function Assert-LinkedDevice([string]$When) {
+  Invoke-Py "import sys, time; from family_brief import linked_device; from family_brief.system import jobs; [time.sleep(1) for _ in range(20) if not jobs.always_status().running]; s = jobs.always_status(); p = jobs.program(jobs.ALWAYS); print(s, p); sys.exit(not (s.running and (linked_device.auth_folder() / 'creds.json').is_file() and p and p[0].startswith(r'$Installed\app' + chr(92))))" `
+    "the Linked Device's task isn't running from app with its pairing $When"
+}
+
+function Test-TakeOver {
+  Set-BeforeVersions
+  Start-StandInLinkedDevice
+  # Something else holds the folder: a file in it open, as a program started from it does.
+  $held = [IO.File]::Open("$Installed\app\VERSION", 'Open', 'Read', 'Read')
+  try {
+    $out = powershell -NoProfile -ExecutionPolicy Bypass -File $Install *>&1 | Out-String
+    $code = $LASTEXITCODE
+  } finally {
+    $held.Close()
+  }
+  Write-Host $out
+  if ($code -ne 1) { throw "with app held, the install exited with $code, not 1" }
+  if ($out -notmatch "couldn't move its program") { throw 'no word that the program folder is held' }
+  if ((Get-Item -LiteralPath "$Installed\app" -Force).LinkType -or (Get-Content "$Installed\app\VERSION") -ne '0.0.1') {
+    throw 'the held install was changed'
+  }
+  if (Get-ChildItem "$Installed\versions" -Force -ErrorAction SilentlyContinue) { throw 'the held install left a version behind' }
+  Assert-LinkedDevice 'after the held install'
+
+  $out = powershell -NoProfile -ExecutionPolicy Bypass -File $Install *>&1 | Out-String
+  $code = $LASTEXITCODE
+  Write-Host $out
+  if ($code -ne 0) { throw "the take-over install exited with $code" }
+  Get-Running | Out-Null
+  $versions = @(Get-ChildItem "$Installed\versions" -Force | ForEach-Object Name | Sort-Object)
+  Write-Host "versions: $($versions -join ', ')"
+  if ($versions.Count -ne 3 -or $versions -notcontains '0.0.1.before' -or $versions -notcontains 'previous') {
+    throw "versions holds $($versions -join ', '), not the version taken over, the new one and previous"
+  }
+  Invoke-Py "import sys; from pathlib import Path; from family_brief import versions; p = versions.previous(Path(r'$Installed')); print(p); sys.exit(p is None or p.name != '0.0.1.before')" `
+    "the version taken over isn't the previous one"
+  Assert-LinkedDevice 'after the take-over'
+}
+
+# `parent-recap switch-back` from a new window, as the family types it: back to the version taken
+# over, and forward again.
+function Test-SwitchBack {
+  $new = (Get-Content "$Installed\app\VERSION").Trim()
+  foreach ($to in '0.0.1', $new) {
+    $out = Invoke-NewWindow 'parent-recap switch-back; exit $LASTEXITCODE' | Out-String
+    $code = $LASTEXITCODE
+    Write-Host $out
+    if ($code -ne 0) { throw "switch-back to $to exited with $code" }
+    if ($out -notmatch "runs version $([regex]::Escape($to)) again") { throw "switch-back didn't say it runs $to again" }
+    $now = (Get-Content "$Installed\app\VERSION").Trim()
+    if ($now -ne $to) { throw "after switch-back, app holds $now, not $to" }
+    Get-Running | Out-Null
+    Assert-LinkedDevice "after switch-back to $to"
+  }
+  # The stand-in goes, so uninstall finds only the program's own tasks.
+  Invoke-Py "from family_brief.system import jobs; jobs.remove_always()" "the stand-in Linked Device's task wasn't removed"
 }
 
 # As the setup page's Wilma step installs it, from npm, with the program's own Node.
@@ -304,6 +409,9 @@ function Test-Uninstall {
     "the Gateway Key wasn't stored"
   & $pr schedule install
   if ($LASTEXITCODE -ne 0) { throw 'schedule install failed' }
+  # Started through `app`, so the next version's install leaves them as they are (#991).
+  Invoke-Py "import sys; from family_brief.system import jobs; p = jobs.program(jobs.DAILY); print(p); sys.exit(not p or not p[0].startswith(r'$Installed\app' + chr(92)))" `
+    "the evening task doesn't start the program through app"
   # The config above turns Weekend Picks on, so the program runs both its evening jobs.
   Invoke-Py "import sys; from family_brief.system import jobs; i = jobs.installed(); print(sorted(i)); sys.exit(not {jobs.DAILY, jobs.WEEKEND} <= i)" `
     "the program doesn't run the evening Brief and Weekend Picks"

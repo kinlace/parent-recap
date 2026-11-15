@@ -1,9 +1,10 @@
 """The installed program's versions (ADR 0047): `switch`, which install.sh runs once a release's
 install finished, keeps the version switched from, one version deep, with the runtimes it runs
 on, and takes over an install from before versions; `parent-recap switch-back` points `app` at
-the previous version again and has it put its own pieces back. On real folders in a temporary
-HOME, with the subprocesses and the always-running job as the harness's fakes. install.sh itself
-is run in test_install.py."""
+the previous version again and has it put its own pieces back. On real folders and real links
+(symlinks on macOS and Linux, junctions on Windows) in a temporary HOME, with the subprocesses and
+the always-running job as the harness's fakes. install.sh itself is run in test_install.py, the
+Windows installer in test_windows_install.py and on CI's clean Windows runner."""
 from __future__ import annotations
 
 import subprocess
@@ -12,12 +13,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from family_brief import versions
+from family_brief import run_lock, versions
+from family_brief.config import Config
+from family_brief.system import links
 
-from fake_system import LINUX, MACOS
-
-# install.sh's, on a Mac or a Linux server: install.ps1 keeps Windows' program in place.
-pytestmark = pytest.mark.posix
+from fake_system import LINUX, MACOS, WINDOWS
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def install(folder: Path, name: str, runs_on: tuple[str, ...] = ("python-1", "no
 def test_the_first_install_points_app_at_its_version_with_none_before(folder):
     v = install(folder, "1_0.aaa")
 
-    assert (folder / "app").is_symlink() and (folder / "app").resolve() == v.resolve()
+    assert links.is_link(folder / "app") and (folder / "app").resolve() == v.resolve()
     assert versions.current(folder) == v and versions.previous(folder) is None
     assert (folder / "app" / "VERSION").read_text() == "1.0\n"
 
@@ -115,7 +115,7 @@ def test_an_install_from_before_versions_is_taken_over_as_the_previous_one(folde
     before = versions.previous(folder)
     assert before is not None and before.name == "0.9.0.before"
     assert (before / ".venv" / "bin").is_dir() and versions.version(before) == "0.9.0"
-    assert versions.current(folder) == new and app.is_symlink()
+    assert versions.current(folder) == new and links.is_link(app)
     # It ran on one of what runtime/ held then, which all stay while it's kept.
     assert (before / "RUNTIMES").read_text().split() == ["node-v1", "python-0", "python-1"]
     assert (folder / "runtime" / "python-0").is_dir()
@@ -201,7 +201,9 @@ def steps(harness) -> list[list[str]]:
 @pytest.mark.parametrize("on, put_back", [
     (MACOS, ["command_path", "setup_wilma", "baileys_install", "program_entries",
              "schedule_update"]),
-    (LINUX, ["command_path", "setup_wilma", "baileys_install"])], ids=["macos", "linux"])
+    (WINDOWS, ["command_path", "setup_wilma", "baileys_install", "program_entries",
+               "schedule_update"]),
+    (LINUX, ["command_path", "setup_wilma", "baileys_install"])], ids=["macos", "windows", "linux"])
 def test_switch_back_has_the_version_put_its_own_pieces_back_and_restarts_the_linked_device(
         harness, folder, capsys, on, put_back):
     harness.system = on
@@ -213,7 +215,7 @@ def test_switch_back_has_the_version_put_its_own_pieces_back_and_restarts_the_li
     assert harness.cli("switch-back") == 0
 
     assert (folder / "app" / "VERSION").read_text() == "1.0\n"
-    python = str(folder / "app" / ".venv" / "bin" / "python")
+    python = str(folder / "app" / ".venv" / on.python)
     assert [c[0] for c in ran] == [python] * len(put_back)
     assert [c[2].removeprefix("family_brief.") for c in ran] == put_back
     assert harness.jobs.always_restarts == 1
@@ -230,3 +232,166 @@ def test_switch_back_without_a_previous_version_says_so_and_changes_nothing(harn
 
     assert "no previous version" in capsys.readouterr().out
     assert versions.current(folder) == v and ran == [] and harness.jobs.always_restarts == 0
+
+
+# ── where a link isn't replaced in one step: Windows' junctions (#991)
+
+@pytest.fixture
+def in_two_steps(harness, monkeypatch) -> None:
+    """A system whose `app` is missing for a moment while it's pointed at another version, as a
+    junction is on Windows, with a Household whose run lock is there to take."""
+    monkeypatch.setattr(links, "one_step", lambda: False)
+    config = harness.home / ".family" / "config.yaml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(yaml.safe_dump(harness.config))
+
+
+class Watched:
+    """The Linked Device's job and the run lock, as each switch of `app` finds them."""
+
+    def __init__(self, harness, monkeypatch):
+        self.seen: list[tuple[bool, bool]] = []  # (the job running, the lock held) at each switch
+        point = links.point
+
+        def watched(link: Path, to: Path) -> None:
+            if link.name == "app":
+                self.seen.append((harness.jobs.always_running,
+                                  run_lock.is_busy(Config.load(None))))
+            point(link, to)
+        monkeypatch.setattr(links, "point", watched)
+
+
+@pytest.fixture
+def watched(harness, monkeypatch, in_two_steps) -> Watched:
+    return Watched(harness, monkeypatch)
+
+
+def test_the_switch_stops_the_linked_device_and_holds_the_run_lock_then_starts_it_again(
+        harness, folder, watched):
+    install(folder, "1_0.aaa")
+    harness.jobs.install_always(["node", "follow"], folder / "logs")
+
+    new = install(folder, "1_1.bbb")
+
+    assert watched.seen[-1] == (False, True)
+    assert harness.jobs.always_running and harness.jobs.always_starts == 1
+    assert versions.current(folder) == new
+
+
+def test_a_linked_device_that_wasnt_running_is_left_stopped(harness, folder, watched):
+    harness.jobs.install_always(["node", "follow"], folder / "logs")
+    harness.jobs.stop_always()
+
+    install(folder, "1_0.aaa")
+
+    assert not harness.jobs.always_running and harness.jobs.always_starts == 0
+
+
+def test_an_install_from_before_versions_is_taken_over_with_the_linked_device_stopped(
+        harness, folder, watched):
+    app = folder / "app"
+    (app / ".venv").mkdir(parents=True)
+    (app / "VERSION").write_text("0.9.0\n")
+    moved_while: list[bool] = []
+    rename = versions.os.rename
+
+    def watched_rename(a, b):
+        moved_while.append(harness.jobs.always_running)
+        rename(a, b)
+    harness.jobs.install_always(["node", "follow"], folder / "logs")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(versions.os, "rename", watched_rename)
+        install(folder, "1_0.aaa")
+
+    assert moved_while == [False]
+    assert harness.jobs.always_running
+    assert versions.version(versions.previous(folder)) == "0.9.0"
+
+
+def test_a_folder_something_else_holds_stops_the_switch_and_changes_nothing(
+        harness, folder, in_two_steps, monkeypatch, capsys):
+    app = folder / "app"
+    (app / ".venv").mkdir(parents=True)
+    (app / "VERSION").write_text("0.9.0\n")
+    new = built(folder, "1_0.aaa")
+    harness.jobs.install_always(["node", "follow"], folder / "logs")
+
+    def held(a, b):
+        raise PermissionError(13, "The process cannot access the file because it is being used "
+                                  "by another process", str(a))
+    monkeypatch.setattr(versions.os, "rename", held)
+    monkeypatch.setattr(versions, "MOVE_WAIT", 0)
+
+    assert versions.main(["switch", str(folder), str(new)]) == 1
+
+    out = capsys.readouterr().out
+    assert f"couldn't move its program in {app}" in out
+    assert "being used by another process" in out and "Nothing was changed" in out
+    assert not links.is_link(app) and (app / "VERSION").read_text() == "0.9.0\n"
+    assert not (app / "RUNTIMES").exists()
+    assert harness.jobs.always_running  # started again
+
+
+@pytest.mark.windows
+def test_on_windows_a_file_open_in_the_program_s_folder_stops_the_take_over(harness, folder,
+                                                                            capsys):
+    # As a program started from it holds it: Windows doesn't let the folder be moved.
+    app = folder / "app"
+    app.mkdir()
+    (app / "VERSION").write_text("0.9.0\n")
+    new = built(folder, "1_0.aaa")
+
+    with (app / "VERSION").open():
+        assert versions.main(["switch", str(folder), str(new)]) == 1
+
+    assert "couldn't move its program" in capsys.readouterr().out
+    assert not links.is_link(app) and (app / "VERSION").read_text() == "0.9.0\n"
+
+
+def test_a_run_going_stops_the_switch_and_changes_nothing(harness, folder, in_two_steps, capsys):
+    old = install(folder, "1_0.aaa")
+    new = built(folder, "1_1.bbb")
+
+    with run_lock.exclusive(Config.load(None)):
+        assert versions.main(["switch", str(folder), str(new)]) == 1
+
+    assert "A Parent Recap run is going right now" in capsys.readouterr().out
+    assert versions.current(folder) == old
+
+
+def test_the_evening_run_s_own_update_switches_inside_the_run_s_lock(harness, folder,
+                                                                     in_two_steps, monkeypatch):
+    install(folder, "1_0.aaa")
+    new = built(folder, "1_1.bbb")
+    monkeypatch.setenv("PARENT_RECAP_UPDATING", "1")
+
+    with run_lock.exclusive(Config.load(None)):
+        versions.switch(folder, new)
+
+    assert versions.current(folder) == new
+
+
+def test_the_same_version_s_folder_again_only_clears_what_else_is_there(harness, folder, watched):
+    # As the Windows installer installs the same version again in its own folder.
+    harness.jobs.install_always(["node", "follow"], folder / "logs")
+    v = install(folder, "1_0.aaa")
+    (folder / "versions" / "1_1.cut").mkdir()
+
+    versions.switch(folder, v)
+
+    assert versions.current(folder) == v and not (folder / "versions" / "1_1.cut").exists()
+    assert len(watched.seen) == 1  # the first install's: the Linked Device ran on
+    assert harness.jobs.always_starts == 1
+
+
+def test_switch_back_while_a_run_is_going_says_so_and_changes_nothing(harness, folder,
+                                                                    in_two_steps, capsys):
+    install(folder, "1_0.aaa")
+    new = install(folder, "1_1.bbb")
+    ran = steps(harness)
+
+    with run_lock.exclusive(Config.load(None)):
+        assert harness.cli("switch-back") == run_lock.BUSY
+
+    assert "A Parent Recap run is going right now" in capsys.readouterr().out
+    assert versions.current(folder) == new and ran == []

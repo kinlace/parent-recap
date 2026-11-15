@@ -244,6 +244,10 @@ def stop_always() -> None:
     pass
 
 
+def start_always() -> None:
+    pass  # there is no always-running job on Linux (NO_ALWAYS)
+
+
 def restart_always() -> None:
     pass  # there is no always-running job on Linux (NO_ALWAYS)
 
