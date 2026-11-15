@@ -214,7 +214,14 @@ def switch(folder: Path, new: Path) -> None:
         return
     spare = None
     with _still(folder):
-        old = _take_over(folder) or current(folder)
+        taken = _take_over(folder)
+        if taken is not None:
+            try:
+                _point(folder / APP, f"{VERSIONS}/{new.name}")
+            except OSError:
+                os.rename(taken, folder / APP)  # back as it was, so the version before runs
+                raise
+        old = taken or current(folder)
         before = previous(folder)
         if old is not None and old != new:
             if version(old) != version(new):

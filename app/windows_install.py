@@ -21,8 +21,9 @@ starts one of its own in the logs folder. `--downloaded` says the release is the
 the pasted line downloaded into %LOCALAPPDATA%\\ParentRecap\\plugin, which setup's record then
 lists so uninstall removes it. Everything the programs it runs print goes to the log, not the
 window. It exits with 0 when the install worked and 1 when it didn't, having said why and what the
-family can do; one that didn't leaves `app` pointing at the version before. Safe to re-run: a run that stopped partway picks up from where it got to, and a run
-with nothing new to do downloads and installs nothing. It never touches the config or the secrets.
+family can do; one that didn't leaves `app` pointing at the version before. Safe to re-run: a
+run that stopped partway picks up from where it got to, and a run with nothing new to do downloads
+and installs nothing. It never touches the config or the secrets.
 """
 from __future__ import annotations
 
