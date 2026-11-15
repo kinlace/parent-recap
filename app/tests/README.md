@@ -47,9 +47,8 @@ the import path, so a test may import a helper from a test in another layer.
 | ----------------------------- | ---------------------------------------------------------------- |
 | `test_ai_filter.py`           | The AI filter on its own: messages in, masked text and names out |
 | `test_baileys_pin.py`         | The committed npm files pin Baileys and its tree, with hashes    |
-| `test_brief.py`               | The Brief read from the archive and written back; old archives   |
 | `test_wilma_pin.py`           | The committed npm files pin the wilma CLI and its tree (#975)    |
-| `test_brief_text.py`          | The program's own Brief and Weekend Picks text                   |
+| `test_brief.py`               | The Brief read from the archive and written back; old archives   || `test_brief_text.py`          | The program's own Brief and Weekend Picks text                   |
 | `test_citations.py`           | The model's citations checked against what the program supplied  |
 | `test_eepos.py`               | Eepos: a school's address, a student as a Kid, entries as events |
 | `test_evaka.py`               | eVaka: a city and its host, a child as a Kid, events, closed days, the deadline |

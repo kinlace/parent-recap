@@ -20,7 +20,6 @@ from . import failure, install_record, own_node, private_files, sources
 BAILEYS_PACKAGE = "@whiskeysockets/baileys"
 BAILEYS_VERSION = "7.0.0-rc14"
 PINNED = Path(__file__).parent / "baileys"
-NPM_FILES = own_node.NPM_FILES
 INSTALL_SECONDS = 600  # about 90 MB
 
 
@@ -45,7 +44,8 @@ def up_to_date(where: Path | None = None) -> bool:
     installed it from the committed npm files, and it has the pinned Baileys."""
     where = where or folder()
     try:
-        same = all((where / name).read_bytes() == (PINNED / name).read_bytes() for name in NPM_FILES)
+        same = all((where / name).read_bytes() == (PINNED / name).read_bytes()
+                   for name in own_node.NPM_FILES)
     except OSError:
         return False
     return same and installed_version(where) == BAILEYS_VERSION

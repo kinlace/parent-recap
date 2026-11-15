@@ -42,7 +42,7 @@ NPM_CI = {*own_node.NPM_FILES, "node_modules"}
 # What is in the wilma CLI's folder: that, or what `npm install -g --prefix` made there before
 # #975; on Windows that put the package in node_modules, with npm's wrappers for each of its
 # commands beside it (_npm_made).
-NPM_PREFIX = {"bin", "lib", "etc", "share"} | NPM_CI
+WILMA_FOLDER = {"bin", "lib", "etc", "share"} | NPM_CI
 DATED = re.compile(r"^\d{4}-\d{2}-\d{2}\.(md|raw\.json)$")  # an archived Brief and its messages
 MARKETPLACE = "kinlace"
 
@@ -384,7 +384,7 @@ def _npm_made(prefix: Path) -> set[str]:
     if isinstance(bins, str):  # one command, named after the package
         bins = {own_node.WILMA_PACKAGE.rsplit("/", 1)[-1]: bins}
     commands = list(bins) if isinstance(bins, dict) else []
-    return NPM_PREFIX | {f"{c}{ext}" for c in commands for ext in ("", ".cmd", ".ps1")}
+    return WILMA_FOLDER | {f"{c}{ext}" for c in commands for ext in ("", ".cmd", ".ps1")}
 
 
 def _claude_code(s: Survey) -> None:

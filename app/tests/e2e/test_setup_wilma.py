@@ -143,7 +143,7 @@ class Wilma:
         self.npm_works = True         # False: npm can't reach its registry
         self.npm_ended = False        # True: npm is ended at the time limit, halfway through
         self.npm_mismatch = False     # True: a package npm downloads isn't the one the lockfile pins
-        self.window = ""            # everything the terminal window showed
+        self.window = ""              # everything the terminal window showed
 
     @property
     def config_path(self) -> Path:
@@ -1171,12 +1171,12 @@ def test_each_other_way_npm_fails_says_which_in_one_line_on_the_page(harness, pa
                                                                      caplog, npm, said):
     def wrong_version(cmd: list[str]) -> Any:
         fake_node.install_wilma(harness.home, "", "1.6.2", fake_node.npm_prefix(cmd), locked=True)
-        return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
+        return subprocess.CompletedProcess(cmd, 0, "added 169 packages", "")
 
     def no_cli(cmd: list[str]) -> Any:
         fake_node.install_wilma(harness.home, "", prefix=fake_node.npm_prefix(cmd), locked=True)
         (fake_node.npm_prefix(cmd) / fake_node.LOCKED_PACKAGE / fake_node.SCRIPT).unlink()
-        return subprocess.CompletedProcess(cmd, 0, "added 40 packages", "")
+        return subprocess.CompletedProcess(cmd, 0, "added 169 packages", "")
     wilma_cli.npm = {"silent": lambda cmd: subprocess.CompletedProcess(cmd, 1, "", ""),
                      "nothing": lambda cmd: subprocess.CompletedProcess(cmd, 0, "up to date", ""),
                      "timed out": timed_out, "os error": cannot_run,

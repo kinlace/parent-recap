@@ -184,8 +184,9 @@ def update() -> str:
     """Moves the wilma CLI in Parent Recap's folder to the pinned version, which install.sh asks
     for on every update, so a Household that connected Wilma gets the version a release pins. A
     CLI at that version stays as it is, also one installed before the lockfile (#975), which the
-    locked tree replaces when the pinned version next changes. A CLI left half there, as by an npm ended partway before the install was staged, is installed
-    again when the CLI's config has a sign-in. Returns `not-installed` (no CLI to update, so
+    locked tree replaces when the pinned version next changes. A CLI left half there, as by an npm
+    ended partway before the install was staged, is installed again when the CLI's config has a
+    sign-in. Returns `not-installed` (no CLI to update, so
     nothing is installed), `up-to-date`, `updated`, `no-node` or `update-failed`, which leaves the
     CLI that was there as it was."""
     if installed() and installed_version() == WILMA_CLI_VERSION:
