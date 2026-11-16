@@ -25,7 +25,7 @@ from family_brief import brief_text, ops, run_lock, update
 from family_brief.config import Config
 from family_brief.setup_server import server as page_server
 from fake_sources import EEPOS_PASSWORD, KONNECT_PASSWORD
-from setup_page import CAN_LISTEN, PAGE_DIR, config_file, connect_done, wait_for
+from setup_page import CAN_LISTEN, PAGE_DIR, call, config_file, connect_done, wait_for
 from setup_page import clock, health, page, schedule  # noqa: F401
 from test_setup_eepos import SECRET as EEPOS_SECRET, at_the_eepos_step, sign_in
 from test_setup_eepos import portal  # noqa: F401
@@ -53,7 +53,7 @@ def household(harness, pc):  # noqa: F811
 def doctor_updates_line(harness, capsys) -> str:
     capsys.readouterr()
     harness.cli("doctor", "--skip-llm")
-    [line] = [l for l in capsys.readouterr().out.splitlines() if " Updates: " in l]
+    [line] = [said for said in capsys.readouterr().out.splitlines() if " Updates: " in said]
     return line
 
 
@@ -102,7 +102,6 @@ def test_update_now_on_a_pc_whose_new_version_fails_its_check_switches_back(
 
 def test_update_now_on_a_pc_while_a_brief_is_being_made_says_busy_and_changes_nothing(
         github, household, keys, pc, page):  # noqa: F811
-    from setup_page import call
     release(github, keys, "0.20.0")
     asked = len(github.requests)
 
@@ -115,7 +114,6 @@ def test_update_now_on_a_pc_while_a_brief_is_being_made_says_busy_and_changes_no
 
 def test_update_now_on_a_pc_while_another_update_runs_says_busy_and_changes_nothing(
         github, household, keys, pc, page):  # noqa: F811
-    from setup_page import call
     release(github, keys, "0.20.0")
 
     with update.alone(str(config_file(household))):  # `parent-recap update` in PowerShell
@@ -230,52 +228,71 @@ def test_setup_konnect_in_powershell_updates_first_and_the_new_version_runs_the_
 
 # ---------------------------------------------------------------- the page started again
 
-@pytest.mark.skipif(not CAN_LISTEN, reason="needs a port to listen on")
-def test_on_a_pc_the_page_s_program_waits_for_the_installed_version_s_and_ends_with_it(
-        github, harness, pc, clock, monkeypatch, capsys):  # noqa: F811
-    """On Windows os.execve starts the new program and ends this one at once, so the window the
-    install line was pasted into would take the page for closed: the program started again is
-    waited for instead, and this one ends as it ends, saying nothing of its own."""
+class NewProgram:
+    """The installed version's program as `start_again` starts it on Windows, through
+    `subprocess.Popen`: `started` is each command and environment it was started with; `waits`
+    are what each wait for it does, in turn: an exit status, or an exception it raises."""
+
+    def __init__(self, waits: list[Any]) -> None:
+        self.started: list[tuple[list[str], dict[str, str]]] = []
+        self.waits = waits
+
+    def __call__(self, command: list[str], env: dict[str, str]) -> "NewProgram":
+        if isinstance(self.waits[0], OSError):  # it couldn't be started
+            raise self.waits[0]
+        self.started.append((command, env))
+        return self
+
+    def wait(self) -> int:
+        done = self.waits.pop(0)
+        if isinstance(done, BaseException):
+            raise done
+        return done
+
+
+@pytest.fixture
+def page_to_start_again(harness, pc, clock, monkeypatch):  # noqa: F811
+    """A page's server on the PC that stopped after an update to start again in the installed
+    version, and how that version's program is started: os.execve fails the test."""
     from family_brief import setup_server
     from setup_page import context
+    if not CAN_LISTEN:
+        pytest.skip("needs a port to listen on")
     server = setup_server.SetupServer(context(config_file(harness), clock))
     monkeypatch.setattr(os, "execve", lambda *a: pytest.fail("os.execve on Windows"))
-    started: list[tuple[list[str], dict[str, str]]] = []
-
-    def answer(cmd: list[str], _prog: str, **k: Any) -> subprocess.CompletedProcess | None:
-        if cmd[:3] != [pc.python(), "-m", "family_brief"] or cmd[-2:] != ["setup", "page"]:
-            return None
-        started.append((cmd, k["env"]))
-        return subprocess.CompletedProcess(cmd, 3)
-    harness.processes.answers.insert(0, answer)
     server.context.restart = True
     server.context.stopped.set()
+
+    def started_as(program: NewProgram) -> setup_server.SetupServer:
+        monkeypatch.setattr(page_server.subprocess, "Popen", program)
+        return server
+    return started_as
+
+
+def test_on_a_pc_the_page_s_program_waits_for_the_installed_version_s_and_ends_with_it(
+        github, harness, pc, page_to_start_again, capsys):  # noqa: F811
+    """On Windows os.execve starts the new program and ends this one at once, so the window the
+    install line was pasted into would take the page for closed: the program started again is
+    waited for instead, also through Ctrl+C, which reaches it too, and this one ends as it ends,
+    saying nothing of its own."""
+    program = NewProgram([KeyboardInterrupt(), 3])
+    server = page_to_start_again(program)
 
     with pytest.raises(SystemExit) as ended:
         page_server.serve(server, opened=True)
 
-    assert ended.value.code == 3
-    [(cmd, env)] = started
+    assert ended.value.code == 3 and program.waits == []
+    [(cmd, env)] = program.started
     assert cmd == [pc.python(), "-m", "family_brief", "-c", str(config_file(harness)), "setup", "page"]
     assert env[page_server.STARTED_AGAIN] == f"{server.address[1]} {server.code}"
     assert capsys.readouterr().out == ""  # the new program says when the page closed
 
 
-@pytest.mark.skipif(not CAN_LISTEN, reason="needs a port to listen on")
 def test_on_a_pc_a_program_that_cannot_be_started_again_says_the_page_closed(
-        github, harness, pc, clock, capsys):  # noqa: F811
-    from family_brief import setup_server
-    from setup_page import context
-    server = setup_server.SetupServer(context(config_file(harness), clock))
-
-    def cannot(cmd: list[str], _prog: str, **_k: Any) -> None:
-        if cmd[-2:] == ["setup", "page"]:
-            raise OSError(22, "Operation did not complete successfully because the file contains "
-                              "a virus or potentially unwanted software")
-        return None
-    harness.processes.answers.insert(0, cannot)
-    server.context.restart = True
-    server.context.stopped.set()
+        github, harness, pc, page_to_start_again, capsys):  # noqa: F811
+    blocked = OSError(22, "Operation did not complete successfully because the file contains a "
+                          "virus or potentially unwanted software")
+    server = page_to_start_again(NewProgram([blocked]))
 
     assert page_server.serve(server, opened=True) == 0
     assert capsys.readouterr().out.strip() == page_server.closed_line("en")
@@ -290,10 +307,9 @@ UPDATE_KEYS = re.compile(r"^(finish\.updates\.|source\.update|source\.updating|"
 def test_the_page_s_update_texts_name_no_terminal_and_no_mac_on_a_pc():
     for language, table in TEXT.items():
         for key, said in table.items():
-            if not UPDATE_KEYS.match(key) or key.endswith(".windows"):
-                continue
-            shown = table.get(f"{key}.windows", said)
-            assert not MAC_WORDS.search(shown), (language, key, shown)
+            # None has a twin in the PC's words (`.windows`): each is said alike on both.
+            if UPDATE_KEYS.match(key):
+                assert not MAC_WORDS.search(said), (language, key, said)
 
 
 def test_what_the_update_command_and_the_brief_say_name_no_terminal_and_no_mac():

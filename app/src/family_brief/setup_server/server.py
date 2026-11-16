@@ -130,16 +130,26 @@ def start_again(server: SetupServer) -> None:
     sys.stderr.flush()
     if profile.current().system == "windows":
         try:
-            ended = subprocess.run(command, env=env, check=False).returncode
+            ended = _wait_for(command, env)
         except OSError:
             return
-        except KeyboardInterrupt:  # Ctrl+C reaches both: the new one ends itself
-            ended = 0
         raise SystemExit(ended)
     try:
         os.execve(program[0], command, env)
     except OSError:
         return
+
+
+def _wait_for(command: list[str], env: dict[str, str]) -> int:
+    """Starts `command` in this window and waits until it ends, returning its exit status; Ctrl+C,
+    which reaches it too, ends it as it ends a page, saying so, so this one goes on waiting for
+    it rather than ending it first. Raises OSError when it couldn't be started."""
+    child = subprocess.Popen(command, env=env)
+    while True:
+        try:
+            return child.wait()
+        except KeyboardInterrupt:
+            continue
 
 
 def closed_line(language: str) -> str:
