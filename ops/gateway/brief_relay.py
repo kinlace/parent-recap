@@ -677,14 +677,15 @@ class Mailer:
 
 # ── The Run Report (ADR 0048)
 
-# How long a Run Report is kept, in UTC days: one taken on day D is deleted on day D + KEEP_DAYS.
+# How long a Run Report is kept, in UTC days: one taken on day D is deleted on day D + REPORT_DAYS.
 REPORT_DAYS = 30
 # A Run Report is a few hundred bytes; this leaves room and no more.
 MAX_REPORT_BYTES = 16_384
-# Per UTC day: reports without a Gateway Key one caller (by IP address) may post, as for key
-# requests, and such reports taken from everyone. An evening run, a catch-up and a few by hand
-# fit under the first; the second bounds what callers who change address can make the gateway
-# keep.
+# Per UTC day: reports taken under one Gateway Key; reports without a key from one caller (by IP
+# address), as for key requests; and such reports taken from everyone. An evening run, a catch-up
+# and a few by hand fit under the first two; the last bounds what callers who change address can
+# make the gateway keep. A refused report doesn't count, as nothing of it is kept.
+REPORTS_PER_KEY = 10
 REPORTS_PER_CALLER = 10
 REPORTS_PER_DAY = 1000
 # The random id a Household without a Gateway Key reports under: 32 hex digits its program made,
@@ -771,11 +772,11 @@ def report_ok(report: object) -> bool:
 
 
 class Reports:
-    """The Run Reports taken, kept REPORT_DAYS days, with the day's counts that limit reports
-    without a Gateway Key. Each report is one line, with when it came, in
-    `<root>/<UTC day>/<who>.jsonl`, `who` being `key-<the key's Bifrost id>` or `id-<its id>`; a
-    day's folder is deleted once it is REPORT_DAYS days old. The counts are in `counts`, a
-    caller's IP address only as a truncated SHA-256."""
+    """The Run Reports taken, kept REPORT_DAYS days, with the day's counts that limit them. Each
+    report is one line, with when it came, in `<root>/<UTC day>/<file>.jsonl`, `file` being
+    `key-<the key's Bifrost id>` or `id-<its id>`; a day's folder is deleted once it is
+    REPORT_DAYS days old. The counts are in `counts`: per key by its Bifrost id, per caller only
+    as a truncated SHA-256 of its IP address."""
 
     def __init__(self, root: Path, counts: Path,
                  today: Callable[[], str] = lambda: datetime.now(UTC).date().isoformat(),
@@ -784,20 +785,26 @@ class Reports:
         self.root, self.counts, self.today, self.now = root, counts, today, now
         self.lock = threading.Lock()
 
-    def take_caller(self, caller: str) -> bool:
-        """Counts a report without a key from `caller`, or False when that is over a day's limit."""
+    def take(self, key: Key | None, caller: str) -> bool:
+        """Counts a report under `key`, or without one from `caller`, or returns False when that
+        is over a day's limit."""
         with self.lock:
             try:
                 state = json.loads(self.counts.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 state = {}
             if not isinstance(state, dict) or state.get("day") != self.today():
-                state = {"day": self.today(), "callers": {}, "taken": 0}
-            who = _hashed(caller)
-            if state["callers"].get(who, 0) >= REPORTS_PER_CALLER or state["taken"] >= REPORTS_PER_DAY:
-                return False
-            state["callers"][who] = state["callers"].get(who, 0) + 1
-            state["taken"] += 1
+                state = {"day": self.today(), "keys": {}, "callers": {}, "taken": 0}
+            if key is not None:
+                if state["keys"].get(key.id, 0) >= REPORTS_PER_KEY:
+                    return False
+                state["keys"][key.id] = state["keys"].get(key.id, 0) + 1
+            else:
+                h = _hashed(caller)
+                if state["callers"].get(h, 0) >= REPORTS_PER_CALLER or state["taken"] >= REPORTS_PER_DAY:
+                    return False
+                state["callers"][h] = state["callers"].get(h, 0) + 1
+                state["taken"] += 1
             tmp = self.counts.with_suffix(".tmp")
             tmp.write_text(json.dumps(state), encoding="utf-8")
             tmp.replace(self.counts)
@@ -859,10 +866,11 @@ class Relay:
     def report(self, key_value: str | None, report_id: str | None, caller: str,
                raw: bytes) -> tuple[int, dict]:
         """POST /v1/report: keeps a Run Report under its Gateway Key (`x-api-key`), or, without
-        one, under the random id its program made (`x-report-id`), limited per caller. A report
-        with a field or value REPORT_FIELDS doesn't allow is refused, and nothing of it is kept or
-        logged. The answer says only whether it was taken (ADR 0048)."""
+        one, under the random id its program made (`x-report-id`), limited per key or per caller.
+        A report with a field or value REPORT_FIELDS doesn't allow is refused, and nothing of it is
+        kept or logged. The answer says only whether it was taken (ADR 0048)."""
         who = "-"
+        key = None
         try:
             try:
                 if self.reports is None:
@@ -872,8 +880,6 @@ class Relay:
                     who, kept_as = f"key={key.name}", _who("key", key.id)
                 elif report_id and REPORT_ID.fullmatch(report_id):
                     who, kept_as = f"id={report_id}", _who("id", report_id)
-                    if not self.reports.take_caller(caller):
-                        raise Refused(429, "too many reports today; try again tomorrow")
                 else:
                     raise Refused(401, "a Gateway Key or a report id is needed")
                 if len(raw) > MAX_REPORT_BYTES:
@@ -885,6 +891,8 @@ class Relay:
                 if not report_ok(report):
                     # Which field, or what is in it, isn't said or logged: it may be free text.
                     raise Refused(400, "the report has a field or a value the gateway doesn't take")
+                if not self.reports.take(key, caller):
+                    raise Refused(429, "too many reports today; try again tomorrow")
                 self.reports.keep(kept_as, report)
             except Refused:
                 raise
@@ -1159,7 +1167,7 @@ class JournalFormatter(logging.Formatter):
         return f"<4>{line}" if record.levelno >= logging.WARNING else line
 
 
-def _prune_daily(reports: Reports, every: float = 3600) -> None:
+def _prune_hourly(reports: Reports, every: float = 3600) -> None:
     """Deletes the Run Reports past their days now and each hour after, so they go on time on a
     day no report comes."""
     try:
@@ -1168,13 +1176,13 @@ def _prune_daily(reports: Reports, every: float = 3600) -> None:
             log.info("reports deleted days=%s", ",".join(gone))
     except OSError as e:
         log.warning("reports not pruned (%s)", e.__class__.__name__)
-    timer = threading.Timer(every, _prune_daily, (reports, every))
+    timer = threading.Timer(every, _prune_hourly, (reports, every))
     timer.daemon = True
     timer.start()
 
 
 def main() -> None:
-    stderr =logging.StreamHandler(sys.stderr)
+    stderr = logging.StreamHandler(sys.stderr)
     stderr.setFormatter(JournalFormatter("%(message)s"))
     logging.basicConfig(level=logging.INFO, handlers=[stderr])
     env = os.environ
@@ -1199,7 +1207,7 @@ def main() -> None:
         confirm_url=f"https://{env['GATEWAY_HOST']}/brief/confirm",
         last_sent=LastSent(state / LAST_SENT),
         reports=reports)
-    _prune_daily(reports)
+    _prune_hourly(reports)
     port = int(env.get("BRIEF_RELAY_PORT", "8081"))
     server = ThreadingHTTPServer(("127.0.0.1", port), handler(relay))
     log.info("brief-relay listening on 127.0.0.1:%d", port)
