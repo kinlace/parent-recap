@@ -1,3 +1,5 @@
+<img src="docs/brand/parent-recap-mark.svg" width="72" height="72" alt="" />
+
 # Parent Recap
 
 <sub>by Kinlace</sub>
