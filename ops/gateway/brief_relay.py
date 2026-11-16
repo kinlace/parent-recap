@@ -56,6 +56,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, NamedTuple
 from urllib.parse import parse_qs, urlsplit
+from zoneinfo import ZoneInfo
 
 FROM_ADDR = "brief@parentrecap.com"
 FROM = f"Parent Recap <{FROM_ADDR}>"
@@ -1397,6 +1398,164 @@ def print_cost(keys: Bifrost, today: str) -> None:
     print(f"  total  ${sum(spent.values()):.2f}")
     print("These are Bifrost's own figures. What is billed is the Anthropic Console's, for the "
           "gateway's workspace, which also enforces its monthly limit.")
+
+
+# A Household whose last Run Report came longer ago than this is marked by `admin reports`: its
+# evening run didn't report, so its computer was off, asleep or signed out, or the job never
+# started (ADR 0048).
+REPORT_STALE = timedelta(days=1)
+# The zone `admin reports` gives times in: the Households' and the maintainers'.
+REPORT_ZONE = "Europe/Helsinki"
+
+
+@dataclass
+class Kept:
+    """A Run Report as the relay kept it: when it came, and the report."""
+    received: datetime
+    report: dict
+
+
+def kept_reports(root: Path) -> dict[str, list[Kept]]:
+    """Every Run Report kept under `root` (`Reports`), by what it is kept under (`key-<id>` or
+    `id-<id>`), oldest run first. A line that isn't a report REPORT_FIELDS allows is skipped, so
+    nothing else in the files can be printed."""
+    kept: dict[str, list[Kept]] = {}
+    try:
+        days = sorted(root.iterdir())
+    except FileNotFoundError:
+        return {}
+    for d in days:
+        try:
+            date.fromisoformat(d.name)
+        except ValueError:
+            continue
+        if not d.is_dir():
+            continue
+        for f in sorted(d.glob("*.jsonl")):
+            for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                try:
+                    entry = json.loads(line)
+                    received = datetime.fromisoformat(entry["received"])
+                    report = entry["report"]
+                except (ValueError, KeyError, TypeError, AttributeError, RecursionError):
+                    continue
+                if received.tzinfo is not None and report_ok(report):
+                    kept.setdefault(f.stem, []).append(Kept(received, report))
+    for runs in kept.values():
+        runs.sort(key=lambda k: (_ran_at(k), k.received))
+    return kept
+
+
+def _ran_at(k: Kept) -> datetime:
+    """When the run ended, as its report says (report_ok checked it has a zone)."""
+    return datetime.fromisoformat(k.report["at"]).astimezone(UTC)
+
+
+def _report_names(keys: Bifrost, kept: dict[str, list[Kept]]) -> dict[str, str]:
+    """The name `admin reports` gives each Household it holds reports of: its Gateway Key's name,
+    as `admin keys` prints it; a key since deleted by its id; one without a key by its report id."""
+    try:
+        listed = list(keys.listed())
+    except (OSError, ValueError, TypeError, AttributeError) as e:
+        print(f"couldn't read the Gateway Keys from Bifrost's admin API ({_why(e)}): Households "
+              "with a key are named by its id", file=sys.stderr)
+        listed = []
+    names = {_who("key", str(k.get("id"))): _one_line(k.get("name") or k.get("id"))
+             for k in listed}
+    for who in kept:
+        if who not in names:
+            kind, _, value = who.partition("-")
+            names[who] = f"id={value}" if kind == "id" else f"key-id={value} (no longer a key)"
+    return names
+
+
+def _report_text(r: dict) -> list[str]:
+    """What a summary line says of a run: version, system, exit, the Brief and any failure."""
+    system = " ".join(str(r[k]) for k in ("system", "system_version") if k in r)
+    brief = r.get("brief") or {}
+    brief_text = "brief " + (f"{brief['outcome']}" + (f"={brief['cause']}" if "cause" in brief else "")
+                             if brief else "-")
+    failed = [f"{name}={result['failed']}" for name, result in (r.get("sources") or {}).items()
+              if "failed" in result]
+    ai = r.get("ai")
+    if ai and ai["result"] != "ok":
+        failed.append(f"ai={ai['result']}")
+    failed += [f"cause={c}" for c in r.get("causes") or ()
+               if not any(f.endswith(f"={c}") for f in failed)]
+    exc = r.get("exception")
+    parts = [r.get("version", "?"), system or "?", f"exit {r['exit']}", brief_text]
+    if failed:
+        parts.append("failed: " + ", ".join(failed))
+    if exc:
+        parts.append(f"exception {exc['type']}" + (f" at {exc['at']}" if "at" in exc else ""))
+    return parts
+
+
+def _run_failed(r: dict) -> bool:
+    return r["exit"] != 0 or (r.get("brief") or {}).get("outcome") == "failed"
+
+
+def _ago(delta: timedelta) -> str:
+    hours = int(delta.total_seconds() // 3600)
+    return f"{hours} h" if hours < 48 else f"{hours // 24} days"
+
+
+def print_reports(keys: Bifrost, state: Path, now: datetime, which: str | None = None) -> None:
+    """`admin reports [KEY-OR-ID]`: the Households' Run Reports (ADR 0048, #924), for the
+    maintainers. Without `which`, each Household that reported in the last REPORT_DAYS days, one
+    line each: its last run's time, version, system, exit, the Brief's outcome and any Source or AI
+    failure by key, marked ⚠️ and listed first when its last report came over REPORT_STALE ago,
+    else ❌ when that run failed, else ✅. With `which`, a Gateway Key's name or id or a report's
+    id, that Household's runs, one line each, oldest first.
+
+    It prints only a report's fixed words and numbers (report_ok) and a key's name, never a key's
+    value or an address, so its output can be pasted back as it is."""
+    zone = ZoneInfo(REPORT_ZONE)
+    kept = kept_reports(state / "reports")
+    names = _report_names(keys, kept)
+
+    def local(when: datetime) -> str:
+        return when.astimezone(zone).strftime("%Y-%m-%d %H:%M")
+
+    if which is None:
+        if not kept:
+            print(f"No Run Report kept: no Household has sent one in the last {REPORT_DAYS} days.")
+            return
+        rows = []
+        for who, runs in kept.items():
+            last_came = max(k.received for k in runs)
+            stale = now - last_came > REPORT_STALE
+            last = runs[-1]
+            mark = "⚠️" if stale else "❌" if _run_failed(last.report) else "✅"
+            came = f"  no report for {_ago(now - last_came)}" if stale else ""
+            rows.append((not stale, names[who], f"{mark} {names[who]}  last {local(_ran_at(last))}"
+                         f"{came}  " + "  ".join(_report_text(last.report))))
+        print(f"Each Household's last Run Report (times in {REPORT_ZONE}); ⚠️ none came in the "
+              "last day:")
+        for _, _, row in sorted(rows):
+            print(row)
+        return
+    found = [who for who, name in names.items() if name == which] or \
+        [who for who in (_who("key", which), _who("id", which)) if who in kept]
+    if len(found) > 1:
+        sys.exit(f"{len(found)} Gateway Keys are named {which}: give one's id")
+    runs = kept.get(found[0]) if found else None
+    if not runs:
+        sys.exit(f"no Run Report kept for {which} in the last {REPORT_DAYS} days (sudo admin "
+                 "reports lists the Households that sent one)")
+    print(f"{names[found[0]]}: {len(runs)} Run Report{'' if len(runs) == 1 else 's'} in the last "
+          f"{REPORT_DAYS} days (times in {REPORT_ZONE}):")
+    for k in runs:
+        r = k.report
+        read = [f"{name}={result['read']}" for name, result in (r.get("sources") or {}).items()
+                if "read" in result]
+        ai = r.get("ai")
+        extra = [r.get("started", "?"),
+                 *(f"{r[f]} {unit}" for f, unit in (("seconds", "s"), ("peak_mb", "MB")) if f in r),
+                 *([f"ai {ai['backend']} {ai['result']}"] if ai else []),
+                 *(["read " + ", ".join(read)] if read else [])]
+        text = _report_text(r)
+        print("  ".join([local(_ran_at(k)), *text[:3], *extra, *text[3:]]))
 
 
 

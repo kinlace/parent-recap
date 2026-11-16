@@ -258,7 +258,7 @@ def test_help_lists_every_task_one_line_each(server, capsys):
     assert server.admin("--help") == 0
     out = capsys.readouterr().out
     for task in ("invite", "households", "keys", "cost", "key new", "key off", "key on", "find",
-                 "remove", "check", "household", "signed-up"):
+                 "remove", "check", "household", "signed-up", "reports"):
         assert sum(line.lstrip().startswith(task + " ") for line in out.splitlines()) == 1, task
 
 
