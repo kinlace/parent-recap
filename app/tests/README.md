@@ -84,6 +84,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_admin_deploy.py`          | `admin deploy`: what is refused, the evening window, each deploy kept, recorded, checked                     |
 | `test_admin_rollback.py`        | Each deploy's snapshot and its pruning, `admin deploys`, which deploy `rollback` picks, `--restore`          |
 | `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request                       |
+| `test_report_relay.py`          | The gateway taking a Run Report: by key or id, the per-caller limit, only the program's fields, 30 days      |
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                                               |
 | `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                                         |
 | `test_versions.py`              | The install's switch to a new version, the previous one kept, `switch-back` (ADR 0047); on Windows with the Linked Device stopped and under the run lock (#991) |

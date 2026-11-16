@@ -274,7 +274,9 @@ def _brief(value: object) -> bool:
 
 
 # Every field a Run Report can hold, and what its value may be. This is the whole list (ADR 0048):
-# a field that isn't here, or a value it doesn't allow, is never written.
+# a field that isn't here, or a value it doesn't allow, is never written. The gateway holds the
+# same list (REPORT_FIELDS in ops/gateway/brief_relay.py) and refuses a report outside it; a test
+# fails when the two differ.
 FIELDS: dict[str, Callable[[object], bool]] = {
     "version": _matches(_VERSION),
     "system": _one_of(*SYSTEMS),

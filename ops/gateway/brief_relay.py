@@ -24,6 +24,9 @@ Everything the relay sends counts against Email Delivery's 100 a day for the who
 UTC day's count passes QUOTA_WARN_AT, the relay logs a warning for the maintainers (#627). The
 nightly check (`admin check --mail`, #745) sends through `Mailer` too, so its mail is counted.
 
+It also takes a Household's Run Report (POST /v1/report, ADR 0048, #922): only the fields and fixed
+keys the program names, under its Gateway Key or a random id, kept REPORT_DAYS days (`Reports`).
+
 Python's standard library only, so it runs on the host's own python3 with nothing to install.
 """
 from __future__ import annotations
@@ -672,13 +675,226 @@ class Mailer:
         return len(refused or {})
 
 
+# ── The Run Report (ADR 0048)
+
+# How long a Run Report is kept, in UTC days: one taken on day D is deleted on day D + KEEP_DAYS.
+REPORT_DAYS = 30
+# A Run Report is a few hundred bytes; this leaves room and no more.
+MAX_REPORT_BYTES = 16_384
+# Per UTC day: reports without a Gateway Key one caller (by IP address) may post, as for key
+# requests, and such reports taken from everyone. An evening run, a catch-up and a few by hand
+# fit under the first; the second bounds what callers who change address can make the gateway
+# keep.
+REPORTS_PER_CALLER = 10
+REPORTS_PER_DAY = 1000
+# The random id a Household without a Gateway Key reports under: 32 hex digits its program made,
+# which name nobody.
+REPORT_ID = re.compile(r"[0-9a-f]{32}", re.ASCII)
+
+# What a Run Report may hold: the same list as the program's (app/src/family_brief/last_run.py,
+# FIELDS and the keys it names), which test_report_relay.py checks this against. A field or a value
+# that isn't here is refused, so a later program can't send more without this list changing too.
+REPORT_CAUSES = frozenset({"wilma-egress", "needs-pairing", "nothing-read", "unknown"})
+REPORT_STARTED = ("schedule", "catch-up", "by-hand")
+REPORT_SYSTEMS = ("macos", "windows", "linux")
+REPORT_AI_RESULTS = ("ok", "busy", "timed-out", "failed")
+REPORT_BACKENDS = ("claude", "codex", "gateway")
+REPORT_SOURCES = ("gmail", "myclub", "wilma", "whatsapp", "eepos", "evaka", "socialschools",
+                  "konnect", "local_files")
+_R_VERSION = re.compile(r"[0-9]+(\.[0-9]+)*([.+-][0-9A-Za-z.]+)?|unknown")
+_R_SYSTEM_VERSION = re.compile(r"[0-9][0-9A-Za-z.+_-]{0,39}|unknown")
+_R_TYPE = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,99}")
+_R_WHERE = re.compile(r"[a-z_][a-z0-9_]*(/[a-z_][a-z0-9_]*)*\.py:[0-9]{1,6}")
+
+
+def _r_whole(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _r_time(value: object) -> bool:
+    if not isinstance(value, str) or len(value) > 40:
+        return False
+    try:
+        return datetime.fromisoformat(value).tzinfo is not None
+    except ValueError:
+        return False
+
+
+def _r_matches(pattern: re.Pattern[str]) -> Callable[[object], bool]:
+    return lambda value: isinstance(value, str) and pattern.fullmatch(value) is not None
+
+
+def _r_one_of(allowed: tuple[str, ...] | frozenset[str]) -> Callable[[object], bool]:
+    return lambda value: isinstance(value, str) and value in allowed
+
+
+def _r_object(required: dict[str, Callable[[object], bool]],
+              optional: dict[str, Callable[[object], bool]] | None = None) -> Callable[[object], bool]:
+    """An object with each of `required`'s fields, perhaps `optional`'s, and nothing else."""
+    optional = optional or {}
+
+    def check(value: object) -> bool:
+        if not isinstance(value, dict) or not set(required) <= set(value) <= set(required) | set(optional):
+            return False
+        return all({**required, **optional}[k](v) for k, v in value.items())
+    return check
+
+
+_R_SOURCE_RESULT = (_r_object({"read": _r_whole}), _r_object({"failed": _r_one_of(REPORT_CAUSES)}))
+_R_BRIEF = (_r_object({"outcome": _r_one_of(("sent", "nothing-to-tell"))}),
+            _r_object({"outcome": _r_one_of(("failed",)), "cause": _r_one_of(REPORT_CAUSES)}))
+
+REPORT_FIELDS: dict[str, Callable[[object], bool]] = {
+    "version": _r_matches(_R_VERSION),
+    "system": _r_one_of(REPORT_SYSTEMS),
+    "system_version": _r_matches(_R_SYSTEM_VERSION),
+    "at": _r_time,
+    "started": _r_one_of(REPORT_STARTED),
+    "exit": _r_whole,
+    "seconds": _r_whole,
+    "peak_mb": _r_whole,
+    "causes": lambda v: isinstance(v, list) and all(_r_one_of(REPORT_CAUSES)(c) for c in v),
+    "sources": lambda v: isinstance(v, dict) and all(
+        name in REPORT_SOURCES and any(ok(result) for ok in _R_SOURCE_RESULT)
+        for name, result in v.items()),
+    "ai": _r_object({"backend": _r_one_of(REPORT_BACKENDS), "result": _r_one_of(REPORT_AI_RESULTS)}),
+    "brief": lambda v: any(ok(v) for ok in _R_BRIEF),
+    "exception": _r_object({"type": _r_matches(_R_TYPE)}, {"at": _r_matches(_R_WHERE)}),
+}
+
+
+def report_ok(report: object) -> bool:
+    """Whether `report` is an object of REPORT_FIELDS' fields alone, each with a value it allows,
+    with at least when the run ended and its exit code."""
+    return (isinstance(report, dict) and {"at", "exit"} <= set(report)
+            and all(k in REPORT_FIELDS and REPORT_FIELDS[k](v) for k, v in report.items()))
+
+
+class Reports:
+    """The Run Reports taken, kept REPORT_DAYS days, with the day's counts that limit reports
+    without a Gateway Key. Each report is one line, with when it came, in
+    `<root>/<UTC day>/<who>.jsonl`, `who` being `key-<the key's Bifrost id>` or `id-<its id>`; a
+    day's folder is deleted once it is REPORT_DAYS days old. The counts are in `counts`, a
+    caller's IP address only as a truncated SHA-256."""
+
+    def __init__(self, root: Path, counts: Path,
+                 today: Callable[[], str] = lambda: datetime.now(UTC).date().isoformat(),
+                 now: Callable[[], str] = lambda: datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                 ) -> None:
+        self.root, self.counts, self.today, self.now = root, counts, today, now
+        self.lock = threading.Lock()
+
+    def take_caller(self, caller: str) -> bool:
+        """Counts a report without a key from `caller`, or False when that is over a day's limit."""
+        with self.lock:
+            try:
+                state = json.loads(self.counts.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                state = {}
+            if not isinstance(state, dict) or state.get("day") != self.today():
+                state = {"day": self.today(), "callers": {}, "taken": 0}
+            who = _hashed(caller)
+            if state["callers"].get(who, 0) >= REPORTS_PER_CALLER or state["taken"] >= REPORTS_PER_DAY:
+                return False
+            state["callers"][who] = state["callers"].get(who, 0) + 1
+            state["taken"] += 1
+            tmp = self.counts.with_suffix(".tmp")
+            tmp.write_text(json.dumps(state), encoding="utf-8")
+            tmp.replace(self.counts)
+            return True
+
+    def keep(self, who: str, report: dict) -> None:
+        """Keeps `report` under `who`, today, and deletes what is past its days."""
+        line = json.dumps({"received": self.now(), "report": report}, separators=(",", ":"))
+        with self.lock:
+            day = self.root / self.today()
+            day.mkdir(parents=True, exist_ok=True)
+            with (day / f"{who}.jsonl").open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        try:
+            self.prune()
+        except OSError as e:
+            # The report is kept: the hourly prune tries again.
+            log.warning("reports not pruned (%s)", e.__class__.__name__)
+
+    def prune(self) -> list[str]:
+        """Deletes each day's reports REPORT_DAYS days old or older; the days deleted."""
+        last = date.fromisoformat(self.today()) - timedelta(days=REPORT_DAYS)
+        gone = []
+        with self.lock:
+            try:
+                days = list(self.root.iterdir())
+            except FileNotFoundError:
+                return []
+            for d in days:
+                try:
+                    old = date.fromisoformat(d.name) <= last
+                except ValueError:
+                    continue  # not a day's folder: not the relay's to delete
+                if old and d.is_dir():
+                    for f in d.iterdir():
+                        f.unlink()
+                    d.rmdir()
+                    gone.append(d.name)
+        return gone
+
+
+def _who(prefix: str, value: str) -> str:
+    """A file name for what a report is kept under: the key's id or the report's id as it is when
+    it is plain, else hashed."""
+    plain = re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value, re.ASCII)
+    return f"{prefix}-{value if plain else _hashed(value)}"
+
+
 # ── The relay
 
 class Relay:
     def __init__(self, keys: Bifrost, cap: DailyCap, mailer: Mailer, stop_url: str,
-                 bindings: Bindings, confirm_url: str, last_sent: LastSent | None = None) -> None:
+                 bindings: Bindings, confirm_url: str, last_sent: LastSent | None = None,
+                 reports: Reports | None = None) -> None:
         self.keys, self.cap, self.mailer, self.stop_url = keys, cap, mailer, stop_url
         self.bindings, self.confirm_url, self.last_sent = bindings, confirm_url, last_sent
+        self.reports = reports
+
+    def report(self, key_value: str | None, report_id: str | None, caller: str,
+               raw: bytes) -> tuple[int, dict]:
+        """POST /v1/report: keeps a Run Report under its Gateway Key (`x-api-key`), or, without
+        one, under the random id its program made (`x-report-id`), limited per caller. A report
+        with a field or value REPORT_FIELDS doesn't allow is refused, and nothing of it is kept or
+        logged. The answer says only whether it was taken (ADR 0048)."""
+        who = "-"
+        try:
+            try:
+                if self.reports is None:
+                    raise Refused(404, "not found")
+                if key_value:
+                    key = self._key(key_value)
+                    who, kept_as = f"key={key.name}", _who("key", key.id)
+                elif report_id and REPORT_ID.fullmatch(report_id):
+                    who, kept_as = f"id={report_id}", _who("id", report_id)
+                    if not self.reports.take_caller(caller):
+                        raise Refused(429, "too many reports today; try again tomorrow")
+                else:
+                    raise Refused(401, "a Gateway Key or a report id is needed")
+                if len(raw) > MAX_REPORT_BYTES:
+                    raise Refused(413, f"the report is over {MAX_REPORT_BYTES} bytes")
+                try:
+                    report = json.loads(raw)
+                except (ValueError, RecursionError):
+                    raise Refused(400, "the report isn't JSON") from None
+                if not report_ok(report):
+                    # Which field, or what is in it, isn't said or logged: it may be free text.
+                    raise Refused(400, "the report has a field or a value the gateway doesn't take")
+                self.reports.keep(kept_as, report)
+            except Refused:
+                raise
+            except Exception as e:
+                raise Refused(500, f"the relay failed ({e.__class__.__name__})") from None
+        except Refused as e:
+            log.info("report %s bytes=%d outcome=%s %s", who, len(raw), e.status, e.reason)
+            return e.status, {"error": e.reason}
+        log.info("report %s bytes=%d outcome=taken", who, len(raw))
+        return 200, {"taken": True}
 
     def handle(self, key_value: str | None, raw: bytes) -> tuple[int, dict]:
         """The status and JSON answer for one POST /v1/brief. A key made on request sends only to
@@ -915,7 +1131,10 @@ def handler(relay: Relay) -> type[BaseHTTPRequestHandler]:
             routes = {"/v1/brief": lambda raw: relay.handle(self.headers.get("x-api-key"), raw),
                       "/v1/brief/key": lambda raw: relay.request_key(self._caller(), raw),
                       "/v1/brief/recipients":
-                          lambda raw: relay.rebind(self.headers.get("x-api-key"), raw)}
+                          lambda raw: relay.rebind(self.headers.get("x-api-key"), raw),
+                      "/v1/report": lambda raw: relay.report(
+                          self.headers.get("x-api-key"), self.headers.get("x-report-id"),
+                          self._caller(), raw)}
             if self.path not in routes:
                 return self._answer(404, {"error": "not found"})
             raw = self._read()
@@ -940,8 +1159,22 @@ class JournalFormatter(logging.Formatter):
         return f"<4>{line}" if record.levelno >= logging.WARNING else line
 
 
+def _prune_daily(reports: Reports, every: float = 3600) -> None:
+    """Deletes the Run Reports past their days now and each hour after, so they go on time on a
+    day no report comes."""
+    try:
+        gone = reports.prune()
+        if gone:
+            log.info("reports deleted days=%s", ",".join(gone))
+    except OSError as e:
+        log.warning("reports not pruned (%s)", e.__class__.__name__)
+    timer = threading.Timer(every, _prune_daily, (reports, every))
+    timer.daemon = True
+    timer.start()
+
+
 def main() -> None:
-    stderr = logging.StreamHandler(sys.stderr)
+    stderr =logging.StreamHandler(sys.stderr)
     stderr.setFormatter(JournalFormatter("%(message)s"))
     logging.basicConfig(level=logging.INFO, handlers=[stderr])
     env = os.environ
@@ -954,6 +1187,7 @@ def main() -> None:
         print(f"brief-relay: {', '.join(missing)} not set (see ops/gateway/README.md)",
               file=sys.stderr)
         sys.exit(EX_CONFIG)
+    reports = Reports(state / "reports", state / "report-counts.json")
     relay = Relay(
         keys=admin,
         cap=DailyCap(state / "sent.json", limit=DAILY_CAP, on_request_limit=ON_REQUEST_DAILY_CAP),
@@ -963,7 +1197,9 @@ def main() -> None:
         stop_url=f"https://{env['GATEWAY_HOST']}/brief/stop",
         bindings=Bindings(state / "bindings.json"),
         confirm_url=f"https://{env['GATEWAY_HOST']}/brief/confirm",
-        last_sent=LastSent(state / LAST_SENT))
+        last_sent=LastSent(state / LAST_SENT),
+        reports=reports)
+    _prune_daily(reports)
     port = int(env.get("BRIEF_RELAY_PORT", "8081"))
     server = ThreadingHTTPServer(("127.0.0.1", port), handler(relay))
     log.info("brief-relay listening on 127.0.0.1:%d", port)
