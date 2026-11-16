@@ -6,3 +6,7 @@ useDefault = true
 [[allowlists]]
 description = "The fake Wilma profile's obfuscated password (base64 of wilmai::salasana) in the Windows sign-in tests"
 regexes = ['''^d2lsbWFpOjpzYWxhc2FuYQ==$''']
+
+[[allowlists]]
+description = "The fake Run Report id (a Household without a Gateway Key) in the admin reports tests"
+regexes = ['''^0123456789abcdef0123456789abcdef$''']

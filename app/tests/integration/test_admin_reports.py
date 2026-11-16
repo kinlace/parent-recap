@@ -17,7 +17,7 @@ from test_admin import AI, SEND, FakeBifrost, Server, admin
 relay = sys.modules["brief_relay"]
 
 NOW = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
-NO_KEY = "0123456789abcdef0123456789abcdef"
+REPORT_ID = "0123456789abcdef0123456789abcdef"
 # A key whose holder's email is in its description: neither is printed.
 EMAIL_KEY = {"id": "id-4", "name": "send-pilot-d", "value": "sk-bf-four", "is_active": True,
              "description": "Lahti family, parent@example.com, own Claude Code or Codex"}
@@ -62,7 +62,7 @@ def server(tmp_path) -> Server:
     keep(s, "key-id-2", "2026-11-12T19:10:00Z", report(
         "2026-11-12T19:09:00+00:00", system="windows", system_version="10.0.26100"))
     # No key: its last Brief failed and its AI was busy.
-    keep(s, f"id-{NO_KEY}", "2026-11-14T18:30:00Z", report(
+    keep(s, f"id-{REPORT_ID}", "2026-11-14T18:30:00Z", report(
         "2026-11-14T18:29:00+00:00", exit=1, ai={"backend": "claude", "result": "busy"},
         brief={"outcome": "failed", "cause": "unknown"},
         exception={"type": "TimeoutError", "at": "family_brief/run.py:120"}))
@@ -79,7 +79,7 @@ def test_reports_lists_each_household_by_its_key_s_name_or_its_id_the_silent_one
         "windows 10.0.26100  exit 0  brief sent",
         "✅ ai-pilot-a  last 2026-11-14 21:05  0.12.0  macos 15.1  exit 0  brief sent  "
         "failed: wilma=wilma-egress",
-        f"❌ id={NO_KEY}  last 2026-11-14 20:29  0.12.0  macos 15.1  exit 1  "
+        f"❌ id={REPORT_ID}  last 2026-11-14 20:29  0.12.0  macos 15.1  exit 1  "
         "brief failed=unknown  failed: ai=busy  exception TimeoutError at family_brief/run.py:120",
     ]
 
@@ -105,9 +105,9 @@ def test_a_key_s_name_or_id_shows_its_runs_one_line_each(server, capsys, which):
 
 
 def test_a_report_id_shows_that_household_s_runs(server, capsys):
-    assert reports(server, NO_KEY) == 0
+    assert reports(server, REPORT_ID) == 0
     out = capsys.readouterr().out.splitlines()
-    assert out[0].startswith(f"id={NO_KEY}: 1 Run Report in the last 30 days")
+    assert out[0].startswith(f"id={REPORT_ID}: 1 Run Report in the last 30 days")
     assert len(out) == 2 and "brief failed=unknown" in out[1]
 
 
@@ -137,7 +137,7 @@ def test_with_bifrost_down_households_are_named_by_their_key_s_id_and_why(server
     assert reports(server) == 0
     captured = capsys.readouterr()
     assert "couldn't read the Gateway Keys" in captured.err
-    assert "key-id=id-1" in captured.out and f"id={NO_KEY}" in captured.out
+    assert "key-id=id-1" in captured.out and f"id={REPORT_ID}" in captured.out
 
 
 def test_the_output_never_holds_a_key_s_value_or_an_address(server, capsys):
