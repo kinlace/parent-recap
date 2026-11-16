@@ -2,8 +2,9 @@
 itself after the evening Brief (ADR 0047), the switch that turns that off, the installed version,
 and Update now once a newer release is out, with what it will ask when it is one that waits for
 the family (#918). A newer release that changes nothing the Household uses (ADR 0051) is said to
-be out and not installed, without Update now. Where the program doesn't update itself (Windows, the
-hosted version, a program not run from an installed release) the page gets the version alone.
+be out and not installed, without Update now. On a Mac and a Windows PC alike (ADR 0052). Where the program doesn't update itself (a PC
+without ssh-keygen, the hosted version, a program not run from an installed release) the page
+gets the version alone.
 
 And the update before a Source is added (ADR 0051, #961): a Household that skipped releases may
 hold an old copy of a Source it never connected. A step that adds a Source with a part of its
@@ -30,7 +31,7 @@ from .context import Action, Context, Phase, Reply, nothing_to_give
 # Update now: `updating` while the release is downloaded, verified, installed and checked, then
 # how update.update ended (`skipped` for a newer release that changes nothing the Household uses,
 # ADR 0051); `busy` when a Brief is being made right now, or another update is
-# running (`parent-recap update` in Terminal), so nothing was started; and `no-update` when this
+# running (`parent-recap update` in Terminal or PowerShell), so nothing was started; and `no-update` when this
 # server hasn't started one.
 NOW_RESULTS = ("updating", "updated", "up-to-date", "skipped", "switched-back", "failed",
                "not-available", "busy", "no-update")
@@ -90,7 +91,7 @@ class Updates(Phase):
         (update.needed_to_add). When it did, the newest release is installed in the background
         as Update now installs it, with that part counted as one the Household uses, and the
         server then starts again in it. A server that no longer runs the installed version,
-        after Update now, an evening's update or `parent-recap update` in Terminal while the
+        after Update now, an evening's update or `parent-recap update` in a terminal while the
         page was open, starts again once it has answered, without another update."""
         context = self.context
         if part is None:

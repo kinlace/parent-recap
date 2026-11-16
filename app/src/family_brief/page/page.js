@@ -3422,12 +3422,13 @@ async function switchSending() {
 }
 
 // ── Finish: the program's own update (ADR 0047). The installed version is always shown. Where
-// the program updates itself, so not on Windows or for a Hosted Household, the page also says
-// that it does, with the switch that turns that off and, once a newer release is out, Update now,
-// whose outcome it shows: updated, nothing newer, failed, or switched back. A release that needs
-// the family at the computer isn't installed by itself: the page says it waits and what it asks.
-// A newer release that changes nothing the Household uses isn't installed at all (ADR 0051): the
-// page says it is out and skipped, by its line or, right after Update now, by that one's outcome.
+// the program updates itself, on a Mac or a PC (ADR 0052) but not for a Hosted Household, the
+// page also says that it does, with the switch that turns that off and, once a newer release is
+// out, Update now, whose outcome it shows: updated, nothing newer, failed, or switched back. A
+// release that needs the family at the computer isn't installed by itself: the page says it
+// waits and what it asks. A newer release that changes nothing the Household uses isn't
+// installed at all (ADR 0051): the page says it is out and skipped, by its line or, right after
+// Update now, by that one's outcome.
 
 const UPDATE_MS = 2000;
 const updateStep = { timer: null };

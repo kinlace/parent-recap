@@ -1,7 +1,8 @@
 """The setup page's Updates, under Finish's "Later, if you need it" (ADR 0047, #917): the sentence
 that Parent Recap installs new releases by itself, the switch that turns that off, the installed
-version, and Update now once a newer release is out, with its outcome. On Windows and for a Hosted
-Household the page gets the version alone.
+version, and Update now once a newer release is out, with its outcome. On a PC without ssh-keygen
+and for a Hosted Household the page gets the version alone; a PC that updates itself is in
+test_setup_updates_windows.py.
 
 Over HTTP, as the page's own script calls it, on the server `setup_page.py` starts inside the
 harness, with test_update.py's fake GitHub and installed program. Assertions are on the responses,
