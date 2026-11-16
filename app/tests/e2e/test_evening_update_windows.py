@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 from conftest import NOW, REAL_RUN
-from family_brief import update, versions
+from family_brief import ops, update, versions
 from family_brief.brief_text import TEXT
 from family_brief.system import jobs
 from test_doctor import nothing_loaded, updates_line  # noqa: F401  the fixture
@@ -265,10 +265,10 @@ def test_an_update_that_fails_or_is_stopped_never_fails_the_evening_run_and_leav
     (installer_stopped, "install",
      f"0.20.0: windows_install.py couldn't be started (OSError: {BLOCKED}); app points at {INSTALLED}"),
     (stopped_at_the_link, "install",
-     "0.20.0: windows_install.py ended with exit status 1; app points at 0.19.0; it said: Parent Recap "
-     "wasn't installed. Parent Recap couldn't switch {app} to the new version (OSError: " f"{BLOCKED})."),
+     f"0.20.0: windows_install.py ended with exit status 1; app points at {INSTALLED}; it said: Parent "
+     f"Recap wasn't installed. Parent Recap couldn't switch APP to the new version (OSError: {BLOCKED})."),
     (doctor_stopped, "check", f"0.20.0's doctor didn't run (OSError: {BLOCKED})"),
-    (check_fails, "check", "0.20.0's doctor fails 1 check that version 0.19.0 passed"),
+    (check_fails, "check", f"0.20.0's doctor fails 1 check that version {INSTALLED} passed"),
 ], ids=["installer", "link", "doctor", "check"])
 def test_doctor_shows_the_last_failed_update_s_step_and_error_and_nothing_of_the_household_s(
         evening, nothing_loaded, github, keys, pc, monkeypatch, capsys, fail, step, says):  # noqa: F811
@@ -279,15 +279,48 @@ def test_doctor_shows_the_last_failed_update_s_step_and_error_and_nothing_of_the
 
     line = updates_line(evening, capsys)
 
-    assert line.startswith(f"✅ Updates: version {INSTALLED}; updates are on")
-    said = says.format(app=pc.folder / "app")
+    assert line.startswith(f"{ops.OK} Updates: version {INSTALLED}; updates are on")
+    said = says.replace("APP", str(pc.folder / "app"))
     assert line.endswith(f"failed at its {step} step: {said}"), line
     assert "; the last update, to version 0.20.0 on 2026-" in line
-    assert "Mia" not in line  # a check's item names a kid: only the update log has it
+    assert "Mia" not in line  # a check's item names a Kid: only the update log has it
     if fail is not check_fails:  # the system's words, as the update log has them
         assert str(BLOCKED) in said and str(BLOCKED) in update_log(pc)
     state = update.state(pc.folder)["last_failure"]
     assert (state["version"], state["step"], state["error"]) == ("0.20.0", step, said)
+
+
+def test_doctor_shows_the_failure_also_while_the_version_that_failed_runs(
+        evening, nothing_loaded, github, keys, pc, monkeypatch, capsys):  # noqa: F811
+    release(github, keys, "0.20.0")
+    evening_on(evening, 0)
+    pc.fails["0.20.0"] = ["Calendar"]
+
+    def refused(*_a: Any, **_k: Any) -> None:
+        raise BLOCKED
+    monkeypatch.setattr(versions, "switch_back_whole", refused)
+    evening_on(evening, 1)
+
+    assert pc.version() == "0.20.0"  # the switch back was stopped
+    line = updates_line(evening, capsys)
+    assert line.startswith(f"{ops.OK} Updates: version 0.20.0;")
+    assert line.endswith(f"failed at its switch step: 0.20.0: couldn't switch back (OSError: {BLOCKED}); "
+                         "app points at 0.20.0"), line
+    assert "Calendar" not in line.split("; the last update")[1]
+
+
+def test_a_refusal_no_step_names_is_shown_as_the_update_s(
+        evening, nothing_loaded, github, keys, pc, capsys):  # noqa: F811
+    release(github, keys, "0.20.0")
+    evening_on(evening, 0)
+    (pc.folder / update.PLUGIN).mkdir()  # something that isn't Parent Recap
+
+    evening_on(evening, 1)
+
+    assert pc.version() == INSTALLED
+    assert updates_line(evening, capsys).endswith(
+        f"failed at its update step: 0.20.0: refused: {pc.folder / update.PLUGIN} holds something "
+        "that isn't Parent Recap, so it was left as it is")
 
 
 def test_once_an_update_installs_doctor_no_longer_shows_the_failure_before(
