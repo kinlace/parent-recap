@@ -19,6 +19,10 @@ WORKFLOWS = sorted(WORKFLOW_DIR.glob("*.yml"))
 # What the windows-install and linux-install jobs run, one check a step (#720, #721).
 WINDOWS_CHECKS = ROOT / "scripts" / "windows-install-checks.ps1"
 LINUX_CHECKS = ROOT / "scripts" / "linux-install-checks.sh"
+# What the test, windows and linux jobs install and run, so a change to them edits no file under
+# .github/ (#940).
+CI_INSTALL = ROOT / "scripts" / "ci-install.sh"
+CI_TESTS = ROOT / "scripts" / "ci-tests.sh"
 
 
 def test_there_are_workflows():
@@ -53,25 +57,92 @@ def test_the_tests_run_on_macos_windows_and_linux_on_both_chips():
     assert all(job["needs"] == "changes" for job in jobs.values())
 
 
-def test_the_macos_job_reports_coverage_with_no_threshold_and_windows_doesnt():
+def ci_tests_args(tmp_path: Path, *args: str) -> list[str]:
+    """The arguments `scripts/ci-tests.sh` hands pytest, from a `python` that only records them."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    record = tmp_path / "args"
+    fake = bin_dir / "python"
+    fake.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "{record}"\n')
+    fake.chmod(0o755)
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    result = subprocess.run(["bash", str(CI_TESTS), *args], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return record.read_text().splitlines()
+
+
+# The layers each job runs, one step a layer, in order: `scripts/ci-tests.sh <layer>`.
+JOB_LAYERS = {
+    "test": ["unit", "integration", "e2e", "adapters", "scripts", "browser"],
+    "windows": ["unit", "integration", "adapters", "e2e-windows"],
+    "linux": ["unit", "integration", "e2e", "adapters", "scripts"],
+}
+
+
+@pytest.mark.parametrize("job", JOB_LAYERS)
+def test_the_test_jobs_install_and_run_each_layer_through_the_repo_scripts(job: str):
+    # The pip commands and the pytest markers and flags live in scripts/, so a change to them edits
+    # no file under .github/ (#940). Each layer is still its own step, so a red run shows which.
+    steps = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"][job]["steps"]
+    runs = [step["run"].strip() for step in steps if "run" in step]
+    install = [step["run"].strip() for step in steps if step.get("name") == "Install"]
+    layers = [re.fullmatch(r"\.\./scripts/ci-tests\.sh ([a-z0-9-]+)( --coverage)?", run)
+              for run in runs]
+
+    assert install == ["../scripts/ci-install.sh"]
+    assert [layer.group(1) for layer in layers if layer] == JOB_LAYERS[job]
+    assert not [run for run in runs if "pytest" in run or "pip install" in run]
+    assert all(bool(layer.group(2)) == (job == "test") for layer in layers if layer)
+    assert os.access(CI_INSTALL, os.X_OK) and os.access(CI_TESTS, os.X_OK)
+
+
+def test_the_macos_job_uploads_the_coverage_report():
     # Numbers to go on when end-to-end tests give way to unit tests (#403), not a gate.
-    jobs = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]
-    macos_runs = " ".join(step.get("run", "") for step in jobs["test"]["steps"])
-    windows_runs = " ".join(step.get("run", "") for step in jobs["windows"]["steps"])
-
-    assert "--cov" in macos_runs and "--cov-report=term" in macos_runs
-    assert "fail-under" not in macos_runs
-    assert any(step.get("uses", "").startswith("actions/upload-artifact@")
-               and step["with"]["path"] == "app/htmlcov" for step in jobs["test"]["steps"])
-    assert "--cov" not in windows_runs
-
-
-def test_the_macos_job_runs_its_slow_layers_on_every_core():
-    # They took most of its 7 to 8 minutes in one process on a 3-core runner (#509).
     steps = yaml.safe_load((WORKFLOW_DIR / "tests.yml").read_text())["jobs"]["test"]["steps"]
-    runs = {step["name"]: step["run"] for step in steps if "pytest" in step.get("run", "")}
-    for name in ("End-to-end tests", "Script tests", "Browser tests"):
-        assert re.search(r" -n (auto|\d+)\b", runs[name]), name
+    assert any(step.get("uses", "").startswith("actions/upload-artifact@")
+               and step["with"]["path"] == "app/htmlcov" for step in steps)
+
+
+@pytest.mark.posix
+def test_with_coverage_unit_starts_the_data_the_others_add_to_and_browser_prints_the_table(
+        tmp_path: Path):
+    assert ci_tests_args(tmp_path, "unit", "--coverage")[-2:] == ["--cov", "--cov-report="]
+    integration = ci_tests_args(tmp_path, "integration", "--coverage")
+    assert integration[-3:] == ["--cov", "--cov-append", "--cov-report="]
+    browser = ci_tests_args(tmp_path, "browser", "--coverage")
+    assert {"--cov-append", "--cov-report=term", "--cov-report=html"} <= set(browser)
+    for layer in ("unit", "e2e-windows", "browser"):
+        assert not [arg for arg in ci_tests_args(tmp_path, layer) if arg.startswith("--cov")]
+    assert "fail-under" not in CI_TESTS.read_text()
+
+
+@pytest.mark.posix
+@pytest.mark.parametrize("layer, marker", [
+    ("unit", "unit"), ("integration", "integration"), ("e2e", "e2e and not browser"),
+    ("e2e-windows", "e2e and (windows or windows_too)"), ("adapters", "adapters"),
+    ("scripts", "scripts"), ("browser", "browser")])
+def test_each_layer_runs_its_marker_and_lists_the_slowest_tests(tmp_path: Path, layer, marker):
+    args = ci_tests_args(tmp_path, layer)
+    assert args[:4] == ["-m", "pytest", "-m", marker]
+    assert "--durations=15" in args
+
+
+@pytest.mark.posix
+def test_the_slow_layers_run_on_every_core_except_on_windows(tmp_path: Path):
+    # They took most of the macOS job's 7 to 8 minutes in one process on a 3-core runner (#509).
+    for layer in ("e2e", "scripts", "browser"):
+        assert "-n" in ci_tests_args(tmp_path, layer), layer
+    for layer in ("unit", "integration", "adapters", "e2e-windows"):
+        assert "-n" not in ci_tests_args(tmp_path, layer), layer
+
+
+@pytest.mark.posix
+@pytest.mark.parametrize("args", [["no-such-layer"], [], ["unit", "--cov"]])
+def test_an_unknown_layer_or_option_fails_and_lists_the_layers(args: list[str]):
+    result = subprocess.run(["bash", str(CI_TESTS), *args], capture_output=True, text=True)
+
+    assert result.returncode == 2
+    assert "--coverage" in result.stderr and "e2e-windows" in result.stderr
 
 
 def test_coverage_measures_lines_and_branches_of_the_package_with_no_threshold():
@@ -160,6 +231,8 @@ def test_a_change_to_a_script_still_runs_the_tests():
     assert re.search(docs_only, "docs/adr/0001-x.md")
     assert not re.search(docs_only, "scripts/windows-install-checks.ps1")
     assert not re.search(docs_only, "scripts/linux-install-checks.sh")
+    assert not re.search(docs_only, "scripts/ci-install.sh")
+    assert not re.search(docs_only, "scripts/ci-tests.sh")
 
 
 # The release zip's signature (#912, ADR 0047). The signing and verifying steps run here as

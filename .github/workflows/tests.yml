@@ -76,37 +76,28 @@ jobs:
           uv python install 3.13
           uv venv --seed --python 3.13
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-      # As install.sh installs: prebuilt packages only, at the pinned versions and checked against
-      # their checksums, pip first, with the google extra a Google Calendar Household gets; then
-      # the program from this folder with nothing of its own (CONTRIBUTING.md, "Pinned packages").
+      # As install.sh installs, with the test packages; scripts/ci-install.sh holds the commands, and
+      # scripts/ci-tests.sh each layer's markers and flags, so a change to them edits nothing here
+      # (#940).
       - name: Install
-        # Quoted as a block: in plain YAML, the colon and space after `:all:` would start a mapping.
-        run: |
-          python -m pip install --only-binary :all: --require-hashes -c constraints.txt pip
-          python -m pip install --only-binary :all: --require-hashes -c constraints.txt $(python -I requirements.py test google)
-          python -m pip install --no-deps --no-build-isolation -e .
+        run: ../scripts/ci-install.sh
       # This runner is an Apple Silicon Mac. The check covers Intel Macs too.
       - name: Check every pinned package has a wheel for both kinds of Mac
         run: python ../scripts/check_wheels.py
       # One step per test layer (tests/README.md), fastest first, so a failure in the fast layers
-      # shows in a minute and the slower ones don't run after it. The slowest tests are listed, so
-      # a run that got slower shows which test did it. Each step adds to the same coverage data;
-      # the last prints the table (lines and branches per module, pyproject.toml's
-      # [tool.coverage]) of what the suite reaches, with no threshold: numbers for tickets that
-      # trade end-to-end tests for unit tests (#403). The slow layers run on every core
-      # (pytest-xdist's -n auto), and pytest-cov combines the workers' coverage (#509); the fast
-      # ones take seconds, less than starting the workers would save.
+      # shows in a minute and the slower ones don't run after it. With --coverage each step adds to
+      # the same coverage data and the last prints the table and writes the report uploaded below
+      # (scripts/ci-tests.sh).
       - name: Unit tests
-        run: python -m pytest -m unit --durations=15 --cov --cov-report=
+        run: ../scripts/ci-tests.sh unit --coverage
       - name: Integration tests
-        run: python -m pytest -m integration --durations=15 --cov --cov-append --cov-report=
+        run: ../scripts/ci-tests.sh integration --coverage
       - name: End-to-end tests
-        run: python -m pytest -m "e2e and not browser" -n auto --durations=15 --cov --cov-append --cov-report=
+        run: ../scripts/ci-tests.sh e2e --coverage
       - name: Adapter tests
-        run: python -m pytest -m adapters --durations=15 --cov --cov-append --cov-report=
-      # Includes the version-consistency check (tests/scripts/test_version.py).
+        run: ../scripts/ci-tests.sh adapters --coverage
       - name: Script tests
-        run: python -m pytest -m scripts -n auto --durations=15 --cov --cov-append --cov-report=
+        run: ../scripts/ci-tests.sh scripts --coverage
       # The setup page in a real browser (ADR 0024), the slowest layer, last. Playwright's Chromium
       # is cached per Playwright version, which constraints.txt pins.
       - name: Playwright's version
@@ -119,9 +110,8 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
       - name: Install Playwright's Chromium
         run: python -m playwright install --only-shell chromium
-      # -rs prints why a test skipped, so a run that skipped them all says so.
       - name: Browser tests
-        run: python -m pytest -m browser -n auto -rs --durations=15 --cov --cov-append --cov-report=term --cov-report=html
+        run: ../scripts/ci-tests.sh browser --coverage
       - name: Upload the coverage report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
@@ -170,20 +160,17 @@ jobs:
           cygpath -w "$PWD/.venv/Scripts" >> "$GITHUB_PATH"
       # As on macOS.
       - name: Install
-        run: |
-          python -m pip install --only-binary :all: --require-hashes -c constraints.txt pip
-          python -m pip install --only-binary :all: --require-hashes -c constraints.txt $(python -I requirements.py test google)
-          python -m pip install --no-deps --no-build-isolation -e .
+        run: ../scripts/ci-install.sh
       - name: Unit tests
-        run: python -m pytest -m unit --durations=15
+        run: ../scripts/ci-tests.sh unit
       - name: Integration tests
-        run: python -m pytest -m integration --durations=15
+        run: ../scripts/ci-tests.sh integration
       - name: Adapter tests
-        run: python -m pytest -m adapters --durations=15
+        run: ../scripts/ci-tests.sh adapters
       # The end-to-end tests that need Windows run nowhere else; those marked windows_too, such as
       # the update's on a PC (#993), run on every system.
       - name: End-to-end tests that need Windows
-        run: python -m pytest -m "e2e and (windows or windows_too)" --durations=15
+        run: ../scripts/ci-tests.sh e2e-windows
 
   linux:
     needs: changes
@@ -210,20 +197,17 @@ jobs:
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       # As on macOS.
       - name: Install
-        run: |
-          python -m pip install --only-binary :all: --require-hashes -c constraints.txt pip
-          python -m pip install --only-binary :all: --require-hashes -c constraints.txt $(python -I requirements.py test google)
-          python -m pip install --no-deps --no-build-isolation -e .
+        run: ../scripts/ci-install.sh
       - name: Unit tests
-        run: python -m pytest -m unit --durations=15
+        run: ../scripts/ci-tests.sh unit
       - name: Integration tests
-        run: python -m pytest -m integration --durations=15
+        run: ../scripts/ci-tests.sh integration
       - name: End-to-end tests
-        run: python -m pytest -m "e2e and not browser" -n auto --durations=15
+        run: ../scripts/ci-tests.sh e2e
       - name: Adapter tests
-        run: python -m pytest -m adapters --durations=15
+        run: ../scripts/ci-tests.sh adapters
       - name: Script tests
-        run: python -m pytest -m scripts -n auto --durations=15
+        run: ../scripts/ci-tests.sh scripts
 
   linux-install:
     needs: changes

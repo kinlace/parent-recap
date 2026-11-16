@@ -8,9 +8,7 @@ From `app/`:
 
 ```bash
 # once, in an isolated env: pip, then the packages by checksum, then the program (CONTRIBUTING.md, "Pinned packages")
-python -m pip install --only-binary :all: --require-hashes -c constraints.txt pip
-python -m pip install --only-binary :all: --require-hashes -c constraints.txt $(python -I requirements.py test google)
-python -m pip install --no-deps --no-build-isolation -e .
+../scripts/ci-install.sh
 python -m pytest                                # whole suite
 python -m pytest -m unit                        # one layer (or: python -m pytest tests/unit)
 python -m pytest tests/e2e/test_nightly_brief.py  # one file
@@ -21,9 +19,11 @@ python -m pytest -n auto                        # on every core (pytest-xdist)
 ```
 
 CI runs the layers as separate steps, fastest first (unit, integration, e2e, adapters, scripts),
-so a failure in the fast layers shows in a minute. The browser tests run last. On macOS the e2e,
-script and browser layers run on every core (`-n auto`), so a test must not share state with
-another: a free port, files under `tmp_path`. Windows runs them in one process.
+so a failure in the fast layers shows in a minute. The browser tests run last. Each step is
+`../scripts/ci-tests.sh <layer>`, which holds the layer's markers and flags; run it to run a layer
+as CI does. On macOS and Linux the e2e, script and browser layers run on every core (`-n auto`), so
+a test must not share state with another: a free port, files under `tmp_path`. Windows runs its
+end-to-end tests in one process.
 
 ## Layers
 

@@ -901,7 +901,7 @@ def test_pip_is_installed_at_the_version_the_constraints_pin_not_the_newest(mac,
 
 def test_the_installs_and_ci_take_no_newest_package_and_check_every_one():
     # The program from its own folder is the one install without checksums, and brings nothing.
-    for path in ("install.sh", "app/windows_install.py", ".github/workflows/tests.yml", "app/tests/README.md"):
+    for path in ("install.sh", "app/windows_install.py", "scripts/ci-install.sh"):
         text = script_without_comments((ROOT / path).read_text())
         assert "--upgrade" not in text and "-U " not in text, path
         assert "--require-hashes" in text, path
