@@ -76,7 +76,8 @@ def post(relay: Any, body: Any = REPORT, key: str | None = KEY, rid: str | None 
 def kept(tmp_path: Path) -> dict[str, list[dict]]:
     """Each file of reports kept, by its path under reports/, with its lines."""
     root = tmp_path / "reports"
-    return {str(f.relative_to(root)): [json.loads(line) for line in f.read_text().splitlines()]
+    return {f.relative_to(root).as_posix():
+            [json.loads(line) for line in f.read_text(encoding="utf-8").splitlines()]
             for f in sorted(root.rglob("*")) if f.is_file()} if root.exists() else {}
 
 
@@ -150,7 +151,7 @@ def test_the_callers_count_survives_a_restart_and_keeps_no_address(tmp_path, day
     for _ in range(br.REPORTS_PER_CALLER):
         post(make_relay(tmp_path, day), key=None, rid=ID)
     assert post(make_relay(tmp_path, day), key=None, rid=ID)[0] == 429
-    assert CALLER not in (tmp_path / "report-counts.json").read_text()
+    assert CALLER not in (tmp_path / "report-counts.json").read_text(encoding="utf-8")
 
 
 def test_reports_without_a_key_stop_at_the_days_total(tmp_path, day, monkeypatch):
