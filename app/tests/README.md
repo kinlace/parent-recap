@@ -81,6 +81,7 @@ the import path, so a test may import a helper from a test in another layer.
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `test_admin.py`                 | The gateway's `admin` command: each task, root only, key off/on, a Household found, nightly + sign-up mails  |
 | `test_admin_autodeploy.py`      | `admin autodeploy`: a new `stable` deployed and mailed, switched back, waiting, paused, refused for days     |
+| `test_admin_reports.py`         | `admin reports`: each Household's last Run Report, the silent ones first, one Household's runs, no key or address |
 | `test_admin_deploy.py`          | `admin deploy`: what is refused, the evening window, each deploy kept, recorded, checked                     |
 | `test_admin_rollback.py`        | Each deploy's snapshot and its pruning, `admin deploys`, which deploy `rollback` picks, `--restore`          |
 | `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request                       |
