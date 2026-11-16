@@ -17,10 +17,11 @@ LAYER="${1:-}"
 COVERAGE="${2:-}"
 
 usage() {
-  echo "usage: scripts/ci-tests.sh <layer> [--coverage], a layer of:" \
+  echo "usage: $0 <layer> [--coverage], a layer of:" \
     "unit integration e2e e2e-windows adapters scripts browser" >&2
   exit 2
 }
+[ $# -le 2 ] || usage
 
 case "$LAYER" in
   unit) args=(-m unit) ;;
@@ -52,5 +53,6 @@ case "$COVERAGE" in
 esac
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../app"
-echo "python -m pytest ${args[*]}"
+# The command as it can be pasted, the marker quoted.
+printf 'python -m pytest'; printf ' %q' "${args[@]}"; echo
 exec python -m pytest "${args[@]}"

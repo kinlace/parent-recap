@@ -21,9 +21,9 @@ python -m pytest -n auto                        # on every core (pytest-xdist)
 CI runs the layers as separate steps, fastest first (unit, integration, e2e, adapters, scripts),
 so a failure in the fast layers shows in a minute. The browser tests run last. Each step is
 `../scripts/ci-tests.sh <layer>`, which holds the layer's markers and flags; run it to run a layer
-as CI does. On macOS and Linux the e2e, script and browser layers run on every core (`-n auto`), so
-a test must not share state with another: a free port, files under `tmp_path`. Windows runs its
-end-to-end tests in one process.
+as CI does. The e2e and script layers (on macOS and Linux) and the browser layer (on macOS) run on
+every core (`-n auto`), so a test must not share state with another: a free port, files under
+`tmp_path`. Windows runs its end-to-end tests in one process.
 
 ## Layers
 
@@ -254,7 +254,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_codex_install.py`    | `install.sh --codex` installs the skills for Codex              |
 | `test_release.py`          | The release zip built from a tag, and its `release.json`: needing the family (#918), the version and parts (#958) |
 | `test_version.py`          | The plugin and the package ship the same version                |
-| `test_workflows.py`        | Every GitHub Actions workflow parses, what `tests.yml` runs, and `release.yml`'s signing and verify steps run as written |
+| `test_workflows.py`        | Every GitHub Actions workflow parses, what `tests.yml` and its `ci-install.sh` and `ci-tests.sh` run, and `release.yml`'s signing and verify steps run as written |
 | `test_issue_loop.py`       | `issue-loop.sh`'s merge step and its checker                    |
 | `test_tests_readme.py`     | This page lists every test file, in short sections              |
 

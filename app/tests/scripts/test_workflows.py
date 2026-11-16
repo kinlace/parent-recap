@@ -137,7 +137,8 @@ def test_the_slow_layers_run_on_every_core_except_on_windows(tmp_path: Path):
 
 
 @pytest.mark.posix
-@pytest.mark.parametrize("args", [["no-such-layer"], [], ["unit", "--cov"]])
+@pytest.mark.parametrize("args", [["no-such-layer"], [], ["unit", "--cov"],
+                                  ["unit", "--coverage", "extra"]])
 def test_an_unknown_layer_or_option_fails_and_lists_the_layers(args: list[str]):
     result = subprocess.run(["bash", str(CI_TESTS), *args], capture_output=True, text=True)
 
