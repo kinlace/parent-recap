@@ -103,9 +103,23 @@ def test_an_unknown_key_is_refused_even_with_an_id(tmp_path, day):
     assert kept(tmp_path) == {}
 
 
-def test_reports_with_a_key_are_not_limited_per_caller(tmp_path, day):
+def test_a_key_that_posts_too_many_reports_is_refused_until_the_next_day(tmp_path, day):
+    other = {"id": "id-2", "name": "ai-pilot-b", "value": "sk-bf-two", "is_active": True}
+    relay = make_relay(tmp_path, day, Keys([Keys().keys[0], other]))
+    statuses = [post(relay)[0] for _ in range(br.REPORTS_PER_KEY + 1)]
+    assert statuses == [200] * br.REPORTS_PER_KEY + [429]
+    assert post(relay, key="sk-bf-two")[0] == 200  # another key
+    day[0] = "2026-11-15"
+    assert post(relay)[0] == 200
+
+
+def test_a_refused_report_doesnt_count(tmp_path, day):
     relay = make_relay(tmp_path, day)
-    assert {post(relay)[0] for _ in range(br.REPORTS_PER_CALLER + 2)} == {200}
+    for _ in range(br.REPORTS_PER_CALLER + 1):
+        post(relay, {**REPORT, "subject": SECRET}, key=None, rid=ID)
+        post(relay, {**REPORT, "subject": SECRET})
+    assert post(relay, key=None, rid=ID)[0] == 200
+    assert post(relay)[0] == 200
 
 
 # ── Without a key
@@ -211,6 +225,32 @@ def test_the_gateways_list_is_the_programs():
                          (br._R_SYSTEM_VERSION, last_run._SYSTEM_VERSION),
                          (br._R_TYPE, last_run._TYPE), (br._R_WHERE, last_run._WHERE)]:
         assert ours.pattern == theirs.pattern
+
+
+def _values() -> list[object]:
+    """Values of every shape a field may take, good and bad, for both lists to judge."""
+    keys = [*last_run.CAUSES, *last_run.STARTED, *last_run.SYSTEMS, *last_run.AI_RESULTS,
+            *last_run.BACKENDS, "sent", "nothing-to-tell", "failed", "read", "outcome", "cause",
+            "backend", "result", "type", "at", "message", "nightly", "teams",
+            *(s.name for s in ALL), *FREE_TEXT]
+    scalars: list[object] = [*keys, 0, -1, 42, True, None, 1.5, "0.12.0", "0.12.0+dev.3", "15.1",
+                             "10.0.26100", "6.8.0-45-generic", "2026-11-14T19:00:00+00:00",
+                             "2026-11-14T19:00:00", "OSError", "requests.ConnectionError",
+                             "run.py:12", "actions/archive.py:42", "/run.py:1", [], {}]
+    shapes: list[object] = [*scalars, *([k] for k in keys)]
+    for a in keys:
+        for b in [*keys, 3, "OSError", "run.py:12"]:
+            shapes += [{a: b}, {"outcome": a, "cause": b}, {"backend": a, "result": b},
+                       {"type": "OSError", a: b}, {a: {"read": 1}}, {"gmail": {a: b}}]
+    return shapes
+
+
+@pytest.mark.parametrize("field", sorted(last_run.FIELDS))
+def test_each_field_takes_the_same_values_at_the_gateway_as_in_the_program(field):
+    values = _values()
+    differ = [v for v in values if br.REPORT_FIELDS[field](v) != last_run.FIELDS[field](v)]
+    assert differ == []
+    assert any(map(last_run.FIELDS[field], values))  # some values are taken, so it judges both ways
 
 
 def test_a_report_the_program_writes_is_taken(tmp_path, day):
