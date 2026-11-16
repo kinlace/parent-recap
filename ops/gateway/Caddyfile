@@ -6,8 +6,9 @@
 		reverse_proxy 127.0.0.1:8080
 	}
 	# The Brief relay: sending the Brief, asking for a send-only key and binding its Recipients,
-	# and the page their confirmation link opens (ADR 0033). It answers 404 to anything else.
-	@relay path /v1/brief /v1/brief/key /v1/brief/recipients /brief/confirm
+	# and the page their confirmation link opens (ADR 0033), and taking a Run Report (ADR 0048).
+	# It answers 404 to anything else.
+	@relay path /v1/brief /v1/brief/key /v1/brief/recipients /brief/confirm /v1/report
 	handle @relay {
 		reverse_proxy 127.0.0.1:8081
 	}

@@ -119,7 +119,7 @@ Tried on 2026-11-05: a backup was restored to a new boot volume, which reached A
 
 ## What the gateway does
 
-- Only `POST /v1/messages`, `POST /v1/brief` (see "Sending the Brief"), `POST /v1/brief/key`, `POST /v1/brief/recipients` and the confirmation page `/brief/confirm` (see "Send-only keys on request"), the Brief's stop page `/brief/stop` and the sign-up page `/join/<code>` (see "Hosted Households") are reachable from the internet. Caddy sends `/v1/messages` to Bifrost's Anthropic endpoint, the `/v1/brief` paths and `/brief/confirm` to the Brief relay and `/join/` to the sign-up service, serves the stop page as a static file, and answers 404 to everything else, so the admin API and UI are only reachable through an SSH tunnel.
+- Only `POST /v1/messages`, `POST /v1/brief` (see "Sending the Brief"), `POST /v1/brief/key`, `POST /v1/brief/recipients` and the confirmation page `/brief/confirm` (see "Send-only keys on request"), `POST /v1/report` (see "Run Reports"), the Brief's stop page `/brief/stop` and the sign-up page `/join/<code>` (see "Hosted Households") are reachable from the internet. Caddy sends `/v1/messages` to Bifrost's Anthropic endpoint, the `/v1/brief` paths, `/brief/confirm` and `/v1/report` to the Brief relay and `/join/` to the sign-up service, serves the stop page as a static file, and answers 404 to everything else, so the admin API and UI are only reachable through an SSH tunnel.
 - A request without a Gateway Key is refused. Clients send `model: "parent-recap"`, which `config.json` maps to the real model, so changing model is a config change, not a release.
 - Request and reply text is not stored (`disable_content_logging`, and the per-request override is off). Token counts, cost and status are. Caddy keeps no access log.
 - A Gateway Key is a Bifrost virtual key with a $0.10 budget that resets daily. A key past its budget gets HTTP 402 `budget_exceeded`.
@@ -229,6 +229,18 @@ curl -s https://<hostname>/v1/brief/key -H 'content-type: application/json' \
 ```
 
 The email comes from `brief@parentrecap.com`; open its link and press Confirm. Then send a test Brief to that address with the key from the answer, as in "Sending the Brief" (it arrives), and to another address (403). Revoke the key afterwards (Runbook).
+
+## Run Reports
+
+After each evening run a Household's program can send the maintainers a Run Report: how the run ended, in fixed words and numbers, nothing of the Household's (ADR 0048). The Brief relay takes it.
+
+**The request.** `POST /v1/report` with the report as JSON, at most 16 KB. A Household with a Gateway Key sends it in `x-api-key`, as for the Brief; an unknown or switched-off key gets 401. A Household without one (one that sends from its own Gmail can have none) sends instead `x-report-id`, 32 lowercase hex digits its program made at random, which name nobody. Those are limited as key requests are, per UTC day: 10 per caller (by IP address, from Caddy's `X-Forwarded-For`) and 1000 in all (`REPORTS_PER_CALLER` and `REPORTS_PER_DAY` in `brief_relay.py`), then 429. Neither a key nor an id: 401.
+
+**What it takes.** Only the fields and fixed keys the program names (`FIELDS` in `app/src/family_brief/last_run.py`), which `brief_relay.py` holds too (`REPORT_FIELDS`), and with at least `at` and `exit`. A report with any other field, a value outside the fixed keys, or free text where a key belongs gets 400, and nothing of it is kept or logged. A test (`app/tests/integration/test_report_relay.py`) fails when the two lists differ, so a new field or cause key is added to both, in one change. The answer is only whether it was taken: 200 `{"taken": true}`, or an error with a short `error`.
+
+**What it keeps, where and for how long.** Each report taken is one line, the report as it came with the time it came, in `/var/lib/private/brief-relay/reports/<UTC day>/<who>.jsonl` (owner-only, the unit's dynamic user), where `<who>` is `key-<the Gateway Key's Bifrost id>` or `id-<the report's id>`: never the key's value. A day's folder is deleted 30 days after that day (`REPORT_DAYS`): when a report comes, and each hour while the relay runs. The day's counts of reports without a key are in `report-counts.json` beside it, a caller's IP address only as a truncated SHA-256; they start again each UTC day. The weekly boot volume backups hold the reports too, for up to 28 days more (see "Backups").
+
+**What it logs.** One line a report (`journalctl -u brief-relay --grep '^report '`): `key=<the key's name>` or `id=<the report's id>`, the request's size and the outcome (`taken`, or the status and why it was refused). Never the report's body, and for a refused report nothing of what was in it. A report from an unknown key, or with an id that isn't 32 hex digits, logs `-` for who sent it.
 
 ## Email Delivery's quota
 
