@@ -140,7 +140,9 @@ def test_doctor_on_a_pc_shows_an_update_that_failed(github, harness, keys, pc, c
     line = doctor_updates_line(harness, capsys)
 
     assert line.startswith(f"{ops.OK} Updates: version {INSTALLED}; updates are on")
-    assert line.endswith(f"0.20.0 failed its check; back on {INSTALLED}")
+    assert f"0.20.0 failed its check; back on {INSTALLED}; " in line
+    assert line.endswith(f"failed at its check step: 0.20.0's doctor fails 1 check that version "
+                         f"{INSTALLED} passed")
 
 
 def test_doctor_on_a_pc_shows_an_update_that_waits_for_the_family(github, harness, keys, pc, capsys):  # noqa: F811

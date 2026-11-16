@@ -236,8 +236,12 @@ def state(folder: Path | None = None) -> dict:
     the family: `waiting` (its `version`, the lowest version that takes it in the background,
     `from`, and what it `asks` by language, as its verified zip said; or None), which keeps the
     evening run from downloading that version again, and `told_waiting` (the last version a Brief
-    said is waiting, so each is said once). Kept in Parent Recap's folder outside the versions,
-    so a switch and a switch back keep it."""
+    said is waiting, so each is said once). `last_failure`: the last update that failed, its
+    `version`, the `step` that stopped it, the `error` in the update log's words (the system's
+    word for word, where the system stopped it) and `at` when, for `doctor` and so a Problem
+    Report (ADR 0052); None once an update installs. It names versions, steps, programs and
+    paths, never a check's item, which may name a kid. Kept in Parent Recap's folder outside the
+    versions, so a switch and a switch back keep it."""
     path = (folder or own_node.home()) / UPDATE / STATE
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -246,7 +250,7 @@ def state(folder: Path | None = None) -> dict:
     return {"last_look": None, "last_result": None, "failed": None, "seen": None, "skipped": None,
             "tell_updated": None, "tell_failed": None, "told_failed": None,
             "told_updates_itself": False, "tell_available": None, "told_available": None,
-            "waiting": None, "told_waiting": None,
+            "waiting": None, "told_waiting": None, "last_failure": None,
             **(data if isinstance(data, dict) else {})}
 
 
@@ -272,11 +276,19 @@ class _Log:
 
     def __init__(self, folder: Path) -> None:
         self.path = folder / "logs" / LOG
+        # The step that made this update fail and what stopped it, as `failed` logged it last.
+        self.failure: tuple[str, str] | None = None
 
     def __call__(self, step: str, text: str) -> None:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as f:
             f.write(f"{_now()} {step}: {text}\n")
+
+    def failed(self, step: str, text: str, error: str | None = None) -> None:
+        """Logs the line of the `step` that made the update fail, and keeps the step and `error`
+        (the line's `text` unless given) for `doctor` (state's `last_failure`)."""
+        self(step, text)
+        self.failure = (step, text if error is None else error)
 
     def output(self, what: str, text: str) -> None:
         """A program's own output, such as the installer's, indented under its step."""
@@ -353,7 +365,9 @@ class Status:
     what came of it; the `newer` version this computer has seen on `stable`, if any; when
     that version is `waiting` for the family to start it, what it `asks` of them by language;
     and the newer version it `skipped` at its last look, as it changes nothing the Household
-    uses (ADR 0051), which is neither `newer` nor `waiting`."""
+    uses (ADR 0051), which is neither `newer` nor `waiting`; and the last update that `failed`,
+    while the version it tried is newer than the installed one: the step that stopped it and
+    the error, as the update log has them (ADR 0052)."""
     version: str
     unavailable: str | None = None
     enabled: bool = True
@@ -363,6 +377,7 @@ class Status:
     waiting: str | None = None
     asks: dict[str, str] | None = None
     skipped: str | None = None
+    failed: dict[str, str] | None = None
 
     def line(self) -> str:
         """All of it on one line, in `doctor`'s words."""
@@ -373,15 +388,18 @@ class Status:
                    "downloads nothing (parent-recap update on turns them on)")
         looked = (f"last looked {self.last_look}: {self.last_result}" if self.last_look
                   else "hasn't looked for a newer release yet")
+        failed = "" if self.failed is None else (
+            f"; the last update, to version {self.failed['version']} on {self.failed['at']}, "
+            f"failed at its {self.failed['step']} step: {self.failed['error']}")
         if self.skipped is not None:
             return (f"version {self.version}; {setting}; {looked}; nothing to install: version "
-                    f"{self.skipped} changes nothing this Household uses")
+                    f"{self.skipped} changes nothing this Household uses{failed}")
         if self.waiting is None:
-            return f"version {self.version}; {setting}; {looked}"
+            return f"version {self.version}; {setting}; {looked}{failed}"
         asks = asked(self.asks, "en")
         return (f"version {self.version}; {setting}; {looked}; an update is waiting: version "
                 f"{self.waiting} needs you at the computer{f' ({asks})' if asks else ''}, so it "
-                "isn't installed by itself (parent-recap update installs it)")
+                f"isn't installed by itself (parent-recap update installs it){failed}")
 
 
 def status(config: str | None = None) -> Status:
@@ -402,7 +420,18 @@ def status(config: str | None = None) -> Status:
                   last_result=data["last_result"],
                   newer=on_stable if isinstance(on_stable, str) and newer(on_stable, installed) else None,
                   waiting=waiting["version"] if waiting else None,
-                  asks=waiting["asks"] if waiting else None, skipped=skipped)
+                  asks=waiting["asks"] if waiting else None, skipped=skipped,
+                  failed=_last_failure(data, installed))
+
+
+def _last_failure(data: dict, installed: str | None) -> dict[str, str] | None:
+    """`state`'s `last_failure`, while the version it tried is still newer than the `installed`
+    one: once a newer one runs, as after the install line pasted again, it is over."""
+    failure = data["last_failure"]
+    fields = ("version", "step", "error", "at")
+    if not (isinstance(failure, dict) and all(isinstance(failure.get(f), str) for f in fields)):
+        return None
+    return failure if installed is not None and newer(failure["version"], installed) else None
 
 
 def _skipped(data: dict, installed: str | None) -> str | None:
@@ -644,6 +673,8 @@ class _Updater:
         self.folder, self.config, self.log = folder, config, log
         self.had_plugin = False
         self.moved = False  # whether `install` changed the plugin copy, which a restore undoes
+        self.why = ""  # why the last `doctor` didn't run, in its log line's words, or ""
+        self.said = ""  # the installer's own line on why it stopped, or ""
 
     def program(self) -> list[str]:
         """The `parent-recap` `app` points at, with the config the update was given."""
@@ -673,6 +704,7 @@ class _Updater:
         self.log("check", f"{version}'s doctor: "
                  + (f"{len(failing)} failing: {', '.join(sorted(failing))}{why}" if failing
                     else "no failures"))
+        self.why = why
         return failing
 
     def install(self, plugin: Path, version: str, spare: Path, dialogs: bool,
@@ -696,8 +728,8 @@ class _Updater:
                 os.rename(target, spare)
             os.rename(plugin, target)
         except OSError as e:
-            self.log("install", f"{version}: the release couldn't be put in {target} "
-                     f"({_system_said(e)})")
+            self.log.failed("install", f"{version}: the release couldn't be put in {target} "
+                            f"({_system_said(e)})")
             raise Refused(f"the release couldn't be put in {target} ({e.strerror or e})") from e
         name, command = installer(self.folder, target)
         env = {**steps_env(self.config, by_family), "PARENT_RECAP_HOME": str(self.folder)}
@@ -713,17 +745,23 @@ class _Updater:
             self.log.output(name, r.stdout + r.stderr)
             finished = r.returncode == 0
             ended = f"ended with exit status {r.returncode}"
+            self.said = _why_it_stopped(r.stdout + r.stderr)
         except subprocess.TimeoutExpired as e:
             self.log.output(name, _text(e.stdout) + _text(e.stderr))
             finished = False
             ended = f"was ended at its time limit of {INSTALL_TIMEOUT // 60} minutes"
+            self.said = _why_it_stopped(_text(e.stdout) + _text(e.stderr))
         except OSError as e:
             finished = False
             ended = f"couldn't be started ({_system_said(e)})"
         now = versions.current(self.folder)
         switched = now is not None and versions.version(now) == version
-        self.log("install", f"{version}: {name} {ended}; app points at "
-                 f"{versions.version(now) if now else 'nothing'}")
+        line = (f"{version}: {name} {ended}; app points at "
+                f"{versions.version(now) if now else 'nothing'}")
+        if finished and switched:
+            self.log("install", line)
+        else:
+            self.log.failed("install", line, line + (f"; it said: {self.said}" if self.said else ""))
         return switched, None if finished else f"{name} {ended}"
 
     def restore_plugin(self, spare: Path) -> None:
@@ -778,6 +816,18 @@ def _system_said(error: BaseException) -> str:
         if isinstance(e, OSError):
             return f"{type(e).__name__}: {e}"
     return ""
+
+
+# The installer's own lines on why it stopped, which carry the system's words where the system
+# stopped a step (windows_install.py's `stopped`, `not_started` and `download`): only these of
+# its output go to `doctor`, as its other lines are the steps' own.
+STOPPED = re.compile(r"^(Parent Recap wasn't installed\. |Windows didn't start |Downloading \S+ failed: )")
+
+
+def _why_it_stopped(output: str) -> str:
+    """The installer's last line on why it stopped (STOPPED), or ""."""
+    lines = [line.strip() for line in output.splitlines() if STOPPED.match(line.strip())]
+    return lines[-1] if lines else ""
 
 
 def steps_env(config: str | None, by_family: bool) -> dict[str, str]:
@@ -1041,10 +1091,31 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
         (folder / UPDATE).mkdir(mode=0o700, parents=True, exist_ok=True)
         work = Path(tempfile.mkdtemp(prefix=DOWNLOAD, dir=folder / UPDATE))
     except OSError as e:
-        log("download", f"{wanted}: its folder couldn't be made ({_system_said(e)})")
-        _save(folder, last_result=f"{wanted} refused: its download folder couldn't be made")
+        log.failed("download", f"{wanted}: its folder couldn't be made ({_system_said(e)})")
+        _save(folder, last_result=f"{wanted} refused: its download folder couldn't be made",
+              last_failure=_failure(log, wanted))
         return Outcome("failed", f"Version {wanted} wasn't installed: its download folder "
                        f"couldn't be made ({e.strerror or e}). Nothing was changed.", installed)
+    outcome = _install(folder, config, log, session, installed, wanted, work, by_family, say)
+    if outcome.result == "updated":
+        _write_state(folder, {**state(folder), "last_failure": None})
+    elif outcome.result in ("failed", "switched-back") and log.failure is not None:
+        _write_state(folder, {**state(folder), "last_failure": _failure(log, wanted)})
+    return outcome
+
+
+def _failure(log: _Log, version: str) -> dict[str, str] | None:
+    """`state`'s `last_failure` for the update to `version` that `log` logged, or None."""
+    if log.failure is None:
+        return None
+    step, error = log.failure
+    return {"version": version, "step": step, "error": error, "at": _now()}
+
+
+def _install(folder: Path, config: str | None, log: _Log, session: requests.Session,
+             installed: str, wanted: str, work: Path, by_family: bool,
+             say: Callable[[str], None] | None) -> Outcome:
+    """`_update_to` once it has the folder `work` to download into, which it removes."""
     updater = _Updater(folder, config, log)
     spare = work / "plugin-before"
     keep = False  # whether the plugin copy stays the new version's
@@ -1057,26 +1128,26 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
                 _download(session, f"{RELEASES}/v{wanted}/{file.name}", file)
         except Refused as e:
             said = _system_said(e)
-            log("download", f"{wanted}: failed: {e}" + (f" ({said})" if said else ""))
+            log.failed("download", f"{wanted}: failed: {e}" + (f" ({said})" if said else ""))
             raise
         log("download", f"{wanted}: {name} ({zip_path.stat().st_size} bytes) and its signature")
         tried = wanted
         try:
             good = release_signature.verified(zip_path, signature)
         except release_signature.NoSshKeygen as e:
-            log("verify", f"{wanted}: couldn't be checked: {_system_said(e)}")
+            log.failed("verify", f"{wanted}: couldn't be checked: {_system_said(e)}")
             # Kept as failed, so the evening run doesn't download it again to find the same.
             _save(folder, failed=wanted)
             raise Refused(f"its signature couldn't be checked, so it was deleted. "
                           f"{no_ssh_keygen(str(e))}") from e
         except subprocess.TimeoutExpired as e:
-            log("verify", f"{wanted}: couldn't be checked: {type(e).__name__}")
+            log.failed("verify", f"{wanted}: couldn't be checked: {type(e).__name__}")
             raise Refused("its signature couldn't be checked, so it was deleted") from e
         except OSError as e:
-            log("verify", f"{wanted}: couldn't be checked: {_system_said(e)}")
+            log.failed("verify", f"{wanted}: couldn't be checked: {_system_said(e)}")
             raise Refused("its signature couldn't be checked, so it was deleted") from e
         if not good:
-            log("verify", f"{wanted}: the signature doesn't verify; deleted")
+            log.failed("verify", f"{wanted}: the signature doesn't verify; deleted")
             raise Refused("its signature doesn't verify against Parent Recap's release keys, so "
                           "it isn't a release of Parent Recap's and was deleted")
         log("verify", f"{wanted}: the signature verifies")
@@ -1084,11 +1155,11 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
             plugin = _unpack(zip_path, work / "unpacked")
         except Refused as e:
             said = _system_said(e)
-            log("unpack", f"{wanted}: failed: {e}" + (f" ({said})" if said else ""))
+            log.failed("unpack", f"{wanted}: failed: {e}" + (f" ({said})" if said else ""))
             raise
         inside = _zip_version(plugin)
         if inside != wanted or not newer(inside, installed):
-            log("verify", f"{wanted}: the zip holds version {inside}; refused and deleted")
+            log.failed("verify", f"{wanted}: the zip holds version {inside}; refused and deleted")
             raise Refused(f"the release zip holds version {inside}, not {wanted}, a version "
                           f"higher than the installed {installed}, so it was deleted")
         log("verify", f"{wanted}: the zip holds version {inside}")
@@ -1136,6 +1207,13 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
                 failed = _Failed("was installed, but its check failed where version "
                                  f"{installed} passed ({new})",
                                  f"{wanted} failed its check", f"{wanted} fails {new}")
+                # For doctor without the checks' items, which may name a kid: how many, and
+                # why its doctor didn't run, in the system's words where the system stopped it.
+                count = len((after - before) | (after & {DOCTOR_DIDNT_RUN}))
+                log.failure = ("check", f"{wanted}'s doctor didn't run{updater.why}"
+                               if DOCTOR_DIDNT_RUN in after else
+                               f"{wanted}'s doctor fails {count} check{'s' * (count != 1)} "
+                               f"that version {installed} passed")
         if failed is not None:
             outcome = _switch_back(folder, log, updater, spare, wanted, failed, by_family)
             keep = outcome.version == wanted
@@ -1153,7 +1231,7 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
         # Defender rule took away: in the log in the system's words (ADR 0052).
         now = versions.current(folder)
         running = versions.version(now) if now is not None else installed
-        log("update", f"{wanted}: stopped ({_system_said(e)}); app points at {running}")
+        log.failed("update", f"{wanted}: stopped ({_system_said(e)}); app points at {running}")
         _save(folder, last_result=f"{wanted} stopped: {e.strerror or e}")
         return Outcome("failed", f"Version {wanted} wasn't installed: the system stopped the "
                        f"update ({e.strerror or e}). Parent Recap runs version {running}. The "
@@ -1178,14 +1256,18 @@ def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, wanted
                                                     creationflags=_quiet()["creationflags"])
     except OSError as e:  # a link the system didn't let it change (its steps never raise)
         now = versions.current(folder)
-        log("switch", f"{wanted}: couldn't switch back ({_system_said(e)}), though "
-            f"{failed.log_line}; app points at {versions.version(now) if now else 'nothing'}")
+        points = f"app points at {versions.version(now) if now else 'nothing'}"
+        # doctor's copy leaves out the failing checks, which may name a kid.
+        log.failed("switch", f"{wanted}: couldn't switch back ({_system_said(e)}), though "
+                   f"{failed.log_line}; {points}",
+                   f"{wanted}: couldn't switch back ({_system_said(e)}); {points}")
         _save(folder, last_result=f"{failed.result}; the switch back failed", failed=wanted)
         return Outcome("failed", f"Version {wanted} {failed.message}, and switching back to "
                        f"the version before failed ({e.strerror or e}). The update log is "
                        f"{log.path}.", versions.version(now) if now else None, tried=wanted)
     except versions.NoPrevious:  # install.sh keeps the version before, so only if it was removed
-        log("switch", f"{wanted}: no previous version to switch back to, though {failed.log_line}")
+        log.failed("switch", f"{wanted}: no previous version to switch back to, though "
+                   f"{failed.log_line}", f"{wanted}: no previous version to switch back to")
         _save(folder, last_result=f"{failed.result}; no version to switch back to",
               failed=wanted)
         return Outcome("failed", f"Version {wanted} {failed.message}, and "

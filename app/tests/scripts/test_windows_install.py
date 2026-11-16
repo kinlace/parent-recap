@@ -109,6 +109,32 @@ def test_a_program_the_system_did_not_start_is_said_in_its_words_in_the_window_a
     assert f"Couldn't start {missing}: {said}" in log.path.read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("updating, flags", [("1", 0x08000000), (None, 0)], ids=["update", "pasted"])
+def test_in_a_background_update_every_program_it_runs_opens_no_window(
+        tmp_path, monkeypatch, updating, flags):
+    """The evening's update runs from pythonw.exe (ADR 0052, #994): each program it starts is
+    started without a console window. From the pasted line they run in PowerShell's, as before."""
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    if updating:
+        monkeypatch.setenv("PARENT_RECAP_UPDATING", updating)
+    else:
+        monkeypatch.delenv("PARENT_RECAP_UPDATING", raising=False)
+    started: list[int] = []
+
+    def run(cmd, *a, creationflags=0, **k):
+        started.append(creationflags)
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+    monkeypatch.setattr(subprocess, "run", run)
+    log = wi.Log(tmp_path / "install.log")
+    install = wi.Install(tmp_path / "plugin", tmp_path / "ParentRecap", log, downloaded=True)
+
+    log.run(["a"])
+    log.run_saying(["b"])
+    install.install_required()  # asks requirements.py, then installs nothing it named
+
+    assert started == [flags] * 3
+
+
 # --- The pinned runtimes, by checksum ------------------------------------------------------------
 
 @pytest.fixture

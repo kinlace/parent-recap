@@ -74,6 +74,13 @@ TAR = str(SYSTEM32 / "tar.exe")
 ROBOCOPY = str(SYSTEM32 / "robocopy.exe")
 
 
+def no_window() -> int:
+    """How the programs this runs are started: in an update in the background (the update's
+    PARENT_RECAP_UPDATING, schedule_update.UPDATING), which the evening task runs from pythonw.exe,
+    each without a console window (ADR 0052); from the pasted line, in PowerShell's, as before."""
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.environ.get("PARENT_RECAP_UPDATING") else 0
+
+
 class Stop(Exception):
     """A step that failed: what happened, and what the family can do about it."""
 
@@ -130,7 +137,7 @@ class Log:
         with self.path.open("ab") as f:
             try:
                 return subprocess.run(command, stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                      env=env).returncode
+                                      env=env, creationflags=no_window()).returncode
             except OSError as e:
                 f.write(f"Couldn't start {command[0]}: {e}\n".encode())
                 not_started(command, e)
@@ -142,7 +149,8 @@ class Log:
         env = {**os.environ, "PYTHONUTF8": "1"}
         with self.path.open("ab") as f:
             try:
-                r = subprocess.run(command, stdout=subprocess.PIPE, stderr=f, stdin=subprocess.DEVNULL, env=env)
+                r = subprocess.run(command, stdout=subprocess.PIPE, stderr=f, stdin=subprocess.DEVNULL, env=env,
+                                   creationflags=no_window())
             except OSError as e:
                 f.write(f"Couldn't start {command[0]}: {e}\n".encode())
                 not_started(command, e)
@@ -413,7 +421,8 @@ class Install:
         """The packages the program needs, with those of `extras`, by checksum."""
         with self.log.path.open("ab") as errors:
             asked = subprocess.run([str(self.venv_python), "-I", str(self.folder / "requirements.py"), *extras],
-                                   stdout=subprocess.PIPE, stderr=errors, stdin=subprocess.DEVNULL)
+                                   stdout=subprocess.PIPE, stderr=errors, stdin=subprocess.DEVNULL,
+                                   creationflags=no_window())
         if asked.returncode != 0:
             raise self.pip_failed()
         names = asked.stdout.decode("utf-8", "replace").split()

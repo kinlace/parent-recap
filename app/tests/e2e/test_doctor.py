@@ -306,7 +306,10 @@ def test_doctor_shows_an_update_that_failed_and_stays_ok(harness, nothing_loaded
     line = updates_line(harness, capsys)
 
     assert line.startswith(f"{ops.OK} Updates: version {INSTALLED}; updates are on")
-    assert line.endswith(f"0.20.0 failed its check; back on {INSTALLED}")
+    assert f"0.20.0 failed its check; back on {INSTALLED}; " in line
+    # The step that failed and why, without the check's item, which may name a kid (#994).
+    assert re.search(r"; the last update, to version 0\.20\.0 on 2026-\S+, failed at its check step: "
+                     rf"0\.20\.0's doctor fails 1 check that version {re.escape(INSTALLED)} passed$", line), line
 
 
 @pytest.mark.posix
