@@ -240,7 +240,7 @@ def state(folder: Path | None = None) -> dict:
     `version`, the `step` that stopped it, the `error` in the update log's words (the system's
     word for word, where the system stopped it) and `at` when, for `doctor` and so a Problem
     Report (ADR 0052); None once an update installs. It names versions, steps, programs and
-    paths, never a check's item, which may name a kid. Kept in Parent Recap's folder outside the
+    paths, never a check's item, which may name a Kid. Kept in Parent Recap's folder outside the
     versions, so a switch and a switch back keep it."""
     path = (folder or own_node.home()) / UPDATE / STATE
     try:
@@ -288,7 +288,12 @@ class _Log:
         """Logs the line of the `step` that made the update fail, and keeps the step and `error`
         (the line's `text` unless given) for `doctor` (state's `last_failure`)."""
         self(step, text)
-        self.failure = (step, text if error is None else error)
+        self.remember(step, text if error is None else error)
+
+    def remember(self, step: str, error: str) -> None:
+        """Keeps the `step` that made the update fail and its `error`, already logged, for
+        `doctor`."""
+        self.failure = (step, error)
 
     def output(self, what: str, text: str) -> None:
         """A program's own output, such as the installer's, indented under its step."""
@@ -366,8 +371,8 @@ class Status:
     that version is `waiting` for the family to start it, what it `asks` of them by language;
     and the newer version it `skipped` at its last look, as it changes nothing the Household
     uses (ADR 0051), which is neither `newer` nor `waiting`; and the last update that `failed`,
-    while the version it tried is newer than the installed one: the step that stopped it and
-    the error, as the update log has them (ADR 0052)."""
+    the step that stopped it and
+    the error, as the update log has them (ADR 0052), until a newer version than it tried runs."""
     version: str
     unavailable: str | None = None
     enabled: bool = True
@@ -425,13 +430,14 @@ def status(config: str | None = None) -> Status:
 
 
 def _last_failure(data: dict, installed: str | None) -> dict[str, str] | None:
-    """`state`'s `last_failure`, while the version it tried is still newer than the `installed`
-    one: once a newer one runs, as after the install line pasted again, it is over."""
+    """`state`'s `last_failure`, until a version newer than the one it tried is `installed`, as
+    after the install line pasted again. It is shown also while the version it tried runs, as
+    when the switch back failed."""
     failure = data["last_failure"]
     fields = ("version", "step", "error", "at")
     if not (isinstance(failure, dict) and all(isinstance(failure.get(f), str) for f in fields)):
         return None
-    return failure if installed is not None and newer(failure["version"], installed) else None
+    return None if installed is None or newer(installed, failure["version"]) else failure
 
 
 def _skipped(data: dict, installed: str | None) -> str | None:
@@ -1207,13 +1213,13 @@ def _install(folder: Path, config: str | None, log: _Log, session: requests.Sess
                 failed = _Failed("was installed, but its check failed where version "
                                  f"{installed} passed ({new})",
                                  f"{wanted} failed its check", f"{wanted} fails {new}")
-                # For doctor without the checks' items, which may name a kid: how many, and
+                # For doctor without the checks' items, which may name a Kid: how many, and
                 # why its doctor didn't run, in the system's words where the system stopped it.
-                count = len((after - before) | (after & {DOCTOR_DIDNT_RUN}))
-                log.failure = ("check", f"{wanted}'s doctor didn't run{updater.why}"
-                               if DOCTOR_DIDNT_RUN in after else
-                               f"{wanted}'s doctor fails {count} check{'s' * (count != 1)} "
-                               f"that version {installed} passed")
+                count = len(after - before)
+                log.remember("check", f"{wanted}'s doctor didn't run{updater.why}"
+                             if DOCTOR_DIDNT_RUN in after else
+                             f"{wanted}'s doctor fails {count} check{'s' * (count != 1)} "
+                             f"that version {installed} passed")
         if failed is not None:
             outcome = _switch_back(folder, log, updater, spare, wanted, failed, by_family)
             keep = outcome.version == wanted
@@ -1223,6 +1229,8 @@ def _install(folder: Path, config: str | None, log: _Log, session: requests.Sess
         return Outcome("updated", f"✅ Parent Recap updated from version {installed} to "
                        f"{wanted}, and its checks pass as before.", wanted, tried=wanted)
     except Refused as e:
+        if log.failure is None:  # a refusal no step above logged as the one that failed
+            log.failed("update", f"{wanted}: refused: {e}")
         _save(folder, last_result=f"{wanted} refused: {e}")
         return Outcome("failed", f"Version {wanted} wasn't installed: {e}. Nothing was "
                        "changed.", installed, tried=tried)
@@ -1257,7 +1265,7 @@ def _switch_back(folder: Path, log: _Log, updater: _Updater, spare: Path, wanted
     except OSError as e:  # a link the system didn't let it change (its steps never raise)
         now = versions.current(folder)
         points = f"app points at {versions.version(now) if now else 'nothing'}"
-        # doctor's copy leaves out the failing checks, which may name a kid.
+        # doctor's copy leaves out the failing checks, which may name a Kid.
         log.failed("switch", f"{wanted}: couldn't switch back ({_system_said(e)}), though "
                    f"{failed.log_line}; {points}",
                    f"{wanted}: couldn't switch back ({_system_said(e)}); {points}")
