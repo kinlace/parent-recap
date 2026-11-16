@@ -199,6 +199,7 @@ slowest tests, so add one for a main path, not for each result.
 | `test_setup_updates.py`        | The setup page's Updates (#917): the switch, the installed version, Update now, how it ended, and `busy` beside a run or another update     |
 | `test_setup_newest_first.py`   | A Source's `setup` step in Terminal updates first when the Source changed since the installed version (ADR 0051, #961), and the new version runs the step |
 | `test_setup_page_newest_first.py` | The same on the setup page (#961): `updating-first`, the program started again at the page's address, and what the page says when the update can't be done |
+| `test_setup_updates_windows.py` | The update setting on a Windows PC (#995): the page's switch and Update now, `busy`, `doctor`'s Updates line, `update on` and `off`, a Source added after an update first on the page and in PowerShell, the page's program started again, and no Terminal or Mac in the update's texts |
 
 ## Adapter tests
 

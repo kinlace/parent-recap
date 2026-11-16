@@ -51,7 +51,7 @@ On a Mac, Parent Recap updates itself after the evening Brief ([Updating](instal
 - **A newer release is out, and yours wasn't updated.** That is as it should be when the release changes nothing your family uses, such as a fix for a school system you haven't connected ([Updating](install.md#updating)). No Brief has a line for it. The Updates line of `parent-recap doctor`, Parent Recap Settings and `parent-recap update` say that the release is out and changes nothing your family uses. Nothing is missing from your version: the next release that changes something you use is installed as usual.
 - **Going back a version.** `parent-recap switch-back` runs the version before again: the evening job, the Linked Device and Parent Recap Settings and Check then run it. Running it again switches forward. Parent Recap keeps one version to go back to. With updating on, the next evening installs the newer release again, so first turn it off with `parent-recap update off`, and tell the Parent Recap team what went wrong.
 - **An update that keeps failing.** Paste the install line into Terminal again: it installs the newest release from the start and keeps your settings, passwords and past Briefs.
-- **Windows.** Parent Recap doesn't update itself there, and its Brief has no such line: paste the install line into PowerShell again ([On Windows](windows.md#updating)).
+- **Windows.** A PC updates itself as a Mac does, with the same lines in the Brief, the switch and **Update now** in Parent Recap Settings, and the same Updates line in `parent-recap doctor`. Its update log is `%LOCALAPPDATA%\ParentRecap\logs\update.log`, and where this page says Terminal, use PowerShell ([On Windows](windows.md#updating)).
 
 ### Updating by hand
 

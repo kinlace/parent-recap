@@ -19,6 +19,7 @@ import hmac
 import json
 import os
 import socketserver
+import subprocess
 import sys
 import threading
 from collections.abc import Iterable, Mapping, Set
@@ -115,16 +116,28 @@ def start_again(server: SetupServer) -> None:
     update that a step adding a Source started (updates.py), so the step goes on in the new
     version's code. The new program listens on the same port with the same one-time code, which
     it gets through its environment, so the page open in the browser goes on where it was. It
-    returns only when that program couldn't be started; the page then says its program has gone."""
+    returns only when that program couldn't be started; the page then says its program has gone.
+    On Windows, where os.execve starts the new program and ends this one at once, so the
+    PowerShell window it runs in would take the page for closed, this one waits for the new one
+    and ends as it ends (SystemExit), saying nothing of its own: the new one says when it closed."""
     folder = own_node.running_from()
     if folder is None:
         return
     program = update.installed_program(folder)
-    env ={**os.environ, STARTED_AGAIN: f"{server.address[1]} {server.code}"}
+    command = [*program, "-c", str(server.context.config), "setup", "page"]
+    env = {**os.environ, STARTED_AGAIN: f"{server.address[1]} {server.code}"}
     sys.stdout.flush()
     sys.stderr.flush()
+    if profile.current().system == "windows":
+        try:
+            ended = subprocess.run(command, env=env, check=False).returncode
+        except OSError:
+            return
+        except KeyboardInterrupt:  # Ctrl+C reaches both: the new one ends itself
+            ended = 0
+        raise SystemExit(ended)
     try:
-        os.execve(program[0], [*program, "-c", str(server.context.config), "setup", "page"], env)
+        os.execve(program[0], command, env)
     except OSError:
         return
 

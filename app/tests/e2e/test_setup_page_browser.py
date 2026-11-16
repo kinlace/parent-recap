@@ -1849,6 +1849,40 @@ def test_update_now_shows_a_failure_with_the_update_state_to_copy_and_then_the_n
 
 
 @pytest.mark.posix
+def test_on_windows_finish_shows_the_update_sentence_the_switch_and_update_now_which_installs(
+        mac, github, tab, family, health):  # noqa: F811
+    """#995: a PC updates itself as a Mac does (ADR 0052), so its Finish has the same Updates,
+    in the PC's words."""
+    at_finish(family)
+    github.stable = "0.20.0"
+    github.publish("0.20.0")
+    assert update.look(str(config_file(family))).result == "available"
+    as_on(tab, "windows")
+
+    expect(tab.get_by_text(text("finish.updates.about", system="windows"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.updates.off-note", system="windows"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.updates.newer", system="windows", version="0.20.0"))
+           ).to_be_visible()
+    switch = tab.get_by_role("checkbox", name=text("finish.updates.on", system="windows"),
+                             exact=True)
+    expect(switch).to_be_checked()
+    switch.uncheck()
+    expect(tab.get_by_text(text("finish.updates.saved.off", system="windows"))).to_be_visible()
+    assert Config.load(config_file(family)).updates.enabled is False
+
+    button(tab, "finish.updates.now", system="windows").click()
+
+    status = tab.locator("#finish-updates-status")
+    expect(status).to_have_attribute("data-result", "finish.updates.updated")
+    expect(tab.get_by_text(text("finish.updates.version", system="windows", version="0.20.0"))
+           ).to_be_visible()
+    assert mac.version() == "0.20.0"
+    # Nothing on it names the Mac's own things.
+    shown = tab.locator("#finish-updates").inner_text()
+    assert not re.search(r"Terminal|\bMac\b|macOS", shown), shown
+
+
+@pytest.mark.posix
 def test_finish_says_a_release_that_changes_nothing_the_family_uses_is_out_and_not_installed(
         mac, github, tab, family, health):  # noqa: F811
     from test_update_skips import KONNECT_ONLY, out_on_stable
