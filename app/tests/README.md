@@ -195,6 +195,7 @@ slowest tests, so add one for a main path, not for each result.
 | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
 | `test_update.py`               | `update` (ADR 0047): installs, refuses, switches back; its hosts, requests, writes, commands; on, off; one update at a time, never beside a run (#977); the READMEs and docs say it |
 | `test_update_windows.py`       | `update` on a Windows PC (ADR 0052, #993), on every system and Windows' CI (`windows_too`): a test key's signature checked by the real `ssh-keygen`, the release's Python installer with no PowerShell, switch back, no `ssh-keygen`, the Linked Device and the lock, a step the system stops |
+| `test_evening_update_windows.py` | The evening run's update on a Windows PC (ADR 0052, #994), on every system and Windows' CI (`windows_too`): a release a day old installed after the Brief, the next Brief's line in three languages, updates off, a release that needs the family, a skipped one, no console window, a failure that never fails the run, and `doctor`'s last failed step |
 | `test_update_skips.py`         | A release that changes nothing the Household uses is skipped (ADR 0051, #960), and everything says so |
 | `test_evening_update.py`       | The evening run's own update (#915): a day's wait, only after a scheduled Brief, no dialog, jobs kept |
 | `test_evening_update_brief.py` | The next Brief says what the evening's update did (#916): updated or failed, once, in each language   |
