@@ -159,3 +159,38 @@ def test_the_output_never_holds_a_key_s_value_or_an_address(server, capsys):
 def test_reports_takes_at_most_one_key_or_id(server, capsys, args):
     assert reports(server, *args) == 2
     assert "usage: sudo admin reports [KEY-OR-ID]" in capsys.readouterr().err
+
+
+def test_with_bifrost_down_no_key_is_said_to_be_gone(server, capsys):
+    server.bifrost.down = True
+    assert reports(server) == 0
+    assert "no longer a key" not in capsys.readouterr().out
+
+
+def test_two_keys_of_one_name_are_told_apart_by_their_ids(server, capsys):
+    server.bifrost.keys.append({"id": "id-5", "name": "ai-pilot-a", "value": "sk-bf-five",
+                                "is_active": True})
+    keep(server, "key-id-5", "2026-11-14T19:00:00Z", report("2026-11-14T19:00:00+00:00"))
+    assert reports(server) == 0
+    out = capsys.readouterr().out
+    assert "✅ ai-pilot-a (id=id-1)  last" in out and "✅ ai-pilot-a (id=id-5)  last" in out
+    assert reports(server, "ai-pilot-a") == 1
+    assert "give one's id" in capsys.readouterr().err
+    assert reports(server, "id-5") == 0
+    assert capsys.readouterr().out.startswith("ai-pilot-a (id=id-5): 1 Run Report ")
+
+
+def test_a_key_of_a_shared_name_with_reports_alone_is_found_by_it(server, capsys):
+    # Another key named so that never reported doesn't make the name ambiguous.
+    server.bifrost.keys.append({"id": "id-5", "name": "ai-pilot-a", "value": "sk-bf-five",
+                                "is_active": True})
+    assert reports(server, "ai-pilot-a") == 0
+    assert "2 Run Reports" in capsys.readouterr().out
+
+
+def test_the_last_report_is_the_one_that_came_last_whatever_the_computer_s_clock(server, capsys):
+    # A run whose computer's clock was two days ahead came before tonight's.
+    keep(server, "key-id-4", "2026-11-13T19:00:00Z", report("2026-11-16T19:00:00+00:00", exit=2))
+    keep(server, "key-id-4", "2026-11-14T19:00:00Z", report("2026-11-14T19:00:00+00:00"))
+    assert reports(server) == 0
+    assert "✅ send-pilot-d  last 2026-11-14 21:00" in capsys.readouterr().out

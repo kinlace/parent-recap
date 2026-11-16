@@ -26,6 +26,7 @@ nightly check (`admin check --mail`, #745) sends through `Mailer` too, so its ma
 
 It also takes a Household's Run Report (POST /v1/report, ADR 0048, #922): only the fields and fixed
 keys the program names, under its Gateway Key or a random id, kept REPORT_DAYS days (`Reports`).
+`admin reports` (#924) lists them (`print_reports`).
 
 Python's standard library only, so it runs on the host's own python3 with nothing to install.
 """
@@ -1453,28 +1454,42 @@ def _ran_at(k: Kept) -> datetime:
 
 def _report_names(keys: Bifrost, kept: dict[str, list[Kept]]) -> dict[str, str]:
     """The name `admin reports` gives each Household it holds reports of: its Gateway Key's name,
-    as `admin keys` prints it; a key since deleted by its id; one without a key by its report id."""
+    as `admin keys` prints it, with its id when another key has that name too; a key since deleted
+    by its id; one without a key by its report id."""
     try:
         listed = list(keys.listed())
     except (OSError, ValueError, TypeError, AttributeError) as e:
         print(f"couldn't read the Gateway Keys from Bifrost's admin API ({_why(e)}): Households "
               "with a key are named by its id", file=sys.stderr)
-        listed = []
-    names = {_who("key", str(k.get("id"))): _one_line(k.get("name") or k.get("id"))
-             for k in listed}
+        listed = None
+    named = {_who("key", str(k.get("id"))): (_one_line(k.get("name") or k.get("id")),
+                                            _one_line(k.get("id")))
+             for k in listed or ()}
+    taken = [name for name, _ in named.values()]
+    names = {}
     for who in kept:
-        if who not in names:
-            kind, _, value = who.partition("-")
-            names[who] = f"id={value}" if kind == "id" else f"key-id={value} (no longer a key)"
+        kind, _, value = who.partition("-")
+        if who in named:
+            name, key_id = named[who]
+            names[who] = name if taken.count(name) == 1 else f"{name} (id={key_id})"
+        elif kind == "id":
+            names[who] = f"id={value}"
+        else:
+            names[who] = f"key-id={value}" + ("" if listed is None else " (no longer a key)")
     return names
 
 
-def _report_text(r: dict) -> list[str]:
-    """What a summary line says of a run: version, system, exit, the Brief and any failure."""
+def _report_text(r: dict) -> tuple[list[str], list[str]]:
+    """What a line says of a run, in two parts for the detail's own fields to go between: its
+    version, system and exit; then the Brief and any failure."""
     system = " ".join(str(r[k]) for k in ("system", "system_version") if k in r)
-    brief = r.get("brief") or {}
-    brief_text = "brief " + (f"{brief['outcome']}" + (f"={brief['cause']}" if "cause" in brief else "")
-                             if brief else "-")
+    brief = r.get("brief")
+    if not brief:
+        brief_text = "brief -"
+    elif "cause" in brief:
+        brief_text = f"brief {brief['outcome']}={brief['cause']}"
+    else:
+        brief_text = f"brief {brief['outcome']}"
     failed = [f"{name}={result['failed']}" for name, result in (r.get("sources") or {}).items()
               if "failed" in result]
     ai = r.get("ai")
@@ -1483,12 +1498,12 @@ def _report_text(r: dict) -> list[str]:
     failed += [f"cause={c}" for c in r.get("causes") or ()
                if not any(f.endswith(f"={c}") for f in failed)]
     exc = r.get("exception")
-    parts = [r.get("version", "?"), system or "?", f"exit {r['exit']}", brief_text]
+    outcome = [brief_text]
     if failed:
-        parts.append("failed: " + ", ".join(failed))
+        outcome.append("failed: " + ", ".join(failed))
     if exc:
-        parts.append(f"exception {exc['type']}" + (f" at {exc['at']}" if "at" in exc else ""))
-    return parts
+        outcome.append(f"exception {exc['type']}" + (f" at {exc['at']}" if "at" in exc else ""))
+    return [r.get("version", "?"), system or "?", f"exit {r['exit']}"], outcome
 
 
 def _run_failed(r: dict) -> bool:
@@ -1523,22 +1538,23 @@ def print_reports(keys: Bifrost, state: Path, now: datetime, which: str | None =
             return
         rows = []
         for who, runs in kept.items():
-            last_came = max(k.received for k in runs)
+            # The report that came last, as staleness is counted from it, not the computer's clock.
+            last = max(runs, key=lambda k: k.received)
+            last_came = last.received
             stale = now - last_came > REPORT_STALE
-            last = runs[-1]
             mark = "⚠️" if stale else "❌" if _run_failed(last.report) else "✅"
             came = f"  no report for {_ago(now - last_came)}" if stale else ""
             rows.append((not stale, names[who], f"{mark} {names[who]}  last {local(_ran_at(last))}"
-                         f"{came}  " + "  ".join(_report_text(last.report))))
+                         f"{came}  " + "  ".join(sum(_report_text(last.report), []))))
         print(f"Each Household's last Run Report (times in {REPORT_ZONE}); ⚠️ none came in the "
               "last day:")
         for _, _, row in sorted(rows):
             print(row)
         return
-    found = [who for who, name in names.items() if name == which] or \
+    found = [who for who, name in names.items() if name.split(" (id=")[0] == which] or \
         [who for who in (_who("key", which), _who("id", which)) if who in kept]
     if len(found) > 1:
-        sys.exit(f"{len(found)} Gateway Keys are named {which}: give one's id")
+        sys.exit(f"{len(found)} Households' Gateway Keys are named {which}: give one's id")
     runs = kept.get(found[0]) if found else None
     if not runs:
         sys.exit(f"no Run Report kept for {which} in the last {REPORT_DAYS} days (sudo admin "
@@ -1554,8 +1570,8 @@ def print_reports(keys: Bifrost, state: Path, now: datetime, which: str | None =
                  *(f"{r[f]} {unit}" for f, unit in (("seconds", "s"), ("peak_mb", "MB")) if f in r),
                  *([f"ai {ai['backend']} {ai['result']}"] if ai else []),
                  *(["read " + ", ".join(read)] if read else [])]
-        text = _report_text(r)
-        print("  ".join([local(_ran_at(k)), *text[:3], *extra, *text[3:]]))
+        run, outcome = _report_text(r)
+        print("  ".join([local(_ran_at(k)), *run, *extra, *outcome]))
 
 
 
