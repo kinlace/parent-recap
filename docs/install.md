@@ -46,7 +46,7 @@ Or from the package file, for Claude Code or Codex:
 
 ## Updating
 
-On a Mac, Parent Recap updates itself ([ADR 0047](adr/0047-a-familys-computer-installs-each-new-release-by-itself-after-the-evening-brief.md)). You don't need to do anything:
+On a Mac, Parent Recap updates itself ([ADR 0047](adr/0047-a-familys-computer-installs-each-new-release-by-itself-after-the-evening-brief.md)), and a Windows PC updates itself the same way, with PowerShell where this says Terminal ([On Windows](windows.md#updating) says what differs there). You don't need to do anything:
 
 - **When.** Each evening, once the Brief is sent or there was nothing to send, it reads `release.json` on the `stable` branch, which says which version is out and what it changed. A newer release is installed after a later evening's Brief, a day or more after this Mac first saw it. A Brief you start yourself, a preview and Weekend Picks never update.
 - **Only what you use.** A release that changes nothing your family uses, such as a fix for a school system you haven't connected, isn't installed or downloaded, and the Brief doesn't mention it ([ADR 0051](adr/0051-a-familys-computer-skips-a-release-that-changes-nothing-it-uses.md)). Parent Recap stays on its version until a release changes the program itself or something you have connected, and then goes straight to the newest. **Update now** and `parent-recap update` decide the same way, and say that the newer release changes nothing your family uses. So two families can run different versions with neither missing a fix.
@@ -61,7 +61,6 @@ On a Mac, Parent Recap updates itself ([ADR 0047](adr/0047-a-familys-computer-in
 
 What the update doesn't cover:
 
-- **Windows**: a Windows PC updates itself the same way; what differs there is in [On Windows](windows.md#updating)
 - **Claude Code's own copy of the plugin**: Claude Code keeps the Parent Recap skills in a copy of its own, which the update doesn't touch, so the skills there can be older than the program. To update them, type `/plugin marketplace update kinlace` and `/plugin update parent-recap@kinlace` in Claude Code. The Codex skills are updated with the program
 - **A Parent Recap installed before it could update itself**: paste the install line into Terminal once; from then on it updates itself. `parent-recap doctor` has an Updates line that says whether this install does; a `doctor` without that line is from before
 - **Installed from the package file, by hand**: to update by hand without the install line, unzip the zip from the [latest release](https://github.com/kinlace/parent-recap/releases/latest) over `~/ParentRecap/plugin`, then tell Claude or Codex "upgrade Parent Recap"; it syncs the program and runs a check. For Codex, run `bash ~/ParentRecap/plugin/install.sh --codex` in Terminal instead

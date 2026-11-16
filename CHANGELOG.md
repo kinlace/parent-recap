@@ -2,6 +2,12 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## Unreleased
+
+### Added
+
+- On a Windows PC, Parent Recap now updates itself as it does on a Mac, so you no longer paste the install line into PowerShell to get a new release. After the evening Brief it installs each new release that changes something your family uses, a day after it first saw that release at the earliest, checks that everything still works and goes back to the version before if it doesn't. The next Brief says at its top which version it now runs, or that the update didn't work. It opens no window and starts no PowerShell. To turn this off, open Parent Recap Settings from the Start menu and turn off the switch on its last step, or type `parent-recap update off` in PowerShell; `parent-recap update on` turns it on again, and `parent-recap update` or **Update now** installs the newest release whenever you choose. If a new version turns out bad, `parent-recap switch-back` runs the version before again. If something on the PC stops an update, such as a company's policy, the version you have keeps running, and `parent-recap doctor` and the Problem Report from Parent Recap Check say which step was stopped and why. If your Parent Recap is from before this release, paste the install line into PowerShell once to get it. [On Windows](docs/windows.md#updating) says how it works there, and [SECURITY.md](SECURITY.md#on-windows) what it downloads and how each download is checked.
+
 ## 0.20.0 · 2026-11-15
 
 ### Added

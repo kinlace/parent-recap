@@ -45,12 +45,14 @@ Before your first evening, check the two settings above:
 
 Parent Recap updates itself on a Windows PC as it does [on a Mac](install.md#updating) (ADR 0052): after the evening Brief, a day or more after the PC first saw a new release, it downloads the release, checks its signature with Windows' own `ssh-keygen`, installs it beside the version you have, switches to it and runs `parent-recap doctor`, and switches back if a check fails that passed before or the install didn't finish. Parent Recap Settings has the switch that turns it off and on, and **Update now** once a newer release is out; `parent-recap update off` and `parent-recap update on` in PowerShell do the same, and `parent-recap update` installs the newest release now. The Updates line of `parent-recap doctor` shows whether updating is on, the installed version, and an update that waits for you or failed. Adding a school system or club that changed after your version updates Parent Recap first, on the setup page and in PowerShell, as on a Mac. It starts no PowerShell and runs no `.ps1` file: the release's own installer is a Python program, run with Parent Recap's own Python. If something on the PC stops a step, such as a company's Defender rule, the version you have keeps running, and `%LOCALAPPDATA%\ParentRecap\logs\update.log` names the step and the error Windows gave; the Updates line of `parent-recap doctor`, and so a Problem Report from Parent Recap Check, shows them too.
 
+If a new version turns out bad, whether an update or the install line installed it, `parent-recap switch-back` in PowerShell runs the version before again, and running it again switches forward. Parent Recap keeps one version to go back to. With updating on, the next evening installs the newer release again, so first turn updating off with `parent-recap update off`.
+
 Paste the install line into PowerShell again instead when:
 
 - Parent Recap was installed before it could update itself: once, and from then on it updates itself
 - The PC has no `ssh-keygen` in `C:\Windows\System32\OpenSSH` (someone removed Windows' OpenSSH client): then it can't check a release's signature, so it doesn't update itself, and `parent-recap doctor` says so
 
-The install line updates what it installed and never touches your settings or passwords. It too installs the new version beside the one you have and switches to it only once it finished, keeping the version before: if the new one turns out bad, `parent-recap switch-back` runs the version before again, and running it again switches forward. If the install says another program uses Parent Recap's folder, close Parent Recap Settings and any window that runs Parent Recap, then paste the line again.
+The install line updates what it installed and never touches your settings or passwords. It too installs the new version beside the one you have and switches to it only once it finished, keeping the version before. If the install says another program uses Parent Recap's folder, close Parent Recap Settings and any window that runs Parent Recap, then paste the line again.
 
 ## Checking how it runs
 
@@ -62,7 +64,7 @@ parent-recap doctor
 
 If PowerShell doesn't know `parent-recap` (an install from before 0.9.0, or a window opened before the install), paste the install line again, or use its full path: `& "$env:LOCALAPPDATA\ParentRecap\app\.venv\Scripts\python.exe" -m family_brief doctor`.
 
-It checks the evening run's tasks in Task Scheduler, "Allow wake timers", signing back in after an update, and the stored passwords and AI sign-in, and says what to fix. The evening run's log is `%USERPROFILE%\ParentRecap\logs\run-stderr.log`, and the install's logs are in `%LOCALAPPDATA%\ParentRecap\logs`. Don't paste mail or message text from the logs into a chat.
+It checks the evening run's tasks in Task Scheduler, "Allow wake timers", signing back in after an update, and the stored passwords and AI sign-in, and says what to fix. The evening run's log is `%USERPROFILE%\ParentRecap\logs\run-stderr.log`, and the install's and the update's logs (`update.log`) are in `%LOCALAPPDATA%\ParentRecap\logs`. Don't paste mail or message text from the logs into a chat.
 
 ## Uninstalling
 
@@ -76,8 +78,8 @@ It lists everything setup created on the PC, asks whether to keep the archive of
 
 ## Where it keeps things
 
-- `%LOCALAPPDATA%\ParentRecap`: the program, its own Python and Node, the downloaded release and the install's logs, and `bin`, which holds only the `parent-recap` command and is on your PATH
-- `%USERPROFILE%\ParentRecap`: every Brief and the messages it was built from, the evening run's logs, and the wilma CLI
+- `%LOCALAPPDATA%\ParentRecap`: the program, in `versions` (the version that runs and the one before it, kept to switch back to) and `app`, a junction to the version that runs; its own Python and Node in `runtime`; the downloaded release in `plugin`; the update's state and, while an update runs, its download in `update`; the wilma CLI in `wilma` and the Linked Device's packages in `baileys`; the install's and the update's logs in `logs`; and `bin`, which holds only the `parent-recap` command and is on your PATH
+- `%USERPROFILE%\ParentRecap`: every Brief and the messages it was built from, and the evening run's logs
 - `%USERPROFILE%\.family`: your configuration and what was already handled
 - Credential Manager (Control Panel › Credential Manager › Windows Credentials): the Gmail App Password, the Gateway Key and the Claude token, as `Parent Recap/<name>`
 - The evening jobs: Task Scheduler, as tasks named `Parent Recap …`
