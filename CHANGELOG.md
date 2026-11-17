@@ -2,13 +2,29 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
-## Unreleased
+## 0.21.0 · 2026-11-17
 
 ### Added
 
 - On a Windows PC, Parent Recap now updates itself as it does on a Mac, so you no longer paste the install line into PowerShell to get a new release. After the evening Brief it installs each new release that changes something your family uses, a day after it first saw that release at the earliest, checks that everything still works and goes back to the version before if it doesn't. The next Brief says at its top which version it now runs, or that the update didn't work. It opens no window and runs no PowerShell script. To turn this off, open Parent Recap Settings from the Start menu and turn off the switch on its last step, or type `parent-recap update off` in PowerShell; `parent-recap update on` turns it on again, and `parent-recap update` or **Update now** installs the newest release whenever you choose. If a new version turns out bad, `parent-recap switch-back` runs the version before again. If something on the PC stops an update, such as a company's policy, the version you have keeps running, and `parent-recap doctor` and the Problem Report from Parent Recap Check say which step was stopped and why. If your Parent Recap is from before this release, paste the install line into PowerShell once to get it. [On Windows](docs/windows.md#updating) says how it works there, and [SECURITY.md](SECURITY.md#on-windows) what it downloads and how each download is checked.
 - After each evening run, your computer now sends the Parent Recap team a short Run Report, so that when a Brief is late or missing they can see why without asking you for logs or screenshots. It says only how the run ended, in fixed words and numbers: the version, how long it took, what each school system read or why it failed, whether the Brief went out, and how Parent Recap's last update went. It never holds your messages, names, addresses or file paths, and what is sent is exactly the file `~/.family/last-run.json` the run wrote. It goes to the same address the Brief goes to, and is kept there for 30 days. A run without a network sends its report with the next run's, and sending it never holds up the Brief. It is on if Parent Recap sends your Brief, and off if you send the Brief from your own Gmail. The setup page's Finish has a switch for it under "Later, if you need it", with a link to what it holds, and when you turn on sending from your own Gmail it asks whether to send the Run Report too, sending nothing until you say yes. You can also ask in the chat, or put `run_report.enabled: false` in the config to turn it off and `true` to turn it on. `parent-recap doctor` says whether it is on and when the last report was sent. [SECURITY.md](SECURITY.md#the-run-report) says what it holds and where it goes.
 - When Parent Recap isn't working, you can send the Parent Recap team a Problem Report without typing a command or copying from a log. Open Parent Recap Check: after its checks it shows the whole report (the checks, the version and the last lines Parent Recap wrote in its own logs) and asks, in your language, whether to send it. Only a yes sends it, and you can add one line on what went wrong. It works even after an install that didn't finish.
+
+### Changed
+
+- On a Mac, while Parent Recap installs or updates, Terminal now shows which of four steps it is on instead of staying still for minutes.
+
+## 0.20.2 · 2026-11-15
+
+### Changed
+
+- Nothing a family notices. The program that checks a release's signature can now also do it on a Windows PC, which the Windows update will build on; a Mac checks it as before.
+
+## 0.20.1 · 2026-11-15
+
+### Fixed
+
+- For a family that connected a Konnect parent portal, Parent Recap Check and `parent-recap doctor` now say "1 planned time" when a Kid has one booked time in the next two weeks, not "1 planned times".
 
 ## 0.20.0 · 2026-11-15
 
