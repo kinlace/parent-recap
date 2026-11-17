@@ -202,6 +202,19 @@ def test_a_household_without_a_key_on_the_gateway_reports_under_its_id(harness):
     assert set(report.headers) == {"x-report-id"}
 
 
+def test_a_key_the_gateway_no_longer_knows_reports_under_the_id(own_gmail):
+    # A Household that sends from its own Gmail, with a key from before kept unused and revoked.
+    own_gmail.secrets[api.ACCOUNT] = GATEWAY_KEY
+    own_gmail.outbox.revoked_keys.add(GATEWAY_KEY)
+    own_gmail.config["run_report"] = {"enabled": True}
+
+    assert own_gmail.run() == 0
+
+    [report] = own_gmail.reports
+    assert set(report.headers) == {"x-report-id"}
+    assert waiting(own_gmail) == []
+
+
 def test_a_household_that_got_its_key_tonight_reports_under_it(harness):
     normal_night(harness, "en")
     no_key(harness)

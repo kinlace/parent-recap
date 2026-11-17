@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 OUTBOX = "run-reports"   # beside state.json: the reports waiting, the report id and when one was sent
 ID_FILE = "id"
 SENT_FILE = "sent"
-REPORT_ID_HEADER = "x-report-id"
+KEY_HEADER, REPORT_ID_HEADER = "x-api-key", "x-report-id"
 # A report not sent within this long of its run is dropped: it says little the newer ones don't.
 KEEP_DAYS = 7
 # How long one report waits for the gateway: the Brief is out, but the evening's update follows.
@@ -97,6 +97,13 @@ def _send_one(cfg: Config, report: Path, headers: dict[str, str], timeout: float
     except (TimeoutError, gateway.GatewayError) as e:
         log.info("The Run Report waits for the next run: %s", e)
         return False
+    if status == gateway.UNKNOWN_KEY and KEY_HEADER in headers:
+        # A key the gateway no longer knows, such as one a Household that now sends from its own
+        # Gmail kept unused: this report and the rest go under the report id instead.
+        log.info("The gateway doesn't know the Gateway Key; the Run Report goes under its id")
+        headers.clear()
+        headers[REPORT_ID_HEADER] = report_id(cfg)
+        return _send_one(cfg, report, headers, timeout)
     if status == TAKEN:
         report.unlink(missing_ok=True)
         _note_sent(cfg)
@@ -124,7 +131,7 @@ def _who(cfg: Config) -> dict[str, str]:
     """Whom the report is from: the Gateway Key when one is stored and can be read, else the
     report id."""
     try:
-        return {"x-api-key": gateway.key()}
+        return {KEY_HEADER: gateway.key()}
     except gateway.NoKey:
         return {REPORT_ID_HEADER: report_id(cfg)}
 
