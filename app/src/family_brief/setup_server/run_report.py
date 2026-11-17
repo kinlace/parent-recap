@@ -36,8 +36,8 @@ class RunReport(Phase):
         if context.model().hosted:
             return HTTPStatus.OK, {"result": "not-available", "run_report": shown(context.model())}
         with context.connect.lock:
-            done = setup_save.save(context.config, {"run_report": answer.on})["result"]
-        return HTTPStatus.OK, {"result": "saved" if done == "saved" else "save-failed",
+            saved = setup_save.save(context.config, {"run_report": answer.on})["result"] == "saved"
+        return HTTPStatus.OK, {"result": "saved" if saved else "save-failed",
                                "run_report": shown(context.model())}
 
 

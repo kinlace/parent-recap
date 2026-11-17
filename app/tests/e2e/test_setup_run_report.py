@@ -20,7 +20,7 @@ from family_brief import setup_save
 from nights import normal_night
 from setup_page import APP_PASSWORD, PAGE_DIR, at_finish, call, config_file, connect_done, inside
 from setup_page import clock, health, page, schedule  # noqa: F401
-from test_gmail_sends import PARENT, sending
+from test_gmail_sends import ASKED, PARENT, REPORTING, sending
 
 TEXT = json.loads((PAGE_DIR / "text.json").read_text(encoding="utf-8"))
 SECURITY_LINK = "https://github.com/kinlace/parent-recap/blob/stable/SECURITY.md#the-run-report"
@@ -54,7 +54,7 @@ def evening_run(harness) -> list:
 def test_the_switch_is_on_for_a_household_on_the_gateway_without_anything_saved(harness, page):
     at_finish(harness)
 
-    assert shown(page.url) == {"available": True, "on": True, "ask": False}
+    assert shown(page.url) == REPORTING
     assert "run_report" not in saved(harness)
 
 
@@ -95,8 +95,8 @@ def test_turning_own_gmail_sending_on_shows_the_switch_off_and_asks(harness, pag
     out = sending(page.url, "gmail")
 
     assert out["result"] == "saved"
-    assert out["run_report"] == {"available": True, "on": False, "ask": True}
-    assert shown(page.url) == {"available": True, "on": False, "ask": True}
+    assert out["run_report"] == ASKED
+    assert shown(page.url) == ASKED
     assert "run_report" not in saved(harness)  # nothing said yet, so nothing is sent
     assert evening_run(harness) == []
 
@@ -108,7 +108,7 @@ def test_an_own_gmail_household_that_says_yes_sends_its_report(harness, page):
 
     r = switch(page.url, True)
 
-    assert r.json()["run_report"] == {"available": True, "on": True, "ask": False}
+    assert r.json()["run_report"] == REPORTING
     assert saved(harness)["run_report"] == {"enabled": True}
     assert len(evening_run(harness)) == 1
 
