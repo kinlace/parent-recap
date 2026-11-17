@@ -5,9 +5,10 @@ can't tell a run that failed from one that never started. The Run Report is writ
 that started, however it ended, and holds nothing of the Household's: only the fields FIELDS names,
 each a time, a number or one of a fixed set of keys. That is Parent Recap's version, the system and
 its version, when the run ended and how it was started, its exit code, duration and peak memory,
-each Source's result, the AI's, the Brief's outcome, and for an exception that ended the run its
-type and the line of Parent Recap's own code it was raised at, never its message. A failure with no
-key of its own is an unknown one (UNKNOWN), never its text.
+each Source's result, the AI's, the Brief's outcome, how the program's last update went (UPDATES),
+and for an exception that ended the run its type and the line of Parent Recap's own code it was
+raised at, never its message. A failure with no key of its own is an unknown one (UNKNOWN), never
+its text.
 
 The hosted version's status (`signup status`) reads the time, exit code, duration, peak memory and
 causes, as it did before the rest was added, and from the duration and peak memory the maintainers
@@ -48,6 +49,10 @@ CAUSES = frozenset({wilma_egress.CAUSE, NEEDS_PAIRING, NOTHING_READ, UNKNOWN})
 STARTED = ("schedule", "catch-up", "by-hand")
 SYSTEMS = ("macos", "windows", "linux")
 AI_RESULTS = ("ok", "busy", "timed-out", "failed")
+# How the program's last update went (ADR 0047, update.reported): none where it doesn't update
+# itself, as on the hosted version, or hasn't tried a release yet; else what the last update that
+# tried one came to. The report is written before the evening's own update, so it is the one before.
+UPDATES = ("none", "updated", "failed", "switched-back", "waiting-for-family")
 BACKENDS = get_args(LLMConfig.model_fields["backend"].annotation)  # the config's llm.backend
 
 _VERSION = re.compile(r"[0-9]+(\.[0-9]+)*([.+-][0-9A-Za-z.]+)?|unknown")
@@ -166,6 +171,17 @@ def _about() -> dict[str, str]:
     return {"version": _version(), "system": system, "system_version": _system_version(system)}
 
 
+def _update(cfg: Config) -> dict[str, str]:
+    """How the program's last update went (UPDATES), from what the update keeps on this
+    computer, never from the gateway. Left out when that can't be read, not the rest."""
+    try:
+        from . import update  # its download code isn't needed until a report is written
+        return {"update": update.reported(cfg.hosted)}
+    except Exception as e:  # noqa: BLE001
+        log.warning("The Run Report leaves out how the last update went: %s", type(e).__name__)
+        return {}
+
+
 def record(cfg: Config, exit: int, seconds: float, causes: list[str] | tuple[str, ...] = (),
            report: Report | None = None) -> bool:
     """Notes that a run ended now with `exit` after `seconds`, the peak memory it and its child
@@ -180,7 +196,8 @@ def record(cfg: Config, exit: int, seconds: float, causes: list[str] | tuple[str
         if causes:
             noted["causes"] = list(causes)
         try:  # what signup status reads is written even when the rest can't be
-            noted = only_listed({**noted, **_about(), **(report.fields() if report else {})})
+            noted = only_listed({**noted, **_about(), **_update(cfg),
+                                 **(report.fields() if report else {})})
         except Exception as e:  # noqa: BLE001
             log.warning("The Run Report holds only how the run ended: %s", type(e).__name__)
             noted = only_listed(noted)
@@ -293,6 +310,7 @@ FIELDS: dict[str, Callable[[object], bool]] = {
     "ai": _object({"backend": _one_of(*BACKENDS), "result": _one_of(*AI_RESULTS)}),
     "brief": _brief,
     "exception": _object({"type": _matches(_TYPE)}, {"at": _matches(_WHERE)}),
+    "update": _one_of(*UPDATES),
 }
 
 

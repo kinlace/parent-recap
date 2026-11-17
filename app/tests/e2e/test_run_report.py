@@ -57,6 +57,8 @@ def test_a_run_that_sent_its_brief_says_so_with_what_each_source_read(harness):
     assert report["system"] in last_run.SYSTEMS
     assert re.fullmatch(r"[0-9].*|unknown", report["version"])
     assert "exception" not in report
+    # Not run from an installed release, so the program doesn't update itself (ADR 0047).
+    assert report["update"] == "none"
 
 
 def test_a_night_with_nothing_to_tell_says_so(harness):

@@ -104,6 +104,17 @@ def test_a_key_s_name_or_id_shows_its_runs_one_line_each(server, capsys, which):
     ]
 
 
+def test_how_the_last_update_went_is_shown_unless_it_is_none(server, capsys):
+    keep(server, "key-id-1", "2026-11-15T09:00:00Z", report("2026-11-15T08:59:00+00:00",
+                                                           update="switched-back"))
+    keep(server, "key-id-1", "2026-11-15T10:00:00Z", report("2026-11-15T09:59:00+00:00",
+                                                           update="none"))
+    assert reports(server, "ai-pilot-a") == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[-2].endswith("brief sent  update switched-back")
+    assert out[-1].endswith("brief sent")
+
+
 def test_a_report_id_shows_that_household_s_runs(server, capsys):
     assert reports(server, REPORT_ID) == 0
     out = capsys.readouterr().out.splitlines()

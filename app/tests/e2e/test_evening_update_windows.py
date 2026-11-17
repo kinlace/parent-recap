@@ -23,7 +23,7 @@ from family_brief import ops, update, versions
 from family_brief.brief_text import TEXT
 from family_brief.system import jobs
 from test_doctor import nothing_loaded, updates_line  # noqa: F401  the fixture
-from test_evening_update import DAY, at, exit_recorded, last_run
+from test_evening_update import DAY, at, exit_recorded, last_run, update_reported
 from test_evening_update_brief import CHANGES, UPDATE_MARK, a_message, quiet, top, updates_off
 from test_update import ASKS, INSTALLED, needing_family
 from test_update_skips import KONNECT_ONLY
@@ -91,6 +91,15 @@ def test_the_update_starts_only_once_the_brief_is_sent(evening, github, keys, pc
     evening_on(evening, 1)
 
     assert sent_at_install == [1] and pc.version() == "0.20.0"
+
+
+def test_the_run_report_says_how_the_last_update_went_as_on_a_mac(evening, github, keys, pc):  # noqa: F811
+    installed_on_evening_1(evening, github, keys, pc)
+    assert update_reported(evening) == "none"  # written before that evening's update
+
+    evening_on(evening, 2)
+
+    assert update_reported(evening) == "updated"
 
 
 # ---------------------------------------------------------------- what the next Brief says

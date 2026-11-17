@@ -240,8 +240,10 @@ def state(folder: Path | None = None) -> dict:
     `version`, the `step` that stopped it, the `error` in the update log's words (the system's
     word for word, where the system stopped it) and `at` when, for `doctor` and so a Problem
     Report (ADR 0052); None once an update installs. It names versions, steps, programs and
-    paths, never a check's item, which may name a Kid. Kept in Parent Recap's folder outside the
-    versions, so a switch and a switch back keep it."""
+    paths, never a check's item, which may name a Kid. `last_update`: how the last update that
+    tried a release went, for the Run Report (`reported`): updated, failed, switched-back, or
+    waiting-for-family; None before one. Kept in Parent Recap's folder outside the versions, so a
+    switch and a switch back keep it."""
     path = (folder or own_node.home()) / UPDATE / STATE
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -250,7 +252,7 @@ def state(folder: Path | None = None) -> dict:
     return {"last_look": None, "last_result": None, "failed": None, "seen": None, "skipped": None,
             "tell_updated": None, "tell_failed": None, "told_failed": None,
             "told_updates_itself": False, "tell_available": None, "told_available": None,
-            "waiting": None, "told_waiting": None, "last_failure": None,
+            "waiting": None, "told_waiting": None, "last_failure": None, "last_update": None,
             **(data if isinstance(data, dict) else {})}
 
 
@@ -307,8 +309,12 @@ class _Log:
 
 def not_applicable(config: str | None = None) -> str | None:
     """Why the update doesn't apply to this program, or None when it does. Asks no host."""
+    return _not_applicable(_hosted(config))
+
+
+def _not_applicable(hosted: bool) -> str | None:
     here = profile.current()
-    if here.system not in ("macos", "windows") or _hosted(config):
+    if here.system not in ("macos", "windows") or hosted:
         return ("This is the hosted version: the Parent Recap team updates the server, so there "
                 "is nothing to update here.")
     folder = own_node.running_from()
@@ -908,7 +914,7 @@ def update(config: str | None = None, *, retry_failed: bool = True,
     if not by_family and waiting is not None and waiting["version"] == wanted:
         log("look", f"{wanted} waits for the family; not downloaded again")
         _save(folder, last_result=f"{wanted} waits for the family to start it", **found)
-        return _left_for_the_family(installed, wanted)
+        return _went(folder, _left_for_the_family(installed, wanted))
     if not retry_failed and state(folder)["failed"] == wanted:
         log("look", f"{wanted} failed before; not tried again")
         _save(folder, last_result=f"{wanted} failed before; not tried again", **found)
@@ -1100,14 +1106,45 @@ def _update_to(folder: Path, config: str | None, log: _Log, session: requests.Se
         log.failed("download", f"{wanted}: its folder couldn't be made ({_system_said(e)})")
         _save(folder, last_result=f"{wanted} refused: its download folder couldn't be made",
               last_failure=_failure(log, wanted))
-        return Outcome("failed", f"Version {wanted} wasn't installed: its download folder "
-                       f"couldn't be made ({e.strerror or e}). Nothing was changed.", installed)
+        return _went(folder, Outcome("failed", f"Version {wanted} wasn't installed: its download "
+                                     f"folder couldn't be made ({e.strerror or e}). Nothing was "
+                                     "changed.", installed))
     outcome = _install(folder, config, log, session, installed, wanted, work, by_family, say)
     if outcome.result == "updated":
         _write_state(folder, {**state(folder), "last_failure": None})
     elif outcome.result in ("failed", "switched-back") and log.failure is not None:
         _write_state(folder, {**state(folder), "last_failure": _failure(log, wanted)})
+    return _went(folder, outcome)
+
+
+# How each Outcome of an update that tried a release goes into the Run Report (`reported`).
+_REPORTED = {"updated": "updated", "failed": "failed", "switched-back": "switched-back",
+             "needs-family": "waiting-for-family"}
+
+
+def _went(folder: Path, outcome: Outcome) -> Outcome:
+    """Keeps how the update that tried a release went, as state's `last_update`, and returns
+    `outcome`."""
+    if (went := _REPORTED.get(outcome.result)) is not None:
+        _write_state(folder, {**state(folder), "last_update": went})
     return outcome
+
+
+def reported(hosted: bool = False) -> str:
+    """How the last update went, as the Run Report says it (ADR 0048, last_run.UPDATES): none
+    where the program doesn't update itself or hasn't tried a release yet; else updated, failed,
+    switched-back, or waiting-for-family while a release still waits for the family to start it.
+    Asks no host: it reads only this update's own state."""
+    if _not_applicable(hosted) is not None:
+        return "none"
+    folder = own_node.running_from()
+    assert folder is not None
+    data = state(folder)
+    went = data["last_update"]
+    if went == "waiting-for-family":
+        installed = versions.version(versions.current(folder))  # type: ignore[arg-type]
+        return went if _waiting(data, installed) is not None else "none"
+    return went if went in ("updated", "failed", "switched-back") else "none"
 
 
 def _failure(log: _Log, version: str) -> dict[str, str] | None:
