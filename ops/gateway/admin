@@ -65,6 +65,9 @@ usage: sudo admin <task> [arguments]
   reports [KEY-OR-ID]                        each Household's last Run Report, those with none
                                              in the last day first; with a key's name or id or
                                              a report id, that Household's runs of 30 days
+  problems [ID]                              the Problem Reports parents sent from Parent
+                                             Recap Check; with an id, that one whole, to read
+                                             on the server only
   key new LABEL "WHO HOLDS IT" [--send-only] make a Gateway Key and print its value, once;
                                              asks for the holder's email
   key off NAME-OR-ID                         turn a Gateway Key off: it neither writes nor sends
@@ -254,6 +257,14 @@ def main(argv: list[str], paths: Paths | None = None,
             relay, keys = _keys(paths, fetch)
             relay.print_reports(keys, paths.relay_state, now=(edge or Edge()).now(),
                                 which=args[0] if args else None)
+            return 0
+        if task == "problems":
+            if len(args) > 1:
+                raise Usage("problems [ID]")
+            relay, keys = _keys(paths, fetch)
+            if args and not relay.PROBLEM_ID.fullmatch(args[0]):
+                raise Usage("problems [ID], an id such as p-0123abcd")
+            relay.print_problems(keys, paths.relay_state, which=args[0] if args else None)
             return 0
         if task == "find":
             if len(args) != 1 or not args[0].strip():

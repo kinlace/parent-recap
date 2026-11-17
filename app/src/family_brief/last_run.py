@@ -171,6 +171,12 @@ def _about() -> dict[str, str]:
     return {"version": _version(), "system": system, "system_version": _system_version(system)}
 
 
+def about() -> dict[str, str]:
+    """The program's version, the system and the system's version, as a Run Report gives them; a
+    Problem Report (problem_report.py) gives them too."""
+    return _about()
+
+
 def _update(cfg: Config) -> dict[str, str]:
     """How the program's last update went (UPDATES), from what the update keeps on this
     computer, never from the gateway. Left out when that can't be read, not the rest."""

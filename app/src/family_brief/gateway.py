@@ -195,6 +195,12 @@ def post_report(url: str, headers: dict[str, str], raw: bytes, timeout: float) -
     return _post(url, "/v1/report", raw, timeout, headers)
 
 
+def post_problem(url: str, headers: dict[str, str], raw: bytes, timeout: float) -> requests.Response:
+    """One Problem Report a parent chose to send from Parent Recap Check (#925), with the Gateway
+    Key (`x-api-key`) or the report id (`x-report-id`) in `headers`. Fails as `post` does."""
+    return _post(url, "/v1/problem", raw, timeout, headers)
+
+
 # How a send refused because no Recipient confirmed starts (ADR 0033).
 UNCONFIRMED_MESSAGE = "the Brief's Recipients haven't confirmed their email address"
 CONFIRM_HOW = ("press the link in the confirmation email Parent Recap sent them, from "

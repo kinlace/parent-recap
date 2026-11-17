@@ -1,6 +1,7 @@
 """The two entries the install puts where the system lists programs (ADR 0042): Parent Recap
 Settings, which opens the setup page as `parent-recap setup page` does, and Parent Recap Check,
-which runs `parent-recap doctor` in a window that stays open for a screenshot. Each system has its
+which runs `parent-recap doctor --offer-problem-report` in a window that stays open for a
+screenshot, where doctor then offers to send a Problem Report (problem_report.py). Each system has its
 adapter: small app bundles in `~/Applications` on macOS, where Spotlight and Launchpad find them,
 and Start menu shortcuts on Windows. Linux, where only the hosted version runs, gets none: a
 Hosted Household's settings are the maintainers'. Opening either asks the family for no

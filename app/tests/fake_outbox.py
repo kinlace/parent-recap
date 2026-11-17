@@ -139,7 +139,8 @@ class FakeOutbox:
 
     The gateway takes each Run Report (ADR 0048) into `reports`, with the headers it came with,
     and answers `report_answer`: a status, or an exception it raises; a key in `revoked_keys`
-    gets 401."""
+    gets 401. A Problem Report (#925) goes into `problems` the same way, answered with
+    `problem_answer`."""
 
     def __init__(self, home: Path, mp: pytest.MonkeyPatch) -> None:
         self.sent: list[SentEmail] = []
@@ -160,9 +161,12 @@ class FakeOutbox:
         self.reports: list[Report] = []
         self.report_answer: int | Exception = 200
         self.revoked_keys: set[str] = set()
+        self.problems: list[Report] = []
+        self.problem_answer: int | Exception = 200
         mp.setattr(smtplib, "SMTP_SSL", lambda host, port, timeout=None: _Smtp(self, (host, port)))
         mp.setattr(api, "post_brief", self._relay)
         mp.setattr(api, "post_report", self._take_report)
+        mp.setattr(api, "post_problem", self._take_problem)
         real_post = api._post
         mp.setattr(api, "_post", lambda url, path, body, timeout, headers:
                    self._key_desk(path, body, headers) if path in ("/v1/brief/key", "/v1/brief/recipients")
@@ -202,6 +206,17 @@ class FakeOutbox:
             self.reports.append(Report(dict(headers), raw))
             return _response(200, {"taken": True})
         return _response(self.report_answer, {"error": "not taken"})
+
+    def _take_problem(self, url: str, headers: dict[str, str], raw: bytes,
+                      timeout: float = 0) -> requests.Response:
+        if isinstance(self.problem_answer, Exception):
+            raise self.problem_answer
+        if headers.get("x-api-key") in self.revoked_keys:
+            return _response(401, {"error": "unknown or revoked key"})
+        if self.problem_answer == 200:
+            self.problems.append(Report(dict(headers), raw))
+            return _response(200, {"taken": True})
+        return _response(self.problem_answer, {"error": "not taken"})
 
     def confirm(self, *addresses: str) -> None:
         """The Recipients press the link in their confirmation email."""

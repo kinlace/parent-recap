@@ -66,7 +66,7 @@ def shortcut(name: str, target: Path) -> dict[str, str]:
                  "-m", "family_brief", "setup", "page"]
         return {"target": str(scripts / "pythonw.exe"), "arguments": " ".join(map(_argument, words)),
                 "folder": str(target), "description": "Open Parent Recap's setup page"}
-    command = f"& {_quoted(str(scripts / 'python.exe'))} -m family_brief doctor"
+    command = f"& {_quoted(str(scripts / 'python.exe'))} -m family_brief doctor --offer-problem-report"
     return {"target": _powershell(), "arguments": f'-NoExit -NoLogo -NoProfile -Command "{command}"',
             "folder": str(target), "description": "Check Parent Recap with parent-recap doctor"}
 

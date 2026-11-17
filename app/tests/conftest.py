@@ -400,6 +400,8 @@ class Harness:
     binds = _to("outbox", "binds")
     reports = _to("outbox", "reports")
     report_answer = _to("outbox", "report_answer")
+    problems = _to("outbox", "problems")
+    problem_answer = _to("outbox", "problem_answer")
     imessages = _to("outbox", "imessages")
     imessage_error = _to("outbox", "imessage_error")
     calendar = _to("outbox", "calendar")

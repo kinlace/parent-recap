@@ -87,11 +87,12 @@ def test_check_has_terminal_open_a_command_script_that_runs_doctor_and_waits(hom
         in script.read_text()
     assert os.access(command, os.X_OK)
     # What Terminal's window shows, kept open until Return so the family can take a screenshot.
+    # doctor offers the Problem Report in that window: only Check asks it to (#925).
     shown = subprocess.run([str(command)], input="\n", capture_output=True, text=True, timeout=10,
                            check=True).stdout
-    assert shown.startswith("ran doctor\n")
-    assert "Press Return to close it." in shown
-    assert (home / "asked").read_text() == "doctor\n"
+    assert shown.startswith("ran doctor --offer-problem-report\n")
+    assert "Press Return to close this window." in shown
+    assert (home / "asked").read_text() == "doctor --offer-problem-report\n"
 
 
 @pytest.mark.macos
